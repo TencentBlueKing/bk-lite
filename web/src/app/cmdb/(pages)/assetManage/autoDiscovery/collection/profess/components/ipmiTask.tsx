@@ -2,8 +2,8 @@
 
 import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
-import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
@@ -20,6 +20,7 @@ import {
 import { Form, Spin } from 'antd';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import CredentialPoolEditor from './credentialPoolEditor';
+import { resolveCredentialHelp } from './credentialHelp';
 
 interface IPMITaskFormProps {
   onClose: () => void;
@@ -42,8 +43,8 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const baseRef = useRef<BaseTaskRef>(null as any);
-  const localeContext = useLocale();
   const { copyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
 
@@ -147,9 +148,8 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
   return (
     <Spin spinning={loading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="horizontal"
-        labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
         onFinish={onFinish}
         initialValues={IPMI_FORM_INITIAL_VALUES}
       >
@@ -167,7 +167,11 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
           }}
         >
           <Form.Item name="credentialPool">
-            <CredentialPoolEditor credentialShape="ipmi" editMode={Boolean(editId)} />
+            <CredentialPoolEditor
+              credentialShape="ipmi"
+              credentialHelp={resolveCredentialHelp(modelItem, t)}
+              editMode={Boolean(editId)}
+            />
           </Form.Item>
         </BaseTaskForm>
       </Form>

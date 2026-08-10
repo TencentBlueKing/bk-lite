@@ -4,19 +4,13 @@ ScheduleConfigValidator / CrontabGenerator / convert_legacy_config /
 get_crontab_next_runs 均为纯函数（croniter 为确定性库），直接断言真实行为。
 """
 
-import pydantic.root_model  # noqa
-
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
+import pydantic.root_model  # noqa
 import pytest
 
-from apps.opspilot.utils.schedule_utils import (
-    CrontabGenerator,
-    ScheduleConfigValidator,
-    convert_legacy_config,
-    get_crontab_next_runs,
-)
-
+from apps.opspilot.utils.schedule_utils import CrontabGenerator, ScheduleConfigValidator, convert_legacy_config, get_crontab_next_runs
 
 # ---------------------------------------------------------------------------
 # ScheduleConfigValidator
@@ -211,3 +205,13 @@ class TestNextRuns:
     def test_non_string_raises(self):
         with pytest.raises(ValueError, match="required and must be a string"):
             get_crontab_next_runs(None)  # type: ignore
+
+    def test_same_utc_instant_yields_different_next_run_by_timezone(self, mocker):
+        """Server UTC vs user Asia/Shanghai must not share naive datetime.now()."""
+        fixed_utc = datetime(2026, 1, 1, 1, 30, 0, tzinfo=ZoneInfo("UTC"))
+        mocker.patch("django.utils.timezone.now", return_value=fixed_utc)
+
+        # 01:30 UTC → next local 09:00 same day
+        assert get_crontab_next_runs("0 9 * * *", count=1, tz="UTC") == ["2026-01-01 09:00:00"]
+        # 01:30 UTC = 09:30 Asia/Shanghai → next local 09:00 next day
+        assert get_crontab_next_runs("0 9 * * *", count=1, tz="Asia/Shanghai") == ["2026-01-02 09:00:00"]

@@ -3,7 +3,13 @@ import { useMemo } from 'react';
 import { StateMap } from '@/app/alarm/types/alarms';
 
 export const baseStates = ['pending', 'processing', 'unassigned'] as const;
-export const allStates = [...baseStates, 'closed', 'recovered', 'auto_close'] as const;
+export const allStates = [
+  ...baseStates,
+  'closed',
+  'resolved',
+  'auto_recovery',
+  'auto_close',
+] as const;
 export const incidentStates = ['pending', 'processing', 'closed'] as const;
 
 const useStateMap = (): StateMap => {

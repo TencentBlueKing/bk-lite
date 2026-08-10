@@ -15,6 +15,8 @@
       "required": true,
       "editable": false,
       "description": "用于访问接口的用户名",
+      "guide_short": "建议使用只读监控账号，至少具备 VIEW SERVER STATE 权限以读取 sys.dm_* 视图，避免使用 sa 等高权限账号。",
+      "guide_short_en": "Use a dedicated monitoring login with VIEW SERVER STATE for the required sys.dm_* views; avoid high-privilege logins such as sa.",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -35,6 +37,8 @@
       "required": true,
       "editable": false,
       "description": "对应的登录密码",
+      "guide_short": "填写与用户名对应的登录密码，注意不要带入首尾空格；密码只通过该字段下发，不要拼入连接地址或命令行。",
+      "guide_short_en": "Enter the password for the configured login without leading or trailing spaces. Supply it only through this field, never in a connection address or command line.",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"
@@ -53,6 +57,8 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的主机",
+      "guide_short": "填写 SQL Server 的 IP 或主机名，不包含命名实例；当前模板只使用本字段与实际 TCP 端口连接。",
+      "guide_short_en": "Enter the SQL Server IP address or hostname without a named instance. The current template connects only with this host and the actual TCP port.",
       "widget_props": {
         "placeholder": "主机地址"
       },
@@ -72,6 +78,8 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的端口",
+      "guide_short": "SQL Server 数据库服务端口，默认 1433；命名实例可能为动态端口，请按实际填写。",
+      "guide_short_en": "Enter the actual SQL Server TCP port, commonly 1433. If the deployment uses a dynamic port, enter the resolved current value.",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -93,6 +101,8 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "默认 60 秒；过低会增加 SQL Server 的 DMV 查询压力，过高会延误告警与指标刷新。",
+      "guide_short_en": "The default is 60 seconds. Short intervals increase DMV query load on SQL Server, while long intervals delay metrics and alerts.",
       "widget_props": {
         "min": 1,
         "precision": 0,

@@ -261,3 +261,37 @@ def build_sandboxed_env(
     if extra_filters:
         env.filters.update(extra_filters)
     return env
+
+
+def build_trusted_file_template_env(
+    loader=None,
+    undefined=DebugUndefined,
+    *,
+    autoescape: bool = False,
+    trim_blocks: bool = False,
+    lstrip_blocks: bool = False,
+    extra_filters: dict | None = None,
+    extra_tests: dict | None = None,
+) -> SandboxedEnvironment:
+    """构建用于仓库内可信文件模板的最小权限 Jinja2 环境。
+
+    与 ``build_sandboxed_env`` 的不可信字符串模板边界不同，仓库内模板需要调用
+    macro 以及公开的数据容器方法。这里保留标准 ``SandboxedEnvironment`` 的属性
+    安全检查，同时清空 Jinja 默认 globals、filters 和 tests，再由调用方逐项恢复
+    已审计的能力。
+    """
+    env = SandboxedEnvironment(
+        loader=loader or BaseLoader(),
+        undefined=undefined,
+        autoescape=autoescape,
+        trim_blocks=trim_blocks,
+        lstrip_blocks=lstrip_blocks,
+    )
+    env.globals.clear()
+    env.filters.clear()
+    env.tests.clear()
+    if extra_filters:
+        env.filters.update(extra_filters)
+    if extra_tests:
+        env.tests.update(extra_tests)
+    return env

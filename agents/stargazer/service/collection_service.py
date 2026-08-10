@@ -1,5 +1,6 @@
 """采集服务 V2 - 基于 YAML 配置的新版本采集服务"""
 
+import asyncio
 import importlib
 import json
 import ntpath
@@ -7,11 +8,12 @@ import posixpath
 import time
 import traceback
 from typing import Dict, Any, Optional
-from sanic.log import logger
+from core.logger import logger
 
-from core.nats_utils import nats_request
-from core.yaml_reader import yaml_reader
-from core.plugin_executor import PluginExecutor
+from core.infra.nats_utils import nats_request
+from core.plugin.yaml_reader import yaml_reader
+from core.plugin.executor import PluginExecutor
+from core.collection.contracts import AccessProbeResult
 from plugins.base_utils import convert_to_prometheus_format
 
 
@@ -20,9 +22,9 @@ class CollectionService:
     采集服务 - 基于 YAML 配置的新架构
 
     设计说明：
-    - API层已完成IP拆分，每个CollectionService实例只处理单个host（或无host）
+    - 统一运行时按 IP 调度，每个 CollectionService 实例只处理单个 host（或无 host）
     - host字段可能为None（云采集使用默认endpoint）
-    - 不再需要内部并发，并发在Worker Pool层实现
+    - 不在服务内部并发；跨 IP 并发由统一异步运行时控制
 
     工作流程：
     1. 根据 plugin_name 推断 model（或直接传入 model）
@@ -31,11 +33,17 @@ class CollectionService:
     4. 通过 PluginExecutor 执行单次采集
     """
 
-    def __init__(self, params: Optional[dict] = None):
+    def __init__(
+        self,
+        params: Optional[dict] = None,
+        *,
+        config_provider=None,
+    ):
         self._node_info = None  # 单个节点信息
         self.namespace = "bklite"
-        self.yaml_reader = yaml_reader
-        self.params = params
+        self.yaml_reader = config_provider or yaml_reader
+        # 运行期会补充 node_info/script_path，不能污染 HTTP 请求或其他目标复用的参数。
+        self.params = dict(params or {})
         self.plugin_name = self.params.pop("plugin_name", None)
         self.model_id = self.params["model_id"]
         self.host = self.params.get("host")  # 可能为None（云采集）
@@ -93,7 +101,7 @@ class CollectionService:
         if self.host:
             logger.info(f"📍 Host: {self.host}")
         else:
-            logger.info(f"📍 No host specified (cloud collection or default endpoint)")
+            logger.info("📍 No host specified (cloud collection or default endpoint)")
 
         try:
             # 根据参数确定执行器类型（job 或 protocol）
@@ -111,8 +119,10 @@ class CollectionService:
             # enterprise/plugins/inputs/{model}/plugin.yml -> plugins/inputs/{model}/plugin.yml
             # 的顺序选中最终 plugin.yml；若命中 enterprise 且后续 import 失败，executor 会按 strict_enterprise
             # 决定是直接报错还是回退到同名 oss 插件。
-            resolved_executor = self.yaml_reader.get_executor_config_with_resolution(
-                self.model_id, executor_type, prefer_enterprise=prefer_enterprise
+            resolved_executor = await self.yaml_reader.get_executor_config_with_resolution_async(
+                self.model_id,
+                executor_type,
+                prefer_enterprise=prefer_enterprise,
             )
             executor_config = resolved_executor.executor_config
             plugin_resolution = resolved_executor.plugin_resolution
@@ -138,7 +148,11 @@ class CollectionService:
                 strict_enterprise=strict_enterprise,
             )
             result = await executor.execute()
-            logger.info("Raw collection result: {}".format(result))
+            logger.info(
+                "Plugin collection completed: model=%s, success=%s",
+                self.model_id,
+                result.get("success"),
+            )
 
             if self.params.get("callback_subject"):
                 logger.info("✅ Collection completed successfully (callback mode)")
@@ -149,6 +163,7 @@ class CollectionService:
                     else (
                         {
                             "collect_task_id": self.params.get("collect_task_id"),
+                            "execution_id": self.params.get("execution_id"),
                             "instance_id": self._get_callback_instance_id(),
                             "instance_name": self._get_callback_instance_name(),
                             "model_id": self._get_callback_model_id(),
@@ -165,6 +180,7 @@ class CollectionService:
                         if self._is_config_file_callback()
                         else {
                             "collect_task_id": self.params.get("collect_task_id"),
+                            "execution_id": self.params.get("execution_id"),
                             "instance_id": self.params.get("instance_id") or self.host or "",
                             "model_id": self.params.get("target_model_id") or self.params.get("model_id"),
                             "file_path": self.params.get("config_file_path", ""),
@@ -181,10 +197,9 @@ class CollectionService:
                 )
 
             # 处理结果并转换为 Prometheus 格式
-            processed_data = self._process_result(result)
-            final_result = convert_to_prometheus_format(processed_data)
+            final_result = await asyncio.to_thread(self._format_result, result)
 
-            logger.info(f"✅ Collection completed successfully")
+            logger.info("✅ Collection completed successfully")
             logger.info("=" * 60)
             return final_result
 
@@ -199,6 +214,36 @@ class CollectionService:
             logger.error(f"❌ Collection failed: {traceback.format_exc()}")
             logger.info(f"{'=' * 60}")
             return self._generate_error_response(str(e))
+
+    async def probe(self) -> AccessProbeResult:
+        """通过当前解析出的协议 Adapter 执行最小凭据感知预检。"""
+        executor_type = self.params["executor_type"]
+        prefer_enterprise = self._get_bool_param(
+            self.params, "prefer_enterprise", True
+        )
+        strict_enterprise = self._get_bool_param(
+            self.params, "strict_enterprise", False
+        )
+        resolved_executor = (
+            await self.yaml_reader.get_executor_config_with_resolution_async(
+                self.model_id,
+                executor_type,
+                prefer_enterprise=prefer_enterprise,
+            )
+        )
+        executor = PluginExecutor(
+            self.model_id,
+            resolved_executor.executor_config,
+            self.params,
+            plugin_resolution=resolved_executor.plugin_resolution,
+            fallback_executor_config=resolved_executor.fallback_executor_config,
+            strict_enterprise=strict_enterprise,
+        )
+        return await executor.probe()
+
+    def _format_result(self, result: Dict[str, Any]) -> str:
+        """在线程中完成可能随结果规模增长的转换，保持事件循环只负责编排。"""
+        return convert_to_prometheus_format(self._process_result(result))
 
     def _process_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -234,15 +279,29 @@ class CollectionService:
 
         # 处理采集成功的情况
         result_data = result.get("result", {})
+        snapshot_meta = {}
+        if result.get("snapshot_id"):
+            snapshot_meta["snapshot_id"] = result["snapshot_id"]
+        if result.get("snapshot_status"):
+            snapshot_meta["snapshot_status"] = result["snapshot_status"]
+        snapshot_manifest = result.get("snapshot_manifest")
         for model_id, items in result_data.items():
             if model_id not in processed:
                 processed[model_id] = []
+            model_snapshot_meta = dict(snapshot_meta)
+            if model_id == "winsphere" and snapshot_manifest:
+                model_snapshot_meta["snapshot_manifest"] = snapshot_manifest
 
             if not items:
                 # 空结果也标记为成功
                 processed[model_id].append(
-                    {"bk_obj_id": model_id, "collect_status": "success"}
+                    {
+                        "bk_obj_id": model_id,
+                        "collect_status": "success",
+                        **model_snapshot_meta,
+                    }
                 )
+                self._encode_winsphere_metric_labels(processed[model_id][-1])
                 continue
 
             # 为每个item添加状态和host标签
@@ -252,7 +311,9 @@ class CollectionService:
                         if self.host:
                             item["host"] = self.host
                         item["bk_obj_id"] = model_id
-                        item["collect_status"] = "success"
+                        item.setdefault("collect_status", "success")
+                        item.update(model_snapshot_meta)
+                        self._encode_winsphere_metric_labels(item)
                 processed[model_id].extend(items)
             elif isinstance(items, dict):
                 # 单个字典的情况
@@ -260,11 +321,35 @@ class CollectionService:
                     items["host"] = self.host
                 items["collect_status"] = "success"
                 items["bk_obj_id"] = model_id
+                items.update(model_snapshot_meta)
+                self._encode_winsphere_metric_labels(items)
                 processed[model_id].append(items)
 
         return processed
 
+    def _encode_winsphere_metric_labels(self, item):
+        """仅在 Prometheus 传输边界编码 WinSphere 的结构化标签。"""
+        if self.model_id != "winsphere":
+            return
+        for key, value in list(item.items()):
+            if isinstance(value, (list, dict)):
+                item[key] = json.dumps(
+                    value,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+
     def _generate_error_response(self, error_message: str):
+        if self.model_id == "winsphere":
+            processed = self._process_result(
+                {
+                    "success": False,
+                    "result": {
+                        "cmdb_collect_error": error_message,
+                    },
+                }
+            )
+            return convert_to_prometheus_format(processed)
         return self._generate_error_metrics(Exception(error_message), self.model_id)
 
     def _generate_error_metrics(self, error: Exception, model: str) -> str:
@@ -285,7 +370,11 @@ class CollectionService:
 
         return "\n".join(prometheus_lines) + "\n"
 
-    def list_regions(self):
+    async def list_regions(self):
+        """异步边界：云 SDK 的区域查询整体在线程中执行。"""
+        return await asyncio.to_thread(self._list_regions_sync)
+
+    def _list_regions_sync(self):
         """
         列出区域（保留向后兼容接口）
 

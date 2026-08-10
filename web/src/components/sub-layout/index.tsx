@@ -8,6 +8,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import { MenuItem } from '@/types/index';
 import Icon from '@/components/icon';
 import { usePermissions } from '@/context/permissions';
+import {
+  getDeepestMatchedMenuItems,
+  getFirstLayerSiblingMenuItems,
+} from '@/utils/menuHelpers';
 
 interface WithSideMenuLayoutProps {
   intro?: React.ReactNode;
@@ -52,87 +56,13 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   const getMenuItemsForPath = useCallback((menus: MenuItem[], currentPath: string, targetLevel?: number): MenuItem[] => {
     if (!currentPath || menus.length === 0) return [];
 
-    // Auto mode: find the deepest matching menu layer and return its items
+    // Longest-path matching + leaf sibling fallback (see menuHelpers).
     if (targetLevel === undefined) {
-      const findMatchedMenuPath = (items: MenuItem[], path: MenuItem[] = []): MenuItem[] | null => {
-        for (const item of items) {
-          const currentPath_inner = [...path, item];
-          
-          if (item.url) {
-            if (item.url === currentPath || currentPath.startsWith(item.url)) {
-              if (item.children?.length) {
-                const childMatch = findMatchedMenuPath(item.children, currentPath_inner);
-                if (childMatch) return childMatch;
-              }
-              return currentPath_inner;
-            }
-          }
-
-          if (item.children?.length) {
-            const found = findMatchedMenuPath(item.children, currentPath_inner);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-
-      const menuPath = findMatchedMenuPath(menus);
-      
-      if (menuPath && menuPath.length > 0) {
-        const lastLayer = menuPath[menuPath.length - 1];
-        
-        if (lastLayer.children?.length) {
-          const result = lastLayer.children.filter(m => !m.isNotMenuItem && !m.isDirectory);
-          return result;
-        }
-        else if (menuPath.length >= 2) {
-          const secondLastLayer = menuPath[menuPath.length - 2];
-          if (secondLastLayer.children?.length) {
-            const result = secondLastLayer.children.filter(m => !m.isNotMenuItem && !m.isDirectory);
-            return result;
-          }
-        }
-      }
-
-      return [];
+      return getDeepestMatchedMenuItems(menus, currentPath);
     }
 
-    // Target level mode: return menus at specified layer (e.g., menuLevel=1 returns siblings of layer 1)
     if (targetLevel === 1) {
-      const findMatchedMenuPath = (items: MenuItem[], path: MenuItem[] = []): MenuItem[] | null => {
-        for (const item of items) {
-          const currentPath_inner = [...path, item];
-          
-          if (item.url) {
-            if (item.url === currentPath || currentPath.startsWith(item.url)) {
-              if (item.children?.length) {
-                const childMatch = findMatchedMenuPath(item.children, currentPath_inner);
-                if (childMatch) return childMatch;
-              }
-              return currentPath_inner;
-            }
-          }
-
-          if (item.children?.length) {
-            const found = findMatchedMenuPath(item.children, currentPath_inner);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-
-      const menuPath = findMatchedMenuPath(menus);
-      
-      // Return siblings of layer 1 (children of layer 0)
-      if (menuPath && menuPath.length >= 2) {
-        const parentLayer = menuPath[0];
-        if (parentLayer.children?.length) {
-          const result = parentLayer.children.filter(m => !m.isNotMenuItem && !m.isDirectory);
-          return result;
-        }
-      }
-
-      return [];
+      return getFirstLayerSiblingMenuItems(menus, currentPath);
     }
 
     return [];

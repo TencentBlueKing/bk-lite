@@ -86,14 +86,21 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
     [unitList, thresholdFilterBase, isEnumMetric]
   );
 
-  // 验证阈值
+  const showUnitSelector = shouldShowThresholdUnitSelector({
+    isFormulaMode,
+    isEnumMetric,
+    calculationUnit: thresholdFilterBase,
+    unitList
+  });
+
+  // 验证阈值：仅在展示单位选择器时要求 thresholdUnit
   const validateThreshold = async () => {
     if (
       threshold.length &&
       (threshold.some((item) => {
         return !item.method;
       }) ||
-        (!isEnumMetric && !thresholdUnit))
+        (showUnitSelector && !thresholdUnit))
     ) {
       return Promise.reject(new Error(t('monitor.events.thresholdValidate')));
     }
@@ -132,10 +139,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                   unitOptions={filteredUnitOptions}
                   isEnumMetric={isEnumMetric}
                   enumOptions={enumOptions}
-                  showUnitSelector={shouldShowThresholdUnitSelector({
-                    isFormulaMode,
-                    isEnumMetric
-                  })}
+                  showUnitSelector={showUnitSelector}
                 />
               </Form.Item>
 
@@ -253,7 +257,6 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                     value={noDataAlertName}
                     placeholder={t('monitor.events.noDataAlertName')}
                     onChange={(e) => onNoDataAlertNameChange(e.target.value)}
-                    disabled
                   />
                 </Form.Item>
               )}

@@ -1,0 +1,625 @@
+"""补丁源同步入口服务
+
+職責：连通性探测触发/结果记录（数据路径）、Windows/Linux 源同步派发入口。
+不涉及：实际网络 I/O、补丁下载。实际探测与同步执行由调用方（Celery task）负责接入。
+"""
+
+from typing import Optional
+
+from django.db import transaction
+from django.utils import timezone
+
+from apps.core.logger import patch_mgmt_logger as logger
+from apps.patch_mgmt.constants import (
+    ConnectivityStatus,
+    OSType,
+    PackageManagerType,
+    PatchSourceType,
+)
+from apps.patch_mgmt.models import PatchSource
+from apps.patch_mgmt.services.linux_platform import package_manager_family
+from apps.patch_mgmt.services.patch_source_service import PatchSourceService
+from apps.patch_mgmt.utils.architecture import X86_64, normalize_architecture, normalize_architectures
+
+# RPM updateinfo 会把同一公告涉及的所有子包放在一条 update 中；
+# Oracle/Rocky 9 的真实安全公告可达 205 个包。保留有界载荷，同时为真实仓库留出余量。
+MAX_LINUX_PACKAGES_PER_ADVISORY = 512
+MAX_LINUX_PACKAGE_NAME_LENGTH = 256
+MAX_LINUX_PACKAGE_VERSION_LENGTH = 128
+
+
+class SourceSyncError(Exception):
+    """补丁源同步异常基类"""
+
+
+def _normalize_linux_packages(packages, *, fallback_arch: str) -> list[dict[str, str]]:
+    """把公告软件包规范化为稳定、去重、可持久化的列表。"""
+    canonical_fallback = normalize_architecture(fallback_arch, default=X86_64)
+    normalized: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for package in packages or []:
+        name = str(getattr(package, "name", "") or "").strip()
+        if not name:
+            continue
+        version = str(getattr(package, "version", "") or "").strip()
+        if len(name) > MAX_LINUX_PACKAGE_NAME_LENGTH or len(version) > MAX_LINUX_PACKAGE_VERSION_LENGTH:
+            raise SourceSyncError("Linux 公告的软件包名称或版本过长")
+        arch = normalize_architecture(
+            getattr(package, "arch", ""),
+            default=canonical_fallback,
+        )
+        key = (name, version, arch)
+        if key in seen:
+            continue
+        if len(normalized) >= MAX_LINUX_PACKAGES_PER_ADVISORY:
+            raise SourceSyncError(
+                f"单条 Linux 公告去重后的软件包数量不能超过 {MAX_LINUX_PACKAGES_PER_ADVISORY}"
+            )
+        seen.add(key)
+        normalized.append({"name": name, "version": version, "arch": arch})
+    return normalized
+
+
+def _linux_detail_defaults(advisory, source) -> dict:
+    """构造 Linux 详情写入值，并保留首包字段兼容旧 API。"""
+    packages = _normalize_linux_packages(
+        advisory.packages,
+        fallback_arch=source.arch or X86_64,
+    )
+    first_package = packages[0] if packages else None
+    missing = []
+    if first_package is None:
+        missing.append("软件包")
+    if not str(source.distro_name or "").strip():
+        missing.append("发行版")
+    if not str(source.os_version or "").strip():
+        missing.append("系统版本")
+    if not package_manager_family(source.source_type):
+        missing.append("包管理器")
+    if missing:
+        raise SourceSyncError(f"Linux 补丁元数据缺少：{', '.join(missing)}")
+    return {
+        "pkg_name": first_package["name"] if first_package else "",
+        "pkg_version": first_package["version"] if first_package else "",
+        "packages": packages,
+        "distro_name": source.distro_name or "",
+        "os_version_range": source.os_version or "",
+        "architectures": normalize_architectures(
+            (package["arch"] for package in packages),
+            fallback=source.arch or X86_64,
+        ),
+        "repo_type": PackageManagerType.normalize(source.source_type),
+        "install_deps": advisory.install_deps or {},
+    }
+
+
+def _linux_patch_families(patch) -> set[str]:
+    families = set()
+    try:
+        family = package_manager_family(patch.linux_detail.repo_type)
+        if family:
+            families.add(family)
+    except Exception:  # noqa: BLE001
+        pass
+    for source in patch.sources.all():
+        family = package_manager_family(source.source_type)
+        if family:
+            families.add(family)
+    for snapshot in patch.deleted_source_snapshots or []:
+        if not isinstance(snapshot, dict):
+            continue
+        family = package_manager_family(snapshot.get("source_type", ""))
+        if family:
+            families.add(family)
+    return families
+
+
+def _resolve_linux_patch(source, title: str, defaults: dict):
+    """同名公告只在同一包生态内合并，禁止把 APT 与 RPM 来源压进同一补丁。"""
+    from apps.patch_mgmt.models import Patch
+
+    source_family = package_manager_family(source.source_type)
+    candidates = (
+        Patch.objects.select_for_update()
+        .filter(title=title, os_type=OSType.LINUX)
+        .prefetch_related("sources")
+        .order_by("id")
+    )
+    for patch in candidates:
+        families = _linux_patch_families(patch)
+        if families == {source_family}:
+            return patch, False
+    return Patch.objects.create(title=title, os_type=OSType.LINUX, **defaults), True
+
+
+class SourceSyncService:
+    """补丁源同步入口服务
+
+    连通性探测为异步两段式：
+      1. trigger_connectivity_check() → 重置状态为 UNKNOWN，派发 Celery 任务（任务由 tasks.py 调用）
+      2. record_connectivity_result() → Celery 任务完成后写回结果
+
+    源同步同理：trigger_* 校验源类型并写日志，实际 Celery 任务派发由调用方接入。
+    """
+
+    @classmethod
+    def trigger_connectivity_check(cls, source: PatchSource) -> None:
+        """触发连通性探测：重置状态为 UNKNOWN 并记录日志。
+
+        Celery 任务（check_patch_source_connectivity）完成探测后应调用
+        record_connectivity_result 回写结果。
+
+        Args:
+            source: 补丁源实例。
+        """
+        PatchSourceService.update_connectivity(source, ConnectivityStatus.UNKNOWN)
+        logger.info(
+            "SourceSyncService: connectivity check triggered source_id=%s name=%s",
+            source.pk, source.name,
+        )
+
+    @classmethod
+    def record_connectivity_result(
+        cls,
+        source: PatchSource,
+        reachable: bool,
+        checked_at=None,
+    ) -> None:
+        """记录源连通性探测结果（由 Celery 任务完成后回调）。
+
+        Args:
+            source: 补丁源实例。
+            reachable: True → CONNECTED；False → FAILED。
+            checked_at: 探测完成时间；None 取 timezone.now()。
+        """
+        status = ConnectivityStatus.CONNECTED if reachable else ConnectivityStatus.FAILED
+        PatchSourceService.update_connectivity(
+            source, status, checked_at=checked_at or timezone.now()
+        )
+        logger.info(
+            "SourceSyncService: connectivity result recorded source_id=%s reachable=%s",
+            source.pk, reachable,
+        )
+
+    @classmethod
+    def trigger_windows_sync(cls, source: PatchSource) -> None:
+        """触发 WSUS 源同步入口。
+
+        校验源类型并写日志后返回；调用方负责在此之后派发 Celery 任务执行
+        实际同步逻辑（远程元数据获取、解析与入库）。
+
+        Args:
+            source: Windows 类型补丁源。
+
+        Raises:
+            SourceSyncError: source 不是 Windows 类型。
+        """
+        if not source.is_windows_source:
+            raise SourceSyncError(
+                f"补丁源 {source.pk} ({source.source_type!r}) 不是 Windows 类型，"
+                "无法触发 Windows 源同步"
+            )
+        logger.info(
+            "SourceSyncService: Windows sync triggered source_id=%s type=%s",
+            source.pk, source.source_type,
+        )
+
+    @classmethod
+    def sync_wsus(cls, source: PatchSource) -> dict:
+        """同步 WSUS 源的已批准补丁到补丁库。
+
+        流程: WinRM + PowerShell 获取批准补丁 -> Patch + WindowsPatchDetail 元数据入库。
+
+        Returns:
+            {"total": int, "created": int, "updated": int}
+        Raises:
+            SourceSyncError: 源类型不是 WSUS。
+            WsusSyncError: WSUS 连接失败或同步异常（由调用方捕获）。
+        """
+        from apps.patch_mgmt.constants import PatchSourceType
+        from apps.patch_mgmt.services.wsus_sync import WsusSyncError, sync_wsus
+
+        if source.source_type != PatchSourceType.WSUS:
+            raise SourceSyncError(
+                f"补丁源 {source.pk} ({source.source_type!r}) 不是 WSUS 类型"
+            )
+        result = sync_wsus(source)
+        logger.info(
+            "SourceSyncService.sync_wsus: source_id=%s result=%s",
+            source.pk, result,
+        )
+        return result
+
+    @classmethod
+    def sync_linux_repo(cls, source: PatchSource) -> dict:
+        """同步 Linux yum/dnf repo 的安全公告元数据到补丁库(仅元数据,不下载包)。
+
+        每条 updateinfo <update> 落为一条 Patch(以 source+advisory_id 去重)+ LinuxPatchDetail。
+        Patch.team 取自补丁源；同步成功后 pkg_status 设为 READY。
+
+        Returns:
+            {"total": 解析公告数, "created": 新建, "updated": 更新}
+        Raises:
+            SourceSyncError: 源类型不对。
+            RepoSyncError: 网络/解析失败(由调用方捕获)。
+        """
+        from apps.patch_mgmt.constants import OSType, PackageStatus, PatchSeverity, PatchType
+        from apps.patch_mgmt.models import LinuxPatchDetail, Patch
+        from apps.patch_mgmt.services.linux_repo_sync import fetch_advisories
+
+        if not source.is_linux_source:
+            raise SourceSyncError(
+                f"补丁源 {source.pk} ({source.source_type!r}) 不是 Linux 类型,无法同步"
+            )
+
+        advisories = fetch_advisories(source)
+        sev_map = {
+            "critical": PatchSeverity.CRITICAL,
+            "important": PatchSeverity.IMPORTANT,
+            "moderate": PatchSeverity.MODERATE,
+            "low": PatchSeverity.LOW,
+        }
+        created = updated = 0
+        now = timezone.now()
+        for adv in advisories:
+            patch_type = PatchType.SECURITY if adv.adv_type == "security" else PatchType.GENERIC
+            severity = sev_map.get(adv.severity.lower(), PatchSeverity.MODERATE) if adv.severity else PatchSeverity.MODERATE
+            with transaction.atomic():
+                patch, is_new = _resolve_linux_patch(
+                    source,
+                    adv.advisory_id,
+                    {
+                        "patch_type": patch_type,
+                        "severity": severity,
+                        "cve_list": adv.cve_list,
+                        "team": list(source.team or []),
+                        "pkg_status": PackageStatus.READY,
+                        "released_at": None,
+                    },
+                )
+                patch.sources.add(source)
+                # 同步成功后统一标记为就绪，安装时再从源下载。
+                patch.patch_type = patch_type
+                patch.severity = severity
+                patch.cve_list = adv.cve_list
+                patch.pkg_status = PackageStatus.READY
+                patch.last_synced_at = now
+                patch.save(update_fields=["patch_type", "severity", "cve_list", "pkg_status", "last_synced_at", "updated_at"])
+
+                LinuxPatchDetail.objects.update_or_create(
+                    patch=patch,
+                    defaults=_linux_detail_defaults(adv, source),
+                )
+            if is_new:
+                created += 1
+            else:
+                updated += 1
+
+        logger.info(
+            "SourceSyncService.sync_linux_repo: source_id=%s total=%s created=%s updated=%s",
+            source.pk, len(advisories), created, updated,
+        )
+        return {"total": len(advisories), "created": created, "updated": updated}
+
+    @classmethod
+    def trigger_linux_sync(cls, source: PatchSource) -> None:
+        """触发 Linux repo 源同步入口。
+
+        校验源类型并写日志后返回；调用方负责在此之后派发 Celery 任务执行
+        实际同步逻辑（repodata 解析、LinuxPatchDetail 更新）。
+
+        Args:
+            source: Linux 类型补丁源。
+
+        Raises:
+            SourceSyncError: source 不是 Linux 类型。
+        """
+        if not source.is_linux_source:
+            raise SourceSyncError(
+                f"补丁源 {source.pk} ({source.source_type!r}) 不是 Linux 类型，"
+                "无法触发 Linux 源同步"
+            )
+        logger.info(
+            "SourceSyncService: Linux sync triggered source_id=%s type=%s",
+            source.pk, source.source_type,
+        )
+
+    @classmethod
+    def list_sources_for_sync(cls, os_type: Optional[str] = None):
+        """返回启用的可触发同步源列表。
+
+        Args:
+            os_type: OSType.WINDOWS / OSType.LINUX；None 表示不过滤。
+
+        Returns:
+            PatchSource QuerySet（已启用）。
+        """
+        return PatchSourceService.list_enabled(os_type=os_type)
+
+    @classmethod
+    def preview_sync_candidates(cls, source: PatchSource) -> list:
+        """从补丁源拉取候选补丁列表（不写库），供前端「同步入库」抽屉展示。
+
+        Returns:
+            [{"key", "name", "title", "version", "dist", "arch", "added", "severity"}, ...]
+        Raises:
+            SourceSyncError / RepoSyncError / WsusSyncError
+        """
+        from apps.patch_mgmt.constants import OSType, PatchSourceType
+        from apps.patch_mgmt.models import Patch
+
+        if source.is_linux_source:
+            from apps.patch_mgmt.services.linux_repo_sync import fetch_advisories
+
+            advisories = fetch_advisories(source)
+            candidate_titles = {
+                value
+                for advisory in advisories
+                for value in (advisory.advisory_id, advisory.title)
+                if value
+            }
+            existing_by_title: dict[str, list] = {}
+            for patch in (
+                Patch.objects.filter(os_type=OSType.LINUX, title__in=candidate_titles)
+                .prefetch_related("sources")
+            ):
+                existing_by_title.setdefault(patch.title, []).append(patch)
+            source_family = package_manager_family(source.source_type)
+            candidates = []
+            for adv in advisories:
+                packages = _normalize_linux_packages(
+                    adv.packages,
+                    fallback_arch=source.arch or X86_64,
+                )
+                first_pkg = packages[0] if packages else None
+                candidates.append({
+                    "key": adv.advisory_id,
+                    "name": first_pkg["name"] if first_pkg else adv.advisory_id,
+                    "title": adv.title,
+                    "version": first_pkg["version"] if first_pkg else "",
+                    "packages": packages,
+                    "dist": source.distro_name or "",
+                    "arch": first_pkg["arch"] if first_pkg else normalize_architecture(source.arch, default=X86_64),
+                    "added": any(
+                        _linux_patch_families(patch) == {source_family}
+                        for title in (adv.advisory_id, adv.title)
+                        for patch in existing_by_title.get(title, [])
+                    ),
+                    "severity": adv.severity or "",
+                })
+            return candidates
+
+        if source.source_type == PatchSourceType.WSUS:
+            from apps.patch_mgmt.services.wsus_sync import WsusClient, normalize_wsus_kb
+
+            client = WsusClient(source)
+            updates = client.get_approved_updates()
+            existing_titles = set(
+                Patch.objects.filter(os_type=OSType.WINDOWS)
+                .values_list("title", flat=True)
+            )
+            candidates = []
+            for upd in updates:
+                normalized_kb = normalize_wsus_kb(upd.kb_number)
+                if not normalized_kb:
+                    continue
+                name = normalized_kb
+                candidates.append({
+                    "key": upd.update_id,
+                    "name": name,
+                    "title": upd.title,
+                    "version": ", ".join(upd.products[:3]) if upd.products else "",
+                    "dist": "",
+                    "arch": X86_64,
+                    "added": name in existing_titles or upd.kb_number in existing_titles or upd.title in existing_titles,
+                })
+            return candidates
+
+        raise SourceSyncError(f"源类型 {source.source_type!r} 不支持预览同步")
+
+    @classmethod
+    def ingest_selected(
+        cls,
+        source: PatchSource,
+        keys: list,
+        severity_overrides: dict = None,
+        *,
+        team_id: int | None = None,
+    ) -> dict:
+        """将选中的候选补丁入库（创建 Patch 记录）。
+
+        Args:
+            source: 补丁源实例。
+            keys: 选中的候选 key 列表（advisory_id 或 update_id）。
+            severity_overrides: 前端传入的严重级别覆盖，{advisory_id: severity_value}。
+            team_id: 发起入库的可信当前团队；传入时补丁只增加该团队归属。
+
+        Returns:
+            {"created": N, "updated": N, "skipped": N, "total": N}
+        """
+        severity_overrides = severity_overrides or {}
+        if source.is_builtin and team_id is None:
+            raise SourceSyncError("内置补丁源入库必须指定当前团队")
+        if team_id is not None:
+            try:
+                team_id = int(team_id)
+            except (TypeError, ValueError) as exc:
+                raise SourceSyncError("入库团队 ID 无效") from exc
+            if team_id <= 0:
+                raise SourceSyncError("入库团队 ID 无效")
+        from apps.patch_mgmt.constants import (
+            OSType,
+            PackageStatus,
+            PatchType,
+            PatchSeverity,
+        )
+        from apps.patch_mgmt.models import Patch, WindowsPatchDetail, LinuxPatchDetail
+        from apps.patch_mgmt.services.linux_repo_sync import fetch_advisories
+
+        key_set = set(keys)
+        created = updated = skipped = 0
+        now = timezone.now()
+
+        def initial_teams() -> list[int]:
+            if team_id is not None:
+                return [team_id]
+            return list(source.team or [])
+
+        def add_ingest_team(patch) -> bool:
+            if team_id is None:
+                return False
+            teams = list(patch.team or [])
+            if team_id in teams:
+                return False
+            teams.append(team_id)
+            patch.team = teams
+            return True
+
+        if source.is_linux_source:
+            advisories = fetch_advisories(source)
+            sev_map = {
+                "critical": PatchSeverity.CRITICAL,
+                "important": PatchSeverity.IMPORTANT,
+                "moderate": PatchSeverity.MODERATE,
+                "low": PatchSeverity.LOW,
+            }
+            for adv in advisories:
+                if adv.advisory_id not in key_set:
+                    continue
+                patch_type = PatchType.SECURITY if adv.adv_type == "security" else PatchType.GENERIC
+                # 优先用前端传入的 severity，其次用源数据 severity，最后默认中等
+                override = severity_overrides.get(adv.advisory_id)
+                if override:
+                    severity = override
+                elif adv.severity:
+                    severity = sev_map.get(adv.severity.lower(), PatchSeverity.MODERATE)
+                else:
+                    severity = PatchSeverity.MODERATE
+                with transaction.atomic():
+                    patch, is_new = _resolve_linux_patch(
+                        source,
+                        adv.advisory_id,
+                        {
+                            "patch_type": patch_type,
+                            "severity": severity,
+                            "cve_list": adv.cve_list,
+                            "team": initial_teams(),
+                            "pkg_status": PackageStatus.READY,
+                        },
+                    )
+                    patch.sources.add(source)
+                    patch.patch_type = patch_type
+                    patch.severity = severity
+                    patch.cve_list = adv.cve_list
+                    patch.pkg_status = PackageStatus.READY
+                    patch.last_synced_at = now
+                    update_fields = [
+                        "patch_type",
+                        "severity",
+                        "cve_list",
+                        "pkg_status",
+                        "last_synced_at",
+                        "updated_at",
+                    ]
+                    if add_ingest_team(patch):
+                        update_fields.append("team")
+                    patch.save(update_fields=update_fields)
+
+                    LinuxPatchDetail.objects.update_or_create(
+                        patch=patch,
+                        defaults=_linux_detail_defaults(adv, source),
+                    )
+                if is_new:
+                    created += 1
+                else:
+                    updated += 1
+
+        elif source.source_type == "wsus":
+            from apps.patch_mgmt.services.wsus_sync import (
+                WsusClient,
+                apply_wsus_replacement_relationships,
+                normalize_wsus_kb,
+                resolve_wsus_patch,
+            )
+
+            client = WsusClient(source)
+            updates = client.get_approved_updates()
+            sev_map = {
+                "critical": "critical",
+                "important": "important",
+                "moderate": "moderate",
+                "low": "low",
+            }
+            for upd in updates:
+                if upd.update_id not in key_set:
+                    continue
+                if not normalize_wsus_kb(upd.kb_number):
+                    skipped += 1
+                    logger.warning(
+                        "SourceSyncService.ingest_selected: 跳过无 KB 的 WSUS 更新 update_id=%s",
+                        upd.update_id,
+                    )
+                    continue
+                override = severity_overrides.get(upd.update_id)
+                if override:
+                    severity = override
+                else:
+                    severity = sev_map.get((upd.severity or "").lower(), "unspecified")
+                patch, is_new, manual_conflict, normalized_kb = resolve_wsus_patch(
+                    source,
+                    upd,
+                    {
+                        "patch_type": PatchType.SECURITY,
+                        "severity": severity,
+                        "cve_list": [],
+                        "team": initial_teams(),
+                        "pkg_status": PackageStatus.READY,
+                    },
+                )
+                if manual_conflict:
+                    skipped += 1
+                    continue
+                patch.sources.add(source)
+                patch.patch_type = PatchType.SECURITY
+                patch.severity = severity
+                patch.pkg_status = PackageStatus.READY
+                patch.last_synced_at = now
+                patch.applicable_rules = {
+                    **(patch.applicable_rules or {}),
+                    "wsus_update_id": upd.update_id,
+                }
+                update_fields = [
+                    "patch_type",
+                    "severity",
+                    "pkg_status",
+                    "last_synced_at",
+                    "applicable_rules",
+                    "updated_at",
+                ]
+                if add_ingest_team(patch):
+                    update_fields.append("team")
+                patch.save(update_fields=update_fields)
+
+                WindowsPatchDetail.objects.update_or_create(
+                    patch=patch,
+                    defaults={
+                        "kb_number": normalized_kb,
+                        "product_list": upd.products or [],
+                        "architectures": [X86_64],
+                        "ms_bulletin": (upd.security_bulletins[0] if upd.security_bulletins else ""),
+                    },
+                )
+                if is_new:
+                    created += 1
+                else:
+                    updated += 1
+            apply_wsus_replacement_relationships(updates)
+        else:
+            raise SourceSyncError(f"源类型 {source.source_type!r} 不支持入库")
+
+        total = created + updated + skipped
+        logger.info(
+            "SourceSyncService.ingest_selected: source_id=%s total=%s created=%s updated=%s skipped=%s",
+            source.pk, total, created, updated, skipped,
+        )
+        return {"created": created, "updated": updated, "skipped": skipped, "total": total}

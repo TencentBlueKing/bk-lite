@@ -702,6 +702,7 @@ class FalkorDBClient:
         param_type="AND",
         organization_field: str = "organization",
         case_sensitive: bool = True,
+        include_count: bool = True,
     ):
         """
         查询实体（参数化版本）
@@ -806,11 +807,12 @@ class FalkorDBClient:
 
         # 分页
         count = None
-        if page:
+        if page and include_count:
             count_str = f"MATCH (n{label_str}) {params_str} RETURN COUNT(n) AS count"
             _result = self._execute_query(count_str, params=query_params if self.ENABLE_PARAMETERIZATION else None)
             result = FormatDBResult(_result).to_list_of_lists()
             count = result[0] if result else 0
+        if page:
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
         objs = self._execute_query(sql_str, params=query_params if self.ENABLE_PARAMETERIZATION else None)
@@ -951,7 +953,7 @@ class FalkorDBClient:
             )
 
             self.check_unique_rules(
-                [properties],
+                check_attr_map.get("validation_items") or [properties],
                 check_attr_map.get("unique_rules", []),
                 exist_items,
                 check_attr_map.get("attrs_by_id", {}),
@@ -1102,6 +1104,24 @@ class FalkorDBClient:
             nodes = self._execute_query(f"MATCH (n{label_str}) WHERE ID(n) IN {validated_ids} SET {properties_str} RETURN n")
 
         return nodes
+
+    def batch_update_node_property_values(self, label: str, field: str, property_values: list[dict]):
+        """在一次图查询中为不同节点写入同一字段的不同值。"""
+        validated_label = CQLValidator.validate_label(label)
+        validated_field = CQLValidator.validate_field(field)
+        validated_property_values = CQLValidator.validate_property_values(property_values)
+        if not validated_property_values:
+            return []
+
+        query = (
+            f"UNWIND $property_values AS row "
+            f"MATCH (n:{validated_label}) WHERE ID(n) = row.id "
+            f"SET n.{validated_field} = row.value RETURN n"
+        )
+        return self._execute_query(
+            query,
+            params={"property_values": validated_property_values},
+        )
 
     def format_properties_remove(self, attrs: list):
         """格式化properties的remove数据，验证字段名防止注入"""

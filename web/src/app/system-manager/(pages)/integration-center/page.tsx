@@ -16,7 +16,7 @@ import { useTranslation } from '@/utils/i18n';
 import commonStyles from '@/app/system-manager/styles/common.module.scss';
 
 import CreateIntegrationInstanceModal from './CreateIntegrationInstanceModal';
-import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, getIntegrationCapabilityTagColor, type IntegrationInstanceCardItem } from '@/app/system-manager/utils/integrationCenter';
+import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, getIntegrationCapabilityLabel, getIntegrationCapabilityTagColor, type IntegrationInstanceCardItem } from '@/app/system-manager/utils/integrationCenter';
 
 const IntegrationCenterPage: React.FC = () => {
   const { t } = useTranslation();
@@ -208,12 +208,6 @@ const IntegrationCenterPage: React.FC = () => {
   );
 
   const generateDescSlot = (data: IntegrationInstanceCardItem) => {
-    const capabilityKeyMap: Record<string, string> = {
-      user_sync: 'userSync',
-      login_auth: 'loginAuth',
-      im_notification: 'imNotification',
-    };
-
     const capabilitiesTag = (data.provider?.capabilities || []).map((capability) => {
       const color = getIntegrationCapabilityTagColor(data.raw, capability.key);
       return (
@@ -229,7 +223,7 @@ const IntegrationCenterPage: React.FC = () => {
         >
           <span className="flex items-center gap-1">
             <span className={`h-2 w-2 rounded-full ${color === 'green' ? 'bg-[#389e0d]' : 'bg-[#bfbfbf]'}`} />
-            <span>{t(`system.integrationCenter.capability.${capabilityKeyMap[capability.key]}`)}</span>
+            <span>{getIntegrationCapabilityLabel(capability.key, t)}</span>
           </span>
         </Tag>
       );

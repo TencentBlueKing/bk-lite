@@ -1,6 +1,6 @@
 """目录/仪表盘/拓扑/架构 视图、序列化器、目录服务与树构建的覆盖测试。
 
-对照 spec/prd/运营分析：视图按组织隔离、内置对象只读、目录树聚合各类画布节点。
+对照 specs/capabilities/legacy-prd-运营分析-运营分析.md：视图按组织隔离、内置对象只读、目录树聚合各类画布节点。
 """
 
 import json
@@ -24,7 +24,8 @@ def _request(method, path, user, data=None, team="1", include_children="0"):
         request = fn(path)
     else:
         request = fn(path, data=data, format="json")
-    request.COOKIES["current_team"] = team
+    if team is not None:
+        request.COOKIES["current_team"] = team
     request.COOKIES["include_children"] = include_children
     force_authenticate(request, user=user)
     return request
@@ -272,6 +273,19 @@ def test_tree_endpoint_builds_nested_structure(authenticated_user):
     assert any(g["type"] == "dashboard" for g in child_node["children"])
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize("team", [None, "not-a-number"])
+def test_tree_endpoint_rejects_missing_or_invalid_current_team(authenticated_user, team):
+    user = _superuser(authenticated_user)
+    request = _request("get", "/directory/tree/", user, team=team)
+
+    response = view_module.DirectoryModelViewSet.as_view({"get": "tree"})(request)
+    payload = _render(response)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "current_team cookie 缺失或格式错误" in payload["message"]
+
+
 # --------------------------------------------------------------------------
 # DictDirectoryService 模块数据
 # --------------------------------------------------------------------------
@@ -285,6 +299,20 @@ def test_get_directory_modules_data_dashboard(authenticated_user):
 
     assert result["count"] == 1
     assert "【目录X】盘1" == result["items"][0]["name"]
+
+
+@pytest.mark.django_db
+def test_get_directory_modules_data_preloads_directories(authenticated_user, django_assert_num_queries):
+    first_directory = Directory.objects.create(name="目录一", groups=[1], created_by="testuser")
+    second_directory = Directory.objects.create(name="目录二", groups=[1], created_by="testuser")
+    Dashboard.objects.create(name="盘一", groups=[1], directory=first_directory, created_by="testuser")
+    Dashboard.objects.create(name="盘二", groups=[1], directory=second_directory, created_by="testuser")
+
+    with django_assert_num_queries(2):
+        result = DictDirectoryService.get_directory_modules_data("dashboard", page=1, page_size=10, group_id=1)
+
+    assert result["count"] == 2
+    assert {item["name"] for item in result["items"]} == {"【目录一】盘一", "【目录二】盘二"}
 
 
 @pytest.mark.django_db

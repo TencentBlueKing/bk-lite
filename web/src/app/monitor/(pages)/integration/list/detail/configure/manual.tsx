@@ -5,7 +5,7 @@ import { TIMEOUT_UNITS } from '@/app/monitor/constants/integration';
 import { useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/monitor/api/integration';
-import CodeEditor from '@/app/monitor/components/codeEditor';
+import CodeEditor from '@/components/code-editor';
 import { TableDataItem } from '@/app/monitor/types';
 const { Option } = Select;
 import Permission from '@/components/permission';
@@ -21,10 +21,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({
   const searchParams = useSearchParams();
   const { isLoading } = useApiClient();
   const { checkMonitorInstance } = useIntegrationApi();
-  const configs = useMonitorConfig();
   const pluginName = searchParams.get('plugin_name') || '';
   const objId = searchParams.get('id') || '';
   const objectName = searchParams.get('name') || '';
+  const configs = useMonitorConfig(objectName);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [configMsg, setConfigMsg] = useState<string>('');
 
@@ -34,7 +34,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({
       mode: 'manual',
       pluginName,
     });
-  }, [pluginName, objectName]);
+  }, [pluginName, objectName, configs]);
 
   const formItems = useMemo(() => {
     return configsInfo.formItems;

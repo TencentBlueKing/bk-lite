@@ -38,6 +38,11 @@ class DataCleanupService:
         threshold_dt = datetime.fromisoformat(threshold_iso)
         logger.info("[DataCleanup] 开始清理过期实例 task_id=%s, collect_time < %s", task.id, threshold_iso)
 
+        if task.model_id == "pc":
+            # PC 实体绝不走通用按 model_id 删除分支；只清理其下过期软件
+            from apps.cmdb.services.pc_discovery import cleanup_expired_pc_software
+            return cleanup_expired_pc_software(task, threshold_dt, threshold_iso)
+
         with GraphClient() as ag:
             params = [
                 {"field": "collect_task", "type": "int=", "value": task.id},

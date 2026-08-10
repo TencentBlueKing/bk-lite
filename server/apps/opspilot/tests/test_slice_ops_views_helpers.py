@@ -5,13 +5,13 @@
   safe_conversation_window_size / get_loader / _extract_token_usage /
   format_knowledge_sources / set_channel_type_line / _user_team_ids / _bot_in_user_team。
 - token 校验: validate_openai_token（无 token / UserAPISecret 命中 / verify_token 兜底）、
-  validate_header_token（无 token / bot 不在线 / 鉴权失败 / 成功）、_get_user_locale。
+  _get_user_locale。
 - skill 解析: get_skill_and_params（无 model / skill 不存在 / 消息缺失 / 成功）。
 - 统计端点: get_total_token_consumption / get_token_consumption_overview /
   get_conversations_line_data / get_active_users_line_data（含跨团队 bot 作用域拒绝）。
 
-真实 ORM 落库 + 真实 RequestFactory；仅 mock 真实外部边界：SystemMgmt RPC（verify_token /
-get_pilot_permission_by_token）。断言真实返回结构 / DB 派生数值 / 越权空集。
+真实 ORM 落库 + 真实 RequestFactory；仅 mock 真实外部边界：SystemMgmt RPC（verify_token）。
+断言真实返回结构 / DB 派生数值 / 越权空集。
 """
 
 import datetime
@@ -173,29 +173,6 @@ class TestValidateTokens:
         ok, payload = views.validate_openai_token("Bearer x", team=1)
         assert ok is False
 
-    def test_header_无token(self):
-        ok, payload = views.validate_header_token("", 1)
-        assert ok is False
-
-    def test_header_bot不在线(self):
-        ok, payload = views.validate_header_token("Bearer t", 999999)
-        assert ok is False
-
-    def test_header_成功(self, mocker):
-        bot = Bot.objects.create(name="b", team=[1], api_token="x", online=True)
-        client = mocker.patch(f"{VIEWS}.SystemMgmt").return_value
-        client.get_pilot_permission_by_token.return_value = {"result": True, "data": {"username": "carol"}}
-        ok, data = views.validate_header_token("Bearer tok", bot.id)
-        assert ok is True
-        assert data["username"] == "carol"
-
-    def test_header_鉴权失败(self, mocker):
-        bot = Bot.objects.create(name="b2", team=[1], api_token="x", online=True)
-        client = mocker.patch(f"{VIEWS}.SystemMgmt").return_value
-        client.get_pilot_permission_by_token.return_value = {"result": False}
-        ok, payload = views.validate_header_token("Bearer tok", bot.id)
-        assert ok is False
-
     def test_get_user_locale(self):
         SysUser.objects.create(username="dora", domain="domain.com", locale="zh-Hans")
         assert views._get_user_locale("dora", "domain.com") == "zh-Hans"
@@ -221,9 +198,7 @@ class TestGetSkillAndParams:
 
     def test_成功(self):
         LLMSkill.objects.create(name="sk2", team=[1], skill_prompt="P", conversation_window_size=5)
-        skill, params, err = views.get_skill_and_params(
-            {"model": "sk2", "messages": [{"role": "user", "content": "你好"}]}, 1
-        )
+        skill, params, err = views.get_skill_and_params({"model": "sk2", "messages": [{"role": "user", "content": "你好"}]}, 1)
         assert err is None
         assert skill.name == "sk2"
         assert params["user_message"] == "你好"
@@ -242,8 +217,11 @@ class TestTokenConsumption:
     def test_total_token_consumption(self):
         skill = LLMSkill.objects.create(name="ts", team=[1])
         SkillRequestLog.objects.create(
-            skill=skill, current_ip="10.0.0.1", state=True,
-            request_detail={}, response_detail={"usage": {"prompt_tokens": 10, "completion_tokens": 5}},
+            skill=skill,
+            current_ip="10.0.0.1",
+            state=True,
+            request_detail={},
+            response_detail={"usage": {"prompt_tokens": 10, "completion_tokens": 5}},
         )
         resp = views.get_total_token_consumption(self._admin_req())
         body = _body(resp)
@@ -255,8 +233,11 @@ class TestTokenConsumption:
     def test_overview_按天聚合(self):
         skill = LLMSkill.objects.create(name="tov", team=[1])
         SkillRequestLog.objects.create(
-            skill=skill, current_ip="10.0.0.1", state=True,
-            request_detail={}, response_detail={"usage": {"total_tokens": 7}},
+            skill=skill,
+            current_ip="10.0.0.1",
+            state=True,
+            request_detail={},
+            response_detail={"usage": {"total_tokens": 7}},
         )
         resp = views.get_token_consumption_overview(self._admin_req())
         body = _body(resp)
@@ -268,8 +249,11 @@ class TestTokenConsumption:
         # bot 不属于调用者团队 -> queryset.none()，统计为 0
         skill = LLMSkill.objects.create(name="tsx", team=[1])
         SkillRequestLog.objects.create(
-            skill=skill, current_ip="10.0.0.1", state=True,
-            request_detail={}, response_detail={"usage": {"total_tokens": 99}},
+            skill=skill,
+            current_ip="10.0.0.1",
+            state=True,
+            request_detail={},
+            response_detail={"usage": {"total_tokens": 99}},
         )
         bot = Bot.objects.create(name="other", team=[5], api_token="z")
         req = RequestFactory().get(f"/?bot_id={bot.id}")

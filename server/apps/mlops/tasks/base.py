@@ -2,11 +2,13 @@
 MLOps 任务通用工具函数
 """
 
+import codecs
 import json
 import os
 import tempfile
 import zipfile
 from dataclasses import dataclass
+from itertools import chain
 from pathlib import Path
 from typing import Any, Callable, Optional, Type
 
@@ -78,7 +80,19 @@ def mark_release_as_failed(
         return False
 
 
-_STREAM_CHUNK_SIZE = int(os.getenv("MLOPS_STREAM_CHUNK_SIZE", 65536))  # 可通过环境变量调整，默认 64 KB
+_MAX_STREAM_CHUNK_SIZE = 65536
+
+
+def _get_stream_chunk_size() -> int:
+    """读取流式块大小，并将单次读取限制在 64 KB 内。"""
+    configured_size = int(
+        os.getenv("MLOPS_STREAM_CHUNK_SIZE", _MAX_STREAM_CHUNK_SIZE)
+    )
+    return min(_MAX_STREAM_CHUNK_SIZE, max(1, configured_size))
+
+
+_STREAM_CHUNK_SIZE = _get_stream_chunk_size()  # 可通过环境变量调整，默认 64 KB
+_SAMPLE_COUNT_ALGORITHM = "logical_records_v1_legacy_fallback"
 
 
 @dataclass
@@ -108,30 +122,119 @@ class DatasetPublishConfig:
 
 
 def count_csv_samples(file_path: Path) -> int:
-    """CSV 文件样本计数：行数 - 1（去掉表头），流式按块读取避免全量加载"""
-    newline_count = 0
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(_STREAM_CHUNK_SIZE), b""):
-            newline_count += chunk.count(b"\n")
-    return max(0, newline_count - 1)
+    """CSV 文件样本计数：按固定字节块统计表头后的逻辑记录。"""
+    record_count = 0
+    record_has_content = False
+    at_field_start = True
+    in_quotes = False
+    after_quote = False
+    skip_lf_after_cr = False
+    legacy_newline_count = 0
+    malformed = False
+
+    def finish_record() -> None:
+        nonlocal record_count, record_has_content, at_field_start
+        if record_has_content:
+            record_count += 1
+        record_has_content = False
+        at_field_start = True
+
+    with open(file_path, "rb") as csv_file:
+        prefix = csv_file.read(3)
+        if prefix == b"\xef\xbb\xbf":
+            prefix = b""
+
+        for chunk in chain(
+            (prefix,),
+            iter(lambda: csv_file.read(_STREAM_CHUNK_SIZE), b""),
+        ):
+            legacy_newline_count += chunk.count(b"\n")
+            for byte in chunk:
+                if malformed:
+                    continue
+
+                if skip_lf_after_cr:
+                    skip_lf_after_cr = False
+                    if byte == ord("\n"):
+                        continue
+
+                if in_quotes:
+                    if byte == ord('"'):
+                        in_quotes = False
+                        after_quote = True
+                    continue
+
+                if after_quote:
+                    if byte == ord('"'):
+                        in_quotes = True
+                        after_quote = False
+                    elif byte == ord(","):
+                        record_has_content = True
+                        at_field_start = True
+                        after_quote = False
+                    elif byte in (ord("\r"), ord("\n")):
+                        finish_record()
+                        after_quote = False
+                        skip_lf_after_cr = byte == ord("\r")
+                    elif byte in b" \t":
+                        continue
+                    else:
+                        malformed = True
+                    continue
+
+                if byte == ord(","):
+                    record_has_content = True
+                    at_field_start = True
+                elif byte in (ord("\r"), ord("\n")):
+                    finish_record()
+                    skip_lf_after_cr = byte == ord("\r")
+                elif byte == ord('"') and at_field_start:
+                    record_has_content = True
+                    at_field_start = False
+                    in_quotes = True
+                else:
+                    at_field_start = False
+                    if byte not in b" \t\v\f":
+                        record_has_content = True
+
+    if in_quotes:
+        malformed = True
+    if malformed:
+        return max(0, legacy_newline_count - 1)
+    if record_has_content:
+        record_count += 1
+    return max(0, record_count - 1)
 
 
 def count_txt_samples(file_path: Path) -> int:
     """TXT 文件样本计数：非空行数，流式按块读取避免全量加载"""
-    newline_count = 0
-    has_content = False
-    last_byte = b""
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(_STREAM_CHUNK_SIZE), b""):
-            if chunk:
-                has_content = True
-                newline_count += chunk.count(b"\n")
-                last_byte = chunk[-1:]
-    if not has_content:
-        return 0
-    # 如果末尾没有换行，最后一行也计入
-    trailing_newline = last_byte == b"\n"
-    return newline_count if trailing_newline else newline_count + 1
+    sample_count = 0
+    line_has_content = False
+    skip_lf_after_cr = False
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="surrogateescape")
+
+    def consume(chars: str) -> None:
+        nonlocal sample_count, line_has_content, skip_lf_after_cr
+        for char in chars:
+            if skip_lf_after_cr:
+                skip_lf_after_cr = False
+                if char == "\n":
+                    continue
+
+            if char in "\r\n":
+                if line_has_content:
+                    sample_count += 1
+                line_has_content = False
+                skip_lf_after_cr = char == "\r"
+            elif not char.isspace():
+                line_has_content = True
+
+    with open(file_path, "rb") as text_file:
+        for chunk in iter(lambda: text_file.read(_STREAM_CHUNK_SIZE), b""):
+            consume(decoder.decode(chunk))
+        consume(decoder.decode(b"", final=True))
+
+    return sample_count + int(line_has_content)
 
 
 def build_base_metadata(
@@ -170,6 +273,7 @@ def build_base_metadata(
         "val_samples": val_samples,
         "test_samples": test_samples,
         "total_samples": total_samples,
+        "sample_count_algorithm": _SAMPLE_COUNT_ALGORITHM,
     }
     if extra_fields:
         metadata.update(extra_fields)

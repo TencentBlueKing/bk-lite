@@ -4,7 +4,8 @@ import React, {
   useState,
   forwardRef,
   useImperativeHandle,
-  useRef
+  useRef,
+  useMemo
 } from 'react';
 import {
   Tag,
@@ -14,7 +15,8 @@ import {
   Badge,
   Popconfirm,
   message,
-  Input
+  Input,
+  Space
 } from 'antd';
 import {
   RightOutlined,
@@ -23,7 +25,7 @@ import {
   ExclamationCircleOutlined
 } from '@ant-design/icons';
 import Icon from '@/components/icon';
-import OperateDrawer from '@/app/node-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
 import { useTelegrafMap } from '@/app/node-manager/hooks/node';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -44,6 +46,13 @@ import CustomTable from '@/components/custom-table';
 import ConfigModal from './configModal';
 import PermissionWrapper from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useClientData } from '@/context/client';
+import {
+  getSoldModulePushTargets,
+  hasSuccessfulModuleLink,
+  type ModulePushStatusMap,
+  type ModulePushTarget
+} from '@/app/node-manager/utils/modulePush';
 
 interface CollectorDetailDrawerProps extends ModalSuccess {
   nodeStateEnum?: any;
@@ -55,9 +64,14 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const { convertToLocalizedTime } = useLocalizedTime();
     const statusMap = useTelegrafMap();
     const cloudId = useCloudId();
-    const { getConfiglist, getChildConfig, deleteSubConfig } =
+    const { getConfiglist, getChildConfig, deleteSubConfig, modulePush, getNodeList } =
       useNodeManagerApi();
     const commonContext = useUserInfoContext();
+    const { clientData } = useClientData();
+    const soldPushTargets = useMemo(
+      () => getSoldModulePushTargets(clientData),
+      [clientData]
+    );
     const adminRef = useRef(commonContext?.roles || []);
     const isAdmin =
       adminRef.current.includes('admin') ||
@@ -77,6 +91,9 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const [mainConfigLoading, setMainConfigLoading] = useState<boolean>(false);
     const [subConfigs, setSubConfigs] = useState<any[]>([]);
     const [subConfigLoading, setSubConfigLoading] = useState<boolean>(false);
+    const [modulePushLoading, setModulePushLoading] = useState<
+      ModulePushTarget | null
+    >(null);
     const [subConfigPagination, setSubConfigPagination] = useState<Pagination>({
       current: 1,
       total: 0,
@@ -484,6 +501,56 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       return nodeStateEnum?.os?.[osValue] || osValue;
     };
 
+    const pushStatus = (form.push_status || {}) as ModulePushStatusMap;
+
+    const formatPushState = (target: ModulePushTarget) => {
+      const state = pushStatus?.[target]?.state;
+      if (!state) {
+        return t('node-manager.cloudregion.node.pushStateNone');
+      }
+      const key = `node-manager.cloudregion.node.pushState.${state}`;
+      const translated = t(key);
+      return translated === key ? state : translated;
+    };
+
+    const refreshNodeLinkage = async () => {
+      if (!form.id) return;
+      try {
+        const res = await getNodeList({
+          cloud_region_id: cloudId,
+          page: 1,
+          page_size: 1,
+          filters: {
+            id: [{ lookup_expr: 'exact', value: String(form.id) }]
+          }
+        });
+        const latest = res?.items?.[0];
+        if (latest) {
+          setForm((prev) => ({
+            ...prev,
+            cmdb_id: latest.cmdb_id,
+            monitor_id: latest.monitor_id,
+            push_status: latest.push_status
+          }));
+        }
+      } catch {
+        // 推送已成功时列表刷新失败不阻断；下次打开详情会拿到最新值
+      }
+      onSuccess();
+    };
+
+    const handleModulePush = async (target: ModulePushTarget) => {
+      if (!form.id) return;
+      setModulePushLoading(target);
+      try {
+        await modulePush(form.id as string, [target]);
+        message.success(t('common.operationSuccessful'));
+        await refreshNodeLinkage();
+      } finally {
+        setModulePushLoading(null);
+      }
+    };
+
     return (
       <div>
         <OperateDrawer
@@ -520,6 +587,80 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
           destroyOnHidden
           onClose={handleCancel}
         >
+          {soldPushTargets.length > 0 && (
+            <div className="mb-4 rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-3">
+              <div className="mb-2 font-medium text-[14px]">
+                {t('node-manager.cloudregion.node.moduleLinkage')}
+              </div>
+              <div className="space-y-2 text-[12px] text-[var(--color-text-2)]">
+                {soldPushTargets.includes('cmdb') && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Space size="middle" wrap>
+                      <span>
+                        {t('node-manager.cloudregion.node.cmdbId')}：
+                        {form.cmdb_id || '--'}
+                      </span>
+                      <span>
+                        {t('node-manager.cloudregion.node.pushStatus')}：
+                        {formatPushState('cmdb')}
+                      </span>
+                    </Space>
+                    <PermissionWrapper requiredPermissions={['Edit']}>
+                      <Button
+                        type="link"
+                        size="small"
+                        loading={modulePushLoading === 'cmdb'}
+                        disabled={!!modulePushLoading}
+                        onClick={() => void handleModulePush('cmdb')}
+                      >
+                        {hasSuccessfulModuleLink(
+                          form.cmdb_id,
+                          pushStatus,
+                          'cmdb'
+                        )
+                          ? t('node-manager.cloudregion.node.resyncModule')
+                          : t('node-manager.cloudregion.node.pushModule')}
+                      </Button>
+                    </PermissionWrapper>
+                  </div>
+                )}
+                {soldPushTargets.includes('monitor') && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Space size="middle" wrap>
+                      <span>
+                        {t('node-manager.cloudregion.node.monitorId')}：
+                        {form.monitor_id || '--'}
+                      </span>
+                      <span>
+                        {t('node-manager.cloudregion.node.pushStatus')}：
+                        {formatPushState('monitor')}
+                      </span>
+                    </Space>
+                    <PermissionWrapper requiredPermissions={['Edit']}>
+                      <Button
+                        type="link"
+                        size="small"
+                        loading={modulePushLoading === 'monitor'}
+                        disabled={!!modulePushLoading}
+                        onClick={() => void handleModulePush('monitor')}
+                      >
+                        {hasSuccessfulModuleLink(
+                          form.monitor_id,
+                          pushStatus,
+                          'monitor'
+                        )
+                          ? t('node-manager.cloudregion.node.resyncModule')
+                          : t('node-manager.cloudregion.node.pushModule')}
+                      </Button>
+                    </PermissionWrapper>
+                  </div>
+                )}
+              </div>
+              <div className="mt-2 text-[12px] text-[var(--color-text-3)]">
+                {t('node-manager.cloudregion.node.modulePushNoCascade')}
+              </div>
+            </div>
+          )}
           <div className="flex h-full">
             <div className="w-1/3 pr-4 border-r border-gray-200">
               <div className="flex items-center mb-2">

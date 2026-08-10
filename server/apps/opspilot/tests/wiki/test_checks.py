@@ -14,7 +14,7 @@ def test_candidate_does_not_pollute_current_then_accept():
 
     kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
     page = _page_with_current(kb, body="current")
-    check = create_candidate(page, body="candidate", reason="conflict", check_type="conflict", created_by="ai")
+    check = create_candidate(page, body="candidate", reason="conflict", check_type="cannot_merge", created_by="ai")
 
     page.refresh_from_db()
     assert page.current_version.body == "current"  # 当前有效版本未被污染
@@ -35,7 +35,7 @@ def test_reject_candidate_keeps_current():
 
     kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
     page = _page_with_current(kb, body="current")
-    check = create_candidate(page, body="candidate", reason="conflict")
+    check = create_candidate(page, body="candidate", reason="conflict", check_type="cannot_merge")
     cand_id = check.candidate_version_id
 
     reject_candidate(check, operator="u")
@@ -44,6 +44,53 @@ def test_reject_candidate_keeps_current():
     assert page.current_version.body == "current"
     assert check.status == "dismissed"
     assert not PageVersion.objects.filter(id=cand_id).exists()
+
+
+@pytest.mark.django_db
+def test_create_candidate_rejects_non_decision_type_without_side_effects():
+    from apps.opspilot.models import CheckItem, PageVersion, WikiKnowledgeBase
+    from apps.opspilot.services.wiki.check_service import create_candidate
+
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    page = _page_with_current(kb, body="current")
+    version_ids = set(PageVersion.objects.filter(page=page).values_list("id", flat=True))
+
+    with pytest.raises(ValueError, match="knowledge conflict or page identity"):
+        create_candidate(
+            page,
+            body="candidate",
+            reason="legacy admission",
+            check_type="qa_answer_candidate",
+        )
+
+    page.refresh_from_db()
+    assert page.current_version.body == "current"
+    assert set(PageVersion.objects.filter(page=page).values_list("id", flat=True)) == version_ids
+    assert not CheckItem.objects.filter(knowledge_base=kb).exists()
+
+
+@pytest.mark.django_db
+def test_database_rejects_open_non_decision_checks():
+    from django.db import IntegrityError, transaction
+
+    from apps.opspilot.models import CheckItem, WikiKnowledgeBase
+
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            CheckItem.objects.create(
+                knowledge_base=kb,
+                check_type="orphan",
+                status="open",
+            )
+
+    diagnostic = CheckItem.objects.create(
+        knowledge_base=kb,
+        check_type="orphan",
+        status="auto_resolved",
+    )
+    assert diagnostic.status == "auto_resolved"
 
 
 @pytest.mark.django_db
@@ -56,6 +103,10 @@ def test_scan_health_flags_orphan_and_is_idempotent():
     created = scan_health(kb)
     assert len(created) == 1
     assert created[0].check_type == "orphan"
+    assert created[0].status == "auto_resolved"
+    assert created[0].suggested_actions == []
+    assert created[0].related["resolution"]["action"] == "automatic_maintenance"
+    assert created[0].related["resolution"]["processed_at"]
     # 幂等:再次扫描不重复创建
     again = scan_health(kb)
     assert again == []
@@ -107,9 +158,9 @@ def test_scan_health_flags_alias_title_conflicts_when_types_differ():
 
 
 @pytest.mark.django_db
-def test_merge_duplicate_check_archives_source_and_moves_evidence_relations_chunks():
-    from apps.opspilot.models import CheckItem, Material, PageChunk, PageEvidence, PageRelation, WikiKnowledgeBase
-    from apps.opspilot.services.wiki.check_service import merge_duplicate_check
+def test_merge_duplicate_check_archives_source_and_moves_evidence_relations_chunks(django_capture_on_commit_callbacks):
+    from apps.opspilot.models import Material, PageChunk, PageEvidence, PageRelation, WikiKnowledgeBase
+    from apps.opspilot.services.wiki.check_service import ensure_check, merge_duplicate_check
     from apps.opspilot.services.wiki.relation_service import rebuild_relations
 
     kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
@@ -121,15 +172,15 @@ def test_merge_duplicate_check_archives_source_and_moves_evidence_relations_chun
     PageChunk.objects.create(page=duplicate, version=duplicate.current_version, idx=0, text="old chunk", embedding=[0.5])
     rebuild_relations(kb)
     assert PageRelation.objects.filter(from_page=consumer, to_page=duplicate, relation_type="reference").exists()
-    check = CheckItem.objects.create(
-        knowledge_base=kb,
-        check_type="duplicate",
-        status="open",
+    check = ensure_check(
+        kb,
+        "duplicate",
+        duplicate,
         related={"pages": [duplicate.id, canonical.id], "canonical_title": "配置平台"},
-        suggested_actions=["merge", "dismiss"],
-    )
+    )[0]
 
-    result = merge_duplicate_check(check, operator="reviewer")
+    with django_capture_on_commit_callbacks(execute=True):
+        result = merge_duplicate_check(check, operator="reviewer")
 
     duplicate.refresh_from_db()
     canonical.refresh_from_db()
@@ -169,8 +220,8 @@ def test_merge_duplicate_check_rejects_conflict_checks():
 
 @pytest.mark.django_db
 def test_merge_duplicate_check_handles_messy_related_and_existing_evidence():
-    from apps.opspilot.models import CheckItem, Material, PageEvidence, WikiKnowledgeBase
-    from apps.opspilot.services.wiki.check_service import merge_duplicate_check
+    from apps.opspilot.models import Material, PageEvidence, WikiKnowledgeBase
+    from apps.opspilot.services.wiki.check_service import ensure_check, merge_duplicate_check
 
     kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
     material = Material.objects.create(knowledge_base=kb, name="source", material_type="text", status="done")
@@ -178,12 +229,13 @@ def test_merge_duplicate_check_handles_messy_related_and_existing_evidence():
     source = _page_with_current(kb, title="配置平台", body="same body", page_type="entity")
     PageEvidence.objects.create(page=target, material=material)
     PageEvidence.objects.create(page=source, material=material)
-    check = CheckItem.objects.create(
-        knowledge_base=kb,
-        check_type="duplicate",
-        status="open",
+    check = ensure_check(
+        kb,
+        "duplicate",
+        target,
         related={"pages": ["bad", target.id, target.id, source.id], "canonical_title": "规范配置平台"},
-    )
+    )[0]
+    assert check.related["pages"] == [target.id, source.id]
 
     result = merge_duplicate_check(check, operator="reviewer")
 
@@ -199,7 +251,7 @@ def test_merge_duplicate_check_handles_messy_related_and_existing_evidence():
 @pytest.mark.django_db
 def test_merge_duplicate_check_rejects_non_open_or_inactive_related_pages():
     from apps.opspilot.models import CheckItem, WikiKnowledgeBase
-    from apps.opspilot.services.wiki.check_service import merge_duplicate_check
+    from apps.opspilot.services.wiki.check_service import ensure_check, merge_duplicate_check
 
     kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
     target = _page_with_current(kb, title="CMDB", body="CMDB content", page_type="entity")
@@ -210,19 +262,20 @@ def test_merge_duplicate_check_rejects_non_open_or_inactive_related_pages():
         status="resolved",
         related={"pages": [target.id, source.id]},
     )
+    inactive = ensure_check(
+        kb,
+        "duplicate",
+        target,
+        related={"pages": [target.id, source.id]},
+    )[0]
     source.status = "archived"
     source.save(update_fields=["status"])
-    inactive = CheckItem.objects.create(
-        knowledge_base=kb,
-        check_type="duplicate",
-        status="open",
-        related={"pages": [target.id, source.id]},
-    )
 
     with pytest.raises(ValueError, match="open"):
         merge_duplicate_check(resolved, operator="reviewer")
-    with pytest.raises(ValueError, match="at least two active"):
-        merge_duplicate_check(inactive, operator="reviewer")
+    assert merge_duplicate_check(inactive, operator="reviewer") is None
+    inactive.refresh_from_db()
+    assert inactive.status == "auto_resolved"
 
 
 @pytest.mark.django_db
@@ -285,7 +338,9 @@ def test_scan_health_converts_graph_bridge_nodes_to_checks():
     assert bridge_check in created
     assert bridge_check.related["graph_insight"] == "bridge_node"
     assert bridge_check.related["degree"] >= 2
-    assert bridge_check.suggested_actions == ["review_graph", "supplement_source", "restructure_page"]
+    assert bridge_check.status == "auto_resolved"
+    assert bridge_check.suggested_actions == []
+    assert bridge_check.related["resolution"]["action"] == "automatic_maintenance"
     assert scan_health(kb) == []
     assert CheckItem.objects.filter(knowledge_base=kb, check_type="bridge_node", related__pages__contains=[bridge.id]).count() == 1
 
@@ -315,7 +370,9 @@ def test_scan_health_converts_sparse_graph_communities_to_checks():
     assert set(sparse_check.related["pages"]) == page_ids
     assert sparse_check.related["graph_insight"] == "sparse_community"
     assert sparse_check.related["density"] <= 0.5
-    assert sparse_check.suggested_actions == ["review_graph", "supplement_source", "restructure_page"]
+    assert sparse_check.status == "auto_resolved"
+    assert sparse_check.suggested_actions == []
+    assert sparse_check.related["resolution"]["action"] == "automatic_maintenance"
     assert scan_health(kb) == []
     assert CheckItem.objects.filter(knowledge_base=kb, check_type="sparse_community").count() == 1
 
@@ -355,13 +412,15 @@ def test_scan_health_converts_cross_community_edges_to_checks():
     assert check.related["graph_insight"] == "cross_community_edge"
     assert check.related["from_community"] != check.related["to_community"]
     assert check.related["signals"] == {"shared_tags": 1, "reference": 1}
-    assert check.suggested_actions == ["review_graph", "supplement_source", "restructure_page"]
+    assert check.status == "auto_resolved"
+    assert check.suggested_actions == []
+    assert check.related["resolution"]["action"] == "automatic_maintenance"
     assert scan_health(kb) == []
     assert CheckItem.objects.filter(knowledge_base=kb, check_type="cross_community_edge").count() == 1
 
 
 @pytest.mark.django_db
-def test_resolve_check_marks_open_item_processed_and_tracks_result():
+def test_resolve_check_cannot_reopen_automatic_diagnostic():
     from apps.opspilot.models import CheckItem, WikiKnowledgeBase
     from apps.opspilot.services.wiki.check_service import resolve_check
 
@@ -370,20 +429,18 @@ def test_resolve_check_marks_open_item_processed_and_tracks_result():
     check = CheckItem.objects.create(
         knowledge_base=kb,
         check_type="bridge_node",
-        status="open",
-        related={"pages": [page.id], "graph_insight": "bridge_node"},
-        suggested_actions=["review_graph", "supplement_source", "restructure_page"],
+        status="auto_resolved",
+        related={"pages": [page.id], "graph_insight": "bridge_node", "resolution": {"action": "automatic_maintenance"}},
+        suggested_actions=[],
     )
 
-    resolved = resolve_check(check, operator="admin", note="已补充资料并确认关系合理")
+    with pytest.raises(ValueError, match="only open"):
+        resolve_check(check, operator="admin", note="已补充资料并确认关系合理")
 
-    resolved.refresh_from_db()
-    assert resolved.status == "resolved"
-    assert resolved.related["graph_insight"] == "bridge_node"
-    assert resolved.related["resolution"]["action"] == "manual_resolve"
-    assert resolved.related["resolution"]["operator"] == "admin"
-    assert resolved.related["resolution"]["note"] == "已补充资料并确认关系合理"
-    assert resolved.related["resolution"]["processed_at"]
+    check.refresh_from_db()
+    assert check.status == "auto_resolved"
+    assert check.related["graph_insight"] == "bridge_node"
+    assert check.related["resolution"]["action"] == "automatic_maintenance"
 
 
 @pytest.mark.django_db
@@ -405,7 +462,9 @@ def test_scan_health_converts_missing_wikilinks_to_knowledge_gap_checks():
     assert check.related["target_key"]
     assert check.related["pages"] == [source.id]
     assert check.related["suggested_queries"] == ["未知系统", "业务接入 未知系统"]
-    assert check.suggested_actions == ["create_page", "supplement_source", "dismiss"]
+    assert check.status == "auto_resolved"
+    assert check.suggested_actions == []
+    assert check.related["resolution"]["action"] == "automatic_maintenance"
     assert scan_health(kb) == []
     assert CheckItem.objects.filter(knowledge_base=kb, check_type="missing").count() == 1
 
@@ -418,30 +477,65 @@ class TestCheckViews:
 
         kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
         page = _page_with_current(kb, body="current")
-        check = create_candidate(page, body="cand", reason="conflict")
+        check = create_candidate(page, body="cand", reason="conflict", check_type="cannot_merge")
 
         lst = api_client.get(f"/api/v1/opspilot/wiki_mgmt/check_item/?knowledge_base={kb.id}")
         assert lst.status_code == 200
         assert any(c["id"] == check.id for c in lst.json()["data"]["items"])
 
         acc = api_client.post(f"/api/v1/opspilot/wiki_mgmt/check_item/{check.id}/accept/", {}, format="json")
-        assert acc.status_code == 200
+        assert acc.status_code == 410
         page.refresh_from_db()
-        assert page.current_version.body == "cand"
+        assert page.current_version.body == "current"
 
         scan = api_client.post(f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{kb.id}/scan/", {}, format="json")
         assert scan.status_code == 200
 
-    def test_filters_retrieve_reject_and_accept_without_candidate(self, api_client):
+    def test_pending_list_auto_closes_incomplete_knowledge_conflict(self, api_client):
         from apps.opspilot.models import CheckItem, WikiKnowledgeBase
+
+        kb = WikiKnowledgeBase.objects.create(name="kb-incomplete", team=[1])
+        check = CheckItem.objects.create(
+            knowledge_base=kb,
+            check_type="conflict",
+            status="open",
+            decision_key="",
+            decision_context={},
+            suggested_actions=["keep_current", "use_new"],
+        )
+
+        response = api_client.get(f"/api/v1/opspilot/wiki_mgmt/check_item/?knowledge_base={kb.id}&view=pending")
+
+        assert response.status_code == 200, response.content
+        assert response.json()["data"]["items"] == []
+        check.refresh_from_db()
+        assert check.status == "auto_resolved"
+        assert check.related["resolution"]["reason"] == "decision_context_incomplete"
+
+    def test_filters_retrieve_reject_and_accept_without_candidate(self, api_client):
+        from apps.opspilot.models import CheckItem, Material, WikiKnowledgeBase
         from apps.opspilot.services.wiki.check_service import create_candidate
 
         kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
         page = _page_with_current(kb, body="current")
-        candidate_check = create_candidate(page, body="cand", reason="conflict", check_type="conflict")
-        plain_check = CheckItem.objects.create(knowledge_base=kb, check_type="orphan", related={"pages": [page.id]})
+        material = Material.objects.create(
+            knowledge_base=kb,
+            name="incoming",
+            material_type="text",
+            content_hash="incoming-v1",
+        )
+        candidate_check = create_candidate(
+            page,
+            body="cand",
+            reason="conflict",
+            check_type="cannot_merge",
+            incoming_material=material,
+        )
+        plain_check = CheckItem.objects.create(knowledge_base=kb, check_type="orphan", status="auto_resolved", related={"pages": [page.id]})
 
-        listed = api_client.get(f"/api/v1/opspilot/wiki_mgmt/check_item/?knowledge_base={kb.id}&status=open&check_type=conflict&page=x&page_size=y")
+        listed = api_client.get(
+            f"/api/v1/opspilot/wiki_mgmt/check_item/?knowledge_base={kb.id}&status=open&check_type=cannot_merge&page=x&page_size=y"
+        )
         assert listed.status_code == 200
         assert [item["id"] for item in listed.json()["data"]["items"]] == [candidate_check.id]
 
@@ -450,19 +544,17 @@ class TestCheckViews:
         assert dismissed.json()["data"]["items"] == []
 
         retrieved = api_client.get(f"/api/v1/opspilot/wiki_mgmt/check_item/{plain_check.id}/")
-        assert retrieved.status_code == 200
-        assert retrieved.json()["data"]["id"] == plain_check.id
+        assert retrieved.status_code == 404
 
         accepted_scan = api_client.post(f"/api/v1/opspilot/wiki_mgmt/check_item/{plain_check.id}/accept/", {}, format="json")
-        assert accepted_scan.status_code == 200
+        assert accepted_scan.status_code == 410
         plain_check.refresh_from_db()
-        assert plain_check.status == "resolved"
-        assert plain_check.related["resolution"]["action"] == "manual_resolve"
+        assert plain_check.status == "auto_resolved"
 
         rejected = api_client.post(f"/api/v1/opspilot/wiki_mgmt/check_item/{candidate_check.id}/reject/", {}, format="json")
-        assert rejected.status_code == 200
+        assert rejected.status_code == 410
         candidate_check.refresh_from_db()
-        assert candidate_check.status == "dismissed"
+        assert candidate_check.status == "open"
 
     def test_batch_accept_accepts_candidate_and_scan_checks(self, api_client):
         from apps.opspilot.models import CheckItem, WikiKnowledgeBase
@@ -471,9 +563,9 @@ class TestCheckViews:
         kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
         page_a = _page_with_current(kb, title="A", body="current-a")
         page_b = _page_with_current(kb, title="B", body="current-b")
-        candidate_a = create_candidate(page_a, body="candidate-a", reason="conflict")
-        candidate_b = create_candidate(page_b, body="candidate-b", reason="conflict")
-        scan_check = CheckItem.objects.create(knowledge_base=kb, check_type="source_invalid", related={"pages": [page_a.id]})
+        candidate_a = create_candidate(page_a, body="candidate-a", reason="conflict", check_type="cannot_merge")
+        candidate_b = create_candidate(page_b, body="candidate-b", reason="conflict", check_type="cannot_merge")
+        scan_check = CheckItem.objects.create(knowledge_base=kb, check_type="source_invalid", status="auto_resolved", related={"pages": [page_a.id]})
 
         response = api_client.post(
             "/api/v1/opspilot/wiki_mgmt/check_item/batch_accept/",
@@ -481,24 +573,19 @@ class TestCheckViews:
             format="json",
         )
 
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert data["accepted"] == 3
-        assert data["skipped"] == 0
-        assert data["skipped_ids"] == []
+        assert response.status_code == 410
         page_a.refresh_from_db()
         page_b.refresh_from_db()
         candidate_a.refresh_from_db()
         candidate_b.refresh_from_db()
         scan_check.refresh_from_db()
-        assert page_a.current_version.body == "candidate-a"
-        assert page_b.current_version.body == "candidate-b"
-        assert candidate_a.status == "resolved"
-        assert candidate_b.status == "resolved"
-        assert scan_check.status == "resolved"
-        assert scan_check.related["resolution"]["action"] == "manual_resolve"
+        assert page_a.current_version.body == "current-a"
+        assert page_b.current_version.body == "current-b"
+        assert candidate_a.status == "open"
+        assert candidate_b.status == "open"
+        assert scan_check.status == "auto_resolved"
 
-    def test_accept_endpoint_merges_duplicate_scan_check(self, api_client):
+    def test_accept_endpoint_rejects_semantic_duplicate(self, api_client):
         from apps.opspilot.models import CheckItem, WikiKnowledgeBase
 
         kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
@@ -514,12 +601,12 @@ class TestCheckViews:
 
         response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/check_item/{check.id}/accept/", {}, format="json")
 
-        assert response.status_code == 200, response.content
+        assert response.status_code == 410, response.content
         duplicate.refresh_from_db()
         check.refresh_from_db()
-        assert duplicate.status == "archived"
-        assert check.status == "resolved"
-        assert response.json()["data"]["status"] == "resolved"
+        assert duplicate.status == "active"
+        assert check.status == "open"
+        assert "decide" in response.json()["message"]
 
     def test_batch_reject_dismisses_selected_open_checks(self, api_client):
         from apps.opspilot.models import CheckItem, PageVersion, WikiKnowledgeBase
@@ -527,9 +614,9 @@ class TestCheckViews:
 
         kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
         page = _page_with_current(kb, body="current")
-        candidate_check = create_candidate(page, body="candidate", reason="conflict")
+        candidate_check = create_candidate(page, body="candidate", reason="conflict", check_type="cannot_merge")
         candidate_id = candidate_check.candidate_version_id
-        scan_check = CheckItem.objects.create(knowledge_base=kb, check_type="orphan", related={"pages": [page.id]})
+        scan_check = CheckItem.objects.create(knowledge_base=kb, check_type="orphan", status="auto_resolved", related={"pages": [page.id]})
 
         response = api_client.post(
             "/api/v1/opspilot/wiki_mgmt/check_item/batch_reject/",
@@ -537,17 +624,14 @@ class TestCheckViews:
             format="json",
         )
 
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert data["rejected"] == 2
-        assert data["skipped"] == 0
+        assert response.status_code == 410
         candidate_check.refresh_from_db()
         scan_check.refresh_from_db()
         page.refresh_from_db()
-        assert candidate_check.status == "dismissed"
-        assert scan_check.status == "dismissed"
+        assert candidate_check.status == "open"
+        assert scan_check.status == "auto_resolved"
         assert page.current_version.body == "current"
-        assert not PageVersion.objects.filter(id=candidate_id).exists()
+        assert PageVersion.objects.filter(id=candidate_id).exists()
 
     def test_batch_resolve_marks_scan_checks_processed_and_skips_candidates(self, api_client):
         from apps.opspilot.models import CheckItem, WikiKnowledgeBase
@@ -555,9 +639,19 @@ class TestCheckViews:
 
         kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
         page = _page_with_current(kb, body="current")
-        scan_check = CheckItem.objects.create(knowledge_base=kb, check_type="missing", related={"pages": [page.id]})
-        graph_check = CheckItem.objects.create(knowledge_base=kb, check_type="bridge_node", related={"pages": [page.id]})
-        candidate_check = create_candidate(page, body="candidate", reason="conflict")
+        scan_check = CheckItem.objects.create(
+            knowledge_base=kb,
+            check_type="missing",
+            status="auto_resolved",
+            related={"pages": [page.id], "resolution": {"note": "已确认无需继续处理"}},
+        )
+        graph_check = CheckItem.objects.create(
+            knowledge_base=kb,
+            check_type="bridge_node",
+            status="auto_resolved",
+            related={"pages": [page.id], "resolution": {"action": "manual_resolve"}},
+        )
+        candidate_check = create_candidate(page, body="candidate", reason="conflict", check_type="cannot_merge")
         resolved_check = CheckItem.objects.create(
             knowledge_base=kb,
             check_type="source_invalid",
@@ -574,17 +668,13 @@ class TestCheckViews:
             format="json",
         )
 
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert data["resolved"] == 2
-        assert data["skipped"] == 3
-        assert data["skipped_ids"] == [candidate_check.id, resolved_check.id, 999999]
+        assert response.status_code == 410
         scan_check.refresh_from_db()
         graph_check.refresh_from_db()
         candidate_check.refresh_from_db()
         resolved_check.refresh_from_db()
-        assert scan_check.status == "resolved"
-        assert graph_check.status == "resolved"
+        assert scan_check.status == "auto_resolved"
+        assert graph_check.status == "auto_resolved"
         assert candidate_check.status == "open"
         assert resolved_check.status == "resolved"
         assert scan_check.related["resolution"]["note"] == "已确认无需继续处理"
@@ -595,7 +685,7 @@ class TestCheckViews:
 
         kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
         page = _page_with_current(kb, body="current")
-        open_check = CheckItem.objects.create(knowledge_base=kb, check_type="orphan", related={"pages": [page.id]})
+        open_check = CheckItem.objects.create(knowledge_base=kb, check_type="orphan", status="auto_resolved", related={"pages": [page.id]})
         resolved_check = CheckItem.objects.create(
             knowledge_base=kb,
             check_type="source_invalid",
@@ -608,14 +698,14 @@ class TestCheckViews:
             {},
             format="json",
         )
-        assert empty_ids.status_code == 400
+        assert empty_ids.status_code == 410
 
         bad_ids = api_client.post(
             "/api/v1/opspilot/wiki_mgmt/check_item/batch_reject/",
             {"ids": ["bad"]},
             format="json",
         )
-        assert bad_ids.status_code == 400
+        assert bad_ids.status_code == 410
 
         response = api_client.post(
             "/api/v1/opspilot/wiki_mgmt/check_item/batch_reject/",
@@ -623,14 +713,10 @@ class TestCheckViews:
             format="json",
         )
 
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert data["rejected"] == 1
-        assert data["skipped"] == 2
-        assert data["skipped_ids"] == [resolved_check.id, 999999]
+        assert response.status_code == 410
         open_check.refresh_from_db()
         resolved_check.refresh_from_db()
-        assert open_check.status == "dismissed"
+        assert open_check.status == "auto_resolved"
         assert resolved_check.status == "resolved"
 
     def test_merge_duplicate_endpoint_resolves_scan_duplicate(self, api_client):
@@ -649,12 +735,11 @@ class TestCheckViews:
 
         response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/check_item/{check.id}/merge/", {}, format="json")
 
-        assert response.status_code == 200, response.content
+        assert response.status_code == 410, response.content
         duplicate.refresh_from_db()
         check.refresh_from_db()
-        assert duplicate.status == "archived"
-        assert check.status == "resolved"
-        assert response.json()["data"]["status"] == "resolved"
+        assert duplicate.status == "active"
+        assert check.status == "open"
 
     def test_resolve_endpoint_marks_scan_check_processed(self, api_client):
         from apps.opspilot.models import CheckItem, WikiKnowledgeBase
@@ -664,9 +749,9 @@ class TestCheckViews:
         check = CheckItem.objects.create(
             knowledge_base=kb,
             check_type="cross_community_edge",
-            status="open",
-            related={"pages": [page.id], "graph_insight": "cross_community_edge"},
-            suggested_actions=["review_graph", "supplement_source", "restructure_page"],
+            status="auto_resolved",
+            related={"pages": [page.id], "graph_insight": "cross_community_edge", "resolution": {"action": "automatic_maintenance"}},
+            suggested_actions=[],
         )
 
         response = api_client.post(
@@ -675,9 +760,283 @@ class TestCheckViews:
             format="json",
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 410
         check.refresh_from_db()
-        assert check.status == "resolved"
-        assert check.related["resolution"]["action"] == "manual_resolve"
-        assert check.related["resolution"]["note"] == "已确认该跨社区关系合理"
-        assert response.json()["data"]["related"]["resolution"]["processed_at"]
+        assert check.status == "auto_resolved"
+        assert check.related["resolution"]["action"] == "automatic_maintenance"
+
+
+@pytest.mark.django_db
+def test_page_identity_keep_separate_preserves_pages_and_writes_rule():
+    from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.services.wiki.check_service import decide_check, ensure_check
+
+    kb = WikiKnowledgeBase.objects.create(name="kb-keep-separate", team=[1])
+    left = _page_with_current(kb, title="CMDB", body="left body", page_type="entity")
+    right = _page_with_current(kb, title="配置平台", body="right body", page_type="entity")
+    created = ensure_check(
+        kb,
+        "duplicate",
+        left,
+        related={
+            "pages": [left.id, right.id],
+            "canonical_title": "配置平台",
+        },
+    )
+    check = created[0]
+
+    rule = decide_check(check, action="keep_separate", operator="reviewer")
+
+    left.refresh_from_db()
+    right.refresh_from_db()
+    check.refresh_from_db()
+    assert left.status == right.status == "active"
+    assert left.current_version.body == "left body"
+    assert right.current_version.body == "right body"
+    assert check.status == "resolved"
+    assert len(check.decision_key) == 64
+    assert rule.action == "keep_separate"
+    assert rule.created_by == "reviewer"
+    assert len(rule.match_snapshot["page_identities"]) == 2
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("reverse_related", [False, True])
+def test_page_identity_merge_uses_frozen_target_identity(reverse_related):
+    from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.services.wiki.check_service import decide_check, ensure_check
+
+    kb = WikiKnowledgeBase.objects.create(name=f"kb-identity-merge-{reverse_related}", team=[1])
+    source = _page_with_current(kb, title="CMDB", body="source body", page_type="entity")
+    target = _page_with_current(kb, title="配置平台", body="target body", page_type="entity")
+    page_ids = [target.id, source.id] if reverse_related else [source.id, target.id]
+    check = ensure_check(
+        kb,
+        "duplicate",
+        source,
+        related={
+            "pages": page_ids,
+            "canonical_title": "配置平台",
+        },
+    )[0]
+    frozen_target = check.decision_context["target_identity"]
+
+    rule = decide_check(check, action="merge", operator="reviewer")
+
+    source.refresh_from_db()
+    target.refresh_from_db()
+    check.refresh_from_db()
+    assert frozen_target["page_id"] == target.id
+    assert target.status == "active"
+    assert source.status == "archived"
+    assert rule.action == "merge"
+    assert rule.result_page_id == target.id
+    assert rule.result_snapshot["target_identity"]["canonical_title_key"] == "配置平台"
+    assert [item["page_id"] for item in rule.result_snapshot["source_identities"]] == [source.id]
+    assert check.related["merged_into"] == target.id
+
+
+@pytest.mark.django_db
+def test_merge_duplicate_check_wrapper_with_frozen_context_writes_semantic_rule():
+    from apps.opspilot.models import WikiDecisionRule, WikiKnowledgeBase
+    from apps.opspilot.services.wiki.check_service import ensure_check, merge_duplicate_check
+
+    kb = WikiKnowledgeBase.objects.create(name="kb-wrapper-rule", team=[1])
+    source = _page_with_current(kb, title="CMDB", body="source body", page_type="entity")
+    target = _page_with_current(kb, title="配置平台", body="target body", page_type="entity")
+    check = ensure_check(
+        kb,
+        "duplicate",
+        source,
+        related={
+            "pages": [source.id, target.id],
+            "canonical_title": "配置平台",
+        },
+    )[0]
+
+    result = merge_duplicate_check(check, operator="reviewer")
+
+    rule = WikiDecisionRule.objects.get(source_check=check)
+    assert result["target_page_id"] == target.id
+    assert rule.decision_type == "page_identity"
+    assert rule.action == "merge"
+    assert rule.result_snapshot["operator"] == "reviewer"
+    assert rule.result_snapshot["target_identity"]["page_id"] == target.id
+    assert rule.result_snapshot["source_identities"][0]["page_id"] == source.id
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("action", "changed_field", "changed_value"),
+    [
+        ("merge", "title", "CMDB renamed"),
+        ("keep_separate", "title", "CMDB renamed"),
+        ("merge", "page_type", "service"),
+        ("keep_separate", "page_type", "service"),
+    ],
+)
+def test_page_identity_decision_auto_resolves_stable_identity_drift(
+    action,
+    changed_field,
+    changed_value,
+):
+    from apps.opspilot.models import WikiDecisionRule, WikiKnowledgeBase
+    from apps.opspilot.services.wiki.check_service import decide_check, ensure_check
+
+    kb = WikiKnowledgeBase.objects.create(
+        name=f"kb-identity-drift-{action}-{changed_field}",
+        team=[1],
+    )
+    source = _page_with_current(kb, title="CMDB", body="source body", page_type="entity")
+    target = _page_with_current(kb, title="配置平台", body="target body", page_type="entity")
+    check = ensure_check(
+        kb,
+        "duplicate",
+        source,
+        related={
+            "pages": [source.id, target.id],
+            "canonical_title": "配置平台",
+        },
+    )[0]
+    setattr(source, changed_field, changed_value)
+    source.save(update_fields=[changed_field, "updated_at"])
+
+    assert decide_check(check, action=action, operator="reviewer") is None
+
+    check.refresh_from_db()
+    source.refresh_from_db()
+    target.refresh_from_db()
+    assert check.status == "auto_resolved"
+    assert check.suggested_actions == []
+    assert check.related["resolution"]["action"] == "automatic_maintenance"
+    assert check.related["resolution"]["reason"] == "decision_context_stale"
+    assert source.status == "active"
+    assert target.status == "active"
+    assert source.current_version.body == "source body"
+    assert target.current_version.body == "target body"
+    assert getattr(source, changed_field) == changed_value
+    assert not WikiDecisionRule.objects.filter(source_check=check).exists()
+
+
+def _make_page_without_page_service(kb, title, *, page_type="concept", body="body"):
+    from apps.opspilot.models import KnowledgePage, PageVersion
+
+    page = KnowledgePage.objects.create(
+        knowledge_base=kb,
+        title=title,
+        page_type=page_type,
+    )
+    page.current_version = PageVersion.objects.create(
+        page=page,
+        no=1,
+        body=body,
+        is_current=True,
+        change_type="ai_create",
+    )
+    page.save(update_fields=["current_version"])
+    return page
+
+
+@pytest.mark.django_db
+def test_page_identity_canonical_alias_fallback_target_is_order_independent():
+    from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.services.wiki.check_service import ensure_check
+
+    generation_rules = {
+        "title_aliases": [
+            {
+                "canonical": "配置平台",
+                "aliases": ["CMDB", "配置管理数据库"],
+            }
+        ]
+    }
+    targets = []
+    for reverse in (False, True):
+        kb = WikiKnowledgeBase.objects.create(
+            name=f"kb-{reverse}",
+            team=[1],
+            generation_rules=generation_rules,
+        )
+        cmdb = _page_with_current(kb, "CMDB")
+        config_db = _page_with_current(kb, "配置管理数据库")
+        pages = [cmdb, config_db]
+        if reverse:
+            pages.reverse()
+        check = ensure_check(
+            kb,
+            "duplicate",
+            pages[0],
+            related={
+                "pages": [page.id for page in pages],
+                "canonical_title": "配置平台",
+            },
+        )[0]
+        targets.append(check.decision_context["target_identity"]["compact_title_key"])
+
+    assert targets[0] == targets[1]
+
+
+@pytest.mark.django_db
+def test_page_identity_decision_auto_resolves_legacy_check_with_more_than_two_pages():
+    from apps.opspilot.models import CheckItem, WikiKnowledgeBase
+    from apps.opspilot.services.wiki.check_service import decide_check
+
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    pages = [_page_with_current(kb, title) for title in ("one", "two", "three")]
+    check = CheckItem.objects.create(
+        knowledge_base=kb,
+        check_type="duplicate",
+        status="open",
+        related={"pages": [page.id for page in pages]},
+    )
+
+    assert decide_check(check, "merge", operator="alice") is None
+
+    check.refresh_from_db()
+    assert check.status == "auto_resolved"
+    assert check.suggested_actions == []
+    assert check.related["resolution"]["action"] == "automatic_maintenance"
+    assert check.related["resolution"]["reason"] == "decision_context_stale"
+    assert all(page.status == "active" for page in pages)
+
+
+@pytest.mark.django_db
+def test_diagnostic_identity_distinguishes_targets_and_reuses_exact_repeat():
+    from apps.opspilot.models import CheckItem, WikiKnowledgeBase
+    from apps.opspilot.services.wiki.check_service import ensure_check
+
+    kb = WikiKnowledgeBase.objects.create(name="kb-diagnostic-identity", team=[1])
+    page = _page_with_current(kb, title="source")
+
+    first = ensure_check(
+        kb,
+        "broken_relation",
+        page,
+        related={"pages": [page.id], "target": "目标 A"},
+    )
+    second = ensure_check(
+        kb,
+        "broken_relation",
+        page,
+        related={"pages": [page.id], "target": "目标 B"},
+    )
+    repeated = ensure_check(
+        kb,
+        "broken_relation",
+        page,
+        related={"pages": [page.id], "target": "目标 A"},
+    )
+
+    assert len(first) == 1
+    assert len(second) == 1
+    assert first[0].id != second[0].id
+    assert repeated == []
+    diagnostics = list(
+        CheckItem.objects.filter(
+            knowledge_base=kb,
+            check_type="broken_relation",
+        ).order_by("id")
+    )
+    assert len(diagnostics) == 2
+    assert all(item.status == "auto_resolved" for item in diagnostics)
+    assert {item.related["target"] for item in diagnostics} == {"目标 A", "目标 B"}

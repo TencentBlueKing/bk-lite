@@ -1,6 +1,6 @@
 Hardware Server IPMI:
   name: 硬件服务器IPMI通用（Telegraf）
-  desc: 面向 IPMI 硬件服务器的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。适用于IPMI 全系列。
+  desc: 面向物理服务器的通用 IPMI 监控模板，可按机箱、电源、CPU、内存、硬盘、RAID 和风扇采集部件指标。
 monitor_object:
   Hardware Server: 硬件服务器
 monitor_object_type:
@@ -64,8 +64,51 @@ monitor_object_metric:
     interface_ifOutDiscards:
       name: 发送丢包速率
       desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
+    ipmi_chassis_power_watts: {name: 机箱功率, desc: 机箱当前功耗。}
+    ipmi_chassis_temperature_celsius: {name: 机箱温度, desc: 机箱进风、出风或环境温度。}
+    ipmi_chassis_airflow_cfm: {name: 机箱风量, desc: 机箱风量，单位为 CFM。}
+    ipmi_psu_status: {name: PSU 状态, desc: 每个独立电源模块的健康状态。}
+    ipmi_psu_state: {name: PSU 运行状态, desc: 每个独立电源模块的标准化运行状态。}
+    ipmi_psu_raw_state_code: {name: PSU 原始状态码, desc: 用于排障的 PSU 原始状态码。}
+    ipmi_psu_temperature_celsius: {name: PSU 温度, desc: 每个电源模块内部传感器的温度。}
+    ipmi_psu_power_watts: {name: PSU 功率, desc: 每个电源模块的输入或输出功率。}
+    ipmi_psu_voltage_volts: {name: PSU 电压, desc: 每个电源模块的输入或输出电压。}
+    ipmi_psu_fan_speed_rpm: {name: PSU 风扇转速, desc: 每个电源模块风扇的转速。}
+    ipmi_cpu_status: {name: CPU 状态, desc: 每个 CPU 插槽的健康状态。}
+    ipmi_cpu_state: {name: CPU 运行状态, desc: 每个 CPU 插槽的标准化运行状态。}
+    ipmi_cpu_raw_state_code: {name: CPU 原始状态码, desc: 用于排障的 CPU 原始状态码。}
+    ipmi_cpu_temperature_celsius: {name: CPU 温度, desc: CPU 封装或供电模块温度。}
+    ipmi_cpu_power_watts: {name: CPU 功率, desc: CPU 功耗。}
+    ipmi_cpu_voltage_volts: {name: CPU 电压, desc: CPU 相关电压轨电压。}
+    ipmi_cpu_utilization_percent: {name: CPU 使用率, desc: BMC 提供的 CPU 使用率。}
+    ipmi_memory_status: {name: 内存状态, desc: 每个可识别内存条或通道的健康状态。}
+    ipmi_memory_state: {name: 内存在位状态, desc: 每个内存条或通道的标准化在位状态。}
+    ipmi_memory_raw_state_code: {name: 内存原始状态码, desc: 用于排障的内存原始状态码。}
+    ipmi_memory_temperature_celsius: {name: 内存温度, desc: 每个内存条或通道的温度。}
+    ipmi_memory_power_watts: {name: 内存功率, desc: BMC 提供的内存总功耗。}
+    ipmi_disk_status: {name: 硬盘状态, desc: 每个硬盘槽位的健康状态。}
+    ipmi_disk_state: {name: 硬盘运行状态, desc: 每个硬盘槽位的标准化运行状态。}
+    ipmi_disk_raw_state_code: {name: 硬盘原始状态码, desc: 用于排障的厂商原始硬盘状态码。}
+    ipmi_disk_power_watts: {name: 硬盘功率, desc: 前部、后部或全部硬盘的功耗。}
+    ipmi_raid_status: {name: RAID 控制器状态, desc: 每个 RAID 控制器的健康状态。}
+    ipmi_raid_state: {name: RAID 控制器运行状态, desc: 每个 RAID 控制器的标准化运行状态。}
+    ipmi_raid_raw_state_code: {name: RAID 原始状态码, desc: 用于排障的 RAID 控制器原始状态码。}
+    ipmi_raid_temperature_celsius: {name: RAID 控制器温度, desc: 每个 RAID 控制器的温度。}
+    ipmi_raid_battery_temperature_celsius: {name: RAID 电池温度, desc: RAID 备份电池或 BBU 的温度。}
+    ipmi_fan_status: {name: 风扇状态, desc: 每个独立风扇的健康状态。}
+    ipmi_fan_state: {name: 风扇在位状态, desc: 每个独立风扇的标准化在位状态。}
+    ipmi_fan_raw_state_code: {name: 风扇原始状态码, desc: 用于排障的风扇原始状态码。}
+    ipmi_fan_component_speed_rpm: {name: 部件风扇转速, desc: 按独立风扇部件标准化的转速。}
+    ipmi_fan_power_watts: {name: 风扇功率, desc: BMC 提供的风扇总功耗。}
 monitor_object_metric_group:
   Hardware Server:
+    Chassis: 机箱
+    PSU: 电源模块
+    CPU: CPU
+    Memory: 内存
+    Disk: 硬盘
+    RAID: RAID 控制器
+    Fan: 风扇
     Power: 功率
     Status: 状态
     Base: 基础

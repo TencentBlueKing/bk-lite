@@ -85,7 +85,7 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '请求变化速率',
       description: 'Apache 总访问次数变化速率。',
       unit: 'cps',
-      query: 'rate(apache_TotalAccesses{__$labels__}[5m])',
+      query: 'rate(apache_TotalAccesses{__$labels__}[__$window__])',
       color: '#27c274'
     },
     {
@@ -125,7 +125,7 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'Open 连接变化速率',
       description: 'Apache scoreboard open 状态连接变化速率。',
       unit: 'cps',
-      query: 'rate(apache_scboard_open{__$labels__}[5m])',
+      query: 'rate(apache_scboard_open{__$labels__}[__$window__])',
       color: '#9aa9bf'
     },
     {
@@ -195,12 +195,25 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   ],
   charts: [
     {
-      title: '请求吞吐趋势',
-      subtitle: '请求量 vs 流量',
+      title: '请求速率趋势',
+      subtitle: '请求处理速率',
       metric: 'apache_ReqPerSec',
-      guide: [{ label: '请求吞吐', detail: '对比请求处理速率（req/s）与字节传输速率（bytes/s），两线同步上升为正常，流量飙升而请求平稳则可能有大文件传输。' }],
+      guide: [{ label: '请求速率', detail: '请求处理速率（req/s）。' }],
       series: [
-        { metric: 'apache_ReqPerSec', label: '请求处理速率', color: '#2f6bff', unit: 'cps' },
+        { metric: 'apache_ReqPerSec', label: '请求处理速率', color: '#2f6bff', unit: 'cps' }
+      ]
+    },
+    {
+      title: '传输速率趋势',
+      subtitle: '数据传输速率',
+      metric: 'apache_BytesPerSec',
+      guide: [
+        {
+          label: '传输速率',
+          detail: '字节传输速率；与请求速率分开展示。流量飙升而请求平稳可能有大文件传输。'
+        }
+      ],
+      series: [
         { metric: 'apache_BytesPerSec', label: '数据传输速率', color: '#13c2c2', unit: 'kibyteps' }
       ]
     },
@@ -218,12 +231,12 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: 'Scoreboard 状态趋势',
       subtitle: '连接状态变化',
       metric: 'apache_scboard_open',
-      guide: [{ label: 'Scoreboard', detail: 'Apache scoreboard 中 open、waiting、reading、sending 状态的连接变化。' }],
+      guide: [{ label: '连接槽位', detail: '空闲槽位/等待/读取/发送状态变化；发送与读取持续升高表示处理压力增大。' }],
       series: [
-        { metric: 'apache_scboard_open', label: 'Open', color: '#9aa9bf', unit: 'counts' },
-        { metric: 'apache_scboard_waiting', label: 'Waiting', color: '#27c274', unit: 'counts' },
-        { metric: 'apache_scboard_reading', label: 'Reading', color: '#2f6bff', unit: 'counts' },
-        { metric: 'apache_scboard_sending', label: 'Sending', color: '#d48806', unit: 'counts' }
+        { metric: 'apache_scboard_open', label: '空闲槽位', color: '#8a5cff', unit: 'counts' },
+        { metric: 'apache_scboard_waiting', label: '等待连接', color: '#27c274', unit: 'counts' },
+        { metric: 'apache_scboard_reading', label: '读取请求', color: '#2f6bff', unit: 'counts' },
+        { metric: 'apache_scboard_sending', label: '发送响应', color: '#ff8a1f', unit: 'counts' }
       ]
     },
     {
@@ -237,7 +250,7 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       series: [
         { metric: 'apache_Load1', label: '1 分钟', color: '#2f6bff', unit: 'none' },
         { metric: 'apache_Load5', label: '5 分钟', color: '#13c2c2', unit: 'none' },
-        { metric: 'apache_Load15', label: '15 分钟', color: '#9aa9bf', unit: 'none' }
+        { metric: 'apache_Load15', label: '15 分钟', color: '#8a5cff', unit: 'none' }
       ]
     }
   ],

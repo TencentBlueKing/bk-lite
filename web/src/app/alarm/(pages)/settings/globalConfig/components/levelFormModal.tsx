@@ -12,7 +12,6 @@ import { LevelFormItem } from '@/app/alarm/types/settings';
 import { LevelItem } from '@/app/alarm/types/index';
 import { NEUTRAL } from '@/app/alarm/constants/colors';
 import {
-  Grid,
   Modal,
   Form,
   InputNumber,
@@ -49,9 +48,7 @@ export default function LevelFormModal({
   onSubmit,
 }: LevelFormModalProps) {
   const { t } = useTranslation();
-  const screens = Grid.useBreakpoint();
   const [iconMode, setIconMode] = useState<'preset' | 'upload'>('preset');
-  const isCompactModalForm = !screens.sm;
 
   useEffect(() => {
     if (!open) {
@@ -127,10 +124,7 @@ export default function LevelFormModal({
     >
       <Form
         form={form}
-        layout={isCompactModalForm ? 'vertical' : 'horizontal'}
-        labelCol={isCompactModalForm ? undefined : { flex: '90px' }}
-        wrapperCol={isCompactModalForm ? undefined : { flex: 'auto' }}
-        labelAlign="right"
+        layout="vertical"
         style={{ marginTop: 4 }}
       >
         <Form.Item

@@ -339,9 +339,9 @@ const MetricEditorCompanion = ({
       lines.map((line, index) =>
         index === lineIndex
           ? {
-              ...line,
-              conditions: [...line.conditions, { connector: 'AND', dimension: 'endpoint', method: '=~', value: '/api/.*' }],
-            }
+            ...line,
+            conditions: [...line.conditions, { connector: 'AND', dimension: 'endpoint', method: '=~', value: '/api/.*' }],
+          }
           : line
       )
     );

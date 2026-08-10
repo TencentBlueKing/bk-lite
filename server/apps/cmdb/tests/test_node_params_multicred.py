@@ -91,10 +91,13 @@ def test_base_node_params_push_params_renders_template_with_default_filter():
 
     node = HostNodeParams(instance)
     result = node.push_params()
+    rendered_lines = {line.strip() for line in result[0]["content"].splitlines()}
 
     assert len(result) == 1
-    assert 'interval = "300s"' in result[0]["content"]
-    assert 'timeout = "60s"' in result[0]["content"]
+    assert node.custom_headers()["cmdbtimeout"] == "60"
+    assert 'interval = "300s"' in rendered_lines
+    assert 'timeout = "30s"' in rendered_lines
+    assert 'response_timeout = "30s"' in rendered_lines
     assert 'http_headers = {' in result[0]["content"]
 
 
@@ -288,6 +291,29 @@ def test_network_node_params_single_credential_carries_topology_contract():
     assert credential["topology_protocols"] == "lldp,fdb"
     assert credential["topology_fallback_strategy"] == "strict_neighbors_only"
     assert credential["min_confidence"] == 0.75
+
+
+def test_config_file_node_params_carries_execution_id():
+    from apps.cmdb.node_configs.ssh.config_file import ConfigFileNodeParams
+
+    instance = SimpleNamespace(
+        id=96,
+        task_id="execution-current",
+        model_id="config_file",
+        driver_type="job",
+        decrypt_credentials=[
+            {"credential_id": "cred-1", "username": "admin", "password": "secret", "port": 22},
+        ],
+        params={"config_file_path": "/etc/app.conf"},
+        timeout=60,
+        access_point=[{"id": 3}],
+        instances=[{"_id": "inst-1", "model_id": "host", "ip_addr": "10.0.0.10"}],
+        ip_range="",
+    )
+
+    credential = ConfigFileNodeParams(instance).set_credential()
+
+    assert credential["execution_id"] == "execution-current"
 
 
 def test_network_node_params_topology_protocols_header_is_agent_parseable():

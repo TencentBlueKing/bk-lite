@@ -344,9 +344,7 @@ def test_chatflow_engine_records_execution_summary_with_final_and_failed_nodes(m
         "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.create",
         return_value=task_result,
     )
-    node_update = mocker.patch(
-        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter"
-    )
+    node_update = mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter")
 
     from apps.opspilot.utils.chat_flow_utils.engine import execution_repository
 
@@ -415,9 +413,7 @@ def test_sse_subsequent_nodes_use_output_params_for_next_node_input(mocker):
         "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.create",
         return_value=mocker.Mock(),
     )
-    mocker.patch(
-        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter"
-    )
+    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter")
 
     engine = ChatFlowEngine(workflow, execution_id="exec-sse-params-1")
     evidence_package = '{"alert_id":"alert-001","ready_for_analysis":true}'
@@ -528,7 +524,7 @@ def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker)
 
     stream_response = mocker.Mock()
     mocker.patch("apps.opspilot.viewsets.llm_view.LLMSkill.objects.get", return_value=skill_obj)
-    mocker.patch("apps.opspilot.utils.prompt_utils.merge_skill_params", return_value=[])
+    mocker.patch("apps.opspilot.viewsets.llm_view.merge_skill_params", return_value=[])
     stream_chat = mocker.patch("apps.opspilot.viewsets.llm_view.stream_chat", return_value=stream_response)
 
     response = LLMViewSet().execute(request)
@@ -868,6 +864,68 @@ def test_resolve_k8s_target_from_alert_marks_missing_data_when_unresolved():
     assert payload["resource_type"] is None
     assert "resource identifier" in payload["reason"]
     assert "resource_type_or_name" in payload["missing_data"]
+
+
+def test_resolve_k8s_target_from_alert_looks_up_namespace_via_pods():
+    from unittest.mock import patch
+
+    from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
+
+    pods_json = json.dumps(
+        [
+            {"name": "server-5b8fb979d7-csdcc", "namespace": "bklite", "phase": "Running"},
+            {"name": "other", "namespace": "default", "phase": "Running"},
+        ]
+    )
+    events_json = json.dumps([])
+
+    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(
+        "apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_events"
+    ) as list_events:
+        list_pods.invoke.return_value = pods_json
+        list_events.invoke.return_value = events_json
+        result = resolve_k8s_target_from_alert.invoke(
+            {
+                "normalized_alert": {
+                    "title": "Unhealthy（kubernetes，bk-lite-k3s，server-5b8fb979d7-csdcc）",
+                    "message": "Startup probe failed",
+                    "labels": {"cluster": "bk-lite-k3s", "pod": "server-5b8fb979d7-csdcc"},
+                }
+            }
+        )
+
+    payload = json.loads(result)
+    assert payload["resolved"] is True
+    assert payload["namespace"] == "bklite"
+    assert payload["pod_name"] == "server-5b8fb979d7-csdcc"
+    assert payload["namespace_lookup"] == "pods_or_events"
+    list_pods.invoke.assert_called_once()
+    list_events.invoke.assert_called_once()
+
+
+def test_apply_namespace_lookup_reports_multiple_candidates():
+    from apps.opspilot.metis.llm.tools.kubernetes.data_collection import _apply_namespace_lookup
+
+    target = {
+        "pod_name": "dup-pod",
+        "resource_name": "dup-pod",
+        "resource_type": "pod",
+        "namespace": None,
+        "missing_data": ["namespace"],
+        "resolved": False,
+        "reason": "Missing namespace",
+    }
+    updated = _apply_namespace_lookup(
+        target,
+        [
+            {"name": "dup-pod", "namespace": "ns-a"},
+            {"name": "dup-pod", "namespace": "ns-b"},
+        ],
+        [],
+    )
+    assert updated["resolved"] is False
+    assert updated["namespace_candidates"] == ["ns-a", "ns-b"]
+    assert "namespace" in updated["missing_data"]
 
 
 def test_build_incident_evidence_package_wraps_uniform_evidence_blocks():

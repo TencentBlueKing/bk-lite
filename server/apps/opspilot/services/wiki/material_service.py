@@ -1,23 +1,22 @@
 """资料(Material)摄取:统一解析为 markdown + 生成 AI 摘要。"""
 
 import hashlib
-import logging
 import os
 
 from django.core.files.base import ContentFile
 from django_minio_backend.models import MinioBackend
 from openai import OpenAI
 
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
-from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.models import LLMModel, MaterialVersion
+from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.models import MaterialVersion
+from apps.opspilot.services.wiki.parsed_media_service import persist_embedded_images, rewrite_media_urls_for_display
 from apps.opspilot.services.wiki.parsing import get_parser
+from apps.opspilot.services.wiki.parsing.anthropic_vision_compat import build_anthropic_vision_client
 from apps.opspilot.services.wiki.parsing.markitdown_parser import SUPPORTED_FILE_EXTENSIONS
-from apps.opspilot.services.wiki.text_utils import split_text_for_llm
-
-logger = logging.getLogger("opspilot")
+from apps.opspilot.services.wiki.parsing.pdf_hybrid_parser import convert_pdf_hybrid, describe_page_with_vision
 
 _PARSED_STORAGE = MinioBackend(bucket_name="munchkin-private")
+_SUPPORTED_VISION_PROTOCOLS = frozenset({"openai", "anthropic"})
 
 
 def _material_file_name(material):
@@ -55,18 +54,40 @@ def _read_file(material):
     return name, data
 
 
+def _vision_vendor_type(vision_model) -> str:
+    vendor = getattr(vision_model, "vendor", None)
+    return (getattr(vendor, "vendor_type", "") or "") if vendor is not None else ""
+
+
 def _vision_options(material):
-    """Return MarkItDown vision options when image enhancement is explicitly enabled."""
+    """Return MarkItDown vision options when image enhancement is explicitly enabled.
+
+    OpenAI 协议直接用 OpenAI 客户端；Anthropic 协议用兼容适配器，对上
+    MarkItDown / PDF 整页描述所需的 ``chat.completions.create`` 接口。
+    """
     if not getattr(material, "ocr_enhance", False):
         return None, None
     vision_model = getattr(material.knowledge_base, "vision_model", None)
     if not vision_model:
         return None, None
-    if getattr(vision_model, "protocol_type", "openai") != "openai":
-        logger.warning("material %s vision_model=%s 非 OpenAI 兼容协议,跳过图片增强", material.id, vision_model.id)
+    protocol = getattr(vision_model, "protocol_type", "openai") or "openai"
+    if protocol not in _SUPPORTED_VISION_PROTOCOLS:
+        logger.warning(
+            "material %s vision_model=%s 协议=%s 不支持图片增强,跳过",
+            material.id,
+            vision_model.id,
+            protocol,
+        )
         return None, None
     try:
-        client = OpenAI(base_url=vision_model.openai_api_base, api_key=vision_model.openai_api_key)
+        if protocol == "anthropic":
+            client = build_anthropic_vision_client(
+                api_base=vision_model.openai_api_base,
+                api_key=vision_model.openai_api_key,
+                vendor_type=_vision_vendor_type(vision_model),
+            )
+        else:
+            client = OpenAI(base_url=vision_model.openai_api_base, api_key=vision_model.openai_api_key)
     except Exception:
         logger.exception("material %s 图片增强客户端初始化失败 vision_model=%s", material.id, vision_model.id)
         return None, None
@@ -89,6 +110,30 @@ def _extract_file_markdown(material):
         return ""
     try:
         vision_client, vision_model = _vision_options(material)
+        # PDF：按页 MarkItDown；碎表/转换失败页整页出图（需重新 ingest 才对存量生效）
+        if _file_extension(name) == ".pdf":
+            logger.info(
+                "material %s PDF extract via hybrid filename=%s bytes=%s ocr_enhance=%s",
+                material.id,
+                name,
+                len(data),
+                bool(getattr(material, "ocr_enhance", False)),
+            )
+            describe_page = None
+            if vision_client is not None and vision_model:
+
+                def _describe_page(png_bytes, page_number, _client=vision_client, _model=vision_model):
+                    return describe_page_with_vision(_client, _model, png_bytes, page_number)
+
+                describe_page = _describe_page
+
+            return convert_pdf_hybrid(
+                material,
+                data,
+                vision_client=vision_client,
+                vision_model=vision_model,
+                describe_page=describe_page,
+            )
         return get_parser().parse_file(data, name, **_vision_parser_kwargs(vision_client, vision_model))
     except Exception:
         logger.exception("material %s 文件解析失败", material.id)
@@ -177,7 +222,7 @@ def delete_parsed_markdown(locator):
         return False
 
 
-def load_parsed_markdown(material):
+def load_parsed_markdown(material, *, for_display=False):
     version = material.current_version or material.versions.order_by("-id").first()
     if not version or not version.content_locator:
         return ""
@@ -188,54 +233,24 @@ def load_parsed_markdown(material):
         logger.exception("material %s 解析产物读取失败", material.id)
         return ""
     if isinstance(data, bytes):
-        return data.decode("utf-8", errors="ignore")
-    return data or ""
+        text = data.decode("utf-8", errors="ignore")
+    else:
+        text = data or ""
+    if for_display:
+        return rewrite_media_urls_for_display(text)
+    return text
 
 
-def _invoke_summary_llm(llm, prompt):
-    request = BasicLLMRequest(
-        openai_api_base=llm.openai_api_base,
-        openai_api_key=llm.openai_api_key,
-        model=llm.model_name,
-        temperature=0.3,
-        user_message=prompt,
-    )
-    return LLMClientFactory.invoke_isolated(request, [{"role": "user", "content": prompt}]) or ""
+def _llm_summarize(text, llm_model_id=None):
+    """Return a deterministic ingest summary without spending LLM budget.
 
+    Knowledge construction owns the per-material LLM budget and performs its
+    bounded map/reduce there.  Ingest must not consume hidden calls before that
+    budget exists.
+    """
 
-def _llm_summarize(text, llm_model_id):
-    """调用 LLM 生成资料全文摘要;无模型或失败时回退为截断文本。"""
-    snippet = (text or "").strip()
-    if not snippet:
-        return ""
-    if not llm_model_id:
-        return snippet[:500]
-    try:
-        llm = LLMModel.objects.get(id=llm_model_id)
-        chunks = split_text_for_llm(snippet)
-        summaries = []
-        for idx, chunk in enumerate(chunks, start=1):
-            prompt = (
-                "请用简洁中文为下面的资料片段生成摘要,保留关键事实、概念与结论,"
-                "作为后续知识构建的上下文。\n"
-                "注意:这是同一份资料的分块处理,不得因为只看到当前片段就判断全文结束。\n\n"
-                f"# 资料片段 {idx}/{len(chunks)}\n{chunk}\n"
-            )
-            content = _invoke_summary_llm(llm, prompt).strip()
-            if content:
-                summaries.append(content)
-        if not summaries:
-            return snippet[:500]
-        if len(summaries) == 1:
-            return summaries[0]
-
-        merged = "\n".join(f"{idx}. {summary}" for idx, summary in enumerate(summaries, start=1))
-        prompt = "请基于下面的分片摘要生成整份资料的总摘要,去重合并相同信息," "保留贯穿全文的关键事实、概念、结论和重要尾部信息。\n\n" f"# 分片摘要\n{merged}\n"
-        content = _invoke_summary_llm(llm, prompt).strip()
-        return content or merged[:2000]
-    except Exception:
-        logger.exception("material 摘要生成失败,回退为截断文本")
-        return snippet[:500]
+    del llm_model_id
+    return str(text or "").strip()[:2000]
 
 
 def _ingest_failure_reason(material):
@@ -263,17 +278,38 @@ def _ingest_failure_reason(material):
 
 def ingest_material(material, llm_model_id=None):
     """解析资料 + 生成摘要 + 更新状态。返回更新后的 material。"""
+    logger.info(
+        "material %s ingest start type=%s name=%s ocr_enhance=%s prev_hash=%s",
+        material.id,
+        getattr(material, "material_type", None),
+        getattr(material, "name", None),
+        bool(getattr(material, "ocr_enhance", False)),
+        (getattr(material, "content_hash", None) or "")[:12],
+    )
     markdown = extract_markdown(material)
     if not markdown:
-        material.status = "failed"
+        material.status = "parse_failed"
         material.error_message = _ingest_failure_reason(material)
         material.save(update_fields=["status", "error_message", "updated_at"])
+        logger.warning(
+            "material %s ingest parse_failed reason=%s",
+            material.id,
+            material.error_message,
+        )
         return material
+    # data URI → MinIO wiki/media，MD 引用稳定路径（对齐 llm_wiki 落盘图）
+    markdown = persist_embedded_images(material, markdown)
     digest = compute_hash(markdown)
     if material.content_hash == digest:
         material.status = "done"
         material.error_message = ""
         material.save(update_fields=["status", "error_message", "updated_at"])
+        logger.info(
+            "material %s ingest unchanged hash=%s chars=%s (no new version)",
+            material.id,
+            digest[:12],
+            len(markdown),
+        )
         return material
     locator = save_parsed_markdown(material, markdown, digest)
     version = MaterialVersion.objects.create(material=material, content_locator=locator, content_hash=digest)
@@ -283,4 +319,13 @@ def ingest_material(material, llm_model_id=None):
     material.status = "done"
     material.error_message = ""
     material.save(update_fields=["current_version", "content_hash", "ai_summary", "status", "error_message", "updated_at"])
+    logger.info(
+        "material %s ingest done version=%s hash=%s chars=%s has_module_table=%s has_step_table=%s",
+        material.id,
+        version.id,
+        digest[:12],
+        len(markdown),
+        "| 模块 | 功能 |" in markdown,
+        "| 步骤 | 名称 | 说明 |" in markdown,
+    )
     return material

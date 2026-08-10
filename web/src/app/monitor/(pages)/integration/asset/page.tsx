@@ -8,12 +8,14 @@ import {
   Tag,
   Popconfirm,
   Space,
-  Tooltip
+  Tooltip,
+  Modal
 } from 'antd';
 import useApiClient from '@/utils/request';
 import { useSearchParams, useRouter } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
+import { findByMonitorId, sameMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import assetStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -87,14 +89,19 @@ const Asset = () => {
   const [searchText, setSearchText] = useState<string>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>(
-    urlObjId ? Number(urlObjId) : ''
+    urlObjId ? toMonitorIdString(urlObjId) : ''
   );
   const [objectId, setObjectId] = useState<React.Key>('');
   const [frequence, setFrequence] = useState<number>(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [modal, modalContextHolder] = Modal.useModal();
 
   const handleAssetMenuClick: MenuProps['onClick'] = (e) => {
+    if (e.key === 'batchDelete') {
+      showBatchDeleteConfirm();
+      return;
+    }
     openInstanceModal(
       {
         keys: selectedRowKeys
@@ -116,7 +123,7 @@ const Asset = () => {
       instanceName: record.instance_name,
       instanceId: record.instance_id,
       selectedConfigId: options?.selectedConfigId,
-      objName: objects.find((item) => item.id === objectId)?.name || '',
+      objName: findByMonitorId(objects, objectId)?.name || '',
       monitorObjId: objectId,
       plugins: record.plugins || [],
       showTemplateList: options?.showTemplateList ?? true
@@ -125,6 +132,22 @@ const Asset = () => {
 
   const columns = useMemo(() => {
     const columnItems: ColumnItem[] = [
+      {
+        title: t('monitor.views.nodeId'),
+        dataIndex: 'node_id',
+        key: 'node_id',
+        width: 180,
+        ellipsis: true,
+        render: (_, record: any) => <>{record.node_id || '--'}</>,
+      },
+      {
+        title: t('monitor.views.cmdbId'),
+        dataIndex: 'cmdb_id',
+        key: 'cmdb_id',
+        width: 120,
+        ellipsis: true,
+        render: (_, record: any) => <>{record.cmdb_id || '--'}</>,
+      },
       {
         title: t('monitor.integrations.collectionTemplate'),
         dataIndex: 'plugins',
@@ -272,7 +295,7 @@ const Asset = () => {
         )
       }
     ];
-    const row = objects.find((item) => item.id === objectId) || {};
+    const row = findByMonitorId(objects, objectId) || {};
     return [
       ...getBaseInstanceColumn({
         objects,
@@ -353,6 +376,7 @@ const Asset = () => {
   const handleObjectChange = (id: string) => {
     cancelAllRequests();
     setTableData([]);
+    setSelectedRowKeys([]);
     setObjectId(id);
   };
 
@@ -366,7 +390,7 @@ const Asset = () => {
 
   const checkDetail = (row: ObjectInstItem) => {
     const monitorItem = objects.find(
-      (item: ObjectItem) => item.id === objectId
+      (item: ObjectItem) => sameMonitorId(item.id, objectId)
     );
     const url = buildAssetViewUrl({
       objectId: objectId || '',
@@ -374,7 +398,7 @@ const Asset = () => {
       row,
       resolveProfessionalDashboardUrl: getProfessionalDashboardUrl
     });
-    window.open(url, '_blank', 'noopener,noreferrer');
+    router.push(url);
   };
 
   const handleTableChange = (pagination: any) => {
@@ -392,7 +416,7 @@ const Asset = () => {
         page: pagination.current,
         page_size: pagination.pageSize,
         name: type === 'clear' ? '' : searchText,
-        id: objectId
+        id: String(objectId)
       };
       const data = await getInstanceListByPrimaryObject(params, {
         signal: abortController.signal
@@ -421,7 +445,7 @@ const Asset = () => {
       setObjects(data);
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
-      const defaultKey = defaultSelectObj || data[0]?.id || '';
+      const defaultKey = toMonitorIdString(defaultSelectObj || data[0]?.id || '');
       if (defaultKey) {
         setDefaultSelectObj(defaultKey);
       }
@@ -444,7 +468,7 @@ const Asset = () => {
           acc[item.type].children.push({
             title: item.display_name || '--',
             label: item.name || '--',
-            key: item.id,
+            key: toMonitorIdString(item.id),
             icon: item.icon,
             count: item.instance_count ?? 0,
             children: []
@@ -466,11 +490,70 @@ const Asset = () => {
       };
       await deleteMonitorInstance(data);
       message.success(t('common.successfullyDeleted'));
-      getObjects();
-      getAssetInsts(objectId);
+      setSelectedRowKeys((keys) =>
+        keys.filter((key) => key !== row.instance_id)
+      );
+      await refreshAfterDeletionSafely(1);
     } finally {
       setConfirmLoading(false);
     }
+  };
+
+  const refreshAfterDeletion = async (deletedCount: number) => {
+    const remainingTotal = Math.max(0, pagination.total - deletedCount);
+    const lastPage = Math.max(1, Math.ceil(remainingTotal / pagination.pageSize));
+    const targetPage = Math.min(pagination.current, lastPage);
+
+    setPagination((prev) => ({
+      ...prev,
+      current: targetPage,
+      total: remainingTotal
+    }));
+
+    if (targetPage === pagination.current) {
+      await Promise.all([getObjects(), getAssetInsts(objectId)]);
+      return;
+    }
+    await getObjects();
+  };
+
+  const refreshAfterDeletionSafely = async (deletedCount: number) => {
+    try {
+      await refreshAfterDeletion(deletedCount);
+    } catch {
+      message.warning(
+        `${t('common.successfullyDeleted')} ${t('common.fetchFailed')}`
+      );
+    }
+  };
+
+  const batchDeleteInstConfirm = async () => {
+    const instanceIds = [...selectedRowKeys];
+    const data = {
+      instance_ids: instanceIds,
+      clean_child_config: true
+    };
+    await deleteMonitorInstance(data);
+    setSelectedRowKeys([]);
+    message.success(t('common.successfullyDeleted'));
+    await refreshAfterDeletionSafely(instanceIds.length);
+  };
+
+  const showBatchDeleteConfirm = () => {
+    const selectedCount = selectedRowKeys.length;
+    if (!selectedCount) return;
+
+    modal.confirm({
+      title: t('common.batchDelete'),
+      content: `${t('common.selected')} ${selectedCount} ${t(
+        'common.items'
+      )} · ${t('common.deleteContent')}`,
+      centered: true,
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
+      onOk: batchDeleteInstConfirm
+    });
   };
 
   const clearText = () => {
@@ -480,7 +563,7 @@ const Asset = () => {
 
   // 跳转到集成列表页面进行接入
   const goToIntegration = () => {
-    const targetUrl = `/monitor/integration/list?objId=${objectId}`;
+    const targetUrl = `/monitor/integration/list?objId=${String(objectId)}`;
     router.push(targetUrl);
   };
 
@@ -503,6 +586,7 @@ const Asset = () => {
 
   return (
     <div className={assetStyle.asset}>
+      {modalContextHolder}
       <ResizableSidebar collapseStorageKey="monitor.integration.asset.sidebarCollapsed">
         <div className={assetStyle.tree}>
           <TreeSelector

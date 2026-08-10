@@ -23,7 +23,7 @@ def log_operation(request, action_type, app, summary):
         client_ip, _ = get_client_ip(request)
         operation_log = OperationLog.objects.create(
             username=request.user.username,
-            source_ip=client_ip or "unknown",
+            source_ip=client_ip or "0.0.0.0",
             app=app,
             action_type=action_type,
             summary=summary,

@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 import OperateModal from './components/operateModal';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
-import Introduction from '@/app/alarm/components/introduction';
+import Introduction from '@/components/introduction';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { AlertShieldListItem } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';
@@ -176,7 +176,7 @@ const ShieldStrategy: React.FC = () => {
           dataSource={dataList}
           pagination={pagination}
           onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 440px)' }}
+          scroll={{ y: 'calc(100vh - 460px)' }}
         />
         <OperateModal
           open={operateVisible}

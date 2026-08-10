@@ -23,6 +23,8 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
 
         Query Parameters:
             query (str): PromQL 查询语句
+            time (int): 求值时刻（毫秒时间戳）；未传时回退 end，再回退为 VM 当前时间
+            end (int): 与 time 相同语义的回退参数（毫秒），便于与 range 查询共用 search params
             source_unit (str): 初始单位（必填），如 'B', 'bytes', 'ms', 's' 等
             unit (str): 指定目标单位，若提供则直接转换到该单位，不使用自动推荐
             auto_convert_unit (bool): 是否自动转换单位，默认 True（仅在未指定 unit 时生效）
@@ -31,11 +33,21 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         source_unit = request.GET.get("source_unit")
         target_unit = request.GET.get("unit")
         auto_convert = request.GET.get("auto_convert_unit", "true").lower() == "true"
+        time_ms = request.GET.get("time")
+        if time_ms is None:
+            time_ms = request.GET.get("end")
 
         if not query:
             raise BaseAppException("query is required")
 
-        data = MetricsService.get_metrics(query)
+        eval_time_sec = None
+        if time_ms is not None:
+            try:
+                eval_time_sec = int(time_ms) / 1000.0
+            except (TypeError, ValueError):
+                raise BaseAppException("time must be an integer timestamp in milliseconds")
+
+        data = MetricsService.get_metrics(query, time=eval_time_sec)
 
         if source_unit:
             if target_unit:
@@ -70,6 +82,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         auto_convert = request.GET.get("auto_convert_unit", "true").lower() == "true"
         detect_gaps = request.GET.get("detect_gaps", "false").lower() == "true"
         collection_interval = request.GET.get("collection_interval")
+        query_budget = request.GET.get("query_budget")
 
         if not query:
             raise BaseAppException("query is required")
@@ -101,6 +114,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             step,
             detect_gaps=detect_gaps,
             collection_interval_seconds=collection_interval,
+            card_budget=query_budget == "card",
         )
 
         if source_unit:
@@ -306,14 +320,43 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
 
         effective_instance_id_keys = MetricsService.get_effective_metric_instance_id_keys(metric)
 
+        series_limit = request.GET.get("limit")
+        series_mode = request.GET.get("mode")
+        # 列表维度预览与指标卡共用通用序列预算；不读 per-metric view_config。
+        if series_limit is None and metric.dimensions:
+            series_limit = MetricsService.CARD_QUERY_MAX_SERIES
+            series_mode = series_mode or "limited"
+
+        preview_limit = None
+        try:
+            preview_limit = int(series_limit) if series_limit is not None else None
+        except (TypeError, ValueError):
+            preview_limit = None
+
+        # 多取 1 条用于判断是否截断。
+        fetch_limit = preview_limit + 1 if preview_limit and preview_limit > 0 else series_limit
+
         data = MetricsService.query_metric_by_instance(
             metric_query=metric.query,
             instance_id=instance_id,
             instance_id_keys=effective_instance_id_keys,
             dimensions=metric.dimensions,
+            series_limit=fetch_limit,
+            series_mode=series_mode or "limited",
         )
 
         if auto_convert and metric.unit:
             data = self._apply_unit_conversion(data, metric.unit)
+
+        if preview_limit and preview_limit > 0:
+            result = (data.get("data") or {}).get("result") or []
+            truncated = len(result) > preview_limit
+            if truncated:
+                data.setdefault("data", {})["result"] = result[:preview_limit]
+            data.setdefault("data", {})["series_budget"] = {
+                "truncated": truncated,
+                "limit": preview_limit,
+                "applied": True,
+            }
 
         return WebUtils.response_success(data)

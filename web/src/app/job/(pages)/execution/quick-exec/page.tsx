@@ -19,9 +19,10 @@ import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
 import { Script, Playbook, ScriptParam } from '@/app/job/types';
-import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import ScriptEditor from '@/app/job/components/script-editor';
+import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
 import Password from '@/components/password';
 
 type ContentSource = 'template' | 'manual';
@@ -66,6 +67,7 @@ const QuickExecPage = () => {
   const { isLoading: isApiReady } = useApiClient();
   const { getScriptList, getScriptDetail, getPlaybookList, getPlaybookDetail, quickExecute, playbookExecute, getEnabledDangerousRules } = useJobApi();
   const [form] = Form.useForm();
+  const [defaultJobName] = useState(() => createDefaultExecutionName(t('job.quickExec')));
 
   const defaultScriptContent: Record<ScriptLang, string> = {
     shell: t('job.scriptTemplateShell'),
@@ -547,7 +549,7 @@ const QuickExecPage = () => {
           form={form}
           layout="vertical"
           className="w-full"
-          initialValues={{ timeout: '600', scriptContent: defaultScriptContent }}
+          initialValues={{ jobName: defaultJobName, timeout: '600', scriptContent: defaultScriptContent }}
         >
 
           <Form.Item
@@ -724,6 +726,7 @@ const QuickExecPage = () => {
       <HostSelectionModal
         open={hostModalOpen}
         selectedKeys={selectedHostKeys}
+        selectedHosts={selectedHosts}
         source={targetSource}
         onConfirm={handleHostConfirm}
         onCancel={() => setHostModalOpen(false)}

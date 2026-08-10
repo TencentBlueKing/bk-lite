@@ -23,7 +23,7 @@ import type {
   TableColumnConfigItem,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { DisplayColumnRow } from '../utils/columnProbing';
-import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { ActionInteractionModal } from './actionInteractionModal';
 
 type FilterFieldRow = TableFilterFieldConfig & { id: string };

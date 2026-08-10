@@ -37,9 +37,25 @@ const useNodeApi = () => {
     return await post(url, bodyParams);
   };
 
-  // 删除节点
-  const delNode = async (id: React.Key) => {
-    return await del(`/node_mgmt/api/node/${id}/`);
+  // 删除节点；retire_linked=true 时一并退役已关联 CMDB/监控对象
+  const delNode = async (
+    id: React.Key,
+    options?: { retire_linked?: boolean }
+  ) => {
+    const query = options?.retire_linked
+      ? '?retire_linked=true'
+      : '';
+    return await del(`/node_mgmt/api/node/${String(id)}/${query}`);
+  };
+
+  // 详情补推 / 重新同步（无级联，仅推送列出的 targets）
+  const modulePush = async (
+    id: React.Key,
+    targets: Array<'cmdb' | 'monitor'>
+  ) => {
+    return await post(`/node_mgmt/api/node/${String(id)}/module_push/`, {
+      targets
+    });
   };
 
   // 获取节点管理的状态枚举值
@@ -128,7 +144,7 @@ const useNodeApi = () => {
   // 更新节点名称和组织
   const updateNode = async (data: NodeParams) => {
     const { id, ...remain } = data;
-    return await patch(`/node_mgmt/api/node/${id}/update/`, remain);
+    return await patch(`/node_mgmt/api/node/${String(id)}/update/`, remain);
   };
 
   // 批量操作节点的采集器（启动、停止、重启）
@@ -143,6 +159,7 @@ const useNodeApi = () => {
   return {
     getNodeList,
     delNode,
+    modulePush,
     getNodeStateEnum,
     getPackages,
     uninstallController,

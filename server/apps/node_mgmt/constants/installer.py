@@ -5,6 +5,10 @@ def _installer_filename(target_os: str) -> str:
     return "bklite-controller-installer.exe" if target_os == "windows" else "bklite-controller-installer"
 
 
+def _bootstrap_filename(target_os: str) -> str:
+    return "bklite-controller-bootstrap.exe" if target_os == "windows" else _installer_filename(target_os)
+
+
 def _installer_alias_path(target_os: str, architecture: str = "generic") -> str:
     return f"installer/{target_os}/{architecture}/{_installer_filename(target_os)}"
 
@@ -12,9 +16,14 @@ def _installer_alias_path(target_os: str, architecture: str = "generic") -> str:
 class InstallerConstants:
     REQUEST_TIMEOUT = 30
     CONTROLLER_INSTALL_MAX_PARALLEL = 3
+    CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS = int(
+        os.getenv("CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS", "300")
+    )
 
     EXECUTION_PHASE_KEY = "execution_phase"
     EXECUTION_ATTEMPT_KEY = "execution_attempt"
+    EXECUTION_DEADLINE_UNIX_KEY = "execution_deadline_unix"
+    INSTALLER_EXECUTION_ID_KEY = "installer_execution_id"
     INSTALL_NODE_ID_KEY = "install_node_id"
     EXECUTION_PHASE_BOOTSTRAP_RUNNING = "bootstrap_running"
     EXECUTION_PHASE_CONNECTIVITY_WAITING = "connectivity_waiting"
@@ -42,6 +51,7 @@ class InstallerConstants:
 
     INSTALLER_EVENT_STEP_MAP = {
         "fetch_session": "fetch_session",
+        "clock_check": "clock_check",
         "prepare_directories": "prepare_dirs",
         "download_package": "download",
         "extract_package": "extract",
@@ -50,8 +60,19 @@ class InstallerConstants:
         "complete": "install_complete",
     }
 
+    LEGACY_INSTALLER_STEP_SEQUENCE = [
+        "fetch_session",
+        "prepare_dirs",
+        "download",
+        "extract",
+        "write_config",
+        "install",
+        "install_complete",
+    ]
+
     INSTALLER_STEP_SEQUENCE = [
         "fetch_session",
+        "clock_check",
         "prepare_dirs",
         "download",
         "extract",
@@ -95,6 +116,7 @@ class InstallerConstants:
     DEFAULT_INSTALLER_VERSION = os.getenv("INSTALLER_DEFAULT_VERSION", "latest")
 
     WINDOWS_INSTALLER_FILENAME = _installer_filename("windows")
+    WINDOWS_BOOTSTRAP_FILENAME = _bootstrap_filename("windows")
     LINUX_INSTALLER_FILENAME = _installer_filename("linux")
 
     WINDOWS_INSTALL_DEFAULT_DIR = r"C:\fusion-collectors"
@@ -110,6 +132,10 @@ class InstallerConstants:
     def build_latest_alias_path(cls, target_os: str, architecture: str = "generic") -> str:
         filename = cls.WINDOWS_INSTALLER_FILENAME if target_os == "windows" else cls.LINUX_INSTALLER_FILENAME
         return f"installer/{target_os}/{architecture}/{filename}"
+
+    @classmethod
+    def build_latest_bootstrap_path(cls, target_os: str, architecture: str = "generic") -> str:
+        return f"installer/{target_os}/{architecture}/{_bootstrap_filename(target_os)}"
 
     WINDOWS_INSTALLER_S3_PATH = _installer_alias_path("windows")
     LINUX_INSTALLER_S3_PATH = _installer_alias_path("linux")

@@ -91,14 +91,27 @@ YAML_MAX_SIZE_BYTES = 2 * 1024 * 1024  # 2MB
 # 单次导入最大对象数量限制，超过此限制将拒绝导入
 IMPORT_OBJECT_LIMIT = 200
 
-# YAML schema版本号，用于版本兼容性检查
-YAML_SCHEMA_VERSION = "1.1.0"
+# YAML schema版本号，用于版本兼容性检查。1.2.0 增加数据源连接器配置；
+# 导入端继续接受 1.1.0，使存量 NATS YAML 可以迁移到新版本。
+YAML_SCHEMA_VERSION = "1.2.0"
+YAML_SUPPORTED_SCHEMA_VERSIONS = frozenset({"1.1.0", YAML_SCHEMA_VERSION})
 
 
 # ===== 敏感字段配置 =====
 # 需要脱敏处理的敏感字段名列表
 # 导出时这些字段将被替换为脱敏占位符，导入时需补充实际值
 SENSITIVE_FIELDS = frozenset({"password", "secret", "token"})
+
+# 连接器配置允许嵌套自定义 headers/body，敏感键不一定是固定字段名。
+# 与数据源 API 的脱敏口径保持一致，避免 Authorization、api_key 等配置随 YAML 导出。
+SENSITIVE_FIELD_KEYWORDS = ("password", "token", "secret", "authorization", "apikey")
+
+
+def is_sensitive_field_name(field: object) -> bool:
+    # Header/config keys commonly use mixed separators (for example X-API-Key).
+    # Strip separators before matching so these variants share one contract.
+    normalized = "".join(char for char in str(field).lower() if char.isalnum())
+    return any(keyword in normalized for keyword in SENSITIVE_FIELD_KEYWORDS)
 
 # 敏感字段脱敏后的占位符值
 SENSITIVE_PLACEHOLDER = "******"

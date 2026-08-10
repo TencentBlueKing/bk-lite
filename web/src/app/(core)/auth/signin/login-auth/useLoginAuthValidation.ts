@@ -31,6 +31,7 @@ interface LoginAuthValidationMessages {
 interface UseLoginAuthValidationOptions {
   enabled: boolean;
   callbackUrl: string;
+  legacyThirdLoginCode?: string;
   onOtpRequired: (loginResult: LoginAuthLoginResult) => void;
   messages: LoginAuthValidationMessages;
   onSessionSync: (loginResult: LoginAuthLoginResult) => Promise<boolean>;
@@ -53,6 +54,7 @@ function isTokenReadyResult(loginResult?: LoginAuthLoginResult): boolean {
 export function useLoginAuthValidation({
   enabled,
   callbackUrl,
+  legacyThirdLoginCode,
   messages,
   onOtpRequired,
   onSessionSync,
@@ -261,6 +263,12 @@ export function useLoginAuthValidation({
           binding_id: binding.id,
           callback_url: safeCallbackUrl,
           redirect_origin: window.location.origin,
+          ...(legacyThirdLoginCode
+            ? {
+              legacy_external_callback_url: callbackUrl,
+              legacy_third_login_code: legacyThirdLoginCode,
+            }
+            : {}),
         }),
       });
       const responseData = await response.json();

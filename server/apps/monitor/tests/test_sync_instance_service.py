@@ -5,14 +5,17 @@
 """
 
 from types import SimpleNamespace
+from datetime import timedelta
 
 import pytest
+from django.utils import timezone
 
 from apps.monitor.models.monitor_object import (
     MonitorObject,
     MonitorInstance,
     MonitorInstanceOrganization,
 )
+from apps.monitor.models.monitor_policy import MonitorAlert
 from apps.monitor.tasks.services.sync_instance import SyncInstance
 
 pytestmark = pytest.mark.django_db
@@ -99,19 +102,27 @@ class TestSyncMonitorInstances:
 
     def test_marks_missing_instance_inactive(self, mocker):
         obj = _make_obj()
-        MonitorInstance.objects.create(
+        instance = MonitorInstance.objects.create(
             id="('gone',)", name="gone", monitor_object=obj, auto=True,
             is_deleted=False, is_active=True,
+        )
+        alert = MonitorAlert.objects.create(
+            policy_id=0,
+            monitor_instance_id=instance.id,
+            metric_instance_id="('gone', 'status')",
+            alert_type="no_data",
+            status="new",
         )
         vm = mocker.patch("apps.monitor.tasks.services.sync_instance.VictoriaMetricsAPI")
         vm.return_value.query.return_value = _vm_result()  # VM 中无任何实例
         SyncInstance().run()
         inst = MonitorInstance.objects.get(id="('gone',)")
+        alert.refresh_from_db()
         assert inst.is_active is False
+        assert alert.status == "new"
 
-    def test_deletes_continuous_inactive(self, mocker):
+    def test_no_cleanup_keeps_continuous_inactive(self, mocker):
         obj = _make_obj()
-        # 已经 is_active=False（上周期不活跃），本周期 VM 仍无 → 连续两周期 → 物理删除
         MonitorInstance.objects.create(
             id="('dead',)", name="dead", monitor_object=obj, auto=True,
             is_deleted=False, is_active=False,
@@ -119,4 +130,51 @@ class TestSyncMonitorInstances:
         vm = mocker.patch("apps.monitor.tasks.services.sync_instance.VictoriaMetricsAPI")
         vm.return_value.query.return_value = _vm_result()
         SyncInstance().run()
+        assert MonitorInstance.objects.filter(id="('dead',)", is_active=False).exists()
+
+    def test_timeout_cleanup_deletes_after_confirmed_missing_duration(self, mocker):
+        obj = _make_obj()
+        obj.cleanup_policy = MonitorObject.CLEANUP_POLICY_TIMEOUT
+        obj.cleanup_timeout_days = 1
+        obj.last_discovery_success_at = timezone.now() - timedelta(minutes=10)
+        obj.save()
+        instance = MonitorInstance.objects.create(
+            id="('dead',)", name="dead", monitor_object=obj, auto=True,
+            is_deleted=False, is_active=False, missing_duration_seconds=24 * 60 * 60 - 600,
+        )
+        alert = MonitorAlert.objects.create(
+            policy_id=0,
+            monitor_instance_id=instance.id,
+            metric_instance_id="('dead', 'status')",
+            alert_type="no_data",
+            status="new",
+        )
+        vm = mocker.patch("apps.monitor.tasks.services.sync_instance.VictoriaMetricsAPI")
+        vm.return_value.query.return_value = _vm_result()
+
+        SyncInstance().run()
+
         assert not MonitorInstance.objects.filter(id="('dead',)").exists()
+        alert.refresh_from_db()
+        assert alert.status == "closed"
+        assert alert.operation_logs[-1]["reason"] == "auto_cleanup_instance_deleted"
+
+    def test_failed_query_does_not_advance_or_delete(self, mocker):
+        obj = _make_obj()
+        obj.cleanup_policy = MonitorObject.CLEANUP_POLICY_TIMEOUT
+        obj.cleanup_timeout_days = 1
+        obj.last_discovery_success_at = timezone.now() - timedelta(days=2)
+        obj.save()
+        MonitorInstance.objects.create(
+            id="('kept',)", name="kept", monitor_object=obj, auto=True,
+            is_deleted=False, is_active=False, missing_duration_seconds=24 * 60 * 60 - 1,
+        )
+        vm = mocker.patch("apps.monitor.tasks.services.sync_instance.VictoriaMetricsAPI")
+        vm.return_value.query.side_effect = RuntimeError("VM unavailable")
+
+        SyncInstance().run()
+
+        instance = MonitorInstance.objects.get(id="('kept',)")
+        obj.refresh_from_db()
+        assert instance.missing_duration_seconds == 24 * 60 * 60 - 1
+        assert obj.last_discovery_success_at < timezone.now() - timedelta(days=1)

@@ -1,8 +1,11 @@
+import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
+
 export type ChartType =
   | 'line'
   | 'bar'
   | 'pie'
   | 'single'
+  | 'multiValue'
   | 'table'
   | 'eventTable'
   | 'topN'
@@ -51,7 +54,8 @@ export interface DatasourceItem {
   updated_by_domain: string;
   name: string;
   source_type?: DataSourceSourceType;
-  rest_api: string;
+  /** 普通列表接口返回；分享元数据刻意不返回，避免暴露内部执行路径 */
+  rest_api?: string;
   connection_config?: Record<string, any>;
   query_config?: Record<string, any>;
   desc: string;
@@ -63,10 +67,11 @@ export interface DatasourceItem {
     id: number;
     name: string;
   }>;
-  tag: number[];
+  tag?: number[];
   groups?: number[];
   hasAuth?: boolean;
   field_schema?: ResponseFieldDefinition[];
+  is_build_in?: boolean;
 }
 
 export interface DataSourcePreviewResult {
@@ -77,11 +82,16 @@ export interface DataSourcePreviewResult {
 
 export interface OperateModalProps {
   open: boolean;
+  mode: 'add' | 'edit' | 'view';
   currentRow?: DatasourceItem;
   onClose: () => void;
   onSuccess?: () => void;
 }
 
+export type DataSourceParamFilterType =
+  | 'filter'
+  | 'fixed'
+  | 'params';
 export interface InputOption {
   label: string;
   value: string | number;
@@ -94,35 +104,36 @@ export interface RestApiSourceRef {
 
 export type SourceRef = RestApiSourceRef;
 
-export type StaticOptionsSource = {
+export interface StaticOptionsSource {
   type: 'static';
   staticItems: InputOption[];
-};
+}
 
-export type DynamicOptionsSource = {
+export interface DynamicOptionsSource {
   type: 'dynamic';
   sourceId?: number;
   sourceRef?: SourceRef;
   valueField: string;
   labelField: string;
-};
+}
 
 export type InputControlConfig =
   | {
-      control: 'input';
-    }
+    control: 'input';
+  }
   | {
-      control: 'select' | 'radio';
-      optionsSource: StaticOptionsSource | DynamicOptionsSource;
-    };
+    control: 'select' | 'radio';
+    optionsSource: StaticOptionsSource | DynamicOptionsSource;
+    componentSwitch?: boolean;
+  };
 
 export interface ParamItem {
   id?: string;
   name: string;
-  value: string | number | boolean | [number, number] | null;
+  value: string | number | boolean | [number, number] | DateRangeValue | null | undefined;
   alias_name: string;
   type?: string;
-  filterType?: string;
+  filterType?: DataSourceParamFilterType;
   desc?: string;
   required?: boolean;
   /**

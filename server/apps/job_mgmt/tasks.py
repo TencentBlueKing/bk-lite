@@ -1,24 +1,30 @@
 """作业执行 Celery 任务入口"""
 
+from datetime import timedelta
+from uuid import uuid4
+
 from asgiref.sync import async_to_sync
 from celery import current_app, shared_task
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
 from apps.core.utils.safe_requests import safe_post
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
-from apps.job_mgmt.config import SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN
+from apps.job_mgmt.config import (
+    CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS,
+    DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE,
+    DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY,
+    SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN,
+)
 from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
-from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
-from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 from apps.job_mgmt.utils.callback_signer import get_signed_headers
-from apps.node_mgmt.utils.s3 import delete_s3_file
+from apps.node_mgmt.utils.s3 import delete_s3_files
 
 
 @shared_task(max_retries=0)
@@ -41,43 +47,94 @@ def execute_playbook_task(execution_id: int):
 def finalize_cancelling_execution(execution_id: int):
     """兜底收敛：CANCELLING 滞留超时后强制收敛为 CANCELLED 终态。
 
-    CAS 仅在仍为 CANCELLING 时生效（真实结果已回写并收敛后即为 no-op）；已有结果保留，
-    对缺失结果的目标补一条"远端结果未知"的 CANCELLED 结果并发 done 哨兵关闭前端面板。
+    与真实回调争用同一执行行锁；已有结果保留，对缺失目标补一条"远端结果未知"的
+    CANCELLED 结果，并在同一事务持久化完成副作用。
     """
-    updated = JobExecution.objects.filter(id=execution_id, status=ExecutionStatus.CANCELLING).update(
-        status=ExecutionStatus.CANCELLED, finished_at=timezone.now()
-    )
-    if not updated:
-        return
-    execution = JobExecution.objects.filter(id=execution_id).first()
-    if execution is None:
-        # CAS 命中后记录被删除（防御分支）：静默返回
-        return
+    from apps.job_mgmt.services.completion_outbox_service import enqueue_terminal_effects
 
-    results = list(execution.execution_results or [])
-    have_keys = {str(r.get("target_key")) for r in results}
-    for t in execution.target_list or []:
-        tk = t.get("node_id") or str(t.get("target_id", ""))
-        if tk in have_keys:
-            continue
-        results.append(
-            {
-                "target_key": tk,
-                "name": t.get("name", ""),
-                "ip": t.get("ip", ""),
-                "status": ExecutionStatus.CANCELLED,
-                "error_message": "任务已取消，远端结果未知",
-            }
+    with transaction.atomic():
+        execution = JobExecution.objects.select_for_update().filter(id=execution_id).first()
+        if execution is None or execution.status != ExecutionStatus.CANCELLING:
+            return
+
+        results = list(execution.execution_results or [])
+        have_keys = {str(result.get("target_key")) for result in results}
+        for target in execution.target_list or []:
+            target_key = str(target.get("node_id") or target.get("target_id", ""))
+            if target_key in have_keys:
+                continue
+            results.append(
+                {
+                    "target_key": target_key,
+                    "name": target.get("name", ""),
+                    "ip": target.get("ip", ""),
+                    "status": ExecutionStatus.CANCELLED,
+                    "error_message": "任务已取消，远端结果未知",
+                }
+            )
+
+        execution.status = ExecutionStatus.CANCELLED
+        execution.terminal_source = JobExecution.TerminalSource.CANCEL_TIMEOUT
+        execution.cancel_finalize_at = None
+        execution.finished_at = timezone.now()
+        execution.execution_results = results
+        execution.success_count = sum(1 for result in results if result.get("status") == ExecutionStatus.SUCCESS)
+        execution.failed_count = sum(1 for result in results if result.get("status") in (ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT))
+        execution.save(
+            update_fields=[
+                "status",
+                "terminal_source",
+                "cancel_finalize_at",
+                "finished_at",
+                "execution_results",
+                "success_count",
+                "failed_count",
+                "updated_at",
+            ]
         )
-        publish_done_sentinel(execution_id, tk, ExecutionStatus.CANCELLED)
+        enqueue_terminal_effects(
+            execution,
+            not_before=timezone.now() + timedelta(seconds=CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS),
+        )
 
-    execution.execution_results = results
-    execution.success_count = sum(1 for r in results if r.get("status") == ExecutionStatus.SUCCESS)
-    execution.failed_count = sum(1 for r in results if r.get("status") in (ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT))
-    execution.save(update_fields=["execution_results", "success_count", "failed_count", "updated_at"])
     logger.info(f"[finalize_cancelling_execution] 取消中任务已强制收敛为 CANCELLED: execution_id={execution_id}")
-    # 超时兜底取消也是终态，补发完成通知（HTTP 回调 + 告警推送）
-    send_callback(execution)
+
+
+@shared_task(max_retries=0)
+def deliver_job_completion_outbox(record_id: int):
+    """投递一条作业完成副作用；失败状态及退避时间由数据库 outbox 记录。"""
+    from apps.job_mgmt.services.completion_outbox_service import deliver_outbox_record
+
+    return deliver_outbox_record(record_id)
+
+
+@shared_task(max_retries=0)
+def dispatch_pending_job_completion_outbox():
+    """重扫待投递副作用，并补偿 broker 入队失败的取消收敛。"""
+    from apps.job_mgmt.services.completion_outbox_service import due_outbox_ids
+
+    record_ids = due_outbox_ids()
+    for record_id in record_ids:
+        try:
+            deliver_job_completion_outbox.delay(record_id)
+        except Exception:
+            logger.exception("job completion outbox reschedule failed: outbox_id=%s", record_id)
+
+    due_execution_ids = list(
+        JobExecution.objects.filter(
+            status=ExecutionStatus.CANCELLING,
+            cancel_finalize_at__isnull=False,
+            cancel_finalize_at__lte=timezone.now(),
+        )
+        .order_by("cancel_finalize_at", "pk")
+        .values_list("pk", flat=True)[:200]
+    )
+    for execution_id in due_execution_ids:
+        try:
+            finalize_cancelling_execution.delay(execution_id)
+        except Exception:
+            logger.exception("cancelling execution reschedule failed: execution_id=%s", execution_id)
+    return {"scheduled": len(record_ids), "cancel_scheduled": len(due_execution_ids)}
 
 
 @shared_task(max_retries=0)
@@ -240,7 +297,8 @@ def execute_scheduled_task(scheduled_task_id: int):
 @shared_task(max_retries=0)
 def cleanup_expired_distribution_files_task():
     # 清理所有已到期文件（expire_at <= 当前时间）
-    expired_files = DistributionFile.objects.filter(expire_at__lte=timezone.now())
+    expire_before = timezone.now()
+    expired_files = DistributionFile.objects.filter(expire_at__lte=expire_before)
     total_count = expired_files.count()
     if total_count == 0:
         logger.info("[cleanup_expired_distribution_files_task] 没有过期文件需要清理")
@@ -248,17 +306,47 @@ def cleanup_expired_distribution_files_task():
     logger.info(f"[cleanup_expired_distribution_files_task] 开始清理 {total_count} 个过期文件")
     success_count = 0
     fail_count = 0
-    for df in expired_files:
+    cursor = None
+    while True:
+        batch_query = expired_files
+        if cursor is not None:
+            created_at, file_id = cursor
+            batch_query = batch_query.filter(Q(created_at__lt=created_at) | Q(created_at=created_at, id__lt=file_id))
+        batch = list(
+            batch_query.order_by("-created_at", "-id").values("id", "file_key", "original_name", "created_at")[:DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE]
+        )
+        if not batch:
+            break
+        cursor = batch[-1]["created_at"], batch[-1]["id"]
+
         try:
-            # 删除 S3 文件
-            async_to_sync(delete_s3_file)(df.file_key)
-            # 删除数据库记录
-            df.delete()
-            success_count += 1
-            logger.info(f"[cleanup_expired_distribution_files_task] 已删除: {df.original_name} ({df.file_key})")
-        except Exception as e:
-            fail_count += 1
-            logger.warning(f"[cleanup_expired_distribution_files_task] 删除失败: {df.file_key}, error={e}")
+            delete_results = async_to_sync(delete_s3_files)(
+                [item["file_key"] for item in batch],
+                max_concurrency=DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY,
+            )
+        except Exception as error:
+            delete_results = {item["file_key"]: error for item in batch}
+
+        successful_files = []
+        for item in batch:
+            error = delete_results.get(item["file_key"], RuntimeError("对象存储未返回删除结果"))
+            if error is None:
+                successful_files.append(item)
+            else:
+                fail_count += 1
+                logger.warning(f"[cleanup_expired_distribution_files_task] 删除失败: {item['file_key']}, error={error}")
+
+        if successful_files:
+            try:
+                DistributionFile.objects.filter(id__in=[item["id"] for item in successful_files]).delete()
+            except Exception as error:
+                fail_count += len(successful_files)
+                for item in successful_files:
+                    logger.warning(f"[cleanup_expired_distribution_files_task] 删除失败: {item['file_key']}, error={error}")
+            else:
+                success_count += len(successful_files)
+                for item in successful_files:
+                    logger.info(f"[cleanup_expired_distribution_files_task] 已删除: {item['original_name']} ({item['file_key']})")
     logger.info(f"[cleanup_expired_distribution_files_task] 清理完成: success={success_count}, fail={fail_count}")
 
 
@@ -270,23 +358,38 @@ _JOB_TYPE_TO_TASK_NAME = {
 
 
 def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
-    """通过 Celery 派发执行任务并回填 ``celery_task_id``。
+    """持久化 Celery task id 后派发执行任务。
 
-    Returns ``False`` 当作业类型未知或 broker 派发失败（broker 不可用、连接超时等）；
-    调用方应据此把执行记录置为 FAILED，避免留下 PENDING 孤立记录。
+    Returns ``False`` 当作业类型未知、执行记录不可写或 broker 派发失败；调用方应据此把
+    执行记录置为 FAILED，避免留下 PENDING 孤立记录。
     """
     task_name = _JOB_TYPE_TO_TASK_NAME.get(job_type)
     if not task_name:
         return False
 
+    celery_task_id = uuid4().hex
     try:
-        result = current_app.send_task(task_name, args=[execution_id])
+        updated = JobExecution.objects.filter(id=execution_id).update(celery_task_id=celery_task_id)
     except Exception as e:
-        logger.exception(f"[_dispatch_execution_job] Celery 派发失败: execution_id={execution_id}, job_type={job_type}, error={e}")
+        logger.exception(f"[_dispatch_execution_job] Celery 任务ID持久化失败: " f"execution_id={execution_id}, job_type={job_type}, error={e}")
+        return False
+    if not updated:
+        logger.error(f"[_dispatch_execution_job] 执行记录不存在: execution_id={execution_id}, job_type={job_type}")
         return False
 
-    if result:
-        JobExecution.objects.filter(id=execution_id).update(celery_task_id=result.id)
+    try:
+        current_app.send_task(task_name, args=[execution_id], task_id=celery_task_id)
+    except Exception as e:
+        logger.exception(f"[_dispatch_execution_job] Celery 派发失败: execution_id={execution_id}, job_type={job_type}, error={e}")
+        try:
+            # 发布异常不代表 broker 一定未接收。保留已持久化的 ID，并尽力撤销可能已入队的任务。
+            current_app.control.revoke(celery_task_id)
+        except Exception as revoke_error:
+            logger.exception(
+                f"[_dispatch_execution_job] Celery 任务撤销失败: " f"execution_id={execution_id}, task_id={celery_task_id}, error={revoke_error}"
+            )
+        return False
+
     return True
 
 
@@ -347,10 +450,11 @@ def do_callback_task(self, url: str, payload: dict, execution_id: int) -> None:
 
 @shared_task(max_retries=0)
 def do_nats_callback_task(subject: str, payload: dict, execution_id: int) -> None:
-    """nats 回调通道：把作业结果 publish 到指定 NATS 主题（fire-and-forget）。
+    """旧的非终态 nats 回调通道：用 request/reply 把作业结果投递到指定主题。
 
-    在 Celery worker（同步上下文）中执行 publish；消费方未注册接收函数时消息被 NATS 安全丢弃。
-    任何异常仅记录不抛出，避免影响 web 通道回调及作业本身。
+    在 Celery worker（同步上下文）中执行；消费方未注册或处理失败时仅记录，不影响
+    作业状态。Ansible 回调与取消兜底终态不走此 best-effort 入口，而由 completion
+    outbox 持久化重试。
     """
     try:
         from apps.job_mgmt.services.callback_service import publish_job_result_to_subject

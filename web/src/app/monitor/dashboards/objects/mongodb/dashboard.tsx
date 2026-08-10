@@ -33,13 +33,17 @@ import {
   buildInstanceSearchTokens,
   parseLegacyParamList,
   buildCollectionStatusTimeline,
+  formatCollectionStatusTimelineHint,
+  resolveCollectionStatusRange,
+  freezeTimeValues,
   toMetricSeries,
   buildMetricItem,
   mergeChartSeries,
   getCollectionStatus,
   runWithConcurrency,
   formatMetricValue,
-  useLoadSequence
+  useLoadSequence,
+  fetchDashboardInstancePages
 } from '../../shared/utils';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
@@ -135,6 +139,7 @@ export default function MongoDashboardPage() {
   const [series, setSeries] = useState<Record<string, MetricSeries>>({});
   const [previousSeries, setPreviousSeries] = useState<Record<string, MetricSeries>>({});
   const [collectionStatusMetric, setCollectionStatusMetric] = useState<MetricSeries | null>(null);
+  const [queryTimeRange, setQueryTimeRange] = useState<{ startMs: number; endMs: number } | null>(null);
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
@@ -168,10 +173,10 @@ export default function MongoDashboardPage() {
     const loadInstances = async () => {
       try {
         setInstanceLoading(true);
-        const data = await getInstanceList(monitorObjectId, { page_size: -1 });
+        const data = await fetchDashboardInstancePages(getInstanceList, monitorObjectId);
         if (!active) return;
         const uniqueOptions = new Map<string, InstanceOption>();
-        (data?.results || []).forEach((item: any) => {
+        (data.results || []).forEach((item: any) => {
           const value = String(item.instance_id || '');
           if (!value || uniqueOptions.has(value)) return;
           const label = buildInstanceDisplayName(item);
@@ -223,7 +228,7 @@ export default function MongoDashboardPage() {
   const instanceSelectValue =
     currentInstanceOption?.value || (hasReadableInstanceName && instanceId ? String(instanceId) : undefined);
 
-  const loadMetricGroup = async (metricNames: readonly string[]) => {
+  const loadMetricGroup = async (metricNames: readonly string[], targetTimeValues: TimeValuesProps = timeValues) => {
     const metrics = metricNames
       .map((name) => DASHBOARD_METRICS.find((m) => m.name === name))
       .filter((m): m is MongoMetricConfig => Boolean(m));
@@ -231,7 +236,7 @@ export default function MongoDashboardPage() {
       metrics,
       METRIC_QUERY_CONCURRENCY,
       async (metric) =>
-        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues, undefined, false, currentInstanceInterval))
+        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, undefined, false, currentInstanceInterval))
           .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
           .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
     );
@@ -243,15 +248,18 @@ export default function MongoDashboardPage() {
     if (!silent) setLoading(true);
     try {
       if (isDashboardMode) {
-        const previousTimeValues = buildPreviousPeriodTimeValues(timeValues);
+        const frozenTimeValues = freezeTimeValues(timeValues);
+        const frozenRange = resolveCollectionStatusRange(frozenTimeValues);
+        if (frozenRange) setQueryTimeRange(frozenRange);
+        const previousTimeValues = buildPreviousPeriodTimeValues(frozenTimeValues);
         const compareMetrics = DASHBOARD_METRICS.filter((metric) =>
           ['mongodb_connections_current'].includes(metric.name)
         );
 
-        const summaryResultsPromise = loadMetricGroup(MONGODB_METRIC_GROUPS[0].names);
+        const summaryResultsPromise = loadMetricGroup(MONGODB_METRIC_GROUPS[0].names, frozenTimeValues);
 
         const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(
-          buildSearchParams(MONGODB_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, undefined, false, currentInstanceInterval)
+          buildSearchParams(MONGODB_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, frozenTimeValues, undefined, false, currentInstanceInterval)
         )
           .then((result) =>
             toMetricSeries<MongoMetricConfig>(
@@ -317,7 +325,7 @@ export default function MongoDashboardPage() {
         if (!silent) setLoading(false);
 
         MONGODB_METRIC_GROUPS.slice(1).forEach((group) => {
-          loadMetricGroup(group.names).then((results) => {
+          loadMetricGroup(group.names, frozenTimeValues).then((results) => {
             if (!loadSequence.isCurrent(loadSeq)) return;
             setSeries((prev) => ({ ...prev, ...Object.fromEntries(results) }));
           });
@@ -393,7 +401,16 @@ export default function MongoDashboardPage() {
   const userAssert = getLatest('mongodb_assert_user');
 
   const collectionStatus = getCollectionStatus(collectionStatusMetric, 'MongoDB');
-  const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
+  const collectionStatusRange = queryTimeRange ?? resolveCollectionStatusRange(timeValues);
+  const collectionStatusTimeline = buildCollectionStatusTimeline(
+    collectionStatusMetric?.loadState,
+    collectionStatusMetric?.viewData,
+    collectionStatusRange?.startMs ?? Date.now() - 15 * 60_000,
+    collectionStatusRange?.endMs ?? Date.now()
+  );
+  const collectionStatusTimelineHint = collectionStatusRange
+    ? formatCollectionStatusTimelineHint(collectionStatusRange.startMs, collectionStatusRange.endMs)
+    : undefined;
 
   const connectionsDisplay = formatMetricValue(currentConnections, 'counts');
   const commandsDisplay = formatMetricValue(commandsRate, 'cps');
@@ -507,8 +524,6 @@ export default function MongoDashboardPage() {
   };
 
   const onFrequenceChange = (val: number) => setFrequence(val);
-  const goBack = () => router.push('/monitor/view');
-
   const onInstanceChange = (value: string) => {
     const target = instanceOptions.find((item) => item.value === value);
     const params = new URLSearchParams(searchParams.toString());
@@ -587,7 +602,6 @@ export default function MongoDashboardPage() {
             onTimeChange={onTimeChange}
             onFrequenceChange={onFrequenceChange}
             onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
-            onBack={goBack}
             showTimeSelector={false}
             styles={styles}
           />
@@ -620,7 +634,12 @@ export default function MongoDashboardPage() {
               {/* 分区 1 · 健康概览：采集状态 + 关键 KPI */}
               <div className={styles.sectionLabel}>健康概览</div>
               <div className={styles.primaryGrid}>
-                <CollectionStatusCard styles={styles} status={collectionStatus} timeline={collectionStatusTimeline} />
+                <CollectionStatusCard
+                  styles={styles}
+                  status={collectionStatus}
+                  timeline={collectionStatusTimeline}
+                  timelineHint={collectionStatusTimelineHint}
+                />
                 <StatCard
                   styles={styles}
                   title={<TitleWithGuide styles={styles} title="运行时长" items={[{ label: '运行时长', detail: 'MongoDB 实例自上次启动后的持续运行时间，反映服务稳定性；期间发生重启会重新计时。' }]} className={styles.statTitleWithGuide} />}
@@ -725,8 +744,8 @@ export default function MongoDashboardPage() {
                   metric={buildMetricItem(metricMap.mongodb_latency_reads_avg || { ...DASHBOARD_METRICS[7], viewData: [], loadState: 'success' })}
                   unit="ns"
                   seriesStyles={[
-                    { color: TREND_LEGENDS.latency[0].color, unit: 'ns' },
-                    { color: TREND_LEGENDS.latency[1].color, unit: 'ns' }
+                    { color: TREND_LEGENDS.latency[0].color, unit: 'ms' },
+                    { color: TREND_LEGENDS.latency[1].color, unit: 'ms' }
                   ]}
                   onXRangeChange={onXRangeChange}
                 />

@@ -66,5 +66,9 @@ def test_export_markdown_endpoint_returns_zip_attachment(api_client):
     assert response["Content-Type"] == "application/zip"
     assert response["Content-Disposition"] == f'attachment; filename="wiki-kb-{kb.id}-markdown.zip"'
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-        assert archive.namelist() == [f"pages/{page.id}-作业平台.md"]
-        assert "作业平台正文" in archive.read(archive.namelist()[0]).decode("utf-8")
+        assert archive.namelist() == [
+            "manifest.json",
+            "structure.json",
+            f"pages/unclassified/{page.id}-作业平台.md",
+        ]
+        assert "作业平台正文" in archive.read(f"pages/unclassified/{page.id}-作业平台.md").decode("utf-8")

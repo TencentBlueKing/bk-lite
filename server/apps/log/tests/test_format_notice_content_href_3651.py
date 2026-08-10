@@ -49,8 +49,14 @@ def _fake_logger():
 
 
 def _load_policy_scan(monkeypatch):
-    _install_module(monkeypatch, "django", db=types.SimpleNamespace(transaction=types.SimpleNamespace()))
-    _install_module(monkeypatch, "django.db", transaction=types.SimpleNamespace())
+    transaction = types.SimpleNamespace()
+    _install_module(monkeypatch, "django", db=types.SimpleNamespace(transaction=transaction))
+    _install_module(
+        monkeypatch,
+        "django.db",
+        IntegrityError=type("IntegrityError", (Exception,), {}),
+        transaction=transaction,
+    )
     _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=Exception)
     _install_module(monkeypatch, "apps.log.constants.alert_policy", AlertConstants=_fake_alert_constants())
     _install_module(monkeypatch, "apps.log.constants.database", DatabaseConstants=types.SimpleNamespace(DEFAULT_BATCH_SIZE=100))

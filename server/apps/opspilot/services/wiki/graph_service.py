@@ -6,9 +6,18 @@ build_graph 以"连通分量"作为粗粒度聚类;analyze_graph 用 **4 信号�
 
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 from itertools import combinations
 
-from apps.opspilot.models import KnowledgePage, PageEvidence, PageRelation
+from apps.opspilot.models import PageEvidence
+from apps.opspilot.services.wiki.active_generation_query_service import (
+    assert_read_scope_current,
+    bind_read_scope,
+    directory_scope_ids,
+    page_queryset,
+    page_snapshot,
+    relation_queryset,
+)
 from apps.opspilot.services.wiki.relation_service import LINK_RE, normalize_wikilink_key
 from apps.opspilot.services.wiki.title_service import canonical_title
 
@@ -16,15 +25,101 @@ from apps.opspilot.services.wiki.title_service import canonical_title
 SIGNAL_WEIGHTS = {"shared_source": 1.0, "shared_tags": 0.6, "reference": 0.8, "same_type": 0.3}
 
 
-def build_graph(knowledge_base):
-    """返回 {nodes, edges, clusters, insights}。节点附带 cluster/degree。"""
-    pages = list(KnowledgePage.objects.filter(knowledge_base=knowledge_base, status="active").order_by("id"))
+@dataclass(frozen=True)
+class _GraphPage:
+    identity: object
+    snapshot: object
+
+    @property
+    def id(self):
+        return self.identity.id
+
+    @property
+    def title(self):
+        return self.snapshot.title
+
+    @property
+    def page_type(self):
+        return self.snapshot.page_type
+
+    @property
+    def tags(self):
+        return self.snapshot.tags
+
+    @property
+    def contribution(self):
+        return self.snapshot.contribution
+
+    @property
+    def knowledge_base(self):
+        return self.identity.knowledge_base
+
+    @property
+    def current_version(self):
+        return self.snapshot.page_version
+
+    @property
+    def current_version_id(self):
+        return self.snapshot.page_version_id
+
+    @property
+    def directory_id(self):
+        return self.snapshot.directory_id
+
+    @property
+    def directory_key(self):
+        return self.snapshot.directory_key
+
+    @property
+    def directory_breadcrumb(self):
+        return list(self.snapshot.directory_breadcrumb)
+
+
+def _read_graph_pages(
+    knowledge_base,
+    *,
+    directory_id=None,
+    include_descendants=False,
+    read_scope=None,
+):
+    scope = read_scope or bind_read_scope(knowledge_base)
+    directory_ids = directory_scope_ids(
+        knowledge_base,
+        directory_id=directory_id,
+        include_descendants=include_descendants,
+        read_scope=scope,
+    )
+    pages = []
+    for page in page_queryset(
+        knowledge_base,
+        statuses=("active",),
+        directory_ids=directory_ids,
+        read_scope=scope,
+    ).order_by("id"):
+        pages.append(_GraphPage(page, page_snapshot(page, knowledge_base=knowledge_base)))
+    return scope, pages
+
+
+def build_graph(
+    knowledge_base,
+    *,
+    directory_id=None,
+    include_descendants=False,
+    read_scope=None,
+):
+    """返回 generation-scoped {nodes, edges, clusters, insights}。"""
+    scope, pages = _read_graph_pages(
+        knowledge_base,
+        directory_id=directory_id,
+        include_descendants=include_descendants,
+        read_scope=read_scope,
+    )
     graph_nodes = _canonical_graph_nodes(knowledge_base, pages, include_contribution=True)
     node_ids = {node["id"] for node in graph_nodes["nodes"]}
     nodes = graph_nodes["nodes"]
     raw_to_node = graph_nodes["raw_to_node"]
 
-    rels = PageRelation.objects.filter(from_page__knowledge_base=knowledge_base)
+    rels = relation_queryset(knowledge_base, read_scope=scope)
     edge_map, adj, degree = {}, defaultdict(set), defaultdict(int)
     for r in rels.values("from_page_id", "to_page_id", "relation_type", "weight"):
         a = raw_to_node.get(r["from_page_id"])
@@ -66,7 +161,15 @@ def build_graph(knowledge_base):
         "largest_cluster": max((len(c) for c in clusters), default=0),
         "hubs": hubs,
     }
-    return {"nodes": nodes, "edges": edges, "clusters": [sorted(c) for c in clusters], "insights": insights}
+    result = {
+        "generation_id": scope.generation_id,
+        "nodes": nodes,
+        "edges": edges,
+        "clusters": [sorted(component) for component in clusters],
+        "insights": insights,
+    }
+    assert_read_scope_current(scope)
+    return result
 
 
 def _canonical_graph_nodes(knowledge_base, pages, include_contribution=False):
@@ -92,6 +195,9 @@ def _canonical_graph_nodes(knowledge_base, pages, include_contribution=False):
             "page_type": representative.page_type,
             "page_ids": page_ids,
             "aliases": _canonical_alias_titles(group, display_title),
+            "directory_id": representative.directory_id,
+            "directory_key": representative.directory_key,
+            "directory_breadcrumb": representative.directory_breadcrumb,
         }
         if include_contribution:
             node["contribution"] = representative.contribution
@@ -355,13 +461,24 @@ def _shared_significant_words(title_a, title_b):
     return len(_significant_words(title_a) & _significant_words(title_b))
 
 
-def analyze_graph(knowledge_base):
+def analyze_graph(
+    knowledge_base,
+    *,
+    directory_id=None,
+    include_descendants=False,
+    read_scope=None,
+):
     """4 信号关联度加权 + Louvain 社区发现(P5 增强,纯 Python 无外部依赖)。
 
     对每对页面综合 4 个确定性信号计算关联权重:共享资料数、共享标签数、正文 [[引用]]、同页面类型;
     再以加权图做 Louvain 模块度优化得到社区。返回 {nodes, edges, communities, insights}。
     """
-    pages = list(KnowledgePage.objects.filter(knowledge_base=knowledge_base, status="active").order_by("id"))
+    scope, pages = _read_graph_pages(
+        knowledge_base,
+        directory_id=directory_id,
+        include_descendants=include_descendants,
+        read_scope=read_scope,
+    )
     by_id = {p.id: p for p in pages}
     raw_node_ids = set(by_id)
     graph_nodes = _canonical_graph_nodes(knowledge_base, pages)
@@ -369,14 +486,29 @@ def analyze_graph(knowledge_base):
     node_ids = {node["id"] for node in graph_nodes["nodes"]}
     nodes = graph_nodes["nodes"]
 
-    mats = {pid: set(PageEvidence.objects.filter(page_id=pid).values_list("material_id", flat=True)) for pid in raw_node_ids}
     tags = {pid: set(by_id[pid].tags or []) for pid in raw_node_ids}
-    refs = _reference_pairs(pages)
+    shared_sources = {}
+    references = set()
+    if scope.generation_id is None:
+        material_ids = {page_id: set(PageEvidence.objects.filter(page_id=page_id).values_list("material_id", flat=True)) for page_id in raw_node_ids}
+        for left, right in combinations(sorted(raw_node_ids), 2):
+            shared_sources[(left, right)] = len(material_ids[left] & material_ids[right])
+        references = _reference_pairs(pages)
+    else:
+        for relation in relation_queryset(knowledge_base, read_scope=scope).values("from_page_id", "to_page_id", "relation_type", "weight"):
+            source = relation["from_page_id"]
+            target = relation["to_page_id"]
+            if source not in raw_node_ids or target not in raw_node_ids:
+                continue
+            if relation["relation_type"] == "shared_source":
+                shared_sources[tuple(sorted((source, target)))] = max(1, int(round(float(relation["weight"] or 0))))
+            elif relation["relation_type"] == "reference":
+                references.add((source, target))
 
     raw_edges = []
     for a, b in combinations(sorted(raw_node_ids), 2):
         signals, weight = {}, 0.0
-        sc = len(mats[a] & mats[b])
+        sc = shared_sources.get((a, b), 0)
         if sc:
             signals["shared_source"] = sc
             weight += SIGNAL_WEIGHTS["shared_source"] * sc
@@ -384,7 +516,7 @@ def analyze_graph(knowledge_base):
         if tc:
             signals["shared_tags"] = tc
             weight += SIGNAL_WEIGHTS["shared_tags"] * tc
-        if (a, b) in refs or (b, a) in refs:
+        if (a, b) in references or (b, a) in references:
             signals["reference"] = 1
             weight += SIGNAL_WEIGHTS["reference"]
         if by_id[a].page_type == by_id[b].page_type:
@@ -414,7 +546,15 @@ def analyze_graph(knowledge_base):
         "surprise_links": _surprise_links(edges, community_of, by_id),
         "signal_weights": SIGNAL_WEIGHTS,
     }
-    return {"nodes": nodes, "edges": edges, "communities": [sorted(c) for c in communities], "insights": insights}
+    result = {
+        "generation_id": scope.generation_id,
+        "nodes": nodes,
+        "edges": edges,
+        "communities": [sorted(community) for community in communities],
+        "insights": insights,
+    }
+    assert_read_scope_current(scope)
+    return result
 
 
 def _collapse_analysis_edges(edges, raw_to_node):

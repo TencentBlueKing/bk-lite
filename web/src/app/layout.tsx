@@ -1,31 +1,36 @@
 'use client';
 
 import '@ant-design/v5-patch-for-react-19';
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
 import Script from 'next/script';
 import { useRouter, usePathname } from 'next/navigation';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { SessionProvider, useSession } from 'next-auth/react';
 import { LocaleProvider } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
-import { ThemeProvider } from '@/context/theme';
-import { MenusProvider, useMenus } from '@/context/menus';
-import { UserInfoProvider } from '@/context/userInfo';
-import { ClientProvider } from '@/context/client';
-import { PermissionsProvider, usePermissions } from '@/context/permissions';
-import AuthProvider from '@/context/auth';
-import TopMenu from '@/components/top-menu';
-import { ConfigProvider, Watermark, message } from 'antd';
+import { ThemeBootstrap, ThemeProvider } from '@/theme';
+import { useMenus } from '@/context/menus';
+import { useClientData } from '@/context/client';
+import { usePermissions } from '@/context/permissions';
+import AuthProvider, { useAuth } from '@/context/auth';
+import TopMenu from '@/app/(core)/components/top-menu';
+import { Watermark, message } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';
-import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/registry';
+import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/metadata';
 import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/shared/utils';
 import '@/styles/globals.css';
 import { MenuItem } from '@/types/index'
 import WithSideMenuLayout from '@/components/sub-layout'
 import { shouldRenderSecondLayerMenu } from '@/utils/menuHelpers'
+import {
+  PORTAL_TAB_TITLE_BOOTSTRAP_SCRIPT,
+  resolvePortalTabTitle,
+} from '@/utils/portalTabTitle'
 import { isSessionExpiredState } from '@/utils/sessionExpiry'
 import { useUserInfoContext } from '@/context/userInfo';
+import { RouteScopedLayout } from '@/app/routeScopedLayout';
+import GlobalWebChat from '@/app/(core)/components/global-webchat';
 
 const Loader = () => (
   <div className="flex justify-center items-center h-screen">
@@ -38,8 +43,7 @@ const applyWatermarkTemplate = (template: string, variables: Record<string, stri
 };
 
 const PortalBrandingHead = () => {
-  const { portalName, faviconUrl } = usePortalBranding();
-  const { t } = useTranslation();
+  const { faviconUrl } = usePortalBranding();
 
   useEffect(() => {
     const head = document.head;
@@ -56,40 +60,147 @@ const PortalBrandingHead = () => {
     faviconLink.href = faviconUrl || portalBrandingDefaults.faviconUrl;
   }, [faviconUrl]);
 
-  useEffect(() => {
-    const slogan = t('common.portalSlogan', 'AI-Native Lightweight O&M Platform');
-    document.title = `${portalName || portalBrandingDefaults.portalName} - ${slogan}`;
-  }, [portalName, t]);
-
   return null;
+};
+
+/**
+ * Owns document.title after hydration.
+ * Bootstrap script sets the cached title first; React's default <title> would otherwise
+ * overwrite it with "BlueKing Lite" before useEffect runs (visible flicker).
+ */
+const PortalTabTitle = () => {
+  const pathname = usePathname();
+  const { clientData, appConfigList, loading: clientLoading, appConfigLoading } = useClientData();
+  const { portalName, ready: brandingReady } = usePortalBranding();
+  const { t } = useTranslation();
+  const [title, setTitle] = useState(() => {
+    if (typeof window === 'undefined') {
+      return portalBrandingDefaults.portalName;
+    }
+
+    // Match bootstrap script / session cache on the very first client render so React
+    // hydration does not briefly force the default "BlueKing Lite" title into the tab.
+    const cachedTitle = resolvePortalTabTitle({
+      pathname: window.location.pathname,
+      portalName: portalBrandingDefaults.portalName,
+      brandingReady: false,
+      apps: [],
+      clientsLoading: true,
+      slogan: 'AI-Native Lightweight O&M Platform',
+      fallbackPortalName: portalBrandingDefaults.portalName,
+    });
+
+    if (cachedTitle) {
+      return cachedTitle;
+    }
+
+    if (document.title && document.title !== portalBrandingDefaults.portalName) {
+      return document.title;
+    }
+
+    return portalBrandingDefaults.portalName;
+  });
+
+  useLayoutEffect(() => {
+    const apps = appConfigList.length > 0 ? appConfigList : clientData;
+    const nextTitle = resolvePortalTabTitle({
+      pathname,
+      portalName: portalName || portalBrandingDefaults.portalName,
+      brandingReady,
+      apps,
+      clientsLoading: clientLoading || appConfigLoading,
+      slogan: t('common.portalSlogan', 'AI-Native Lightweight O&M Platform'),
+      fallbackPortalName: portalBrandingDefaults.portalName,
+    });
+
+    if (!nextTitle) {
+      return;
+    }
+
+    document.title = nextTitle;
+    setTitle((current) => (current === nextTitle ? current : nextTitle));
+  }, [
+    appConfigList,
+    appConfigLoading,
+    brandingReady,
+    clientData,
+    clientLoading,
+    pathname,
+    portalName,
+    t,
+  ]);
+
+  return <title suppressHydrationWarning>{title}</title>;
 };
 
 const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const { loading: permissionsLoading, hasPermission, menus } = usePermissions();
   const { data: session, status } = useSession();
+  const { isAuthenticated: authContextAuthenticated } = useAuth();
   const { loading: menusLoading, configMenus } = useMenus();
-  const { username, displayName } = useUserInfoContext();
+  const {
+    username,
+    displayName,
+    loading: userInfoLoading,
+  } = useUserInfoContext();
   const { portalName, watermarkEnabled, watermarkText } = usePortalBranding();
   const router = useRouter();
   const pathname = usePathname();
   const [isAllowed, setIsAllowed] = useState(false);
+  const [isHeaderScrolled, setIsHeaderScrolled] = useState(false);
 
-  const isAuthenticated = status === 'authenticated' && !!session && !(session.user as any)?.temporary_pwd;
-  const isAuthLoading = status === 'loading';
+  useEffect(() => {
+    const updateHeaderBackground = () => {
+      setIsHeaderScrolled(window.scrollY > 0);
+    };
 
-  const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
+    updateHeaderBackground();
+    window.addEventListener('scroll', updateHeaderBackground, { passive: true });
+
+    return () => window.removeEventListener('scroll', updateHeaderBackground);
+  }, []);
+
+  const isAuthenticated = authContextAuthenticated
+    && !(session?.user as any)?.temporary_pwd;
+  const isAuthLoading = status === 'loading' && !authContextAuthenticated;
+
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/signin/login-auth-result'];
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
+  const isResponsiveAppRoute = pathname?.startsWith('/apm');
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);
+  const isDashboardShareRoute = pathname?.startsWith('/ops-analysis/share/');
+  const isDashboardRenderRoute = pathname?.startsWith(
+    '/ops-analysis/render/execution/',
+  );
+  const isStandaloneDashboardRoute = (
+    isDashboardShareRoute || isDashboardRenderRoute
+  );
+  const isLoading = isAuthLoading || (
+    isAuthenticated
+    && (
+      isDashboardRenderRoute
+        ? userInfoLoading || !username
+        : permissionsLoading || menusLoading
+    )
+  );
 
   const shouldRenderMenu = useMemo(() => {
-    if (pathname?.startsWith('/ops-console') || isDashboardRoute) {
+    if (
+      pathname?.startsWith('/ops-console')
+      || isDashboardRoute
+      || isStandaloneDashboardRoute
+    ) {
       return false;
     }
     return shouldRenderSecondLayerMenu(pathname, menus);
-  }, [pathname, menus, isDashboardRoute]);
+  }, [
+    pathname,
+    menus,
+    isDashboardRoute,
+    isStandaloneDashboardRoute,
+  ]);
 
   const isPathInMenu = useCallback((path: string, menus: MenuItem[]): boolean => {
     for (const menu of menus) {
@@ -116,7 +227,10 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
       }
 
       if (!isLoading) {
-        if (pathname && excludedPaths.includes(pathname)) {
+        if (
+          (pathname && excludedPaths.includes(pathname))
+          || isStandaloneDashboardRoute
+        ) {
           setIsAllowed(true);
           return;
         }
@@ -138,7 +252,17 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     };
 
     checkPermission();
-  }, [isLoading, pathname, isAuthenticated, status, session, router, configMenus, hasPermission]);
+  }, [
+    isLoading,
+    pathname,
+    isAuthenticated,
+    status,
+    session,
+    router,
+    configMenus,
+    hasPermission,
+    isStandaloneDashboardRoute,
+  ]);
 
   // Show password expiry reminder after login redirect
   useEffect(() => {
@@ -167,35 +291,45 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     });
   }, [displayName, portalName, session, username, watermarkText]);
 
-  if (isLoading || (isAuthenticated && !isAllowed && pathname && !excludedPaths.includes(pathname) && !isLoading)) {
+  if (
+    isLoading
+    || (
+      isAuthenticated
+      && !isAllowed
+      && pathname
+      && !excludedPaths.includes(pathname)
+      && !isStandaloneDashboardRoute
+      && !isLoading
+    )
+  ) {
     return <Loader />;
   }
 
   const layoutContent = (
-    <AntdRegistry>
-      <div className="flex flex-col min-h-screen">
-        {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
-          <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
-            <TopMenu hideMainMenu={hideTopMenu} />
-          </header>
+    <div className={`flex flex-col ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute ? 'min-w-[1280px]' : ''}`}>
+      {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
+        <header
+          className={`sticky top-0 left-0 right-0 flex justify-between items-center header-bg ${isHeaderScrolled ? 'header-bg-scrolled' : ''}`}
+        >
+          <TopMenu hideMainMenu={hideTopMenu} />
+        </header>
+      )}
+      <main className={`main-content flex-1 p-4 flex text-sm ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}>
+        {shouldRenderMenu ? (
+          <WithSideMenuLayout
+            layoutType="segmented"
+            menuLevel={1}
+          >
+            {children}
+          </WithSideMenuLayout>
+        ) : (
+          children
         )}
-        <main className={`main-content flex-1 p-4 flex text-sm ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}>
-          {shouldRenderMenu ? (
-            <WithSideMenuLayout
-              layoutType="segmented"
-              menuLevel={1}
-            >
-              {children}
-            </WithSideMenuLayout>
-          ) : (
-            children
-          )}
-        </main>
-      </div>
-    </AntdRegistry>
+      </main>
+    </div>
   );
 
-  if (!isAuthenticated || !watermarkEnabled) {
+  if (!isAuthenticated || !watermarkEnabled || isDashboardRenderRoute) {
     return layoutContent;
   }
 
@@ -205,6 +339,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
       gap={[120, 120]}
       rotate={-24}
       zIndex={20}
+      style={{ overflow: 'visible' }}
       font={{
         color: 'rgba(93,103,121,0.14)',
         fontSize: 14,
@@ -215,45 +350,46 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+const StandardRouteLayout = ({ children }: { children: React.ReactNode }) => (
+  <>
+    <PortalTabTitle />
+    <LayoutWithProviders>{children}</LayoutWithProviders>
+    <GlobalWebChat />
+  </>
+);
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
-        <title>BlueKing Lite</title>
+        <ThemeBootstrap />
+        {/* Tab title is owned by bootstrap script + PortalTabTitle (avoid a second React <title> overwrite). */}
+        <script dangerouslySetInnerHTML={{ __html: PORTAL_TAB_TITLE_BOOTSTRAP_SCRIPT }} />
         <link rel="icon" href="/logo-site.png" type="image/png" data-portal-favicon="true" />
         <Script src="/iconfont.js" strategy="afterInteractive"/>
-        {/* cache bust: prepare-enterprise.mjs 重写该文件但 next dev 模式 HMR 不重发 script,
-            浏览器可能缓存旧版(空数组)→ 22 卡片全显示 VTrak 占位。
-            ?v=Date.now() 强制浏览器每次重拉,避免陈旧 brand 数据 */}
-        <Script src={`/__enterprise-brands.js?v=${Date.now()}`} strategy="afterInteractive" />
+        {/* 企业品牌映射必须在 hydration 前加载；src 保持稳定，避免 SSR/客户端生成不同地址。 */}
+        <Script src="/__enterprise-brands.js" strategy="beforeInteractive" />
       </head>
       <body>
-        {/* 全局 Context Provider 配置 */}
-        <SessionProvider refetchInterval={30 * 60}>
-          <ConfigProvider>
+        <AntdRegistry>
+          {/* 全局 Context Provider 配置 */}
+          <SessionProvider refetchInterval={30 * 60} refetchOnWindowFocus={false}>
             <LocaleProvider>
               <ThemeProvider>
                 <AuthProvider>
                   <PortalBrandingHead />
-                  <UserInfoProvider>
-                    <ClientProvider>
-                      <MenusProvider>
-                        <PermissionsProvider>
-                          {/* 渲染布局 */}
-                          <LayoutWithProviders>{children}</LayoutWithProviders>
-                        </PermissionsProvider>
-                      </MenusProvider>
-                    </ClientProvider>
-                  </UserInfoProvider>
+                  <RouteScopedLayout StandardLayout={StandardRouteLayout}>
+                    {children}
+                  </RouteScopedLayout>
                 </AuthProvider>
               </ThemeProvider>
             </LocaleProvider>
-          </ConfigProvider>
-        </SessionProvider>
+          </SessionProvider>
+        </AntdRegistry>
       </body>
     </html>
   );

@@ -2,14 +2,16 @@
   "plugin": "Kafka-Exporter",
   "plugin_desc": "Kafka Exporter is used to collect and export metrics from Kafka brokers, including topic statistics, partition counts, consumer group status, and more, to help monitor the health and performance of Kafka clusters.",
   "status_query": "any({instance_type='kafka', collect_type='exporter'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ENV_KAFKA_SERVER"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Kafka",
   "icon": "mm-kafka_Kafka",
   "type": "Middleware",
   "description": "",
   "default_metric": "any({instance_type='kafka'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["kafka_up_gauge", "kafka_topic_partition_under_replicated_partition", "kafka_consumergroup_lag"],
-  "display_fields": [{"name": "Probe Status", "sort_order": 0, "metrics": [{"plugin": "Kafka-Exporter", "metric": "kafka_up_gauge"}]}, {"name": "Partition Under-Replicated Status", "sort_order": 1, "metrics": [{"plugin": "Kafka-Exporter", "metric": "kafka_topic_partition_under_replicated_partition"}]}, {"name": "Consumer Group Lag", "sort_order": 2, "metrics": [{"plugin": "Kafka-Exporter", "metric": "kafka_consumergroup_lag"}]}],
+  "supplementary_indicators": ["kafka_up_gauge", "kafka_exporter_scrape_success", "kafka_topic_partition_under_replicated_partition", "kafka_consumergroup_lag"],
+  "display_fields": [{"name": "Probe Status", "sort_order": 0, "metrics": [{"plugin": "Kafka-Exporter", "metric": "kafka_up_gauge"}]}, {"name": "Collection Success Status", "sort_order": 1, "metrics": [{"plugin": "Kafka-Exporter", "metric": "kafka_exporter_scrape_success"}]}, {"name": "Partition Under-Replicated Status", "sort_order": 2, "metrics": [{"plugin": "Kafka-Exporter", "metric": "kafka_topic_partition_under_replicated_partition"}]}, {"name": "Consumer Group Lag", "sort_order": 3, "metrics": [{"plugin": "Kafka-Exporter", "metric": "kafka_consumergroup_lag"}]}],
   "metrics": [
     {
       "metric_group": "Base",
@@ -131,6 +133,26 @@
     },
     {
       "metric_group": "Topic",
+      "name": "kafka_topic_partition_leader",
+      "display_name": "Partition Leader",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
+      "description": "Leader broker ID for the specified topic and partition.",
+      "query": "kafka_topic_partition_leader_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Topic",
       "name": "kafka_topic_partition_leader_is_preferred",
       "display_name": "Partition Preferred Leader Status",
       "instance_id_keys": ["instance_id"],
@@ -215,6 +237,26 @@
     },
     {
       "metric_group": "ConsumerGroup",
+      "name": "kafka_consumergroup_current_offset_sum",
+      "display_name": "Consumer Group Current Offset Sum",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "consumergroup",
+          "description": "Consumer Group"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
+      "description": "Sum of committed offsets for a consumer group and topic.",
+      "query": "kafka_consumergroup_current_offset_sum_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "ConsumerGroup",
       "name": "kafka_consumergroup_lag",
       "display_name": "Consumer Group Lag",
       "instance_id_keys": ["instance_id"],
@@ -236,6 +278,159 @@
       ],
       "description": "Current approximate lag of the consumer group in the specified topic and partition.",
       "query": "kafka_consumergroup_lag_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "ConsumerGroup",
+      "name": "kafka_consumergroup_lag_sum",
+      "display_name": "Consumer Group Lag Sum",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "consumergroup",
+          "description": "Consumer Group"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
+      "description": "Sum of lag across partitions for a consumer group and topic.",
+      "query": "kafka_consumergroup_lag_sum_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "ConsumerGroup",
+      "name": "kafka_consumergroup_members",
+      "display_name": "Consumer Group Member Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "consumergroup",
+          "description": "Consumer Group"
+        }
+      ],
+      "description": "Number of members in a consumer group.",
+      "query": "kafka_consumergroup_members_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "ConsumerGroup",
+      "name": "kafka_consumergroup_lag_anomaly",
+      "display_name": "Consumer Group Lag Anomaly",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"提交偏移量大于LEO\",\"id\":1,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "consumergroup",
+          "description": "Consumer Group"
+        },
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
+      "description": "Value is 1 when the committed offset is greater than the log end offset from the same collection.",
+      "query": "kafka_consumergroup_lag_anomaly_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Exporter",
+      "name": "kafka_exporter_scrape_duration_seconds",
+      "display_name": "Collection Duration",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Duration of the complete Kafka metric collection.",
+      "query": "kafka_exporter_scrape_duration_seconds_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Exporter",
+      "name": "kafka_exporter_scrape_success",
+      "display_name": "Collection Success Status",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"失败\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"成功\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [],
+      "description": "Value is 1 when the latest Kafka metric collection completed without request errors, otherwise 0.",
+      "query": "kafka_exporter_scrape_success_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Exporter",
+      "name": "kafka_exporter_scrape_stage_duration_seconds",
+      "display_name": "Collection Stage Duration",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "stage",
+          "description": "Collection Stage"
+        }
+      ],
+      "description": "Duration of each Kafka metric collection stage.",
+      "query": "kafka_exporter_scrape_stage_duration_seconds_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Exporter",
+      "name": "kafka_exporter_kafka_requests",
+      "display_name": "Kafka Request Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Number of Kafka requests issued by the latest collection.",
+      "query": "kafka_exporter_kafka_requests_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Exporter",
+      "name": "kafka_exporter_kafka_request_errors",
+      "display_name": "Kafka Request Error Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Number of Kafka request errors observed by the latest collection.",
+      "query": "kafka_exporter_kafka_request_errors_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Exporter",
+      "name": "kafka_exporter_collected_series",
+      "display_name": "Collected Metric Series",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Number of Kafka data series emitted by the latest collection before exporter self metrics.",
+      "query": "kafka_exporter_collected_series_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Exporter",
+      "name": "kafka_exporter_lag_anomalies",
+      "display_name": "Lag Anomaly Partition Count",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Number of partitions whose committed offset is greater than the same-collection log end offset.",
+      "query": "kafka_exporter_lag_anomalies_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Exporter",
+      "name": "kafka_exporter_last_success_timestamp_seconds",
+      "display_name": "Last Successful Collection Timestamp",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Unix timestamp of the last fully successful Kafka metric collection.",
+      "query": "kafka_exporter_last_success_timestamp_seconds_gauge{__$labels__}"
     },
     {
       "metric_group": "Process",

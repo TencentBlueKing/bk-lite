@@ -82,3 +82,22 @@ hostPID: false`,
     },
   },
 };
+
+export const AllRepairsAggregated: Story = {
+  args: {
+    report: {
+      ...report,
+      items: [
+        {
+          workload_name: '全部（59 个目标）',
+          workload_type: 'All',
+          namespace: '-',
+          severity: 'critical',
+          summary: '共 304 项修复：健康检查 | 可靠性 | 安全加固 | 资源配置 | 镜像管理',
+          before_yaml: 'resources: {}',
+          after_yaml: 'resources:\n  limits:\n    cpu: 500m',
+        },
+      ],
+    },
+  },
+};

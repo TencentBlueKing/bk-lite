@@ -3,23 +3,83 @@
 # @Time: 2025/2/27 10:41
 # @Author: windyzhao
 import time
-import uuid
 import json
-import base64
-import re
 from typing import List
-from typing import Awaitable, Callable, Any
 
 from sanic import Blueprint
-from sanic.log import logger
+from core.logger import logger
 from sanic import response
 
-from core.credential_state_cache import CredentialStateCache
-from core.task_queue import get_task_queue
+from core.infra.credential_state_cache import CredentialStateCache
+from core.collection.application import get_collection_application
+from core.collection.request_builder import (
+    build_collection_request,
+    parse_credentials_pool,
+)
+from core.collection.request_identity import build_request_task_id_from_request
+
+# 兼容旧测试/调用方私有名
+_parse_credentials_pool = parse_credentials_pool
+from core.collection.runtime import SubmissionStatus
 from plugins.base_utils import expand_ip_range
 from tasks.collectors.host_collector import _escape_prometheus_label_value
 
 collect_router = Blueprint("collect", url_prefix="/collect")
+
+
+def _request_task_id(request, params: dict | None = None) -> str:
+    """薄租约 ID：规范化请求指纹；忽略调用方传入的 task_id。"""
+    del params  # 保留形参以兼容旧调用；身份不再来自 params
+    return build_request_task_id_from_request(request)
+
+
+async def _submit_collection_run(request, task_params: dict, model_id: str):
+    hosts_param = str(task_params.get("hosts") or "").strip()
+    if hosts_param:
+        task_params["hosts"] = _parse_hosts(hosts_param)
+        if not task_params["hosts"]:
+            raise ValueError("Failed to parse hosts parameter")
+    task_params["credentials_pool"] = parse_credentials_pool(
+        task_params.get("credentials_pool"), params=task_params
+    )
+    collection_request = build_collection_request(
+        task_id=_request_task_id(request, task_params),
+        params=task_params,
+    )
+    submission = await get_collection_application().submit(collection_request)
+    http_status = {
+        SubmissionStatus.ACCEPTED: 202,
+        SubmissionStatus.DUPLICATE_ACTIVE: 202,
+        SubmissionStatus.BUSY: 429,
+    }[submission.status]
+    timestamp = int(time.time() * 1000)
+    metric = (
+        'collection_request_accepted{model_id="%s",task_id="%s",status="%s"} 1 %s\n'
+        % (
+            _escape_prometheus_label_value(model_id),
+            _escape_prometheus_label_value(submission.task_id),
+            _escape_prometheus_label_value(submission.status.value),
+            timestamp,
+        )
+    )
+    headers = {
+        "X-Task-ID": submission.task_id,
+        "X-Task-Status": submission.status.value,
+        "X-Fencing-Token": str(submission.fence),
+        "X-Target-Count": str(len(collection_request.targets)),
+    }
+    if submission.status == SubmissionStatus.BUSY:
+        headers["Retry-After"] = "1"
+    if submission.summary:
+        headers["X-Run-Summary"] = json.dumps(
+            submission.summary, ensure_ascii=True, separators=(",", ":")
+        )
+    return response.raw(
+        metric,
+        content_type="text/plain; version=0.0.4; charset=utf-8",
+        headers=headers,
+        status=http_status,
+    )
 
 
 def _is_config_file_collect(task_params: dict) -> bool:
@@ -75,69 +135,6 @@ def _parse_hosts(hosts_param: str) -> List[str]:
     return result
 
 
-FLATTENED_CREDENTIAL_KEY_RE = re.compile(r"^credential_(\d+)_(.+)$")
-
-
-def _parse_flattened_credentials_pool(params: dict | None = None) -> List[dict]:
-    if not isinstance(params, dict) or not params:
-        return []
-
-    raw_count = params.get("credential_count")
-    try:
-        credential_count = int(raw_count)
-    except (TypeError, ValueError):
-        credential_count = 0
-
-    grouped_credentials = {}
-    for key, value in params.items():
-        match = FLATTENED_CREDENTIAL_KEY_RE.match(str(key))
-        if not match:
-            continue
-        index = int(match.group(1))
-        field_name = match.group(2)
-        grouped_credentials.setdefault(index, {})[field_name] = value
-
-    if not grouped_credentials:
-        return []
-
-    if credential_count <= 0:
-        credential_count = max(grouped_credentials) + 1
-
-    credentials_pool = []
-    for index in range(credential_count):
-        credential = grouped_credentials.get(index)
-        if isinstance(credential, dict) and credential:
-            credentials_pool.append(credential)
-    return credentials_pool
-
-
-def _parse_credentials_pool(raw_value=None, params: dict | None = None) -> List[dict]:
-    """解析可选的多凭据参数，优先兼容平铺 header，其次兼容旧 JSON/base64 格式。"""
-    flattened_pool = _parse_flattened_credentials_pool(params)
-    if flattened_pool:
-        return flattened_pool
-
-    if not raw_value:
-        return []
-
-    credentials_pool = raw_value
-    if isinstance(raw_value, str):
-        try:
-            credentials_pool = json.loads(raw_value)
-        except json.JSONDecodeError:
-            try:
-                decoded_value = base64.urlsafe_b64decode(raw_value.encode()).decode()
-                credentials_pool = json.loads(decoded_value)
-            except Exception:
-                logger.warning("Failed to parse credentials_pool payload, fallback to single credential mode")
-                return []
-
-    if not isinstance(credentials_pool, list):
-        return []
-
-    return [item for item in credentials_pool if isinstance(item, dict)]
-
-
 def _build_credential_results_payload(events: List[dict]) -> dict:
     next_since = ""
     for item in events or []:
@@ -145,110 +142,6 @@ def _build_credential_results_payload(events: List[dict]) -> dict:
         if finished_at and finished_at > next_since:
             next_since = finished_at
     return {"results": events or [], "next_since": next_since}
-
-
-def _build_collect_task_candidates(task_params: dict, hosts_list: List[str], credentials_pool: List[dict]) -> dict[str, List[dict]]:
-    """先生成每个 host 的候选任务组合，后续再按缓存/冷却规则筛选是否入队。"""
-    base_task_params = {k: v for k, v in task_params.items() if k != "credentials_pool"}
-    candidates_by_host: dict[str, List[dict]] = {}
-
-    for host in hosts_list:
-        if not credentials_pool:
-            candidates_by_host[host] = [{**base_task_params, "host": host}]
-            continue
-
-        candidates_by_host[host] = [
-            {
-                **base_task_params,
-                **credential,
-                "host": host,
-                "credential_index": credential_index,
-                "credentials_pool": credentials_pool,
-            }
-            for credential_index, credential in enumerate(credentials_pool)
-        ]
-
-    return candidates_by_host
-
-
-def _select_collect_task_candidates(
-    candidates_by_host: dict[str, List[dict]],
-    collect_task_id,
-    cache_state_getter,
-) -> List[dict]:
-    selected_tasks = []
-
-    for host, candidates in candidates_by_host.items():
-        if not candidates:
-            continue
-
-        if not candidates[0].get("credential_id"):
-            selected_tasks.append(candidates[0])
-            continue
-
-        success_credential_id = cache_state_getter(collect_task_id, host)
-        if success_credential_id:
-            matched_candidate = next(
-                (candidate for candidate in candidates if candidate.get("credential_id") == success_credential_id),
-                None,
-            )
-            if matched_candidate is not None:
-                failure_state = cache_state_getter(collect_task_id, host, success_credential_id) or {}
-                if not failure_state.get("is_cooled"):
-                    selected_tasks.append(matched_candidate)
-                    continue
-
-        for candidate in candidates:
-            credential_id = candidate.get("credential_id")
-            failure_state = cache_state_getter(collect_task_id, host, credential_id) or {}
-            if failure_state.get("is_cooled"):
-                continue
-            selected_tasks.append(candidate)
-            break
-        else:
-            logger.info(f"[Cooldown] skip host={host}: all credentials in cooldown")
-
-    return selected_tasks
-
-
-async def _select_collect_task_candidates_async(
-    candidates_by_host: dict[str, List[dict]],
-    collect_task_id,
-    cache_state_getter,
-) -> List[dict]:
-    selected_tasks = []
-
-    for host, candidates in candidates_by_host.items():
-        if not candidates:
-            continue
-
-        if not candidates[0].get("credential_id"):
-            selected_tasks.append(candidates[0])
-            continue
-
-        success_credential_id = await cache_state_getter(collect_task_id, host)
-        if success_credential_id:
-            matched_candidate = next(
-                (candidate for candidate in candidates if candidate.get("credential_id") == success_credential_id),
-                None,
-            )
-            if matched_candidate is not None:
-                failure_state = await cache_state_getter(collect_task_id, host, success_credential_id) or {}
-                if not failure_state.get("is_cooled"):
-                    selected_tasks.append(matched_candidate)
-                    continue
-
-        for candidate in candidates:
-            credential_id = candidate.get("credential_id")
-            failure_state = await cache_state_getter(collect_task_id, host, credential_id) or {}
-            if failure_state.get("is_cooled"):
-                continue
-            selected_tasks.append(candidate)
-            break
-        else:
-            logger.info(f"[Cooldown] skip host={host}: all credentials in cooldown")
-
-    return selected_tasks
 
 
 @collect_router.get("/credential_results")
@@ -266,43 +159,11 @@ async def get_credential_results(request):
     return response.json(_build_credential_results_payload(events))
 
 
-def _expand_collect_tasks(task_params: dict, hosts_list: List[str], credentials_pool: List[dict], cache_state_getter=None) -> List[dict]:
-    """根据 hosts 与缓存命中态生成首轮单 host / 单凭据任务列表。"""
-    cache_state_getter = cache_state_getter or _get_cached_credential_state
-    collect_task_id = task_params.get("collect_task_id")
-    candidates_by_host = _build_collect_task_candidates(task_params, hosts_list, credentials_pool)
-    return _select_collect_task_candidates(candidates_by_host, collect_task_id, cache_state_getter)
-
-
-def _get_cached_credential_state(collect_task_id, host: str, credential_id: str | None = None):
-    return None
-
-
-async def _get_cached_credential_state_async(collect_task_id, host: str, credential_id: str | None = None):
-    if collect_task_id in (None, "") or not host:
-        return None
-    if credential_id is None:
-        return await CredentialStateCache.get_success_credential(collect_task_id, host)
-    return await CredentialStateCache.get_failure_state(collect_task_id, host, credential_id)
-
-
-async def _expand_collect_tasks_async(
-    task_params: dict,
-    hosts_list: List[str],
-    credentials_pool: List[dict],
-    cache_state_getter: Callable[[Any, str, str | None], Awaitable[Any]] | None = None,
-) -> List[dict]:
-    cache_state_getter = cache_state_getter or _get_cached_credential_state_async
-    collect_task_id = task_params.get("collect_task_id")
-    candidates_by_host = _build_collect_task_candidates(task_params, hosts_list, credentials_pool)
-    return await _select_collect_task_candidates_async(candidates_by_host, collect_task_id, cache_state_getter)
-
-
 @collect_router.get("/collect_info")
 async def collect(request):
     """
     配置采集 - 异步模式
-    立即返回请求已接收的指标，实际采集任务放入队列异步执行
+    立即返回请求接纳状态，实际采集由本 Pod 的统一异步运行时执行
 
     参数来源：
     - Headers: cmdb* 开头的参数
@@ -365,167 +226,70 @@ async def collect(request):
             status=500
         )
 
-
+    task_params = {
+        **params,
+        "tags": {
+            "instance_id": instance_id,
+            "instance_type": instance_type,
+            "collect_type": collect_type,
+            "config_type": config_type,
+        },
+    }
     try:
-        # 3. 构建基础任务参数
-        task_params = {
-            **params,  # 原有参数（包含 plugin_name）
-            # Tags 参数（5个核心标签）
-            "tags": {
-                "instance_id": instance_id,
-                "instance_type": instance_type,
-                "collect_type": collect_type,
-                "config_type": config_type,
-            }
-        }
-
-        # 4. 获取任务队列
-        task_queue = get_task_queue()
-        
-        # 5. 检查是否有hosts参数
-        hosts_param = params.get("hosts", "").strip()
-        credentials_pool = _parse_credentials_pool(params.get("credentials_pool"), params=params)
-        
-        if hosts_param:
-            # ========== 场景A：有hosts参数 → 拆分任务 ==========
-            hosts_list = _parse_hosts(hosts_param)
-            
-            if not hosts_list:
-                # hosts参数解析为空
-                current_timestamp = int(time.time() * 1000)
-                error_lines = [
-                    "# HELP collection_request_error Collection request error",
-                    "# TYPE collection_request_error gauge",
-                    f'collection_request_error{{model_id="{_escape_prometheus_label_value(model_id)}",error="Failed to parse hosts parameter"}} 1 {current_timestamp}'
-                ]
-                return response.raw(
-                    "\n".join(error_lines) + "\n",
-                    content_type='text/plain; version=0.0.4; charset=utf-8',
-                    status=400
-                )
-            
-            # 生成批次ID
-            batch_id = f"batch_{uuid.uuid4().hex[:16]}"
-            expanded_tasks = await _expand_collect_tasks_async(task_params, hosts_list, credentials_pool)
-            
-            logger.info("=" * 70)
-            logger.info(f"📦 Task splitting: {len(hosts_list)} host(s) → {len(expanded_tasks)} task(s)")
-            logger.info(f"📋 Batch ID: {batch_id}")
-            logger.info(f"🎯 Model: {model_id}")
-            logger.info("=" * 70)
-            
-            task_infos = []
-            success_count = 0
-            failed_count = 0
-            
-            # 循环每个 host/credential 组合创建任务
-            for idx, single_task in enumerate(expanded_tasks, 1):
-                try:
-                    host = single_task.get("host", "")
-                    single_host_params = {
-                        **single_task,
-                        "batch_id": batch_id,
-                        "batch_index": idx,
-                        "batch_total": len(expanded_tasks),
-                    }
-                    if _is_config_file_collect(task_params):
-                        # 配置文件采集回调由 CMDB 按实例名称反查 _id，这里只保留拆分后的 host 和连接 IP。
-                        single_host_params.pop("connect_ip", None)
-                        single_host_params.pop("target_instance_id", None)
-                        single_host_params["connect_ip"] = _get_connect_ip(host)
-                    
-                    # 创建任务
-                    task_info = await task_queue.enqueue_collect_task(single_host_params)
-                    task_infos.append({
-                        "host": host,
-                        "task_id": task_info["task_id"],
-                        "job_id": task_info.get("job_id", ""),
-                        "status": task_info["status"]
-                    })
-                    
-                    if task_info["status"] == "queued":
-                        success_count += 1
-                        logger.info(f"  ✅ [{idx}/{len(expanded_tasks)}] {host}: {task_info['task_id']}")
-                    else:
-                        logger.warning(f"  ⚠️  [{idx}/{len(expanded_tasks)}] {host}: {task_info['status']}")
-                        
-                except Exception as e:
-                    failed_count += 1
-                    host = single_task.get("host", "")
-                    logger.error(f"  ❌ [{idx}/{len(expanded_tasks)}] {host}: {e}")
-                    task_infos.append({
-                        "host": host,
-                        "task_id": "",
-                        "status": "failed",
-                        "error": str(e)
-                    })
-            
-            # 输出汇总
-            skipped_count = len(expanded_tasks) - success_count - failed_count
-            logger.info("=" * 70)
-            logger.info(f"📊 Summary: {success_count} queued, {failed_count} failed, {skipped_count} skipped")
-            logger.info("=" * 70)
-            
-            # 返回批次响应
-            current_timestamp = int(time.time() * 1000)
-            prometheus_lines = [
-                "# HELP collection_batch_accepted Indicates that collection batch was accepted",
-                "# TYPE collection_batch_accepted gauge",
-                f'collection_batch_accepted{{model_id="{_escape_prometheus_label_value(model_id)}",batch_id="{batch_id}",total="{len(expanded_tasks)}",queued="{success_count}",failed="{failed_count}"}} 1 {current_timestamp}'
-            ]
-            
-            return response.raw(
-                "\n".join(prometheus_lines) + "\n",
-                content_type='text/plain; version=0.0.4; charset=utf-8',
-                headers={
-                    'X-Batch-ID': batch_id,
-                    'X-Task-Count': str(len(task_infos)),
-                    'X-Success-Count': str(success_count)
-                }
-            )
-        else:
-            # ========== 场景B：无hosts参数 → 单任务 ==========
-            # 云采集使用默认endpoint，或单IP采集
-            logger.info(f"📦 Single task mode: model={model_id}")
-            
-            task_info = await task_queue.enqueue_collect_task(task_params)
-            task_status = task_info.get("status", "unknown")
-            logger.info(
-                f"Plugin task enqueue result: task_id={task_info['task_id']}, "
-                f"status={task_status}, model_id={model_id}, job_id={task_info.get('job_id', '')}"
-            )
-            
-            # 返回单任务响应
-            current_timestamp = int(time.time() * 1000)
-            prometheus_lines = [
-                "# HELP collection_request_accepted Indicates that collection request was accepted",
-                "# TYPE collection_request_accepted gauge",
-                f'collection_request_accepted{{model_id="{_escape_prometheus_label_value(model_id)}",task_id="{_escape_prometheus_label_value(task_info["task_id"])}",status="{_escape_prometheus_label_value(task_status)}"}} 1 {current_timestamp}'
-            ]
-            
-            return response.raw(
-                "\n".join(prometheus_lines) + "\n",
-                content_type='text/plain; version=0.0.4; charset=utf-8',
-                headers={
-                    'X-Task-ID': task_info['task_id'],
-                    'X-Job-ID': task_info.get('job_id', ""),
-                    'X-Task-Status': task_status
-                }
-            )
-
-    except Exception as e:
-        logger.error(f"Error queuing plugin task: {e}", exc_info=True)
-
-        # 返回错误指标
-        current_timestamp = int(time.time() * 1000)
-        error_lines = [
-            "# HELP collection_request_error Collection request error",
-            "# TYPE collection_request_error gauge",
-            f'collection_request_error{{model_id="{_escape_prometheus_label_value(model_id)}",error="{_escape_prometheus_label_value(str(e))}"}} 1 {current_timestamp}'
-        ]
-
+        return await _submit_collection_run(request, task_params, model_id)
+    except ValueError as error:
+        logger.warning("Collection request rejected: %s", error)
         return response.raw(
-            "\n".join(error_lines) + "\n",
-            content_type='text/plain; version=0.0.4; charset=utf-8',
-            status=500
+            f'collection_request_error{{model_id="{_escape_prometheus_label_value(model_id)}",error="invalid_request"}} 1\n',
+            content_type="text/plain; version=0.0.4; charset=utf-8",
+            status=400,
         )
+    except Exception as error:  # Redis 不可用时 fail closed
+        logger.error(
+            "Collection request admission failed: %s",
+            type(error).__name__,
+            exc_info=True,
+        )
+        return response.raw(
+            f'collection_request_error{{model_id="{_escape_prometheus_label_value(model_id)}",error="admission_unavailable"}} 1\n',
+            content_type="text/plain; version=0.0.4; charset=utf-8",
+            status=503,
+        )
+
+
+
+@collect_router.post("/pc_test_connection")
+async def pc_test_connection(request):
+    """
+    PC 发现连接测试（HTTP debug 端点，同步返回）。
+
+    复用真实 WinRM/SSH 链路执行最小只读身份命令：验证网络与认证、
+    读取硬件 UUID/序列号，不执行软件扫描、不写 CMDB、不回传数据。
+
+    请求体（JSON）：host, os_type(windows|macos), node_id, username, port,
+    password|private_key|passphrase, winrm_scheme, winrm_transport, winrm_cert_validation。
+
+    返回：{success, os_type, inst_name, hardware_uuid, serial_number, error_code, message}
+    安全约束：请求体含秘密，绝不记录原始 body，错误只含稳定错误码。
+    """
+    from service.debug.pc_debug import run_pc_test_connection
+
+    params = request.json or {}
+    logger.info(
+        "PC test connection request: os_type=%s host=%s",
+        params.get("os_type"), params.get("host"),
+    )
+    try:
+        result = await run_pc_test_connection(params)
+    except Exception as e:  # noqa: BLE001 - 统一兜底为稳定错误码，不泄露内部细节
+        logger.error("PC test connection unexpected error: %s", type(e).__name__)
+        result = {
+            "success": False,
+            "os_type": "",
+            "inst_name": "",
+            "hardware_uuid": "",
+            "serial_number": "",
+            "error_code": "SCRIPT_OUTPUT_INVALID",
+            "message": type(e).__name__,
+        }
+    return response.json(result, status=200)

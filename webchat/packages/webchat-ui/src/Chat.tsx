@@ -5,17 +5,25 @@ import { Bubble, Sender } from '@ant-design/x';
 import {
   SessionManager,
   StateMachine,
+  SSEStreamParser,
   WebChatConfig,
   ChatState,
   Message,
+  MessageContent,
   MessageType,
   generateId,
 } from '@webchat/core';
 import { AGUIHandler, AGUIConfig, AGUIEvent } from './agui';
-import { type ToolCall } from './components/ToolCallDisplay';
+import { createAGUIEventHandler } from './aguiEventHandler';
 import { MessageBubble } from './components/MessageBubble';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import {
+  isAbortError,
+  runOwnedStream,
+  StreamLifecycle,
+  toError,
+} from './streamLifecycle';
 import './styles/tailwind.css';
 
 export interface ChatProps extends WebChatConfig {
@@ -40,7 +48,7 @@ const MAX_IMAGE_SIZE =
 const defaultBotAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzgxODVmZiIvPgogIDxjaXJjbGUgY3g9IjExIiBjeT0iMTIiIHI9IjIiIGZpbGw9IndoaXRlIi8+CiAgPGNpcmNsZSBjeD0iMjEiIGN5PSIxMiIgcj0iMiIgZmlsbD0id2hpdGUiLz4KICA8cGF0aCBkPSJNIDEwIDIwIFEgMTYgMjQgMjIgMjAiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBmaWxsPSJub25lIi8+Cjwvc3ZnPg==';
 const defaultUserAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzEwYjk4MSIvPgogIDxjaXJjbGUgY3g9IjE2IiBjeT0iMTIiIHI9IjUiIGZpbGw9IndoaXRlIi8+CiAgPHBhdGggZD0iTSA2IDI4IFEgNiAyMCAxNiAyMCBRIDI2IDIwIDI2IDI4IiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4=';
 
-export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
+export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const {
     sseUrl,
     // socketUrl,
@@ -83,6 +91,10 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
+  const streamLifecycleRef = useRef<StreamLifecycle | null>(null);
+  if (!streamLifecycleRef.current) {
+    streamLifecycleRef.current = new StreamLifecycle();
+  }
   // 保持 onMessageReceived 最新引用，避免 useEffect 空 deps 闭包固化旧 prop
   const onMessageReceivedRef = useRef(onMessageReceived);
   useEffect(() => {
@@ -102,6 +114,9 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
   // Initialize core components
   useEffect(() => {
+    const streamLifecycle = streamLifecycleRef.current;
+    streamLifecycle?.mount();
+
     // Initialize SessionManager
     sessionManagerRef.current = new SessionManager({
       enableStorage,
@@ -117,7 +132,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
     // Initialize SSEHandler - 不再需要，我们用 fetch 直接处理
     // Initialize AGUIHandler (默认启用)
-    aguiHandlerRef.current = new AGUIHandler(agui || { enabled: true, debug: true });
+    aguiHandlerRef.current = new AGUIHandler(agui || { enabled: true, debug: false });
     const aguiSubscription = setupAGUIEventHandlers();
 
     // Load previous session
@@ -127,6 +142,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     }
 
     return () => {
+      void streamLifecycle?.dispose();
       aguiSubscription?.unsubscribe();
       aguiHandlerRef.current?.destroy();
       unsubscribeState();
@@ -143,543 +159,49 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     });
   };
 
-  // 确保当前存在一条 bot 消息，若尚未创建则新建并通知外部。
-  // TEXT_MESSAGE_START 和 TOOL_CALL_START 均需此逻辑，提取以消除重复。
-  const ensureCurrentMessage = () => {
-    if (currentMessageIdRef.current) return;
-    const newAssistantMsg: Message = {
-      id: generateId(),
-      type: 'text',
-      content: '',
-      sender: 'bot',
-      timestamp: Date.now(),
-      metadata: { contentChunks: [] },
-    };
-    currentMessageIdRef.current = newAssistantMsg.id;
-    setMessages((prev) => [...prev, newAssistantMsg]);
-    sessionManagerRef.current?.addMessage(newAssistantMsg);
-    onMessageReceivedRef.current?.(newAssistantMsg);
-  };
-
-  // Handle AG-UI protocol events
-  const handleAGUIEvent = (event: AGUIEvent) => {
-    const eventType = event.type as any;  // Cast to any to handle additional event types
-
-    switch (eventType) {
-      case 'RUN_STARTED':
-        setIsThinking(true);
-        stateMachineRef.current?.transitionToChatting();
-        
-        streamingContentRef.current = '';
-        currentMessageIdRef.current = null;
-        setIsLoading(true);
-        
-        break;
-
-      case 'THINKING_START':
-        setIsThinking(true);
-        break;
-
-      case 'THINKING_END':
-        setIsThinking(false);
-        break;
-
-      case 'RUN_ERROR':
-        setIsThinking(false);
-        setIsLoading(false);
-        const error = (event as any).error || 'Unknown error';
-        const errorContent = `\n\n❌ **错误**: ${error}`;
-        
-        // 如果有当前消息，追加错误信息到末尾
-        if (currentMessageIdRef.current) {
-          streamingContentRef.current += errorContent;
-          
-          setMessages((prev) => {
-            return prev.map(msg => {
-              if (msg.id === currentMessageIdRef.current) {
-                const chunks = msg.metadata?.contentChunks || [];
-                const lastChunk = chunks[chunks.length - 1];
-                
-                let newChunks;
-                if (lastChunk && lastChunk.type === 'text') {
-                  newChunks = [
-                    ...chunks.slice(0, -1),
-                    { type: 'text', content: streamingContentRef.current }
-                  ];
-                } else {
-                  newChunks = [
-                    ...chunks,
-                    { type: 'text', content: streamingContentRef.current }
-                  ];
-                }
-                
-                return {
-                  ...msg,
-                  content: streamingContentRef.current,
-                  metadata: {
-                    ...msg.metadata,
-                    contentChunks: newChunks
-                  }
-                };
-              }
-              return msg;
-            });
-          });
-          
-          // 同步更新 session 数据
-          const session = sessionManagerRef.current?.getSession();
-          if (session) {
-            const msgIndex = session.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
-            if (msgIndex !== -1) {
-              const chunks = session.messages[msgIndex].metadata?.contentChunks || [];
-              const lastChunk = chunks[chunks.length - 1];
-              
-              let newChunks;
-              if (lastChunk && lastChunk.type === 'text') {
-                newChunks = [
-                  ...chunks.slice(0, -1),
-                  { type: 'text', content: streamingContentRef.current }
-                ];
-              } else {
-                newChunks = [
-                  ...chunks,
-                  { type: 'text', content: streamingContentRef.current }
-                ];
-              }
-              
-              session.messages[msgIndex] = { 
-                ...session.messages[msgIndex], 
-                content: streamingContentRef.current,
-                metadata: {
-                  ...session.messages[msgIndex].metadata,
-                  contentChunks: newChunks
-                }
-              };
-            }
-          }
-          
-          // 保存到 session
-          if (sessionManagerRef.current) {
-            sessionManagerRef.current.saveSession();
-          }
-        } else {
-          // 没有当前消息，创建新的错误消息
-          const errorMsg: Message = {
-            id: generateId(),
-            type: 'text',
-            content: `❌ **错误**\n\n${error}`,
-            sender: 'bot',
-            timestamp: Date.now(),
-          };
-          addMessage(errorMsg);
-        }
-        break;
-
-      case 'TEXT_MESSAGE_START':
-        const startEvent = event as any;
-        const startRole = startEvent.role || startEvent.sender;
-        
-        // 如果是用户消息，跳过（用户消息已经在发送时添加了）
-        if (startRole === 'user') {
-          break;
-        }
-        
-        // 如果还没有创建消息，现在创建
-        ensureCurrentMessage();
-
-        // 重置当前文本内容累加器
-        streamingContentRef.current = '';
-        setIsThinking(false);
-        setIsLoading(true);
-        
-        break;
-
-      case 'TEXT_MESSAGE_CONTENT':  // 流式内容输出
-        const chunkEvent = event as any;
-        const delta = chunkEvent.delta || chunkEvent.content || '';
-        const contentRole = chunkEvent.role || chunkEvent.sender;
-        
-        
-        // 如果是用户消息，跳过
-        if (contentRole === 'user') {
-          break;
-        }
-        
-        // 如果没有当前消息 ID，说明没有收到 START 事件，忽略
-        if (!currentMessageIdRef.current) {
-          console.warn('⚠️ Received CONTENT without START, ignoring');
-          break;
-        }
-        
-        // 收到第一个内容块时关闭 loading 状态
-        if (streamingContentRef.current === '' && delta) {
-          setIsLoading(false);
-        }
-        
-        // 累加内容到 ref
-        streamingContentRef.current += delta;
-        
-        // 更新消息的 contentChunks，更新或添加最后一个文本 chunk
-        setMessages((prev) => {
-          return prev.map(msg => {
-            if (msg.id === currentMessageIdRef.current) {
-              const chunks = msg.metadata?.contentChunks || [];
-              const lastChunk = chunks[chunks.length - 1];
-              
-              let newChunks;
-              if (lastChunk && lastChunk.type === 'text') {
-                // 更新最后一个文本 chunk
-                newChunks = [
-                  ...chunks.slice(0, -1),
-                  { type: 'text', content: streamingContentRef.current }
-                ];
-              } else {
-                // 添加新的文本 chunk
-                newChunks = [
-                  ...chunks,
-                  { type: 'text', content: streamingContentRef.current }
-                ];
-              }
-              
-              return {
-                ...msg,
-                content: streamingContentRef.current, // 保留 content 用于复制等操作
-                metadata: {
-                  ...msg.metadata,
-                  contentChunks: newChunks
-                }
-              };
-            }
-            return msg;
-          });
-        });
-        
-        // 同步更新 session（内存中，不保存到 localStorage）
-        const session = sessionManagerRef.current?.getSession();
-        if (session) {
-          const msgIndex = session.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
-          if (msgIndex !== -1) {
-            const chunks = session.messages[msgIndex].metadata?.contentChunks || [];
-            const lastChunk = chunks[chunks.length - 1];
-            
-            let newChunks;
-            if (lastChunk && lastChunk.type === 'text') {
-              newChunks = [
-                ...chunks.slice(0, -1),
-                { type: 'text', content: streamingContentRef.current }
-              ];
-            } else {
-              newChunks = [
-                ...chunks,
-                { type: 'text', content: streamingContentRef.current }
-              ];
-            }
-            
-            session.messages[msgIndex] = { 
-              ...session.messages[msgIndex], 
-              content: streamingContentRef.current,
-              metadata: {
-                ...session.messages[msgIndex].metadata,
-                contentChunks: newChunks
-              }
-            };
-          }
-        }
-        break;
-
-      case 'TEXT_MESSAGE_END':
-        // 保存最终内容到 localStorage
-        if (currentMessageIdRef.current && sessionManagerRef.current) {
-          sessionManagerRef.current.saveSession();
-        }
-        break;
-
-      case 'TOOL_CALL_START':
-        const toolStartEvent = event as any;
-        const newToolCall: ToolCall = {
-          id: toolStartEvent.toolCallId,
-          name: toolStartEvent.toolCallName || toolStartEvent.name || 'Unknown Tool',
-          status: 'running' as const,
-        };
-
-        // 如果还没有创建消息，现在创建（与 TEXT_MESSAGE_START 共用同一逻辑）
-        ensureCurrentMessage();
-
-        // Add tool call as a new separate chunk
-        setMessages((prev) => {
-          return prev.map(msg => {
-            if (msg.id === currentMessageIdRef.current) {
-              const chunks = msg.metadata?.contentChunks || [];
-              
-              // Check if this tool already exists in any chunk to prevent duplicates
-              const toolExists = chunks.some((chunk: any) => 
-                chunk.type === 'toolCalls' && 
-                chunk.toolCalls.some((t: ToolCall) => t.id === newToolCall.id)
-              );
-              
-              if (toolExists) {
-                console.warn('⚠️ Tool call already exists:', newToolCall.id);
-                return msg;
-              }
-              
-              // Add as a new separate chunk for each tool call
-              const newChunks = [
-                ...chunks,
-                { type: 'toolCalls', toolCalls: [newToolCall] }
-              ];
-              
-              return { 
-                ...msg, 
-                metadata: { 
-                  ...msg.metadata, 
-                  contentChunks: newChunks
-                } 
-              };
-            }
-            return msg;
-          });
-        });
-        
-        // Also update session
-        const session1 = sessionManagerRef.current?.getSession();
-        if (session1) {
-          const msgIndex1 = session1.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
-          if (msgIndex1 !== -1) {
-            const chunks = session1.messages[msgIndex1].metadata?.contentChunks || [];
-            
-            // Check if this tool already exists to prevent duplicates
-            const toolExists = chunks.some((chunk: any) => 
-              chunk.type === 'toolCalls' && 
-              chunk.toolCalls.some((t: ToolCall) => t.id === newToolCall.id)
-            );
-            
-            if (!toolExists) {
-              // Add as a new separate chunk
-              const newChunks = [
-                ...chunks,
-                { type: 'toolCalls', toolCalls: [newToolCall] }
-              ];
-              
-              session1.messages[msgIndex1].metadata = {
-                ...session1.messages[msgIndex1].metadata,
-                contentChunks: newChunks
-              };
-            }
-          }
-        }
-        break;
-
-      case 'TOOL_CALL_ARGS':
-        const toolArgsEvent = event as any;
-        setMessages((prev) => {
-          return prev.map(msg => {
-            if (msg.id === currentMessageIdRef.current && msg.metadata?.contentChunks) {
-              const chunks = msg.metadata.contentChunks;
-              const newChunks = chunks.map((chunk: any) => {
-                if (chunk.type === 'toolCalls') {
-                  return {
-                    ...chunk,
-                    toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
-                      tool.id === toolArgsEvent.toolCallId
-                        ? { ...tool, args: toolArgsEvent.delta || toolArgsEvent.arguments }
-                        : tool
-                    )
-                  };
-                }
-                return chunk;
-              });
-              
-              return {
-                ...msg,
-                metadata: {
-                  ...msg.metadata,
-                  contentChunks: newChunks
-                }
-              };
-            }
-            return msg;
-          });
-        });
-        
-        // Also update session
-        const session2 = sessionManagerRef.current?.getSession();
-        if (session2) {
-          const msgIndex2 = session2.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
-          if (msgIndex2 !== -1 && session2.messages[msgIndex2].metadata?.contentChunks) {
-            const chunks = session2.messages[msgIndex2].metadata.contentChunks;
-            session2.messages[msgIndex2].metadata.contentChunks = chunks.map((chunk: any) => {
-              if (chunk.type === 'toolCalls') {
-                return {
-                  ...chunk,
-                  toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
-                    tool.id === toolArgsEvent.toolCallId
-                      ? { ...tool, args: toolArgsEvent.delta || toolArgsEvent.arguments }
-                      : tool
-                  )
-                };
-              }
-              return chunk;
-            });
-          }
-        }
-        break;
-
-      case 'TOOL_CALL_END':
-        const toolEndEvent = event as any;
-        setMessages((prev) => {
-          return prev.map(msg => {
-            if (msg.id === currentMessageIdRef.current && msg.metadata?.contentChunks) {
-              const chunks = msg.metadata.contentChunks;
-              const newChunks = chunks.map((chunk: any) => {
-                if (chunk.type === 'toolCalls') {
-                  return {
-                    ...chunk,
-                    toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
-                      tool.id === toolEndEvent.toolCallId
-                        ? { ...tool, status: 'completed' as const }
-                        : tool
-                    )
-                  };
-                }
-                return chunk;
-              });
-              
-              return {
-                ...msg,
-                metadata: {
-                  ...msg.metadata,
-                  contentChunks: newChunks
-                }
-              };
-            }
-            return msg;
-          });
-        });
-        
-        // Also update session
-        const session3 = sessionManagerRef.current?.getSession();
-        if (session3) {
-          const msgIndex3 = session3.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
-          if (msgIndex3 !== -1 && session3.messages[msgIndex3].metadata?.contentChunks) {
-            const chunks = session3.messages[msgIndex3].metadata.contentChunks;
-            session3.messages[msgIndex3].metadata.contentChunks = chunks.map((chunk: any) => {
-              if (chunk.type === 'toolCalls') {
-                return {
-                  ...chunk,
-                  toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
-                    tool.id === toolEndEvent.toolCallId
-                      ? { ...tool, status: 'completed' as const }
-                      : tool
-                  )
-                };
-              }
-              return chunk;
-            });
-          }
-        }
-        break;
-
-      case 'TOOL_CALL_RESULT':
-        const toolResultEvent = event as any;
-        setMessages((prev) => {
-          return prev.map(msg => {
-            if (msg.id === currentMessageIdRef.current && msg.metadata?.contentChunks) {
-              const chunks = msg.metadata.contentChunks;
-              const newChunks = chunks.map((chunk: any) => {
-                if (chunk.type === 'toolCalls') {
-                  return {
-                    ...chunk,
-                    toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
-                      tool.id === toolResultEvent.toolCallId
-                        ? { ...tool, result: toolResultEvent.content }
-                        : tool
-                    )
-                  };
-                }
-                return chunk;
-              });
-              
-              return {
-                ...msg,
-                metadata: {
-                  ...msg.metadata,
-                  contentChunks: newChunks
-                }
-              };
-            }
-            return msg;
-          });
-        });
-        
-        // Also update session
-        const session4 = sessionManagerRef.current?.getSession();
-        if (session4) {
-          const msgIndex4 = session4.messages.findIndex((m: Message) => m.id === currentMessageIdRef.current);
-          if (msgIndex4 !== -1 && session4.messages[msgIndex4].metadata?.contentChunks) {
-            const chunks = session4.messages[msgIndex4].metadata.contentChunks;
-            session4.messages[msgIndex4].metadata.contentChunks = chunks.map((chunk: any) => {
-              if (chunk.type === 'toolCalls') {
-                return {
-                  ...chunk,
-                  toolCalls: chunk.toolCalls.map((tool: ToolCall) =>
-                    tool.id === toolResultEvent.toolCallId
-                      ? { ...tool, result: toolResultEvent.content }
-                      : tool
-                  )
-                };
-              }
-              return chunk;
-            });
-          }
-        }
-        break;
-
-      case 'RUN_FINISHED':
-        if (currentMessageIdRef.current && sessionManagerRef.current) {
-          sessionManagerRef.current.saveSession();
-        }
-        setIsLoading(false);
-        setIsThinking(false);
-        stateMachineRef.current?.transition('connected');
-        break;
-
-      default:
-        console.log('AG-UI event:', event);
-    }
-  };
-
-  // Setup SSE handlers - 已移除，使用 fetch 直接处理
-
-  // Handle legacy message format (fallback)
-  const handleLegacyMessage = (data: any) => {
-    if (data.content) {
-      const botMsg: Message = {
-        id: data.id || generateId(),
-        type: data.type || 'text',
-        content: data.content,
-        sender: 'bot',
-        timestamp: Date.now(),
-        metadata: data.metadata,
-      };
-      addMessage(botMsg);
-      setIsLoading(false);
-    }
-  };
-
   // Add message to state and session
   const addMessage = useCallback((message: Message) => {
     setMessages((prev) => {
-      // 防止重复添加：检查是否已存在相同 id 的消息
-      if (prev.some(msg => msg.id === message.id)) {
-        console.warn('⚠️ Duplicate message detected, skipping:', message.id);
+      if (prev.some((msg) => msg.id === message.id)) {
+        console.warn('Duplicate message detected, skipping:', message.id);
         return prev;
       }
       return [...prev, message];
     });
     sessionManagerRef.current?.addMessage(message);
-    // 通过 ref 调用，确保始终使用最新的 onMessageReceived prop
     onMessageReceivedRef.current?.(message);
   }, []);
+
+  const handleAGUIEvent = createAGUIEventHandler({
+    currentMessageIdRef,
+    streamingContentRef,
+    sessionManagerRef,
+    stateMachineRef,
+    onMessageReceivedRef,
+    setMessages,
+    setIsLoading,
+    setIsThinking,
+    addMessage,
+  });
+
+  // Handle legacy message format (fallback)
+  const handleLegacyMessage = (data: unknown) => {
+    if (!data || typeof data !== 'object') {
+      return;
+    }
+    const legacy = data as Partial<Message> & { content?: Message['content'] };
+    if (legacy.content) {
+      const botMsg: Message = {
+        id: legacy.id || generateId(),
+        type: legacy.type || 'text',
+        content: legacy.content,
+        sender: 'bot',
+        timestamp: Date.now(),
+        metadata: legacy.metadata,
+      };
+      addMessage(botMsg);
+    }
+  };
 
   // Handle image upload
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -767,14 +289,14 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     if ((!value.trim() && uploadedImages.length === 0) || isLoading) return;
 
     // Build message content
-    let messageContent: string | any[];
+    let messageContent: string | MessageContent[];
     let messageType: MessageType = 'text';
 
     if (uploadedImages.length > 0) {
       // Multimodal message with images and text
       messageContent = [
-        ...uploadedImages.map(url => ({ type: 'image_url', image_url: url })),
-        ...(value.trim() ? [{ type: 'message', message: value.trim() }] : [])
+        ...uploadedImages.map((url) => ({ type: 'image_url' as const, image_url: url })),
+        ...(value.trim() ? [{ type: 'message' as const, message: value.trim() }] : []),
       ];
       messageType = 'multimodal';
     } else {
@@ -800,6 +322,12 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
       stateMachineRef.current?.transitionToChatting();
 
       if (sseUrl) {
+        const streamLifecycle = streamLifecycleRef.current;
+        const stream = streamLifecycle?.begin();
+        if (!streamLifecycle || !stream) {
+          return;
+        }
+
         // Get current session data
         const currentSession = sessionManagerRef.current?.getSession();
         
@@ -819,65 +347,45 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
           headers['Authorization'] = `Bearer ${apiKey}`;
         }
         
-        const response = await fetch(sseUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!response.ok || !response.body) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        // Process SSE stream
-        const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        
-        try {
-          while (true) {
-            const { done, value: chunk } = await reader.read();
-            if (done) {
-              console.log('✅ Stream complete');
-              // Ensure loading state is reset when stream completes
-              setIsLoading(false);
-              setIsThinking(false);
-              break;
-            }
-
+        const sseParser = new SSEStreamParser();
+        await runOwnedStream({
+          lifecycle: streamLifecycle,
+          stream,
+          request: (signal) =>
+            fetch(sseUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(requestBody),
+              ...(signal ? { signal } : {}),
+            }),
+          onChunk: (chunk) => {
             const text = decoder.decode(chunk, { stream: true });
-            // console.log('📦 Received chunk:', text.substring(0, 100));
-            const lines = text.split('\n');
+            for (const data of sseParser.push(text)) {
+              if (typeof data !== 'object' || data === null) {
+                continue;
+              }
 
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const dataStr = line.slice(6);
-                if (dataStr.trim()) {
-                  try {
-                    const data = JSON.parse(dataStr);
-                    
-                    // Process through AG-UI handler
-                    if (aguiHandlerRef.current) {
-                      const result = aguiHandlerRef.current.processSSEData(data);
-                      // AG-UI events are handled via Observable stream
-                      // Only handle legacy messages here
-                      if (result.type === 'legacy-message' && result.message) {
-                        handleLegacyMessage(result.message);
-                      }
-                    } else {
-                      handleLegacyMessage(data);
-                    }
-                  } catch (e) {
-                    console.error('Error parsing SSE data:', e);
-                  }
+              // Process through AG-UI handler; fall back to legacy messages
+              if (aguiHandlerRef.current) {
+                const result = aguiHandlerRef.current.processSSEData(data);
+                if (result.type === 'legacy-message' && result.message) {
+                  handleLegacyMessage(result.message);
                 }
+              } else {
+                handleLegacyMessage(data);
               }
             }
-          }
-        } catch (streamError) {
-          console.error('Error reading stream:', streamError);
-          setIsLoading(false);
-          setIsThinking(false);
-        }
+          },
+          onError: (error) => {
+            console.error('Error reading stream:', error);
+            onError?.(error);
+          },
+          onComplete: () => {
+            setIsLoading(false);
+            setIsThinking(false);
+          },
+        });
       } else {
         // Simulate response for demo
         setTimeout(() => {
@@ -893,14 +401,24 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         }, 1000);
       }
     } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
       console.error('Error sending message:', error);
-      onError?.(error as Error);
+      onError?.(toError(error));
       setIsLoading(false);
     }
-  }, [isLoading, sseUrl, customData, addMessage, onError, aguiHandlerRef, uploadedImages]);
+  }, [isLoading, sseUrl, customData, addMessage, onError, uploadedImages]);
+
+  const handleStopStreaming = useCallback(() => {
+    void streamLifecycleRef.current?.cancel('user-stopped');
+    setIsLoading(false);
+    setIsThinking(false);
+  }, []);
 
   // Clear messages
   const handleClear = useCallback(() => {
+    void streamLifecycleRef.current?.cancel('session-cleared');
     setMessages([]);
     // Clear and reinitialize session
     sessionManagerRef.current?.clearSession();
@@ -1091,6 +609,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
                 value={inputValue}
                 onChange={setInputValue}
                 onSubmit={handleSendMessage}
+                onCancel={handleStopStreaming}
                 placeholder={placeholder}
                 loading={isLoading}
                 styles={{

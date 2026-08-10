@@ -6,8 +6,8 @@ import React, {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Button, Dropdown, Empty, Menu, Spin } from 'antd';
-import { MoreOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button, Empty, Spin } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import type {
   GridItemHTMLElement,
   GridStack as GridStackInstance,
@@ -23,17 +23,25 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import PermissionWrapper from '@/components/permission';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import {
   buildDashboardGridStackLayout,
   buildDashboardGridStackStructureKey,
   deserializeDashboardGridStackLayout,
   type DashboardGridStackStoredWidget,
 } from '@/app/ops-analysis/utils/dashboardGridStack';
+import {
+  createDashboardWidgetHostRegistry,
+  getOrCreateDashboardWidgetHost,
+  prepareDashboardWidgetHosts,
+} from '@/app/ops-analysis/utils/dashboardWidgetHosts';
 
 import GroupHeader from './groupHeader';
 import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
+import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
 
 import 'gridstack/dist/gridstack.min.css';
+import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
 
 const DASHBOARD_GRID_COLS = 12;
 const DASHBOARD_GRID_ROW_HEIGHT = 60;
@@ -73,6 +81,14 @@ interface DashboardCanvasProps {
   onDeleteEntireGroup: (groupId: string) => void;
   onEditWidget: (id: string) => void;
   onDeleteWidget: (id: string) => void;
+  onTopologyLayoutChange?: (
+    widgetId: string,
+    next: NonNullable<
+      NonNullable<DashboardWidgetLayoutItem['valueConfig']>['networkStatusTopology']
+    >,
+  ) => void;
+  renderMode?: boolean;
+  onWidgetRenderStatus?: (result: DashboardWidgetRenderResult) => void;
 }
 
 const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
@@ -100,6 +116,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   onDeleteEntireGroup,
   onEditWidget,
   onDeleteWidget,
+  onTopologyLayoutChange,
+  renderMode = false,
+  onWidgetRenderStatus,
 }) => {
   const { t } = useTranslation();
   const gridRootRef = useRef<HTMLDivElement>(null);
@@ -107,7 +126,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   const subGridRefs = useRef<Map<string, GridStackInstance>>(new Map());
   const rootItemElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const subGridRootElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
-  const widgetHostsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const widgetHostRegistryRef = useRef(
+    createDashboardWidgetHostRegistry<HTMLDivElement>(),
+  );
   const groupHeaderHostsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const groupBodyElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const commitFrameRef = useRef<number | null>(null);
@@ -125,6 +146,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
     () => `${dashboardId ?? 'dashboard'}:${gridStructureKey}`,
     [dashboardId, gridStructureKey],
   );
+  const dashboardScopeKey = String(dashboardId ?? 'dashboard');
   const layoutRef = useRef(layout);
   const collapsedGroupsRef = useRef(collapsedGroups);
   const gridStackLayoutRef = useRef(gridStackLayout);
@@ -143,7 +165,6 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   const clearElementMaps = useCallback(() => {
     rootItemElementsRef.current.clear();
     subGridRootElementsRef.current.clear();
-    widgetHostsRef.current.clear();
     groupHeaderHostsRef.current.clear();
     groupBodyElementsRef.current.clear();
   }, []);
@@ -159,14 +180,16 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
     contentElement.className =
       'grid-stack-item-content overflow-visible! bg-transparent! shadow-none!';
 
-    const hostElement = document.createElement('div');
+    const hostElement = getOrCreateDashboardWidgetHost(
+      widgetHostRegistryRef.current,
+      itemId,
+      () => document.createElement('div'),
+    );
     hostElement.className = 'h-full';
     hostElement.dataset.widgetHost = itemId;
 
     contentElement.appendChild(hostElement);
     itemElement.appendChild(contentElement);
-    widgetHostsRef.current.set(itemId, hostElement);
-
     return itemElement;
   }, []);
 
@@ -475,76 +498,75 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
 
   const renderWidgetCard = useCallback(
     (item: DashboardWidgetLayoutItem) => {
-      const isTableWidget =
-        item.valueConfig?.chartType === 'table' ||
-        item.valueConfig?.chartType === 'eventTable';
-      const menu = (
-        <Menu>
-          <Menu.Item key="edit" onClick={() => onEditWidget(item.i)}>
-            {t('common.edit')}
-          </Menu.Item>
-          <Menu.Item key="delete" onClick={() => onDeleteWidget(item.i)}>
-            {t('common.delete')}
-          </Menu.Item>
-        </Menu>
-      );
+      const menuItems = [
+        { key: 'edit', label: t('common.edit'), onClick: () => onEditWidget(item.i) },
+        { key: 'delete', label: t('common.delete'), danger: true, onClick: () => onDeleteWidget(item.i) },
+      ];
 
       return (
-        <div
-          className="widget rounded-lg overflow-hidden p-3 flex h-full flex-col"
-          style={{
-            backgroundColor: chartTheme.panelBg,
-            border: `1px solid ${chartTheme.panelBorderColor}`,
-          }}
-        >
-          <div className="widget-header mb-2 flex justify-between items-start gap-2">
-            <div className="flex-1 min-w-0">
-              <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
-                {item.name}
-              </h4>
-              {item.description?.trim() && (
-                <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
-                  {item.description}
-                </p>
-              )}
-            </div>
-            {isEditMode && (
-              <Dropdown overlay={menu} trigger={['click']}>
-                <button
-                  type="button"
-                  aria-label={t('common.more')}
-                  className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer"
-                >
-                  <MoreOutlined
-                    aria-hidden="true"
-                    style={{ fontSize: '18px' }}
+        <WidgetHeaderRuntimeSlotProvider>
+          {(runtimeSlotRef) => (
+            <div
+              className="widget rounded-lg overflow-hidden p-3 flex h-full flex-col"
+              style={{
+                backgroundColor: chartTheme.panelBg,
+                border: `1px solid ${chartTheme.panelBorderColor}`,
+              }}
+            >
+              <div className="widget-header mb-2 flex justify-between items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
+                    {item.name}
+                  </h4>
+                  {item.description?.trim() && (
+                    <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
+                      {item.description}
+                    </p>
+                  )}
+                </div>
+                <div
+                  ref={runtimeSlotRef}
+                  className="no-drag ml-auto max-w-[70%] shrink-0 overflow-x-auto"
+                />
+                {isEditMode && (
+                  <MoreActionsDropdown
+                    items={menuItems}
+                    buttonClassName="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer"
+                    iconStyle={{ fontSize: '18px' }}
                   />
-                </button>
-              </Dropdown>
-            )}
-          </div>
-          <div
-            className="widget-body flex-1 h-full"
-            style={{
-              overflow: isTableWidget ? 'visible' : 'hidden',
-            }}
-          >
-            <WidgetWrapper
-              dashboardId={dashboardId}
-              widgetId={item.i}
-              key={`${dashboardId ?? 'dashboard'}:${item.i}`}
-              chartType={item.valueConfig?.chartType}
-              config={item.valueConfig}
-              filterSearchVersion={filterSearchVersion}
-              namespaceSearchVersion={namespaceSearchVersion}
-              reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersions[item.i] || 0}`}
-              dataSource={dataSourceResolver(item.valueConfig?.dataSource)}
-              unifiedFilterValues={appliedFilterValues}
-              filterDefinitions={appliedFilterDefinitions}
-              builtinNamespaceId={appliedNamespaceId}
-            />
-          </div>
-        </div>
+                )}
+              </div>
+              <div
+                className="widget-body flex-1 h-full min-h-0"
+                style={{
+                  overflow: 'hidden',
+                }}
+              >
+                <WidgetWrapper
+                  dashboardId={dashboardId}
+                  widgetId={item.i}
+                  key={`${dashboardId ?? 'dashboard'}:${item.i}`}
+                  chartType={item.valueConfig?.chartType}
+                  config={item.valueConfig}
+                  filterSearchVersion={filterSearchVersion}
+                  namespaceSearchVersion={namespaceSearchVersion}
+                  reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersions[item.i] || 0}`}
+                  dataSource={dataSourceResolver(item.valueConfig?.dataSource)}
+                  unifiedFilterValues={appliedFilterValues}
+                  filterDefinitions={appliedFilterDefinitions}
+                  builtinNamespaceId={appliedNamespaceId}
+                  onRenderStatus={onWidgetRenderStatus}
+                  layoutEditable={isEditMode}
+                  onTopologyLayoutChange={
+                    isEditMode && onTopologyLayoutChange
+                      ? (next) => onTopologyLayoutChange(item.i, next)
+                      : undefined
+                  }
+                />
+              </div>
+            </div>
+          )}
+        </WidgetHeaderRuntimeSlotProvider>
       );
     },
     [
@@ -560,8 +582,10 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       namespaceSearchVersion,
       onDeleteWidget,
       onEditWidget,
+      onTopologyLayoutChange,
       t,
       widgetReloadVersions,
+      onWidgetRenderStatus,
     ],
   );
 
@@ -597,6 +621,16 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       }
 
       const nextGridStackLayout = gridStackLayoutRef.current;
+      prepareDashboardWidgetHosts(
+        widgetHostRegistryRef.current,
+        dashboardScopeKey,
+        [
+          ...nextGridStackLayout.ungroupedNodes.map((node) => node.id),
+          ...nextGridStackLayout.groupNodes.flatMap((node) =>
+            node.children.map((child) => child.id),
+          ),
+        ],
+      );
 
       nextGridStackLayout.topLevelNodes.forEach((node) => {
         if (node.kind === 'group') {
@@ -767,6 +801,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
     createGroupShell,
     createWidgetShell,
     dashboardInstanceKey,
+    dashboardScopeKey,
     syncGroupPresentation,
   ]);
 
@@ -916,12 +951,15 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       )
       .map((node) => ({ id: node.id, item: node.item })),
     ...gridStackLayout.groupNodes.flatMap((node) =>
-      collapsedGroups[node.id]
+      !renderMode && collapsedGroups[node.id]
         ? []
         : node.children.map((child) => ({ id: child.id, item: child.item })),
     ),
   ].map(({ id, item }) => {
-    const host = widgetHostsRef.current.get(id);
+    const host =
+      widgetHostRegistryRef.current.dashboardScopeKey === dashboardScopeKey
+        ? widgetHostRegistryRef.current.hosts.get(id)
+        : undefined;
 
     if (!host) {
       return null;

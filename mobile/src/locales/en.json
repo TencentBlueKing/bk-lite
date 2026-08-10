@@ -10,13 +10,12 @@
         "save": "Save",
         "cancel": "Cancel",
         "confirm": "Confirm",
+        "done": "Done",
         "retry": "Retry",
         "refresh": "Refresh",
         "loading": "Loading...",
         "send": "Send",
         "back": "Back",
-        "online": "Online",
-        "offline": "Offline",
         "me": "Me",
         "settings": "Settings",
         "logout": "Logout",
@@ -32,16 +31,133 @@
         "accountsAndSecurity": "Accounts & Security",
         "noData": "No data",
         "yesterday": "Yesterday",
+        "close": "Close",
         "copiedToClipboard": "Copied to clipboard",
         "camera": "Camera",
         "gallery": "Gallery",
         "file": "File",
         "allApps": "All Apps"
     },
+    "refresh": {
+        "pulling": "Pull down to refresh",
+        "canRelease": "Release to refresh",
+        "refreshing": "Refreshing...",
+        "complete": "Refresh complete",
+        "failed": "Unable to refresh. Try again"
+    },
     "navigation": {
         "conversations": "Chat",
+        "todo": "To-do",
+        "monitor": "Monitor",
+        "assets": "Assets",
+        "apps": "AI Apps",
         "workbench": "Workbench",
-        "profile": "Me"
+        "profile": "Me",
+        "primaryNavigation": "Primary navigation"
+    },
+    "moduleShell": {
+        "todoTitle": "To-do module",
+        "monitorTitle": "Monitor module",
+        "assetsTitle": "Assets module",
+        "phaseOnePlaceholder": "The application shell is ready. Module content will be added in the next phase."
+    },
+    "todo": {
+        "title": "Todo",
+        "detailTitle": "Alert details",
+        "searchAlerts": "Search alerts",
+        "searchPlaceholder": "Enter a keyword to search",
+        "searchField": "Search field",
+        "searchHint": "Enter an alert keyword to start searching",
+        "searchFailed": "Search failed",
+        "noSearchResults": "No matching alerts",
+        "tryAnotherKeyword": "Try another keyword or search field",
+        "resultCount": "{count} results",
+        "loadFailed": "Unable to load alerts",
+        "detailLoadFailed": "Unable to load alert details",
+        "detailForbidden": "You do not have permission to view this alert",
+        "detailMissing": "This alert does not exist or was deleted",
+        "backToTodo": "Back to Todo",
+        "sectionLoadFailed": "Unable to load this section",
+        "retryHint": "Check the network or your permissions and retry",
+        "levelPermissionDenied": "Alert levels are unavailable",
+        "noChangePermission": "You do not have permission to view change records",
+        "empty": "No alerts in this view",
+        "emptyHint": "Pull down to check for new alerts",
+        "noEvents": "No events",
+        "noChanges": "No change records",
+        "unassigned": "Unassigned",
+        "assigneeLoadFailed": "Unable to load assignees",
+        "searchAssignee": "Search assignees",
+        "actionSuccess": "Operation completed",
+        "actionFailed": "Operation failed. Refresh and try again.",
+        "acknowledgeConfirm": "Acknowledging this alert moves it to Processing. Continue?",
+        "closeConfirm": "Closing this alert removes it from the current todo view. Continue?",
+        "submitting": "Submitting...",
+        "views": { "mine": "Needs me", "open": "All open", "high": "High priority" },
+        "moreActions": "More",
+        "searchFields": { "title": "Title", "content": "Content", "alertId": "Alert ID" },
+        "status": { "unassigned": "Unassigned", "pending": "Pending response", "processing": "Processing", "closed": "Closed" },
+        "notifyStatus": {
+            "not_notified": "Not notified",
+            "success": "Success",
+            "failed": "Failed",
+            "partial_success": "Partial success"
+        },
+        "sections": { "summary": "Summary", "events": "Events", "changes": "Changes", "alertInfo": "Alert information" },
+        "fields": {
+            "level": "Level", "status": "Status", "duration": "Duration", "operator": "Assignee",
+            "firstEvent": "First event", "lastEvent": "Latest event", "source": "Source", "alertId": "Alert ID",
+            "resourceType": "Resource type", "resourceName": "Resource name", "notifyStatus": "Notification status", "content": "Alert content"
+        },
+        "actions": { "assign": "Assign", "acknowledge": "Acknowledge", "reassign": "Reassign", "close": "Close" }
+    },
+
+    "monitor": {
+        "tabs": { "all": "All instances", "recent": "Recently viewed" },
+        "objectTree": "Monitor objects", "selectObject": "Choose by category", "selectObjectFirst": "Choose a monitor object", "selectObjectHint": "Instances are queried only within the selected object",
+        "recentLoadFailed": "Unable to load recently viewed",
+        "noRecentViews": "No recently viewed instances",
+        "noRecentViewsHint": "Instances appear here after you open their details successfully",
+        "viewedAtJustNow": "Just now",
+        "viewedAtMinutes": "{count}m ago",
+        "viewedAtHours": "{count}h ago",
+        "viewedAtYesterday": "Yesterday",
+        "objects": "Monitor objects", "instances": "Instances", "searchWithin": "Search in {name}", "resultCount": "{count} instances", "objectCountLabel": "{name} ({count})",
+        "allObjects": "Select", "selectObjectAction": "Select", "selectObjectTitle": "Select monitor object", "searchObjects": "Search objects", "searchInstances": "Search by instance name", "currentObject": "Current",
+        "columnName": "Name", "columnReportTime": "Report time", "columnReportingStatus": "Reporting status", "summaryField": "Summary",
+        "filterReportingStatus": "Filter reporting status", "resetFilter": "Reset",
+        "objectLoadFailed": "Unable to load monitor objects", "instanceLoadFailed": "Unable to load instances", "detailLoadFailed": "Unable to load instance metrics", "detailForbidden": "You do not have permission to view this instance", "detailMissing": "This instance does not exist or was deleted", "backToMonitor": "Back to Monitor", "retryHint": "Check the network or your permissions and retry",
+        "noObjects": "No visible monitor objects", "noInstances": "No instances for this object", "noSearchResults": "No matching instances", "endOfList": "End of list",
+        "noReportTime": "No report time", "detailTitle": "Instance details", "instanceId": "Instance ID", "dataSource": "Data source", "selectPluginTitle": "Select data source", "selectPluginAction": "Select", "currentPlugin": "Current", "timeRange": "Time range",
+        "fields": {
+            "reportedAt": "Report time", "interval": "Interval", "intervalSeconds": "{count}s"
+        },
+        "pluginStatus": { "normal": "Online", "offline": "Offline" },
+        "expandGroup": "Expand", "collapseGroup": "Collapse", "groupCount": "{count} items",
+        "noMetricsConfigured": "No metrics configured", "noMetricsConfiguredHint": "The effective plugin has no displayable metric definitions", "noRangeData": "No data", "metricLoadFailed": "Unable to load this metric", "seriesCount": "{count} data series", "otherMetrics": "Other metrics",
+        "openMetricChart": "Open chart for {name}", "metricSheetIndex": "{current} / {total}", "metricPrev": "Previous metric", "metricNext": "Next metric",
+        "reportingStatus": { "normal": "Healthy", "unavailable": "Unavailable" },
+        "ranges": { "15": "15 min", "30": "30 min", "60": "1 hour", "360": "6 hours", "720": "12 hours", "1440": "24 hours", "10080": "7 days", "43200": "30 days" }
+    },
+
+    "assets": {
+        "tabs": { "followed": "Followed", "all": "All assets" }, "search": "Search assets", "followedAssets": "Followed assets", "assetCategories": "Asset categories",
+        "browseByCategory": "All categories", "backToCategories": "Back to all categories", "viewAllCategories": "View all categories", "selectClassificationTitle": "Select category", "selectClassificationAction": "Select", "currentClassification": "Current", "noClassifications": "No visible asset categories", "categoryModelCount": "{count} models", "categorySwitchLabel": "{name} ({count})", "categoryRowMeta": "{models} models · {assets} instances",
+        "loadFailed": "Unable to load the asset catalog", "instanceLoadFailed": "Unable to load asset instances", "detailLoadFailed": "Unable to load asset details", "detailForbidden": "You do not have permission to view this asset", "detailMissing": "This asset does not exist or was deleted", "backToAssets": "Back to Assets", "retryHint": "Check the network or your permissions and retry",
+        "resultCount": "{count} items", "shortCount": "{count} items", "catalogSummary": "{assets} assets · {models} models", "categorySummary": "{assets} assets · {models} models", "organization": "Team", "ipAddress": "IP", "noFollowed": "No followed assets", "noFollowedHint": "Follow an asset from its details. The result is shared with Web.", "noModels": "No visible asset models", "noInstances": "No assets in this model", "noInstancesHint": "Switch models above to continue", "endOfList": "End of list",
+        "currentModel": "Current model", "changeModel": "Select", "selectModelTitle": "Select model", "searchModels": "Filter model name", "selectModelAction": "Select", "currentModelBadge": "Current", "columnName": "Name",
+        "searchModel": "Filter in “{name}”", "searchPlaceholder": "Enter an asset keyword", "searchHint": "Search all assets", "searchHintDescription": "Enter a keyword to see real matches grouped by model", "searchResultsByModel": "Switch search results by model", "searchFailed": "Asset search failed", "noSearchResults": "No matching assets", "exactMatch": "Exact match", "searchForbidden": "You do not have global asset search permission",
+        "detailTitle": "Asset details", "follow": "Follow", "unfollow": "Unfollow", "followUnavailable": "Follow unavailable", "followSuccess": "Asset followed", "unfollowSuccess": "Asset unfollowed", "followFailed": "Unable to save follow state. Try again.", "noFieldGroups": "This model has no displayable fields", "yes": "Yes", "no": "No"
+    },
+
+    "conversations": {
+        "loadFailed": "Unable to load chats",
+        "loadFailedDescription": "Check your connection and try again",
+        "emptyTitle": "No chats yet",
+        "emptyDescription": "Choose an app from All Apps to start a chat",
+        "exploreApps": "View All Apps",
+        "untitled": "Untitled chat",
+        "sessionHint": "Tap to continue"
     },
     "chat": {
         "searchPlaceholder": "Search chats",
@@ -57,6 +173,7 @@
         "executionFailed": "Execution failed",
         "executionSuccess": "Execution succeeded",
         "aiProcessing": "AI is processing, please wait...",
+        "thinkingProcess": "Thinking process",
         "addLimit": "Cannot add images and files at the same time",
         "fileSizeLimitExceeded": "Some files exceed the 10MB limit and have been skipped",
         "uploading": "Uploading, please wait...",
@@ -68,6 +185,17 @@
         "welcomeMessage": "Hello, how can I assist you today?",
         "fileCountLimit": "You can add up to 9 files",
         "noConversations": "No conversations yet",
+        "currentApp": "Current app",
+        "conversationHistory": "Conversation history",
+        "openConversationHistory": "Open conversation history",
+        "closeConversationHistory": "Close conversation history",
+        "newConversation": "New conversation",
+        "conversationActions": "Conversation actions",
+        "deleteConversation": "Delete conversation",
+        "deleteConversationConfirm": "This conversation cannot be recovered after deletion. Continue?",
+        "deleteConversationSuccess": "Conversation deleted",
+        "deleteConversationFailed": "Unable to delete the conversation. Try again",
+        "deleteRunningConversation": "This conversation is still running and cannot be deleted yet",
         "loadFailedDescription": "Unable to load app information. Please check your network connection or try other options",
         "viewOtherConversations": "View Other Conversations",
         "backToAppList": "Back to App List"
@@ -113,7 +241,11 @@
         "searchChatHistory": "Search Chat History",
         "receiveNotification": "Receive Notifications",
         "continueConversation": "Continue Conversation",
-        "startConversation": "Start Conversation"
+        "startConversation": "Start Conversation",
+        "loadFailed": "Unable to load apps",
+        "loadFailedDescription": "Check your connection and try again",
+        "empty": "No apps in this category",
+        "emptyHint": "Choose another category or pull down to refresh"
     },
     "search": {
         "searchConversation": "Search conversations",
@@ -123,7 +255,9 @@
         "searchHint": "Please enter keyword to search",
         "noResults": "No results found",
         "tryOtherKeywords": "Try other keywords",
-        "yesterday": "Yesterday"
+        "yesterday": "Yesterday",
+        "loadFailed": "Unable to load search results",
+        "loadFailedDescription": "Check your connection and try again"
     },
     "account": {
         "title": "Accounts & Security",
@@ -142,7 +276,9 @@
         "user": "User",
         "superAdmin": "Super Admin",
         "normalUser": "Normal User",
-        "otherApp": "Other"
+        "otherApp": "Other",
+        "accountOverview": "Account overview",
+        "loadFailed": "Unable to load account details"
     },
     "avatar": {
         "viewAvatar": "View Avatar",
@@ -171,7 +307,9 @@
         "twoFactorAuth": "Two-Factor Authentication",
         "twoFactorHint": "Please complete two-factor authentication on the desktop site",
         "backToLogin": "Back to Login",
-        "systemError": "System error"
+        "systemError": "System error",
+        "serviceUnavailable": "The sign-in service is temporarily unavailable. Try again later.",
+        "logoutIncomplete": "You signed out locally, but the server session may still be active"
     },
     "zoneinfo": {
       "PacificHonolulu": "Pacific/Honolulu (UTC-10)",

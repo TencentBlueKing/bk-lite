@@ -56,7 +56,6 @@ def _build_sub_tools(tool_name, exports, loader: LanguageLoader):
 
 
 def build_builtin_monitor_tool(loader: LanguageLoader):
-    from apps.opspilot.metis.llm.tools.monitor import CONSTRUCTOR_PARAMS as monitor_constructor_params
     from apps.opspilot.metis.llm.tools.monitor import __all__ as monitor_exports
 
     description = loader.get(f"tools.{BUILTIN_MONITOR_TOOL_NAME}.description") or "Monitor built-in tool"
@@ -72,7 +71,7 @@ def build_builtin_monitor_tool(loader: LanguageLoader):
         "params": {
             "name": BUILTIN_MONITOR_TOOL_NAME,
             "url": f"langchain:{BUILTIN_MONITOR_TOOL_NAME}",
-            "kwargs": _build_kwargs_from_params(monitor_constructor_params),
+            "kwargs": [],
             "enable_auth": False,
             "auth_token": "",
         },
@@ -87,7 +86,7 @@ def build_builtin_monitor_runtime_tool(tool_kwargs):
         "url": f"langchain:{BUILTIN_MONITOR_TOOL_NAME}",
         "enable_auth": False,
         "auth_token": "",
-        "extra_param_prompt": tool_kwargs or {},
+        "extra_tools_prompt": "",
     }
 
 

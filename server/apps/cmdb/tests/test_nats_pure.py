@@ -1,15 +1,38 @@
 """CMDB NATS 处理器纯辅助函数覆盖测试。
 
-对照 spec/prd/CMDB·资产/运营分析取数：资产实例展示格式化、变更趋势时间分桶。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：资产实例展示格式化、变更趋势时间分桶。
 """
 
 import datetime
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from django.utils import timezone
 
 from apps.cmdb.nats import nats as N
+
+
+@patch.object(N, "_build_nats_permission_map", return_value=None)
+@patch.object(N, "_build_nats_model_permission_map", return_value=None)
+@pytest.mark.unit
+def test_get_cmdb_statistics_keeps_complete_zero_schema_without_permission(model_permission_mock, instance_permission_mock):
+    result = N.get_cmdb_statistics(user_info={"team": 1, "user": "alice"})
+
+    assert result == {
+        "result": True,
+        "data": {
+            "classification_count": 0,
+            "model_count": 0,
+            "instance_count": 0,
+            "model_with_instance_count": 0,
+            "empty_model_count": 0,
+            "model_coverage_rate": 0,
+        },
+        "message": "",
+    }
+    model_permission_mock.assert_called_once()
+    instance_permission_mock.assert_called_once()
 
 
 # --------------------------------------------------------------------------
@@ -90,9 +113,10 @@ def test_parse_client_datetime_iso():
     assert isinstance(N._parse_client_datetime("2026-01-01T00:00:00Z", tz), datetime.datetime)
 
 
-def test_parse_client_datetime_plain():
+def test_parse_client_datetime_rejects_timezone_less_value():
     tz = timezone.get_current_timezone()
-    assert isinstance(N._parse_client_datetime("2026-01-01 00:00:00", tz), datetime.datetime)
+    with pytest.raises(ValueError, match="explicit timezone"):
+        N._parse_client_datetime("2026-01-01 00:00:00", tz)
 
 
 def test_format_period_value_date():

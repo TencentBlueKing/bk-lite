@@ -12,6 +12,7 @@ from apps.node_mgmt.utils.step_tracker import now_iso
 
 INSTALLER_ACTION_MESSAGES = {
     "bootstrap_running": "Start installation",
+    "clock_check": "Check node and Server clocks",
     "download": "Download installer files",
     "write_config": "Write configuration",
     "install": "Install controller",
@@ -32,6 +33,8 @@ FAILURE_SUMMARY_MAP = {
     "disk": "The target host does not have enough disk space for installation",
     "package_invalid": "The downloaded package is invalid or corrupted",
     "arch_mismatch": "The package architecture does not match the target host",
+    "manual_recovery_required": "The previous installation was preserved but requires manual recovery",
+    "clock_skew": "The node and Server clocks differ beyond the allowed threshold",
     "unknown": "The installation step failed with an unexpected error",
 }
 
@@ -43,6 +46,11 @@ FAILURE_CONTEXT_FIELDS = (
     "install_dir",
     "target_path",
     "exit_code",
+    "node_time",
+    "server_time",
+    "clock_offset_seconds",
+    "clock_skew_seconds",
+    "max_clock_skew_seconds",
 )
 
 
@@ -178,7 +186,11 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
     ):
         return "package_invalid"
 
-    return explicit_error_type if explicit_error_type in {"connection", "timeout"} else "unknown"
+    return (
+        explicit_error_type
+        if explicit_error_type in {"connection", "timeout", "manual_recovery_required", "clock_skew"}
+        else "unknown"
+    )
 
 
 def _has_failure_signal(message: str | None, error: str | None, details: dict[str, Any] | None) -> bool:
@@ -312,10 +324,25 @@ def normalize_failure(message=None, error=None, details=None) -> dict | None:
     }
 
 
-def installer_step_index(action: str) -> int | None:
-    if action not in InstallerConstants.INSTALLER_STEP_SEQUENCE:
+def installer_step_index(action: str, sequence: list[str] | None = None) -> int | None:
+    selected_sequence = sequence or InstallerConstants.LEGACY_INSTALLER_STEP_SEQUENCE
+    if action not in selected_sequence:
         return None
-    return InstallerConstants.INSTALLER_STEP_SEQUENCE.index(action) + 1
+    return selected_sequence.index(action) + 1
+
+
+def _installer_event_position(event: dict[str, Any], action: str) -> tuple[int | None, int]:
+    step_index = event.get("step_index")
+    step_total = event.get("step_total")
+    if type(step_index) is int and type(step_total) is int and 0 < step_index <= step_total:
+        return step_index, step_total
+
+    sequence = (
+        InstallerConstants.INSTALLER_STEP_SEQUENCE
+        if action == "clock_check"
+        else InstallerConstants.LEGACY_INSTALLER_STEP_SEQUENCE
+    )
+    return installer_step_index(action, sequence), len(sequence)
 
 
 def build_installer_event_details(event: dict[str, Any]) -> dict:
@@ -331,12 +358,13 @@ def build_installer_event_details(event: dict[str, Any]) -> dict:
         error=event.get("error"),
         details=event,
     )
+    step_index, step_total = _installer_event_position(event, action)
     details = {
         "installer_event": True,
         "raw_step": _clean_text(event.get("step")),
         "raw_status": _clean_text(event.get("status")),
-        "step_index": installer_step_index(action),
-        "step_total": len(InstallerConstants.INSTALLER_STEP_SEQUENCE),
+        "step_index": step_index,
+        "step_total": step_total,
         "progress": progress,
         "timestamp": _clean_text(event.get("timestamp")) or now_iso(),
         "error": _clean_text(event.get("error")),
@@ -353,6 +381,11 @@ def build_installer_event_details(event: dict[str, Any]) -> dict:
         "install_dir",
         "target_path",
         "exit_code",
+        "node_time",
+        "server_time",
+        "clock_offset_seconds",
+        "clock_skew_seconds",
+        "max_clock_skew_seconds",
     ):
         normalized_value = event.get(field_name)
         if normalized_value not in (None, ""):
@@ -409,6 +442,11 @@ def summarize_installer_progress(result: dict | None) -> dict | None:
     progress = cast(dict[str, Any], progress)
 
     action = latest.get("action") or normalize_installer_action(details.get("raw_step"))
+    sequence = (
+        InstallerConstants.INSTALLER_STEP_SEQUENCE
+        if any(step.get("action") == "clock_check" for step in installer_steps)
+        else InstallerConstants.LEGACY_INSTALLER_STEP_SEQUENCE
+    )
 
     return {
         "current_step": action,
@@ -420,6 +458,6 @@ def summarize_installer_progress(result: dict | None) -> dict | None:
             total=progress.get("total"),
             unit=progress.get("unit") or "bytes",
         ),
-        "step_index": details.get("step_index") or installer_step_index(action),
-        "step_total": details.get("step_total") or len(InstallerConstants.INSTALLER_STEP_SEQUENCE),
+        "step_index": details.get("step_index") or installer_step_index(action, sequence),
+        "step_total": details.get("step_total") or len(sequence),
     }

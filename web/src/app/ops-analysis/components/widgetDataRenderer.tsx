@@ -5,6 +5,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { createPortal } from "react-dom";
 import { Spin } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import {
@@ -15,26 +16,48 @@ import {
 } from "@/app/ops-analysis/types/dashBoard";
 import { DatasourceItem } from "@/app/ops-analysis/types/dataSource";
 import {
+  buildWidgetExtraParams,
   buildWidgetRequestParams,
   buildWidgetRequestSignatureParams,
+  createWidgetRequestHistory,
+  decideWidgetRequest,
+  hasActiveWidgetRuntimeParams,
+  shouldShowInitialWidgetLoading,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
+import {
+  findComponentSwitchParams,
+  getTypedValueKey,
+  reconcileComponentSwitchValue,
+  resolveComponentSwitchRequestGate,
+  resolveComponentSwitchRuntime,
+  supportsComponentSwitch,
+} from "@/app/ops-analysis/utils/componentParamSwitch";
+import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOptions";
 import { fetchCompareData } from "@/app/ops-analysis/utils/compareQuery";
 import { useDataSourceApi } from "@/app/ops-analysis/api/dataSource";
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
-import { getRequestErrorMessage } from "@/app/ops-analysis/utils/requestError";
+import { getRequestErrorMessage, classifyWidgetQueryError } from "@/app/ops-analysis/utils/requestError";
 import { getValueByPath } from "@/app/ops-analysis/utils/objectPath";
 import {
   buildWidgetRequestCacheKey,
-  getCachedWidgetRequest,
-  setWidgetRequestFailureCache,
-  setWidgetRequestSuccessCache,
+  getOrCreateInflightWidgetRequest,
 } from "@/app/ops-analysis/utils/widgetRequestCache";
 import {
   buildWidgetRequestVersionKey,
+  resolveWidgetDataSourceState,
   shouldWaitForInitialWidgetData,
 } from "@/app/ops-analysis/utils/widgetRequestVersion";
 import WidgetRenderer from "@/app/ops-analysis/components/widgetRenderer";
 import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
+import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
+import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
+import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
+import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
+import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
+import {
+  hasRenderableWidgetData,
+  type DashboardWidgetRenderResult,
+} from "@/app/ops-analysis/renderContract";
 
 const validateTopNData = (
   data: unknown,
@@ -176,26 +199,6 @@ const validateEventTableData = (
     : { isValid: false, message: failMessage };
 };
 
-const inflightWidgetRequests = new Map<string, Promise<unknown>>();
-const getOrCreateInflightRequest = async <T,>(
-  requestKey: string,
-  createRequest: () => Promise<T>,
-): Promise<T> => {
-  const existingRequest = inflightWidgetRequests.get(requestKey) as
-    | Promise<T>
-    | undefined;
-  if (existingRequest) {
-    return existingRequest;
-  }
-
-  const requestPromise = createRequest().finally(() => {
-    inflightWidgetRequests.delete(requestKey);
-  });
-
-  inflightWidgetRequests.set(requestKey, requestPromise as Promise<unknown>);
-  return requestPromise;
-};
-
 export interface WidgetWrapperProps {
   dashboardId?: number | string;
   widgetId: string;
@@ -210,6 +213,11 @@ export interface WidgetWrapperProps {
   reloadVersion?: string;
   builtinNamespaceId?: number;
   screenRenderContext?: ScreenRenderContext;
+  onRenderStatus?: (result: DashboardWidgetRenderResult) => void;
+  layoutEditable?: boolean;
+  onTopologyLayoutChange?: (
+    next: NonNullable<ValueConfig['networkStatusTopology']>,
+  ) => void;
 }
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
@@ -225,21 +233,148 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   reloadVersion = "0:0",
   builtinNamespaceId,
   screenRenderContext,
+  widgetId,
+  onRenderStatus,
+  layoutEditable,
+  onTopologyLayoutChange,
 }) => {
   const { t } = useTranslation();
+  const headerRuntimeSlot = useWidgetHeaderRuntimeSlot();
   const [rawData, setRawData] = useState<any>(null);
   const [baselineData, setBaselineData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [hasSettledRequest, setHasSettledRequest] = useState(false);
+  const hasSettledRequestRef = useRef(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [dataValidation, setDataValidation] = useState<{
     isValid: boolean;
     message?: string;
+    errorCode?: string;
   } | null>(null);
   const [tableQueryParams, setTableQueryParams] = useState<Record<string, any>>(
-    { page: 1, page_size: 20 },
+    {},
   );
+  const { canvasDataSourceLookupStatus } = useOpsAnalysis();
   const { getSourceDataByApiId } = useDataSourceApi();
   const isSceneWidget = config?.sceneWidgetType === "networkStatusTopology";
+  const effectiveComponentParams = useMemo(() => {
+    const overrides = config?.dataSourceParams || [];
+    if (!dataSource?.params?.length) return overrides;
+    return dataSource.params.map((param) => {
+      const override = overrides.find((item) => item.name === param.name);
+      return override ? { ...param, ...override } : param;
+    });
+  }, [config?.dataSourceParams, dataSource?.params]);
+  const componentSwitchParam = useMemo(
+    () => supportsComponentSwitch(chartType) ? findComponentSwitchParams(effectiveComponentParams)[0] : undefined,
+    [chartType, effectiveComponentParams],
+  );
+  const optionState = useParamInputOptions(componentSwitchParam?.inputConfig);
+  const rawSavedComponentSwitchValue = componentSwitchParam
+    ? config?.params?.[componentSwitchParam.name] ?? componentSwitchParam.value
+    : undefined;
+  const savedComponentSwitchValue =
+    typeof rawSavedComponentSwitchValue === "string" || typeof rawSavedComponentSwitchValue === "number"
+      ? rawSavedComponentSwitchValue
+      : undefined;
+  const runtimeParamScopeKey = useMemo(
+    () =>
+      JSON.stringify({
+        chartType,
+        dataSource: config?.dataSource,
+        param: componentSwitchParam?.name,
+        inputConfig: componentSwitchParam?.inputConfig,
+        savedValue:
+          typeof savedComponentSwitchValue === "string" || typeof savedComponentSwitchValue === "number"
+            ? getTypedValueKey(savedComponentSwitchValue)
+            : null,
+      }),
+    [
+      chartType,
+      config?.dataSource,
+      componentSwitchParam?.inputConfig,
+      componentSwitchParam?.name,
+      savedComponentSwitchValue,
+    ],
+  );
+  const runtimeParamInitialValue = useMemo(
+    () => {
+      const reconciled = optionState.status === "success"
+        ? reconcileComponentSwitchValue(savedComponentSwitchValue, optionState.options)
+        : savedComponentSwitchValue;
+      return typeof reconciled === "string" || typeof reconciled === "number"
+        ? reconciled
+        : undefined;
+    },
+    [optionState, savedComponentSwitchValue],
+  );
+  const [runtimeParamState, setRuntimeParamState] = useState<{
+    scopeKey: string;
+    value?: string | number;
+  }>(() => ({
+    scopeKey: runtimeParamScopeKey,
+    value: runtimeParamInitialValue,
+  }));
+  const runtimeParamValue =
+    runtimeParamState.scopeKey === runtimeParamScopeKey
+      ? runtimeParamState.value
+      : runtimeParamInitialValue;
+
+  useEffect(() => {
+    setRuntimeParamState((previous) =>
+      previous.scopeKey === runtimeParamScopeKey
+        ? previous
+        : {
+          scopeKey: runtimeParamScopeKey,
+          value: runtimeParamInitialValue,
+        },
+    );
+  }, [runtimeParamInitialValue, runtimeParamScopeKey]);
+
+  useEffect(() => {
+    if (optionState.status !== "success") return;
+    setRuntimeParamState((previous) => {
+      if (previous.scopeKey !== runtimeParamScopeKey) {
+        return { scopeKey: runtimeParamScopeKey, value: runtimeParamInitialValue };
+      }
+      const reconciled = reconcileComponentSwitchValue(
+        previous.value,
+        optionState.options,
+      );
+      if (typeof reconciled !== "string" && typeof reconciled !== "number") {
+        return previous;
+      }
+      return reconciled === previous.value
+        ? previous
+        : { ...previous, value: reconciled };
+    });
+  }, [optionState, runtimeParamInitialValue, runtimeParamScopeKey]);
+
+  const handleRuntimeParamChange = useCallback(
+    (value: string | number) => {
+      setRuntimeParamState({ scopeKey: runtimeParamScopeKey, value });
+    },
+    [runtimeParamScopeKey],
+  );
+  const componentSwitchControl = optionState.status === "success" ? (
+    <ComponentParamSwitchControl
+      inputConfig={componentSwitchParam?.inputConfig}
+      options={optionState.options}
+      value={runtimeParamValue as string | number | undefined}
+      onChange={handleRuntimeParamChange}
+      block={!headerRuntimeSlot}
+    />
+  ) : null;
+  const runtimeHeaderControl =
+    chartType === "topN" && headerRuntimeSlot && componentSwitchControl
+      ? createPortal(
+        componentSwitchControl,
+        headerRuntimeSlot,
+      )
+      : null;
+  const inlineComponentSwitchControl = chartType === "room3D"
+    ? componentSwitchControl
+    : headerRuntimeSlot ? null : componentSwitchControl;
 
   const fetchIdRef = useRef(0);
   const tableQueryKey = useMemo(
@@ -252,6 +387,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     }
     return config?.dataSource;
   }, [config?.dataSource]);
+  const widgetDataSourceState = resolveWidgetDataSourceState({
+    hasDataSourceId: Boolean(normalizedDataSourceId),
+    hasResolvedDataSource: Boolean(dataSource),
+    lookupStatus: canvasDataSourceLookupStatus,
+  });
   const isTableLikeChart = chartType === "table" || chartType === "eventTable";
   const widgetUsesNamespace = useMemo(
     () =>
@@ -265,11 +405,89 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
     return dataSource?.namespaces?.[0];
   }, [builtinNamespaceId, dataSource?.namespaces]);
+  const runtimeParams = useMemo(
+    () => optionState.status === "success"
+      ? resolveComponentSwitchRuntime(
+        chartType,
+        componentSwitchParam,
+        optionState.options,
+        runtimeParamValue,
+      ).params
+      : {},
+    [
+      chartType,
+      componentSwitchParam,
+      optionState,
+      runtimeParamValue,
+    ],
+  );
+  const componentSwitchRequestGate = useMemo(
+    () =>
+      resolveComponentSwitchRequestGate({
+        hasComponentSwitchParam: Boolean(componentSwitchParam),
+        optionStatus: optionState.status,
+        runtimeParams,
+      }),
+    [componentSwitchParam, optionState.status, runtimeParams],
+  );
   const requestEnabled =
     Boolean(normalizedDataSourceId) &&
     Boolean(dataSource) &&
     dataSource?.hasAuth !== false &&
-    (!widgetUsesNamespace || effectiveNamespaceId !== undefined);
+    (!widgetUsesNamespace || effectiveNamespaceId !== undefined) &&
+    componentSwitchRequestGate === "ready";
+  const requestExtraParams = useMemo(
+    () =>
+      buildWidgetExtraParams({
+        namespaceId: widgetUsesNamespace ? effectiveNamespaceId : undefined,
+        isTableLikeChart,
+        tableQueryParams,
+        runtimeParams,
+        dataSourceParams: dataSource?.params,
+      }),
+    [
+      effectiveNamespaceId,
+      isTableLikeChart,
+      runtimeParams,
+      tableQueryParams,
+      dataSource?.params,
+      widgetUsesNamespace,
+    ],
+  );
+  const dateRangeResolutionInputKey = useMemo(
+    () => JSON.stringify({
+      dataSource: normalizedDataSourceId,
+      dataSourceParams: config?.dataSourceParams ?? dataSource?.params,
+      requestExtraParams,
+      unifiedFilterValues,
+      filterBindings: config?.filterBindings,
+      filterDefinitions,
+      compare: config?.compare,
+    }),
+    [
+      normalizedDataSourceId,
+      config?.dataSourceParams,
+      dataSource?.params,
+      requestExtraParams,
+      unifiedFilterValues,
+      config?.filterBindings,
+      filterDefinitions,
+      config?.compare,
+    ],
+  );
+  const dateRangeResolutionContext = useMemo(
+    () => ({
+      referenceNow: Date.now(),
+      timezone: getDateRangeTimezone(),
+    }),
+    [
+      dateRangeResolutionInputKey,
+      reloadVersion,
+      filterSearchVersion,
+      namespaceSearchVersion,
+      tableQueryKey,
+    ],
+  );
 
   const requestParams = useMemo(() => {
     if (!requestEnabled) {
@@ -279,26 +497,20 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     return buildWidgetRequestParams({
       config,
       dataSource,
-      extraParams: {
-        ...(widgetUsesNamespace && effectiveNamespaceId !== undefined
-          ? { namespace_id: effectiveNamespaceId }
-          : {}),
-        ...(isTableLikeChart ? tableQueryParams : {}),
-      },
+      extraParams: requestExtraParams,
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
       filterDefinitions,
+      resolutionContext: dateRangeResolutionContext,
     });
   }, [
     requestEnabled,
     config,
     dataSource,
-    widgetUsesNamespace,
-    effectiveNamespaceId,
-    isTableLikeChart,
-    tableQueryParams,
+    requestExtraParams,
     unifiedFilterValues,
     filterDefinitions,
+    dateRangeResolutionContext,
   ]);
 
   const requestSignatureParams = useMemo(() => {
@@ -309,26 +521,20 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     return buildWidgetRequestSignatureParams({
       config,
       dataSource,
-      extraParams: {
-        ...(widgetUsesNamespace && effectiveNamespaceId !== undefined
-          ? { namespace_id: effectiveNamespaceId }
-          : {}),
-        ...(isTableLikeChart ? tableQueryParams : {}),
-      },
+      extraParams: requestExtraParams,
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
       filterDefinitions,
+      resolutionContext: dateRangeResolutionContext,
     });
   }, [
     requestEnabled,
     config,
     dataSource,
-    widgetUsesNamespace,
-    effectiveNamespaceId,
-    isTableLikeChart,
-    tableQueryParams,
+    requestExtraParams,
     unifiedFilterValues,
     filterDefinitions,
+    dateRangeResolutionContext,
   ]);
 
   const requestSignature = useMemo(() => {
@@ -415,6 +621,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           return validateGaugeData(data, config);
         case "eventTable":
           return validateEventTableData(data);
+        case "multiValue":
+          const result = validateMultiValueData(data, errorMessage);
+          return { isValid: result.isValid, message: result.errorMessage };
         case "table":
           return { isValid: true };
         default:
@@ -440,21 +649,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       }
       setDataValidation(null);
 
-      const data = await getOrCreateInflightRequest(requestKey, () =>
+      const data = await getOrCreateInflightWidgetRequest(requestKey, () =>
         fetchCompareData({
           dataSourceId: normalizedDataSourceId,
           getSourceDataByApiId,
           config,
           dataSource,
-          extraParams: {
-            ...(widgetUsesNamespace && effectiveNamespaceId !== undefined
-              ? { namespace_id: effectiveNamespaceId }
-              : {}),
-            ...(chartType === "table" ? tableQueryParams : {}),
-          },
+          extraParams: requestExtraParams,
           unifiedFilterValues,
           filterBindings: config?.filterBindings,
           filterDefinitions,
+          resolutionContext: dateRangeResolutionContext,
         }),
       );
 
@@ -466,10 +671,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
       const validation = validateChartData(data.currentData, chartType);
       setDataValidation(validation);
-      setWidgetRequestSuccessCache(requestKey, {
-        rawData: data.currentData,
-        baselineData: data.baselineData,
-      });
     } catch (err) {
       if (currentFetchId !== fetchIdRef.current) return;
       console.error("获取数据失败:", err);
@@ -479,13 +680,16 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         err,
         t("dashboard.dataFetchFailed"),
       );
+      const errorCode = classifyWidgetQueryError(err);
       setDataValidation({
         isValid: false,
         message,
+        ...(errorCode ? { errorCode } : {}),
       });
-      setWidgetRequestFailureCache(requestKey, message);
     } finally {
       if (currentFetchId !== fetchIdRef.current) return;
+      hasSettledRequestRef.current = true;
+      setHasSettledRequest(true);
       if (isTableLikeChart) {
         setTableLoading(false);
       } else {
@@ -514,9 +718,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
     if (!dataSource) {
       setRawData(null);
-      setLoading(false);
+      setLoading(widgetDataSourceState === "loading");
       setTableLoading(false);
-      setDataValidation(null);
+      if (widgetDataSourceState === "loading") {
+        setDataValidation(null);
+      } else {
+        setDataValidation({
+          isValid: false,
+          message: t("dashboard.dataFetchFailed"),
+          errorCode: "datasource_missing",
+        });
+      }
       return;
     }
 
@@ -527,122 +739,69 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setDataValidation({
         isValid: false,
         message: t("common.noAuth"),
+        errorCode: "widget_data_forbidden",
       });
       return;
+    }
+
+    if (componentSwitchRequestGate === "blocked") {
+      setRawData(null);
+      setBaselineData(null);
+      setLoading(false);
+      setTableLoading(false);
+      hasSettledRequestRef.current = true;
+      setHasSettledRequest(true);
+      setDataValidation({
+        isValid: false,
+        message: t("dashboard.noData"),
+      });
     }
   }, [
     isSceneWidget,
     normalizedDataSourceId,
     dataSource,
     dataSource?.hasAuth,
+    widgetDataSourceState,
+    componentSwitchRequestGate,
     t,
   ]);
 
-  const previousRequestRef = useRef<{
-    signature: string | null;
-    filterSearchVersion: number;
-    namespaceSearchVersion: number;
-    reloadVersion: string;
-    tableQueryKey: string;
-    hasRequested: boolean;
-  }>({
-    signature: null,
-    filterSearchVersion,
-    namespaceSearchVersion,
-    reloadVersion,
-    tableQueryKey,
-    hasRequested: false,
-  });
-
-  useEffect(() => {
-    if (!requestEnabled || !requestSignature || !requestKey) {
-      return;
-    }
-
-    const cached = getCachedWidgetRequest(requestKey);
-
-    if (!cached) {
-      return;
-    }
-
-    setRawData(cached.rawData);
-    setBaselineData(cached.baselineData);
-    setDataValidation(
-      cached.errorMessage
-        ? {
-          isValid: false,
-          message: cached.errorMessage,
-        }
-        : validateChartData(cached.rawData, chartType),
-    );
-    setLoading(false);
-    setTableLoading(false);
-    previousRequestRef.current = {
-      signature: requestSignature,
+  const previousRequestRef = useRef(
+    createWidgetRequestHistory({
+      requestEnabled: false,
+      requestSignature: null,
+      hasRequestParams: false,
+      hasRequestKey: false,
       filterSearchVersion,
       namespaceSearchVersion,
       reloadVersion,
       tableQueryKey,
-      hasRequested: true,
-    };
-  }, [
-    filterSearchVersion,
-    namespaceSearchVersion,
-    reloadVersion,
-    requestEnabled,
-    requestKey,
-    requestSignature,
-    tableQueryKey,
-    chartType,
-    validateChartData,
-  ]);
+      hasEnabledFilterBindings: false,
+      widgetUsesNamespace: false,
+      isTableLikeChart: false,
+    }),
+  );
 
   useEffect(() => {
-    const previousRequest = previousRequestRef.current;
-    const signatureChanged = previousRequest.signature !== requestSignature;
-    const filterSearchChanged =
-      previousRequest.filterSearchVersion !== filterSearchVersion;
-    const namespaceSearchChanged =
-      previousRequest.namespaceSearchVersion !== namespaceSearchVersion;
-    const reloadChanged = previousRequest.reloadVersion !== reloadVersion;
-    const tableQueryChanged = previousRequest.tableQueryKey !== tableQueryKey;
-    const isInitialRequest = !previousRequest.hasRequested;
-    const shouldFetchForFilterSearch =
-      filterSearchChanged && hasEnabledFilterBindings;
-    const shouldFetchForNamespaceSearch =
-      namespaceSearchChanged && widgetUsesNamespace;
-    const shouldFetchForTableQuery = isTableLikeChart && tableQueryChanged;
-
-    if (!requestEnabled || !requestSignature || !requestParams || !requestKey) {
-      previousRequestRef.current = {
-        signature: requestSignature,
+    const decision = decideWidgetRequest({
+      history: previousRequestRef.current,
+      current: {
+        requestEnabled,
+        requestSignature,
+        hasRequestParams: Boolean(requestParams),
+        hasRequestKey: Boolean(requestKey),
         filterSearchVersion,
         namespaceSearchVersion,
         reloadVersion,
         tableQueryKey,
-        hasRequested: false,
-      };
-      return;
-    }
+        hasEnabledFilterBindings,
+        widgetUsesNamespace,
+        isTableLikeChart,
+      },
+    });
+    previousRequestRef.current = decision.nextHistory;
 
-    const shouldFetch =
-      isInitialRequest ||
-      signatureChanged ||
-      reloadChanged ||
-      shouldFetchForFilterSearch ||
-      shouldFetchForNamespaceSearch ||
-      shouldFetchForTableQuery;
-
-    previousRequestRef.current = {
-      signature: requestSignature,
-      filterSearchVersion,
-      namespaceSearchVersion,
-      reloadVersion,
-      tableQueryKey,
-      hasRequested: previousRequest.hasRequested || shouldFetch,
-    };
-
-    if (!shouldFetch) {
+    if (!decision.shouldFetch || !requestKey) {
       return;
     }
 
@@ -666,70 +825,185 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const renderError = (message: string) => (
     <WidgetErrorState message={message} />
   );
+  const handleRendererReady = useCallback(
+    (hasData?: boolean) => {
+      onReady?.(hasData);
+      if (isTableLikeChart ? tableLoading : loading) {
+        onRenderStatus?.({ widgetId, status: "loading" });
+        return;
+      }
+      if (requestEnabled && !hasSettledRequest) {
+        onRenderStatus?.({ widgetId, status: "loading" });
+        return;
+      }
+      if (!hasData && hasRenderableWidgetData(rawData)) {
+        onRenderStatus?.({ widgetId, status: "loading" });
+        return;
+      }
+      onRenderStatus?.({
+        widgetId,
+        status: hasData ? "ready" : "empty",
+      });
+    },
+    [
+      hasSettledRequest,
+      isTableLikeChart,
+      loading,
+      onReady,
+      onRenderStatus,
+      rawData,
+      requestEnabled,
+      tableLoading,
+      widgetId,
+    ],
+  );
   const hasRawPayload = rawData !== null && rawData !== undefined;
+  const hasActiveRuntimeControl =
+    hasActiveWidgetRuntimeParams(chartType, runtimeParams);
   const isWaitingForInitialData = shouldWaitForInitialWidgetData({
     isSceneWidget,
     isTableLikeChart,
     hasDataSourceId: Boolean(normalizedDataSourceId),
     hasResolvedDataSource: Boolean(dataSource),
+    dataSourceLookupLoading: widgetDataSourceState === "loading",
     hasRawPayload,
     hasDataValidation: Boolean(dataValidation),
     requestEnabled,
     hasRequested: previousRequestRef.current.hasRequested,
   });
+  const isWaitingForSwitchOptions = componentSwitchRequestGate === "pending";
+  const isInitialNonTableLoading =
+    shouldShowInitialWidgetLoading({
+      loading,
+      isTableLikeChart,
+      hasRawPayload,
+      hasSettledRequest,
+    });
+
+  useEffect(() => {
+    if (isInitialNonTableLoading || isWaitingForInitialData || isWaitingForSwitchOptions) {
+      onRenderStatus?.({ widgetId, status: "loading" });
+      return;
+    }
+
+    if (dataValidation && !dataValidation.isValid && !hasActiveRuntimeControl) {
+      onRenderStatus?.({
+        widgetId,
+        status: "failed",
+        error:
+          dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
+        ...(dataValidation.errorCode
+          ? { errorCode: dataValidation.errorCode }
+          : {}),
+      });
+    }
+  }, [
+    dataValidation,
+    hasActiveRuntimeControl,
+    isInitialNonTableLoading,
+    isWaitingForInitialData,
+    isWaitingForSwitchOptions,
+    onRenderStatus,
+    t,
+    widgetId,
+  ]);
 
   if (isSceneWidget) {
     return (
+      <>
+        {runtimeHeaderControl}
+        <div style={{ position: "relative", height: "100%" }}>
+          <WidgetRenderer
+            chartType={chartType}
+            rawData={null}
+            loading={false}
+            config={config}
+            refreshKey={reloadVersion}
+            screenRenderContext={screenRenderContext}
+            onReady={handleRendererReady}
+            layoutEditable={layoutEditable}
+            onTopologyLayoutChange={onTopologyLayoutChange}
+            fallback={renderError(
+              `${t("dashboard.unknownComponentType")}: ${chartType}`,
+            )}
+          />
+        </div>
+      </>
+    );
+  }
+
+  if (isInitialNonTableLoading || isWaitingForInitialData || isWaitingForSwitchOptions) {
+    return (
+      <>
+        {runtimeHeaderControl}
+        <div className="h-full flex items-center justify-center">
+          <Spin spinning />
+        </div>
+      </>
+    );
+  }
+
+  if (widgetDataSourceState === "data-source-load-error") {
+    return (
+      <>
+        {runtimeHeaderControl}
+        {renderError(t("dashboard.dataSourceLoadFailed"))}
+      </>
+    );
+  }
+
+  if (widgetDataSourceState === "data-source-not-found") {
+    return (
+      <>
+        {runtimeHeaderControl}
+        {renderError(t("dashboard.dataSourceNotFound"))}
+      </>
+    );
+  }
+
+  // 如果数据校验失败，显示错误提示
+  if (
+    dataValidation &&
+    !dataValidation.isValid &&
+    !hasActiveRuntimeControl
+  ) {
+    return (
+      <>
+        {runtimeHeaderControl}
+        {renderError(
+          dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
+        )}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {runtimeHeaderControl}
       <div style={{ position: "relative", height: "100%" }}>
         <WidgetRenderer
           chartType={chartType}
-          rawData={null}
-          loading={false}
+          rawData={rawData}
+          baselineData={baselineData}
+          loading={isTableLikeChart ? tableLoading : loading}
           config={config}
           refreshKey={reloadVersion}
+          dataSource={dataSource}
           screenRenderContext={screenRenderContext}
-          onReady={onReady}
+          onReady={handleRendererReady}
+          onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
+          componentSwitchControl={inlineComponentSwitchControl}
+          errorMessage={
+            hasActiveRuntimeControl && dataValidation && !dataValidation.isValid
+              ? dataValidation.message || t("dashboard.dataCannotRenderAsChart")
+              : undefined
+          }
           fallback={renderError(
             `${t("dashboard.unknownComponentType")}: ${chartType}`,
           )}
         />
       </div>
-    );
-  }
-
-  if ((loading && !isTableLikeChart) || isWaitingForInitialData) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Spin spinning />
-      </div>
-    );
-  }
-
-  // 如果数据校验失败，显示错误提示
-  if (dataValidation && !dataValidation.isValid) {
-    return renderError(
-      dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
-    );
-  }
-
-  return (
-    <div style={{ position: "relative", height: "100%" }}>
-      <WidgetRenderer
-        chartType={chartType}
-        rawData={rawData}
-        baselineData={baselineData}
-        loading={isTableLikeChart ? tableLoading : loading}
-        config={config}
-        refreshKey={reloadVersion}
-        dataSource={dataSource}
-        screenRenderContext={screenRenderContext}
-        onReady={onReady}
-        onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
-        fallback={renderError(
-          `${t("dashboard.unknownComponentType")}: ${chartType}`,
-        )}
-      />
-    </div>
+    </>
   );
 };
 

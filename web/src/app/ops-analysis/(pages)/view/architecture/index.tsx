@@ -13,6 +13,7 @@ import { useTranslation } from '@/utils/i18n';
 import { iconList } from '@/app/cmdb/utils/common';
 import { message, Spin } from 'antd';
 import { useArchitectureApi } from '@/app/ops-analysis/api/architecture';
+import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import { flattenCollections } from '@isoflow/isopacks/dist/utils';
 import {
   DiagramData,
@@ -65,9 +66,10 @@ export interface ArchitectureRef {
 }
 
 const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
-  ({ selectedArchitecture }, ref) => {
+  ({ selectedArchitecture, shareMode = false }, ref) => {
     const { t } = useTranslation();
     const { getArchitectureDetail, saveArchitecture } = useArchitectureApi();
+    const { shareLoading, openShare } = useCanvasShareAction('architecture');
     const [diagramName, setDiagramName] = useState('');
     const [fossflowKey, setFossflowKey] = useState(0);
     const [currentModel, setCurrentModel] = useState<DiagramData | null>(null);
@@ -348,6 +350,15 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             selectedArchitecture={selectedArchitecture}
             isEditMode={isEditMode}
             isFullscreen={isFullscreen}
+            shareMode={shareMode}
+            shareLoading={shareLoading}
+            onOpenShare={
+              !shareMode && selectedArchitecture?.data_id
+                ? () => {
+                  void openShare(selectedArchitecture.data_id);
+                }
+                : undefined
+            }
             loading={loading}
             onEdit={toggleEditMode}
             onSave={saveDiagram}
@@ -374,7 +385,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             key={`${fossflowKey}-edit`}
             initialData={diagramData}
             onModelUpdated={handleModelUpdated}
-            editorMode={isEditMode ? 'EDITABLE' : 'EXPLORABLE_READONLY'}
+            editorMode={shareMode || !isEditMode ? 'EXPLORABLE_READONLY' : 'EDITABLE'}
           />
         </div>
       </div>

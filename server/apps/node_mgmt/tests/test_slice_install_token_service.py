@@ -54,6 +54,7 @@ class TestGenerateInstallToken:
         assert payload["organizations"] == [1, 2]
         assert payload["node_name"] == "web-01"
         assert payload["cpu_architecture"] == "amd64"
+        assert payload["install_mode"] == "manual"
         assert payload["usage_count"] == 0
         assert payload["max_usage"] == InstallerConstants.INSTALL_TOKEN_MAX_USAGE
 
@@ -80,6 +81,7 @@ class TestValidateInstallToken:
 
         assert result["node_id"] == "n1"
         assert result["organizations"] == [9]
+        assert result["install_mode"] == "manual"
         # 第一次使用后剩余 = max - 1
         assert result["remaining_usage"] == InstallerConstants.INSTALL_TOKEN_MAX_USAGE - 1
 

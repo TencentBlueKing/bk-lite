@@ -1,31 +1,72 @@
 """知识构建管道:资料 → 知识页面(对标 llm_wiki 两步法)。
 
 Stage1 抽取事实:从资料抽取结构化要点(去噪、聚焦可复用事实)。
-Stage2 生成页面:依据 Purpose/Schema 从事实生成互联知识页面。
+Stage2 生成页面:依据 Purpose 与固定 Structure Schema 从事实生成互联知识页面。
 创建页面 + 首版本(ai_create)+ 资料证据,并记录构建过程到 BuildRecord。
 """
 
 import json
-import logging
 import os
+import re
 
+import json_repair
+from django.db import transaction
+
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion
+from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion, WikiKnowledgeBase
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.check_service import create_candidate
-from apps.opspilot.services.wiki.material_service import load_parsed_markdown
-from apps.opspilot.services.wiki.text_utils import split_text_for_llm
+from apps.opspilot.services.wiki.text_utils import split_text_by_estimated_tokens, split_text_for_llm
 from apps.opspilot.services.wiki.title_service import canonical_title as _canonical_title
-from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
-from apps.opspilot.services.wiki.wikilink_enrichment_service import enrich_pages_wikilinks
-
-logger = logging.getLogger("opspilot")
+from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, estimate_tokens
 
 _split_text_for_llm = split_text_for_llm
 _WIKI_LLM_TIMEOUT_SECONDS = 300.0
+_CURRENT_MATERIAL_VERSION = object()
 _EVIDENCE_SNIPPET_CHARS = 500
 _SOURCE_CHUNK_PREVIEW_CHARS = 240
+_MATERIAL_DIRECT_INPUT_TOKENS = 9000
+_MATERIAL_MAP_INPUT_TOKENS = 12000
+_MATERIAL_MAP_SOURCE_TOKENS = 10000
+_MATERIAL_REDUCE_INPUT_TOKENS = 12000
+_MATERIAL_DIRECT_OUTPUT_TOKENS = 6000
+_MATERIAL_MAP_OUTPUT_TOKENS = 2500
+_MATERIAL_REDUCE_OUTPUT_TOKENS = 2500
+_MATERIAL_MAX_REDUCE_ROUNDS = 8
+_PROMPT_SAFETY_TOKENS = 256
+_DERIVED_SYSTEM_PAGE_TYPES = frozenset({"index", "overview", "log"})
+_PARSE_LOG_PREVIEW_CHARS = 400
+_WIKI_LLM_TEMPERATURE = 0.0
+_GENERATE_OUTPUT_MAX_ATTEMPTS = 2
+_RETRYABLE_BUILD_OUTPUT_MARKERS = (
+    "build_output_invalid_json",
+    "build_output_empty_topic_pages",
+    "build_output_empty_pages",
+    "build_output_invalid_page",
+    "build_output_empty_llm",
+)
+_THINK_BLOCK_RE = re.compile(
+    r"<(?:think|thinking|reason|reasoning)\b[^>]*>[\s\S]*?</(?:think|thinking|reason|reasoning)>",
+    re.IGNORECASE,
+)
+_CODE_FENCE_RE = re.compile(r"```(?:json|JSON)?\s*([\s\S]*?)```")
+_JSON_ONLY_OUTPUT_RULES = (
+    "输出格式硬性要求（必须全部遵守，适用于任意模型）：\n"
+    "1. 最终回复只输出一个 JSON 值，不要解释、前言、标题、列表或 Markdown。\n"
+    "2. 不要用 ``` 代码块包裹；不要输出 <think>/<thinking> 或任何推理过程。\n"
+    '3. 只能使用半角字符书写 JSON 结构：{} [] " : ,\n'
+    '4. 根对象必须是 {"pages":[...]}；如果只需事实批次也必须是合法 JSON 对象。'
+    '无可生成内容时输出 {"pages":[]}。\n'
+    "5. 最终回复的第一个非空白字符必须是 {，最后一个非空白字符必须是 }。\n"
+    '6. 字符串值内的双引号、换行必须按 JSON 转义（\\" 与 \\n），'
+    "body 字段尤其容易因未转义导致整段 JSON 非法。\n"
+)
+
+
+class BuildOutputInvalid(ValueError):
+    code = "build_output_invalid_json"
 
 
 def _wiki_llm_timeout():
@@ -39,23 +80,82 @@ def _wiki_llm_timeout():
     return max(timeout, 1.0)
 
 
-def _invoke_llm(llm_model_id, prompt):
-    """单次隔离式 LLM 调用,返回文本;无模型/失败返回 ""。测试可 monkeypatch。"""
+def _invoke_llm(
+    llm_model_id,
+    prompt,
+    *,
+    budget=None,
+    stage="wiki_llm",
+    output_reserve=1500,
+    force_json=False,
+):
+    """Invoke one isolated LLM call and account for it when a budget is supplied.
+
+    Generation paths pass ``budget`` and must fail loudly on empty/errored LLM
+    output. Legacy callers without budget keep the soft ``""`` fallback.
+    """
     if not llm_model_id:
         return ""
+    reservation = None
+    request = None
     try:
-        llm = LLMModel.objects.get(id=llm_model_id)
+        if budget is not None:
+            reservation = budget.ensure_call(
+                stage,
+                prompt,
+                output_reserve=output_reserve,
+            )
+        llm = LLMModel.objects.select_related("vendor").get(id=llm_model_id)
+        vendor_type = ""
+        if getattr(llm, "vendor_id", None):
+            vendor_type = str(getattr(llm.vendor, "vendor_type", "") or "")
+        protocol_type = getattr(llm, "protocol_type", None) or "openai"
+        extra_config = {"timeout": _wiki_llm_timeout()}
+        # OpenAI 兼容协议可请求 json_object；网关不支持时由 factory 自动降级。
+        if force_json and protocol_type == "openai":
+            extra_config["response_format"] = {"type": "json_object"}
         request = BasicLLMRequest(
             openai_api_base=llm.openai_api_base,
             openai_api_key=llm.openai_api_key,
             model=llm.model_name,
-            temperature=0.2,
+            temperature=_WIKI_LLM_TEMPERATURE,
             user_message=prompt,
-            extra_config={"timeout": _wiki_llm_timeout()},
+            max_output_tokens=output_reserve,
+            protocol_type=protocol_type,
+            vendor_type=vendor_type,
+            extra_config=extra_config,
         )
-        return LLMClientFactory.invoke_isolated(request, [{"role": "user", "content": prompt}]) or ""
-    except Exception:
-        logger.exception("wiki LLM 调用失败")
+        result = LLMClientFactory.invoke_isolated(
+            request,
+            [{"role": "user", "content": prompt}],
+        )
+        if not isinstance(result, str):
+            result = "" if result is None else str(result)
+        result = result.strip()
+        if budget is not None:
+            budget.record_call(
+                reservation,
+                result,
+                provider_usage=(request.extra_config or {}).get("_isolated_usage"),
+            )
+            if not result:
+                finish_reason = (request.extra_config or {}).get("_isolated_finish_reason")
+                usage = (request.extra_config or {}).get("_isolated_usage") or {}
+                raise BuildOutputInvalid(
+                    "build_output_empty_llm: "
+                    f"stage={stage} finish_reason={finish_reason or '-'} "
+                    f"prompt_tokens={usage.get('prompt_tokens') or usage.get('input_tokens') or 0} "
+                    f"completion_tokens={usage.get('completion_tokens') or usage.get('output_tokens') or 0}"
+                )
+        return result
+    except (WikiBudgetExceeded, BuildOutputInvalid):
+        raise
+    except Exception as exc:
+        if budget is not None and reservation is not None:
+            budget.record_call(reservation, "")
+        logger.exception("wiki LLM 调用失败 stage=%s", stage)
+        if budget is not None:
+            raise BuildOutputInvalid(f"build_output_llm_error: stage={stage} {type(exc).__name__}: {exc}") from exc
         return ""
 
 
@@ -78,52 +178,950 @@ def _llm_extract_facts(text, llm_model_id):
     return "\n".join(facts)
 
 
-def _llm_generate_pages(kb, source_text, llm_model_id):
-    """Stage2:依据 Purpose/Schema 从(已抽取的)要点生成页面列表。
+def _directory_prompt_context(structure_revision, classification_root_id=None):
+    if structure_revision is None:
+        return ""
+    snapshot = structure_revision.structure_snapshot or {}
+    page_types = snapshot.get("page_types") or []
+    nodes = snapshot.get("directories") or []
+    by_id = {node.get("id"): node for node in nodes if type(node.get("id")) is int}
 
-    返回 [{"page_type","title","tags","body"}, ...];无模型或解析失败时返回 []。
+    def in_scope(node):
+        if classification_root_id is None:
+            return True
+        current = node
+        visited = set()
+        while current is not None and current.get("id") not in visited:
+            if current.get("id") == classification_root_id:
+                return True
+            visited.add(current.get("id"))
+            current = by_id.get((current.get("parent") or {}).get("id"))
+        return False
+
+    prompt_nodes = []
+    for node in nodes:
+        if node.get("status") != "active" or not in_scope(node):
+            continue
+        path = []
+        current = node
+        visited = set()
+        while current is not None and current.get("id") not in visited:
+            path.append(current.get("name") or current.get("key"))
+            visited.add(current.get("id"))
+            current = by_id.get((current.get("parent") or {}).get("id"))
+        prompt_nodes.append(
+            {
+                "key": node.get("key"),
+                "path": "/".join(reversed([item for item in path if item])),
+                "description": node.get("description") or "",
+                "rules": node.get("rules") or {},
+            }
+        )
+    return json.dumps(
+        {
+            "structure_revision_id": structure_revision.pk,
+            "structure_version": structure_revision.revision_no,
+            "structure_fingerprint": structure_revision.fingerprint,
+            "classification_root_id": classification_root_id,
+            "page_types": page_types,
+            "directories": prompt_nodes,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def material_source_metadata(material):
+    """Return stable, user-facing context for one independently built material."""
+
+    display_name = str(getattr(material, "name", "") or "").strip()
+    material_type = str(getattr(material, "material_type", "") or "").strip()
+    source_url = str(getattr(material, "url", "") or "").strip()
+    if not display_name:
+        display_name = source_url or f"资料 {material.pk}"
+    display_title = display_name
+    if material_type == "file":
+        display_title = os.path.splitext(os.path.basename(display_name))[0].strip() or display_name
+
+    knowledge_base = material.knowledge_base
+    existing_source = (
+        PageEvidence.objects.filter(
+            material=material,
+            page__knowledge_base=knowledge_base,
+            page__page_type="source",
+        )
+        .select_related("page")
+        .order_by("page_id")
+        .first()
+    )
+    if existing_source is not None:
+        source_title = existing_source.page.title
+    else:
+        source_title = _canonical_title(knowledge_base, display_title) or display_title
+        occupied_title_keys = {
+            _title_key(title, knowledge_base)
+            for title in KnowledgePage.objects.filter(
+                knowledge_base=knowledge_base,
+            ).values_list("title", flat=True)
+        }
+        if _title_key(source_title, knowledge_base) in occupied_title_keys:
+            source_title = f"资料：{display_title}"
+        if _title_key(source_title, knowledge_base) in occupied_title_keys:
+            source_title = f"资料：{display_title} · {material.pk}"
+
+    return {
+        "material_id": material.pk,
+        "display_name": display_name,
+        "source_title": source_title,
+        "material_type": material_type,
+        "source_identity": str(getattr(material, "source_identity", "") or "").strip(),
+        "url": source_url,
+    }
+
+
+def _page_type_body_guidance(page_type):
+    guidance = {
+        "entity": "首段定义对象；正文覆盖核心职责或能力、关键属性、依赖关系和体系角色，不得把多个独立对象混成一页。",
+        "concept": "首段给出定义；正文覆盖机制或架构、组成与关系、适用边界和资料明确指出的信息缺口。",
+        "source": "正文覆盖资料背景、内容结构、覆盖主题、信息质量与已知缺口，并用 WikiLink 指向本资料形成的主题页。",
+        "query": "只记录资料明确留下的未解决问题，说明问题、重要性、现有证据和还需补充的证据；不得凭空发问。",
+        "comparison": "只有资料给出共同维度和明确事实时才生成；列出对象、维度、事实对比、结论与限制。",
+        "synthesis": "只有资料确实支持跨主题或多来源结论时才生成；说明证据链、综合结论、适用范围和限制。",
+    }
+    return guidance.get(str(page_type or "").strip(), "围绕单一稳定主题组织正文，保留事实边界、限定条件和明确关系。")
+
+
+def _prompt_source_metadata(source_metadata):
+    if not isinstance(source_metadata, dict):
+        return {}
+    return {key: source_metadata.get(key) for key in ("display_name", "source_title", "material_type", "url") if source_metadata.get(key)}
+
+
+def _generation_page_contract(structure_revision, source_metadata=None):
+    snapshot = getattr(structure_revision, "structure_snapshot", None) or {}
+    page_types = [str(item).strip() for item in snapshot.get("page_types") or [] if str(item).strip()]
+    lines = [
+        "解析分块只是证据，不是页面边界；最终页面必须按稳定主题组织，而不是一块生成一页。",
+        "不要为了填满目录而生成空洞页面；没有充分证据的类型允许为空。",
+        "不得生成 index、overview、log 或目录统计页面，这些内容由系统按 Generation 派生。",
+        "正文使用清晰 Markdown 标题，并在关系明确时用 [[目标页面标题]] 建立链接。",
+        "不同主体的事实、版本、适用范围和限定条件必须分开，不得把相似名称合并成同一事实。",
+    ]
+    for page_type in page_types:
+        lines.append(f"- {page_type}: {_page_type_body_guidance(page_type)}")
+    prompt_metadata = _prompt_source_metadata(source_metadata)
+    if "source" in page_types and prompt_metadata.get("source_title"):
+        lines.append("必须且只能生成一个 source 页面，标题严格使用 " f"{prompt_metadata['source_title']!r}；该页面代表当前资料，不代表普通主题综述。")
+        lines.append("除 source 外，还必须至少生成一个主题页面" "（concept/entity/query/comparison/synthesis 等非 source 类型）；" "禁止只输出 source 页面。")
+    return "\n".join(lines)
+
+
+def _normalize_text_list(value, limit):
+    if not isinstance(value, list):
+        return []
+    return list(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))[:limit]
+
+
+def _source_default_directory_key(structure_revision):
+    snapshot = getattr(structure_revision, "structure_snapshot", None) or {}
+    for node in snapshot.get("directories") or []:
+        rules = node.get("rules") or {}
+        if "source" in (rules.get("default_for_page_types") or []):
+            return node.get("key")
+    return None
+
+
+def _fallback_source_page(pages, source_metadata, structure_revision):
+    title = source_metadata["source_title"]
+    topic_pages = [page for page in pages if page.get("page_type") != "source"]
+    links = [f"- [[{page['title']}]]：{page.get('summary') or page.get('page_type') or '知识主题'}" for page in topic_pages]
+    overview = "本资料形成了以下可复用知识主题。" if links else "本资料未形成可单独发布的主题页面。"
+    body = "\n".join(
+        [
+            f"# {title}",
+            "",
+            "## 资料概述",
+            "",
+            overview,
+            "",
+            "## 内容结构",
+            "",
+            *(links or ["- 暂无可列出的独立主题。"]),
+            "",
+            "## 信息边界",
+            "",
+            "本页是当前资料的来源导航；事实判断仍以对应知识页面和原始证据为准。",
+        ]
+    )
+    return {
+        "page_type": "source",
+        "title": title,
+        "tags": ["来源摘要"],
+        "body": body,
+        "directory_key": _source_default_directory_key(structure_revision),
+        "directory_confidence": 1.0,
+        "directory_reason": "material_source_contract",
+        "summary": overview,
+        "keywords": _normalize_text_list([item for page in topic_pages for item in page.get("keywords") or []], 32),
+        "entities": [page["title"] for page in topic_pages if page.get("page_type") == "entity"][:32],
+        "aliases": _normalize_text_list([source_metadata.get("display_name")], 32),
+    }
+
+
+def _pages_preview_for_log(pages, *, limit=8):
+    preview = []
+    for page in list(pages or [])[:limit]:
+        preview.append(
+            {
+                "title": str((page or {}).get("title") or "")[:80],
+                "page_type": (page or {}).get("page_type"),
+                "body_chars": len(str((page or {}).get("body") or "")),
+            }
+        )
+    return preview
+
+
+def _resolve_page_type(page, *, source_metadata=None, allowed_page_types=None, kb=None):
+    """Fill missing page_type instead of failing the whole material build."""
+    page_type = str((page or {}).get("page_type") or "").strip().casefold()
+    if page_type:
+        return page_type, False
+
+    title = str((page or {}).get("title") or "").strip()
+    source_title = str((source_metadata or {}).get("source_title") or "").strip()
+    if source_title and title and _title_key(title, kb) == _title_key(source_title, kb):
+        return "source", True
+
+    allowed = set(allowed_page_types or [])
+    if not allowed or "concept" in allowed:
+        return "concept", True
+    for candidate in ("entity", "query", "comparison", "synthesis"):
+        if candidate in allowed:
+            return candidate, True
+    non_source = sorted(item for item in allowed if item != "source")
+    if non_source:
+        return non_source[0], True
+    return "concept", True
+
+
+def _finalize_material_pages(pages, *, kb, structure_revision, source_metadata=None):
+    snapshot = getattr(structure_revision, "structure_snapshot", None) or {}
+    allowed_page_types = {str(item).strip().casefold() for item in snapshot.get("page_types") or [] if str(item).strip()}
+    normalized = []
+    for raw in pages:
+        page = dict(raw or {})
+        page_type, coerced = _resolve_page_type(
+            page,
+            source_metadata=source_metadata,
+            allowed_page_types=allowed_page_types,
+            kb=kb,
+        )
+        if coerced:
+            logger.warning(
+                "wiki_build_coerced_page_type title=%s inferred=%s raw=%r",
+                page.get("title"),
+                page_type,
+                page.get("page_type"),
+            )
+        if page_type in _DERIVED_SYSTEM_PAGE_TYPES:
+            logger.warning("wiki_build_dropped_derived_page type=%s title=%s", page_type, page.get("title"))
+            continue
+        if allowed_page_types and page_type not in allowed_page_types:
+            page["directory_key"] = None
+            page["directory_schema_mismatch"] = True
+        body = str(page.get("body") or "").strip()
+        if source_metadata is not None and not body:
+            logger.warning(
+                "wiki_build_dropped_empty_body_page title=%s page_type=%s",
+                page.get("title"),
+                page_type,
+            )
+            continue
+        page["page_type"] = page_type
+        page["body"] = body
+        for field, limit in (("tags", 32), ("keywords", 32), ("entities", 32), ("aliases", 32)):
+            page[field] = _normalize_text_list(page.get(field), limit)
+        normalized.append(page)
+
+    if source_metadata is not None and not normalized:
+        logger.warning(
+            "wiki_build_finalize_empty_pages preview=%s",
+            _pages_preview_for_log(pages),
+        )
+        raise BuildOutputInvalid("build_output_empty_pages: 资料未生成任何有效知识页面")
+    if "source" not in allowed_page_types or not source_metadata:
+        return _merge_pages(normalized, kb=kb)
+
+    source_title = str(source_metadata.get("source_title") or "").strip()
+    if not source_title:
+        raise BuildOutputInvalid("build_output_invalid_source: 来源页面标题为空")
+
+    other_pages = _merge_pages(
+        [page for page in normalized if page.get("page_type") != "source"],
+        kb=kb,
+    )
+    if not other_pages:
+        # LLM sometimes only emits source. Reuse that body as one concept topic
+        # rather than failing the whole material build.
+        promoted = []
+        for page in normalized:
+            if page.get("page_type") != "source":
+                continue
+            body = str(page.get("body") or "").strip()
+            if len(body) < 20:
+                continue
+            topic_title = str(page.get("title") or source_title).strip() or source_title
+            if _title_key(topic_title, kb) == _title_key(source_title, kb):
+                topic_title = f"{source_title}·主题摘录"
+            promoted.append(
+                {
+                    **page,
+                    "page_type": "concept",
+                    "title": topic_title,
+                    "body": body,
+                    "directory_reason": page.get("directory_reason") or "promoted_from_source",
+                }
+            )
+        if promoted:
+            logger.warning(
+                "wiki_build_promoted_source_to_topic count=%s titles=%s",
+                len(promoted),
+                [item.get("title") for item in promoted],
+            )
+            other_pages = _merge_pages(promoted, kb=kb)
+    if not other_pages:
+        logger.warning(
+            "wiki_build_finalize_empty_topic_pages preview=%s",
+            _pages_preview_for_log(normalized or pages),
+        )
+        raise BuildOutputInvalid("build_output_empty_topic_pages: 资料未生成任何有效主题页面")
+
+    occupied_title_keys = {_title_key(page.get("title"), kb) for page in other_pages}
+    if _title_key(source_title, kb) in occupied_title_keys:
+        source_title = f"资料：{source_title}"
+    if _title_key(source_title, kb) in occupied_title_keys:
+        source_title = f"资料：{source_title} · {source_metadata.get('material_id')}"
+    effective_source_metadata = {**source_metadata, "source_title": source_title}
+
+    source_pages = [page for page in normalized if page.get("page_type") == "source"]
+    source_pages = [
+        {
+            **page,
+            "title": source_title,
+            "directory_key": _source_default_directory_key(structure_revision),
+            "directory_confidence": 1.0,
+            "directory_reason": "material_source_contract",
+            "aliases": _normalize_text_list(
+                [*(page.get("aliases") or []), source_metadata.get("display_name")],
+                32,
+            ),
+        }
+        for page in source_pages
+    ]
+    if not source_pages:
+        source_pages = [_fallback_source_page(other_pages, effective_source_metadata, structure_revision)]
+    return [*other_pages, *_merge_pages(source_pages, kb=kb)]
+
+
+def _llm_generate_pages(
+    kb,
+    source_text,
+    llm_model_id,
+    *,
+    structure_revision=None,
+    classification_root_id=None,
+    source_metadata=None,
+):
+    """Stage2:依据 Purpose 与固定 Structure Schema 从要点生成页面列表。
+
+    返回 page 列表(向后兼容签名);解析失败通过 errors_collector 参数旁路收集。
+    无模型或 source_text 为空时返回 []。
     """
     if not llm_model_id or not (source_text or "").strip():
+        if source_metadata is not None:
+            raise BuildOutputInvalid("build_output_empty_pages: 资料缺少可构建正文或可用模型")
         return []
     pages = []
+    errors = []
+    directory_context = _directory_prompt_context(structure_revision, classification_root_id)
+    page_contract = _generation_page_contract(structure_revision, source_metadata)
+    source_context = json.dumps(_prompt_source_metadata(source_metadata), ensure_ascii=False, sort_keys=True)
     chunks = _split_text_for_llm(source_text)
+    existing_catalog = json.dumps(
+        [
+            {"id": page.id, "title": page.title, "page_type": page.page_type}
+            for page in KnowledgePage.objects.filter(
+                knowledge_base=kb,
+                status__in=["active", "source_invalid"],
+            ).order_by("id")
+        ],
+        ensure_ascii=False,
+    )
     for idx, chunk in enumerate(chunks, start=1):
         prompt = (
-            "你是企业知识库构建助手。请依据下面的 Purpose 与 Schema,从已抽取的要点生成知识页面。\n"
-            '只输出 JSON,格式为 {"pages":[{"page_type":"...","title":"...","tags":["..."],"body":"markdown"}]}。\n'
-            'page_type 必须来自 Schema 定义的类型;无可提取内容时输出 {"pages":[]}。\n'
+            "你是企业知识库构建助手。请依据 Purpose 与下面固定的 Structure Schema,"
+            "从已抽取的要点生成知识页面。\n"
+            f"{_JSON_ONLY_OUTPUT_RULES}"
+            'JSON 字段约定：{"pages": [{"page_type":"...","title":"...","tags":["..."],'
+            '"body":"markdown","existing_page_id":123或null,"directory_key":"稳定目录 key",'
+            '"directory_confidence":0.0,"directory_reason":"简短原因"}]}。\n'
+            "page_type 必须来自固定 Structure Schema 的 page_types；"
+            '无可提取内容时输出 {"pages":[]}。\n'
+            "directory_key 只能来自同一固定 Structure Schema 的 directories，"
+            "不得创建、改写或猜测 key；"
+            "不确定时可省略 key，由服务端确定性回退。\n"
             "生成原则:不要只输出总览页面;对资料中反复出现的产品、平台、组件、模块、能力中心、"
             "依赖项、服务、表格行中的核心对象,应优先拆成独立实体页或概念页。\n"
+            "先对照现有页面清单判断是否为同一知识主题。语义相同但标题不同也应复用现有页面标题,"
+            "并填写对应 existing_page_id;确实是新主题时 existing_page_id 填 null。\n"
             "同一对象的缩写、英文名、中文全称必须使用同一个页面标题;优先使用中文全称,"
             "例如 CMDB 与 配置平台 使用 配置平台,JOB 与 作业平台 使用 作业平台,不要分别建页。\n"
             "页面正文应使用 [[目标页面标题]] 引用相关页面,便于后续关系图谱建边。\n"
             "注意:这是同一份资料的分块处理,如果当前片段补充了已有主题,可以输出同名页面,"
             "系统会合并同名页面内容。\n\n"
-            f"# Purpose\n{kb.purpose_md}\n\n# Schema\n{kb.schema_md}\n\n# 要点片段 {idx}/{len(chunks)}\n{chunk}\n"
+            f"# Purpose\n{kb.purpose_md}"
+            f"\n\n# 现有页面清单\n{existing_catalog}"
+            f"\n\n# Fixed Structure Schema\n{directory_context or 'unclassified-only'}"
+            f"\n\n# Current Material\n{source_context or '{}'}"
+            f"\n\n# Page Generation Contract\n{page_contract}"
+            f"\n\n# 要点片段 {idx}/{len(chunks)}\n{chunk}\n"
         )
-        pages.extend(_parse_pages(_invoke_llm(llm_model_id, prompt)))
-    return _merge_pages(pages, kb=kb)
+        raw_result = _invoke_llm(llm_model_id, prompt)
+        parsed_pages = _parse_pages(
+            raw_result,
+            chunk_index=idx,
+            total_chunks=len(chunks),
+            errors_collector=errors,
+        )
+        logger.info(
+            "wiki_build_stage2_chunk kb_id=%s model_id=%s chunk=%s/%s output_chars=%s response_empty=%s page_count=%s",
+            kb.id,
+            llm_model_id,
+            idx,
+            len(chunks),
+            len(raw_result or ""),
+            not bool((raw_result or "").strip()),
+            len(parsed_pages),
+        )
+        pages.extend(parsed_pages)
+    merged = _finalize_material_pages(
+        pages,
+        kb=kb,
+        structure_revision=structure_revision,
+        source_metadata=source_metadata,
+    )
+    # 把 errors 暂存到函数属性,build_from_material 读取后清空
+    _llm_generate_pages.last_errors = list(errors)
+    return merged
 
 
-def _parse_pages(content):
-    """从 LLM 输出中解析 pages 列表,容忍代码块包裹。"""
-    raw = (content or "").strip()
-    if "```" in raw:
-        # 去掉 ```json ... ``` 包裹
-        raw = raw.split("```", 2)[1] if raw.count("```") >= 2 else raw
-        if raw.lstrip().lower().startswith("json"):
-            raw = raw.lstrip()[4:]
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start == -1 or end == -1:
+def _bounded_generation_prompt(
+    kb,
+    source_text,
+    *,
+    structure_revision,
+    classification_root_id,
+    source_metadata=None,
+):
+    directory_context = _directory_prompt_context(
+        structure_revision,
+        classification_root_id,
+    )
+    page_contract = _generation_page_contract(structure_revision, source_metadata)
+    source_context = json.dumps(
+        _prompt_source_metadata(source_metadata),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return (
+        "你是企业知识库构建助手。依据 Purpose 与固定 Structure Schema 生成最终知识页面。\n"
+        f"{_JSON_ONLY_OUTPUT_RULES}"
+        'JSON 字段约定：{"pages":[{"page_type":"concept","title":"...",'
+        '"tags":[],"body":"markdown","directory_key":"...",'
+        '"directory_confidence":0.0,"directory_reason":"...",'
+        '"summary":"不超过800字符","keywords":[],"entities":[],"aliases":[]}]}。\n'
+        "page_type 必须来自固定 Structure Schema 的 page_types；"
+        "directory_key 只能来自同一 Schema 的 directories，不得猜测不存在的 key。"
+        "页面正文必须非空；summary、keywords、entities、aliases 只用于导航召回，"
+        "必须来自本资料，不得补造事实。\n\n"
+        f"# Purpose\n{kb.purpose_md}\n\n"
+        f"# Fixed Structure Schema\n{directory_context}\n\n"
+        f"# Current Material\n{source_context or '{}'}\n\n"
+        f"# Page Generation Contract\n{page_contract}\n\n"
+        f"# Source\n{source_text}"
+    )
+
+
+def _attach_map_checkpoint(error, mapped, chunk_count):
+    error.details = {
+        **error.details,
+        "partial_map_outputs": list(mapped),
+        "map_chunk_count": int(chunk_count),
+        "completed_map_calls": len(mapped),
+    }
+
+
+def _source_token_limit(input_limit, prompt_without_source):
+    return max(
+        int(input_limit) - estimate_tokens(prompt_without_source) - _PROMPT_SAFETY_TOKENS,
+        256,
+    )
+
+
+def _material_map_prompt(chunk, index, total):
+    return (
+        "从资料片段中提取可验证的事实、具名实体候选、可复用概念候选、依赖关系、明确问题、对比维度、限定条件、时间、数值、步骤和页码/幻灯片/标题来源线索。\n"
+        f"{_JSON_ONLY_OUTPUT_RULES}"
+        "本阶段不要生成 Wiki 页面，不推测缺失信息；"
+        "这是同一份资料的一个片段，必须保留可用于后续归并的上下文。\n"
+        '推荐格式：{"facts":["..."],"entities":["..."],"concepts":["..."],'
+        '"relations":["..."],"open_questions":["..."],"source_hints":["..."]}。\n\n'
+        f"# Chunk {index}/{total}\n{chunk}"
+    )
+
+
+def _format_reduce_items(items):
+    return "\n\n".join(f"## Fact batch {index}\n{value}" for index, value in enumerate(items, start=1))
+
+
+def _material_compact_prompt(source, round_index, group_index, group_count):
+    return (
+        "合并并去重下面的资料事实批次，保留具名实体、概念、关系、明确问题、对比维度、限定条件、时间、数值、步骤和来源线索。\n"
+        f"{_JSON_ONLY_OUTPUT_RULES}"
+        "本阶段不生成 Wiki 页面，不补造事实。\n\n"
+        f"# Reduce round {round_index}, group {group_index}/{group_count}\n{source}"
+    )
+
+
+def _group_reduce_items(items, max_tokens):
+    groups = []
+    current = []
+    for item in items:
+        candidate = [*current, item]
+        if current and estimate_tokens(_format_reduce_items(candidate)) > max_tokens:
+            groups.append(current)
+            current = [item]
+        else:
+            current = candidate
+    if current:
+        groups.append(current)
+    return groups
+
+
+def _compact_mapped_outputs(
+    mapped,
+    *,
+    llm_model_id,
+    budget,
+    final_source_limit,
+    chunk_count,
+):
+    current = list(mapped)
+    round_index = 0
+    while estimate_tokens(_format_reduce_items(current)) > final_source_limit:
+        round_index += 1
+        if round_index > _MATERIAL_MAX_REDUCE_ROUNDS:
+            raise WikiBudgetExceeded(
+                "wiki_reduce_safety_limit_exceeded",
+                "资料事实归并超过系统安全轮次",
+                details=budget.trace(
+                    reduce_round=round_index,
+                    map_chunk_count=chunk_count,
+                ),
+            )
+
+        empty_prompt = _material_compact_prompt("", round_index, 99999, 99999)
+        compact_source_limit = _source_token_limit(
+            _MATERIAL_REDUCE_INPUT_TOKENS,
+            empty_prompt,
+        )
+        groups = _group_reduce_items(current, compact_source_limit)
+        previous_tokens = estimate_tokens(_format_reduce_items(current))
+        compacted = []
+        for group_index, group in enumerate(groups, start=1):
+            prompt = _material_compact_prompt(
+                _format_reduce_items(group),
+                round_index,
+                group_index,
+                len(groups),
+            )
+            try:
+                output = _invoke_llm(
+                    llm_model_id,
+                    prompt,
+                    budget=budget,
+                    stage=f"material_reduce_compact_{round_index}_{group_index}",
+                    output_reserve=_MATERIAL_REDUCE_OUTPUT_TOKENS,
+                    force_json=True,
+                ).strip()
+            except WikiBudgetExceeded as error:
+                _attach_map_checkpoint(error, current, chunk_count)
+                raise
+            if output:
+                compacted.append(output)
+
+        if not compacted:
+            return []
+        compacted_tokens = estimate_tokens(_format_reduce_items(compacted))
+        if len(compacted) >= len(current) and compacted_tokens >= previous_tokens:
+            raise WikiBudgetExceeded(
+                "wiki_reduce_no_progress",
+                "资料事实归并未能继续压缩，已触发系统安全保护",
+                details=budget.trace(
+                    reduce_round=round_index,
+                    map_chunk_count=chunk_count,
+                    previous_tokens=previous_tokens,
+                    compacted_tokens=compacted_tokens,
+                ),
+            )
+        current = compacted
+    return current
+
+
+def _is_retryable_build_output_error(error):
+    message = str(error or "")
+    return any(marker in message for marker in _RETRYABLE_BUILD_OUTPUT_MARKERS)
+
+
+def _retry_correction_prompt(base_prompt, error):
+    return (
+        f"{base_prompt}\n\n"
+        "# Previous output rejected — regenerate once\n"
+        f"Rejection reason: {error}\n"
+        "Requirements for this retry:\n"
+        '1. Output exactly one JSON object: {"pages":[...]}.\n'
+        "2. Every page MUST include non-empty page_type, title, and body.\n"
+        "3. Include exactly one source page AND at least one concept/entity topic page.\n"
+        '4. Escape quotes inside body as \\". Do not wrap JSON in markdown fences.\n'
+        'Minimal valid shape: {"pages":[{"page_type":"source","title":"...","body":"..."},'
+        '{"page_type":"concept","title":"...","body":"..."}]}.'
+    )
+
+
+def _generate_and_finalize_pages(
+    *,
+    llm_model_id,
+    prompt,
+    budget,
+    stage,
+    output_reserve,
+    kb,
+    structure_revision,
+    source_metadata,
+    chunk_index=None,
+    total_chunks=None,
+):
+    """Invoke LLM, parse pages, finalize; retry once on retryable JSON/structure failures."""
+    current_prompt = prompt
+    last_error = None
+    for attempt in range(1, _GENERATE_OUTPUT_MAX_ATTEMPTS + 1):
+        attempt_stage = stage if attempt == 1 else f"{stage}_retry_{attempt}"
+        try:
+            pages = _parse_pages(
+                _invoke_llm(
+                    llm_model_id,
+                    current_prompt,
+                    budget=budget,
+                    stage=attempt_stage,
+                    output_reserve=output_reserve,
+                    force_json=True,
+                ),
+                chunk_index=chunk_index,
+                total_chunks=total_chunks,
+                strict=True,
+            )
+            return _finalize_material_pages(
+                pages,
+                kb=kb,
+                structure_revision=structure_revision,
+                source_metadata=source_metadata,
+            )
+        except BuildOutputInvalid as exc:
+            last_error = exc
+            if attempt >= _GENERATE_OUTPUT_MAX_ATTEMPTS or not _is_retryable_build_output_error(exc):
+                raise
+            logger.warning(
+                "wiki_build_generate_retry stage=%s attempt=%s/%s error=%s",
+                stage,
+                attempt,
+                _GENERATE_OUTPUT_MAX_ATTEMPTS,
+                exc,
+            )
+            current_prompt = _retry_correction_prompt(prompt, exc)
+    raise last_error
+
+
+def generate_material_pages_with_budget(
+    kb,
+    text,
+    llm_model_id,
+    *,
+    budget,
+    structure_revision,
+    classification_root_id=None,
+    source_metadata=None,
+):
+    """Generate pages with adaptive Map and hierarchical Reduce.
+
+    The configured per-material token amount is a soft audit threshold. Complete
+    parsed content is processed in context-safe calls; only call/context and
+    abnormal-loop safety guards can stop the task.
+    """
+
+    source = (text or "").strip()
+    if not source or not llm_model_id:
+        if source_metadata is not None:
+            raise BuildOutputInvalid("build_output_empty_pages: 资料缺少可构建正文或可用模型")
         return []
+
+    empty_generation_prompt = _bounded_generation_prompt(
+        kb,
+        "",
+        structure_revision=structure_revision,
+        classification_root_id=classification_root_id,
+        source_metadata=source_metadata,
+    )
+    final_source_limit = _source_token_limit(
+        _MATERIAL_DIRECT_INPUT_TOKENS,
+        empty_generation_prompt,
+    )
+    if estimate_tokens(source) <= final_source_limit:
+        prompt = _bounded_generation_prompt(
+            kb,
+            source,
+            structure_revision=structure_revision,
+            classification_root_id=classification_root_id,
+            source_metadata=source_metadata,
+        )
+        return _generate_and_finalize_pages(
+            llm_model_id=llm_model_id,
+            prompt=prompt,
+            budget=budget,
+            stage="material_generate",
+            output_reserve=_MATERIAL_DIRECT_OUTPUT_TOKENS,
+            kb=kb,
+            structure_revision=structure_revision,
+            source_metadata=source_metadata,
+        )
+
+    empty_map_prompt = _material_map_prompt("", 99999, 99999)
+    map_source_limit = _source_token_limit(
+        _MATERIAL_MAP_INPUT_TOKENS,
+        empty_map_prompt,
+    )
+    # Keep semantic source windows stable when prompt wording changes. Context
+    # safety is still enforced above; this cap is based on source size alone.
+    map_source_limit = min(map_source_limit, _MATERIAL_MAP_SOURCE_TOKENS)
+    chunks = split_text_by_estimated_tokens(
+        source,
+        max_tokens=map_source_limit,
+    )
+    mapped = []
+    for index, chunk in enumerate(chunks, start=1):
+        prompt = _material_map_prompt(chunk, index, len(chunks))
+        try:
+            output = _invoke_llm(
+                llm_model_id,
+                prompt,
+                budget=budget,
+                stage=f"material_map_{index}",
+                output_reserve=_MATERIAL_MAP_OUTPUT_TOKENS,
+                force_json=True,
+            ).strip()
+        except WikiBudgetExceeded as error:
+            _attach_map_checkpoint(error, mapped, len(chunks))
+            raise
+        if output:
+            mapped.append(output)
+    if not mapped:
+        return _finalize_material_pages(
+            [],
+            kb=kb,
+            structure_revision=structure_revision,
+            source_metadata=source_metadata,
+        )
+
+    mapped = _compact_mapped_outputs(
+        mapped,
+        llm_model_id=llm_model_id,
+        budget=budget,
+        final_source_limit=final_source_limit,
+        chunk_count=len(chunks),
+    )
+    if not mapped:
+        return _finalize_material_pages(
+            [],
+            kb=kb,
+            structure_revision=structure_revision,
+            source_metadata=source_metadata,
+        )
+
+    prompt = _bounded_generation_prompt(
+        kb,
+        _format_reduce_items(mapped),
+        structure_revision=structure_revision,
+        classification_root_id=classification_root_id,
+        source_metadata=source_metadata,
+    )
     try:
-        data = json.loads(raw[start : end + 1])
-    except (TypeError, ValueError):
-        logger.warning("wiki 页面生成 JSON 解析失败")
+        return _generate_and_finalize_pages(
+            llm_model_id=llm_model_id,
+            prompt=prompt,
+            budget=budget,
+            stage="material_reduce_generate",
+            output_reserve=_MATERIAL_DIRECT_OUTPUT_TOKENS,
+            kb=kb,
+            structure_revision=structure_revision,
+            source_metadata=source_metadata,
+        )
+    except WikiBudgetExceeded as error:
+        _attach_map_checkpoint(error, mapped, len(chunks))
+        raise
+
+
+def _log_text_preview(text, *, head=_PARSE_LOG_PREVIEW_CHARS, tail=_PARSE_LOG_PREVIEW_CHARS):
+    value = str(text or "").replace("\r\n", "\n")
+    if len(value) <= head + tail + 32:
+        return value
+    return f"{value[:head]}\n...({len(value)} chars total)...\n{value[-tail:]}"
+
+
+def _normalize_jsonish_text(raw):
+    """Strip reasoning wrappers and normalize common fullwidth JSON punctuation."""
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    text = _THINK_BLOCK_RE.sub("", text)
+    text = text.translate(
+        str.maketrans(
+            {
+                "｛": "{",
+                "｝": "}",
+                "［": "[",
+                "］": "]",
+                "“": '"',
+                "”": '"',
+                "‘": "'",
+                "’": "'",
+            }
+        )
+    )
+    return text.strip()
+
+
+def _extract_json_candidate(raw):
+    """Pick the most likely JSON object/array from mixed LLM prose."""
+    text = _normalize_jsonish_text(raw)
+    if not text:
+        return ""
+
+    fence_blocks = [block.strip() for block in _CODE_FENCE_RE.findall(text) if block.strip()]
+    preferred = [block for block in fence_blocks if '"pages"' in block or "'pages'" in block or block.lstrip()[:1] in {"{", "["}]
+    if preferred:
+        text = max(preferred, key=len)
+    elif fence_blocks:
+        text = max(fence_blocks, key=len)
+
+    stripped = text.lstrip()
+    if stripped.startswith("["):
+        start = text.find("[")
+        end = text.rfind("]")
+        if start != -1 and end > start:
+            return text[start : end + 1]
+
+    pages_idx = text.find('"pages"')
+    if pages_idx == -1:
+        pages_idx = text.find("'pages'")
+    if pages_idx != -1:
+        start = text.rfind("{", 0, pages_idx + 1)
+        end = text.rfind("}")
+        if start != -1 and end > start:
+            return text[start : end + 1]
+
+    if stripped.startswith("{"):
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end > start:
+            return text[start : end + 1]
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        return text[start : end + 1]
+
+    start = text.find("[")
+    end = text.rfind("]")
+    if start != -1 and end > start:
+        return text[start : end + 1]
+    return ""
+
+
+def _parse_pages(
+    content,
+    chunk_index=None,
+    total_chunks=None,
+    errors_collector=None,
+    *,
+    strict=False,
+):
+    """从 LLM 输出中解析 pages 列表,容忍代码块/推理标签/全角括号。
+
+    legacy 调用保持返回空列表；generation 构建使用 strict=True，
+    结构化输出无效时必须终止候选发布。
+    """
+    original = (content or "").strip()
+    loc = f"chunk={chunk_index}/{total_chunks}" if chunk_index is not None else "chunk=?"
+    candidate = _extract_json_candidate(original)
+    if not candidate:
+        err = f"_parse_pages 失败 [{loc}]: 未找到匹配的 {{...}} 区间, " f"output_chars={len(original)}, preview={_log_text_preview(original)!r}"
+        logger.warning(err)
+        if errors_collector is not None:
+            errors_collector.append(err)
+        if strict:
+            raise BuildOutputInvalid(f"build_output_invalid_json: {err}")
         return []
-    pages = data.get("pages", [])
-    return [p for p in pages if isinstance(p, dict) and p.get("title")]
+
+    try:
+        data = json.loads(candidate)
+    except (TypeError, ValueError) as exc:
+        try:
+            data = json_repair.loads(candidate)
+        except Exception as repair_exc:  # noqa: BLE001 - 保留原始 JSON 异常作为业务错误
+            err = (
+                f"_parse_pages 失败 [{loc}]: JSON 解析异常 {type(exc).__name__}: {exc}; "
+                f"本地修复失败 {type(repair_exc).__name__}: {repair_exc}, "
+                f"output_chars={len(original)}, candidate_chars={len(candidate)}, "
+                f"preview={_log_text_preview(original)!r}"
+            )
+            logger.warning(err)
+            if errors_collector is not None:
+                errors_collector.append(err)
+            if strict:
+                raise BuildOutputInvalid(f"build_output_invalid_json: {err}") from exc
+            return []
+        logger.warning(
+            "wiki_build_output_json_repaired %s original_error=%s output_chars=%s candidate_chars=%s",
+            loc,
+            exc,
+            len(original),
+            len(candidate),
+        )
+
+    if isinstance(data, list):
+        data = {"pages": data}
+    if not isinstance(data, dict) or not isinstance(data.get("pages"), list):
+        err = f"_parse_pages 失败 [{loc}]: JSON 缺少 pages 数组, " f"output_chars={len(original)}, preview={_log_text_preview(original)!r}"
+        logger.warning(err)
+        if errors_collector is not None:
+            errors_collector.append(err)
+        if strict:
+            raise BuildOutputInvalid(f"build_output_invalid_json: {err}")
+        return []
+    pages = data["pages"]
+    valid_pages = [p for p in pages if isinstance(p, dict) and p.get("title")]
+    if strict and pages and not valid_pages:
+        raise BuildOutputInvalid("build_output_invalid_json: pages 中没有包含有效 title 的知识页面")
+    return valid_pages
 
 
 def _normalize_page_data_title(kb, page_data):
@@ -146,18 +1144,49 @@ def _merge_pages(pages, kb=None):
         tags = [tag for tag in page.get("tags", []) or [] if tag]
         body = (page.get("body") or "").strip()
         if key not in merged:
-            merged[key] = {
+            merged_page = {
                 "page_type": page.get("page_type", "concept"),
                 "title": title,
                 "tags": list(dict.fromkeys(tags)),
                 "body": body,
+                "directory_key": page.get("directory_key"),
+                "directory_confidence": page.get("directory_confidence"),
+                "directory_reason": page.get("directory_reason") or "",
+                "directory_schema_mismatch": bool(page.get("directory_schema_mismatch", False)),
+                "summary": str(page.get("summary") or "").strip()[:800],
+                "keywords": list(dict.fromkeys(page.get("keywords") or []))[:32],
+                "entities": list(dict.fromkeys(page.get("entities") or []))[:32],
+                "aliases": list(dict.fromkeys(page.get("aliases") or []))[:32],
             }
+            if page.get("existing_page_id") is not None:
+                merged_page["existing_page_id"] = page["existing_page_id"]
+            merged[key] = merged_page
             order.append(key)
             continue
         current = merged[key]
         current["tags"] = list(dict.fromkeys([*current.get("tags", []), *tags]))
+        if current.get("existing_page_id") is None and page.get("existing_page_id") is not None:
+            current["existing_page_id"] = page["existing_page_id"]
         if body and body not in current.get("body", ""):
             current["body"] = "\n\n".join(part for part in [current.get("body", ""), body] if part)
+        try:
+            current_confidence = float(current.get("directory_confidence"))
+        except (TypeError, ValueError):
+            current_confidence = -1.0
+        try:
+            incoming_confidence = float(page.get("directory_confidence"))
+        except (TypeError, ValueError):
+            incoming_confidence = -1.0
+        if incoming_confidence > current_confidence and page.get("directory_key"):
+            current["directory_key"] = page.get("directory_key")
+            current["directory_confidence"] = page.get("directory_confidence")
+            current["directory_reason"] = page.get("directory_reason") or ""
+        current["directory_schema_mismatch"] = bool(current.get("directory_schema_mismatch") or page.get("directory_schema_mismatch"))
+        if not current.get("summary") and page.get("summary"):
+            current["summary"] = str(page.get("summary") or "").strip()[:800]
+        current["keywords"] = list(dict.fromkeys([*(current.get("keywords") or []), *(page.get("keywords") or [])]))[:32]
+        current["entities"] = list(dict.fromkeys([*(current.get("entities") or []), *(page.get("entities") or [])]))[:32]
+        current["aliases"] = list(dict.fromkeys([*(current.get("aliases") or []), *(page.get("aliases") or [])]))[:32]
     return [merged[key] for key in order]
 
 
@@ -172,20 +1201,31 @@ def _next_version_no(page):
 
 
 def _existing_pages_by_title(kb):
-    pages = (
-        KnowledgePage.objects.filter(
-            knowledge_base=kb,
-            status__in=["active", "source_invalid"],
-        )
-        .select_related("current_version")
-        .order_by("id")
-    )
+    pages = KnowledgePage.objects.filter(knowledge_base=kb).select_related("current_version").order_by("id")
     result = {}
     for page in pages:
         key = _title_key(page.title, kb)
         if key and key not in result:
             result[key] = page
     return result
+
+
+def _existing_page_by_id(kb, page_id):
+    try:
+        page_id = int(page_id)
+    except (TypeError, ValueError):
+        return None
+    if page_id <= 0:
+        return None
+    return (
+        KnowledgePage.objects.filter(
+            id=page_id,
+            knowledge_base=kb,
+            status__in=["active", "source_invalid"],
+        )
+        .select_related("current_version")
+        .first()
+    )
 
 
 def _source_chunks_with_offsets(text):
@@ -331,18 +1371,28 @@ def _source_locator_for_page(material, source_text, page_data, chunks=None):
     return json.dumps(locator, ensure_ascii=False)
 
 
-def _ensure_evidence(page, material, locator=""):
-    evidence, created = PageEvidence.objects.get_or_create(
-        page=page,
-        material=material,
-        defaults={"material_version": material.current_version, "locator": locator or ""},
+def _ensure_evidence(page, material, locator="", material_version=_CURRENT_MATERIAL_VERSION):
+    if material_version is _CURRENT_MATERIAL_VERSION:
+        material_version = getattr(material, "current_version", None)
+    material_version_id = getattr(material_version, "id", None)
+    evidence = (
+        PageEvidence.objects.filter(
+            page=page,
+            material=material,
+            material_version_id=material_version_id,
+        )
+        .order_by("id")
+        .first()
     )
-    if created:
+    if evidence is None:
+        PageEvidence.objects.create(
+            page=page,
+            material=material,
+            material_version=material_version,
+            locator=locator or "",
+        )
         return True
     update_fields = []
-    if material.current_version_id and evidence.material_version_id != material.current_version_id:
-        evidence.material_version = material.current_version
-        update_fields.append("material_version")
     if locator and evidence.locator != locator:
         evidence.locator = locator
         update_fields.append("locator")
@@ -390,6 +1440,87 @@ def _merged_body_for_material(page, material, incoming_body):
     if not current_body:
         return body
     return "\n\n".join([current_body, body])
+
+
+def _classify_page_change(page, page_data, llm_model_id):
+    """判断新旧正文是否为同一主题，以及属于无变化、补充还是事实冲突。"""
+    current_body = page.current_version.body if page.current_version_id else ""
+    incoming_body = (page_data.get("body") or "").strip()
+    if not current_body.strip() or not incoming_body:
+        logger.info(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=skipped_empty_body",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+        )
+        return None
+    if current_body.strip() == incoming_body:
+        logger.info(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=deterministic_equal same_subject=true relation=unchanged",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+        )
+        return {"same_subject": True, "relation": "unchanged", "reason": ""}
+
+    prompt = (
+        "你是企业知识冲突检测助手。请比较当前知识与新知识，只判断事实结论是否互相矛盾。\n"
+        "同一主题下新增不矛盾的细节属于 supplement；事实结论相同属于 unchanged；"
+        "同一条件下数值、责任人、状态、步骤或规则互斥才属于 conflict。\n"
+        '只输出 JSON：{"same_subject":true或false,"relation":"unchanged|supplement|conflict","reason":"简短原因"}。\n\n'
+        f"# 当前知识\n标题：{page.title}\n正文：\n{current_body}\n\n"
+        f"# 新知识\n标题：{page_data.get('title') or ''}\n正文：\n{incoming_body}\n"
+    )
+    raw = (_invoke_llm(llm_model_id, prompt) or "").strip()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1 or end == -1:
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=invalid_json output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    try:
+        result = json.loads(raw[start : end + 1])
+    except (TypeError, ValueError):
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=json_parse_failed output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    if not isinstance(result, dict) or not isinstance(result.get("same_subject"), bool):
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=invalid_schema output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    if result.get("relation") not in {"unchanged", "supplement", "conflict"}:
+        logger.warning(
+            "wiki_conflict_compare kb_id=%s page_id=%s model_id=%s status=invalid_relation output_chars=%s",
+            page.knowledge_base_id,
+            page.id,
+            llm_model_id,
+            len(raw),
+        )
+        return None
+    return {
+        "same_subject": result["same_subject"],
+        "relation": result["relation"],
+        "reason": str(result.get("reason") or "").strip(),
+    }
+
+
+def _has_other_material_source(page, material):
+    return PageEvidence.objects.filter(page=page).exclude(material=material).exists()
 
 
 def _merge_ai_page(page, material, build, page_data, operator="", update_method="ai_merge", change_type="ai_merge", locator=""):
@@ -444,108 +1575,184 @@ def _merge_ai_page(page, material, build, page_data, operator="", update_method=
     return "unchanged"
 
 
-def _create_review_candidate(page, material, build, page_data, operator=""):
-    create_candidate(
-        page,
-        body=page_data.get("body", "") or "",
-        reason="构建资料命中同名人工知识,需人工确认后合并",
-        check_type="cannot_merge",
-        build_record=build,
-        created_by=operator,
-        related={"pages": [page.id], "materials": [material.id]},
+def _incoming_material_snapshot(material, material_version=_CURRENT_MATERIAL_VERSION):
+    if material_version is _CURRENT_MATERIAL_VERSION:
+        material_version = getattr(material, "current_version", None)
+    return {
+        "material_id": getattr(material, "id", None),
+        "material_version_id": getattr(material_version, "id", None),
+        "content_hash": (getattr(material_version, "content_hash", "") or getattr(material, "content_hash", "") or ""),
+    }
+
+
+def resolve_knowledge_conflict(
+    page,
+    material,
+    build,
+    candidate_body,
+    *,
+    operator="",
+    check_type="cannot_merge",
+    reason="知识结论发生变化，需人工选择当前知识或新知识",
+    related=None,
+    locator="",
+):
+    """在短事务内以最新页面状态执行 unchanged / replayed / pending 三态编排。"""
+    from apps.opspilot.services.wiki.decision_service import (
+        build_participants_from_page_evidence,
+        compute_schema_fingerprint,
+        replay_decision,
+        subject_key_for_page,
     )
-    return "pending_review"
 
-
-def build_from_material(material, llm_model_id=None, operator="", trigger="material"):
-    """从一份资料构建知识页面。返回 BuildRecord。"""
-    kb = material.knowledge_base
-    # 资料进入「构建中」,前端轮询即可看到状态
-    material.status = "building"
-    material.save(update_fields=["status", "updated_at"])
-    build = BuildRecord.objects.create(
-        knowledge_base=kb,
-        trigger=trigger,
-        operator=operator,
-        inputs={"material_id": material.id},
-        stage="generating",
-        status="running",
+    incoming_material_version = getattr(material, "current_version", None)
+    incoming_snapshot = _incoming_material_snapshot(
+        material,
+        material_version=incoming_material_version,
     )
-    try:
-        text = (load_parsed_markdown(material) or material.ai_summary or material.text_content or "").strip()
-        source_chunks = _source_chunks_with_offsets(text)
-        source_trace = {"chunks": _source_chunk_trace(source_chunks), "page_actions": []}
-        build.inputs = {
-            **(build.inputs or {}),
-            "material_name": material.name,
-            "source_trace": source_trace,
-        }
-        build.save(update_fields=["inputs", "updated_at"])
-        # 两步法:Stage1 抽取要点 → Stage2 依据 Schema 生成页面(抽取失败则回退原文)
-        facts = _llm_extract_facts(text, llm_model_id)
-        pages_data = _llm_generate_pages(kb, facts or text, llm_model_id)
-        affected = []
-        cascade_ids = []
-        maintenance = {}
-        counts = {"new": 0, "updated": 0, "unchanged": 0, "pending_review": 0}
-        existing_by_title = _existing_pages_by_title(kb)
-        for pd in pages_data:
-            pd = _normalize_page_data_title(kb, pd)
-            key = _title_key(pd.get("title"), kb)
-            page = existing_by_title.get(key)
-            locator = _source_locator_for_page(material, text, pd, chunks=source_chunks)
-            if not page:
-                page = _create_ai_page(kb, material, build, pd, locator=locator)
-                existing_by_title[key] = page
-                action = "new"
-            elif page.contribution == "ai":
-                action = _merge_ai_page(page, material, build, pd, operator=operator, locator=locator)
-            else:
-                action = _create_review_candidate(page, material, build, pd, operator=operator)
-
-            counts[action] += 1
-            source_trace["page_actions"].append(_page_action_trace(page, action, locator))
-            if action in ("new", "updated"):
-                affected.append(page.id)
-                cascade_ids.append(page.id)
-            elif action == "pending_review":
-                affected.append(page.id)
-
-        if cascade_ids:
-            enriched_ids = enrich_pages_wikilinks(
-                kb,
-                cascade_ids,
-                llm_model_id,
-                _invoke_llm,
-                build_record=build,
-                operator=operator,
-                canonicalize=lambda value: _canonical_title(kb, value),
-                alias_terms_resolver=lambda value: _title_alias_terms_for_enrichment(kb, value),
+    with transaction.atomic():
+        locked_kb = WikiKnowledgeBase.objects.select_for_update().get(pk=page.knowledge_base_id)
+        locked_page = KnowledgePage.objects.select_for_update().get(
+            pk=page.pk,
+            knowledge_base=locked_kb,
+        )
+        locked_page.knowledge_base = locked_kb
+        if locked_page.current_version_id:
+            locked_page.current_version = PageVersion.objects.select_for_update().get(pk=locked_page.current_version_id)
+        participants = build_participants_from_page_evidence(
+            locked_page,
+            incoming_snapshot=incoming_snapshot,
+        )
+        schema_fingerprint = compute_schema_fingerprint(locked_page.knowledge_base)
+        subject_key = subject_key_for_page(
+            page_type=locked_page.page_type or "concept",
+            canonical_title=_canonical_title(locked_page.knowledge_base, locked_page.title),
+        )
+        result, rule = replay_decision(
+            knowledge_base=locked_page.knowledge_base,
+            decision_type="knowledge_conflict",
+            subject_key=subject_key,
+            schema_fingerprint=schema_fingerprint,
+            participants=participants,
+            page=locked_page,
+            candidate_body=candidate_body,
+        )
+        if result == "replayed":
+            return (
+                "unchanged",
+                {
+                    "decision_reused": True,
+                    "rule_id": rule.id,
+                    "action": rule.action,
+                },
             )
-            cascade_ids = list(dict.fromkeys([*cascade_ids, *enriched_ids]))
-            # 新页面与同库其他页面建立关系并增量维护索引。
-            maintenance = cascade(kb, cascade_ids, "build")
-        build.counts = counts
-        build.affected_pages = affected
-        build.inputs = {
-            **(build.inputs or {}),
-            "source_trace": source_trace,
-        }
-        build.maintenance = maintenance
-        build.stage = "done"
-        build.status = "success"
-        build.progress = 100
-        build.save(update_fields=["counts", "affected_pages", "inputs", "maintenance", "stage", "status", "progress", "updated_at"])
-        material.status = "built"
-        material.save(update_fields=["status", "updated_at"])
-        return build
+        if result == "unchanged":
+            _ensure_evidence(
+                locked_page,
+                material,
+                locator=locator,
+                material_version=incoming_material_version,
+            )
+            return "unchanged", {}
+
+        check = create_candidate(
+            locked_page,
+            body=candidate_body,
+            reason=reason,
+            check_type=check_type,
+            build_record=build,
+            created_by=operator,
+            related=related or {"pages": [locked_page.id], "materials": [material.id]},
+            incoming_material=material,
+            incoming_material_version=incoming_material_version,
+        )
+        return "pending_review", {"check_id": check.id}
+
+
+def _create_review_candidate(page, material, build, page_data, operator="", locator=""):
+    return resolve_knowledge_conflict(
+        page,
+        material,
+        build,
+        page_data.get("body", "") or "",
+        operator=operator,
+        check_type="cannot_merge",
+        reason="构建资料产生了不同知识结论，需人工选择",
+        related={"pages": [page.id], "materials": [material.id]},
+        locator=locator,
+    )
+
+
+def _maintenance_errors(maintenance):
+    errors = []
+    if maintenance.get("error"):
+        errors.append(maintenance["error"])
+    for stage in (maintenance.get("stages") or {}).values():
+        if isinstance(stage, dict) and stage.get("error"):
+            errors.append(stage["error"])
+    return list(dict.fromkeys(errors))
+
+
+def _run_build_cascade(knowledge_base, affected_page_ids):
+    try:
+        return cascade(knowledge_base, affected_page_ids, "build")
     except Exception as exc:
-        logger.exception("wiki 构建失败 material=%s", material.id)
-        build.stage = "failed"
-        build.status = "failed"
-        build.errors = [str(exc)]
-        build.save(update_fields=["stage", "status", "errors", "updated_at"])
-        # 构建失败:解析结果仍有效,资料回退到「已解析」,失败详情见构建记录
-        material.status = "done"
+        logger.exception("wiki 构建级联维护异常 kb=%s", knowledge_base.id)
+        error = str(exc)
+        return {
+            "status": "partial",
+            "event": "build",
+            "affected_page_ids": list(affected_page_ids),
+            "stages": {"cascade": {"status": "failed", "error": error}},
+            "error": error,
+        }
+
+
+def build_from_material(
+    material,
+    llm_model_id=None,
+    operator="",
+    trigger="material",
+    classification_root_id=None,
+):
+    """Build one material and publish it through a staging generation."""
+    from apps.opspilot.services.wiki.build_generation_service import freeze_generation_identity
+
+    with transaction.atomic():
+        kb = material.knowledge_base.__class__.objects.select_for_update().get(pk=material.knowledge_base_id)
+        material = material.__class__.objects.select_for_update().select_related("knowledge_base").get(pk=material.pk, knowledge_base=kb)
+        identity = freeze_generation_identity(
+            kb,
+            [material],
+            classification_root_id=classification_root_id,
+        )
+        material.status = "building"
         material.save(update_fields=["status", "updated_at"])
-        raise
+        build = BuildRecord.objects.create(
+            knowledge_base=kb,
+            trigger=trigger,
+            operator=operator,
+            inputs={
+                "material_id": material.id,
+                "task_identity": identity,
+                "classification_root_id": classification_root_id,
+            },
+            stage="generating",
+            status="running",
+            base_generation_id=identity["base_generation_id"],
+            structure_revision_id=identity["structure_revision_id"],
+            structure_fingerprint=identity["structure_fingerprint"],
+            pipeline_version=identity["pipeline_version"],
+            source_fingerprints=identity["source_fingerprints"],
+        )
+
+    from apps.opspilot.services.wiki.generation_material_build_service import build_material_with_generation
+
+    return build_material_with_generation(
+        material,
+        build,
+        llm_model_id=llm_model_id,
+        operator=operator,
+        classification_root_id=classification_root_id,
+        frozen_identity=identity,
+    )

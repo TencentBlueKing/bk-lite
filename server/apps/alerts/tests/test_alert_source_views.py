@@ -1,6 +1,6 @@
 """告警源视图集覆盖测试。
 
-对照 spec/prd/告警中心·集成：告警源增删改查、对接指引、组织密钥管理、事件统计。
+对照 specs/capabilities/legacy-prd-告警中心-集成.md：告警源增删改查、对接指引、组织密钥管理、事件统计。
 """
 
 import json
@@ -394,3 +394,42 @@ def test_daily_event_stats(superuser):
     payload = _render(response)
     assert response.status_code == status.HTTP_200_OK
     assert "today" in json.dumps(payload, ensure_ascii=False) or payload["data"] is not None
+
+
+@pytest.mark.django_db
+def test_daily_event_stats_user_timezone_day_boundary(superuser):
+    """daily_event_stats 的"今日"应按用户时区日界切分，而非 UTC 日界。
+
+    场景：UTC 2026-07-24 16:30（Asia/Shanghai 2026-07-25 00:30）收到事件。
+    UTC+8 用户在本地 7-25 00:35 查询时，该事件应计入"今日"（7-25），
+    而非按 UTC 日界计入"昨日"（7-24）。
+    """
+    from django.utils import timezone as dj_timezone
+    import zoneinfo
+    from unittest.mock import patch
+
+    from apps.alerts.models.models import Event
+
+    src = _make_source("s-tz")
+    # UTC 7-24 16:30 = Asia/Shanghai 7-25 00:30（用户时区的"今天"）
+    utc_dt = dj_timezone.datetime(2026, 7, 24, 16, 30, 0, tzinfo=dj_timezone.utc)
+    event = Event.objects.create(source=src, raw_data={}, title="t", level="0", start_time=utc_dt, event_id="E-tz")
+    Event.objects.filter(pk=event.pk).update(received_at=utc_dt)
+
+    shanghai = zoneinfo.ZoneInfo("Asia/Shanghai")
+    dj_timezone.activate(shanghai)
+    try:
+        # 模拟用户在 Asia/Shanghai 7-25 00:35 查询（即 UTC 7-24 16:35）
+        fake_now_utc = dj_timezone.datetime(2026, 7, 24, 16, 35, 0, tzinfo=dj_timezone.utc)
+        with patch("apps.alerts.views.alert_source.timezone.now", return_value=fake_now_utc):
+            request = _request("get", "/alert_source/daily_event_stats/", superuser)
+            response = AlertSourceModelViewSet.as_view({"get": "daily_event_stats"})(request)
+            payload = _render(response)
+    finally:
+        dj_timezone.deactivate()
+
+    assert response.status_code == status.HTTP_200_OK
+    # 按用户时区日界，UTC 7-24 16:30 属于 Asia/Shanghai 7-25（今日），today_count >= 1
+    assert payload["data"]["today_count"] >= 1, (
+        f"按用户时区日界，事件应计入今日，实际 today_count={payload['data']['today_count']}"
+    )

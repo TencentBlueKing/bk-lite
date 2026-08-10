@@ -1,6 +1,6 @@
 """CMDB 配置文件服务与公共枚举库纯逻辑覆盖测试。
 
-对照 spec/prd/CMDB·资产：配置文件版本归一/差异、采集回调解码；枚举库选项校验。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：配置文件版本归一/差异、采集回调解码；枚举库选项校验。
 """
 
 import base64

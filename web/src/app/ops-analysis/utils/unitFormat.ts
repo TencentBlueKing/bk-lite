@@ -1,8 +1,6 @@
 /**
  * 结构化单位库 —— 对齐 Grafana 的「单位分类 + 自动量纲缩放」。
  *
- * 设计见 docs/superpowers/specs/2026-06-16-ops-analysis-unit-library-design.md
- *
  * 用 formatUnit(value, unitId, opts) 取代旧的纯文本后缀拼接：
  *   - bytesIEC / bytesSI：数据量，自动 KiB/MiB/GiB（1024）或 KB/MB/GB（1000）
  *   - bps：数据速率（bps/Kbps/Mbps/Gbps）

@@ -1,0 +1,50 @@
+.sideMenuLayout {
+  height: var(--custom-height, calc(100vh - 90px)) !important;
+  overflow: hidden;
+  .sectionContainer {
+    background: var(--color-components-side-nav-bg);
+  }
+  .sectionContext {
+    height: 100%;
+    overflow: auto;
+  }
+  .sideMenuLayout {
+    height: 100% !important;
+  }
+}
+.sideMenu {
+  color: var(--color-components-side-nav-text);
+  .introduction {
+    background: var(--color-components-side-nav-bg);
+  }
+  .nav {
+    background: var(--color-components-side-nav-bg);
+    li {
+      &:hover {
+        background: var(--color-components-side-nav-hover-bg);
+      }
+      &.active {
+        color: var(--color-components-side-nav-text-active);
+        background: var(--color-components-side-nav-text-active-bg);
+      }
+    }
+  }
+}
+
+.segmented :global(.sub-layout-segmented.ant-segmented) {
+  background: transparent;
+  color: var(--color-text-1);
+}
+
+.segmented :global(.sub-layout-segmented .ant-segmented-item) {
+  margin-right: 8px;
+  padding: 3px 6px !important;
+}
+
+.segmented :global(.sub-layout-segmented .ant-segmented-item-selected) {
+  color: var(--color-primary);
+}
+
+.segmentedNav {
+  padding-bottom: 10px;
+}

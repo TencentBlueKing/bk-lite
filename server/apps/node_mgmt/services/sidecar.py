@@ -1,10 +1,12 @@
 import hashlib
+import ipaddress
 import json
 from datetime import datetime, timezone
 from string import Template
 
 from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db.models import Q
 from django.http import HttpResponse
 from apps.core.utils.safe_template import build_sandboxed_env
 
@@ -33,6 +35,16 @@ class Sidecar:
     CONVERGE_DEBOUNCE_SECONDS = 5
     CPU_ARCHITECTURE_TAG = "cpu_architecture"
     INSTALL_TASK_NODE_TAG = "install_task_node"
+    BASE_CONFIG_HEADER = "# ---- BK-Lite collector base configuration (shared by all monitoring templates) ----\n"
+    INSTANCE_CONFIG_HEADER = "# ---- BK-Lite instance collection configurations (per monitoring template) ----\n"
+
+    @classmethod
+    def add_config_section_headers(cls, config_template: str, has_child_configs: bool) -> str:
+        """为最终下发文件标明采集器基础配置与实例采集配置的边界。"""
+        merged_template = f"{cls.BASE_CONFIG_HEADER}{(config_template or '').lstrip()}"
+        if has_child_configs:
+            merged_template += f"\n{cls.INSTANCE_CONFIG_HEADER}"
+        return merged_template
 
     @staticmethod
     def generate_etag(data):
@@ -212,16 +224,17 @@ class Sidecar:
             status="running",
         ).exists()
 
-        install_running_exists = False
+        target_filter = Q(**{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id})
         if node_ip:
-            install_running_exists = any(
-                _matches_install_connectivity_target(task_node, node_id, node_ip)
-                for task_node in ControllerTaskNode.objects.filter(
-                    ip=node_ip,
-                    status="running",
-                    task__type="install",
-                )
+            target_filter |= Q(ip=node_ip)
+        install_running_exists = any(
+            _matches_install_connectivity_target(task_node, node_id, node_ip)
+            for task_node in ControllerTaskNode.objects.filter(
+                target_filter,
+                status="running",
+                task__type="install",
             )
+        )
 
         if not action_running_exists and not install_running_exists:
             return
@@ -320,6 +333,56 @@ class Sidecar:
         return ""
 
     @staticmethod
+    def _resolve_reported_ip(node_id: str, reported_ip: str) -> str:
+        """Replace an unusable link-local address with the authenticated install target."""
+        try:
+            reported_address = ipaddress.ip_address(reported_ip)
+        except ValueError:
+            return reported_ip
+        if not reported_address.is_link_local:
+            return reported_ip
+
+        task_node = (
+            ControllerTaskNode.objects.filter(
+                **{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id},
+                task__type="install",
+                os=NodeConstants.WINDOWS_OS,
+            )
+            .order_by("-id")
+            .first()
+        )
+        if not task_node or not task_node.ip:
+            return reported_ip
+        try:
+            target_address = ipaddress.ip_address(task_node.ip)
+        except ValueError:
+            return reported_ip
+        if target_address.is_link_local or target_address.is_loopback or target_address.is_unspecified:
+            return reported_ip
+        logger.info("Use authenticated Windows install target IP for link-local node %s", node_id)
+        return task_node.ip
+
+    @staticmethod
+    def _cached_heartbeat_updates(node_id: str, node_details: dict) -> tuple[dict, str]:
+        """Build the bounded metadata update allowed on an ETag cache hit."""
+        request_data = dict(node_details)
+        missing_fields = [field for field in ("ip", "operating_system") if not request_data.get(field)]
+        if missing_fields:
+            existing_node = Node.objects.filter(id=node_id).values(*missing_fields).first() or {}
+            for field in missing_fields:
+                request_data[field] = existing_node.get(field, "")
+
+        updates = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "status": node_details.get("status", {}),
+        }
+        cpu_architecture = Sidecar._fallback_cpu_architecture(node_id, request_data)
+        if cpu_architecture:
+            updates["cpu_architecture"] = cpu_architecture
+
+        return updates, request_data.get("ip", "")
+
+    @staticmethod
     def _default_collector_priority(collector_cpu_architecture: str, node_cpu_architecture: str) -> int:
         collector_arch = normalize_cpu_architecture(collector_cpu_architecture)
         node_arch = normalize_cpu_architecture(node_cpu_architecture)
@@ -380,17 +443,10 @@ class Sidecar:
 
         # 如果缓存的ETag存在且与客户端的相同，则返回304 Not Modified
         if cached_etag and cached_etag == if_none_match:
-            # 更新时间, 更新状态
-            node_status = request.data.get("node_details", {}).get("status", {})
-            Node.objects.filter(id=node_id).update(
-                updated_at=datetime.now(timezone.utc).isoformat(),
-                status=node_status,
-            )
-
-            node_ip = request.data.get("node_details", {}).get("ip", "")
-            if not node_ip:
-                node_ip = Node.objects.filter(id=node_id).values_list("ip", flat=True).first()
-            Sidecar.trigger_converge_tasks_if_needed(node_id, node_ip, node_status)
+            node_details = request.data.get("node_details", {})
+            updates, node_ip = Sidecar._cached_heartbeat_updates(node_id, node_details)
+            Node.objects.filter(id=node_id).update(**updates)
+            Sidecar.trigger_converge_tasks_if_needed(node_id, node_ip, updates["status"])
 
             response = HttpResponse(status=304)
             response["ETag"] = cached_etag
@@ -405,6 +461,7 @@ class Sidecar:
 
         # 操作系统转小写
         request_data.update(operating_system=request_data["operating_system"].lower())
+        request_data.update(ip=Sidecar._resolve_reported_ip(node_id, request_data.get("ip", "")))
         request_data.update(cpu_architecture=Sidecar._fallback_cpu_architecture(node_id, request_data))
         request_data.pop("architecture", None)
 
@@ -637,15 +694,17 @@ class Sidecar:
         node = assignment.node
         configuration = assignment.collector_config
 
-        # 合并子配置内容到模板
-        merged_template = configuration.config_template
-
         collector = configuration.collector
         section_headers = {}
         if collector.default_config:
             section_headers = collector.default_config.get("config_section", {})
 
         child_configs = list(configuration.childconfig_set.all())
+        # 合并子配置内容到模板。显式分段避免将采集器的全局监听/处理逻辑误认为某个实例模板。
+        merged_template = Sidecar.add_config_section_headers(
+            configuration.config_template,
+            has_child_configs=bool(child_configs),
+        )
         child_render_variables = Sidecar.collect_child_render_variables(child_configs)
 
         if child_configs and section_headers:

@@ -1,0 +1,24 @@
+diff --git a/lib/util/hash/BatchedHash.js b/lib/util/hash/BatchedHash.js
+index 9a06049bd0db9f893ace9dd86a59ecea1881cb0b..15ce945bf43011ec7244827e845a8a449524b03c 100644
+--- a/lib/util/hash/BatchedHash.js
++++ b/lib/util/hash/BatchedHash.js
+@@ -42,6 +42,7 @@ class BatchedHash extends Hash {
+ 	 * @returns {Hash} updated hash
+ 	 */
+ 	update(data, inputEncoding) {
++		if (data === undefined || data === null) return this;
+ 		if (this.string !== undefined) {
+ 			if (
+ 				typeof data === "string" &&
+diff --git a/lib/util/hash/wasm-hash.js b/lib/util/hash/wasm-hash.js
+index 75e6be80bfea05c6d95bf2a850480c0f02f438aa..8fc289968d8943f0b3ddbc785c431bf1e22d0177 100644
+--- a/lib/util/hash/wasm-hash.js
++++ b/lib/util/hash/wasm-hash.js
+@@ -58,6 +58,7 @@ class WasmHash extends Hash {
+ 	 * @returns {this} updated hash
+ 	 */
+ 	update(data, inputEncoding) {
++		if (data === undefined || data === null) return this;
+ 		if (typeof data === "string") {
+ 			while (data.length > MAX_SHORT_STRING) {
+ 				this._updateWithShortString(

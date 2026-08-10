@@ -10,10 +10,12 @@ call_command 序列 + 错误处理策略（默认失败即中断，启用 contin
 from types import SimpleNamespace
 
 import pytest
+from django.core.management.base import CommandError
 
 import apps.core.management.commands.batch_init as bi
 
 pytestmark = pytest.mark.unit
+_verify_critical_schema = bi.Command._verify_critical_schema
 
 
 class _Style:
@@ -45,7 +47,58 @@ def calls(monkeypatch):
     return recorded
 
 
+@pytest.fixture(autouse=True)
+def _stub_critical_schema_gate(monkeypatch):
+    monkeypatch.setattr(bi.Command, "_verify_critical_schema", lambda self: None)
+
+
 class TestHandleDispatch:
+    def test_critical_schema_is_verified_before_preload_and_dispatch(self, monkeypatch):
+        events = []
+        monkeypatch.setattr(bi.Command, "_verify_critical_schema", lambda self: events.append("schema"))
+        monkeypatch.setattr(
+            bi,
+            "preload_language_cache",
+            lambda: events.append("preload") or {"loaded": [], "skipped": [], "failed": []},
+        )
+        monkeypatch.setattr(bi, "call_command", lambda name, *args, **kwargs: events.append(name))
+
+        _make_command().handle(apps="node_mgmt", continue_on_error=False)
+
+        assert events == ["schema", "preload", "node_init"]
+
+    def test_critical_schema_failure_is_always_a_hard_gate(self, monkeypatch):
+        calls = []
+
+        def fail_schema():
+            calls.append("schema")
+            raise RuntimeError("permission version table missing")
+
+        cmd = _make_command()
+        monkeypatch.setattr(cmd, "_verify_critical_schema", fail_schema)
+        monkeypatch.setattr(bi, "preload_language_cache", lambda: calls.append("preload"))
+        monkeypatch.setattr(bi, "call_command", lambda *args, **kwargs: calls.append("dispatch"))
+
+        with pytest.raises(RuntimeError, match="permission version table missing"):
+            cmd.handle(apps="node_mgmt", continue_on_error=True)
+
+        assert calls == ["schema"]
+
+    def test_critical_schema_check_queries_permission_version_table(self, monkeypatch):
+        calls = []
+        queryset = SimpleNamespace(first=lambda: calls.append("first"))
+        manager = SimpleNamespace(values_list=lambda *args, **kwargs: calls.append(("values_list", args, kwargs)) or queryset)
+        model = SimpleNamespace(objects=manager)
+        monkeypatch.setattr(bi.django_apps, "get_model", lambda *args: calls.append(("get_model", args)) or model)
+
+        _verify_critical_schema()
+
+        assert calls == [
+            ("get_model", ("system_mgmt", "UserPermissionVersion")),
+            ("values_list", ("id",), {"flat": True}),
+            "first",
+        ]
+
     def test_single_known_app_runs_its_command_sequence(self, calls):
         cmd = _make_command()
         cmd.handle(apps="node_mgmt", continue_on_error=False)
@@ -56,6 +109,13 @@ class TestHandleDispatch:
         cmd = _make_command()
         cmd.handle(apps="monitor", continue_on_error=False)
         assert [c[0] for c in calls] == ["plugin_init"]
+
+    def test_patch_mgmt_initializes_builtin_patch_sources(self, calls):
+        cmd = _make_command()
+
+        cmd.handle(apps="patch_mgmt", continue_on_error=False)
+
+        assert [c[0] for c in calls] == ["init_patch_sources"]
 
     def test_multiple_apps_dispatched_in_order(self, calls):
         cmd = _make_command()
@@ -85,6 +145,13 @@ class TestHandleDispatch:
         assert "node_init" in names
         assert "log_init" in names
 
+    def test_cmdb_reconciles_node_sync_as_last_init_step(self, calls):
+        cmd = _make_command()
+
+        cmd.handle(apps="cmdb", continue_on_error=False)
+
+        assert [call[0] for call in calls][-1] == "reconcile_node_mgmt_sync"
+
     def test_system_mgmt_creates_admin_with_resolved_password(self, calls, monkeypatch):
         monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
         cmd = _make_command()
@@ -103,6 +170,84 @@ class TestHandleDispatch:
 
 
 class TestErrorHandlingPolicy:
+    def test_patch_source_init_failure_warns_and_does_not_block_startup(self, monkeypatch):
+        calls = []
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "init_patch_sources":
+                raise RuntimeError("patch source seed failed")
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        monkeypatch.setattr(
+            bi,
+            "preload_language_cache",
+            lambda *args, **kwargs: {"loaded": [], "skipped": [], "failed": []},
+        )
+        cmd = _make_command()
+
+        cmd.handle(apps="patch_mgmt,node_mgmt", continue_on_error=False)
+
+        assert calls == ["init_patch_sources", "node_init"]
+        assert any("WARN:内置补丁源初始化跳过（RuntimeError）: patch source seed failed" in message for message in cmd.stdout.messages)
+
+    def test_invalid_default_namespace_config_warns_and_continues_operation_analysis_init(self, monkeypatch):
+        calls = []
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "init_default_namespace":
+                raise CommandError("NATS_SERVERS 配置非法")
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        cmd = _make_command()
+
+        cmd._init_operation_analysis()
+
+        assert calls == [
+            "init_default_namespace",
+            "init_default_groups",
+            "init_builtin_canvases",
+        ]
+        assert any("WARN:默认命名空间初始化跳过（CommandError）: NATS_SERVERS 配置非法" in message for message in cmd.stdout.messages)
+
+    def test_builtin_canvas_sync_failure_does_not_block_operation_analysis_init(self, monkeypatch):
+        calls = []
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "init_builtin_canvases":
+                raise RuntimeError("invalid builtin config")
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        cmd = _make_command()
+
+        cmd._init_operation_analysis()
+
+        assert calls == ["init_default_namespace", "init_default_groups", "init_builtin_canvases"]
+        assert any("WARN:内置画布与数据源同步跳过（RuntimeError）: invalid builtin config" in message for message in cmd.stdout.messages)
+
+    def test_cmdb_reconcile_failure_obeys_continue_on_error(self, monkeypatch):
+        calls = []
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "reconcile_node_mgmt_sync":
+                raise RuntimeError("reconcile failed")
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        monkeypatch.setattr(
+            bi,
+            "preload_language_cache",
+            lambda *a, **k: {"loaded": [], "skipped": [], "failed": []},
+        )
+        cmd = _make_command()
+
+        cmd.handle(apps="cmdb,node_mgmt", continue_on_error=True)
+
+        assert calls[-1] == "node_init"
+        assert any("初始化 cmdb 失败: reconcile failed" in message for message in cmd.stdout.messages)
+
     def test_system_mgmt_failure_reraises_and_aborts(self, monkeypatch):
         calls = []
 

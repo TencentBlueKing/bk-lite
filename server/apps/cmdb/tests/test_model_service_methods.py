@@ -1,6 +1,6 @@
 """CMDB ModelManage 图驱动方法覆盖测试（fake_graph）。
 
-对照 spec/prd/CMDB·模型管理：模型创建、模型关联增删查、自动关联规则查询、
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：模型创建、模型关联增删查、自动关联规则查询、
 模型排序、模型是否存在关联/实例校验、显示字段处理。
 """
 
@@ -318,23 +318,158 @@ def test_update_enum_instances_display(fake_graph):
     assert any(c[0] == "batch_update_node_properties" for c in fg.calls)
 
 
+def _paged_query_entity(instances, delete_after_first=False):
+    call_count = 0
+
+    def _query(label, params, page=None, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        last_id = next(
+            (item["value"] for item in params if item["type"] == "id>"),
+            None,
+        )
+        candidates = [
+            instance
+            for instance in instances
+            if last_id is None or instance["_id"] > last_id
+        ]
+        start = page["skip"]
+        end = start + page["limit"]
+        result = candidates[start:end]
+        if delete_after_first and call_count == 1:
+            instances[:] = [instance for instance in instances if instance["_id"] != 1]
+        return result, None
+
+    return _query
+
+
 def test_rebuild_file_instances_display_backfills_stem(fake_graph):
     # 实例 1 有附件但无 _display（历史数据）；实例 2 无附件值
+    instances = [{"_id": 1, "doc": [{"name": "report.pdf"}]}, {"_id": 2}]
     fg = fake_graph(
         MODULE,
-        query_entity=([{"_id": 1, "doc": [{"name": "report.pdf"}]}, {"_id": 2}], 2),
+        query_entity=_paged_query_entity(instances),
     )
     count = ModelManage.rebuild_file_instances_display("host", "doc")
     # 只有实例 1 含 doc → 回填 1 个
     assert count == 1
-    update_calls = [c for c in fg.calls if c[0] == "batch_update_node_properties"]
+    update_calls = [
+        c for c in fg.calls if c[0] == "batch_update_node_property_values"
+    ]
     assert len(update_calls) == 1
     # 写入的是文件名词干（去扩展名），而非原始元数据 JSON
-    assert update_calls[0][1][2] == {"doc_display": "report"}
+    assert update_calls[0][1] == (
+        "instance",
+        "doc_display",
+        [{"id": 1, "value": "report"}],
+    )
+
+
+def test_rebuild_file_instances_display_batches_1000_distinct_values_once(
+    fake_graph,
+):
+    instances = [{"_id": 1}]
+    instances.extend(
+        {"_id": index, "doc": [{"name": f"report-{index}.pdf"}]}
+        for index in range(2, 1002)
+    )
+    instances.append({"_id": 1002, "doc": []})
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances),
+    )
+
+    count = ModelManage.rebuild_file_instances_display("host", "doc")
+
+    assert count == 1000
+    update_calls = [
+        call
+        for call in fg.calls
+        if call[0] == "batch_update_node_property_values"
+    ]
+    assert len(update_calls) == 1
+    assert update_calls[0][1][0:2] == ("instance", "doc_display")
+    assert update_calls[0][1][2] == [
+        {"id": index, "value": f"report-{index}"}
+        for index in range(2, 1002)
+    ]
+    assert not any(
+        call[0] == "batch_update_node_properties" for call in fg.calls
+    )
+
+
+def test_rebuild_file_instances_display_pages_without_unbounded_graph_writes(
+    fake_graph,
+):
+    instances = [
+        {"_id": index, "doc": [{"name": f"report-{index}.pdf"}]}
+        for index in range(1, 1002)
+    ]
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances),
+    )
+
+    count = ModelManage.rebuild_file_instances_display("host", "doc")
+
+    assert count == 1001
+    update_calls = [
+        call
+        for call in fg.calls
+        if call[0] == "batch_update_node_property_values"
+    ]
+    assert [len(call[1][2]) for call in update_calls] == [1000, 1]
+
+
+def test_rebuild_file_instances_display_keyset_does_not_skip_after_delete(
+    fake_graph,
+):
+    instances = [
+        {"_id": index, "doc": [{"name": f"report-{index}.pdf"}]}
+        for index in range(1, 1002)
+    ]
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances, delete_after_first=True),
+    )
+
+    count = ModelManage.rebuild_file_instances_display("host", "doc")
+
+    assert count == 1001
+    update_calls = [
+        call
+        for call in fg.calls
+        if call[0] == "batch_update_node_property_values"
+    ]
+    assert [len(call[1][2]) for call in update_calls] == [1000, 1]
+    assert update_calls[-1][1][2] == [{"id": 1001, "value": "report-1001"}]
 
 
 def test_rebuild_file_instances_display_no_instances(fake_graph):
-    fg = fake_graph(MODULE, query_entity=([], 0))
+    fg = fake_graph(MODULE, query_entity=_paged_query_entity([]))
     count = ModelManage.rebuild_file_instances_display("host", "doc")
     assert count == 0
-    assert not any(c[0] == "batch_update_node_properties" for c in fg.calls)
+    assert not any(
+        c[0] in {"batch_update_node_properties", "batch_update_node_property_values"}
+        for c in fg.calls
+    )
+
+
+def test_rebuild_file_instances_display_backend_failure_is_non_blocking(
+    fake_graph,
+):
+    def _raise(*args, **kwargs):
+        raise RuntimeError("graph unavailable")
+
+    fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(
+            [
+                {"_id": 1, "doc": [{"name": "report.pdf"}]},
+                {"_id": 2, "doc": [{"name": "photo.png"}]},
+            ]
+        ),
+        batch_update_node_property_values=_raise,
+    )
+
+    assert ModelManage.rebuild_file_instances_display("host", "doc") == 0

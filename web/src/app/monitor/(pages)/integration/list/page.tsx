@@ -7,14 +7,13 @@ import {
   Tag,
   message,
   Empty,
-  Dropdown,
-  Menu,
-  Modal
+  Modal,
+  Pagination as AntPagination
 } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
-import { EllipsisOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { getIconByObjectName, getPluginBrandIcon } from '@/app/monitor/utils/common';
 import { useRouter } from 'next/navigation';
@@ -23,7 +22,8 @@ import {
   TableDataItem,
   TreeItem,
   TreeSortData,
-  ObjectItem
+  ObjectItem,
+  Pagination
 } from '@/app/monitor/types';
 import ImportModal from './importModal';
 import axios from 'axios';
@@ -31,11 +31,20 @@ import { useAuth } from '@/context/auth';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import { useSearchParams } from 'next/navigation';
 import Permission from '@/components/permission';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
+import { sameMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import { cloneDeep } from 'lodash';
 import CreateTemplateModal from './createTemplateModal';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
+import {
+  invalidateMonitorObjectsCache,
+  loadMonitorObjectsCached
+} from '@/app/monitor/utils/monitorObjectCache';
+import { unwrapMonitorPluginList } from '@/app/monitor/utils/monitorPluginList';
+import { invalidateMonitorPluginCache } from '@/app/monitor/utils/monitorPluginCache';
 
 const { confirm } = Modal;
 
@@ -68,16 +77,23 @@ const Integration = () => {
   const [pluginList, setPluginList] = useState<ObjectItem[]>([]);
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [objectId, setObjectId] = useState<React.Key>('');
+  const [objectType, setObjectType] = useState<string>('');
+  const [pagination, setPagination] = useState<Pagination>({
+    current: 1,
+    total: 0,
+    pageSize: 20
+  });
 
+  // objects 与 plugins 并行:plugins 不再等 objects 就绪
   useEffect(() => {
     if (isLoading) return;
     getObjects();
   }, [isLoading]);
 
   useEffect(() => {
-    if (isLoading || !objects?.length) return;
-    getPluginList({ monitor_object_id: objectId });
-  }, [objectId, isLoading, objects]);
+    if (isLoading) return;
+    getPluginList();
+  }, [isLoading, objectId, objectType, pagination.current, pagination.pageSize]);
 
   useEffect(() => {
     return () => {
@@ -90,7 +106,8 @@ const Integration = () => {
       setTreeLoading(true);
       await updateMonitorObject(data);
       message.success(t('common.updateSuccess'));
-      getObjects();
+      invalidateMonitorObjectsCache();
+      getObjects({ force: true });
     } catch {
       setTreeLoading(false);
     }
@@ -100,39 +117,83 @@ const Integration = () => {
     pluginAbortControllerRef.current?.abort();
   };
 
-  const handleObjectChange = async (id: string) => {
-    cancelAllRequests();
-    setObjectId(id === 'all' ? '' : id);
+  const isTypeNodeKey = (key: string) => {
+    const keyStr = String(key);
+    if (keyStr === 'all') return false;
+    // 叶子节点 key 为对象数字 id；一级分类 key 为 MonitorObjectType.id（如 database）
+    return objects.some((item) => String(item.type) === keyStr);
   };
 
-  const getPluginList = async (params = {}) => {
+  const handleObjectChange = async (id: string) => {
+    cancelAllRequests();
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    if (id === 'all' || !id) {
+      setObjectId('');
+      setObjectType('');
+      return;
+    }
+    if (isTypeNodeKey(String(id))) {
+      setObjectId('');
+      setObjectType(String(id));
+      return;
+    }
+    setObjectType('');
+    setObjectId(id);
+  };
+
+  const getPluginList = async (
+    params: {
+      monitor_object_id?: React.Key | null;
+      monitor_object_type?: string | null;
+      keyword?: string;
+      page?: number;
+    } = {}
+  ) => {
     pluginAbortControllerRef.current?.abort();
     const abortController = new AbortController();
     pluginAbortControllerRef.current = abortController;
     const currentRequestId = ++pluginRequestIdRef.current;
-    setPluginList([]);
+    const page = params.page ?? pagination.current;
+    // 翻页保留旧列表,仅 Spin overlay,避免闪 Empty
     setSelectedApp(null);
     setExportDisabled(true);
     setPageLoading(true);
     try {
-      const data = await getMonitorPlugin(params, {
-        signal: abortController.signal
-      });
+      const monitorObjectId =
+        params.monitor_object_id !== undefined
+          ? params.monitor_object_id
+          : objectId;
+      const monitorObjectType =
+        params.monitor_object_type !== undefined
+          ? params.monitor_object_type
+          : objectType;
+      const data = await getMonitorPlugin(
+        {
+          ...(monitorObjectId ? { monitor_object_id: monitorObjectId } : {}),
+          ...(monitorObjectType
+            ? { monitor_object_type: monitorObjectType }
+            : {}),
+          keyword: params.keyword !== undefined ? params.keyword : searchText,
+          page,
+          page_size: pagination.pageSize
+        },
+        {
+          signal: abortController.signal
+        }
+      );
       if (currentRequestId !== pluginRequestIdRef.current) return;
-      // 根据objects的顺序对插件列表进行排序
-      const sortedData = data.sort((a: ObjectItem, b: ObjectItem) => {
-        const indexA = objects.findIndex(
-          (obj) => obj.id === a.parent_monitor_object
-        );
-        const indexB = objects.findIndex(
-          (obj) => obj.id === b.parent_monitor_object
-        );
-        // 如果找不到对应的object,放在最后
-        if (indexA === -1) return 1;
-        if (indexB === -1) return -1;
-        return indexA - indexB;
-      });
-      setPluginList(sortedData);
+      const items = unwrapMonitorPluginList<ObjectItem>(data);
+      const count = Array.isArray(data)
+        ? data.length
+        : typeof data?.count === 'number'
+          ? data.count
+          : 0;
+      setPluginList(items);
+      setPagination((prev) => ({
+        ...prev,
+        current: page,
+        total: count
+      }));
     } finally {
       if (currentRequestId === pluginRequestIdRef.current) {
         setPageLoading(false);
@@ -140,10 +201,13 @@ const Integration = () => {
     }
   };
 
-  const getObjects = async () => {
+  const getObjects = async (options: { force?: boolean } = {}) => {
     try {
       setTreeLoading(true);
-      const data: ObjectItem[] = await getMonitorObject();
+      if (options.force) {
+        invalidateMonitorObjectsCache();
+      }
+      const data = await loadMonitorObjectsCached(() => getMonitorObject());
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
       setObjects(data);
@@ -166,7 +230,7 @@ const Integration = () => {
           acc[item.type].children.push({
             title: item.display_name || '--',
             label: item.name || '--',
-            key: item.id,
+            key: toMonitorIdString(item.id),
             icon: item.icon,
             children: []
           });
@@ -190,16 +254,15 @@ const Integration = () => {
     try {
       setExportLoading(true);
       const response = await axios({
-        url: `/api/proxy/monitor/api/monitor_plugin/export/${selectedApp.id}/`, // 替换为你的导出数据的API端点
+        url: `/api/proxy/monitor/api/monitor_plugin/export/${selectedApp.id}/`,
         method: 'GET',
-        responseType: 'blob', // 确保响应类型为blob
+        responseType: 'blob',
         headers: {
           Authorization: `Bearer ${tokenRef.current}`
         }
       });
       const text = await response.data.text();
       const json = JSON.parse(text);
-      // 将data对象转换为JSON字符串并创建Blob对象
       const blob = new Blob([JSON.stringify(json.data, null, 2)], {
         type: 'application/json'
       });
@@ -223,19 +286,32 @@ const Integration = () => {
   };
 
   const onTxtPressEnter = () => {
-    const params = {
-      monitor_object_id: objectId === 'all' ? '' : objectId,
-      name: searchText
-    };
-    getPluginList(params);
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    getPluginList({
+      monitor_object_id: objectId,
+      monitor_object_type: objectType,
+      keyword: searchText,
+      page: 1
+    });
   };
 
   const onTxtClear = () => {
     setSearchText('');
+    setPagination((prev) => ({ ...prev, current: 1 }));
     getPluginList({
-      monitor_object_id: objectId === 'all' ? '' : objectId,
-      name: ''
+      monitor_object_id: objectId,
+      monitor_object_type: objectType,
+      keyword: '',
+      page: 1
     });
+  };
+
+  const handlePageChange = (page: number, pageSize: number) => {
+    setPagination((prev) => ({
+      ...prev,
+      current: page,
+      pageSize
+    }));
   };
 
   const openImportModal = () => {
@@ -272,12 +348,14 @@ const Integration = () => {
       await createCustomTemplate(values);
       message.success(t('common.addSuccess'));
     }
+    invalidateMonitorPluginCache(objectId);
     onTxtClear();
   };
 
   const handleDeleteTemplate = async (id: number) => {
     await deleteCustomTemplate(id);
     message.success(t('common.deleteSuccess'));
+    invalidateMonitorPluginCache(objectId);
     onTxtClear();
   };
 
@@ -296,7 +374,7 @@ const Integration = () => {
 
   const linkToDetial = (app: ObjectItem) => {
     const parentObject: any = objects.find(
-      (item) => item.id === app.parent_monitor_object
+      (item) => sameMonitorId(item.id, app.parent_monitor_object)
     );
     const objectInfo = parentObject || {};
     if (objectInfo.id) {
@@ -304,7 +382,7 @@ const Integration = () => {
     }
     const row: TableDataItem = {
       id: objectInfo.id || '',
-      icon: objectInfo.icon || OBJECT_DEFAULT_ICON,
+      icon: getPluginBrandIcon(app?.name) || objectInfo.icon || OBJECT_DEFAULT_ICON,
       name: objectInfo.name || '',
       plugin_name: app?.name,
       plugin_id: app?.id,
@@ -319,26 +397,22 @@ const Integration = () => {
 
   const onAppClick = (app: ObjectItem) => {
     setSelectedApp(app);
-    setExportDisabled(false); // Enable the export button
+    setExportDisabled(false);
   };
 
-  const renderTemplateActionMenu = (app: ObjectItem) => (
-    <Menu onClick={(e) => e.domEvent.stopPropagation()}>
-      <Menu.Item className="!p-0" onClick={() => openCreateTemplateModal(app)}>
-        <Button type="text" className="w-full !justify-start">
-          {t('common.edit')}
-        </Button>
-      </Menu.Item>
-      <Menu.Item
-        className="!p-0"
-        onClick={() => handleDeleteTemplateConfirm(app.id as number)}
-      >
-        <Button type="text" className="w-full !justify-start">
-          {t('common.delete')}
-        </Button>
-      </Menu.Item>
-    </Menu>
-  );
+  const buildTemplateActionItems = (app: ObjectItem): MoreActionsDropdownItem[] => [
+    {
+      key: 'edit',
+      label: t('common.edit'),
+      onClick: () => openCreateTemplateModal(app),
+    },
+    {
+      key: 'delete',
+      label: t('common.delete'),
+      danger: true,
+      onClick: () => handleDeleteTemplateConfirm(app.id as number),
+    },
+  ];
 
   return (
     <div className="w-full flex overflow-hidden">
@@ -346,10 +420,11 @@ const Integration = () => {
         <div className="h-[calc(100vh-146px)] pt-5 px-2.5 pb-2.5 bg-[var(--color-bg-1)] overflow-y-auto">
           <TreeSelector
             showAllMenu
+            allowParentSelect
             data={treeData}
             defaultSelectedKey={
               searchParams.get('objId')
-                ? Number(searchParams.get('objId'))
+                ? toMonitorIdString(searchParams.get('objId'))
                 : 'all'
             }
             loading={treeLoading}
@@ -395,107 +470,121 @@ const Integration = () => {
           </Permission>
         </div>
         <Spin spinning={pageLoading}>
-          {!pluginList.length ? (
+          {!pluginList.length && !pageLoading ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ) : !pluginList.length ? (
+            <div className="h-[calc(100vh-280px)]" />
           ) : (
-            <div
-              className="grid gap-4 w-full h-[calc(100vh-236px)] overflow-y-auto"
-              style={{
-                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                alignContent: 'start'
-              }}
-            >
-              {pluginList.map((app) => {
-                const parentObject: any = objects.find(
-                  (item) => item.id === app.parent_monitor_object
-                );
-                const objectName = parentObject?.name || '';
+            <>
+              <div
+                className="grid gap-4 w-full h-[calc(100vh-280px)] overflow-y-auto"
+                style={{
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                  alignContent: 'start'
+                }}
+              >
+                {pluginList.map((app) => {
+                  const parentObject: any = objects.find(
+                    (item) => sameMonitorId(item.id, app.parent_monitor_object)
+                  );
+                  const objectName = parentObject?.name || '';
 
-                return (
-                  <div
-                    key={app.id}
-                    className="p-2"
-                    onClick={() => onAppClick(app)}
-                  >
-                    <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
-                      <div className="flex items-center space-x-4 my-2">
-                        <div className="w-14 h-14 min-w-[56px] rounded-lg flex items-center justify-center bg-[var(--color-fill-1)]">
-                          <img
-                            src={`/assets/icons/${getPluginBrandIcon(app.name) || getIconByObjectName(objectName, objects)}.svg`}
-                            alt={objectName}
-                            className="w-12 h-12"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src =
-                                '/assets/icons/cc-default_默认.svg';
+                  return (
+                    <div
+                      key={app.id}
+                      className="p-2"
+                      onClick={() => onAppClick(app)}
+                    >
+                      <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
+                        <div className="flex items-center space-x-4 my-2">
+                          <div className="w-14 h-14 min-w-[56px] rounded-lg flex items-center justify-center bg-[var(--color-fill-1)]">
+                            <img
+                              src={`/assets/icons/${getPluginBrandIcon(app.name) || getIconByObjectName(objectName, objects)}.svg`}
+                              alt={objectName}
+                              className="w-12 h-12"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src =
+                                  '/assets/icons/cc-default_默认.svg';
+                              }}
+                            />
+                          </div>
+                          <div
+                            style={{
+                              width: 'calc(100% - 60px)'
                             }}
-                          />
-                        </div>
-                        <div
-                          style={{
-                            width: 'calc(100% - 60px)'
-                          }}
-                        >
-                          <h2
-                            title={app.display_name}
-                            className="text-xl font-bold m-0 hide-text"
                           >
-                            {app.display_name || '--'}
-                          </h2>
-                          <Tag className="mt-[4px]">
-                            {parentObject?.display_name ||
-                              app.collect_type ||
-                              '--'}
-                          </Tag>
-                          {app.is_custom && (
-                            <Tag className="mt-[4px] ml-[6px]">
-                              {t('monitor.integrations.selfBuilt')}
+                            <h2
+                              title={app.display_name}
+                              className="text-xl font-bold m-0 hide-text"
+                            >
+                              {app.display_name || '--'}
+                            </h2>
+                            <Tag className="mt-[4px]">
+                              {parentObject?.display_name ||
+                                app.collect_type ||
+                                '--'}
                             </Tag>
-                          )}
+                            {app.is_custom && (
+                              <Tag className="mt-[4px] ml-[6px]">
+                                {t('monitor.integrations.selfBuilt')}
+                              </Tag>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <p
-                        className="mb-[15px] text-[var(--color-text-3)] text-[13px] h-[54px] overflow-hidden line-clamp-3"
-                        title={app.display_description || '--'}
-                      >
-                        {app.display_description || '--'}
-                      </p>
-                      {app.is_custom && (
-                        <div
-                          className="absolute top-[12px] right-[12px]"
-                          onClick={(e) => e.stopPropagation()}
+                        <p
+                          className="mb-[15px] text-[var(--color-text-3)] text-[13px] h-[54px] overflow-hidden line-clamp-3"
+                          title={app.display_description || '--'}
                         >
-                          <Dropdown
-                            popupRender={() => renderTemplateActionMenu(app)}
-                            placement="bottomRight"
-                            trigger={['click']}
+                          {app.display_description || '--'}
+                        </p>
+                        {app.is_custom && (
+                          <div
+                            className="absolute top-[12px] right-[12px]"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <Button type="text" icon={<EllipsisOutlined />} />
-                          </Dropdown>
+                            <MoreActionsDropdown
+                              items={buildTemplateActionItems(app)}
+                              placement="bottomRight"
+                              stopPropagation
+                            />
+                          </div>
+                        )}
+                        <div className="w-full h-[32px] flex justify-center items-end">
+                          <Permission
+                            requiredPermissions={['Setting']}
+                            className="w-full"
+                          >
+                            <Button
+                              icon={<PlusOutlined />}
+                              type="primary"
+                              className="w-full rounded-md transition-opacity duration-300"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                linkToDetial(app);
+                              }}
+                            >
+                              {t('monitor.integrations.access')}
+                            </Button>
+                          </Permission>
                         </div>
-                      )}
-                      <div className="w-full h-[32px] flex justify-center items-end">
-                        <Permission
-                          requiredPermissions={['Setting']}
-                          className="w-full"
-                        >
-                          <Button
-                            icon={<PlusOutlined />}
-                            type="primary"
-                            className="w-full rounded-md transition-opacity duration-300"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              linkToDetial(app);
-                            }}
-                          >
-                            {t('monitor.integrations.access')}
-                          </Button>
-                        </Permission>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 flex justify-end">
+                <AntPagination
+                  current={pagination.current}
+                  pageSize={pagination.pageSize}
+                  total={pagination.total}
+                  showSizeChanger
+                  showTotal={(total) =>
+                    `${t('common.total')} ${total} ${t('common.items')}`
+                  }
+                  onChange={handlePageChange}
+                />
+              </div>
+            </>
           )}
         </Spin>
       </div>

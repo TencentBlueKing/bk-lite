@@ -140,12 +140,37 @@ interface ServiceItem {
   id: number;
   name: string;
   status: 'not_deployed' | 'normal' | 'error';
+  deployment_status?: 'not_deployed' | 'deployed';
+  health_status?: 'unknown' | 'normal' | 'abnormal';
   description: string;
+  message?: string;
   [key: string]: any;
+}
+
+type CloudRegionDeploymentState =
+  | 'system_managed'
+  | 'not_deployed'
+  | 'partially_deployed'
+  | 'deployed';
+
+type CloudRegionHealthState = 'unknown' | 'normal' | 'abnormal';
+
+interface CloudRegionDetail {
+  id: number;
+  name: string;
+  introduction: string;
+  proxy_address: string;
+  pending_proxy_address?: string | null;
+  pending_proxy_address_created_at?: string | null;
+  is_default: boolean;
+  deployment_state: CloudRegionDeploymentState;
+  health_state: CloudRegionHealthState;
+  services: ServiceItem[];
 }
 
 interface CloudRegionItem extends BaseEntityWithDescription {
   icon: string;
+  is_default?: boolean;
   services?: ServiceItem[];
   originalName?: string;
   proxy_address?: string;
@@ -181,6 +206,8 @@ interface ControllerInstallFields {
   work_node?: string;
   sidecar_package?: string;
   executor_package?: string;
+  /** 安装时勾选的推送目标；取消勾选则不推送，无级联 */
+  push_targets?: Array<'cmdb' | 'monitor'>;
 }
 
 interface ControllerInstallProps {
@@ -239,4 +266,7 @@ export type {
   ConfigParams,
   ConfigListParams,
   DeployCloudRegionParams,
+  CloudRegionDeploymentState,
+  CloudRegionHealthState,
+  CloudRegionDetail,
 };

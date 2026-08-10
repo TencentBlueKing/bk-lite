@@ -6,34 +6,26 @@ import {
   DashboardShell,
   FlexiblePanelSection,
   KpiSection,
-  useFilteredBarPanels,
   useFilteredChartPanels,
   useFilteredRingPanels,
   useFilteredSummaryCards
 } from '../common/dashboard-components';
-import {
-  HorizontalBarPanel,
-  RingChartPanel,
-  TrendChartPanel
-} from '../../shared/widgets';
+import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { WEBSITE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['探测成功率', '异常状态码', '平均响应时间', '可用节点(2xx)', '平均内容长度'];
-const PRIMARY_CHART_TITLES = ['探测成功率趋势', '响应时间趋势', '内容长度趋势'];
-const RING_TITLES = ['可用性分布'];
-const BAR_TITLES = ['状态码分布'];
+const SUMMARY_TITLES = ['探测成功率', '平均响应时间'];
+const PRIMARY_CHART_TITLES = ['探测成功率趋势', '响应时间趋势'];
+const RING_TITLES = ['探测结果分布', '状态码分布'];
 
 export default function WebsiteDashboardPage() {
   const dashboard = useSimpleDashboardData(WEBSITE_DASHBOARD_CONFIG);
   const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
   const charts = useFilteredChartPanels(dashboard.chartPanels, PRIMARY_CHART_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
-  const bars = useFilteredBarPanels(dashboard.barPanels, BAR_TITLES);
 
-  const [successChart, responseChart, contentChart] = charts;
-  const [availabilityRing] = rings;
-  const [statusCodeBar] = bars;
+  const [successChart, responseChart] = charts;
+  const [resultCodeRing, statusCodeRing] = rings;
 
   return (
     <DashboardShell
@@ -42,24 +34,10 @@ export default function WebsiteDashboardPage() {
       dashboardContent={
         <>
           <div className={styles.sectionLabel}>健康概览</div>
-          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={3} styles={styles} />
 
-          <div className={styles.sectionLabel}>性能趋势与分布</div>
+          <div className={styles.sectionLabel}>趋势</div>
           <FlexiblePanelSection styles={styles}>
-            {availabilityRing ? (
-              <RingChartPanel
-                key={availabilityRing.panel.title}
-                title={availabilityRing.panel.title}
-                subtitle={availabilityRing.panel.subtitle}
-                guide={availabilityRing.panel.guide}
-                data={availabilityRing.data}
-                centerValue={availabilityRing.centerValue}
-                centerCaption={availabilityRing.panel.centerCaption}
-                isEmpty={availabilityRing.isEmpty}
-                className={`${styles.span4} ${styles.compactStatusRing}`}
-                styles={styles}
-              />
-            ) : null}
             {successChart ? (
               <TrendChartPanel
                 key={successChart.chart.title}
@@ -73,7 +51,7 @@ export default function WebsiteDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={successChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span4} ${styles.compactTrend}`}
+                className={`${styles.span6} ${styles.compactTrend}`}
                 styles={styles}
               />
             ) : null}
@@ -90,35 +68,41 @@ export default function WebsiteDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={responseChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span4} ${styles.compactTrend}`}
+                className={`${styles.span6} ${styles.compactTrend}`}
                 styles={styles}
               />
             ) : null}
-            {statusCodeBar ? (
-              <HorizontalBarPanel
-                key={statusCodeBar.panel.title}
-                title={statusCodeBar.panel.title}
-                subtitle={statusCodeBar.panel.subtitle}
-                guide={statusCodeBar.panel.guide}
-                items={statusCodeBar.items}
+          </FlexiblePanelSection>
+
+          <div className={styles.sectionLabel}>失败归因</div>
+          <FlexiblePanelSection styles={styles}>
+            {resultCodeRing ? (
+              <RingChartPanel
+                key={resultCodeRing.panel.title}
+                title={resultCodeRing.panel.title}
+                subtitle={resultCodeRing.panel.subtitle}
+                guide={resultCodeRing.panel.guide}
+                data={resultCodeRing.data}
+                centerValue={resultCodeRing.centerValue}
+                centerCaption={resultCodeRing.panel.centerCaption}
+                isEmpty={resultCodeRing.isEmpty}
+                emptyDescription={resultCodeRing.emptyDescription}
                 className={styles.span6}
                 styles={styles}
               />
             ) : null}
-            {contentChart ? (
-              <TrendChartPanel
-                key={contentChart.chart.title}
-                title={contentChart.chart.title}
-                subtitle={contentChart.chart.subtitle}
-                guide={contentChart.chart.guide}
-                legends={contentChart.legends}
-                data={contentChart.data}
-                metric={contentChart.metric}
-                unit={contentChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={contentChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
+            {statusCodeRing ? (
+              <RingChartPanel
+                key={statusCodeRing.panel.title}
+                title={statusCodeRing.panel.title}
+                subtitle={statusCodeRing.panel.subtitle}
+                guide={statusCodeRing.panel.guide}
+                data={statusCodeRing.data}
+                centerValue={statusCodeRing.centerValue}
+                centerCaption={statusCodeRing.panel.centerCaption}
+                isEmpty={statusCodeRing.isEmpty}
+                emptyDescription={statusCodeRing.emptyDescription}
+                className={styles.span6}
                 styles={styles}
               />
             ) : null}

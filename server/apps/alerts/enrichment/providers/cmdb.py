@@ -13,6 +13,10 @@ class CMDBProvider(EnrichmentProvider):
     provider_type = "cmdb"
 
     def fetch_batch(self, keys: List, config: Dict) -> Dict:
+        authorized_team_ids = list(config.get("_authorized_team_ids") or [])
+        if not authorized_team_ids:
+            logger.warning("[Enrichment] CMDB 查询缺少组织上下文，拒绝查询")
+            return {key: [] for key in keys}
         # 按 model_id 分组，收集 id / inst_name
         by_model_ids = defaultdict(list)
         by_model_names = defaultdict(list)
@@ -33,14 +37,22 @@ class CMDBProvider(EnrichmentProvider):
         client = CMDB()
         for model_id, ids in by_model_ids.items():
             try:
-                res = client.search_instances_batch(model_id=model_id, ids=ids)
+                res = client.search_instances_batch(
+                    model_id=model_id,
+                    ids=ids,
+                    organization_ids=authorized_team_ids,
+                )
                 for value, inst in res.items():
                     fetched[(model_id, str(value))] = inst
             except Exception:
                 logger.error("[Enrichment] CMDB 批量查询失败 model_id=%s", model_id, exc_info=True)
         for model_id, names in by_model_names.items():
             try:
-                res = client.search_instances_batch(model_id=model_id, inst_names=names)
+                res = client.search_instances_batch(
+                    model_id=model_id,
+                    inst_names=names,
+                    organization_ids=authorized_team_ids,
+                )
                 for value, inst in res.items():
                     fetched[(model_id, str(value))] = inst
             except Exception:

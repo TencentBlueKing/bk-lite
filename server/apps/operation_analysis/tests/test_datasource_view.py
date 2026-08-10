@@ -22,6 +22,38 @@ def _build_request(user, data=None):
     return request
 
 
+@pytest.mark.django_db
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("method", "action"),
+    [("put", "update"), ("patch", "partial_update"), ("delete", "destroy")],
+)
+def test_builtin_datasource_rejects_regular_mutations(authenticated_user, method, action):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+
+    authenticated_user.is_superuser = True
+    datasource = DataSourceAPIModel.objects.create(
+        name="builtin",
+        rest_api="builtin/query",
+        groups=[1],
+        is_build_in=True,
+        build_in_key="builtin::builtin/query",
+    )
+    factory = APIRequestFactory()
+    request = getattr(factory, method)(
+        f"/operation_analysis/api/data_source/{datasource.pk}/",
+        data={"name": "changed"} if method != "delete" else None,
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({method: action})(request, pk=str(datasource.pk))
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "内置数据源" in response.data["detail"]
+
+
 def _build_instance(groups=(1,), rest_api="monitor/query_latest_active_alerts"):
     return SimpleNamespace(
         id=1,
@@ -224,11 +256,24 @@ def test_get_source_data_applies_default_values_when_request_missing(authenticat
 
 
 @pytest.mark.django_db
-def test_get_source_data_accepts_iso8601_time_range(authenticated_user, monkeypatch):
+@pytest.mark.parametrize(
+    ("time_range", "expected"),
+    [
+        (
+            ["2026-04-19T09:34:13.712Z", "2026-04-20T09:34:13.712Z"],
+            ["2026-04-19T09:34:13.712Z", "2026-04-20T09:34:13.712Z"],
+        ),
+        (
+            ["2026-04-19T17:34:13.712+08:00", "2026-04-20T17:34:13.712+08:00"],
+            ["2026-04-19T09:34:13.712Z", "2026-04-20T09:34:13.712Z"],
+        ),
+    ],
+)
+def test_get_source_data_accepts_iso8601_time_range(authenticated_user, monkeypatch, time_range, expected):
     authenticated_user.is_superuser = True
     request = _build_request(
         authenticated_user,
-        data={"time_range": ["2026-04-19T09:34:13.712Z", "2026-04-20T09:34:13.712Z"]},
+        data={"time_range": time_range},
     )
 
     response, payload, captured = _build_view_response(
@@ -239,8 +284,26 @@ def test_get_source_data_accepts_iso8601_time_range(authenticated_user, monkeypa
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
-    assert isinstance(captured["kwargs"]["params"]["time_range"], list)
-    assert len(captured["kwargs"]["params"]["time_range"]) == 2
+    assert captured["kwargs"]["params"]["time_range"] == expected
+
+
+@pytest.mark.django_db
+def test_get_source_data_rejects_numeric_time_range_boundaries(authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = True
+    request = _build_request(
+        authenticated_user,
+        data={"time_range": [1776572053712, 1776658453712]},
+    )
+
+    response, payload, _ = _build_view_response(
+        request,
+        monkeypatch,
+        {"result": True, "data": [], "message": ""},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert payload["result"] is False
+    assert "RFC3339" in payload["message"]
 
 
 @pytest.mark.django_db
@@ -399,3 +462,54 @@ def test_namespace_partial_update_allowed_with_permission(authenticated_user, mo
 
     assert update_called, "update() must be called when user has namespace-Edit permission"
     assert response.status_code != 403, "User with namespace-Edit permission must not be blocked"
+
+
+# --- Tests for issue #3393: DataSourceTagModelViewSet read permission enforcement ---
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("action", ["list", "retrieve"])
+def test_datasource_tag_read_blocked_without_permission(authenticated_user, action):
+    """标签列表和详情必须拒绝缺少 data_source-View 权限的用户。"""
+    tag = datasource_view.DataSourceTag.objects.create(
+        tag_id="security",
+        name="Security",
+        created_by="system",
+        updated_by="system",
+    )
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": set()}
+
+    factory = APIRequestFactory()
+    request = factory.get("/operation_analysis/api/tag/")
+    force_authenticate(request, user=authenticated_user)
+    view = datasource_view.DataSourceTagModelViewSet.as_view({"get": action})
+
+    kwargs = {"pk": str(tag.pk)} if action == "retrieve" else {}
+    response = view(request, **kwargs)
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("action", ["list", "retrieve"])
+def test_datasource_tag_read_allowed_with_permission(authenticated_user, action):
+    """拥有 data_source-View 权限的用户仍可读取标签列表和详情。"""
+    tag = datasource_view.DataSourceTag.objects.create(
+        tag_id="cmdb",
+        name="CMDB",
+        created_by="system",
+        updated_by="system",
+    )
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": {"data_source-View"}}
+
+    factory = APIRequestFactory()
+    request = factory.get("/operation_analysis/api/tag/")
+    force_authenticate(request, user=authenticated_user)
+    view = datasource_view.DataSourceTagModelViewSet.as_view({"get": action})
+
+    kwargs = {"pk": str(tag.pk)} if action == "retrieve" else {}
+    response = view(request, **kwargs)
+
+    assert response.status_code == status.HTTP_200_OK

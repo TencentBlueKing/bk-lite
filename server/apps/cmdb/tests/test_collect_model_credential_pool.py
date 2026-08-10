@@ -4,7 +4,7 @@ import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.serializers.collect_serializer import CollectModelSerializer
+from apps.cmdb.serializers.collect_serializer import CollectModelLIstSerializer, CollectModelSerializer
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_service import CollectModelService
 
@@ -38,6 +38,7 @@ def test_collect_model_serializer_masks_each_credential_password(monkeypatch):
     instance = CollectModels(
         model_id="host",
         driver_type="job",
+        execution_claim_token="must-not-leak",
         credential=[
             {"credential_id": "cred-1", "password": "enc:first", "username": "admin"},
             {"credential_id": "cred-2", "password": "enc:second", "username": "ops"},
@@ -62,6 +63,10 @@ def test_collect_model_serializer_masks_each_credential_password(monkeypatch):
 
     assert data["credential"][0]["password"] == "******"
     assert data["credential"][1]["password"] == "******"
+    assert "execution_claim_token" not in data
+
+    list_data = CollectModelLIstSerializer(instance=instance, context={"request": request}).data
+    assert "execution_claim_token" not in list_data
 
 
 def test_collect_model_service_format_update_credential_supports_pool():
@@ -196,3 +201,59 @@ def test_collect_model_serializer_normalizes_legacy_dict_to_pool(monkeypatch):
     assert len(data["credential"]) == 1
     assert data["credential"][0]["credential_id"].startswith("cred_")
     assert data["credential"][0]["password"] == "******"
+
+
+# ---- PC 发现：真实加密字段集合与序列化脱敏（不 mock get_collect_model_passwords） ----
+
+
+def test_pc_encrypted_fields_cover_all_secret_kinds():
+    from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
+
+    assert set(get_collect_model_passwords("pc", "job")) == {"password", "private_key", "passphrase"}
+
+
+@pytest.mark.django_db
+def test_pc_serializer_masks_password_private_key_and_passphrase(monkeypatch):
+    instance = CollectModels(
+        model_id="pc",
+        driver_type="job",
+        credential=[
+            {
+                "credential_id": "cred-win",
+                "username": "ACME\\alice",
+                "password": "enc:win-secret",
+                "port": 5986,
+            },
+            {
+                "credential_id": "cred-mac",
+                "username": "admin",
+                "private_key": "enc:-----BEGIN OPENSSH PRIVATE KEY-----\nKEYDATA\n-----END OPENSSH PRIVATE KEY-----",
+                "passphrase": "enc:pc-passphrase",
+                "port": 22,
+            },
+        ],
+    )
+
+    monkeypatch.setattr(
+        "apps.core.utils.serializers.get_permission_rules",
+        lambda user, current_team, app_name, permission_key, include_children: {},
+    )
+
+    request = SimpleNamespace(
+        user=SimpleNamespace(group_list=[]),
+        COOKIES={},
+    )
+
+    data = CollectModelSerializer(instance=instance, context={"request": request}).data
+
+    win, mac = data["credential"]
+    assert win["password"] == "******"
+    assert win["username"] == "ACME\\alice"
+    assert win["port"] == 5986
+    assert mac["private_key"] == "******"
+    assert mac["passphrase"] == "******"
+    assert mac["username"] == "admin"
+    blob = str(data)
+    assert "win-secret" not in blob
+    assert "KEYDATA" not in blob
+    assert "pc-passphrase" not in blob

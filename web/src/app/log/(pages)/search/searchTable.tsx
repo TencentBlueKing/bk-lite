@@ -56,8 +56,8 @@ const SearchTable: React.FC<SearchTableProps> = ({
       if (item === 'message') {
         return {
           title: 'message',
-          dataIndex: '_msg',
-          key: '_msg',
+          dataIndex: 'message',
+          key: 'message',
           render: (val: string) => val || '--',
           width: 800
         };
@@ -83,9 +83,9 @@ const SearchTable: React.FC<SearchTableProps> = ({
           <div className="mb-1">
             <CopyTwoTone
               className="cursor-pointer mr-[4px]"
-              onClick={() => copy(record._msg)}
+              onClick={() => copy(record.message)}
             />
-            <span className="font-[500] break-all">{record._msg}</span>
+            <span className="font-[500] break-all">{record.message}</span>
           </div>
           <div>
             <span className="mr-3">

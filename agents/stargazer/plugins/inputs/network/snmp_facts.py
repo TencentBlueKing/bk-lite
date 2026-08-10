@@ -3,6 +3,7 @@
 # @Time: 2025/3/20 17:30
 # @Author: windyzhao
 
+import asyncio
 import socket
 from pysnmp.entity.rfc3413.oneliner import cmdgen
 from pysnmp.hlapi import (
@@ -153,6 +154,10 @@ class SnmpFacts:
         采集 SNMP 数据，包括系统信息、接口信息和 IP 信息。
         """
         cmdGen = cmdgen.CommandGenerator()
+        probe_transport_opts = {
+            "timeout": min(self.timeout, 5),
+            "retries": self.retries,
+        }
         transport_opts = {"timeout": self.timeout, "retries": self.retries}
         snmp_auth = self._get_snmp_auth()
 
@@ -171,7 +176,7 @@ class SnmpFacts:
             errorIndication, errorStatus, errorIndex, varBinds = cmdGen.getCmd(
                 snmp_auth,
                 cmdgen.UdpTransportTarget(
-                    (self.host, self.snmp_port), **transport_opts
+                    (self.host, self.snmp_port), **probe_transport_opts
                 ),
                 cmdgen.MibVariable(p.sysDescr),
                 cmdgen.MibVariable(p.sysObjectId),
@@ -261,7 +266,71 @@ class SnmpFacts:
 
         return results
 
-    def list_all_resources(self):
+    async def probe(self):
+        return await asyncio.to_thread(self._probe_sync)
+
+    def _probe_sync(self):
+        """最小只读 SNMP GET（sysName），用于 CredentialAttempt。"""
+        from core.collection.contracts import (
+            AccessProbeResult,
+            AccessProbeStatus,
+        )
+
+        cmd_gen = cmdgen.CommandGenerator()
+        oid = DefineOid(dotprefix=True)
+        transport_opts = {
+            "timeout": max(1, min(self.timeout, 5)),
+            "retries": max(0, min(self.retries, 2)),
+        }
+        try:
+            error_indication, error_status, _error_index, var_binds = cmd_gen.getCmd(
+                self._get_snmp_auth(),
+                cmdgen.UdpTransportTarget(
+                    (self.host, self.snmp_port), **transport_opts
+                ),
+                cmdgen.MibVariable(oid.sysName),
+                lookupMib=False,
+            )
+        except Exception:  # noqa: BLE001 - 不把 SDK 异常正文写入结果
+            return AccessProbeResult(
+                status=AccessProbeStatus.NO_RESPONSE,
+                error_code="snmp_probe_error",
+            )
+        if error_indication:
+            indication = str(error_indication).lower()
+            if "timeout" in indication or "no response" in indication:
+                return AccessProbeResult(
+                    status=AccessProbeStatus.NO_RESPONSE,
+                    error_code="protocol_no_response",
+                )
+            if any(
+                token in indication
+                for token in ("authorization", "authentication", "community")
+            ):
+                return AccessProbeResult(
+                    status=AccessProbeStatus.AUTH_FAILED,
+                    error_code="snmp_authorization_failed",
+                )
+            return AccessProbeResult(
+                status=AccessProbeStatus.NO_RESPONSE,
+                error_code="protocol_no_response",
+            )
+        if error_status:
+            return AccessProbeResult(
+                status=AccessProbeStatus.AUTH_FAILED,
+                error_code="snmp_error_status",
+            )
+        if not var_binds:
+            return AccessProbeResult(
+                status=AccessProbeStatus.NO_RESPONSE,
+                error_code="empty_snmp_response",
+            )
+        return AccessProbeResult(status=AccessProbeStatus.READY)
+
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         """
         将采集到的 SNMP 数据转换为标准格式。
         当 has_network_topo=True 时，同时采集网络拓扑数据。

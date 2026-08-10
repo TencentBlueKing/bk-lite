@@ -3,6 +3,7 @@
 # @Time：2025/6/16 15:14
 # @Author：bennie
 from functools import cached_property
+import asyncio
 import time
 from typing import List, Dict
 
@@ -14,6 +15,7 @@ from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentClo
 from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile
 from sanic.log import logger
+from plugins.inputs.qcloud.region_scope import resolve_collection_regions
 from plugins.constants import client_version_map, mysql_pay_type_map, redis_region_map, mongodb_status_map, \
     pgsql_status_map, pulsar_status_map, pgsql_pay_type_map, mysql_status_map, redis_status_map, redis_sub_status_map, \
     redis_type_map, mongodb_inst_type_map, mongodb_pay_type_map, pulsar_pay_type_map, cmq_status_map, \
@@ -65,6 +67,7 @@ class TencentCloudManager:
         # 🆕 支持自定义endpoint（私有云场景）
         # 从host参数读取endpoint，如: cvm.private-cloud.example.com
         self.custom_endpoint = params.get("host")
+        self.region_id = str(params.get("region_id") or "").strip()
 
     def _call_cmq_with_retry(self, region: str, action: str, params: Dict | None = None) -> Dict:
         params = params or {}
@@ -132,7 +135,9 @@ class TencentCloudManager:
 
     @cached_property
     def available_region_list(self):
-        return [region.get("Region") for region in self.list_regions() if region.get("RegionState") == "AVAILABLE"]
+        if self.region_id:
+            return resolve_collection_regions(self.region_id, [])
+        return resolve_collection_regions("", self.list_regions())
 
     @cached_property
     def zone_id_zone_map(self) -> Dict:
@@ -542,7 +547,10 @@ class TencentCloudManager:
             result.update(handle_resource(resource_func, resource_name))
         return result
 
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         try:
             result = self.exec_script()
             inst_data = {"result": result, "success": True}

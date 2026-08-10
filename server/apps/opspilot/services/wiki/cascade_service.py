@@ -2,11 +2,10 @@ import logging
 
 from apps.opspilot.models import KnowledgePage
 from apps.opspilot.services.wiki.embedding_service import clear_page_vectors, index_version, reindex_page_chunks
-from apps.opspilot.services.wiki.relation_service import rebuild_relations, sync_relations_for_pages
 from apps.opspilot.services.wiki.sweep_service import drop_page_references, sweep_open_checks
 
 logger = logging.getLogger("opspilot")
-_FULL_RELATION_REBUILD = rebuild_relations
+
 MAINTENANCE_STAGE_KEYS = (
     "relations",
     "page_embedding",
@@ -73,12 +72,7 @@ def cascade(
         "pruned_build_records": 0,
     }
     if _runs_stage(selected, "relations"):
-        try:
-            result["relations"] = len(sync_relations_for_pages(knowledge_base, affected_page_ids, deleted_titles=deleted_titles))
-            result["stages"]["relations"] = _stage_success(result["relations"])
-        except Exception as exc:
-            logger.exception("wiki cascade relation rebuild failed kb=%s", knowledge_base.id)
-            result["stages"]["relations"] = _stage_failed(exc)
+        result["stages"]["relations"] = _stage_skipped("generation_relations_already_materialized")
     if _runs_any_stage(selected, {"page_embedding", "chunk_embedding"}):
         try:
             if event in ("delete", "page_delete", "material_delete"):

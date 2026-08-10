@@ -67,6 +67,25 @@ class SystemMgmt(object):
         )
         return return_data
 
+    def get_user_group_tree(self, username, sync_source_id=None):
+        """
+        按 (username, sync_source_id) 唯一定位用户，返回其组织树。
+        返回结构与 login_info.group_tree 形态一致。
+
+        :param username: 用户名
+        :param sync_source_id: UserSyncSource 主键(int)；None 或空串表示本地用户(User.sync_source IS NULL)
+        :return: {"result": bool, "data": {"user_id", "username", "domain", "group_list", "group_tree"} | "message": str}
+        """
+        return_data = self.client.run(
+            "get_user_group_tree",
+            username=username,
+            sync_source_id=sync_source_id,
+        )
+        return return_data
+
+    def get_assignable_groups(self, actor_context):
+        return self.client.run("get_assignable_groups", actor_context=actor_context)
+
     def get_client(self, client_id, username="", domain="domain.com"):
         return_data = self.client.run("get_client", client_id=client_id, username=username, domain=domain)
         return return_data
@@ -183,8 +202,7 @@ class SystemMgmt(object):
         """
         return self.client.run("save_error_log", username=username, app=app, module=module, error_message=error_message, domain=domain)
 
-    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com",
-                           target_type="", target_id="", detail=None):
+    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com", target_type="", target_id="", detail=None):
         """
         保存操作日志
         :param username: 用户名
@@ -198,28 +216,102 @@ class SystemMgmt(object):
         :param detail: 操作详情 JSON（可选，默认空字典）
         """
         return self.client.run(
-            "save_operation_log", username=username, source_ip=source_ip, app=app, action_type=action_type,
-            summary=summary, domain=domain, target_type=target_type, target_id=target_id, detail=detail,
+            "save_operation_log",
+            username=username,
+            source_ip=source_ip,
+            app=app,
+            action_type=action_type,
+            summary=summary,
+            domain=domain,
+            target_type=target_type,
+            target_id=target_id,
+            detail=detail,
         )
 
-    def search_channel_list(self, channel_type, teams, include_children):
+    def search_channel_list(self, channel_type, teams, include_children, channel_method=""):
         """
         :param channel_type: str， 目前只有email、enterprise_wechat
         :param teams: list, [1,2,3]
         :param include_children: bool , True、False
         """
-        return_data = self.client.run("search_channel_list", channel_type=channel_type, teams=teams, include_children=include_children)
+        kwargs = {
+            "channel_type": channel_type,
+            "teams": teams,
+            "include_children": include_children,
+        }
+        if channel_method:
+            kwargs["channel_method"] = channel_method
+        return_data = self.client.run("search_channel_list", **kwargs)
         return return_data
 
-    def search_channel_list_scoped(self, actor_context, channel_type="", teams=None, include_children=False):
-        return_data = self.client.run(
-            "search_channel_list_scoped",
+    def search_channel_list_scoped(
+        self,
+        actor_context,
+        channel_type="",
+        teams=None,
+        include_children=False,
+        channel_method="",
+    ):
+        kwargs = {
+            "actor_context": actor_context,
+            "channel_type": channel_type,
+            "teams": teams,
+            "include_children": include_children,
+        }
+        if channel_method:
+            kwargs["channel_method"] = channel_method
+        return_data = self.client.run("search_channel_list_scoped", **kwargs)
+        return return_data
+
+    def list_notification_channels_scoped(self, actor_context, teams=None, include_children=False):
+        return self.client.run(
+            "list_notification_channels_scoped",
             actor_context=actor_context,
-            channel_type=channel_type,
             teams=teams,
             include_children=include_children,
         )
-        return return_data
+
+    def search_notification_recipients_scoped(
+        self,
+        actor_context,
+        teams=None,
+        include_children=False,
+        search="",
+        limit=100,
+    ):
+        return self.client.run(
+            "search_notification_recipients_scoped",
+            actor_context=actor_context,
+            teams=teams,
+            include_children=include_children,
+            search=search,
+            limit=limit,
+        )
+
+    def dispatch_notification(
+        self,
+        *,
+        delivery_key,
+        channel_id,
+        organization_ids,
+        recipients,
+        title,
+        body,
+        event_payload,
+    ):
+        return self.client.run(
+            "dispatch_notification",
+            delivery_key=delivery_key,
+            channel_id=channel_id,
+            organization_ids=organization_ids,
+            recipients=recipients,
+            title=title,
+            body=body,
+            event_payload=event_payload,
+        )
+
+    def probe_notification_channel(self, channel_id):
+        return self.client.run("probe_notification_channel", channel_id=channel_id)
 
     def search_groups(self, query_params):
         """

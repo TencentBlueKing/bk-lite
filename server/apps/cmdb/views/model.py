@@ -16,6 +16,7 @@ from apps.cmdb.models import DELETE_INST, UPDATE_INST, FieldGroup
 from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.model_visibility import BusinessModelVisibility
 from apps.cmdb.utils.base import get_default_group_id, get_current_team_from_request
 from apps.cmdb.utils.change_record import create_change_record
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
@@ -69,7 +70,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(detail=False, methods=["get"], url_path="get_model_info/(?P<model_id>.+?)")
     def get_model_info(self, request, model_id: str):
         model_info = ModelManage.search_model_info(model_id)
-        if not model_info:
+        if not BusinessModelVisibility.is_visible(model_info):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
@@ -173,7 +174,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def destroy(self, request, pk: str):
         model_id = pk
         model_info = ModelManage.search_model_info(pk)
-        if not model_info:
+        if not BusinessModelVisibility.is_visible(model_info):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
@@ -226,7 +227,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def update(self, request, pk: str):
         model_id = pk
         model_info = ModelManage.search_model_info(pk)
-        if not model_info:
+        if not BusinessModelVisibility.is_visible(model_info):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
@@ -272,7 +273,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         # 检查源模型权限
         src_model_info = ModelManage.search_model_info(src_model_id)
-        if not src_model_info:
+        if not BusinessModelVisibility.is_visible(src_model_info):
             return WebUtils.response_error("源模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=src_model_id, permission_type=PERMISSION_MODEL)
@@ -295,7 +296,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         # 检查目标模型权限
         dst_model_info = ModelManage.search_model_info(dst_model_id)
-        if not dst_model_info:
+        if not BusinessModelVisibility.is_visible(dst_model_info):
             return WebUtils.response_error("目标模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=dst_model_id, permission_type=PERMISSION_MODEL)
@@ -374,7 +375,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(detail=False, methods=["get"], url_path="(?P<model_id>.+?)/association")
     def model_association_list(self, request, model_id: str):
         model_info = ModelManage.search_model_info(model_id)
-        if not model_info:
+        if not BusinessModelVisibility.is_visible(model_info):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
@@ -389,14 +390,18 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        result = ModelManage.model_association_search(model_id)
+        result = ModelManage.model_association_search(
+            model_id,
+            business_only=True,
+            language=request.user.locale,
+        )
         return WebUtils.response_success(result)
 
     @HasPermission("model_management-View")
     @action(detail=False, methods=["get", "post"], url_path="(?P<model_id>.+?)/auto_association_rules")
     def model_auto_association_rules(self, request, model_id: str):
         model_info = ModelManage.search_model_info(model_id)
-        if not model_info:
+        if not BusinessModelVisibility.is_visible(model_info):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
@@ -453,7 +458,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(detail=False, methods=["put", "delete"], url_path="(?P<model_id>.+?)/auto_association_rules/(?P<model_asst_id>.+?)/(?P<rule_id>.+?)")
     def model_auto_association_rule_detail(self, request, model_id: str, model_asst_id: str, rule_id: str):
         model_info = ModelManage.search_model_info(model_id)
-        if not model_info:
+        if not BusinessModelVisibility.is_visible(model_info):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
@@ -498,7 +503,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(detail=False, methods=["post"], url_path="(?P<model_id>.+?)/attr")
     def model_attr_create(self, request, model_id):
         model_info = ModelManage.search_model_info(model_id)
-        if not model_info:
+        if not BusinessModelVisibility.is_visible(model_info):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
@@ -537,7 +542,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(detail=False, methods=["put"], url_path="(?P<model_id>.+?)/attr_update")
     def model_attr_update(self, request, model_id):
         model_info = ModelManage.search_model_info(model_id)
-        if not model_info:
+        if not BusinessModelVisibility.is_visible(model_info):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
@@ -592,7 +597,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     )
     def model_attr_delete(self, request, model_id: str, attr_id: str):
         model_info = ModelManage.search_model_info(model_id)
-        if not model_info:
+        if not BusinessModelVisibility.is_visible(model_info):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
@@ -627,7 +632,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(detail=False, methods=["get"], url_path="(?P<model_id>.+?)/attr_list")
     def model_attr_list(self, request, model_id: str):
         model_info = ModelManage.search_model_info(model_id)
-        if not model_info:
+        if not BusinessModelVisibility.is_visible(model_info):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id, permission_type=PERMISSION_MODEL)
@@ -643,7 +648,13 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return permission_error
 
         result = ModelManage.search_model_attr(model_id, request.user.locale)
-        filtered_attrs = [attr for attr in result if not attr.get("is_display_field")]
+        from apps.cmdb.services.module_ingest import filter_user_facing_attrs
+
+        filtered_attrs = [
+            attr
+            for attr in filter_user_facing_attrs(result)
+            if not attr.get("is_display_field")
+        ]
         return WebUtils.response_success(filtered_attrs)
 
     @HasPermission("model_management-View")
@@ -684,12 +695,20 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
     @action(detail=False, methods=["get", "post"], url_path="(?P<model_id>.+?)/unique_rules")
     def model_unique_rules(self, request, model_id: str):
+        if not BusinessModelVisibility.is_visible(
+            ModelManage.search_model_info(model_id)
+        ):
+            return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
         if request.method == "GET":
             return self._model_unique_rule_list(request, model_id)
         return self._model_unique_rule_create(request, model_id)
 
     @action(detail=False, methods=["put", "delete"], url_path="(?P<model_id>.+?)/unique_rules/(?P<rule_id>.+?)")
     def model_unique_rule_detail(self, request, model_id: str, rule_id: str):
+        if not BusinessModelVisibility.is_visible(
+            ModelManage.search_model_info(model_id)
+        ):
+            return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
         if request.method == "PUT":
             return self._model_unique_rule_update(request, model_id, rule_id)
         return self._model_unique_rule_delete(request, model_id, rule_id)
@@ -710,7 +729,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         """
         # 检查源模型是否存在
         model_info = ModelManage.search_model_info(model_id)
-        if not model_info:
+        if not BusinessModelVisibility.is_visible(model_info):
             return WebUtils.response_error(
                 error_message="源模型不存在", status_code=status.HTTP_404_NOT_FOUND
             )
@@ -845,7 +864,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         # 检查源模型权限
         src_model_info = ModelManage.search_model_info(src_model_id)
-        if not src_model_info:
+        if not BusinessModelVisibility.is_visible(src_model_info):
             return False, "源模型不存在", "not_found"
 
         src_permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
@@ -869,7 +888,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         # 检查目标模型权限
         dst_model_info = ModelManage.search_model_info(dst_model_id)
-        if not dst_model_info:
+        if not BusinessModelVisibility.is_visible(dst_model_info):
             return False, "目标模型不存在", "not_found"
 
         dst_permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(

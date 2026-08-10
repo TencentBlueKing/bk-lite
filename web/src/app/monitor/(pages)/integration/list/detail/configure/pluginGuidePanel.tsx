@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import MarkdownRenderer from '@/components/markdown';
-import OperateDrawer from '@/app/monitor/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import { PluginGuideDoc } from '@/app/monitor/types/integration';
 import { PluginGuideContext } from './pluginContext';
 import styles from './pluginGuidePanel.module.scss';
@@ -54,14 +54,18 @@ const PluginGuidePanel: React.FC<PluginGuidePanelProps> = ({
   }, []);
 
   const guideName = useMemo(() => {
-    const fromApi = (guide?.name || '').trim();
+    // 页面标题来自 i18n display_name（如「网站拨测（Telegraf）」），
+    // API name 常为技术 object_name（Website）。抽屉标题应对齐展示名。
+    const stripCollectorSuffix = (name: string) =>
+      name.replace(/\s*[（(]\s*Telegraf\s*[）)]\s*$/i, '').trim();
+    const fromPluginName = stripCollectorSuffix((pluginName || '').trim());
+    const fromApi = stripCollectorSuffix((guide?.name || '').trim());
     const sourceParts = (guide?.source || '').split('/').filter(Boolean);
     const fromSource =
       sourceParts.length >= 2 ? sourceParts[sourceParts.length - 2] : '';
-    const fromPluginName = (pluginName || '').trim();
     return (
-      fromApi ||
       fromPluginName ||
+      fromApi ||
       fromSource ||
       t('monitor.integrations.guideFallbackName')
     );

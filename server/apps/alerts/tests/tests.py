@@ -42,7 +42,7 @@ from apps.alerts.constants.constants import (
     SessionStatus,
 )
 from apps.alerts.utils.util import str_to_md5
-from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level, OperatorLog
+from apps.alerts.models import Alert, AlertOutbox, AlertSource, AlarmStrategy, Event, Level, OperatorLog
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Incident
 from apps.alerts.serializers.event import EventModelSerializer
@@ -1596,14 +1596,16 @@ class TestAlarmStrategySessionDisable(TestCase):
         force_authenticate(request, user=self.user)
         view = AlarmStrategyModelViewSet.as_view({"put": "update"})
 
-        with patch("apps.alerts.tasks.async_auto_assignment_for_alerts.delay") as assignment_delay:
+        with patch("apps.alerts.tasks.deliver_alert_outbox.delay") as delivery_delay:
             with self.captureOnCommitCallbacks(execute=True):
                 response = view(request, pk=str(strategy.id))
 
         self.assertEqual(response.status_code, 200)
         alert.refresh_from_db()
         self.assertEqual(alert.session_status, SessionStatus.CONFIRMED)
-        assignment_delay.assert_called_once_with([alert.alert_id])
+        assignment_outbox = AlertOutbox.objects.get(kind="auto_assignment")
+        self.assertEqual(assignment_outbox.payload["alert_ids"], [alert.alert_id])
+        delivery_delay.assert_any_call(assignment_outbox.pk)
 
     def test_nats_ingress_rejects_inactive_or_ineffective_nats_source(self):
         inactive_source = AlertSource.objects.create(

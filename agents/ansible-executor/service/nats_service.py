@@ -1,17 +1,15 @@
 import asyncio
 import importlib
 import json
+import os
 import ssl
 import uuid
-from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import nats.errors
 from core.config import ServiceConfig, logger
-from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy, RetentionPolicy, StorageType, StreamConfig
-from nats.js.errors import NotFoundError
 from service.ansible_runner import (
     build_playbook_list_hosts_command,
     build_playbook_winrm_preflight_command,
@@ -24,13 +22,9 @@ from service.ansible_runner import (
     to_adhoc_request,
     to_playbook_request,
 )
-from service.task_store import TERMINAL_TASK_STATUSES, TaskStore, _sanitize_payload_for_storage
-
-# logging.basicConfig(
-#     level=os.getenv("LOG_LEVEL", "INFO").upper(),
-#     format="%(asctime)s %(levelname)s [ansible-executor] %(message)s",
-# )
-# logger = logging.getLogger(__name__)
+from service.callback_delivery_service import CallbackDeliveryMixin
+from service.nats_topology_service import NATSTopologyMixin
+from service.task_store import TERMINAL_TASK_STATUSES, TaskStore, _sanitize_callback_for_storage, _sanitize_payload_for_storage
 
 
 def _extract_payload(data: bytes) -> dict:
@@ -78,91 +72,17 @@ def _subject_matches(subject: str, allowed_subjects: list[str] | None) -> bool:
     return False
 
 
-class AnsibleNATSService:
-    CALLBACK_PAYLOAD_MARGIN_BYTES = 4 * 1024
-    CALLBACK_RESULT_TEXT_MAX_CHARS = 8 * 1024
+class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
 
     def __init__(self, config: ServiceConfig):
         self.config = config
         self.workers: list[asyncio.Task] = []
-        self.task_store = TaskStore(config.state_db_path)
+        payload_encryption_secret = os.getenv("ANSIBLE_PAYLOAD_ENCRYPTION_KEY", "") or config.nats_password
+        self.task_store = TaskStore(config.state_db_path, payload_encryption_secret)
 
     @staticmethod
     def _now_iso() -> str:
         return datetime.now(UTC).isoformat()
-
-    @classmethod
-    def _callback_request_size_bytes(cls, payload: dict[str, Any]) -> int:
-        request_payload = json.dumps({"args": [payload], "kwargs": {}}, ensure_ascii=False).encode("utf-8")
-        return len(request_payload)
-
-    @classmethod
-    def _truncate_callback_text(cls, value: Any) -> Any:
-        if not isinstance(value, str):
-            return value
-        if len(value) <= cls.CALLBACK_RESULT_TEXT_MAX_CHARS:
-            return value
-        return value[: cls.CALLBACK_RESULT_TEXT_MAX_CHARS] + "\n...[truncated for callback]"
-
-    @classmethod
-    def _compact_callback_payload(cls, payload: dict[str, Any], max_bytes: int) -> dict[str, Any]:
-        callback_payload = deepcopy(payload)
-
-        if cls._callback_request_size_bytes(callback_payload) <= max_bytes:
-            return callback_payload
-
-        result_summary = callback_payload.get("result_summary")
-        if isinstance(result_summary, dict):
-            result_summary.pop("stdout_combined", None)
-            result_summary["callback_payload_truncated"] = True
-        if cls._callback_request_size_bytes(callback_payload) <= max_bytes:
-            return callback_payload
-
-        result = callback_payload.get("result")
-        if isinstance(result, list):
-            for item in result:
-                if not isinstance(item, dict):
-                    continue
-                for field in ("stdout", "stderr", "error_message"):
-                    item[field] = cls._truncate_callback_text(item.get(field, ""))
-        elif isinstance(result, str):
-            callback_payload["result"] = cls._truncate_callback_text(result)
-
-        callback_payload["error"] = cls._truncate_callback_text(callback_payload.get("error", ""))
-        if cls._callback_request_size_bytes(callback_payload) <= max_bytes:
-            return callback_payload
-
-        if isinstance(result, list):
-            for item in result:
-                if not isinstance(item, dict):
-                    continue
-                item["stdout"] = ""
-                item["stderr"] = ""
-                item["error_message"] = ""
-        elif isinstance(callback_payload.get("result"), str):
-            callback_payload["result"] = ""
-
-        if isinstance(result_summary, dict):
-            callback_payload["result_summary"] = {
-                key: result_summary[key]
-                for key in (
-                    "host_count",
-                    "output_truncated",
-                    "output_bytes_total",
-                    "output_bytes_retained",
-                    "output_max_bytes",
-                    "callback_payload_truncated",
-                )
-                if key in result_summary
-            }
-
-        callback_payload["callback_payload_truncated"] = True
-        return callback_payload
-
-    def _prepare_callback_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        max_payload = int(getattr(self.nc, "max_payload", 1024 * 1024) or 1024 * 1024)
-        max_bytes = max(1024, max_payload - self.CALLBACK_PAYLOAD_MARGIN_BYTES)
-        return self._compact_callback_payload(payload, max_bytes)
 
     def _validate_callback_subject(self, subject: str):
         if not _subject_matches(subject, self.config.allowed_callback_subjects):
@@ -231,214 +151,6 @@ class AnsibleNATSService:
             except asyncio.CancelledError:
                 pass
 
-    async def _ensure_stream_and_consumer(self):
-        subject_pattern = f"{self.config.js_subject_prefix}.>"
-        retry_subject = f"ansible_executor.callback.retry.{self.config.nats_instance_id}"
-
-        try:
-            owner_stream = await self.js.find_stream_name_by_subject(subject_pattern)
-        except NotFoundError:
-            owner_stream = None
-
-        if owner_stream and owner_stream != self.config.js_stream:
-            logger.warning(
-                "subject '%s' already belongs to stream '%s'; reuse this stream for restart compatibility",
-                subject_pattern,
-                owner_stream,
-            )
-            self.config.js_stream = owner_stream
-
-        try:
-            retry_owner_stream = await self.js.find_stream_name_by_subject(retry_subject)
-            expected_retry_stream = f"{self.config.js_stream}_CALLBACK_RETRY"
-            if retry_owner_stream != expected_retry_stream:
-                raise ValueError(
-                    f"retry subject '{retry_subject}' is already owned by stream '{retry_owner_stream}'. "
-                    "Please change NATS_INSTANCE_ID or callback retry subject prefix."
-                )
-        except NotFoundError:
-            pass
-
-        stream_config = StreamConfig(
-            name=self.config.js_stream,
-            subjects=[subject_pattern],
-            retention=RetentionPolicy.WORK_QUEUE,
-            storage=StorageType.FILE,
-            max_msgs=-1,
-            max_age=0,
-        )
-
-        try:
-            await self.js.stream_info(self.config.js_stream)
-            await self.js.update_stream(stream_config)
-        except NotFoundError:
-            await self.js.add_stream(stream_config)
-        except Exception as err:
-            # Stream create/update may fail with overlap when another stream already owns this subject.
-            # Surface a clearer startup error for operators.
-            if "overlap" in str(err).lower():
-                owner_stream = await self.js.find_stream_name_by_subject(subject_pattern)
-                raise ValueError(
-                    f"stream subject conflict: '{subject_pattern}' is already owned by '{owner_stream}'. "
-                    f"Set a unique ANSIBLE_JS_NAMESPACE or ANSIBLE_JS_SUBJECT_PREFIX."
-                ) from err
-            raise
-
-        durable_name = f"{self.config.js_durable}-{self.config.nats_instance_id}"
-        ack_wait_seconds = float(self.config.js_ack_wait)
-        backoff_seconds = [float(x) for x in (self.config.js_backoff or [])]
-        consumer_config = ConsumerConfig(
-            durable_name=durable_name,
-            ack_policy=AckPolicy.EXPLICIT,
-            deliver_policy=DeliverPolicy.ALL,
-            filter_subject=subject_pattern,
-            ack_wait=ack_wait_seconds,
-            max_deliver=self.config.js_max_deliver,
-            backoff=backoff_seconds or None,
-        )
-        # WorkQueue stream requires one unique filtered consumer per subject pattern.
-        # Reuse existing filtered consumer when stream is reused across restarts.
-        existing_main_consumer = None
-        main_consumers = await self.js.consumers_info(self.config.js_stream)
-        for info in main_consumers:
-            cfg = info.config
-            if cfg and getattr(cfg, "filter_subject", "") == subject_pattern:
-                existing_main_consumer = info.name
-                break
-
-        if existing_main_consumer and existing_main_consumer != durable_name:
-            logger.warning(
-                "reuse existing main consumer '%s' for filter '%s' on stream '%s'",
-                existing_main_consumer,
-                subject_pattern,
-                self.config.js_stream,
-            )
-            durable_name = existing_main_consumer
-            consumer_config.durable_name = durable_name
-
-        try:
-            await self.js.consumer_info(self.config.js_stream, durable_name)
-            await self.js.delete_consumer(self.config.js_stream, durable_name)
-            await self.js.add_consumer(self.config.js_stream, consumer_config)
-        except NotFoundError:
-            await self.js.add_consumer(self.config.js_stream, consumer_config)
-
-        self.psub = await self.js.pull_subscribe(
-            subject_pattern,
-            durable=durable_name,
-            stream=self.config.js_stream,
-        )
-
-        retry_stream = f"{self.config.js_stream}_CALLBACK_RETRY"
-        retry_stream_config = StreamConfig(
-            name=retry_stream,
-            subjects=[retry_subject],
-            retention=RetentionPolicy.WORK_QUEUE,
-            storage=StorageType.FILE,
-            max_msgs=-1,
-            max_age=0,
-        )
-        try:
-            await self.js.stream_info(retry_stream)
-            await self.js.update_stream(retry_stream_config)
-        except NotFoundError:
-            await self.js.add_stream(retry_stream_config)
-        except Exception as err:
-            if "overlap" in str(err).lower():
-                owner_stream = await self.js.find_stream_name_by_subject(retry_subject)
-                raise ValueError(
-                    f"retry stream subject conflict: '{retry_subject}' is already owned by '{owner_stream}'. "
-                    "Change NATS_INSTANCE_ID or callback retry subject prefix."
-                ) from err
-            raise
-
-        retry_durable = f"{self.config.js_durable}-callback-retry-{self.config.nats_instance_id}"
-        retry_consumer_config = ConsumerConfig(
-            durable_name=retry_durable,
-            ack_policy=AckPolicy.EXPLICIT,
-            deliver_policy=DeliverPolicy.ALL,
-            filter_subject=retry_subject,
-            ack_wait=float(self.config.js_ack_wait),
-            max_deliver=self.config.js_max_deliver,
-            backoff=[float(x) for x in (self.config.js_backoff or [])] or None,
-        )
-
-        existing_retry_consumer = None
-        retry_consumers = await self.js.consumers_info(retry_stream)
-        for info in retry_consumers:
-            cfg = info.config
-            if cfg and getattr(cfg, "filter_subject", "") == retry_subject:
-                existing_retry_consumer = info.name
-                break
-
-        if existing_retry_consumer and existing_retry_consumer != retry_durable:
-            logger.warning(
-                "reuse existing callback retry consumer '%s' for filter '%s' on stream '%s'",
-                existing_retry_consumer,
-                retry_subject,
-                retry_stream,
-            )
-            retry_durable = existing_retry_consumer
-            retry_consumer_config.durable_name = retry_durable
-
-        try:
-            await self.js.consumer_info(retry_stream, retry_durable)
-            await self.js.delete_consumer(retry_stream, retry_durable)
-            await self.js.add_consumer(retry_stream, retry_consumer_config)
-        except NotFoundError:
-            await self.js.add_consumer(retry_stream, retry_consumer_config)
-
-        self.retry_subject = retry_subject
-        self.retry_psub = await self.js.pull_subscribe(
-            retry_subject,
-            durable=retry_durable,
-            stream=retry_stream,
-        )
-
-    async def _invoke_callback(self, callback: dict[str, Any] | None, payload: dict[str, Any]):
-        if not callback or not isinstance(callback, dict):
-            return
-
-        subject = str(callback.get("subject", "")).strip()
-        namespace = str(callback.get("namespace", "")).strip()
-        method_name = str(callback.get("method_name", "")).strip()
-        instance_id = str(callback.get("instance_id", "")).strip()
-        if not subject and (not namespace or not method_name):
-            logger.warning("skip invalid callback config: %s", callback)
-            return
-        if not subject:
-            subject = f"{namespace}.{method_name}.{instance_id}" if instance_id else f"{namespace}.{method_name}"
-        self._validate_callback_subject(subject)
-
-        timeout = int(callback.get("timeout", self.config.callback_timeout))
-        request_payload = json.dumps({"args": [payload], "kwargs": {}}, ensure_ascii=False).encode("utf-8")
-        response = await self.nc.request(subject, request_payload, timeout=timeout)
-        try:
-            response_payload = json.loads(response.data.decode("utf-8"))
-        except json.JSONDecodeError as exc:
-            raise ValueError("invalid JSON callback response") from exc
-        if not isinstance(response_payload, dict):
-            raise ValueError("non-object callback response")
-        if response_payload.get("success") is False:
-            raise RuntimeError(response_payload.get("message") or response_payload.get("error") or "callback request failed")
-        result_payload = response_payload.get("result")
-        if isinstance(result_payload, dict) and result_payload.get("success") is False:
-            raise RuntimeError(result_payload.get("message") or result_payload.get("error") or "callback handler failed")
-        logger.info("callback sent: subject=%s task_id=%s", subject, payload.get("task_id"))
-
-    async def _enqueue_callback_retry(self, callback: dict[str, Any], payload: dict[str, Any], reason: str):
-        retry_payload = {
-            "callback": callback,
-            "payload": payload,
-            "reason": reason,
-            "task_id": payload.get("task_id"),
-            "enqueued_at": self._now_iso(),
-        }
-        await self.js.publish(
-            self.retry_subject,
-            json.dumps(retry_payload, ensure_ascii=False).encode("utf-8"),
-        )
-
     def _load_execution_payload(self, task: "QueuedTask") -> dict[str, Any]:
         execution_payload = self.task_store.get_execution_payload(task.task_id)
         if execution_payload:
@@ -454,20 +166,6 @@ class AnsibleNATSService:
             "task_type": task.task_type,
             "instance_id": task.instance_id,
             "payload": _build_queue_safe_payload(task.payload),
-            "error": error,
-            "delivered": delivered,
-            "timestamp": timestamp,
-        }
-
-    @staticmethod
-    def _build_callback_retry_dlq_payload(data: dict[str, Any], error: str, delivered: int, timestamp: str) -> dict[str, Any]:
-        payload = data.get("payload") or {}
-        return {
-            "type": "callback_retry",
-            "task_id": data.get("task_id"),
-            "reason": data.get("reason", ""),
-            "callback": data.get("callback") or {},
-            "payload": payload,
             "error": error,
             "delivered": delivered,
             "timestamp": timestamp,
@@ -521,9 +219,9 @@ class AnsibleNATSService:
         output = ""
         output_meta = {"truncated": False, "output_bytes_total": 0, "output_bytes_retained": 0, "output_max_bytes": 0}
         error = ""
-        callback = task.callback
         started_at = self._now_iso()
         execution_payload = self._load_execution_payload(task)
+        callback = self._load_callback(task.task_id, task.callback)
 
         stream_log_topic = execution_payload.get("stream_log_topic")
         execution_id = execution_payload.get("execution_id")
@@ -564,14 +262,12 @@ class AnsibleNATSService:
             raise RuntimeError(f"task lease lost before final update: {task.task_id}")
 
         if callback:
-            callback_payload = self._prepare_callback_payload(result)
-            try:
-                await self._invoke_callback(callback, callback_payload)
-                self.task_store.update_callback_status(task.task_id, "sent", result, self._now_iso(), preserve_status=final_status)
-            except Exception as callback_err:
-                result["callback_error"] = str(callback_err)
-                self.task_store.update_callback_status(task.task_id, "failed", result, self._now_iso(), preserve_status=final_status)
-                await self._enqueue_callback_retry(callback, callback_payload, str(callback_err))
+            await self._deliver_callback_result(
+                task.task_id,
+                callback,
+                result,
+                final_status,
+            )
         else:
             self.task_store.update_callback_status(task.task_id, "none", result, self._now_iso(), preserve_status=final_status)
 
@@ -595,6 +291,7 @@ class AnsibleNATSService:
                 task = QueuedTask.from_json(data)
                 status = self.task_store.get_status(task.task_id)
                 if status in TERMINAL_TASK_STATUSES:
+                    await self._resume_pending_callback(task.task_id)
                     await msg.ack()
                     continue
 
@@ -608,6 +305,7 @@ class AnsibleNATSService:
                 if not claim.get("claimed"):
                     reason = claim.get("reason")
                     if reason == "terminal":
+                        await self._resume_pending_callback(task.task_id)
                         await msg.ack()
                     elif reason == "leased":
                         logger.warning(
@@ -650,39 +348,11 @@ class AnsibleNATSService:
                         self.config.dlq_subject,
                         json.dumps(dlq_payload, ensure_ascii=False).encode("utf-8"),
                     )
-                    await msg.ack()
-                else:
-                    await msg.nak()
-
-    async def _callback_retry_loop(self):
-        while True:
-            try:
-                msgs = await self.retry_psub.fetch(batch=1, timeout=1)
-            except nats.errors.TimeoutError:
-                continue
-            if not msgs:
-                await asyncio.sleep(0.05)
-                continue
-
-            msg = msgs[0]
-            data: dict[str, Any] = {}
-            try:
-                data = json.loads(msg.data.decode("utf-8"))
-                callback = data.get("callback") or {}
-                payload = data.get("payload") or {}
-                task_id = str(data.get("task_id", ""))
-                await self._invoke_callback(callback, payload)
-                final_status = "success" if payload.get("success") else "failed"
-                self.task_store.update_callback_status(task_id, "sent", payload, self._now_iso(), preserve_status=final_status)
-                await msg.ack()
-            except Exception as err:
-                meta = msg.metadata
-                if meta and meta.num_delivered >= self.config.js_max_deliver:
-                    dlq_payload = self._build_callback_retry_dlq_payload(data, str(err), meta.num_delivered, self._now_iso())
-                    await self.nc.publish(
-                        self.config.dlq_subject,
-                        json.dumps(dlq_payload, ensure_ascii=False).encode("utf-8"),
-                    )
+                    if task is not None:
+                        self.task_store.clear_execution_payload(task.task_id)
+                        stored_task = self.task_store.get_task(task.task_id)
+                        if not stored_task or stored_task.get("callback_status") != "failed":
+                            self.task_store.clear_callback_config(task.task_id)
                     await msg.ack()
                 else:
                     await msg.nak()
@@ -729,7 +399,7 @@ class AnsibleNATSService:
             task_id=task_id,
             task_type=task_type,
             payload=_build_queue_safe_payload(payload),
-            callback=callback,
+            callback=_sanitize_callback_for_storage(callback),
             instance_id=instance_id,
         )
 

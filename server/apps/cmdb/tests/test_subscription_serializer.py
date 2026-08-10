@@ -1,6 +1,6 @@
 """CMDB 订阅规则序列化器校验覆盖测试。
 
-对照 spec/prd/CMDB：订阅规则按筛选类型/触发类型/接收对象/渠道做参数校验。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：订阅规则按筛选类型/触发类型/接收对象/渠道做参数校验。
 """
 
 from types import SimpleNamespace

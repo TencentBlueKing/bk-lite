@@ -1,6 +1,6 @@
 """CMDB Export 工具纯逻辑覆盖测试（无 DB；Export 不传 association 时不调图库）。
 
-对照 spec/prd/CMDB·实例导出：Tag 序列化、用户显示名格式化、Excel 模板表头/枚举校验/导出
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：Tag 序列化、用户显示名格式化、Excel 模板表头/枚举校验/导出
 inst_list 与模板生成。
 """
 
@@ -91,6 +91,34 @@ def test_export_template_returns_bytesio():
     stream = Export(_ATTRS, model_id="host").export_template()
     data = stream.read()
     assert data[:2] == b"PK"  # xlsx zip 头
+
+
+def test_hidden_related_model_is_omitted_from_template(monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.utils.export.ModelManage.search_model",
+        lambda: [
+            {
+                "model_id": "host",
+                "model_name": "主机",
+            }
+        ],
+    )
+    association = [
+        {
+            "model_asst_id": "host_run_docker",
+            "src_model_id": "host",
+            "dst_model_id": "docker",
+            "asst_id": "run",
+        }
+    ]
+
+    workbook = Export(
+        _ATTRS,
+        model_id="host",
+        association=association,
+    ).generate_header()
+
+    assert "host_run_docker" not in [cell.value for cell in workbook.active[3]]
 
 
 # --------------------------------------------------------------------------

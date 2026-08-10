@@ -5,12 +5,16 @@
   "private": true,
   "scripts": {
     "dev": "cd packages/webchat-demo && npm run dev",
-    "build": "npm run build:core && npm run build:ui && npm run build:demo",
+    "build": "npm run build:core && npm run build:ui && npm run build:browser && npm run sync:web && npm run build:demo",
     "build:core": "cd packages/webchat-core && npm run build",
     "build:ui": "cd packages/webchat-ui && npm run build",
+    "build:browser": "cd packages/webchat-ui && npm run build:browser",
+    "sync:web": "node scripts/sync-web-public.mjs",
     "build:demo": "cd packages/webchat-demo && npm run build",
-    "test": "node tests/state-machine.issue-3882.mjs",
-    "lint": "echo 'No linter configured yet'",
+    "test": "node tests/state-machine.issue-3882.mjs && node --test tests/stream-lifecycle.issue-3556.test.mjs && node --test tests/content-chunks.test.mjs && npm run test:core",
+    "pretest:core": "node -e \"require('node:fs').rmSync('.test-dist', { recursive: true, force: true })\"",
+    "test:core": "tsc -p tests/tsconfig.json && node --test .test-dist/tests/core/core.test.js",
+    "lint": "eslint \"packages/webchat-core/src/**/*.{ts,tsx}\" \"packages/webchat-ui/src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx,mjs}\"",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist packages/*/.next"
   },
@@ -18,9 +22,14 @@
     "@types/node": "^20.0.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
-    "typescript": "^5.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "prettier": "^3.0.0",
     "turbo": "^1.13.0",
-    "prettier": "^3.0.0"
+    "typescript": "^5.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

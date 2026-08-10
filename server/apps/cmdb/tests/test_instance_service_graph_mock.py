@@ -1,6 +1,6 @@
 """CMDB InstanceManage 服务层覆盖测试（mock GraphClient）。
 
-对照 spec/prd/CMDB·资产：实例列表查询、关联实例查询、批量删除、按ID查询。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：实例列表查询、关联实例查询、批量删除、按ID查询。
 """
 
 import pytest
@@ -15,17 +15,26 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 
 
 @pytest.mark.django_db
-def test_instance_list(fake_graph):
+@pytest.mark.parametrize(
+    ("order", "expected_order"),
+    [
+        ("-_id", "_id"),
+        ("-inst_name", "inst_name"),
+    ],
+)
+def test_instance_list_descending_order_uses_separate_direction(fake_graph, order, expected_order):
     fake = fake_graph(
         "apps.cmdb.services.instance",
         query_entity=([{"_id": 1, "inst_name": "h1", "model_id": "host"}], 1),
     )
     insts, count = InstanceManage.instance_list(
-        model_id="host", params=[], page=1, page_size=10, order="-inst_name", permission_map={},
+        model_id="host", params=[], page=1, page_size=10, order=order, permission_map={},
     )
     assert count == 1
     assert insts[0]["inst_name"] == "h1"
-    assert any(c[0] == "query_entity" for c in fake.calls)
+    query_call = next(c for c in fake.calls if c[0] == "query_entity")
+    assert query_call[2]["order"] == expected_order
+    assert query_call[2]["order_type"] == "DESC"
 
 
 # --------------------------------------------------------------------------

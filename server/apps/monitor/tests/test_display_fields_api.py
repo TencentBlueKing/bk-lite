@@ -33,6 +33,28 @@ def test_save_display_fields_sets_customized(api_client, host_with_metric):
 
 
 @pytest.mark.django_db
+def test_builtin_object_can_customize_display_fields(api_client, host_with_metric):
+    obj = host_with_metric
+    obj.is_builtin = True
+    obj.save(update_fields=["is_builtin"])
+    payload = {"display_fields": [
+        {"name": "CPU使用率", "sort_order": 0,
+         "metrics": [{"plugin": "UTPlugin", "metric": "cpu_usage_total"}]}
+    ]}
+
+    resp = api_client.post(
+        f"/api/v1/monitor/api/monitor_object/{obj.id}/display_fields/",
+        payload,
+        format="json",
+    )
+
+    assert resp.status_code == 200, resp.content
+    obj.refresh_from_db()
+    assert obj.display_fields == resp.json()["data"]
+    assert obj.display_fields_customized is True
+
+
+@pytest.mark.django_db
 def test_save_display_fields_rejects_unknown_metric(api_client, host_with_metric):
     obj = host_with_metric
     payload = {"display_fields": [
@@ -128,3 +150,28 @@ def test_list_keeps_name_when_no_metric_binding(api_client, host_with_metric, mo
     _patch_translations(monkeypatch, {_METRIC_KEY: "CPU使用率译"})
     target = _get_object(api_client.get("/api/v1/monitor/api/monitor_object/"), obj.id)
     assert target["display_fields"][0]["name"] == "纯文本列"
+
+
+@pytest.mark.django_db
+def test_display_column_key_survives_title_translation_and_sort_changes(
+    api_client, host_with_metric, monkeypatch
+):
+    obj = host_with_metric
+    obj.display_fields = [
+        {
+            "name": "Original title",
+            "sort_order": 7,
+            "metrics": [{"plugin": "UTPlugin", "metric": "cpu_usage_total"}],
+        }
+    ]
+    obj.save(update_fields=["display_fields"])
+    _patch_translations(monkeypatch, {_METRIC_KEY: "Translated title"})
+
+    first = _get_object(api_client.get("/api/v1/monitor/api/monitor_object/"), obj.id)
+    first_key = first["display_fields"][0]["column_key"]
+    obj.display_fields = [{**obj.display_fields[0], "name": "Renamed", "sort_order": 0}]
+    obj.save(update_fields=["display_fields"])
+    second = _get_object(api_client.get("/api/v1/monitor/api/monitor_object/"), obj.id)
+
+    assert first_key.startswith("metric:")
+    assert second["display_fields"][0]["column_key"] == first_key

@@ -1,0 +1,248 @@
+{
+  "zh": [
+    {
+      "title": "首页",
+      "icon": "shouye",
+      "url": "/apm/home",
+      "name": "home"
+    },
+    {
+      "title": "服务",
+      "icon": "daohang-yunyingfenxishi",
+      "url": "/apm/services",
+      "name": "services",
+      "children": [
+        {
+          "title": "服务",
+          "icon": "daohang-yunyingfenxishi",
+          "url": "/apm/services",
+          "name": "services"
+        },
+        {
+          "title": "服务拓扑",
+          "icon": "guanlian",
+          "url": "/apm/services/topology",
+          "name": "services"
+        },
+        {
+          "title": "SLO",
+          "icon": "mulu",
+          "url": "/apm/services/slo",
+          "name": "services"
+        },
+        {
+          "url": "/apm/services/[serviceId]",
+          "name": "service_detail",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "探索",
+      "icon": "search-f",
+      "url": "/apm/explore/traces",
+      "name": "traces",
+      "children": [
+        {
+          "title": "调用链",
+          "icon": "search-f",
+          "url": "/apm/explore/traces",
+          "name": "traces",
+          "children": [
+            {
+              "url": "/apm/explore/traces/[traceId]",
+              "name": "trace_detail",
+              "isNotMenuItem": true
+            }
+          ]
+        },
+        {
+          "title": "端点",
+          "icon": "mulu",
+          "url": "/apm/explore/endpoints",
+          "name": "traces"
+        },
+        {
+          "title": "错误",
+          "icon": "weiwangguanicon-defuben-",
+          "url": "/apm/explore/errors",
+          "name": "traces"
+        }
+      ]
+    },
+    {
+      "title": "事件",
+      "icon": "weiwangguanicon-defuben-",
+      "url": "/apm/events/alerts",
+      "name": "Alert",
+      "children": [
+        {
+          "title": "告警",
+          "icon": "weiwangguanicon-defuben-",
+          "url": "/apm/events/alerts",
+          "name": "events"
+        },
+        {
+          "title": "策略",
+          "icon": "mulu",
+          "url": "/apm/events/policies",
+          "name": "policies"
+        }
+      ]
+    },
+    {
+      "title": "集成",
+      "icon": "zichan-quanbushebei",
+      "url": "/apm/integration/add",
+      "name": "Integration",
+      "children": [
+        {
+          "title": "添加接入",
+          "icon": "settings-fill",
+          "url": "/apm/integration/add",
+          "name": "integration_add"
+        },
+        {
+          "title": "接入实例",
+          "icon": "caijiqi",
+          "url": "/apm/integration/instances",
+          "name": "integration_instances"
+        },
+        {
+          "title": "应用管理",
+          "icon": "mulu",
+          "url": "/apm/integration/applications",
+          "name": "applications"
+        },
+        {
+          "url": "/apm/integration",
+          "name": "integration_add",
+          "isNotMenuItem": true
+        }
+      ]
+    }
+  ],
+  "en": [
+    {
+      "title": "Home",
+      "icon": "shouye",
+      "url": "/apm/home",
+      "name": "home"
+    },
+    {
+      "title": "Services",
+      "icon": "daohang-yunyingfenxishi",
+      "url": "/apm/services",
+      "name": "services",
+      "children": [
+        {
+          "title": "Services",
+          "icon": "daohang-yunyingfenxishi",
+          "url": "/apm/services",
+          "name": "services"
+        },
+        {
+          "title": "Service topology",
+          "icon": "guanlian",
+          "url": "/apm/services/topology",
+          "name": "services"
+        },
+        {
+          "title": "SLO",
+          "icon": "mulu",
+          "url": "/apm/services/slo",
+          "name": "services"
+        },
+        {
+          "url": "/apm/services/[serviceId]",
+          "name": "service_detail",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "Explore",
+      "icon": "search-f",
+      "url": "/apm/explore/traces",
+      "name": "traces",
+      "children": [
+        {
+          "title": "Traces",
+          "icon": "search-f",
+          "url": "/apm/explore/traces",
+          "name": "traces",
+          "children": [
+            {
+              "url": "/apm/explore/traces/[traceId]",
+              "name": "trace_detail",
+              "isNotMenuItem": true
+            }
+          ]
+        },
+        {
+          "title": "Endpoints",
+          "icon": "mulu",
+          "url": "/apm/explore/endpoints",
+          "name": "traces"
+        },
+        {
+          "title": "Errors",
+          "icon": "weiwangguanicon-defuben-",
+          "url": "/apm/explore/errors",
+          "name": "traces"
+        }
+      ]
+    },
+    {
+      "title": "Events",
+      "icon": "weiwangguanicon-defuben-",
+      "url": "/apm/events/alerts",
+      "name": "Alert",
+      "children": [
+        {
+          "title": "Alerts",
+          "icon": "weiwangguanicon-defuben-",
+          "url": "/apm/events/alerts",
+          "name": "events"
+        },
+        {
+          "title": "Policies",
+          "icon": "mulu",
+          "url": "/apm/events/policies",
+          "name": "policies"
+        }
+      ]
+    },
+    {
+      "title": "Integration",
+      "icon": "zichan-quanbushebei",
+      "url": "/apm/integration/add",
+      "name": "Integration",
+      "children": [
+        {
+          "title": "Add integration",
+          "icon": "settings-fill",
+          "url": "/apm/integration/add",
+          "name": "integration_add"
+        },
+        {
+          "title": "Reporting instances",
+          "icon": "caijiqi",
+          "url": "/apm/integration/instances",
+          "name": "integration_instances"
+        },
+        {
+          "title": "Applications",
+          "icon": "mulu",
+          "url": "/apm/integration/applications",
+          "name": "applications"
+        },
+        {
+          "url": "/apm/integration",
+          "name": "integration_add",
+          "isNotMenuItem": true
+        }
+      ]
+    }
+  ]
+}

@@ -12,7 +12,7 @@ import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import useSearchApi from '@/app/monitor/api/search';
-import CustomDrawer from '@/app/monitor/components/operate-drawer';
+import CustomDrawer from '@/components/operate-drawer';
 import {
   QueryGroup,
   QueryGroupData,
@@ -21,10 +21,11 @@ import {
   SavedQueryDrawerProps
 } from '@/app/monitor/types/search';
 import CustomTable from '@/components/custom-table';
+import { generateSearchId } from './searchQueryLogic';
 
 const transformToFrontendFormat = (groups: QueryGroupData[]): QueryGroup[] => {
   return groups.map((group) => ({
-    id: crypto.randomUUID(),
+    id: generateSearchId(),
     name: group.name,
     object: group.object,
     plugin: group.plugin ?? null,

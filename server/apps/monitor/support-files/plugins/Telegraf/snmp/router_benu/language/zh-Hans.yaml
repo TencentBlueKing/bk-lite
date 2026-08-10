@@ -143,6 +143,12 @@ monitor_object_metric:
     device_flow_top_conversation_bytes_rate:
       name: Top 会话 Flow 流量速率
       desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
+    device_psu_powered:
+      name: 电源供电状态
+      desc: 设备电源模块是否已供电。
+    device_psu_present:
+      name: 电源在位状态
+      desc: 设备电源模块插槽是否已安装电源。
 monitor_object_metric_group:
   Router:
     CPU: CPU
@@ -164,3 +170,4 @@ monitor_object_metric_group:
     Application Port: 应用端口
     Endpoint: 端点
     Conversation: 会话
+    Power: 电源

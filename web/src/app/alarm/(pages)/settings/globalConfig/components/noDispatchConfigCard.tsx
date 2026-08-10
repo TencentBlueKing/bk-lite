@@ -79,10 +79,8 @@ export default function NoDispatchConfigCard({
           <Form
             form={form}
             className="compact-config-form"
-            layout="horizontal"
+            layout="vertical"
             initialValues={config}
-            labelCol={{ flex: '108px' }}
-            wrapperCol={{ flex: '1' }}
             style={{ maxWidth: 500 }}
           >
             <Form.Item

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import styles from './index.module.scss';
 import type { Dayjs } from 'dayjs';
 import CustomTable from '@/components/custom-table';
-import Introduction from '@/app/alarm/components/introduction';
+import Introduction from '@/components/introduction';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { Input, Select, DatePicker, message } from 'antd';
@@ -83,12 +83,8 @@ const OperationLog: React.FC = () => {
         operator: allParams.operator,
         action: allParams.type,
         overview: allParams.message,
-        created_at_after: allParams.dateRange?.[0]?.format(
-          'YYYY-MM-DD HH:mm:ss'
-        ),
-        created_at_before: allParams.dateRange?.[1]?.format(
-          'YYYY-MM-DD HH:mm:ss'
-        ),
+        created_at_after: allParams.dateRange?.[0]?.toISOString(),
+        created_at_before: allParams.dateRange?.[1]?.toISOString(),
       };
       const data: any = await getLogList(queryParams);
       setDataList((data.items as AlarmLogItem[]) || []);
@@ -162,6 +158,8 @@ const OperationLog: React.FC = () => {
         dataIndex: 'created_at',
         key: 'created_at',
         width: 200,
+        // TODO(timezone): 与全站 convertToLocalizedTime 约定不一致——当前原样显示后端 DRF 输出的用户时区串，
+        // 数值恰好正确，但属隐式依赖。后续统一为 convertToLocalizedTime 以消除约定分裂。
       },
       {
         title: t('OperationLog.summary'),
@@ -251,7 +249,7 @@ const OperationLog: React.FC = () => {
           dataSource={dataList}
           pagination={pagination}
           onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 470px)' }}
+          scroll={{ y: 'calc(100vh - 490px)' }}
         />
       </div>
     </div>

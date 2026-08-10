@@ -1,5 +1,5 @@
 import { ModalRef, ModalProps, TableDataItem } from '@/app/monitor/types';
-import { Form, Button, message, Spin, Empty } from 'antd';
+import { Form, Button, message, Spin, Empty, Alert } from 'antd';
 import { cloneDeep } from 'lodash';
 import React, {
   useState,
@@ -13,6 +13,20 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useApiClient from '@/utils/request';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
+import {
+  getSnmpFilterMutexConflicts,
+  trackSnmpFilterMutexLastChanged
+} from '@/app/monitor/hooks/integration/snmpFilterMutex';
+import { getSnmpInterfaceFilterModePatch } from '@/app/monitor/hooks/integration/snmpInterfaceFilterMode';
+import { getIfmibSnapshotEnabled } from '../list/detail/configure/ifmibDeploymentState';
+
+interface PluginFormField {
+  name?: string;
+}
+
+interface PluginConfig {
+  form_fields?: PluginFormField[];
+}
 
 const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   const [form] = Form.useForm();
@@ -25,7 +39,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   const [modalVisible, setModalVisible] = useState<boolean>(false);
   const [title, setTitle] = useState<string>('');
   const [configForm, setConfigForm] = useState<TableDataItem>({});
-  const [currentConfig, setCurrentConfig] = useState<any>(null);
+  const [currentConfig, setCurrentConfig] = useState<PluginConfig | null>(null);
   const [configLoading, setConfigLoading] = useState<boolean>(false);
 
   useImperativeHandle(ref, () => ({
@@ -76,6 +90,11 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   const formItems = useMemo(() => {
     return configsInfo.formItems;
   }, [configsInfo]);
+  const supportsIfmib = Boolean(currentConfig?.form_fields?.some((field) => field.name === 'enable_ifmib'));
+  const ifmibSnapshotEnabled = getIfmibSnapshotEnabled(
+    configForm as Record<string, unknown>,
+    supportsIfmib,
+  );
 
   useEffect(() => {
     if (configsInfo?.getDefaultForm && configForm && !configLoading) {
@@ -85,7 +104,16 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
 
   const initData = (row: TableDataItem) => {
     const activeFormData = configsInfo.getDefaultForm?.(row) || {};
+    const snapshotEnabled = getIfmibSnapshotEnabled(
+      row as Record<string, unknown>,
+      Boolean(currentConfig?.form_fields?.some((field) => field.name === 'enable_ifmib')),
+    );
+    if (snapshotEnabled !== undefined) {
+      activeFormData.enable_ifmib = snapshotEnabled;
+    }
     form.setFieldsValue(activeFormData);
+    // 用当前值初始化互斥追踪基线，避免默认排除被误判为“后填写”
+    trackSnmpFilterMutexLastChanged({}, form.getFieldsValue(true), form);
   };
 
   const handleCancel = () => {
@@ -97,6 +125,11 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
 
   const handleSubmit = () => {
     form.validateFields().then((values) => {
+      const mutexErrors = getSnmpFilterMutexConflicts(values, t);
+      if (mutexErrors.length) {
+        mutexErrors.forEach((msg) => message.error(msg));
+        return;
+      }
       operateConfig(values);
     });
   };
@@ -112,8 +145,9 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       message.success(t('common.successfullyModified'));
       handleCancel();
       onSuccess();
-    } catch (error: any) {
-      message.error(error?.message || t('common.operationFailed'));
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : '';
+      message.error(errorMessage || t('common.operationFailed'));
     } finally {
       setConfirmLoading(false);
     }
@@ -147,10 +181,36 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       <div className="px-[10px]">
         <Spin spinning={configLoading} className="w-full">
           <div style={{ minHeight: configLoading ? '200px' : 'auto' }}>
+            {ifmibSnapshotEnabled !== undefined && (
+              <Alert
+                className="mb-3"
+                type={ifmibSnapshotEnabled ? 'info' : 'warning'}
+                showIcon
+                message={t(ifmibSnapshotEnabled
+                  ? 'monitor.integrations.ifmibSnapshotEnabled'
+                  : 'monitor.integrations.ifmibSnapshotDisabled')}
+                description={t('monitor.integrations.ifmibSnapshotDescription')}
+              />
+            )}
             {showEmpty ? (
               <Empty description={t('monitor.integrations.noConfigData')} />
             ) : (
-              <Form ref={formRef} form={form} name="basic" layout="vertical">
+              <Form
+                ref={formRef}
+                form={form}
+                name="basic"
+                layout="vertical"
+                onValuesChange={(changed, all) => {
+                  const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(changed);
+                  const nextValues = Object.keys(interfaceFilterModePatch).length
+                    ? { ...all, ...interfaceFilterModePatch }
+                    : all;
+                  if (Object.keys(interfaceFilterModePatch).length) {
+                    form.setFieldsValue(interfaceFilterModePatch);
+                  }
+                  trackSnmpFilterMutexLastChanged(changed, nextValues, form);
+                }}
+              >
                 {formItems}
               </Form>
             )}

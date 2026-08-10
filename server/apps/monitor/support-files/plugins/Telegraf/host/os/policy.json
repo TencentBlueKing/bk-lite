@@ -226,6 +226,31 @@
         }
       ],
       "group_algorithm": "max"
+    },
+    {
+      "name": "系统重启",
+      "alert_name": "主机 ${resource_name} 系统运行时间过短",
+      "description": "监控主机系统运行时间，当运行时间过短时触发告警，用于识别异常重启。",
+      "metric_name": "system_uptime",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 300,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 600,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 900,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

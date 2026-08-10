@@ -256,14 +256,15 @@ export const KpiSection = ({
       <CollectionStatusCard
         status={dashboard.collectionStatus}
         timeline={dashboard.collectionStatusTimeline}
+        timelineHint={dashboard.collectionStatusTimelineHint}
         guideItems={[
           {
             label: '采集状态',
-            detail: `展示最近一段时间内该 ${dashboard.objectFallbackName} 实例监控采集是否正常、缺失或异常。`
+            detail: `展示当前选中时间窗内该 ${dashboard.objectFallbackName} 实例监控采集是否正常、缺失或异常。`
           },
           {
             label: '状态时间线',
-            detail: '绿色表示采集成功，灰色表示暂无数据，红色表示采集或查询异常。'
+            detail: '时间线覆盖当前时间窗并均分为 18 段；绿色表示该段有采集，灰色表示该段无数据，红色表示采集或查询异常。'
           }
         ]}
         styles={styles}
@@ -374,7 +375,7 @@ export const InsightSection = ({
   return (
     <section className={styles.dashboardSection}>
       <div className={styles.sectionGrid}>
-        {rings.map(({ panel, data, centerValue, isEmpty }, index) => (
+        {rings.map(({ panel, data, centerValue, isEmpty, emptyDescription }, index) => (
           <RingChartPanel
             key={panel.title}
             title={panel.title}
@@ -384,17 +385,20 @@ export const InsightSection = ({
             centerValue={centerValue}
             centerCaption={panel.centerCaption}
             isEmpty={isEmpty}
+            emptyDescription={emptyDescription}
             className={`${styles.panel} ${ringSpanClass ? ringSpanClass(index, rings.length) : defaultSpan}`}
             styles={styles}
           />
         ))}
-        {bars.map(({ panel, items }, index) => (
+        {bars.map(({ panel, items, isEmpty, emptyDescription }, index) => (
           <HorizontalBarPanel
             key={panel.title}
             title={panel.title}
             subtitle={panel.subtitle}
             guide={panel.guide}
             items={items}
+            isEmpty={isEmpty}
+            emptyDescription={emptyDescription}
             className={`${styles.panel} ${barSpanClass ? barSpanClass(index, bars.length) : defaultSpan}`}
             styles={styles}
           />
@@ -555,14 +559,36 @@ export interface MetricsSectionProps {
   styles: DashboardStyles;
 }
 
-export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => (
+export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
+  const isHost = String(dashboard.monitorObjectName || '').toLowerCase() === 'host';
+  return (
   <div className={styles.metricsMode}>
     <div className={`${styles.panel} ${styles.fullPanel}`}>
       <div className={styles.sectionHeading}>
         <h3 className={styles.panelTitle}>
           <TitleWithGuide
             title="监控指标全量"
-            items={[{ label: '监控指标全景', detail: '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' }]}
+            items={
+              isHost
+                ? [
+                  {
+                    label: '主机指标',
+                    detail: '通过插件页签切换主机采集来源，查看完整 OS 指标历史曲线。'
+                  },
+                  {
+                    label: '进程 (Telegraf)',
+                    detail:
+                        '在同一插件页签中切换「进程 (Telegraf)」，按主机 instance_id 查看该主机下进程历史折线。'
+                  }
+                ]
+                : [
+                  {
+                    label: '监控指标全景',
+                    detail:
+                        '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。'
+                  }
+                ]
+            }
             styles={styles}
           />
         </h3>
@@ -583,7 +609,8 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => (
       />
     </div>
   </div>
-);
+  );
+};
 
 // ─── DashboardShell ───────────────────────────────────────────────────────────
 
@@ -591,6 +618,8 @@ export interface DashboardShellProps {
   dashboard: ReturnType<typeof useSimpleDashboardData>;
   /** Dashboard content (only shown in dashboard display mode). */
   dashboardContent: React.ReactNode;
+  /** 覆盖默认全量指标区（如主机需叠加进程指标页签）。 */
+  metricsContent?: React.ReactNode;
   /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
   brandLabel?: string;
   styles: DashboardStyles;
@@ -603,6 +632,7 @@ export interface DashboardShellProps {
 export const DashboardShell = ({
   dashboard,
   dashboardContent,
+  metricsContent,
   brandLabel,
   styles
 }: DashboardShellProps) => (
@@ -617,7 +647,6 @@ export const DashboardShell = ({
           onTimeChange={dashboard.onTimeChange}
           onFrequenceChange={dashboard.setFrequence}
           onRefresh={dashboard.onRefresh}
-          onBack={dashboard.onBack}
           showTimeSelector={false}
           styles={styles}
         />
@@ -659,7 +688,7 @@ export const DashboardShell = ({
       {dashboard.displayMode === 'dashboard' ? (
         <>{dashboardContent}</>
       ) : (
-        <MetricsSection dashboard={dashboard} styles={styles} />
+        metricsContent || <MetricsSection dashboard={dashboard} styles={styles} />
       )}
     </div>
   </div>

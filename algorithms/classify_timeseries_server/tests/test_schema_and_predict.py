@@ -7,7 +7,10 @@
 - MLService.predict() 的验证失败路径和正常预测路径（使用 DummyModel）
 """
 
+import asyncio
+import importlib
 import sys
+import time
 import types
 from unittest.mock import MagicMock, patch
 
@@ -21,8 +24,11 @@ from pydantic import ValidationError
 
 def _stub_bentoml():
     bentoml = types.ModuleType("bentoml")
+    bentoml.service_options = []
 
     def service(**kwargs):
+        bentoml.service_options.append(kwargs)
+
         def decorator(cls):
             return cls
         return decorator
@@ -188,6 +194,37 @@ class TestDummyModel:
 # ---------------------------------------------------------------------------
 
 
+class TestServiceTimeoutBudget:
+    def _reload_service(self):
+        module_name = "classify_timeseries_server.serving.service"
+        sys.modules.pop(module_name, None)
+        sys.modules["bentoml"].service_options.clear()
+        return importlib.import_module(module_name)
+
+    def test_default_timeout_covers_large_prediction_budget(self, monkeypatch):
+        monkeypatch.delenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", raising=False)
+
+        service_module = self._reload_service()
+
+        assert service_module.TIMESERIES_PREDICT_TIMEOUT_SECONDS == 120
+        assert sys.modules["bentoml"].service_options[-1]["traffic"] == {"timeout": 120}
+
+    def test_timeout_budget_can_be_configured(self, monkeypatch):
+        monkeypatch.setenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "75")
+
+        service_module = self._reload_service()
+
+        assert service_module.TIMESERIES_PREDICT_TIMEOUT_SECONDS == 75
+        assert sys.modules["bentoml"].service_options[-1]["traffic"] == {"timeout": 75}
+
+    @pytest.mark.parametrize("invalid_timeout", ["0", "291", "not-a-number"])
+    def test_timeout_budget_rejects_invalid_values(self, monkeypatch, invalid_timeout):
+        monkeypatch.setenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", invalid_timeout)
+
+        with pytest.raises(ValueError, match="integer between 1 and 290"):
+            self._reload_service()
+
+
 class TestMLServicePredict:
     def _make_service(self, steps=3):
         from classify_timeseries_server.serving.service import MLService
@@ -220,6 +257,34 @@ class TestMLServicePredict:
         data = [{"timestamp": 1700000000 + i * 60, "value": float(i)} for i in range(5)]
         config = {"steps": steps}
         response = await svc.predict(data, config)
+        assert response.success is True
+        assert response.prediction is not None
+        assert len(response.prediction) == steps
+
+    @pytest.mark.asyncio
+    async def test_max_steps_completes_within_scaled_service_budget(self):
+        """时间缩放的负载契约：旧 30 秒预算会红，默认 120 秒预算可完成 1000 步。"""
+        from classify_timeseries_server.serving.service import TIMESERIES_PREDICT_TIMEOUT_SECONDS
+
+        steps = 1000
+        svc = self._make_service(steps=steps)
+
+        def slow_predict(features):
+            assert features["steps"] == steps
+            time.sleep(0.35)
+            return [1.0] * steps
+
+        svc.model.predict.side_effect = slow_predict
+        data = [{"timestamp": 1700000000 + i * 60, "value": float(i)} for i in range(5)]
+        scaled_timeout = TIMESERIES_PREDICT_TIMEOUT_SECONDS / 100
+
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                lambda: asyncio.run(svc.predict(data, {"steps": steps})),
+            ),
+            timeout=scaled_timeout,
+        )
+
         assert response.success is True
         assert response.prediction is not None
         assert len(response.prediction) == steps

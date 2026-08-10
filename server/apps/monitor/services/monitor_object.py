@@ -1,35 +1,46 @@
+import hashlib
 import re
+import time
 import uuid
 
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
+from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
-from apps.monitor.models.monitor_metrics import Metric
-from apps.monitor.models.monitor_object import (
-    MonitorInstance,
-    MonitorObject,
-    MonitorInstanceOrganization,
-    MonitorObjectType,
-)
 from apps.monitor.models.collect_config import CollectConfig
+from apps.monitor.models.monitor_metrics import Metric
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectType
 from apps.monitor.models.plugin import MonitorPlugin
-from apps.monitor.utils.dimension import parse_instance_id
-from apps.monitor.utils.display_fields_metrics import (
-    display_field_key,
-    extract_field_bindings,
-    extract_metric_bindings,
-)
-from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
+from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.display_fields_metrics import display_field_key, extract_field_bindings, extract_metric_bindings
+from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+
+# 实例 status 映射短 TTL 缓存，缓解列表/轮询重复打 VM。
+_INSTANCE_STATUS_CACHE_TTL_SECONDS = 15.0
+_INSTANCE_STATUS_CACHE_MAX = 128
+_instance_status_cache: dict[str, tuple[float, dict]] = {}
+# status 查询硬上限，避免无界 series 打爆 VM；已带 topk/bottomk/limitk 的查询不改写。
+STATUS_QUERY_MAX_SERIES = 10000
 
 
 class MonitorObjectService:
     @staticmethod
     def _project_instance_identity(qs):
-        return qs.only("id", "name", "interval", "cloud_region_id", "ip", "fallback_sampling_rate")
+        return qs.only(
+            "id",
+            "name",
+            "interval",
+            "cloud_region_id",
+            "ip",
+            "summary_facts",
+            "fallback_sampling_rate",
+            "node_id",
+            "cmdb_id",
+        )
 
     @staticmethod
     def validate_new_instance_name_unique(monitor_object_id, monitor_instance_name):
@@ -60,12 +71,31 @@ class MonitorObjectService:
             raise BaseAppException("实例名称已存在")
 
     @staticmethod
+    def clear_instance_status_cache() -> None:
+        _instance_status_cache.clear()
+
+    @staticmethod
     def get_instances_by_metric(metric: str, instance_id_keys: list):
         """获取监控对象实例"""
-        metrics = VictoriaMetricsAPI().query(metric, step="20m")
+        if not metric:
+            return {}
+
+        cache_key = hashlib.md5(f"{metric}|{','.join(instance_id_keys or [])}".encode("utf-8")).hexdigest()
+        now = time.monotonic()
+        cached = _instance_status_cache.get(cache_key)
+        if cached and now - cached[0] < _INSTANCE_STATUS_CACHE_TTL_SECONDS:
+            return cached[1]
+
+        from apps.monitor.services.metrics import Metrics
+
+        query = metric
+        if not Metrics.query_already_limited(metric):
+            query = f"limitk({STATUS_QUERY_MAX_SERIES}, {metric})"
+
+        metrics = VictoriaMetricsAPI().query(query, step="20m")
         instance_map = {}
         for metric_info in metrics.get("data", {}).get("result", []):
-            instance_id = str(tuple([metric_info["metric"].get(i) for i in instance_id_keys]))
+            instance_id = str(tuple(metric_info["metric"].get(i) for i in instance_id_keys))
             if not instance_id:
                 continue
             agent_id = metric_info.get("metric", {}).get("agent_id")
@@ -85,12 +115,43 @@ class MonitorObjectService:
                         "time": _time,
                     }
 
+        if len(_instance_status_cache) >= _INSTANCE_STATUS_CACHE_MAX:
+            _instance_status_cache.clear()
+        _instance_status_cache[cache_key] = (now, instance_map)
         return instance_map
 
     @staticmethod
-    def add_attr(items: list):
+    def _safe_get_instances_by_metric(metric: str, instance_id_keys: list):
+        """状态存储不可用时保留数据库实例，并将实时状态降级为不可用。"""
+        try:
+            return MonitorObjectService.get_instances_by_metric(metric, instance_id_keys)
+        except Exception:
+            logger.exception("查询监控实例实时状态失败，列表将保留数据库实例并标记为不可用")
+            return {}
+
+    @staticmethod
+    def _safe_fill_display_metrics(monitor_object_id, obj_metric_map, result):
+        """展示指标不可用不应阻断实例身份与基础事实列表。"""
+        try:
+            MonitorObjectService._fill_display_metrics(monitor_object_id, obj_metric_map, result)
+        except Exception:
+            logger.exception("回填监控实例展示指标失败，列表将保留基础事实")
+
+    @staticmethod
+    def _filter_visible_organizations(queryset, visible_organization_ids):
+        if visible_organization_ids is None:
+            return queryset
+        try:
+            visible_organization_ids = _normalize_organization_ids(visible_organization_ids)
+        except BaseAppException:
+            return queryset.none()
+        return queryset.filter(organization__in=visible_organization_ids)
+
+    @staticmethod
+    def add_attr(items: list, visible_organization_ids=None):
         # 状态计算, 补充组织
         org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[i["instance_id"] for i in items])
+        org_objs = MonitorObjectService._filter_visible_organizations(org_objs, visible_organization_ids)
         org_map = {}
         for org in org_objs:
             if org.monitor_instance_id not in org_map:
@@ -98,7 +159,9 @@ class MonitorObjectService:
             org_map[org.monitor_instance_id].add(org.organization)
 
         for conf_info in items:
-            conf_info["organization"] = list(org_map.get(conf_info["instance_id"], []))
+            organizations = list(org_map.get(conf_info["instance_id"], []))
+            conf_info["organizations"] = organizations
+            conf_info["organization"] = organizations
 
             if conf_info["time"]:
                 conf_info["status"] = "normal"
@@ -114,9 +177,15 @@ class MonitorObjectService:
         qs,
         add_metrics=False,
         monitor_plugin_id=None,
+        visible_organization_ids=None,
+        vm_params=None,
     ):
         """获取监控对象实例"""
-        qs = qs.filter(monitor_object_id=monitor_object_id, is_deleted=False)
+        qs = qs.filter(
+            monitor_object_id=monitor_object_id,
+            is_deleted=False,
+            is_active=True,
+        )
         if name:
             qs = qs.filter(name__icontains=name)
 
@@ -128,6 +197,16 @@ class MonitorObjectService:
         obj_metric_map = obj_metric_map.get(monitor_obj.name)
         if not obj_metric_map:
             raise BaseAppException("Monitor object default metric does not exist")
+
+        # Process 主机 / asset.ip / Enum 指标过滤在 list 与 search 共用同一套规则。
+        from apps.monitor.services.monitor_instance import InstanceSearch
+
+        qs = InstanceSearch.apply_process_instance_filters(
+            qs,
+            monitor_obj.name,
+            vm_params,
+            monitor_object_id=monitor_obj.id,
+        )
 
         status_query = obj_metric_map.get("default_metric", "")
         if monitor_plugin_id:
@@ -144,12 +223,17 @@ class MonitorObjectService:
             if plugin.status_query:
                 status_query = plugin.status_query
 
-        instance_map = MonitorObjectService.get_instances_by_metric(
+        instance_map = MonitorObjectService._safe_get_instances_by_metric(
             status_query,
             obj_metric_map.get("instance_id_keys"),
         )
         if monitor_plugin_id:
             qs = qs.filter(id__in=instance_map.keys())
+
+        status_raw = None
+        if isinstance(vm_params, dict):
+            status_raw = vm_params.get("status")
+        qs = InstanceSearch.apply_status_filter_to_qs(qs, instance_map, status_raw)
 
         # 去除重复
         qs = qs.distinct()
@@ -164,6 +248,7 @@ class MonitorObjectService:
         else:
             objs = projected_qs[start:end]
         org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in objs])
+        org_objs = MonitorObjectService._filter_visible_organizations(org_objs, visible_organization_ids)
         org_map = {}
         for org in org_objs:
             if org.monitor_instance_id not in org_map:
@@ -176,9 +261,9 @@ class MonitorObjectService:
             result.append(MonitorObjectService._serialize_instance_list_item(obj, instance_map, org_map))
 
         if add_metrics and page_size != -1:
-            MonitorObjectService._fill_display_metrics(monitor_object_id, obj_metric_map, result)
+            MonitorObjectService._safe_fill_display_metrics(monitor_object_id, obj_metric_map, result)
 
-        MonitorObjectService.add_attr(result)
+        MonitorObjectService.add_attr(result, visible_organization_ids)
 
         return dict(count=count, results=result)
 
@@ -199,17 +284,13 @@ class MonitorObjectService:
         vm_api = VictoriaMetricsAPI()
         metrics = vm_api.query(query)
         metric_results = metrics.get("data", {}).get("result", [])
-        timestamp_map = MonitorObjectService._query_enum_metric_sample_timestamps(
-            vm_api, query, metric_obj, metric_results
-        )
+        timestamp_map = MonitorObjectService._query_enum_metric_sample_timestamps(vm_api, query, metric_obj, metric_results)
         selected_map = {}
         for metric in metric_results:
-            instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
+            instance_id = str(tuple(metric["metric"].get(i) for i in metric_obj.instance_id_keys))
             value = metric["value"][1]
             sample_time = timestamp_map.get((instance_id, MonitorObjectService._vm_metric_signature(metric)))
-            if MonitorObjectService._should_replace_display_metric_value(
-                selected_map.get(instance_id), value, sample_time
-            ):
+            if MonitorObjectService._should_replace_display_metric_value(selected_map.get(instance_id), value, sample_time):
                 selected_map[instance_id] = {"value": value, "sample_time": sample_time}
         return {instance_id: item["value"] for instance_id, item in selected_map.items()}
 
@@ -219,7 +300,7 @@ class MonitorObjectService:
             return {}
         instance_counts = {}
         for metric in metric_results:
-            instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
+            instance_id = str(tuple(metric["metric"].get(i) for i in metric_obj.instance_id_keys))
             instance_counts[instance_id] = instance_counts.get(instance_id, 0) + 1
         if not any(count > 1 for count in instance_counts.values()):
             return {}
@@ -227,7 +308,7 @@ class MonitorObjectService:
         timestamp_metrics = vm_api.query(f"timestamp({query})")
         timestamp_map = {}
         for metric in timestamp_metrics.get("data", {}).get("result", []):
-            instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
+            instance_id = str(tuple(metric["metric"].get(i) for i in metric_obj.instance_id_keys))
             try:
                 timestamp = float(metric["value"][1])
             except (IndexError, TypeError, ValueError):
@@ -288,7 +369,7 @@ class MonitorObjectService:
             field_value = labels.get(field)
             if field_value in (None, ""):
                 continue
-            label_values = tuple([labels.get(i) for i in metric_obj.instance_id_keys])
+            label_values = tuple(labels.get(i) for i in metric_obj.instance_id_keys)
             instance_id = str(label_values)
             if instance_id not in target_instance_ids:
                 for value in label_values:
@@ -305,6 +386,35 @@ class MonitorObjectService:
                 value_map[instance_id] = field_value
                 time_map[instance_id] = timestamp
         return value_map
+
+    @staticmethod
+    def _merge_reported_plugin_coverage(monitor_object_id, result, instance_plugin_map):
+        """把无 CollectConfig 但已上报的实例并入插件归属，供展示列隔离使用。"""
+        uncovered = [inst for inst in result if inst["instance_id"] not in instance_plugin_map]
+        if not uncovered:
+            return
+
+        plugin_status_qs = (
+            MonitorPlugin.objects.filter(monitor_object=monitor_object_id).exclude(status_query="").values_list("name", "status_query").distinct()
+        )
+        for plugin_name, status_query in plugin_status_qs:
+            query = (status_query or "").strip()
+            if not query:
+                continue
+            try:
+                resp = VictoriaMetricsAPI().query(query)
+            except Exception:
+                logger.warning("回填展示列时查询插件上报状态失败: plugin=%s", plugin_name, exc_info=True)
+                continue
+            reported_primary_ids = {metric["metric"].get("instance_id") for metric in resp.get("data", {}).get("result", [])}
+            reported_primary_ids.discard(None)
+            if not reported_primary_ids:
+                continue
+            for inst in uncovered:
+                parsed = parse_instance_id(inst["instance_id"])
+                primary = str(parsed[0]) if parsed else None
+                if primary in reported_primary_ids:
+                    instance_plugin_map.setdefault(inst["instance_id"], set()).add(plugin_name)
 
     @staticmethod
     def _fill_display_metrics(monitor_object_id, obj_metric_map, result):
@@ -342,37 +452,7 @@ class MonitorObjectService:
 
         # 派生/上报型实例(如 K8s 集群/Pod/Node 经集群内采集器上报,但 bk-lite 侧无 CollectConfig)
         # 也应纳入其「上报插件」的展示列取数;否则插件隔离会把它们一律判为 --。
-        # 与 effective_plugins 的 reported 逻辑一致:按对象各插件 status_query 反查上报实例,
-        # 以实例主键(instance_id)前缀匹配,使集群及其下 Pod/Node 都能命中所属插件。
-        uncovered = [inst for inst in result if inst["instance_id"] not in instance_plugin_map]
-        if uncovered:
-            plugin_status_qs = (
-                MonitorPlugin.objects.filter(monitor_object=monitor_object_id)
-                .exclude(status_query="")
-                .values_list("name", "status_query")
-                .distinct()
-            )
-            for plugin_name, status_query in plugin_status_qs:
-                query = (status_query or "").strip()
-                if not query:
-                    continue
-                try:
-                    resp = VictoriaMetricsAPI().query(query)
-                except Exception:
-                    logger.warning("回填展示列时查询插件上报状态失败: plugin=%s", plugin_name, exc_info=True)
-                    continue
-                reported_primary_ids = {
-                    metric["metric"].get("instance_id")
-                    for metric in resp.get("data", {}).get("result", [])
-                }
-                reported_primary_ids.discard(None)
-                if not reported_primary_ids:
-                    continue
-                for inst in uncovered:
-                    parsed = parse_instance_id(inst["instance_id"])
-                    primary = str(parsed[0]) if parsed else None
-                    if primary in reported_primary_ids:
-                        instance_plugin_map.setdefault(inst["instance_id"], set()).add(plugin_name)
+        MonitorObjectService._merge_reported_plugin_coverage(monitor_object_id, result, instance_plugin_map)
 
         # 同名指标可能分属多个插件,按 (plugin, name) 精确取;另留 name 兜底给遗留无 plugin 的绑定
         metric_by_plugin = {}
@@ -391,9 +471,7 @@ class MonitorObjectService:
             plugin_name, metric_name = binding["plugin"], binding["metric"]
             if plugin_name:
                 metric_obj = metric_by_plugin.get((plugin_name, metric_name))
-                eligible = [
-                    inst for inst in result if plugin_name in instance_plugin_map.get(inst["instance_id"], set())
-                ]
+                eligible = [inst for inst in result if plugin_name in instance_plugin_map.get(inst["instance_id"], set())]
             else:
                 # 遗留绑定无 plugin:按名取任一插件、不隔离,保持旧行为
                 metric_obj = metric_by_name.get(metric_name)
@@ -425,9 +503,7 @@ class MonitorObjectService:
             plugin_name, metric_name, field = binding["plugin"], binding["metric"], binding["field"]
             if plugin_name:
                 metric_obj = metric_by_plugin.get((plugin_name, metric_name))
-                eligible = [
-                    inst for inst in result if plugin_name in instance_plugin_map.get(inst["instance_id"], set())
-                ]
+                eligible = [inst for inst in result if plugin_name in instance_plugin_map.get(inst["instance_id"], set())]
             else:
                 metric_obj = metric_by_name.get(metric_name)
                 eligible = result
@@ -449,7 +525,10 @@ class MonitorObjectService:
             "time": instance_map.get(obj.id, {}).get("time", ""),
             "cloud_region_id": obj.cloud_region_id,
             "ip": obj.ip,
+            "summary_facts": obj.summary_facts,
             "fallback_sampling_rate": obj.fallback_sampling_rate,
+            "node_id": obj.node_id or "",
+            "cmdb_id": obj.cmdb_id or "",
             "organizations": list(org_map.get(obj.id, [])),
         }
 

@@ -56,6 +56,15 @@ class NodeMgmt(object):
         return_data = self.client.run("node_list", query_data)
         return return_data
 
+    def get_nodes_with_child_config(self, node_ids, collector, collect_type):
+        """查询关联了指定采集器子配置的节点 ID。"""
+        return self.client.run(
+            "get_nodes_with_child_config",
+            node_ids,
+            collector,
+            collect_type,
+        )
+
     def get_node_names_by_ids(self, node_ids):
         """
         :param node_ids: 节点ID列表
@@ -205,3 +214,10 @@ class NodeMgmt(object):
             "install_managed_component",
             {"collector_package": collector_package, "nodes": nodes},
         )
+
+    def ingest_from_source(self, **kwargs):
+        """跨模块推送写入节点（只关联，不创建）。
+
+        NATS handler 签名为 node_ingest_from_source(params)，须整包为 params。
+        """
+        return self.client.run("node_ingest_from_source", params=kwargs)

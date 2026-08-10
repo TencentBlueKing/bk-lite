@@ -3,6 +3,8 @@ from apps.system_mgmt.providers.schemas import ProviderManifest
 PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "feishu",
+        "base_connection_adapter_key": "feishu.base_connection",
+        "base_connection_adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuBaseConnectionAdapter",
         "name": "Feishu",
         "description": "Built-in Feishu integration provider for Phase 1.",
         "instance_templates": {
@@ -19,7 +21,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "field_type": "string",
                                 "required": True,
                                 "placeholder": "cli_xxx",
-                                "reset_capabilities": ["login_auth", "user_sync", "im_notification"],
+                                "reset_capabilities": ["login_auth", "user_sync", "im_notification", "im_group"],
                             },
                             {
                                 "key": "app_secret",
@@ -28,7 +30,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "required": True,
                                 "secret": True,
                                 "mask_strategy": "full",
-                                "reset_capabilities": ["login_auth", "user_sync", "im_notification"],
+                                "reset_capabilities": ["login_auth", "user_sync", "im_notification", "im_group"],
                             },
                         ],
                     },
@@ -186,6 +188,20 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuUserSyncAdapter",
                 "connection_template": [
                     {
+                        "key": "user_sync_scopes_url",
+                        "label": "授权范围接口地址",
+                        "field_type": "string",
+                        "required": False,
+                        "default": "https://open.feishu.cn/open-apis/contact/v3/scopes",
+                    },
+                    {
+                        "key": "user_sync_departments_batch_url",
+                        "label": "部门批量查询接口地址",
+                        "field_type": "string",
+                        "required": False,
+                        "default": "https://open.feishu.cn/open-apis/contact/v3/departments/batch",
+                    },
+                    {
                         "key": "user_sync_departments_url",
                         "label": "部门接口地址",
                         "field_type": "string",
@@ -225,6 +241,14 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                     },
                 ],
                 "business_template": "im_notification_form",
+            },
+            {
+                "key": "im_group",
+                "name": "IM Group",
+                "description": "Feishu group collaboration capability.",
+                "adapter_key": "feishu.im_group",
+                "adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuIMGroupAdapter",
+                "connection_template": [],
             },
         ],
     }

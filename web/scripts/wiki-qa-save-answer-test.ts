@@ -13,7 +13,7 @@ const en = JSON.parse(read('src/app/opspilot/locales/en.json'));
 
 assert.match(wikiTypes, /export interface SaveAnswerPageInput/);
 assert.match(wikiTypes, /source_conversation_id: string/);
-assert.match(wikiTypes, /as_candidate\?: boolean/);
+assert.doesNotMatch(wikiTypes, /as_candidate\?: boolean/);
 assert.match(wikiTypes, /page_type: string/);
 assert.match(wikiTypes, /tags\?: string\[\]/);
 
@@ -23,25 +23,27 @@ assert.match(wikiApi, /saveAnswerPage,/);
 
 assert.match(assistant, /SaveOutlined/);
 assert.match(assistant, /saveAnswerPage/);
-assert.match(assistant, /as_candidate: asCandidate/);
+assert.doesNotMatch(assistant, /as_candidate/);
 assert.match(assistant, /source_conversation_id/);
 assert.match(assistant, /conversationIdRef/);
 assert.match(assistant, /name="page_type"/);
 assert.match(assistant, /name="tags"/);
 assert.match(assistant, /t\('wiki\.saveAnswerToWiki'\)/);
-assert.match(assistant, /t\('wiki\.saveAnswerAsCandidate'\)/);
+assert.doesNotMatch(assistant, /wiki\.saveAnswerAsCandidate/);
 assert.match(assistant, /wiki\.saveAnswerDone/);
-assert.match(assistant, /wiki\.saveAnswerCandidateDone/);
+assert.doesNotMatch(assistant, /wiki\.saveAnswerCandidateDone/);
+assert.equal(zh.wiki.saveAnswerAsCandidate, undefined);
+assert.equal(en.wiki.saveAnswerAsCandidate, undefined);
+assert.equal(zh.wiki.saveAnswerCandidateDone, undefined);
+assert.equal(en.wiki.saveAnswerCandidateDone, undefined);
 
 for (const key of [
   'saveAnswerToWiki',
-  'saveAnswerAsCandidate',
   'saveAnswerTitle',
   'saveAnswerType',
   'saveAnswerTags',
   'saveAnswerBody',
   'saveAnswerDone',
-  'saveAnswerCandidateDone',
   'saveAnswerFailed',
 ]) {
   assert.ok(zh.wiki[key], `missing zh wiki.${key}`);

@@ -1,6 +1,6 @@
 """CMDB 资产导入解析逻辑覆盖测试（mock 图依赖）。
 
-对照 spec/prd/CMDB·资产：Excel 导入按字段类型(枚举/组织/用户/表格/标签/类型转换)解析与校验。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：Excel 导入按字段类型(枚举/组织/用户/表格/标签/类型转换)解析与校验。
 """
 
 import pytest

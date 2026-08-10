@@ -8,6 +8,8 @@ interface EditablePasswordFieldProps {
   placeholder?: string;
   size?: 'large' | 'middle' | 'small';
   showPrefixIcon?: boolean;
+  disabled?: boolean;
+  className?: string;
 }
 
 const EditablePasswordField: React.FC<EditablePasswordFieldProps> = ({

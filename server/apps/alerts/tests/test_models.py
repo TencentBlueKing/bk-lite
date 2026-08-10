@@ -1,6 +1,6 @@
 """告警中心模型方法覆盖测试。
 
-对照 spec/prd/告警中心：事件接入幂等键、告警时间格式化、级别展示。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：事件接入幂等键、告警时间格式化、级别展示。
 """
 
 import pytest
@@ -70,6 +70,28 @@ def test_incident_str_and_format_created_at():
     inc = Incident.objects.create(incident_id="I1", level="0", title="t", fingerprint="fp")
     assert "I1" in str(inc)
     assert isinstance(inc.format_created_at, str)
+
+
+@pytest.mark.django_db
+def test_incident_format_created_at_respects_activated_timezone():
+    """Incident.format_created_at 应与 Alert.format_created_at 口径一致，按激活时区 localtime。"""
+    from django.utils import timezone as dj_timezone
+
+    inc = Incident.objects.create(incident_id="I-tz", level="0", title="t", fingerprint="fp-tz")
+    utc_dt = dj_timezone.datetime(2026, 7, 24, 1, 44, 34, tzinfo=dj_timezone.utc)
+    Incident.objects.filter(pk=inc.pk).update(created_at=utc_dt)
+    inc.refresh_from_db()
+
+    shanghai = dj_timezone.zoneinfo.ZoneInfo("Asia/Shanghai")
+    dj_timezone.activate(shanghai)
+    try:
+        result = inc.format_created_at
+    finally:
+        dj_timezone.deactivate()
+
+    assert result == "2026-07-24 09:44:34", (
+        f"Incident.format_created_at 应输出用户时区钟面，实际: {result}"
+    )
 
 
 @pytest.mark.django_db

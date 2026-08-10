@@ -19,9 +19,5 @@
   "next_steps": [
     "用户提供 SAP HANA license + 在 amd64 runner 跑",
     "或 SAP 试用 license(developer plan)"
-  ],
-  "references": [
-    "docs/superpowers/plans/2026-07-06-cmdb-collect-v3-roadmap.md §3.4 G2.3(archived 22 套对象说明)",
-    "docs/superpowers/sdd/task-4-brief.md §Task 4.10"
   ]
 }

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import Notifications from '@/components/notifications';
 
 const meta: Meta<typeof Notifications> = {
@@ -33,4 +33,6 @@ export default meta;
 
 type Story = StoryObj<typeof Notifications>;
 
-export const Default: Story = {};
+export const Default: Story = {
+  render: () => <Notifications />,
+};

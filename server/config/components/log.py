@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 
 from config.components.base import APP_CODE, BASE_DIR, DEBUG
 
@@ -14,6 +15,27 @@ if not os.path.exists(log_dir):
 
 # 根据 DEBUG 环境变量设置日志级别
 LOG_LEVEL = "DEBUG" if DEBUG else "INFO"
+
+
+class SafeConsoleHandler(logging.StreamHandler):
+    """Windows GBK 控制台写 UTF-8 日志时避免 UnicodeEncodeError 中断 emit。"""
+
+    def __init__(self, stream=None):
+        super().__init__(stream or sys.stderr)
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            stream = self.stream
+            try:
+                stream.write(msg + self.terminator)
+            except UnicodeEncodeError:
+                encoding = getattr(stream, "encoding", None) or "utf-8"
+                safe = msg.encode(encoding, errors="replace").decode(encoding, errors="replace")
+                stream.write(safe + self.terminator)
+            self.flush()
+        except Exception:
+            self.handleError(record)
 
 
 class IgnoreSpecificPaths(logging.Filter):
@@ -42,12 +64,38 @@ class IgnoreSpecificPaths(logging.Filter):
         return True
 
 
+class SuppressSuccessfulSidecarAccessLogs(logging.Filter):
+    """过滤 Uvicorn 中高频的 Sidecar 成功访问日志，异常状态仍保留。"""
+
+    SIDECAR_OPEN_API_PATH_PREFIXES = (
+        "/node_mgmt/open_api/node",
+        "/api/v1/node_mgmt/open_api/node",
+    )
+
+    def filter(self, record):
+        # Uvicorn access log 参数依次为 client、method、path、HTTP version、status。
+        if not isinstance(record.args, tuple) or len(record.args) < 5:
+            return True
+
+        path = str(record.args[2])
+        try:
+            status_code = int(record.args[4])
+        except (TypeError, ValueError):
+            return True
+
+        is_sidecar_request = any(path.startswith(prefix) for prefix in self.SIDECAR_OPEN_API_PATH_PREFIXES)
+        return not (is_sidecar_request and status_code < 400)
+
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "filters": {
         "ignore_paths": {
             "()": IgnoreSpecificPaths,
+        },
+        "suppress_successful_sidecar_access_logs": {
+            "()": SuppressSuccessfulSidecarAccessLogs,
         },
     },
     "formatters": {
@@ -63,20 +111,28 @@ LOGGING = {
     "handlers": {
         "console": {
             "level": "DEBUG",
-            "class": "logging.StreamHandler",
+            "()": SafeConsoleHandler,
             "formatter": "simple",
             "filters": ["ignore_paths"],  # 添加 filter
+        },
+        "uvicorn_access_console": {
+            "level": "INFO",
+            "()": SafeConsoleHandler,
+            "formatter": "simple",
+            "filters": ["suppress_successful_sidecar_access_logs"],
         },
         "null": {"level": "DEBUG", "class": "logging.NullHandler"},
         "root": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "%s.log" % APP_CODE),
+            "encoding": "utf-8",
         },
         "db": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "db.log"),
+            "encoding": "utf-8",
         },
         "alert": {
             "class": "logging.handlers.RotatingFileHandler",
@@ -90,51 +146,61 @@ LOGGING = {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "cmdb.log"),
+            "encoding": "utf-8",
         },
         "operation_analysis": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "operation_analysis.log"),
+            "encoding": "utf-8",
         },
         "nats": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "nats.log"),
+            "encoding": "utf-8",
         },
         "monitor": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "monitor.log"),
+            "encoding": "utf-8",
         },
         "node": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "node.log"),
+            "encoding": "utf-8",
         },
         "ops-console": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "ops-console.log"),
+            "encoding": "utf-8",
         },
         "system-manager": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "system-manager.log"),
+            "encoding": "utf-8",
         },
         "opspilot": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "opspilot.log"),
+            "encoding": "utf-8",
         },
         "job": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "job.log"),
+            "encoding": "utf-8",
         },
         "playground": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "playground.log"),
+            "encoding": "utf-8",
         },
     },
     "loggers": {
@@ -159,6 +225,11 @@ LOGGING = {
         "alert": {"handlers": ["alert", "console"], "level": LOG_LEVEL, "propagate": True},
         "celery": {"handlers": ["root"], "level": "INFO", "propagate": True},
         "playground": {"handlers": ["playground", "console"], "level": LOG_LEVEL, "propagate": True},
+        "uvicorn.access": {
+            "handlers": ["uvicorn_access_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
         # httpx 会在 INFO 级别输出每次成功请求:
         # HTTP Request: POST ... "HTTP/1.1 200 OK"。解析/构建调用 LLM 时会刷屏,
         # 这里仅保留 warning/error，异常仍可见。

@@ -25,4 +25,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.alerts.tasks.tasks.check_and_send_escalations",
         "schedule": crontab(minute="*"),
     },
+    "dispatch_pending_alert_outbox": {
+        "task": "apps.alerts.tasks.tasks.dispatch_pending_alert_outbox",
+        "schedule": crontab(minute="*"),
+    },
+    "beat_retry_unassigned_assignment": {
+        "task": "apps.alerts.tasks.tasks.beat_retry_unassigned_assignment",
+        "schedule": crontab(minute="*/5"),
+    },
 }

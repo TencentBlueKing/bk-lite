@@ -1,0 +1,86 @@
+{
+  "zh": [
+    {
+      "title": "首页",
+      "icon": "daohang-yunyingfenxishi",
+      "url": "/patch-manager/home",
+      "name": "patch_dashboard"
+    },
+    {
+      "title": "风险治理",
+      "icon": "gongju-",
+      "url": "/patch-manager/risk-pending",
+      "name": "patch_risk",
+      "children": [
+        { "title": "待治理风险", "url": "/patch-manager/risk-pending", "name": "patch_risk", "withParentPermission": true },
+        { "title": "执行记录", "url": "/patch-manager/risk-execution", "name": "patch_governance" }
+      ]
+    },
+    {
+      "title": "补丁库",
+      "icon": "baoguanli-full",
+      "url": "/patch-manager/library",
+      "name": "patch"
+    },
+    {
+      "title": "基线管理",
+      "icon": "guize",
+      "url": "/patch-manager/baseline",
+      "name": "patch_baseline"
+    },
+    {
+      "title": "目标管理",
+      "icon": "mubiaoguanli",
+      "url": "/patch-manager/target",
+      "name": "patch_target"
+    },
+    {
+      "title": "设置",
+      "icon": "settings-fill",
+      "url": "/patch-manager/settings",
+      "name": "patch_source"
+    }
+  ],
+  "en": [
+    {
+      "title": "Home",
+      "icon": "daohang-yunyingfenxishi",
+      "url": "/patch-manager/home",
+      "name": "patch_dashboard"
+    },
+    {
+      "title": "Risk Governance",
+      "icon": "gongju-",
+      "url": "/patch-manager/risk-pending",
+      "name": "patch_risk",
+      "children": [
+        { "title": "Pending Risks", "url": "/patch-manager/risk-pending", "name": "patch_risk", "withParentPermission": true },
+        { "title": "Execution Records", "url": "/patch-manager/risk-execution", "name": "patch_governance" }
+      ]
+    },
+    {
+      "title": "Patch Library",
+      "icon": "baoguanli-full",
+      "url": "/patch-manager/library",
+      "name": "patch"
+    },
+    {
+      "title": "Baseline",
+      "icon": "guize",
+      "url": "/patch-manager/baseline",
+      "name": "patch_baseline"
+    },
+    {
+      "title": "Target",
+      "icon": "mubiaoguanli",
+      "url": "/patch-manager/target",
+      "name": "patch_target"
+    },
+    {
+      "title": "Settings",
+      "icon": "settings-fill",
+      "url": "/patch-manager/settings",
+      "name": "patch_source"
+    }
+  ]
+}

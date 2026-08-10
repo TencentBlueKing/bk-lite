@@ -1,7 +1,8 @@
 'use client';
 
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Button, Form, Modal, Select, Space, Switch, Tag } from 'antd';
+import { Button, Form, Modal, Select, Space, Switch, Tag, Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import type {
   AttrFieldType,
   AutoAssociationRuleFormAssociationItem,
@@ -9,6 +10,10 @@ import type {
   ModelAutoAssociationRuleItem,
 } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
+
+const LONG_TOOLTIP_OVERLAY_STYLE = {
+  maxWidth: 'min(520px, calc(100vw - 48px))',
+};
 
 interface AutoAssociationRuleModalConfig {
   mode: 'create' | 'edit';
@@ -340,8 +345,15 @@ const AutoAssociationRuleModal = forwardRef<AutoAssociationRuleModalRef, Props>(
 
         <div className="rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-4">
           <div className="mb-3">
-            <div className="font-medium text-[var(--color-text-1)]">{t('Model.matchPairs')}</div>
-            <div className="mt-1 text-sm text-[var(--color-text-3)]">{t('Model.matchPairSelectionTip', 'Select source and target fields in bulk. Fields are paired by matching type and selection order.')}</div>
+            <div className="flex items-center gap-1 font-medium text-[var(--color-text-1)]">
+              <span>{t('Model.matchPairs')}</span>
+              <Tooltip
+                overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
+                title={t('Model.matchPairSelectionTip', 'Select source and target fields in bulk. Fields are paired by matching type and selection order.')}
+              >
+                <QuestionCircleOutlined className="text-[var(--color-text-tertiary)]" />
+              </Tooltip>
+            </div>
           </div>
 
           <Space direction="vertical" className="w-full" size={12}>

@@ -14,6 +14,7 @@ requires-python = ">=3.12"
 dependencies = [
     "pyarmor==9.0.7",
     "sanic==24.6.0",
+    "tracerite==1.1.3",
     "sanic-ext==23.12.0",
     "prometheus_client==0.21.1",
     "pyarmor==9.0.7",
@@ -30,11 +31,11 @@ dependencies = [
     "oracledb==3.3.0",
     "pyodbc==5.2.0",
     "paramiko==3.5.0",
+    "confluent-kafka[avro]==2.15.0",
     "netmiko==4.5.0",
     "pyghmi>=1.6.5",
     "impacket>=0.12.0",
     "pytz==2025.2",
-    "arq>=0.26.0",
     "redis>=5.0.0",
     "influxdb-client>=1.49.0",
     "psycopg2==2.9.11",
@@ -135,6 +136,7 @@ snmp = [
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=0.26.0",
     # 2026-07-07 Phase 2:pytest-xdist 加速 91s → 46s(2x,8 核 auto worker 数)

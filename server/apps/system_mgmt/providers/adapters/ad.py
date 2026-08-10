@@ -1,3 +1,5 @@
+import re
+
 from ldap3.core.exceptions import LDAPBindError
 
 from apps.core.logger import logger
@@ -14,14 +16,51 @@ from .common.ldap import (
 )
 
 
-AD_LOGIN_ATTRIBUTES = [
-    "sAMAccountName",
-    "userPrincipalName",
-    "displayName",
-    "mail",
-    "telephoneNumber",
-    "distinguishedName",
-]
+def _get_sync_user_attributes(source) -> list[str]:
+    """仅查询当前同步源映射字段及构建组织关系必需的 DN。"""
+    field_mapping = getattr(source, "field_mapping", None) or {}
+    mapped_attributes = [str(attribute).strip() for attribute in field_mapping.values() if str(attribute or "").strip()]
+    return list(dict.fromkeys([*mapped_attributes, "distinguishedName"]))
+
+
+def _get_ldap_result_code(error: Exception) -> str:
+    """Extract an LDAP result code without exposing the raw server response."""
+    match = re.search(r"(?:ldap\s+)?result\s+(\d+)|-\s*(\d+)\s*-", str(error), re.IGNORECASE)
+    if match is None:
+        return ""
+    return match.group(1) or match.group(2) or ""
+
+
+def _build_ad_connection_failure(error: Exception) -> CapabilityExecutionResult:
+    if isinstance(error, LDAPBindError):
+        return CapabilityExecutionResult.failed_result(
+            "AD connection credentials were rejected",
+            code="provider.auth_failed",
+            detail="LDAP bind rejected the configured credentials",
+            external_code=_get_ldap_result_code(error),
+        )
+
+    return CapabilityExecutionResult.failed_result(
+        "AD connection test failed",
+        code="provider.request_failed",
+        detail="LDAP connection request failed",
+    )
+
+
+class ADBaseConnectionAdapter:
+    @classmethod
+    def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        try:
+            connection_config = build_connection_config(config, require_base_dn=False)
+            if not all([connection_config.connection_url, connection_config.bind_dn, connection_config.bind_password]):
+                return CapabilityExecutionResult.failed_result(
+                    "AD connection configuration is incomplete",
+                    code="provider.invalid_config",
+                )
+            probe_root_dse(connection_config)
+        except Exception as error:
+            return _build_ad_connection_failure(error)
+        return CapabilityExecutionResult.success_result("AD base connection is ready")
 
 
 class ADLoginAuthAdapter(BaseLoginAuthAdapter):
@@ -45,11 +84,7 @@ class ADLoginAuthAdapter(BaseLoginAuthAdapter):
 
             probe_root_dse(connection_config)
         except Exception as error:
-            logger.exception(f"AD login connection test failed: {error}")
-            return CapabilityExecutionResult.failed_result(
-                "AD login connection test failed",
-                code="provider.request_failed",
-            )
+            return _build_ad_connection_failure(error)
 
         return CapabilityExecutionResult.success_result("AD login capability is ready")
 
@@ -72,9 +107,15 @@ class ADLoginAuthAdapter(BaseLoginAuthAdapter):
                 field="login_auth_identity_field",
             )
 
+        binding = kwargs.get("binding")
+        external_match_field = str(getattr(binding, "external_field", "") or "").strip()
+        attributes = list(
+            dict.fromkeys(attribute for attribute in [identity_field, external_match_field, "distinguishedName"] if attribute)
+        )
+
         try:
             connection_config = build_connection_config(config)
-            user = search_single_user(connection_config, identity_field, username, AD_LOGIN_ATTRIBUTES)
+            user = search_single_user(connection_config, identity_field, username, attributes)
             if not user:
                 return CapabilityExecutionResult.failed_result(
                     "AD user not found",
@@ -99,37 +140,44 @@ class ADLoginAuthAdapter(BaseLoginAuthAdapter):
             )
         except LDAPBindError as error:
             if "invalidcredentials" in str(error).lower():
-                logger.warning("AD authentication failed due to invalid credentials")
                 return CapabilityExecutionResult.failed_result(
                     "AD authentication failed",
                     code="provider.auth_failed",
                     field=identity_field,
                 )
-            logger.exception(f"AD authenticate bind failed: {error}")
+            logger.debug(f"AD authenticate bind failed: error_type={type(error).__name__}")
             return CapabilityExecutionResult.failed_result(
                 "AD authentication failed",
                 code="provider.auth_failed",
                 field=identity_field,
             )
         except Exception as error:
-            logger.exception(f"AD authenticate failed: {error}")
+            logger.debug(f"AD authenticate failed: error_type={type(error).__name__}")
             return CapabilityExecutionResult.failed_result(
                 "AD authentication failed",
                 code="provider.auth_failed",
                 field=identity_field,
             )
 
+        external_user = {
+            "sAMAccountName": get_ldap_scalar(user.get("sAMAccountName")),
+            "userPrincipalName": get_ldap_scalar(user.get("userPrincipalName")),
+            "name": get_ldap_scalar(user.get("displayName")) or get_ldap_scalar(user.get("sAMAccountName")) or username,
+            "email": get_ldap_scalar(user.get("mail")),
+            "mobile": (
+                get_ldap_scalar(user.get("mobile"))
+                or get_ldap_scalar(user.get("telephoneNumber"))
+                or get_ldap_scalar(user.get("mobilePhone"))
+            ),
+            "distinguishedName": distinguished_name,
+        }
+        if external_match_field:
+            external_user[external_match_field] = get_ldap_scalar(user.get(external_match_field))
+
         return CapabilityExecutionResult.success_result(
             "AD login authenticated",
             payload={
-                "external_user": {
-                    "sAMAccountName": get_ldap_scalar(user.get("sAMAccountName")),
-                    "userPrincipalName": get_ldap_scalar(user.get("userPrincipalName")),
-                    "name": get_ldap_scalar(user.get("displayName")) or get_ldap_scalar(user.get("sAMAccountName")) or username,
-                    "email": get_ldap_scalar(user.get("mail")),
-                    "mobile": get_ldap_scalar(user.get("telephoneNumber")),
-                    "distinguishedName": distinguished_name,
-                }
+                "external_user": external_user
             },
         )
 
@@ -158,11 +206,7 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
 
             probe_root_dse(connection_config)
         except Exception as error:
-            logger.exception(f"AD user sync connection test failed: {error}")
-            return CapabilityExecutionResult.failed_result(
-                "AD user sync connection test failed",
-                code="provider.request_failed",
-            )
+            return _build_ad_connection_failure(error)
 
         return CapabilityExecutionResult.success_result("AD user sync capability is ready")
 
@@ -212,7 +256,7 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
                 connection_config,
                 root_dn,
                 cls._build_object_search_filter(user_object_class, user_filter),
-                AD_LOGIN_ATTRIBUTES,
+                _get_sync_user_attributes(source),
                 paged_size=100,
             )
             organization_entries = search_entries(
@@ -223,7 +267,7 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
                 paged_size=100,
             )
         except Exception as error:
-            logger.exception(f"AD user sync failed: {error}")
+            logger.debug(f"AD user sync failed: error_type={type(error).__name__}")
             return CapabilityExecutionResult.failed_result(
                 "AD user sync request failed",
                 code="provider.request_failed",
@@ -274,6 +318,8 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
             "displayName": get_ldap_scalar(user_entry.get("displayName")) or get_ldap_scalar(user_entry.get("sAMAccountName")),
             "mail": get_ldap_scalar(user_entry.get("mail")),
             "telephoneNumber": get_ldap_scalar(user_entry.get("telephoneNumber")),
+            "mobile": get_ldap_scalar(user_entry.get("mobile")),
+            "mobilePhone": get_ldap_scalar(user_entry.get("mobilePhone")),
             "distinguishedName": get_ldap_scalar(user_entry.get("distinguishedName")),
         }
 

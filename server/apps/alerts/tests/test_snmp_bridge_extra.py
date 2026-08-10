@@ -1,6 +1,6 @@
 """SNMP Trap bridge 解析/投递补充覆盖测试。
 
-对照 spec/prd/告警中心·集成：SNMP trap 经 bridge 归一化为标准事件并投递到接收器。
+对照 specs/capabilities/legacy-prd-告警中心-集成.md：SNMP trap 经 bridge 归一化为标准事件并投递到接收器。
 """
 
 import pytest

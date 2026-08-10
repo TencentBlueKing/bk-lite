@@ -5,6 +5,7 @@ import type {
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import { getWidgetComponent } from './widgetRegistry';
+import { supportsComponentSwitch } from '@/app/ops-analysis/utils/componentParamSwitch';
 
 interface WidgetRendererProps {
   chartType?: string;
@@ -17,6 +18,12 @@ interface WidgetRendererProps {
   screenRenderContext?: ScreenRenderContext;
   onReady?: (ready?: boolean) => void;
   onQueryChange?: (params: Record<string, any>) => void;
+  layoutEditable?: boolean;
+  onTopologyLayoutChange?: (
+    next: NonNullable<ValueConfig['networkStatusTopology']>,
+  ) => void;
+  componentSwitchControl?: React.ReactNode;
+  errorMessage?: string;
   fallback?: React.ReactNode;
 }
 
@@ -31,6 +38,10 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   screenRenderContext,
   onReady,
   onQueryChange,
+  layoutEditable,
+  onTopologyLayoutChange,
+  componentSwitchControl,
+  errorMessage,
   fallback = null,
 }) => {
   const Component = getWidgetComponent(chartType);
@@ -49,6 +60,9 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       screenRenderContext={screenRenderContext}
       onReady={onReady}
       onQueryChange={onQueryChange}
+      layoutEditable={layoutEditable}
+      onTopologyLayoutChange={onTopologyLayoutChange}
+      {...(supportsComponentSwitch(chartType) ? { componentSwitchControl, errorMessage } : {})}
     />
   );
 };

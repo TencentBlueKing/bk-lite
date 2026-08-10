@@ -3,8 +3,27 @@
  * 用于将历史会话中的 AG-UI 协议消息解析并渲染为 HTML
  */
 
-import { BrowserStepProgressData, BrowserStepsHistory, BrowserTaskReceivedData, ReportFileDownload } from '@/app/opspilot/types/global';
+import {
+  ApprovalRequest,
+  BrowserStepProgressData,
+  BrowserStepsHistory,
+  BrowserTaskReceivedData,
+  ConfigAnalysisReport,
+  ConfigDiffReport,
+  PlannedExecutionStepView,
+  RepairCommands,
+  ReportFileDownload,
+  UserChoiceRequest,
+} from '@/app/opspilot/types/global';
 import { initToolCallTooltips, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
+import {
+  applyPlannedExecutionStep,
+  attachToolCallToCurrentStep,
+  createPlannedExecutionState,
+  finalizePlannedExecutionSteps,
+  isToolAssignedToPlannedStep,
+} from './plannedExecutionState';
+import type { PlannedExecutionStepValue } from '@/app/opspilot/types/chat';
 
 const escapeNewlinesInStrings = (raw: string) => {
   let result = '';
@@ -328,6 +347,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
   let isRunning = false;
   let lastStep: BrowserStepProgressData | null = null;
   const pendingToolIds: string[] = [];
+  let plannedExecutionState = createPlannedExecutionState();
 
   const flushToolCalls = () => {
     if (pendingToolIds.length > 0) {
@@ -406,6 +426,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
           status: 'completed',
           result: undefined
         });
+        plannedExecutionState = attachToolCallToCurrentStep(plannedExecutionState, msg.toolCallId);
         break;
 
       case 'TOOL_CALL_ARGS':
@@ -445,8 +466,10 @@ const buildFromEvents = (events: any[], finalize = true) => {
 
       case 'TOOL_CALL_END':
         if (msg.toolCallId && toolCalls.has(msg.toolCallId)) {
-          pendingToolIds.push(msg.toolCallId);
-          lastBlockType = 'toolCall';
+          if (!isToolAssignedToPlannedStep(plannedExecutionState, msg.toolCallId)) {
+            pendingToolIds.push(msg.toolCallId);
+            lastBlockType = 'toolCall';
+          }
         }
         break;
 
@@ -510,6 +533,11 @@ const buildFromEvents = (events: any[], finalize = true) => {
           }
         } else if (msg.name === 'skill_view' && msg.value && Array.isArray(msg.value.items)) {
           skillViews.splice(0, skillViews.length, ...msg.value.items.filter((item: any) => item?.name));
+        } else if (msg.name === 'planned_execution_step' && msg.value) {
+          plannedExecutionState = applyPlannedExecutionStep(
+            plannedExecutionState,
+            msg.value as PlannedExecutionStepValue
+          );
         }
         break;
 
@@ -518,6 +546,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
         if (steps.length > 0) {
           isRunning = false;
         }
+        plannedExecutionState = finalizePlannedExecutionSteps(plannedExecutionState);
         break;
 
       default:
@@ -541,6 +570,21 @@ const buildFromEvents = (events: any[], finalize = true) => {
     ? { steps: [...steps], isRunning: finalize ? false : isRunning }
     : null;
 
+  if (finalize) {
+    plannedExecutionState = finalizePlannedExecutionSteps(plannedExecutionState);
+  }
+
+  const plannedExecutionSteps: PlannedExecutionStepView[] | undefined =
+    plannedExecutionState.steps.length > 0
+      ? plannedExecutionState.steps.map((step) => ({
+        step_index: step.step_index,
+        total_steps: step.total_steps,
+        objective: step.objective,
+        status: step.status,
+        toolCallIds: [...step.toolCallIds],
+      }))
+      : undefined;
+
   return {
     content: contentText,
     thinking,
@@ -550,6 +594,8 @@ const buildFromEvents = (events: any[], finalize = true) => {
     agentStepProgress: agentSteps.length > 0 ? agentSteps : undefined,
     skillViews: skillViews.length > 0 ? skillViews : undefined,
     reportFileDownloads: reportFileDownloads.length > 0 ? reportFileDownloads : undefined,
+    plannedExecutionSteps,
+    isStreamingTools: finalize ? false : Boolean(plannedExecutionSteps?.some((s) => s.status === 'running')),
     toolCalls: toolCalls.size > 0 ? Array.from(toolCalls.entries()).map(([id, info]) => ({
       id, name: info.name, args: info.args, status: info.status as 'calling' | 'completed', result: info.result
     })) : undefined
@@ -605,7 +651,14 @@ export const processHistoryMessageWithExtras = (
   browserStepsHistory?: BrowserStepsHistory | null;
   agentStepProgress?: import('@/app/opspilot/types/global').AgentStepProgressData[];
   skillViews?: import('@/app/opspilot/types/global').SkillViewItem[];
+  configDiffReports?: ConfigDiffReport[];
+  configAnalysisReports?: ConfigAnalysisReport[];
+  userChoiceRequests?: UserChoiceRequest[];
+  approvalRequests?: ApprovalRequest[];
+  repairCommands?: RepairCommands[];
   reportFileDownloads?: ReportFileDownload[];
+  plannedExecutionSteps?: PlannedExecutionStepView[];
+  isStreamingTools?: boolean;
   toolCalls?: Array<{ id: string; name: string; args: string; status: 'calling' | 'completed'; result?: string }>;
 } => {
   if (role !== 'bot') {

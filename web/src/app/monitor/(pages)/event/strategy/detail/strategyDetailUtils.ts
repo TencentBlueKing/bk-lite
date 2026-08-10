@@ -12,6 +12,11 @@ export const FORMULA_DEFAULT_RESULT_UNIT = 'percent';
 
 const INVALID_THRESHOLD_UNIT_IDS = new Set(['none', 'short']);
 
+/** 无量纲 / 不参与阈值单位选配的单位（none、short、空） */
+export const isVacantThresholdUnit = (
+  unit: string | null | undefined
+): boolean => !unit || INVALID_THRESHOLD_UNIT_IDS.has(unit);
+
 export const resolveInitialMetricPluginId = ({
   type,
   pluginList,
@@ -141,11 +146,30 @@ export const getMetricThresholdEnumState = ({
 };
 
 export const shouldShowThresholdUnitSelector = ({
-  isEnumMetric
+  isEnumMetric,
+  calculationUnit,
+  unitList = [],
 }: {
   isFormulaMode: boolean;
   isEnumMetric: boolean;
-}): boolean => !isEnumMetric;
+  calculationUnit?: string | null;
+  unitList?: UnitListItem[];
+}): boolean => {
+  if (isEnumMetric) return false;
+  if (isVacantThresholdUnit(calculationUnit)) return false;
+  // 单位表就绪但无可选阈值单位时也不展示（避免空下拉 + 必填）
+  if (
+    unitList.length > 0 &&
+    !getThresholdUnitOptions({
+      unitList,
+      metricUnit: calculationUnit ?? null,
+      isEnumMetric: false,
+    }).length
+  ) {
+    return false;
+  }
+  return true;
+};
 
 export const getThresholdUnitOptions = ({
   unitList,
@@ -156,7 +180,9 @@ export const getThresholdUnitOptions = ({
   metricUnit: string | null;
   isEnumMetric: boolean;
 }): UnitListItem[] => {
-  if (isEnumMetric || !metricUnit) return [];
+  if (isEnumMetric || !metricUnit || isVacantThresholdUnit(metricUnit)) {
+    return [];
+  }
 
   const validUnits = getValidThresholdUnitOptions(unitList);
   const baseUnit = validUnits.find((item) => item.unit_id === metricUnit);
@@ -221,7 +247,7 @@ export const resolveMetricDisplayUnit = (
   unit: string | null | undefined,
   unitList: UnitListItem[]
 ): string => {
-  if (!unit || INVALID_THRESHOLD_UNIT_IDS.has(unit) || isStringArray(unit)) {
+  if (isVacantThresholdUnit(unit) || isStringArray(unit || '')) {
     return '';
   }
 
@@ -250,11 +276,19 @@ export const buildMetricSelectOption = (
 export const filterInvalidCalculationUnit = (
   unit: string | null | undefined
 ): string | null => {
-  if (!unit || unit === 'none' || unit === 'short' || isStringArray(unit)) {
+  if (isVacantThresholdUnit(unit) || isStringArray(unit || '')) {
     return null;
   }
-  return unit;
+  return unit ?? null;
 };
+
+/**
+ * 指标切换时解析 calculation/threshold 单位。
+ * none/short/枚举/空 → null，禁止再按 system===null 回落到 cps 等独立单位。
+ */
+export const resolveUnitOnMetricSelect = (
+  metricUnit: string | null | undefined
+): string | null => filterInvalidCalculationUnit(metricUnit);
 
 export const restoreCalculationUnitState = (
   unit: string | null | undefined

@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Alert, Button, Empty, Spin } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { useTranslation } from "@/utils/i18n";
@@ -25,6 +31,8 @@ interface Room3DProps {
   config?: ValueConfig;
   screenRenderContext?: ScreenRenderContext;
   onReady?: (ready: boolean) => void;
+  componentSwitchControl?: React.ReactNode;
+  errorMessage?: string;
 }
 
 interface PointerState {
@@ -33,15 +41,24 @@ interface PointerState {
   y: number;
 }
 
+interface SizeState {
+  width: number;
+  height: number;
+}
+
 const Room3D: React.FC<Room3DProps> = ({
   rawData,
   loading = false,
   config,
   screenRenderContext,
   onReady,
+  componentSwitchControl,
+  errorMessage,
 }) => {
   const { t } = useTranslation();
+  const roomRef = useRef<HTMLDivElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
   const resetViewRef = useRef<() => void>(() => undefined);
   const validation = useMemo(
     () => validateRoom3DData(rawData, t),
@@ -61,8 +78,29 @@ const Room3D: React.FC<Room3DProps> = ({
     device: Room3DRenderableDevice;
   } | null>(null);
   const [chromeVisible, setChromeVisible] = useState(false);
+  const [tooltipSize, setTooltipSize] = useState<SizeState>({
+    width: 0,
+    height: 0,
+  });
 
   const isCompact = (screenRenderContext?.widgetDensity || 0) > 0.5;
+  const readableOverlayScale = useMemo(() => {
+    if (!screenRenderContext?.enabled) {
+      return 1;
+    }
+
+    const fitScale =
+      Number.isFinite(screenRenderContext.fitScale) &&
+      screenRenderContext.fitScale > 0
+        ? screenRenderContext.fitScale
+        : 1;
+    const uiScale =
+      screenRenderContext.widgetUiScale ||
+      screenRenderContext.screenUiScale ||
+      1;
+
+    return Math.max(uiScale, 1 / fitScale, 1);
+  }, [screenRenderContext]);
 
   useEffect(() => {
     if (!loading) {
@@ -86,7 +124,6 @@ const Room3D: React.FC<Room3DProps> = ({
     const controller = createRoom3DScene(
       mountNode,
       roomData,
-      { transparentScene: displayOptions.transparentScene },
       {
         onHover: setHoverState,
         onSelect: (rack) => {
@@ -104,7 +141,7 @@ const Room3D: React.FC<Room3DProps> = ({
       controller.dispose();
       resetViewRef.current = () => undefined;
     };
-  }, [displayOptions.transparentScene, roomData]);
+  }, [roomData]);
 
   const legendItems = useMemo(() => {
     if (!roomData?.racks.length) {
@@ -128,10 +165,6 @@ const Room3D: React.FC<Room3DProps> = ({
     }));
   }, [roomData?.racks]);
 
-  const selectedRackDevices = useMemo(
-    () => (selectedRack ? getRoom3DRackDevices(selectedRack) : []),
-    [selectedRack],
-  );
   const selectedRackPosition = selectedRack
     ? getRoom3DPositionLabel(selectedRack)
     : "";
@@ -139,9 +172,131 @@ const Room3D: React.FC<Room3DProps> = ({
     ? (selectedRack.conflict_racks ?? [])
     : [];
   const shouldShowHoverTooltip = Boolean(
-    hoverState && !selectedRack && !selectedDevice,
+    hoverState && !selectedDevice,
   );
-  const shouldShowRackPanel = Boolean(selectedRack && !selectedDevice);
+  const shouldShowRackPanel = Boolean(
+    selectedRack?.is_conflict && !selectedDevice,
+  );
+  const hoverRackFields = useMemo(() => {
+    const rack = hoverState?.rack;
+    if (!rack) {
+      return [];
+    }
+
+    const fields: Array<{ label: string; value: React.ReactNode }> = [
+      {
+        label: t("dashboard.room3DLocation"),
+        value: getRoom3DPositionLabel(rack),
+      },
+      {
+        label: t("dashboard.room3DUCount"),
+        value: rack.u_count ?? "-",
+      },
+      {
+        label: t("dashboard.room3DUsedU"),
+        value: rack.used_u ?? "-",
+      },
+      {
+        label: t("dashboard.room3DFreeU"),
+        value: rack.free_u ?? "-",
+      },
+      {
+        label: t("dashboard.room3DDeviceCount"),
+        value: rack.device_count ?? getRoom3DRackDevices(rack).length,
+      },
+    ];
+    if (rack.is_conflict) {
+      fields.push({
+        label: t("dashboard.room3DConflictRacks"),
+        value: `${rack.conflict_racks?.length ?? 0}${t("dashboard.room3DCountUnit")}`,
+      });
+    } else if (rack.unplaced_device_count) {
+      fields.push({
+        label: t("dashboard.room3DUnplaced"),
+        value: rack.unplaced_device_count,
+      });
+    }
+    return fields;
+  }, [hoverState?.rack, t]);
+  useLayoutEffect(() => {
+    if (!shouldShowHoverTooltip) {
+      return undefined;
+    }
+
+    const tooltipNode = tooltipRef.current;
+    if (!tooltipNode) {
+      return undefined;
+    }
+
+    const updateTooltipSize = () => {
+      setTooltipSize((previous) =>
+        previous.width === tooltipNode.offsetWidth &&
+        previous.height === tooltipNode.offsetHeight
+          ? previous
+          : {
+            width: tooltipNode.offsetWidth,
+            height: tooltipNode.offsetHeight,
+          },
+      );
+    };
+
+    updateTooltipSize();
+    const resizeObserver = new ResizeObserver(updateTooltipSize);
+    resizeObserver.observe(tooltipNode);
+    window.addEventListener("resize", updateTooltipSize);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateTooltipSize);
+    };
+  }, [hoverRackFields, shouldShowHoverTooltip]);
+  const hoverTooltipStyle = useMemo<React.CSSProperties | undefined>(() => {
+    if (!hoverState) {
+      return undefined;
+    }
+
+    const scale = readableOverlayScale;
+    const offset = 6 * scale;
+    const margin = 8 * scale;
+    const fallbackWidth = 184 * scale;
+    const fallbackHeight = 132 * scale;
+    const width = tooltipSize.width || fallbackWidth;
+    const height = tooltipSize.height || fallbackHeight;
+    const roomNode = roomRef.current;
+    const roomRect = roomNode?.getBoundingClientRect();
+    const scaleX =
+      roomNode && roomRect?.width ? roomNode.offsetWidth / roomRect.width : 1;
+    const scaleY =
+      roomNode && roomRect?.height ? roomNode.offsetHeight / roomRect.height : 1;
+    const localX = roomRect
+      ? (hoverState.x - roomRect.left) * scaleX
+      : hoverState.x;
+    const localY = roomRect
+      ? (hoverState.y - roomRect.top) * scaleY
+      : hoverState.y;
+    const roomWidth = roomNode?.offsetWidth || window.innerWidth;
+    const roomHeight = roomNode?.offsetHeight || window.innerHeight;
+    const minLeft = margin;
+    const maxLeft = Math.max(minLeft, roomWidth - width - margin);
+    const minTop = margin;
+    const maxTop = Math.max(minTop, roomHeight - height - margin);
+    const preferredLeft = localX + offset;
+    const flippedLeft = localX - width - offset;
+    const preferredTop = localY + offset;
+
+    return {
+      left: Math.min(
+        Math.max(
+          preferredLeft + width > roomWidth - margin
+            ? flippedLeft
+            : preferredLeft,
+          minLeft,
+        ),
+        maxLeft,
+      ),
+      top: Math.min(Math.max(preferredTop, minTop), maxTop),
+    };
+  }, [hoverState, readableOverlayScale, tooltipSize]);
   const selectedDeviceFields = useMemo(() => {
     if (!selectedDevice) {
       return [];
@@ -186,15 +341,32 @@ const Room3D: React.FC<Room3DProps> = ({
 
   if (loading) {
     return (
-      <div className={styles.stateBox}>
+      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
+        {componentSwitchControl && (
+          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        )}
         <Spin />
+      </div>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
+        {componentSwitchControl && (
+          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        )}
+        <Alert type="error" showIcon message={errorMessage} />
       </div>
     );
   }
 
   if (!validation.ok) {
     return (
-      <div className={styles.stateBox}>
+      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
+        {componentSwitchControl && (
+          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        )}
         <Alert
           type="error"
           showIcon
@@ -207,7 +379,10 @@ const Room3D: React.FC<Room3DProps> = ({
 
   if (!roomData.racks.length) {
     return (
-      <div className={styles.stateBox}>
+      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
+        {componentSwitchControl && (
+          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        )}
         <div className={styles.stateContent}>
           {notice && <Alert type="warning" showIcon message={notice} />}
           <Empty description={t("dashboard.room3DNoData")} />
@@ -216,11 +391,13 @@ const Room3D: React.FC<Room3DProps> = ({
     );
   }
 
+  const showRoomSummary = !componentSwitchControl;
   const roomRackCount = roomData.racks.length;
   const roomSummaryText = `${t("dashboard.room3DRoomNameLabel")}${roomData.room.name}${t("dashboard.room3DRackCountPrefix")}${roomRackCount}${t("dashboard.room3DRackCountSuffix")}`;
 
   return (
     <div
+      ref={roomRef}
       className={[
         styles.room3D,
         displayOptions.immersive ? styles.room3DImmersive : "",
@@ -230,20 +407,28 @@ const Room3D: React.FC<Room3DProps> = ({
         .join(" ")}
       onPointerEnter={() => setChromeVisible(true)}
       onPointerLeave={() => setChromeVisible(false)}
+      style={{
+        "--room3d-readable-scale": readableOverlayScale,
+      } as React.CSSProperties}
     >
       <div ref={mountRef} className={styles.canvas} />
+      {componentSwitchControl && (
+        <div className={styles.roomSwitchOverlay}>{componentSwitchControl}</div>
+      )}
       <div className={styles.topBar}>
-        <div className={styles.roomTitle} title={roomSummaryText}>
-          <span className={styles.roomTitleLabel}>
-            {t("dashboard.room3DRoomNameLabel")}
-          </span>
-          <strong className={styles.roomTitleName}>{roomData.room.name}</strong>
-          <span className={styles.roomTitleCount}>
-            {t("dashboard.room3DRackCountPrefix")}
-            {roomRackCount}
-            {t("dashboard.room3DRackCountSuffix")}
-          </span>
-        </div>
+        {showRoomSummary && (
+          <div className={styles.roomTitle} title={roomSummaryText}>
+            <span className={styles.roomTitleLabel}>
+              {t("dashboard.room3DRoomNameLabel")}
+            </span>
+            <strong className={styles.roomTitleName}>{roomData.room.name}</strong>
+            <span className={styles.roomTitleCount}>
+              {t("dashboard.room3DRackCountPrefix")}
+              {roomRackCount}
+              {t("dashboard.room3DRackCountSuffix")}
+            </span>
+          </div>
+        )}
         <Button
           size="small"
           icon={<ReloadOutlined />}
@@ -267,33 +452,27 @@ const Room3D: React.FC<Room3DProps> = ({
       )}
       {shouldShowHoverTooltip && hoverState && (
         <div
+          ref={tooltipRef}
           className={styles.tooltip}
-          style={{
-            left: hoverState.x + 12,
-            top: hoverState.y + 12,
-          }}
+          style={hoverTooltipStyle}
         >
-          <strong>
+          <strong className={styles.tooltipTitle}>
             {hoverState.rack.is_conflict
               ? t("dashboard.room3DPositionConflict")
               : hoverState.rack.rack_name}
           </strong>
-          <span>
-            {t("dashboard.room3DLocationLabel")}
-            {getRoom3DPositionLabel(hoverState.rack)}
-          </span>
-          {hoverState.rack.is_conflict && (
-            <span>
-              {t("dashboard.room3DConflictRacksLabel")}
-              {hoverState.rack.conflict_racks?.length ?? 0}
-              {t("dashboard.room3DCountUnit")}
-            </span>
-          )}
+          <div className={styles.tooltipGrid}>
+            {hoverRackFields.map((field) => (
+              <React.Fragment key={field.label}>
+                <span>{field.label}</span>
+                <strong>{field.value}</strong>
+              </React.Fragment>
+            ))}
+          </div>
         </div>
       )}
       {shouldShowRackPanel &&
-        selectedRack &&
-        (selectedRack.is_conflict ? (
+        selectedRack && (
           <div className={`${styles.infoPanel} ${styles.conflictPanel}`}>
             <div className={styles.infoTitle}>
               {t("dashboard.room3DPositionConflict")}
@@ -319,32 +498,7 @@ const Room3D: React.FC<Room3DProps> = ({
               ))}
             </div>
           </div>
-        ) : (
-          <div className={styles.infoPanel}>
-            <div className={styles.infoTitle}>{selectedRack.rack_name}</div>
-            <div className={styles.infoGrid}>
-              <span>{t("dashboard.room3DLocation")}</span>
-              <strong>{selectedRackPosition}</strong>
-              <span>{t("dashboard.room3DUCount")}</span>
-              <strong>{selectedRack.u_count ?? "-"}</strong>
-              <span>{t("dashboard.room3DUsedU")}</span>
-              <strong>{selectedRack.used_u ?? "-"}</strong>
-              <span>{t("dashboard.room3DFreeU")}</span>
-              <strong>{selectedRack.free_u ?? "-"}</strong>
-              <span>{t("dashboard.room3DDeviceCount")}</span>
-              <strong>
-                {selectedRack.device_count ??
-                  (selectedRackDevices.length || "-")}
-              </strong>
-              {Boolean(selectedRack.unplaced_device_count) && (
-                <>
-                  <span>{t("dashboard.room3DUnplaced")}</span>
-                  <strong>{selectedRack.unplaced_device_count}</strong>
-                </>
-              )}
-            </div>
-          </div>
-        ))}
+      )}
       {selectedDevice && (
         <div className={styles.devicePanel}>
           <div className={styles.devicePanelHeader}>

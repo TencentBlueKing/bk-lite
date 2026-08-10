@@ -88,8 +88,8 @@ const LogPreview: React.FC<LogPreviewProps> = ({
     if (field === 'message') {
       return {
         title: 'message',
-        dataIndex: '_msg',
-        key: '_msg',
+        dataIndex: 'message',
+        key: 'message',
         width: 260,
         ellipsis: true
       };

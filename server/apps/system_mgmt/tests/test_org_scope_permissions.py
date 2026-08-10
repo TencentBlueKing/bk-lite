@@ -147,6 +147,44 @@ def test_group_data_rule_job_get_app_data_injects_authorized_team(monkeypatch):
     assert captured["team"] == [7]
 
 
+def test_group_data_rule_patch_get_app_data_injects_authorized_team(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        def get_module_data(self, **kwargs):
+            captured.update(kwargs)
+            return {"count": 0, "items": []}
+
+    def fake_get_client(params):
+        params.pop("app")
+        return FakeClient()
+
+    monkeypatch.setattr(
+        GroupDataRuleViewSet, "get_client", staticmethod(fake_get_client)
+    )
+    request = APIRequestFactory().get(
+        "/system_mgmt/api/group_data_rule/get_app_data/",
+        {
+            "app": "patch",
+            "module": "patch_target",
+            "child_module": "",
+            "page": "1",
+            "page_size": "10",
+            "group_id": "7",
+        },
+    )
+    force_authenticate(
+        request, user=_request_user([7], {"data_permission-View"})
+    )
+
+    response = GroupDataRuleViewSet.as_view(
+        {"get": "get_app_data"}
+    )(request)
+
+    assert response.status_code == 200
+    assert captured["team"] == [7]
+
+
 def test_group_data_rule_job_get_app_data_rejects_unauthorized_group(monkeypatch):
     class FakeClient:
         def get_module_data(self, **kwargs):
@@ -175,7 +213,10 @@ def test_group_data_rule_job_get_app_data_rejects_unauthorized_group(monkeypatch
     payload = _json_payload(response)
 
     assert response.status_code == 403
-    assert payload == {"result": False, "message": "无权访问该组织"}
+    assert payload == {
+        "result": False,
+        "message": "You do not have permission to access this group.",
+    }
 
 
 @pytest.mark.django_db
@@ -273,6 +314,110 @@ def test_create_user_allows_accessible_groups():
     assert response.status_code == 200
     assert payload == {"result": True}
     assert User.objects.get(username="scope_create_user_ok").group_list == [allowed.id]
+
+
+@pytest.mark.django_db
+def test_create_user_allows_empty_personal_roles():
+    group = Group.objects.create(name="scope-create-role-optional-group", parent_id=0, is_virtual=False)
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "create_user"})
+    request = factory.post(
+        "/system_mgmt/api/user/create_user/",
+        {
+            "username": "pending_authorization_user",
+            "lastName": "Pending Authorization User",
+            "email": "pending_authorization@example.com",
+            "phone": None,
+            "locale": "zh-Hans",
+            "timezone": "Asia/Shanghai",
+            "groups": [group.id],
+            "roles": [],
+            "rules": [],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([group.id], {"user_group-Add User"}))
+
+    response = view(request)
+    payload = _json_payload(response)
+
+    assert response.status_code == 200
+    assert payload == {"result": True}
+    user = User.objects.get(username="pending_authorization_user")
+    assert user.group_list == [group.id]
+    assert user.role_list == []
+
+
+@pytest.mark.django_db
+def test_create_user_still_rejects_empty_groups():
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "create_user"})
+    request = factory.post(
+        "/system_mgmt/api/user/create_user/",
+        {
+            "username": "scope_create_required_group_user",
+            "lastName": "Scope Create Required Group User",
+            "email": "scope_create_required_group@example.com",
+            "phone": None,
+            "locale": "zh-Hans",
+            "timezone": "Asia/Shanghai",
+            "groups": [],
+            "roles": [],
+            "rules": [],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([], {"user_group-Add User"}, is_superuser=True))
+
+    response = view(request)
+    payload = _json_payload(response)
+
+    assert response.status_code == 200
+    assert payload["result"] is False
+    assert not User.objects.filter(username="scope_create_required_group_user").exists()
+
+
+@pytest.mark.django_db
+def test_update_user_still_rejects_empty_groups():
+    group = Group.objects.create(name="scope-update-required-group", parent_id=0, is_virtual=False)
+    Role.objects.create(name="admin", app="")
+    role = Role.objects.create(name="scope-update-required-role", app="")
+    target = User.objects.create(
+        username="scope_update_required_user",
+        display_name="Scope Update Required User",
+        email="scope_update_required@example.com",
+        password=make_password("password"),
+        group_list=[group.id],
+        role_list=[role.id],
+    )
+
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "update_user"})
+    request = factory.post(
+        "/system_mgmt/api/user/update_user/",
+        {
+            "user_id": target.id,
+            "username": target.username,
+            "lastName": target.display_name,
+            "email": target.email,
+            "phone": None,
+            "locale": "zh-Hans",
+            "timezone": "Asia/Shanghai",
+            "groups": [],
+            "roles": [role.id],
+            "rules": [],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([group.id], {"user_group-Edit User"}))
+
+    response = view(request)
+    payload = _json_payload(response)
+    target.refresh_from_db()
+
+    assert response.status_code == 200
+    assert payload["result"] is False
+    assert target.group_list == [group.id]
 
 
 @pytest.mark.django_db

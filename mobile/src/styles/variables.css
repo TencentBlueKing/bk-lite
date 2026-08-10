@@ -4,7 +4,9 @@
 :root {
   /* 主色 */
   --color-primary: #155AEF;
+  --color-primary-bg: #EDF4FF;
   --color-primary-bg-active: #e1edfc;
+  --color-primary-border: #B8D3FF;
   --color-secondary: #F2F4F7;
   
   /* 文本颜色 */
@@ -12,6 +14,8 @@
   --color-text-2: #475468;
   --color-text-3: #7588A3;
   --color-text-4: #B2BDCC;
+  --color-text-on-primary: #FFFFFF;
+  --color-text-inverse: #FFFFFF;
   --color-text-active: #155AEF;
   --color-text-hover: #1018280A;
   
@@ -26,6 +30,34 @@
   --color-bg-5: #F4F5F8;
   --color-bg-6: rgba(255,255,255, 0.16);
   --color-bg-7: rgba(255,255,255, 0.12);
+  --color-app-chrome-bg: var(--color-background-body);
+  --color-page-header-bg: var(--color-app-chrome-bg);
+  --color-bottom-nav-bg: var(--color-bg);
+  --mobile-header-height: 56px;
+  /*
+   * Mobile 字号阶梯：业务 CSS 只引用这些语义变量，不要写死 px。
+   * 以后整体放大/缩小，只改这里即可；底部一级导航用 tab-nav，与内容阶梯解耦。
+   * title 18 / subtitle 16 / body 15 / secondary 13 / caption 12 / tab-nav 11
+   */
+  --font-size-title: 18px;
+  --font-size-subtitle: 16px;
+  --font-size-body: 15px;
+  --font-size-secondary: 13px;
+  --font-size-caption: 12px;
+  --font-size-tab-nav: 11px;
+  --mobile-page-title-font-size: var(--font-size-title);
+  /* SearchBar：列表工具条用 compact；独立搜索页 / Popup 用 page。业务页禁止再写死高度。 */
+  --mobile-search-bar-height: 34px;
+  --mobile-search-bar-height-page: 40px;
+  --mobile-search-bar-radius: 8px;
+  --mobile-search-bar-font-size: var(--font-size-secondary);
+  /* 密集列表行（监控实例 / 资产等多行信息列表） */
+  --mobile-dense-list-row-min-height: 80px;
+  --mobile-dense-list-row-padding-block: 13px;
+  --mobile-dense-list-row-padding-inline: 14px;
+  --mobile-dense-list-row-inner-gap: 6px;
+  --mobile-table-row-min-height: 68px;
+  --mobile-table-row-padding-block: 12px;
   
   /* 边框颜色 */
   --color-border: #eaecf0;
@@ -40,6 +72,11 @@
   --color-fill-3: #EDEFF3;
   --color-fill-4: #E6E9EE;
   --color-fill-5: #D1D7E1;
+
+  /* 阴影 */
+  --shadow-composer: 0 1px 3px rgba(16, 24, 40, 0.08);
+  --shadow-navigation-drawer: -8px 0 24px rgba(16, 24, 40, 0.16);
+  --color-navigation-drawer-scrim: rgba(16, 24, 40, 0.32);
   
   /* 状态颜色 */
   --color-success: #27C274;
@@ -70,7 +107,9 @@
 .dark {
   /* 主色 */
   --color-primary: #155AEF;
+  --color-primary-bg: #172637;
   --color-primary-bg-active: #172637;
+  --color-primary-border: #294A6F;
   --color-secondary: #1d1d20;
   
   /* 文本颜色 */
@@ -78,6 +117,8 @@
   --color-text-2: rgba(255,255,255, 0.7);
   --color-text-3: rgba(255,255,255, 0.5);
   --color-text-4: rgba(255,255,255, 0.3);
+  --color-text-on-primary: #FFFFFF;
+  --color-text-inverse: #FFFFFF;
   --color-text-active: #f4f4f5;
   --color-text-hover: #c8ceda0a;
   
@@ -92,6 +133,28 @@
   --color-bg-5: #3D576A;
   --color-bg-6: rgba(255,255,255, 0.16);
   --color-bg-7: rgba(255,255,255, 0.12);
+  --color-app-chrome-bg: var(--color-background-body);
+  --color-page-header-bg: var(--color-app-chrome-bg);
+  --color-bottom-nav-bg: var(--color-bg);
+  --mobile-header-height: 56px;
+  --font-size-title: 18px;
+  --font-size-subtitle: 16px;
+  --font-size-body: 15px;
+  --font-size-secondary: 13px;
+  --font-size-caption: 12px;
+  --font-size-tab-nav: 11px;
+  --mobile-page-title-font-size: var(--font-size-title);
+  --mobile-search-bar-height: 34px;
+  --mobile-search-bar-height-page: 40px;
+  --mobile-search-bar-radius: 8px;
+  --mobile-search-bar-font-size: var(--font-size-secondary);
+  /* 密集列表行（监控实例 / 资产等多行信息列表） */
+  --mobile-dense-list-row-min-height: 80px;
+  --mobile-dense-list-row-padding-block: 13px;
+  --mobile-dense-list-row-padding-inline: 14px;
+  --mobile-dense-list-row-inner-gap: 6px;
+  --mobile-table-row-min-height: 68px;
+  --mobile-table-row-padding-block: 12px;
   
   /* 边框颜色 */
   --color-border: #333333;
@@ -106,6 +169,11 @@
   --color-fill-3: rgba(255,255,255, 0.12);
   --color-fill-4: rgba(255,255,255, 0.16);
   --color-fill-5: rgba(255,255,255, 0.2);
+
+  /* 阴影 */
+  --shadow-composer: 0 1px 3px rgba(0, 0, 0, 0.28);
+  --shadow-navigation-drawer: -8px 0 28px rgba(0, 0, 0, 0.42);
+  --color-navigation-drawer-scrim: rgba(0, 0, 0, 0.42);
   
   /* 状态颜色 */
   --color-success: #27C274;

@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import OperateModal from './components/operateModal';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
-import Introduction from '@/app/alarm/components/introduction';
+import Introduction from '@/components/introduction';
 import { ActionRuleListItem } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { Button, Input, Switch, Tag, Tooltip } from 'antd';
@@ -156,7 +156,7 @@ const ActionRules: React.FC = () => {
     <>
       <Introduction
         title={t('settings.actionRuleTitle')}
-        message={t('settings.actionRuleTitle')}
+        message={t('settings.actionRuleMessage')}
       />
       <div className="oid-library-container p-4 bg-[var(--color-bg-1)] rounded-lg shadow">
         <div className="nav-box flex justify-between mb-[20px]">

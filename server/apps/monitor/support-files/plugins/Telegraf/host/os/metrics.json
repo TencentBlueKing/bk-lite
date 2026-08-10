@@ -3,6 +3,8 @@
   "plugin_desc": "The host monitoring plugin is used to collect and analyze performance data of hosts, including CPU, memory, disk, and network usage.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='os', collect_type='host'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"selected_node","options":{"selection_field":"node_ids","node_field":"ip","required":true}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Host",
   "icon": "mm-host_主机",
   "type": "OS",
@@ -134,6 +136,17 @@
       "description": "Represents the average system load over the last 15 minutes, commonly used to evaluate long-term load stability."
     },
     {
+      "metric_group": "System",
+      "name": "system_uptime",
+      "query": "system_uptime{instance_type=\"os\", __$labels__}",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "System uptime in seconds since last boot"
+    },
+    {
       "metric_group": "Disk IO",
       "name": "diskio_io_util",
       "query": "diskio_io_util{instance_type=\"os\", __$labels__}",
@@ -248,7 +261,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_total",
-      "query": "any(disk_total{instance_type=\"os\", __$labels__}) by (instance_id, device)",
+      "query": "any(disk_total{instance_type=\"os\", __$labels__}) by (instance_id, device, path, fstype)",
       "display_name": "Disk Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -256,6 +269,14 @@
         {
           "name": "device",
           "description": "磁盘设备"
+        },
+        {
+          "name": "path",
+          "description": "挂载路径"
+        },
+        {
+          "name": "fstype",
+          "description": "文件系统类型"
         }
       ],
       "instance_id_keys": ["instance_id"],
@@ -264,7 +285,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_free",
-      "query": "any(disk_free{instance_type=\"os\", __$labels__}) by (instance_id, device)",
+      "query": "any(disk_free{instance_type=\"os\", __$labels__}) by (instance_id, device, path, fstype)",
       "display_name": "Disk Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -272,6 +293,14 @@
         {
           "name": "device",
           "description": "磁盘设备"
+        },
+        {
+          "name": "path",
+          "description": "挂载路径"
+        },
+        {
+          "name": "fstype",
+          "description": "文件系统类型"
         }
       ],
       "instance_id_keys": ["instance_id"],
@@ -280,7 +309,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_used_percent",
-      "query": "any(disk_used_percent{instance_type=\"os\", __$labels__}) by (instance_id, device)",
+      "query": "any(disk_used_percent{instance_type=\"os\", __$labels__}) by (instance_id, device, path, fstype)",
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -288,6 +317,14 @@
         {
           "name": "device",
           "description": "磁盘设备"
+        },
+        {
+          "name": "path",
+          "description": "挂载路径"
+        },
+        {
+          "name": "fstype",
+          "description": "文件系统类型"
         }
       ],
       "instance_id_keys": ["instance_id"],
@@ -296,7 +333,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_inodes_used_percent",
-      "query": "any(disk_inodes_used_percent{instance_type=\"os\", __$labels__}) by (instance_id, device)",
+      "query": "any(disk_inodes_used_percent{instance_type=\"os\", __$labels__}) by (instance_id, device, path, fstype)",
       "display_name": "Inode Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -304,6 +341,14 @@
         {
           "name": "device",
           "description": "磁盘设备"
+        },
+        {
+          "name": "path",
+          "description": "挂载路径"
+        },
+        {
+          "name": "fstype",
+          "description": "文件系统类型"
         }
       ],
       "instance_id_keys": ["instance_id"],
@@ -656,6 +701,3 @@
     }
   ]
 }
-
-
-

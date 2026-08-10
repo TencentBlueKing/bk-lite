@@ -11,6 +11,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BRAND_DIR = PLUGINS / "snmp" / "transmission_siklu"
@@ -63,7 +65,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -108,9 +110,11 @@ def test_ui_is_pure_snmp_form(ui):
 @pytest.mark.unit
 def test_metrics_is_vendor_delta_child(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    assert names == EXPECTED_METRICS
-    assert all(name not in names for name in ABSENT_METRICS)
-    assert metrics["supplementary_indicators"] == ["device_temperature_celsius"]
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert floor <= names
+    assert names - floor == EXPECTED_METRICS
+    assert all(name not in names - floor for name in ABSENT_METRICS)
+    assert set(metrics["supplementary_indicators"]) == {"snmp_uptime", "device_temperature_celsius"}
 
 
 @pytest.mark.unit
@@ -127,7 +131,9 @@ def test_temperature_metric_contract(metrics):
 @pytest.mark.unit
 def test_policy_templates_reference_existing_metrics(metrics, policy):
     known = {metric["name"] for metric in metrics["metrics"]}
-    assert {template["metric_name"] for template in policy["templates"]} == known
+    policy_metrics = {template["metric_name"] for template in policy["templates"]}
+    assert policy_metrics == EXPECTED_METRICS
+    assert policy_metrics <= known
 
 
 @pytest.mark.unit

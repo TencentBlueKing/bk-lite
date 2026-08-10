@@ -209,9 +209,11 @@ class EventShieldOperator(object):
         shieldable_statuses = [EventStatus.RECEIVED, EventStatus.PENDING]
         try:
             with transaction.atomic():
-                events_to_shield = Event.objects.filter(
-                    id__in=event_ids, status__in=shieldable_statuses
-                ).values("id", "event_id")
+                events_to_shield = list(
+                    Event.objects.filter(
+                        id__in=event_ids, status__in=shieldable_statuses
+                    ).values("id", "event_id")
+                )
 
                 updated_count = Event.objects.filter(
                     id__in=event_ids, status__in=shieldable_statuses

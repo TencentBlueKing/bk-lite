@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd mlops serve script (Kubernetes)
-# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://mlflow.default.svc.cluster.local:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "namespace": "mlops", "port": 30000, "service_type": "NodePort", "device": "auto|cpu|gpu"}
+# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://mlflow.default.svc.cluster.local:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "namespace": "mlops", "port": 30000, "service_type": "NodePort", "device": "auto|cpu|gpu", "timeseries_predict_timeout_seconds": 120}
 
 set -e
 
@@ -37,6 +37,10 @@ ID=$(echo "$JSON_DATA" | jq -r '.id // empty' 2>/dev/null) || {
     json_error "JSON_PARSE_FAILED" "" "Failed to parse JSON data"
     exit 1
 }
+if ! validate_container_image_json_boundary "$JSON_DATA"; then
+    json_error "INVALID_TRAIN_IMAGE" "${ID:-unknown}" "train_image must be a valid container image reference"
+    exit 1
+fi
 MLFLOW_TRACKING_URI=$(echo "$JSON_DATA" | jq -r '.mlflow_tracking_uri // empty')
 MLFLOW_MODEL_URI=$(echo "$JSON_DATA" | jq -r '.mlflow_model_uri // empty')
 WORKERS=$(echo "$JSON_DATA" | jq -r '.workers // "2"')
@@ -46,6 +50,7 @@ SERVICE_TYPE=$(echo "$JSON_DATA" | jq -r '.service_type // "NodePort"')
 TRAIN_IMAGE=$(echo "$JSON_DATA" | jq -r '.train_image // empty')
 DEVICE=$(echo "$JSON_DATA" | jq -r '.device // empty')
 REPLICAS=$(echo "$JSON_DATA" | jq -r '.replicas // "1"')
+TIMESERIES_PREDICT_TIMEOUT_SECONDS=$(echo "$JSON_DATA" | jq -r '.timeseries_predict_timeout_seconds // empty')
 
 # 使用默认命名空间（如果未指定）
 if [ -z "$NAMESPACE" ]; then
@@ -61,6 +66,18 @@ fi
 if [ -z "$TRAIN_IMAGE" ]; then
     json_error "MISSING_TRAIN_IMAGE" "$ID" "Missing required field: train_image"
     exit 1
+fi
+
+if ! validate_container_image_reference "$TRAIN_IMAGE"; then
+    json_error "INVALID_TRAIN_IMAGE" "$ID" "train_image must be a valid container image reference"
+    exit 1
+fi
+
+if [ -n "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" ]; then
+    if ! [[ "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || [ "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" -gt 290 ]; then
+        json_error "INVALID_PREDICT_TIMEOUT" "$ID" "timeseries_predict_timeout_seconds must be between 1 and 290"
+        exit 1
+    fi
 fi
 
 # 将服务短名称解析为 FQDN（跨 namespace 访问时必需）
@@ -115,6 +132,15 @@ setup_device_resources "$DEVICE" || {
     exit 1
 }
 
+PREDICT_TIMEOUT_ENV_YAML=""
+if [ -n "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" ]; then
+    PREDICT_TIMEOUT_ENV_YAML=$(cat <<EOF
+        - name: TIMESERIES_PREDICT_TIMEOUT_SECONDS
+          value: "${TIMESERIES_PREDICT_TIMEOUT_SECONDS}"
+EOF
+)
+fi
+
 # 生成 Kubernetes Deployment YAML
 DEPLOYMENT_YAML=$(cat <<EOF
 apiVersion: apps/v1
@@ -139,7 +165,7 @@ spec:
     spec:
       containers:
       - name: serve
-        image: ${TRAIN_IMAGE}
+        image: "${TRAIN_IMAGE}"
         ports:
         - containerPort: ${CONTAINER_PORT}
           name: http
@@ -159,6 +185,7 @@ spec:
           value: "${WORKERS}"
         - name: ALLOW_DUMMY_FALLBACK
           value: "false"
+${PREDICT_TIMEOUT_ENV_YAML}
         livenessProbe:
           httpGet:
             path: /healthz

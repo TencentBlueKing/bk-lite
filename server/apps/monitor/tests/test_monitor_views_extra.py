@@ -3,6 +3,7 @@
 外部边界（NodeMgmt RPC / get_permission_rules / InstanceConfigService）mock。
 """
 
+from nats.errors import NoRespondersError
 import pytest
 
 from apps.monitor.models.monitor_condition import (
@@ -16,6 +17,17 @@ from apps.monitor.models.plugin import MonitorPlugin
 pytestmark = pytest.mark.django_db
 
 BASE = "/api/v1/monitor"
+
+
+def _patch_current_team_scope(mocker, *, teams=(1,), assignable=(1,)):
+    mocker.patch(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": list(teams)},
+    )
+    mocker.patch(
+        "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+        return_value={"result": True, "data": list(assignable)},
+    )
 
 
 class TestUnitView:
@@ -47,8 +59,20 @@ class TestMetricGroupView:
     def _setup(self):
         obj = MonitorObject.objects.create(name="MGViewObj", level="base")
         plugin = MonitorPlugin.objects.create(name="MGViewPlugin")
-        g1 = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g1", sort_order=2)
-        g2 = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g2", sort_order=1)
+        g1 = MetricGroup.objects.create(
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            name="g1",
+            sort_order=2,
+            is_pre=False,
+        )
+        g2 = MetricGroup.objects.create(
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            name="g2",
+            sort_order=1,
+            is_pre=False,
+        )
         return obj, g1, g2
 
     def test_list_returns_groups(self, api_client):
@@ -71,7 +95,12 @@ class TestMetricView:
     def test_list_and_set_order(self, api_client):
         obj = MonitorObject.objects.create(name="MViewObj", level="base")
         plugin = MonitorPlugin.objects.create(name="MViewPlugin")
-        group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
+        group = MetricGroup.objects.create(
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            name="g",
+            is_pre=False,
+        )
         m = Metric.objects.create(
             monitor_object=obj,
             monitor_plugin=plugin,
@@ -80,6 +109,7 @@ class TestMetricView:
             display_name="CPU",
             description="d",
             sort_order=3,
+            is_pre=False,
         )
         resp = api_client.get(f"{BASE}/api/metrics/?monitor_object_id={obj.id}")
         assert resp.status_code == 200
@@ -93,13 +123,15 @@ class TestMetricView:
 
 class TestMonitorConditionView:
     def test_list_filters_by_permission(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        _patch_current_team_scope(mocker)
         mocker.patch(
             "apps.monitor.views.monitor_condition.get_permission_rules",
             return_value={"team": [1], "instance": []},
         )
         cond = MonitorCondition.objects.create(name="c1", condition={})
         MonitorConditionOrganization.objects.create(monitor_condition=cond, organization=1)
-        resp = api_client.get(f"{BASE}/api/monitor_condition/?current_team=1")
+        resp = api_client.get(f"{BASE}/api/monitor_condition/")
         assert resp.status_code == 200
         body = resp.json()["data"]
         assert body["count"] >= 1
@@ -107,10 +139,7 @@ class TestMonitorConditionView:
 
     def test_create_with_organizations(self, api_client, mocker):
         api_client.cookies["current_team"] = "1"
-        mocker.patch(
-            "apps.monitor.views.monitor_condition.InstanceConfigService._get_actor_scope_groups",
-            return_value=[3, 4],
-        )
+        _patch_current_team_scope(mocker, assignable=(1, 3, 4))
         resp = api_client.post(
             f"{BASE}/api/monitor_condition/",
             {"name": "newc", "condition": {"x": 1}, "organizations": [3, 4]},
@@ -123,8 +152,9 @@ class TestMonitorConditionView:
 
     def test_destroy_cleans_organizations(self, api_client, mocker):
         api_client.cookies["current_team"] = "1"
+        _patch_current_team_scope(mocker)
         cond = MonitorCondition.objects.create(name="delc", condition={})
-        MonitorConditionOrganization.objects.create(monitor_condition=cond, organization=9)
+        MonitorConditionOrganization.objects.create(monitor_condition=cond, organization=1)
         mocker.patch(
             "apps.monitor.views.monitor_condition.get_permission_rules",
             return_value={"team": [], "instance": [{"id": cond.id, "permission": ["View", "Operate"]}]},
@@ -138,6 +168,7 @@ class TestMonitorConditionView:
 class TestNodeMgmtView:
     def test_get_nodes_calls_node_mgmt(self, api_client, mocker):
         api_client.cookies["current_team"] = "1"
+        _patch_current_team_scope(mocker)
         node_mgmt = mocker.patch("apps.monitor.views.node_mgmt.NodeMgmt")
         node_mgmt.return_value.node_list.return_value = {"count": 1, "nodes": [{"id": "n1"}]}
         resp = api_client.post(
@@ -147,12 +178,82 @@ class TestNodeMgmtView:
         )
         assert resp.status_code == 200
         assert resp.json()["data"]["count"] == 1
+        assert resp.json()["data"]["nodes"] == [{"id": "n1"}]
         query = node_mgmt.return_value.node_list.call_args.args[0]
         assert query["cloud_region_id"] == 1
         assert query["page"] == 1 and query["page_size"] == 10
 
+    def test_get_nodes_marks_configured_host_monitoring_nodes(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        _patch_current_team_scope(mocker)
+        host = MonitorObject.objects.create(name="Host", level="base")
+        plugin = MonitorPlugin.objects.create(
+            name="HostNodeStatusPlugin",
+            collector="Telegraf",
+            collect_type="host",
+        )
+        plugin.monitor_object.add(host)
+        node_mgmt = mocker.patch("apps.monitor.views.node_mgmt.NodeMgmt")
+        node_mgmt.return_value.node_list.return_value = {
+            "count": 2,
+            "nodes": [{"id": "n1"}, {"id": "n2"}],
+        }
+        mocker.patch(
+            "apps.monitor.views.node_mgmt.HostDeploymentStatus.get_configured_node_ids",
+            return_value={"n2"},
+        )
+
+        resp = api_client.post(
+            f"{BASE}/api/node_mgmt/nodes/",
+            {"monitor_plugin_id": plugin.id, "page": 1, "page_size": 10},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["nodes"] == [
+            {"id": "n1", "deployment_state": "available"},
+            {"id": "n2", "deployment_state": "configured"},
+        ]
+
+    def test_get_nodes_fails_closed_when_deployment_status_rpc_has_no_responder(self, api_client, mocker):
+        api_client.cookies["current_team"] = "1"
+        _patch_current_team_scope(mocker)
+        host = MonitorObject.objects.create(name="Host", level="base")
+        plugin = MonitorPlugin.objects.create(
+            name="HostNodeStatusUnavailablePlugin",
+            collector="Telegraf",
+            collect_type="host",
+        )
+        plugin.monitor_object.add(host)
+        node_mgmt = mocker.patch("apps.monitor.views.node_mgmt.NodeMgmt")
+        node_mgmt.return_value.node_list.return_value = {
+            "count": 1,
+            "nodes": [{"id": "n1", "name": "node-1", "ip": "10.0.0.1"}],
+        }
+        mocker.patch(
+            "apps.monitor.views.node_mgmt.HostDeploymentStatus.get_configured_node_ids",
+            side_effect=NoRespondersError(),
+        )
+
+        resp = api_client.post(
+            f"{BASE}/api/node_mgmt/nodes/",
+            {"monitor_plugin_id": plugin.id, "page": 1, "page_size": 10},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["nodes"] == [
+            {
+                "id": "n1",
+                "name": "node-1",
+                "ip": "10.0.0.1",
+                "deployment_state": "unknown",
+            }
+        ]
+
     def test_get_config_content(self, api_client, mocker):
         api_client.cookies["current_team"] = "1"
+        _patch_current_team_scope(mocker)
         svc = mocker.patch(
             "apps.monitor.views.node_mgmt.InstanceConfigService.get_config_content",
             return_value=[{"id": "c1", "content": "x"}],

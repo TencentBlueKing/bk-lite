@@ -27,9 +27,11 @@ import styles from './index.module.scss';
 // 故用运行时长替换信息密度较低的「信号等待占比」(其语义仍由「等待时间趋势」图保留)。
 const SUMMARY_TITLES = ['运行时长', '读延迟', '批量请求速率', '缓存命中率', '卷可用空间'];
 const PRIMARY_CHART_TITLES = ['等待时间趋势', '请求耗时趋势', '读写延迟'];
+// 一线排障：阻塞/内存授予与编译/死锁紧挨主趋势，单独成节避免挤进 CPU/吞吐。
+const CONCURRENCY_CHART_TITLES = ['并发与内存压力', '计划缓存与死锁'];
 const SECONDARY_CHART_TITLES = ['CPU 使用情况', '读写吞吐'];
-const RING_TITLES = ['缓存命中分布', '存储空间分布'];
-const BAR_TITLES = ['调度器压力', '请求资源消耗'];
+const RING_TITLES = ['存储空间分布'];
+const BAR_TITLES = ['调度器压力'];
 const TOP_DB_CONCURRENCY = 3;
 
 export default function MssqlDashboardPage() {
@@ -43,6 +45,7 @@ export default function MssqlDashboardPage() {
 
   const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
   const primaryCharts = useFilteredChartPanels(dashboard.chartPanels, PRIMARY_CHART_TITLES);
+  const concurrencyCharts = useFilteredChartPanels(dashboard.chartPanels, CONCURRENCY_CHART_TITLES);
   const secondaryCharts = useFilteredChartPanels(dashboard.chartPanels, SECONDARY_CHART_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
   const bars = useFilteredBarPanels(dashboard.barPanels, BAR_TITLES);
@@ -83,16 +86,28 @@ export default function MssqlDashboardPage() {
       dashboardContent={
         <>
           <div className={styles.sectionLabel}>健康概览</div>
-          <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
           <div className={styles.sectionLabel}>性能与等待趋势</div>
           <TrendSection charts={primaryCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
 
-          <div className={styles.sectionLabel}>缓存与存储分布</div>
-          <InsightSection rings={rings} bars={[]} ringSpanClass={() => styles.span6} styles={styles} />
+          <div className={styles.sectionLabel}>并发与故障</div>
+          <TrendSection
+            charts={concurrencyCharts}
+            onXRangeChange={dashboard.onXRangeChange}
+            loading={dashboard.loading}
+            spanClass={() => styles.span6}
+            styles={styles}
+          />
 
-          <div className={styles.sectionLabel}>调度与请求压力</div>
-          <InsightSection bars={bars} barSpanClass={() => styles.span6} styles={styles} />
+          <div className={styles.sectionLabel}>存储与调度</div>
+          <InsightSection
+            rings={rings}
+            bars={bars}
+            ringSpanClass={() => styles.span6}
+            barSpanClass={() => styles.span6}
+            styles={styles}
+          />
 
           <div className={styles.sectionLabel}>CPU 与 I/O 吞吐</div>
           <TrendSection

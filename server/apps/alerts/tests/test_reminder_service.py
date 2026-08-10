@@ -1,6 +1,6 @@
 """告警提醒服务覆盖测试。
 
-对照 spec/prd/告警中心·告警：分派后按级别频率提醒，认领/关闭后停止提醒。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：分派后按级别频率提醒，认领/关闭后停止提醒。
 """
 
 import pytest
@@ -322,6 +322,50 @@ def test_send_reminder_notification_with_channels_does_not_raise():
     # 完整通知路径不抛异常（celery 投递在测试环境可能失败，方法内部已兜底返回 bool）
     result = RS._send_reminder_notification(assignment=assignment, alert=alert)
     assert isinstance(result, bool)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_reminder_broker_failure_keeps_outbox_and_advances_once(monkeypatch):
+    from django.utils import timezone
+    from apps.alerts.constants.constants import AlertStatus
+    from apps.alerts.models import AlertOutbox
+
+    alert = _make_alert(level="0")
+    alert.status = AlertStatus.PENDING
+    alert.save()
+    assignment = _make_assignment(frequency={"0": {"interval_minutes": 30}})
+    assignment.personnel = ["op1"]
+    assignment.notify_channels = [{"id": 1, "channel_type": "email"}]
+    assignment.save()
+    reminder = AlertReminderTask.objects.create(
+        alert=alert,
+        assignment=assignment,
+        is_active=True,
+        reminder_count=0,
+        current_frequency_minutes=30,
+        current_max_reminders=5,
+        next_reminder_time=timezone.now(),
+    )
+    monkeypatch.setattr(
+        "apps.alerts.service.escalation_service.EscalationService.active_roster_for_reminder",
+        staticmethod(lambda _alert: (None, None)),
+    )
+    monkeypatch.setattr(
+        "apps.alerts.common.notify.dispatcher.build_channel_params",
+        lambda *args, **kwargs: [{"channel_id": 1, "channel_type": "email"}],
+    )
+    monkeypatch.setattr(
+        "apps.alerts.tasks.deliver_alert_outbox.delay",
+        lambda _pk: (_ for _ in ()).throw(RuntimeError("broker down")),
+    )
+
+    assert RS._send_reminder_notification(assignment, alert, reminder.pk) is True
+
+    reminder.refresh_from_db()
+    assert reminder.reminder_count == 1
+    outbox = AlertOutbox.objects.get()
+    assert outbox.status == AlertOutbox.Status.PENDING
+    assert outbox.idempotency_key == f"reminder:{reminder.pk}:1"
 
 
 # --------------------------------------------------------------------------

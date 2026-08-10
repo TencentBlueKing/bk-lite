@@ -13,6 +13,7 @@ import {
   formatTimeRange,
   processDataSourceParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { getDateRangeTimezone } from '@/app/ops-analysis/utils/dateRange';
 import {
   DisplayColumnRow,
   buildDisplayColumnsFromSchema,
@@ -250,6 +251,10 @@ export function useTableConfig({
           filterBindings,
           filterDefinitions,
           timeRangeFormatter: formatTimeRange,
+          resolutionContext: {
+            referenceNow: Date.now(),
+            timezone: getDateRangeTimezone(),
+          },
         }),
       );
 
@@ -317,6 +322,14 @@ export function useTableConfig({
 
       if (probedColumns.length > 0) {
         setDetectedDisplayColumns(probedColumns);
+        // 关键:把探测结果写入 displayColumns(实际渲染数组)
+        // 同时保留用户自定义列(isDefault !== true 的列),与 tooltip 文案一致
+        setDisplayColumns((prev) => {
+          const customCols = prev.filter((c) => !c.isDefault);
+          const customKeys = new Set(customCols.map((c) => c.key).filter(Boolean));
+          const newDefaults = probedColumns.filter((c) => !customKeys.has(c.key));
+          return [...customCols, ...newDefaults];
+        });
         setParamsChangedAfterProbe(false);
         message.success(t('dashboard.reProbeSuccess'));
         return;

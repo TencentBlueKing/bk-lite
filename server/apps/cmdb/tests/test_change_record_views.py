@@ -1,6 +1,6 @@
 """CMDB 变更记录视图覆盖测试（真实 ChangeRecord DB）。
 
-对照 spec/prd/CMDB·操作日志：变更记录列表/详情、变更类型与场景枚举、按过滤条件导出 Excel。
+对照 specs/capabilities/legacy-prd-cmdb-操作日志.md：变更记录列表/详情、变更类型与场景枚举、按过滤条件导出 Excel。
 """
 
 import json

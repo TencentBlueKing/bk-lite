@@ -5,41 +5,40 @@
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
+from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER, is_sensitive_field_name
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
 
-SENSITIVE_CONFIG_KEYWORDS = ("password", "token", "secret", "authorization", "api_key", "apikey")
-
 
 def redact_sensitive_config(value):
+    if isinstance(value, list):
+        return [redact_sensitive_config(item) for item in value]
     if not isinstance(value, dict):
         return value
 
     redacted = {}
     for key, item in value.items():
-        normalized_key = str(key).lower()
-        if any(keyword in normalized_key for keyword in SENSITIVE_CONFIG_KEYWORDS):
-            redacted[key] = "******" if item not in (None, "") else item
-        elif isinstance(item, dict):
-            redacted[key] = redact_sensitive_config(item)
+        if is_sensitive_field_name(key):
+            redacted[key] = SENSITIVE_PLACEHOLDER if item not in (None, "") else item
         else:
-            redacted[key] = item
+            redacted[key] = redact_sensitive_config(item)
     return redacted
 
 
 def merge_redacted_config(existing, incoming):
-    if not isinstance(existing, dict) or not isinstance(incoming, dict):
+    if isinstance(incoming, list):
+        existing_items = existing if isinstance(existing, list) else []
+        return [merge_redacted_config(existing_items[index] if index < len(existing_items) else None, item) for index, item in enumerate(incoming)]
+    if not isinstance(incoming, dict):
         return incoming
 
+    existing_items = existing if isinstance(existing, dict) else {}
     merged = {}
     for key, item in incoming.items():
-        normalized_key = str(key).lower()
-        if item == "******" and any(keyword in normalized_key for keyword in SENSITIVE_CONFIG_KEYWORDS):
-            merged[key] = existing.get(key)
-        elif isinstance(item, dict):
-            merged[key] = merge_redacted_config(existing.get(key, {}), item)
+        if item == SENSITIVE_PLACEHOLDER and is_sensitive_field_name(key):
+            merged[key] = existing_items.get(key)
         else:
-            merged[key] = item
+            merged[key] = merge_redacted_config(existing_items.get(key), item)
     return merged
 
 
@@ -54,8 +53,34 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
 
     class Meta:
         model = DataSourceAPIModel
-        fields = "__all__"
-        extra_kwargs = {}
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "groups",
+            "name",
+            "rest_api",
+            "desc",
+            "source_type",
+            "connection_config",
+            "query_config",
+            "is_active",
+            "params",
+            "chart_type",
+            "field_schema",
+            "is_build_in",
+            "build_in_key",
+            "namespaces",
+            "tag",
+        ]
+        extra_kwargs = {
+            "is_build_in": {"read_only": True},
+            "build_in_key": {"read_only": True},
+        }
 
     def validate_source_type(self, value):
         allowed = {choice[0] for choice in DataSourceAPIModel.SOURCE_TYPE_CHOICES}
@@ -77,6 +102,8 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             return {}
         if not isinstance(value, dict):
             raise serializers.ValidationError("query_config 必须为对象")
+        if self.instance:
+            return merge_redacted_config(self.instance.query_config or {}, value)
         return value
 
     def validate_field_schema(self, value):
@@ -97,9 +124,24 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
 
         return value
 
+    def validate_params(self, value):
+        if not value:
+            return value
+        if not isinstance(value, list):
+            raise serializers.ValidationError("params 必须为数组")
+
+        bindable_types = {"string", "timeRange", "dateRange"}
+        for index, param in enumerate(value):
+            if not isinstance(param, dict):
+                raise serializers.ValidationError(f"[{index}] 必须为对象")
+            if param.get("filterType") == "filter" and param.get("type") not in bindable_types:
+                raise serializers.ValidationError(f"[{index}].type 仅 string、timeRange、dateRange 支持筛选联动")
+        return value
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data["connection_config"] = redact_sensitive_config(data.get("connection_config"))
+        data["query_config"] = redact_sensitive_config(data.get("query_config"))
         return data
 
 
@@ -109,7 +151,22 @@ class DataSourceBriefSerializer(BaseFormatTimeSerializer, AuthSerializer):
 
     class Meta:
         model = DataSourceAPIModel
-        fields = ["id", "name", "rest_api", "source_type", "desc", "chart_type", "tag", "groups"]
+        # 包含 params / field_schema,确保 widgetSelector 选中后能直接拿到完整配置,
+        # 不用再回查 detail endpoint 也能渲染"展示列"和"搜索字段"。
+        # connection_config / query_config 仍不返(可能含敏感信息)。
+        fields = [
+            "id",
+            "name",
+            "rest_api",
+            "source_type",
+            "desc",
+            "chart_type",
+            "tag",
+            "groups",
+            "params",
+            "field_schema",
+            "is_build_in",
+        ]
 
 
 class DataSourceDetailSerializer(DataSourceAPIModelSerializer):
@@ -118,6 +175,12 @@ class DataSourceDetailSerializer(DataSourceAPIModelSerializer):
 
 
 class NameSpaceModelSerializer(BaseFormatTimeSerializer):
+    def update(self, instance, validated_data):
+        password = validated_data.pop("password", serializers.empty)
+        if password is not serializers.empty:
+            instance.set_password(password)
+        return super().update(instance, validated_data)
+
     class Meta:
         model = NameSpace
         fields = "__all__"

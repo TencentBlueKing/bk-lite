@@ -2,6 +2,8 @@
   "plugin": "Windows WMI",
   "plugin_desc": "Remote Windows host metrics collection through WMI/DCOM from Stargazer. Requires WMI service, account permission, and WMI/DCOM/RPC network reachability.",
   "status_query": "any({instance_type='os', collect_type='http', config_type='windows_wmi'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"host","required":true}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "node_selector": {
     "is_container": true
   },
@@ -49,7 +51,7 @@
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "%",
-      "dimensions": [{"name": "device"}],
+      "dimensions": [{"name": "device"}, {"name": "path"}, {"name": "fstype"}],
       "instance_id_keys": ["instance_id"],
       "description": "Disk usage percentage per logical disk"
     },
@@ -82,7 +84,7 @@
       "display_name": "Disk Total",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [{"name": "device"}],
+      "dimensions": [{"name": "device"}, {"name": "path"}, {"name": "fstype"}],
       "instance_id_keys": ["instance_id"],
       "description": "Total disk space in bytes per logical disk"
     },
@@ -93,7 +95,7 @@
       "display_name": "Disk Free",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [{"name": "device"}],
+      "dimensions": [{"name": "device"}, {"name": "path"}, {"name": "fstype"}],
       "instance_id_keys": ["instance_id"],
       "description": "Free disk space in bytes per logical disk"
     },

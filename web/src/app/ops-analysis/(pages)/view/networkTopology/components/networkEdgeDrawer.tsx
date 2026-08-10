@@ -221,7 +221,9 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
     padding: '9px 12px',
     borderRight: '1px solid var(--color-border-1,#e5e9ef)',
     borderBottom: '1px solid var(--color-border-1,#e5e9ef)',
-    background: 'var(--color-fill-1,#f7f9fc)',
+    // fill-1 向底色混合 55%,比纯 fill-1 更淡(深浅主题都适用)
+    background:
+      'color-mix(in srgb, var(--color-fill-1,#f7f9fc) 45%, var(--color-bg-1,#ffffff))',
     color: 'var(--color-text-3,#5f7290)',
     fontSize: 12,
     lineHeight: '20px',

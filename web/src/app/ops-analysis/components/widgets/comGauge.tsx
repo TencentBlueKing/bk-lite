@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Empty, Spin } from 'antd';
+import { Spin } from 'antd';
+import WidgetState from '@/app/ops-analysis/components/widget-state';
 import type {
   ScreenRenderContext,
   ValueConfig,
@@ -17,6 +18,10 @@ import { applyValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import {
   scaleScreenMetric,
 } from './shared/screenMetrics';
+import {
+  getOpsChartThemeByMode,
+  isScreenChartThemeMode,
+} from '@/app/ops-analysis/utils/chartTheme';
 
 interface ComGaugeProps {
   rawData: unknown;
@@ -88,7 +93,8 @@ const ComGauge: React.FC<ComGaugeProps> = ({
   const safeMax = Number.isFinite(max) && max > safeMin ? max : safeMin + 100;
   const thresholds = config?.thresholdColors || [];
   const hasData = numericValue !== null;
-  const usesScreenDarkTheme = config?.chartThemeMode === 'screen-dark';
+  const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
+  const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
 
   // 值映射：命中颜色覆盖阈值色；命中文本替换中心展示
   const valueMapping = applyValueMapping(numericValue, config?.valueMappings);
@@ -125,19 +131,19 @@ const ComGauge: React.FC<ComGaugeProps> = ({
           max: safeMax,
           startAngle: isCircle ? 225 : 180,
           endAngle: isCircle ? -45 : 0,
-          center: ['50%', isCircle ? '52%' : usesScreenDarkTheme ? '68%' : '74%'],
-          radius: usesScreenDarkTheme
+          center: ['50%', isCircle ? '52%' : usesScreenTheme ? '68%' : '74%'],
+          radius: usesScreenTheme
             ? isCircle ? '76%' : '108%'
             : isCircle ? '90%' : '108%',
           progress: {
             show: true,
             roundCap: true,
-            width: usesScreenDarkTheme
+            width: usesScreenTheme
               ? scaleScreenMetric(14, screenRenderContext)
               : 14,
             itemStyle: {
               color,
-              shadowBlur: usesScreenDarkTheme
+              shadowBlur: usesScreenTheme
                 ? scaleScreenMetric(10, screenRenderContext)
                 : 0,
               shadowColor: color,
@@ -146,11 +152,11 @@ const ComGauge: React.FC<ComGaugeProps> = ({
           axisLine: {
             roundCap: true,
             lineStyle: {
-              width: usesScreenDarkTheme
+              width: usesScreenTheme
                 ? scaleScreenMetric(14, screenRenderContext)
                 : 14,
-              color: usesScreenDarkTheme
-                ? [[1, 'rgba(56, 189, 248, 0.16)']]
+              color: usesScreenTheme
+                ? [[1, chartTheme.axisLineColor]]
                 : buildAxisLineColor(safeMin, safeMax, thresholds),
             },
           },
@@ -158,42 +164,42 @@ const ComGauge: React.FC<ComGaugeProps> = ({
             show: false,
           },
           splitLine: {
-            show: !usesScreenDarkTheme,
-            length: usesScreenDarkTheme
+            show: !usesScreenTheme,
+            length: usesScreenTheme
               ? scaleScreenMetric(8, screenRenderContext)
               : 10,
-            distance: usesScreenDarkTheme
+            distance: usesScreenTheme
               ? -scaleScreenMetric(14, screenRenderContext)
               : -16,
             lineStyle: {
-              width: usesScreenDarkTheme
+              width: usesScreenTheme
                 ? scaleScreenMetric(2, screenRenderContext)
                 : 2,
-              color: usesScreenDarkTheme
-                ? 'rgba(186, 230, 253, 0.28)'
+              color: usesScreenTheme
+                ? chartTheme.splitLineColor
                 : '#FFFFFF',
             },
           },
           axisLabel: {
-            show: !usesScreenDarkTheme,
-            distance: usesScreenDarkTheme
+            show: !usesScreenTheme,
+            distance: usesScreenTheme
               ? scaleScreenMetric(24, screenRenderContext)
               : 18,
-            color: usesScreenDarkTheme
-              ? 'rgba(186, 230, 253, 0.64)'
+            color: usesScreenTheme
+              ? chartTheme.singleValueMetaColor
               : '#7A869A',
-            fontSize: usesScreenDarkTheme
+            fontSize: usesScreenTheme
               ? scaleScreenMetric(10, screenRenderContext)
               : 11,
           },
           pointer: {
-            show: !usesScreenDarkTheme,
+            show: !usesScreenTheme,
             length: '68%',
             width: 4,
           },
           anchor: {
-            show: !usesScreenDarkTheme,
-            size: usesScreenDarkTheme ? 0 : 9,
+            show: !usesScreenTheme,
+            size: usesScreenTheme ? 0 : 9,
             itemStyle: {
               color,
             },
@@ -202,12 +208,12 @@ const ComGauge: React.FC<ComGaugeProps> = ({
             valueAnimation: true,
             offsetCenter: [
               0,
-              usesScreenDarkTheme ? (isCircle ? '48%' : '20%') : isCircle ? '66%' : '38%',
+              usesScreenTheme ? (isCircle ? '48%' : '20%') : isCircle ? '66%' : '38%',
             ],
-            fontSize: usesScreenDarkTheme
+            fontSize: usesScreenTheme
               ? scaleScreenMetric(20, screenRenderContext)
               : 26,
-            fontWeight: usesScreenDarkTheme ? 800 : 600,
+            fontWeight: usesScreenTheme ? 800 : 600,
             color,
             formatter: () => displayValue,
           },
@@ -217,13 +223,16 @@ const ComGauge: React.FC<ComGaugeProps> = ({
     };
   }, [
     color,
+    chartTheme.axisLineColor,
+    chartTheme.singleValueMetaColor,
+    chartTheme.splitLineColor,
     config?.gaugeShape,
     displayValue,
     numericValue,
     safeMax,
     safeMin,
     thresholds,
-    usesScreenDarkTheme,
+    usesScreenTheme,
     screenRenderContext,
   ]);
 
@@ -236,11 +245,7 @@ const ComGauge: React.FC<ComGaugeProps> = ({
   }
 
   if (!hasData) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <WidgetState />;
   }
 
   return (

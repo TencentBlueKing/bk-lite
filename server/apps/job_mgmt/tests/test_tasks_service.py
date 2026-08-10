@@ -4,7 +4,7 @@
 """
 
 from datetime import timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.utils import timezone
@@ -127,10 +127,10 @@ class TestDispatchExecutionJob:
     def test_script_dispatch_sets_celery_id(self):
         ex = self._exec(JobType.SCRIPT)
         with patch("apps.job_mgmt.tasks.current_app") as app:
-            app.send_task.return_value = MagicMock(id="celery-1")
             assert tasks._dispatch_execution_job(JobType.SCRIPT, ex.id) is True
+            persisted_task_id = app.send_task.call_args.kwargs["task_id"]
         ex.refresh_from_db()
-        assert ex.celery_task_id == "celery-1"
+        assert ex.celery_task_id == persisted_task_id
 
     def test_unknown_job_type_returns_false(self):
         ex = self._exec(JobType.SCRIPT)
@@ -141,13 +141,18 @@ class TestDispatchExecutionJob:
         with patch("apps.job_mgmt.tasks.current_app") as app:
             app.send_task.side_effect = ConnectionError("broker down")
             assert tasks._dispatch_execution_job(JobType.PLAYBOOK, ex.id) is False
+        ex.refresh_from_db()
+        assert ex.celery_task_id
 
 
 class TestCleanupExpiredFiles:
     def test_deletes_expired_only(self):
         expired = DistributionFile.objects.create(original_name="old", file_key="k1", expire_at=timezone.now() - timedelta(days=1), team=1)
         fresh = DistributionFile.objects.create(original_name="new", file_key="k2", expire_at=timezone.now() + timedelta(days=1), team=1)
-        with patch("apps.job_mgmt.tasks.async_to_sync", lambda fn: (lambda *a, **k: None)):
+        with patch(
+            "apps.job_mgmt.tasks.async_to_sync",
+            lambda fn: (lambda file_keys, **kwargs: {file_key: None for file_key in file_keys}),
+        ):
             tasks.cleanup_expired_distribution_files_task()
         assert not DistributionFile.objects.filter(id=expired.id).exists()
         assert DistributionFile.objects.filter(id=fresh.id).exists()

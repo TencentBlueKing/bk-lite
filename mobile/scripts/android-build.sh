@@ -48,17 +48,26 @@ if [ ! -d "src-tauri/gen/android" ]; then
   pnpm tauri android init
 fi
 
-# 3. 复制自定义 MainActivity（核心修复）
-CUSTOM_MAIN="src-tauri/android/app/src/main/java/org/bklite/mobile/MainActivity.kt"
-TARGET_MAIN="src-tauri/gen/android/app/src/main/java/org/bklite/mobile/MainActivity.kt"
+# 3. 复制自定义 Android 原生源（gen 目录会被重新生成）
+CUSTOM_JAVA_SRC="src-tauri/android/app/src/main/java"
+TARGET_JAVA_SRC="src-tauri/gen/android/app/src/main/java"
 
-if [ -f "$CUSTOM_MAIN" ]; then
-  mkdir -p "$(dirname "$TARGET_MAIN")"
-  cp "$CUSTOM_MAIN" "$TARGET_MAIN"
-  echo "✅ MainActivity 已更新"
+if [ -d "$CUSTOM_JAVA_SRC" ]; then
+  mkdir -p "$TARGET_JAVA_SRC"
+  rm -rf "$TARGET_JAVA_SRC/io/crates/keyring"
+  cp -R "$CUSTOM_JAVA_SRC"/. "$TARGET_JAVA_SRC"/
+  echo "✅ Android 原生源已更新"
 fi
 
-# 4. 构建 APK
+# 4. 修正 Tauri Android 生成源的 Activity 初始化链路
+node scripts/patch-android-generated-sources.mjs
+echo "✅ Android Tauri 启动源已更新"
+
+# 5. 固化权限、备份与软键盘配置（gen 目录会被重新生成）
+node scripts/patch-android-manifest.mjs
+echo "✅ Android 平台配置已更新"
+
+# 6. 构建 APK
 if [ "$BUILD_AAB" == "true" ]; then
   # 构建 AAB
   pnpm tauri android build --aab
@@ -85,7 +94,7 @@ else
   echo "📦 APK 位置: src-tauri/gen/android/app/build/outputs/apk/"
 fi
 
-# 5. 自动安装（如果指定了 --install 参数）
+# 7. 自动安装（如果指定了 --install 参数）
 if [ "$AUTO_INSTALL" == "true" ] && [ "$BUILD_AAB" != "true" ]; then
   echo ""
   echo "📲 开始安装到设备..."

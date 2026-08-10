@@ -2,10 +2,10 @@ import { cloneDeep } from 'lodash';
 import { TableDataItem } from '@/app/log/types';
 
 /**
- * 把 Vector 文件采集的"编辑模式"表单数据转换成后端要求的扁平 content。
+ * 把 Vector 文件采集的"编辑模式"表单数据转换成后端模板需要的扁平 content。
  *
- * 关键约定：保存结构 = 加载结构，两者都使用扁平字段（如 `content.multiline`），
- * 与后端 Jinja2 模板（`server/apps/log/support-files/plugins/Vector/file/*`）保持一致。
+ * 保存时提交模板变量（如 `content.multiline`）；再次加载时，后端返回模板渲染并
+ * 解析后的 TOML 结构，由 `getVectorFileDefaultForm` 负责反解。
  *
  * 此函数从 `useVectorConfig` 的 hook 闭包中抽取出来，便于单元测试。
  */
@@ -51,25 +51,32 @@ export const getVectorFileParams = (
 /**
  * 从后端拉回的 child.content 中反解出编辑表单的默认值。
  *
- * 必须与 `getVectorFileParams` 写入结构完全一致，否则会出现
- * "保存后再次打开，开关/字段全部丢失"的 bug。
+ * `get_config_content` 会先解析已经渲染的 TOML，因此正常响应中的采集参数
+ * 位于 `content.sources.file_<config_id>`；同时兼容尚未经过模板渲染的扁平结构。
  */
 export const getVectorFileDefaultForm = (formData: TableDataItem) => {
   const content = formData?.child?.content || {};
+  const sources = content.sources || {};
+  const sourceKey =
+    Object.keys(sources).find((key) => key.startsWith('file_')) || '';
+  const sourceData = sources[sourceKey] || content;
 
   return {
-    include: content.include || [],
-    exclude: content.exclude || [],
-    read_from: content.read_from || 'beginning',
-    ignore_older_secs: content.ignore_older_secs || 86400,
-    encoding_charset: content.encoding_charset || 'utf-8',
-    parser_type: content.parser_type || '',
+    include: sourceData.include || [],
+    exclude: sourceData.exclude || [],
+    read_from: sourceData.read_from || 'beginning',
+    ignore_older_secs: sourceData.ignore_older_secs || 86400,
+    encoding_charset:
+      sourceData.encoding?.charset ||
+      sourceData.encoding_charset ||
+      'utf-8',
+    parser_type: sourceData.parser_type || '',
     multiline: {
-      enabled: !!content.multiline?.mode,
-      mode: content.multiline?.mode || 'continue_through',
-      start_pattern: content.multiline?.start_pattern || '',
-      timeout_ms: content.multiline?.timeout_ms || 1000,
-      condition_pattern: content.multiline?.condition_pattern || ''
+      enabled: !!sourceData.multiline?.mode,
+      mode: sourceData.multiline?.mode || 'continue_through',
+      start_pattern: sourceData.multiline?.start_pattern || '',
+      timeout_ms: sourceData.multiline?.timeout_ms || 1000,
+      condition_pattern: sourceData.multiline?.condition_pattern || ''
     }
   };
 };

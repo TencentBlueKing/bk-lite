@@ -1,7 +1,14 @@
 import requests
+from requests.adapters import HTTPAdapter
 
 from apps.core.logger import celery_logger as logger
 from apps.monitor.constants.victoriametrics import VictoriaMetricsConstants
+
+# 模块级 Session，复用 TCP/TLS 连接，避免详情页 N 次指标卡各自新建连接。
+_SESSION = requests.Session()
+_ADAPTER = HTTPAdapter(pool_connections=20, pool_maxsize=50, max_retries=0)
+_SESSION.mount("http://", _ADAPTER)
+_SESSION.mount("https://", _ADAPTER)
 
 
 class VictoriaMetricsAPI:
@@ -15,7 +22,7 @@ class VictoriaMetricsAPI:
 
     def _do_get(self, api_path, params):
         try:
-            response = requests.get(
+            response = _SESSION.get(
                 f"{self.host}{api_path}",
                 params=params,
                 auth=(self.username, self.password),
@@ -46,12 +53,14 @@ class VictoriaMetricsAPI:
             )
             raise
 
-    def query(self, query, step="5m", time=None):
+    def query(self, query, step="5m", time=None, lookback_delta=None):
         params = {"query": query}
         if step:
             params["step"] = step
         if time:
             params["time"] = time
+        if lookback_delta:
+            params["lookback_delta"] = lookback_delta
         return self._do_get("/api/v1/query", params)
 
     def query_range(self, query, start, end, step="5m"):

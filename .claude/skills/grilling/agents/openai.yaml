@@ -1,0 +1,5 @@
+interface:
+  display_name: "Grilling"
+  short_description: "Help with Grilling tasks and workflows"
+policy:
+  allow_implicit_invocation: false

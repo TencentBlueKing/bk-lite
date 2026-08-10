@@ -146,7 +146,8 @@ def test_build_context_can_use_chunk_search_with_chunk_citations():
     assert out["retrieval_mode"] == "chunk"
     assert out["citations"][0]["kind"] == "page_chunk"
     assert out["citations"][0]["id"] == f"{page.id}:0"
-    assert out["citations"][0]["title"] == "服务操作手册 / 重启"
+    assert out["citations"][0]["title"] == "服务操作手册"
+    assert out["citations"][0]["heading_path"] == "重启"
     explanation = out["citations"][0]["explanation"]
     assert explanation["matched_by"] == ["chunk_vector"]
     assert explanation["chunk_index"] == 0
@@ -229,4 +230,5 @@ class TestContextView:
         data = r.json()["data"]
         assert data["retrieval_mode"] == "chunk"
         assert data["citations"][0]["kind"] == "page_chunk"
-        assert data["citations"][0]["title"] == "服务操作手册 / 重启"
+        assert data["citations"][0]["title"] == "服务操作手册"
+        assert data["citations"][0]["heading_path"] == "重启"

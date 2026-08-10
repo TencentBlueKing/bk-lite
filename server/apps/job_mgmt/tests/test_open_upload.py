@@ -9,6 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.base.models import User, UserAPISecret
+from apps.system_mgmt.models import User as SystemUser
 
 
 @pytest.mark.unit
@@ -27,10 +28,16 @@ class TestOpenFileUploadView:
         self.url = "/api/v1/job_mgmt/api/open/upload_file"
         # 创建测试用户和 API Secret
         self.user = User.objects.create(username="test_api_user", domain="test.com")
+        SystemUser.objects.create(
+            username=self.user.username,
+            domain=self.user.domain,
+            group_list=[1],
+        )
+        self.api_secret_plaintext = UserAPISecret.generate_api_secret()
         self.api_secret = UserAPISecret.objects.create(
             username=self.user.username,
             domain=self.user.domain,
-            api_secret=UserAPISecret.generate_api_secret(),
+            api_secret=self.api_secret_plaintext,
             team=1,
         )
 
@@ -70,7 +77,7 @@ class TestOpenFileUploadView:
             self.url,
             {},
             format="multipart",
-            HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+            HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
         )
         assert response.status_code == 400
         data = response.json()
@@ -87,7 +94,7 @@ class TestOpenFileUploadView:
                 self.url,
                 {"file": file},
                 format="multipart",
-                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+                HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
             )
 
         assert response.status_code == 201
@@ -107,7 +114,7 @@ class TestOpenFileUploadView:
                 self.url,
                 {"file": file},
                 format="multipart",
-                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+                HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
             )
         assert response.status_code == 400
 
@@ -124,7 +131,7 @@ class TestOpenFileUploadView:
                 self.url,
                 {"file": file},
                 format="multipart",
-                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+                HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
             )
 
         assert response.status_code == 201
@@ -149,7 +156,7 @@ class TestOpenFileUploadView:
                 self.url,
                 {"file": file, "expire_days": "30"},
                 format="multipart",
-                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+                HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
             )
 
         assert response.status_code == 201
@@ -169,7 +176,7 @@ class TestOpenFileUploadView:
                     self.url,
                     {"file": file, "expire_days": bad},
                     format="multipart",
-                    HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+                    HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
                 )
             assert response.status_code == 400, f"expire_days={bad} 应返回 400"
             assert response.json()["result"] is False
@@ -184,10 +191,16 @@ class TestOpenFileDeleteView:
         self.client = APIClient()
         self.url = "/api/v1/job_mgmt/api/open/delete_file"
         self.user = User.objects.create(username="test_api_user", domain="test.com")
+        SystemUser.objects.create(
+            username=self.user.username,
+            domain=self.user.domain,
+            group_list=[1],
+        )
+        self.api_secret_plaintext = UserAPISecret.generate_api_secret()
         self.api_secret = UserAPISecret.objects.create(
             username=self.user.username,
             domain=self.user.domain,
-            api_secret=UserAPISecret.generate_api_secret(),
+            api_secret=self.api_secret_plaintext,
             team=1,
         )
 
@@ -214,7 +227,7 @@ class TestOpenFileDeleteView:
             self.url,
             {"files": []},
             format="json",
-            HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+            HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
         )
         assert response.status_code == 400
 
@@ -233,7 +246,7 @@ class TestOpenFileDeleteView:
             self.url,
             {"files": [{"file_id": df.id, "file_key": "job-files/wrong/key.rpm"}]},
             format="json",
-            HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+            HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
         )
         assert response.status_code == 200
         data = response.json()["data"]
@@ -258,7 +271,7 @@ class TestOpenFileDeleteView:
                 self.url,
                 {"files": [{"file_id": df.id, "file_key": df.file_key}]},
                 format="json",
-                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+                HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
             )
 
         assert response.status_code == 200
@@ -266,7 +279,7 @@ class TestOpenFileDeleteView:
         assert not DistributionFile.objects.filter(id=df.id).exists()
 
     def test_delete_cross_team_file_fails(self):
-        """跨组删除文件失败（返回 no_permission）"""
+        """跨组删除文件失败，并按不存在返回以避免泄露文件归属"""
         from apps.job_mgmt.models import DistributionFile
 
         df = DistributionFile.objects.create(
@@ -280,20 +293,21 @@ class TestOpenFileDeleteView:
             self.url,
             {"files": [{"file_id": df.id, "file_key": df.file_key}]},
             format="json",
-            HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+            HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
         )
 
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["deleted"] == 0
-        assert "no_permission" in data
-        assert len(data["no_permission"]) == 1
-        assert data["no_permission"][0]["file_id"] == df.id
+        assert "not_found" in data
+        assert len(data["not_found"]) == 1
+        assert data["not_found"][0]["file_id"] == df.id
+        assert "no_permission" not in data
         # 文件仍然存在
         assert DistributionFile.objects.filter(id=df.id).exists()
 
     def test_delete_legacy_file_without_team_fails(self):
-        """历史文件（无 team）无法通过 open API 删除"""
+        """历史文件（无 team）无法通过 open API 删除，且不泄露其存在性"""
         from apps.job_mgmt.models import DistributionFile
 
         df = DistributionFile.objects.create(
@@ -307,13 +321,14 @@ class TestOpenFileDeleteView:
             self.url,
             {"files": [{"file_id": df.id, "file_key": df.file_key}]},
             format="json",
-            HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+            HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
         )
 
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["deleted"] == 0
-        assert "no_permission" in data
+        assert "not_found" in data
+        assert "no_permission" not in data
         # 文件仍然存在
         assert DistributionFile.objects.filter(id=df.id).exists()
 
@@ -340,7 +355,7 @@ class TestOpenFileDeleteView:
                 self.url,
                 {"files": [{"file_id": df.id, "file_key": df.file_key}]},
                 format="json",
-                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+                HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
             )
 
         assert response.status_code == 200
@@ -392,7 +407,7 @@ class TestOpenFileDeleteView:
                     ]
                 },
                 format="json",
-                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+                HTTP_API_AUTHORIZATION=self.api_secret_plaintext,
             )
 
         assert response.status_code == 200
@@ -431,7 +446,7 @@ class TestCleanupExpiredDistributionFiles:
         )
 
         with patch("apps.job_mgmt.tasks.async_to_sync") as mock_async:
-            mock_async.return_value = MagicMock()
+            mock_async.return_value = MagicMock(return_value={expired.file_key: None})
             cleanup_expired_distribution_files_task()
             # 已到期文件触发了 S3 删除
             mock_async.assert_called()

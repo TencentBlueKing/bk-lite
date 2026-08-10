@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Form } from 'antd';
+import { Button, Form, message } from 'antd';
 
 import OperateModal from '@/components/operate-modal';
 import type { ProviderManifest } from '@/app/system-manager/types/integration-center';
@@ -7,10 +7,15 @@ import type { AvailableInstance, UserSyncSource, UserSyncSourceConfigFormValues 
 import {
   getWriteOnlyKeys,
   getEffectiveRootDepartmentFieldKey,
+  excludeUserSyncRootScope,
   mergeUserSyncBusinessConfigWithDefaults,
   resolveUserSyncTemplate,
 } from '@/app/system-manager/utils/userSyncUtils';
-import { type MappingRow, toMappingRows } from '@/app/system-manager/utils/userSyncPageUtils';
+import {
+  type MappingRow,
+  toMappingRows,
+  validateRequiredUserMapping,
+} from '@/app/system-manager/utils/userSyncPageUtils';
 import UserSyncConfigFields from '@/app/system-manager/components/user/user-sync/UserSyncConfigFields';
 
 interface UserSyncConfigModalProps {
@@ -42,35 +47,54 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
 }) => {
   const [form] = Form.useForm<UserSyncSourceConfigFormValues>();
   const [mappingRows, setMappingRows] = useState<MappingRow[]>(toMappingRows({}));
+  const [mappingError, setMappingError] = useState('');
 
   const resolvedTemplate = useMemo(
-    () => resolveUserSyncTemplate(source?.integration_instance, availableInstances, providers),
-    [source?.integration_instance, availableInstances, providers],
+    () => resolveUserSyncTemplate(
+      source?.integration_instance,
+      availableInstances,
+      providers,
+      source?.integration_provider_key,
+    ),
+    [source?.integration_instance, source?.integration_provider_key, availableInstances, providers],
   );
   const rootScopeFieldKey = useMemo(
     () => getEffectiveRootDepartmentFieldKey(source, resolvedTemplate),
     [resolvedTemplate, source],
   );
+  const initialRootScopeValue = source?.business_config?.[rootScopeFieldKey];
 
   useEffect(() => {
     if (!open || !source) return;
     form.resetFields();
     form.setFieldsValue({
       business_config: mergeUserSyncBusinessConfigWithDefaults(
-        source.business_config || {},
+        excludeUserSyncRootScope(source.business_config, rootScopeFieldKey),
         resolvedTemplate,
         { excludeRootScope: true, rootScopeFieldKey },
       ),
+      platform_config: source.platform_config || {},
     });
     setMappingRows(toMappingRows(source.field_mapping));
+    setMappingError('');
   }, [open, resolvedTemplate, rootScopeFieldKey, source, form]);
 
   const writeOnlyKeys = useMemo(() => getWriteOnlyKeys(resolvedTemplate), [resolvedTemplate]);
+
+  const showMissingUsernameMapping = () => {
+    const mappingErrorMessage = t('system.user.userSyncPage.usernameMappingRequired');
+    setMappingError(mappingErrorMessage);
+    message.warning(mappingErrorMessage);
+  };
 
   const handleSubmit = async () => {
     try {
       await form.validateFields();
     } catch {
+      return;
+    }
+    if (!validateRequiredUserMapping(mappingRows)) {
+      showMissingUsernameMapping();
       return;
     }
     onSubmit(form.getFieldsValue(true) as UserSyncSourceConfigFormValues, mappingRows);
@@ -80,6 +104,10 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
     try {
       await form.validateFields();
     } catch {
+      return;
+    }
+    if (!validateRequiredUserMapping(mappingRows)) {
+      showMissingUsernameMapping();
       return;
     }
     onPreview(form.getFieldsValue(true) as UserSyncSourceConfigFormValues, mappingRows, writeOnlyKeys);
@@ -114,8 +142,13 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
         resolvedTemplate={resolvedTemplate}
         mappingRows={mappingRows}
         t={t}
-        onMappingRowsChange={setMappingRows}
+        onMappingRowsChange={(nextRows) => {
+          setMappingRows(nextRows);
+          setMappingError('');
+        }}
+        mappingError={mappingError}
         rootScopeField={source?.root_scope_field}
+        initialRootScopeValue={typeof initialRootScopeValue === 'string' ? initialRootScopeValue : ''}
       />
     </Form>
   </OperateModal>

@@ -20,7 +20,13 @@ import nats_client
 from apps.core.constants import VERIFY_TOKEN_USER_NOT_FOUND_CODE, VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.permission_cache import clear_token_info_cache, clear_users_permission_cache, get_cached_token_info, set_cached_token_info
+from apps.core.utils.permission_cache import (
+    clear_token_info_cache,
+    clear_users_permission_cache,
+    get_cached_token_info,
+    get_user_permission_version,
+    set_cached_token_info,
+)
 from apps.system_mgmt.guest_menus import CMDB_MENUS, MONITOR_MENUS, OPSPILOT_GUEST_MENUS
 from apps.system_mgmt.models import (
     App,
@@ -173,6 +179,13 @@ def _verify_token(token):
     secret_key = os.getenv("SECRET_KEY")
     algorithm = os.getenv("JWT_ALGORITHM", "HS256")
     user_info = jwt.decode(token, key=secret_key, algorithms=[algorithm], options={"verify_exp": False})
+    # Render JWT 只能经 AuthMiddleware + Render Scope 白名单使用，不得作为
+    # 普通登录 / api_exempt / NATS verify_token 凭证。
+    if (
+        user_info.get("token_type") == "dashboard_report_render"
+        or "render_execution_id" in user_info
+    ):
+        raise Exception("Render token is not accepted as a login credential")
     time_now = int(time.time())
 
     # New-format token (with jti + exp): use PyJWT exp validation + blacklist check

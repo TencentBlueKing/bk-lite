@@ -1,7 +1,7 @@
 'use client';
 import React, { useState } from 'react';
-import { Button, Alert, message, Input } from 'antd';
-import { SearchOutlined, CopyOutlined } from '@ant-design/icons';
+import { Alert, Button, Input, message, Tooltip } from 'antd';
+import { CopyOutlined, QuestionCircleOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useK8sSetupApi } from '@/app/cmdb/api';
 
@@ -88,13 +88,16 @@ const CollectorInstall: React.FC<Props> = ({
   return (
     <div>
       <div className="mb-[20px]">
-        <h3 className="text-base font-semibold mb-2">
-          {t('Collection.k8sTask.installCollector') || 'Install Collector'}
+        <h3 className="text-base font-semibold mb-2 inline-flex items-center gap-1">
+          <span>{t('Collection.k8sTask.installCollector') || 'Install Collector'}</span>
+          <Tooltip
+            title={t('Collection.k8sTask.installCommandDesc') ||
+              'Generate a short-lived install token, then copy and run the command on a host with kubectl access to the target cluster.'}
+            overlayStyle={{ maxWidth: 520 }}
+          >
+            <QuestionCircleOutlined className="text-[13px] text-[#9aa4b2] cursor-help" />
+          </Tooltip>
         </h3>
-        <p className="text-[12px] text-[var(--color-text-3)] mb-2">
-          {t('Collection.k8sTask.installCommandDesc') ||
-            'Generate a short-lived install token, then copy and run the command on a host with kubectl access to the target cluster.'}
-        </p>
         <div className="flex items-center gap-2 mb-2">
           <Button type="primary" loading={tokenLoading} onClick={fetchInstallCommand}>
             {command
@@ -118,8 +121,15 @@ const CollectorInstall: React.FC<Props> = ({
       </div>
 
       <div className="mb-[10px]">
-        <h3 className="text-base font-semibold mb-2">
-          {t('Collection.k8sTask.verifyStatus') || 'Verify Reporting'}
+        <h3 className="text-base font-semibold mb-2 inline-flex items-center gap-1">
+          <span>{t('Collection.k8sTask.verifyStatus') || 'Verify Reporting'}</span>
+          <Tooltip
+            title={t('Collection.k8sTask.verifyWaitingDesc') ||
+              'After deploying the YAML, click verify; CMDB will query VictoriaMetrics for the configured collector id.'}
+            overlayStyle={{ maxWidth: 520 }}
+          >
+            <QuestionCircleOutlined className="text-[13px] text-[#9aa4b2] cursor-help" />
+          </Tooltip>
         </h3>
         <div className="flex items-center gap-3">
           <Button
@@ -131,10 +141,6 @@ const CollectorInstall: React.FC<Props> = ({
           >
             {t('Collection.k8sTask.verify') || 'Verify'}
           </Button>
-          <span className="text-[12px] text-[var(--color-text-3)]">
-            {t('Collection.k8sTask.verifyWaitingDesc') ||
-              'After deploying the YAML, click verify; CMDB will query VictoriaMetrics for the configured collector id.'}
-          </span>
         </div>
       </div>
 

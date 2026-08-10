@@ -2,7 +2,6 @@ import base64
 import hashlib
 import hmac
 import json
-import re
 import smtplib
 import time
 import urllib.parse
@@ -11,7 +10,7 @@ from email.header import Header
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 
 import requests
 from wechatpy import WeChatClientException
@@ -19,54 +18,36 @@ from wechatpy.enterprise import WeChatClient
 
 import nats_client
 from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.system_mgmt.models import Channel
-
-# Webhook 域名白名单（防止 SSRF 攻击）
-WEBHOOK_ALLOWED_DOMAINS = {
-    # 企业微信
-    "qyapi.weixin.qq.com",
-    # 飞书
-    "open.feishu.cn",
-    "open.larksuite.com",
-    # 钉钉
-    "oapi.dingtalk.com",
-}
+from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
 
 
 def is_valid_webhook_url(url: str) -> bool:
-    """验证 Webhook URL 是否为允许的官方域名，防止 SSRF 攻击
+    """验证 Webhook URL 是否允许出站。
 
-    Args:
-        url: Webhook URL
-
-    Returns:
-        bool: URL 是否有效且在白名单内
+    统一委托 ``SSRFValidator.validate``：公网域名默认通；内网/危险网段需
+    CIDR 或域名白名单例外；纯 IP 必须命中 CIDR；云 metadata 硬挡。
     """
     if not url:
         return False
     try:
-        # 拒绝含反斜杠的 URL（urlparse 与 requests 解析不一致，可绕过域名校验）
-        if "\\" in url:
-            return False
-        parsed = urlparse(url)
-        if parsed.scheme not in ("https", "http"):
-            return False
-        # 拒绝含 userinfo（@）的 URL，防止 user@host 形式的绕过
-        if "@" in (parsed.netloc or ""):
-            return False
-        hostname = parsed.hostname
-        if not hostname:
-            return False
-        # 对 hostname 解码后校验，防止 %23 %00 等编码绕过
-        decoded_hostname = unquote(hostname).lower()
-        if decoded_hostname != hostname.lower():
-            return False
-        # hostname 只允许字母、数字、连字符、点号
-        if not re.match(r"^[a-z0-9\-\.]+$", hostname.lower()):
-            return False
-        return hostname.lower() in WEBHOOK_ALLOWED_DOMAINS
-    except Exception:
+        SSRFValidator.validate(url)
+        return True
+    except SSRFError as exc:
+        logger.warning(f"[SSRF] 阻断 webhook URL: url_host={_webhook_hostname(url)}, reason={exc}")
         return False
+    except Exception as exc:
+        logger.exception(f"[SSRF] webhook 校验异常: {exc}")
+        return False
+
+
+def _webhook_hostname(url: str) -> str:
+    """返回可安全记录的 hostname,避免 path/query 中的 token 泄露到日志。"""
+    try:
+        return urlparse(url).hostname or "<invalid>"
+    except ValueError:
+        return "<invalid>"
 
 
 def send_wechat(channel_obj: Channel, content, user_list):
@@ -94,6 +75,43 @@ def send_email(channel_obj: Channel, title, content, user_list, attachments=None
     channel_obj.decrypt_field("smtp_pwd", channel_config)
     receivers = list(user_list.values_list("email", flat=True).distinct())
     return send_email_to_user(channel_config, content, receivers, title, attachments)
+
+
+def send_personalized_email_messages(channel_obj: Channel, messages: list[dict], timeout: int = 30) -> dict:
+    """复用 SMTP 连接发送多封不同正文的邮件，仅供内部批任务调用。"""
+    channel_config = dict(channel_obj.config or {})
+    channel_obj.decrypt_field("smtp_pwd", channel_config)
+    server = None
+    results = {}
+    try:
+        if channel_config.get("smtp_usessl", False):
+            server = smtplib.SMTP_SSL(channel_config["smtp_server"], channel_config["port"], timeout=timeout)
+        else:
+            server = smtplib.SMTP(channel_config["smtp_server"], channel_config["port"], timeout=timeout)
+        if channel_config.get("smtp_usetls", False):
+            server.starttls()
+        server.login(channel_config["smtp_user"], channel_config["smtp_pwd"])
+        for item in messages:
+            msg = MIMEMultipart()
+            msg["From"] = channel_config["mail_sender"]
+            msg["To"] = item["receiver"]
+            msg["Subject"] = item["title"]
+            msg.attach(MIMEText(item["content"], "html", "utf-8"))
+            try:
+                server.send_message(msg)
+                results[item["key"]] = {"result": True}
+            except (smtplib.SMTPAuthenticationError, smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected):
+                # 连接级错误由批任务租约恢复，不将未尝试用户误记为终态失败。
+                raise
+            except smtplib.SMTPException as exc:
+                results[item["key"]] = {"result": False, "message": str(exc)}
+        return results
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
 
 
 def send_email_to_user(channel_config, content, receivers, title, attachments=None):
@@ -175,11 +193,11 @@ def send_by_wecom_bot(channel_obj: Channel, content, receivers):
 
     # SSRF 防护：验证 webhook URL 域名
     if not is_valid_webhook_url(webhook_url):
-        logger.warning(f"[SSRF] 阻断非法 webhook URL: {webhook_url}")
-        return {"result": False, "message": "Invalid webhook URL: domain not in allowlist"}
+        logger.warning(f"[SSRF] 阻断非法 webhook hostname: {_webhook_hostname(webhook_url)}")
+        return build_network_whitelist_error_payload()
 
     try:
-        res = requests.post(webhook_url, json=payload, timeout=5)
+        res = requests.post(webhook_url, json=payload, timeout=5, allow_redirects=False)
         return res.json()
     except Exception as e:
         logger.exception(e)
@@ -199,8 +217,8 @@ def send_by_feishu_bot(channel_obj: Channel, title, content, receivers):
 
     # SSRF 防护：验证 webhook URL 域名
     if not is_valid_webhook_url(webhook_url):
-        logger.warning(f"[SSRF] 阻断非法 webhook URL: {webhook_url}")
-        return {"result": False, "message": "Invalid webhook URL: domain not in allowlist"}
+        logger.warning(f"[SSRF] 阻断非法 webhook hostname: {_webhook_hostname(webhook_url)}")
+        return build_network_whitelist_error_payload()
 
     payload = {
         "msg_type": "interactive",
@@ -222,7 +240,7 @@ def send_by_feishu_bot(channel_obj: Channel, title, content, receivers):
         payload["sign"] = sign
 
     try:
-        res = requests.post(webhook_url, json=payload, timeout=5)
+        res = requests.post(webhook_url, json=payload, timeout=5, allow_redirects=False)
         return res.json()
     except Exception as e:
         logger.exception(e)
@@ -243,8 +261,8 @@ def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers):
 
     # SSRF protection: validate webhook URL against allowlist before signing
     if not is_valid_webhook_url(webhook_url):
-        logger.warning(f"DingTalk webhook URL rejected by SSRF validator: {webhook_url[:100]}")
-        return {"result": False, "message": "Invalid DingTalk webhook URL"}
+        logger.warning(f"[SSRF] 阻断非法 webhook hostname: {_webhook_hostname(webhook_url)}")
+        return build_network_whitelist_error_payload()
 
     # 可选签名验证（毫秒级时间戳，URL 编码）
     channel_obj.decrypt_field("sign_secret", channel_config)
@@ -263,14 +281,14 @@ def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers):
     }
 
     try:
-        res = requests.post(webhook_url, json=payload, timeout=5)
+        res = requests.post(webhook_url, json=payload, timeout=5, allow_redirects=False)
         return res.json()
     except Exception as e:
         logger.exception(e)
         return {"result": False, "message": "failed to send dingtalk bot message"}
 
 
-def send_nats_message(channel_obj: Channel, content: dict):
+def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=None):
     """
     发送 NATS 消息（Request 模式）
     :param channel_obj: NATS Channel 对象
@@ -282,7 +300,7 @@ def send_nats_message(channel_obj: Channel, content: dict):
     method_name = config.get("method_name")
     bot_id = config.get("bot_id")
     node_id = config.get("node_id")
-    timeout = config.get("timeout", 60)
+    timeout = timeout_override if timeout_override is not None else config.get("timeout", 60)
 
     if not namespace or not method_name:
         return {"result": False, "message": "NATS channel config missing namespace or method_name"}
@@ -294,7 +312,7 @@ def send_nats_message(channel_obj: Channel, content: dict):
         payload.update({"bot_id": bot_id, "node_id": node_id})
 
     try:
-        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, _raw=True, **payload)
+        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, **payload)
         return result
     except Exception as e:
         logger.exception(e)
@@ -308,6 +326,8 @@ def send_by_custom_webhook(channel_obj: Channel, content, receivers):
     webhook_url = channel_config.get("webhook_url")
     if not webhook_url:
         return {"result": False, "message": "Custom webhook url is not configured"}
+    if not is_valid_webhook_url(webhook_url):
+        return build_network_whitelist_error_payload()
     if receivers:
         to_user_mentions = " ".join(f"@{name} " for name in receivers)
         content = f"{content}<br>To: {to_user_mentions}"
@@ -327,10 +347,24 @@ def send_by_custom_webhook(channel_obj: Channel, content, receivers):
         body_str = body_template.replace("{{content}}", content)
     try:
         if body is not None:
-            res = requests.request(request_method, webhook_url, json=body, headers=headers, timeout=10)
+            res = requests.request(
+                request_method,
+                webhook_url,
+                json=body,
+                headers=headers,
+                timeout=10,
+                allow_redirects=False,
+            )
         else:
             headers.setdefault("Content-Type", "text/plain")
-            res = requests.request(request_method, webhook_url, data=body_str.encode("utf-8"), headers=headers, timeout=10)
+            res = requests.request(
+                request_method,
+                webhook_url,
+                data=body_str.encode("utf-8"),
+                headers=headers,
+                timeout=10,
+                allow_redirects=False,
+            )
         return res.json()
     except Exception as e:
         logger.exception(e)

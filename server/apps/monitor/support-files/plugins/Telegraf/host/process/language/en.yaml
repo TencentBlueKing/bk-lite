@@ -1,0 +1,34 @@
+Process:
+  desc: Collect per-process CPU, memory, threads, RSS, open FDs with Telegraf procstat, optionally probe TCP ports. Metric instance_id matches the host so the host dashboard can show a process view.
+  name: Process (Telegraf)
+monitor_object:
+  Process: Process
+monitor_object_type:
+  OS: Operating System
+monitor_object_metric:
+  Process:
+    process_cpu_usage:
+      name: CPU Usage
+      desc: CPU usage of matched processes aggregated by process_name, used to find hot processes on a host.
+    process_mem_usage:
+      name: Application Memory Usage
+      desc: Memory usage percent of matched processes relative to system memory, aggregated by process_name.
+    process_memory_rss:
+      name: Memory RSS
+      desc: Resident set size of matched processes aggregated by process_name, used to assess absolute memory usage.
+    process_num_threads:
+      name: Thread Count
+      desc: Thread count of matched processes aggregated by process_name, used to detect thread leaks or spikes.
+    process_num_fds:
+      name: Open File Descriptors
+      desc: Open file descriptor count of matched processes aggregated by process_name, used to detect FD leaks; may require elevated privileges.
+    process_alive:
+      name: Process Alive
+      desc: Whether matched process metrics are reporting; alive means data is present, inactive means no matched process is reporting.
+    process_port_alive:
+      name: Port Liveness
+      desc: Status of configured ports; alive=all reachable, dead=all unreachable, partially dead=some unreachable; missing series means no port config or no data.
+monitor_object_metric_group:
+  Process:
+    Resource: Resource
+    Status: Status

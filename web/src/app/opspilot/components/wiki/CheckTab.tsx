@@ -1,397 +1,225 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Drawer, Empty, Popconfirm, Select, Space, Tag, message } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import MarkdownIt from 'markdown-it';
-import DOMPurify from 'dompurify';
-import CustomTable from '@/components/custom-table';
-import { useTranslation } from '@/utils/i18n';
+import React, {
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
+import { message } from 'antd';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
-import { CheckItem } from '@/app/opspilot/types/wiki';
+import { useTranslation } from '@/utils/i18n';
+import type {
+  CheckDecisionRequest,
+  CheckItem,
+  DecisionListView,
+} from '@/app/opspilot/types/wiki';
+import WikiDecisionCenter from './WikiDecisionCenter';
+import {
+  buildDecisionLoadPlan,
+  createDecisionScopeState,
+  createLatestRequestGuard,
+  decisionScopeReducer,
+  filterDecisionItems,
+  getVisibleDecisionScopeState,
+  shouldRefreshDecisionListAfterError,
+  type DecisionSubmittingState,
+} from './wikiDecisionModel';
 
-const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
-const mdHtml = (body: string) => ({ __html: DOMPurify.sanitize(md.render(body || '')) });
-const MD_CLS =
-  'text-sm leading-7 break-words [&_h1]:text-base [&_h2]:text-[15px] [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_code]:rounded [&_code]:bg-[var(--color-fill-1)] [&_code]:px-1';
-
-const STATUS_COLOR: Record<string, string> = {
-  open: 'gold',
-  resolved: 'green',
-  dismissed: 'default',
-};
-
-const CHECK_STATUS_KEY: Record<string, string> = {
-  open: 'wiki.checkStatusOpen',
-  resolved: 'wiki.checkStatusResolved',
-  dismissed: 'wiki.checkStatusDismissed',
-};
-
-// 检查类型本地化(spec 4.5)
-const CHECK_TYPE_KEY: Record<string, string> = {
-  ambiguous_link: 'wiki.checkAmbiguousLink',
-  conflict: 'wiki.checkConflict',
-  duplicate: 'wiki.checkDuplicate',
-  stale: 'wiki.checkStale',
-  orphan: 'wiki.checkOrphan',
-  broken_relation: 'wiki.checkBrokenRelation',
-  no_source: 'wiki.checkNoSource',
-  all_sources_invalid: 'wiki.checkAllSourcesInvalid',
-  low_confidence: 'wiki.checkLowConfidence',
-  cannot_merge: 'wiki.checkCannotMerge',
-  bridge_node: 'wiki.checkBridgeNode',
-  sparse_community: 'wiki.checkSparseCommunity',
-  cross_community_edge: 'wiki.checkCrossCommunityEdge',
-  surprise_link: 'wiki.checkSurpriseLink',
-  schema_violation: 'wiki.checkSchemaViolation',
-  schema_changed: 'wiki.checkSchemaChanged',
-  missing: 'wiki.checkMissing',
-  material_update: 'wiki.checkMaterialUpdate',
-  source_invalid: 'wiki.checkSourceInvalid',
-  qa_answer_candidate: 'wiki.checkQaAnswerCandidate',
-};
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
 
 const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
-  const {
-    fetchCheckItems,
-    acceptCheck,
-    rejectCheck,
-    batchAcceptChecks,
-    batchRejectChecks,
-    scan,
-  } = useWikiApi();
-  const [data, setData] = useState<CheckItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { fetchDecisionItems, decideCheck, revokeDecisionRule } = useWikiApi();
+  const [requestGuard] = useState(createLatestRequestGuard);
+  const submittingCheckRef = useRef<number | null>(null);
+  const [scopeState, dispatchScope] = useReducer(
+    decisionScopeReducer,
+    createDecisionScopeState(),
+  );
+  const [view, setView] = useState<DecisionListView>('pending');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const [total, setTotal] = useState(0);
-  const [statusFilter, setStatusFilter] = useState('open');
-  const [checkTypeFilter, setCheckTypeFilter] = useState('');
-  const [scanning, setScanning] = useState(false);
-  const [batchSubmitting, setBatchSubmitting] = useState<'accept' | 'reject' | null>(null);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [detail, setDetail] = useState<CheckItem | null>(null);
+  const [pageSize] = useState(20);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState<DecisionSubmittingState | null>(
+    null,
+  );
+  const [outdatedItemId, setOutdatedItemId] = useState<number | null>(null);
+  const { items, loadedScopeKey } = scopeState;
+  const scopeKey = `${kbId}:${view}:${page}:${pageSize}`;
+  const visibleScopeState = getVisibleDecisionScopeState(scopeState, scopeKey);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<boolean> => {
+    const requestId = requestGuard.begin();
+    const plan = buildDecisionLoadPlan(view, page, pageSize);
     setLoading(true);
     try {
-      const res = await fetchCheckItems(kbId, {
-        page,
-        page_size: pageSize,
-        status: statusFilter || undefined,
-        check_type: checkTypeFilter || undefined,
+      const [primary, companion] = await Promise.all([
+        fetchDecisionItems(kbId, plan.primary),
+        fetchDecisionItems(kbId, plan.companion),
+      ]);
+      return requestGuard.commitIfCurrent(requestId, () => {
+        const countsForScope =
+          view === 'pending'
+            ? { pending: primary.count, processed: companion.count }
+            : { pending: companion.count, processed: primary.count };
+        dispatchScope({
+          type: 'load_succeeded',
+          scopeKey,
+          items: filterDecisionItems(primary.items),
+          total: primary.count,
+          counts: countsForScope,
+        });
       });
-      setData(res.items);
-      setTotal(res.count);
-      const openIds = new Set(res.items.filter((item) => item.status === 'open').map((item) => item.id));
-      setSelectedRowKeys((keys) => keys.filter((key) => openIds.has(Number(key))));
+    } catch (requestError) {
+      requestGuard.commitIfCurrent(requestId, () => {
+        dispatchScope({
+          type: 'load_failed',
+          scopeKey,
+          error: getErrorMessage(requestError),
+        });
+      });
+      return false;
     } finally {
-      setLoading(false);
+      requestGuard.commitIfCurrent(requestId, () => setLoading(false));
     }
+    // useWikiApi 每次渲染都会返回新函数；请求参数才是加载生命周期的稳定依赖。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId, page, pageSize, statusFilter, checkTypeFilter]);
+  }, [kbId, page, pageSize, requestGuard, scopeKey, view]);
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId, page, pageSize, statusFilter, checkTypeFilter]);
+    requestGuard.invalidate();
+    dispatchScope({ type: 'reset' });
+    setOutdatedItemId(null);
+    void load();
+    return () => requestGuard.invalidate();
+  }, [load, requestGuard]);
 
-  const statusOptions = useMemo(
-    () => [
-      { value: '', label: t('wiki.checkStatusAll') },
-      { value: 'open', label: t('wiki.checkStatusOpen') },
-      { value: 'resolved', label: t('wiki.checkStatusResolved') },
-      { value: 'dismissed', label: t('wiki.checkStatusDismissed') },
-    ],
-    [t]
-  );
-  const checkTypeOptions = useMemo(
-    () => [
-      { value: '', label: t('wiki.checkTypeAll') },
-      ...Object.entries(CHECK_TYPE_KEY).map(([value, labelKey]) => ({ value, label: t(labelKey) })),
-    ],
-    [t]
-  );
+  const invalidateVisibleScope = () => {
+    requestGuard.invalidate();
+    dispatchScope({ type: 'reset' });
+    setOutdatedItemId(null);
+    setLoading(true);
+  };
 
-  const resetSelectionAndPage = () => {
-    setSelectedRowKeys([]);
+  const handleViewChange = (nextView: DecisionListView) => {
+    invalidateVisibleScope();
+    setView(nextView);
     setPage(1);
   };
 
-  const handleStatusFilterChange = (value: string) => {
-    setStatusFilter(value);
-    resetSelectionAndPage();
+  const handlePageChange = (nextPage: number) => {
+    invalidateVisibleScope();
+    setPage(nextPage);
   };
 
-  const handleCheckTypeFilterChange = (value: string) => {
-    setCheckTypeFilter(value);
-    resetSelectionAndPage();
-  };
-
-  const handleScan = async () => {
-    setScanning(true);
-    try {
-      await scan(kbId);
-      message.success(t('wiki.saveSuccess'));
-      load();
-    } finally {
-      setScanning(false);
+  const ensureCurrentItem = (item: CheckItem) => {
+    if (
+      loadedScopeKey !== scopeKey ||
+      !items.some((current) => current.id === item.id)
+    ) {
+      throw new Error(t('wiki.decisionContextOutdated'));
     }
   };
 
-  const act = async (fn: () => Promise<unknown>) => {
-    await fn();
-    message.success(t('wiki.saveSuccess'));
-    setDetail(null);
-    load();
-  };
-
-  const typeLabel = (ct: string) => (CHECK_TYPE_KEY[ct] ? t(CHECK_TYPE_KEY[ct]) : ct);
-  const statusLabel = (status: string) => (CHECK_STATUS_KEY[status] ? t(CHECK_STATUS_KEY[status]) : status);
-  const resolutionOf = (item?: CheckItem | null) =>
-    item?.related?.resolution as
-      | {
-          action?: string;
-          operator?: string;
-          note?: string;
-          processed_at?: string;
+  const handleDecide = async (
+    item: CheckItem,
+    request: CheckDecisionRequest,
+  ) => {
+    ensureCurrentItem(item);
+    if (outdatedItemId === item.id) throw new Error(t('wiki.decisionOutdated'));
+    if (submittingCheckRef.current !== null) return;
+    const operationRequestId = requestGuard.begin();
+    submittingCheckRef.current = item.id;
+    setSubmitting({ checkId: item.id, action: request.action });
+    try {
+      await decideCheck(item.id, request);
+      if (requestGuard.isCurrent(operationRequestId)) {
+        setOutdatedItemId(null);
+        message.success(t('wiki.decisionSaved'));
+        await load();
+      }
+    } catch (requestError) {
+      if (requestGuard.isCurrent(operationRequestId)) {
+        const requestMessage = getErrorMessage(requestError);
+        const shouldRefresh =
+          shouldRefreshDecisionListAfterError(requestMessage);
+        if (shouldRefresh) {
+          setOutdatedItemId(item.id);
         }
-      | undefined;
-  const selectedOpenItems = useMemo(() => {
-    const selectedIds = new Set(selectedRowKeys.map((key) => Number(key)));
-    return data.filter((item) => item.status === 'open' && selectedIds.has(item.id));
-  }, [data, selectedRowKeys]);
-  const selectedOpenIds = selectedOpenItems.map((item) => item.id);
-  const hasSelectedOpenItems = selectedOpenIds.length > 0;
-
-  const batchMessage = (acceptedOrRejected: number, skipped: number) =>
-    `${t('wiki.batchActionDone')}: ${t('wiki.processed')} ${acceptedOrRejected}, ${t('wiki.skipped')} ${skipped}`;
-
-  const handleBatchAccept = async () => {
-    if (!hasSelectedOpenItems) return;
-    setBatchSubmitting('accept');
-    try {
-      const res = await batchAcceptChecks(selectedOpenIds);
-      message.success(batchMessage(res.accepted, res.skipped));
-      setSelectedRowKeys([]);
-      load();
+        dispatchScope({ type: 'set_error', error: requestMessage });
+        if (shouldRefresh) {
+          const refreshed = await load();
+          if (refreshed) setOutdatedItemId(null);
+        }
+      }
+      throw requestError;
     } finally {
-      setBatchSubmitting(null);
+      if (submittingCheckRef.current === item.id) {
+        submittingCheckRef.current = null;
+        setSubmitting(null);
+      }
     }
   };
 
-  const handleBatchReject = async () => {
-    if (!hasSelectedOpenItems) return;
-    setBatchSubmitting('reject');
+  const handleRevoke = async (item: CheckItem) => {
+    ensureCurrentItem(item);
+    if (submittingCheckRef.current !== null) return;
+    const operationRequestId = requestGuard.begin();
+    submittingCheckRef.current = item.id;
+    setSubmitting({ checkId: item.id, action: 'revoke' });
     try {
-      const res = await batchRejectChecks(selectedOpenIds);
-      message.success(batchMessage(res.rejected, res.skipped));
-      setSelectedRowKeys([]);
-      load();
+      await revokeDecisionRule(item.id, {
+        rule_id: item.decision_rule?.id,
+      });
+      if (requestGuard.isCurrent(operationRequestId)) {
+        message.success(t('wiki.decisionRevokeSuccess'));
+        await load();
+      }
+    } catch (requestError) {
+      if (requestGuard.isCurrent(operationRequestId)) {
+        dispatchScope({
+          type: 'set_error',
+          error: getErrorMessage(requestError),
+        });
+      }
     } finally {
-      setBatchSubmitting(null);
+      if (submittingCheckRef.current === item.id) {
+        submittingCheckRef.current = null;
+        setSubmitting(null);
+      }
     }
   };
-
-  const columns: ColumnsType<CheckItem> = [
-    {
-      title: t('wiki.type'),
-      dataIndex: 'check_type',
-      key: 'check_type',
-      width: 160,
-      render: (ct: string) => typeLabel(ct),
-    },
-    {
-      title: t('wiki.status'),
-      dataIndex: 'status',
-      key: 'status',
-      width: 110,
-      render: (s: string) => <Tag color={STATUS_COLOR[s] || 'default'}>{statusLabel(s)}</Tag>,
-    },
-    {
-      title: t('wiki.related'),
-      key: 'related',
-      render: (_: unknown, r) => {
-        const pages = r.related_pages || [];
-        if (!pages.length) return <span className="text-xs text-[var(--color-text-3)]">--</span>;
-        // 列出涉及页面标题(同标题重复时会一致),点「详情」看实际内容/对比
-        return <span className="text-[var(--color-text-2)]">{pages.map((p) => p.title).join('  ·  ')}</span>;
-      },
-    },
-    {
-      title: t('common.actions'),
-      key: 'action',
-      width: 200,
-      render: (_: unknown, r) => (
-        <Space size={4}>
-          <Button type="link" size="small" onClick={() => setDetail(r)}>
-            {t('wiki.detail')}
-          </Button>
-          {r.status === 'open' && (
-            <>
-              <Button type="link" size="small" onClick={() => act(() => acceptCheck(r.id))}>
-                {t('wiki.accept')}
-              </Button>
-              <Button type="link" size="small" danger onClick={() => act(() => rejectCheck(r.id))}>
-                {t('wiki.dismiss')}
-              </Button>
-            </>
-          )}
-        </Space>
-      ),
-    },
-  ];
-
-  const pages = detail?.related_pages || [];
-  const resolution = resolutionOf(detail);
-  const suggestedQueries = Array.isArray(detail?.related?.suggested_queries)
-    ? (detail.related.suggested_queries as string[])
-    : [];
+  const handleRefresh = async () => {
+    const refreshed = await load();
+    if (refreshed) setOutdatedItemId(null);
+    return refreshed;
+  };
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <Space size={8} wrap>
-          <span className="text-xs text-[var(--color-text-3)]">{t('wiki.filterStatus')}</span>
-          <Select
-            value={statusFilter}
-            options={statusOptions}
-            className="min-w-[132px]"
-            onChange={handleStatusFilterChange}
-          />
-          <span className="text-xs text-[var(--color-text-3)]">{t('wiki.filterType')}</span>
-          <Select
-            value={checkTypeFilter}
-            options={checkTypeOptions}
-            className="min-w-[160px]"
-            onChange={handleCheckTypeFilterChange}
-          />
-          <Popconfirm
-            title={t('wiki.batchAcceptConfirm')}
-            okText={t('wiki.confirm')}
-            cancelText={t('common.cancel')}
-            disabled={!hasSelectedOpenItems}
-            onConfirm={handleBatchAccept}
-          >
-            <Button disabled={!hasSelectedOpenItems} loading={batchSubmitting === 'accept'}>
-              {t('wiki.batchAccept')}
-            </Button>
-          </Popconfirm>
-          <Popconfirm
-            title={t('wiki.batchRejectConfirm')}
-            okText={t('wiki.confirm')}
-            cancelText={t('common.cancel')}
-            disabled={!hasSelectedOpenItems}
-            onConfirm={handleBatchReject}
-          >
-            <Button danger disabled={!hasSelectedOpenItems} loading={batchSubmitting === 'reject'}>
-              {t('wiki.batchReject')}
-            </Button>
-          </Popconfirm>
-        </Space>
-        <Button onClick={handleScan} loading={scanning}>
-          {t('wiki.scan')}
-        </Button>
-      </div>
-      {/* flex-1 容器给表格确定高度,使分页时 CustomTable 自动算出的 scroll.y 稳定 */}
-      <div className="flex-1 min-h-0">
-        <CustomTable<CheckItem>
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={data}
-          rowSelection={{
-            selectedRowKeys,
-            onChange: setSelectedRowKeys,
-            getCheckboxProps: (record) => ({ disabled: record.status !== 'open' }),
-          }}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            onChange: (p, ps) => {
-              setPage(p);
-              setPageSize(ps);
-            },
-          }}
-          scroll={{ x: undefined }}
-        />
-      </div>
-
-      {/* 检查详情:候选类展示「当前 vs 候选」对比,扫描类展示涉及页面内容 */}
-      <Drawer
-        title={detail ? typeLabel(detail.check_type) : ''}
-        open={!!detail}
-        width={760}
-        onClose={() => setDetail(null)}
-        destroyOnHidden
-      >
-        {detail &&
-          (detail.candidate ? (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="mb-2 text-xs font-medium text-[var(--color-text-3)]">{t('wiki.currentVersion')}</div>
-                <div className={MD_CLS} dangerouslySetInnerHTML={mdHtml(pages[0]?.body || '')} />
-              </div>
-              <div className="border-l border-[var(--color-border-2)] pl-4">
-                <div className="mb-2 text-xs font-medium text-[var(--color-primary)]">{t('wiki.candidateVersion')}</div>
-                <div className={MD_CLS} dangerouslySetInnerHTML={mdHtml(detail.candidate.body)} />
-              </div>
-            </div>
-          ) : pages.length ? (
-            <div className="space-y-4">
-              {resolution && (
-                <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-fill-1)] p-3">
-                  <div className="mb-2 text-xs font-medium text-[var(--color-text-2)]">
-                    {t('wiki.resolutionResult')}
-                  </div>
-                  <div className="space-y-1 text-xs text-[var(--color-text-3)]">
-                    <div>
-                      {t('wiki.operator')}: {resolution.operator || '--'}
-                    </div>
-                    <div>
-                      {t('wiki.time')}: {resolution.processed_at || '--'}
-                    </div>
-                    {resolution.note && <div>{resolution.note}</div>}
-                  </div>
-                </div>
-              )}
-              {suggestedQueries.length > 0 && (
-                <div>
-                  <div className="mb-2 text-xs font-medium text-[var(--color-text-3)]">
-                    {t('wiki.suggestedQueries')}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {suggestedQueries.map((query) => (
-                      <Tag key={query} className="m-0">
-                        {query}
-                      </Tag>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="text-xs text-[var(--color-text-3)]">{t('wiki.involvedPages')}</div>
-              {pages.map((p) => (
-                <div key={p.id} className="rounded-lg border border-[var(--color-border-2)] p-3">
-                  <div className="mb-2 flex items-center gap-2 font-medium text-[var(--color-text-1)]">
-                    {p.title}
-                    <Tag className="m-0">{p.page_type}</Tag>
-                  </div>
-                  {p.body ? (
-                    <div className={MD_CLS} dangerouslySetInnerHTML={mdHtml(p.body)} />
-                  ) : (
-                    <span className="text-xs text-[var(--color-text-3)]">--</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Empty />
-          ))}
-      </Drawer>
-    </div>
+    <WikiDecisionCenter
+      key={`${scopeKey}:${outdatedItemId ?? 'current'}`}
+      items={visibleScopeState.items}
+      view={view}
+      total={visibleScopeState.total}
+      page={page}
+      pageSize={pageSize}
+      pendingCount={visibleScopeState.counts.pending}
+      processedCount={visibleScopeState.counts.processed}
+      activeId={visibleScopeState.activeId}
+      loading={loading || loadedScopeKey !== scopeKey}
+      error={visibleScopeState.error}
+      outdatedItemId={outdatedItemId}
+      submitting={submitting}
+      onViewChange={handleViewChange}
+      onSelect={(item) => dispatchScope({ type: 'select', activeId: item.id })}
+      onPageChange={handlePageChange}
+      onDecide={handleDecide}
+      onRevoke={handleRevoke}
+      onRefresh={handleRefresh}
+    />
   );
 };
 

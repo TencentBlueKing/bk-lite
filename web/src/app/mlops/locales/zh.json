@@ -78,6 +78,10 @@
     "type": "类型",
     "fileType": "文件类型",
     "labelResult": "标注结果",
+    "logContent": "日志内容",
+    "textContent": "文本内容",
+    "label": "标注",
+    "fileList": "文件列表",
     "value": "数值",
     "loadDataError": "加载数据失败",
     "delDataset": "删除数据集",
@@ -118,6 +122,7 @@
     "saveChanges": "保存变更",
     "labelManagement": "标签管理",
     "addLabel": "添加标签",
+    "labelExists": "标签已存在",
     "labelInUse": "该标签已被使用",
     "addImageFailed": "添加图片失败",
     "pressEnterToAdd": "按下回车添加",
@@ -157,10 +162,17 @@
     "executionScore": "执行得分",
     "modelDownload": "模型下载",
     "selectDatasets": "请选择数据训练集",
+    "datasetVersion": "数据集版本",
+    "selectDatasetVersion": "请选择数据集版本",
+    "maxEvals": "训练轮次",
+    "inputMaxEvals": "请输入训练轮次",
+    "maxEvalsTooltip": "超参数优化的最大迭代次数。值越大搜索空间越充分，但训练时间越长。推荐范围：50-200",
+    "maxEvalsPlaceholder": "超参数搜索的评估轮次",
     "selectTraindata": "请选择训练数据参数",
     "delTraintask": "删除训练任务",
     "delTraintaskContent": "确定要删除该训练任务吗？\n删除该训练任务会同时将能力发布中关联的模型服务删除，请确认能力发布中的没有需要关联此训练任务的模型服务后删除。",
-    "getTrainStatusFailed": "获取训练状态错误"
+    "getTrainStatusFailed": "获取训练状态错误",
+    "downloadFailed": "下载失败"
   },
   "model-release": {
     "release": "发布",
@@ -201,7 +213,59 @@
     "deleteConfirmContent": "确定要删除算法配置吗？此操作不可恢复。",
     "jsonError": "JSON 格式错误",
     "pleaseInput": "请输入",
-    "editJsonConfigHint": "请在表单配置标签页中编辑 JSON 配置"
+    "editJsonConfigHint": "请在表单配置标签页中编辑 JSON 配置",
+    "algorithmNamePlaceholder": "例：ECOD、XGBoost",
+    "displayNamePlaceholder": "例：ECOD 异常检测算法",
+    "scenarioDescriptionPlaceholder": "描述该算法适用的业务场景",
+    "imagePlaceholder": "例：registry.example.com/ml/ecod:latest",
+    "defaultForm": {
+      "basicConfig": "基础配置",
+      "optimizationMetric": "优化指标",
+      "selectOptimizationMetric": "选择优化目标指标",
+      "optimizationMetricTooltip": "模型训练时优化的目标指标",
+      "f1Score": "F1 Score（F1 分数）",
+      "precision": "Precision（精确率）",
+      "recall": "Recall（召回率）",
+      "aucRoc": "AUC-ROC（ROC 曲线下面积）",
+      "randomSeed": "随机种子",
+      "randomSeedTooltip": "控制随机性，确保实验可复现。相同种子和相同参数会得到相同结果",
+      "randomSeedPlaceholder": "例：42",
+      "searchSpace": "搜索空间（Search Space）",
+      "contamination": "污染率",
+      "contaminationTooltip": "预期异常数据占总数据的比例，多个值用逗号分隔",
+      "contaminationPlaceholder": "例：0.01,0.05,0.1",
+      "advancedOptions": "高级选项",
+      "enableFeatureEngineering": "启用特征工程",
+      "featureEngineeringTooltip": "启用后将生成滞后特征、滚动窗口统计、时间特征等",
+      "preprocessing": "数据预处理（Preprocessing）",
+      "missingValueHandling": "缺失值处理",
+      "selectMissingValueHandling": "选择缺失值处理方式",
+      "interpolate": "线性插值（interpolate）",
+      "forwardFill": "前向填充（ffill）",
+      "backwardFill": "后向填充（bfill）",
+      "drop": "删除（drop）",
+      "median": "中位数填充（median）",
+      "maxMissingRatio": "最大缺失率",
+      "maxMissingRatioTooltip": "数据缺失比例超过此阈值将拒绝训练",
+      "labelColumn": "标签列名",
+      "labelColumnTooltip": "数据集中标签列的名称",
+      "labelColumnPlaceholder": "例：label",
+      "featureEngineering": "特征工程（Feature Engineering）",
+      "lagPeriods": "滞后期",
+      "lagPeriodsTooltip": "使用过去 N 个时间点的值作为特征",
+      "lagPeriodsPlaceholder": "例：1,2,3",
+      "rollingWindowSize": "滚动窗口大小",
+      "rollingWindowSizeTooltip": "计算滚动窗口统计的窗口大小",
+      "rollingWindowSizePlaceholder": "例：12,24,48",
+      "rollingWindowStatistics": "滚动窗口统计",
+      "selectStatisticsFunction": "选择统计函数",
+      "mean": "均值（mean）",
+      "standardDeviation": "标准差（std）",
+      "minimum": "最小值（min）",
+      "maximum": "最大值（max）",
+      "temporalFeatures": "时间特征",
+      "temporalFeaturesTooltip": "添加小时、星期、月份等时间特征"
+    }
   },
   "serving-guide": {
     "title": "使用指南",
@@ -246,6 +310,11 @@
         "request": "images 数组包含 base64 编码的图片数据；config.conf_threshold 可选，设置置信度阈值",
         "response": "响应中 results 数组包含检测结果，每张图片返回检测到的目标及其边界框坐标"
       }
+    }
+  },
+  "monitor": {
+    "intergrations": {
+      "dimension": "维度"
     }
   }
 }

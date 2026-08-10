@@ -19,6 +19,7 @@ from apps.mlops.models.anomaly_detection import (
     AnomalyDetectionTrainJob,
 )
 from apps.mlops.signals import base as signals_base
+from apps.mlops.tasks.file_cleanup import cleanup_train_data_file
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
@@ -100,6 +101,92 @@ def test_train_data_delete_runs_without_file(monkeypatch, django_capture_on_comm
     with django_capture_on_commit_callbacks(execute=True):
         td.delete()
     assert not AnomalyDetectionTrainData.objects.filter(id=td.id).exists()
+
+
+def test_train_data_delete_registers_cleanup_on_the_write_database(monkeypatch):
+    dataset = _dataset()
+    td = AnomalyDetectionTrainData.objects.create(
+        name="using.csv",
+        dataset=dataset,
+        is_train_data=True,
+    )
+    on_commit = Mock()
+    monkeypatch.setattr(signals_base.transaction, "on_commit", on_commit)
+
+    td.delete(using="default")
+
+    on_commit.assert_called_once()
+    assert on_commit.call_args.kwargs == {"using": "default"}
+
+
+def test_train_data_delete_preserves_file_referenced_by_another_row(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
+    dataset = _dataset()
+    first = AnomalyDetectionTrainData.objects.create(
+        name="first.csv",
+        dataset=dataset,
+        train_data="shared/deleted-row.csv",
+        is_train_data=True,
+    )
+    AnomalyDetectionTrainData.objects.create(
+        name="second.csv",
+        dataset=dataset,
+        train_data="shared/deleted-row.csv",
+        is_train_data=True,
+    )
+    storage = AnomalyDetectionTrainData._meta.get_field("train_data").storage
+    delete = Mock()
+    monkeypatch.setattr(storage, "delete", delete)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        first.delete()
+
+    delete.assert_not_called()
+
+
+def test_train_data_delete_storage_failure_schedules_retry(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
+    dataset = _dataset()
+    td = AnomalyDetectionTrainData.objects.create(
+        name="retry.csv",
+        dataset=dataset,
+        train_data="shared/delete-retry.csv",
+        is_train_data=True,
+    )
+    instance_pk = td.pk
+    storage = AnomalyDetectionTrainData._meta.get_field("train_data").storage
+    monkeypatch.setattr(
+        storage,
+        "delete",
+        Mock(side_effect=OSError("object storage unavailable")),
+    )
+    apply_async = Mock()
+    monkeypatch.setattr(cleanup_train_data_file, "apply_async", apply_async)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        td.delete()
+
+    apply_async.assert_called_once_with(
+        kwargs={
+            "model_label": "mlops.AnomalyDetectionTrainData",
+            "instance_pk": instance_pk,
+            "file_field_name": "train_data",
+            "old_path": "shared/delete-retry.csv",
+            "using": "default",
+        },
+        delivery_mode=2,
+        retry=True,
+        retry_policy={
+            "max_retries": 3,
+            "interval_start": 0,
+            "interval_step": 1,
+            "interval_max": 3,
+        },
+    )
 
 
 def test_train_job_delete_runs_without_config(monkeypatch, django_capture_on_commit_callbacks):

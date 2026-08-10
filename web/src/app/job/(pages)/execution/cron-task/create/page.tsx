@@ -22,8 +22,9 @@ import useJobApi from '@/app/job/api';
 import { JobType, ScheduleType, ScheduledTaskFormData, Script, Playbook } from '@/app/job/types';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
-import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
+import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
 import { useUserInfoContext } from '@/context/userInfo';
 
 const CreateCronTaskPage = () => {
@@ -39,6 +40,7 @@ const CreateCronTaskPage = () => {
   const { selectedGroup } = useUserInfoContext();
 
   const [form] = Form.useForm();
+  const [defaultTaskName] = useState(() => createDefaultExecutionName(t('job.scheduledTask')));
   const [submitting, setSubmitting] = useState(false);
   const [jobType, setJobType] = useState<JobType>('script');
   const [templateType, setTemplateType] = useState<'script' | 'playbook'>('script');
@@ -299,6 +301,7 @@ const CreateCronTaskPage = () => {
           layout="vertical"
           className="w-full"
           initialValues={{
+            name: defaultTaskName,
             timeout: 300,
             dailyTime: dayjs().hour(2).minute(0),
             hourlyInterval: 1,
@@ -563,6 +566,7 @@ const CreateCronTaskPage = () => {
       <HostSelectionModal
         open={hostModalOpen}
         selectedKeys={selectedHostKeys}
+        selectedHosts={selectedHosts}
         source={targetSource}
         onConfirm={handleHostConfirm}
         onCancel={() => setHostModalOpen(false)}

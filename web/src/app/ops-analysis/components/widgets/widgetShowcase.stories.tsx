@@ -1,15 +1,139 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import React from 'react';
+import { expect, waitFor } from 'storybook/test';
 import ComSingle from './comSingle';
+import ComPie from './comPie';
 import ComGauge from './comGauge';
 import ComLine from './comLine';
 import ComBar from './comBar';
 import ComTable from './comTable';
 import ComTopN from './comTopN';
+import ComponentParamSwitchControl from '../componentParamSwitchControl';
 import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import { useTranslation } from '@/utils/i18n';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import { WidgetViewportProvider } from '@/app/ops-analysis/components/widget-viewport';
+import WidgetState from '@/app/ops-analysis/components/widget-state';
+
+const readMetricVisibleFontSize = (container: HTMLElement) => {
+  const value = Array.from(container.querySelectorAll<HTMLElement>('div')).find(
+    (element) =>
+      element.style.fontSize && element.getAttribute('aria-hidden') !== 'true',
+  );
+
+  if (!value) {
+    throw new Error('未找到单值字号节点');
+  }
+
+  const canvasScale = container.getBoundingClientRect().width / container.offsetWidth;
+  return Number.parseFloat(window.getComputedStyle(value).fontSize) * canvasScale;
+};
+
+const SingleValueSizingRegressionDemo = () => {
+  const screenRenderContext = {
+    enabled: true,
+    fitScale: 0.5,
+    screenDensity: 1,
+    screenUiScale: 2,
+    widgetDensity: 1,
+    widgetUiScale: 2,
+  };
+  const cases = [
+    { id: 'dashboard-compact', label: '仪表盘 / 小', width: 240, height: 120 },
+    { id: 'dashboard-large', label: '仪表盘 / 大', width: 600, height: 360 },
+    { id: 'screen-compact', label: '大屏 / 矮', width: 480, height: 150, screen: true },
+    { id: 'screen-tall', label: '大屏 / 高', width: 480, height: 300, screen: true },
+  ];
+
+  return (
+    <div className="flex flex-wrap items-start gap-6 bg-[#eef3f8] p-6">
+      {cases.map(({ id, label, width, height, screen }) => {
+        const scale = screen ? screenRenderContext.fitScale : 1;
+
+        return (
+          <div key={id}>
+            <div className="mb-2 text-xs text-[#65758b]">{label}</div>
+            <div style={{ width: width * scale, height: height * scale }}>
+              <div
+                data-testid={id}
+                className="origin-top-left"
+                style={{
+                  width,
+                  height,
+                  transform: `scale(${scale})`,
+                  border: '1px solid rgba(101, 126, 160, 0.28)',
+                  background: 'rgba(255, 255, 255, 0.72)',
+                }}
+              >
+                <WidgetViewportProvider scale={scale}>
+                  <ComSingle
+                    rawData={20}
+                    loading={false}
+                    screenRenderContext={screen ? screenRenderContext : undefined}
+                    config={{
+                      chartType: 'single',
+                      chartThemeMode: screen ? 'screen-light' : undefined,
+                      unit: '条',
+                      thresholdColors: blueThreshold,
+                    }}
+                  />
+                </WidgetViewportProvider>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const WidgetStateScalingDemo = () => (
+  <div className="flex items-start gap-8 bg-[#eef3f8] p-6">
+    <div>
+      <div className="mb-2 text-xs text-[#65758b]">仪表盘空态</div>
+      <div
+        data-testid="dashboard-empty-state"
+        className="h-[120px] w-[240px] border border-[#d8e0ea] bg-white"
+      >
+        <WidgetState description="暂无数据" />
+      </div>
+    </div>
+    <div>
+      <div className="mb-2 text-xs text-[#65758b]">大屏空态（画布缩放 0.5）</div>
+      <div className="h-[120px] w-[240px]">
+        <div
+          data-testid="screen-empty-state"
+          className="h-[240px] w-[480px] origin-top-left border border-[#315d86] bg-[#0b2942]"
+          style={{
+            transform: 'scale(0.5)',
+            '--screen-empty-color': '#a9bfd1',
+          } as React.CSSProperties}
+        >
+          <WidgetViewportProvider scale={0.5}>
+            <WidgetState description="暂无数据" />
+          </WidgetViewportProvider>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div className="mb-2 text-xs text-[#65758b]">全 0 饼图</div>
+      <div
+        data-testid="zero-pie-state"
+        className="h-[120px] w-[240px] border border-[#d8e0ea] bg-white"
+      >
+        <ComPie
+          rawData={[
+            { name: '未分派', value: 0 },
+            { name: '待响应', value: 0 },
+          ]}
+          loading={false}
+          config={{ chartType: 'pie' }}
+        />
+      </div>
+    </div>
+  </div>
+);
 
 const ValueMappingsEditorDemo: React.FC = () => {
   const { t } = useTranslation();
@@ -81,6 +205,103 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({
 );
 
 const blueThreshold = [{ value: '0', color: '#366ce4' }];
+
+const TopNRuntimeDimensionPreview: React.FC<{
+  label: string;
+  chartThemeMode?: ValueConfig['chartThemeMode'];
+  background: string;
+}> = ({ label, chartThemeMode, background }) => {
+  const [runtimeParamValue, setRuntimeParamValue] = React.useState<
+    string | number
+  >('instance_type');
+  const options = [
+    { label: '对象类型', value: 'instance_type' },
+    {
+      label: '使用部门（跨区域成本归属管理部门）',
+      value: 'department',
+    },
+    { label: '申请人', value: 'user' },
+  ];
+  const switchParam = {
+    name: 'group_by',
+    alias_name: 'group_by',
+    type: 'string',
+    filterType: 'params' as const,
+    value: 'instance_type',
+    inputConfig: {
+      control: 'radio' as const,
+      componentSwitch: true,
+      optionsSource: { type: 'static' as const, staticItems: options },
+    },
+  };
+  const rawData = [
+    { key: 'ECS 云服务器', total_cost: 12680.5 },
+    { key: 'RDS 云数据库', total_cost: 8650.25 },
+    { key: 'OSS 对象存储', total_cost: 3920 },
+  ];
+  const config: ValueConfig = {
+    chartType: 'topN',
+    chartThemeMode,
+    topNLabelField: 'key',
+    topNValueField: 'total_cost',
+    params: { group_by: runtimeParamValue },
+    dataSourceParams: [switchParam],
+  };
+
+  return (
+    <div>
+      <div className="mb-2 text-xs text-[#8c8c8c]">{label}</div>
+      <div
+        className="flex h-[260px] w-[360px] flex-col rounded-lg border border-solid border-[#d9d9d9] p-2"
+        style={{ background }}
+      >
+        <div className="mb-2 flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <h4 className="truncate text-sm font-medium">
+              超长云资源费用分布标题（验证窄组件标题优先截断）
+            </h4>
+          </div>
+          <div className="ml-auto max-w-[70%] shrink-0 overflow-x-auto">
+            <ComponentParamSwitchControl
+              inputConfig={switchParam.inputConfig}
+              options={options}
+              value={runtimeParamValue}
+              onChange={setRuntimeParamValue}
+            />
+          </div>
+        </div>
+        <div className="min-h-0 flex-1">
+          <ComTopN
+            rawData={rawData}
+            loading={false}
+            dataSource={{
+              field_schema: [
+                { key: 'key', title: '排行主体', value_type: 'string' },
+                {
+                  key: 'total_cost',
+                  title: '费用合计(元)',
+                  value_type: 'number',
+                },
+              ],
+            } as any}
+            config={config}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TopNWithRuntimeDimensionDemo: React.FC = () => (
+  <div className="flex flex-wrap gap-5 bg-[#f5f7fa] p-6">
+    <TopNRuntimeDimensionPreview label="默认主题" background="#fff" />
+    <TopNRuntimeDimensionPreview
+      label="大屏深色主题"
+      chartThemeMode="screen-dark"
+      background="#06152b"
+    />
+  </div>
+);
 
 const Showcase = () => (
   <div style={{ padding: 24, background: '#f5f7fa' }}>
@@ -407,3 +628,62 @@ const meta: Meta<typeof Showcase> = {
 export default meta;
 
 export const Default: StoryObj<typeof Showcase> = {};
+
+export const TopNWithRuntimeDimension: StoryObj<typeof Showcase> = {
+  render: () => <TopNWithRuntimeDimensionDemo />,
+};
+
+export const SingleValueSizingRegression: StoryObj<typeof Showcase> = {
+  render: () => <SingleValueSizingRegressionDemo />,
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      const getCase = (id: string) =>
+        canvasElement.ownerDocument.querySelector<HTMLElement>(
+          `[data-testid="${id}"]`,
+        );
+      const dashboardCompact = getCase('dashboard-compact');
+      const dashboardLarge = getCase('dashboard-large');
+      const screenCompact = getCase('screen-compact');
+      const screenTall = getCase('screen-tall');
+
+      expect(dashboardCompact).not.toBeNull();
+      expect(dashboardLarge).not.toBeNull();
+      expect(screenCompact).not.toBeNull();
+      expect(screenTall).not.toBeNull();
+      expect(screenCompact!.getBoundingClientRect().width).toBeCloseTo(240, 1);
+      expect(readMetricVisibleFontSize(dashboardLarge!)).toBeGreaterThan(
+        readMetricVisibleFontSize(dashboardCompact!) * 1.4,
+      );
+      expect(readMetricVisibleFontSize(screenTall!)).toBeGreaterThan(
+        readMetricVisibleFontSize(screenCompact!) * 1.25,
+      );
+    });
+  },
+};
+
+export const WidgetStateScaling: StoryObj<typeof Showcase> = {
+  render: () => <WidgetStateScalingDemo />,
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      const dashboardDescription = canvasElement.querySelector<HTMLElement>(
+        '[data-testid="dashboard-empty-state"] .ant-empty-description',
+      );
+      const screenDescription = canvasElement.querySelector<HTMLElement>(
+        '[data-testid="screen-empty-state"] .ant-empty-description',
+      );
+      const zeroPieEmpty = canvasElement.querySelector(
+        '[data-testid="zero-pie-state"] .ant-empty',
+      );
+
+      expect(dashboardDescription).not.toBeNull();
+      expect(screenDescription).not.toBeNull();
+      expect(zeroPieEmpty).not.toBeNull();
+      expect(window.getComputedStyle(dashboardDescription!).fontSize).toBe('14px');
+      expect(window.getComputedStyle(screenDescription!).fontSize).toBe('28px');
+      expect(screenDescription!.getBoundingClientRect().height).toBeCloseTo(
+        dashboardDescription!.getBoundingClientRect().height,
+        1,
+      );
+    });
+  },
+};

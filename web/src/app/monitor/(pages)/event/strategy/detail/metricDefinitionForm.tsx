@@ -2,7 +2,6 @@ import React, { useEffect, useCallback, useMemo } from 'react';
 import {
   Form,
   Input,
-  Segmented,
   Select,
   Tooltip,
   InputNumber,
@@ -53,7 +52,7 @@ interface MetricDefinitionFormProps {
   labelsByRef: Record<string, string[]>;
   groupedUnitOptions: CascaderItem[];
   unitList: UnitListItem[];
-  onCollectTypeChange: (id: string) => void;
+  onCollectTypeChange: (id: string | number) => void;
   onMetricRowsChange: (rows: MetricExpressionRow[]) => void;
   onResultNameChange: (value: string) => void;
   onExpressionChange: (value: string) => void;
@@ -94,7 +93,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   const GROUP_METHOD_LIST = useGroupMethodList();
   const SCHEDULE_LIST = useScheduleList();
   const CONDITION_LIST = useConditionList();
-  const { getGroupIds } = useObjectConfigInfo();
+  const { getGroupIds } = useObjectConfigInfo(monitorName);
 
   // 固定维度作为每个指标行的基础选项，指标标签由编辑器按行补充。
   const groupByOptions = useMemo(() => {
@@ -156,9 +155,17 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
           }
           rules={[{ required: true, message: t('common.required') }]}
         >
-          <Segmented
-            className="custom-tabs"
+          <Select
+            style={{ width: '100%' }}
+            placeholder={t('monitor.events.collectionTemplate')}
+            showSearch
+            allowClear={false}
             options={pluginList}
+            filterOption={(input, option) =>
+              String(option?.label || '')
+                .toLowerCase()
+                .includes(input.toLowerCase())
+            }
             onChange={onCollectTypeChange}
           />
         </Form.Item>

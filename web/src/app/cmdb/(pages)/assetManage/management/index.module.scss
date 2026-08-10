@@ -8,77 +8,257 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    .modelGroup + .modelGroup {
+      margin-top: 20px;
+    }
+
     .groupTitle {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
       .groupOperate {
-        display: none;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 0.16s ease;
       }
 
-      &:hover {
+      &:hover,
+      &:focus-within {
         .groupOperate {
-          display: flex;
+          opacity: 1;
+          visibility: visible;
+          pointer-events: auto;
         }
       }
     }
 
-    .modelList {
+    .groupAction {
+      width: 24px;
+      height: 24px;
+      padding: 0;
+    }
+
+    .groupToggle {
+      min-width: 0;
+      min-height: 40px;
       display: flex;
-      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 0 8px 0 0;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--color-text-1);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+
+      &:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 2px;
+      }
+    }
+
+    .groupChevron {
+      flex-shrink: 0;
+      color: var(--color-text-3);
+      font-size: 12px;
+      transition: transform 0.16s ease;
+    }
+
+    .groupChevronExpanded {
+      transform: rotate(90deg);
+    }
+
+    .groupName {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--color-text-1);
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 22px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .groupCount {
+      flex-shrink: 0;
+      color: var(--color-text-3);
+      font-size: 12px;
+      font-weight: 400;
+      font-variant-numeric: tabular-nums;
+      line-height: 18px;
+    }
+
+    .modelList {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+
+      @media (max-width: 1759px) {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+
+      @media (max-width: 1439px) {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      @media (max-width: 1159px) {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      @media (max-width: 767px) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      @media (max-width: 479px) {
+        grid-template-columns: minmax(0, 1fr);
+      }
 
       .modelListItem {
-        width: calc(20% - 12px);
-        min-width: 200px;
-        border: 1px solid var(--color-border);
+        min-width: 0;
         height: 70px;
-        margin: 10px 10px 0 0;
-        border-radius: 4px;
-        cursor: pointer;
-        user-select: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 12px;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        background: var(--color-bg);
         position: relative;
+        user-select: none;
+        transition:
+          border-color 0.16s ease,
+          background-color 0.16s ease;
+
+        &:hover {
+          border-color: var(--color-primary);
+          background: var(--color-bg-1);
+        }
 
         .leftSide {
-          display: flex;
-          width: 100%;
+          min-width: 0;
           height: 100%;
+          flex: 1;
+          display: flex;
           align-items: center;
+          gap: 10px;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: inherit;
+          text-align: left;
+          cursor: pointer;
+        }
+
+        .modelIcon {
+          width: 40px;
+          height: 40px;
+          flex: 0 0 40px;
+          display: grid;
+          place-items: center;
+          border-radius: 8px;
+          background: var(--color-fill-1);
+        }
+
+        .modelImage {
+          width: auto;
+          max-width: 32px;
+          height: auto;
+          max-height: 32px;
+          object-fit: contain;
+        }
+
+        .modelMeta {
+          min-width: 0;
+          display: flex;
+          flex: 1;
+          flex-direction: column;
+        }
+
+        .modelName,
+        .modelId {
+          display: block;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .modelName {
+          color: var(--color-text-2);
+          font-size: 14px;
+          font-weight: 600;
+          line-height: 21px;
+        }
+
+        .modelId {
+          margin-top: 2px;
+          color: var(--color-text-3);
+          font-size: 12px;
+          line-height: 18px;
         }
 
         .copyButton {
-          position: absolute;
-          right: -8px;
-          top: -8px;
           width: 24px;
           height: 24px;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: var(--color-bg-2);
-          border-radius: 4px;
+          position: absolute;
+          right: -8px;
+          top: -8px;
           z-index: 10;
-          
-          &:hover {
-            background: var(--color-fill-2);
-          }
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transition: opacity 0.16s ease;
+        }
+
+        &:hover .copyButton,
+        &:focus-within .copyButton {
+          opacity: 1;
+          visibility: visible;
+          pointer-events: auto;
         }
 
         .rightSide {
-          width: 70px;
-          height: 100%;
-          display: flex;
+          min-width: 42px;
+          height: 24px;
+          flex-shrink: 0;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          flex-direction: column;
+          gap: 4px;
+          padding: 0 8px;
+          border: 0;
+          border-radius: 6px;
+          background: var(--color-fill-1);
           color: var(--color-primary);
-          border-left: 1px solid var(--color-border);
-          position: relative;
+          font-size: 12px;
+          font-variant-numeric: tabular-nums;
+          cursor: pointer;
+
+          &:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+          }
         }
       }
 
-
       .addModelCard {
-        width: calc(20% - 12px);
-        min-width: 200px;
-        height: 70px;
-        margin: 10px 10px 0 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
 
         .addModelButton {
           width: 100%;
@@ -86,24 +266,109 @@
           display: flex;
           align-items: center;
           justify-content: center;
-          color: var(--color-text-3);
+          border-radius: 8px;
           border-color: var(--color-border);
           border-style: dashed;
           background-color: transparent;
+          color: var(--color-text-3);
 
           &:hover,
           &:focus {
-            color: var(--color-primary);
             border-color: var(--color-primary);
-            background-color: var(--color-bg-2);
+            background-color: var(--color-bg-1);
+            color: var(--color-primary);
           }
         }
       }
     }
+
+    .modelCardsScroll,
+    .managementLayout {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .modelCardsScroll {
+      padding-right: 8px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .managementLayout {
+      display: flex;
+      align-items: stretch;
+      gap: 16px;
+    }
+
+    .managementSidebar {
+      width: 240px;
+      flex-shrink: 0;
+      min-height: 0;
+      padding: 8px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      border: 1px solid var(--color-border-1);
+      border-radius: 8px;
+      background: var(--color-bg);
+      scrollbar-gutter: stable;
+
+      ul > li {
+        margin-top: 2px !important;
+
+        &:first-child {
+          margin-top: 0 !important;
+        }
+      }
+    }
+
+    .managementGroupRow {
+      width: 100%;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 5px 8px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--color-text-2);
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 20px;
+      cursor: pointer;
+      transition:
+        border-color 0.16s ease,
+        background-color 0.16s ease,
+        color 0.16s ease;
+
+      &:hover {
+        background: var(--color-fill-1);
+        color: var(--color-text-1);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 1px;
+      }
+    }
+
   }
 }
 
 .container :global(.ant-spin-nested-loading) {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.container :global(.ant-spin-container) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }

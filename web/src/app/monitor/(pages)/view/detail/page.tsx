@@ -1,13 +1,16 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Segmented } from 'antd';
+import { Breadcrumb, Button, Segmented } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams, useRouter } from 'next/navigation';
 import detailStyle from '../index.module.scss';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import Overview from './overview';
 import Metric from '@/app/monitor/components/metric-views';
+import { getDashboardReturnNavigation } from '@/app/monitor/dashboards/shared/utils';
+import { resolveDashboardInstanceIdentity } from '@/app/monitor/dashboards/shared/utils/instance';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 const ViewDetail = () => {
   const { t } = useTranslation();
@@ -19,11 +22,14 @@ const ViewDetail = () => {
     searchParams.get('monitorObjDisplayName') || '';
   const monitorObjectId: React.Key = searchParams.get('monitorObjId') || '';
   const monitorObjectName: string = searchParams.get('name') || '';
-  const instanceId: React.Key = searchParams.get('instance_id') || '';
   const instanceName: string = searchParams.get('instance_name') || '';
-  const idValues: string[] = (
-    searchParams.get('instance_id_values') || ''
-  ).split(',');
+  const detailTitle = `${monitorObjDisplayName || monitorObjectName || '监控对象'}指标详情`;
+  const returnNavigation = getDashboardReturnNavigation(
+    searchParams,
+    detailTitle
+  );
+  // 列表入口已用 JSON 编码 instance_id_values；不可再 split(',')，否则所有进程身份都会被拆坏。
+  const { instanceId, idValues } = resolveDashboardInstanceIdentity(searchParams);
   const [activeMenu, setActiveMenu] = useState<string>('metrics');
 
   const onTabChange = (val: string) => {
@@ -31,8 +37,7 @@ const ViewDetail = () => {
   };
 
   const onBackButtonClick = () => {
-    const targetUrl = `/monitor/view`;
-    router.push(targetUrl);
+    router.push(returnNavigation.href);
   };
 
   return (
@@ -63,25 +68,46 @@ const ViewDetail = () => {
           </span>
         </div>
         <div className={detailStyle.menu}>
-          <Segmented
-            vertical
-            value={activeMenu}
-            className="custom-tabs"
-            options={[
-              { value: 'metrics', label: t('monitor.views.metrics') }
-              //   { value: 'overview', label: t('monitor.views.overview') },
-            ]}
-            onChange={onTabChange}
-          />
+          <div className={detailStyle.menuBody}>
+            <Segmented
+              vertical
+              value={activeMenu}
+              className="custom-tabs"
+              options={[
+                { value: 'metrics', label: t('monitor.views.metrics') }
+                //   { value: 'overview', label: t('monitor.views.overview') },
+              ]}
+              onChange={onTabChange}
+            />
+          </div>
           <button
-            className="absolute bottom-4 left-4 flex items-center py-2 rounded-md text-sm"
+            type="button"
+            className={detailStyle.backLink}
             onClick={onBackButtonClick}
+            title={returnNavigation.label}
           >
-            <ArrowLeftOutlined className="mr-2" />
+            <ArrowLeftOutlined className="mr-2 shrink-0" />
+            <EllipsisWithTooltip
+              className="min-w-0 truncate"
+              text={returnNavigation.label}
+            />
           </button>
         </div>
       </div>
       <div className={detailStyle.rightSide}>
+        <div className={detailStyle.rightHeader}>
+          <Breadcrumb items={returnNavigation.breadcrumbItems} />
+          <Button
+            className="inline-flex max-w-[260px] items-center"
+            icon={<ArrowLeftOutlined />}
+            onClick={onBackButtonClick}
+          >
+            <EllipsisWithTooltip
+              className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+              text={returnNavigation.label}
+            />
+          </Button>
+        </div>
         {activeMenu === 'metrics' ? (
           <Metric
             idValues={idValues}

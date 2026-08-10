@@ -16,7 +16,7 @@ RUN if [ -n "$NEXUS_PYTHON_REPOSITY" ]; then \
     pip3 config set global.trusted-host "$(echo $NEXUS_PYTHON_REPOSITY | sed -E 's|^https?://([^/:]+).*|\1|')"; \
     fi
 
-ADD . .
+COPY . .
 
 # 设置脚本可执行权限
 RUN chmod +x ./support-files/release/startup.sh && \

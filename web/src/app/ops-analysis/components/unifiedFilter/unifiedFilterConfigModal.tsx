@@ -20,6 +20,7 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
+import DateRangeSelector from '@/app/ops-analysis/components/dateRangeSelector';
 import {
   normalizeUnifiedFilterInputMode,
   sanitizeUnifiedFilterDefinition,
@@ -43,12 +44,14 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
+import { hasInvalidDateRangeDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 import type {
   UnifiedFilterDefinition,
   FilterValue,
   TimeRangeValue,
   LayoutItem,
 } from '@/app/ops-analysis/types/dashBoard';
+import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import type {
   DatasourceItem,
   InputControlConfig,
@@ -70,7 +73,7 @@ interface SortableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
 
 interface ScannedParam {
   key: string;
-  type: 'string' | 'timeRange';
+  type: 'string' | 'timeRange' | 'dateRange';
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;
@@ -154,7 +157,7 @@ const scanFilterParams = (
     const params = Array.isArray(ds.params) ? ds.params : [];
     params.forEach((param: ParamItem) => {
       if (param.filterType !== 'filter') return;
-      if (param.type !== 'string' && param.type !== 'timeRange') return;
+      if (param.type !== 'string' && param.type !== 'timeRange' && param.type !== 'dateRange') return;
 
       const compositeKey = `${param.name}__${param.type}`;
       const existing = paramMap.get(compositeKey);
@@ -164,7 +167,7 @@ const scanFilterParams = (
       } else {
         paramMap.set(compositeKey, {
           key: param.name,
-          type: param.type as 'string' | 'timeRange',
+          type: param.type as 'string' | 'timeRange' | 'dateRange',
           componentCount: 1,
           sampleAlias: param.alias_name || param.name,
           sampleDefaultValue: (param.value as FilterValue) ?? null,
@@ -307,6 +310,7 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
   };
 
   const handleConfirm = () => {
+    if (hasInvalidDateRangeDefinitions(definitions)) return;
     onConfirm(definitions.map(sanitizeUnifiedFilterDefinition));
     onCancel();
   };
@@ -322,11 +326,11 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       definitions.map((definition) =>
         definition.id === editingFilterId
           ? sanitizeUnifiedFilterDefinition({
-              ...definition,
-              inputConfig,
-              inputMode: inputConfig.control,
-              options: undefined,
-            })
+            ...definition,
+            inputConfig,
+            inputMode: inputConfig.control,
+            options: undefined,
+          })
           : definition,
       ),
     );
@@ -373,6 +377,10 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       render: (_: unknown, record: UnifiedFilterDefinition) => {
         if (record.type === 'timeRange') {
           return <span>{t('dashboard.timeRange')}</span>;
+        }
+
+        if (record.type === 'dateRange') {
+          return <span>{t('dashboard.dateRange')}</span>;
         }
 
         return (
@@ -434,6 +442,17 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
                   handleFieldChange(record.id, 'defaultValue', null);
                 }
               }}
+            />
+          );
+        }
+
+        if (record.type === 'dateRange') {
+          return (
+            <DateRangeSelector
+              value={value as DateRangeValue | null | undefined}
+              onChange={(nextValue) =>
+                handleFieldChange(record.id, 'defaultValue', nextValue)
+              }
             />
           );
         }

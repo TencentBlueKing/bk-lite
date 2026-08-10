@@ -24,12 +24,13 @@ export interface FieldSchemaTableRef {
 interface FieldSchemaTableProps {
   schemaFields: SchemaField[];
   onChange: (schemaFields: SchemaField[]) => void;
+  readOnly?: boolean;
 }
 
 const FieldSchemaTable = React.forwardRef<
   FieldSchemaTableRef,
   FieldSchemaTableProps
->(({ schemaFields, onChange }, ref) => {
+>(({ schemaFields, onChange, readOnly = false }, ref) => {
   const { t } = useTranslation();
   const [duplicateFieldKeys, setDuplicateFieldKeys] = React.useState<string[]>(
     [],
@@ -103,6 +104,7 @@ const FieldSchemaTable = React.forwardRef<
       width: 140,
       render: (_: unknown, record: SchemaField) => (
         <Input
+          disabled={readOnly}
           value={record.key}
           placeholder={t("dataSource.fieldKey")}
           onChange={(e) =>
@@ -124,6 +126,7 @@ const FieldSchemaTable = React.forwardRef<
       width: 140,
       render: (_: unknown, record: SchemaField) => (
         <Input
+          disabled={readOnly}
           value={record.title}
           placeholder={t("dataSource.fieldTitle")}
           onChange={(e) =>
@@ -139,6 +142,7 @@ const FieldSchemaTable = React.forwardRef<
       width: 120,
       render: (_: unknown, record: SchemaField) => (
         <Select
+          disabled={readOnly}
           value={record.value_type}
           options={valueTypeOptions}
           style={{ width: "100%" }}
@@ -159,6 +163,7 @@ const FieldSchemaTable = React.forwardRef<
       width: 160,
       render: (_: unknown, record: SchemaField) => (
         <Input
+          disabled={readOnly}
           value={record.description || ""}
           placeholder={t("dataSource.fieldDescription")}
           onChange={(e) =>
@@ -167,33 +172,43 @@ const FieldSchemaTable = React.forwardRef<
         />
       ),
     },
-    {
-      title: t("dataSource.operation"),
-      key: "action",
-      width: 80,
-      render: (_: unknown, record: SchemaField, index: number) => (
-        <div style={{ display: "flex", gap: "4px", justifyContent: "center" }}>
-          <Button
-            type="text"
-            size="small"
-            icon={<PlusCircleOutlined />}
-            onClick={() => handleAddSchemaField(index)}
-            style={{ border: "none", padding: "4px" }}
-          />
-          <Button
-            type="text"
-            size="small"
-            icon={<MinusCircleOutlined />}
-            onClick={() => handleDeleteSchemaField(record.id)}
-            style={{ border: "none", padding: "4px" }}
-          />
-        </div>
-      ),
-    },
+    ...(readOnly
+      ? []
+      : [
+        {
+          title: t("dataSource.operation"),
+          key: "action",
+          width: 80,
+          render: (_: unknown, record: SchemaField, index: number) => (
+              <div
+                style={{
+                  display: "flex",
+                  gap: "4px",
+                  justifyContent: "center",
+                }}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<PlusCircleOutlined />}
+                  onClick={() => handleAddSchemaField(index)}
+                  style={{ border: "none", padding: "4px" }}
+                />
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MinusCircleOutlined />}
+                  onClick={() => handleDeleteSchemaField(record.id)}
+                  style={{ border: "none", padding: "4px" }}
+                />
+              </div>
+          ),
+        },
+      ]),
   ];
 
   return (
-    <div style={{ margin: "24px 0 0 42px" }}>
+    <div style={{ margin: "24px 0 0" }}>
       <div
         style={{
           marginBottom: "8px",
@@ -212,16 +227,18 @@ const FieldSchemaTable = React.forwardRef<
             />
           </Tooltip>
         </span>
-        <Button
-          type="dashed"
-          size="small"
-          icon={<PlusCircleOutlined />}
-          onClick={() =>
-            onChange([...schemaFields, createDefaultSchemaField()])
-          }
-        >
-          {t("dataSource.addField")}
-        </Button>
+        {readOnly ? null : (
+          <Button
+            type="dashed"
+            size="small"
+            icon={<PlusCircleOutlined />}
+            onClick={() =>
+              onChange([...schemaFields, createDefaultSchemaField()])
+            }
+          >
+            {t("dataSource.addField")}
+          </Button>
+        )}
       </div>
       {schemaFields.length > 0 ? (
         <CustomTable
@@ -229,7 +246,7 @@ const FieldSchemaTable = React.forwardRef<
           columns={schemaFieldColumns}
           dataSource={schemaFields}
           pagination={false}
-          rowDraggable
+          rowDraggable={!readOnly}
           onRowDragEnd={(targetTableData) =>
             handleSchemaFieldDragEnd((targetTableData || []) as SchemaField[])
           }

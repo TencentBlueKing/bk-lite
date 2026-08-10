@@ -396,19 +396,12 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
     [form]
   );
 
-  const horizontalLayout = {
-    labelCol: { flex: '80px' },
-    wrapperCol: { flex: 1 },
-  };
-
   return (
     <Form form={form} layout="vertical">
       <Form.Item
         label={t('subscription.ruleName')}
         name="name"
         rules={[{ required: true, message: t('subscription.ruleName') }]}
-        {...horizontalLayout}
-        layout="horizontal"
       >
         <Input maxLength={128} />
       </Form.Item>
@@ -417,8 +410,6 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
         label={t('subscription.organization')} 
         name="organization" 
         rules={[{ required: true }]}
-        {...horizontalLayout}
-        layout="horizontal"
       > 
         <Select
           disabled
@@ -430,8 +421,6 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
         label={t('subscription.targetModel')} 
         name="model_id" 
         rules={[{ required: true }]}
-        {...horizontalLayout}
-        layout="horizontal"
       > 
         <Select disabled options={[{ label: modelName, value: modelId }]} />
       </Form.Item>
@@ -439,9 +428,9 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
       <Form.Item 
         label={t('subscription.filterType')} 
         required
-        style={{ marginBottom: 32 }}
+        style={{ marginBottom: 24 }}
       >
-        <div style={{ marginLeft: 80, marginTop: -30 }}>
+        <div style={{ width: '100%', minWidth: 0 }}>
           <Form.Item name="filter_type" rules={[{ required: true }]} style={{ marginBottom: 8 }}> 
             <Radio.Group
               options={[
@@ -488,9 +477,9 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
         required
         validateStatus={submitted && triggerTypes.length === 0 ? 'error' : ''}
         help={submitted && triggerTypes.length === 0 ? t('subscription.atLeastOneTriggerType') : ''}
-        style={{ marginBottom: 32 }}
+        style={{ marginBottom: 24 }}
       >
-        <div style={{ marginLeft: 80, marginTop: -30 }}>
+        <div style={{ width: '100%', minWidth: 0 }}>
           <TriggerTypeConfig
             value={triggerTypes}
             onChange={(types, config) => {
@@ -519,8 +508,6 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
         label={t('subscription.recipients')}
         name="recipients"
         rules={[{ required: true }]}
-        {...horizontalLayout}
-        layout="horizontal"
       >
         <RecipientSelector
           value={form.getFieldValue('recipients') || { users: [] }}
@@ -532,8 +519,6 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
         label={t('subscription.notificationChannel')}
         name="channel_ids"
         rules={[{ required: true, message: t('subscription.notificationChannel') }]}
-        {...horizontalLayout}
-        layout="horizontal"
       >
         <Select mode="multiple" options={channelOptions} maxTagCount="responsive" maxTagTextLength={12} />
       </Form.Item>

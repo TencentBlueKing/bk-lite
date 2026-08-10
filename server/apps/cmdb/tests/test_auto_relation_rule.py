@@ -1,6 +1,6 @@
 """CMDB 自动关联规则纯逻辑覆盖测试（不触图数据库）。
 
-对照 spec/prd/CMDB·自动发现：自动关联规则解析/序列化/校验，匹配对去重与类型约束。
+对照 specs/capabilities/legacy-prd-cmdb-自动发现.md：自动关联规则解析/序列化/校验，匹配对去重与类型约束。
 """
 
 import json

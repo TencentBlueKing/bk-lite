@@ -15,39 +15,115 @@ try:
 except ValueError:
     _MAX_ALERT_SNAPSHOTS = 500
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import F
+from django.utils import timezone as django_timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import celery_logger as logger
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.database import DatabaseConstants
 from apps.log.constants.web import WebConstants
-
-from apps.log.models.policy import Alert, Event, EventRawData, AlertSnapshot
+from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData
+from apps.log.services.aggregate_group_identity import build_aggregate_group_identity
+from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.tasks.utils.policy import period_to_seconds
-from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
+from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
-from apps.core.logger import celery_logger as logger
 
 
 class LogPolicyScan:
     _ALERT_NAME_TOKEN_RE = re.compile(r"\$\{([^}]+)\}")
 
-    def __init__(self, policy, scan_time=None, window_start=None, window_end=None):
+    def __init__(self, policy, scan_time=None, window_start=None, window_end=None, execution_key=None, cursor_time=None):
         self.policy = policy
         self.vlogs_api = VictoriaMetricsAPI()
         self.scan_time = scan_time or policy.last_run_time
         self.window_start = window_start
         self.window_end = window_end
+        self.execution_key = execution_key
+        self.cursor_time = cursor_time
 
     def _get_scan_window(self):
-        if self.window_start is not None and self.window_end is not None:
-            return self.window_start, self.window_end
+        window_start = getattr(self, "window_start", None)
+        window_end = getattr(self, "window_end", None)
+        if window_start is not None and window_end is not None:
+            return window_start, window_end
 
         end_timestamp = int(self.scan_time.timestamp())
         period_seconds = period_to_seconds(self.policy.period)
         start_timestamp = end_timestamp - period_seconds
         return start_timestamp, end_timestamp
+
+    def _build_event_id(self, source_id):
+        execution_key = getattr(self, "execution_key", None)
+        if execution_key is None:
+            start_timestamp, end_timestamp = self._get_scan_window()
+            execution_key = f"{start_timestamp}:{end_timestamp}"
+        identity = f"{self.policy.id}:{execution_key}:{source_id}"
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
+
+    def _find_existing_events(self, event_ids, source_ids):
+        existing_by_id = {event.id: event for event in Event.objects.filter(id__in=event_ids).select_related("alert")}
+        source_id_candidates = [self._normalize_source_id_candidates(source_id) for source_id in source_ids]
+        missing_source_ids = {
+            candidate for event_id, candidates in zip(event_ids, source_id_candidates) if event_id not in existing_by_id for candidate in candidates
+        }
+        if not missing_source_ids:
+            return existing_by_id, {}
+
+        legacy_events = Event.objects.filter(
+            policy_id=self.policy.id,
+            source_id__in=missing_source_ids,
+        ).select_related("alert")
+        cursor_time = getattr(self, "cursor_time", None)
+        if cursor_time is None:
+            # 旧版本首次扫描失败时不会推进 last_run_time，重试时 safe_time 可能已变化；
+            # 此时此前写入的随机 UUID Event 仍属于这次未完成的首次执行。
+            legacy_events = legacy_events.filter(event_time__lte=self.scan_time)
+        else:
+            legacy_events = legacy_events.filter(
+                event_time__gt=cursor_time,
+                event_time__lte=self.scan_time,
+            )
+
+        legacy_by_source = {}
+        for event in legacy_events.order_by("event_time"):
+            legacy_by_source[event.source_id] = event
+        return existing_by_id, legacy_by_source
+
+    def _normalize_source_id_candidates(self, source_ids):
+        if isinstance(source_ids, str):
+            source_ids = [source_ids]
+        return tuple(dict.fromkeys(source_id for source_id in source_ids if isinstance(source_id, str) and source_id))
+
+    def _get_event_source_id_candidates(self, event):
+        aliases = event.get("source_id_aliases", [])
+        if isinstance(aliases, str):
+            aliases = [aliases]
+        return self._normalize_source_id_candidates([event["source_id"], *aliases])
+
+    def _load_persisted_alias_claims(self, active_alerts, current_source_ids):
+        alerts_by_id = {alert.id: alert for alert in active_alerts}
+        if not alerts_by_id:
+            return {}, {}
+
+        claims_by_alias = {}
+        current_alerts = {}
+        claim_rows = (
+            Event.objects.filter(alert_id__in=alerts_by_id)
+            .exclude(source_id=F("alert__source_id"))
+            .values_list("alert_id", "source_id")
+            .distinct()
+        )
+        for alert_id, source_id in claim_rows:
+            alias = alerts_by_id[alert_id].source_id
+            claims_by_alias.setdefault(alias, set()).add(source_id)
+            if source_id in current_source_ids:
+                current_alerts[source_id] = alerts_by_id[alert_id]
+        return claims_by_alias, current_alerts
 
     def _get_keyword_sample_limit(self, alert_condition):
         """获取关键字告警样本条数限制"""
@@ -232,8 +308,14 @@ class LogPolicyScan:
             futures = {
                 executor.submit(
                     self._fetch_group_sample,
-                    idx, group_values, total_count,
-                    final_query, start_timestamp, end_timestamp, sample_limit, group_by,
+                    idx,
+                    group_values,
+                    total_count,
+                    final_query,
+                    start_timestamp,
+                    end_timestamp,
+                    sample_limit,
+                    group_by,
                 ): idx
                 for idx, group_values, total_count in pending
             }
@@ -292,23 +374,21 @@ class LogPolicyScan:
                 if self._check_rule_conditions(aggregate_data, rule):
                     # 渲染告警名称模板
                     rendered_alert_name = self._render_alert_name(result, group_by)
-                    # 构建分组标识和source_id
-                    group_key = self._build_group_key(result, group_by)
-                    source_id = f"policy_{self.policy.id}_{group_key}"
-
-                    events.append(
-                        {
-                            "source_id": source_id,
-                            "level": self.policy.alert_level,
-                            "content": rendered_alert_name,
-                            "value": aggregate_data.get("count", 0),
-                            "raw_data": {
-                                "aggregate_result": aggregate_data,
-                                "rule": rule,
-                                "query_result": result,
-                            },
-                        }
-                    )
+                    identity = build_aggregate_group_identity(self.policy.id, result, group_by)
+                    event = {
+                        "source_id": identity.source_id,
+                        "level": self.policy.alert_level,
+                        "content": rendered_alert_name,
+                        "value": aggregate_data.get("count", 0),
+                        "raw_data": {
+                            "aggregate_result": aggregate_data,
+                            "rule": rule,
+                            "query_result": result,
+                        },
+                    }
+                    if identity.legacy_source_ids:
+                        event["source_id_aliases"] = list(identity.legacy_source_ids)
+                    events.append(event)
 
             return events
 
@@ -493,6 +573,7 @@ class LogPolicyScan:
                     context[f"log.{field}"] = value
 
         try:
+
             def replace_token(match):
                 token = match.group(1)
                 value = context.get(token, "")
@@ -503,32 +584,6 @@ class LogPolicyScan:
         except Exception as e:
             logger.warning(f"Failed to render alert name template '{alert_name}': {e}")
             return alert_name
-
-    def _build_group_key(self, result, group_by):
-        """根据分组字段构建分组标识"""
-        if not group_by:
-            return ""
-
-        group_values = []
-        for field in group_by:
-            field_value = result.get(field, "unknown")
-
-            # 处理各种数据类型，确保转换为字符串
-            if isinstance(field_value, list):
-                # 如果是列表，转换为逗号分隔的字符串
-                formatted_value = ",".join(str(item) for item in field_value)
-            elif isinstance(field_value, dict):
-                # 如果是字典，转换为键值对字符串
-                formatted_value = str(field_value)
-            elif field_value is None:
-                formatted_value = "null"
-            else:
-                # 其他类型直接转换为字符串
-                formatted_value = str(field_value)
-
-            group_values.append(f"{field}={formatted_value}")
-
-        return ", ".join(group_values)
 
     def _check_rule_conditions(self, aggregate_data, rule):
         """检查规则条件"""
@@ -650,6 +705,24 @@ class LogPolicyScan:
             return False
 
     def create_events(self, events):
+        """创建事件；带兼容别名的聚合事件按策略串行认领别名。"""
+        if not events:
+            return []
+
+        if not any(event.get("source_id_aliases") for event in events):
+            return self._create_events(events)
+
+        with transaction.atomic():
+            # 旧身份没有唯一约束。按策略串行化新版本 worker 的“查询并认领”，
+            # 使相同旧身份在并发扫描中最多归属一个 g2 主身份。
+            type(self.policy).objects.select_for_update().only("id").get(id=self.policy.id)
+            event_objs, new_alerts, event_id_to_raw_data = self._create_events(events, defer_snapshots=True)
+
+        # 快照包含对象存储 IO，不占用策略锁；告警和事件已经原子提交。
+        self._create_snapshots_for_alerts(event_objs, new_alerts, events, event_id_to_raw_data)
+        return event_objs
+
+    def _create_events(self, events, defer_snapshots=False):
         """创建事件 - 优化版本，使用批量操作"""
         if not events:
             return []
@@ -657,19 +730,44 @@ class LogPolicyScan:
         try:
             # 1. 批量查询所有可能存在的活跃告警
             source_ids = [event["source_id"] for event in events]
-            existing_alerts_qs = Alert.objects.filter(
-                policy_id=self.policy.id,
-                source_id__in=source_ids,
-                status=AlertConstants.STATUS_NEW,
+            source_id_candidates = [self._get_event_source_id_candidates(event) for event in events]
+            lookup_source_ids = {source_id for candidates in source_id_candidates for source_id in candidates}
+            active_alerts = list(
+                Alert.objects.filter(
+                    policy_id=self.policy.id,
+                    source_id__in=lookup_source_ids,
+                    status=AlertConstants.STATUS_NEW,
+                )
             )
+            if any(len(candidates) > 1 for candidates in source_id_candidates):
+                # Alert 可能仍保存旧别名，而策略编辑会改变旧别名的拼接顺序。
+                # g2 Event 才是稳定主索引；不受扫描 cursor 的时间窗限制地反查其活动 Alert。
+                identity_alert_ids = (
+                    Event.objects.filter(
+                        policy_id=self.policy.id,
+                        source_id__in=source_ids,
+                        alert__status=AlertConstants.STATUS_NEW,
+                    )
+                    .values_list("alert_id", flat=True)
+                    .distinct()
+                )
+                active_alert_ids = {alert.id for alert in active_alerts}
+                for identity_alert in Alert.objects.filter(id__in=identity_alert_ids):
+                    if identity_alert.id not in active_alert_ids:
+                        active_alerts.append(identity_alert)
+                        active_alert_ids.add(identity_alert.id)
 
             # 手动构建映射表，因为source_id不是唯一字段
             # 对于同一个source_id可能有多个告警，我们取最新的一个
             existing_alerts = {}
-            for alert in existing_alerts_qs:
+            for alert in active_alerts:
                 source_id = alert.source_id
                 if source_id not in existing_alerts or alert.created_at > existing_alerts[source_id].created_at:
                     existing_alerts[source_id] = alert
+            claimed_source_ids_by_alias, claimed_alerts_by_source = self._load_persisted_alias_claims(
+                active_alerts, set(source_ids)
+            )
+            existing_alerts.update(claimed_alerts_by_source)
 
             logger.debug(f"Found {len(existing_alerts)} existing alerts for policy {self.policy.id}")
 
@@ -677,17 +775,77 @@ class LogPolicyScan:
             alerts_to_update = []
             alerts_to_create = []
             create_events = []
-            create_raw_data = []
+            existing_event_objs = []
+            events_to_update = []
             # 建立 event_id 到原始数据的映射，用于后续快照创建
             event_id_to_raw_data = {}
+            event_ids = [self._build_event_id(source_id) for source_id in source_ids]
+            existing_events, legacy_events = self._find_existing_events(event_ids, source_id_candidates)
 
-            for event in events:
-                event_id = uuid.uuid4().hex
+            for event, candidates in zip(events, source_id_candidates):
+                event_id = self._build_event_id(event["source_id"])
                 source_id = event["source_id"]
+                existing_event = existing_events.get(event_id)
+                if existing_event is None:
+                    for candidate in candidates:
+                        candidate_event = legacy_events.get(candidate)
+                        if candidate_event is None:
+                            continue
+                        claimed_source_ids = claimed_source_ids_by_alias.get(candidate, set())
+                        if candidate != source_id and claimed_source_ids and source_id not in claimed_source_ids:
+                            continue
+                        if candidate != source_id:
+                            claimed_source_ids_by_alias.setdefault(candidate, set()).add(source_id)
+                            # 保留旧 Event 供旧版本按 legacy source_id 重试；本次继续创建
+                            # 确定性 g2 Event，作为不会破坏回滚的持久化认领记录。
+                            continue
+                        existing_event = candidate_event
+                        break
 
-                if source_id in existing_alerts:
+                if existing_event:
+                    # 同一执行的旧 worker 可能在较新结果提交后才返回；旧结果只能复用，
+                    # 不得回退 Event/Alert/RawData/快照的时间与内容。
+                    if existing_event.event_time and self.scan_time and existing_event.event_time > self.scan_time:
+                        continue
+                    alert_obj = existing_event.alert
+                    level_changed = existing_event.level != event["level"]
+                    if level_changed:
+                        alert_obj.notice = False
+                        existing_event.notified = False
+                        existing_event.notice_result = []
+                        existing_event.notice_retry_count = 0
+                    alert_obj.value = event.get("value", alert_obj.value)
+                    alert_obj.content = event["content"]
+                    alert_obj.level = event["level"]
+                    alert_obj.end_event_time = self.scan_time
+                    alerts_to_update.append(alert_obj)
+
+                    existing_event.event_time = self.scan_time
+                    existing_event.value = event.get("value")
+                    existing_event.level = event["level"]
+                    existing_event.content = event["content"]
+                    events_to_update.append(existing_event)
+                    existing_event_objs.append(existing_event)
+                    if event.get("raw_data"):
+                        event_id_to_raw_data[existing_event.id] = event["raw_data"]
+                    continue
+
+                alert_obj = existing_alerts.get(source_id)
+                if alert_obj is None:
+                    for alias in candidates[1:]:
+                        candidate_alert = existing_alerts.get(alias)
+                        if candidate_alert is None:
+                            continue
+                        claimed_source_ids = claimed_source_ids_by_alias.get(alias, set())
+                        if claimed_source_ids and source_id not in claimed_source_ids:
+                            continue
+                        claimed_source_ids_by_alias.setdefault(alias, set()).add(source_id)
+                        alert_obj = candidate_alert
+                        existing_alerts[source_id] = alert_obj
+                        break
+
+                if alert_obj is not None:
                     # 存在活跃告警，准备更新
-                    alert_obj = existing_alerts[source_id]
                     if alert_obj.level != event["level"]:
                         # 级别变化属于显著变化，重置已通知标记以重新通知
                         alert_obj.notice = False
@@ -698,10 +856,18 @@ class LogPolicyScan:
                     alerts_to_update.append(alert_obj)
                 else:
                     # 不存在活跃告警，准备创建
+                    alert_source_id = source_id
+                    for alias in candidates[1:]:
+                        claimed_source_ids = claimed_source_ids_by_alias.get(alias, set())
+                        if claimed_source_ids and source_id not in claimed_source_ids:
+                            continue
+                        alert_source_id = alias
+                        claimed_source_ids_by_alias.setdefault(alias, set()).add(source_id)
+                        break
                     alert_obj = Alert(
                         id=uuid.uuid4().hex,
                         policy=self.policy,
-                        source_id=source_id,
+                        source_id=alert_source_id,
                         collect_type=self.policy.collect_type,
                         level=event["level"],
                         value=event.get("value"),
@@ -739,47 +905,164 @@ class LogPolicyScan:
             # 避免"告警有、数据无"的孤儿记录。
             # 注意：S3JSONField.pre_save() 在 DB 写入前上传至 MinIO；若 MinIO 失败则抛异常
             # → 事务回滚，DB 保持一致。快照写入在事务外独立执行（各自已有 atomic 保护）。
-            with transaction.atomic():
-                # 批量创建新告警
-                if alerts_to_create:
-                    Alert.objects.bulk_create(alerts_to_create, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
-                    logger.debug(f"Created {len(alerts_to_create)} new alerts for policy {self.policy.id}")
+            try:
+                with transaction.atomic():
+                    # 分类阶段的查询可能早于并发 worker 提交。写入前按 Event → Alert 的
+                    # 固定顺序加行锁并重新判定时间，避免旧 worker 的陈旧对象反向覆盖。
+                    locked_events = {
+                        event.id: event
+                        for event in Event.objects.select_for_update()
+                        .filter(id__in=[event.id for event in events_to_update])
+                        .order_by("id")
+                    }
+                    locked_alerts = {
+                        alert.id: alert
+                        for alert in Alert.objects.select_for_update()
+                        .filter(id__in=[alert.id for alert in alerts_to_update])
+                        .order_by("id")
+                    }
+                    stale_alert_ids = {
+                        alert.id
+                        for alert in locked_alerts.values()
+                        if alert.status != AlertConstants.STATUS_NEW
+                        or (
+                            self.execution_key is not None
+                            and alert.end_event_time
+                            and self.scan_time
+                            and alert.end_event_time > self.scan_time
+                        )
+                    }
 
-                # 批量更新现有告警
-                if alerts_to_update:
-                    Alert.objects.bulk_update(
-                        alerts_to_update,
-                        ["value", "content", "level", "end_event_time", "notice"],
-                        batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
-                    )
-                    logger.debug(f"Updated {len(alerts_to_update)} existing alerts for policy {self.policy.id}")
+                    refreshed_events = []
+                    refreshed_existing_event_objs = []
+                    for desired_event in events_to_update:
+                        current_event = locked_events[desired_event.id]
+                        if current_event.alert_id in stale_alert_ids or (
+                            current_event.event_time and self.scan_time and current_event.event_time > self.scan_time
+                        ):
+                            stale_alert_ids.add(current_event.alert_id)
+                            continue
 
-                # 批量创建事件记录
-                event_objs = Event.objects.bulk_create(create_events, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+                        if current_event.level != desired_event.level:
+                            current_event.notified = False
+                            current_event.notice_result = []
+                            current_event.notice_retry_count = 0
+                        current_event.event_time = desired_event.event_time
+                        current_event.value = desired_event.value
+                        current_event.level = desired_event.level
+                        current_event.content = desired_event.content
+                        refreshed_events.append(current_event)
+                        refreshed_existing_event_objs.append(current_event)
 
-                # 批量创建事件原始数据记录（关联到已创建的事件对象）
-                if event_id_to_raw_data:
-                    create_raw_data = []
-                    for event_obj in event_objs:
-                        if event_obj.id in event_id_to_raw_data:
-                            create_raw_data.append(
-                                EventRawData(
-                                    event=event_obj,  # 使用 event 字段，而不是 event_id
-                                    data=event_id_to_raw_data[event_obj.id],
+                    events_to_update = refreshed_events
+                    existing_event_objs = refreshed_existing_event_objs
+
+                    refreshed_alerts = {}
+                    for desired_alert in alerts_to_update:
+                        current_alert = locked_alerts[desired_alert.id]
+                        if current_alert.id in stale_alert_ids:
+                            continue
+                        if current_alert.level != desired_alert.level:
+                            current_alert.notice = False
+                        current_alert.value = desired_alert.value
+                        current_alert.content = desired_alert.content
+                        current_alert.level = desired_alert.level
+                        current_alert.end_event_time = desired_alert.end_event_time
+                        refreshed_alerts[current_alert.id] = current_alert
+                    alerts_to_update = list(refreshed_alerts.values())
+
+                    if stale_alert_ids:
+                        create_events = [event for event in create_events if event.alert_id not in stale_alert_ids]
+
+                    writable_event_ids = {event.id for event in create_events}
+                    writable_event_ids.update(event.id for event in existing_event_objs)
+                    event_id_to_raw_data = {
+                        event_id: raw_data
+                        for event_id, raw_data in event_id_to_raw_data.items()
+                        if event_id in writable_event_ids
+                    }
+
+                    # 批量创建新告警
+                    if alerts_to_create:
+                        Alert.objects.bulk_create(alerts_to_create, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+                        logger.debug(f"Created {len(alerts_to_create)} new alerts for policy {self.policy.id}")
+
+                    # 批量更新现有告警
+                    if alerts_to_update:
+                        Alert.objects.bulk_update(
+                            alerts_to_update,
+                            ["value", "content", "level", "end_event_time", "notice"],
+                            batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
+                        )
+                        logger.debug(f"Updated {len(alerts_to_update)} existing alerts for policy {self.policy.id}")
+
+                    if events_to_update:
+                        Event.objects.bulk_update(
+                            events_to_update,
+                            [
+                                "event_time",
+                                "value",
+                                "level",
+                                "content",
+                                "notified",
+                                "notice_result",
+                                "notice_retry_count",
+                            ],
+                            batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
+                        )
+
+                    # 批量创建事件记录
+                    event_objs = Event.objects.bulk_create(create_events, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+
+                    # 批量创建事件原始数据记录（关联到已创建的事件对象）
+                    if event_id_to_raw_data:
+                        create_raw_data = []
+                        for event_obj in event_objs:
+                            if event_obj.id in event_id_to_raw_data:
+                                create_raw_data.append(
+                                    EventRawData(
+                                        event=event_obj,  # 使用 event 字段，而不是 event_id
+                                        data=event_id_to_raw_data[event_obj.id],
+                                    )
                                 )
-                            )
 
-                    # 逐个保存原始数据记录以确保 S3JSONField 能正确上传数据
-                    for raw_data_obj in create_raw_data:
-                        raw_data_obj.save()
-                    logger.debug(f"Created {len(create_raw_data)} raw data records for policy {self.policy.id}")
+                        # 逐个保存原始数据记录以确保 S3JSONField 能正确上传数据
+                        for raw_data_obj in create_raw_data:
+                            raw_data_obj.save()
+                        logger.debug(f"Created {len(create_raw_data)} raw data records for policy {self.policy.id}")
+
+                    for event_obj in existing_event_objs:
+                        raw_data = event_id_to_raw_data.get(event_obj.id)
+                        if raw_data:
+                            raw_data_obj = EventRawData.objects.filter(event=event_obj).order_by("id").first()
+                            if raw_data_obj:
+                                raw_data_obj.data = raw_data
+                            else:
+                                raw_data_obj = EventRawData(event=event_obj, data=raw_data)
+                            raw_data_obj.save()
+            except IntegrityError:
+                # 相同执行并发越过“先查后写”时，事件主键是最终数据库幂等门禁。
+                # 只有全部目标事件均已由竞争方提交，才把冲突视为成功；其他约束错误保留原始异常。
+                recovered_events = {event.id: event for event in Event.objects.filter(id__in=event_ids).select_related("alert")}
+                if set(recovered_events) != set(event_ids):
+                    raise
+                if any(event.event_time != self.scan_time for event in recovered_events.values()):
+                    raise RuntimeError(f"policy {self.policy.id} concurrent scan window conflict")
+                event_objs = [recovered_events[event_id] for event_id in event_ids]
+                existing_event_objs = []
+                alerts_to_create = []
 
             # 为告警创建或更新快照（传递原始数据映射）
             # 快照写入在事务外执行：每条快照各自有 atomic 保护，且 S3JSONField 写 MinIO
             # 不应阻塞主事务；快照失败不影响告警/事件已提交的数据。
+            event_objs = existing_event_objs + event_objs
+            if defer_snapshots:
+                logger.info(f"Prepared {len(event_objs)} idempotent events for policy {self.policy.id}")
+                return event_objs, alerts_to_create, event_id_to_raw_data
+
             self._create_snapshots_for_alerts(event_objs, alerts_to_create, events, event_id_to_raw_data)
 
-            logger.info(f"Created {len(event_objs)} events for policy {self.policy.id}")
+            logger.info(f"Prepared {len(event_objs)} idempotent events for policy {self.policy.id}")
             return event_objs
 
         except Exception as e:
@@ -826,7 +1109,7 @@ class LogPolicyScan:
                 self._update_alert_snapshot(
                     alert_id=alert_id,
                     policy_id=self.policy.id,
-                    source_id=first_event.source_id,
+                    source_id=first_event.alert.source_id,
                     event_objs=related_events,
                     event_raw_data_map=event_raw_data_map,
                     snapshot_time=self.scan_time,
@@ -873,18 +1156,44 @@ class LogPolicyScan:
 
                 # 如果有事件数据，添加到snapshots列表末尾
                 if event_objs:
-                    # 优化：获取已存在的事件ID集合，避免重复查询
-                    existing_event_ids = {s.get("event_id") for s in snapshot_obj.snapshots if s.get("type") == "event" and s.get("event_id")}
+                    existing_snapshots = {
+                        item.get("event_id"): item for item in snapshot_obj.snapshots if item.get("type") == "event" and item.get("event_id")
+                    }
 
                     # 批量构建快照数据
                     new_snapshots = []
+                    snapshots_changed = False
                     for event_obj in event_objs:
-                        # 跳过已存在的事件
-                        if event_obj.id in existing_event_ids:
-                            continue
-
-                        # 获取事件的原始数据
                         raw_data = event_raw_data_map.get(event_obj.id, {})
+                        event_snapshot = existing_snapshots.get(event_obj.id)
+                        if event_snapshot:
+                            # 主数据事务与快照事务刻意分离；旧 worker 可能晚于新 worker
+                            # 取得快照锁，只允许相同或更新的事件时间覆盖同一 event_id。
+                            persisted_time = parse_datetime(
+                                event_snapshot.get("event_time") or event_snapshot.get("snapshot_time") or ""
+                            )
+                            candidate_time = event_obj.event_time or snapshot_time
+                            if persisted_time and django_timezone.is_naive(persisted_time):
+                                persisted_time = django_timezone.make_aware(
+                                    persisted_time,
+                                    django_timezone.get_default_timezone(),
+                                )
+                            if candidate_time and django_timezone.is_naive(candidate_time):
+                                candidate_time = django_timezone.make_aware(
+                                    candidate_time,
+                                    django_timezone.get_default_timezone(),
+                                )
+                            if persisted_time and candidate_time and persisted_time > candidate_time:
+                                continue
+                            event_snapshot.update(
+                                {
+                                    "event_time": event_obj.event_time.isoformat() if event_obj.event_time else None,
+                                    "snapshot_time": snapshot_time.isoformat(),
+                                    "raw_data": raw_data,
+                                }
+                            )
+                            snapshots_changed = True
+                            continue
 
                         event_snapshot = {
                             "type": "event",
@@ -895,8 +1204,8 @@ class LogPolicyScan:
                         }
                         new_snapshots.append(event_snapshot)
 
-                    # 批量添加新快照，并裁剪至上限以防 S3 对象无限膨胀
-                    if new_snapshots:
+                    # 同一执行的重试覆盖快照；新执行追加，并裁剪至上限。
+                    if new_snapshots or snapshots_changed:
                         snapshot_obj.snapshots.extend(new_snapshots)
                         if len(snapshot_obj.snapshots) > _MAX_ALERT_SNAPSHOTS:
                             snapshot_obj.snapshots = snapshot_obj.snapshots[-_MAX_ALERT_SNAPSHOTS:]
@@ -935,6 +1244,21 @@ class LogPolicyScan:
         兜住亚秒级通道抖动；仍失败则返回 (False, 最后一次结果)，由持久化补偿任务（范围B）后续重投。
         补偿任务本身即外层重试循环，调用时传 max_attempts=1 做单次发送，避免在 worker 内叠加 sleep 阻塞。
         """
+        lifecycle_notifier = LogAlertLifecycleNotifier(self.policy)
+        # 告警中心接收结构化生命周期 Event；其他渠道继续使用原有文本通知。
+        if lifecycle_notifier.is_alert_center_channel():
+            success, result = lifecycle_notifier.notify_created(
+                event_obj,
+                max_attempts=max_attempts,
+            )
+            if success:
+                self._reconcile_closed_after_created(
+                    event_obj,
+                    lifecycle_notifier,
+                    max_attempts=max_attempts,
+                )
+            return success, result
+
         if not self.policy.notice_users:
             return False, []
 
@@ -951,7 +1275,9 @@ class LogPolicyScan:
                 # 检查发送结果
                 if result.get("result") is False:
                     last_result = result
-                    msg = f"send notice failed for policy {self.policy.id} (attempt {attempt}/{max_attempts}): {result.get('message', 'Unknown error')}"
+                    msg = (
+                        f"send notice failed for policy {self.policy.id} (attempt {attempt}/{max_attempts}): {result.get('message', 'Unknown error')}"
+                    )
                     logger.error(msg)
                 else:
                     logger.info(f"send notice success for policy {self.policy.id} (attempt {attempt}/{max_attempts})")
@@ -967,50 +1293,72 @@ class LogPolicyScan:
 
         return False, last_result if last_result is not None else {"result": False, "message": "Unknown error"}
 
-    def notice(self, event_objs):
+    @staticmethod
+    def _reconcile_closed_after_created(event_obj, lifecycle_notifier, max_attempts=None):
+        """created 成功后重放并发发生的关闭，保证远端最终事件顺序。"""
+        closed_alert = (
+            Alert.objects.select_related("policy", "collect_type")
+            .prefetch_related("policy__policyorganization_set")
+            .filter(
+                id=event_obj.alert_id,
+                status=AlertConstants.STATUS_CLOSED,
+                end_event_time__isnull=False,
+            )
+            .first()
+        )
+        if not closed_alert:
+            return
+
+        closed_success, _ = lifecycle_notifier.notify_closed(
+            closed_alert,
+            max_attempts=max_attempts,
+        )
+        Alert.objects.filter(
+            id=closed_alert.id,
+            status=AlertConstants.STATUS_CLOSED,
+            end_event_time=closed_alert.end_event_time,
+        ).update(notice=closed_success)
+
+    def notice(self, event_objs, max_attempts=None):
         """通知"""
         if not event_objs or not self.policy.notice:
             return
 
         try:
-            alerts = []
-
             for event in event_objs:
-                # info级别事件不通知
-                if event.level == "info":
-                    continue
-                # 告警已成功通知过且未发生级别变化时不重复通知，避免持续命中导致每个扫描周期重复发送
-                if event.alert.notice:
-                    event.notice_result = [{"result": True, "message": "skipped: alert already notified"}]
-                    # 去重跳过视为已结清：必须置 notified=True，否则补偿任务会把
-                    # 这些事件当作发送失败反复重投，去重就失效了（与 #3312 的语义对齐）
-                    event.notified = True
-                    continue
-                is_notice, notice_result = self.send_notice(event)
-                event.notice_result = notice_result
-                # 记录发送是否成功 + 累计尝试次数，供补偿任务（范围B）回扫 notified=False 的失败事件
-                event.notified = is_notice
-                event.notice_retry_count = (event.notice_retry_count or 0) + 1
+                with transaction.atomic():
+                    # 同步首发与补偿/并发扫描都以 Event 行锁领取通知；锁必须覆盖外部发送和
+                    # 回执落库，避免两个持有旧对象的 worker 同时看到 notified=False 后双投。
+                    current = Event.objects.select_for_update().get(pk=event.pk)
+                    current_alert = Alert.objects.select_for_update().get(pk=current.alert_id)
+                    if current.level == "info" or current.notified:
+                        continue
+                    if current_alert.notice:
+                        current.notice_result = [{"result": True, "message": "skipped: alert already notified"}]
+                        current.notified = True
+                        current.save(update_fields=["notice_result", "notified", "updated_at"])
+                        continue
 
-                if is_notice:
-                    event.alert.notice = True
-                    alerts.append((event.alert_id, is_notice))
+                    is_notice, notice_result = self.send_notice(current, max_attempts=max_attempts)
+                    current.notice_result = notice_result
+                    current.notified = is_notice
+                    current.notice_retry_count = (current.notice_retry_count or 0) + 1
+                    current.save(
+                        update_fields=[
+                            "notice_result",
+                            "notified",
+                            "notice_retry_count",
+                            "updated_at",
+                        ]
+                    )
+                    if is_notice:
+                        # 仅活跃告警接收 created 回执，避免覆盖并发关闭留下的补偿状态。
+                        Alert.objects.filter(
+                            id=current.alert_id,
+                            status=AlertConstants.STATUS_NEW,
+                        ).update(notice=True)
 
-            # 批量更新通知结果
-            Event.objects.bulk_update(
-                event_objs,
-                ["notice_result", "notified", "notice_retry_count"],
-                batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
-            )
             logger.info(f"Completed notification for {len(event_objs)} events")
-
-            # 批量更新告警的通知状态
-            if alerts:
-                Alert.objects.bulk_update(
-                    [Alert(id=i[0], notice=i[1]) for i in alerts],
-                    ["notice"],
-                    batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
-                )
 
         except Exception as e:
             logger.error(f"notice failed for policy {self.policy.id}: {e}")

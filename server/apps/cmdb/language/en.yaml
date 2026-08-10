@@ -24,6 +24,7 @@ CLASSIFICATION:
   fixed_asset: Fixed Asset
   fusioninsight: FusionInsight
   ip_manager: IP Manager
+  h3c_cas: H3C UIS
 MODEL:
   biz: Biz
   module: Module
@@ -121,6 +122,7 @@ MODEL:
   openstack_vm: OpenStack Virtual Machine
   pc: PC
   peripherals: Peripherals
+  physical_server: Physical Server
   physcial_server: Physical Server
   qcloud_bucket: Tencent Cloud Object Storage Bucket
   qcloud_clb: Tencent Cloud Load Balancing
@@ -146,6 +148,15 @@ MODEL:
   system: System
   tidb: TiDB
   tongweb: TongWeb
+  h3c_cas: H3C UIS
+  h3c_cas_host_pool: UIS Host Pool
+  h3c_cas_cluster: UIS Cluster
+  h3c_cas_host: UIS Host
+  h3c_cas_vm: UIS VM
+  h3c_cas_storage: UIS Storage Pool
+  h3c_cas_ds_pool: UIS Disk Pool
+  h3c_cas_data_pool: UIS Data Pool
+  h3c_cas_vswitch: UIS Virtual Switch
 ATTR:
   pc:
     inst_name: Name

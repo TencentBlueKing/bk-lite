@@ -18,7 +18,12 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 class Metrics:
     _STEP_PATTERN = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw])$")
+    _LIMITING_QUERY_PATTERN = re.compile(r"^\s*(topk|bottomk|limitk)\s*\(", re.IGNORECASE)
     MAX_GAP_DETECTION_POINTS = 50000
+    CARD_QUERY_MAX_SERIES = 200
+    CARD_QUERY_MAX_POINTS = 100000
+    # 查询本身已带 topk/bottomk/limitk 时的兜底硬上限；超过则截断而非拒绝。
+    CARD_QUERY_HARD_MAX_SERIES = 2000
 
     @staticmethod
     def get_effective_metric_instance_id_keys(metric: Metric) -> list[str]:
@@ -37,9 +42,75 @@ class Metrics:
         return effective_keys
 
     @staticmethod
-    def get_metrics(query):
-        """查询指标信息"""
-        return VictoriaMetricsAPI().query(query)
+    def get_metrics(query, time=None):
+        """查询指标信息。
+
+        :param query: PromQL
+        :param time: 求值时刻（Unix 秒）；None 表示由 VictoriaMetrics 使用当前时间
+        """
+        return VictoriaMetricsAPI().query(query, time=time)
+
+    @staticmethod
+    def query_already_limited(query: str) -> bool:
+        """True when the query already applies topk/bottomk/limitk."""
+        return bool(Metrics._LIMITING_QUERY_PATTERN.match(query or ""))
+
+    @staticmethod
+    def apply_card_series_limit(query: str, limit: int | None = None) -> tuple[str, bool]:
+        """Wrap an unlimited card query with limitk(N+1) for truncation detection.
+
+        Returns (rewritten_query, applied). Queries that already start with
+        topk/bottomk/limitk are left unchanged (hard cap applied in finalize).
+        """
+        series_limit = Metrics.CARD_QUERY_MAX_SERIES if limit is None else limit
+        if Metrics.query_already_limited(query):
+            return query, False
+        return f"limitk({series_limit + 1}, {query})", True
+
+    @staticmethod
+    def clamp_card_step(start_ms, end_ms, step) -> tuple[str, bool]:
+        """Enlarge step so worst-case series * points stays under CARD_QUERY_MAX_POINTS.
+
+        Assumes at most CARD_QUERY_MAX_SERIES series. Returns (step_string, clamped).
+        """
+        step_seconds = Metrics.parse_step_to_seconds(step)
+        duration_seconds = max(0.0, (int(end_ms) - int(start_ms)) / 1000.0)
+        max_points_per_series = max(1, Metrics.CARD_QUERY_MAX_POINTS // Metrics.CARD_QUERY_MAX_SERIES)
+        if max_points_per_series <= 1:
+            min_step = max(1, int(duration_seconds) or 1)
+        else:
+            min_step = max(1, int(duration_seconds / (max_points_per_series - 1)) or 1)
+
+        if step_seconds >= min_step:
+            if isinstance(step, str) and step.strip():
+                return step, False
+            return f"{step_seconds}s", False
+        return f"{min_step}s", True
+
+    @staticmethod
+    def finalize_card_series_budget(response, *, applied_limit: bool) -> bool:
+        """Trim over-budget series and annotate series_budget. Returns truncated flag."""
+        data = response.setdefault("data", {})
+        result = data.get("result") or []
+        truncated = False
+        limit = Metrics.CARD_QUERY_MAX_SERIES
+
+        if applied_limit:
+            if len(result) > limit:
+                truncated = True
+                data["result"] = result[:limit]
+        elif len(result) > Metrics.CARD_QUERY_HARD_MAX_SERIES:
+            # 查询已自带 limit 算子时的兜底：截断而非抛错，避免浏览器卡死。
+            truncated = True
+            limit = Metrics.CARD_QUERY_HARD_MAX_SERIES
+            data["result"] = result[:limit]
+
+        data["series_budget"] = {
+            "truncated": truncated,
+            "limit": limit,
+            "applied": applied_limit,
+        }
+        return truncated
 
     @staticmethod
     def get_metrics_range(
@@ -50,13 +121,38 @@ class Metrics:
         detect_gaps=False,
         collection_interval_seconds=None,
         max_gap_detection_points=None,
+        card_budget=False,
     ):
-        """查询指标（范围）"""
-        step_seconds = Metrics.parse_step_to_seconds(step)
-        start = int(start) / 1000  # Convert milliseconds to seconds
-        end = int(end) / 1000  # Convert milliseconds to seconds
+        """查询指标（范围）
+
+        When card_budget=True, rewrite the query with limitk before hitting VM and
+        clamp step so the card path cannot overload VictoriaMetrics or the browser.
+        """
+        start_ms = int(start)
+        end_ms = int(end)
+        effective_query = query
+        applied_limit = False
+        effective_step = step
+        step_clamped = False
+
+        if card_budget:
+            effective_query, applied_limit = Metrics.apply_card_series_limit(query)
+            effective_step, step_clamped = Metrics.clamp_card_step(start_ms, end_ms, step)
+
+        step_seconds = Metrics.parse_step_to_seconds(effective_step)
+        start_sec = start_ms / 1000  # Convert milliseconds to seconds
+        end_sec = end_ms / 1000  # Convert milliseconds to seconds
         vm_api = VictoriaMetricsAPI()
-        resp = vm_api.query_range(query, start, end, step)
+        resp = vm_api.query_range(effective_query, start_sec, end_sec, effective_step)
+
+        truncated = False
+        if card_budget:
+            truncated = Metrics.finalize_card_series_budget(resp, applied_limit=applied_limit)
+            if step_clamped:
+                data = resp.setdefault("data", {})
+                data["step"] = str(effective_step)
+                data["step_clamped"] = True
+
         if detect_gaps:
             data = resp.setdefault("data", {})
             try:
@@ -65,9 +161,16 @@ class Metrics:
                 collection_interval = 0
 
             detection_limit = max_gap_detection_points or Metrics.MAX_GAP_DETECTION_POINTS
-            detection_points = int((end - start) / collection_interval) + 1 if collection_interval > 0 else 0
+            detection_points = int((end_sec - start_sec) / collection_interval) + 1 if collection_interval > 0 else 0
 
-            if collection_interval > 0 and detection_points > detection_limit:
+            if truncated:
+                data["gaps"] = []
+                data["gap_detection"] = {
+                    "status": "limited",
+                    "limited": True,
+                    "reason": "series_truncated",
+                }
+            elif collection_interval > 0 and detection_points > detection_limit:
                 data["gaps"] = []
                 data["gap_detection"] = {
                     "status": "limited",
@@ -75,18 +178,37 @@ class Metrics:
                     "reason": "max_points_exceeded",
                 }
             elif collection_interval > 0:
-                detection_resp = vm_api.query_range(query, start, end, f"{collection_interval}s")
+                detection_resp = (
+                    resp
+                    if step_seconds == collection_interval
+                    else vm_api.query_range(effective_query, start_sec, end_sec, f"{collection_interval}s")
+                )
                 gaps = Metrics.detect_gap_intervals(
                     detection_resp.get("data", {}).get("result", []),
                     collection_interval,
+                    range_start=start_sec,
+                    range_end=end_sec,
                 )
                 data["gaps"] = gaps
                 data["gap_detection"] = {"status": "ok", "limited": False}
             else:
                 data["gaps"] = []
                 data["gap_detection"] = {"status": "skipped", "limited": False}
-        Metrics.fill_missing_points(start, end, step_seconds, resp.get("data", {}).get("result", []))
+        Metrics.fill_missing_points(start_sec, end_sec, step_seconds, resp.get("data", {}).get("result", []))
         return resp
+
+    @staticmethod
+    def enforce_card_query_budget(response, start_ms=None, end_ms=None, step=None):
+        """Deprecated post-fetch guard; card path now uses pre-query limitk + step clamp.
+
+        Kept for callers that still invoke it; prefers truncation annotation over raise
+        when series_budget is already present.
+        """
+        del start_ms, end_ms, step  # retained for call-site compatibility
+        data = response.get("data", {})
+        if "series_budget" in data:
+            return
+        Metrics.finalize_card_series_budget(response, applied_limit=False)
 
     @staticmethod
     def parse_step_to_seconds(step) -> int:
@@ -132,7 +254,12 @@ class Metrics:
         return value * multiplier_map[matched.group("unit")]
 
     @staticmethod
-    def detect_gap_intervals(data_list, collection_interval_seconds):
+    def detect_gap_intervals(
+        data_list,
+        collection_interval_seconds,
+        range_end=None,
+        range_start=None,
+    ):
         try:
             collection_interval = int(collection_interval_seconds)
         except (TypeError, ValueError):
@@ -141,6 +268,14 @@ class Metrics:
             return []
 
         tolerance_seconds = max(collection_interval * 2, 60)
+        try:
+            normalized_range_end = float(range_end) if range_end is not None else None
+        except (TypeError, ValueError):
+            normalized_range_end = None
+        try:
+            normalized_range_start = float(range_start) if range_start is not None else None
+        except (TypeError, ValueError):
+            normalized_range_start = None
         gaps = []
 
         for item in data_list:
@@ -149,6 +284,24 @@ class Metrics:
                 for timestamp, value in item.get("values", [])
                 if value is not None
             )
+            if real_points and normalized_range_start is not None:
+                first_timestamp = real_points[0]
+                missing_duration = first_timestamp - normalized_range_start
+                if missing_duration >= tolerance_seconds:
+                    gaps.append(
+                        {
+                            "start": normalized_range_start,
+                            "end": first_timestamp - collection_interval,
+                            "duration": missing_duration,
+                            "series": [
+                                {
+                                    "metric": item.get("metric", {}),
+                                    "missing_points": int(missing_duration / collection_interval),
+                                }
+                            ],
+                        }
+                    )
+
             for prev_timestamp, next_timestamp in zip(real_points, real_points[1:]):
                 missing_duration = next_timestamp - prev_timestamp - collection_interval
                 if missing_duration < tolerance_seconds:
@@ -167,22 +320,56 @@ class Metrics:
                     }
                 )
 
+            if real_points and normalized_range_end is not None:
+                last_timestamp = real_points[-1]
+                missing_duration = normalized_range_end - last_timestamp
+                if missing_duration >= tolerance_seconds:
+                    gaps.append(
+                        {
+                            "start": last_timestamp + collection_interval,
+                            "end": normalized_range_end,
+                            "duration": missing_duration,
+                            "series": [
+                                {
+                                    "metric": item.get("metric", {}),
+                                    "missing_points": int(missing_duration / collection_interval),
+                                }
+                            ],
+                        }
+                    )
+
         return Metrics.merge_gap_intervals(gaps, collection_interval)
 
     @staticmethod
     def merge_gap_intervals(gaps, collection_interval_seconds):
+        gaps_by_series = {}
+        for gap in gaps:
+            series_key = tuple(
+                sorted(
+                    tuple(sorted((str(key), str(value)) for key, value in item.get("metric", {}).items()))
+                    for item in gap.get("series", [])
+                )
+            )
+            gaps_by_series.setdefault(series_key, []).append(gap)
+
         merged = []
-        for gap in sorted(gaps, key=lambda item: (item["start"], item["end"])):
-            if not merged or gap["start"] > merged[-1]["end"] + collection_interval_seconds:
-                merged.append({**gap, "series": list(gap.get("series", []))})
-                continue
+        for series_gaps in gaps_by_series.values():
+            current_series_gaps = []
+            for gap in sorted(series_gaps, key=lambda item: (item["start"], item["end"])):
+                if not current_series_gaps or gap["start"] > current_series_gaps[-1]["end"] + collection_interval_seconds:
+                    current_series_gaps.append({**gap, "series": list(gap.get("series", []))})
+                    continue
 
-            current = merged[-1]
-            current["end"] = max(current["end"], gap["end"])
-            current["duration"] = current["end"] - current["start"] + collection_interval_seconds
-            current["series"].extend(gap.get("series", []))
+                current = current_series_gaps[-1]
+                current["end"] = max(current["end"], gap["end"])
+                current["duration"] = current["end"] - current["start"] + collection_interval_seconds
+                for series_item in current["series"]:
+                    if "missing_points" in series_item:
+                        series_item["missing_points"] = int(current["duration"] / collection_interval_seconds)
 
-        return merged
+            merged.extend(current_series_gaps)
+
+        return sorted(merged, key=lambda item: (item["start"], item["end"]))
 
     @staticmethod
     def fill_missing_points(start, end, step, data_list):
@@ -232,7 +419,15 @@ class Metrics:
             item["values"] = result_values
 
     @staticmethod
-    def query_metric_by_instance(metric_query: str, instance_id: str, instance_id_keys: list, dimensions: list):
+    def query_metric_by_instance(
+        metric_query: str,
+        instance_id: str,
+        instance_id_keys: list,
+        dimensions: list,
+        *,
+        series_limit: int | None = None,
+        series_mode: str | None = None,
+    ):
         """
         根据实例ID查询指标，按维度分组
 
@@ -240,6 +435,8 @@ class Metrics:
         :param instance_id: 实例ID，字符串元组格式，如 "('aa', 'bb')"
         :param instance_id_keys: 实例ID对应的维度键列表，如 ["name", "id"]
         :param dimensions: 用于分组的维度列表
+        :param series_limit: 可选，限制返回序列数（列表维度预览用）
+        :param series_mode: top / bottom / limited，配合 series_limit
         :return: 查询结果
         """
         # 解析 instance_id 字符串元组
@@ -268,6 +465,21 @@ class Metrics:
             final_query = f"any({query}) by ({group_by})"
         else:
             final_query = f"any({query})"
+
+        # 列表维度预览：高维指标截断，避免浮层刷屏；完整明细走搜索页。
+        if series_limit is not None:
+            try:
+                limit = int(series_limit)
+            except (TypeError, ValueError):
+                limit = 0
+            if limit > 0:
+                mode = (series_mode or "top").lower()
+                if mode == "bottom":
+                    final_query = f"bottomk({limit}, {final_query})"
+                elif mode == "limited":
+                    final_query = f"limitk({limit}, {final_query})"
+                else:
+                    final_query = f"topk({limit}, {final_query})"
 
         return VictoriaMetricsAPI().query(final_query)
 

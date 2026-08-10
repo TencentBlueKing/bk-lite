@@ -1,39 +1,87 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import useViewApi from '@/app/monitor/api/view';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import {
   DashboardShell,
   FlexiblePanelSection,
   KpiSection,
-  useFilteredBarPanels,
   useFilteredChartPanels,
   useFilteredRingPanels
 } from '../common/dashboard-components';
 import {
   HorizontalBarPanel,
   RingChartPanel,
+  TitleWithGuide,
   TrendChartPanel
 } from '../../shared/widgets';
+import type { BarItem } from '../../shared/widgets';
+import { buildSearchParams, runWithConcurrency, topLabelBars } from '../../shared/utils';
 import { HOST_DASHBOARD_CONFIG } from './config';
+import { HOST_TOP_QUERIES } from './queries';
 import styles from './index.module.scss';
 
 const TOP_CHART_TITLES = ['资源使用趋势', '系统负载趋势'];
-const LOWER_CHART_TITLES = ['网络吞吐趋势', '磁盘吞吐趋势', '进程状态趋势'];
-const RING_TITLES = ['CPU 时间分布', '内存占用分布', '进程状态分布'];
-const BAR_TITLES = ['主机压力信号'];
+const NETWORK_CHART_TITLES = ['网络吞吐趋势', '网络错误速率'];
+const DISK_PROCESS_CHART_TITLES = ['磁盘吞吐趋势', '进程异常趋势'];
+const RING_TITLES = ['CPU 时间分布'];
+const TOP_CONCURRENCY = 1;
 
 export default function HostDashboardPage() {
   const dashboard = useSimpleDashboardData(HOST_DASHBOARD_CONFIG);
+  const { getInstanceQuery } = useViewApi();
+  const searchParams = useSearchParams();
+  const instanceIdKeys = useMemo(
+    () => (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean),
+    [searchParams]
+  );
+
   const topCharts = useFilteredChartPanels(dashboard.chartPanels, TOP_CHART_TITLES);
-  const lowerCharts = useFilteredChartPanels(dashboard.chartPanels, LOWER_CHART_TITLES);
+  const networkCharts = useFilteredChartPanels(dashboard.chartPanels, NETWORK_CHART_TITLES);
+  const diskProcessCharts = useFilteredChartPanels(dashboard.chartPanels, DISK_PROCESS_CHART_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
-  const bars = useFilteredBarPanels(dashboard.barPanels, BAR_TITLES);
-  const [pressureBar] = bars;
 
   const [resourceChart, loadChart] = topCharts;
-  const [networkChart, diskChart, processChart] = lowerCharts;
-  const [cpuRing, memoryRing, processRing] = rings;
+  const [networkChart, networkErrorChart] = networkCharts;
+  const [diskChart, processAnomalyChart] = diskProcessCharts;
+  const [cpuRing] = rings;
+
+  const { idValues, timeValues, isDashboardMode, loadTick, currentInstanceInterval } = dashboard;
+  const [topBars, setTopBars] = useState<Record<string, BarItem[]>>({});
+  const idValuesKey = JSON.stringify(idValues);
+  const timeKey = JSON.stringify(timeValues);
+
+  useEffect(() => {
+    if (!isDashboardMode) {
+      setTopBars({});
+      return;
+    }
+    let active = true;
+    runWithConcurrency(HOST_TOP_QUERIES, TOP_CONCURRENCY, async (q) =>
+      getInstanceQuery(
+        buildSearchParams(
+          q.query,
+          q.unit,
+          idValues,
+          instanceIdKeys,
+          timeValues,
+          undefined,
+          false,
+          currentInstanceInterval
+        )
+      )
+        .then((res: any) => [q.key, topLabelBars(res, q.unit, q.color, q.labelKeys)] as const)
+        .catch(() => [q.key, [] as BarItem[]] as const)
+    ).then((entries) => {
+      if (active) setTopBars(Object.fromEntries(entries));
+    });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
 
   return (
     <DashboardShell
@@ -46,40 +94,23 @@ export default function HostDashboardPage() {
 
           <div className={styles.sectionLabel}>性能与分布</div>
           <FlexiblePanelSection styles={styles}>
-            {resourceChart ? (
+            {[resourceChart, loadChart].map((chart) => chart ? (
               <TrendChartPanel
-                key={resourceChart.chart.title}
-                title={resourceChart.chart.title}
-                subtitle={resourceChart.chart.subtitle}
-                guide={resourceChart.chart.guide}
-                legends={resourceChart.legends}
-                data={resourceChart.data}
-                metric={resourceChart.metric}
-                unit={resourceChart.unit}
+                key={chart.chart.title}
+                title={chart.chart.title}
+                subtitle={chart.chart.subtitle}
+                guide={chart.chart.guide}
+                legends={chart.legends}
+                data={chart.data}
+                metric={chart.metric}
+                unit={chart.unit}
                 loading={dashboard.loading}
-                seriesStyles={resourceChart.seriesStyles}
+                seriesStyles={chart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
+                className={`${styles.span4} ${styles.compactTrend}`}
                 styles={styles}
               />
-            ) : null}
-            {loadChart ? (
-              <TrendChartPanel
-                key={loadChart.chart.title}
-                title={loadChart.chart.title}
-                subtitle={loadChart.chart.subtitle}
-                guide={loadChart.chart.guide}
-                legends={loadChart.legends}
-                data={loadChart.data}
-                metric={loadChart.metric}
-                unit={loadChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={loadChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null}
+            ) : null)}
             {cpuRing ? (
               <RingChartPanel
                 key={cpuRing.panel.title}
@@ -94,102 +125,71 @@ export default function HostDashboardPage() {
                 styles={styles}
               />
             ) : null}
-            {memoryRing ? (
-              <RingChartPanel
-                key={memoryRing.panel.title}
-                title={memoryRing.panel.title}
-                subtitle={memoryRing.panel.subtitle}
-                guide={memoryRing.panel.guide}
-                data={memoryRing.data}
-                centerValue={memoryRing.centerValue}
-                centerCaption={memoryRing.panel.centerCaption}
-                isEmpty={memoryRing.isEmpty}
-                className={styles.span4}
-                styles={styles}
-              />
-            ) : null}
-            {processRing ? (
-              <RingChartPanel
-                key={processRing.panel.title}
-                title={processRing.panel.title}
-                subtitle={processRing.panel.subtitle}
-                guide={processRing.panel.guide}
-                data={processRing.data}
-                centerValue={processRing.centerValue}
-                centerCaption={processRing.panel.centerCaption}
-                isEmpty={processRing.isEmpty}
-                className={styles.span4}
-                styles={styles}
-              />
-            ) : null}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>吞吐与进程</div>
+          <div className={styles.sectionLabel}>网络观察</div>
           <FlexiblePanelSection styles={styles}>
-            {/* 主机压力信号条 span6 + 网络吞吐 span6 = 12 —— 信号条不再独占整行 */}
-            {pressureBar ? (
-              <HorizontalBarPanel
-                key={pressureBar.panel.title}
-                title={pressureBar.panel.title}
-                subtitle={pressureBar.panel.subtitle}
-                guide={pressureBar.panel.guide}
-                items={pressureBar.items}
-                className={styles.span6}
-                styles={styles}
-              />
-            ) : null}
-            {networkChart ? (
+            {[networkChart, networkErrorChart].map((chart) => chart ? (
               <TrendChartPanel
-                key={networkChart.chart.title}
-                title={networkChart.chart.title}
-                subtitle={networkChart.chart.subtitle}
-                guide={networkChart.chart.guide}
-                legends={networkChart.legends}
-                data={networkChart.data}
-                metric={networkChart.metric}
-                unit={networkChart.unit}
+                key={chart.chart.title}
+                title={chart.chart.title}
+                subtitle={chart.chart.subtitle}
+                guide={chart.chart.guide}
+                legends={chart.legends}
+                data={chart.data}
+                metric={chart.metric}
+                unit={chart.unit}
                 loading={dashboard.loading}
-                seriesStyles={networkChart.seriesStyles}
+                seriesStyles={chart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
                 className={`${styles.span6} ${styles.compactTrend}`}
                 styles={styles}
               />
-            ) : null}
-            {diskChart ? (
-              <TrendChartPanel
-                key={diskChart.chart.title}
-                title={diskChart.chart.title}
-                subtitle={diskChart.chart.subtitle}
-                guide={diskChart.chart.guide}
-                legends={diskChart.legends}
-                data={diskChart.data}
-                metric={diskChart.metric}
-                unit={diskChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={diskChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null}
-            {processChart ? (
-              <TrendChartPanel
-                key={processChart.chart.title}
-                title={processChart.chart.title}
-                subtitle={processChart.chart.subtitle}
-                guide={processChart.chart.guide}
-                legends={processChart.legends}
-                data={processChart.data}
-                metric={processChart.metric}
-                unit={processChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={processChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null}
+            ) : null)}
           </FlexiblePanelSection>
+
+          <div className={styles.sectionLabel}>磁盘与进程</div>
+          <FlexiblePanelSection styles={styles}>
+            {[diskChart, processAnomalyChart].map((chart) => chart ? (
+              <TrendChartPanel
+                key={chart.chart.title}
+                title={chart.chart.title}
+                subtitle={chart.chart.subtitle}
+                guide={chart.chart.guide}
+                legends={chart.legends}
+                data={chart.data}
+                metric={chart.metric}
+                unit={chart.unit}
+                loading={dashboard.loading}
+                seriesStyles={chart.seriesStyles}
+                onXRangeChange={dashboard.onXRangeChange}
+                className={`${styles.span6} ${styles.compactTrend}`}
+                styles={styles}
+              />
+            ) : null)}
+          </FlexiblePanelSection>
+
+          <div className={styles.sectionLabel}>磁盘使用排行</div>
+          <section className={styles.dashboardSection}>
+            <div className={styles.sectionGrid}>
+              {HOST_TOP_QUERIES.map((q) => (
+                <HorizontalBarPanel
+                  key={q.key}
+                  styles={styles}
+                  className={`${styles.panel} ${styles.span12}`}
+                  title={
+                    <TitleWithGuide
+                      styles={styles}
+                      title={q.title}
+                      items={q.guide}
+                      className={styles.panelTitleWithGuide}
+                    />
+                  }
+                  items={topBars[q.key] || []}
+                />
+              ))}
+            </div>
+          </section>
         </>
       }
     />

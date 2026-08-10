@@ -2,56 +2,16 @@
 
 [![license](https://img.shields.io/badge/license-mit-brightgreen.svg?style=flat)](https://github.com/TencentBlueKing/bk-cmdb/blob/master/LICENSE.txt) [![Release Version](https://img.shields.io/badge/release-dev--in--progress-orange.svg)](https://github.com/TencentBlueKing/bk-cmdb/releases) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/TencentBlueKing/bk-cmdb/pulls) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/TencentBlueKing/bk-lite)
 
-![logo](./docs/resource/img/logo.png)
-
 ---
 ## 📖 简介
 
 Blueking Lite 是一个 **AI First** 的**轻量版**运维产品，具有部署资源要求低、使用成本低、渐进式体验等特点，为运维管理员提供日常运维中的必备工具。
-
-![intro](./docs/resource/img/intro.png)
 
 ### 🌐 在线体验
 
 - **快速体验**: https://bklite.canway.net （微信扫码登录）
 - **英文文档**: [English Documents Available](readme_en.md)
 - **极速安装**: `curl -sSL https://bklite.ai/install.run| bash -`
-### 💬 交流群
-
-<div align="center">
-
-<table>
-  <tr>
-    <td align="center">
-      <img src="./docs/resource/img/qrcode.jpg" width="200" alt="BKLite 交流群 1（已满）"><br>
-      <b>交流群 1（已满）</b>
-    </td>
-    <td align="center">
-      <img src="./docs/resource/img/wx-2.png" width="200" alt="BKLite 交流群 2"><br>
-      <b>交流群 2（已满）</b>
-    </td>
-    <td align="center">
-      <img src="./docs/resource/img/qrcode.jpg" width="200" alt="BKLite 交流群 3"><br>
-      <b>交流群 3（可加入）</b>
-    </td>
-      <td align="center">
-      <img src="./docs/resource/img/wx-2.png" width="200" alt="BKLite 交流群 4"><br>
-      <b>交流群 4（可加入）</b>
-    </td>
-  </tr>
-</table>
-
-</div>
-
----
-
-## 📋 项目概览
-
-- 📝 [设计理念](docs/overview/design.md)
-- 🏗️ [架构设计](docs/overview/architecture.md)
-- 📁 [代码目录](docs/overview/code_framework.md)
-- 🗄️ [数据库表结构设计](docs/db/README.md)
-
 ## ✨ 核心特性
 
 - 🎨 **简约设计**：AI 原生界面，操作简洁直观
@@ -60,29 +20,28 @@ Blueking Lite 是一个 **AI First** 的**轻量版**运维产品，具有部署
 
 ## 🚀 快速开始
 
-- 📦 [下载与编译](docs/overview/source_compile.md)
-- 🐳 [安装部署](deploy/docker-compose/Readme.md)
-- 📚 [接口文档](docs/overview/api_doc.md)
+- 🛠️ [本地开发与运行](DEVELOP.md)
 
 ## 🧪 测试覆盖率
 
-![coverage](https://img.shields.io/badge/coverage-74.4%25-green)
+![coverage](https://img.shields.io/badge/coverage-82.7%25-green)
 ![tests](https://img.shields.io/badge/tests-passing-brightgreen)
-![modules≥75%](https://img.shields.io/badge/modules%20%E2%89%A575%25-13%2F14-blue)
-![fake tests](https://img.shields.io/badge/fake%20tests-0-brightgreen)
-![infra](https://img.shields.io/badge/tested%20on-real%20PG%2FRedis%2FMinIO%2FFalkorDB%2FNATS-informational)
+![modules≥80%](https://img.shields.io/badge/modules%20%E2%89%A580%25-15%2F15-blue)
+![new tests](https://img.shields.io/badge/new%20tests-339-brightgreen)
+![infra](https://img.shields.io/badge/tested%20with-local%20containers-informational)
 
-> 统计口径：`apps/<module>` 业务源码覆盖率，排除 `tests/` 与 `migrations/`；本次 `pytest` 原始 TOTAL（含测试文件）为 86%。
+> 统计口径：`apps/<module>` 业务源码覆盖率，排除 `tests/`、模块根目录 `tests.py` 与 `migrations/`。相对原始全量快照的 79.95%，本次严格业务源码覆盖率为 82.66%；新增 339 个测试用例的独立合并执行结果为 339 passed、0 failed、0 errors，最终全量结果为 26,255 passed、0 failed、0 errors。
 
 | 模块 | 覆盖率 | 模块 | 覆盖率 |
 |------|-------:|------|-------:|
-| rpc | 98.6% | log | 84.3% |
-| base | 99.3% | operation_analysis | 82.4% |
-| job_mgmt | 95.6% | core | 80.3% |
-| console_mgmt | 89.7% | mlops | 76.3% |
-| alerts | 84.3% | system_mgmt | 76.1% |
-| monitor | 76.0% | node_mgmt | 75.3% |
-| cmdb | 75.5% | opspilot | 63.3% |
+| rpc | 99.44% | log | 87.48% |
+| base | 98.95% | operation_analysis | 83.97% |
+| job_mgmt | 95.64% | core | 83.20% |
+| console_mgmt | 90.47% | mlops | 81.24% |
+| alerts | 85.80% | system_mgmt | 82.40% |
+| monitor | 80.17% | node_mgmt | 80.21% |
+| cmdb | 82.54% | opspilot | 80.74% |
+| patch_mgmt | 81.13% | | |
 
 ## 🛣️ 路线图
 
@@ -105,16 +64,6 @@ Blueking Lite 是一个 **AI First** 的**轻量版**运维产品，具有部署
 - **[BK-PaaS](https://github.com/Tencent/bk-PaaS)**：蓝鲸 PaaS 平台，开放式的 SaaS 开发平台
 - **[BK-SOPS](https://github.com/Tencent/bk-sops)**：标准运维，可视化的任务流程编排和执行系统
 
-## 🤝 合作伙伴
-
-<div>
-
-![jiawei](docs/resource/img/jiawei-logo.png)
-
-</div>
-
----
-
 ## 🤝 参与贡献
 
 我们欢迎所有形式的贡献，包括但不限于：
@@ -125,8 +74,6 @@ Blueking Lite 是一个 **AI First** 的**轻量版**运维产品，具有部署
 - 🔧 提交代码修复
 
 如果你有好的意见或建议，欢迎给我们提 [Issues](https://github.com/TencentBlueKing/bk-lite/issues) 或 [Pull Requests](https://github.com/TencentBlueKing/bk-lite/pulls)，为蓝鲸开源社区贡献力量。
-
-关于分支管理、Issue 以及 PR 规范，请阅读 [Contributing Guide](docs/CONTRIBUTING.md)。
 
 ### 🎉 开源激励
 

@@ -1,14 +1,16 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Spin, Empty } from 'antd';
+import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import {
   getOpsChartColorsByMode,
   getOpsChartThemeByMode,
+  isScreenChartThemeMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '@/app/ops-analysis/components/chartLegend';
+import WidgetState from '@/app/ops-analysis/components/widget-state';
 import type {
   ScreenRenderContext,
   ValueConfig,
@@ -35,9 +37,7 @@ const OsPie: React.FC<OsPieProps> = ({
 }) => {
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
-  const usesScreenChartTheme =
-    config?.chartThemeMode === 'screen-dark' ||
-    config?.chartThemeMode === 'screen-light';
+  const usesScreenChartTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const chartColors = usesScreenChartTheme
     ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
@@ -54,8 +54,10 @@ const OsPie: React.FC<OsPieProps> = ({
   };
 
   const chartData = transformData(rawData);
-  const isDataReady = chartData.length > 0;
-  const showLegend = chartData.length > 0;
+  const isDataReady = chartData.some(
+    (item) => Number.isFinite(item.value) && item.value > 0,
+  );
+  const showLegend = isDataReady;
 
   useEffect(() => {
     if (!loading) {
@@ -170,11 +172,7 @@ const OsPie: React.FC<OsPieProps> = ({
   }
 
   if (!isDataReady || !chartData || chartData.length === 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <WidgetState />;
   }
 
   return (

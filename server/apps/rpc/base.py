@@ -63,7 +63,19 @@ class OperationAnalysisRpc(RpcClient):
         self.server = kwargs.pop("server", "")
 
     def run(self, method_name, *args, **kwargs):
-        return_data = asyncio.run(nats_client.request_v2(self.namespace, method_name, server=self.server, *args, **kwargs))
+        nats_user = kwargs.pop("_nats_user", None)
+        nats_password = kwargs.pop("_nats_password", None)
+        return_data = asyncio.run(
+            nats_client.request_v2(
+                self.namespace,
+                method_name,
+                server=self.server,
+                _nats_user=nats_user,
+                _nats_password=nats_password,
+                *args,
+                **kwargs,
+            )
+        )
         return return_data
 
 

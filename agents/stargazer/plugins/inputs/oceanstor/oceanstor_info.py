@@ -12,6 +12,7 @@
 MODEL/SERIALNUMBER/DISKTYPE/SECTORS/SPEEDRPM/MANUFACTURER/WWN/CAPACITY/ALLOCCAPACITY/
 ALLOCTYPE/PARENTNAME/USAGETYPE/RUNNINGSTATUS），由 CMDB 侧 runner 归一化。
 """
+import asyncio
 import requests
 from sanic.log import logger
 
@@ -29,10 +30,17 @@ class OceanStorManager:
     def __init__(self, params: dict):
         self.host = params.get("host", "")
         self.port = int(params.get("port", 8088))
+        self.scheme = params.get("scheme", "https") or "https"
         self.username = params.get("username") or params.get("user", "")
         self.password = params.get("password", "")
         self.timeout = int(params.get("timeout", 60))
-        self.base_url = f"https://{self.host}:{self.port}"
+        raw_verify_tls = params.get("verify_tls", True)
+        self.verify_tls = (
+            raw_verify_tls
+            if isinstance(raw_verify_tls, bool)
+            else str(raw_verify_tls).strip().lower() in {"1", "true", "yes", "on"}
+        )
+        self.base_url = f"{self.scheme}://{self.host}:{self.port}"
         self.token = None
         self.device_id = None
 
@@ -49,7 +57,7 @@ class OceanStorManager:
         url = f"{self.base_url}/deviceManager/rest/xxxxx/sessions"
         payload = {"username": self.username, "password": self.password, "scope": "0"}
         resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"},
-                             verify=False, timeout=self.timeout)
+                             verify=self.verify_tls, timeout=self.timeout)
         data = (resp.json() or {}).get("data", {})
         if not data:
             raise RuntimeError("OceanStor 登录失败：未返回 data")
@@ -63,7 +71,12 @@ class OceanStorManager:
             return
         try:
             url = f"{self.base_url}/deviceManager/rest/{self.device_id}/sessions"
-            requests.delete(url, headers=self._headers(), verify=False, timeout=self.timeout)
+            requests.delete(
+                url,
+                headers=self._headers(),
+                verify=self.verify_tls,
+                timeout=self.timeout,
+            )
         except Exception as e:  # noqa
             logger.warning(f"OceanStor logout error: {e}")
 
@@ -74,7 +87,7 @@ class OceanStorManager:
         while True:
             params = {"range": f"[{start}-{start + self.PAGE_SIZE - 1}]"}
             resp = requests.get(url, headers=self._headers(), params=params,
-                                verify=False, timeout=self.timeout)
+                                verify=self.verify_tls, timeout=self.timeout)
             body = resp.json() or {}
             if (body.get("error") or {}).get("code", 0) != 0:
                 logger.warning(f"OceanStor fetch {path} error: {body.get('error')}")
@@ -89,7 +102,10 @@ class OceanStorManager:
     # ------------------------------------------------------------------
     # 采集入口
     # ------------------------------------------------------------------
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         try:
             self.login()
             pools = self._fetch_all("storagepool")

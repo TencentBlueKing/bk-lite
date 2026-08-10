@@ -1,15 +1,17 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Spin, Empty } from 'antd';
+import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import { useTranslation } from '@/utils/i18n';
 import {
   getOpsChartColorsByMode,
   getOpsChartThemeByMode,
+  isScreenChartThemeMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '@/app/ops-analysis/components/chartLegend';
+import WidgetState from '@/app/ops-analysis/components/widget-state';
 import type {
   ScreenRenderContext,
   ValueConfig,
@@ -38,9 +40,7 @@ const BarChart: React.FC<BarChartProps> = ({
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
-  const usesScreenChartTheme =
-    config?.chartThemeMode === 'screen-dark' ||
-    config?.chartThemeMode === 'screen-light';
+  const usesScreenChartTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const chartColors = usesScreenChartTheme
     ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
@@ -277,11 +277,7 @@ const BarChart: React.FC<BarChartProps> = ({
   }
 
   if (!isDataReady || !chartData || chartData.categories.length === 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <WidgetState />;
   }
 
   return (

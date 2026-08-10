@@ -9,6 +9,7 @@
     "collect_type",
     "collector",
     "instance_id",
+    "message",
     "mongodb.log.message",
     "mongodb.log.severity",
     "mongodb.log.component",

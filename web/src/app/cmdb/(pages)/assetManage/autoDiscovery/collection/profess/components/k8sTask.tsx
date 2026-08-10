@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import styles from '../index.module.scss';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import { Form, Spin, Select, Input } from 'antd';
 import {
   getCleanupFormValues,
@@ -44,6 +45,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
   onAfterSave,
 }) => {
   const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const { model_id: modelId } = modelItem;
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
@@ -156,9 +158,8 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
   return (
     <Spin spinning={loading} wrapperClassName={styles.k8sTaskSpin}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="horizontal"
-        labelCol={{ span: 5 }}
         onFinish={onFinish}
         initialValues={K8S_FORM_INITIAL_VALUES}
       >

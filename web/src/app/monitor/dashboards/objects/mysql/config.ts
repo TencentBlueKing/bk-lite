@@ -97,7 +97,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '查询吞吐速率',
     description: '整体查询吞吐量，用于评估总访问压力。',
     unit: 'cps',
-    query: 'rate(mysql_queries{__$labels__}[5m])',
+    query: 'rate(mysql_queries{__$labels__}[__$window__])',
     color: '#2f6bff'
   },
   {
@@ -105,7 +105,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '请求语句速率',
     description: '客户端发起语句速率，衡量入口请求压力。',
     unit: 'cps',
-    query: 'rate(mysql_questions{__$labels__}[5m])',
+    query: 'rate(mysql_questions{__$labels__}[__$window__])',
     color: '#597ef7'
   },
   {
@@ -113,7 +113,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '慢查询速率',
     description: '慢查询触发频次，用于评估 SQL 性能风险。',
     unit: 'cps',
-    query: 'rate(mysql_slow_queries{__$labels__}[5m])',
+    query: 'rate(mysql_slow_queries{__$labels__}[__$window__])',
     color: '#ff4d4f'
   },
   {
@@ -121,7 +121,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '查询语句速率',
     description: '读请求速率，反映查询读负载。',
     unit: 'cps',
-    query: 'rate(mysql_com_select{__$labels__}[5m])',
+    query: 'rate(mysql_com_select{__$labels__}[__$window__])',
     color: '#2f6bff'
   },
   {
@@ -129,7 +129,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '插入语句速率',
     description: '写入请求速率。',
     unit: 'cps',
-    query: 'rate(mysql_com_insert{__$labels__}[5m])',
+    query: 'rate(mysql_com_insert{__$labels__}[__$window__])',
     color: '#ff9f43'
   },
   {
@@ -137,7 +137,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '更新语句速率',
     description: '更新请求速率。',
     unit: 'cps',
-    query: 'rate(mysql_com_update{__$labels__}[5m])',
+    query: 'rate(mysql_com_update{__$labels__}[__$window__])',
     color: '#faad14'
   },
   {
@@ -145,7 +145,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '删除语句速率',
     description: '删除请求速率。',
     unit: 'cps',
-    query: 'rate(mysql_com_delete{__$labels__}[5m])',
+    query: 'rate(mysql_com_delete{__$labels__}[__$window__])',
     color: '#ff7875'
   },
   {
@@ -161,7 +161,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '行锁等待速率',
     description: 'InnoDB 行锁等待发生频次。',
     unit: 'cps',
-    query: 'rate(mysql_innodb_row_lock_waits{__$labels__}[5m])',
+    query: 'rate(mysql_innodb_row_lock_waits{__$labels__}[__$window__])',
     color: '#ff4d4f'
   },
   {
@@ -169,7 +169,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: 'InnoDB 物理读速率',
     description: 'InnoDB 物理读操作速率。',
     unit: 'cps',
-    query: 'rate(mysql_innodb_data_reads{__$labels__}[5m])',
+    query: 'rate(mysql_innodb_data_reads{__$labels__}[__$window__])',
     color: '#2f6bff'
   },
   {
@@ -177,7 +177,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: 'InnoDB 物理写速率',
     description: 'InnoDB 物理写操作速率。',
     unit: 'cps',
-    query: 'rate(mysql_innodb_data_writes{__$labels__}[5m])',
+    query: 'rate(mysql_innodb_data_writes{__$labels__}[__$window__])',
     color: '#52c41a'
   },
   {
@@ -185,7 +185,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: 'Redo 刷盘',
     description: 'Redo 日志刷盘频率，反映事务提交压力。',
     unit: 'cps',
-    query: 'rate(mysql_innodb_os_log_fsyncs{__$labels__}[5m])',
+    query: 'rate(mysql_innodb_os_log_fsyncs{__$labels__}[__$window__])',
     color: '#fa8c16'
   },
   {
@@ -193,7 +193,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '缓冲池读请求速率',
     description: '逻辑读请求速率，衡量缓存读取压力。',
     unit: 'cps',
-    query: 'rate(mysql_innodb_buffer_pool_read_requests{__$labels__}[5m])',
+    query: 'rate(mysql_innodb_buffer_pool_read_requests{__$labels__}[__$window__])',
     color: '#2f6bff'
   },
   {
@@ -201,7 +201,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '磁盘读取速率',
     description: '需要从磁盘读取的缓冲池未命中速率。',
     unit: 'cps',
-    query: 'rate(mysql_innodb_buffer_pool_reads{__$labels__}[5m])',
+    query: 'rate(mysql_innodb_buffer_pool_reads{__$labels__}[__$window__])',
     color: '#ff4d4f'
   },
   {
@@ -210,7 +210,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     description: '逻辑读由缓存命中的比例。',
     unit: 'percent',
     query:
-      '100 * (1 - rate(mysql_innodb_buffer_pool_reads{__$labels__}[5m]) / clamp_min(rate(mysql_innodb_buffer_pool_read_requests{__$labels__}[5m]), 1e-6))',
+      '100 * (1 - rate(mysql_innodb_buffer_pool_reads{__$labels__}[__$window__]) / clamp_min(rate(mysql_innodb_buffer_pool_read_requests{__$labels__}[__$window__]), 1e-6))',
     color: '#52c41a'
   },
   {
@@ -260,7 +260,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '接收流量',
     description: 'MySQL 输入流量速率。',
     unit: 'byteps',
-    query: 'rate(mysql_bytes_received{__$labels__}[5m])',
+    query: 'rate(mysql_bytes_received{__$labels__}[__$window__])',
     color: '#13c2c2'
   },
   {
@@ -268,7 +268,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '发送流量',
     description: 'MySQL 输出流量速率。',
     unit: 'byteps',
-    query: 'rate(mysql_bytes_sent{__$labels__}[5m])',
+    query: 'rate(mysql_bytes_sent{__$labels__}[__$window__])',
     color: '#2f6bff'
   },
   {
@@ -277,7 +277,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     description: '表缓存请求命中比例。',
     unit: 'percent',
     query:
-      '100 * rate(mysql_table_open_cache_hits{__$labels__}[5m]) / clamp_min(rate(mysql_table_open_cache_hits{__$labels__}[5m]) + rate(mysql_table_open_cache_misses{__$labels__}[5m]), 1e-6)',
+      '100 * rate(mysql_table_open_cache_hits{__$labels__}[__$window__]) / clamp_min(rate(mysql_table_open_cache_hits{__$labels__}[__$window__]) + rate(mysql_table_open_cache_misses{__$labels__}[__$window__]), 1e-6)',
     color: '#52c41a'
   },
   {
@@ -301,7 +301,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '表缓存未命中速率',
     description: '表缓存 miss 速率。',
     unit: 'cps',
-    query: 'rate(mysql_table_open_cache_misses{__$labels__}[5m])',
+    query: 'rate(mysql_table_open_cache_misses{__$labels__}[__$window__])',
     color: '#ff7875'
   },
   {
@@ -317,7 +317,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '打开表速率',
     description: '表重新打开速率，高值通常说明缓存不足。',
     unit: 'cps',
-    query: 'rate(mysql_opened_tables{__$labels__}[5m])',
+    query: 'rate(mysql_opened_tables{__$labels__}[__$window__])',
     color: '#fa8c16'
   },
   {
@@ -333,7 +333,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '键缓存磁盘读取速率',
     description: 'MyISAM 键缓存从磁盘读取键块的速率。',
     unit: 'cps',
-    query: 'rate(mysql_key_reads{__$labels__}[5m])',
+    query: 'rate(mysql_key_reads{__$labels__}[__$window__])',
     color: '#7f56d9'
   },
   {
@@ -341,7 +341,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '键缓存读取请求速率',
     description: 'MyISAM 键缓存逻辑读取请求速率。',
     unit: 'cps',
-    query: 'rate(mysql_key_read_requests{__$labels__}[5m])',
+    query: 'rate(mysql_key_read_requests{__$labels__}[__$window__])',
     color: '#9254de'
   },
   {
@@ -350,7 +350,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     description: 'MyISAM 键缓存命中率。',
     unit: 'percent',
     query:
-      '100 * (1 - rate(mysql_key_reads{__$labels__}[5m]) / clamp_min(rate(mysql_key_read_requests{__$labels__}[5m]), 1e-6))',
+      '100 * (1 - rate(mysql_key_reads{__$labels__}[__$window__]) / clamp_min(rate(mysql_key_read_requests{__$labels__}[__$window__]), 1e-6))',
     color: '#52c41a'
   },
   {
@@ -366,7 +366,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '临时表总速率',
     description: '内存与磁盘临时表总创建速率。',
     unit: 'cps',
-    query: 'rate(mysql_created_tmp_tables{__$labels__}[5m])',
+    query: 'rate(mysql_created_tmp_tables{__$labels__}[__$window__])',
     color: '#2f6bff'
   },
   {
@@ -374,7 +374,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '磁盘临时表速率',
     description: '落盘临时表创建速率。',
     unit: 'cps',
-    query: 'rate(mysql_created_tmp_disk_tables{__$labels__}[5m])',
+    query: 'rate(mysql_created_tmp_disk_tables{__$labels__}[__$window__])',
     color: '#ff4d4f'
   },
   {
@@ -383,7 +383,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     description: '仅在内存中创建的临时表速率，可用于对比落盘压力。',
     unit: 'cps',
     query:
-      'clamp_min(rate(mysql_created_tmp_tables{__$labels__}[5m]) - rate(mysql_created_tmp_disk_tables{__$labels__}[5m]), 0)',
+      'clamp_min(rate(mysql_created_tmp_tables{__$labels__}[__$window__]) - rate(mysql_created_tmp_disk_tables{__$labels__}[__$window__]), 0)',
     color: '#fa8c16'
   },
   {
@@ -440,7 +440,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     description: '临时表落盘比例，过高通常需要优化 SQL 或内存。',
     unit: 'percent',
     query:
-      '100 * rate(mysql_created_tmp_disk_tables{__$labels__}[5m]) / clamp_min(rate(mysql_created_tmp_tables{__$labels__}[5m]), 1e-6)',
+      '100 * rate(mysql_created_tmp_disk_tables{__$labels__}[__$window__]) / clamp_min(rate(mysql_created_tmp_tables{__$labels__}[__$window__]), 1e-6)',
     color: '#ff7875'
   },
   {
@@ -456,7 +456,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '中断连接速率',
     description: '连接尝试失败速率。',
     unit: 'cps',
-    query: 'rate(mysql_aborted_connects{__$labels__}[5m])',
+    query: 'rate(mysql_aborted_connects{__$labels__}[__$window__])',
     color: '#ff4d4f'
   },
   {
@@ -472,7 +472,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '异常断开客户端速率',
     description: '客户端异常断开速率。',
     unit: 'cps',
-    query: 'rate(mysql_aborted_clients{__$labels__}[5m])',
+    query: 'rate(mysql_aborted_clients{__$labels__}[__$window__])',
     color: '#ff7875'
   },
   {
@@ -520,7 +520,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: '连接上限错误速率',
     description: '因达到 max_connections 导致的拒绝连接速率。',
     unit: 'cps',
-    query: 'rate(mysql_connection_errors_max_connections{__$labels__}[5m])',
+    query: 'rate(mysql_connection_errors_max_connections{__$labels__}[__$window__])',
     color: '#ff4d4f'
   },
   {
@@ -552,7 +552,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     display_name: 'InnoDB 数据文件刷盘速率',
     description: 'InnoDB 数据文件执行刷盘的速率。',
     unit: 'cps',
-    query: 'rate(mysql_innodb_data_fsyncs{__$labels__}[5m])',
+    query: 'rate(mysql_innodb_data_fsyncs{__$labels__}[__$window__])',
     color: '#597ef7'
   },
   {

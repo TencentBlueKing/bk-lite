@@ -11,12 +11,16 @@ from rest_framework.decorators import api_view
 
 from apps.core.logger import logger
 from apps.core.services.login_auth_request_service import (
+    AUTH_REQUEST_TTL,
     build_auth_request_state,
     create_auth_request,
+    create_browser_binding_token,
     get_auth_request,
+    get_login_auth_browser_cookie_name,
     get_login_auth_callback_uri,
     parse_auth_request_state,
     update_auth_request_status,
+    validate_browser_binding,
     validate_poll_token,
     validate_redirect_origin,
 )
@@ -88,6 +92,18 @@ def _set_auth_cookie_on_response(response, token):
     )
 
 
+def _set_login_auth_browser_cookie_on_response(response, auth_request_id, browser_binding_token):
+    response.set_cookie(
+        get_login_auth_browser_cookie_name(auth_request_id),
+        browser_binding_token,
+        max_age=AUTH_REQUEST_TTL,
+        path="/",
+        secure=not django_settings.DEBUG,
+        httponly=True,
+        samesite="Lax",
+    )
+
+
 def _get_client_ip(request):
     """
     Get client IP address from request.
@@ -109,6 +125,14 @@ def _is_safe_relative_callback_url(callback_url: str) -> bool:
 
     parsed = urlparse(callback_url)
     return not parsed.scheme and not parsed.netloc
+
+
+def _is_safe_legacy_external_callback_url(callback_url: str) -> bool:
+    try:
+        parsed = urlparse(callback_url)
+    except (TypeError, ValueError):
+        return False
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 
 def _build_login_auth_result_redirect(
@@ -389,7 +413,6 @@ def wechat_login(request):
     接收微信授权 code,后端验证后签发 token。
 
     新链路走 WechatLoginAuthAdapter → _resolve_platform_user,
-    详情见 openspec/changes/wechat-login-auth-field-mapping/design.md。
     新链路稳定后移除本入口及 wechat_user_register NATS handler。
 
     Request:
@@ -914,10 +937,18 @@ def start_login_auth(request):
         data = _parse_request_data(request)
         callback_url = (data.get("callback_url") or "/").strip() or "/"
         redirect_origin = (data.get("redirect_origin") or "").strip() or None
+        legacy_external_callback_url = (data.get("legacy_external_callback_url") or "").strip() or None
+        legacy_third_login_code = (data.get("legacy_third_login_code") or "").strip() or None
         binding_id = data.get("binding_id")
 
         if not _is_safe_relative_callback_url(callback_url):
             return JsonResponse({"result": False, "message": "callback_url must be an in-site relative path"}, status=400)
+        if legacy_external_callback_url and not legacy_third_login_code:
+            return JsonResponse(
+                {"result": False, "message": "legacy_external_callback_url requires third_login_code"}, status=400
+            )
+        if legacy_external_callback_url and not _is_safe_legacy_external_callback_url(legacy_external_callback_url):
+            return JsonResponse({"result": False, "message": "legacy_external_callback_url must be an absolute HTTP(S) URL"}, status=400)
         if redirect_origin and not validate_redirect_origin(request, redirect_origin):
             redirect_origin = None
 
@@ -930,11 +961,15 @@ def start_login_auth(request):
         if not binding:
             return JsonResponse({"result": False, "message": "Login auth binding not found"}, status=404)
 
+        browser_binding_token = create_browser_binding_token()
         auth_request = create_auth_request(
             binding_id=binding.id,
             provider_key=binding.integration_instance.provider_key,
             callback_url=callback_url,
             redirect_origin=redirect_origin,
+            legacy_external_callback_url=legacy_external_callback_url,
+            legacy_third_login_code=legacy_third_login_code,
+            browser_binding_token=browser_binding_token,
         )
         state = build_auth_request_state(
             auth_request_id=auth_request["auth_request_id"],
@@ -963,7 +998,7 @@ def start_login_auth(request):
                 status=400,
             )
 
-        return JsonResponse(
+        response = JsonResponse(
             {
                 "result": True,
                 "data": {
@@ -975,6 +1010,8 @@ def start_login_auth(request):
                 "message": "",
             }
         )
+        _set_login_auth_browser_cookie_on_response(response, auth_request["auth_request_id"], browser_binding_token)
+        return response
     except Exception as e:
         logger.error(f"Start login auth error: {e}")
         return JsonResponse(
@@ -1008,6 +1045,12 @@ def get_login_auth_request_status(request, auth_request_id):
     if not validate_poll_token(auth_request, poll_token):
         return JsonResponse({"result": False, "message": "Invalid poll token"}, status=403)
 
+    if not validate_browser_binding(
+        auth_request,
+        request.COOKIES.get(get_login_auth_browser_cookie_name(auth_request_id), ""),
+    ):
+        return JsonResponse({"result": False, "message": "Invalid browser binding"}, status=403)
+
     payload = {
         "status": auth_request.get("status", "pending"),
         "error_message": auth_request.get("error_message", ""),
@@ -1039,6 +1082,17 @@ def login_auth_callback(request):
     # 集中读一次(后续 6 处 status 分支共用);state 解析失败/auth_request 缺失分支
     # 走相对路径,这里 redirect_origin 自然为 None
     redirect_origin = (auth_request or {}).get("redirect_origin") or None
+
+    if not validate_browser_binding(
+        auth_request,
+        request.COOKIES.get(get_login_auth_browser_cookie_name(auth_request_id), ""),
+    ):
+        return _build_login_auth_result_redirect(
+            request,
+            "failed",
+            "认证请求与发起浏览器不匹配，请返回原页面重新发起认证。",
+            redirect_origin=redirect_origin,
+        )
 
     current_status = auth_request.get("status", "pending")
     if current_status != "pending":
@@ -1079,6 +1133,9 @@ def login_auth_callback(request):
 
     login_result = result.get("data", {}) or {}
     login_result.setdefault("redirect_url", state_payload["callback_url"])
+    if auth_request.get("legacy_external_callback_url") and auth_request.get("legacy_third_login_code"):
+        login_result["legacy_external_callback_url"] = auth_request["legacy_external_callback_url"]
+        login_result["legacy_third_login_code"] = auth_request["legacy_third_login_code"]
     update_auth_request_status(
         auth_request_id,
         status="success",

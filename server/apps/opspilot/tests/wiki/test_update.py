@@ -32,8 +32,9 @@ def test_ai_page_also_goes_to_review():
     from apps.opspilot.services.wiki.update_service import apply_material_update
 
     kb = _kb()
+    material = _material(kb)
     page = _page(kb, "A", "ai", body="ai-old")
-    action, check = apply_material_update(page, "new body", operator="sys")
+    action, check = apply_material_update(page, "new body", material=material, operator="sys")
 
     assert action == "pending_review"
     page.refresh_from_db()
@@ -49,8 +50,9 @@ def test_human_page_goes_to_review_without_polluting_current():
     from apps.opspilot.services.wiki.update_service import apply_material_update
 
     kb = _kb()
+    material = _material(kb)
     page = _page(kb, "B", "human", body="human-written")
-    action, check = apply_material_update(page, "ai-rewrite", operator="sys")
+    action, check = apply_material_update(page, "ai-rewrite", material=material, operator="sys")
 
     assert action == "pending_review"
     page.refresh_from_db()
@@ -191,7 +193,7 @@ def test_propose_update_marks_build_failed_when_generator_raises():
 
 @pytest.mark.django_db
 class TestUpdateView:
-    def test_update_impact_endpoint_reports_pending_review_without_mutation(self, api_client):
+    def test_update_impact_reports_automatic_reassessment_without_predeclaring_approvals(self, api_client):
         from apps.opspilot.models import CheckItem, MaterialVersion, PageEvidence
 
         kb = _kb()
@@ -215,8 +217,9 @@ class TestUpdateView:
         assert data["material_id"] == mat.id
         assert data["content_changed"] is True
         assert data["affected_count"] == 2
-        assert data["pending_review_count"] == 2
-        assert [p["id"] for p in data["pending_review_pages"]] == [ai_page.id, human_page.id]
+        assert data["pending_review_count"] == 0
+        assert data["pending_review_pages"] == []
+        assert all("仅知识结论冲突" in page["reason"] for page in data["affected_pages"])
         assert data["latest_version"]["id"] == second.id
         assert data["previous_version"]["id"] == first.id
         assert CheckItem.objects.filter(knowledge_base=kb, check_type="material_update").count() == 0
@@ -233,3 +236,185 @@ class TestUpdateView:
         r = api_client.post(f"/api/v1/opspilot/wiki_mgmt/material/{mat.id}/propose_update/", {}, format="json")
         assert r.status_code == 200
         assert r.json()["data"]["counts"]["updated"] == 0
+
+
+@pytest.mark.django_db
+def test_propose_update_freezes_material_versions_and_replays_without_duplicate():
+    from apps.opspilot.models import CheckItem, MaterialVersion, PageEvidence, PageVersion
+    from apps.opspilot.services.wiki.check_service import decide_check
+    from apps.opspilot.services.wiki.update_service import propose_update
+
+    kb = _kb()
+    material = _material(kb)
+    old_material_version = MaterialVersion.objects.create(
+        material=material,
+        content_hash="old-hash",
+    )
+    new_material_version = MaterialVersion.objects.create(
+        material=material,
+        content_hash="new-hash",
+    )
+    material.current_version = new_material_version
+    material.content_hash = new_material_version.content_hash
+    material.save(update_fields=["current_version", "content_hash", "updated_at"])
+    page = _page(kb, "Update", "mixed", body="kept body")
+    PageEvidence.objects.create(
+        page=page,
+        material=material,
+        material_version=old_material_version,
+    )
+
+    first = propose_update(
+        material,
+        operator="admin",
+        generator=lambda page, material: "candidate body",
+    )
+    check = CheckItem.objects.get(
+        knowledge_base=kb,
+        check_type="material_update",
+        status="open",
+    )
+
+    assert first.counts["pending_review"] == 1
+    assert {(item["material_id"], item["content_hash"]) for item in check.decision_context["participants"]} == {
+        (material.id, old_material_version.content_hash),
+        (material.id, new_material_version.content_hash),
+    }
+    assert check.decision_context["incoming"]["material_version_id"] == new_material_version.id
+
+    rule = decide_check(check, "keep_current", operator="admin")
+    version_count = PageVersion.objects.filter(page=page).count()
+    second = propose_update(
+        material,
+        operator="admin",
+        generator=lambda page, material: "candidate body",
+    )
+
+    assert second.counts == {"new": 0, "updated": 0, "unchanged": 1, "pending_review": 0}
+    assert not CheckItem.objects.filter(knowledge_base=kb, status="open").exists()
+    assert PageVersion.objects.filter(page=page).count() == version_count
+    trace = second.inputs["source_trace"]["page_actions"][0]
+    assert trace["decision_reused"] is True
+    assert trace["rule_id"] == rule.id
+    assert trace["action"] == "keep_current"
+
+
+@pytest.mark.django_db
+def test_apply_material_update_requires_material_context():
+    from apps.opspilot.models import CheckItem, PageVersion
+    from apps.opspilot.services.wiki.update_service import apply_material_update
+
+    kb = _kb()
+    page = _page(kb, "MissingContext", "mixed", body="kept")
+    version_count = PageVersion.objects.filter(page=page).count()
+
+    with pytest.raises(ValueError, match="material context is required"):
+        apply_material_update(page, "candidate", operator="admin")
+
+    assert not CheckItem.objects.filter(knowledge_base=kb).exists()
+    assert PageVersion.objects.filter(page=page).count() == version_count
+
+
+@pytest.mark.django_db
+def test_propose_update_unchanged_refreshes_frozen_evidence_idempotently():
+    from apps.opspilot.models import CheckItem, MaterialVersion, PageEvidence
+    from apps.opspilot.services.wiki.update_service import propose_update
+
+    kb = _kb()
+    material = _material(kb)
+    old_version = MaterialVersion.objects.create(material=material, content_hash="old-hash")
+    new_version = MaterialVersion.objects.create(material=material, content_hash="new-hash")
+    material.current_version = new_version
+    material.content_hash = new_version.content_hash
+    material.save(update_fields=["current_version", "content_hash", "updated_at"])
+    page = _page(kb, "UnchangedUpdate", "mixed", body="same body")
+    evidence = PageEvidence.objects.create(
+        page=page,
+        material=material,
+        material_version=old_version,
+        locator="stable-locator",
+    )
+
+    first = propose_update(material, generator=lambda page, material: "same body")
+
+    assert first.counts == {"new": 0, "updated": 0, "unchanged": 1, "pending_review": 0}
+    evidence.refresh_from_db()
+    assert evidence.material_version_id == old_version.id
+    assert evidence.locator == "stable-locator"
+    assert (
+        PageEvidence.objects.filter(
+            page=page,
+            material=material,
+            material_version=new_version,
+        ).count()
+        == 1
+    )
+    assert not CheckItem.objects.filter(knowledge_base=kb).exists()
+
+    second = propose_update(material, generator=lambda page, material: "same body")
+
+    assert second.counts["unchanged"] == 1
+    assert PageEvidence.objects.filter(page=page, material=material).count() == 2
+    assert (
+        PageEvidence.objects.filter(
+            page=page,
+            material=material,
+            material_version=new_version,
+        ).count()
+        == 1
+    )
+    evidence.refresh_from_db()
+    assert evidence.material_version_id == old_version.id
+    assert evidence.locator == "stable-locator"
+
+
+@pytest.mark.django_db
+def test_propose_update_after_use_new_reuses_exact_evidence_version():
+    from apps.opspilot.models import CheckItem, MaterialVersion, PageEvidence
+    from apps.opspilot.services.wiki.check_service import decide_check
+    from apps.opspilot.services.wiki.update_service import propose_update
+
+    kb = _kb()
+    material = _material(kb)
+    old_version = MaterialVersion.objects.create(material=material, content_hash="v1")
+    new_version = MaterialVersion.objects.create(material=material, content_hash="v2")
+    material.current_version = new_version
+    material.content_hash = new_version.content_hash
+    material.save(update_fields=["current_version", "content_hash", "updated_at"])
+    page = _page(kb, "ExactEvidence", "mixed", body="version one")
+    PageEvidence.objects.create(page=page, material=material, material_version=old_version)
+
+    first = propose_update(material, generator=lambda page, material: "version two")
+    assert first.counts["pending_review"] == 1
+    check = CheckItem.objects.get(
+        knowledge_base=kb,
+        check_type="material_update",
+        status="open",
+    )
+    decide_check(check, "use_new", operator="admin")
+
+    second = propose_update(material, generator=lambda page, material: "version two")
+
+    assert second.counts == {
+        "new": 0,
+        "updated": 0,
+        "unchanged": 1,
+        "pending_review": 0,
+    }
+    assert PageEvidence.objects.filter(page=page, material=material).count() == 2
+    assert (
+        PageEvidence.objects.filter(
+            page=page,
+            material=material,
+            material_version=new_version,
+        ).count()
+        == 1
+    )
+    assert (
+        PageEvidence.objects.filter(
+            page=page,
+            material=material,
+            material_version=old_version,
+        ).count()
+        == 1
+    )

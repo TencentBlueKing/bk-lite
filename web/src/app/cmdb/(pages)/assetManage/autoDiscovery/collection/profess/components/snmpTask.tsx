@@ -2,8 +2,8 @@
 
 import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
-import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
@@ -22,8 +22,14 @@ import {
   normalizeCredentialPool,
   buildCredentialPool,
 } from '../hooks/formatTaskValues';
-import { Form, InputNumber, Select, Spin, Switch } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
+import { Form, InputNumber, Select, Spin, Switch, Tooltip } from 'antd';
 import CredentialPoolEditor from './credentialPoolEditor';
+import { buildSnmpCredentialHelp } from './credentialHelp';
+
+const LONG_TOOLTIP_OVERLAY_STYLE = {
+  maxWidth: 'min(520px, calc(100vw - 48px))',
+};
 
 interface SNMPTaskFormProps {
   onClose: () => void;
@@ -41,8 +47,8 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const baseRef = useRef<BaseTaskRef>(null as any);
-  const localeContext = useLocale();
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
   const initialFormValues = {
@@ -188,9 +194,8 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
   return (
     <Spin spinning={loading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="horizontal"
-        labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
         onFinish={onFinish}
         initialValues={initialFormValues}
       >
@@ -224,9 +229,18 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
               getFieldValue('hasNetworkTopo') ? (
                 <>
                   <Form.Item
-                    label={t('Collection.SNMPTask.topologyProtocols')}
+                    label={
+                      <span>
+                        {t('Collection.SNMPTask.topologyProtocols')}
+                        <Tooltip
+                          overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
+                          title={t('Collection.SNMPTask.topologyProtocolsHelp')}
+                        >
+                          <QuestionCircleOutlined className="ml-1 cursor-help text-gray-400" />
+                        </Tooltip>
+                      </span>
+                    }
                     name="topologyProtocols"
-                    extra={t('Collection.SNMPTask.topologyProtocolsHelp')}
                   >
                     <Select
                       mode="multiple"
@@ -238,11 +252,20 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
                     />
                   </Form.Item>
                   <Form.Item
-                    label={t('Collection.SNMPTask.topologyFallbackStrategy')}
+                    label={
+                      <span>
+                        {t('Collection.SNMPTask.topologyFallbackStrategy')}
+                        <Tooltip
+                          overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
+                          title={t(
+                            'Collection.SNMPTask.topologyFallbackStrategyHelp'
+                          )}
+                        >
+                          <QuestionCircleOutlined className="ml-1 cursor-help text-gray-400" />
+                        </Tooltip>
+                      </span>
+                    }
                     name="topologyFallbackStrategy"
-                    extra={t(
-                      'Collection.SNMPTask.topologyFallbackStrategyHelp'
-                    )}
                   >
                     <Select
                       placeholder={t('common.selectTip')}
@@ -253,9 +276,18 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
                     />
                   </Form.Item>
                   <Form.Item
-                    label={t('Collection.SNMPTask.minConfidence')}
+                    label={
+                      <span>
+                        {t('Collection.SNMPTask.minConfidence')}
+                        <Tooltip
+                          overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
+                          title={t('Collection.SNMPTask.minConfidenceHelp')}
+                        >
+                          <QuestionCircleOutlined className="ml-1 cursor-help text-gray-400" />
+                        </Tooltip>
+                      </span>
+                    }
                     name="minConfidence"
-                    extra={t('Collection.SNMPTask.minConfidenceHelp')}
                   >
                     <InputNumber
                       min={0}
@@ -272,7 +304,11 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
           </Form.Item>
 
           <Form.Item name="credentialPool">
-            <CredentialPoolEditor credentialShape="snmp" editMode={Boolean(editId)} />
+            <CredentialPoolEditor
+              credentialShape="snmp"
+              editMode={Boolean(editId)}
+              credentialHelp={buildSnmpCredentialHelp(t)}
+            />
           </Form.Item>
         </BaseTaskForm>
       </Form>

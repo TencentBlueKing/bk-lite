@@ -11,7 +11,7 @@ import React, {
 } from 'react';
 import { Button, Tag, Tabs, Spin } from 'antd';
 import VirtualList from 'rc-virtual-list';
-import OperateModal from '@/app/monitor/components/operate-drawer';
+import OperateModal from '@/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
 import {
   ModalRef,
@@ -32,6 +32,7 @@ import {
   useAlertTypeMap
 } from '@/app/monitor/hooks';
 import useMonitorApi from '@/app/monitor/api';
+import { fetchAllMonitorMetrics } from '@/app/monitor/api/fetchMetricCatalogPages';
 import useEventApi from '@/app/monitor/api/event';
 import Information from './information';
 import EventHeatMap, { getHeatMapCellColor } from '@/components/heat-map';
@@ -124,7 +125,9 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const getMetrics = async (row: TableDataItem, id: React.Key) => {
       setPageLoading(true);
       try {
-        const data = await getMonitorMetrics({ monitor_object_id: id });
+        const { items: data } = await fetchAllMonitorMetrics(getMonitorMetrics, {
+          monitor_object_id: id
+        });
         const metricInfo =
           data.find(
             (item: MetricItem) =>

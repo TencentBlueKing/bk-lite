@@ -30,11 +30,14 @@ class TimeoutChecker:
 
         logger.info("[AlertRecovery] 开始检查会话超时，观察中的告警数=%s", observing_alerts.count())
 
+        from apps.alerts.utils.queryset import iter_queryset_in_pk_batches
+
         confirmed_count = 0
-        for alert in observing_alerts:
-            if alert.session_end_time <= now:
-                TimeoutChecker._confirm_session_alert(alert)
-                confirmed_count += 1
+        for batch in iter_queryset_in_pk_batches(observing_alerts, batch_size=200):
+            for alert in batch:
+                if alert.session_end_time <= now:
+                    TimeoutChecker._confirm_session_alert(alert)
+                    confirmed_count += 1
 
         logger.info("[AlertRecovery] 会话超时检查完成，确认告警数=%s", confirmed_count)
         return confirmed_count
@@ -47,9 +50,10 @@ class TimeoutChecker:
         session_status: observing -> confirmed
         保持 Alert 处于活跃状态（不自动关闭）
         """
-        alert.session_status = SessionStatus.CONFIRMED
-        alert.save(update_fields=["session_status", "updated_at"])
-        TimeoutChecker._trigger_auto_assignment(alert)
+        with transaction.atomic():
+            alert.session_status = SessionStatus.CONFIRMED
+            alert.save(update_fields=["session_status", "updated_at"])
+            TimeoutChecker._trigger_auto_assignment(alert)
 
         logger.info(
             "[AlertRecovery] 会话窗口超时确认: alert_id=%s, fingerprint=%s, session_end_time=%s",
@@ -59,47 +63,29 @@ class TimeoutChecker:
     @staticmethod
     def _trigger_auto_assignment(alert: Alert):
         """会话转正后触发一次自动分派"""
-        from apps.alerts.tasks import async_auto_assignment_for_alerts
+        from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
 
-        try:
-            async_auto_assignment_for_alerts.delay([alert.alert_id])
-            logger.info(
-                "[AlertRecovery] 会话窗口告警触发自动分派: alert_id=%s, session_status=%s",
-                alert.alert_id,
-                alert.session_status,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.exception(
-                "[AlertRecovery] 会话窗口告警触发自动分派失败 alert_id=%s, error=%s",
-                alert.alert_id,
-                exc,
-            )
+        dispatch_alert_lifecycle([alert.alert_id], "created", auto_assign=True)
+        logger.info(
+            "[AlertRecovery] 会话窗口告警持久化自动分派意图: alert_id=%s, session_status=%s",
+            alert.alert_id,
+            alert.session_status,
+        )
 
     @staticmethod
     def _trigger_auto_assignment_for_alert_ids(alert_ids):
-        """在事务提交后批量触发自动分派"""
+        """批量持久化自动分派意图；调用方负责事务边界。"""
         if not alert_ids:
             return
 
-        from apps.alerts.tasks import async_auto_assignment_for_alerts
-
         unique_alert_ids = list(dict.fromkeys(alert_ids))
+        from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
 
-        def _dispatch():
-            try:
-                async_auto_assignment_for_alerts.delay(unique_alert_ids)
-                logger.info(
-                    "[AlertRecovery] 策略变更确认后触发自动分派: alert_ids=%s",
-                    unique_alert_ids,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(
-                    "[AlertRecovery] 策略变更确认后触发自动分派失败 alert_ids=%s, error=%s",
-                    unique_alert_ids,
-                    exc,
-                )
-
-        transaction.on_commit(_dispatch)
+        dispatch_alert_lifecycle(unique_alert_ids, "created", auto_assign=True)
+        logger.info(
+            "[AlertRecovery] 策略变更确认后持久化自动分派意图: count=%s",
+            len(unique_alert_ids),
+        )
 
     @staticmethod
     def confirm_observing_alerts_by_strategy(strategy_id: int):
@@ -123,18 +109,24 @@ class TimeoutChecker:
 
         confirmed_count = 0
         confirmed_alert_ids = []
-        for alert in observing_alerts:
-            alert.session_status = SessionStatus.CONFIRMED
-            alert.save(update_fields=["session_status", "updated_at"])
-            confirmed_count += 1
-            confirmed_alert_ids.append(alert.alert_id)
+        from apps.alerts.utils.queryset import iter_queryset_in_pk_batches
 
-            logger.info(
-                "[AlertRecovery] 策略变更确认告警: strategy_id=%s, alert_id=%s, fingerprint=%s",
-                strategy_id, alert.alert_id, alert.fingerprint,
+        with transaction.atomic():
+            for batch in iter_queryset_in_pk_batches(observing_alerts, batch_size=200):
+                for alert in batch:
+                    alert.session_status = SessionStatus.CONFIRMED
+                    alert.save(update_fields=["session_status", "updated_at"])
+                    confirmed_count += 1
+                    confirmed_alert_ids.append(alert.alert_id)
+
+                    logger.info(
+                        "[AlertRecovery] 策略变更确认告警: strategy_id=%s, alert_id=%s, fingerprint=%s",
+                        strategy_id, alert.alert_id, alert.fingerprint,
+                    )
+
+            TimeoutChecker._trigger_auto_assignment_for_alert_ids(
+                confirmed_alert_ids
             )
-
-        TimeoutChecker._trigger_auto_assignment_for_alert_ids(confirmed_alert_ids)
 
         logger.info(
             "[AlertRecovery] 策略变更确认完成: strategy_id=%s, 确认告警数=%s",
@@ -164,17 +156,20 @@ class TimeoutChecker:
         )
 
         closed_count = 0
-        for alert in observing_alerts:
-            original_status = alert.status
-            alert.status = AlertStatus.CLOSED
-            alert.session_status = SessionStatus.RECOVERED
-            alert.save(update_fields=["status", "updated_at","session_status"])
-            closed_count += 1
+        from apps.alerts.utils.queryset import iter_queryset_in_pk_batches
 
-            logger.info(
-                "[AlertRecovery] 会话策略删除关闭告警: strategy_id=%s, alert_id=%s, fingerprint=%s, 原状态=%s, session_status=OBSERVING",
-                strategy_id, alert.alert_id, alert.fingerprint, original_status,
-            )
+        for batch in iter_queryset_in_pk_batches(observing_alerts, batch_size=200):
+            for alert in batch:
+                original_status = alert.status
+                alert.status = AlertStatus.CLOSED
+                alert.session_status = SessionStatus.RECOVERED
+                alert.save(update_fields=["status", "updated_at", "session_status"])
+                closed_count += 1
+
+                logger.info(
+                    "[AlertRecovery] 会话策略删除关闭告警: strategy_id=%s, alert_id=%s, fingerprint=%s, 原状态=%s, session_status=OBSERVING",
+                    strategy_id, alert.alert_id, alert.fingerprint, original_status,
+                )
 
         logger.info(
             "[AlertRecovery] 会话策略删除关闭完成: strategy_id=%s, 关闭观察中告警数=%s",

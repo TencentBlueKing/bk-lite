@@ -1,6 +1,6 @@
 """CMDB 实例视图剩余分支覆盖：拓扑、全文检索、导入/导出、show_field、模型实例计数、代理列表。
 
-对照 spec/prd/CMDB·资产：拓扑查询、全文检索（含校验）、Excel 导入导出、展示字段配置、
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：拓扑查询、全文检索（含校验）、Excel 导入导出、展示字段配置、
 按模型实例计数、云区域代理列表（节点管理）。
 """
 
@@ -33,6 +33,10 @@ def _perm(monkeypatch):
     monkeypatch.setattr(
         f"{VIEWS}.CmdbRulesFormatUtil.format_user_groups_permissions",
         lambda request, model_id="", permission_type=None: {1: {"permission_instances_map": {}, "inst_names": []}},
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_model_info",
+        lambda model_id: {"model_id": model_id, "model_name": model_id, "is_visible": True},
     )
     monkeypatch.setattr(
         f"{VIEWS}.InstanceViewSet.require_instance_permission",

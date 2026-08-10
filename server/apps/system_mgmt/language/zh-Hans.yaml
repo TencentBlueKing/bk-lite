@@ -1,4 +1,6 @@
 error:
+  network_whitelist_required: 目标 IP 不在白名单内，请前往系统管理的白名单管理中添加。
+  go_to_network_whitelist: 前往白名单管理
   detail_not_supported: 不支持详情查询
   update_not_supported: 不支持修改
   not_authorized: 未授权
@@ -52,6 +54,52 @@ error:
   invalid_group_ids: '组织ID不存在: {ids}'
   group_selection_required: 至少选择一个组织
   normal_group_required: 至少选择一个普通组织
+  no_permission_access_group: 无权访问该组织
+  no_permission_access_user: 无权访问该用户
+  system_error: 系统错误，请联系管理员
+  api_not_enabled: 接口未启用
+  password_required: 密码不能为空
+  password_too_short: 密码长度不能少于{min_length}个字符
+  password_too_long: 密码长度不能超过{max_length}个字符
+  password_missing_char_types: '密码必须包含：{types}'
+  password_invalid_characters: 密码包含非法字符，只允许使用ASCII可打印字符
+  initial_password_generation_failed: 无法生成符合当前密码策略的随机初始密码
+  invalid_phone: 手机号格式不正确
+  initial_password_not_configured: 本地用户初始密码未配置
+  initial_password_email_channel_unavailable: 初始密码邮件通道不存在或不可用
+  initial_password_email_channel_invalid: 初始密码邮件通道不是 email 类型
+  initial_password_email_required: 初始密码邮件通知需要用户邮箱
+  initial_password_decrypt_failed: 统一初始密码解密失败，请重新设置初始密码
+  synced_groups_local_users_forbidden: 同步组织不能包含本地管理用户
+  synced_group_membership_immutable: 同步组织成员关系不能在本地修改
+  channel_team_required: 请选择渠道所属组织
+  custom_menu_group_display_name_exists: 应用 {app} 下已存在相同显示名称的菜单组
+  custom_menu_group_enabled_exists: 应用 {app} 已有启用的菜单组，每个应用只能启用一个菜单组
+  custom_menu_group_name_exists: 应用 {app} 下已存在名称为 {display_name} 的菜单组
+  network_required: 网段不能为空
+  invalid_network: '非法的 CIDR/IP: {network}'
+  forbidden_network_supernet: 禁止添加 0.0.0.0/0 或 ::/0（等于关闭全部防护）
+  domain_name_required: 域名不能为空
+  invalid_domain_name_characters: '域名包含非法字符: {domain}'
+  invalid_domain_name_wildcard: '通配域名仅支持 *.example.com 形式: {domain}'
+  domain_name_leading_dot: 域名不能以前导点开头
+  network_whitelist_type_immutable: 白名单条目类型不可变更
+  network_or_domain_required: network 与 domain_name 必须且只能填写其中一个
+  network_or_domain_exists: 网段或域名已存在
+  app_required: 缺少 app 参数
+  enabled_menu_group_not_found: 未找到应用 {app} 的启用菜单组
+  current_team_required: 缺少 current_team 参数
+  invalid_current_team: current_team 参数非法
+  invalid_group_id: group_id 参数非法
+  group_ids_list_required: group_ids 参数是必填的列表
+  group_ids_must_be_list: group_ids 必须是列表
+  user_ids_list_required: user_ids 必须是非空列表
+  invalid_user_status_action: action 必须是 enable、disable 或 unlock
+  invalid_user_ids: '非法的用户 ID: {ids}'
+  synced_users_delete_forbidden: 同步用户不能直接删除，请从用户同步源中删除。
+  synced_group_child_creation_forbidden: 同步组织下不能手动创建子组织
+  synced_child_group_name_immutable: 同步子组织名称不能修改
+  synced_groups_delete_forbidden: 同步组织不能直接删除
 success:
   menu_group_disabled: 菜单组已禁用
   batch_create: 批量创建成功
@@ -61,9 +109,16 @@ success:
   batch_update_order: 成功更新菜单排序
   menu_group_enabled: 菜单组已启用
   update_order: 排序更新成功
+  menu_group_copied: 菜单组复制成功
+password:
+  char_type_uppercase: 大写字母
+  char_type_lowercase: 小写字母
+  char_type_digit: 数字
+  char_type_special: 特殊符号
 login:
   incorrect_password_with_attempts: 用户名或密码错误。剩余尝试次数:{attempts} 次。
   password_expired: 您的密码已过期,请立即修改密码。
+  password_expired_contact_admin: 您的密码已过期,请联系管理员重置密码。
   password_expiring_soon: 您的密码将在 {days} 天后过期,请尽快修改密码。
   account_locked: 账号已被锁定,请在 {minutes} 分钟后重试。
   account_locked_too_many_attempts: 由于登录失败次数过多,账号已被锁定。请在 {minutes} 分钟后重试。
@@ -79,6 +134,7 @@ app:
   system-manager: 涵盖用户和组织角色权限管理，通过精细化权限控制，确保资源访问安全，同时提升操作效率。提供灵活的配置和管理，满足不同业务需求
   node: 用于集中管理各个云区域下的节点，为各个节点安装各类探针，以便进行监控数据、配置信息、日志等信息的采集
   job: 快速创建并执行作业，统一管理脚本执行、文件分发和定时任务
+  patch: 集中管理系统补丁，支持补丁扫描、安装与补丁库维护，帮助持续降低安全风险。
 action_type:
   create: 创建
   delete: 删除
@@ -93,3 +149,7 @@ tag:
   script_management: 脚本管理
   file_distribution: 文件分发
   scheduled_task: 定时任务
+  # patch
+  patch_scan: 补丁扫描
+  patch_install: 补丁安装
+  patch_library: 补丁库

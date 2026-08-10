@@ -17,6 +17,11 @@ import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import { useSkill } from '@/app/opspilot/context/skillContext';
 import { getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
+import {
+  buildSkillSaveTools,
+  buildStudioRuntimeTools,
+  normalizeMonitorToolConfigs,
+} from '@/app/opspilot/utils/monitorToolConfig';
 import { DeleteOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 
@@ -112,7 +117,7 @@ const SkillSettingsPage: React.FC = () => {
 
         setQuantity(data.conversation_window_size !== undefined ? data.conversation_window_size : 10);
 
-        setSelectedTools(data.tools as SelectTool[]);
+        setSelectedTools(normalizeMonitorToolConfigs(data.tools as SelectTool[]));
         setToolEnabled(!!data.tools.length);
         setSelectedSkillAssetKeys((data.skill_packages || []).map((pkg: SkillPackage) => getPackageKey(pkg)));
 
@@ -167,12 +172,7 @@ const SkillSettingsPage: React.FC = () => {
         temperature: temperature,
         show_think: values.show_think,
         guide: values.guide,
-        tools: selectedTools.map((tool: any) => ({
-          id: tool.id,
-          name: tool.rawName || tool.name,
-          icon: tool.icon,
-          kwargs: tool.kwargs.filter((kwarg: any) => kwarg.key),
-        })),
+        tools: buildSkillSaveTools(selectedTools),
         enable_suggest: values.enable_suggest,
         enable_query_rewrite: values.enable_query_rewrite,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
@@ -250,13 +250,6 @@ const SkillSettingsPage: React.FC = () => {
         user_message: userMessageArray,
         llm_model: values.llmModel,
         skill_prompt: values.prompt,
-        chat_history: chatHistory,
-        conversation_window_size: chatHistoryEnabled ? quantity : undefined,
-        temperature: temperature,
-        show_think: values.show_think,
-        tools: selectedTools,
-        skill_type: 1,
-        group: values.group?.[0],
         skill_name: values.name,
         skill_id: id,
         enable_suggest: values.enable_suggest,
@@ -276,14 +269,9 @@ const SkillSettingsPage: React.FC = () => {
         conversation_window_size: chatHistoryEnabled ? quantity : undefined,
         temperature: temperature,
         show_think: values.show_think,
-        tools: selectedTools,
+        tools: buildStudioRuntimeTools(selectedTools),
         skill_type: 1,
         group: values.group?.[0],
-        skill_name: values.name,
-        skill_id: id,
-        enable_suggest: values.enable_suggest,
-        enable_query_rewrite: values.enable_query_rewrite,
-        skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
       };
 
       return {
@@ -701,7 +689,7 @@ const SkillSettingsPage: React.FC = () => {
                     {showToolEnabled && (
                       <ToolSelector
                         defaultTools={selectedTools}
-                        onChange={(selected: SelectTool[]) => setSelectedTools(selected)}
+                        onChange={(selected: SelectTool[]) => setSelectedTools(normalizeMonitorToolConfigs(selected))}
                       />
                     )}
                   </Form>

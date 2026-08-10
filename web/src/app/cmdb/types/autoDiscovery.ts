@@ -35,6 +35,12 @@ export interface CollectTaskMessage {
   association_success: number;
   message?: string;
   last_time?: string;
+  raw_total?: number;
+  raw_host?: number;
+  raw_process?: number;
+  raw_dropped?: number;
+  raw_retained?: number;
+  raw_truncated?: boolean;
 }
 
 export interface CredentialPoolItem {
@@ -54,7 +60,29 @@ export interface CredentialPoolItem {
   authkey?: string;
   privkey?: string;
   snmp_port?: number | string;
+  https_port?: number | string;
   [key: string]: any;
+}
+
+export interface CredentialFieldSchema {
+  key: string;
+  type: 'string' | 'password' | 'integer' | 'boolean';
+  required: boolean;
+  default?: string | number | boolean;
+  min?: number;
+  max?: number;
+  label: string;
+  label_key?: string;
+  help?: string;
+  help_key?: string;
+}
+
+export interface CredentialSchema {
+  schema_version: number;
+  allow_multiple: boolean;
+  allow_unknown_fields: boolean;
+  encrypted_fields: string[];
+  fields: CredentialFieldSchema[];
 }
 
 export interface CollectTask {
@@ -84,7 +112,12 @@ export interface TreeNode {
   name: string;
   type?: string;
   task_type?: string;
+  credential_protocol?: string;
+  credential_kind?: string;
+  credential_default_port?: number;
+  credential_tip_key?: string;
   encrypted_fields?: string[];
+  credential_schema?: CredentialSchema;
   tag?: string[];
   desc?: string;
   children?: TreeNode[];
@@ -99,7 +132,12 @@ export interface ModelItem {
   name: string;
   type?: string;
   task_type?: string;
+  credential_protocol?: string;
+  credential_kind?: string;
+  credential_default_port?: number;
+  credential_tip_key?: string;
   encrypted_fields?: string[];
+  credential_schema?: CredentialSchema;
   tag?: string[];
   desc?: string;
   tabItems?: TreeNode[];
@@ -136,6 +174,9 @@ export interface BaseTaskFormProps {
 export interface TaskData {
   data: any[];
   count: number;
+  total_count?: number;
+  retained_count?: number;
+  truncated?: boolean;
 }
 
 export interface TopologyLinkRow {
@@ -190,6 +231,25 @@ export interface StatisticCardConfig {
   showFailed?: boolean;
 }
 
+export type NodeMgmtSyncStatus =
+  | 'unexecuted'
+  | 'waiting_sync'
+  | 'running'
+  | 'submitted'
+  | 'success'
+  | 'partial_success'
+  | 'blocked'
+  | 'failed'
+  | 'timeout';
+
+export interface NodeMgmtSyncHealth {
+  schedule_status: 'healthy' | 'reconciling' | 'degraded';
+  node_config_status: 'healthy' | 'waiting_sync' | 'reconciling' | 'degraded' | 'disabled' | 'unknown';
+  last_reconciled_at: string | null;
+  reason_code: string;
+  message: string;
+}
+
 export interface NodeMgmtSyncTask {
   id: number;
   name: string;
@@ -198,6 +258,13 @@ export interface NodeMgmtSyncTask {
   auto_collect_enabled: boolean;
   sync_interval_minutes: number;
   collect_interval_minutes: number;
+  version: number;
+  schedule_status: NodeMgmtSyncHealth['schedule_status'];
+  node_config_status: NodeMgmtSyncHealth['node_config_status'];
+  last_reconciled_at: string | null;
+  reconcile_error_code: string;
+  reconcile_error_message: string;
+  health: NodeMgmtSyncHealth;
   last_sync_at: string | null;
   last_collect_at: string | null;
 }
@@ -208,7 +275,12 @@ export type NodeMgmtSyncSummary = CollectTaskMessage;
 
 export interface NodeMgmtSyncItem {
   id?: string | number;
+  _row_key?: string;
+  model_id?: string;
   inst_name?: string;
+  name?: string;
+  pid?: string | number;
+  ip?: string;
   ip_addr?: string;
   cloud_name?: string;
   organization?: Array<number | string>;
@@ -232,8 +304,11 @@ export interface NodeMgmtSyncRun {
   task_id?: number | null;
   run_type: string | null;
   status: string | null;
+  reason_code?: string;
   started_at: string | null;
+  submitted_at?: string | null;
   finished_at: string | null;
+  deadline_at?: string | null;
   message: CollectTaskMessage;
   summary: NodeMgmtSyncSummary;
   detail: NodeMgmtSyncDetailData;
@@ -244,8 +319,19 @@ export interface NodeMgmtSyncDisplayPayload {
   task: NodeMgmtSyncTask;
   display_source: string;
   display_schema: string;
+  can_view_raw_detail?: boolean;
   message: CollectTaskMessage;
   summary: NodeMgmtSyncSummary;
   detail: NodeMgmtSyncDetailData;
   run: NodeMgmtSyncRun;
+}
+
+export interface NodeMgmtSyncRowsPage {
+  total_count: number;
+  retained_count: number;
+  matched_retained_count: number;
+  truncated: boolean;
+  page: number;
+  page_size: number;
+  data: NodeMgmtSyncItem[];
 }

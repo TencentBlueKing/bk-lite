@@ -30,8 +30,11 @@ i18n:
 collect-static:
 	uv run python manage.py collectstatic --noinput
 
+DEV_HOST ?= 0.0.0.0
+DEV_PORT ?= 8011
+
 dev:
-	uv run uvicorn asgi:application --host 0.0.0.0 --port 8011 --reload --workers 1
+	uv run uvicorn asgi:application --host $(DEV_HOST) --port $(DEV_PORT) --reload --workers 1
 
 clean-migrate:
 	cd apps &&\
@@ -52,6 +55,9 @@ celery-inspect:
 
 start-nats:
 	uv run python manage.py nats_listener
+
+devshell:
+	uv run python manage.py shell
 
 test:
 	uv run pytest

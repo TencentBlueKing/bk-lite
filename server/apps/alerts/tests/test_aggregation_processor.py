@@ -1,6 +1,6 @@
 """聚合处理器辅助方法覆盖测试。
 
-对照 spec/prd/告警中心·配置：相关性规则按时间窗口取事件、缺失检查参数归一与心跳上下文。
+对照 specs/capabilities/legacy-prd-告警中心-配置.md：相关性规则按时间窗口取事件、缺失检查参数归一与心跳上下文。
 """
 
 import datetime
@@ -10,10 +10,10 @@ import pytest
 from django.utils import timezone
 
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
-from apps.alerts.constants.constants import EventAction, HeartbeatCheckMode
+from apps.alerts.constants.constants import AlertStatus, EventAction, HeartbeatCheckMode
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.alert_source import AlertSource
-from apps.alerts.models.models import Event
+from apps.alerts.models.models import Alert, Event
 
 
 # --------------------------------------------------------------------------
@@ -101,6 +101,111 @@ def test_get_events_for_strategy_within_window(source):
     strategy = AlarmStrategy.objects.create(name="s", strategy_type="smart_denoise", params={"window_size": 60})
     events = AggregationProcessor.get_events_for_strategy(strategy, now)
     assert events.filter(event_id="E1").exists()
+
+
+@pytest.mark.parametrize("closed_status", AlertStatus.CLOSED_STATUS)
+@pytest.mark.django_db
+def test_get_events_for_strategy_excludes_event_linked_to_closed_alert_of_same_strategy(source, closed_status):
+    now = timezone.now()
+    event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=now,
+        event_id="E-CLOSED",
+        action=EventAction.CREATED,
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="same-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    alert = Alert.objects.create(
+        alert_id="A-CLOSED",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-closed",
+        status=closed_status,
+        rule_id=str(strategy.id),
+    )
+    alert.events.add(event)
+
+    events = AggregationProcessor.get_events_for_strategy(strategy, now)
+
+    assert not events.filter(pk=event.pk).exists()
+
+
+@pytest.mark.django_db
+def test_get_events_for_strategy_keeps_event_linked_to_active_alert_of_same_strategy(source):
+    now = timezone.now()
+    event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=now,
+        event_id="E-ACTIVE",
+        action=EventAction.CREATED,
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="active-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    alert = Alert.objects.create(
+        alert_id="A-ACTIVE",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-active",
+        status=AlertStatus.PENDING,
+        rule_id=str(strategy.id),
+    )
+    alert.events.add(event)
+
+    events = AggregationProcessor.get_events_for_strategy(strategy, now)
+
+    assert events.filter(pk=event.pk).exists()
+
+
+@pytest.mark.django_db
+def test_get_events_for_strategy_keeps_event_linked_to_closed_alert_of_other_strategy(source):
+    now = timezone.now()
+    event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=now,
+        event_id="E-OTHER-STRATEGY",
+        action=EventAction.CREATED,
+    )
+    current_strategy = AlarmStrategy.objects.create(
+        name="current-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    other_strategy = AlarmStrategy.objects.create(
+        name="other-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    alert = Alert.objects.create(
+        alert_id="A-OTHER-STRATEGY",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-other-strategy",
+        status=AlertStatus.AUTO_RECOVERY,
+        rule_id=str(other_strategy.id),
+    )
+    alert.events.add(event)
+
+    events = AggregationProcessor.get_events_for_strategy(current_strategy, now)
+
+    assert events.filter(pk=event.pk).exists()
 
 
 @pytest.mark.django_db
@@ -210,6 +315,54 @@ def test_process_aggregation_smart_denoise_creates_alert(source):
 
     AggregationProcessor().process_aggregation()
     assert Alert.objects.exists()
+
+
+@pytest.mark.django_db
+def test_process_aggregation_reports_alert_creation_failure(source, mocker):
+    """告警组创建失败必须让本轮聚合失败，不能继续上报“聚合成功”。"""
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.models import Level
+
+    for lid in (0, 1, 2):
+        Level.objects.create(
+            level_id=lid,
+            level_name=f"L{lid}",
+            level_display_name=f"等级{lid}",
+            level_type=LevelType.ALERT,
+        )
+
+    Event.objects.create(
+        source=source,
+        raw_data={},
+        title="CPU高",
+        level="1",
+        start_time=timezone.now(),
+        event_id="E-create-fails",
+        action=EventAction.CREATED,
+        service="svc-a",
+        resource_name="host1",
+        item="cpu",
+        external_id="ext-create-fails",
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="创建失败降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[[{"key": "title", "operator": "eq", "value": "CPU高"}]],
+        params={"window_size": 60, "group_by": ["service"]},
+    )
+    mocker.patch(
+        "apps.alerts.aggregation.builder.alert_builder.AlertBuilder.create_or_update_alert",
+        side_effect=RuntimeError("alert write failed"),
+    )
+
+    with pytest.raises(RuntimeError, match="1 个告警组创建失败"):
+        AggregationProcessor().process_aggregation()
+
+    strategy.refresh_from_db()
+    assert strategy.last_execute_time is None
 
 
 @pytest.mark.django_db
@@ -381,6 +534,7 @@ def test_get_events_for_strategy_excludes_shielded(source):
 @pytest.mark.django_db
 def test_trigger_missing_alert_schedules_auto_assignment(source):
     from unittest import mock
+    from apps.alerts.models import AlertOutbox
 
     strategy = _missing_strategy()
     proc = AggregationProcessor()
@@ -388,13 +542,164 @@ def test_trigger_missing_alert_schedules_auto_assignment(source):
     with mock.patch(
         "apps.alerts.aggregation.processor.aggregation_processor.transaction.on_commit",
         side_effect=lambda fn: fn(),
-    ), mock.patch.object(AggregationProcessor, "_schedule_auto_assignment") as scheduled:
-        proc._trigger_missing_alert(strategy, strategy.params, timezone.now(), None)
+    ):
+        alert = proc._trigger_missing_alert(strategy, strategy.params, timezone.now(), None)
 
-    scheduled.assert_called_once()
-    alert_ids = scheduled.call_args.args[0]
-    assert isinstance(alert_ids, list) and len(alert_ids) == 1
-    assert alert_ids[0].startswith("ALERT-")
+    assert alert.alert_id.startswith("ALERT-")
+    records = {record.kind: record for record in AlertOutbox.objects.all()}
+    assert records["auto_assignment"].payload == {"alert_ids": [alert.alert_id]}
+    assert records["action"].payload == {"alert_id": alert.alert_id, "event_name": "created"}
+
+
+# --------------------------------------------------------------------------
+# UNASSIGNED 重试缺口:存量未分派告警收到新事件必须重进分派链
+# --------------------------------------------------------------------------
+
+
+def _setup_levels():
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.models import Level
+
+    for lid in (0, 1, 2):
+        Level.objects.create(
+            level_id=lid,
+            level_name=f"L{lid}",
+            level_display_name=f"等级{lid}",
+            level_type=LevelType.ALERT,
+        )
+
+
+def _denoise_strategy(**param_over):
+    params = {"window_size": 60, "group_by": ["service"]}
+    params.update(param_over)
+    return AlarmStrategy.objects.create(
+        name="重试缺口降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[[{"key": "title", "operator": "eq", "value": "CPU高"}]],
+        params=params,
+    )
+
+
+def _cpu_event(source, event_id):
+    return Event.objects.create(
+        source=source, raw_data={}, title="CPU高", level="1", start_time=timezone.now(),
+        event_id=event_id, action=EventAction.CREATED, service="svc-a",
+        resource_name="host1", item="cpu", external_id=f"ext-{event_id}",
+    )
+
+
+@pytest.mark.django_db
+def test_existing_unassigned_alert_retried_on_new_event(source):
+    """已有 UNASSIGNED 告警收到同指纹新事件时,必须重新进入自动分派链路。
+
+    死亡序列(2026-07-23 生产事故):首次分派失败/0 命中后告警停留 UNASSIGNED,
+    后续事件只更新 last_event_time,is_new_alert=False 导致永远不再触发分派。
+    """
+    from apps.alerts.models import AlertOutbox
+    from apps.alerts.models.models import Alert
+
+    _setup_levels()
+    _denoise_strategy()
+
+    # 第一轮:建出告警并进分派链(模拟首次分派 0 命中,告警停留 UNASSIGNED)
+    _cpu_event(source, "E-r1")
+    AggregationProcessor().process_aggregation()
+    alert = Alert.objects.get()
+    assert alert.status == "unassigned"
+
+    # 首轮分派 0 命中后，原 outbox 已 DELIVERED；生产环境不会删除该记录。
+    from apps.alerts.service.outbox import deliver_outbox_record
+
+    first_assignment = AlertOutbox.objects.get(kind="auto_assignment")
+    assert deliver_outbox_record(first_assignment.pk) is True
+    first_assignment.refresh_from_db()
+    assert first_assignment.status == AlertOutbox.Status.DELIVERED
+
+    # 第二轮:同指纹新事件到达
+    _cpu_event(source, "E-r2")
+    AggregationProcessor().process_aggregation()
+
+    alert.refresh_from_db()
+    assert alert.status == "unassigned"
+    assignment_rows = list(AlertOutbox.objects.filter(kind="auto_assignment"))
+    assert len(assignment_rows) == 2, "存量 UNASSIGNED 告警收到新事件后未创建新的分派尝试"
+    assert all(
+        alert.alert_id in (record.payload.get("alert_ids") or [])
+        for record in assignment_rows
+    )
+
+
+@pytest.mark.django_db
+def test_pending_alert_not_retriggered_on_new_event(source):
+    """已分派(PENDING)的告警收到新事件时,不应重复进入分派链路。"""
+    from apps.alerts.constants.constants import AlertStatus
+    from apps.alerts.models import AlertOutbox
+    from apps.alerts.models.models import Alert
+
+    _setup_levels()
+    _denoise_strategy()
+
+    _cpu_event(source, "E-p1")
+    AggregationProcessor().process_aggregation()
+    alert = Alert.objects.get()
+    Alert.objects.filter(pk=alert.pk).update(status=AlertStatus.PENDING)
+    AlertOutbox.objects.all().delete()
+
+    _cpu_event(source, "E-p2")
+    AggregationProcessor().process_aggregation()
+
+    assert not AlertOutbox.objects.filter(kind="auto_assignment").exists()
+
+
+@pytest.mark.django_db
+def test_observing_session_alert_not_retriggered_on_new_event(source):
+    """会话观察期(OBSERVING)告警仍由超时确认链路负责,新事件不得触发分派。"""
+    from apps.alerts.models import AlertOutbox
+    from apps.alerts.models.models import Alert
+
+    _setup_levels()
+    _denoise_strategy(time_out=True, session_timeout=30)
+
+    _cpu_event(source, "E-s1")
+    AggregationProcessor().process_aggregation()
+    alert = Alert.objects.get()
+    assert alert.is_session_alert and alert.session_status == "observing"
+    AlertOutbox.objects.all().delete()
+
+    _cpu_event(source, "E-s2")
+    AggregationProcessor().process_aggregation()
+
+    alert.refresh_from_db()
+    assert alert.session_status == "observing"
+    assert not AlertOutbox.objects.filter(kind="auto_assignment").exists()
+
+
+@pytest.mark.django_db
+def test_auto_assignment_dispatch_failure_does_not_fail_aggregation(source, mocker):
+    """分派调度异常不得让整轮聚合失败。
+
+    _schedule_auto_assignment 依赖 outbox/celery 等外部资源,其失败不应阻断聚合:
+    告警照常建/更新、last_execute_time 正常推进(避免下轮重扫整个窗口),
+    故障由 ERROR 日志暴露,重试由后续轮次/兜底任务负责。
+    """
+    from apps.alerts.models.models import Alert
+
+    _setup_levels()
+    strategy = _denoise_strategy()
+    _cpu_event(source, "E-dispatch-fails")
+    mocker.patch(
+        "apps.alerts.aggregation.processor.aggregation_processor.AggregationProcessor._schedule_auto_assignment",
+        side_effect=RuntimeError("outbox down"),
+    )
+
+    AggregationProcessor().process_aggregation()
+
+    strategy.refresh_from_db()
+    assert Alert.objects.exists()
+    assert strategy.last_execute_time is not None
 
 
 # --------------------------------------------------------------------------

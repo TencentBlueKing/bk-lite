@@ -1,0 +1,208 @@
+import pytest
+
+from apps.apm.config import CELERY_BEAT_SCHEDULE
+from apps.apm.services.contracts import CatalogReconcileResult
+from apps.apm.services.health import CATALOG_RECONCILE_HEALTH_KEY, RuntimeDependencyHealthProbe
+from apps.apm.tasks import probe_apm_runtime_dependencies, reconcile_telemetry_catalog
+
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture
+def real_cache(settings):
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "apm-reconcile-health-test",
+        }
+    }
+    from django.core.cache import cache
+
+    cache.clear()
+    yield cache
+    cache.clear()
+
+
+def test_catalog_reconcile_is_a_runtime_beat_task_and_not_batch_init():
+    schedule = CELERY_BEAT_SCHEDULE["apm_reconcile_telemetry_catalog"]
+
+    assert schedule["task"] == "apps.apm.tasks.reconcile_telemetry_catalog"
+    assert reconcile_telemetry_catalog.retry_kwargs["max_retries"] == 5
+    assert reconcile_telemetry_catalog.retry_backoff_max == 300
+    with open("apps/core/management/commands/batch_init.py", encoding="utf-8") as file:
+        batch_init = file.read()
+        assert "reconcile_telemetry_catalog" not in batch_init
+        assert "probe_apm_runtime_dependencies" not in batch_init
+    assert CELERY_BEAT_SCHEDULE["apm_probe_runtime_dependencies"]["task"] == ("apps.apm.tasks.probe_apm_runtime_dependencies")
+
+
+def test_runtime_task_returns_reconcile_health_without_startup_side_effects(mocker):
+    mocker.patch("apps.apm.tasks.cache.add", return_value=True)
+    delete = mocker.patch("apps.apm.tasks.cache.delete")
+    set_health = mocker.patch("apps.apm.tasks.cache.set")
+    reconcile = mocker.patch(
+        "apps.apm.tasks.TelemetryCatalogReconciler.reconcile",
+        return_value=CatalogReconcileResult(2, 3, 1, 4, 5),
+    )
+
+    result = reconcile_telemetry_catalog.run()
+
+    assert result == {
+        "discovered_services": 2,
+        "discovered_instances": 3,
+        "missing_instance_identities": 1,
+        "archived_services": 4,
+        "archived_instances": 5,
+        "unknown_applications": 0,
+        "invalid_activities": 0,
+    }
+    reconcile.assert_called_once()
+    delete.assert_called_once()
+    assert set_health.call_args.args[0] == CATALOG_RECONCILE_HEALTH_KEY
+    assert set_health.call_args.args[1]["status"] == "ok"
+
+
+def test_health_endpoint_exposes_reconcile_degradation_without_storage_details(apm_api_client, real_cache):
+    real_cache.set(
+        CATALOG_RECONCILE_HEALTH_KEY,
+        {"status": "degraded", "last_failed_at": "2026-07-30T10:00:00+00:00"},
+        timeout=None,
+    )
+
+    response = apm_api_client.get("/api/v1/apm/health/")
+
+    assert response.status_code == 200
+    assert response.data["catalog_reconcile"] == {
+        "status": "degraded",
+        "last_failed_at": "2026-07-30T10:00:00+00:00",
+    }
+    assert response.data["regional_collector"]["status"] == "pending"
+    assert response.data["nats_publish"]["status"] == "pending"
+    assert response.data["jetstream"]["status"] == "pending"
+    assert response.data["system_collector"]["status"] == "pending"
+    assert response.data["victoria_traces"]["status"] == "pending"
+    assert response.data["victoria_traces_retention"]["status"] == "pending"
+    assert response.data["notification_responder"]["status"] == "pending"
+    assert response.data["policy_evaluation"]["status"] == "pending"
+    assert response.data["notification_delivery"]["status"] == "pending"
+
+
+class FakeResponse:
+    def __init__(self, healthy=True, *, text="", payload=None):
+        self.healthy = healthy
+        self.text = text
+        self.payload = payload or {}
+
+    def raise_for_status(self):
+        if not self.healthy:
+            import requests
+
+            raise requests.HTTPError("unavailable")
+
+    def json(self):
+        return self.payload
+
+
+class FakeSession:
+    def __init__(self):
+        self.calls = []
+
+    def get(self, endpoint, auth, timeout, params=None):
+        self.calls.append((endpoint, auth, timeout, params))
+        if endpoint.endswith("/metrics"):
+            return FakeResponse(
+                text=(
+                    "bklite_apm_nats_publish_acks_total 12\n"
+                    'otelcol_exporter_queue_size{exporter="nats_jetstream"} 10\n'
+                    'otelcol_exporter_queue_capacity{exporter="nats_jetstream"} 100\n'
+                )
+            )
+        if endpoint.endswith("/jsz"):
+            return FakeResponse(
+                payload={
+                    "account_details": [
+                        {
+                            "stream_detail": [
+                                {
+                                    "name": "APM_TRACES",
+                                    "state": {"bytes": 100, "messages": 2},
+                                    "consumer_detail": [
+                                        {
+                                            "name": "BKLITE_APM_SYSTEM",
+                                            "num_pending": 2,
+                                            "num_ack_pending": 1,
+                                            "num_redelivered": 3,
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            )
+        return FakeResponse(healthy="traces" not in endpoint)
+
+
+def test_runtime_dependency_probe_is_bounded_and_hides_endpoints(monkeypatch):
+    monkeypatch.setenv("APM_REGIONAL_COLLECTOR_HEALTH_ENDPOINT", "http://regional:13133/")
+    monkeypatch.setenv("APM_REGIONAL_COLLECTOR_METRICS_ENDPOINT", "http://regional:8888/metrics")
+    monkeypatch.setenv("APM_NATS_MONITOR_ENDPOINT", "http://nats:8222")
+    monkeypatch.setenv("APM_SYSTEM_COLLECTOR_HEALTH_ENDPOINT", "http://system:13133/")
+    monkeypatch.setenv("APM_VICTORIATRACES_HEALTH_ENDPOINT", "http://traces:10428/health")
+    session = FakeSession()
+
+    result = RuntimeDependencyHealthProbe(session=session).probe()
+
+    assert result["regional_collector"]["status"] == "ok"
+    assert result["nats_publish"]["publish_acks"] == 12
+    assert result["nats_publish"]["queue_capacity_percent"] == 10
+    assert result["jetstream"]["stream_messages"] == 2
+    assert result["jetstream"]["consumer_pending"] == 2
+    assert result["system_collector"]["status"] == "ok"
+    assert result["victoria_traces"]["status"] == "degraded"
+    assert result["victoria_traces"]["error_code"] == "victoria_traces_unavailable"
+    assert result["victoria_traces_retention"]["status"] == "ok"
+    assert all(call[2] == (1, 2) for call in session.calls)
+    assert "endpoint" not in str(result)
+
+
+def test_runtime_dependency_probe_degrades_short_retention_and_critical_stream(monkeypatch):
+    monkeypatch.setenv("APM_TRACE_RETENTION", "30d")
+    monkeypatch.setenv("APM_NATS_MONITOR_ENDPOINT", "http://nats:8222")
+    monkeypatch.setenv("APM_NATS_STREAM_MAX_BYTES", "100")
+    session = FakeSession()
+
+    result = RuntimeDependencyHealthProbe(session=session).probe()
+
+    assert result["victoria_traces_retention"]["status"] == "degraded"
+    assert result["victoria_traces_retention"]["error_code"] == "victoria_traces_retention_too_short"
+    assert result["jetstream"]["status"] == "degraded"
+    assert result["jetstream"]["error_code"] == "jetstream_capacity_critical"
+
+
+def test_runtime_dependency_probe_marks_missing_alert_responder_degraded(monkeypatch):
+    class NotificationClient:
+        def probe_notification_channel(self, channel_id):
+            assert channel_id == 7
+            return {"result": False, "code": "responder_unavailable"}
+
+    monkeypatch.setattr(RuntimeDependencyHealthProbe, "_alert_copy_channel_ids", staticmethod(lambda: [7]))
+
+    result = RuntimeDependencyHealthProbe(
+        session=FakeSession(),
+        notification_client=NotificationClient(),
+    ).probe()
+
+    assert result["notification_responder"]["status"] == "degraded"
+    assert result["notification_responder"]["error_code"] == "notification_responder_unavailable"
+    assert "last_failed_at" in result["notification_responder"]
+
+
+def test_runtime_dependency_probe_task_only_updates_runtime_cache(mocker):
+    result = {"collector": {"status": "ok"}}
+    mocker.patch("apps.apm.tasks.RuntimeDependencyHealthProbe.probe", return_value=result)
+    set_health = mocker.patch("apps.apm.tasks.cache.set")
+
+    assert probe_apm_runtime_dependencies.run() == result
+    assert set_health.call_args.args[1] == result
+    assert set_health.call_args.kwargs["timeout"] is None

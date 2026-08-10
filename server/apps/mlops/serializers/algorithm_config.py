@@ -1,14 +1,14 @@
 from rest_framework import serializers
 
 from apps.mlops.models import AlgorithmConfig
+from apps.mlops.utils.container_image import is_valid_container_image_reference
+from apps.mlops.utils.i18n import serializer_message
 
 
 class AlgorithmConfigSerializer(serializers.ModelSerializer):
     """算法配置序列化器"""
 
-    algorithm_type_display = serializers.CharField(
-        source="get_algorithm_type_display", read_only=True
-    )
+    algorithm_type_display = serializers.CharField(source="get_algorithm_type_display", read_only=True)
 
     class Meta:
         model = AlgorithmConfig
@@ -17,6 +17,16 @@ class AlgorithmConfigSerializer(serializers.ModelSerializer):
             "created_by": {"read_only": True},
             "updated_by": {"read_only": True},
         }
+
+    def validate_image(self, value):
+        if not is_valid_container_image_reference(value):
+            raise serializers.ValidationError(
+                serializer_message(
+                    self,
+                    "error.container_image_reference_invalid",
+                )
+            )
+        return value
 
     def validate_form_config(self, value):
         """
@@ -27,21 +37,37 @@ class AlgorithmConfigSerializer(serializers.ModelSerializer):
 
         # 基本结构检查
         if not isinstance(value, dict):
-            raise serializers.ValidationError("form_config 必须是一个对象")
+            raise serializers.ValidationError(
+                serializer_message(
+                    self,
+                    "error.form_config_must_be_object",
+                )
+            )
 
         # 验证 hyperopt_config 结构（如果存在）
         if "hyperopt_config" in value:
             hyperopt = value["hyperopt_config"]
             if not isinstance(hyperopt, list):
-                raise serializers.ValidationError("hyperopt_config 必须是一个数组")
+                raise serializers.ValidationError(
+                    serializer_message(
+                        self,
+                        "error.hyperopt_config_must_be_array",
+                    )
+                )
             for item in hyperopt:
                 if not isinstance(item, dict):
                     raise serializers.ValidationError(
-                        "hyperopt_config 中的每项必须是对象"
+                        serializer_message(
+                            self,
+                            "error.hyperopt_config_item_must_be_object",
+                        )
                     )
                 if "key" not in item:
                     raise serializers.ValidationError(
-                        "hyperopt_config 中的每项必须包含 key 字段"
+                        serializer_message(
+                            self,
+                            "error.hyperopt_config_item_key_required",
+                        )
                     )
 
         return value
@@ -50,9 +76,7 @@ class AlgorithmConfigSerializer(serializers.ModelSerializer):
 class AlgorithmConfigListSerializer(serializers.ModelSerializer):
     """算法配置列表序列化器 - 用于下拉选择，不返回完整的 form_config"""
 
-    algorithm_type_display = serializers.CharField(
-        source="get_algorithm_type_display", read_only=True
-    )
+    algorithm_type_display = serializers.CharField(source="get_algorithm_type_display", read_only=True)
 
     class Meta:
         model = AlgorithmConfig

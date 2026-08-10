@@ -1,6 +1,6 @@
 """CMDB 权限规则格式化工具覆盖测试。
 
-对照 spec/prd/CMDB·资产：实例/模型按组织与实例级权限规则判定可见/可操作。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：实例/模型按组织与实例级权限规则判定可见/可操作。
 """
 
 from types import SimpleNamespace

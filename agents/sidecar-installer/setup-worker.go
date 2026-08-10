@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,17 +26,66 @@ import (
 // 默认值 5s 在弱网或大包场景下容易触发 "read pipe: i/o timeout"（Issue #2985）。
 const objectStoreMaxWait = 60 * time.Second
 
+var (
+	controllerPackageMaxDownloadBytes int64 = 4 * 1024 * 1024 * 1024
+	controllerPackageMaxExpandedBytes int64 = 8 * 1024 * 1024 * 1024
+	controllerPackageMaxFiles               = 100000
+)
+
+const windowsServiceTransitionAttempts = 30
+
 type Config struct {
-	ServerURL  string        `json:"server_url"`
-	APIToken   string        `json:"api_token"`
-	NodeID     string        `json:"node_id"`
-	NodeName   string        `json:"node_name"`
-	ZoneID     string        `json:"zone_id"`
-	GroupID    string        `json:"group_id"`
-	OS         string        `json:"os"`
-	InstallDir string        `json:"install_dir"`
-	Package    PackageConfig `json:"package"`
-	Storage    StorageConfig `json:"storage"`
+	ServerURL                string                 `json:"server_url"`
+	APIToken                 string                 `json:"api_token"`
+	NodeID                   string                 `json:"node_id"`
+	NodeName                 string                 `json:"node_name"`
+	ZoneID                   string                 `json:"zone_id"`
+	GroupID                  string                 `json:"group_id"`
+	OS                       string                 `json:"os"`
+	InstallDir               string                 `json:"install_dir"`
+	SkipTLSVerification      bool                   `json:"-"`
+	RemoteTaskNodeID         int64                  `json:"-"`
+	RemoteAttempt            int                    `json:"-"`
+	RemoteExecutionID        string                 `json:"-"`
+	RemoteDeadlineUnix       int64                  `json:"-"`
+	RemoteLeaseValidator     func() error           `json:"-"`
+	ClockValidation          *ClockValidationConfig `json:"clock_validation,omitempty"`
+	Package                  PackageConfig          `json:"package"`
+	Storage                  StorageConfig          `json:"storage"`
+	sessionRequestStartedAt  time.Time
+	sessionRequestFinishedAt time.Time
+}
+
+func (cfg *Config) UnmarshalJSON(data []byte) error {
+	type configAlias Config
+	var decoded configAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if raw, exists := fields["clock_validation"]; exists && string(bytes.TrimSpace(raw)) == "null" {
+		return fmt.Errorf("clock_validation must not be null")
+	}
+
+	*cfg = Config(decoded)
+	return nil
+}
+
+type ClockValidationConfig struct {
+	ServerTimeUnixMS int64 `json:"server_time_unix_ms"`
+	MaxSkewSeconds   int64 `json:"max_skew_seconds"`
+}
+
+type ClockSkewResult struct {
+	NodeTime       time.Time
+	ServerTime     time.Time
+	OffsetSeconds  float64
+	SkewSeconds    float64
+	MaxSkewSeconds int64
 }
 
 type PackageConfig struct {
@@ -59,52 +110,197 @@ type StorageConfig struct {
 }
 
 type InstallerEvent struct {
-	Step            string `json:"step"`
-	Status          string `json:"status"`
-	Message         string `json:"message,omitempty"`
-	Progress        *int   `json:"progress,omitempty"`
-	Downloaded      int64  `json:"downloaded_bytes,omitempty"`
-	Total           int64  `json:"total_bytes,omitempty"`
-	Timestamp       string `json:"timestamp"`
-	Error           string `json:"error,omitempty"`
-	ErrorType       string `json:"error_type,omitempty"`
-	Bucket          string `json:"bucket,omitempty"`
-	FileKey         string `json:"file_key,omitempty"`
-	FileName        string `json:"file_name,omitempty"`
-	PackageName     string `json:"package_name,omitempty"`
-	CPUArchitecture string `json:"cpu_architecture,omitempty"`
-	InstallDir      string `json:"install_dir,omitempty"`
-	TargetPath      string `json:"target_path,omitempty"`
-	ExitCode        *int   `json:"exit_code,omitempty"`
+	Step                string  `json:"step"`
+	Status              string  `json:"status"`
+	Message             string  `json:"message,omitempty"`
+	Progress            *int    `json:"progress,omitempty"`
+	Downloaded          int64   `json:"downloaded_bytes,omitempty"`
+	Total               int64   `json:"total_bytes,omitempty"`
+	Timestamp           string  `json:"timestamp"`
+	StepIndex           int     `json:"step_index,omitempty"`
+	StepTotal           int     `json:"step_total,omitempty"`
+	Error               string  `json:"error,omitempty"`
+	ErrorType           string  `json:"error_type,omitempty"`
+	Bucket              string  `json:"bucket,omitempty"`
+	FileKey             string  `json:"file_key,omitempty"`
+	FileName            string  `json:"file_name,omitempty"`
+	PackageName         string  `json:"package_name,omitempty"`
+	CPUArchitecture     string  `json:"cpu_architecture,omitempty"`
+	InstallDir          string  `json:"install_dir,omitempty"`
+	TargetPath          string  `json:"target_path,omitempty"`
+	ExitCode            *int    `json:"exit_code,omitempty"`
+	NodeTime            string  `json:"node_time,omitempty"`
+	ServerTime          string  `json:"server_time,omitempty"`
+	ClockOffsetSeconds  float64 `json:"clock_offset_seconds,omitempty"`
+	ClockSkewSeconds    float64 `json:"clock_skew_seconds,omitempty"`
+	MaxClockSkewSeconds int64   `json:"max_clock_skew_seconds,omitempty"`
+}
+
+var installerStepSequence = []string{
+	"fetch_session",
+	"clock_check",
+	"prepare_directories",
+	"download_package",
+	"extract_package",
+	"configure_runtime",
+	"run_package_installer",
+	"complete",
+}
+
+func installerStepPosition(step string) (int, int) {
+	for index, candidate := range installerStepSequence {
+		if step == candidate {
+			return index + 1, len(installerStepSequence)
+		}
+	}
+	return 0, 0
 }
 
 type EventOptions struct {
-	ErrorType       string
-	Bucket          string
-	FileKey         string
-	FileName        string
-	PackageName     string
-	CPUArchitecture string
-	InstallDir      string
-	TargetPath      string
-	ExitCode        *int
+	ErrorType           string
+	Bucket              string
+	FileKey             string
+	FileName            string
+	PackageName         string
+	CPUArchitecture     string
+	InstallDir          string
+	TargetPath          string
+	ExitCode            *int
+	NodeTime            string
+	ServerTime          string
+	ClockOffsetSeconds  float64
+	ClockSkewSeconds    float64
+	MaxClockSkewSeconds int64
 }
 
+type progressPublisher interface {
+	Publish(subject string, payload []byte) error
+}
+
+type progressFlusher interface {
+	FlushTimeout(timeout time.Duration) error
+}
+
+type InstallerEventReporter struct {
+	output      io.Writer
+	subject     string
+	executionID string
+	publisher   progressPublisher
+	pending     []string
+}
+
+var progressExecutionIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+func NewInstallerEventReporter(output io.Writer, subject, executionID string) (*InstallerEventReporter, error) {
+	subject = strings.TrimSpace(subject)
+	executionID = strings.TrimSpace(executionID)
+	if output == nil {
+		return nil, fmt.Errorf("event output is required")
+	}
+	if subject == "" && executionID == "" {
+		return &InstallerEventReporter{output: output}, nil
+	}
+	if !progressExecutionIDPattern.MatchString(executionID) {
+		return nil, fmt.Errorf("execution ID must be 32 lowercase hexadecimal characters")
+	}
+	expectedSubject := "installer.progress." + executionID
+	if subject != expectedSubject {
+		return nil, fmt.Errorf("progress subject must be %s", expectedSubject)
+	}
+	return &InstallerEventReporter{output: output, subject: subject, executionID: executionID}, nil
+}
+
+func (reporter *InstallerEventReporter) Attach(publisher progressPublisher) {
+	reporter.publisher = publisher
+	if publisher == nil {
+		return
+	}
+	for _, line := range reporter.pending {
+		reporter.publish(line)
+	}
+	reporter.pending = nil
+}
+
+func (reporter *InstallerEventReporter) Emit(event InstallerEvent) {
+	if strings.TrimSpace(event.Timestamp) == "" {
+		event.Timestamp = time.Now().UTC().Format(time.RFC3339)
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		payload = []byte(fmt.Sprintf(`{"step":%q,"status":%q,"message":%q}`, event.Step, event.Status, event.Message))
+	}
+	line := "BKINSTALL_EVENT " + string(payload)
+	_, _ = fmt.Fprintln(reporter.output, line)
+	if reporter.subject == "" {
+		return
+	}
+	if reporter.publisher == nil {
+		if len(reporter.pending) < 128 {
+			reporter.pending = append(reporter.pending, line)
+		}
+		return
+	}
+	reporter.publish(line)
+	if event.Status == "failed" || event.Step == "complete" {
+		if flusher, ok := reporter.publisher.(progressFlusher); ok {
+			_ = flusher.FlushTimeout(time.Second)
+		}
+	}
+}
+
+func (reporter *InstallerEventReporter) publish(line string) {
+	envelope, err := json.Marshal(map[string]string{
+		"execution_id": reporter.executionID,
+		"stream":       "stdout",
+		"line":         line,
+		"timestamp":    time.Now().UTC().Format(time.RFC3339),
+	})
+	if err == nil {
+		_ = reporter.publisher.Publish(reporter.subject, envelope)
+	}
+}
+
+var installerEventReporter, _ = NewInstallerEventReporter(os.Stdout, "", "")
+
 var (
-	configURL  = flag.String("url", "", "Configuration URL")
-	installDir = flag.String("install-dir", "", "Installation directory")
-	skipTLS    = flag.Bool("skip-tls", true, "Skip TLS certificate verification")
-	fetchOnly  = flag.Bool("fetch-only", false, "Only fetch and display config")
+	configURL         = flag.String("url", "", "Configuration URL")
+	configURLFile     = flag.String("url-file", "", "Read the configuration URL from a file")
+	installDir        = flag.String("install-dir", "", "Installation directory")
+	skipTLS           = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
+	requireHTTPS      = flag.Bool("require-https", false, "Require HTTPS for configuration and server URLs")
+	fetchOnly         = flag.Bool("fetch-only", false, "Only fetch and display config")
+	progressSubject   = flag.String("progress-subject", "", "NATS subject for live installation events")
+	executionID       = flag.String("execution-id", "", "Installation execution ID")
+	taskNodeID        = flag.Int64("task-node-id", 0, "Controller task node ID used for remote execution fencing")
+	executionAttempt  = flag.Int("attempt", 0, "Controller task attempt used for remote execution fencing")
+	executionDeadline = flag.Int64("deadline-unix", 0, "Non-extendable remote execution deadline")
 )
 
 func main() {
 	flag.Parse()
+	reporter, err := NewInstallerEventReporter(os.Stdout, *progressSubject, *executionID)
+	if err != nil {
+		fatal("Invalid progress configuration: %v", err)
+	}
+	installerEventReporter = reporter
 
-	if *configURL == "" {
-		fatal("--url is required")
+	resolvedConfigURL, err := resolveConfigURL(*configURL, *configURLFile)
+	if err != nil {
+		fatal("%v", err)
+	}
+	*configURL = resolvedConfigURL
+	if *requireHTTPS {
+		if err := validateHTTPSURL(*configURL); err != nil {
+			fatal("Invalid configuration URL: %v", err)
+		}
 	}
 
 	client := newHTTPClient(*skipTLS)
+	if *requireHTTPS {
+		client.CheckRedirect = func(request *http.Request, _ []*http.Request) error {
+			return validateHTTPSURL(request.URL.String())
+		}
+	}
 
 	if *fetchOnly {
 		cfg, err := fetchConfig(client, *configURL)
@@ -118,6 +314,40 @@ func main() {
 	run(client)
 }
 
+func resolveConfigURL(directURL, urlFile string) (string, error) {
+	directURL = strings.TrimSpace(directURL)
+	urlFile = strings.TrimSpace(urlFile)
+	if directURL != "" && urlFile != "" {
+		return "", fmt.Errorf("--url and --url-file cannot be used together")
+	}
+	if directURL != "" {
+		return directURL, nil
+	}
+	if urlFile == "" {
+		return "", fmt.Errorf("--url or --url-file is required")
+	}
+	content, err := os.ReadFile(urlFile)
+	if err != nil {
+		return "", fmt.Errorf("read configuration URL file: %w", err)
+	}
+	resolved := strings.TrimSpace(string(content))
+	if resolved == "" {
+		return "", fmt.Errorf("configuration URL file is empty")
+	}
+	return resolved, nil
+}
+
+func validateHTTPSURL(rawURL string) error {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" {
+		return fmt.Errorf("HTTPS URL is required")
+	}
+	return nil
+}
+
 func run(client *http.Client) {
 	log("Collector Sidecar Setup")
 	log("=======================")
@@ -128,7 +358,55 @@ func run(client *http.Client) {
 	if err != nil {
 		fatalStep("fetch_session", "Fetch failed: %v", err)
 	}
+	if *requireHTTPS {
+		if err := validateHTTPSURL(cfg.ServerURL); err != nil {
+			fatalStep("fetch_session", "Invalid server URL: %v", err)
+		}
+	}
+	if *progressSubject != "" {
+		progressConnection, progressErr := connectNATS(&cfg.Storage)
+		if progressErr != nil {
+			log("WARN: live installation progress unavailable: %v", progressErr)
+		} else {
+			installerEventReporter.Attach(progressConnection)
+			defer progressConnection.Close()
+		}
+	}
 	emitEvent("fetch_session", "success", "Installer session fetched", intPtr(100), 0, 0, "")
+	if cfg.ClockValidation != nil {
+		emitEvent("clock_check", "running", "Checking node and Server clocks", nil, 0, 0, "")
+		clockResult, clockErr := validateClockSkew(cfg)
+		if clockErr != nil {
+			errorType := ""
+			if clockResult != nil {
+				errorType = "clock_skew"
+			}
+			fatalStepWithOptions("clock_check", "Clock check failed: %v", clockErr, clockEventOptions(clockResult, errorType))
+		}
+		emitEventWithOptions(
+			"clock_check",
+			"success",
+			fmt.Sprintf("Node and Server clock skew is %.3f seconds", clockResult.SkewSeconds),
+			intPtr(100),
+			0,
+			0,
+			"",
+			clockEventOptions(clockResult, ""),
+		)
+	}
+	cfg.SkipTLSVerification = *skipTLS
+	cfg.RemoteTaskNodeID = *taskNodeID
+	cfg.RemoteAttempt = *executionAttempt
+	cfg.RemoteExecutionID = *executionID
+	cfg.RemoteDeadlineUnix = *executionDeadline
+	if cfg.RemoteExecutionID != "" {
+		cfg.RemoteLeaseValidator = func() error {
+			if _, err := fetchConfig(client, *configURL); err != nil {
+				return fmt.Errorf("validate active Windows remote installation lease: %w", err)
+			}
+			return nil
+		}
+	}
 	log("      Node: %s", cfg.NodeID)
 
 	if *installDir != "" {
@@ -150,7 +428,7 @@ func run(client *http.Client) {
 
 	log("[2/6] Preparing directories...")
 	emitEvent("prepare_directories", "running", "Preparing directories", nil, 0, 0, "")
-	if err := prepareDirs(cfg.InstallDir); err != nil {
+	if err := prepareInstallDirectories(cfg); err != nil {
 		fatalStep("prepare_directories", "Failed: %v", err)
 	}
 	emitEvent("prepare_directories", "success", "Directories prepared", intPtr(100), 0, 0, "")
@@ -167,6 +445,22 @@ func run(client *http.Client) {
 			fatalStepWithOptions("download_package", "Download failed: %v", err, downloadOptions)
 		}
 		emitEventWithOptions("download_package", "success", "Controller package downloaded", intPtr(100), 0, 0, "", downloadEventOptions(cfg))
+		if !isLinux(cfg.OS) {
+			log("[4/6] Staging and validating files...")
+			emitEventWithOptions("extract_package", "running", "Staging controller package", intPtr(0), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
+			installErr := installWindowsPackage(cfg, zipPath, &scWindowsServiceController{})
+			_ = os.Remove(zipPath)
+			if installErr != nil {
+				fatalStepWithOptions("run_package_installer", "Transactional Windows installation failed: %v", installErr, eventOptionsForExecError(installErr, &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}))
+			}
+			emitEventWithOptions("extract_package", "success", "Controller package staged and activated", intPtr(100), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
+			emitEvent("configure_runtime", "success", "Installer runtime configured", intPtr(100), 0, 0, "")
+			emitEventWithOptions("run_package_installer", "success", "Package installer finished", intPtr(100), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture})
+			log("")
+			log("Installation complete!")
+			emitEvent("complete", "success", "Installation complete", intPtr(100), 0, 0, "")
+			return
+		}
 
 		log("[4/6] Extracting files...")
 		emitEventWithOptions("extract_package", "running", "Extracting controller package", intPtr(0), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
@@ -228,6 +522,7 @@ func emitEvent(step, status, message string, progress *int, downloaded, total in
 }
 
 func emitEventWithOptions(step, status, message string, progress *int, downloaded, total int64, errMsg string, options *EventOptions) {
+	stepIndex, stepTotal := installerStepPosition(step)
 	event := InstallerEvent{
 		Step:       step,
 		Status:     status,
@@ -236,6 +531,8 @@ func emitEventWithOptions(step, status, message string, progress *int, downloade
 		Downloaded: downloaded,
 		Total:      total,
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		StepIndex:  stepIndex,
+		StepTotal:  stepTotal,
 		Error:      errMsg,
 	}
 	if options != nil {
@@ -248,13 +545,17 @@ func emitEventWithOptions(step, status, message string, progress *int, downloade
 		event.InstallDir = strings.TrimSpace(options.InstallDir)
 		event.TargetPath = strings.TrimSpace(options.TargetPath)
 		event.ExitCode = options.ExitCode
+		event.NodeTime = strings.TrimSpace(options.NodeTime)
+		event.ServerTime = strings.TrimSpace(options.ServerTime)
+		event.ClockOffsetSeconds = options.ClockOffsetSeconds
+		event.ClockSkewSeconds = options.ClockSkewSeconds
+		event.MaxClockSkewSeconds = options.MaxClockSkewSeconds
 	}
-	payload, err := json.Marshal(event)
-	if err != nil {
-		fmt.Printf("BKINSTALL_EVENT %s\n", fmt.Sprintf(`{"step":"%s","status":"%s","message":"%s"}`, step, status, message))
-	} else {
-		fmt.Printf("BKINSTALL_EVENT %s\n", string(payload))
+	if installerEventReporter.subject == "" {
+		// Keep the historical stdout seam replaceable by tests and embedders.
+		installerEventReporter.output = os.Stdout
 	}
+	installerEventReporter.Emit(event)
 	os.Stdout.Sync()
 }
 
@@ -279,6 +580,62 @@ func fatalStepWithOptions(step, format string, err error, options *EventOptions)
 
 func intValuePtr(v int) *int {
 	return &v
+}
+
+func validateClockSkew(cfg *Config) (*ClockSkewResult, error) {
+	if cfg == nil || cfg.ClockValidation == nil {
+		return nil, nil
+	}
+	validation := cfg.ClockValidation
+	if validation.ServerTimeUnixMS <= 0 || validation.MaxSkewSeconds <= 0 {
+		return nil, fmt.Errorf("invalid clock validation contract")
+	}
+	if cfg.sessionRequestStartedAt.IsZero() || cfg.sessionRequestFinishedAt.IsZero() || cfg.sessionRequestFinishedAt.Before(cfg.sessionRequestStartedAt) {
+		return nil, fmt.Errorf("invalid installer session timing")
+	}
+
+	nodeTime := cfg.sessionRequestStartedAt.Add(cfg.sessionRequestFinishedAt.Sub(cfg.sessionRequestStartedAt) / 2)
+	serverTime := time.UnixMilli(validation.ServerTimeUnixMS)
+	offsetMillis := nodeTime.UnixMilli() - validation.ServerTimeUnixMS
+	skewMillis := offsetMillis
+	if skewMillis < 0 {
+		skewMillis = -skewMillis
+	}
+	result := &ClockSkewResult{
+		NodeTime:       nodeTime,
+		ServerTime:     serverTime,
+		OffsetSeconds:  float64(offsetMillis) / 1000,
+		SkewSeconds:    float64(skewMillis) / 1000,
+		MaxSkewSeconds: validation.MaxSkewSeconds,
+	}
+	if skewMillis <= validation.MaxSkewSeconds*1000 {
+		return result, nil
+	}
+
+	direction := "ahead of"
+	if offsetMillis < 0 {
+		direction = "behind"
+	}
+	return result, fmt.Errorf(
+		"node clock is %.3f seconds %s Server; maximum allowed skew is %d seconds; synchronize the node clock with NTP and retry",
+		result.SkewSeconds,
+		direction,
+		validation.MaxSkewSeconds,
+	)
+}
+
+func clockEventOptions(result *ClockSkewResult, errorType string) *EventOptions {
+	if result == nil {
+		return &EventOptions{ErrorType: errorType}
+	}
+	return &EventOptions{
+		ErrorType:           errorType,
+		NodeTime:            result.NodeTime.UTC().Format(time.RFC3339Nano),
+		ServerTime:          result.ServerTime.UTC().Format(time.RFC3339Nano),
+		ClockOffsetSeconds:  result.OffsetSeconds,
+		ClockSkewSeconds:    result.SkewSeconds,
+		MaxClockSkewSeconds: result.MaxSkewSeconds,
+	}
 }
 
 func classifyDownloadError(err error) string {
@@ -329,6 +686,8 @@ func classifyInstallError(err error) string {
 	}
 	message := strings.ToLower(err.Error())
 	switch {
+	case strings.Contains(message, "previous installation retained"):
+		return "manual_recovery_required"
 	case strings.Contains(message, "permission denied") || strings.Contains(message, "operation not permitted"):
 		return "permission"
 	case strings.Contains(message, "exec format error"):
@@ -396,6 +755,7 @@ func newHTTPClient(skipTLS bool) *http.Client {
 }
 
 func fetchConfig(client *http.Client, url string) (*Config, error) {
+	requestStartedAt := time.Now()
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
@@ -407,10 +767,16 @@ func fetchConfig(client *http.Client, url string) (*Config, error) {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %v", err)
+	}
+
 	var cfg Config
-	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+	if err := json.Unmarshal(body, &cfg); err != nil {
 		return nil, fmt.Errorf("invalid JSON: %v", err)
 	}
+	requestFinishedAt := time.Now()
 
 	if cfg.ZoneID == "" {
 		cfg.ZoneID = "1"
@@ -424,6 +790,8 @@ func fetchConfig(client *http.Client, url string) (*Config, error) {
 	if cfg.OS == "" {
 		cfg.OS = "windows"
 	}
+	cfg.sessionRequestStartedAt = requestStartedAt
+	cfg.sessionRequestFinishedAt = requestFinishedAt
 	return &cfg, nil
 }
 
@@ -519,17 +887,10 @@ func printConfig(cfg *Config) {
 	}
 }
 
-func downloadFromStorage(storage *StorageConfig) (string, error) {
+func connectNATS(storage *StorageConfig) (*nats.Conn, error) {
 	if strings.TrimSpace(storage.NATSServers) == "" {
-		return "", fmt.Errorf("missing nats_servers")
+		return nil, fmt.Errorf("missing nats_servers")
 	}
-	if strings.TrimSpace(storage.Bucket) == "" {
-		return "", fmt.Errorf("missing bucket")
-	}
-	if strings.TrimSpace(storage.FileKey) == "" {
-		return "", fmt.Errorf("missing file_key")
-	}
-
 	serverURL := normalizeNATSURL(storage.NATSProtocol, storage.NATSServers)
 	options := []nats.Option{}
 	if storage.NATSUsername != "" {
@@ -542,7 +903,7 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 		} else if strings.TrimSpace(storage.NATSTLSCA) != "" {
 			pool := x509.NewCertPool()
 			if !pool.AppendCertsFromPEM([]byte(storage.NATSTLSCA)) {
-				return "", fmt.Errorf("invalid nats_tls_ca PEM content")
+				return nil, fmt.Errorf("invalid nats_tls_ca PEM content")
 			}
 			tlsConfig.RootCAs = pool
 		}
@@ -551,7 +912,29 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 
 	nc, err := nats.Connect(serverURL, options...)
 	if err != nil {
-		return "", fmt.Errorf("connect nats failed: %w", err)
+		return nil, fmt.Errorf("connect nats failed: %w", err)
+	}
+	return nc, nil
+}
+
+func closeAndRemovePartialDownload(file io.Closer, path string, remove func(string) error) error {
+	return errors.Join(file.Close(), remove(path))
+}
+
+func downloadFromStorage(storage *StorageConfig) (string, error) {
+	if strings.TrimSpace(storage.NATSServers) == "" {
+		return "", fmt.Errorf("missing nats_servers")
+	}
+	if strings.TrimSpace(storage.Bucket) == "" {
+		return "", fmt.Errorf("missing bucket")
+	}
+	if strings.TrimSpace(storage.FileKey) == "" {
+		return "", fmt.Errorf("missing file_key")
+	}
+
+	nc, err := connectNATS(storage)
+	if err != nil {
+		return "", err
 	}
 	defer nc.Close()
 
@@ -576,25 +959,38 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 	if meta != nil {
 		totalSize = int64(meta.Size)
 	}
+	if totalSize > controllerPackageMaxDownloadBytes {
+		return "", fmt.Errorf("controller package exceeds download size limit: %d > %d", totalSize, controllerPackageMaxDownloadBytes)
+	}
 
 	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("sidecar-%d.zip", time.Now().UnixNano()))
 	f, err := os.Create(tmp)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 
+	limitedObject := io.LimitReader(obj, controllerPackageMaxDownloadBytes+1)
+	var downloaded int64
 	if totalSize > 0 {
 		pw := &progressWriter{total: totalSize, desc: "Downloading", step: "download_package"}
-		_, err = io.Copy(f, io.TeeReader(obj, pw))
+		downloaded, err = io.Copy(f, io.TeeReader(limitedObject, pw))
 		if err == nil && pw.lastPct < 100 {
 			emitEvent("download_package", "running", "Downloading", intPtr(100), totalSize, totalSize, "")
 		}
 	} else {
-		_, err = io.Copy(f, obj)
+		downloaded, err = io.Copy(f, limitedObject)
+	}
+	if downloaded > controllerPackageMaxDownloadBytes {
+		err = fmt.Errorf("controller package exceeds download size limit: %d", controllerPackageMaxDownloadBytes)
 	}
 	if err != nil {
-		os.Remove(tmp)
+		if cleanupErr := closeAndRemovePartialDownload(f, tmp, os.Remove); cleanupErr != nil {
+			return "", fmt.Errorf("%w; cleanup partial download: %v", err, cleanupErr)
+		}
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
 		return "", err
 	}
 
@@ -611,6 +1007,17 @@ func normalizeNATSURL(protocol, servers string) string {
 		proto = "nats"
 	}
 	return fmt.Sprintf("%s://%s", proto, trimmed)
+}
+
+func prepareInstallDirectories(cfg *Config) error {
+	if isLinux(cfg.OS) {
+		return prepareDirs(cfg.InstallDir)
+	}
+	installDir := filepath.Clean(cfg.InstallDir)
+	if installDir == "." || installDir == string(os.PathSeparator) {
+		return fmt.Errorf("unsafe Windows installation directory: %s", installDir)
+	}
+	return nil
 }
 
 func prepareDirs(base string) error {
@@ -655,6 +1062,9 @@ func download(client *http.Client, url string) (string, error) {
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
+	if resp.ContentLength > controllerPackageMaxDownloadBytes {
+		return "", fmt.Errorf("controller package exceeds download size limit: %d > %d", resp.ContentLength, controllerPackageMaxDownloadBytes)
+	}
 
 	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("sidecar-%d.zip", time.Now().UnixNano()))
 	f, err := os.Create(tmp)
@@ -662,16 +1072,21 @@ func download(client *http.Client, url string) (string, error) {
 		return "", err
 	}
 
+	limitedBody := io.LimitReader(resp.Body, controllerPackageMaxDownloadBytes+1)
+	var downloaded int64
 	if resp.ContentLength > 0 {
 		log("      Downloading... 0%%")
 		pw := &progressWriter{total: resp.ContentLength, desc: "Downloading", step: "download_package"}
-		_, err = io.Copy(f, io.TeeReader(resp.Body, pw))
+		downloaded, err = io.Copy(f, io.TeeReader(limitedBody, pw))
 		if pw.lastPct < 100 {
 			log("      Downloading... 100%%")
 			emitEvent("download_package", "running", "Downloading", intPtr(100), resp.ContentLength, resp.ContentLength, "")
 		}
 	} else {
-		_, err = io.Copy(f, resp.Body)
+		downloaded, err = io.Copy(f, limitedBody)
+	}
+	if downloaded > controllerPackageMaxDownloadBytes {
+		err = fmt.Errorf("controller package exceeds download size limit: %d", controllerPackageMaxDownloadBytes)
 	}
 	f.Close()
 
@@ -692,9 +1107,17 @@ func extract(zipPath, dest string) (int, error) {
 	stripPrefix := detectCommonPrefix(r.File)
 
 	totalFiles := 0
+	var expandedSize int64
 	for _, f := range r.File {
 		if !f.FileInfo().IsDir() {
 			totalFiles++
+			if totalFiles > controllerPackageMaxFiles {
+				return 0, fmt.Errorf("controller package contains too many files: %d > %d", totalFiles, controllerPackageMaxFiles)
+			}
+			if f.UncompressedSize64 > uint64(controllerPackageMaxExpandedBytes-expandedSize) {
+				return 0, fmt.Errorf("controller package expanded size exceeds limit: %d bytes", controllerPackageMaxExpandedBytes)
+			}
+			expandedSize += int64(f.UncompressedSize64)
 		}
 	}
 
@@ -794,6 +1217,24 @@ func detectCommonPrefix(files []*zip.File) string {
 }
 
 func writeConfig(cfg *Config) error {
+	return writeConfigTo(cfg, cfg.InstallDir)
+}
+
+func writeConfigTo(cfg *Config, outputDir string) error {
+	if strings.TrimSpace(cfg.Storage.NATSTLSCA) != "" {
+		certDir := filepath.Join(outputDir, "certs")
+		if err := os.MkdirAll(certDir, 0755); err != nil {
+			return fmt.Errorf("create NATS CA directory: %w", err)
+		}
+		certPath := filepath.Join(certDir, "nats-ca.crt")
+		if err := os.WriteFile(certPath, []byte(cfg.Storage.NATSTLSCA), 0600); err != nil {
+			return fmt.Errorf("write NATS CA: %w", err)
+		}
+		if err := restrictSensitiveFile(certPath); err != nil {
+			return fmt.Errorf("restrict NATS CA: %w", err)
+		}
+	}
+
 	escapePath := func(p string) string {
 		return strings.ReplaceAll(p, `\`, `\\`)
 	}
@@ -804,7 +1245,7 @@ server_api_token: "%s"
 node_id: "%s"
 node_name: "%s"
 update_interval: 10
-tls_skip_verify: true
+tls_skip_verify: %t
 send_status: true
 cache_path: "%s\\cache"
 log_path: "%s\\logs"
@@ -818,18 +1259,543 @@ collector_binaries_accesslist:
 		cfg.APIToken,
 		cfg.NodeID,
 		cfg.NodeName,
+		cfg.SkipTLSVerification,
 		installDir, installDir, installDir,
 		cfg.ZoneID, cfg.GroupID, cfg.Package.CPUArchitecture,
 		installDir, installDir,
 	)
 
-	return os.WriteFile(filepath.Join(cfg.InstallDir, "sidecar.yml"), []byte(content), 0644)
+	configPath := filepath.Join(outputDir, "sidecar.yml")
+	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+		return err
+	}
+	return restrictSensitiveFile(configPath)
+}
+
+type windowsServiceController interface {
+	Stop() (bool, error)
+	Start(installDir string, serviceExisted bool) error
+	Remove() error
+}
+
+type scWindowsServiceController struct{}
+
+func (controller *scWindowsServiceController) Stop() (bool, error) {
+	queryOutput, queryErr := exec.Command("sc.exe", "query", "sidecar").CombinedOutput()
+	if queryErr != nil {
+		if strings.Contains(string(queryOutput), "1060") || strings.Contains(strings.ToLower(string(queryOutput)), "does not exist") {
+			return false, nil
+		}
+		return false, fmt.Errorf("sc query failed: %s", strings.TrimSpace(string(queryOutput)))
+	}
+	_ = exec.Command("sc.exe", "stop", "sidecar").Run()
+	for attempt := 0; attempt < windowsServiceTransitionAttempts; attempt++ {
+		output, _ := exec.Command("sc.exe", "query", "sidecar").CombinedOutput()
+		if strings.Contains(string(output), "STOPPED") {
+			return true, nil
+		}
+		time.Sleep(time.Second)
+	}
+	return true, fmt.Errorf("sidecar service did not stop within %d seconds", windowsServiceTransitionAttempts)
+}
+
+func (controller *scWindowsServiceController) Start(installDir string, serviceExisted bool) error {
+	if !serviceExisted {
+		return registerService(installDir)
+	}
+	return startWindowsService(installDir)
+}
+
+func (controller *scWindowsServiceController) Remove() error {
+	deleteOutput, deleteErr := exec.Command("sc.exe", "delete", "sidecar").CombinedOutput()
+	if deleteErr != nil {
+		if strings.Contains(string(deleteOutput), "1060") || strings.Contains(strings.ToLower(string(deleteOutput)), "does not exist") {
+			return nil
+		}
+		return fmt.Errorf("sc delete failed: %s", strings.TrimSpace(string(deleteOutput)))
+	}
+	return nil
+}
+
+var windowsRuntimeDirectories = []string{"cache", "logs", "generated"}
+
+// uninstall.exe 与 installer.ico 由 NSIS 安装器写入安装目录，控制器包本身不含这两个
+// 文件。GUI 安装时 NSIS 会在 worker 结束后重新写入，但服务端远程安装直接执行
+// bootstrap worker，不经过 NSIS；事务式激活把旧目录整体改名后，若不迁回这两个文件，
+// 卸载注册表项 UninstallString / DisplayIcon 指向的文件就不复存在，控制面板卸载入口失效。
+var windowsPreservedInstallerFiles = []string{"uninstall.exe", "installer.ico"}
+
+const (
+	windowsActivationPendingMarker   = ".bklite-activation-pending"
+	windowsActivationCommittedMarker = ".bklite-activation-committed"
+)
+
+func moveWindowsRuntimeData(backupDir, installDir string) ([]string, error) {
+	moved := []string{}
+	for _, name := range windowsRuntimeDirectories {
+		source := filepath.Join(backupDir, name)
+		if _, err := os.Stat(source); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return moved, err
+		}
+		target := filepath.Join(installDir, name)
+		if err := os.RemoveAll(target); err != nil {
+			return moved, err
+		}
+		if err := renameWithWindowsTransientRetry(source, target); err != nil {
+			return moved, err
+		}
+		moved = append(moved, name)
+	}
+	for _, name := range windowsPreservedInstallerFiles {
+		source := filepath.Join(backupDir, name)
+		if _, err := os.Stat(source); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return moved, err
+		}
+		target := filepath.Join(installDir, name)
+		if _, err := os.Stat(target); err == nil {
+			// 新包自带同名文件时以新包为准，不用旧文件覆盖。
+			continue
+		} else if !os.IsNotExist(err) {
+			return moved, err
+		}
+		if err := renameWithWindowsTransientRetry(source, target); err != nil {
+			return moved, err
+		}
+		moved = append(moved, name)
+	}
+	return moved, nil
+}
+
+func restoreWindowsRuntimeData(installDir, backupDir string, moved []string) error {
+	for index := len(moved) - 1; index >= 0; index-- {
+		name := moved[index]
+		source := filepath.Join(installDir, name)
+		target := filepath.Join(backupDir, name)
+		if err := os.RemoveAll(target); err != nil {
+			return err
+		}
+		if err := renameWithWindowsTransientRetry(source, target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func restorePreviousWindowsInstallation(
+	controller windowsServiceController,
+	installDir string,
+	backupDir string,
+	installExisted bool,
+	serviceExisted bool,
+	movedRuntimeDirectories []string,
+) error {
+	if installExisted {
+		if err := restoreWindowsRuntimeData(installDir, backupDir, movedRuntimeDirectories); err != nil {
+			return fmt.Errorf("restore runtime data: %w", err)
+		}
+	}
+	if err := os.RemoveAll(installDir); err != nil {
+		return fmt.Errorf("remove failed installation: %w", err)
+	}
+	if installExisted {
+		for _, marker := range []string{windowsActivationPendingMarker, windowsActivationCommittedMarker} {
+			if err := os.Remove(filepath.Join(backupDir, marker)); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("remove activation marker: %w", err)
+			}
+		}
+		if err := renameWithWindowsTransientRetry(backupDir, installDir); err != nil {
+			return fmt.Errorf("restore previous installation: %w", err)
+		}
+	}
+	if serviceExisted && installExisted {
+		if err := controller.Start(installDir, true); err != nil {
+			return fmt.Errorf("restore previous service: %w", err)
+		}
+	}
+	return nil
+}
+
+func cleanupActivatedWindowsBackup(backupDir string) {
+	retainedDir := fmt.Sprintf("%s-retained-%d", backupDir, time.Now().UnixNano())
+	if err := os.Rename(backupDir, retainedDir); err != nil {
+		log("WARN: new service is running, but old installation backup could not be moved out of the recovery path: %v", err)
+		return
+	}
+	if err := os.RemoveAll(retainedDir); err != nil {
+		log("WARN: new service is running; old installation backup was retained at %s after cleanup failed: %v", retainedDir, err)
+	}
+}
+
+func recoverInterruptedWindowsInstallation(
+	controller windowsServiceController,
+	installDir string,
+	backupDir string,
+	cfg *Config,
+) error {
+	backupInfo, err := os.Stat(backupDir)
+	if err != nil {
+		return fmt.Errorf("inspect interrupted installation backup: %w", err)
+	}
+	if !backupInfo.IsDir() {
+		return fmt.Errorf("interrupted installation backup is not a directory: %s", backupDir)
+	}
+	if _, err := os.Stat(filepath.Join(backupDir, "collector-sidecar.exe")); err != nil {
+		return fmt.Errorf("interrupted installation backup is invalid: %w", err)
+	}
+	serviceExisted, err := controller.Stop()
+	if err != nil {
+		if serviceExisted {
+			if restartErr := controller.Start(installDir, true); restartErr != nil {
+				return fmt.Errorf("stop service before interrupted installation recovery: %v; restart service: %w", err, restartErr)
+			}
+		}
+		return fmt.Errorf("stop service before interrupted installation recovery: %w", err)
+	}
+	if cfg.RemoteLeaseValidator != nil {
+		leaseErr := cfg.RemoteLeaseValidator()
+		if leaseErr == nil {
+			leaseErr = validateRemoteExecutionDeadline(cfg)
+		}
+		if leaseErr != nil {
+			if serviceExisted {
+				if restartErr := controller.Start(installDir, true); restartErr != nil {
+					return fmt.Errorf("%v; restart service after recovery lease expiry: %w", leaseErr, restartErr)
+				}
+			}
+			return leaseErr
+		}
+	}
+	movedRuntimeDirectories := []string{}
+	preservedEntries := append(append([]string{}, windowsRuntimeDirectories...), windowsPreservedInstallerFiles...)
+	for _, name := range preservedEntries {
+		source := filepath.Join(installDir, name)
+		target := filepath.Join(backupDir, name)
+		if _, sourceErr := os.Stat(source); sourceErr != nil {
+			if os.IsNotExist(sourceErr) {
+				continue
+			}
+			return sourceErr
+		}
+		if _, targetErr := os.Stat(target); os.IsNotExist(targetErr) {
+			movedRuntimeDirectories = append(movedRuntimeDirectories, name)
+		} else if targetErr != nil {
+			return targetErr
+		}
+	}
+	if err := restorePreviousWindowsInstallation(
+		controller,
+		installDir,
+		backupDir,
+		true,
+		serviceExisted,
+		movedRuntimeDirectories,
+	); err != nil {
+		return err
+	}
+	return fmt.Errorf("recovered previous Windows installation after an interrupted activation; retry installation")
+}
+
+type windowsInstallFence struct {
+	TaskNodeID  int64  `json:"task_node_id"`
+	Attempt     int    `json:"attempt"`
+	ExecutionID string `json:"execution_id"`
+}
+
+func claimWindowsInstallFence(cfg *Config, installDir string) error {
+	if cfg.RemoteTaskNodeID == 0 && cfg.RemoteAttempt == 0 && cfg.RemoteExecutionID == "" {
+		return nil
+	}
+	if cfg.RemoteTaskNodeID <= 0 || cfg.RemoteAttempt <= 0 || cfg.RemoteExecutionID == "" {
+		return fmt.Errorf("incomplete Windows remote installation fence")
+	}
+	if err := validateRemoteExecutionDeadline(cfg); err != nil {
+		return err
+	}
+	current := windowsInstallFence{
+		TaskNodeID:  cfg.RemoteTaskNodeID,
+		Attempt:     cfg.RemoteAttempt,
+		ExecutionID: cfg.RemoteExecutionID,
+	}
+	fencePath := installDir + ".bklite-install.fence"
+	content, err := os.ReadFile(fencePath)
+	if err == nil {
+		var existing windowsInstallFence
+		if unmarshalErr := json.Unmarshal(content, &existing); unmarshalErr != nil {
+			return fmt.Errorf("read Windows installation fence: %w", unmarshalErr)
+		}
+		if current.TaskNodeID < existing.TaskNodeID ||
+			(current.TaskNodeID == existing.TaskNodeID && current.Attempt <= existing.Attempt) {
+			return fmt.Errorf(
+				"stale Windows remote installation rejected: task node %d attempt %d is not newer than %d attempt %d",
+				current.TaskNodeID,
+				current.Attempt,
+				existing.TaskNodeID,
+				existing.Attempt,
+			)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read Windows installation fence: %w", err)
+	}
+	encoded, err := json.Marshal(current)
+	if err != nil {
+		return fmt.Errorf("encode Windows installation fence: %w", err)
+	}
+	if err := writeWindowsInstallFence(fencePath, append(encoded, '\n')); err != nil {
+		return fmt.Errorf("write Windows installation fence: %w", err)
+	}
+	return nil
+}
+
+func validateRemoteExecutionDeadline(cfg *Config) error {
+	if cfg.RemoteTaskNodeID == 0 && cfg.RemoteAttempt == 0 && cfg.RemoteExecutionID == "" {
+		return nil
+	}
+	if cfg.RemoteDeadlineUnix <= 0 {
+		return fmt.Errorf("missing Windows remote installation deadline")
+	}
+	if time.Now().Unix() >= cfg.RemoteDeadlineUnix {
+		return fmt.Errorf("Windows remote installation deadline expired")
+	}
+	return nil
+}
+
+func writeWindowsInstallFence(fencePath string, content []byte) error {
+	temporary, err := os.CreateTemp(filepath.Dir(fencePath), filepath.Base(fencePath)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0600); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(content); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return replaceFileAtomically(temporaryPath, fencePath)
+}
+
+// discardEmptyWindowsInstallDir removes an installation directory that exists but
+// holds nothing. Launchers such as the NSIS GUI may create it before the worker
+// runs; treating that empty directory as a previous installation would push a
+// fresh install through the backup, rollback and service-restart path it does not
+// need. A running installation always has files, so this never discards one.
+func discardEmptyWindowsInstallDir(installDir string) error {
+	entries, err := os.ReadDir(installDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if len(entries) > 0 {
+		return nil
+	}
+	if err := os.Remove(installDir); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func installWindowsPackage(cfg *Config, zipPath string, controller windowsServiceController) error {
+	installDir := filepath.Clean(cfg.InstallDir)
+	stagingDir := installDir + ".bklite-staging"
+	backupDir := installDir + ".bklite-backup"
+	if installDir == "." || installDir == string(os.PathSeparator) {
+		return fmt.Errorf("unsafe Windows installation directory: %s", installDir)
+	}
+	releaseInstallLock, err := acquireInstallLock(installDir)
+	if err != nil {
+		return fmt.Errorf("acquire Windows installation lock: %w", err)
+	}
+	defer releaseInstallLock()
+	if err := claimWindowsInstallFence(cfg, installDir); err != nil {
+		return err
+	}
+	if cfg.RemoteLeaseValidator != nil {
+		if err := cfg.RemoteLeaseValidator(); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(backupDir); err == nil {
+		committedMarker := filepath.Join(backupDir, windowsActivationCommittedMarker)
+		pendingMarker := filepath.Join(backupDir, windowsActivationPendingMarker)
+		if _, markerErr := os.Stat(committedMarker); markerErr == nil {
+			cleanupActivatedWindowsBackup(backupDir)
+			if _, cleanupErr := os.Stat(backupDir); cleanupErr == nil {
+				return fmt.Errorf("committed Windows backup cleanup requires manual intervention: %s", backupDir)
+			} else if !os.IsNotExist(cleanupErr) {
+				return cleanupErr
+			}
+		} else if !os.IsNotExist(markerErr) {
+			return markerErr
+		} else if _, markerErr := os.Stat(pendingMarker); markerErr == nil {
+			return recoverInterruptedWindowsInstallation(controller, installDir, backupDir, cfg)
+		} else if !os.IsNotExist(markerErr) {
+			return markerErr
+		} else {
+			return fmt.Errorf("Windows installation backup has no transaction marker and requires manual recovery: %s", backupDir)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := discardEmptyWindowsInstallDir(installDir); err != nil {
+		return fmt.Errorf("discard empty installation directory: %w", err)
+	}
+	if err := os.RemoveAll(stagingDir); err != nil {
+		return fmt.Errorf("clean staging directory: %w", err)
+	}
+	defer os.RemoveAll(stagingDir)
+	if err := prepareDirs(stagingDir); err != nil {
+		return fmt.Errorf("prepare staging directory: %w", err)
+	}
+	if _, err := extract(zipPath, stagingDir); err != nil {
+		return fmt.Errorf("extract package to staging directory: %w", err)
+	}
+	if err := writeConfigTo(cfg, stagingDir); err != nil {
+		return fmt.Errorf("write staged configuration: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(stagingDir, "collector-sidecar.exe")); err != nil {
+		return fmt.Errorf("staged collector-sidecar.exe validation failed: %w", err)
+	}
+	if err := validateRemoteExecutionDeadline(cfg); err != nil {
+		return err
+	}
+	if cfg.RemoteLeaseValidator != nil {
+		if err := cfg.RemoteLeaseValidator(); err != nil {
+			return err
+		}
+	}
+
+	serviceExisted, err := controller.Stop()
+	if err != nil {
+		if serviceExisted {
+			if restartErr := controller.Start(installDir, true); restartErr != nil {
+				return fmt.Errorf("stop existing sidecar service: %v; restore service after stop failure: %w", err, restartErr)
+			}
+		}
+		return fmt.Errorf("stop existing sidecar service: %w", err)
+	}
+	if cfg.RemoteLeaseValidator != nil {
+		leaseErr := cfg.RemoteLeaseValidator()
+		if leaseErr == nil {
+			leaseErr = validateRemoteExecutionDeadline(cfg)
+		}
+		if leaseErr != nil {
+			if serviceExisted {
+				if restartErr := controller.Start(installDir, true); restartErr != nil {
+					return fmt.Errorf("%v; restart existing service after lease expiry: %w", leaseErr, restartErr)
+				}
+			}
+			return leaseErr
+		}
+	}
+	installExisted := false
+	if _, err := os.Stat(installDir); err == nil {
+		installExisted = true
+		pendingMarker := filepath.Join(installDir, windowsActivationPendingMarker)
+		if err := os.WriteFile(pendingMarker, []byte("pending\n"), 0600); err != nil {
+			markerErr := err
+			if serviceExisted {
+				if restartErr := controller.Start(installDir, true); restartErr != nil {
+					return fmt.Errorf("write activation marker: %v; restart previous service: %w", markerErr, restartErr)
+				}
+			}
+			return fmt.Errorf("write activation marker: %w", markerErr)
+		}
+		if err := renameWithWindowsTransientRetry(installDir, backupDir); err != nil {
+			backupErr := err
+			removeMarkerErr := os.Remove(pendingMarker)
+			if serviceExisted {
+				if restartErr := controller.Start(installDir, true); restartErr != nil {
+					return fmt.Errorf("backup existing installation: %v; restart previous service: %w", backupErr, restartErr)
+				}
+			}
+			if removeMarkerErr != nil && !os.IsNotExist(removeMarkerErr) {
+				return fmt.Errorf("backup existing installation: %v; remove activation marker: %w", backupErr, removeMarkerErr)
+			}
+			return fmt.Errorf("backup existing installation: %w", backupErr)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := renameWithWindowsTransientRetry(stagingDir, installDir); err != nil {
+		activationErr := err
+		if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, installExisted, serviceExisted, nil); restoreErr != nil {
+			return fmt.Errorf("activate staged installation: %v; rollback: %w", activationErr, restoreErr)
+		}
+		return fmt.Errorf("activate staged installation: %w", activationErr)
+	}
+	movedRuntimeDirectories := []string{}
+	if installExisted {
+		movedRuntimeDirectories, err = moveWindowsRuntimeData(backupDir, installDir)
+		if err != nil {
+			preserveErr := err
+			if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, installExisted, serviceExisted, movedRuntimeDirectories); restoreErr != nil {
+				return fmt.Errorf("preserve Windows runtime data: %v; rollback: %w", preserveErr, restoreErr)
+			}
+			return fmt.Errorf("preserve Windows runtime data: %w", preserveErr)
+		}
+	}
+
+	if err := controller.Start(installDir, serviceExisted); err != nil {
+		activationErr := err
+		if _, stopErr := controller.Stop(); stopErr != nil {
+			if _, retryStopErr := controller.Stop(); retryStopErr != nil {
+				return fmt.Errorf(
+					"activate new service: %v; stop failed service before rollback: %v; retry stop: %w; previous installation retained at %s for recovery",
+					activationErr,
+					stopErr,
+					retryStopErr,
+					backupDir,
+				)
+			}
+		}
+		if !serviceExisted {
+			if removeServiceErr := controller.Remove(); removeServiceErr != nil {
+				return fmt.Errorf("activate new service: %v; remove failed service before rollback: %w", activationErr, removeServiceErr)
+			}
+		}
+		if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, installExisted, serviceExisted, movedRuntimeDirectories); restoreErr != nil {
+			return fmt.Errorf("activate new service: %v; rollback: %w", activationErr, restoreErr)
+		}
+		return fmt.Errorf("activate new service: %w", activationErr)
+	}
+
+	if installExisted {
+		pendingMarker := filepath.Join(backupDir, windowsActivationPendingMarker)
+		committedMarker := filepath.Join(backupDir, windowsActivationCommittedMarker)
+		if err := renameWithWindowsTransientRetry(pendingMarker, committedMarker); err != nil {
+			commitErr := err
+			if _, stopErr := controller.Stop(); stopErr != nil {
+				return fmt.Errorf("commit Windows activation: %v; stop new service before rollback: %w", commitErr, stopErr)
+			}
+			if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, true, serviceExisted, movedRuntimeDirectories); restoreErr != nil {
+				return fmt.Errorf("commit Windows activation: %v; rollback: %w", commitErr, restoreErr)
+			}
+			return fmt.Errorf("commit Windows activation: %w", commitErr)
+		}
+		cleanupActivatedWindowsBackup(backupDir)
+	}
+	return nil
 }
 
 func registerService(installDir string) error {
 	exePath := filepath.Join(installDir, "collector-sidecar.exe")
 	cfgPath := filepath.Join(installDir, "sidecar.yml")
-	logPath := filepath.Join(installDir, "logs")
 
 	if _, err := os.Stat(exePath); os.IsNotExist(err) {
 		return fmt.Errorf("collector-sidecar.exe not found at %s", exePath)
@@ -840,11 +1806,6 @@ func registerService(installDir string) error {
 	}
 
 	binPath := fmt.Sprintf(`"%s" -c "%s"`, exePath, cfgPath)
-
-	exec.Command("sc.exe", "stop", "sidecar").Run()
-	time.Sleep(time.Second)
-	exec.Command("sc.exe", "delete", "sidecar").Run()
-	time.Sleep(time.Second)
 
 	out, err := exec.Command("sc.exe", "create", "sidecar",
 		"binPath=", binPath,
@@ -857,12 +1818,20 @@ func registerService(installDir string) error {
 
 	exec.Command("sc.exe", "description", "sidecar", "Collector Sidecar - Log and metric collector agent").Run()
 
-	out, err = exec.Command("sc.exe", "start", "sidecar").CombinedOutput()
+	return startWindowsService(installDir)
+}
+
+func startWindowsService(installDir string) error {
+	exePath := filepath.Join(installDir, "collector-sidecar.exe")
+	cfgPath := filepath.Join(installDir, "sidecar.yml")
+	logPath := filepath.Join(installDir, "logs")
+
+	out, err := exec.Command("sc.exe", "start", "sidecar").CombinedOutput()
 	if err != nil {
 		return serviceStartError(string(out), exePath, cfgPath, logPath)
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < windowsServiceTransitionAttempts; i++ {
 		time.Sleep(time.Second)
 		out, _ := exec.Command("sc.exe", "query", "sidecar").Output()
 		if strings.Contains(string(out), "RUNNING") {

@@ -17,6 +17,7 @@ export interface ListItem {
   display_name?: string;
   id?: string | number;
   value?: string | number;
+  color?: string;
 }
 
 export interface ModalConfig {
@@ -153,7 +154,7 @@ export interface GapInterval {
 
 export interface SegmentedItem {
   label: string;
-  value: string;
+  value: string | number;
 }
 
 export interface Pagination {
@@ -230,10 +231,16 @@ export interface ObjectItem {
   icon?: string;
   instance_count?: number;
   display_fields?: {
+    column_key?: string;
     name: string;
     type?: 'metric' | 'field';
     sort_order: number;
     metrics: { plugin: string; metric: string; field?: string }[];
+  }[];
+  instance_summary_columns?: {
+    fact: string;
+    title: string;
+    order?: number;
   }[];
   options?: ObjectItem[];
   label?: string;
@@ -271,17 +278,29 @@ export interface MetricItem {
   metric_group: number;
   metric_object: number;
   name: string;
+  monitor_plugin_name?: string;
   type: string;
   display_name?: string;
   display_description?: string;
   instance_id_keys?: string[];
   dimensions: Dimension[];
   query?: string;
+  view_query?: string;
+  view_config?: {
+    mode: 'top' | 'bottom' | 'limited';
+    limit?: number;
+  };
   unit?: string;
   displayType?: string;
   description?: string;
+  is_ifmib?: boolean;
   viewData?: ChartData[] | InterfaceTableItem[];
   displayUnit?: string;
+  seriesBudget?: {
+    truncated: boolean;
+    limit: number;
+    applied?: boolean;
+  };
   style?: {
     width: string;
     height: string;

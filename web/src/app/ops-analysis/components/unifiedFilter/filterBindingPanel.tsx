@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Switch, Tag, Tooltip } from 'antd';
+import { Switch, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type {
   UnifiedFilterDefinition,
   FilterBindings,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
-import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   getFilterDefinitionId,
   getBindableFilterParams,
@@ -32,7 +32,6 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
   definitions,
   dataSourceParams,
   filterBindings,
-  onChange,
 }) => {
   const { t } = useTranslation();
   const safeFilterBindings = filterBindings || {};
@@ -56,13 +55,6 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
     });
   }, [dataSourceParams, definitions]);
 
-  const handleBindingChange = (filterId: string, enabled: boolean) => {
-    onChange({
-      ...safeFilterBindings,
-      [filterId]: enabled,
-    });
-  };
-
   if (bindableParams.length === 0) {
     return (
       <CompactEmptyState description={t('dashboard.noUnifiedFilters')} />
@@ -70,9 +62,9 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
   }
 
   const getTypeLabel = (type: string): string => {
-    return type === 'timeRange'
-      ? t('dashboard.timeRange')
-      : t('dashboard.string');
+    if (type === 'timeRange') return t('dashboard.timeRange');
+    if (type === 'dateRange') return t('dashboard.dateRange');
+    return t('dashboard.string');
   };
 
   return (
@@ -92,9 +84,17 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-medium text-sm text-(--color-text-1)">{displayName}</span>
+                <span className="font-medium text-sm text-(--color-text-1)">
+                  {displayName}
+                </span>
                 <Tag
-                  color={param.type === 'timeRange' ? 'blue' : 'green'}
+                  color={
+                    param.type === 'timeRange'
+                      ? 'blue'
+                      : param.type === 'dateRange'
+                        ? 'purple'
+                        : 'green'
+                  }
                   style={{ marginRight: 0 }}
                 >
                   {getTypeLabel(param.type)}
@@ -103,20 +103,14 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
                   <Tag color="default">{t('dashboard.filterDisabled')}</Tag>
                 )}
               </div>
-              <div className="text-xs text-(--color-text-3) mt-0.5 font-mono">{param.name}</div>
+              <div className="text-xs text-(--color-text-3) mt-0.5 font-mono">
+                {param.name}
+              </div>
             </div>
             <div className="ml-3 flex-shrink-0">
-              {canBind ? (
-                <Switch
-                  size="small"
-                  checked={isEnabled}
-                  onChange={(checked) => handleBindingChange(filterId, checked)}
-                />
-              ) : (
-                <Tooltip title={t('dashboard.filterDisabledTip')}>
-                  <Switch size="small" checked={false} disabled />
-                </Tooltip>
-              )}
+              <span>
+                <Switch size="small" checked={canBind && isEnabled} disabled />
+              </span>
             </div>
           </div>
         );

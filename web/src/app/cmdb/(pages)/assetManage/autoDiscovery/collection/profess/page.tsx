@@ -5,18 +5,26 @@ import dayjs from 'dayjs';
 import styles from './index.module.scss';
 import K8sTask from './components/k8s/k8sGuidedTask';
 import VMTask from './components/vmTask';
+import WinSphereTask from './components/winsphereTask';
 import SNMPTask from './components/snmpTask';
 import SQLTask from './components/sqlTask';
+import InfluxdbTask from './components/influxdbTask';
+import PlatformApiTask from './components/platformApiTask';
 import CloudTask from './components/cloudTask';
 import HostTask from './components/hostTask';
 import IPMITask from './components/ipmiTask';
 import ConfigFileTask from './components/configFileTask';
 import NetworkConfigFileTask from './components/networkConfigFileTask';
 import IpTask from './components/ipTask';
+import PCTask from './components/pcTask';
 import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
 import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
 import CollectionStats from './components/collectionStats';
+import {
+  getCredentialDescriptor,
+  type CredentialFormKind,
+} from './components/credentialDescriptors';
 import MarkdownRenderer from '@/components/markdown';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
@@ -27,7 +35,7 @@ import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 import { Modal } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { Input, Button, Spin, Tag, Drawer, message, Tabs, Tooltip } from 'antd';
+import { Alert, Input, Button, Spin, Tag, Drawer, message, Tabs, Tooltip } from 'antd';
 import {
   getExecStatusConfig,
   EXEC_STATUS,
@@ -46,6 +54,37 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
   dataIndex?: string;
+};
+
+interface TaskFormProps {
+  onClose: () => void;
+  onSuccess: () => Promise<void>;
+  selectedNode: TreeNode;
+  modelItem: ModelItem;
+  editId: number | null;
+}
+
+const CREDENTIAL_TASK_TYPES = new Set([
+  'cloud',
+  'host',
+  'db',
+  'middleware',
+  'snmp',
+  'protocol',
+]);
+
+const CREDENTIAL_TASK_COMPONENTS: Partial<Record<
+  CredentialFormKind,
+  React.ComponentType<TaskFormProps>
+>> = {
+  ssh: HostTask,
+  sql: SQLTask,
+  snmp: SNMPTask,
+  influxdb: InfluxdbTask,
+  cloud: CloudTask,
+  platform_api: PlatformApiTask,
+  winrm: PCTask,
+  macos_ssh: PCTask,
 };
 
 const getCollectToolProtocol = (pluginId?: string | null) => {
@@ -207,6 +246,12 @@ const ProfessionalCollection: React.FC = () => {
       (item) => item.id === selectedPluginId
     );
   }, [selectedPluginId]);
+  const taskDrawerWidth =
+    (currentPlugin?.task_type || currentPlugin?.type) === 'k8s' ? 740 : 700;
+  const docDrawerNested = taskDocDrawerVisible && drawerVisible;
+  const docDrawerWidth = docDrawerNested
+    ? `min(600px, calc(100vw - ${taskDrawerWidth}px - 24px))`
+    : 600;
 
   const getParams = (pluginId?: string) => {
     const currentPluginId = pluginId || stateRef.current.selectedPluginId;
@@ -527,7 +572,13 @@ const ProfessionalCollection: React.FC = () => {
       try {
         setExecutingTaskIds((prev) => [...prev, record.id]);
         await collectApi.executeCollect(record.id.toString());
-        message.success(t('Collection.executeSuccess'));
+        message.success(
+          t(
+            record.model_id === 'pc'
+              ? 'Collection.PCTask.syncLatestSuccess'
+              : 'Collection.executeSuccess'
+          )
+        );
         fetchData();
       } catch (error) {
         console.error('Failed to execute task:', error);
@@ -591,18 +642,13 @@ const ProfessionalCollection: React.FC = () => {
       editId: editingId,
     };
 
-      const taskMap: Record<string, React.ComponentType<any>> = {
-        k8s: K8sTask,
-        vm: VMTask,
-        cloud: CloudTask,
-        host: HostTask,
-        db: HostTask,
-        middleware: HostTask,
-        config_file: ConfigFileTask,
-        snmp: SNMPTask,
-        protocol: SQLTask,
-        ip: IpTask,
-      };
+    if (currentPlugin.model_id === 'pc') {
+      return <PCTask {...taskProps} />;
+    }
+
+    if (currentPlugin.model_id === 'winsphere') {
+      return <WinSphereTask {...taskProps} />;
+    }
 
     if (currentPlugin.id === 'physcial_server_ipmi') {
       return <IPMITask {...taskProps} />;
@@ -613,6 +659,41 @@ const ProfessionalCollection: React.FC = () => {
     }
 
     const taskTypeKey = currentPlugin.task_type || currentPlugin.type || actualCategory.id;
+    if (currentPlugin.model_id === 'vmware_vc' || taskTypeKey === 'vm') {
+      return <VMTask {...taskProps} />;
+    }
+
+    if (currentPlugin.model_id === 'config_file') {
+      return <ConfigFileTask {...taskProps} />;
+    }
+
+    const credentialDescriptor = getCredentialDescriptor(currentPlugin);
+    if (credentialDescriptor) {
+      const CredentialTask = CREDENTIAL_TASK_COMPONENTS[
+        credentialDescriptor.formKind
+      ];
+      if (CredentialTask) {
+        return <CredentialTask {...taskProps} />;
+      }
+    }
+
+    if (CREDENTIAL_TASK_TYPES.has(taskTypeKey)) {
+      return (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('Collection.credentialHelp.unsupportedTitle')}
+          description={t('Collection.credentialHelp.unsupportedDescription')}
+        />
+      );
+    }
+
+    const taskMap: Record<string, React.ComponentType<TaskFormProps>> = {
+      k8s: K8sTask,
+      vm: VMTask,
+      config_file: ConfigFileTask,
+      ip: IpTask,
+    };
     const TaskComponent = taskMap[taskTypeKey] || K8sTask;
 
     return <TaskComponent {...taskProps} />;
@@ -655,7 +736,7 @@ const ProfessionalCollection: React.FC = () => {
         loadingExec;
 
       return (
-        <div className="flex gap-3">
+        <div className="flex gap-3 whitespace-nowrap">
           <Button
             type="link"
             size="small"
@@ -675,9 +756,17 @@ const ProfessionalCollection: React.FC = () => {
               loading={loadingExec}
               onClick={() => handleExecuteNow(record)}
             >
-              {loadingExec
-                ? t('Collection.table.syncing')
-                : t('Collection.table.sync')}
+              {record.model_id === 'pc'
+                ? t(
+                  loadingExec
+                    ? 'Collection.PCTask.syncingLatestResult'
+                    : 'Collection.PCTask.syncLatestResult'
+                )
+                : t(
+                  loadingExec
+                    ? 'Collection.table.syncing'
+                    : 'Collection.table.sync'
+                )}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper
@@ -858,7 +947,7 @@ const ProfessionalCollection: React.FC = () => {
         dataIndex: 'action',
         key: 'action',
         fixed: 'right',
-        width: 260,
+        width: 320,
         render: (_, record) => actionRender(record),
       },
     ],
@@ -1050,7 +1139,7 @@ const ProfessionalCollection: React.FC = () => {
         ></div>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto pb-1 pr-1">
-          <div className="flex min-h-[360px] min-w-0 flex-1 flex-col overflow-hidden rounded border border-gray-200 bg-white pb-1 shadow-sm">
+          <div className="flex min-h-[360px] min-w-0 flex-1 flex-col overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
             <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2">
               <span className="text-base font-semibold text-gray-900">
                 {currentPlugin?.name || ''}
@@ -1085,7 +1174,7 @@ const ProfessionalCollection: React.FC = () => {
             </div>
 
             <div className="min-h-0 flex-1 overflow-hidden px-4 pb-1 pt-1">
-              <div className="h-full min-h-0">
+              <div className={styles.collectionTaskTable}>
                 <CustomTable
                   loading={tableLoading}
                   key={selectedCategoryRef.current.categoryId}
@@ -1140,9 +1229,7 @@ const ProfessionalCollection: React.FC = () => {
           </div>
         }
         placement="right"
-        width={
-          (currentPlugin?.task_type || currentPlugin?.type) === 'k8s' ? 960 : 680
-        }
+        width={taskDrawerWidth}
         onClose={closeDrawer}
         open={drawerVisible}
         maskClosable={false}
@@ -1161,30 +1248,30 @@ const ProfessionalCollection: React.FC = () => {
       <Drawer
         title={t('Collection.pluginDoc')}
         placement="right"
-        width={600}
+        width={docDrawerWidth}
         onClose={() => {
           setTaskDocDrawerVisible(false);
           setDocDrawerVisible(false);
         }}
-        open={docDrawerVisible || (taskDocDrawerVisible && drawerVisible)}
-        getContainer={taskDocDrawerVisible && drawerVisible ? false : undefined}
+        open={docDrawerVisible || docDrawerNested}
+        getContainer={docDrawerNested ? false : undefined}
         styles={{
           wrapper: {
             boxShadow:
-              taskDocDrawerVisible && drawerVisible ? 'none' : undefined,
+              docDrawerNested ? 'none' : undefined,
             borderRight:
-              taskDocDrawerVisible && drawerVisible
+              docDrawerNested
                 ? '1px solid var(--color-border-1)'
                 : undefined,
           },
         }}
-        mask={taskDocDrawerVisible && drawerVisible ? false : true}
+        mask={docDrawerNested ? false : true}
         rootStyle={
-          taskDocDrawerVisible && drawerVisible
+          docDrawerNested
             ? {
               position: 'absolute',
               left: 'auto',
-              right: '640px',
+              right: `${taskDrawerWidth}px`,
             }
             : undefined
         }

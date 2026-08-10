@@ -8,10 +8,13 @@ from apps.alerts.tasks import action_tasks  # noqa
 from apps.alerts.tasks.tasks import (
     async_auto_assignment_for_alerts,
     beat_close_alert,
+    beat_retry_unassigned_assignment,
     build_instant_alerts,
     check_and_send_escalations,
     check_and_send_reminders,
     cleanup_reminder_tasks,
+    deliver_alert_outbox,
+    dispatch_pending_alert_outbox,
     event_aggregation_alert,
     sync_no_dispatch_alert_notice_task,
     sync_notify,

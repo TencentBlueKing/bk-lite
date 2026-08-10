@@ -2,7 +2,10 @@
   "common": {
     "expand": "Expand",
     "collapse": "Collapse",
+    "expandAll": "Expand All",
+    "collapseAll": "Collapse All",
     "edit": "Edit",
+    "view": "View",
     "builtIn": "Built-in",
     "delete": "Delete",
     "export": "Export",
@@ -86,6 +89,7 @@
     "searchKeywordPlaceholder": "Enter keywords to search...",
     "yes": "Yes",
     "no": "No",
+    "back": "Back",
     "updatedTime": "Updated Time",
     "inputTip": "Please input",
     "serverError": "Server error, please try again later.",
@@ -173,6 +177,8 @@
     "builtin": "Built-in",
     "mcp": "MCP",
     "externalApp": "External",
+    "custom": "Custom",
+    "imported": "Imported",
     "unreadNotifications": "Unread Notifications",
     "allNotifications": "All Notifications",
     "noMore": "No more",
@@ -184,7 +190,7 @@
     "noUnreadNotifications": "No unread notifications",
     "sessionExpiredTitle": "Session expired",
     "sessionExpiredDescription": "Please verify your identity again to continue on this page.",
-    "reloginSuccess": "Signed in successfully",
+    "reloginSuccess": "Signed in again. Please resubmit any operation that previously failed.",
     "portalSlogan": "AI-Native Lightweight O&M Platform"
   },
   "userInfo": {

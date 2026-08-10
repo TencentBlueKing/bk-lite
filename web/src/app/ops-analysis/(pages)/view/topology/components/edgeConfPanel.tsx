@@ -272,8 +272,7 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
       <div style={{ padding: '24px' }}>
         <Form
           form={form}
-          layout="horizontal"
-          labelCol={{ span: 5 }}
+          layout="vertical"
           onFinish={handleFinish}
           initialValues={{
             lineType: edgeData?.lineType || 'common_line',

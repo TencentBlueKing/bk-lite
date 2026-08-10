@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from typing import Any
@@ -31,6 +32,9 @@ class WindowsWmiCollector(BaseCollector):
         )
 
     async def collect(self) -> str:
+        return await asyncio.to_thread(self._collect_sync)
+
+    def _collect_sync(self) -> str:
         context = self._context()
         modules = resolve_modules(self.params.get("metrics_modules"))
         logger.info("event=wmi_collect_start %s", context)
@@ -77,6 +81,8 @@ class WindowsWmiCollector(BaseCollector):
             results,
             self.params.get("tags") or {},
             host=self.params["host"],
+            disk_include_fstypes=self.params.get("disk_include_fstypes"),
+            disk_exclude_fstypes=self.params.get("disk_exclude_fstypes"),
         )
         duration_ms = int((time.monotonic() - started) * 1000)
         logger.info("event=wmi_collect_success duration_ms=%s %s", duration_ms, context)

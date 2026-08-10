@@ -8,6 +8,7 @@ from neo4j.graph import Path
 
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
 from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, ParameterCollector
+from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
@@ -347,6 +348,10 @@ class Neo4jClient:
         param_type="AND",
         permission_params: str = "",
         permission_or_creator_filter: dict = None,
+        format_permission_dict: dict = None,
+        organization_field: str = "organization",
+        case_sensitive: bool = True,
+        include_count: bool = True,
     ):
         """
         查询实体
@@ -354,7 +359,25 @@ class Neo4jClient:
         label_str = f":{label}" if label else ""
 
         # 处理权限或创建人的OR条件
-        if permission_or_creator_filter:
+        if format_permission_dict:
+            collector = ParameterCollector()
+            base_params, _ = self.format_search_params(params, param_type=param_type, collector=collector)
+            permission_filters = []
+            for organization_id, query_list in format_permission_dict.items():
+                organization_params, _ = self.format_search_params(
+                    [{"field": organization_field, "type": "list[]", "value": [organization_id]}],
+                    collector=collector,
+                )
+                scoped_params, _ = self.format_search_params(
+                    query_list, param_type="OR", collector=collector
+                )
+                parts = [part for part in (organization_params, scoped_params) if part]
+                if parts:
+                    permission_filters.append(f"({' AND '.join(parts)})")
+            permission_clause = f"({' OR '.join(permission_filters)})" if permission_filters else ""
+            params_str = " AND ".join(part for part in (base_params, permission_clause) if part)
+            query_params = collector.get_params()
+        elif permission_or_creator_filter:
             inst_names = permission_or_creator_filter.get("inst_names", [])
             creator = permission_or_creator_filter.get("creator")
 
@@ -394,8 +417,9 @@ class Neo4jClient:
 
         count_str = f"MATCH (n{label_str}) {params_str} RETURN COUNT(n) AS count"
         count = None
-        if page:
+        if page and include_count:
             count = self.session.run(count_str, **query_params).single()["count"]
+        if page:
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
         objs = self.session.run(sql_str, **query_params)
@@ -490,7 +514,7 @@ class Neo4jClient:
             )
 
             self.check_unique_rules(
-                [properties],
+                check_attr_map.get("validation_items") or [properties],
                 check_attr_map.get("unique_rules", []),
                 exist_items,
                 check_attr_map.get("attrs_by_id", {}),
@@ -528,6 +552,24 @@ class Neo4jClient:
             raise BaseAppException("properties is empty")
         nodes = self.session.run(f"MATCH (n{label_str}) WHERE id(n) IN {node_ids} SET {properties_str} RETURN n")
         return nodes
+
+    def batch_update_node_property_values(self, label: str, field: str, property_values: list[dict]):
+        """在一次图查询中为不同节点写入同一字段的不同值。"""
+        validated_label = CQLValidator.validate_label(label)
+        validated_field = CQLValidator.validate_field(field)
+        validated_property_values = CQLValidator.validate_property_values(property_values)
+        if not validated_property_values:
+            return []
+
+        query = (
+            f"UNWIND $property_values AS row "
+            f"MATCH (n:{validated_label}) WHERE id(n) = row.id "
+            f"SET n.{validated_field} = row.value RETURN n"
+        )
+        return self.session.run(
+            query,
+            property_values=validated_property_values,
+        )
 
     def format_properties_remove(self, attrs: list):
         """格式化properties的remove数据"""

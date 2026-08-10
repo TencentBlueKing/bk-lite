@@ -2,6 +2,8 @@
   "plugin": "Apache",
   "plugin_desc": "Real-time collection of Apache runtime data, resource utilization, request processing efficiency, and bandwidth statistics, helping users optimize performance, diagnose issues, and achieve efficient operations management.",
   "status_query": "any({instance_type='apache', collect_type='middleware'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"url"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Apache",
   "icon": "mm-apache_Apache",
   "type": "Middleware",

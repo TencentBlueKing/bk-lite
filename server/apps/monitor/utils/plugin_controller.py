@@ -1,8 +1,9 @@
 import uuid
 
-from jinja2 import BaseLoader, DebugUndefined, Environment
+from jinja2 import BaseLoader, DebugUndefined
+from jinja2.defaults import DEFAULT_FILTERS
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.safe_template import (
     TemplateSecurityError,
     build_sandboxed_env,
@@ -12,18 +13,26 @@ from apps.core.utils.safe_template import (
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import CollectConfig, MonitorPlugin, MonitorPluginConfigTemplate
+from apps.monitor.services.website_config import normalize_website_request_config
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.rpc.node_mgmt import NodeMgmt
 
 
-_DEFAULT_JINJA_ENV = Environment()
 _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "default",
     "lower",
     "urlencode",
     "replace",
+    "to_toml_str_array",
 )
 _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
+    # SNMP 接口过滤运行时注入片段的固定 Jinja 局部变量。
+    "_ifdescr_exclude",
+    "_ifdescr_include",
+    "_iftype_exclude",
+    "_iftype_include",
+    "ENV_BEARER_TOKEN",
+    "ENV_PASSWORD",
     "agents",
     "auth_password",
     "auth_protocol",
@@ -36,9 +45,17 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "credential_encoding",
     "database",
     "dbname",
+    "disk_exclude_fstypes",
+    "disk_include_fstypes",
+    "enable_ifmib",
     "endpoint",
     "expect",
     "host",
+    "ifdescr_exclude",
+    "ifdescr_include",
+    "ifmib_capable",
+    "iftype_exclude",
+    "iftype_include",
     "insecure_skip_verify",
     "instance_id",
     "instance_type",
@@ -60,12 +77,20 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "priv_password",
     "priv_protocol",
     "protocol",
+    "request_body",
+    "request_headers",
+    "request_method",
+    "request_url",
     "response_timeout",
+    "response_status_code",
+    "response_string_match",
+    "follow_redirects",
     "sec_level",
     "sec_name",
     "send",
     "server",
     "server_url",
+    "sslmode",
     "storage_instance_key",
     "timeout",
     "tls_ca",
@@ -99,6 +124,22 @@ def to_toml_dict(d):
         return "{}"
     return "{ " + ", ".join(f'"{_escape_toml_string(k)}" = "{_escape_toml_string(v)}"' for k, v in d.items()) + " }"
 
+
+def to_toml_str_array(value):
+    """将列表或逗号分隔字符串转为 TOML 字符串数组字面量，如 ["24", "53"]。"""
+    from apps.monitor.utils.snmp_interface_filters import normalize_filter_list
+
+    items = normalize_filter_list(value)
+    return "[" + ", ".join(f'"{_escape_toml_string(item)}"' for item in items) + "]"
+
+
+def normalize_filter_list(value):
+    """兼容旧导入路径；实现见 snmp_interface_filters.normalize_filter_list。"""
+    from apps.monitor.utils.snmp_interface_filters import (
+        normalize_filter_list as _normalize_filter_list,
+    )
+
+    return _normalize_filter_list(value)
 
 def _escape_toml_context_strings(value):
     if isinstance(value, str):
@@ -134,14 +175,25 @@ class Controller:
             env = build_sandboxed_env(
                 loader=BaseLoader(),
                 undefined=DebugUndefined,
-                extra_filters={"to_toml": to_toml_dict},
+                extra_filters={
+                    "to_toml": to_toml_dict,
+                    "to_toml_str_array": to_toml_str_array,
+                },
             )
             missing_filters = [
-                name for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS if name not in _DEFAULT_JINJA_ENV.filters
+                name
+                for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS
+                if name not in DEFAULT_FILTERS and name not in env.filters
             ]
             if missing_filters:
                 raise BaseAppException(f"Missing default Jinja filters: {', '.join(missing_filters)}")
-            env.filters.update({name: _DEFAULT_JINJA_ENV.filters[name] for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS})
+            env.filters.update(
+                {
+                    name: DEFAULT_FILTERS[name]
+                    for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS
+                    if name in DEFAULT_FILTERS
+                }
+            )
             self._jinja_env = env
         return self._jinja_env
 
@@ -209,6 +261,22 @@ class Controller:
                     logger.error(f"解析 instance_id 失败: {instance_id}, 错误: {e}")
                     raise ValueError(f"无效的 instance_id 格式: {instance_id}") from e
 
+        from apps.monitor.utils.snmp_ifmib_capability import is_ifmib_capable_render_context
+        from apps.monitor.utils.snmp_interface_template import (
+            ensure_core_network_ifmib_jinja,
+            ensure_snmp_interface_filter_jinja,
+            needs_snmp_interface_filter_jinja,
+            validate_rendered_core_network_ifmib,
+        )
+
+        template_content = ensure_core_network_ifmib_jinja(template_content, _context)
+        # 接口过滤与公共 IF-MIB 同能力边界：非 Network Device（如 hardware_server）
+        # 即使模板含 ifDescr，也不得静默注入默认 ifType 排除。
+        if is_ifmib_capable_render_context(_context) and needs_snmp_interface_filter_jinja(
+            template_content
+        ):
+            template_content = ensure_snmp_interface_filter_jinja(template_content)
+
         safe_context = sanitize_template_context(_context)
         if escape_toml_strings:
             safe_context = _escape_toml_context_strings(safe_context)
@@ -220,7 +288,9 @@ class Controller:
             raise BaseAppException(f"采集模板包含未授权变量: {e}") from e
 
         template = self.jinja_env.from_string(template_content)
-        return template.render(safe_context)
+        rendered_template = template.render(safe_context)
+        validate_rendered_core_network_ifmib(rendered_template, _context)
+        return rendered_template
 
     def format_configs(self):
         """
@@ -259,6 +329,8 @@ class Controller:
                         **config,
                         **instance_copy,
                     }
+                    if collect_type == "web":
+                        _config = normalize_website_request_config(_config)
                     configs.append(_config)
 
         return configs
@@ -292,8 +364,9 @@ class Controller:
 
         plugin_id = self.data.get("monitor_plugin_id")
         plugin_template_id = None
+        plugin_obj = None
         if plugin_id:
-            plugin_obj = MonitorPlugin.objects.filter(id=plugin_id).only("template_id").first()
+            plugin_obj = MonitorPlugin.objects.filter(id=plugin_id).prefetch_related("monitor_object").first()
             if plugin_obj:
                 plugin_template_id = plugin_obj.template_id
         configs = self.format_configs()
@@ -321,6 +394,11 @@ class Controller:
                 logger.warning(f"未找到模板：collector={collector}, collect_type={collect_type}, type={type_name}")
                 raise BaseAppException(f"未找到采集模板：collector={collector}, collect_type={collect_type}, type={type_name}")
 
+            if str(collect_type or "") == "exporter" and str(type_name or "").lower() == "kafka":
+                from apps.monitor.utils.kafka_sasl import ensure_kafka_sasl_mechanism_defaults
+
+                ensure_kafka_sasl_mechanism_defaults(config_info)
+
             env_config = {k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")}
 
             for template in templates:
@@ -329,16 +407,55 @@ class Controller:
                 config_id = str(uuid.uuid4().hex)
 
                 try:
+                    render_context = {
+                        **config_info,
+                        "config_id": config_id.upper(),
+                        "plugin_id": plugin_template_id or plugin_id,
+                        "monitor_plugin_id": plugin_id,
+                    }
+                    from apps.monitor.utils.snmp_ifmib_capability import is_ifmib_capable_plugin
+
+                    render_context["ifmib_capable"] = is_ifmib_capable_plugin(plugin_obj)
+                    if render_context["ifmib_capable"]:
+                        # IF-MIB 是本次下发选项。接入页默认启用；用户可以只对当前
+                        # 新实例关闭，已下发实例的 TOML 快照不会受影响。
+                        render_context.setdefault("enable_ifmib", True)
+                        # 默认 ifType 排除仅对具备过滤 UI 的 Network Device 注入，
+                        # 避免 hardware_server 等无开关对象静默丢接口。
+                        if "iftype_exclude" not in render_context:
+                            from apps.monitor.constants.snmp_interface import DEFAULT_IFTYPE_EXCLUDE
+
+                            render_context["iftype_exclude"] = list(DEFAULT_IFTYPE_EXCLUDE)
+                    # 与 IF-MIB 能力判定一致：覆盖 snmp / snmp_h3c 等厂商 collect_type。
+                    snmp_collect = str(collect_type or "").startswith("snmp")
+                    if snmp_collect and is_child:
+                        from apps.monitor.utils.snmp_interface_filters import (
+                            assert_snmp_interface_filter_mutex_from_values,
+                        )
+
+                        # 互斥校验放在模板渲染前，避免被包装成「渲染采集模板失败」
+                        assert_snmp_interface_filter_mutex_from_values(render_context)
+                    if (
+                        is_child
+                        and str(collect_type or "") == "exporter"
+                        and str(type_name or "").lower() == "kafka"
+                    ):
+                        from apps.monitor.utils.kafka_collect_timeouts import (
+                            assert_kafka_group_metrics_timeout_lt_interval,
+                        )
+
+                        assert_kafka_group_metrics_timeout_lt_interval(
+                            config_info.get("ENV_GROUP_METRICS_TIMEOUT")
+                            or env_config.get("GROUP_METRICS_TIMEOUT"),
+                            config_info.get("interval"),
+                        )
                     template_config = self.render_template(
                         template["content"],
-                        {
-                            **config_info,
-                            "config_id": config_id.upper(),
-                            "plugin_id": plugin_template_id or plugin_id,
-                            "monitor_plugin_id": plugin_id,
-                        },
+                        render_context,
                         escape_toml_strings=template["file_type"] == "toml",
                     )
+                except ValidationAppException:
+                    raise
                 except ValueError as e:
                     raw_id = config_info.get("instance_id")
                     logical_id = config_info.get("logical_instance_value")

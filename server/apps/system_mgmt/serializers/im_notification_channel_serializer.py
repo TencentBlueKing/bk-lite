@@ -5,6 +5,7 @@ from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun
 from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.services import im_notification_service
 from apps.system_mgmt.services.capability_contract_service import CapabilityContractError, validate_im_notification_contract
+from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
 
 
 class IMNotificationSyncRunSerializer(serializers.ModelSerializer):
@@ -15,6 +16,7 @@ class IMNotificationSyncRunSerializer(serializers.ModelSerializer):
 
 class IMNotificationUserMappingSerializer(serializers.ModelSerializer):
     username = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = IMNotificationUserMapping
@@ -23,10 +25,14 @@ class IMNotificationUserMappingSerializer(serializers.ModelSerializer):
     def get_username(self, obj):
         return obj.user.username if obj.user_id else ""
 
+    def get_display_name(self, obj):
+        return obj.user.display_name if obj.user_id else ""
+
 
 class IMNotificationChannelSerializer(UsernameSerializer):
     integration_instance_name = serializers.SerializerMethodField()
     provider_key = serializers.SerializerMethodField()
+    dependency_status = serializers.SerializerMethodField()
     display_status = serializers.SerializerMethodField()
     display_sync_status = serializers.SerializerMethodField()
     display_sync_summary = serializers.SerializerMethodField()
@@ -48,6 +54,11 @@ class IMNotificationChannelSerializer(UsernameSerializer):
     
     def get_provider_key(self, obj):
         return obj.integration_instance.provider_key if obj.integration_instance_id else ""
+
+    def get_dependency_status(self, obj):
+        if not obj.integration_instance_id:
+            return {"available": False, "reason": "instance_not_ready"}
+        return get_integration_capability_availability(obj.integration_instance, "im_notification")
 
     def get_display_status(self, obj):
         latest_run = self._get_latest_run(obj)
@@ -103,11 +114,14 @@ class IMNotificationChannelSerializer(UsernameSerializer):
         integration_instance = attrs.get("integration_instance") or getattr(self.instance, "integration_instance", None)
         if integration_instance is None:
             raise serializers.ValidationError({"integration_instance": "Integration instance is required"})
-        if (
-            not integration_instance.enabled
-            or integration_instance.status != IntegrationInstanceStatusChoices.READY
-            or integration_instance.capability_status.get("im_notification") != IntegrationInstanceStatusChoices.READY
-        ):
+        changes_instance = bool(
+            self.instance
+            and "integration_instance" in attrs
+            and integration_instance.id != self.instance.integration_instance_id
+        )
+        if (self.instance is None or changes_instance) and not get_integration_capability_availability(
+            integration_instance, "im_notification"
+        )["available"]:
             raise serializers.ValidationError({"integration_instance": "Integration instance im_notification capability is not ready"})
 
         runtime_service = RuntimeApplicationService()

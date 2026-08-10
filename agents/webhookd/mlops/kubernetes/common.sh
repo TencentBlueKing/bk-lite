@@ -96,6 +96,42 @@ json_error() {
     fi
 }
 
+# 校验单行 OCI/Docker 风格容器镜像引用。
+validate_container_image_reference() {
+    local reference="$1"
+    local domain_component='([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9])'
+    local domain="${domain_component}(\\.${domain_component})*"
+    local ipv6_address='\[[A-Fa-f0-9:]+\]'
+    local registry="(${domain}|${ipv6_address})(:[0-9]+)?"
+    local path_component='[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*'
+    local tag='[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}'
+    local digest_algorithm='[A-Za-z][A-Za-z0-9]*([+._-][A-Za-z][A-Za-z0-9]*)*'
+    local digest="${digest_algorithm}:[0-9A-Fa-f]{32,}"
+    local pattern="^((${registry})/)?${path_component}(/${path_component})*(:${tag})?(@${digest})?$"
+
+    [ -n "$reference" ] && [ "${#reference}" -le 255 ] && [[ "$reference" =~ $pattern ]]
+}
+
+# 在 Bash 命令替换前检查 JSON 字符串中的控制字符，避免边界字符被静默归一化。
+validate_container_image_json_boundary() {
+    local json_data="$1"
+
+    printf '%s' "$json_data" | jq -e -s '
+        length == 1 and (
+            .[0] |
+            if type != "object" then
+                false
+            elif .train_image == null then
+                true
+            elif (.train_image | type) != "string" then
+                false
+            else
+                (.train_image | explode | all(. >= 32 and . != 127))
+            end
+        )
+    ' >/dev/null 2>&1
+}
+
 # 检查 Kubernetes 集群是否有 GPU 节点
 check_gpu_available_k8s() {
     local gpu_count=$(kubectl get nodes -o json 2>/dev/null | \

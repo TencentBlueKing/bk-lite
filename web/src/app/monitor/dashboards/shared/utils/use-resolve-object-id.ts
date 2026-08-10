@@ -3,9 +3,9 @@
 import { useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
-import { PROFESSIONAL_DASHBOARDS } from '../../registry';
+import { findProfessionalDashboardMetaByKey } from '../../metadata';
 import { normalizeDashboardKey } from './index';
-import { buildInstanceDisplayName } from './instance';
+import { buildInstanceDisplayName, encodeInstanceIdValuesParam } from './instance';
 
 async function resolveFirstInstance(
   getInstanceList: ReturnType<typeof useMonitorApi>['getInstanceList'],
@@ -32,7 +32,7 @@ function applyInstanceParams(
 ) {
   params.set('instance_id', instance.value);
   params.set('instance_name', instance.label);
-  params.set('instance_id_values', instance.idValues.join(','));
+  params.set('instance_id_values', encodeInstanceIdValuesParam(instance.idValues));
 }
 
 export function useResolveObjectId(objectKey: string) {
@@ -48,14 +48,7 @@ export function useResolveObjectId(objectKey: string) {
     if (resolving.current || !objectKey) return;
 
     if (!monitorObjId) {
-      const normalizedKey = normalizeDashboardKey(objectKey);
-      const registryItem = PROFESSIONAL_DASHBOARDS.find(
-        (item) =>
-          [item.key, ...(item.aliases || []), item.objectName, item.objectDisplayName]
-            .filter(Boolean)
-            .map((value) => normalizeDashboardKey(value))
-            .includes(normalizedKey)
-      );
+      const registryItem = findProfessionalDashboardMetaByKey(objectKey);
       if (!registryItem) return;
       const registryCandidates = [registryItem.key, ...(registryItem.aliases || []), registryItem.objectName, registryItem.objectDisplayName]
         .filter(Boolean)

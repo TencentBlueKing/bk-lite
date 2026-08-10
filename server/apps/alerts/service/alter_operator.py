@@ -3,20 +3,15 @@
 # @Time: 2025/5/28 16:31
 # @Author: windyzhao
 
-from django.utils import timezone
 from django.db import transaction
+from django.utils import timezone
 
+from apps.alerts.constants.constants import AlertOperate, AlertStatus, LogAction, LogTargetType
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Alert
-from apps.alerts.utils.operator_log import record_operator_log
-from apps.alerts.constants.constants import (
-    AlertStatus,
-    AlertOperate,
-    LogTargetType,
-    LogAction,
-)
 from apps.alerts.service.base import get_default_notify_params
-from apps.alerts.utils.operator_scope import validate_alert_assignees
+from apps.alerts.utils.operator_log import record_operator_log
+from apps.alerts.utils.operator_scope import validate_alert_assignees, validate_usernames_in_groups
 from apps.core.logger import alert_logger as logger
 
 
@@ -188,7 +183,17 @@ class AlertOperator(object):
             if not assignee:
                 return {"result": False, "message": "请指定处理人", "data": {}}
 
-            assignee, validation_message = validate_alert_assignees(alert, assignee)
+            assignee_scope_group_ids = data.get("assignee_scope_group_ids")
+            if assignee_scope_group_ids is None:
+                assignee, validation_message = validate_alert_assignees(
+                    alert, assignee
+                )
+            else:
+                assignee, validation_message = validate_usernames_in_groups(
+                    assignee,
+                    set(assignee_scope_group_ids),
+                    "分派目标",
+                )
             if validation_message:
                 return {"result": False, "message": validation_message, "data": {}}
 
@@ -252,7 +257,9 @@ class AlertOperator(object):
                     "alert_id": alert_id,
                     "status": alert.status,
                     "operator": alert.operator,
-                    "updated_at": alert.updated_at.isoformat(),
+                    # TODO(timezone): 2026-07-27 时区统一改动——从带偏移 ISO 改为用户时区裸串。
+                    # 若下游有依赖 ISO 格式的解析逻辑（如导出/第三方集成），需确认兼容性。
+                    "updated_at": timezone.localtime(alert.updated_at).strftime("%Y-%m-%d %H:%M:%S"),
                 },
             }
 
@@ -327,7 +334,7 @@ class AlertOperator(object):
                 "data": {
                     "alert_id": alert_id,
                     "status": alert.status,
-                    "updated_at": alert.updated_at.isoformat(),
+                    "updated_at": timezone.localtime(alert.updated_at).strftime("%Y-%m-%d %H:%M:%S"),
                 },
             }
 
@@ -428,7 +435,7 @@ class AlertOperator(object):
                     "status": alert.status,
                     "old_operator": old_assignee,
                     "new_operator": alert.operator,
-                    "updated_at": alert.updated_at.isoformat(),
+                    "updated_at": timezone.localtime(alert.updated_at).strftime("%Y-%m-%d %H:%M:%S"),
                 },
             }
 
@@ -503,7 +510,7 @@ class AlertOperator(object):
                     "alert_id": alert_id,
                     "status": alert.status,
                     "close_reason": close_reason,
-                    "updated_at": alert.updated_at.isoformat(),
+                    "updated_at": timezone.localtime(alert.updated_at).strftime("%Y-%m-%d %H:%M:%S"),
                 },
             }
 
@@ -577,7 +584,7 @@ class AlertOperator(object):
                     "alert_id": alert_id,
                     "status": alert.status,
                     "resolve_note": resolve_note,
-                    "updated_at": alert.updated_at.isoformat(),
+                    "updated_at": timezone.localtime(alert.updated_at).strftime("%Y-%m-%d %H:%M:%S"),
                 },
             }
 

@@ -1,6 +1,6 @@
 Etcd:
   name: Etcd
-  desc: Etcd
+  desc: Collects key etcd metrics from its Prometheus endpoint through the Telegraf Pull collector, covering cluster health, storage capacity, disk latency, consensus proposals, request traffic, and listener compaction.
 monitor_object:
   Etcd: Etcd
 monitor_object_type:

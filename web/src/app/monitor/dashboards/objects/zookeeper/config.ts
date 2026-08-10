@@ -16,7 +16,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'Zookeeper 版本信息。',
       unit: 'none',
       query: 'zookeeper_version{__$labels__}',
-      color: '#9aa9bf'
+      color: '#8a5cff'
     },
     {
       name: 'zookeeper_num_alive_connections',
@@ -28,7 +28,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       name: 'zookeeper_outstanding_requests',
-      display_name: 'Outstanding 请求',
+      display_name: '未完成请求',
       description: 'Zookeeper 当前未完成请求数量。',
       unit: 'counts',
       query: 'zookeeper_outstanding_requests{__$labels__}',
@@ -64,7 +64,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '由已打开文件描述符数与最大文件描述符数推导出的使用率（已用 / 上限）。',
       unit: 'percent',
       query: 'clamp_max(100 * (zookeeper_open_file_descriptor_count{__$labels__} / clamp_min(zookeeper_max_file_descriptor_count{__$labels__}, 1)), 100)',
-      color: '#faad14'
+      color: '#8a5cff'
     },
     // ── Diagnostics (phase 2) ──
     {
@@ -113,7 +113,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'Zookeeper 最大文件描述符数量。',
       unit: 'counts',
       query: 'zookeeper_max_file_descriptor_count{__$labels__}',
-      color: '#9aa9bf'
+      color: '#8a5cff'
     },
     {
       name: 'zookeeper_file_descriptor_free',
@@ -136,7 +136,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '包接收速率',
       description: 'Zookeeper 网络包接收速率。',
       unit: 'cps',
-      query: 'rate(zookeeper_packets_received{__$labels__}[5m])',
+      query: 'rate(zookeeper_packets_received{__$labels__}[__$window__])',
       color: '#2f6bff'
     },
     {
@@ -144,7 +144,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '包发送速率',
       description: 'Zookeeper 网络包发送速率。',
       unit: 'cps',
-      query: 'rate(zookeeper_packets_sent{__$labels__}[5m])',
+      query: 'rate(zookeeper_packets_sent{__$labels__}[__$window__])',
       color: '#27c274'
     },
     {
@@ -152,7 +152,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'Fsync 超阈速率',
       description: 'Zookeeper fsync 超过阈值的速率。',
       unit: 'cps',
-      query: 'rate(zookeeper_fsync_threshold_exceed_count{__$labels__}[5m])',
+      query: 'rate(zookeeper_fsync_threshold_exceed_count{__$labels__}[__$window__])',
       color: '#ff4d4f'
     }
   ],
@@ -163,16 +163,16 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#2f6bff',
       icon: 'node',
       guide: [{ label: '存活连接', detail: '当前与 Zookeeper 保持连接的客户端数量。' }],
-      footer: [{ label: 'Outstanding', metric: 'zookeeper_outstanding_requests', unit: 'counts' }]
+      footer: [{ label: '未完成请求', metric: 'zookeeper_outstanding_requests', unit: 'counts' }]
     },
     {
-      title: 'Outstanding 请求',
+      title: '未完成请求',
       metric: 'zookeeper_outstanding_requests',
       color: '#ff8a1f',
       icon: 'api',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: 'Outstanding', detail: '已接收但未处理完的请求数(计数),常态接近 0;持续抬升说明处理跟不上,排查磁盘 / 选主延迟。' }],
+      guide: [{ label: '未完成请求', detail: '已接收但未处理完的请求数(计数),常态接近 0;持续抬升说明处理跟不上,排查磁盘 / 选主延迟。' }],
       footer: [{ label: '平均延迟', metric: 'zookeeper_avg_latency', unit: 'ms' }]
     },
     {
@@ -200,7 +200,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: 'FD 使用率',
       metric: 'zookeeper_fd_used_pct',
       unit: 'percent',
-      color: '#faad14',
+      color: '#8a5cff',
       icon: 'database',
       compare: true,
       compareFavorableDirection: 'down',
@@ -243,12 +243,12 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: 'Outstanding 请求趋势',
+      title: '未完成请求趋势',
       subtitle: '未完成请求数变化',
       metric: 'zookeeper_outstanding_requests',
-      guide: [{ label: 'Outstanding 趋势', detail: '未完成请求数历史走势，持续升高说明服务端处理能力跟不上请求速率。' }],
+      guide: [{ label: '未完成请求趋势', detail: '未完成请求数历史走势，持续升高说明服务端处理能力跟不上请求速率。' }],
       series: [
-        { metric: 'zookeeper_outstanding_requests', label: 'Outstanding', color: '#ff8a1f', unit: 'counts' }
+        { metric: 'zookeeper_outstanding_requests', label: '未完成请求', color: '#ff8a1f', unit: 'counts' }
       ]
     },
     {
@@ -284,7 +284,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [{ label: 'Fsync 超阈', detail: 'fsync 超过阈值的累计次数与当前速率。通常为 0；非零时表示磁盘同步存在延迟问题。' }],
       items: [
         { label: '超阈次数', metric: 'zookeeper_fsync_threshold_exceed_count', color: '#ff4d4f', unit: 'counts' },
-        { label: '超阈速率', metric: 'zookeeper_fsync_threshold_exceed_rate', color: '#faad14', unit: 'cps' }
+        { label: '超阈速率', metric: 'zookeeper_fsync_threshold_exceed_rate', color: '#8a5cff', unit: 'cps' }
       ]
     }
   ],

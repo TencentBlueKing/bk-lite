@@ -2,6 +2,7 @@ import re
 from typing import Dict, Tuple
 
 from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import SystemSettings
 
 
@@ -73,7 +74,7 @@ class PasswordValidator:
             }
 
     @classmethod
-    def validate_password(cls, password: str) -> Tuple[bool, str]:
+    def validate_password(cls, password: str, locale: str = "zh-Hans") -> Tuple[bool, str]:
         """
         校验密码复杂度
 
@@ -83,11 +84,15 @@ class PasswordValidator:
         Returns:
             tuple: (是否通过, 错误信息)
         """
-        if not password:
-            return False, "密码不能为空"
+        return cls.validate_password_with_config(password, cls.get_password_settings(), locale=locale)
 
-        # 获取密码策略配置
-        config = cls.get_password_settings()
+    @classmethod
+    def validate_password_with_config(cls, password: str, config: Dict, locale: str = "zh-Hans") -> Tuple[bool, str]:
+        """依据给定策略校验密码，供保存密码策略前的候选密码校验使用。"""
+        loader = LanguageLoader(app="system_mgmt", default_lang=locale or "zh-Hans")
+        if not password:
+            return False, loader.get("error.password_required", "密码不能为空")
+
         min_length = config["min_length"]
         max_length = config["max_length"]
         required_types = config["required_char_types"]
@@ -95,10 +100,10 @@ class PasswordValidator:
         # 1. 检查密码长度
         password_length = len(password)
         if password_length < min_length:
-            return False, f"密码长度不能少于{min_length}个字符"
+            return False, loader.get("error.password_too_short", "密码长度不能少于{min_length}个字符").format(min_length=min_length)
 
         if password_length > max_length:
-            return False, f"密码长度不能超过{max_length}个字符"
+            return False, loader.get("error.password_too_long", "密码长度不能超过{max_length}个字符").format(max_length=max_length)
 
         # 2. 检查必须包含的字符类型
         missing_types = []
@@ -110,14 +115,14 @@ class PasswordValidator:
 
             pattern = cls.CHAR_TYPES[char_type]
             if not re.search(pattern, password):
-                missing_types.append(cls.CHAR_TYPE_NAMES.get(char_type, char_type))
+                missing_types.append(loader.get(f"password.char_type_{char_type}", cls.CHAR_TYPE_NAMES.get(char_type, char_type)))
 
         if missing_types:
-            return False, f"密码必须包含：{', '.join(missing_types)}"
+            return False, loader.get("error.password_missing_char_types", "密码必须包含：{types}").format(types=", ".join(missing_types))
 
         # 3. 检查是否包含非法字符（只允许ASCII可打印字符）
         if not all(32 <= ord(char) <= 126 for char in password):
-            return False, "密码包含非法字符，只允许使用ASCII可打印字符"
+            return False, loader.get("error.password_invalid_characters", "密码包含非法字符，只允许使用ASCII可打印字符")
 
         return True, ""
 

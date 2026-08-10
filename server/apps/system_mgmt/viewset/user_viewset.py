@@ -1,4 +1,5 @@
 import re
+import secrets
 import uuid
 
 from django.contrib.auth.hashers import make_password
@@ -21,7 +22,7 @@ from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_cache import clear_user_permission_cache, clear_users_permission_cache
 from apps.rpc.cmdb import CMDB
-from apps.system_mgmt.models import Group, Role, User, UserRule
+from apps.system_mgmt.models import Channel, ChannelChoices, Group, Role, SystemSettings, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.utils.group_filter_mixin import (
     filter_queryset_by_group_ids,
@@ -31,8 +32,25 @@ from apps.system_mgmt.utils.group_filter_mixin import (
 )
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.password_validator import PasswordValidator
+from apps.system_mgmt.utils.password_vault import decrypt_from_vault
 from apps.system_mgmt.utils.user_status import is_user_locked
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
+
+
+class InitialPasswordDeliveryError(Exception):
+    """初始密码邮件未投递，创建事务必须回滚。"""
+
+
+def _generate_random_initial_password(locale="zh-Hans"):
+    """生成满足当前密码策略的随机初始密码。"""
+    policy = PasswordValidator.get_password_settings()
+    token_bytes = max(12, (policy["min_length"] * 3 + 3) // 4)
+    for _ in range(20):
+        candidate = secrets.token_urlsafe(token_bytes)
+        is_valid, _ = PasswordValidator.validate_password_with_config(candidate, policy, locale=locale)
+        if is_valid:
+            return candidate
+    raise ValueError(LanguageLoader(app="system_mgmt", default_lang=locale).get("error.initial_password_generation_failed"))
 
 
 def _normalize_group_ids(groups):
@@ -62,6 +80,25 @@ def _validate_selected_groups(groups, loader):
     if not any(not group.is_virtual for group in group_map.values()):
         return loader.get("error.normal_group_required", "At least one normal group must be selected")
 
+    return None
+
+
+def _get_synced_group_ids(groups):
+    group_ids, _ = _normalize_group_ids(groups)
+    return set(Group.objects.filter(id__in=group_ids, sync_source__isnull=False).values_list("id", flat=True))
+
+
+def _validate_local_user_group_changes(groups, existing_groups=None, loader=None):
+    loader = loader or LanguageLoader(app="system_mgmt", default_lang="en")
+    selected_synced_group_ids = _get_synced_group_ids(groups)
+    if existing_groups is None:
+        if selected_synced_group_ids:
+            return loader.get("error.synced_groups_local_users_forbidden")
+        return None
+
+    existing_synced_group_ids = _get_synced_group_ids(existing_groups)
+    if selected_synced_group_ids != existing_synced_group_ids:
+        return loader.get("error.synced_group_membership_immutable")
     return None
 
 
@@ -140,27 +177,27 @@ class UserViewSet(ViewSetUtils):
 
     def list(self, request, *args, **kwargs):
         """禁用内置 list 接口 - 使用 search_user_list action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     def retrieve(self, request, *args, **kwargs):
         """禁用内置 retrieve 接口 - 使用 get_user_detail action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     def create(self, request, *args, **kwargs):
         """禁用内置 create 接口 - 使用 create_user action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     def update(self, request, *args, **kwargs):
         """禁用内置 update 接口 - 使用 update_user action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     def partial_update(self, request, *args, **kwargs):
         """禁用内置 partial_update 接口 - 使用 update_user action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     def destroy(self, request, *args, **kwargs):
         """禁用内置 destroy 接口 - 使用 delete_user action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     @staticmethod
     def _is_valid_phone(phone):
@@ -346,6 +383,9 @@ class UserViewSet(ViewSetUtils):
         if group_validation_error:
             return JsonResponse({"result": False, "message": group_validation_error})
         groups, _ = _normalize_group_ids(groups)
+        synced_group_error = _validate_local_user_group_changes(groups, loader=loader)
+        if synced_group_error:
+            return JsonResponse({"result": False, "message": synced_group_error})
         group_scope_error = self._validate_group_scope_for_request(request, groups, loader)
         if group_scope_error:
             return group_scope_error
@@ -359,31 +399,100 @@ class UserViewSet(ViewSetUtils):
                 message = loader.get("error.invalid_role_ids", "Invalid role IDs: {ids}").format(ids=list(invalid_role_ids))
                 return JsonResponse({"result": False, "message": message})
         if not self._is_valid_phone(kwargs.get("phone")):
-            return JsonResponse({"result": False, "message": "手机号格式不正确"})
+            return JsonResponse({"result": False, "message": loader.get("error.invalid_phone")})
         is_superuser = kwargs.pop("is_superuser", False)
         if is_superuser:
             roles = [Role.objects.get(name="admin", app="").id]
-        with transaction.atomic():
-            User.objects.create(
-                user_id=str(uuid.uuid4()),
-                username=kwargs["username"],
-                display_name=kwargs["lastName"],
-                email=kwargs["email"],
-                phone=kwargs.get("phone"),
-                disabled=False,
-                locale=kwargs["locale"],
-                timezone=kwargs["timezone"],
-                group_list=groups,
-                role_list=roles,
-                temporary_pwd=kwargs.get("temporary_pwd", False),
-                password=make_password(None),
-            )
-            if rules:
-                add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
-                UserRule.objects.bulk_create(add_rule, batch_size=100)
 
-            # 记录操作日志
-            log_operation(request, "create", "system-manager", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
+        initial_password_settings = dict(
+            SystemSettings.objects.filter(
+                key__in=[
+                    "user_create_initial_password_hash",
+                    "user_create_initial_password_encrypted",
+                    "user_create_initial_password_mode",
+                    "user_create_initial_password_random_email_channel_id",
+                ]
+            ).values_list("key", "value")
+        )
+        initial_password_mode = initial_password_settings.get("user_create_initial_password_mode", "none")
+        initial_password_hash = initial_password_settings.get("user_create_initial_password_hash", "")
+        initial_password_encrypted = initial_password_settings.get("user_create_initial_password_encrypted", "")
+        random_email_channel_id = initial_password_settings.get("user_create_initial_password_random_email_channel_id", "")
+
+        initial_password_active = initial_password_mode in ("fixed", "random")
+        if initial_password_mode == "fixed" and not initial_password_hash:
+            return JsonResponse({"result": False, "message": loader.get("error.initial_password_not_configured")}, status=400)
+        if initial_password_mode == "fixed" and not initial_password_encrypted:
+            return JsonResponse({"result": False, "message": loader.get("error.initial_password_not_configured")}, status=400)
+        if initial_password_active:
+            try:
+                email_channel = Channel.objects.get(id=int(random_email_channel_id))
+            except (Channel.DoesNotExist, ValueError, TypeError):
+                return JsonResponse({"result": False, "message": loader.get("error.initial_password_email_channel_unavailable")}, status=400)
+            if email_channel.channel_type != ChannelChoices.EMAIL:
+                return JsonResponse({"result": False, "message": loader.get("error.initial_password_email_channel_invalid")}, status=400)
+            if not kwargs.get("email"):
+                return JsonResponse({"result": False, "message": loader.get("error.initial_password_email_required")}, status=400)
+
+        # 准备本地用户初始密码:三种模式与用户同步处的 random/uniform/none 对齐。
+        if initial_password_mode == "random":
+            try:
+                raw_password = _generate_random_initial_password(locale)
+            except ValueError as error:
+                return JsonResponse({"result": False, "message": str(error)}, status=400)
+            initial_password_value = make_password(raw_password)
+            temporary_pwd = True
+        elif initial_password_mode == "fixed":
+            raw_password = None
+            initial_password_value = initial_password_hash
+            temporary_pwd = True
+        else:
+            # mode=none
+            raw_password = None
+            initial_password_value = make_password(None)
+            temporary_pwd = False
+
+        email_password = raw_password
+        if initial_password_mode == "fixed":
+            try:
+                email_password = decrypt_from_vault(initial_password_encrypted)
+            except ValueError:
+                return JsonResponse({"result": False, "message": loader.get("error.initial_password_decrypt_failed")}, status=400)
+
+        try:
+            with transaction.atomic():
+                user = User.objects.create(
+                    user_id=str(uuid.uuid4()),
+                    username=kwargs["username"],
+                    display_name=kwargs["lastName"],
+                    email=kwargs["email"],
+                    phone=kwargs.get("phone"),
+                    disabled=False,
+                    locale=kwargs["locale"],
+                    timezone=kwargs["timezone"],
+                    group_list=groups,
+                    role_list=roles,
+                    temporary_pwd=temporary_pwd,
+                    password=initial_password_value,
+                )
+                if rules:
+                    add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
+                    UserRule.objects.bulk_create(add_rule, batch_size=100)
+
+                if initial_password_active:
+                    from apps.system_mgmt.services.password_init_email import send_local_user_initial_password_email
+
+                    email_result = send_local_user_initial_password_email(user, email_password, str(email_channel.id))
+                    if not email_result.get("result"):
+                        raise InitialPasswordDeliveryError(email_result.get("message") or "邮件发送失败")
+
+                # 记录操作日志
+                log_operation(request, "create", "system-manager", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
+        except InitialPasswordDeliveryError as error:
+            return JsonResponse({"result": False, "message": str(error)}, status=400)
+
+        if initial_password_active:
+            return JsonResponse({"result": True, "data": {"email_sent": True}})
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -395,10 +504,11 @@ class UserViewSet(ViewSetUtils):
 
         # 校验密码是否为空
         if not password:
-            return JsonResponse({"result": False, "message": "密码不能为空"}, status=400)
+            return JsonResponse({"result": False, "message": self._get_loader(request).get("error.password_required")}, status=400)
 
         # 校验密码复杂度
-        is_valid, error_message = PasswordValidator.validate_password(password)
+        locale = getattr(request.user, "locale", "en") if hasattr(request, "user") else "en"
+        is_valid, error_message = PasswordValidator.validate_password(password, locale=locale)
         if not is_valid:
             return JsonResponse({"result": False, "message": error_message}, status=400)
 
@@ -434,7 +544,7 @@ class UserViewSet(ViewSetUtils):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": "Synced users cannot be deleted directly. Please delete them from the user sync source.",
+                    "message": self._get_loader(request).get("error.synced_users_delete_forbidden"),
                 }
             )
 
@@ -443,24 +553,22 @@ class UserViewSet(ViewSetUtils):
         # 收集需要删除的用户信息（id, username和domain）
         user_info_list = list(users.values("id", "username", "domain"))
 
-        # 直接构造用户菜单缓存键删除（缓存键格式为 menus-user:{user_id}）
         menu_cache_keys = [f"menus-user:{user['id']}" for user in user_info_list]
-        if menu_cache_keys:
-            cache.delete_many(menu_cache_keys)
+        with transaction.atomic():
+            # 批量删除用户相关的 UserRule（避免 N+1）
+            if user_info_list:
+                user_rule_filter = Q()
+                for user_info in user_info_list:
+                    user_rule_filter |= Q(username=user_info["username"], domain=user_info["domain"])
+                UserRule.objects.filter(user_rule_filter).delete()
 
-        # 批量删除用户相关的UserRule（避免N+1：使用Q对象组合条件）
-        if user_info_list:
-            user_rule_filter = Q()
-            for user_info in user_info_list:
-                user_rule_filter |= Q(username=user_info["username"], domain=user_info["domain"])
-            UserRule.objects.filter(user_rule_filter).delete()
+            users.delete()
 
-        # 删除用户
-        users.delete()
-
-        # 清除权限缓存（批量清除）
-        if user_info_list:
-            clear_users_permission_cache(user_info_list)
+            # 独立权限代际不会随 User 删除，必须与删除事务一并推进。
+            if user_info_list:
+                clear_users_permission_cache(user_info_list)
+            if menu_cache_keys:
+                transaction.on_commit(lambda: cache.delete_many(menu_cache_keys), robust=True)
 
         # 记录操作日志
         log_operation(request, "delete", "system-manager", f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)")
@@ -473,15 +581,18 @@ class UserViewSet(ViewSetUtils):
         action_name = request.data.get("action")
 
         if not isinstance(user_ids, list) or not user_ids:
-            return JsonResponse({"result": False, "message": "user_ids must be a non-empty list"}, status=400)
+            return JsonResponse({"result": False, "message": self._get_loader(request).get("error.user_ids_list_required")}, status=400)
 
         if action_name not in {"enable", "disable", "unlock"}:
-            return JsonResponse({"result": False, "message": "action must be one of: enable, disable, unlock"}, status=400)
+            return JsonResponse({"result": False, "message": self._get_loader(request).get("error.invalid_user_status_action")}, status=400)
 
         normalized_user_ids, invalid_user_ids = self._normalize_user_ids(user_ids)
         if invalid_user_ids:
             return JsonResponse(
-                {"result": False, "message": f"Invalid user IDs: {invalid_user_ids}"},
+                {
+                    "result": False,
+                    "message": self._get_loader(request).get("error.invalid_user_ids").format(ids=invalid_user_ids),
+                },
                 status=400,
             )
 
@@ -490,7 +601,6 @@ class UserViewSet(ViewSetUtils):
         user_map = {user.id: user for user in users}
         success_ids = []
         skipped = []
-        affected_user_info = []
 
         with transaction.atomic():
             for user_id in normalized_user_ids:
@@ -523,9 +633,7 @@ class UserViewSet(ViewSetUtils):
                     update_fields = ["account_locked_until", "password_error_count"]
 
                 user.save(update_fields=update_fields)
-                cache.delete(f"menus-user:{user.id}")
-                clear_user_permission_cache(user.username, user.domain)
-                affected_user_info.append({"username": user.username, "domain": user.domain})
+                transaction.on_commit(lambda user_id=user.id: cache.delete(f"menus-user:{user_id}"), robust=True)
                 success_ids.append(user.id)
 
         if success_ids:
@@ -564,19 +672,24 @@ class UserViewSet(ViewSetUtils):
         if not is_valid:
             return error_response
 
-        groups = params.get("groups", [])
+        is_synced_user = target_user.sync_source_id is not None
+        groups = target_user.group_list if is_synced_user else params.get("groups", [])
         group_validation_error = _validate_selected_groups(groups, loader)
         if group_validation_error:
             return JsonResponse({"result": False, "message": group_validation_error})
         groups, _ = _normalize_group_ids(groups)
+        if not is_synced_user:
+            synced_group_error = _validate_local_user_group_changes(groups, target_user.group_list, loader=loader)
+            if synced_group_error:
+                return JsonResponse({"result": False, "message": synced_group_error})
         group_scope_error = self._validate_group_scope_for_request(request, groups, loader)
         if group_scope_error:
             return group_scope_error
         params["groups"] = groups
         is_superuser = params.pop("is_superuser", False)
         admin_role_id = Role.objects.get(name="admin", app="").id
-        if not self._is_valid_phone(params.get("phone")):
-            return JsonResponse({"result": False, "message": "手机号格式不正确"})
+        if not is_synced_user and not self._is_valid_phone(params.get("phone")):
+            return JsonResponse({"result": False, "message": loader.get("error.invalid_phone")})
         if is_superuser:
             params["roles"] = [admin_role_id]
         else:
@@ -584,22 +697,33 @@ class UserViewSet(ViewSetUtils):
             params["roles"] = [role_id for role_id in role_ids if role_id != admin_role_id]
         with transaction.atomic():
             # 删除旧的规则
-            UserRule.objects.filter(username=params["username"]).delete()
+            UserRule.objects.filter(
+                username=target_user.username,
+                domain=target_user.domain,
+            ).delete()
             # 更新用户信息
             if rules:
-                add_rule = [UserRule(username=params["username"], group_rule_id=i) for i in rules]
+                add_rule = [
+                    UserRule(
+                        username=target_user.username,
+                        domain=target_user.domain,
+                        group_rule_id=i,
+                    )
+                    for i in rules
+                ]
                 UserRule.objects.bulk_create(add_rule, batch_size=100)
             update_fields = {
-                "display_name": params.get("lastName"),
                 "locale": params.get("locale"),
                 "timezone": params.get("timezone"),
-                "group_list": params.get("groups"),
                 "role_list": params.get("roles"),
             }
-            if "email" in params:
-                update_fields["email"] = params["email"]
-            if "phone" in params:
-                update_fields["phone"] = params["phone"]
+            if not is_synced_user:
+                update_fields["display_name"] = params.get("lastName")
+                update_fields["group_list"] = params.get("groups")
+                if "email" in params:
+                    update_fields["email"] = params["email"]
+                if "phone" in params:
+                    update_fields["phone"] = params["phone"]
 
             User.objects.filter(id=pk).update(**update_fields)
             # 清除用户菜单缓存（缓存键格式为 menus-user:{user_id}）
@@ -607,13 +731,15 @@ class UserViewSet(ViewSetUtils):
 
             # 同步用户数据到 CMDB
             try:
-                CMDB().sync_display_fields(users=[{"id": pk, "username": params["username"], "display_name": params.get("lastName")}])
+                CMDB().sync_display_fields(
+                    users=[{"id": pk, "username": params["username"], "display_name": update_fields.get("display_name", target_user.display_name)}]
+                )
             except Exception as e:
                 logger.exception(e)
             # 记录操作日志
             log_operation(request, "update", "system-manager", f"编辑用户: {params['username']}")
 
             # 清除权限缓存
-            clear_user_permission_cache(params["username"], params.get("domain", "domain.com"))
+            clear_user_permission_cache(target_user.username, target_user.domain)
 
         return JsonResponse({"result": True})

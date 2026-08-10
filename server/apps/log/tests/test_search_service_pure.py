@@ -52,6 +52,18 @@ def test_append_filter_wraps_base_query():
     assert SearchService._append_filter("level:error", "host:*") == "(level:error) AND host:*"
 
 
+def test_build_storage_query_maps_logical_message_added_by_log_group(mocker):
+    mocker.patch(
+        "apps.log.services.search.LogGroupQueryBuilder.build_query_with_groups",
+        return_value=('message:"failed" AND host:*', [{"id": "g1"}]),
+    )
+
+    query, group_info = SearchService._build_storage_query("*", ["g1"])
+
+    assert query == '_msg:"failed" AND host:*'
+    assert group_info == [{"id": "g1"}]
+
+
 # ----------------------- _normalize_count -----------------------
 
 
@@ -101,6 +113,16 @@ def test_field_values_forwards_final_query_to_api(mocker):
     vm.field_values.assert_called_once_with("2024-01-01", "2024-01-02", "host", 20, query="FINAL_Q")
 
 
+def test_field_values_maps_logical_message_to_storage_field(mocker):
+    mocker.patch("apps.log.services.search.LogGroupQueryBuilder.build_query_with_groups", return_value=("FINAL_Q", []))
+    vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
+    vm.field_values.return_value = {"values": []}
+
+    SearchService.field_values("s", "e", "message", query="q")
+
+    vm.field_values.assert_called_once_with("s", "e", "_msg", 100, query="FINAL_Q")
+
+
 def test_field_names_forwards_to_field_values(mocker):
     fv = mocker.patch("apps.log.services.search.SearchService.field_values", return_value={"v": 1})
     out = SearchService.field_names("s", "e", "host", limit=5, query="q", log_groups=["g"])
@@ -138,6 +160,14 @@ def test_all_field_names_non_dict_response_yields_empty(mocker):
     assert SearchService.all_field_names("q", "s", "e") == []
 
 
+def test_all_field_names_hides_victoria_logs_message_field(mocker):
+    mocker.patch("apps.log.services.search.LogGroupQueryBuilder.build_query_with_groups", return_value=("FQ", []))
+    vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
+    vm.all_field_names.return_value = {"values": [{"value": "_msg"}, {"value": "message"}]}
+
+    assert SearchService.all_field_names("q", "s", "e") == ["message"]
+
+
 # ----------------------- search_logs -----------------------
 
 
@@ -164,6 +194,14 @@ def test_search_logs_list_response_returned_as_is(mocker):
     assert out == [{"a": 1}]
 
 
+def test_search_logs_exposes_only_logical_message(mocker):
+    mocker.patch("apps.log.services.search.LogGroupQueryBuilder.build_query_with_groups", return_value=("FQ", []))
+    vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
+    vm.query.return_value = [{"_msg": "hello", "host": "node-1"}]
+
+    assert SearchService.search_logs("q", "s", "e") == [{"message": "hello", "host": "node-1"}]
+
+
 # ----------------------- search_hits -----------------------
 
 
@@ -177,6 +215,16 @@ def test_search_hits_attaches_group_info(mocker):
     out = SearchService.search_hits("q", "s", "e", "host", fields_limit=2, step="1m", log_groups=["g"])
     assert out["_log_group_info"] == [{"id": "g"}]
     vm.hits.assert_called_once_with("FQ", "s", "e", "host", 2, "1m")
+
+
+def test_search_hits_maps_logical_message_field(mocker):
+    mocker.patch("apps.log.services.search.LogGroupQueryBuilder.build_query_with_groups", return_value=("FQ", []))
+    vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
+    vm.hits.return_value = {"hits": []}
+
+    SearchService.search_hits("q", "s", "e", "message")
+
+    vm.hits.assert_called_once_with("FQ", "s", "e", "_msg", 5, "5m")
 
 
 # ----------------------- top_stats -----------------------

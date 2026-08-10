@@ -5,7 +5,8 @@ import React, {
   useRef,
   forwardRef,
   useImperativeHandle,
-  useEffect
+  useEffect,
+  useMemo
 } from 'react';
 import {
   Input,
@@ -16,6 +17,8 @@ import {
   Cascader,
   InputNumber,
   ColorPicker,
+  Descriptions,
+  Tag,
   theme
 } from 'antd';
 import { AggregationColor } from 'antd/es/color-picker/color';
@@ -24,7 +27,8 @@ import { useCommon } from '@/app/monitor/context/common';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
 import useApiClient from '@/utils/request';
-import { ModalRef, ListItem, CascaderItem } from '@/app/monitor/types';
+import useMonitorApi from '@/app/monitor/api';
+import { ModalRef, ListItem } from '@/app/monitor/types';
 import { MetricInfo } from '@/app/monitor/types/integration';
 import { DimensionItem, EnumItem } from '@/app/monitor/types/integration';
 import { useTranslation } from '@/utils/i18n';
@@ -56,6 +60,7 @@ const INIT_UNIT_ITEM = { name: null, id: null, color: '#000000' };
 const MetricModal = forwardRef<ModalRef, ModalProps>(
   ({ onSuccess, groupList, monitorObject, pluginId }, ref) => {
     const { post, put } = useApiClient();
+    const { getMetricsGroup } = useMonitorApi();
     const { t } = useTranslation();
     const { token } = theme.useToken();
     const presets = genPresets({
@@ -65,15 +70,23 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     });
     const formRef = useRef<FormInstance>(null);
     const commonContext = useCommon();
-    const unitList = useRef<CascaderItem[]>(
-      (commonContext?.groupedUnitList || []).map((item: any) => ({
-        ...item,
-        value: item.label
-      }))
+    const unitList = useMemo(
+      () =>
+        (commonContext?.groupedUnitList || []).map((item: any) => ({
+          ...item,
+          value: item.label
+        })),
+      [commonContext?.groupedUnitList]
     );
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [groupForm, setGroupForm] = useState<MetricInfo>({});
+    const [groupOptions, setGroupOptions] = useState<ListItem[]>(groupList);
+    const [groupLoading, setGroupLoading] = useState(false);
+    const groupSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const selectedGroupIdRef = useRef<React.Key | null>(null);
+    const allowInheritedGroupsRef = useRef(false);
+    const groupRequestGenerationRef = useRef(0);
     const [title, setTitle] = useState<string>('');
     const [type, setType] = useState<string>('');
     const [dimensions, setDimensions] = useState<DimensionItem[]>([
@@ -81,12 +94,70 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     ]);
 
     const [enumList, setEnumList] = useState<EnumItem[]>([]);
+    const isView = type === 'view';
+
+    const loadGroupOptions = async (keyword = '') => {
+      const generation = groupRequestGenerationRef.current + 1;
+      groupRequestGenerationRef.current = generation;
+      setGroupLoading(true);
+      try {
+        const page = await getMetricsGroup({
+          monitor_object_id: monitorObject,
+          monitor_plugin_id: pluginId,
+          ...(keyword.trim() ? { keyword: keyword.trim() } : {})
+        });
+        const items = page.items.filter(
+          (item) =>
+            allowInheritedGroupsRef.current ||
+            String(item.monitor_plugin) === String(pluginId)
+        ) as ListItem[];
+        const selectedGroup = groupList.find(
+          (item) => String(item.id) === String(selectedGroupIdRef.current)
+        );
+        if (groupRequestGenerationRef.current !== generation) return;
+        setGroupOptions(
+          selectedGroup && !items.some((item) => item.id === selectedGroup.id)
+            ? [...items, selectedGroup]
+            : items
+        );
+      } catch {
+        if (groupRequestGenerationRef.current === generation) {
+          setGroupOptions(groupList);
+        }
+      } finally {
+        if (groupRequestGenerationRef.current === generation) {
+          setGroupLoading(false);
+        }
+      }
+    };
+
+    const handleGroupSearch = (value: string) => {
+      if (groupSearchTimerRef.current) {
+        clearTimeout(groupSearchTimerRef.current);
+      }
+      groupSearchTimerRef.current = setTimeout(() => {
+        loadGroupOptions(value);
+      }, 300);
+    };
+
+    useEffect(() => () => {
+      if (groupSearchTimerRef.current) {
+        clearTimeout(groupSearchTimerRef.current);
+      }
+    }, []);
+
+    useEffect(() => {
+      setGroupOptions(groupList);
+    }, [groupList]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form, title }) => {
         // 开启弹窗的交互
         const formData = cloneDeep(form);
+        allowInheritedGroupsRef.current = type === 'view';
+        selectedGroupIdRef.current = (formData.metric_group as React.Key) || null;
         setGroupVisible(true);
+        void loadGroupOptions();
         setType(type);
         setTitle(title);
         try {
@@ -102,7 +173,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
             );
             if (formData.data_type === 'Number') {
               formData.unit = findCascaderPath(
-                unitList.current,
+                unitList,
                 formData.unit as string
               );
             } else {
@@ -246,25 +317,81 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
           visible={groupVisible}
           onCancel={handleCancel}
           footer={
-            <div>
-              <Button
-                className="mr-[10px]"
-                type="primary"
-                loading={confirmLoading}
-                onClick={handleSubmit}
-              >
-                {t('common.confirm')}
-              </Button>
-              <Button onClick={handleCancel}>{t('common.cancel')}</Button>
-            </div>
+            isView ? (
+              <Button onClick={handleCancel}>{t('common.close')}</Button>
+            ) : (
+              <div>
+                <Button
+                  className="mr-[10px]"
+                  type="primary"
+                  loading={confirmLoading}
+                  onClick={handleSubmit}
+                >
+                  {t('common.confirm')}
+                </Button>
+                <Button onClick={handleCancel}>{t('common.cancel')}</Button>
+              </div>
+            )
           }
         >
-          <Form
-            ref={formRef}
-            name="basic"
-            labelCol={{ span: 4 }}
-            wrapperCol={{ span: 18 }}
-          >
+          {isView ? (
+            <Descriptions bordered column={1} size="small">
+              <Descriptions.Item label={t('common.id')}>
+                {groupForm.name || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('common.name')}>
+                <div className="flex items-center gap-2">
+                  <span>{groupForm.display_name || '--'}</span>
+                  {groupForm.is_ifmib === true && (
+                    <Tag className="m-0" color="blue">
+                      IF-MIB
+                    </Tag>
+                  )}
+                </div>
+              </Descriptions.Item>
+              <Descriptions.Item label={t('monitor.integrations.metricGroup')}>
+                {groupOptions.find(
+                  (item) => String(item.id) === String(groupForm.metric_group)
+                )?.display_name || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('monitor.integrations.dimension')}>
+                {dimensions.some((item) => item.name)
+                  ? dimensions
+                    .filter((item) => item.name)
+                    .map((item) => item.name)
+                    .join(', ')
+                  : '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('monitor.integrations.formula')}>
+                <div className="whitespace-pre-wrap break-all">
+                  {groupForm.query || '--'}
+                </div>
+              </Descriptions.Item>
+              <Descriptions.Item label={t('monitor.integrations.dataType')}>
+                {groupForm.data_type || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('common.unit')}>
+                {groupForm.data_type === 'Enum'
+                  ? enumList
+                    .map((item) => `${item.id}: ${item.name}`)
+                    .join(', ') || '--'
+                  : Array.isArray(groupForm.unit)
+                    ? groupForm.unit.at(-1) || '--'
+                    : groupForm.unit || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('common.description')}>
+                <div className="whitespace-pre-wrap break-words">
+                  {groupForm.description || '--'}
+                </div>
+              </Descriptions.Item>
+            </Descriptions>
+          ) : (
+            <Form
+              ref={formRef}
+              name="basic"
+              labelCol={{ span: 4 }}
+              wrapperCol={{ span: 18 }}
+            >
             <Form.Item<MetricInfo>
               label={t('common.id')}
               name="name"
@@ -284,8 +411,14 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
               name="metric_group"
               rules={[{ required: true, message: t('common.required') }]}
             >
-              <Select showSearch optionFilterProp="children">
-                {groupList.map((item) => (
+              <Select
+                showSearch
+                filterOption={false}
+                loading={groupLoading}
+                onSearch={handleGroupSearch}
+                onDropdownVisibleChange={(open) => !open && handleGroupSearch('')}
+              >
+                {groupOptions.map((item) => (
                   <Option key={item.id} value={item.id}>
                     {item.display_name}
                   </Option>
@@ -361,7 +494,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                     name="unit"
                     rules={[{ required: true, message: t('common.required') }]}
                   >
-                    <Cascader showSearch options={unitList.current} />
+                    <Cascader showSearch options={unitList} />
                   </Form.Item>
                 ) : (
                   <Form.Item<MetricInfo>
@@ -446,7 +579,8 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
             >
               <Input.TextArea rows={4} />
             </Form.Item>
-          </Form>
+            </Form>
+          )}
         </OperateModal>
       </div>
     );

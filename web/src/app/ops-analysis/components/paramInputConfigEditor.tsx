@@ -1,7 +1,19 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Form, Input, message, Modal, Radio, Select, Space, Table } from 'antd';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Button,
+  Empty,
+  Form,
+  Input,
+  message,
+  Modal,
+  Radio,
+  Select,
+  Switch,
+  Table,
+  Tooltip,
+} from 'antd';
 import { HolderOutlined, MinusOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   DndContext,
@@ -40,9 +52,12 @@ interface StaticRow extends InputOption {
 interface ParamInputConfigEditorProps {
   open: boolean;
   value?: InputControlConfig;
-  onConfirm: (value: InputControlConfig) => void;
+  onConfirm: (value: InputControlConfig, resolvedOptions?: InputOption[]) => void;
   onCancel: () => void;
   excludeSourceIds?: number[];
+  componentSwitchEnabled?: boolean;
+  componentSwitchOwner?: { name: string; label: string };
+  editingParamName?: string;
 }
 
 interface SortableStaticRowProps {
@@ -56,11 +71,6 @@ interface SortableStaticRowProps {
 
 const newId = () => Math.random().toString(36).slice(2);
 const createRow = (): StaticRow => ({ uid: newId(), label: '', value: '' });
-const formItemLayout = {
-  labelCol: { flex: '88px' },
-  wrapperCol: { flex: 1 },
-};
-
 const SortableStaticRow: React.FC<SortableStaticRowProps> = ({
   row,
   onChange,
@@ -116,10 +126,15 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   onConfirm,
   onCancel,
   excludeSourceIds = [],
+  componentSwitchEnabled = false,
+  componentSwitchOwner,
+  editingParamName,
 }) => {
   const { t } = useTranslation();
   const { getDataSourceList, getSourceDataByApiId } = useDataSourceApi();
+  const [form] = Form.useForm();
   const [control, setControl] = useState<InputControlConfig['control']>('input');
+  const [componentSwitch, setComponentSwitch] = useState(false);
   const [sourceType, setSourceType] = useState<'static' | 'dynamic'>('static');
   const [staticRows, setStaticRows] = useState<StaticRow[]>([createRow()]);
   const [dataSourceList, setDataSourceList] = useState<DatasourceItem[]>([]);
@@ -141,16 +156,21 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     if (!open) return;
     if (!value) {
       setControl('input');
+      setComponentSwitch(false);
       setSourceType('static');
       setStaticRows([createRow()]);
       setDynamicSourceId(undefined);
       setDynamicValueField(undefined);
       setDynamicLabelField(undefined);
       setDynamicPreview([]);
+      form.resetFields(['dynamicSourceId', 'dynamicValueField', 'dynamicLabelField']);
       return;
     }
 
     setControl(value.control);
+    setComponentSwitch(
+      value.control === 'input' ? false : Boolean(value.componentSwitch),
+    );
     if (value.control === 'input') {
       setSourceType('static');
       setStaticRows([createRow()]);
@@ -158,6 +178,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       setDynamicValueField(undefined);
       setDynamicLabelField(undefined);
       setDynamicPreview([]);
+      form.resetFields(['dynamicSourceId', 'dynamicValueField', 'dynamicLabelField']);
       return;
     }
 
@@ -172,26 +193,64 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       setDynamicValueField(undefined);
       setDynamicLabelField(undefined);
       setDynamicPreview([]);
+      form.resetFields(['dynamicSourceId', 'dynamicValueField', 'dynamicLabelField']);
       return;
     }
 
+    const initialSourceId = value.optionsSource.sourceRef
+      ? undefined
+      : value.optionsSource.sourceId;
     setSourceType('dynamic');
-    setDynamicSourceId(value.optionsSource.sourceId);
+    setDynamicSourceId(initialSourceId);
     setDynamicValueField(value.optionsSource.valueField);
     setDynamicLabelField(value.optionsSource.labelField);
     setDynamicPreview([]);
-  }, [open, value]);
+    form.setFieldsValue({
+      dynamicSourceId: initialSourceId,
+      dynamicValueField: value.optionsSource.valueField,
+      dynamicLabelField: value.optionsSource.labelField,
+    });
+  }, [form, open, value]);
 
   const filteredDataSourceList = useMemo(() => {
     if (excludeSourceIds.length === 0) return dataSourceList;
     return dataSourceList.filter((item) => !excludeSourceIds.includes(item.id));
   }, [dataSourceList, excludeSourceIds]);
 
+  const selectedDataSource = useMemo(
+    () => dataSourceList.find((item) => item.id === dynamicSourceId),
+    [dataSourceList, dynamicSourceId],
+  );
+
   const availableFields = useMemo(() => {
     const first = dynamicPreview[0];
-    if (!first) return [];
+    if (!first) {
+      return (selectedDataSource?.field_schema || []).map((field) => ({
+        label: field.title ? `${field.title}（${field.key}）` : field.key,
+        value: field.key,
+      }));
+    }
     return Object.keys(first).map((key) => ({ label: key, value: key }));
-  }, [dynamicPreview]);
+  }, [dynamicPreview, selectedDataSource?.field_schema]);
+
+  const dynamicPreviewColumns = useMemo(() => {
+    const first = dynamicPreview[0];
+    const fieldKeys = first
+      ? Object.keys(first)
+      : availableFields.map((field) => String(field.value));
+    const uniqueFieldKeys = Array.from(new Set(fieldKeys));
+
+    return uniqueFieldKeys.map((fieldKey) => ({
+      title:
+        availableFields.find((field) => field.value === fieldKey)?.label ||
+        fieldKey,
+      dataIndex: fieldKey,
+      key: fieldKey,
+      width: 160,
+      ellipsis: true,
+      render: (text: unknown) => String(text ?? ''),
+    }));
+  }, [availableFields, dynamicPreview]);
 
   const staticRowIds = useMemo(
     () => staticRows.map((row) => row.uid),
@@ -233,13 +292,14 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     );
     if (resolvedSourceId) {
       setDynamicSourceId(resolvedSourceId);
+      form.setFieldValue('dynamicSourceId', resolvedSourceId);
     }
-  }, [control, dataSourceList, dynamicSourceId, open, sourceType, value]);
+  }, [control, dataSourceList, dynamicSourceId, form, open, sourceType, value]);
 
-  const fetchDynamicPreview = (sourceId: number) => {
+  const fetchDynamicPreview = useCallback((sourceId: number) => {
     const requestId = ++previewRequestIdRef.current;
     setDynamicPreviewLoading(true);
-    getSourceDataByApiId(sourceId, {})
+    return getSourceDataByApiId(sourceId, {})
       .then((response) => {
         if (requestId !== previewRequestIdRef.current) return;
         setDynamicPreview(extractDataSourceItems(response).slice(0, 5));
@@ -249,14 +309,22 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         setDynamicPreview([]);
         message.error(
           error?.response?.data?.message ||
-            error?.message ||
-            t('paramInput.dynamic.testFailed'),
+          error?.message ||
+          t('paramInput.dynamic.testFailed'),
         );
       })
       .finally(() => {
         if (requestId === previewRequestIdRef.current) setDynamicPreviewLoading(false);
       });
-  };
+  }, [getSourceDataByApiId, t]);
+
+  useEffect(() => {
+    if (!open || control === 'input' || sourceType !== 'dynamic' || !dynamicSourceId) {
+      return;
+    }
+
+    void fetchDynamicPreview(dynamicSourceId);
+  }, [control, dynamicSourceId, fetchDynamicPreview, open, sourceType]);
 
   const handleStaticChange = (
     uid: string,
@@ -267,9 +335,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       prev.map((row) =>
         row.uid === uid
           ? {
-              ...row,
-              [field]: nextValue,
-            }
+            ...row,
+            [field]: nextValue,
+          }
           : row,
       ),
     );
@@ -299,7 +367,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     });
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (control === 'input') {
       onConfirm({ control: 'input' });
       return;
@@ -321,29 +389,55 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         return;
       }
 
-      onConfirm({
-        control,
-        optionsSource: {
-          type: 'static',
-          staticItems,
+      onConfirm(
+        {
+          control,
+          componentSwitch: componentSwitch || undefined,
+          optionsSource: {
+            type: 'static',
+            staticItems,
+          },
         },
-      });
+        staticItems,
+      );
       return;
     }
 
-    if (!dynamicSourceId || !dynamicValueField || !dynamicLabelField) {
-      message.warning(t('paramInput.dynamic.incomplete'));
+    let dynamicValues: {
+      dynamicSourceId: number;
+      dynamicValueField: string;
+      dynamicLabelField: string;
+    };
+    try {
+      dynamicValues = await form.validateFields([
+        'dynamicSourceId',
+        'dynamicValueField',
+        'dynamicLabelField',
+      ]);
+    } catch {
       return;
     }
 
+    const selectedSource = dataSourceList.find(
+      (item) => item.id === dynamicValues.dynamicSourceId,
+    );
+    const sourceRef = selectedSource?.rest_api
+      ? { type: 'rest_api' as const, value: selectedSource.rest_api }
+      : undefined;
     const optionsSource: DynamicOptionsSource = {
       type: 'dynamic',
-      sourceId: dynamicSourceId,
-      valueField: dynamicValueField,
-      labelField: dynamicLabelField,
+      ...(sourceRef
+        ? { sourceRef }
+        : { sourceId: dynamicValues.dynamicSourceId }),
+      valueField: dynamicValues.dynamicValueField,
+      labelField: dynamicValues.dynamicLabelField,
     };
 
-    onConfirm({ control, optionsSource });
+    onConfirm({
+      control,
+      componentSwitch: componentSwitch || undefined,
+      optionsSource,
+    });
   };
 
   return (
@@ -361,11 +455,22 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         body: { maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' },
       }}
     >
-      <Form layout="horizontal" colon={false} {...formItemLayout}>
+      <Form form={form} layout="vertical" colon={false}>
         <Form.Item label={t('paramInput.controlType')} className="mb-3">
           <Radio.Group
             value={control}
-            onChange={(event) => setControl(event.target.value)}
+            onChange={(event) => {
+              const nextControl = event.target.value as InputControlConfig['control'];
+              setControl(nextControl);
+              if (nextControl === 'input') {
+                setComponentSwitch(false);
+                setDynamicSourceId(undefined);
+                setDynamicValueField(undefined);
+                setDynamicLabelField(undefined);
+                setDynamicPreview([]);
+                form.resetFields(['dynamicSourceId', 'dynamicValueField', 'dynamicLabelField']);
+              }
+            }}
             options={[
               { label: t('paramInput.control.input'), value: 'input' },
               { label: t('paramInput.control.select'), value: 'select' },
@@ -376,10 +481,44 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
 
         {control !== 'input' && (
           <>
+            {componentSwitchEnabled && (
+              <Form.Item
+                label={t('dashboard.componentSwitch')}
+                className="mb-3"
+              >
+                <Tooltip
+                  title={
+                    componentSwitchOwner &&
+                      componentSwitchOwner.name !== editingParamName
+                      ? t('dashboard.componentSwitchOccupied', undefined, {
+                        label: componentSwitchOwner.label,
+                      })
+                      : undefined
+                  }
+                >
+                  <Switch
+                    size='small'
+                    checked={componentSwitch}
+                    disabled={Boolean(
+                      componentSwitchOwner &&
+                      componentSwitchOwner.name !== editingParamName,
+                    )}
+                    onChange={setComponentSwitch}
+                  />
+                </Tooltip>
+              </Form.Item>
+            )}
             <Form.Item label={t('paramInput.sourceType')} className="mb-3">
               <Radio.Group
                 value={sourceType}
-                onChange={(event) => setSourceType(event.target.value)}
+                onChange={(event) => {
+                  setSourceType(event.target.value);
+                  setDynamicSourceId(undefined);
+                  setDynamicValueField(undefined);
+                  setDynamicLabelField(undefined);
+                  setDynamicPreview([]);
+                  form.resetFields(['dynamicSourceId', 'dynamicValueField', 'dynamicLabelField']);
+                }}
                 options={[
                   { label: t('paramInput.source.static'), value: 'static' },
                   { label: t('paramInput.source.dynamic'), value: 'dynamic' },
@@ -425,8 +564,18 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
               </Form.Item>
             ) : (
               <>
-                <Form.Item label={t('paramInput.dynamic.source')} className="mb-3">
-                  <Space.Compact style={{ width: '100%' }}>
+                <div className="mb-3 flex items-start gap-0">
+                  <Form.Item
+                    name="dynamicSourceId"
+                    label={t('paramInput.dynamic.source')}
+                    className="mb-0 flex-1"
+                    rules={[
+                      {
+                        required: true,
+                        message: t('paramInput.dynamic.sourcePlaceholder'),
+                      },
+                    ]}
+                  >
                     <Select
                       showSearch
                       loading={dsLoading}
@@ -444,6 +593,11 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                         setDynamicValueField(undefined);
                         setDynamicLabelField(undefined);
                         setDynamicPreview([]);
+                        form.setFieldsValue({
+                          dynamicSourceId: sourceId,
+                          dynamicValueField: undefined,
+                          dynamicLabelField: undefined,
+                        });
                       }}
                       notFoundContent={
                         dsLoading ? undefined : (
@@ -451,49 +605,72 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                         )
                       }
                     />
-                    <Button
-                      icon={<ReloadOutlined />}
-                      disabled={!dynamicSourceId}
-                      loading={dynamicPreviewLoading}
-                      title={t('paramInput.dynamic.preview')}
-                      onClick={() => {
-                        if (dynamicSourceId) fetchDynamicPreview(dynamicSourceId);
-                      }}
-                    />
-                  </Space.Compact>
-                </Form.Item>
+                  </Form.Item>
+                  <Button
+                    icon={<ReloadOutlined />}
+                    disabled={!dynamicSourceId}
+                    loading={dynamicPreviewLoading}
+                    title={t('paramInput.dynamic.preview')}
+                    className="mt-[30px]"
+                    onClick={() => {
+                      if (dynamicSourceId) void fetchDynamicPreview(dynamicSourceId);
+                    }}
+                  />
+                </div>
 
-                <Form.Item label={t('paramInput.dynamic.valueField')} className="mb-3">
+                <Form.Item
+                  name="dynamicValueField"
+                  label={t('paramInput.dynamic.valueField')}
+                  className="mb-3"
+                  rules={[
+                    {
+                      required: true,
+                      message: t('paramInput.dynamic.valueFieldPlaceholder'),
+                    },
+                  ]}
+                >
                   <Select
                     value={dynamicValueField}
                     placeholder={t('paramInput.dynamic.valueFieldPlaceholder')}
                     disabled={availableFields.length === 0}
                     options={availableFields}
-                    onChange={setDynamicValueField}
+                    onChange={(field) => {
+                      setDynamicValueField(field);
+                    }}
                   />
                 </Form.Item>
-                <Form.Item label={t('paramInput.dynamic.labelField')} className="mb-3">
+                <Form.Item
+                  name="dynamicLabelField"
+                  label={t('paramInput.dynamic.labelField')}
+                  className="mb-3"
+                  rules={[
+                    {
+                      required: true,
+                      message: t('paramInput.dynamic.labelFieldPlaceholder'),
+                    },
+                  ]}
+                >
                   <Select
                     value={dynamicLabelField}
                     placeholder={t('paramInput.dynamic.labelFieldPlaceholder')}
                     disabled={availableFields.length === 0}
                     options={availableFields}
-                    onChange={setDynamicLabelField}
+                    onChange={(field) => {
+                      setDynamicLabelField(field);
+                    }}
                   />
                 </Form.Item>
                 <Form.Item label={t('paramInput.dynamic.preview')} className="mb-0">
                   <Table
+                    bordered
                     size="small"
+                    loading={dynamicPreviewLoading}
                     pagination={false}
-                    showHeader={false}
+                    showHeader={dynamicPreviewColumns.length > 0}
                     dataSource={dynamicPreview}
                     rowKey={(_, index) => String(index)}
-                    columns={[
-                      {
-                        dataIndex: dynamicLabelField || '',
-                        render: (text) => String(text ?? ''),
-                      },
-                    ]}
+                    columns={dynamicPreviewColumns}
+                    scroll={{ x: 'max-content' }}
                   />
                 </Form.Item>
               </>

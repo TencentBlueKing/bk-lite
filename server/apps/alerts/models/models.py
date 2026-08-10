@@ -198,6 +198,13 @@ class Alert(models.Model):
     def __str__(self):
         return f"{self.alert_id} - {self.title} ({self.status})"
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.status not in AlertStatus.ACTIVATE_STATUS:
+            from apps.alerts.models.active_fingerprint import ActiveAlertFingerprint
+
+            ActiveAlertFingerprint.objects.filter(alert_id=self.pk).delete()
+
     def format_created_at(self, target_timezone=None):
         """格式化创建时间"""
         if not self.created_at:
@@ -263,7 +270,9 @@ class Incident(MaintainerInfo):
     @property
     def format_created_at(self):
         """格式化创建时间"""
-        return self.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        if not self.created_at:
+            return ""
+        return django_timezone.localtime(self.created_at).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class Level(models.Model):

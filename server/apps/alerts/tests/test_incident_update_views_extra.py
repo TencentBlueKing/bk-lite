@@ -1,6 +1,6 @@
 """事故协作更新视图：关键信息标记 / 诊断聚合 / 回复目标缺失 / 删除越权 补充覆盖。
 
-对照 spec/prd/告警中心·事故：仅负责人可标记关键信息；诊断面板按更新类型聚合关键信息；
+对照 specs/capabilities/legacy-prd-告警中心-事故.md：仅负责人可标记关键信息；诊断面板按更新类型聚合关键信息；
 回复目标不存在返回 400；仅作者可删除更新。
 """
 
@@ -194,3 +194,35 @@ def test_diagnosis_incident_not_found(superuser):
     response = IncidentUpdateViewSet.as_view({"get": "diagnosis"})(request, incident_pk="999")
     _render(response)
     assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_diagnosis_created_at_respects_activated_timezone(superuser):
+    """diagnosis 接口的 created_at 应按请求激活的用户时区输出，与序列化器路径一致。"""
+    from django.utils import timezone as dj_timezone
+    import zoneinfo
+
+    incident = _make_incident(operator=["testuser"])
+    update = IncidentUpdate.objects.create(
+        incident=incident, author="testuser", update_type=IncidentUpdateType.OBSERVATION,
+        content="假设", is_key_info=True,
+    )
+    # 固定 created_at 为 UTC 01:44:34
+    utc_dt = dj_timezone.datetime(2026, 7, 24, 1, 44, 34, tzinfo=dj_timezone.utc)
+    IncidentUpdate.objects.filter(pk=update.pk).update(created_at=utc_dt)
+
+    shanghai = zoneinfo.ZoneInfo("Asia/Shanghai")
+    dj_timezone.activate(shanghai)
+    try:
+        request = _request("get", "/incident/1/updates/diagnosis/", superuser)
+        response = IncidentUpdateViewSet.as_view({"get": "diagnosis"})(request, incident_pk=str(incident.id))
+        payload = _render(response)
+    finally:
+        dj_timezone.deactivate()
+
+    assert response.status_code == status.HTTP_200_OK
+    data = payload["data"] if "data" in payload else payload
+    result = data["current_hypothesis"]["created_at"]
+    assert result == "2026-07-24 09:44:34", (
+        f"diagnosis created_at 应输出用户时区钟面，实际: {result}"
+    )

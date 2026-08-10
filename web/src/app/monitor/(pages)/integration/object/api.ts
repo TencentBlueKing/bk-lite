@@ -10,6 +10,26 @@ import {
   MetricOption
 } from './types';
 
+export interface MetricCatalogPage<T> {
+  count: number;
+  items: T[];
+}
+
+interface ObjectMetricQuery {
+  signal?: AbortSignal;
+  page?: number;
+  keyword?: string;
+  name_in?: string;
+}
+
+const isMetricCatalogPage = <T,>(value: unknown): value is MetricCatalogPage<T> => (
+  typeof value === 'object'
+  && value !== null
+  && 'count' in value
+  && 'items' in value
+  && Array.isArray(value.items)
+);
+
 const useObjectApi = () => {
   const { get, post, patch, del } = useApiClient();
 
@@ -158,6 +178,10 @@ const useObjectApi = () => {
       level: 'base',
       is_visible: true
     };
+    postData.cleanup_policy = data.cleanup_policy || 'no_cleanup';
+    postData.cleanup_timeout_value =
+      data.cleanup_timeout_value ?? data.cleanup_timeout_days ?? 1;
+    postData.cleanup_timeout_unit = data.cleanup_timeout_unit ?? 'day';
 
     // 如果有子对象，一并传给后端
     if (data.children && data.children.length > 0) {
@@ -181,6 +205,12 @@ const useObjectApi = () => {
     if (data.type_id !== undefined) patchData.type = data.type_id;
     if (data.description !== undefined)
       patchData.description = data.description;
+    if (data.cleanup_policy !== undefined)
+      patchData.cleanup_policy = data.cleanup_policy;
+    if (data.cleanup_timeout_value !== undefined)
+      patchData.cleanup_timeout_value = data.cleanup_timeout_value;
+    if (data.cleanup_timeout_unit !== undefined)
+      patchData.cleanup_timeout_unit = data.cleanup_timeout_unit;
 
     // 传递子对象（更新名称或新增）
     if (data.children !== undefined) {
@@ -237,12 +267,23 @@ const useObjectApi = () => {
   const getObjectMetrics = async (
     objectId: number,
     pluginId: number | string,
-    signal?: AbortSignal
-  ): Promise<MetricOption[]> => {
-    return await get('/monitor/api/metrics/', {
-      params: { monitor_object_id: objectId, monitor_plugin_id: pluginId },
-      signal
+    query: ObjectMetricQuery = {}
+  ): Promise<MetricCatalogPage<MetricOption>> => {
+    const response: unknown = await get('/monitor/api/metrics/', {
+      params: {
+        monitor_object_id: objectId,
+        monitor_plugin_id: pluginId,
+        page: query.page || 1,
+        ...(query.keyword ? { keyword: query.keyword } : {}),
+        ...(query.name_in ? { name_in: query.name_in } : {}),
+        page_size: 100
+      },
+      signal: query.signal
     });
+    if (!isMetricCatalogPage<MetricOption>(response)) {
+      return { count: 0, items: [] };
+    }
+    return response;
   };
 
   const getMetricVmFields = async (

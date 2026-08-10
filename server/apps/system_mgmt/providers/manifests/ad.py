@@ -4,6 +4,8 @@ from apps.system_mgmt.providers.schemas import ProviderManifest
 PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "ad",
+        "base_connection_adapter_key": "ad.base_connection",
+        "base_connection_adapter_path": "apps.system_mgmt.providers.adapters.ad.ADBaseConnectionAdapter",
         "name": "Active Directory",
         "description": "Built-in Active Directory integration provider for login auth and user sync.",
         "instance_templates": {
@@ -49,6 +51,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "field_type": "string",
                                 "required": True,
                                 "placeholder": "administrator",
+                                "help_text": "建议填写 UPN（如 administrator@corp.example.com）或完整 DN（如 CN=svc_ad,OU=Service,DC=corp,DC=example,DC=com），避免依赖裸用户名的域解析。",
                                 "reset_capabilities": ["login_auth", "user_sync"],
                             },
                             {
@@ -99,6 +102,8 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                     "displayName",
                     "mail",
                     "telephoneNumber",
+                    "mobile",
+                    "mobilePhone",
                     "distinguishedName",
                 ],
                 "default_external_match_field": "sAMAccountName",
@@ -154,6 +159,8 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                     "displayName",
                     "mail",
                     "telephoneNumber",
+                    "mobile",
+                    "mobilePhone",
                     "distinguishedName",
                     "department_ids",
                 ],

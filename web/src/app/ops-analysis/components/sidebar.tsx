@@ -11,15 +11,15 @@ import Icon from '@/components/icon';
 import GroupTreeSelect from '@/components/group-tree-select';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import useBtnPermissions from '@/hooks/usePermissions';
 import type { DataNode } from 'antd/lib/tree';
 import {
   Button,
-  Dropdown,
   Empty,
   Form,
   Input,
-  Menu,
   message,
   Modal,
   Spin,
@@ -52,7 +52,6 @@ import {
 } from '@/app/ops-analysis/types';
 import {
   PlusOutlined,
-  MoreOutlined,
   BarChartOutlined,
   FolderOutlined,
   ApartmentOutlined,
@@ -61,6 +60,7 @@ import {
   CheckOutlined,
   BranchesOutlined,
 } from '@ant-design/icons';
+import { resolveSidebarTreeSelection } from '@/app/ops-analysis/utils/sidebarSelection';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
   ({ onSelect, onDataUpdate }, ref) => {
@@ -94,6 +94,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const activeCanvasType =
       selectedCanvasType || (isCanvasType(newItemType) ? newItemType : undefined);
     const isCreatingCanvas = modalAction !== 'edit' && isCanvasType(newItemType);
+    const showNetworkTopologyConnectionTest =
+      (isCreatingCanvas || modalAction === 'edit') &&
+      activeCanvasType === 'networkTopology';
 
     useImperativeHandle(
       ref,
@@ -378,152 +381,117 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       );
     };
 
-    const menuFor = (item: DirItem, parentId: string | null = null) => {
+    const menuItemsFor = (
+      item: DirItem,
+      parentId: string | null = null,
+    ): MoreActionsDropdownItem[] => {
       const isRoot = parentId === null;
       const isGroup = item.type === 'directory';
       const canDelete = item.type !== 'directory' || !hasChildren(item);
       const isBuiltIn = !!item.is_build_in;
-
-      const stopEventPropagation = (event?: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement> | Event) => {
-        event?.stopPropagation?.();
-      };
-
-      // 根据 item.type 确定需要的权限
       const isCatalogue = item.type === 'directory';
       const editPermission = isCatalogue ? 'EditCatalogue' : 'EditChart';
       const deletePermission = isCatalogue ? 'DeleteCatalogue' : 'DeleteChart';
 
       // 内置对象：只显示导出按钮（非目录），其余禁用
       if (isBuiltIn) {
-        return (
-          <Menu selectable={false}>
-            {!isGroup && (
-              <Menu.Item
-                key="export"
-                onClick={(e) => {
-                  stopEventPropagation(e.domEvent);
-                  handleExport(item);
-                }}
-              >
-                {t('opsAnalysisSidebar.exportYaml')}
-              </Menu.Item>
-            )}
-            <Menu.Item key="edit" disabled>
-              {t('common.edit')}
-            </Menu.Item>
-            <Menu.Item key="delete" disabled>
-              {t('common.delete')}
-            </Menu.Item>
-          </Menu>
-        );
+        return [
+          ...(!isGroup
+            ? [{
+              key: 'export',
+              label: t('opsAnalysisSidebar.exportYaml'),
+              onClick: () => handleExport(item),
+            }]
+            : []),
+          { key: 'edit', label: t('common.edit'), disabled: true },
+          { key: 'delete', label: t('common.delete'), disabled: true },
+        ];
       }
 
-      return (
-        <Menu selectable={false}>
-          {isGroup && (
-            <>
-              <Menu.Item
-                key="add-canvas"
-                onClick={(e) => {
-                  stopEventPropagation(e.domEvent);
-                  if (!hasPermission(['AddChart'])) return;
-                  showModal(
-                    'addChild',
-                    t('opsAnalysisSidebar.addCanvas'),
-                    '',
-                    item,
-                    'dashboard',
-                  );
-                }}
-              >
-                <PermissionWrapper requiredPermissions={['AddChart']}>
-                  {t('opsAnalysisSidebar.addCanvas')}
-                </PermissionWrapper>
-              </Menu.Item>
-              <Menu.Item
-                key="import"
-                onClick={(e) => {
-                  stopEventPropagation(e.domEvent);
-                  if (!hasPermission(['AddChart'])) return;
-                  handleImport(item);
-                }}
-              >
-                <PermissionWrapper requiredPermissions={['AddChart']}>
-                  {t('opsAnalysisSidebar.importYaml')}
-                </PermissionWrapper>
-              </Menu.Item>
-            </>
-          )}
-          {isRoot && (
-            <Menu.Item
-              key="addGroup"
-              onClick={(e) => {
-                stopEventPropagation(e.domEvent);
-                if (!hasPermission(['AddCatalogue'])) return;
-                setNewItemType('directory');
-                showModal(
-                  'addChild',
-                  t('opsAnalysisSidebar.addGroup'),
-                  '',
-                  item,
-                  'directory',
-                );
-              }}
-            >
-              <PermissionWrapper requiredPermissions={['AddCatalogue']}>
-                {t('opsAnalysisSidebar.addGroup')}
-              </PermissionWrapper>
-            </Menu.Item>
-          )}
-
-          <Menu.Item
-            key="edit"
-            onClick={(e) => {
-              stopEventPropagation(e.domEvent);
-              if (!hasPermission([editPermission])) return;
+      const items: MoreActionsDropdownItem[] = [];
+      if (isGroup) {
+        items.push(
+          {
+            key: 'add-canvas',
+            label: t('opsAnalysisSidebar.addCanvas'),
+            permission: 'AddChart',
+            onClick: () => {
+              if (!hasPermission(['AddChart'])) return;
               showModal(
-                'edit',
-                item.type === 'directory'
-                  ? t('opsAnalysisSidebar.editGroup')
-                  : t(getCanvasTypeMeta(item.type)?.editLabelKey || 'common.edit'),
-                item.name,
+                'addChild',
+                t('opsAnalysisSidebar.addCanvas'),
+                '',
                 item,
-                item.type,
+                'dashboard',
               );
-            }}
-          >
-            <PermissionWrapper requiredPermissions={[editPermission]}>
-              {t('common.edit')}
-            </PermissionWrapper>
-          </Menu.Item>
-
-          <Menu.Item
-            key="delete"
-            disabled={!canDelete}
-            onClick={(e) => {
-              stopEventPropagation(e.domEvent);
-              if (!hasPermission([deletePermission])) return;
-              handleDelete(item);
-            }}
-          >
-            <PermissionWrapper requiredPermissions={[deletePermission]}>
-              {t('common.delete')}
-            </PermissionWrapper>
-          </Menu.Item>
-
-          {!isGroup && (
-            <Menu.Item
-              key="export"
-              onClick={(e) => {
-                stopEventPropagation(e.domEvent);
-                handleExport(item);
-              }}
-            >
-              {t('opsAnalysisSidebar.exportYaml')}
-            </Menu.Item>
-          )}
-        </Menu>
+            },
+          },
+          {
+            key: 'import',
+            label: t('opsAnalysisSidebar.importYaml'),
+            permission: 'AddChart',
+            onClick: () => {
+              if (!hasPermission(['AddChart'])) return;
+              handleImport(item);
+            },
+          },
+        );
+      }
+      if (isRoot) {
+        items.push({
+          key: 'addGroup',
+          label: t('opsAnalysisSidebar.addGroup'),
+          permission: 'AddCatalogue',
+          onClick: () => {
+            if (!hasPermission(['AddCatalogue'])) return;
+            setNewItemType('directory');
+            showModal(
+              'addChild',
+              t('opsAnalysisSidebar.addGroup'),
+              '',
+              item,
+              'directory',
+            );
+          },
+        });
+      }
+      items.push(
+        {
+          key: 'edit',
+          label: t('common.edit'),
+          permission: editPermission,
+          onClick: () => {
+            if (!hasPermission([editPermission])) return;
+            showModal(
+              'edit',
+              item.type === 'directory'
+                ? t('opsAnalysisSidebar.editGroup')
+                : t(getCanvasTypeMeta(item.type)?.editLabelKey || 'common.edit'),
+              item.name,
+              item,
+              item.type,
+            );
+          },
+        },
+        {
+          key: 'delete',
+          label: t('common.delete'),
+          permission: deletePermission,
+          disabled: !canDelete,
+          onClick: () => {
+            if (!hasPermission([deletePermission])) return;
+            handleDelete(item);
+          },
+        },
       );
+      if (!isGroup) {
+        items.push({
+          key: 'export',
+          label: t('opsAnalysisSidebar.exportYaml'),
+          onClick: () => handleExport(item),
+        });
+      }
+      return items;
     };
 
     const buildTreeData = (
@@ -551,22 +519,12 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             {(item.is_build_in && item.type === 'directory') ? (
               <span />
             ) : (
-              <Dropdown
-                overlay={menuFor(item, parentId)}
-                trigger={['click']}
+              <MoreActionsDropdown
+                items={menuItemsFor(item, parentId)}
                 placement="bottomLeft"
-                getPopupContainer={() => document.body}
-              >
-                <Button
-                  type="text"
-                  aria-label={t('common.more')}
-                  icon={<MoreOutlined aria-hidden="true" />}
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  className="flex-shrink-0"
-                  size="small"
-                />
-              </Dropdown>
+                stopPropagation
+                buttonClassName="flex-shrink-0"
+              />
             )}
           </span>
         ),
@@ -719,10 +677,17 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 selectedKeys={selectedKeys}
                 onExpand={(keys) => setExpandedKeys(keys)}
                 onSelect={(selectedKeys, info) => {
-                  const key = (selectedKeys as string[])[0];
-                  setSelectedKeys(selectedKeys);
-                  if (onSelect && key && info.selectedNodes.length > 0) {
-                    const item = findItemById(filteredDirs, key);
+                  const selection = resolveSidebarTreeSelection({
+                    selectedKeys,
+                    nodeKey: info.node.key,
+                    selected: info.selected,
+                  });
+                  setSelectedKeys(selection.selectedKeys);
+                  if (onSelect && selection.navigationKey) {
+                    const item = findItemById(
+                      filteredDirs,
+                      selection.navigationKey,
+                    );
                     if (item && item.type !== 'directory') {
                       onSelect(item.type, item);
                     }
@@ -742,17 +707,40 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           open={modalVisible}
           centered
           width={isCreatingCanvas ? 760 : 520}
-          okText={t('common.confirm')}
-          cancelText={t('common.cancel')}
-          onOk={handleModalOk}
           onCancel={handleModalCancel}
-          confirmLoading={submitLoading}
+          footer={[
+            showNetworkTopologyConnectionTest ? (
+              <Button
+                key="testConnection"
+                onClick={handleTestNetworkConnection}
+                loading={connectionTesting}
+              >
+                {t('opsAnalysisSidebar.testConnection')}
+              </Button>
+            ) : null,
+            <Button key="cancel" onClick={handleModalCancel}>
+              {t('common.cancel')}
+            </Button>,
+            <Button
+              key="submit"
+              type="primary"
+              onClick={handleModalOk}
+              loading={submitLoading}
+            >
+              {t('common.confirm')}
+            </Button>,
+          ]}
+          styles={{
+            body: {
+              maxHeight: 'calc(100vh - 200px)',
+              overflowY: 'auto',
+            },
+          }}
         >
           <Form
             form={form}
             className="mt-5"
-            labelCol={{ flex: '104px' }}
-            wrapperCol={{ flex: 1 }}
+            layout="vertical"
           >
             {isCreatingCanvas && (
               <Form.Item
@@ -842,7 +830,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             >
               <Input placeholder={t('opsAnalysisSidebar.inputPlaceholder')} />
             </Form.Item>
-            {(isCreatingCanvas || modalAction === 'edit') && activeCanvasType === 'networkTopology' && (
+            {showNetworkTopologyConnectionTest && (
               <>
                 <Form.Item
                   name="baseUrl"
@@ -887,14 +875,6 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                     placeholder={t('opsAnalysisSidebar.tokenPlaceholder')}
                     autoComplete="new-password"
                   />
-                </Form.Item>
-                <Form.Item label=" " colon={false}>
-                  <Button
-                    onClick={handleTestNetworkConnection}
-                    loading={connectionTesting}
-                  >
-                    {t('opsAnalysisSidebar.testConnection')}
-                  </Button>
                 </Form.Item>
               </>
             )}

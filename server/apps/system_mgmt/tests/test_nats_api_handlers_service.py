@@ -1,0 +1,781 @@
+"""apps/system_mgmt/nats_api.py 处理函数服务层测试。
+
+nats handler 直接可调用（@nats_client.register 返回原函数）。
+只 mock 真实外部边界（cache、send_msg、jwt token 验证等），断言真实 DB 行为与返回结构。
+"""
+
+import types
+from unittest.mock import Mock
+
+import pytest
+from django.db import connection
+from nats_client.registry import default_registry
+
+import nats_client
+from apps.rpc.system_mgmt import SystemMgmt
+from apps.system_mgmt import nats_api
+from apps.system_mgmt.models import App, Channel, Group, GroupDataRule, Menu, Role, User
+from apps.system_mgmt.models.channel import ChannelChoices
+
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
+
+
+def test_nats_api_compat_exports_local_and_nats_entrypoints():
+    expected_entrypoints = {
+        "get_pilot_permission_by_token",
+        "verify_token",
+        "revoke_token",
+        "get_user_menus",
+        "get_client",
+        "get_client_detail",
+        "get_group_users",
+        "get_group_users_scoped",
+        "get_authorized_groups_scoped",
+        "get_all_users",
+        "search_groups",
+        "search_users",
+        "init_user_default_attributes",
+        "create_guest_role",
+        "create_default_rule",
+        "get_all_groups",
+        "get_channel_detail",
+        "search_channel_list",
+        "search_channel_list_scoped",
+        "list_notification_channels_scoped",
+        "search_notification_recipients_scoped",
+        "dispatch_notification",
+        "probe_notification_channel",
+        "send_msg_with_channel",
+        "_list_opspilot_nats_channels",
+        "sync_opspilot_nats_channels",
+        "delete_opspilot_nats_channels",
+        "search_opspilot_nats_channels",
+        "send_email_to_receiver",
+        "get_user_rules",
+        "get_user_rules_by_module",
+        "get_user_rules_by_app",
+        "get_group_id",
+        "login",
+        "reset_pwd",
+        "wechat_user_register",
+        "get_wechat_settings",
+        "generate_qr_code_by_user_id",
+        "verify_otp_code",
+        "verify_otp_code_by_user_id",
+        "verify_otp_login",
+        "get_namespace_by_domain",
+        "bk_lite_user_login",
+        "get_login_module_domain_list",
+        "delete_rules",
+        "verify_bk_token",
+        "save_error_log",
+        "save_operation_log",
+    }
+    local_only_entrypoints = {
+        "_list_opspilot_nats_channels",
+        "create_default_rule",
+        "bk_lite_user_login",
+        "wechat_user_register",
+    }
+    registered_entrypoints = expected_entrypoints - local_only_entrypoints
+
+    exported_entrypoints = {name for name in expected_entrypoints if callable(getattr(nats_api, name, None))}
+    actual_registered_entrypoints = {item["name"] for item in default_registry.registry.values()}
+
+    assert exported_entrypoints == expected_entrypoints
+    assert registered_entrypoints <= actual_registered_entrypoints
+    assert local_only_entrypoints.isdisjoint(actual_registered_entrypoints)
+
+
+def test_bk_lite_user_login_keeps_local_app_client_path(monkeypatch):
+    user = User.objects.create(
+        username="cross_domain_user",
+        password="x",
+        display_name="Cross Domain User",
+        email="cross-domain@example.com",
+        domain="corp.example.com",
+    )
+    issued = {}
+
+    def fake_get_user_login_token(actual_user, username):
+        issued.update(user=actual_user, username=username)
+        return {"result": True, "data": {"token": "local-only"}}
+
+    monkeypatch.setattr(nats_api._login, "get_user_login_token", fake_get_user_login_token)
+
+    result = SystemMgmt().bk_lite_user_login(user.username, user.domain)
+
+    assert result == {"result": True, "data": {"token": "local-only"}}
+    assert issued == {"user": user, "username": user.username}
+    assert "bk_lite_user_login" not in {item["name"] for item in default_registry.registry.values()}
+
+
+# ---------------------------------------------------------------------------
+# _collect_ancestor_group_ids / get_user_all_roles
+# ---------------------------------------------------------------------------
+def test_collect_ancestor_group_ids_empty():
+    assert nats_api._collect_ancestor_group_ids([]) == set()
+
+
+def test_collect_ancestor_group_ids_walks_up():
+    g1 = Group.objects.create(name="A1", parent_id=0)
+    g2 = Group.objects.create(name="A2", parent_id=g1.id)
+    g3 = Group.objects.create(name="A3", parent_id=g2.id)
+    result = nats_api._collect_ancestor_group_ids([g3.id])
+    assert result == {g1.id, g2.id, g3.id}
+
+
+def test_get_user_all_roles_personal_and_group_inherit():
+    role_personal = Role.objects.create(name="r_personal", app="cmdb")
+    role_group = Role.objects.create(name="r_group", app="cmdb")
+    role_parent = Role.objects.create(name="r_parent", app="cmdb")
+
+    parent = Group.objects.create(name="GP", parent_id=0, allow_inherit_roles=True)
+    parent.roles.add(role_parent)
+    child = Group.objects.create(name="GC", parent_id=parent.id, allow_inherit_roles=False)
+    child.roles.add(role_group)
+
+    user = User.objects.create(
+        username="ru",
+        password="x",
+        display_name="ru",
+        email="r@x.com",
+        role_list=[role_personal.id],
+        group_list=[child.id],
+    )
+    roles = set(nats_api.get_user_all_roles(user))
+    # 个人角色 + 子组角色 + 继承的父组角色（父 allow_inherit_roles=True）
+    assert {role_personal.id, role_group.id, role_parent.id} <= roles
+
+
+def test_verify_token_regular_user_resolves_underscore_import(monkeypatch):
+    """回归测试：apps/system_mgmt/nats/auth.py 通过 `from .common import *` 引入
+    `_collect_ancestor_group_ids`，但 Python 的 import * 默认不导入下划线名字，
+    导致非超管用户的 verify_token 在调用 _collect_ancestor_group_ids 时抛 NameError，
+    上游 AuthBackend 捕获后返回 None → 前端表现为「登录持续过期」。
+
+    触发链路：
+        AuthBackend._verify_token_with_system_mgmt
+          → SystemMgmt().verify_token (RPC)
+            → apps.system_mgmt.nats.auth.verify_token
+              → _collect_ancestor_group_ids(user.group_list)  ← NameError
+
+    这里把 nats_api._verify_token 桩成 fake，强制走非超管分支
+    （is_superuser=False → 必须调用 _collect_ancestor_group_ids）。
+    """
+    from apps.core.utils.permission_cache import clear_token_info_cache
+
+    parent = Group.objects.create(name="VT_Parent", parent_id=0)
+    user = User.objects.create(
+        username="vt_regular",
+        password="x",
+        display_name="vt",
+        email="vt@x.com",
+        domain="domain.com",
+        role_list=[],
+        group_list=[parent.id],
+    )
+    # 避免 get_cached_token_info 命中旧数据
+    clear_token_info_cache(user.username, user.domain)
+
+    fake_user = types.SimpleNamespace(
+        id=user.id,
+        username=user.username,
+        domain=user.domain,
+        display_name=user.display_name,
+        email=user.email,
+        role_list=user.role_list,
+        group_list=user.group_list,
+        locale=user.locale,
+        timezone=user.timezone,
+    )
+    # 同步到 _auth._verify_token（nats_api.verify_token 入口会 _sync_compat_globals）
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: fake_user)
+
+    # 修复前：此处抛 NameError: name '_collect_ancestor_group_ids' is not defined
+    # 修复后：返回成功结果，且 group_list 含 user 直属组
+    result = nats_api.verify_token("dummy-token")
+
+    assert result["result"] is True, f"verify_token 应返回成功，实际: {result}"
+    assert result["data"]["username"] == "vt_regular"
+    assert any(g["id"] == parent.id for g in result["data"]["group_list"])
+
+
+# ---------------------------------------------------------------------------
+# get_client / get_client_detail
+# ---------------------------------------------------------------------------
+def test_get_client_all_apps():
+    App.objects.create(name="appA", display_name="A", url="/a")
+    App.objects.create(name="appB", display_name="B", url="/b")
+    result = nats_api.get_client()
+    assert result["result"] is True
+    names = {a["name"] for a in result["data"]}
+    assert {"appA", "appB"} <= names
+
+
+def test_get_client_filter_by_client_id():
+    App.objects.create(name="onlyme", display_name="X", url="/x")
+    App.objects.create(name="other", display_name="Y", url="/y")
+    result = nats_api.get_client(client_id="onlyme")
+    names = {a["name"] for a in result["data"]}
+    assert names == {"onlyme"}
+
+
+def test_get_client_user_not_found():
+    result = nats_api.get_client(username="nobody")
+    assert result == {"result": False, "message": "User not found"}
+
+
+def test_get_client_superuser_sees_all():
+    App.objects.create(name="app1", display_name="1", url="/1")
+    admin_role = Role.objects.create(name="admin", app="")
+    User.objects.create(
+        username="super",
+        password="x",
+        display_name="s",
+        email="s@x.com",
+        domain="domain.com",
+        role_list=[admin_role.id],
+        group_list=[],
+    )
+    result = nats_api.get_client(username="super")
+    assert result["result"] is True
+    assert any(a["name"] == "app1" for a in result["data"])
+
+
+def test_get_client_detail_found_and_missing():
+    App.objects.create(name="dc", display_name="DC", description="d", description_cn="中文", url="/dc")
+    ok = nats_api.get_client_detail("dc")
+    assert ok["result"] is True
+    assert ok["data"]["name"] == "dc"
+    assert ok["data"]["description_cn"] == "中文"
+    missing = nats_api.get_client_detail("nope")
+    assert missing == {"result": False, "message": "Client not found"}
+
+
+# ---------------------------------------------------------------------------
+# get_user_menus
+# ---------------------------------------------------------------------------
+def test_get_user_menus_superuser():
+    Menu.objects.create(name="m1", display_name="M1-x", order=1, app="cmdb", menu_type="t")
+    result = nats_api.get_user_menus("cmdb", roles=[], username="u", is_superuser=True)
+    assert result["result"] is True
+    assert isinstance(result["data"], list)
+
+
+def test_get_user_menus_with_role_filter():
+    m1 = Menu.objects.create(name="host-view", display_name="主机-查看-x", order=1, app="cmdb", menu_type="t")
+    Menu.objects.create(name="host-edit", display_name="主机-编辑-x", order=2, app="cmdb", menu_type="t")
+    role = Role.objects.create(name="viewer", app="cmdb", menu_list=[m1.id])
+    result = nats_api.get_user_menus("cmdb", roles=[role.id], username="u", is_superuser=False)
+    assert result["result"] is True
+    # 仅 host-view 被授权
+    flat = [c["name"] for grp in result["data"] for c in grp["children"]]
+    assert "host" in flat
+
+
+# ---------------------------------------------------------------------------
+# get_group_users / get_all_users / search_*
+# ---------------------------------------------------------------------------
+def test_get_group_users_all():
+    User.objects.create(username="gu1", password="x", display_name="g1", email="g1@x.com", group_list=[1])
+    result = nats_api.get_group_users()
+    assert result["result"] is True
+    assert any(u["username"] == "gu1" for u in result["data"])
+
+
+def test_get_group_users_by_group():
+    g = Group.objects.create(name="GUG", parent_id=0)
+    User.objects.create(username="ingrp", password="x", display_name="i", email="i@x.com", group_list=[g.id])
+    User.objects.create(username="notin", password="x", display_name="n", email="n@x.com", group_list=[99999])
+    result = nats_api.get_group_users(group=g.id)
+    names = {u["username"] for u in result["data"]}
+    assert "ingrp" in names and "notin" not in names
+
+
+def test_get_all_users():
+    User.objects.create(username="allu", password="x", display_name="A", email="a@x.com")
+    result = nats_api.get_all_users()
+    assert result["result"] is True
+    assert any(u["username"] == "allu" for u in result["data"])
+
+
+def test_search_groups():
+    Group.objects.create(name="FindMeGroup", parent_id=0)
+    Group.objects.create(name="OtherGrp", parent_id=0)
+    result = nats_api.search_groups({"search": "FindMe"})
+    names = {g["name"] for g in result["data"]}
+    assert names == {"FindMeGroup"}
+
+
+def test_search_users_pagination():
+    for i in range(15):
+        User.objects.create(username=f"su{i:02d}", password="x", display_name=f"S{i}", email=f"s{i}@x.com")
+    result = nats_api.search_users({"page": 1, "page_size": 10, "search": "su"})
+    assert result["result"] is True
+    assert result["data"]["count"] >= 15
+    assert len(result["data"]["users"]) == 10
+
+
+def test_get_group_id():
+    g = Group.objects.create(name="GidGroup", parent_id=0)
+    result = nats_api.get_group_id("GidGroup")
+    assert result["result"] is True
+    assert result["data"] == g.id
+
+
+# ---------------------------------------------------------------------------
+# get_authorized_groups_scoped / _get_actor_user_scope
+# ---------------------------------------------------------------------------
+def test_actor_scope_missing_username_returns_empty():
+    user_obj, groups = nats_api._get_actor_user_scope({"current_team": 1})
+    assert user_obj is None and groups == []
+
+
+def test_actor_scope_superuser():
+    g = Group.objects.create(name="SG", parent_id=0)
+    admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+    User.objects.create(
+        username="sa",
+        password="x",
+        display_name="sa",
+        email="sa@x.com",
+        domain="domain.com",
+        role_list=[admin_role.id],
+    )
+    ctx = {"username": "sa", "domain": "domain.com", "current_team": g.id, "is_superuser": True}
+    user_obj, groups = nats_api._get_actor_user_scope(ctx)
+    assert user_obj is not None
+    assert groups == [g.id]
+
+
+def test_get_authorized_groups_scoped():
+    g = Group.objects.create(name="AG", parent_id=0)
+    admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+    User.objects.create(
+        username="au",
+        password="x",
+        display_name="au",
+        email="au@x.com",
+        domain="domain.com",
+        role_list=[admin_role.id],
+    )
+    ctx = {"username": "au", "domain": "domain.com", "current_team": g.id, "is_superuser": True}
+    result = nats_api.get_authorized_groups_scoped(ctx)
+    assert result["result"] is True
+    assert result["data"] == [g.id]
+
+
+def test_get_group_users_scoped_no_scope_returns_empty():
+    result = nats_api.get_group_users_scoped({"username": "x"})
+    assert result == {"result": True, "data": []}
+
+
+# ---------------------------------------------------------------------------
+# create_guest_role / create_default_rule
+# ---------------------------------------------------------------------------
+def test_create_guest_role_creates_groups_and_roles():
+    result = nats_api.create_guest_role()
+    assert result["result"] is True
+    assert Group.objects.filter(name="Guest", parent_id=0).exists()
+    assert Group.objects.filter(name="OpsPilotGuest", parent_id=0).exists()
+    assert Role.objects.filter(name="guest", app="opspilot").exists()
+
+
+def test_create_default_rule_creates_rule():
+    Group.objects.create(name="OpsPilotGuest", parent_id=0)
+    result = nats_api.create_default_rule(
+        llm_model={"id": 1, "name": "llm"},
+        ocr_model=[{"id": 2, "name": "ocr"}],
+        embed_model=[{"id": 3, "name": "embed"}],
+        rerank_model={"id": 4, "name": "rerank"},
+    )
+    assert result == {"result": True}
+    rule = GroupDataRule.objects.get(name="OpsPilot内置规则", app="opspilot")
+    assert rule.rules["provider"]["llm_model"][0]["id"] == 1
+
+
+# ---------------------------------------------------------------------------
+# get_channel_detail / search_channel_list
+# ---------------------------------------------------------------------------
+def test_get_channel_detail_found_and_missing():
+    ch = Channel.objects.create(
+        name="mychan",
+        channel_type=ChannelChoices.EMAIL,
+        config={"k": "v"},
+        description="d",
+        team=[1, 2],
+    )
+    ok = nats_api.get_channel_detail(ch.id)
+    assert ok["result"] is True
+    assert ok["data"]["name"] == "mychan"
+    assert ok["data"]["team"] == [1, 2]
+    missing = nats_api.get_channel_detail(999999)
+    assert missing["result"] is False
+
+
+def test_search_channel_list_empty_teams():
+    result = nats_api.search_channel_list(teams=None)
+    assert result == {"result": True, "data": []}
+
+
+def test_search_channel_list_filters_by_team_and_type():
+    Channel.objects.create(name="c1", channel_type=ChannelChoices.EMAIL, config={}, description="d", team=[5])
+    Channel.objects.create(name="c2", channel_type=ChannelChoices.EMAIL, config={}, description="d", team=[6])
+    result = nats_api.search_channel_list(channel_type=ChannelChoices.EMAIL, teams=[5])
+    names = {c["name"] for c in result["data"]}
+    assert "c1" in names and "c2" not in names
+
+
+@pytest.mark.skipif(
+    connection.vendor == "sqlite",
+    reason="现有 Channel.team JSON contains 查询只支持生产 PostgreSQL",
+)
+def test_search_channel_list_filters_nats_method_without_exposing_config():
+    Channel.objects.create(
+        name="alert-center",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events", "secret": "hidden"},
+        description="d",
+        team=[5],
+    )
+    Channel.objects.create(
+        name="workflow",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "trigger_workflow_by_nats"},
+        description="d",
+        team=[5],
+    )
+
+    result = nats_api.search_channel_list(
+        channel_type=ChannelChoices.NATS,
+        teams=[5],
+        channel_method="receive_alert_events",
+    )
+
+    assert result["data"] == [
+        {
+            "id": Channel.objects.get(name="alert-center").id,
+            "name": "alert-center",
+            "channel_type": "nats",
+            "description": "d",
+        }
+    ]
+
+
+def test_search_channel_list_include_children():
+    parent = Group.objects.create(name="CParent", parent_id=0)
+    child = Group.objects.create(name="CChild", parent_id=parent.id)
+    Channel.objects.create(name="cc", channel_type=ChannelChoices.EMAIL, config={}, description="d", team=[child.id])
+    result = nats_api.search_channel_list(teams=[parent.id], include_children=True)
+    names = {c["name"] for c in result["data"]}
+    assert "cc" in names
+
+
+def test_public_notification_directory_exposes_capabilities_without_private_config():
+    group = Group.objects.create(name="notify-team", parent_id=0)
+    actor = User.objects.create(
+        username="notify-user",
+        domain="domain.com",
+        password="x",
+        group_list=[group.id],
+    )
+    email = Channel.objects.create(
+        name="邮件",
+        channel_type=ChannelChoices.EMAIL,
+        config={"smtp_pwd": "encrypted-secret"},
+        description="值班邮件",
+        team=[group.id],
+    )
+    alert_copy = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events", "secret": "hidden"},
+        description="事件副本",
+        team=[group.id],
+    )
+
+    response = nats_api.list_notification_channels_scoped(
+        {
+            "username": actor.username,
+            "domain": actor.domain,
+            "current_team": group.id,
+        },
+        teams=[group.id],
+    )
+
+    assert response["result"] is True
+    assert response["data"] == [
+        {
+            "id": email.id,
+            "name": "邮件",
+            "channel_type": "email",
+            "description": "值班邮件",
+            "delivery_mode": "message",
+            "recipient_mode": "system_user",
+            "availability": "available",
+        },
+        {
+            "id": alert_copy.id,
+            "name": "告警中心",
+            "channel_type": "nats",
+            "description": "事件副本",
+            "delivery_mode": "alert_event_copy",
+            "recipient_mode": "none",
+            "availability": "available",
+        },
+    ]
+    assert "config" not in str(response)
+    assert "secret" not in str(response)
+
+
+def test_probe_notification_channel_checks_alert_copy_responder(monkeypatch):
+    group = Group.objects.create(name="probe-team", parent_id=0)
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events", "timeout": 60},
+        team=[group.id],
+    )
+    captured = {}
+
+    def probe(channel_obj, content, *, timeout_override=None):
+        captured.update({"channel": channel_obj.id, "content": content, "timeout": timeout_override})
+        return {"result": True, "data": {"status": "ok"}, "message": ""}
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_nats_message", probe)
+
+    response = nats_api.probe_notification_channel(channel.id)
+
+    assert response == {"result": True, "code": "available", "retryable": False, "message": "success"}
+    assert captured == {"channel": channel.id, "content": {"health_probe": True}, "timeout": 2}
+
+
+def test_public_notification_recipient_search_is_scoped_and_bounded():
+    group = Group.objects.create(name="recipient-team", parent_id=0)
+    other_group = Group.objects.create(name="other-team", parent_id=0)
+    actor = User.objects.create(username="actor", domain="domain.com", password="x", group_list=[group.id])
+    matching = User.objects.create(
+        username="alice",
+        display_name="Alice On-call",
+        domain="domain.com",
+        password="x",
+        group_list=[group.id],
+    )
+    User.objects.create(
+        username="alice-hidden",
+        display_name="Alice Hidden",
+        domain="domain.com",
+        password="x",
+        group_list=[other_group.id],
+    )
+
+    response = nats_api.search_notification_recipients_scoped(
+        {"username": actor.username, "domain": actor.domain, "current_team": group.id},
+        teams=[group.id],
+        search="alice",
+        limit=1,
+    )
+
+    assert response == {
+        "result": True,
+        "data": [{"id": matching.id, "username": "alice", "display_name": "Alice On-call"}],
+    }
+
+
+def test_public_notification_dispatch_normalizes_success_and_terminal_failure(monkeypatch):
+    channel = Channel.objects.create(
+        name="Webhook",
+        channel_type=ChannelChoices.CUSTOM_WEBHOOK,
+        config={"webhook_url": "encrypted"},
+        description="hook",
+        team=[7],
+    )
+    sent = {}
+
+    def fake_send(channel_id, title, content, receivers, attachments=None):
+        sent.update(channel_id=channel_id, title=title, content=content, receivers=receivers)
+        return {"result": True}
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", fake_send)
+
+    delivered = nats_api.dispatch_notification(
+        delivery_key="apm:event:channel",
+        channel_id=channel.id,
+        organization_ids=[7],
+        recipients=["on-call"],
+        title="APM 告警",
+        body="checkout 错误率过高",
+        event_payload={"event_key": "event"},
+    )
+    missing = nats_api.dispatch_notification(
+        delivery_key="apm:missing",
+        channel_id=999999,
+        organization_ids=[7],
+        recipients=[],
+        title="x",
+        body="y",
+        event_payload={},
+    )
+
+    assert delivered == {"result": True, "code": "delivered", "retryable": False, "message": "success"}
+    assert sent == {
+        "channel_id": channel.id,
+        "title": "APM 告警",
+        "content": "checkout 错误率过高",
+        "receivers": ["on-call"],
+    }
+    assert missing == {
+        "result": False,
+        "code": "channel_not_found",
+        "retryable": False,
+        "message": "通知渠道不存在。",
+    }
+
+
+def test_public_notification_dispatch_builds_alert_center_event_copy(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events"},
+        description="copy",
+        team=[9],
+    )
+    sent = {}
+
+    def fake_send(channel_id, title, content, receivers, attachments=None):
+        sent.update(channel_id=channel_id, title=title, content=content, receivers=receivers)
+        return {"result": True, "data": {"ingestion": {"accepted": 1, "skipped": 0, "errored": 0}}}
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", fake_send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="apm:event:copy",
+        channel_id=channel.id,
+        organization_ids=[9],
+        recipients=[],
+        title="ignored",
+        body="ignored",
+        event_payload={"event_key": "event-1", "organizations": [9]},
+    )
+
+    assert result["result"] is True
+    assert sent["content"] == {
+        "source_id": "nats",
+        "pusher": "lite-apm",
+        "events": [{"event_key": "event-1", "organizations": [9]}],
+    }
+    assert sent["receivers"] == []
+
+
+def test_public_notification_dispatch_uses_shared_channel_organization_for_nats(monkeypatch):
+    channel = Channel.objects.create(
+        name="组织内 NATS",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "notify", "method_name": "send"},
+        description="message",
+        team=[9, 7],
+    )
+    sent = {}
+
+    def fake_send(channel_id, title, content, receivers, attachments=None):
+        sent.update(channel_id=channel_id, title=title, content=content, receivers=receivers)
+        return {"result": True}
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", fake_send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="apm:event:nats-team",
+        channel_id=channel.id,
+        organization_ids=[1, 9, 7],
+        recipients=["on-call"],
+        title="APM 告警",
+        body="checkout 错误率过高",
+        event_payload={"event_key": "event-1"},
+    )
+
+    assert result["result"] is True
+    assert sent["content"] == {
+        "message": "checkout 错误率过高",
+        "team": 7,
+        "user_ids": ["on-call"],
+    }
+
+
+def test_public_notification_dispatch_rejects_missing_system_user_without_retry(monkeypatch):
+    channel = Channel.objects.create(
+        name="邮件",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="mail",
+        team=[7],
+    )
+    send = Mock()
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="apm:event:email",
+        channel_id=channel.id,
+        organization_ids=[7],
+        recipients=["999999"],
+        title="title",
+        body="body",
+        event_payload={},
+    )
+
+    assert result["result"] is False
+    assert result["code"] == "invalid_recipients"
+    assert result["retryable"] is False
+    send.assert_not_called()
+
+
+def test_public_notification_dispatch_escapes_rich_text_before_transport(monkeypatch):
+    channel = Channel.objects.create(
+        name="飞书",
+        channel_type=ChannelChoices.FEISHU_BOT,
+        config={},
+        description="bot",
+        team=[7],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="apm:event:bot",
+        channel_id=channel.id,
+        organization_ids=[7],
+        recipients=["on-call"],
+        title="<b>[title]</b>",
+        body="**<script>alert(1)</script>**",
+        event_payload={},
+    )
+
+    assert result["result"] is True
+    _, sent_title, sent_body, _ = send.call_args.args
+    assert "<" not in sent_title
+    assert "<" not in sent_body
+    assert "\\[title\\]" in sent_title
+    assert "\\*\\*" in sent_body
+
+
+# ---------------------------------------------------------------------------
+# send_email_to_receiver / send_msg_with_channel
+# ---------------------------------------------------------------------------
+def test_send_msg_with_channel_channel_not_found():
+    result = nats_api.send_msg_with_channel(999999, "title", "content", ["a@x.com"])
+    assert result["result"] is False
+
+
+def test_get_wechat_settings():
+    # 没有 wechat 配置时仍返回标准结构
+    result = nats_api.get_wechat_settings()
+    assert "result" in result
+
+
+# ---------------------------------------------------------------------------
+# revoke_token
+# ---------------------------------------------------------------------------
+def test_revoke_token_invalid():
+    # 非法 token，解析失败 -> result False（异常被捕获）
+    result = nats_api.revoke_token("Basic not-a-real-jwt")
+    assert result["result"] is False

@@ -1,4 +1,6 @@
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
+import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
 
 type DashboardUrlResolver = (
   objectName?: string | null,
@@ -27,7 +29,7 @@ interface BuildAssetViewUrlOptions {
 }
 
 const toParamValue = (value: unknown) => {
-  if (Array.isArray(value)) return value.join(',');
+  if (Array.isArray(value)) return encodeInstanceIdValuesParam(value);
   if (value === null || value === undefined) return '';
   return String(value);
 };
@@ -56,7 +58,12 @@ export const buildAssetViewUrl = ({
     instance_id_values: toParamValue(row.instance_id_values),
     instance_id_keys: resolveInstanceIdKeys(monitorItem?.instance_id_keys)
   });
-  const queryString = params.toString();
+  const dashboardParams = withDashboardReturnContext(params, {
+    objectId: toParamValue(objectId),
+    objectName: toParamValue(monitorItem?.display_name || monitorItem?.name),
+    source: 'integration'
+  });
+  const queryString = dashboardParams.toString();
   const professionalDashboardUrl =
     resolveProfessionalDashboardUrl?.(
       monitorItem?.name,

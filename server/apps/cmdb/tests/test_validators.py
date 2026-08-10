@@ -1,11 +1,14 @@
 """CMDB CQL 参数验证器覆盖测试。
 
-对照 spec/prd/CMDB：查询中不可参数化的标签/字段/关系名走白名单校验，防注入。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：查询中不可参数化的标签/字段/关系名走白名单校验，防注入。
 """
 
 import pytest
 
-from apps.cmdb.graph.validators import CQLValidator
+from apps.cmdb.graph.validators import (
+    MAX_BATCH_UPDATE_PROPERTY_VALUES,
+    CQLValidator,
+)
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 
@@ -38,6 +41,30 @@ def test_validate_ids_not_list():
 def test_validate_ids_empty():
     with pytest.raises(BaseAppException):
         CQLValidator.validate_ids([])
+
+
+# validate_property_values
+def test_validate_property_values_normalizes_ids():
+    assert CQLValidator.validate_property_values(
+        [{"id": "5", "value": "report"}]
+    ) == [{"id": 5, "value": "report"}]
+
+
+def test_validate_property_values_rejects_malformed_item():
+    with pytest.raises(BaseAppException):
+        CQLValidator.validate_property_values([{"id": 1}])
+
+
+def test_validate_property_values_rejects_non_list():
+    with pytest.raises(BaseAppException):
+        CQLValidator.validate_property_values(None)
+
+
+def test_validate_property_values_rejects_unbounded_batch():
+    with pytest.raises(BaseAppException):
+        CQLValidator.validate_property_values(
+            [{"id": index, "value": "v"} for index in range(MAX_BATCH_UPDATE_PROPERTY_VALUES + 1)]
+        )
 
 
 # validate_label

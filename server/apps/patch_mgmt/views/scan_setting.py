@@ -1,0 +1,73 @@
+"""全局扫描设置视图"""
+
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
+from rest_framework.response import Response
+
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.viewset_utils import AuthViewSet
+from apps.patch_mgmt.models import ScanSetting
+from apps.patch_mgmt.serializers.scan_setting import ScanSettingSerializer
+from apps.patch_mgmt.services.notification_config import load_notification_candidates
+
+
+class ScanSettingViewSet(AuthViewSet):
+    """全局扫描设置视图集（单例资源）"""
+
+    queryset = ScanSetting.objects.all()
+    serializer_class = ScanSettingSerializer
+    permission_key = "patch_source"
+
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def get_object(self):
+        return ScanSetting.get_singleton()
+
+    @HasPermission("patch_source-View")
+    def list(self, request, *args, **kwargs):
+        """返回当前全局扫描设置（单例）"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["put", "patch"], url_path="save")
+    @HasPermission("patch_source-Edit")
+    def save_settings(self, request):
+        """保存全局扫描设置（单例，无需传 id）"""
+        instance = self.get_object()
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=request.method == "PATCH"
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @HasPermission("patch_source-View")
+    def retrieve(self, request, *args, **kwargs):
+        """获取全局扫描设置详情"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="notification_candidates")
+    @HasPermission("patch_source-View")
+    def notification_candidates(self, request):
+        """返回当前用户在当前组织可选的通知渠道和接收人。"""
+        candidates = load_notification_candidates(request)
+        return Response(
+            {
+                "channels": candidates["channels"],
+                "users": candidates["users"],
+            }
+        )

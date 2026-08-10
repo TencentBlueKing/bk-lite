@@ -12,15 +12,10 @@
 }
 
 .screenCanvas {
-  border-color: rgba(103, 232, 249, 0.16);
-  background:
-    radial-gradient(circle at 22% 18%, rgba(34, 211, 238, 0.16), transparent 30%),
-    radial-gradient(circle at 76% 20%, rgba(59, 130, 246, 0.12), transparent 28%),
-    linear-gradient(rgba(103, 232, 249, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(103, 232, 249, 0.04) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(4, 24, 46, 0.86) 0%, rgba(2, 8, 20, 0.92) 100%);
+  border-color: var(--screen-widget-border, rgba(103, 232, 249, 0.16));
+  background: var(--screen-widget-bg, linear-gradient(180deg, rgba(4, 24, 46, 0.86) 0%, rgba(2, 8, 20, 0.92) 100%));
   background-size: auto, auto, 56px 56px, 56px 56px, auto;
-  box-shadow: inset 0 0 54px rgba(14, 165, 233, 0.08);
+  box-shadow: var(--screen-widget-shadow, inset 0 0 54px rgba(14, 165, 233, 0.08));
 }
 
 .truncated {
@@ -51,7 +46,7 @@
 
 .screenCanvas .state,
 .screenCanvas .loadingMask {
-  background: rgba(2, 8, 20, 0.48);
+  background: var(--screen-widget-bg, rgba(2, 8, 20, 0.48));
 }
 
 .loadingMask {
@@ -64,32 +59,30 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  color: rgba(224, 251, 255, 0.72);
+  color: var(--screen-table-muted, rgba(224, 251, 255, 0.72));
 }
 
 .pendingIcon {
   width: 72px;
   height: 72px;
   margin-bottom: 18px;
-  border: 1px solid rgba(103, 232, 249, 0.34);
+  border: 1px solid var(--screen-widget-border, rgba(103, 232, 249, 0.34));
   border-radius: 18px;
   background:
-    linear-gradient(135deg, rgba(34, 211, 238, 0.26), transparent),
-    rgba(2, 8, 20, 0.5);
-  box-shadow:
-    0 0 28px rgba(34, 211, 238, 0.18),
-    inset 0 1px 0 rgba(224, 251, 255, 0.14);
+    linear-gradient(135deg, color-mix(in srgb, var(--screen-table-spin-color, #22d3ee) 24%, transparent), transparent),
+    var(--screen-table-control-bg, rgba(2, 8, 20, 0.5));
+  box-shadow: var(--screen-widget-shadow, 0 0 28px rgba(34, 211, 238, 0.18));
 }
 
 .pendingTitle {
-  color: #eafbff;
+  color: var(--screen-widget-title-color, #eafbff);
   font-size: 18px;
   font-weight: 700;
 }
 
 .pendingDesc {
   margin-top: 8px;
-  color: rgba(186, 230, 253, 0.7);
+  color: var(--screen-table-muted, rgba(186, 230, 253, 0.7));
   font-size: 13px;
   line-height: 20px;
 }
@@ -142,12 +135,32 @@
   color: #607086;
 }
 
+.popSectionTitle {
+  margin-top: 8px;
+  margin-bottom: 2px;
+  color: #8797aa;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .noAlertText {
   color: #94a3b8;
 }
 
 .alertCount {
   color: #dc2626;
+}
+
+.portCount {
+  flex: none;
+  color: #607086;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.portPair {
+  color: #253244;
+  font-weight: 600;
 }
 
 .statusPill {

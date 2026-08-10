@@ -1,0 +1,2399 @@
+'''补丁治理任务真实执行服务
+
+负责把 GovernanceTask 拆分到每台 PatchTarget，并调用平台已有执行器：
+- node_mgmt 目标 -> 节点上 nats-executor 本地执行（instance_id = node_id）
+- manual Linux 目标 -> 云区域 nats-executor 代理 SSH 执行
+- manual Windows 目标 -> 云区域 Ansible Executor 节点通过 WinRM 执行
+
+当前覆盖：
+- reboot：生成系统重启命令并立即下发。
+- install / assess：生成对应平台的补丁命令并下发，安装时由目标主机从配置源下载。
+
+所有执行结果回写到 GovernanceTaskHost（stage / exit_code / reason 等）。
+'''
+
+import re
+import shlex
+import time
+import uuid
+from datetime import timedelta
+from typing import Any, Optional
+
+from celery.exceptions import SoftTimeLimitExceeded
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
+
+from apps.core.logger import patch_mgmt_logger as logger
+from apps.core.mixinx import EncryptMixin
+from apps.patch_mgmt.constants import (
+    ComplianceStatus,
+    GovernanceTaskStatus,
+    GovernanceTaskType,
+    OSType,
+    PatchTargetSource,
+    RequirementAssessmentStatus,
+)
+from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, HostBaselineBinding, HostComplianceSnapshot, Patch, PatchTarget
+from apps.patch_mgmt.services.assess_parsers import (
+    assess_requirements,
+    linux_assessment_host_error,
+    linux_requirement_specs,
+)
+from apps.patch_mgmt.services.compliance_evaluator import evaluate_linux_applicability
+from apps.patch_mgmt.services.linux_platform import (
+    linux_host_facts_command,
+    parse_linux_host_facts,
+    validate_linux_host_facts,
+)
+from apps.patch_mgmt.services.target_execution_route import (
+    TargetTransport,
+    resolve_target_execution_route,
+)
+from apps.rpc.ansible import AnsibleExecutor
+from apps.rpc.executor import Executor
+
+DEFAULT_TIMEOUT = 3600
+WINDOWS_PATCH_STAGE_DIR = 'C:/Windows/Temp/bk-lite-patches'
+
+
+def _decrypt_password(password: Optional[str]) -> Optional[str]:
+    if not password:
+        return None
+    data = {'password': password}
+    EncryptMixin.decrypt_field('password', data)
+    return data.get('password')
+
+
+def _read_ssh_key(target: PatchTarget) -> Optional[str]:
+    if not target.ssh_key_file:
+        return None
+    try:
+        with target.ssh_key_file.open('r') as fh:
+            return fh.read()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('读取目标 %s SSH 私钥失败: %s', target.id, exc)
+        return None
+
+
+def _execute_windows_manual(
+    target: PatchTarget,
+    command: str,
+    *,
+    timeout: int = DEFAULT_TIMEOUT,
+    execution_id: Optional[str] = None,
+    stream_log_topic: Optional[str] = None,
+) -> dict[str, Any]:
+    '''按显式配置执行 Windows 命令；生产不得隐式降级为直连。'''
+    mode = getattr(settings, 'PATCH_MGMT_WINDOWS_EXECUTION_MODE', 'executor')
+    if mode == 'direct_winrm':
+        if not settings.DEBUG:
+            raise RuntimeError('direct_winrm 仅允许在 DEBUG=True 的本地环境使用')
+        return _execute_winrm_direct(target, command, timeout=timeout)
+    if mode != 'executor':
+        raise RuntimeError(f'不支持的 Windows 执行模式: {mode}')
+
+    route = resolve_target_execution_route(target)
+    if route.transport != TargetTransport.ANSIBLE_WINRM:
+        raise RuntimeError(f'Windows 手动目标路由异常: {route.transport}')
+    executor = AnsibleExecutor(route.instance_id)
+    password = _decrypt_password(target.winrm_password)
+    host_credentials = [
+        {
+            'host': target.ip,
+            'port': target.winrm_port,
+            'user': target.winrm_user,
+            'password': password,
+            'connection': 'winrm',
+            'winrm_scheme': target.winrm_scheme,
+            'winrm_transport': target.winrm_transport,
+            'winrm_cert_validation': target.winrm_cert_validation,
+        }
+    ]
+    return executor.adhoc(
+        host_credentials=host_credentials,
+        module='win_shell',
+        module_args=command,
+        timeout=timeout,
+        execution_id=execution_id,
+        stream_log_topic=stream_log_topic,
+    ) or {}
+
+
+def _execute_winrm_direct(
+    target: PatchTarget,
+    command: str,
+    *,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> dict[str, Any]:
+    '''pywinrm 直连执行 PowerShell（仅供 DEBUG 本地显式配置）。'''
+    import winrm
+
+    password = _decrypt_password(target.winrm_password)
+    scheme = target.winrm_scheme or 'http'
+    port = target.winrm_port or 5985
+    transport = target.winrm_transport or 'basic'
+    cert_validation = 'ignore' if not target.winrm_cert_validation else 'validate'
+
+    endpoint = f'{scheme}://{target.ip}:{port}/wsman'
+    session = winrm.Session(
+        endpoint,
+        auth=(target.winrm_user, password),
+        transport=transport,
+        server_cert_validation=cert_validation,
+        operation_timeout_sec=min(timeout, 300),
+        read_timeout_sec=min(timeout + 10, 310),
+    )
+    result = session.run_ps(command)
+    return {
+        'stdout': result.std_out.decode('utf-8', errors='replace') if result.std_out else '',
+        'stderr': result.std_err.decode('utf-8', errors='replace') if result.std_err else '',
+        'exit_code': result.status_code,
+    }
+
+
+def _windows_host_credentials(target: PatchTarget) -> list[dict[str, Any]]:
+    return [{
+        'host': target.ip,
+        'port': target.winrm_port,
+        'user': target.winrm_user,
+        'password': _decrypt_password(target.winrm_password),
+        'connection': 'winrm',
+        'winrm_scheme': target.winrm_scheme,
+        'winrm_transport': target.winrm_transport,
+        'winrm_cert_validation': target.winrm_cert_validation,
+    }]
+
+
+def _short_lived_package_url(detail) -> str:
+    storage = detail.package_file.storage
+    client = storage.client if storage.same_endpoints else storage.client_external
+    return client.presigned_get_object(
+        bucket_name=storage.bucket,
+        object_name=detail.package_file.name,
+        expires=timedelta(minutes=10),
+    )
+
+
+def _stage_windows_package(target: PatchTarget, detail, *, timeout: int) -> str:
+    """把私有桶中的手工补丁安全分发到目标机，返回目标机临时路径。"""
+    from apps.patch_mgmt.models.patch import PATCH_PACKAGE_BUCKET
+
+    filename = re.sub(r'[^A-Za-z0-9._-]', '_', detail.package_original_name or '')
+    if not filename:
+        filename = f'{detail.kb_number}{detail.package_extension}'
+    staged_path = f'{WINDOWS_PATCH_STAGE_DIR}/{detail.patch_id}-{filename}'
+
+    if target.source_type == PatchTargetSource.NODE_MGMT and target.node_id:
+        result = Executor(target.node_id).download_to_local(
+            bucket_name=PATCH_PACKAGE_BUCKET,
+            file_key=detail.package_file.name,
+            file_name=f'{detail.patch_id}-{filename}',
+            target_path=WINDOWS_PATCH_STAGE_DIR,
+            timeout=timeout,
+            overwrite=True,
+        )
+        if not _is_success(_normalize_result(result)):
+            raise RuntimeError(f'补丁文件分发失败: {_result_reason(_normalize_result(result))}')
+        return staged_path
+
+    mode = getattr(settings, 'PATCH_MGMT_WINDOWS_EXECUTION_MODE', 'executor')
+    if mode == 'direct_winrm':
+        if not settings.DEBUG:
+            raise RuntimeError('direct_winrm 仅允许在 DEBUG=True 的本地环境使用')
+        url = _short_lived_package_url(detail).replace("'", "''")
+        command = (
+            f"$dir='{WINDOWS_PATCH_STAGE_DIR}';$path='{staged_path}';"
+            "New-Item -ItemType Directory -Path $dir -Force | Out-Null;"
+            f"Invoke-WebRequest -Uri '{url}' -OutFile $path -UseBasicParsing;"
+            "Write-Output 'package staged'"
+        )
+        result = _execute_winrm_direct(target, command, timeout=timeout)
+        if not _is_success(result):
+            raise RuntimeError(f'补丁文件下载失败: {_result_reason(result)}')
+        return staged_path
+
+    if mode != 'executor':
+        raise RuntimeError(f'不支持的 Windows 执行模式: {mode}')
+    route = resolve_target_execution_route(target)
+    if route.transport != TargetTransport.ANSIBLE_WINRM:
+        raise RuntimeError(f'Windows 手动目标路由异常: {route.transport}')
+    executor = AnsibleExecutor(route.instance_id)
+    task_id = f'patch-file-{target.id}-{uuid.uuid4().hex[:8]}'
+    accepted = executor.playbook(
+        host_credentials=_windows_host_credentials(target),
+        files=[{'file_key': detail.package_file.name, 'name': f'{detail.patch_id}-{filename}'}],
+        file_distribution={
+            'bucket_name': PATCH_PACKAGE_BUCKET,
+            'target_path': WINDOWS_PATCH_STAGE_DIR,
+            'overwrite': True,
+        },
+        task_id=task_id,
+        timeout=timeout,
+    )
+    accepted_task_id = (accepted.get('task_id') if isinstance(accepted, dict) else None) or task_id
+    deadline = time.monotonic() + timeout
+    while True:
+        query = executor.task_query(accepted_task_id, timeout=min(timeout, 60))
+        if isinstance(query, dict) and query.get('status') in {'success', 'failed', 'callback_failed'}:
+            if query.get('status') != 'success':
+                raise RuntimeError(f"补丁文件分发失败: {query.get('status')}")
+            return staged_path
+        if time.monotonic() >= deadline:
+            raise TimeoutError('补丁文件分发超时')
+        time.sleep(1)
+
+
+def _normalize_result(result: Any) -> dict[str, Any]:
+    '''把执行器返回归一化成字典。
+
+    nats-executor 的 SSH/本地执行成功时，RPC 层可能直接返回 stdout 字符串；
+    统一包装成 {'stdout': ..., 'stderr': '', 'exit_code': 0}，方便下游判断。
+    '''
+    if isinstance(result, dict):
+        return result
+    return {'stdout': str(result) if result is not None else '', 'stderr': '', 'exit_code': 0}
+
+
+def _execute_command(
+    target: PatchTarget,
+    command: str,
+    *,
+    timeout: int = DEFAULT_TIMEOUT,
+    shell: Optional[str] = None,
+    execution_id: Optional[str] = None,
+    stream_log_topic: Optional[str] = None,
+) -> dict[str, Any]:
+    '''按目标来源和 OS 类型选择执行器并下发命令。'''
+    if target.os_type == OSType.WINDOWS and target.source_type == PatchTargetSource.MANUAL:
+        return _normalize_result(
+            _execute_windows_manual(
+                target, command, timeout=timeout, execution_id=execution_id, stream_log_topic=stream_log_topic
+            )
+        )
+
+    route = resolve_target_execution_route(target)
+    executor = Executor(route.instance_id)
+
+    if route.transport == TargetTransport.NODE_EXECUTOR:
+        return _normalize_result(
+            executor.execute_local_stream(
+                command,
+                timeout=timeout,
+                shell=shell,
+                execution_id=execution_id,
+                stream_log_topic=stream_log_topic,
+            )
+        )
+
+    if route.transport != TargetTransport.NATS_SSH:
+        raise RuntimeError(f'不支持的目标执行链路: {route.transport}')
+
+    password = _decrypt_password(target.ssh_password)
+    private_key = _read_ssh_key(target)
+    passphrase = _decrypt_password(target.ssh_key_passphrase)
+    return _normalize_result(
+        executor.execute_ssh_stream(
+            command,
+            host=target.ip,
+            username=target.ssh_user,
+            password=password,
+            private_key=private_key,
+            passphrase=passphrase,
+            port=target.ssh_port,
+            timeout=timeout,
+            execution_id=execution_id,
+            stream_log_topic=stream_log_topic,
+        )
+    )
+
+
+def _reboot_command(os_type: str) -> str:
+    if os_type == OSType.WINDOWS:
+        return 'shutdown /r /t 0 /f'
+    return 'nohup shutdown -r +0 >/dev/null 2>&1 &'
+
+
+_PKG_NAME_RE = re.compile(r'^[a-zA-Z0-9.+_-]+$')
+
+
+def _manual_windows_install_command(detail, staged_path: str) -> str:
+    """生成手工 MSU/CAB 的 SYSTEM 静默安装与临时文件清理命令。"""
+    path = staged_path.replace("'", "''")
+    expected_sha256 = (detail.package_sha256 or '').lower()
+    if detail.package_extension == '.cab':
+        executable = 'dism.exe'
+        arguments = f'/Online /Add-Package /PackagePath:"{staged_path}" /Quiet /NoRestart'
+    else:
+        executable = 'wusa.exe'
+        arguments = f'"{staged_path}" /quiet /norestart'
+    arguments = arguments.replace("'", "''")
+    job_id = uuid.uuid4().hex[:12]
+    script_path = f'C:\\Windows\\Temp\\manual_patch_{job_id}.ps1'
+    result_path = f'C:\\Windows\\Temp\\manual_patch_{job_id}.txt'
+    task_name = f'Manual_Patch_{job_id}'
+    inner_script = (
+        "$ErrorActionPreference='Stop';"
+        f"$path='{path}';"
+        "try{"
+        f"$actual=(Get-FileHash -Algorithm SHA256 -Path $path).Hash.ToLower();"
+        f"if($actual -ne '{expected_sha256}'){{throw 'SHA256 mismatch'}};"
+        f"$proc=Start-Process -FilePath '{executable}' -ArgumentList '{arguments}' -Wait -PassThru;"
+        "$code=$proc.ExitCode;"
+        "$pending=(Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending') -or "
+        "(Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired');"
+        "if($code -in @(0,3010,1641,2359301,2359302)){"
+        "$rr=($code -in @(3010,1641,2359301)) -or (($code -eq 2359302) -and $pending);"
+        '("InstallResult=2 RebootRequired={0}" -f $rr) | Out-File -FilePath \'__RP__\' -Encoding ascii -Force'
+        "}else{(\"InstallError=installer exit code {0}\" -f $code) | Out-File -FilePath '__RP__' -Encoding ascii -Force}"
+        "}catch{(\"InstallError={0}\" -f $_.Exception.Message) | Out-File -FilePath '__RP__' -Encoding ascii -Force}"
+        "finally{Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue}"
+    )
+    return (
+        "$ProgressPreference='SilentlyContinue';"
+        f"$sp='{script_path}';"
+        f"$rp='{result_path}';"
+        f"$tn='{task_name}';"
+        f"$pkg='{path}';"
+        "if(Test-Path $rp){Remove-Item $rp -Force};"
+        f"@'\n{inner_script}\n'@ -replace '__RP__',$rp | Out-File $sp -Encoding utf8 -Force;"
+        "$action=New-ScheduledTaskAction -Execute 'powershell.exe' "
+        "-Argument ('-NoProfile -ExecutionPolicy Bypass -File \"{0}\"' -f $sp);"
+        "$trigger=New-ScheduledTaskTrigger -Once -At (Get-Date).AddHours(1);"
+        "$principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;"
+        "Register-ScheduledTask -TaskName $tn -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null;"
+        "Start-ScheduledTask -TaskName $tn;"
+        "$w=0;while($w -lt 300 -and -not (Test-Path $rp)){Start-Sleep -Seconds 2;$w++};"
+        "Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction SilentlyContinue;"
+        "if(Test-Path $rp){Get-Content $rp;Remove-Item $rp -Force}else{Write-Output 'InstallResult= RebootRequired='};"
+        "Remove-Item $sp,$pkg -Force -ErrorAction SilentlyContinue"
+    )
+
+
+def _install_commands(
+    patches: list[Patch],
+    os_type: str,
+    *,
+    manual_paths: Optional[dict[int, str]] = None,
+    linux_manager: str = "",
+) -> list[str]:
+    '''根据目标主机包管理器和包名生成安装命令。
+
+    Linux 调用方必须先识别目标机的原生包管理器，并显式传入。命令内不再
+    探测或跨包生态回退，避免 Ubuntu 因额外安装 dnf 而执行错误命令。
+
+    Windows 同步补丁与手工补丁都通过 Task Scheduler 以 SYSTEM 身份执行，
+    避免 WinRM admin token 调用 WUA/WUSA 时被拒绝。
+    '''
+    if os_type == OSType.WINDOWS:
+        manual_paths = manual_paths or {}
+        manual_commands: list[str] = []
+        kb_list = []
+        for p in patches:
+            try:
+                detail = p.windows_detail
+                if detail.package_file:
+                    staged_path = manual_paths.get(p.pk)
+                    if staged_path:
+                        manual_commands.append(
+                            _manual_windows_install_command(detail, staged_path)
+                        )
+                    continue
+                kb = (detail.kb_number or '').strip()
+                if kb:
+                    kb_list.append(kb)
+            except Exception:
+                pass
+        if not kb_list:
+            return manual_commands or ['Write-Output no KB to install']
+        kb_filter = ','.join([f"'{kb}'" for kb in kb_list])
+        job_id = uuid.uuid4().hex[:12]
+        # SYSTEM 任务和外层 PowerShell 都需要能访问这些路径
+        script_path = f"C:\\Windows\\Temp\\wua_install_{job_id}.ps1"
+        result_path = f"C:\\Windows\\Temp\\wua_install_{job_id}.txt"
+        task_name = f"WUA_Install_{job_id}"
+
+        # 内层脚本：在 SYSTEM 身份下运行 WUA 安装，结果写入 result_path
+        inner_script = (
+            "$ErrorActionPreference='Stop';"
+            "$ProgressPreference='SilentlyContinue';"
+            "try{"
+            "$s=New-Object -ComObject Microsoft.Update.Session;"
+            "$sr=$s.CreateUpdateSearcher();"
+            '$r=$sr.Search("IsInstalled=0");'
+            "$c=New-Object -ComObject Microsoft.Update.UpdateColl;"
+            f"$kbs=@({kb_filter});"
+            "foreach($u in $r.Updates){"
+            "$matched=$false;"
+            "foreach($kb in $u.KBArticleNumbers){if($kbs -contains $kb){$matched=$true;break}};"
+            'if(-not $matched -and $u.Title -match "KB(\\d+)"){if($kbs -contains ("KB"+$matches[1])){$matched=$true}};'
+            "if($matched){[void]$c.Add($u)}"
+            "}"
+            "if($c.Count -gt 0){"
+            "$d=$s.CreateUpdateDownloader();$d.Updates=$c;$d.Download();"
+            "$i=$s.CreateUpdateInstaller();$i.Updates=$c;"
+            "$res=$i.Install();"
+            "\"InstallResult={0} RebootRequired={1}\" -f $res.ResultCode,$res.RebootRequired | Out-File -FilePath '__RP__' -Encoding utf8 -Force"
+            "}else{"
+            "\"No matching updates found\" | Out-File -FilePath '__RP__' -Encoding utf8 -Force"
+            "}"
+            "}catch{"
+            "\"InstallError=$($_.Exception.Message)\" | Out-File -FilePath '__RP__' -Encoding utf8 -Force"
+            "}"
+        )
+
+        # 外层脚本：用 here-string 写脚本文件 -> 创建 SYSTEM 任务 -> 运行 -> 等待 -> 读结果 -> 清理
+        # 不用 base64 编码，避免 pywinrm run_ps 二次编码后超过 Windows 命令行 8191 字符限制
+        wua_command = (
+            "$ProgressPreference='SilentlyContinue';"
+            f"$sp='{script_path}';"
+            f"$rp='{result_path}';"
+            f"$tn='{task_name}';"
+            "if(Test-Path $rp){Remove-Item $rp -Force};"
+            # 用单引号 here-string 写脚本（字面量，不解析变量），替换结果路径占位符
+            f"@'\n{inner_script}\n'@ -replace '__RP__',$rp | Out-File $sp -Encoding utf8 -Force;"
+            # 创建并立即运行 SYSTEM 任务
+            "schtasks /create /ru SYSTEM /tn $tn /tr \"powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sp\" /sc once /st 00:00 /f 2>&1;"
+            "schtasks /run /tn $tn 2>&1;"
+            # 轮询等待任务完成，最多 10 分钟
+            "$w=0;while($w -lt 300){Start-Sleep -Seconds 2;$q=schtasks /query /tn $tn /fo list /v;if($q -match 'Status\\s*:\\s*Ready'){break};$w++};"
+            # 删除任务
+            "schtasks /delete /tn $tn /f 2>&1;"
+            # 输出结果；若结果文件不存在表示 SYSTEM 任务异常或超时
+            "if(Test-Path $rp){Get-Content $rp;Remove-Item $rp -Force}else{Write-Output 'InstallResult= RebootRequired='};"
+            # 清理脚本文件
+            "Remove-Item $sp -Force -ErrorAction SilentlyContinue"
+        )
+        return [wua_command, *manual_commands]
+
+    pkg_names: list[str] = []
+    for p in patches:
+        try:
+            patch_pkg_names = p.linux_detail.package_names()
+        except Exception:
+            patch_pkg_names = []
+        for pkg_name in patch_pkg_names:
+            if not _PKG_NAME_RE.match(pkg_name) or pkg_name in pkg_names:
+                continue
+            pkg_names.append(pkg_name)
+
+    if not pkg_names:
+        return ['echo no installable package mapped']
+
+    quoted = ' '.join(shlex.quote(p) for p in pkg_names)
+    if linux_manager == "apt":
+        return [f'DEBIAN_FRONTEND=noninteractive apt-get install -y --no-remove -- {quoted}']
+    if linux_manager == "dnf":
+        return [f'dnf install -y -- {quoted}']
+    if linux_manager == "yum":
+        return [f'yum install -y -- {quoted}']
+    return []
+
+
+def _assess_command(os_type: str, requirements: list | None = None) -> str:
+    if os_type == OSType.WINDOWS:
+        return (
+            '$ProgressPreference="SilentlyContinue";'
+            '$os=Get-CimInstance Win32_OperatingSystem;'
+            '$caption=([string]$os.Caption).Replace("|"," ");'
+            '$arch=([string]$env:PROCESSOR_ARCHITECTURE).Replace("|"," ");'
+            '"BKPATCH_HOST|WINDOWS|{0}|{1}|{2}|{3}" -f $caption,$os.Version,$os.BuildNumber,$arch;'
+            '$s=New-Object -ComObject Microsoft.Update.Session;'
+            '$sr=$s.CreateUpdateSearcher();'
+            '$r=$sr.Search("IsInstalled=0");'
+            '"===WUA===";'
+            'foreach($u in $r.Updates){'
+            '$kb=($u.KBArticleNumbers | Select-Object -First 1);'
+            'if(-not $kb -and $u.Title -match "KB(\\d+)"){$kb="KB"+$matches[1]};'
+            '"{0}|{1}|{2}" -f $kb,$u.MsrcSeverity,$u.Title'
+            '}'
+            '"===WUA_INSTALLED===";'
+            '$ir=$sr.Search("IsInstalled=1");'
+            'foreach($u in $ir.Updates){'
+            '$kb=($u.KBArticleNumbers | Select-Object -First 1);'
+            'if(-not $kb -and $u.Title -match "KB(\\d+)"){$kb="KB"+$matches[1]};'
+            '"{0}|{1}|{2}" -f $kb,$u.MsrcSeverity,$u.Title'
+            '}'
+            '"===HOTFIX===";'
+            'Get-HotFix | ForEach-Object { $_.HotFixID }'
+        )
+    package_requirements: list[tuple[int, int, str, str]] = []
+    for requirement in requirements or []:
+        try:
+            detail = requirement.patch.linux_detail
+            package_items = getattr(detail, 'package_items', None)
+            if callable(package_items):
+                items = package_items()
+            else:
+                package_name = (getattr(detail, 'pkg_name', '') or '').strip()
+                items = [{
+                    'name': package_name,
+                    'version': (getattr(detail, 'pkg_version', '') or '').strip(),
+                }] if package_name else []
+        except Exception:  # noqa: BLE001
+            items = []
+        if not items:
+            package_requirements.append((int(requirement.id), 0, '', ''))
+            continue
+        package_requirements.extend(
+            (int(requirement.id), spec_index, item['name'], item['version'])
+            for spec_index, item in enumerate(items)
+        )
+
+    commands: list[str] = []
+    for requirement_id, spec_index, package_name, required_version in package_requirements:
+        if not package_name or not _PKG_NAME_RE.match(package_name):
+            commands.append(
+                f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}||unknown|||invalid_package_name\\n'"
+            )
+            continue
+        package_q = shlex.quote(package_name)
+        version_q = shlex.quote(required_version)
+        commands.append(
+            f"pkg={package_q}; required={version_q}; "
+            "if [ -z \"$required\" ]; then "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|unknown|||missing_required_version\\n'; "
+            "elif [ \"$manager\" = 'apt' ]; then "
+            "value=$(dpkg-query -W -f='${db:Status-Abbrev}|${Version}' -- \"$pkg\" 2>/dev/null); rc=$?; "
+            "if [ $rc -ne 0 ]; then "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|absent|||\\n'; "
+            "else state=${value%%|*}; installed=${value#*|}; "
+            "if [ \"$state\" != 'ii ' ]; then "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|absent|%s||\\n' \"$installed\"; "
+            "elif dpkg --compare-versions \"$installed\" ge \"$required\"; then "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
+            "else "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
+            "elif [ \"$manager\" = 'dnf' ] || [ \"$manager\" = 'yum' ]; then "
+            "installed=$(rpm -q --qf '%{EVR}' \"$pkg\" 2>/dev/null); rc=$?; "
+            "if [ $rc -ne 0 ]; then "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|absent|||\\n'; "
+            "else comparison=$(env BKPATCH_INSTALLED=\"$installed\" BKPATCH_REQUIRED=\"$required\" "
+            "rpm --eval '%{lua: print(rpm.vercmp(os.getenv(\"BKPATCH_INSTALLED\"), os.getenv(\"BKPATCH_REQUIRED\")))}' 2>/dev/null); compare_rc=$?; "
+            "if [ $compare_rc -ne 0 ] || ! printf '%s' \"$comparison\" | grep -Eq '^-?[0-9]+$'; then "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|unknown|%s||rpm_version_compare_failed\\n' \"$installed\"; "
+            "elif [ \"$comparison\" -ge 0 ]; then "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
+            "else "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
+            "else "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|unknown|||unsupported_package_manager\\n'; fi"
+        )
+    if not commands:
+        return "printf 'BKPATCH_COLLECTION_ERROR|no_linux_requirements\\n'"
+    host_facts = linux_host_facts_command()
+    return f"{host_facts}; {'; '.join(commands)}"
+
+
+def _dry_run_command(package_manager: str, pkg_names: list[str]) -> str:
+    '''生成 dry-run 安装模拟命令，预览安装影响。'''
+    if not pkg_names:
+        return ''
+    pkgs = ' '.join(shlex.quote(name) for name in pkg_names if _PKG_NAME_RE.match(name))
+    if not pkgs:
+        return ''
+    if package_manager == 'apt':
+        return f'LC_ALL=C apt-get -s install -- {pkgs}'
+    if package_manager == 'dnf':
+        return f'LC_ALL=C dnf install --assumeno -- {pkgs}'
+    if package_manager == 'yum':
+        return f'LC_ALL=C yum install --assumeno -- {pkgs}'
+    return ''
+
+
+def _parse_dry_run_output(stdout: str) -> dict:
+    '''解析 dry-run 输出，提取安装影响信息。
+
+    支持两种格式：
+    - apt-get -s install: 含 "Inst pkg (new_ver)" 行和 "N upgraded, M newly installed" 摘要
+    - dnf/yum update --assumeno: 含 "Upgrading:" / "Installing:" 段落和 "Upgrade N Package" 摘要
+    '''
+    upgrade = []
+    install = []
+    remove = []
+    summary = ''
+
+    lines = stdout.splitlines()
+
+    # 优先尝试 apt 格式：Inst 行
+    apt_inst_pattern = re.compile(r'^Inst\s+(\S+)\s+\[?([^\s\]]*)\]?\s*\(([^)]+)\)')
+    apt_summary_pattern = re.compile(r'(\d+)\s+upgraded.*?(\d+)\s+newly installed.*?(\d+)\s+to remove')
+    has_apt = False
+    for line in lines:
+        m = apt_inst_pattern.match(line)
+        if m:
+            has_apt = True
+            pkg = m.group(1)
+            old_ver = m.group(2).strip()
+            new_ver = m.group(3).strip()
+            if old_ver:
+                upgrade.append(f'{pkg} ({old_ver} -> {new_ver})')
+            else:
+                install.append(f'{pkg} ({new_ver})')
+        m2 = apt_summary_pattern.search(line)
+        if m2:
+            summary = line.strip()
+            has_apt = True
+
+    if has_apt:
+        return {
+            'upgrade': upgrade,
+            'install': install,
+            'remove': remove,
+            'summary': summary or f'{len(upgrade)} 个升级, {len(install)} 个新安装, {len(remove)} 个移除',
+            'raw_output': stdout[:2000],
+        }
+
+    # 尝试 yum/dnf 格式：段落式
+    current_section = None
+    yum_pkg_pattern = re.compile(r'^\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)')
+    for line in lines:
+        low = line.strip().lower()
+        if low == 'upgrading:':
+            current_section = 'upgrade'
+            continue
+        elif low == 'installing:':
+            current_section = 'install'
+            continue
+        elif low == 'removing:':
+            current_section = 'remove'
+            continue
+        elif low.startswith('transaction summary'):
+            current_section = None
+            continue
+
+        if current_section and not line.startswith('='):
+            m = yum_pkg_pattern.match(line)
+            if m:
+                pkg_name = m.group(1)
+                version = m.group(3)
+                if current_section == 'upgrade':
+                    upgrade.append(f'{pkg_name} ({version})')
+                elif current_section == 'install':
+                    install.append(f'{pkg_name} ({version})')
+                elif current_section == 'remove':
+                    remove.append(f'{pkg_name} ({version})')
+
+        if 'upgrade' in low and 'package' in low:
+            summary = line.strip()
+        elif 'install' in low and 'package' in low:
+            summary = line.strip()
+
+    if upgrade or install or remove:
+        if not summary:
+            summary = f'{len(upgrade)} 个升级, {len(install)} 个新安装, {len(remove)} 个移除'
+        return {
+            'upgrade': upgrade,
+            'install': install,
+            'remove': remove,
+            'summary': summary,
+            'raw_output': stdout[:2000],
+        }
+
+    # 无法解析时返回原始输出
+    return {
+        'upgrade': [],
+        'install': [],
+        'remove': [],
+        'summary': '',
+        'raw_output': stdout[:2000],
+    }
+
+
+def _collect_install_impact(
+    target: PatchTarget,
+    missing_requirements: list,
+    execution_id: str,
+    package_manager: str,
+) -> dict[int, dict]:
+    '''对缺失的补丁跑 dry-run，收集安装影响信息。
+
+    Returns: {requirement_id: install_impact_dict}
+    '''
+    if target.os_type == OSType.WINDOWS:
+        return {}
+
+    impacts: dict[int, dict] = {}
+    for req in missing_requirements:
+        pkg_names = []
+        try:
+            for pkg_name in req.patch.linux_detail.package_names():
+                if _PKG_NAME_RE.match(pkg_name) and pkg_name not in pkg_names:
+                    pkg_names.append(pkg_name)
+        except Exception:
+            pkg_names = []
+        command = _dry_run_command(package_manager, pkg_names)
+        if not command:
+            impacts[req.id] = {
+                'raw_output': '',
+                'summary': '',
+                'error': '无法生成原生包管理器预演命令',
+            }
+            continue
+        try:
+            result = _execute_command(target, command, timeout=30, execution_id=execution_id)
+            stdout = str(result.get('stdout') or '')
+            stderr = str(result.get('stderr') or '')
+            impact = _parse_dry_run_output('\n'.join(value for value in (stdout, stderr) if value))
+            exit_code = result.get('exit_code')
+            if result.get('error') or (
+                exit_code is not None and int(exit_code) != 0 and not impact.get('summary')
+            ):
+                impact['error'] = _result_reason(result)[:200]
+        except Exception as exc:  # noqa: BLE001
+            error_text = str(exc)
+            dry_run_output = error_text.partition('| Output:')[2].lstrip() or error_text
+            impact = _parse_dry_run_output(dry_run_output)
+            expected_rpm_abort = (
+                package_manager in {'dnf', 'yum'}
+                and 'Dependencies resolved.' in dry_run_output
+                and re.search(r'(?m)^Operation aborted\.$', dry_run_output) is not None
+                and bool(impact.get('summary'))
+            )
+            if not expected_rpm_abort:
+                logger.warning('dry-run 失败 target=%s requirement=%s: %s', target.id, req.id, exc)
+                impact = {'raw_output': '', 'summary': '', 'error': error_text[:200]}
+        impacts[req.id] = impact
+    return impacts
+
+
+def _record_host_start(host: GovernanceTaskHost, stage: str) -> bool:
+    from apps.patch_mgmt.config import get_stage_timeout
+
+    now = timezone.now()
+    filters = {"pk": host.pk, "stage": host.stage}
+    if host.execution_token:
+        filters["execution_token"] = host.execution_token
+    updated = GovernanceTaskHost.objects.filter(**filters).update(
+        stage=stage,
+        stage_color='processing',
+        started_at=host.started_at or now,
+        stage_started_at=now,
+        stage_deadline_at=now + timedelta(seconds=get_stage_timeout(host.task.task_type)),
+        last_heartbeat_at=now,
+        updated_at=now,
+    )
+    host.refresh_from_db()
+    return bool(updated)
+
+
+def _claim_waiting_host(host: GovernanceTaskHost, stage: str) -> bool:
+    '''原子领取待执行主机，避免与取消操作竞态。'''
+    from apps.patch_mgmt.config import get_stage_timeout
+
+    now = timezone.now()
+    execution_token = uuid.uuid4().hex
+    claimed = GovernanceTaskHost.objects.filter(pk=host.pk, stage='waiting').update(
+        stage=stage,
+        stage_color='processing',
+        started_at=now,
+        stage_started_at=now,
+        stage_deadline_at=now + timedelta(seconds=get_stage_timeout(host.task.task_type)),
+        last_heartbeat_at=now,
+        execution_token=execution_token,
+        updated_at=now,
+    )
+    if claimed:
+        host.refresh_from_db()
+    return bool(claimed)
+
+
+def _record_host_result(
+    host: GovernanceTaskHost,
+    *,
+    stage: str,
+    stage_color: str,
+    exit_code: Optional[int] = None,
+    reason: str = '',
+    failed_stage: str = '',
+    error_code: str = '',
+    can_retry: bool = False,
+) -> bool:
+    filters = {"pk": host.pk, "stage": host.stage}
+    if host.execution_token:
+        filters["execution_token"] = host.execution_token
+    updated = GovernanceTaskHost.objects.filter(**filters).update(
+        stage=stage,
+        stage_color=stage_color,
+        exit_code=exit_code,
+        reason=reason,
+        failed_stage=failed_stage,
+        error_code=error_code,
+        can_retry=can_retry,
+        updated_at=timezone.now(),
+    )
+    host.refresh_from_db()
+    if not updated:
+        logger.warning(
+            "忽略过期执行结果 task=%s target=%s token=%s current_stage=%s",
+            host.task_id,
+            host.target_id,
+            host.execution_token,
+            host.stage,
+        )
+    return bool(updated)
+
+
+def _format_log_entry(command: str, result: Any) -> str:
+    '''把单条命令及其执行结果格式化成文本日志。'''
+    ts = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+    lines = [f'[{ts}] $ {command}']
+    if isinstance(result, dict):
+        if result.get('stdout'):
+            lines.append(f'[{ts}] stdout:\n{result["stdout"]}')
+        if result.get('stderr'):
+            lines.append(f'[{ts}] stderr:\n{result["stderr"]}')
+        if result.get('error'):
+            lines.append(f'[{ts}] error: {result["error"]}')
+        lines.append(f'[{ts}] exit_code: {result.get("exit_code")}')
+    else:
+        lines.append(f'[{ts}] result:\n{str(result)}')
+    return '\n'.join(lines) + '\n'
+
+
+def _append_host_log(host: GovernanceTaskHost, command: str, result: Any) -> None:
+    '''追加命令执行日志到 GovernanceTaskHost.log。'''
+    entry = _format_log_entry(command, result)
+    host.log = f'{host.log}\n{entry}'.strip()
+    host.save(update_fields=['log', 'updated_at'])
+
+
+def _is_assess_success(result: dict[str, Any]) -> bool:
+    '''判断 assess 命令是否成功。
+
+    yum/dnf check-update 在有可用更新时返回 100，这属于正常结果而非失败；
+    apt-get -s upgrade 成功返回 0。因此 exit_code 为 0 或 100 均视为成功，
+    前提是没有执行器层面的 error。
+    '''
+    if not isinstance(result, dict):
+        return False
+    if result.get('error'):
+        return False
+    code = result.get('exit_code')
+    if code is not None and int(code) not in (0, 100):
+        return False
+    return True
+
+
+def _persist_verification_snapshot(
+    task: GovernanceTask | None,
+    target: PatchTarget,
+    *,
+    evaluated_at,
+    requirements=None,
+    assessments=None,
+    failure_reason: str = "",
+) -> None:
+    """把 verify 的主机-补丁结果冻结在当次任务。"""
+    if task is None or task.task_type != GovernanceTaskType.VERIFY:
+        return
+    items = [
+        item
+        for item in (task.risk_snapshot or [])
+        if int(item.get("host_id") or 0) == target.id
+    ]
+    if not items:
+        return
+    assessment_by_patch = {}
+    if requirements is not None and assessments is not None:
+        for requirement in requirements:
+            assessment = assessments.get(requirement.id)
+            if assessment is not None:
+                assessment_by_patch[int(requirement.patch_id)] = assessment
+
+    entries = []
+    for item in items:
+        patch_id = int(item.get("patch_id") or 0)
+        assessment = assessment_by_patch.get(patch_id)
+        if failure_reason or assessment is None:
+            entries.append(
+                {
+                    "risk_item_id": str(item.get("id") or ""),
+                    "host_id": target.id,
+                    "patch_id": patch_id,
+                    "status": "failed",
+                    "satisfied": None,
+                    "reason": failure_reason or "未获取到该补丁的验证结果",
+                    "evidence": {},
+                    "evaluated_at": evaluated_at.isoformat(),
+                }
+            )
+            continue
+        entries.append(
+            {
+                "risk_item_id": str(item.get("id") or ""),
+                "host_id": target.id,
+                "patch_id": patch_id,
+                "status": "completed",
+                "satisfied": bool(assessment.satisfied),
+                "assessment_status": assessment.status,
+                "reason": assessment.reason or "",
+                "evidence": dict(assessment.evidence or {}),
+                "evaluated_at": evaluated_at.isoformat(),
+            }
+        )
+
+    # 同一 verify 任务的多台主机可并行回写，必须加锁合并，避免 JSON 覆盖。
+    with transaction.atomic():
+        locked = GovernanceTask.objects.select_for_update().get(pk=task.pk)
+        item_ids = {entry["risk_item_id"] for entry in entries}
+        merged = [
+            entry
+            for entry in (locked.result_snapshot or [])
+            if str(entry.get("risk_item_id") or "") not in item_ids
+        ]
+        merged.extend(entries)
+        locked.result_snapshot = merged
+        locked.save(update_fields=["result_snapshot", "updated_at"])
+    task.result_snapshot = merged
+
+
+def _update_binding_after_assess(
+    target: PatchTarget,
+    success: bool,
+    result: dict[str, Any],
+    execution_id: str = '',
+) -> None:
+    '''评估完成后把结果写回 HostBaselineBinding 与 HostComplianceSnapshot。'''
+    binding = getattr(target, 'baseline_binding', None)
+    try:
+        task_id = int(str(execution_id).split(':', 1)[0])
+    except (TypeError, ValueError):
+        task_id = 0
+    task = GovernanceTask.objects.filter(pk=task_id).first() if task_id else None
+    now = timezone.now()
+    if binding is None:
+        _persist_verification_snapshot(
+            task,
+            target,
+            evaluated_at=now,
+            failure_reason="主机未绑定基线，无法验证",
+        )
+        return
+    if task and task.status == GovernanceTaskStatus.CANCELLED:
+        logger.info('忽略已取消评估结果 task=%s target=%s', task.id, target.id)
+        return
+    if task and task.task_type == GovernanceTaskType.ASSESS and task.risk_snapshot:
+        snapshot = task.risk_snapshot[0]
+        expected_baseline_id = int(snapshot.get('baseline_id') or 0)
+        expected_signature = str(snapshot.get('requirements_signature') or '')
+        expected_bindings_signature = str(snapshot.get('bindings_signature') or '')
+        binding.refresh_from_db(fields=['baseline_id'])
+        current_requirements = binding.baseline.requirements.order_by('id').values_list(
+            'id', 'patch_id', 'updated_at'
+        )
+        current_signature = '|'.join(
+            f'{requirement_id}:{patch_id}:{updated_at.isoformat()}'
+            for requirement_id, patch_id, updated_at in current_requirements
+        )
+        current_bindings_signature = '|'.join(
+            f'{binding_id}:{target_id}'
+            for binding_id, target_id in binding.baseline.host_bindings.order_by('id').values_list(
+                'id', 'target_id'
+            )
+        )
+        if (
+            binding.baseline_id != expected_baseline_id
+            or (expected_signature and current_signature != expected_signature)
+            or (
+                expected_bindings_signature
+                and current_bindings_signature != expected_bindings_signature
+            )
+        ):
+            logger.info(
+                '忽略已失效评估结果 task=%s target=%s baseline=%s',
+                task.id,
+                target.id,
+                expected_baseline_id,
+            )
+            return
+    binding.last_evaluated_at = now
+
+    if not success:
+        _persist_verification_snapshot(
+            task,
+            target,
+            evaluated_at=now,
+            failure_reason=_result_reason(result) or "验证命令执行失败",
+        )
+        if task and task.task_type == GovernanceTaskType.VERIFY:
+            # 验证本身失败时保留上一次合规事实，风险状态由 verify
+            # 执行结果标记为治理失败，避免风险项因 binding=failed 消失。
+            return
+        binding.compliance_status = ComplianceStatus.FAILED
+        binding.missing_count = 0
+        binding.save(update_fields=['compliance_status', 'missing_count', 'last_evaluated_at', 'updated_at'])
+        return
+
+    stdout = result.get('stdout') or '' if isinstance(result, dict) else str(result)
+    if target.os_type == OSType.LINUX:
+        host_error = linux_assessment_host_error(stdout)
+        if host_error:
+            _persist_verification_snapshot(
+                task,
+                target,
+                evaluated_at=now,
+                failure_reason=host_error,
+            )
+            if task and task.task_type == GovernanceTaskType.VERIFY:
+                return
+            binding.compliance_status = ComplianceStatus.FAILED
+            binding.missing_count = 0
+            binding.save(
+                update_fields=['compliance_status', 'missing_count', 'last_evaluated_at', 'updated_at']
+            )
+            return
+    try:
+        requirements = list(
+            binding.baseline.requirements.select_related('patch__linux_detail', 'patch__windows_detail')
+        )
+        assessments = assess_requirements(target.os_type, stdout, requirements)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception('解析目标 %s 评估输出失败: %s', target.id, exc)
+        _persist_verification_snapshot(
+            task,
+            target,
+            evaluated_at=now,
+            failure_reason=f"验证结果解析失败: {exc}",
+        )
+        if task and task.task_type == GovernanceTaskType.VERIFY:
+            return
+        binding.compliance_status = ComplianceStatus.FAILED
+        binding.missing_count = 0
+        binding.save(update_fields=['compliance_status', 'missing_count', 'last_evaluated_at', 'updated_at'])
+        return
+
+    HostComplianceSnapshot.objects.filter(binding=binding).delete()
+    snapshots = []
+    missing_count = 0
+    unknown_count = 0
+    not_applicable_count = 0
+    satisfied_count = 0
+    missing_reqs = []
+    for req in requirements:
+        assessment = assessments.get(req.id)
+        if assessment is None:
+            continue
+        if assessment.status == RequirementAssessmentStatus.MISSING:
+            missing_count += 1
+            missing_reqs.append(req)
+        elif assessment.status == RequirementAssessmentStatus.UNKNOWN:
+            unknown_count += 1
+        elif assessment.status == RequirementAssessmentStatus.NOT_APPLICABLE:
+            not_applicable_count += 1
+        elif assessment.status == RequirementAssessmentStatus.SATISFIED:
+            satisfied_count += 1
+
+    # 对缺失补丁跑 dry-run，收集安装影响
+    install_impacts = {}
+    if missing_reqs and success:
+        try:
+            install_impacts = _collect_install_impact(
+                target,
+                missing_reqs,
+                execution_id,
+                parse_linux_host_facts(stdout).package_manager,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('收集安装影响失败 target=%s: %s', target.id, exc)
+
+    for req in requirements:
+        assessment = assessments.get(req.id)
+        if assessment is None:
+            continue
+        evidence = dict(assessment.evidence) if assessment.evidence else {}
+        if req.id in install_impacts:
+            evidence['install_impact'] = install_impacts[req.id]
+        snapshots.append(
+            HostComplianceSnapshot(
+                binding=binding,
+                requirement=req,
+                satisfied=assessment.satisfied,
+                status=assessment.status,
+                evidence=evidence,
+                reason=assessment.reason,
+                evaluated_at=now,
+            )
+        )
+    HostComplianceSnapshot.objects.bulk_create(snapshots)
+    _persist_verification_snapshot(
+        task,
+        target,
+        evaluated_at=now,
+        requirements=requirements,
+        assessments=assessments,
+    )
+
+    binding.missing_count = missing_count
+    if missing_count:
+        binding.compliance_status = ComplianceStatus.NON_COMPLIANT
+    elif unknown_count:
+        binding.compliance_status = ComplianceStatus.UNKNOWN
+    elif satisfied_count:
+        binding.compliance_status = ComplianceStatus.COMPLIANT
+    elif not_applicable_count:
+        binding.compliance_status = ComplianceStatus.NOT_APPLICABLE
+    else:
+        binding.compliance_status = ComplianceStatus.UNKNOWN
+    binding.save(update_fields=['compliance_status', 'missing_count', 'last_evaluated_at', 'updated_at'])
+
+
+def _is_success(result: dict[str, Any]) -> bool:
+    '''粗略判断执行器返回是否成功。'''
+    if not isinstance(result, dict):
+        return False
+    if result.get('error'):
+        return False
+    code = result.get('exit_code')
+    if code is not None and int(code) != 0:
+        return False
+    return True
+
+
+def _result_reason(result: dict[str, Any]) -> str:
+    if not isinstance(result, dict):
+        return str(result)[:512]
+    if result.get('error'):
+        return str(result['error'])[:512]
+    stderr = result.get('stderr') or ''
+    stdout = result.get('stdout') or ''
+    return (stderr or stdout or str(result))[:512]
+
+
+def _is_timeout_value(value: Any) -> bool:
+    text = str(value or '').lower()
+    return any(hint in text for hint in ('timed out', 'timeout', 'time limit exceeded'))
+
+
+def _is_timeout_result(result: Any) -> bool:
+    if not isinstance(result, dict):
+        return False
+    return any(
+        _is_timeout_value(result.get(key))
+        for key in ('error', 'stderr', 'stdout')
+    )
+
+
+_INSTALL_RESULT_RE = re.compile(r'InstallResult=(\d)')
+_REBOOT_REQUIRED_RE = re.compile(r'RebootRequired=(True|False)')
+_LINUX_REBOOT_REQUIRED_RE = re.compile(r'RebootRequired=(True|False|Unknown)')
+_REBOOT_METHOD_RE = re.compile(r'RebootMethod=([^\r\n]+)')
+_REBOOT_DETAIL_RE = re.compile(r'RebootDetail=([^\r\n]+)')
+
+_INSTALL_RESULT_MESSAGES = {
+    '0': '安装未启动',
+    '1': '安装进行中（未完成）',
+    '4': 'WUA 安装失败',
+    '5': 'WUA 安装已中止',
+}
+
+
+def _parse_windows_install_result(result: dict[str, Any]) -> tuple[bool, str, Optional[bool]]:
+    '''解析 Windows WUA 安装命令输出。
+
+    返回 (是否成功, 原因, 是否需要重启)。
+    仅当 InstallResult 为 2 或 3 时认为安装成功；其它码值、空值、
+    stderr 异常或无法识别的输出均视为失败。
+    '''
+    if not isinstance(result, dict):
+        return False, str(result)[:512], False
+
+    stdout = str(result.get('stdout') or '')
+    stderr = str(result.get('stderr') or '')
+
+    if 'No matching updates found' in stdout:
+        return False, '未找到匹配的更新，KB 号可能不存在于 Windows Update', False
+
+    install_error_match = re.search(r'InstallError=(.+)', stdout)
+    if install_error_match:
+        return False, f'WUA 安装异常：{install_error_match.group(1)[:256]}', False
+
+    # stdout 有明确 InstallResult 码值时以 stdout 为准（schtasks 的 WARNING 不影响判断）
+    match = _INSTALL_RESULT_RE.search(stdout)
+    if match:
+        code = match.group(1)
+        if code in ('2', '3'):
+            reboot_match = _REBOOT_REQUIRED_RE.search(stdout)
+            reboot_required = None if reboot_match is None else reboot_match.group(1) == 'True'
+            reason = '安装成功完成' if code == '2' else '安装完成（含非关键错误）'
+            return True, reason, reboot_required
+        reason = _INSTALL_RESULT_MESSAGES.get(code, f'WUA 返回未知结果码 {code}')
+        return False, reason, False
+
+    # stdout 没有明确 InstallResult，回退到 stderr 检查
+    if 'Access is denied' in stderr:
+        return False, f'权限不足：{stderr[:256]}', False
+
+    if stderr.strip():
+        return False, f'安装异常：{stderr[:256]}', False
+
+    return False, f'WUA 输出异常，无法解析 InstallResult：{stdout[:256]}', False
+
+
+def _linux_reboot_check_command(package_manager: str) -> str:
+    '''生成 Linux 安装后重启需求探测命令。
+
+    输出统一的 RebootRequired/RebootMethod/RebootDetail 三行协议，并始终以
+    退出码 0 返回，避免把“需要重启”(needs-restarting rc=1)误判为执行失败。
+    '''
+    if package_manager == 'dnf':
+        return (
+        'if ! dnf -q needs-restarting --help >/dev/null 2>&1; then '
+        'printf "RebootRequired=Unknown\\nRebootMethod=dnf\\nRebootDetail=needs-restarting unavailable\\n"; '
+        'else out="$(dnf -q needs-restarting -r 2>&1)"; rc=$?; '
+        'printf "%s\\n" "$out"; '
+        'if [ "$rc" -eq 0 ]; then printf "RebootRequired=False\\nRebootMethod=dnf\\n"; '
+        'elif [ "$rc" -eq 1 ]; then printf "RebootRequired=True\\nRebootMethod=dnf\\n"; '
+        'else printf "RebootRequired=Unknown\\nRebootMethod=dnf\\nRebootDetail=exit code %s\\n" "$rc"; fi; fi; '
+        'exit 0'
+        )
+    if package_manager == 'yum':
+        return (
+        'if command -v needs-restarting >/dev/null 2>&1; then '
+        'out="$(needs-restarting -r 2>&1)"; rc=$?; '
+        'elif yum -q needs-restarting --help >/dev/null 2>&1; then '
+        'out="$(yum -q needs-restarting -r 2>&1)"; rc=$?; '
+        'else printf "RebootRequired=Unknown\\nRebootMethod=yum\\nRebootDetail=needs-restarting unavailable\\n"; exit 0; fi; '
+        'printf "%s\\n" "$out"; '
+        'if [ "$rc" -eq 0 ]; then printf "RebootRequired=False\\nRebootMethod=yum\\n"; '
+        'elif [ "$rc" -eq 1 ]; then printf "RebootRequired=True\\nRebootMethod=yum\\n"; '
+        'else printf "RebootRequired=Unknown\\nRebootMethod=yum\\nRebootDetail=exit code %s\\n" "$rc"; fi; '
+        'exit 0'
+        )
+    if package_manager == 'apt':
+        return (
+        'if [ -e /run/reboot-required ] || [ -e /var/run/reboot-required ]; then '
+        'printf "RebootRequired=True\\nRebootMethod=apt\\n"; '
+        'elif [ -x /usr/share/update-notifier/notify-reboot-required ]; then '
+        'printf "RebootRequired=False\\nRebootMethod=apt\\n"; '
+        'else printf "RebootRequired=Unknown\\nRebootMethod=apt\\nRebootDetail=update-notifier unavailable\\n"; fi; '
+        'exit 0'
+        )
+    return (
+        'printf "RebootRequired=Unknown\\nRebootMethod=unknown\\n'
+        'RebootDetail=unsupported package manager\\n"; exit 0'
+    )
+
+
+def _windows_reboot_check_command() -> str:
+    '''生成 Windows 只读重启需求探测命令。'''
+    return (
+        '$p=$false;'
+        'if(Test-Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending"){$p=$true};'
+        'if(Test-Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired"){$p=$true};'
+        '$s=Get-ItemProperty "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager" '
+        '-Name PendingFileRenameOperations -ErrorAction SilentlyContinue;'
+        'if($null -ne $s){$p=$true};'
+        '"RebootRequired={0}`nRebootMethod=windows" -f $p'
+    )
+
+
+def _install_activity_command(os_type: str) -> str:
+    '''返回仅查询安装进程状态的只读命令。'''
+    if os_type == OSType.WINDOWS:
+        return (
+            '$running=Get-ScheduledTask -TaskName "WUA_Install_*" -ErrorAction SilentlyContinue '
+            '| Where-Object {$_.State -eq "Running"};'
+            '"InstallProcessRunning={0}" -f [bool]$running'
+        )
+    return (
+        'if pgrep -x dnf >/dev/null || pgrep -x yum >/dev/null || '
+        'pgrep -x apt-get >/dev/null || pgrep -x dpkg >/dev/null || '
+        'pgrep -x rpm >/dev/null; then echo InstallProcessRunning=True; '
+        'else echo InstallProcessRunning=False; fi'
+    )
+
+
+def _parse_install_activity(result: dict[str, Any]) -> Optional[bool]:
+    if not _is_success(result):
+        return None
+    match = re.search(r'InstallProcessRunning=(True|False)', str(result.get('stdout') or ''))
+    return None if match is None else match.group(1) == 'True'
+
+
+def _boot_marker_command(os_type: str) -> str:
+    if os_type == OSType.WINDOWS:
+        return '(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString("o")'
+    return 'cat /proc/sys/kernel/random/boot_id'
+
+
+def _read_boot_marker(
+    target: PatchTarget,
+    execution_id: str,
+    timeout: int = 30,
+) -> str:
+    '''读取目标机当前启动标识；失败返回空串，不执行任何写操作。'''
+    command = _boot_marker_command(target.os_type)
+    try:
+        result = _execute_command(
+            target,
+            command,
+            timeout=timeout,
+            execution_id=execution_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, SoftTimeLimitExceeded):
+            raise
+        logger.warning('读取启动标识失败 target=%s: %s', target.id, exc)
+        return ''
+    if not _is_success(result):
+        return ''
+    lines = str(result.get('stdout') or '').strip().splitlines()
+    return lines[0][:128] if lines else ''
+
+
+def _parse_linux_reboot_check_result(result: dict[str, Any]) -> tuple[Optional[bool], str]:
+    '''解析 Linux 重启探测协议，返回 (是否需要重启, 说明)。'''
+    if not isinstance(result, dict):
+        return None, str(result)[:512]
+    if result.get('error') or int(result.get('exit_code') or 0) != 0:
+        return None, _result_reason(result)
+
+    stdout = str(result.get('stdout') or '')
+    match = _LINUX_REBOOT_REQUIRED_RE.search(stdout)
+    method_match = _REBOOT_METHOD_RE.search(stdout)
+    detail_match = _REBOOT_DETAIL_RE.search(stdout)
+    method = method_match.group(1).strip() if method_match else 'unknown'
+    detail = detail_match.group(1).strip() if detail_match else ''
+    if not match:
+        return None, f'{method} 重启探测输出无法解析：{stdout[:256]}'
+
+    value = match.group(1)
+    reason = f'{method}: {detail}' if detail else method
+    if value == 'True':
+        return True, reason
+    if value == 'False':
+        return False, reason
+    return None, reason
+
+
+def _execute_reboot(target: PatchTarget, host: GovernanceTaskHost, execution_id: str, timeout: int) -> None:
+    if not _record_host_start(host, 'rebooting'):
+        return
+    host.boot_marker_before = _read_boot_marker(target, execution_id)
+    host.save(update_fields=['boot_marker_before', 'updated_at'])
+    command = _reboot_command(target.os_type)
+    try:
+        result = _execute_command(
+            target,
+            command,
+            timeout=timeout,
+            execution_id=execution_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, SoftTimeLimitExceeded):
+            raise
+        if _is_timeout_value(exc):
+            handle_host_execution_timeout(host.task_id, target.id)
+            _append_host_log(host, command, {'error': str(exc), 'exit_code': None})
+            return
+        logger.exception('任务 %s 目标 %s 重启执行异常', host.task_id, target.id)
+        _record_host_result(
+            host,
+            stage='reboot_failed',
+            stage_color='error',
+            reason=f'执行器调用异常: {exc}',
+            failed_stage='reboot',
+            can_retry=True,
+        )
+        _append_host_log(host, command, {'error': str(exc), 'exit_code': None})
+        return
+
+    _append_host_log(host, command, result)
+
+    if _is_timeout_result(result):
+        handle_host_execution_timeout(host.task_id, target.id)
+        return
+
+    if _is_success(result):
+        _record_host_result(
+            host,
+            stage='pending_reboot',
+            stage_color='warning',
+            exit_code=result.get('exit_code') or 0,
+            reason='重启命令已下发，等待主机恢复',
+        )
+    else:
+        _record_host_result(
+            host,
+            stage='reboot_failed',
+            stage_color='error',
+            exit_code=result.get('exit_code'),
+            reason=_result_reason(result),
+            failed_stage='reboot',
+            can_retry=True,
+        )
+
+
+def _execute_install(
+    target: PatchTarget,
+    host: GovernanceTaskHost,
+    patch_ids: list[int],
+    execution_id: str,
+    timeout: int,
+) -> None:
+    if not _record_host_start(host, 'installing'):
+        return
+    patches = list(
+        Patch.objects.filter(pk__in=patch_ids).select_related('windows_detail', 'linux_detail')
+    )
+    linux_manager = ''
+    if target.os_type == OSType.LINUX:
+        facts_command = linux_host_facts_command()
+        try:
+            facts_result = _execute_command(
+                target,
+                facts_command,
+                timeout=timeout,
+                execution_id=execution_id,
+            )
+            _append_host_log(host, facts_command, facts_result)
+        except Exception as exc:  # noqa: BLE001
+            if isinstance(exc, SoftTimeLimitExceeded):
+                raise
+            _append_host_log(host, facts_command, {'error': str(exc), 'exit_code': None})
+            _record_host_result(
+                host,
+                stage='failed',
+                stage_color='error',
+                reason=f'安装前主机事实探测失败: {exc}',
+                failed_stage='install_preflight',
+                can_retry=True,
+            )
+            return
+        if not _is_success(facts_result):
+            _record_host_result(
+                host,
+                stage='failed',
+                stage_color='error',
+                exit_code=facts_result.get('exit_code'),
+                reason=f'安装前主机事实探测失败: {_result_reason(facts_result)}',
+                failed_stage='install_preflight',
+                can_retry=True,
+            )
+            return
+        linux_facts = parse_linux_host_facts(facts_result.get('stdout') or '')
+        facts_error = validate_linux_host_facts(linux_facts)
+        if facts_error:
+            _record_host_result(
+                host,
+                stage='failed',
+                stage_color='error',
+                reason=f'安装前主机事实校验失败: {facts_error}',
+                failed_stage='install_preflight',
+                can_retry=True,
+            )
+            return
+
+        binding = getattr(target, 'baseline_binding', None)
+        requirements = list(
+            binding.baseline.requirements.filter(patch_id__in=patch_ids)
+            .select_related('patch__linux_detail')
+            .prefetch_related('patch__sources')
+        ) if binding else []
+        specs_by_requirement = linux_requirement_specs(requirements)
+        covered_patch_ids = {requirement.patch_id for requirement in requirements}
+        preflight_errors = [
+            f'补丁 {patch_id} 已不在主机当前基线中'
+            for patch_id in patch_ids
+            if patch_id not in covered_patch_ids
+        ]
+        for requirement in requirements:
+            for spec in specs_by_requirement.get(requirement.id, []):
+                applicability, reason = evaluate_linux_applicability(spec, linux_facts)
+                if applicability != RequirementAssessmentStatus.SATISFIED:
+                    preflight_errors.append(f'{requirement.patch.title}: {reason}')
+                    break
+        if preflight_errors:
+            _record_host_result(
+                host,
+                stage='failed',
+                stage_color='error',
+                reason=('安装前适用性复核未通过: ' + '; '.join(preflight_errors))[:1024],
+                failed_stage='install_preflight',
+                error_code='linux_patch_not_applicable',
+                can_retry=True,
+            )
+            return
+        linux_manager = linux_facts.package_manager
+
+    manual_paths: dict[int, str] = {}
+    staging_errors: list[str] = []
+    if target.os_type == OSType.WINDOWS:
+        for patch in patches:
+            try:
+                detail = patch.windows_detail
+                if detail.package_file:
+                    manual_paths[patch.id] = _stage_windows_package(
+                        target, detail, timeout=timeout
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    '任务 %s 目标 %s 手工补丁 %s 分发失败',
+                    host.task_id,
+                    target.id,
+                    patch.id,
+                )
+                reason = f'{patch.title} 分发失败: {exc}'
+                staging_errors.append(reason)
+                _append_host_log(
+                    host,
+                    f'分发手工补丁 {patch.title}',
+                    {'error': str(exc), 'exit_code': None},
+                )
+    commands = _install_commands(
+        patches,
+        target.os_type,
+        manual_paths=manual_paths if target.os_type == OSType.WINDOWS else None,
+        linux_manager=linux_manager,
+    )
+    if staging_errors and commands == ['Write-Output no KB to install']:
+        commands = []
+    if (staging_errors and not commands) or (target.os_type == OSType.LINUX and not commands):
+        _record_host_result(
+            host,
+            stage='failed',
+            stage_color='error',
+            reason='; '.join(staging_errors)[:1024] or '没有可安全安装的 Linux 软件包',
+            failed_stage='install',
+            can_retry=True,
+        )
+        return
+
+    last_result = {}
+    overall_reasons: list[str] = list(staging_errors)
+    windows_results: list[tuple[bool, str, Optional[bool]]] = []
+    execution_failed = bool(staging_errors)
+    for command in commands:
+        try:
+            last_result = _execute_command(
+                target,
+                command,
+                timeout=timeout,
+                execution_id=execution_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            if isinstance(exc, SoftTimeLimitExceeded):
+                raise
+            if _is_timeout_value(exc):
+                handle_host_execution_timeout(host.task_id, target.id)
+                _append_host_log(host, command, {'error': str(exc), 'exit_code': None})
+                return
+            logger.exception('任务 %s 目标 %s 安装执行异常', host.task_id, target.id)
+            overall_reasons.append(f'执行器异常: {exc}')
+            execution_failed = True
+            _append_host_log(host, command, {'error': str(exc), 'exit_code': None})
+            continue
+        _append_host_log(host, command, last_result)
+        if _is_timeout_result(last_result):
+            handle_host_execution_timeout(host.task_id, target.id)
+            return
+        overall_reasons.append(_result_reason(last_result))
+        if target.os_type == OSType.WINDOWS:
+            # SYSTEM 计划任务的安装结果由 stdout 协议返回；外层 WinRM
+            # 可能保留非零退出码，不能先于协议结果判定失败。
+            parsed_result = _parse_windows_install_result(last_result)
+            windows_results.append(parsed_result)
+            if not parsed_result[0]:
+                execution_failed = True
+            continue
+        if not _is_success(last_result):
+            execution_failed = True
+            break
+
+    if target.os_type == OSType.WINDOWS:
+        failed_results = [item for item in windows_results if not item[0]]
+        if execution_failed or failed_results or not windows_results:
+            reasons = [item[1] for item in failed_results] or overall_reasons
+            reason = '; '.join(reasons)[:1024] or 'Windows 补丁安装失败'
+            _record_host_result(
+                host,
+                stage='failed',
+                stage_color='error',
+                exit_code=last_result.get('exit_code') if isinstance(last_result, dict) else None,
+                reason=reason,
+                failed_stage='install',
+                can_retry='未找到匹配的更新' not in reason,
+            )
+            return
+        reboot_values = [item[2] for item in windows_results]
+        reboot_required = True if True in reboot_values else (None if None in reboot_values else False)
+        _record_install_reboot_result(
+            host,
+            reboot_required,
+            '; '.join(item[1] for item in windows_results),
+            0,
+        )
+        return
+
+    if _is_success(last_result):
+        if target.os_type != OSType.WINDOWS:
+            check_command = _linux_reboot_check_command(linux_manager)
+            try:
+                check_result = _execute_command(
+                    target,
+                    check_command,
+                    timeout=min(timeout, 300),
+                    execution_id=execution_id,
+                )
+                _append_host_log(host, check_command, check_result)
+                reboot_required, check_reason = _parse_linux_reboot_check_result(check_result)
+            except Exception as exc:  # noqa: BLE001
+                if isinstance(exc, SoftTimeLimitExceeded):
+                    raise
+                logger.exception('任务 %s 目标 %s 重启需求探测异常', host.task_id, target.id)
+                _append_host_log(host, check_command, {'error': str(exc), 'exit_code': None})
+                reboot_required, check_reason = None, f'执行器调用异常: {exc}'
+            _record_install_reboot_result(
+                host, reboot_required, check_reason, last_result.get('exit_code') or 0,
+            )
+    else:
+        _record_host_result(
+            host,
+            stage='failed',
+            stage_color='error',
+            exit_code=last_result.get('exit_code') if isinstance(last_result, dict) else None,
+            reason='; '.join(overall_reasons)[:1024],
+            failed_stage='install',
+            can_retry=True,
+        )
+
+
+def _record_install_reboot_result(
+    host: GovernanceTaskHost,
+    reboot_required: Optional[bool],
+    check_reason: str,
+    exit_code: int,
+) -> None:
+    '''按安装后的重启探测三态回写主机阶段。'''
+    if reboot_required is True:
+        _record_host_result(
+            host,
+            stage='pending_reboot',
+            stage_color='warning',
+            exit_code=exit_code,
+            reason=f'安装完成，检测到需要重启（{check_reason}）',
+        )
+        return
+    if reboot_required is False:
+        _record_host_result(
+            host,
+            stage='completed',
+            stage_color='success',
+            exit_code=exit_code,
+            reason=f'安装完成，无需重启（{check_reason}）',
+        )
+        return
+    _record_host_result(
+        host,
+        stage='pending_reboot',
+        stage_color='warning',
+        exit_code=exit_code,
+        reason=f'安装完成，但无法判断是否需要重启，已转为待重启（{check_reason}）',
+        failed_stage='reboot_check',
+        error_code='reboot_requirement_unknown',
+    )
+
+
+def _execute_assess(target: PatchTarget, host: GovernanceTaskHost, execution_id: str, timeout: int) -> None:
+    if not _record_host_start(host, 'scanning'):
+        return
+    binding = getattr(target, 'baseline_binding', None)
+    requirements = list(
+        binding.baseline.requirements.select_related(
+            'patch__linux_detail', 'patch__windows_detail'
+        )
+    ) if binding else []
+    command = _assess_command(target.os_type, requirements)
+    try:
+        result = _execute_command(
+            target,
+            command,
+            timeout=timeout,
+            execution_id=execution_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, SoftTimeLimitExceeded):
+            raise
+        logger.exception('任务 %s 目标 %s 评估执行异常', host.task_id, target.id)
+        written = _record_host_result(
+            host,
+            stage='failed',
+            stage_color='error',
+            reason=f'执行器调用异常: {exc}',
+            failed_stage='assess',
+            can_retry=True,
+        )
+        _append_host_log(host, command, {'error': str(exc), 'exit_code': None})
+        if written:
+            _update_binding_after_assess(target, success=False, result={}, execution_id=execution_id)
+        return
+
+    _append_host_log(host, command, result)
+
+    host_facts_error = (
+        linux_assessment_host_error(str(result.get('stdout') or ''))
+        if target.os_type == OSType.LINUX and _is_assess_success(result)
+        else ''
+    )
+    if host_facts_error:
+        written = _record_host_result(
+            host,
+            stage='failed',
+            stage_color='error',
+            exit_code=result.get('exit_code') or 0,
+            reason=host_facts_error,
+            failed_stage='assess',
+            error_code='linux_host_facts_unavailable',
+            can_retry=True,
+        )
+        if written:
+            _update_binding_after_assess(
+                target,
+                success=False,
+                result={**result, 'error': host_facts_error},
+                execution_id=execution_id,
+            )
+    elif _is_assess_success(result):
+        written = _record_host_result(
+            host,
+            stage='completed',
+            stage_color='success',
+            exit_code=result.get('exit_code') or 0,
+            reason=_result_reason(result),
+        )
+        if written:
+            _update_binding_after_assess(target, success=True, result=result, execution_id=execution_id)
+    else:
+        written = _record_host_result(
+            host,
+            stage='failed',
+            stage_color='error',
+            exit_code=result.get('exit_code'),
+            reason=_result_reason(result),
+            failed_stage='assess',
+            can_retry=True,
+        )
+        if written:
+            _update_binding_after_assess(target, success=False, result=result, execution_id=execution_id)
+
+
+def reconcile_install_host(
+    task: GovernanceTask,
+    host: GovernanceTaskHost,
+    target: PatchTarget,
+) -> str:
+    '''只读核验安装结果，返回 installed/running/not_installed/unknown。'''
+    execution_id = f'reconcile:{task.id}:{target.id}'
+    binding = getattr(target, 'baseline_binding', None)
+    if binding is None:
+        return 'unknown'
+    requirements = list(
+        binding.baseline.requirements.filter(patch_id__in=task.patch_list or [])
+        .select_related('patch__linux_detail', 'patch__windows_detail')
+    )
+    if not requirements:
+        return 'unknown'
+    assess_command = _assess_command(target.os_type, requirements)
+    try:
+        assess_result = _execute_command(
+            target,
+            assess_command,
+            timeout=300,
+            execution_id=execution_id,
+        )
+        _append_host_log(host, assess_command, assess_result)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('安装结果核验评估失败 task=%s target=%s: %s', task.id, target.id, exc)
+        return 'unknown'
+
+    if not _is_assess_success(assess_result):
+        return 'unknown'
+
+    try:
+        assessments = assess_requirements(
+            target.os_type,
+            str(assess_result.get('stdout') or ''),
+            requirements,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('安装结果核验解析失败 task=%s target=%s: %s', task.id, target.id, exc)
+        return 'unknown'
+
+    if all(assessments.get(req.id) and assessments[req.id].satisfied for req in requirements):
+        reboot_command = (
+            _windows_reboot_check_command()
+            if target.os_type == OSType.WINDOWS
+            else _linux_reboot_check_command(
+                parse_linux_host_facts(str(assess_result.get('stdout') or '')).package_manager
+            )
+        )
+        try:
+            reboot_result = _execute_command(
+                target,
+                reboot_command,
+                timeout=300,
+                execution_id=execution_id,
+            )
+            _append_host_log(host, reboot_command, reboot_result)
+            reboot_required, reboot_reason = _parse_linux_reboot_check_result(reboot_result)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('安装结果核验重启判断失败 task=%s target=%s: %s', task.id, target.id, exc)
+            reboot_required, reboot_reason = None, f'执行器调用异常: {exc}'
+        _record_install_reboot_result(host, reboot_required, reboot_reason, 0)
+        return 'installed'
+
+    activity_command = _install_activity_command(target.os_type)
+    try:
+        activity_result = _execute_command(
+            target,
+            activity_command,
+            timeout=30,
+            execution_id=execution_id,
+        )
+        _append_host_log(host, activity_command, activity_result)
+        activity = _parse_install_activity(activity_result)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('安装进程核验失败 task=%s target=%s: %s', task.id, target.id, exc)
+        activity = None
+
+    if activity is True:
+        return 'running'
+    if activity is False:
+        return 'not_installed'
+    return 'unknown'
+
+
+def reconcile_reboot_host(
+    task: GovernanceTask,
+    host: GovernanceTaskHost,
+    target: PatchTarget,
+) -> str:
+    '''只读核验重启结果，绝不再次下发重启命令。'''
+    if not _check_host_reachable(target):
+        return 'running'
+    current_marker = _read_boot_marker(
+        target,
+        execution_id=f'reconcile-reboot:{task.id}:{target.id}',
+    )
+    if not host.boot_marker_before or not current_marker:
+        return 'unknown'
+    if current_marker == host.boot_marker_before:
+        return 'running'
+    _record_host_result(
+        host,
+        stage='pending_reboot',
+        stage_color='warning',
+        reason='重启超时核验确认启动标识已变化，等待自动验证',
+        can_retry=False,
+    )
+    return 'rebooted'
+
+
+def reconcile_host_result(task_id: int, target_id: int) -> None:
+    '''编排单台主机超时结果核验；只读探测，不重复安装或重启。'''
+    from apps.patch_mgmt.config import RECONCILE_INTERVAL
+    from apps.patch_mgmt.tasks import reconcile_governance_host
+
+    try:
+        task = GovernanceTask.objects.get(pk=task_id)
+        target = PatchTarget.objects.get(pk=target_id)
+    except (GovernanceTask.DoesNotExist, PatchTarget.DoesNotExist):
+        logger.warning('结果核验对象不存在 task=%s target=%s', task_id, target_id)
+        return
+
+    with transaction.atomic():
+        host = GovernanceTaskHost.objects.select_for_update().filter(
+            task=task,
+            target_id=target_id,
+        ).first()
+        if host is None or host.stage != 'reconciling':
+            return
+        host.reconcile_attempts += 1
+        host.last_heartbeat_at = timezone.now()
+        host.save(update_fields=['reconcile_attempts', 'last_heartbeat_at', 'updated_at'])
+
+    if task.task_type == GovernanceTaskType.INSTALL:
+        result = reconcile_install_host(task, host, target)
+    elif task.task_type == GovernanceTaskType.REBOOT:
+        result = reconcile_reboot_host(task, host, target)
+    else:
+        result = 'unknown'
+
+    host.refresh_from_db()
+    if host.stage != 'reconciling':
+        if _finalize_task_status(task):
+            _run_terminal_followups(task)
+        return
+
+    now = timezone.now()
+    if result == 'not_installed':
+        _record_host_result(
+            host,
+            stage='failed',
+            stage_color='error',
+            reason='超时核验确认补丁未安装，且未检测到安装进程',
+            failed_stage='install',
+            error_code='install_not_completed',
+            can_retry=True,
+        )
+    elif result in {'running', 'unknown'} and host.reconcile_deadline_at and now < host.reconcile_deadline_at:
+        reconcile_governance_host.apply_async(
+            args=[task.id, target_id],
+            countdown=RECONCILE_INTERVAL,
+        )
+        return
+    else:
+        _record_host_result(
+            host,
+            stage='pending_confirmation',
+            stage_color='warning',
+            reason='结果核验窗口已结束，仍无法确认实际执行结果，请人工确认',
+            failed_stage=task.task_type,
+            error_code=f'{task.task_type}_result_unknown',
+            can_retry=False,
+        )
+
+    if _finalize_task_status(task):
+        _run_terminal_followups(task)
+
+
+def handle_host_execution_timeout(task_id: int, target_id: int) -> None:
+    '''收口 Celery soft limit；有副作用阶段转核验，无副作用阶段转可重试失败。'''
+    from apps.patch_mgmt.config import RECONCILE_TIMEOUT
+    from apps.patch_mgmt.tasks import reconcile_governance_host
+
+    now = timezone.now()
+    with transaction.atomic():
+        host = GovernanceTaskHost.objects.select_for_update().select_related('task').filter(
+            task_id=task_id,
+            target_id=target_id,
+        ).first()
+        if host is None or host.stage not in {'scanning', 'installing', 'rebooting'}:
+            return
+        task = host.task
+        host.timeout_reason = f'{task.get_task_type_display()}任务触发执行器软超时'
+        host.reason = host.timeout_reason
+        host.last_heartbeat_at = now
+        if task.task_type in (GovernanceTaskType.INSTALL, GovernanceTaskType.REBOOT):
+            host.stage = 'reconciling'
+            host.stage_color = 'processing'
+            host.error_code = f'{task.task_type}_timeout_unknown'
+            host.reconcile_deadline_at = now + timedelta(seconds=RECONCILE_TIMEOUT)
+            host.can_retry = False
+            should_reconcile = True
+        else:
+            host.stage = 'failed'
+            host.stage_color = 'error'
+            host.error_code = f'{task.task_type}_timeout'
+            host.can_retry = True
+            should_reconcile = False
+        host.failed_stage = task.task_type
+        host.save(update_fields=[
+            'stage', 'stage_color', 'error_code', 'failed_stage', 'reason',
+            'timeout_reason', 'reconcile_deadline_at', 'can_retry',
+            'last_heartbeat_at', 'updated_at',
+        ])
+
+    if should_reconcile:
+        reconcile_governance_host.apply_async(args=[task_id, target_id])
+    _finalize_task_status(task)
+
+
+def _finalize_task_status(task: GovernanceTask) -> bool:
+    '''根据所有主机结果汇总任务状态，返回是否首次进入终态。'''
+    failure_stages = {'failed', 'reboot_failed'}
+
+    with transaction.atomic():
+        locked_task = GovernanceTask.objects.select_for_update().get(pk=task.pk)
+        if locked_task.status in GovernanceTaskStatus.TERMINAL_STATES:
+            task.refresh_from_db()
+            return False
+
+        success_stages = {'completed', 'reboot_scheduled'}
+        if locked_task.task_type != GovernanceTaskType.REBOOT:
+            success_stages.add('pending_reboot')
+        terminal_host_stages = success_stages | failure_stages | {'cancelled', 'pending_confirmation'}
+
+        hosts = list(locked_task.host_results.all())
+        if not hosts:
+            final_status = GovernanceTaskStatus.COMPLETED
+        elif any(host.stage not in terminal_host_stages for host in hosts):
+            locked_task.status = GovernanceTaskStatus.RUNNING
+            locked_task.finished_at = None
+            locked_task.save(update_fields=['status', 'finished_at', 'updated_at'])
+            task.refresh_from_db()
+            return False
+        else:
+            cancelled_hosts = [host for host in hosts if host.stage == 'cancelled']
+            if len(cancelled_hosts) == len(hosts):
+                final_status = GovernanceTaskStatus.CANCELLED
+            elif cancelled_hosts:
+                final_status = GovernanceTaskStatus.PARTIAL_CANCELLED
+            elif all(host.stage == 'completed' for host in hosts):
+                final_status = GovernanceTaskStatus.COMPLETED
+            elif any(host.stage in success_stages for host in hosts) and not any(
+                host.stage in failure_stages for host in hosts
+            ):
+                final_status = GovernanceTaskStatus.COMPLETED
+            elif any(host.stage in success_stages for host in hosts) and any(
+                host.stage in failure_stages for host in hosts
+            ):
+                final_status = GovernanceTaskStatus.PARTIAL_SUCCESS
+            else:
+                final_status = GovernanceTaskStatus.FAILED
+
+        locked_task.status = final_status
+        locked_task.finished_at = timezone.now()
+        locked_task.save(update_fields=['status', 'finished_at', 'updated_at'])
+
+    task.refresh_from_db()
+    return True
+
+
+def _schedule_post_reboot_verify(reboot_task: GovernanceTask) -> None:
+    '''重启任务成功后，不立即创建验证任务。
+
+    主机保持 pending_reboot 状态，由 verify_pending_reboot_hosts 定时任务
+    探测主机恢复后自动创建验证任务。
+    '''
+    pending_count = reboot_task.host_results.filter(stage='pending_reboot').count()
+    if pending_count:
+        logger.info(
+            '[post_reboot_verify] reboot_task=%s %s 台主机等待恢复，由定时任务自动验证',
+            reboot_task.id, pending_count,
+        )
+
+
+def is_chain_overdue(task: GovernanceTask, now=None) -> bool:
+    '''判断连续治理链路是否超期，并首次记录超期时间。'''
+    if task.chain_deadline_at is None:
+        return False
+    current = now or timezone.now()
+    if current <= task.chain_deadline_at:
+        return False
+    if task.overdue_at is None:
+        GovernanceTask.objects.filter(pk=task.pk, overdue_at__isnull=True).update(
+            overdue_at=current,
+            updated_at=current,
+        )
+        task.overdue_at = current
+    return True
+
+
+def _schedule_auto_reboot(install_task: GovernanceTask) -> None:
+    '''install 任务开启自动重启时，为安装成功的主机创建 reboot 任务。'''
+    if is_chain_overdue(install_task):
+        logger.warning(
+            '[auto_reboot] install_task=%s 治理链路已超期，不再创建新的自动重启任务',
+            install_task.id,
+        )
+        return
+    successful_target_ids = [
+        h.target_id
+        for h in install_task.host_results.filter(stage='pending_reboot').exclude(
+            error_code='reboot_requirement_unknown',
+        )
+    ]
+    if not successful_target_ids:
+        return
+
+    reboot_task = GovernanceTask.objects.create(
+        name=f"自动重启 · {len(successful_target_ids)} 台 · {timezone.now().strftime('%m-%d %H:%M')}",
+        task_type=GovernanceTaskType.REBOOT,
+        execution_mode='now',
+        status=GovernanceTaskStatus.PENDING,
+        target_list=successful_target_ids,
+        patch_list=list(
+            dict.fromkeys(
+                int(item['patch_id'])
+                for item in (install_task.risk_snapshot or [])
+                if int(item.get('host_id') or 0) in successful_target_ids
+                and item.get('patch_id')
+            )
+        ),
+        risk_snapshot=[
+            item
+            for item in (install_task.risk_snapshot or [])
+            if int(item.get('host_id') or 0) in successful_target_ids
+        ],
+        team=install_task.team or [],
+        created_by=install_task.created_by,
+        timeout=install_task.timeout or DEFAULT_TIMEOUT,
+        parent_task=install_task,
+        chain_started_at=install_task.chain_started_at,
+        chain_deadline_at=install_task.chain_deadline_at,
+    )
+
+    targets = {t.id: t for t in PatchTarget.objects.filter(pk__in=successful_target_ids)}
+    for tid in successful_target_ids:
+        target = targets.get(tid)
+        GovernanceTaskHost.objects.create(
+            task=reboot_task,
+            target_id=tid,
+            target_name=target.name if target else '',
+            target_ip=target.ip if target else '',
+            stage='waiting',
+            stage_color='default',
+        )
+
+    try:
+        from apps.patch_mgmt.tasks import execute_governance_task
+        execute_governance_task.delay(reboot_task.id)
+        logger.info(
+            '[auto_reboot] install_task=%s 已创建自动重启任务 reboot_task=%s targets=%s',
+            install_task.id, reboot_task.id, successful_target_ids,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            '[auto_reboot] 触发自动重启任务失败 install_task=%s reboot_task=%s: %s',
+            install_task.id, reboot_task.id, exc,
+        )
+
+
+def _schedule_post_install_verify(install_task: GovernanceTask) -> None:
+    '''仅无需重启且安装成功的主机直接进入验证。'''
+    verify_hosts = list(install_task.host_results.filter(stage='completed'))
+    if not verify_hosts:
+        return
+
+    target_ids = [host.target_id for host in verify_hosts]
+    verify_task = GovernanceTask.objects.create(
+        name=f"安装后自动验证 · {len(target_ids)} 台 · {timezone.now().strftime('%m-%d %H:%M')}",
+        task_type=GovernanceTaskType.VERIFY,
+        execution_mode='now',
+        status=GovernanceTaskStatus.PENDING,
+        target_list=target_ids,
+        patch_list=install_task.patch_list or [],
+        risk_snapshot=[
+            item
+            for item in (install_task.risk_snapshot or [])
+            if int(item.get('host_id') or 0) in target_ids
+        ],
+        team=install_task.team or [],
+        created_by=install_task.created_by,
+        timeout=install_task.timeout or DEFAULT_TIMEOUT,
+        parent_task=install_task,
+        chain_started_at=install_task.chain_started_at,
+        chain_deadline_at=install_task.chain_deadline_at,
+    )
+    for host in verify_hosts:
+        GovernanceTaskHost.objects.create(
+            task=verify_task,
+            target_id=host.target_id,
+            target_name=host.target_name,
+            target_ip=host.target_ip,
+            stage='waiting',
+            stage_color='default',
+        )
+
+    try:
+        from apps.patch_mgmt.tasks import execute_governance_task
+        execute_governance_task.delay(verify_task.id)
+        logger.info(
+            '[post_install_verify] install_task=%s 已创建验证任务 verify_task=%s targets=%s',
+            install_task.id, verify_task.id, target_ids,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            '[post_install_verify] 触发验证任务失败 install_task=%s verify_task=%s: %s',
+            install_task.id, verify_task.id, exc,
+        )
+
+
+def _run_terminal_followups(task: GovernanceTask) -> None:
+    '''任务首次进入终态后触发后续治理链路。'''
+    if task.task_type == GovernanceTaskType.ASSESS and task.trigger_source == "periodic_scan":
+        try:
+            from apps.patch_mgmt.services.assessment_notification import (
+                reconcile_periodic_assessment_notification_intent,
+            )
+
+            reconcile_periodic_assessment_notification_intent(task)
+        except Exception:  # noqa: BLE001
+            logger.exception("周期评估通知意图生成失败 task=%s", task.id)
+
+    if task.task_type == GovernanceTaskType.INSTALL and task.auto_reboot:
+        _schedule_auto_reboot(task)
+
+    if task.task_type == GovernanceTaskType.INSTALL:
+        _schedule_post_install_verify(task)
+
+    if task.task_type == GovernanceTaskType.REBOOT and task.status in (
+        GovernanceTaskStatus.COMPLETED,
+        GovernanceTaskStatus.PARTIAL_SUCCESS,
+        GovernanceTaskStatus.PARTIAL_CANCELLED,
+    ):
+        _schedule_post_reboot_verify(task)
+
+
+def finalize_governance_task(task_id: int) -> None:
+    '''幂等汇总父任务；用于主机子任务 finally 兜底。'''
+    task = GovernanceTask.objects.filter(pk=task_id).first()
+    if task is not None and _finalize_task_status(task):
+        _run_terminal_followups(task)
+
+
+def run_governance_host(task: GovernanceTask, target_id: int) -> None:
+    '''只执行治理任务中的一台主机，并并发安全地汇总父任务状态。'''
+    target = PatchTarget.objects.filter(pk=target_id).first()
+    host = GovernanceTaskHost.objects.filter(task=task, target_id=target_id).first()
+
+    if host is None:
+        host = GovernanceTaskHost.objects.create(
+            task=task,
+            target_id=target_id,
+            target_name=target.name if target else '',
+            target_ip=target.ip if target else '',
+            stage='waiting',
+            stage_color='default',
+        )
+
+    if target is None:
+        if host.stage == 'waiting':
+            _record_host_result(
+                host,
+                stage='failed',
+                stage_color='error',
+                reason='目标不存在或已删除',
+                failed_stage='dispatch',
+                can_retry=False,
+            )
+        if _finalize_task_status(task):
+            _run_terminal_followups(task)
+        logger.warning('[run_governance_host] 目标 %s 不存在，已标记主机失败', target_id)
+        return
+
+    running_stage = {
+        GovernanceTaskType.REBOOT: 'rebooting',
+        GovernanceTaskType.INSTALL: 'installing',
+        GovernanceTaskType.ASSESS: 'scanning',
+        GovernanceTaskType.VERIFY: 'scanning',
+    }.get(task.task_type, 'running')
+    if not _claim_waiting_host(host, running_stage):
+        host.refresh_from_db()
+        logger.info(
+            '[run_governance_host] 跳过非等待主机 task_id=%s target_id=%s stage=%s',
+            task.id, target_id, host.stage,
+        )
+        return
+
+    from apps.patch_mgmt.config import get_stage_timeout
+
+    execution_id = f'{task.id}:{target_id}'
+    timeout = get_stage_timeout(task.task_type)
+    if task.task_type == GovernanceTaskType.REBOOT:
+        _execute_reboot(target, host, execution_id, timeout)
+    elif task.task_type == GovernanceTaskType.INSTALL:
+        selected_patch_ids = [
+            int(item["patch_id"])
+            for item in (task.risk_snapshot or [])
+            if int(item.get("host_id") or 0) == target_id and item.get("patch_id")
+        ]
+        selected_patch_ids = list(dict.fromkeys(selected_patch_ids))
+        if task.risk_snapshot:
+            binding = HostBaselineBinding.objects.filter(target_id=target_id).first()
+            expected_baseline_ids = {
+                int(item.get("baseline_id") or 0)
+                for item in task.risk_snapshot
+                if int(item.get("host_id") or 0) == target_id
+            }
+            remediable_patch_ids = set()
+            if binding and expected_baseline_ids == {binding.baseline_id}:
+                remediable_patch_ids = set(
+                    HostComplianceSnapshot.objects.filter(
+                        binding=binding,
+                        requirement__baseline_id=binding.baseline_id,
+                        requirement__patch_id__in=selected_patch_ids,
+                        status=RequirementAssessmentStatus.MISSING,
+                    ).values_list("requirement__patch_id", flat=True)
+                )
+            if not selected_patch_ids or remediable_patch_ids != set(selected_patch_ids):
+                _record_host_result(
+                    host,
+                    stage="failed",
+                    stage_color="error",
+                    reason="补丁已不在最新评估的待治理范围内，请重新评估后再治理",
+                    failed_stage="preflight",
+                    error_code="assessment_stale",
+                    can_retry=False,
+                )
+                if _finalize_task_status(task):
+                    _run_terminal_followups(task)
+                return
+        _execute_install(
+            target,
+            host,
+            selected_patch_ids if selected_patch_ids else task.patch_list or [],
+            execution_id,
+            timeout,
+        )
+    elif task.task_type in (GovernanceTaskType.ASSESS, GovernanceTaskType.VERIFY):
+        _execute_assess(target, host, execution_id, timeout)
+    else:
+        _record_host_result(
+            host,
+            stage='failed',
+            stage_color='error',
+            reason=f'暂不支持的任务类型: {task.task_type}',
+            failed_stage='dispatch',
+        )
+
+    if _finalize_task_status(task):
+        _run_terminal_followups(task)
+
+
+def run_governance_task(task: GovernanceTask) -> None:
+    '''兼容同步调用：逐台调用主机执行入口；Celery 生产入口按主机拆分。'''
+    logger.info(
+        '[run_governance_task] 开始 task_id=%s type=%s targets=%s',
+        task.id, task.task_type, len(task.target_list or []),
+    )
+    targets = {
+        target.id: target
+        for target in PatchTarget.objects.filter(pk__in=task.target_list or [])
+    }
+    existing_target_ids = set(
+        GovernanceTaskHost.objects.filter(task=task).values_list('target_id', flat=True)
+    )
+    GovernanceTaskHost.objects.bulk_create([
+        GovernanceTaskHost(
+            task=task,
+            target_id=target_id,
+            target_name=targets[target_id].name if target_id in targets else '',
+            target_ip=targets[target_id].ip if target_id in targets else '',
+            stage='waiting',
+            stage_color='default',
+        )
+        for target_id in task.target_list or []
+        if target_id not in existing_target_ids
+    ])
+    for target_id in task.target_list or []:
+        run_governance_host(task, target_id)
+
+    if not (task.target_list or []) and _finalize_task_status(task):
+        _run_terminal_followups(task)
+
+    logger.info(
+        '[run_governance_task] 结束 task_id=%s status=%s',
+        task.id, task.status,
+    )
+
+
+def _check_host_reachable(target: PatchTarget) -> bool:
+    '''快速 TCP 端口探测，判断主机是否可达（不认证）。'''
+    import socket
+
+    if target.os_type == OSType.WINDOWS:
+        port = target.winrm_port or 5985
+    else:
+        port = target.ssh_port or 22
+
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(5)
+        s.connect((target.ip, port))
+        s.close()
+        return True
+    except Exception:
+        return False

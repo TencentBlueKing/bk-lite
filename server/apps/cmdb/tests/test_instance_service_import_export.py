@@ -1,6 +1,6 @@
 """CMDB InstanceManage 导入/导出/关联约束/下载模板覆盖测试。
 
-对照 spec/prd/CMDB·资产：实例导入/支持编辑导入、模板下载、实例导出、check_asso_mapping
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：实例导入/支持编辑导入、模板下载、实例导出、check_asso_mapping
 四种 mapping 分支、_query_instance_map_by_ids 边界。
 """
 
@@ -158,7 +158,7 @@ def test_download_import_template(monkeypatch, fake_graph):
     )
     monkeypatch.setattr(
         "apps.cmdb.services.model.ModelManage.model_association_search",
-        lambda mid: [],
+        lambda mid, **kwargs: [],
     )
     stream = InstanceManage.download_import_template("host")
     data = stream.read()
@@ -214,7 +214,8 @@ def test_inst_export(monkeypatch, fake_graph):
         ],
     )
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.model_association_search", lambda mid: []
+        "apps.cmdb.services.model.ModelManage.model_association_search",
+        lambda mid, **kwargs: [],
     )
     fake_graph(MODULE, query_entity=([{"_id": 1, "inst_name": "h1", "organization": [1]}], 1))
     stream = InstanceManage.inst_export("host", ids=[1], permissions_map={1: {"inst_names": []}})
@@ -229,7 +230,8 @@ def test_inst_export_no_ids(monkeypatch, fake_graph):
         lambda mid: [{"attr_id": "inst_name", "attr_type": "str", "attr_name": "名称"}],
     )
     monkeypatch.setattr(
-        "apps.cmdb.services.model.ModelManage.model_association_search", lambda mid: []
+        "apps.cmdb.services.model.ModelManage.model_association_search",
+        lambda mid, **kwargs: [],
     )
     fake_graph(MODULE, query_entity=([], 0))
     stream = InstanceManage.inst_export("host", ids=[], permissions_map={})

@@ -1,7 +1,12 @@
+import time
 import uuid
+
 from django.core.cache import cache
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.constants.installer import InstallerConstants
+from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.models import ControllerTaskNode
 
 
 class InstallTokenService:
@@ -50,6 +55,11 @@ class InstallTokenService:
         organizations: list,
         node_name: str,
         cpu_architecture: str = "",
+        install_mode: str = "manual",
+        task_node_id: int | None = None,
+        execution_id: str = "",
+        execution_attempt: int | None = None,
+        execution_deadline_unix: int | None = None,
     ) -> str:
         """
         生成安装令牌（30分钟有效，最多使用5次）
@@ -80,6 +90,11 @@ class InstallTokenService:
                 "organizations": organizations,
                 "node_name": node_name,
                 "cpu_architecture": cpu_architecture,
+                "install_mode": install_mode,
+                "task_node_id": task_node_id,
+                "execution_id": execution_id,
+                "execution_attempt": execution_attempt,
+                "execution_deadline_unix": execution_deadline_unix,
                 "usage_count": 0,
                 "max_usage": InstallerConstants.INSTALL_TOKEN_MAX_USAGE,
             },
@@ -103,6 +118,22 @@ class InstallTokenService:
         if not data:
             raise BaseAppException("Invalid or expired token")
 
+        if data.get("os") == NodeConstants.WINDOWS_OS and data.get("install_mode") == "auto":
+            task_node = ControllerTaskNode.objects.filter(id=data.get("task_node_id"), status="running").first()
+            result = task_node.result if task_node and isinstance(task_node.result, dict) else {}
+            if (
+                not task_node
+                or result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) != data.get("execution_id")
+                or result.get(InstallerConstants.EXECUTION_ATTEMPT_KEY) != data.get("execution_attempt")
+                or result.get(InstallerConstants.EXECUTION_PHASE_KEY)
+                != InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING
+                or result.get(InstallerConstants.EXECUTION_DEADLINE_UNIX_KEY)
+                != data.get("execution_deadline_unix")
+                or not isinstance(data.get("execution_deadline_unix"), int)
+                or int(time.time()) >= data["execution_deadline_unix"]
+            ):
+                raise BaseAppException("Windows remote installation execution is no longer active")
+
         max_usage = data.get("max_usage", InstallerConstants.INSTALL_TOKEN_MAX_USAGE)
         usage_count = InstallTokenService._consume_token_usage(
             cache_key=cache_key,
@@ -123,6 +154,11 @@ class InstallTokenService:
             "organizations": data["organizations"],
             "node_name": data["node_name"],
             "cpu_architecture": data.get("cpu_architecture", ""),
+            "install_mode": data.get("install_mode", "manual"),
+            "task_node_id": data.get("task_node_id"),
+            "execution_id": data.get("execution_id", ""),
+            "execution_attempt": data.get("execution_attempt"),
+            "execution_deadline_unix": data.get("execution_deadline_unix"),
             "remaining_usage": max_usage - usage_count,
         }
 

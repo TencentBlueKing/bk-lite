@@ -5,6 +5,23 @@
 //   节点 / 链路配置在 Drawer 浮层里,选中才滑出)
 // - 不做硬编码颜色,边框 / 背景用 CSS 变量(spec §2.1: 颜色完全由用户
 //   配置决定,无预设严重等级)
+
+// 连线流动动画:networkCanvas 给 edge line 挂 class=network-edge-flow,
+// dashoffset 8→0 与 strokeDasharray "5 3"(周期 8)对齐实现无缝流动,
+// 写法对齐 topology/index.module.scss 的 edgeFlowAnimation。
+@keyframes networkEdgeFlow {
+  0% {
+    stroke-dashoffset: 8;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+:global(.network-edge-flow) {
+  animation: networkEdgeFlow 1s linear infinite;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 292px minmax(0, 1fr);

@@ -18,7 +18,13 @@ import styles from './index.module.scss';
 // 所有防火墙品牌都采集 CPU / 会话或连接 / 接口流量 / 运行时长，故健康面板恒显示。
 // 内存（部分型号无 SNMP 指标）与会话（个别型号无计数）取不到时对应卡片显示「--」、趋势显示空。
 const KPI_TITLES = ['运行时长', 'CPU 使用率', '内存使用率', '活动会话/连接', '入向总流量'];
-const CHART_TITLES = ['CPU 与内存使用率趋势', '设备收发流量趋势', '活动会话/连接趋势'];
+const CHART_TITLES = [
+  'CPU 与内存使用率趋势',
+  '设备收发流量趋势',
+  '活动会话/连接趋势',
+  '会话利用率趋势',
+  'VPN 隧道数趋势'
+];
 
 export default function FirewallDashboardPage() {
   const dashboard = useSimpleDashboardData(FIREWALL_DASHBOARD_CONFIG);
@@ -45,6 +51,8 @@ export default function FirewallDashboardPage() {
   const cpuMemChart = charts.find((c) => c?.chart.title === 'CPU 与内存使用率趋势');
   const trafficChart = charts.find((c) => c?.chart.title === '设备收发流量趋势');
   const sessionChart = charts.find((c) => c?.chart.title === '活动会话/连接趋势');
+  const sessionUtilChart = charts.find((c) => c?.chart.title === '会话利用率趋势');
+  const vpnChart = charts.find((c) => c?.chart.title === 'VPN 隧道数趋势');
 
   const renderTrend = (chart: (typeof charts)[number], className: string) =>
     chart && isMetricVisible(resolved, 'firewall', chart.chart.metric, true) ? (
@@ -85,10 +93,11 @@ export default function FirewallDashboardPage() {
             {renderTrend(trafficChart, styles.span6)}
           </FlexiblePanelSection>
 
-          {/* Row 2: 会话/连接趋势 span12 */}
           <div className={styles.sectionLabel}>会话与连接</div>
           <FlexiblePanelSection styles={styles}>
-            {renderTrend(sessionChart, styles.span12)}
+            {renderTrend(sessionChart, styles.span6)}
+            {renderTrend(sessionUtilChart, styles.span6)}
+            {renderTrend(vpnChart, styles.span12)}
           </FlexiblePanelSection>
         </>
       }

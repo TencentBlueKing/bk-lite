@@ -6,40 +6,74 @@ Material.file 是上传文件在 MinIO 的对象。Django FileField 默认不会
 
 MaterialVersion.content_locator 指向 wiki/parsed 下的解析 markdown。资料删除或知识库级联删除时,
 MaterialVersion 也会被级联删除,因此在 MaterialVersion 的 post_delete 中清理解析产物。
+
+wiki/media/<kb>/<material>/ 下的解析嵌入图片在 Material post_delete 中一并清理。
 """
 
 import logging
 
+from django.db import transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
 from apps.opspilot.models import Material, MaterialVersion
 from apps.opspilot.services.wiki.material_service import delete_parsed_markdown, is_parsed_markdown_locator_for_material
+from apps.opspilot.services.wiki.parsed_media_service import delete_material_media
 
 logger = logging.getLogger("opspilot")
 
 
 @receiver(post_delete, sender=Material, dispatch_uid="wiki_material_delete_minio_file")
 def delete_material_file_on_delete(sender, instance, **kwargs):
-    """资料删除后,删除其 MinIO 文件对象(text/web 资料无 file,跳过)。"""
-    f = instance.file
-    if not f:
-        return
-    try:
-        # 实例已被删除,无需 save;仅删除底层存储对象
-        f.delete(save=False)
-    except Exception:
-        logger.exception("删除资料 MinIO 文件失败 material=%s file=%s", instance.pk, getattr(f, "name", ""))
+    """事务提交后删除 MinIO 文件；回滚时自动丢弃回调。"""
+    file_field = instance.file
+    file_name = getattr(file_field, "name", "")
+    knowledge_base_id = instance.knowledge_base_id
+    material_id = instance.pk
+    storage = file_field.storage if file_name else None
+
+    def cleanup():
+        if file_name and storage is not None:
+            try:
+                storage.delete(file_name)
+            except Exception:
+                logger.exception(
+                    "删除资料 MinIO 文件失败 material=%s file=%s",
+                    material_id,
+                    file_name,
+                )
+        try:
+            delete_material_media(knowledge_base_id, material_id)
+        except Exception:
+            logger.exception(
+                "删除资料解析图片失败 material=%s",
+                material_id,
+            )
+
+    transaction.on_commit(cleanup, using=kwargs.get("using"))
 
 
 @receiver(post_delete, sender=MaterialVersion, dispatch_uid="wiki_material_version_delete_parsed_markdown")
 def delete_parsed_markdown_on_version_delete(sender, instance, **kwargs):
-    """解析版本删除后,删除其 wiki/parsed MinIO 对象。"""
-    if not is_parsed_markdown_locator_for_material(instance.content_locator, instance.material_id):
+    """事务提交后删除解析产物；回滚时自动丢弃回调。"""
+    locator = instance.content_locator
+    material_id = instance.material_id
+    if not is_parsed_markdown_locator_for_material(locator, material_id):
         logger.warning(
             "跳过不属于当前资料的解析产物删除 material=%s locator=%s",
-            instance.material_id,
-            instance.content_locator,
+            material_id,
+            locator,
         )
         return
-    delete_parsed_markdown(instance.content_locator)
+
+    def cleanup():
+        try:
+            delete_parsed_markdown(locator)
+        except Exception:
+            logger.exception(
+                "删除资料解析产物失败 material=%s locator=%s",
+                material_id,
+                locator,
+            )
+
+    transaction.on_commit(cleanup, using=kwargs.get("using"))

@@ -16,6 +16,7 @@ interface ViewWorkspaceProps {
   contentRef?: React.Ref<HTMLDivElement>;
   contentClassName?: string;
   headerVisible?: boolean;
+  filterBarVisible?: boolean;
   children?: React.ReactNode;
 }
 
@@ -29,6 +30,7 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
   contentRef,
   contentClassName = 'bg-[#f7f8fa]',
   headerVisible = true,
+  filterBarVisible = true,
   children,
 }) => {
   const { t } = useTranslation();
@@ -79,7 +81,9 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
         )}
         <div className="flex h-full min-h-0 flex-col overflow-hidden">
           {filterBar && (
-            <div className="shrink-0 bg-[var(--color-bg-1)] px-2.5 pb-2 pt-1">
+            <div
+              className={`shrink-0 bg-[var(--color-bg-1)] px-2.5 pb-2 pt-1 ${filterBarVisible ? '' : 'hidden'}`}
+            >
               {filterBar}
             </div>
           )}

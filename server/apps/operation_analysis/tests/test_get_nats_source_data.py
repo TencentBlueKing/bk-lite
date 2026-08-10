@@ -2,6 +2,7 @@
 # Tests for apps.operation_analysis.common.get_nats_source_data
 # Regression tests for issue #3702: int(get_current_team()) has no guard,
 # cookie anomaly triggers 500.
+import importlib
 import types
 
 import pytest
@@ -10,11 +11,12 @@ from rest_framework.exceptions import ValidationError
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
 
 
-def _make_request(current_team_cookie=None, api_team=None, username="testuser"):
+def _make_request(current_team_cookie=None, api_team=None, username="testuser", locale="en"):
     """Build a minimal fake request object."""
     user = types.SimpleNamespace(
         username=username,
         domain="domain.com",
+        locale=locale,
         timezone="Asia/Shanghai",
         permission={},
         group_tree=[],
@@ -40,6 +42,59 @@ def _make_get_nats_data(request):
     obj.request = request
     obj.params = {}
     return obj
+
+
+class _Namespace:
+    id = 1
+    name = "custom"
+    namespace = "custom_namespace"
+    account = "nats-user"
+    decrypt_password = "plain-secret"
+    domain = "nats.example.com"
+    enable_tls = False
+
+
+class TestNamespaceCredentials:
+    def test_instance_state_does_not_retain_plaintext_credentials(self):
+        obj = GetNatsData(
+            namespace="custom",
+            path="query",
+            namespace_list=[_Namespace()],
+            request=_make_request(current_team_cookie="1"),
+        )
+
+        assert obj.namespace_server_map == {1: "nats://nats.example.com:4222"}
+        assert "plain-secret" not in repr(obj.__dict__)
+
+    def test_credentials_are_only_passed_at_rpc_call_boundary(self):
+        captured = {}
+
+        class FakeClient:
+            DEFAULT_NATS = True
+
+            def __init__(self, **kwargs):
+                captured["init"] = kwargs
+
+            def get_customization_nast_data(self, **kwargs):
+                captured["call"] = kwargs
+                return {"ok": True}
+
+        class TestGetNatsData(GetNatsData):
+            @property
+            def default_nats_client(self):
+                return FakeClient
+
+        obj = TestGetNatsData(
+            namespace="custom",
+            path="query",
+            namespace_list=[_Namespace()],
+            request=_make_request(current_team_cookie="1"),
+        )
+
+        assert obj.get_data() == {"ok": True}
+        assert captured["init"]["server"] == "nats://nats.example.com:4222"
+        assert captured["call"]["_nats_user"] == "nats-user"
+        assert captured["call"]["_nats_password"] == "plain-secret"
 
 
 class TestUpdateRequestParamsGuard:
@@ -97,8 +152,10 @@ class TestUpdateRequestParamsGuard:
         with pytest.raises(ValidationError):
             obj.update_request_params()
 
-    def test_valid_team_user_info_structure(self):
+    def test_valid_team_user_info_structure(self, monkeypatch):
         """Sanity check: user_info dict is correctly populated on success."""
+        module = importlib.import_module("apps.operation_analysis.common.get_nats_source_data")
+        monkeypatch.setattr(module.translation, "get_language", lambda: "en")
         request = _make_request(current_team_cookie="5")
         obj = _make_get_nats_data(request)
         obj.update_request_params()
@@ -107,7 +164,19 @@ class TestUpdateRequestParamsGuard:
         assert info["team"] == 5
         assert info["user"] == "testuser"
         assert info["domain"] == "domain.com"
+        assert info["locale"] == "en"
+        assert info["timezone"] == "Asia/Shanghai"
         assert isinstance(info["permission"], dict)
         assert isinstance(info["group_tree"], list)
         assert info["is_superuser"] is False
         assert isinstance(info["include_children"], bool)
+
+    def test_active_authenticated_locale_overrides_stale_request_user_locale(self, monkeypatch):
+        request = _make_request(current_team_cookie="5", locale="zh-Hans")
+        module = importlib.import_module("apps.operation_analysis.common.get_nats_source_data")
+        monkeypatch.setattr(module.translation, "get_language", lambda: "en")
+        obj = _make_get_nats_data(request)
+
+        obj.update_request_params()
+
+        assert obj.params["user_info"]["locale"] == "en"

@@ -52,6 +52,45 @@ monitor_object_metric:
       desc: Rate of batch requests processed by SQL Server, measuring overall database
         throughput and load pressure. High request rates indicate the database is
         processing a large volume of queries.
+    sqlserver_checkpoint_pages_rate:
+      name: Checkpoint Pages Rate
+      desc: Rate at which the checkpoint process flushes dirty buffer pages to disk. Interpret it with write latency and lazy writes to assess write-back pressure.
+    sqlserver_lazy_writes_rate:
+      name: Lazy Writes Rate
+      desc: Rate at which the lazy writer flushes pages to make buffer-pool space available. Sustained growth with low page life expectancy indicates memory pressure.
+    sqlserver_memory_grants_pending:
+      name: Memory Grants Pending
+      desc: Current number of queries waiting for execution-memory grants. A sustained nonzero value indicates query-workspace memory pressure.
+    sqlserver_processes_blocked:
+      name: Blocked Processes
+      desc: Current number of blocked SQL Server processes. Investigate blocking sessions, transaction scope, and lock contention when it persists.
+    sqlserver_deadlocks_rate:
+      name: Deadlocks Rate
+      desc: Rate of SQL Server deadlocks. A sustained nonzero rate requires investigation of transaction order, isolation level, and indexing.
+    sqlserver_sql_compilations_rate:
+      name: SQL Compilations Rate
+      desc: Rate of SQL statement compilations. Compare it with batch requests and recompilations to assess plan-cache efficiency.
+    sqlserver_sql_recompilations_rate:
+      name: SQL Re-Compilations Rate
+      desc: Rate of SQL statement recompilations. A high rate relative to compilations can increase CPU cost and reveal unstable plans or frequent schema changes.
+    sqlserver_memory_grants_outstanding:
+      name: Memory Grants Outstanding
+      desc: Current number of granted query-workspace memory requests that have not completed. Interpret it with pending grants to distinguish active workload from memory pressure.
+    sqlserver_memory_target_server_memory_kb:
+      name: Target Server Memory
+      desc: SQL Server target memory. Compare it with total server memory to determine whether the buffer pool has reached its configured target.
+    sqlserver_memory_total_server_memory_kb:
+      name: Total Server Memory
+      desc: Current SQL Server committed memory. A persistent gap below target can indicate memory pressure or a recent workload change.
+    sqlserver_tempdb_free_space_kb:
+      name: TempDB Free Space
+      desc: Current free space in TempDB. Low free space can affect sorting, hashing, row versioning, and temporary-object workloads.
+    sqlserver_tempdb_version_store_size_kb:
+      name: TempDB Version Store Size
+      desc: Current TempDB version-store size. Growth can indicate long-running snapshot or read-committed snapshot transactions.
+    sqlserver_log_flushes_rate:
+      name: Transaction Log Flushes Rate
+      desc: Rate of transaction-log flushes. Interpret it with database write latency to identify write-intensive workloads and log I/O pressure.
     sqlserver_page_life_expectancy:
       name: Page Life Expectancy
       desc: Average time data pages stay in the buffer pool, reflecting memory pressure.
@@ -69,8 +108,8 @@ monitor_object_metric:
         concurrent load and connection pool usage. Too many connections may lead to
         resource contention.
     sqlserver_lock_wait_time_rate:
-      name: Lock Wait Time
-      desc: Rate of lock wait time, reflecting concurrency contention. High values
+      name: Lock Waits Rate
+      desc: Rate of lock waits, reflecting concurrency contention. High values
         may indicate blocking or lock contention issues that require transaction design
         optimization.
     sqlserver_requests_cpu_time_ms_rate:

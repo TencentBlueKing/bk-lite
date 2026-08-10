@@ -1,0 +1,71 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 10px;
+  background-color: var(--color-bg-1);
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-right: 10px;
+}
+
+.treeWrap :global(.ant-tree-list) {
+  width: 100%;
+}
+
+.treeWrap :global(.ant-tree-treenode:has(.treeMetaNode)) {
+  width: 100%;
+}
+
+.treeWrap :global(.ant-tree-node-content-wrapper:has(.treeMetaNode)) {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.treeWrap
+  :global(.ant-tree-node-content-wrapper:has(.treeMetaNode) .ant-tree-title) {
+  flex: 1;
+  min-width: 0;
+}
+
+.node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.iconImage {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  flex-shrink: 0;
+  margin-left: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-3, #86909c);
+}

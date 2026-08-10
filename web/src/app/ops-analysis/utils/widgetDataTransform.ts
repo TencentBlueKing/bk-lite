@@ -5,9 +5,20 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import { supportsComponentSwitch } from '@/app/ops-analysis/utils/componentParamSwitch';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
+import { buildTableQueryParams } from '@/app/ops-analysis/utils/tablePagination';
+import {
+  isBindableDataSourceParamType,
+  type BindableDataSourceParamType,
+} from '@/app/ops-analysis/utils/dataSourceParamContract';
+import {
+  DateRangeResolutionContext,
+  getDateRangeTimezone,
+  resolveDateRange,
+} from '@/app/ops-analysis/utils/dateRange';
 
-export type BindableParamType = 'string' | 'timeRange';
+export type BindableParamType = BindableDataSourceParamType;
 export type UnifiedFilterInputMode = 'input' | 'select' | 'radio' | 'organization';
 
 const UNIFIED_FILTER_INPUT_MODES: UnifiedFilterInputMode[] = [
@@ -31,7 +42,7 @@ export const isOptionInputMode = (inputMode?: string): boolean =>
 export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinition>(
   definition: T,
 ): T => {
-  if (definition.type === 'timeRange') {
+  if (definition.type === 'timeRange' || definition.type === 'dateRange') {
     const next = { ...definition };
     delete next.inputMode;
     delete next.options;
@@ -86,7 +97,7 @@ export const getBindableFilterParams = (
   (Array.isArray(params) ? params : []).filter(
     (param): param is ParamItem & { type: BindableParamType } =>
       param.filterType === 'filter' &&
-      (param.type === 'string' || param.type === 'timeRange'),
+      isBindableDataSourceParamType(param.type),
   );
 
 export const buildDefaultFilterBindings = (
@@ -113,9 +124,17 @@ export const buildDefaultFilterBindings = (
     return existingBindings;
   }
 
+  const retainedBindings = Object.entries(existingBindings || {}).reduce<FilterBindings>(
+    (bindings, [filterId, enabled]) => {
+      if (filterId in autoBindings) bindings[filterId] = enabled;
+      return bindings;
+    },
+    {},
+  );
+
   return {
     ...autoBindings,
-    ...(existingBindings || {}),
+    ...retainedBindings,
   };
 };
 
@@ -124,8 +143,9 @@ export const formatTimeRange = (timeParams: any): string[] => {
 
   if (timeParams && typeof timeParams === 'number') {
     // 数值类型：表示分钟数
-    endTime = dayjs().valueOf();
-    startTime = dayjs().subtract(timeParams, 'minute').valueOf();
+    const now = dayjs();
+    endTime = now.valueOf();
+    startTime = now.subtract(timeParams, 'minute').valueOf();
   } else if (timeParams && Array.isArray(timeParams) && timeParams.length === 2) {
     // 数组类型：[startTime, endTime]
     startTime = timeParams[0];
@@ -134,16 +154,18 @@ export const formatTimeRange = (timeParams: any): string[] => {
     // 对象类型：{ start, end, selectValue? }
     if (timeParams.selectValue && timeParams.selectValue > 0) {
       // 有快捷选项时，基于当前时间重新计算相对时间
-      endTime = dayjs().valueOf();
-      startTime = dayjs().subtract(timeParams.selectValue, 'minute').valueOf();
+      const now = dayjs();
+      endTime = now.valueOf();
+      startTime = now.subtract(timeParams.selectValue, 'minute').valueOf();
     } else {
       startTime = timeParams.start;
       endTime = timeParams.end;
     }
   } else {
     // 默认时间范围：最近7天
-    endTime = dayjs().valueOf();
-    startTime = dayjs().subtract(7, 'day').valueOf();
+    const now = dayjs();
+    endTime = now.valueOf();
+    startTime = now.subtract(7, 'day').valueOf();
   }
 
   const startTimeStr = formatOpsRequestTime(startTime);
@@ -176,6 +198,28 @@ const formatTimeRangeForSignature = (timeParams: any): unknown => {
   }
 
   return { mode: 'relative', value: 10080 };
+};
+
+export const OMIT_DATA_SOURCE_PARAM = Symbol('omit-data-source-param');
+
+const createDateRangeResolutionContext = (): DateRangeResolutionContext => ({
+  referenceNow: Date.now(),
+  timezone: getDateRangeTimezone(),
+});
+
+export const formatDataSourceParamValue = (
+  type: string,
+  value: unknown,
+  resolutionContext: DateRangeResolutionContext,
+  timeRangeFormatter: (timeParams: any) => unknown = formatTimeRange,
+): unknown | typeof OMIT_DATA_SOURCE_PARAM => {
+  if (value === null || value === undefined || value === '') {
+    return OMIT_DATA_SOURCE_PARAM;
+  }
+  if (type === 'dateRange') {
+    return resolveDateRange(value, resolutionContext) ?? OMIT_DATA_SOURCE_PARAM;
+  }
+  return type === 'timeRange' ? timeRangeFormatter(value) : value;
 };
 
 export const fetchWidgetData = async ({
@@ -222,6 +266,134 @@ export const fetchWidgetData = async ({
   }
 };
 
+export const buildWidgetExtraParams = ({
+  namespaceId,
+  isTableLikeChart,
+  tableQueryParams,
+  runtimeParams,
+  dataSourceParams,
+}: {
+  namespaceId?: number;
+  isTableLikeChart: boolean;
+  tableQueryParams: Record<string, unknown>;
+  runtimeParams: Record<string, unknown>;
+  dataSourceParams?: ParamItem[];
+}) => ({
+  ...(namespaceId !== undefined ? { namespace_id: namespaceId } : {}),
+  ...(isTableLikeChart
+    ? buildTableQueryParams({ dataSourceParams, queryParams: tableQueryParams })
+    : {}),
+  ...runtimeParams,
+});
+
+export interface WidgetRequestHistory {
+  signature: string | null;
+  filterSearchVersion: number;
+  namespaceSearchVersion: number;
+  reloadVersion: string;
+  tableQueryKey: string;
+  hasRequested: boolean;
+}
+
+export interface WidgetRequestSnapshot {
+  requestEnabled: boolean;
+  requestSignature: string | null;
+  hasRequestParams: boolean;
+  hasRequestKey: boolean;
+  filterSearchVersion: number;
+  namespaceSearchVersion: number;
+  reloadVersion: string;
+  tableQueryKey: string;
+  hasEnabledFilterBindings: boolean;
+  widgetUsesNamespace: boolean;
+  isTableLikeChart: boolean;
+}
+
+export const createWidgetRequestHistory = (
+  current: WidgetRequestSnapshot,
+): WidgetRequestHistory => ({
+  signature: null,
+  filterSearchVersion: current.filterSearchVersion,
+  namespaceSearchVersion: current.namespaceSearchVersion,
+  reloadVersion: current.reloadVersion,
+  tableQueryKey: current.tableQueryKey,
+  hasRequested: false,
+});
+
+export const decideWidgetRequest = ({
+  history,
+  current,
+}: {
+  history: WidgetRequestHistory;
+  current: WidgetRequestSnapshot;
+}): { shouldFetch: boolean; nextHistory: WidgetRequestHistory } => {
+  const requestAvailable =
+    current.requestEnabled &&
+    Boolean(current.requestSignature) &&
+    current.hasRequestParams &&
+    current.hasRequestKey;
+
+  if (!requestAvailable) {
+    return {
+      shouldFetch: false,
+      nextHistory: {
+        signature: current.requestSignature,
+        filterSearchVersion: current.filterSearchVersion,
+        namespaceSearchVersion: current.namespaceSearchVersion,
+        reloadVersion: current.reloadVersion,
+        tableQueryKey: current.tableQueryKey,
+        hasRequested: false,
+      },
+    };
+  }
+
+  const shouldFetchForFilterSearch =
+    history.filterSearchVersion !== current.filterSearchVersion &&
+    current.hasEnabledFilterBindings;
+  const shouldFetchForNamespaceSearch =
+    history.namespaceSearchVersion !== current.namespaceSearchVersion &&
+    current.widgetUsesNamespace;
+  const shouldFetchForTableQuery =
+    current.isTableLikeChart &&
+    history.tableQueryKey !== current.tableQueryKey;
+  const shouldFetch =
+    !history.hasRequested ||
+      history.signature !== current.requestSignature ||
+      history.reloadVersion !== current.reloadVersion ||
+      shouldFetchForFilterSearch ||
+      shouldFetchForNamespaceSearch ||
+      shouldFetchForTableQuery;
+
+  return {
+    shouldFetch,
+    nextHistory: {
+      signature: current.requestSignature,
+      filterSearchVersion: current.filterSearchVersion,
+      namespaceSearchVersion: current.namespaceSearchVersion,
+      reloadVersion: current.reloadVersion,
+      tableQueryKey: current.tableQueryKey,
+      hasRequested: history.hasRequested || shouldFetch,
+    },
+  };
+};
+
+export const shouldShowInitialWidgetLoading = ({
+  loading,
+  hasRawPayload,
+  hasSettledRequest,
+}: {
+  loading: boolean;
+  isTableLikeChart: boolean;
+  hasRawPayload: boolean;
+  hasSettledRequest: boolean;
+}): boolean =>
+  loading && !hasRawPayload && !hasSettledRequest;
+
+export const hasActiveWidgetRuntimeParams = (
+  chartType: string | undefined,
+  runtimeParams: Record<string, unknown>,
+): boolean => supportsComponentSwitch(chartType) && Object.keys(runtimeParams).length > 0;
+
 export const buildWidgetRequestParams = ({
   config,
   dataSource,
@@ -229,6 +401,7 @@ export const buildWidgetRequestParams = ({
   unifiedFilterValues,
   filterBindings,
   filterDefinitions,
+  resolutionContext = createDateRangeResolutionContext(),
 }: {
   config: any;
   dataSource?: any;
@@ -236,6 +409,7 @@ export const buildWidgetRequestParams = ({
   unifiedFilterValues?: Record<string, FilterValue>;
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
+  resolutionContext?: DateRangeResolutionContext;
 }) => {
   const rawParams =
     Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
@@ -247,6 +421,7 @@ export const buildWidgetRequestParams = ({
   sourceParams.forEach((param: any) => {
     userParams[param.name] = param.value;
   });
+  Object.assign(userParams, extraParams || {});
 
   const requestParams = processDataSourceParams({
     sourceParams,
@@ -254,12 +429,10 @@ export const buildWidgetRequestParams = ({
     unifiedFilterValues,
     filterBindings,
     filterDefinitions,
+    resolutionContext,
   });
 
-  return {
-    ...requestParams,
-    ...(extraParams || {}),
-  };
+  return requestParams;
 };
 
 export const buildWidgetRequestSignatureParams = ({
@@ -269,6 +442,7 @@ export const buildWidgetRequestSignatureParams = ({
   unifiedFilterValues,
   filterBindings,
   filterDefinitions,
+  resolutionContext = createDateRangeResolutionContext(),
 }: {
   config: any;
   dataSource?: any;
@@ -276,6 +450,7 @@ export const buildWidgetRequestSignatureParams = ({
   unifiedFilterValues?: Record<string, FilterValue>;
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
+  resolutionContext?: DateRangeResolutionContext;
 }) => {
   const rawParams =
     Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
@@ -287,6 +462,7 @@ export const buildWidgetRequestSignatureParams = ({
   sourceParams.forEach((param: any) => {
     userParams[param.name] = param.value;
   });
+  Object.assign(userParams, extraParams || {});
 
   const requestParams = processDataSourceParams({
     sourceParams,
@@ -294,13 +470,11 @@ export const buildWidgetRequestSignatureParams = ({
     unifiedFilterValues,
     filterBindings,
     filterDefinitions,
+    resolutionContext,
     timeRangeFormatter: formatTimeRangeForSignature,
   });
 
-  return {
-    ...requestParams,
-    ...(extraParams || {}),
-  };
+  return requestParams;
 };
 
 export const processDataSourceParams = ({
@@ -309,6 +483,7 @@ export const processDataSourceParams = ({
   unifiedFilterValues,
   filterBindings,
   filterDefinitions,
+  resolutionContext = createDateRangeResolutionContext(),
   timeRangeFormatter = formatTimeRange,
 }: {
   sourceParams: any;
@@ -316,14 +491,32 @@ export const processDataSourceParams = ({
   unifiedFilterValues?: Record<string, FilterValue>;
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
-    timeRangeFormatter?: (timeParams: any) => unknown;
+  resolutionContext?: DateRangeResolutionContext;
+  timeRangeFormatter?: (timeParams: any) => unknown;
 }) => {
 
   if (!sourceParams || !Array.isArray(sourceParams)) {
-    return userParams;
+    return Object.fromEntries(
+      Object.entries(userParams).filter(
+        ([, value]) => value !== null && value !== undefined && value !== '',
+      ),
+    );
   }
 
   const processedParams: Record<string, unknown> = { ...userParams };
+  const setProcessedParam = (name: string, type: string, value: unknown) => {
+    const formatted = formatDataSourceParamValue(
+      type,
+      value,
+      resolutionContext,
+      timeRangeFormatter,
+    );
+    if (formatted === OMIT_DATA_SOURCE_PARAM) {
+      delete processedParams[name];
+    } else {
+      processedParams[name] = formatted;
+    }
+  };
 
   // 构建统一筛选定义映射：filterId -> definition
   const definitionsMap = new Map(
@@ -370,9 +563,7 @@ export const processDataSourceParams = ({
     switch (filterType) {
       case 'fixed':
         // 固定参数：直接使用配置值
-        processedParams[name] = (type === 'timeRange')
-          ? timeRangeFormatter(defaultValue)
-          : defaultValue;
+        setProcessedParam(name, type, defaultValue);
         break;
 
       case 'filter': {
@@ -385,9 +576,7 @@ export const processDataSourceParams = ({
             delete processedParams[name];
           } else if (unifiedValue !== null && unifiedValue !== undefined && unifiedValue !== '') {
             // 有绑定且有值：使用统一筛选值
-            processedParams[name] = (type === 'timeRange')
-              ? timeRangeFormatter(unifiedValue)
-              : unifiedValue;
+            setProcessedParam(name, type, unifiedValue);
           } else {
             // 有绑定但无值：不传该参数
             delete processedParams[name];
@@ -395,9 +584,7 @@ export const processDataSourceParams = ({
         } else {
           // 无绑定：使用默认值
           if (defaultValue !== null && defaultValue !== undefined && defaultValue !== '') {
-            processedParams[name] = (type === 'timeRange')
-              ? timeRangeFormatter(defaultValue)
-              : defaultValue;
+            setProcessedParam(name, type, defaultValue);
           }
         }
         break;
@@ -405,26 +592,37 @@ export const processDataSourceParams = ({
 
       case 'params':
         // 私有参数：使用用户传入的参数值
-        if (processedParams[name] !== undefined) {
-          processedParams[name] = (type === 'timeRange')
-            ? timeRangeFormatter(processedParams[name])
-            : processedParams[name];
-        } else if (defaultValue !== undefined) {
-          processedParams[name] = (type === 'timeRange')
-            ? timeRangeFormatter(defaultValue)
-            : defaultValue;
+        if (Object.prototype.hasOwnProperty.call(processedParams, name)) {
+          const paramValue = processedParams[name];
+          if (
+            paramValue === null ||
+            paramValue === undefined ||
+            paramValue === ''
+          ) {
+            delete processedParams[name];
+          } else {
+            setProcessedParam(name, type, paramValue);
+          }
+        } else if (
+          defaultValue !== null &&
+          defaultValue !== undefined &&
+          defaultValue !== ''
+        ) {
+          setProcessedParam(name, type, defaultValue);
         }
         break;
 
       default:
         // 默认：使用配置的默认值
         if (defaultValue !== undefined) {
-          processedParams[name] = (type === 'timeRange')
-            ? timeRangeFormatter(defaultValue)
-            : defaultValue;
+          setProcessedParam(name, type, defaultValue);
         }
     }
   });
 
-  return processedParams;
+  return Object.fromEntries(
+    Object.entries(processedParams).filter(
+      ([, value]) => value !== null && value !== undefined && value !== '',
+    ),
+  );
 };

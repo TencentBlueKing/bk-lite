@@ -47,6 +47,7 @@ export interface MetricInfo {
   unit?: string;
   description?: string;
   dimensions?: string[];
+  is_ifmib?: boolean;
 }
 
 export interface FilterItem {
@@ -91,10 +92,13 @@ export interface ObjectInstItem {
 export interface MetricListItem {
   id: string;
   name: string;
+  monitor_plugin?: React.Key;
   child: MetricItem[];
   display_name?: string;
   isOpen?: boolean;
   is_pre: boolean;
+  /** 当前分组内的指标是否全部由公共 IF-MIB 表提供。 */
+  is_ifmib_group?: boolean;
 }
 
 export interface DimensionItem {
@@ -267,6 +271,31 @@ export interface K8sCommandData {
   instance_id?: string;
   cloud_region_id?: number;
   interval?: number;
+}
+
+export type K3sSignalStatus = 'success' | 'pending' | 'error';
+
+export interface K3sVerificationSignal {
+  status: K3sSignalStatus;
+  metric: string;
+}
+
+export interface K3sVerificationResult {
+  status: 'success' | 'partial' | 'pending' | 'error';
+  signals: {
+    cluster: K3sVerificationSignal;
+    container: K3sVerificationSignal;
+    node: K3sVerificationSignal;
+  };
+}
+
+export interface K3sCommandData {
+  install_command: string;
+  uninstall_command: string;
+  expires_in: number;
+  monitor_object_id: number;
+  instance_id: string;
+  cloud_region_id: number;
 }
 
 export interface AccessConfigProps {

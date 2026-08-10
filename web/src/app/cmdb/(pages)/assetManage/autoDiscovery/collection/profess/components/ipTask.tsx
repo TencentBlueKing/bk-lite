@@ -2,8 +2,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
-import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import {
   useTaskForm,
   getCleanupFormValues,
@@ -108,8 +108,8 @@ const IpTask: React.FC<IpTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const baseRef = useRef<BaseTaskRef>(null as any);
-  const localeContext = useLocale();
   const instanceApi = useInstanceApi();
   const instanceApiRef = useRef(instanceApi);
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
@@ -274,9 +274,8 @@ const IpTask: React.FC<IpTaskFormProps> = ({
   return (
     <Spin spinning={loading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="horizontal"
-        labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
         onFinish={handleFinish}
         initialValues={IP_TASK_INITIAL_VALUES}
       >

@@ -10,6 +10,14 @@ from apps.cmdb.models import CollectModels
 from apps.core.logger import cmdb_logger as logger
 
 
+def is_failed_vm_metric(row):
+    """识别仅用于原始详情展示、不能进入 CMDB 计算的失败指标。"""
+    metric = row.get("metric", {}) if isinstance(row, dict) else {}
+    return str(metric.get("collect_status", "")).lower() == "failed" or bool(
+        metric.get("cmdb_collect_error")
+    )
+
+
 class CollectBase(metaclass=ABCMeta):
     """
      k8s、阿里云、vc 在vm对比后把旧数据自动删除，如果无数据，定义为这个采集任务异常，任务的数据清空，但是不碰cmdb的数据
@@ -81,8 +89,11 @@ class CollectBase(metaclass=ABCMeta):
     def run(self):
         """执行"""
         data = self.query_data()
-        self.raw_data = data.get("result", [])
-        self.format_data(data)
+        # 原始详情保留失败指标，CMDB 计算只处理成功返回的数据。
+        self.raw_data = list(data.get("result", []))
+        success_data = dict(data)
+        success_data["result"] = [row for row in self.raw_data if not is_failed_vm_metric(row)]
+        self.format_data(success_data)
         self.format_metrics()
         return self.result
 

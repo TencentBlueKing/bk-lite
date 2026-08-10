@@ -2,9 +2,9 @@
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Alert, Form, Input, Spin } from 'antd';
-import { useLocale } from '@/context/locale';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { useTaskForm, getCleanupFormValues, getCycleFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
@@ -20,6 +20,7 @@ import {
 } from '../hooks/formatTaskValues';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import CredentialPoolEditor from './credentialPoolEditor';
+import { resolveCredentialHelp } from './credentialHelp';
 
 interface ConfigFileTaskFormProps {
   onClose: () => void;
@@ -62,7 +63,7 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
-  const localeContext = useLocale();
+  const collectionFormLayout = useCollectionFormLayout();
   const { selectedGroup } = useUserInfoContext();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const copyTaskData = useAssetManageStore((state) => state.copyTaskData);
@@ -164,9 +165,8 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
   return (
     <Spin spinning={loading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="horizontal"
-        labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
         onFinish={onFinish}
         initialValues={initialFormValues}
       >
@@ -203,7 +203,11 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
           </Form.Item>
 
           <Form.Item name="credentialPool">
-            <CredentialPoolEditor credentialShape="config_file" editMode={Boolean(editId)} />
+            <CredentialPoolEditor
+              credentialShape="config_file"
+              credentialHelp={resolveCredentialHelp(modelItem, t)}
+              editMode={Boolean(editId)}
+            />
           </Form.Item>
         </BaseTaskForm>
       </Form>

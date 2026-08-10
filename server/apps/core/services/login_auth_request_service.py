@@ -1,6 +1,8 @@
-from copy import deepcopy
+import hashlib
 import os
+import secrets
 import uuid
+from copy import deepcopy
 from datetime import timedelta
 from urllib.parse import urlparse
 
@@ -15,6 +17,8 @@ from apps.core.logger import logger
 AUTH_REQUEST_PREFIX = "login_auth_request:"
 AUTH_REQUEST_TTL = 300
 AUTH_REQUEST_SIGNING_SALT = "core.login_auth_request"
+LOGIN_AUTH_BROWSER_COOKIE_PREFIX = "bklite_login_auth_browser_"
+LOGIN_AUTH_BROWSER_SIGNING_SALT = "core.login_auth_browser"
 LOGIN_RESULT_ALLOWED_KEYS = {
     "id",
     "token",
@@ -31,6 +35,8 @@ LOGIN_RESULT_ALLOWED_KEYS = {
     "challenge_id",
     "qr_code",
     "need_binding",
+    "legacy_external_callback_url",
+    "legacy_third_login_code",
 }
 
 LOGIN_AUTH_CALLBACK_PATH = "/api/v1/core/api/login_auth/callback/"
@@ -150,7 +156,7 @@ def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None
         and validate_redirect_origin(request, redirect_origin)
     ):
         result = f"{redirect_origin.rstrip('/')}{LOGIN_AUTH_CALLBACK_PATH}"
-        logger.warning(
+        logger.debug(
             "[BK-Lite login-auth v2] path=redirect_origin redirect_origin=%r result=%r "
             "HTTP_ORIGIN=%r X-Fwd-Host=%r X-Fwd-Proto=%r HTTP_HOST=%r",
             redirect_origin,
@@ -163,7 +169,7 @@ def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None
         return result
     if request is not None:
         result = request.build_absolute_uri(LOGIN_AUTH_CALLBACK_PATH)
-        logger.warning(
+        logger.debug(
             "[BK-Lite login-auth v2] path=build_absolute_uri redirect_origin=%r result=%r "
             "HTTP_ORIGIN=%r X-Fwd-Host=%r X-Fwd-Proto=%r HTTP_HOST=%r",
             redirect_origin,
@@ -181,7 +187,15 @@ def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None
     return ""
 
 
-def create_auth_request(binding_id: int, provider_key: str, callback_url: str, redirect_origin: str | None = None) -> dict:
+def create_auth_request(
+    binding_id: int,
+    provider_key: str,
+    callback_url: str,
+    browser_binding_token: str,
+    redirect_origin: str | None = None,
+    legacy_external_callback_url: str | None = None,
+    legacy_third_login_code: str | None = None,
+) -> dict:
     auth_request_id = str(uuid.uuid4())
     poll_token = str(uuid.uuid4())
     created_at = timezone.now()
@@ -193,6 +207,8 @@ def create_auth_request(binding_id: int, provider_key: str, callback_url: str, r
         "provider_key": provider_key,
         "callback_url": callback_url,
         "redirect_origin": redirect_origin or "",
+        "legacy_external_callback_url": legacy_external_callback_url or "",
+        "legacy_third_login_code": legacy_third_login_code or "",
         "poll_token": poll_token,
         "status": "pending",
         "error_message": "",
@@ -201,6 +217,7 @@ def create_auth_request(binding_id: int, provider_key: str, callback_url: str, r
         "expires_at": expired_at.isoformat(),
         "completed_at": None,
     }
+    auth_request["browser_binding_hash"] = _hash_browser_binding_token(browser_binding_token)
     cache.set(_build_cache_key(auth_request_id), auth_request, timeout=AUTH_REQUEST_TTL)
     logger.info(
         "Created login auth request: auth_request_id=%s, binding_id=%s, provider_key=%s, callback_url=%s, expires_at=%s",
@@ -295,6 +312,47 @@ def validate_poll_token(auth_request: dict, poll_token: str) -> bool:
     if not auth_request or not poll_token:
         return False
     return auth_request.get("poll_token") == poll_token
+
+
+def create_browser_binding_token() -> str:
+    return signing.dumps(
+        {"nonce": secrets.token_urlsafe(32)},
+        salt=LOGIN_AUTH_BROWSER_SIGNING_SALT,
+        key=_get_signing_key(),
+    )
+
+
+def get_login_auth_browser_cookie_name(auth_request_id: str) -> str:
+    return f"{LOGIN_AUTH_BROWSER_COOKIE_PREFIX}{auth_request_id}"
+
+
+def validate_browser_binding(auth_request: dict, browser_binding_token: str) -> bool:
+    expected_hash = auth_request.get("browser_binding_hash")
+    if not expected_hash:
+        # 兼容发布前已进入缓存的请求；缓存 TTL 最长 5 分钟，无持久数据迁移。
+        return True
+    if not _is_valid_browser_binding_token(browser_binding_token):
+        return False
+    return secrets.compare_digest(expected_hash, _hash_browser_binding_token(browser_binding_token))
+
+
+def _is_valid_browser_binding_token(browser_binding_token: str) -> bool:
+    if not browser_binding_token:
+        return False
+    try:
+        payload = signing.loads(
+            browser_binding_token,
+            salt=LOGIN_AUTH_BROWSER_SIGNING_SALT,
+            key=_get_signing_key(),
+            max_age=AUTH_REQUEST_TTL,
+        )
+    except signing.BadSignature:
+        return False
+    return isinstance(payload, dict) and isinstance(payload.get("nonce"), str) and bool(payload["nonce"])
+
+
+def _hash_browser_binding_token(browser_binding_token: str) -> str:
+    return hashlib.sha256(browser_binding_token.encode("utf-8")).hexdigest()
 
 
 def _build_cache_key(auth_request_id: str) -> str:

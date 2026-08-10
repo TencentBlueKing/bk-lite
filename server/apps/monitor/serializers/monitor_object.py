@@ -17,10 +17,16 @@ class MonitorObjectTypeSerializer(serializers.ModelSerializer):
 
 class MonitorObjectSerializer(serializers.ModelSerializer):
     type_info = MonitorObjectTypeSerializer(source="type", read_only=True)
+    cleanup_timeout_value = serializers.IntegerField(required=False, min_value=1, max_value=1440)
 
     class Meta:
         model = MonitorObject
         fields = "__all__"
+        read_only_fields = [
+            "is_builtin",
+            "cleanup_policy_effective_at",
+            "last_discovery_success_at",
+        ]
 
     def _resolve_instance_id_keys(self, attrs):
         level = attrs.get("level", getattr(self.instance, "level", "base"))
@@ -34,6 +40,30 @@ class MonitorObjectSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        cleanup_timeout_value = attrs.pop("cleanup_timeout_value", None)
+        if cleanup_timeout_value is not None:
+            legacy_value = attrs.get("cleanup_timeout_days")
+            if legacy_value is not None and legacy_value != cleanup_timeout_value:
+                raise serializers.ValidationError({"cleanup_timeout_value": "超时时间数值与旧字段不一致"})
+            attrs["cleanup_timeout_days"] = cleanup_timeout_value
+        if {"cleanup_policy", "cleanup_timeout_days", "cleanup_timeout_unit"} & attrs.keys():
+            level = attrs.get("level", getattr(self.instance, "level", "base"))
+            parent = attrs.get("parent", getattr(self.instance, "parent", None))
+            if level != "base" or parent is not None:
+                raise serializers.ValidationError({"cleanup_policy": "清理策略只能配置在一级监控对象"})
+        timeout_value = attrs.get("cleanup_timeout_days", getattr(self.instance, "cleanup_timeout_days", 1))
+        timeout_unit = attrs.get(
+            "cleanup_timeout_unit",
+            getattr(self.instance, "cleanup_timeout_unit", MonitorObject.CLEANUP_TIMEOUT_UNIT_DAY),
+        )
+        max_value = MonitorObject.CLEANUP_TIMEOUT_MAX_BY_UNIT.get(timeout_unit)
+        if max_value is None:
+            raise serializers.ValidationError({"cleanup_timeout_unit": "超时时间单位不合法"})
+        if type(timeout_value) is not int or not 1 <= timeout_value <= max_value:
+            unit_label = MonitorObject.CLEANUP_TIMEOUT_UNIT_LABELS[timeout_unit]
+            raise serializers.ValidationError(
+                {"cleanup_timeout_value": f"超时时间必须是 1～{max_value} {unit_label}的整数"}
+            )
         attrs["instance_id_keys"] = self._resolve_instance_id_keys(attrs)
         return attrs
 
@@ -47,6 +77,15 @@ class MonitorObjectSerializer(serializers.ModelSerializer):
 
 
 class MonitorObjectOrganizationRuleSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        data_team_ids = self.context.get("data_team_ids")
+        if data_team_ids is not None:
+            representation["organizations"] = [
+                organization for organization in representation.get("organizations", []) if organization in data_team_ids
+            ]
+        return representation
+
     class Meta:
         model = MonitorObjectOrganizationRule
         fields = "__all__"

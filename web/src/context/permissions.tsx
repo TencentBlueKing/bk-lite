@@ -4,6 +4,7 @@ import { useMenus } from '@/context/menus';
 import { MenuItem } from '@/types/index';
 import { getClientIdFromRoute, mapClientName } from '@/utils/route';
 import { isSessionExpiredState } from '@/utils/sessionExpiry';
+import { hasRoutePermission } from '@/context/permission-path';
 
 interface Permissions {
   [url: string]: string[];
@@ -105,8 +106,11 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (routeClientId && menu.url) {
-          const urlContainsClientId = menu.url.includes(`/${routeClientId}/`);
-          if (!urlContainsClientId) {
+          const normalizedUrl = menu.url.replace(/\/+$/, '') || '/';
+          const clientRoot = `/${routeClientId}`;
+          const urlBelongsToClient =
+            normalizedUrl === clientRoot || normalizedUrl.startsWith(`${clientRoot}/`);
+          if (!urlBelongsToClient) {
             console.warn(`Menu ${menu.name} URL does not contain routeClientId: ${routeClientId}`);
             return false;
           }
@@ -188,7 +192,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
 
   const hasPermission = useCallback(
     (url: string) => {
-      return Object.keys(permissions).some((permissionUrl) => permissionUrl.startsWith(url));
+      return hasRoutePermission(permissions, url);
     },
     [permissions]
   );

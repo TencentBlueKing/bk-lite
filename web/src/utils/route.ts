@@ -25,6 +25,7 @@ export const getClientIdFromRoute = (): string => {
 export const mapClientName = (routeClientId: string): string => {
   const clientNameMap: { [key: string]: string } = {
     'node-manager': 'node',
+    'patch-manager': 'patch',
     // Add more mappings here if needed
   };
   

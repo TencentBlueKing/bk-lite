@@ -29,6 +29,7 @@ import { EditOutlined } from '@ant-design/icons';
 import { getEnumColor, isStringArray } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { Select, Spin } from 'antd';
+import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
 import { ListItem } from '@/types';
 const { Option } = Select;
 
@@ -64,21 +65,19 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     pageSize: 60 // 默认值
   });
   const [frequence, setFrequence] = useState<number>(0);
-  const [queryData, setQueryData] = useState<any[]>([]);
   const [mertics, setMertics] = useState<MetricItem[]>([]);
-  const [colony, setColony] = useState<string | null>(null);
   const [node, setNode] = useState<string | null>(null);
   const [queryMetric, setQueryMetric] = useState<string | null>(null);
   const [hexColor, setHexColor] = useState<NodeThresholdColor[]>([]);
   const [nodeList, setNodeList] = useState<ListItem[]>([]);
 
   const isPod = useMemo(() => {
-    return objects.find((item) => item.id === objectId)?.name === 'Pod';
+    return findByMonitorId(objects, objectId)?.name === 'Pod';
   }, [objects, objectId]);
 
   const metricList = useMemo(() => {
     if (objectId && objects?.length && mertics?.length) {
-      const target = objects.find((item) => item.id === objectId);
+      const target = findByMonitorId(objects, objectId);
       const metricNames = new Set(
         (target?.display_fields || [])
           .filter((col) => col.type !== 'field')
@@ -114,7 +113,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   useEffect(() => {
     if (isLoading) return;
     if (objectId && objects?.length) {
-      const objName = objects.find((item) => item.id === objectId)?.name;
+      const objName = findByMonitorId(objects, objectId)?.name;
       if (objName) {
         getInitData(objName);
       }
@@ -126,7 +125,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     if (objectId && objects?.length && !isLoading) {
       onRefresh();
     }
-  }, [colony, node]);
+  }, [node]);
 
   // 更新与销毁定时器
   useEffect(() => {
@@ -147,7 +146,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   }, [
     frequence,
     objectId,
-    colony,
     node,
     pagination.current,
     pagination.pageSize
@@ -187,16 +185,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     }
   }, [pagination, chartData]);
 
-  const handleColonyChange = (id: string) => {
-    setColony(id);
-    setNode(null);
-    setChartData([]);
-    setPagination((prev: Pagination) => ({
-      ...prev,
-      current: 1
-    }));
-  };
-
   const handleNodeChange = (id: string) => {
     setNode(id);
     setChartData([]);
@@ -217,7 +205,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       add_metrics: true,
       name: '',
       vm_params: {
-        instance_id: colony || '',
+        instance_id: '',
         node: node || ''
       }
     };
@@ -226,13 +214,14 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const getInitData = async (name: string) => {
     const params = getParams();
     const objParams = {
-      monitor_object_id: objectId
+      monitor_object_id: String(objectId),
+      name: isPod ? 'pod_status_phase' : 'node_status_condition'
     };
     const getInstList = await getInstanceSearch(objectId, params);
     const getQueryParams = await getInstanceQueryParams(name, objParams);
     setTableLoading(true);
     try {
-      const metricsData = await getMonitorMetrics(objParams);
+      const { items: metricsData } = await getMonitorMetrics(objParams);
       setMertics(metricsData || []);
       const tagetMerticItem = metricsData.find(
         (item: MetricItem) =>
@@ -250,21 +239,8 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       }
       const res = await Promise.all([getInstList, getQueryParams]);
       const k8sQuery = res[1];
-      let queryForm: any[] = [];
       if (k8sQuery?.cluster) {
-        queryForm = k8sQuery?.cluster || [];
         setNodeList(k8sQuery?.node || []);
-      } else {
-        queryForm = (k8sQuery || []).map((item: any) => {
-          if (typeof item === 'string') {
-            return { id: item, child: [] };
-          }
-          return {
-            id: item?.id,
-            name: item?.name || '',
-            child: []
-          };
-        });
       }
       const chartConfig = {
         data: res[0]?.results || [],
@@ -272,7 +248,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         hexColor,
         queryMetric: queryMetric as string
       };
-      setQueryData(queryForm);
       setChartData(dealChartData(chartConfig));
       setPagination((prev: Pagination) => ({
         ...prev,
@@ -430,27 +405,12 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     <div className="w-full h-[calc(100vh-216px)]">
       <div className="flex justify-between flex-wrap">
         <div className="flex items-center mb-[20px]">
-          <span className="text-[14px] mr-[10px]">
-            {t('monitor.views.filterOptions')}
-          </span>
-          <Select
-            value={colony}
-            allowClear
-            showSearch
-            style={{ width: 240 }}
-            placeholder={t('monitor.views.colony')}
-            onChange={handleColonyChange}
-          >
-            {queryData.map((item) => (
-              <Option key={item.id} value={item.id}>
-                {item.id}
-              </Option>
-            ))}
-          </Select>
           {isPod && (
             <>
+              <span className="text-[14px] mr-[10px]">
+                {t('monitor.views.filterOptions')}
+              </span>
               <Select
-                className="ml-[8px]"
                 value={node}
                 allowClear
                 showSearch

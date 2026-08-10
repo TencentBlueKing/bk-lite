@@ -103,6 +103,9 @@ base_constant:
   float: float
   json: json
 error:
+  network_whitelist_required: The target IP is not in the allowlist. Add it in System Management > Network Allowlist.
+  go_to_network_whitelist: Open Network Allowlist
+  connection_target_forbidden: This target address is not allowed.
   no_group_id: No Group ID
   no_view_permission: User does not have permission to view this instance
   model_in_use: Cannot delete because it is still in use by {count} knowledge graph(s).
@@ -209,10 +212,24 @@ tools:
   monitor:
     name: Monitor
     description: |
-      Query BK-Lite monitor objects, instances, metrics, and alerts by using the current user's monitor identity.
+      [Host CPU] Query BK-Lite monitored objects, instances, metric series, and alerts with caller identity.
+      Typical flow: object type → match host name to instance → confirm metric → query series.
+      Prefer these tools; do not suggest SSH/top/htop.
     tools:
       monitor_list_objects:
-        description: List available monitor object types.
+        description: "[Host CPU] Step 1: list object types and find the host monitor_obj_id."
+      monitor_list_object_instances:
+        description: "[Host CPU] Step 2: list instances; match host name to get instance_id."
+      monitor_list_object_metrics:
+        description: "[Host CPU] Step 3: list metric definitions; confirm CPU usage metric name."
+      monitor_list_instance_metrics:
+        description: "[Host CPU] Optional: confirm whether an instance has CPU metrics."
+      monitor_query_metric_data:
+        description: "[Host CPU] Step 4: query metric time series; needs object, metric, time range, optional instance_ids."
+      monitor_list_active_alerts:
+        description: "[Host alerts] List current active alerts; filter by object/instance/level."
+      monitor_query_alert_segments:
+        description: "[Host alert history] Query alert segments in a time window."
   attachment_file:
     name: Workflow Attachment File
     description: |

@@ -13,6 +13,12 @@ import { useInstanceApi, useCollectApi, useModelApi } from '@/app/cmdb/api';
 import styles from '../index.module.scss';
 import CustomTable from '@/components/custom-table';
 import IpRangeInput from '@/app/cmdb/components/ipInput';
+import {
+  IP_RANGE_CYCLE_HINT_THRESHOLD,
+  ipRangeSize,
+  isIpRangeOrderValid,
+  isIpRangeWithinLimit,
+} from '@/app/cmdb/components/ipInput/ipRangeLimits';
 import { useCommon } from '@/app/cmdb/context/common';
 import { FieldModalRef } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
@@ -63,6 +69,9 @@ const ACCESS_POINT_TASK_TYPES = [
   'ipmi',
   'ip', // IP 发现：由接入点直连目标网段执行探测（规格 §13.1）
 ];
+const LONG_TOOLTIP_OVERLAY_STYLE = {
+  maxWidth: 'min(520px, calc(100vw - 48px))',
+};
 
 import {
   CaretRightOutlined,
@@ -83,6 +92,7 @@ import {
   Select,
   Dropdown,
   Drawer,
+  Alert,
 } from 'antd';
 
 interface TableItem {
@@ -107,6 +117,7 @@ interface BaseTaskFormProps {
   onClose: () => void;
   onTest?: () => void;
   submitText?: string;
+  singleInstanceOnly?: boolean;
 }
 
 export interface BaseTaskRef {
@@ -137,6 +148,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       onClose,
       onTest,
       submitText,
+      singleInstanceOnly = false,
     },
     ref
   ) => {
@@ -205,16 +217,15 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       return current.every((item, index) => item === next[index]);
     };
 
-    const supportsIpSelection = IP_SELECTION_TASK_TYPES.includes(
+    const supportsIpSelection = !singleInstanceOnly && IP_SELECTION_TASK_TYPES.includes(
       normalizedTaskType
     );
     const supportsAssetOnlySelection = ASSET_ONLY_SELECTION_TASK_TYPES.includes(
       normalizedTaskType
     );
 
-    const requiresSingleInstanceSelect = SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(
-      normalizedTaskType
-    );
+    const requiresSingleInstanceSelect = singleInstanceOnly
+      || SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(normalizedTaskType);
     const requiresAccessPointSelect = ACCESS_POINT_TASK_TYPES.includes(
       normalizedTaskType
     );
@@ -763,22 +774,31 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             {/* 接入点 */}
             {requiresAccessPointSelect && (
               <Form.Item
-                label={t('Collection.accessPoint')}
+                label={
+                  <span>
+                    {t('Collection.accessPoint')}
+                    <Tooltip
+                      overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
+                      title={
+                        <span>
+                          {t('Collection.accessPointHelp')}
+                          <a
+                            className="ml-2 text-blue-500 hover:text-blue-600"
+                            href="/node-manager/cloudregion"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {t('Collection.accessPointLink')}
+                          </a>
+                        </span>
+                      }
+                    >
+                      <QuestionCircleOutlined className="ml-1 cursor-help text-gray-400" />
+                    </Tooltip>
+                  </span>
+                }
                 name="accessPointId"
                 required
-                extra={
-                  <div className="text-xs leading-5">
-                    <span>{t('Collection.accessPointHelp')}</span>
-                    <a
-                      className="ml-2 text-blue-500 hover:text-blue-600"
-                      href="/node-manager/cloudregion"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {t('Collection.accessPointLink')}
-                    </a>
-                  </div>
-                }
                 rules={[
                   {
                     required: true,
@@ -864,17 +884,15 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                               );
                             }
 
-                            const ipToNumber = (ip: string) =>
-                              ip
-                                .split('.')
-                                .reduce(
-                                  (acc, curr) => acc * 256 + Number(curr),
-                                  0,
-                                );
-
-                            if (ipToNumber(value[0]) > ipToNumber(value[1])) {
+                            if (!isIpRangeOrderValid(value[0], value[1])) {
                               return Promise.reject(
                                 new Error(t('Collection.ipRangeOrderInvalid')),
+                              );
+                            }
+
+                            if (!isIpRangeWithinLimit(value[0], value[1])) {
+                              return Promise.reject(
+                                new Error(t('Collection.ipRangeTooLarge')),
                               );
                             }
 
@@ -885,6 +903,21 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     >
                       <IpRangeInput value={ipRange} onChange={onIpChange} />
                     </Form.Item>
+                    {ipRangeSize(ipRange?.[0], ipRange?.[1]) >
+                      IP_RANGE_CYCLE_HINT_THRESHOLD && (
+                      <Form.Item
+                        labelCol={{ span: 0 }}
+                        wrapperCol={{ span: 24 }}
+                        className={styles.ipRangeCycleHintItem}
+                      >
+                        <Alert
+                          type="warning"
+                          showIcon
+                          className={styles.formFieldHint}
+                          message={t('Collection.ipRangeCycleHint')}
+                        />
+                      </Form.Item>
+                    )}
                   </>
                 ) : (
                   /* 选择资产 */
@@ -898,7 +931,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     <div>
                       <Space>
                         {isCommonSelectInstTask ? (
-                          <Tooltip title={hostAssetSelectTooltip}>
+                          <Tooltip
+                            overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
+                            title={hostAssetSelectTooltip}
+                          >
                             <span>
                               <Button
                                 type="primary"

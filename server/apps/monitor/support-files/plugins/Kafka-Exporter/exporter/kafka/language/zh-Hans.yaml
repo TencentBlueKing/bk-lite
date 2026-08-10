@@ -28,6 +28,9 @@ monitor_object_metric:
     kafka_topic_partition_in_sync_replica:
       name: 分区同步副本数
       desc: 指定主题和分区的同步副本数量。
+    kafka_topic_partition_leader:
+      name: 分区Leader节点
+      desc: 指定主题和分区的Leader Broker节点ID。
     kafka_topic_partition_leader_is_preferred:
       name: 分区首选领导者状态
       desc: 若主题/分区正在使用首选 Broker节点，则值为 1，否则为 0。
@@ -40,9 +43,45 @@ monitor_object_metric:
     kafka_consumergroup_current_offset:
       name: 消费者组当前偏移量
       desc: 指定消费者组在指定主题和分区的当前偏移量。
+    kafka_consumergroup_current_offset_sum:
+      name: 消费者组当前偏移量汇总
+      desc: 指定消费者组在指定主题上的已提交偏移量汇总。
     kafka_consumergroup_lag:
       name: 消费者组滞后偏移量
       desc: 指定消费者组在指定主题和分区的当前近似滞后偏移量。
+    kafka_consumergroup_lag_sum:
+      name: 消费者组Lag汇总
+      desc: 指定消费者组在指定主题上的分区Lag汇总。
+    kafka_consumergroup_members:
+      name: 消费者组成员数
+      desc: 指定消费者组当前的成员数量。
+    kafka_consumergroup_lag_anomaly:
+      name: 消费者组Lag异常状态
+      desc: 同一轮采集内已提交偏移量大于日志末端偏移量时值为1。
+    kafka_exporter_scrape_duration_seconds:
+      name: Kafka监控单轮采集耗时
+      desc: Kafka监控完整单轮采集耗时。
+    kafka_exporter_scrape_success:
+      name: Kafka监控单轮采集成功状态
+      desc: 最近一轮Kafka监控采集无请求错误且完成时为1，否则为0。
+    kafka_exporter_scrape_stage_duration_seconds:
+      name: Kafka监控各阶段采集耗时
+      desc: Kafka监控各采集阶段的耗时。
+    kafka_exporter_kafka_requests:
+      name: Kafka监控单轮请求数量
+      desc: 最近一轮采集向Kafka发出的请求数量。
+    kafka_exporter_kafka_request_errors:
+      name: Kafka监控单轮请求错误数量
+      desc: 最近一轮采集中的Kafka请求错误数量。
+    kafka_exporter_collected_series:
+      name: Kafka监控单轮输出序列数量
+      desc: 最近一轮采集输出的Kafka数据序列数量，不含探针自监控指标。
+    kafka_exporter_lag_anomalies:
+      name: Kafka消费组偏移量异常分区数量
+      desc: 最近一轮采集中已提交偏移量大于同轮日志末端偏移量的分区数量。
+    kafka_exporter_last_success_timestamp_seconds:
+      name: Kafka监控最近成功采集时间
+      desc: 最近一次完整成功Kafka监控采集的Unix时间戳。
     up_gauge:
       name: 监控探针状态
       desc: 监控探针的运行状态。0代表连接服务不正常，1代表连接服务正常。需要注意无数据的情况可能是连接不存在。
@@ -99,4 +138,5 @@ monitor_object_metric_group:
     Base: 基础信息
     Topic: 主题
     ConsumerGroup: 消费者组
+    Exporter: 采集器
     Process: 进程

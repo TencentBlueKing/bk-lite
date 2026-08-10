@@ -1,6 +1,6 @@
 """告警操作状态机覆盖测试。
 
-对照 spec/prd/告警中心·告警：未分派→待响应→处理中→关闭，含转派/认领与权限校验。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：未分派→待响应→处理中→关闭，含转派/认领与权限校验。
 """
 
 from unittest import mock

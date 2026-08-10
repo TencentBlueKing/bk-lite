@@ -15,9 +15,10 @@ import { InboxOutlined, FileOutlined, CloseOutlined, ExclamationCircleOutlined }
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import useJobApi from '@/app/job/api';
-import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/host-selection-modal';
+import HostSelectionModal, { HostItem, TargetSourceType } from '@/app/job/components/jobHostSelectionModalRuntime';
 import { AddTargetHostButton, TargetSourceSelector } from '@/app/job/components/target-selection-controls';
 import { EnabledDangerousPaths, JobRecordFile } from '@/app/job/types';
+import { createDefaultExecutionName } from '@/app/job/utils/execution-name';
 
 const extractExecutionId = (response: any): number | undefined => {
   const candidates = [
@@ -54,6 +55,7 @@ const FileDistPage = () => {
   const router = useRouter();
   const { uploadDistributionFile, createFileDistribution, getEnabledDangerousPaths } = useJobApi();
   const [form] = Form.useForm();
+  const [defaultJobName] = useState(() => createDefaultExecutionName(t('job.fileDistribution')));
 
   const [hostModalOpen, setHostModalOpen] = useState(false);
   const [targetSource, setTargetSource] = useState<TargetSourceType>('target_manager');
@@ -323,7 +325,7 @@ const FileDistPage = () => {
           form={form}
           layout="vertical"
           className="w-full"
-          initialValues={{ timeout: '600', overwriteStrategy: 'overwrite' }}
+          initialValues={{ jobName: defaultJobName, timeout: '600', overwriteStrategy: 'overwrite' }}
         >
           {/* 作业名称 */}
           <Form.Item
@@ -491,6 +493,7 @@ const FileDistPage = () => {
       <HostSelectionModal
         open={hostModalOpen}
         selectedKeys={selectedHostKeys}
+        selectedHosts={selectedHosts}
         source={targetSource}
         onConfirm={handleHostConfirm}
         onCancel={() => setHostModalOpen(false)}

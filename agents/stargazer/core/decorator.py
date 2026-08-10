@@ -2,6 +2,7 @@
 # @File: decorator.py
 # @Time: 2025/12/23 15:21
 # @Author: windyzhao
+import inspect
 import time
 from functools import wraps
 from typing import Callable, Any
@@ -16,6 +17,25 @@ def timer(logger=None):
     """
 
     def decorator(func: Callable) -> Callable:
+        if inspect.iscoroutinefunction(func):
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs) -> Any:
+                start_time = time.perf_counter()
+                try:
+                    return await func(*args, **kwargs)
+                finally:
+                    elapsed_time = time.perf_counter() - start_time
+                    message = (
+                        f"Function '{func.__name__}' executed in "
+                        f"{elapsed_time:.6f} seconds"
+                    )
+                    if logger:
+                        logger.info(message)
+                    else:
+                        print(f"[Timer] {message}")
+
+            return async_wrapper
+
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
             # 开始计时

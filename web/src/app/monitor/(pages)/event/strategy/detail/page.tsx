@@ -3,6 +3,10 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { Spin, Button, Form, message, Steps } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
+import {
+  fetchAllMetricsGroups,
+  fetchAllMonitorMetrics
+} from '@/app/monitor/api/fetchMetricCatalogPages';
 import useEventApi from '@/app/monitor/api/event';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -10,7 +14,6 @@ import {
   UserItem,
   SegmentedItem,
   TableDataItem,
-  GroupInfo,
   ObjectItem,
   MetricItem,
   IndexViewItem,
@@ -38,6 +41,7 @@ import NotificationForm from './notificationForm';
 import MetricPreview from './metricPreview';
 import VariablesTable from './variablesTable';
 import { isStringArray } from '@/app/monitor/utils/common';
+import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
 import {
   getMetricDimensionNames,
   sanitizeGroupBy
@@ -48,13 +52,13 @@ import {
 } from '@/app/monitor/constants/event';
 import {
   buildMetricUnitCascaderOptions,
-  filterInvalidCalculationUnit,
   getCalculationUnitOnMetricRowsChange,
   getReverseModeCalculationUnit,
   getThresholdUnitOnCalculationUnitChange,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
   resolveThresholdUnit,
+  resolveUnitOnMetricSelect,
   restoreCalculationUnitState
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
@@ -70,9 +74,6 @@ import {
 } from './formulaExpressionUtils';
 const defaultGroup = ['instance_id'];
 
-// 过滤无效的单位值（none 、 short 和 JSON 字符串格式 已从单位列表中移除，不能作为单位值）
-// 已上提至 strategyDetailUtils.filterInvalidCalculationUnit
-
 const StrategyOperation = () => {
   const { t } = useTranslation();
   const translateWithFallback = (key: string, fallback: string) => {
@@ -86,7 +87,7 @@ const StrategyOperation = () => {
     getMonitorPlugin,
     getMonitorObject
   } = useMonitorApi();
-  const { getMonitorPolicy, getSystemChannelList } = useEventApi();
+  const { getMonitorPolicy, getSystemChannelList, savePolicyTemplate } = useEventApi();
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
   const groupedUnitOptions = useMemo(
@@ -96,7 +97,6 @@ const StrategyOperation = () => {
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const router = useRouter();
-  const { getGroupIds } = useObjectConfigInfo();
   const userList: UserItem[] = commonContext?.userList || [];
   const instRef = useRef<ModalRef>(null);
   const formContainerRef = useRef<HTMLDivElement>(null);
@@ -110,8 +110,10 @@ const StrategyOperation = () => {
   const type = searchParams.get('type') || '';
   const detailId = searchParams.get('id');
   const detailName = searchParams.get('name') || '--';
+  const { getGroupIds, ready: objectConfigReady } = useObjectConfigInfo(monitorName);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
+  const [templateSaving, setTemplateSaving] = useState<boolean>(false);
   const [source, setSource] = useState<SourceFeild>({
     type: '',
     values: []
@@ -147,6 +149,14 @@ const StrategyOperation = () => {
   const [groupBy, setGroupBy] = useState<string[]>(
     getGroupIds(monitorName as string)?.default || defaultGroup
   );
+
+  useEffect(() => {
+    if (!objectConfigReady || !monitorName) return;
+    const defaults = getGroupIds(monitorName)?.default;
+    if (defaults?.length) {
+      setGroupBy((prev) => (prev === defaultGroup || prev.length === 0 ? defaults : prev));
+    }
+  }, [objectConfigReady, monitorName, getGroupIds]);
   const [groupAlgorithm, setGroupAlgorithm] = useState<string | null>('avg');
   const [period, setPeriod] = useState<number | null>(null);
   const [algorithm, setAlgorithm] = useState<string | null>(null);
@@ -267,7 +277,7 @@ const StrategyOperation = () => {
           const target = initMetricData.find((item) => item.name === _metricId);
           if (target) {
             const _labels = getMetricDimensionNames(target?.dimensions);
-            const initialBuiltInUnit = filterInvalidCalculationUnit(target?.unit);
+            const initialBuiltInUnit = resolveUnitOnMetricSelect(target?.unit);
             setCalculationUnit(initialBuiltInUnit);
             // 计算完整的分组维度选项列表并设置为所有选项
             const fixedList =
@@ -328,7 +338,9 @@ const StrategyOperation = () => {
     const nextLabelsByRef: Record<string, string[]> = {};
     metricRows.forEach((row) => {
       const target = metrics.find(
-        (item) => item.id === row.metricId || item.name === row.metricName
+        (item) =>
+          (row.metricId != null && String(item.id) === String(row.metricId)) ||
+          (!!row.metricName && item.name === row.metricName)
       );
       nextLabelsByRef[row.ref] = getMetricDimensionNames(target?.dimensions);
     });
@@ -337,7 +349,9 @@ const StrategyOperation = () => {
     if (metricRows.length === 1) {
       const row = metricRows[0];
       const target = metrics.find(
-        (item) => item.id === row.metricId || item.name === row.metricName
+        (item) =>
+          (row.metricId != null && String(item.id) === String(row.metricId)) ||
+          (!!row.metricName && item.name === row.metricName)
       );
       setMetric(row.metricName || target?.name || null);
       setConditions(row.filters || []);
@@ -369,7 +383,7 @@ const StrategyOperation = () => {
     setObjects(data);
   };
 
-  const changeCollectType = (id: string) => {
+  const changeCollectType = (id: string | number) => {
     getMetrics({
       monitor_object_id: monitorObjId,
       monitor_plugin_id: id
@@ -382,10 +396,12 @@ const StrategyOperation = () => {
   };
 
   const getPlugins = async () => {
-    const data = await getMonitorPlugin({
-      monitor_object_id: monitorObjId
-    });
-    const plugins = data
+    const plugins = await loadMonitorPluginsByObjectCached(monitorObjId, () =>
+      getMonitorPlugin({
+        monitor_object_id: monitorObjId
+      })
+    );
+    const options = plugins
       .sort((a: PluginItem, b: PluginItem) => {
         const order = (item: PluginItem) =>
           item.is_pre ? 0 : !item.is_custom ? 1 : 2;
@@ -396,7 +412,7 @@ const StrategyOperation = () => {
         value: item.id,
         name: item.name
       }));
-    setPluginList(plugins);
+    setPluginList(options);
   };
 
   const dealDetail = (data: StrategyFields) => {
@@ -473,7 +489,7 @@ const StrategyOperation = () => {
     const { query_condition } = data;
     if (query_condition?.type === 'metric' && initMetricData.length > 0) {
       const _metrics = initMetricData.find(
-        (item) => item.id === query_condition?.metric_id
+        (item) => query_condition?.metric_id != null && String(item.id) === String(query_condition.metric_id)
       );
       if (_metrics) {
         setMetric(_metrics?.name || '');
@@ -511,7 +527,7 @@ const StrategyOperation = () => {
         query_condition
       );
       const rows = restoredState.rows.map((row) => {
-        const target = initMetricData.find((item) => item.id === row.metricId);
+        const target = initMetricData.find((item) => row.metricId != null && String(item.id) === String(row.metricId));
         return {
           ...row,
           metricName: target?.name || row.metricName
@@ -595,59 +611,38 @@ const StrategyOperation = () => {
 
     // 选择指标后触发验证，清除错误信息（包括指标、条件维度和告警阈值）
     form.validateFields(['metric', 'threshold']);
-    // 自动设置告警阈值单位为指标的默认单位（过滤掉 none 和 short）
-    const filteredUnit = filterInvalidCalculationUnit(target?.unit);
-    if (filteredUnit) {
-      setCalculationUnit(filteredUnit);
-      setThresholdUnit(filteredUnit);
-      return;
-    }
-    const unitList = commonContext?.unitList || [];
-    const baseFilteredList = unitList.filter(
-      (item) => !['none', 'short'].includes(item.unit_id)
-    );
-    const metricUnitItem = unitList.find(
-      (item) => item.unit_id === target?.unit
-    );
-    let defaultUnit: string | null = null;
-    if (metricUnitItem) {
-      // 找到相同 system 的第一个单位
-      const sameSystemUnit = baseFilteredList.find(
-        (item) => item.system === metricUnitItem.system
-      );
-      defaultUnit = sameSystemUnit?.unit_id || null;
-    }
-    setCalculationUnit(defaultUnit);
-    setThresholdUnit(defaultUnit);
+    // none/short/枚举 → null，禁止再按 system===null 回落到 cps 等独立单位
+    const nextUnit = resolveUnitOnMetricSelect(target?.unit);
+    setCalculationUnit(nextUnit);
+    setThresholdUnit(nextUnit);
   };
 
   const getMetrics = async (params = {}, type = '') => {
     try {
       setMetricsLoading(true);
-      const getGroupList = getMetricsGroup(params);
-      const getMetrics = getMonitorMetrics(params);
+      const getGroupList = fetchAllMetricsGroups(getMetricsGroup, params);
+      const getMetrics = fetchAllMonitorMetrics(getMonitorMetrics, params);
       Promise.all([getGroupList, getMetrics])
         .then((res) => {
-          const metricData = cloneDeep(res[1] || []);
-          setMetrics(res[1] || []);
-          const groupData = res[0].map((item: GroupInfo) => ({
+          const metricData = cloneDeep(res[1].items);
+          setMetrics(res[1].items);
+          const groupData: IndexViewItem[] = res[0].items.map((item) => ({
             ...item,
+            id: Number(item.id),
             child: []
           }));
           metricData.forEach((metric: MetricItem) => {
             const target = groupData.find(
-              (item: GroupInfo) => item.id === metric.metric_group
+              (item) => item.id === metric.metric_group
             );
             if (target) {
-              target.child.push(metric);
+              target.child?.push(metric);
             }
           });
-          const _groupData = groupData.filter(
-            (item: any) => !!item.child?.length
-          );
+          const _groupData = groupData.filter((item) => !!item.child?.length);
           setOriginMetricData(_groupData);
           if (type === 'init') {
-            setInitMetricData(res[1] || []);
+            setInitMetricData(res[1].items);
           }
         })
         .finally(() => {
@@ -781,9 +776,8 @@ const StrategyOperation = () => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const createStrategy = () => {
-    form?.validateFields().then((values) => {
-      const params = cloneDeep(values);
+  const buildStrategyParams = (values: any): StrategyFields | null => {
+      const params: any = cloneDeep(values);
       delete params._conditions_validator;
       delete params.no_data_level;
       delete params.no_data_alert_name;
@@ -814,12 +808,13 @@ const StrategyOperation = () => {
               ? error.message
               : t('monitor.events.metricValidate')
           );
-          return;
+          return null;
         }
         const primaryMetric = metricRows[0];
         const mertricTarget = metrics.find(
           (item) =>
-            item.id === primaryMetric?.metricId ||
+            (primaryMetric?.metricId != null &&
+              String(item.id) === String(primaryMetric.metricId)) ||
             item.name === primaryMetric?.metricName
         );
         selectedMetricSourceUnit = mertricTarget?.unit;
@@ -884,8 +879,53 @@ const StrategyOperation = () => {
       params.recovery_condition = params.recovery_condition || 0;
       params.group_by = sanitizeGroupBy(metricRows[0]?.groupBy || groupBy);
       params.enable = true;
-      operateStrategy(params);
+      return params;
+  };
+
+  const createStrategy = () => {
+    form?.validateFields().then((values) => {
+      const params = buildStrategyParams(values);
+      if (params) void operateStrategy(params);
     });
+  };
+
+  const saveTemplate = async () => {
+    const trapTemplate = isTrap(form.getFieldValue);
+    const templateFields = [
+      'name',
+      'alert_name',
+      'collect_type',
+      'schedule',
+      'period',
+      'threshold',
+      'trigger_count',
+      'recovery_condition',
+      'no_data_alert_name',
+      ...(trapTemplate ? ['query'] : ['metric', 'algorithm']),
+    ];
+    let validated: Record<string, unknown>;
+    try {
+      validated = await form.validateFields(templateFields);
+    } catch {
+      return;
+    }
+    const params = buildStrategyParams({
+      ...form.getFieldsValue(true),
+      ...validated,
+    });
+    if (!params) return;
+    try {
+      setTemplateSaving(true);
+      await savePolicyTemplate({
+        monitor_object: monitorObjId,
+        plugin: params.collect_type,
+        name: params.name,
+        config: params,
+      });
+      message.success('模版保存成功');
+    } finally {
+      setTemplateSaving(false);
+    }
   };
 
   const operateStrategy = async (params: StrategyFields) => {
@@ -1084,14 +1124,19 @@ const StrategyOperation = () => {
             </div>
           </div>
         </div>
-        <div className={strategyStyle.footer}>
+        <div className={`${strategyStyle.footer} flex gap-2`}>
           <Button
             type="primary"
-            className="mr-[10px]"
             loading={confirmLoading}
             onClick={createStrategy}
           >
             {t('common.confirm')}
+          </Button>
+          <Button
+            loading={templateSaving}
+            onClick={() => void saveTemplate()}
+          >
+            保存模版
           </Button>
           <Button onClick={goBack}>{t('common.cancel')}</Button>
         </div>

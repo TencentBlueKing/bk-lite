@@ -95,6 +95,32 @@ class TestLoadPluginLanguage:
         result = lo._load_plugin_language("en")
         assert result == {}
 
+    def test_复合模板不创建空监控对象指标翻译(self, tmp_path, monkeypatch):
+        """顶层没有 name 的复合模板不应写入 monitor_object_metric[None]。"""
+        plugins_root = tmp_path / "plugins"
+        plugin_dir = plugins_root / "CollectorA" / "cat1" / "compound"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "metrics.json").write_text(
+            '{"plugin": "Compound", "objects": [{"name": "Object-A"}], '
+            '"metrics": [{"name": "metric_a", "metric_en_name": "Metric A"}]}',
+            encoding="utf-8",
+        )
+        (plugin_dir / "language").mkdir()
+        (plugin_dir / "language" / "en.yaml").write_text(
+            "Compound:\n  name: Compound\n", encoding="utf-8"
+        )
+
+        from apps.monitor.constants import plugin as plugin_constants
+
+        monkeypatch.setattr(plugin_constants.PluginConstants, "DIRECTORY", str(plugins_root))
+        monkeypatch.setattr(plugin_constants.PluginConstants, "ENTERPRISE_DIRECTORY", str(tmp_path / "no_enterprise"))
+        clear_language_cache()
+
+        lo = LanguageLoader(app="__no_such_app__", default_lang="en")
+        result = lo._load_plugin_language("en")
+
+        assert None not in result.get("monitor_object_metric", {})
+
     def test_文件内key与plugin字段不一致报错但继续(self, tmp_path, monkeypatch, caplog):
         """language/en.yaml 顶层 key 与 metrics.json plugin 字段不一致:plugin 自身描述被丢,
         但 4 段翻译(monitor_object_metric 等)仍会被合并(因为合并是按整个 yaml 整体 deep_merge)。
@@ -119,6 +145,37 @@ class TestLoadPluginLanguage:
         assert "monitor_object_plugin" not in result
         # 文件里只有 Wrong-Key 段,被原样合并
         assert result == {"Wrong-Key": {"name": "x"}}
+
+    def test_同一语言插件翻译只发现一次(self, tmp_path, monkeypatch):
+        """同一进程内插件翻译按语言共享，不能随调用方 app 重复扫描。"""
+        plugins_root = tmp_path / "plugins"
+        plugin_dir = plugins_root / "CollectorA" / "cat1" / "pluginA"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "metrics.json").write_text('{"plugin": "Plugin-A"}', encoding="utf-8")
+        (plugin_dir / "language").mkdir()
+        (plugin_dir / "language" / "cache-test.yaml").write_text(
+            "Plugin-A:\n  name: A Name\n  desc: A Desc\n", encoding="utf-8"
+        )
+
+        from apps.monitor.constants import plugin as plugin_constants
+        from apps.monitor.management import utils as monitor_utils
+
+        monkeypatch.setattr(plugin_constants.PluginConstants, "DIRECTORY", str(plugins_root))
+        monkeypatch.setattr(plugin_constants.PluginConstants, "ENTERPRISE_DIRECTORY", str(tmp_path / "no_enterprise"))
+        original_find = monitor_utils.find_files_by_pattern
+        calls = 0
+
+        def count_find_files(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return original_find(*args, **kwargs)
+
+        monkeypatch.setattr(monitor_utils, "find_files_by_pattern", count_find_files)
+
+        lo = LanguageLoader(app="__no_such_app__", default_lang="en")
+        calls = 0
+        assert lo._load_plugin_language("cache-test") == lo._load_plugin_language("cache-test")
+        assert calls == 1
 
 
 class TestLoadEnterpriseLanguage:
@@ -187,6 +244,20 @@ class TestLoadEnterpriseLanguage:
 
 
 class TestLoadLanguageFileMergeOrder:
+    def test_非monitor应用不加载插件翻译(self, tmp_path, monkeypatch):
+        """插件语言是 monitor 专属资源，core/cmdb 冷加载不得触发插件扫描。"""
+        lo = LanguageLoader(app="core", default_lang="en")
+        lo.base_dir = str(tmp_path / "base")
+        monkeypatch.setattr(lo, "_load_language_dir", lambda lang: {"core": {"ok": True}})
+        monkeypatch.setattr(lo, "_load_enterprise_language", lambda lang: {})
+
+        def fail_if_called(lang):
+            pytest.fail(f"非 monitor 应用不应加载插件翻译: {lang}")
+
+        monkeypatch.setattr(lo, "_load_plugin_language", fail_if_called)
+
+        assert lo._load_language_file("en") == {"core": {"ok": True}}
+
     def test_合并顺序base_plugins_enterprise(self, tmp_path, monkeypatch):
         """base 设值,plugins 覆盖,enterprise 再覆盖。"""
         # base: 一个 yaml 含 monitor_object_plugin.<x>.name

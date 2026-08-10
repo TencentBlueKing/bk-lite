@@ -138,3 +138,25 @@ export const groupDetailWithRoles: GroupDetailWithRoles = {
     '2001': 'Default / Frontend Team',
   },
 };
+
+
+export const fetchStoryGroupDetailWithRolesAction = async () => ({
+  allow_inherit_roles: false,
+  own_role_ids: [],
+  inherited_role_ids: [],
+  inherited_role_source_map: {},
+});
+
+export const fetchStoryRoleListAction = async () => {
+  const list = [
+    { id: 1, name: 'role-1', is_build_in: false, children: [] as { id: number; name: string }[] },
+    { id: 2, name: 'role-2', is_build_in: false, children: [] as { id: number; name: string }[] },
+  ];
+  return list;
+};
+
+export const fetchStorySystemSettings = async () => ({
+  passwordMinLength: 8,
+  passwordMaxLength: 32,
+  passwordComplexity: 'medium',
+});

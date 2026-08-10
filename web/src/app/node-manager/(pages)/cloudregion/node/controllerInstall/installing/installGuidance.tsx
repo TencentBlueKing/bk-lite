@@ -8,7 +8,7 @@ import {
   LoadingOutlined,
   ClockCircleFilled
 } from '@ant-design/icons';
-import OperateDrawer from '@/app/node-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import { ModalRef } from '@/app/node-manager/types';
 import {
   InstallerEventSummary,

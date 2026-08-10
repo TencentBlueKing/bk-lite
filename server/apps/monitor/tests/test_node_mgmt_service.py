@@ -7,15 +7,35 @@ NodeMgmt RPC / 权限规则为外部边界，mock。
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import CurrentTeamDataScope
 from apps.monitor.constants.permission import PermissionConstants  # noqa: F401
 from apps.monitor.models import CollectConfig, Metric
 from apps.monitor.models.monitor_metrics import MetricGroup
-from apps.monitor.models.monitor_object import MonitorObject, MonitorInstance
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.node_mgmt import InstanceConfigService
 
 pytestmark = pytest.mark.django_db
 SVC = InstanceConfigService
+
+
+def _actor_context(*, teams=(1,), is_superuser=True):
+    scope = CurrentTeamDataScope(
+        current_team=1,
+        data_team_ids=frozenset(teams),
+        include_children=False,
+        username="admin",
+        domain="domain.com",
+        is_superuser=is_superuser,
+    )
+    return {
+        "username": scope.username,
+        "domain": scope.domain,
+        "current_team": scope.current_team,
+        "include_children": scope.include_children,
+        "is_superuser": scope.is_superuser,
+        "data_scope": scope,
+    }
 
 
 class TestPermissionDataHelpers:
@@ -57,6 +77,33 @@ class TestValidateNodesAgainstSelector:
         assert SVC._validate_nodes_against_selector(nodes, {"is_container": True}) is None
 
 
+class TestSanitizeInstancesForOnboarding:
+    def test_keeps_only_authorized_node_data_as_trusted_context(self, monkeypatch):
+        class NodeClient:
+            @staticmethod
+            def get_authorized_nodes_by_ids(node_ids, permission_data):
+                assert node_ids == ["node-a"]
+                return [{
+                    "id": "node-a",
+                    "name": "北京节点",
+                    "ip": "10.0.0.1",
+                    "organization_ids": [1],
+                }]
+
+        monkeypatch.setattr("apps.monitor.services.node_mgmt.NodeMgmt", NodeClient)
+        result = SVC._sanitize_instances_for_onboarding(
+            [{"instance_name": "probe", "node_ids": ["node-a"], "probe_nodes": ["伪造节点"]}],
+            _actor_context(),
+        )
+
+        assert result[0]["_trusted_nodes"] == [{
+            "id": "node-a",
+            "name": "北京节点",
+            "ip": "10.0.0.1",
+            "organization_ids": [1],
+        }]
+
+
 class TestGetDefaultGroupMetric:
     def test_prefers_configured_metric(self):
         obj = MonitorObject.objects.create(name="Pod", level="derivative")
@@ -80,16 +127,15 @@ class TestGetDefaultGroupMetric:
 
 class TestSyncExistingInstanceAttrs:
     def test_empty_returns_zero(self):
-        assert SVC._sync_existing_instance_attrs([], deleted_ids=None) == 0
+        assert SVC._sync_existing_instance_attrs([]) == 0
 
     def test_updates_to_manual_and_active(self):
         obj = MonitorObject.objects.create(name="SyncAttrObj", level="base")
         MonitorInstance.objects.create(
-            id="('h1',)", name="old", monitor_object=obj, auto=True, is_deleted=True, is_active=False,
+            id="('h1',)", name="old", monitor_object=obj, auto=True, is_active=False,
         )
         count = SVC._sync_existing_instance_attrs(
             [{"instance_id": "('h1',)", "instance_name": "new"}],
-            deleted_ids={"('h1',)"},
         )
         assert count == 1
         inst = MonitorInstance.objects.get(id="('h1',)")
@@ -97,6 +143,27 @@ class TestSyncExistingInstanceAttrs:
         assert inst.auto is False
         assert inst.is_active is True
         assert inst.is_deleted is False
+
+    def test_merges_summary_facts(self):
+        obj = MonitorObject.objects.create(name="ProbeSyncObj", level="base")
+        MonitorInstance.objects.create(id="('probe-1',)", name="old", monitor_object=obj)
+
+        SVC._sync_existing_instance_attrs(
+            [{
+                "instance_id": "('probe-1',)",
+                "instance_name": "friendly-name",
+                "summary_facts": {
+                    "asset.ip": "2001:db8::1",
+                    "probe.target": "[2001:db8::1]:443",
+                },
+            }],
+        )
+
+        inst = MonitorInstance.objects.get(id="('probe-1',)")
+        assert inst.summary_facts == {
+            "asset.ip": "2001:db8::1",
+            "probe.target": "[2001:db8::1]:443",
+        }
 
 
 class TestGetConfigContent:
@@ -148,8 +215,9 @@ class TestEnsureInstanceAccess:
 
     def test_superuser_returns_instance(self):
         obj = MonitorObject.objects.create(name="EIAObj", level="base")
-        MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj)
-        inst = SVC._ensure_instance_access("('h1',)", actor_context={"is_superuser": True})
+        instance = MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj)
+        MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
+        inst = SVC._ensure_instance_access("('h1',)", actor_context=_actor_context())
         assert inst.id == "('h1',)"
 
     def test_no_actor_context_returns_instance(self):
@@ -202,9 +270,17 @@ class TestCreateDefaultRule:
 
 
 class TestGetAuthorizedMonitorInstancesSuperuser:
-    def test_superuser_gets_all(self):
+    def test_superuser_stays_in_current_team(self, mocker):
         obj = MonitorObject.objects.create(name="AuthObj", level="base")
-        MonitorInstance.objects.create(id="('a1',)", name="a1", monitor_object=obj)
-        MonitorInstance.objects.create(id="('a2',)", name="a2", monitor_object=obj)
-        qs = SVC._get_authorized_monitor_instances({"is_superuser": True}, obj.id)
-        assert qs.count() == 2
+        current = MonitorInstance.objects.create(id="('a1',)", name="a1", monitor_object=obj)
+        sibling = MonitorInstance.objects.create(id="('a2',)", name="a2", monitor_object=obj)
+        MonitorInstanceOrganization.objects.create(monitor_instance=current, organization=1)
+        MonitorInstanceOrganization.objects.create(monitor_instance=sibling, organization=2)
+        mocker.patch(
+            "apps.monitor.services.node_mgmt.get_permission_rules",
+            return_value={"team": [1, 2], "instance": []},
+        )
+
+        qs = SVC._get_authorized_monitor_instances(_actor_context(), obj.id)
+
+        assert set(qs.values_list("id", flat=True)) == {current.id}

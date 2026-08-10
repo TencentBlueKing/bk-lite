@@ -7,6 +7,7 @@
     top: 20px;
     z-index: 99;
     right: 10px;
+    transform: translateY(-50%);
     cursor: pointer;
   }
 }
@@ -27,6 +28,17 @@
     background: var(--color-fill-1);
     overflow-y: auto;
 
+    .fieldList {
+      margin-top: 16px;
+    }
+
+    .pinHint {
+      margin-top: 4px;
+      color: var(--color-text-3);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
     .fieldItem {
       background: var(--color-bg-1);
       border-bottom: 1px solid var(--color-border);
@@ -34,24 +46,70 @@
       display: flex;
       align-items: center;
       position: relative;
+      min-height: 34px;
+      padding: 8px;
+      transform-origin: center;
+      will-change: transform;
+      gap: 4px;
 
       .dragTrigger {
-        visibility: hidden;
-        cursor: move;
+        margin-right: 4px;
+        color: var(--color-text-3);
+        cursor: grab;
         font-size: 14px;
+        opacity: 0.35;
+        outline: none;
+        touch-action: none;
+        transition: color 160ms ease, opacity 160ms ease;
+
+        &:focus-visible {
+          color: var(--color-primary);
+          opacity: 1;
+        }
+      }
+
+      .fieldActions {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+
+      .pinItem {
+        border: none;
+        background: transparent;
+        padding: 0;
+        cursor: pointer;
+        color: var(--color-text-3);
+        opacity: 0.45;
+        line-height: 1;
+        visibility: hidden;
+
+        &:hover,
+        &:focus-visible {
+          color: var(--color-primary);
+          opacity: 1;
+          outline: none;
+        }
+      }
+
+      .pinItemActive {
+        visibility: visible;
+        color: var(--color-primary);
+        opacity: 1;
       }
 
       .clearItem {
         visibility: hidden;
-        position: absolute;
         cursor: pointer;
-        top: 10px;
-        right: 6px;
       }
 
       .dragLabel {
         @include hide-text;
-        width: 108px;
+        flex: 1;
+        min-width: 0;
+        max-width: 108px;
       }
 
       &:last-child {
@@ -60,19 +118,86 @@
 
       &:hover {
         .dragTrigger,
-        .clearItem {
+        .clearItem,
+        .pinItem {
           visibility: visible;
           color: var(--color-primary);
+          opacity: 1;
         }
+      }
+    }
+
+    .pinnedItem {
+      background: color-mix(in srgb, var(--color-primary) 6%, var(--color-bg-1));
+    }
+
+    .draggingItem {
+      z-index: 1;
+      opacity: 0.28;
+
+      .dragTrigger {
+        cursor: grabbing;
       }
     }
   }
 
   .leftSide {
+    border-right: 1px solid var(--color-border);
+
     .fieldLabel {
       @include hide-text;
       width: 130px;
     }
+  }
+}
+
+.dragOverlay {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+  min-height: 34px;
+  padding: 8px;
+  background: var(--color-bg-1);
+  border: 1px solid var(--color-primary);
+  border-radius: 4px;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--color-text-1) 16%, transparent);
+  cursor: grabbing;
+  font-size: 12px;
+  opacity: 0.98;
+  transform: scale(1.015);
+
+  .dragTrigger {
+    margin-right: 4px;
+    color: var(--color-primary);
+    cursor: grabbing;
+    font-size: 14px;
+    opacity: 1;
+  }
+
+  .dragLabel {
+    overflow: hidden;
+    flex: 1;
+    min-width: 0;
+    max-width: 108px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .fieldActions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-primary);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settingFields .rightSide .fieldItem,
+  .settingFields .rightSide .fieldItem *,
+  .dragOverlay {
+    transition: none !important;
   }
 }
 

@@ -26,7 +26,7 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import dayjs from 'dayjs';
 
 // EE 端运行时注入的 BRANDS:由 web/scripts/prepare-enterprise.mjs 生成
-// /public/__enterprise-brands.js,next layout.tsx <Script> 加载后挂到这里。
+// /public/__enterprise-brands.js 由 next layout.tsx 的 defer script 加载后挂到这里。
 // 类型契约:每条 brand 的 match/label/icon 字段与下方 BRANDS 项同型。
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -269,14 +269,21 @@ export const isStringArray = (input: string): boolean => {
   }
 };
 
+const matchEnumOption = (options: ListItem[], id: number | string) => {
+  const numericId = Number(id);
+  return options.find((item: ListItem) => {
+    if (item.id === id) return true;
+    if (!Number.isFinite(numericId)) return false;
+    return Number(item.id) === numericId;
+  });
+};
+
 // 根据指标枚举获取值
 export const getEnumValue = (metric: MetricItem, id: number | string) => {
   const { unit: input = '', name } = metric || {};
   if (!id && id !== 0) return '--';
   if (isStringArray(input)) {
-    return (
-      JSON.parse(input).find((item: ListItem) => item.id === id)?.name || id
-    );
+    return matchEnumOption(JSON.parse(input), id)?.name || id;
   }
   return isNaN(+id) || APPOINT_METRIC_IDS.includes(name)
     ? id
@@ -287,9 +294,7 @@ export const getEnumValue = (metric: MetricItem, id: number | string) => {
 export const getEnumColor = (metric: MetricItem, id: number | string) => {
   const { unit: input = '' } = metric || {};
   if (isStringArray(input)) {
-    return (
-      JSON.parse(input).find((item: ListItem) => item.id === +id)?.color || ''
-    );
+    return matchEnumOption(JSON.parse(input), id)?.color || '';
   }
   return '';
 };
@@ -466,6 +471,13 @@ export const showInstName = (
   row: TableDataItem,
   objects?: ObjectItem[]
 ) => {
+  // Process 列表已有「主机名称」列，名称列只展示指标维度 process_name。
+  if (objectItem?.name === 'Process') {
+    const processName = row?.instance_id_values?.[1];
+    if (processName != null && String(processName).trim() !== '') {
+      return String(processName);
+    }
+  }
   const isDerivative = objects
     ? isDerivativeObject(objectItem, objects)
     : isDerivativeObject(objectItem);
@@ -480,12 +492,30 @@ export const getBaseInstanceColumn = (config: {
   objects: ObjectItem[];
   t: any;
   queryData?: any[];
+  ipFilterOptions?: string[];
 }) => {
   const baseTarget = config.objects
     .filter((item) => item.type === config.row?.type)
     .find((item) => item.level === 'base');
   const title = baseTarget?.display_name || config.t('monitor.source');
   const isDerivative = isDerivativeObject(config.row, config.objects);
+  const renderAssetText = (value: unknown) => (
+    <EllipsisWithTooltip
+      text={value == null || value === '' ? '--' : String(value)}
+      className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+    ></EllipsisWithTooltip>
+  );
+  const formatSummaryFact = (value: unknown) => {
+    if (!Array.isArray(value)) return value;
+    return value
+      .map((item) => {
+        if (item == null || typeof item !== 'object') return String(item);
+        const node = item as { id?: string; name?: string; ip?: string };
+        if (node.name && node.ip) return `${node.name} (${node.ip})`;
+        return node.name || node.ip || node.id || JSON.stringify(node);
+      })
+      .join(', ');
+  };
   const columnItems: any = [
     {
       title: config.t('common.name'),
@@ -507,7 +537,70 @@ export const getBaseInstanceColumn = (config: {
       }
     }
   ];
+  const summaryColumns = [...(config.row.instance_summary_columns || [])].sort(
+    (left, right) => (left.order || 0) - (right.order || 0)
+  );
+  summaryColumns.forEach((column) => {
+    const isAssetIp = column.fact === 'asset.ip';
+    const ipFilters = (config.ipFilterOptions || [])
+      .map((ip) => String(ip || '').trim())
+      .filter(Boolean)
+      .map((ip) => ({ text: ip, value: ip }));
+    columnItems.push({
+      title: config.t(column.title),
+      dataIndex: ['summary_facts', column.fact],
+      key: `summary_fact:${column.fact}`,
+      onCell: () => ({ style: { minWidth: 150 } }),
+      ...(isAssetIp
+        ? {
+          filterMultiple: true,
+          filterSearch: true,
+          filterParam: 'asset.ip',
+          filters: ipFilters.length ? ipFilters : undefined
+        }
+        : {}),
+      render: (_: unknown, record: TableDataItem) =>
+        renderAssetText(formatSummaryFact(record.summary_facts?.[column.fact]))
+    });
+  });
+  // Process：归属主机作为列头多选过滤，替代顶栏「过滤项」。
+  if (config.row?.name === 'Process') {
+    const hostFilters = (config.queryData || [])
+      .map((item: TableDataItem) => ({
+        text: String(item.name || item.id || ''),
+        value: String(item.id ?? '')
+      }))
+      .filter((item) => item.value);
+    columnItems.splice(1, 0, {
+      title: config.t('monitor.views.hostName'),
+      dataIndex: 'base_instance_name',
+      key: 'base_instance_name',
+      onCell: () => ({ style: { minWidth: 150 } }),
+      filterMultiple: true,
+      filterSearch: true,
+      filters: hostFilters.length ? hostFilters : undefined,
+      render: (_: unknown, record: TableDataItem) => {
+        const instanceIdValue = record.instance_id_values?.[0];
+        let displayName = instanceIdValue || '--';
+        if (config.queryData && instanceIdValue) {
+          const matchedItem = config.queryData.find(
+            (item: TableDataItem) => item.id === instanceIdValue
+          );
+          if (matchedItem) {
+            displayName = matchedItem.name || matchedItem.id;
+          }
+        }
+        return renderAssetText(displayName);
+      }
+    });
+  }
   if (isDerivative) {
+    const clusterFilters = (config.queryData || [])
+      .map((item: TableDataItem) => ({
+        text: String(item.name || item.id || ''),
+        value: String(item.id ?? '')
+      }))
+      .filter((item) => item.value);
     columnItems.unshift({
       title: title,
       dataIndex: 'base_instance_name',
@@ -518,6 +611,8 @@ export const getBaseInstanceColumn = (config: {
         }
       }),
       key: 'base_instance_name',
+      filterMultiple: true,
+      filters: clusterFilters.length ? clusterFilters : undefined,
       render: (_: unknown, record: TableDataItem) => {
         const instanceIdValue = record.instance_id_values?.[0];
         let displayName = instanceIdValue || '--';
@@ -551,7 +646,7 @@ export const getIconByObjectName = (objectName = '', objects: ObjectItem[]) => {
 // 品牌专属采集模板/实例（如思科交换机）的品牌识别：按名称匹配 → 提供品牌标签（及可选 logo 图标）。
 // icon 可选：未提供时集成卡片回退到监控对象默认图标，仪表盘头部仍展示品牌文字标签。
 const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
-  { match: /cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
+  { match: /^(?!.*san_cisco).*cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
   { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' },
   { match: /aruba/i, label: 'Aruba', icon: 'mm-aruba_aruba' },
   { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
@@ -784,7 +879,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /infinera|coriant|groove/i, label: 'Infinera', icon: 'mm-infinera_infinera' },
   { match: /bridgewave|flexport|fe80/i, label: 'BridgeWave', icon: 'mm-bridgewave_bridgewave' },
   { match: /huber\s*\+?\s*suhner|cubo\s*mini|cube\s*optics/i, label: 'Huber+Suhner Cubo', icon: 'mm-hubersuhner_hubersuhner' },
-  { match: /fibrolan|falcon/i, label: 'Fibrolan', icon: 'mm-fibrolan_fibrolan' },
+  { match: /fibrolan|falcon(?!stor)/i, label: 'Fibrolan', icon: 'mm-fibrolan_fibrolan' },
   { match: /smartoptics/i, label: 'Smartoptics', icon: 'mm-smartoptics_smartoptics' },
   { match: /racom|\bray\b/i, label: 'RACOM', icon: 'mm-racom_racom' },
   { match: /ifotec/i, label: 'Ifotec', icon: 'mm-ifotec_ifotec' },
@@ -802,17 +897,30 @@ const getEnterpriseBrands = (): Array<{ match: RegExp; label: string; icon?: str
   return [];
 };
 
+const brandIconCache = new Map<string, string | undefined>();
+const brandLabelCache = new Map<string, string | undefined>();
+
 // 按插件名取品牌 logo 图标;命中 CE BRANDS 或运行时注入的 EE __ENTERPRISE_BRANDS 任一即返回。
 // 失败降级:都未命中 → undefined,调用方回退到监控对象 icon。
 export const getPluginBrandIcon = (pluginName = ''): string | undefined => {
+  if (brandIconCache.has(pluginName)) {
+    return brandIconCache.get(pluginName);
+  }
   const all = [...BRANDS, ...getEnterpriseBrands()];
-  return all.find((brand) => brand.match.test(pluginName))?.icon;
+  const icon = all.find((brand) => brand.match.test(pluginName))?.icon;
+  brandIconCache.set(pluginName, icon);
+  return icon;
 };
 
 // 按名称(实例名/插件名)取品牌标签,用于仪表盘头部标识;同 getPluginBrandIcon 拼接策略。
 export const getBrandLabel = (text = ''): string | undefined => {
+  if (brandLabelCache.has(text)) {
+    return brandLabelCache.get(text);
+  }
   const all = [...BRANDS, ...getEnterpriseBrands()];
-  return all.find((brand) => brand.match.test(text))?.label;
+  const label = all.find((brand) => brand.match.test(text))?.label;
+  brandLabelCache.set(text, label);
+  return label;
 };
 
 export const getRecentTimeRange = (timeValues: TimeValuesProps) => {

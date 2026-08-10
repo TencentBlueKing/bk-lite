@@ -31,3 +31,18 @@ def validate_subnet_no_overlap(instance_info: dict, exclude_inst_id=None) -> Non
             raise BaseAppException(
                 f"网段 {address}/{mask} 与已有子网 {row.get('inst_name')} 地址范围重叠，不允许录入"
             )
+
+
+def find_batch_subnet_overlap_index(instances: list[dict]) -> int | None:
+    """返回首个与本批前序子网重叠的索引；无冲突时返回 None。"""
+    parsed_subnets = []
+    for index, instance in enumerate(instances):
+        address = instance.get("subnet_address")
+        mask = instance.get("subnet_mask")
+        if not address or mask in (None, ""):
+            continue
+        current = parse_subnet(address, mask)
+        if any(subnets_overlap(current, previous) for previous in parsed_subnets):
+            return index
+        parsed_subnets.append(current)
+    return None

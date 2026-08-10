@@ -178,7 +178,6 @@ const ObjectPage = () => {
                 <Button
                   type="link"
                   size="small"
-                  disabled={isBuiltin}
                   onClick={() =>
                     openObjectModal('edit', record as MonitorObjectItem)
                   }

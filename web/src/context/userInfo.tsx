@@ -6,7 +6,7 @@ import Cookies from 'js-cookie';
 import { useSession } from 'next-auth/react';
 import { useAuth } from '@/context/auth';
 
-const UserInfoContext = createContext<UserInfoContextType | undefined>(undefined);
+export const UserInfoContext = createContext<UserInfoContextType | undefined>(undefined);
 
 // Filter out groups with name "OpsPilotGuest" (recursive processing for tree structure)
 const filterOpsPilotGuest = (groups: Group[]): Group[] => {

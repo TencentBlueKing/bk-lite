@@ -327,7 +327,7 @@ const ObjectDetection = ({
 
     const currentLabels = getCurrentLabels();
     if (currentLabels.some(label => label.name === value)) {
-      message.warning(t('datasets.labelExists') || '标签已存在');
+      message.warning(t('datasets.labelExists'));
       return;
     }
 
@@ -354,7 +354,7 @@ const ObjectDetection = ({
     const hasUsed = allAnnotations.some(ann => ann.class_name === labelItem?.name);
 
     if (hasUsed) {
-      message.warning(t('datasets.labelInUse') || '该标签已被使用');
+      message.warning(t('datasets.labelInUse'));
       return;
     }
 
@@ -518,13 +518,13 @@ const ObjectDetection = ({
       // 调用更新接口
       await updateObjectDetectionTrainData(fileId, formData);
       setIsChange(false);
-      message.success('标注已保存');
+      message.success(t('datasets.saveSuccess'));
 
       // 重新加载数据（确保与后端同步）
       getObjectTrainDataInfo();
     } catch (e) {
       console.error('保存标注失败:', e);
-      message.error('保存失败');
+      message.error(t('datasets.saveError'));
     } finally {
       setLoading(false);
     }
@@ -608,7 +608,10 @@ const ObjectDetection = ({
       const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp)$/i;
 
       let batchIndex = 0;
-      const entries = Object.entries(zip.files);
+      type ZipFile = (typeof zip.files)[string];
+      const entries = Object.entries(zip.files) as Array<
+        [string, ZipFile]
+      >;
       const totalImages = entries.filter(([name, file]) => !file.dir && imageExtensions.test(name)).length;
 
       for (const [fileName, file] of entries) {
@@ -652,7 +655,7 @@ const ObjectDetection = ({
 
     } catch (e) {
       console.error('加载训练数据失败:', e);
-      message.error('加载失败');
+      message.error(t('datasets.loadDataError'));
     } finally {
       setLoading(false);
     }
@@ -682,7 +685,7 @@ const ObjectDetection = ({
 
       {/* 标签管理模态框 */}
       <Modal
-        title={t('datasets.labelManagement') || '标签管理'}
+        title={t('datasets.labelManagement')}
         open={labelModalOpen}
         onCancel={() => setLabelModalOpen(false)}
         footer={null}
@@ -702,7 +705,7 @@ const ObjectDetection = ({
         {/* 搜索和添加 */}
         <div className="flex flex-col gap-2 mb-3 mt-3">
           <Input
-            placeholder={t('common.search') || '搜索'}
+            placeholder={t('common.search')}
             prefix={<SearchOutlined />}
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
@@ -715,12 +718,12 @@ const ObjectDetection = ({
               icon={<PlusOutlined />}
               onClick={() => setShowAddLabel(true)}
             >
-              {t('datasets.addLabel') || '添加标签'}
+              {t('datasets.addLabel')}
             </Button>
             {showAddLabel && (
               <Input
                 size="small"
-                placeholder={t('datasets.pressEnterToAdd') || '按Enter添加'}
+                placeholder={t('datasets.pressEnterToAdd')}
                 onPressEnter={handleAddLabel}
                 onBlur={() => setShowAddLabel(false)}
                 autoFocus

@@ -1,5 +1,5 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Table, TableProps, Pagination } from 'antd';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { Button, Table, TableProps, Pagination } from 'antd';
 import { SettingFilled, HolderOutlined } from '@ant-design/icons';
 import customTableStyle from './index.module.scss';
 import FieldSettingModal from './fieldSettingModal';
@@ -10,6 +10,8 @@ import EllipsisWithTooltip from '../ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import ResizableTitle from './resizableTitle';
 import { createRafScheduler, resolveTableDimensions } from './tableHeight';
+import { getColumnKey, resolveColumnLayout } from './columnLayout';
+import { resolveTableScroll } from './tableScroll';
 
 interface CustomTableProps<T>
   extends Omit<TableProps<T>, 'bordered' | 'fieldSetting' | 'onSelectFields'> {
@@ -20,8 +22,16 @@ interface CustomTableProps<T>
     displayFieldKeys: string[];
     choosableFields: ColumnItem[];
     groupFields?: GroupFieldItem[];
+    searchable?: boolean;
+    modalWidth?: number;
+    enableFixedFields?: boolean;
+    fixedFieldKeys?: string[];
+    defaultFixedFieldKeys?: string[];
   };
-  onSelectFields?: (fields: string[]) => void;
+  onSelectFields?: (
+    fields: string[],
+    fixedFields?: string[]
+  ) => void | Promise<void>;
   rowDraggable?: boolean;
   autoScrollX?: boolean;
   onRowDragStart?: (index: number) => void;
@@ -44,7 +54,7 @@ const CustomTable = <T extends object>({
     displayFieldKeys: [],
     choosableFields: [],
   },
-  onSelectFields = () => [],
+  onSelectFields = () => undefined,
   loading,
   scroll,
   pagination,
@@ -70,6 +80,7 @@ const CustomTable = <T extends object>({
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const scrollY = scroll?.y;
   const hasPagination = Boolean(pagination);
+  const hasData = Boolean(TableProps.dataSource?.length);
 
   // 监听父容器高度变化
   useEffect(() => {
@@ -171,11 +182,6 @@ const CustomTable = <T extends object>({
     return cols;
   }, [TableProps.columns, rowDraggable]);
 
-  // 获取列的唯一标识
-  const getColumnKey = (col: any, index: number): string => {
-    return col.key || col.dataIndex || `col-${index}`;
-  };
-
   // 处理列宽拖拽
   const handleColumnResize = (colKey: string) => (newWidth: number) => {
     setColumnWidths(prev => ({
@@ -185,12 +191,19 @@ const CustomTable = <T extends object>({
   };
 
   // 将列宽状态和 onHeaderCell 合并到 columns
-  const DEFAULT_COL_WIDTH = 150;
+  const columnLayout = useMemo(() => (
+    resolveColumnLayout({
+      autoScrollX,
+      columns,
+      columnWidths,
+      tableLayout: TableProps.tableLayout,
+    })
+  ), [autoScrollX, columns, columnWidths, TableProps.tableLayout]);
 
   const resizableColumns = useCallback(() => {
     return columns.map((col: any, index: number) => {
       const colKey = getColumnKey(col, index);
-      const width = columnWidths[colKey] || col.width || DEFAULT_COL_WIDTH;
+      const width = columnLayout.widths[index];
 
       return {
         ...col,
@@ -201,13 +214,7 @@ const CustomTable = <T extends object>({
         }),
       };
     });
-  }, [columns, columnWidths]);
-
-  // 计算 scroll.x：列宽总和，当超过容器宽度时产生横向滚动
-  const getScrollX = useCallback(() => {
-    const cols = resizableColumns();
-    return cols.reduce((sum: number, col: any) => sum + (col.width || DEFAULT_COL_WIDTH), 0);
-  }, [resizableColumns]);
+  }, [columns, columnLayout.widths]);
 
   const showFieldSetting = () => {
     fieldRef.current?.showModal();
@@ -307,10 +314,12 @@ const CustomTable = <T extends object>({
       cell: ResizableTitle,
     },
   };
-  const mergedScroll = {
-    ...(autoScrollX ? { x: getScrollX() } : {}),
-    ...(tableHeight !== undefined ? { ...scroll, y: tableHeight } : scroll),
-  };
+  const mergedScroll: TableProps<T>['scroll'] = resolveTableScroll({
+    calculatedScrollX: columnLayout.scrollX,
+    scroll,
+    calculatedScrollY: tableHeight,
+    hasData,
+  });
 
   return (
     <div
@@ -334,6 +343,7 @@ const CustomTable = <T extends object>({
         }
         onRow={(record, index) => renderRow(index!)}
         {...TableProps}
+        tableLayout={columnLayout.tableLayout}
         columns={resizableColumns()}
         components={mergedComponents}
         rowSelection={rowSelection}
@@ -361,10 +371,14 @@ const CustomTable = <T extends object>({
         />
       </div>)}
       {fieldSetting.showSetting ? (
-        <SettingFilled
-          style={{ top: size === 'small' ? 12 : size === 'middle' ? 16 : 20 }}
+        <Button
+          type="text"
+          aria-label={t('cutomTable.fieldSetting')}
+          title={t('cutomTable.fieldSetting')}
+          style={{ top: size === 'small' ? 19 : size === 'middle' ? 23 : 27 }}
           className={customTableStyle.setting}
           onClick={showFieldSetting}
+          icon={<SettingFilled aria-hidden="true" />}
         />
       ) : null}
       <FieldSettingModal
@@ -372,6 +386,11 @@ const CustomTable = <T extends object>({
         choosableFields={fieldSetting.choosableFields || []}
         displayFieldKeys={fieldSetting.displayFieldKeys}
         groupFields={fieldSetting.groupFields}
+        searchable={fieldSetting.searchable}
+        width={fieldSetting.modalWidth}
+        enableFixedFields={fieldSetting.enableFixedFields}
+        fixedFieldKeys={fieldSetting.fixedFieldKeys}
+        defaultFixedFieldKeys={fieldSetting.defaultFixedFieldKeys}
         onConfirm={onSelectFields}
       />
     </div>

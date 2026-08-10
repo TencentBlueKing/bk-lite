@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Empty, Input, Space, Spin, Switch, Tabs, message } from 'antd';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Badge, Button, Card, Empty, Input, Space, Spin, Switch, Tabs, message } from 'antd';
 import CustomTable from '@/components/custom-table';
 import { useNodeMgmtSyncApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
@@ -13,6 +13,18 @@ import type {
   NodeMgmtSyncDisplayPayload,
   TaskData,
 } from '@/app/cmdb/types/autoDiscovery';
+import {
+  NODE_MGMT_SYNC_STATUS_BADGE,
+  createNodeMgmtSyncRequestGuard,
+  getNodeMgmtSyncDisplayEmptyStateKey,
+  getNodeMgmtSyncEmptyStateKey,
+  getNodeMgmtSyncRawCounts,
+  getNodeMgmtSyncReasonTextKey,
+  getNodeMgmtSyncRowKey,
+  getNodeMgmtSyncStatusTextKey,
+  normalizeNodeMgmtSyncStatus,
+} from './nodeMgmtSyncViewModel';
+import type { NodeMgmtSyncGuardToken } from './nodeMgmtSyncViewModel';
 
 interface NodeMgmtSyncDetailProps {
   open: boolean;
@@ -22,7 +34,7 @@ const StatisticCard = ({ title, value, accentClass }: { title: string; value: nu
   return (
     <Card size="small" className="shadow-sm">
       <div className="text-xs text-[var(--color-text-3)] mb-1">{title}</div>
-      <div className={`text-3xl font-semibold ${accentClass}`}>{value}</div>
+      <div className={`text-sm font-semibold tabular-nums ${accentClass}`}>{value}</div>
     </Card>
   );
 };
@@ -34,63 +46,115 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
   const api = useNodeMgmtSyncApi();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [task, setTask] = useState<NodeMgmtSyncTask | null>(null);
   const [displayPayload, setDisplayPayload] = useState<NodeMgmtSyncDisplayPayload | null>(null);
   const [activeTab, setActiveTab] = useState('add');
   const [searchText, setSearchText] = useState('');
   const [pendingSearchText, setPendingSearchText] = useState('');
+  const [rawRows, setRawRows] = useState<NodeMgmtSyncItem[]>([]);
+  const [rawPage, setRawPage] = useState(1);
+  const [rawPageSize, setRawPageSize] = useState(20);
+  const [rawMatchedCount, setRawMatchedCount] = useState(0);
+  const [rawLoading, setRawLoading] = useState(false);
+  const [rawLoadFailed, setRawLoadFailed] = useState(false);
+  const [rawRetryKey, setRawRetryKey] = useState(0);
+  const requestGuard = useRef(createNodeMgmtSyncRequestGuard()).current;
+  const savingRef = useRef(false);
 
-  const fetchData = async () => {
+  const fetchData = async (showFeedback = false, mutationToken?: NodeMgmtSyncGuardToken) => {
+    const requestToken = requestGuard.beginRequest();
+    if (!requestGuard.isRequestCurrent(requestToken)) {
+      return false;
+    }
     try {
       setLoading(true);
+      setLoadFailed(false);
       const [taskRes, displayRes] = await Promise.all([
         api.getNodeMgmtSyncTask(),
         api.getNodeMgmtSyncDisplay(),
       ]);
-      setTask(taskRes as NodeMgmtSyncTask);
-      setDisplayPayload(displayRes as NodeMgmtSyncDisplayPayload);
+      if (!requestGuard.isRequestCurrent(requestToken)
+        || (mutationToken && !requestGuard.isMutationCurrent(mutationToken))) {
+        return false;
+      }
+      setTask(taskRes);
+      setDisplayPayload(displayRes);
+      if (showFeedback) {
+        message.success(t('Collection.nodeMgmtSync.refreshSuccess'));
+      }
+      return true;
     } catch (error) {
+      if (!requestGuard.isRequestCurrent(requestToken)
+        || (mutationToken && !requestGuard.isMutationCurrent(mutationToken))) {
+        return false;
+      }
       console.error('Failed to fetch node management sync data:', error);
+      setLoadFailed(true);
       message.error(t('Collection.nodeMgmtSync.loadFailed'));
+      return false;
     } finally {
-      setLoading(false);
+      if (requestGuard.isRequestCurrent(requestToken)
+        && (!mutationToken || requestGuard.isMutationCurrent(mutationToken))) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     if (!open) {
+      requestGuard.close();
+      savingRef.current = false;
+      setSaving(false);
       return;
     }
+    requestGuard.open();
     void fetchData();
+    return () => requestGuard.close();
   }, [open]);
 
   const handleConfigChange = async (patch: Partial<NodeMgmtSyncTask>) => {
-    if (!task) {
+    if (!task || savingRef.current) {
       return;
     }
-    const effectivePatch = { ...patch };
-    if (patch.auto_sync_enabled === false) {
-      effectivePatch.auto_collect_enabled = false;
-    }
-    const nextTask = { ...task, ...effectivePatch };
+    savingRef.current = true;
+    const mutationToken = requestGuard.beginMutation();
+    setLoading(false);
+    const nextTask = { ...task, ...patch };
     setTask(nextTask);
     try {
       setSaving(true);
-      const response = await api.updateNodeMgmtSyncTask(nextTask);
-      setTask(response as NodeMgmtSyncTask);
-      const display = await api.getNodeMgmtSyncDisplay();
-      setDisplayPayload(display as NodeMgmtSyncDisplayPayload);
-      message.success(t('successfulSetted'));
+      const response = await api.updateNodeMgmtSyncTask(patch);
+      if (!requestGuard.isMutationCurrent(mutationToken)) {
+        return;
+      }
+      setTask(response);
+      await fetchData(false, mutationToken);
+      if (requestGuard.isMutationCurrent(mutationToken)) {
+        message.success(t('successfulSetted'));
+      }
     } catch (error) {
+      if (!requestGuard.isMutationCurrent(mutationToken)) {
+        return;
+      }
       console.error('Failed to update node management sync config:', error);
       message.error(t('Collection.nodeMgmtSync.saveFailed'));
       setTask(task);
     } finally {
-      setSaving(false);
+      if (requestGuard.isMutationCurrent(mutationToken)) {
+        savingRef.current = false;
+        setSaving(false);
+      }
     }
   };
 
   const syncRun: NodeMgmtSyncRun | null = displayPayload?.run || null;
+  const normalizedRunStatus = normalizeNodeMgmtSyncStatus(syncRun?.status);
+  const runStatus = normalizedRunStatus.status;
+  const reasonCode = syncRun?.reason_code
+    || task?.health?.reason_code
+    || task?.reconcile_error_code
+    || '';
   const detail = displayPayload?.detail;
   const displayMessage: CollectTaskMessage = displayPayload?.message || syncRun?.message || {
     all: 0,
@@ -108,6 +172,90 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
     association_success: 0,
   };
   const todoItems = detail?.todo || [];
+  const rawCounts = getNodeMgmtSyncRawCounts(displayMessage);
+  useEffect(() => {
+    const runId = displayPayload?.run?.id;
+    const useServerRows = activeTab === 'raw_data'
+      && displayPayload?.display_schema === 'host_collect_v2'
+      && displayPayload?.can_view_raw_detail === true
+      && typeof runId === 'number';
+    if (!useServerRows) {
+      setRawLoadFailed(false);
+      setRawRows((detail?.raw_data?.data || []) as NodeMgmtSyncItem[]);
+      setRawMatchedCount(detail?.raw_data?.count || 0);
+      return;
+    }
+    let cancelled = false;
+    setRawLoading(true);
+    setRawLoadFailed(false);
+    void api.getNodeMgmtSyncRows({
+      run_id: runId,
+      bucket: 'raw_data',
+      page: rawPage,
+      page_size: rawPageSize,
+      search: searchText,
+    }).then((response) => {
+      if (cancelled) return;
+      setRawRows(response.data);
+      setRawMatchedCount(response.matched_retained_count);
+    }).catch((error) => {
+      if (!cancelled) {
+        console.error('Failed to fetch node management snapshot rows:', error);
+        setRawRows([]);
+        setRawMatchedCount(0);
+        setRawLoadFailed(true);
+      }
+    }).finally(() => {
+      if (!cancelled) setRawLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTab,
+    displayPayload?.can_view_raw_detail,
+    displayPayload?.display_schema,
+    displayPayload?.run?.id,
+    rawPage,
+    rawPageSize,
+    rawRetryKey,
+    searchText,
+  ]);
+  const healthAlert = useMemo(() => {
+    if (loadFailed) {
+      return { type: 'error' as const, textKey: 'Collection.nodeMgmtSync.empty.queryFailed' };
+    }
+    if (task?.health?.schedule_status === 'degraded' || task?.health?.node_config_status === 'degraded') {
+      return { type: 'error' as const, textKey: getNodeMgmtSyncReasonTextKey(reasonCode) };
+    }
+    if (task?.health?.node_config_status === 'waiting_sync' || runStatus === 'waiting_sync') {
+      return { type: 'warning' as const, textKey: 'Collection.nodeMgmtSync.status.waitingSync' };
+    }
+    if (task?.health?.schedule_status === 'reconciling' || task?.health?.node_config_status === 'reconciling') {
+      return { type: 'info' as const, textKey: 'Collection.nodeMgmtSync.health.reconciling' };
+    }
+    if (normalizedRunStatus.isUnknown) {
+      return { type: 'error' as const, textKey: 'Collection.nodeMgmtSync.status.unknown' };
+    }
+    if (runStatus && ['blocked', 'failed', 'timeout'].includes(runStatus)) {
+      return { type: 'error' as const, textKey: getNodeMgmtSyncReasonTextKey(reasonCode) };
+    }
+    if (runStatus === 'submitted') {
+      return { type: 'info' as const, textKey: 'Collection.nodeMgmtSync.status.submitted' };
+    }
+    if (runStatus === 'partial_success') {
+      return { type: 'warning' as const, textKey: 'Collection.nodeMgmtSync.status.partialSuccess' };
+    }
+    return null;
+  }, [loadFailed, normalizedRunStatus.isUnknown, reasonCode, runStatus, task]);
+  const emptyStateKey = displayPayload
+    ? getNodeMgmtSyncDisplayEmptyStateKey(displayPayload, loadFailed)
+    : getNodeMgmtSyncEmptyStateKey({
+      status: runStatus,
+      reasonCode,
+      total: displayMessage.all || 0,
+      loadFailed,
+    });
   useEffect(() => {
     const tabOrder = ['add', 'update', 'delete', 'relation', 'raw_data'] as const;
     const firstWithData = tabOrder.find((key) => (detail?.[key]?.count || 0) > 0);
@@ -129,6 +277,9 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
 
   const filteredRows = useMemo(() => {
     const rows = (tabMap[activeTab as keyof typeof tabMap] || EMPTY_TASK_DATA).data as NodeMgmtSyncItem[];
+    if (activeTab === 'raw_data' && displayPayload?.display_schema === 'host_collect_v2') {
+      return rawRows;
+    }
     if (!searchText) {
       return rows;
     }
@@ -136,7 +287,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
       const source = `${item.inst_name || item.name || ''} ${item.ip_addr || item.ip || ''} ${item.cloud_name || ''}`.toLowerCase();
       return source.includes(searchText.toLowerCase());
     });
-  }, [activeTab, searchText, tabMap]);
+  }, [activeTab, displayPayload?.display_schema, rawRows, searchText, tabMap]);
 
   const columns = useMemo(() => {
     if (activeTab === 'raw_data') {
@@ -152,15 +303,24 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
           render: (_: string, record: NodeMgmtSyncItem) => record.inst_name || record.name || '--',
         },
         {
+          title: t('Collection.nodeMgmtSync.table.pid'),
+          dataIndex: 'pid',
+          render: (value: string | number) => value || '--',
+        },
+        {
           title: 'IP',
           dataIndex: 'ip_addr',
           render: (_: string, record: NodeMgmtSyncItem) => record.ip_addr || record.ip || '--',
         },
         {
-          title: t('organization'),
-          dataIndex: 'organization',
-          render: (value: Array<number | string>) =>
-            Array.isArray(value) && value.length ? value.join(', ') : '--',
+          title: t('Collection.nodeMgmtSync.table.status'),
+          dataIndex: '_status',
+          render: (value: string) => value || '--',
+        },
+        {
+          title: t('Collection.nodeMgmtSync.table.errorReason'),
+          dataIndex: '_error',
+          render: (value: string) => value || '--',
         },
       ];
     }
@@ -211,12 +371,17 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
 
   return (
     <div className="flex flex-col gap-4">
-      {loading ? (
+          {loading ? (
         <div className="py-8 flex justify-center">
           <Spin />
         </div>
       ) : (
         <>
+          <Alert
+            type="info"
+            showIcon
+            message={t('Collection.nodeMgmtSync.pullReplacedNotice')}
+          />
           <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
             <div className="text-sm text-[var(--color-text-2)]">
               <div>
@@ -230,23 +395,43 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
               <Space>
                 <span>{t('Collection.nodeMgmtSync.autoSync')}</span>
                 <Switch
-                  checked={task?.auto_sync_enabled}
-                  loading={saving}
-                  onChange={(checked) => void handleConfigChange({ auto_sync_enabled: checked })}
+                  checked={false}
+                  disabled
+                  title={t('Collection.nodeMgmtSync.autoSyncDisabledHint')}
                 />
               </Space>
               <Space>
                 <span>{t('Collection.nodeMgmtSync.autoCollect')}</span>
                 <Switch
                   checked={task?.auto_collect_enabled}
-                  disabled={!task?.auto_sync_enabled}
+                  disabled={saving}
                   loading={saving}
                   onChange={(checked) => void handleConfigChange({ auto_collect_enabled: checked })}
                 />
               </Space>
-              <Button onClick={() => void fetchData()}>{t('common.refresh')}</Button>
+              <Button disabled={saving} loading={loading} onClick={() => void fetchData(true)}>
+                {t('common.refresh')}
+              </Button>
             </Space>
           </div>
+
+          {healthAlert ? (
+            <Alert
+              type={healthAlert.type}
+              message={t(healthAlert.textKey)}
+              showIcon
+            />
+          ) : null}
+
+          {runStatus ? (
+            <div className="text-sm text-[var(--color-text-2)]">
+              {t('Collection.nodeMgmtSync.runStatus')}：
+              <Badge
+                status={NODE_MGMT_SYNC_STATUS_BADGE[runStatus]}
+                text={t(getNodeMgmtSyncStatusTextKey(runStatus, normalizedRunStatus.isUnknown))}
+              />
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <StatisticCard
@@ -284,7 +469,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
           {todoItems.length ? (
             <Alert
               type="info"
-              message={todoItems.map((item) => item.message).join('；')}
+              message={t('Collection.nodeMgmtSync.todoNotice', undefined, { count: String(todoItems.length) })}
               showIcon
             />
           ) : null}
@@ -296,22 +481,72 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
               placeholder={t('Collection.nodeMgmtSync.searchPlaceholder')}
               value={pendingSearchText}
               onChange={(e) => setPendingSearchText(e.target.value)}
-              onSearch={(value) => setSearchText(value)}
+              onSearch={(value) => {
+                setRawPage(1);
+                setSearchText(value);
+              }}
             />
           </div>
 
           <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
 
-          {activeTab === 'raw_data' && !filteredRows.length ? (
+          {activeTab === 'raw_data' ? (
+            <Alert
+              type={rawCounts.truncated ? 'warning' : 'info'}
+              message={t('Collection.nodeMgmtSync.rawSummary', undefined, {
+                total: String(rawCounts.total),
+                host: String(rawCounts.host),
+                process: String(rawCounts.process),
+                dropped: String(rawCounts.dropped),
+                retained: String(rawCounts.retained),
+              })}
+              showIcon
+            />
+          ) : null}
+
+          {activeTab === 'raw_data' && rawLoadFailed ? (
+            <Alert
+              type="error"
+              message={t('Collection.nodeMgmtSync.loadFailed')}
+              action={(
+                <Button size="small" onClick={() => setRawRetryKey((value) => value + 1)}>
+                  {t('Collection.nodeMgmtSync.retry')}
+                </Button>
+              )}
+              showIcon
+            />
+          ) : null}
+
+          {!rawLoadFailed && !filteredRows.length ? (
             <div className="py-10">
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Collection.taskDetail.noRawData')} />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t(emptyStateKey)} />
             </div>
           ) : (
             <CustomTable
-              rowKey={(record: NodeMgmtSyncItem) => record.id || record.inst_name || record.ip_addr || record.ip || record.name}
+              rowKey={getNodeMgmtSyncRowKey}
               columns={columns}
               dataSource={filteredRows}
-              pagination={{ showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
+              loading={rawLoading}
+              pagination={activeTab === 'raw_data' && displayPayload?.display_schema === 'host_collect_v2'
+                ? {
+                  current: rawPage,
+                  pageSize: rawPageSize,
+                  total: rawMatchedCount,
+                  showSizeChanger: true,
+                  showTotal: (total) => t('Collection.nodeMgmtSync.tableTotal', undefined, {
+                    total: String(total),
+                  }),
+                  onChange: (page, pageSize) => {
+                    setRawPage(pageSize === rawPageSize ? page : 1);
+                    setRawPageSize(pageSize);
+                  },
+                }
+                : {
+                  showSizeChanger: true,
+                  showTotal: (total) => t('Collection.nodeMgmtSync.tableTotal', undefined, {
+                    total: String(total),
+                  }),
+                }}
               scroll={{ y: 'calc(100vh - 520px)' }}
             />
           )}

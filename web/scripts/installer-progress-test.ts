@@ -5,6 +5,7 @@ import {
   getControllerInstallDisplayLabel,
   getControllerInstallPhaseLabel,
   getInstallerFailureGuidance,
+  getInstallerStepLabel,
   getInstallerSummaryProgressInfo,
   getInstallerSummaryGuidance,
   normalizeInstallerResult,
@@ -14,6 +15,8 @@ import {
 const translations: Record<string, string> = {
   'node-manager.cloudregion.node.installerSuggestionObjectMissing': 'localized object-missing guidance',
   'node-manager.cloudregion.node.installerSuggestionFileBusy': 'localized file-busy guidance',
+  'node-manager.cloudregion.node.installerSuggestionClockSkew': 'localized clock-skew guidance',
+  'node-manager.cloudregion.node.installerStepClockCheck': 'Check node clock',
   'node-manager.cloudregion.node.installerSuggestionExtract': 'localized extract fallback',
   'node-manager.cloudregion.node.installerSummaryNoEvents': 'installer details missing',
   'node-manager.cloudregion.node.installerSummaryNoReportConnectivityTimeout': 'installer no report timeout guidance',
@@ -29,7 +32,11 @@ const translations: Record<string, string> = {
   'node-manager.cloudregion.node.failureContextBucket': 'Object Bucket',
   'node-manager.cloudregion.node.failureContextFileKey': 'Object Key',
   'node-manager.cloudregion.node.failureContextArchitecture': 'Target Architecture',
-  'node-manager.cloudregion.node.failureContextTargetPath': 'Target Path'
+  'node-manager.cloudregion.node.failureContextTargetPath': 'Target Path',
+  'node-manager.cloudregion.node.failureContextNodeTime': 'Node Time',
+  'node-manager.cloudregion.node.failureContextServerTime': 'Server Time',
+  'node-manager.cloudregion.node.failureContextClockSkew': 'Clock Skew',
+  'node-manager.cloudregion.node.failureContextMaxClockSkew': 'Maximum Clock Skew'
 };
 
 const t = (key: string) => translations[key] || key;
@@ -91,6 +98,40 @@ const fileBusyGuidance = getInstallerFailureGuidance(t, fileBusyResult);
 assert.equal(fileBusyGuidance.reason, 'A running process is blocking the target file from being replaced');
 assert.ok(fileBusyGuidance.context?.includes('Target Path: /opt/fusion-collectors/bin/vector'));
 assert.equal(fileBusyGuidance.suggestion, 'localized file-busy guidance');
+
+const clockSkewResult = normalizeInstallerResult({
+  steps: [
+    {
+      action: 'clock_check',
+      status: 'error',
+      message: 'Node clock is ahead of Server',
+      timestamp: '2026-07-29T02:12:06Z',
+      details: {
+        installer_event: true,
+        raw_step: 'clock_check',
+        failure: {
+          type: 'clock_skew',
+          summary: 'The node and Server clocks differ beyond the allowed threshold',
+          context: {
+            node_time: '2026-07-29T02:12:06Z',
+            server_time: '2026-07-29T02:00:00Z',
+            clock_skew_seconds: 726,
+            max_clock_skew_seconds: 300
+          }
+        }
+      }
+    }
+  ]
+});
+const clockSkewGuidance = getInstallerFailureGuidance(t, clockSkewResult);
+assert.equal(clockSkewGuidance.suggestion, 'localized clock-skew guidance');
+assert.deepEqual(clockSkewGuidance.context, [
+  'Node Time: 2026-07-29T02:12:06Z',
+  'Server Time: 2026-07-29T02:00:00Z',
+  'Clock Skew: 726',
+  'Maximum Clock Skew: 300'
+]);
+assert.equal(getInstallerStepLabel(t, 'clock_check'), 'Check node clock');
 
 const fallbackResult = normalizeInstallerResult({
   steps: [

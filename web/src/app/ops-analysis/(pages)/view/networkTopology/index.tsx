@@ -21,6 +21,7 @@ import {
 import {
   useNetworkTopologyApi,
 } from '@/app/ops-analysis/api/networkTopology';
+import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import { useNetworkEditor } from './hooks/useNetworkEditor';
 import { useNetworkLibrary } from './hooks/useNetworkLibrary';
 import { useTranslation } from '@/utils/i18n';
@@ -32,6 +33,11 @@ import NetworkNodeDrawer from './components/networkNodeDrawer';
 import NetworkEdgeDrawer from './components/networkEdgeDrawer';
 import MonitorSourcePickerModal from './components/modals/monitorSourcePickerModal';
 import ConfirmDeleteModal from './components/modals/confirmDeleteModal';
+import {
+  indexRuntimeNodes,
+  runRuntimeTasks,
+  selectLinkEndpointNodes,
+} from './runtimeRequestPool';
 import {
   buildLinkDetailPortRows,
   buildLinkInterfaceMetricRows,
@@ -105,7 +111,7 @@ const detailPopoverHeaderStyle = {
 const detailPopoverBodyClassName =
   'min-h-0 space-y-2 overflow-y-auto px-3 py-2.5 text-[12px]';
 const detailSummaryCardClassName =
-  'rounded-md border border-[var(--color-border-1,#e3eaf2)] bg-[var(--color-fill-1,#f8fafc)] p-2.5';
+  'rounded-md border border-[var(--color-border-1,#e3eaf2)] bg-[color-mix(in_srgb,var(--color-fill-1,#f8fafc)_45%,var(--color-bg-1,#ffffff))] p-2.5';
 const detailSummaryGridClassName =
   'grid grid-cols-2 gap-x-3 gap-y-1.5 text-[var(--color-text-1,#1f2933)]';
 const detailSummaryRowClassName =
@@ -148,8 +154,9 @@ const groupLinkMetricRowsByInterface = (
 };
 
 const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
-  ({ selectedNetworkTopology }, ref) => {
+  ({ selectedNetworkTopology, shareMode = false }, ref) => {
     const api = useNetworkTopologyApi();
+    const { shareLoading, openShare } = useCanvasShareAction('networkTopology');
     const { t } = useTranslation();
     const canvasId = selectedNetworkTopology?.data_id;
     const [config, setConfig] = useState<NetworkTopologyConfig>(emptyConfig);
@@ -238,10 +245,11 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
 
         const generation = ++runtimeLoadGenerationRef.current;
         const isCurrent = () => runtimeLoadGenerationRef.current === generation;
+        const runtimeNodeIndex = indexRuntimeNodes(runtimeConfig.nodes);
 
         const nodeTasks = runtimeConfig.nodes
           .filter((node) => node.metrics.length > 0)
-          .map(async (node) => {
+          .map((node) => async () => {
             const metrics = node.metrics;
             const metricRequests = metrics.map((metric) => {
               const requestId = buildMetricRuntimeRequestId(node.id, metric);
@@ -325,11 +333,11 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
 
         const linkTasks = runtimeConfig.links
           .filter((link) => !link.is_draft && link.port_pairs.length > 0)
-          .map(async (link) => {
+          .map((link) => async () => {
             try {
               const res = await api.getLinkRuntime(runtimeCanvasId, {
                 link,
-                nodes: runtimeConfig.nodes,
+                nodes: selectLinkEndpointNodes(runtimeNodeIndex, link),
               });
               if (!isCurrent()) return;
               if (res?.link) {
@@ -350,7 +358,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             }
           });
 
-        const task = Promise.allSettled([...nodeTasks, ...linkTasks])
+        const task = runRuntimeTasks([...nodeTasks, ...linkTasks], { isActive: isCurrent })
           .then(() => undefined)
           .finally(() => {
             if (runtimeRefreshPromiseRef.current?.promise === task) {
@@ -400,6 +408,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           setRuntimeLinkOverrides({});
           setRuntimeInterfaceSummaryOverrides({});
           editor.resetConfig(next);
+          // Phase B-1：分享态通过 session proxy 拉 metric_values / link_runtime。
           void loadConfiguredRuntime(id, next);
         })
         .catch((err: unknown) => {
@@ -416,7 +425,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
       };
       // 故意省略 api/editor 等稳定依赖,避免画布切换以外的因素触发重新拉取。
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [canvasId]);
+    }, [canvasId, shareMode]);
 
     const loadNodeModels = useCallback(
       (id: string | number) => api.getNodeModels(id),
@@ -429,7 +438,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     );
     const library = useNetworkLibrary({
       canvasId,
-      enabled: Boolean(canvasId),
+      enabled: Boolean(canvasId) && !shareMode,
       loadModels: loadNodeModels,
       loadNodes: loadLibraryNodes,
     });
@@ -1012,7 +1021,10 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           return;
         }
         void api
-          .getLinkRuntime(String(canvasId), { link: nextLink, nodes: prev.nodes })
+          .getLinkRuntime(String(canvasId), {
+            link: nextLink,
+            nodes: selectLinkEndpointNodes(indexRuntimeNodes(prev.nodes), nextLink),
+          })
           .then((res) => {
             if (res?.link) {
               setRuntimeLinkOverrides((prevOverrides) => ({
@@ -1133,6 +1145,15 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         editMode={editor.editMode}
         dirty={editor.isDirty}
         saving={saving}
+        shareMode={shareMode}
+        shareLoading={shareLoading}
+        onOpenShare={
+          !shareMode && selectedNetworkTopology?.data_id
+            ? () => {
+              void openShare(selectedNetworkTopology.data_id);
+            }
+            : undefined
+        }
         onZoomIn={() => graph?.zoom(0.1)}
         onZoomOut={() => graph?.zoom(-0.1)}
         onFit={() => {
@@ -1182,13 +1203,22 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               : 'h-full flex-1 overflow-hidden'
           }`}
         >
-          <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
+          <AppViewFullscreenExit
+            visible={isFullscreen}
+            onExit={exitFullscreen}
+          />
           <ViewWorkspace
             selectedItem={selectedNetworkTopology}
             loading={viewSetsLoading}
             titleFallback={t('opsAnalysis.networkTopology.title')}
             emptyDescription={t('opsAnalysis.networkTopology.selectFirst')}
-            toolbar={isFullscreen ? null : selectedNetworkTopology ? sidebarExtra : null}
+            toolbar={
+              isFullscreen
+                ? null
+                : selectedNetworkTopology
+                  ? sidebarExtra
+                  : null
+            }
             headerVisible={!isFullscreen}
             contentClassName={
               isFullscreen
@@ -1197,10 +1227,10 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             }
           >
             <div
-              className="flex h-full min-h-0 gap-[14px]"
+              className="flex h-full min-h-0 gap-[10px]"
               data-testid="network-topology-workspace"
             >
-              {!isFullscreen && (
+              {!shareMode && !isFullscreen && (
                 <section
                   className="flex shrink-0 min-h-0 flex-col overflow-visible rounded-lg border border-[var(--color-border-1,#d9e0e8)] bg-[var(--color-bg-1,#fff)] shadow-[0_10px_24px_rgba(34,47,62,0.05)]"
                   data-testid="network-topology-library-panel"
@@ -1314,10 +1344,16 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                   role="menuitem"
                   onClick={() => {
                     if (nodeContextMenu) {
-                      setDeleteModal({ kind: 'node', node: nodeContextMenu.node });
+                      setDeleteModal({
+                        kind: 'node',
+                        node: nodeContextMenu.node,
+                      });
                     }
                     if (linkContextMenu) {
-                      setDeleteModal({ kind: 'link', link: linkContextMenu.link });
+                      setDeleteModal({
+                        kind: 'link',
+                        link: linkContextMenu.link,
+                      });
                     }
                     setNodeContextMenu(null);
                     setLinkContextMenu(null);
@@ -1345,15 +1381,18 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             }}
             data-testid="network-link-detail-popover"
           >
-            <div className={detailPopoverHeaderClassName} style={detailPopoverHeaderStyle}>
+            <div
+              className={detailPopoverHeaderClassName}
+              style={detailPopoverHeaderStyle}
+            >
               <div className="min-w-0">
                 <div className="truncate text-[14px] font-semibold text-[var(--color-text-1,#1f2933)]">
                   {editingLinkSource?.bk_inst_name || '--'} →{' '}
                   {editingLinkTarget?.bk_inst_name || '--'}
                 </div>
                 <div className="mt-0.5 truncate text-[12px] text-[var(--color-text-3,#6b7280)]">
-                  {(editingLinkSource?.ip_addr || editingLink.source_node_id)} →{' '}
-                  {(editingLinkTarget?.ip_addr || editingLink.target_node_id)}
+                  {editingLinkSource?.ip_addr || editingLink.source_node_id} →{' '}
+                  {editingLinkTarget?.ip_addr || editingLink.target_node_id}
                 </div>
               </div>
               <Tag
@@ -1383,9 +1422,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.link.labelSourceNode')}
                     </span>
-                    <span className={detailColonClassName}>
-                      ：
-                    </span>
+                    <span className={detailColonClassName}>：</span>
                     <span className="min-w-0 truncate font-medium">
                       {editingLinkSource?.bk_inst_name || '--'}
                     </span>
@@ -1394,9 +1431,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.link.labelTargetNode')}
                     </span>
-                    <span className={detailColonClassName}>
-                      ：
-                    </span>
+                    <span className={detailColonClassName}>：</span>
                     <span className="min-w-0 truncate font-medium">
                       {editingLinkTarget?.bk_inst_name || '--'}
                     </span>
@@ -1405,9 +1440,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.link.runtimeStatus')}
                     </span>
-                    <span className={detailColonClassName}>
-                      ：
-                    </span>
+                    <span className={detailColonClassName}>：</span>
                     <span className="min-w-0 truncate font-medium">
                       {t(
                         editingLinkRuntime?.status === 'critical'
@@ -1422,13 +1455,15 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.link.labelPairCount')}
                     </span>
-                    <span className={detailColonClassName}>
-                      ：
-                    </span>
+                    <span className={detailColonClassName}>：</span>
                     <span className="min-w-0 truncate font-medium">
-                      {t('opsAnalysis.networkTopology.link.pairCount', undefined, {
-                        count: editingLink.port_pairs.length,
-                      })}
+                      {t(
+                        'opsAnalysis.networkTopology.link.pairCount',
+                        undefined,
+                        {
+                          count: editingLink.port_pairs.length,
+                        },
+                      )}
                     </span>
                   </div>
                 </div>
@@ -1441,10 +1476,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                 <div className="space-y-1">
                   {editingLinkPortRows.length > 0 ? (
                     editingLinkPortRows.map((port) => (
-                      <div
-                        key={port.key}
-                        className={detailListRowClassName}
-                      >
+                      <div key={port.key} className={detailListRowClassName}>
                         <span className="min-w-0 truncate text-[var(--color-text-2,#4b5563)]">
                           {port.sourceName}
                           <Tag
@@ -1493,7 +1525,9 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               {editingLinkMetricGroups.length > 0 && (
                 <div>
                   <div className={detailSectionTitleClassName}>
-                    {t('opsAnalysis.networkTopology.link.interfaceMetricsTitle')}
+                    {t(
+                      'opsAnalysis.networkTopology.link.interfaceMetricsTitle',
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     {editingLinkMetricGroups.map((group) => (
@@ -1540,7 +1574,10 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             }}
             data-testid="network-node-detail-popover"
           >
-            <div className={detailPopoverHeaderClassName} style={detailPopoverHeaderStyle}>
+            <div
+              className={detailPopoverHeaderClassName}
+              style={detailPopoverHeaderStyle}
+            >
               <div className="min-w-0">
                 <div className="truncate text-[14px] font-semibold text-[var(--color-text-1,#1f2933)]">
                   {editingNode.bk_inst_name || '--'}
@@ -1567,9 +1604,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.node.labelAssetId')}
                     </span>
-                    <span className={detailColonClassName}>
-                      ：
-                    </span>
+                    <span className={detailColonClassName}>：</span>
                     <span className="min-w-0 truncate font-medium">
                       {editingNode.bk_inst_id || '--'}
                     </span>
@@ -1578,9 +1613,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.node.labelAddress')}
                     </span>
-                    <span className={detailColonClassName}>
-                      ：
-                    </span>
+                    <span className={detailColonClassName}>：</span>
                     <span className="min-w-0 truncate font-medium">
                       {editingNode.ip_addr || '--'}
                     </span>
@@ -1589,9 +1622,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     <span className={detailLabelClassName}>
                       {t('opsAnalysis.networkTopology.node.labelTemplate')}
                     </span>
-                    <span className={detailColonClassName}>
-                      ：
-                    </span>
+                    <span className={detailColonClassName}>：</span>
                     <span className="min-w-0 truncate font-medium">
                       {editingNode.plugin_template_name ||
                         editingNode.plugin_template_id ||
@@ -1608,17 +1639,15 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                 <div className="space-y-1">
                   {editingNodeMetricRows.length > 0 ? (
                     editingNodeMetricRows.map((metric) => (
-                      <div
-                        key={metric.key}
-                        className={detailListRowClassName}
-                      >
+                      <div key={metric.key} className={detailListRowClassName}>
                         <span className="min-w-0 truncate text-[var(--color-text-2,#4b5563)]">
                           {metric.label}
                         </span>
                         <span
                           className="shrink-0 font-semibold"
                           style={{
-                            color: metric.color ?? 'var(--color-text-1,#1f2933)',
+                            color:
+                              metric.color ?? 'var(--color-text-1,#1f2933)',
                           }}
                         >
                           {metric.value}
@@ -1693,7 +1722,8 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               ? deleteModal.node.bk_inst_name
               : deleteModal
                 ? `${nodeById.get(deleteModal.link.source_node_id)?.bk_inst_name ?? '-'} → ${
-                    nodeById.get(deleteModal.link.target_node_id)?.bk_inst_name ?? '-'
+                    nodeById.get(deleteModal.link.target_node_id)
+                      ?.bk_inst_name ?? '-'
                   }`
                 : undefined
           }

@@ -3,15 +3,23 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeftOutlined, CopyOutlined } from '@ant-design/icons';
-import { Badge, Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, Tabs, Tooltip, message } from 'antd';
+import { ArrowLeftOutlined, CloseCircleFilled, CopyOutlined } from '@ant-design/icons';
+import { Alert, Badge, Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, Tabs, Tooltip, message } from 'antd';
 
 import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
-import type { IntegrationInstance, ProviderManifest, TemplateField } from '@/app/system-manager/types/integration-center';
+import type {
+  CapabilityExecutionError,
+  IntegrationInstance,
+  ProviderManifest,
+  TemplateField,
+  TestConnectionResult,
+} from '@/app/system-manager/types/integration-center';
 import {
   buildIntegrationFieldRules,
   getAvailableIntegrationTabs,
+  getIntegrationBaseCapabilityStatusItems,
   getIntegrationCapabilityLabel,
+  getIntegrationDiagnosticMessage,
   getIntegrationDetailSummaryItems,
   getIntegrationDetailTopSectionContent,
   getIntegrationFieldBuckets,
@@ -28,6 +36,8 @@ import { isSilentRequestError } from '@/utils/request';
 interface IntegrationDetailFormValues {
   config?: Record<string, unknown>;
 }
+
+const saveAndTestMessageKey = 'integration-center-save-and-test';
 
 const IntegrationDetailPage: React.FC = () => {
   const { t } = useTranslation();
@@ -46,6 +56,8 @@ const IntegrationDetailPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const [activeTab, setActiveTab] = useState<IntegrationDetailTab>('base');
+  const [lastTestResult, setLastTestResult] = useState<TestConnectionResult | null>(null);
+  const [lastTestedTab, setLastTestedTab] = useState<IntegrationDetailTab | null>(null);
 
   const provider = useMemo(
     () => providers.find((item) => item.key === instance?.provider_key),
@@ -85,6 +97,10 @@ const IntegrationDetailPage: React.FC = () => {
 
   const summaryItems = useMemo(
     () => (instance ? getIntegrationDetailSummaryItems({ activeTab, instance, t }) : []),
+    [activeTab, instance, t],
+  );
+  const capabilityStatusItems = useMemo(
+    () => (instance && activeTab === 'base' ? getIntegrationBaseCapabilityStatusItems({ instance, t }) : []),
     [activeTab, instance, t],
   );
 
@@ -151,9 +167,9 @@ const IntegrationDetailPage: React.FC = () => {
     setIsFormDirty(false);
   }, [activeFields, form, instance]);
 
-  const handleSave = async () => {
+  const saveConfig = async ({ showSuccess = true, refresh = true }: { showSuccess?: boolean; refresh?: boolean } = {}): Promise<boolean> => {
     if (!id || Number.isNaN(numericId) || !instance) {
-      return;
+      return false;
     }
 
     try {
@@ -174,18 +190,33 @@ const IntegrationDetailPage: React.FC = () => {
         config: currentConfig,
         config_scope: activeTab,
       });
-      message.success(t('common.saveSuccess'));
-      fetchDetailData();
+      if (showSuccess) {
+        message.success(t('common.saveSuccess'));
+      }
+      setIsFormDirty(false);
+      if (activeTab === 'base' || lastTestedTab === activeTab) {
+        setLastTestResult(null);
+        setLastTestedTab(null);
+      }
+      if (refresh) {
+        await fetchDetailData();
+      }
+      return true;
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
-        return;
+        return false;
       }
       if (!isSilentRequestError(error)) {
         message.error(t('common.saveFailed'));
       }
+      return false;
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = async () => {
+    await saveConfig();
   };
 
   const handleToggleCapability = async (enabled: boolean) => {
@@ -215,36 +246,78 @@ const IntegrationDetailPage: React.FC = () => {
     }
   };
 
-  const handleTestConnection = async () => {
+  const runTestRequest = async ({ savedBeforeTest = false, isPipeline = false } = {}) => {
     if (!id || Number.isNaN(numericId)) {
       return;
     }
 
-    if (isFormDirty) {
-      Modal.confirm({
-        title: t('system.integrationCenter.unsavedConfigTitle'),
-        content: t('system.integrationCenter.unsavedConfigContent'),
-        okText: t('common.save'),
-        cancelText: t('common.cancel'),
-        onOk: handleSave,
-      });
-      return;
+    if (!isPipeline) {
+      setTesting(true);
     }
-
-    setTesting(true);
     try {
       const result = await testConnection(numericId, activeTab === 'base' ? undefined : activeTab);
-      message[result.result ? 'success' : 'error'](
-        result.result ? t('system.integrationCenter.testSuccess') : t('system.integrationCenter.testFailed'),
+      const testSucceeded = result.data.success;
+      const successMessage = activeTab === 'im_group'
+        ? t('system.integrationCenter.checkGroupCapabilitySuccess')
+        : savedBeforeTest
+          ? t('system.integrationCenter.saveAndTestSuccess')
+          : t('system.integrationCenter.testSuccess');
+      const failedMessage = activeTab === 'im_group'
+        ? t('system.integrationCenter.checkGroupCapabilityFailed')
+        : t('system.integrationCenter.testFailed');
+      setLastTestResult({ ...result, result: testSucceeded });
+      setLastTestedTab(activeTab);
+      message[testSucceeded ? 'success' : 'error'](
+        isPipeline
+          ? {
+            key: saveAndTestMessageKey,
+            content: testSucceeded ? successMessage : failedMessage,
+          }
+          : testSucceeded
+            ? successMessage
+            : failedMessage,
       );
-      fetchDetailData();
+      await fetchDetailData();
     } catch (error) {
       if (!isSilentRequestError(error)) {
-        message.error(t('system.integrationCenter.testFailed'));
+        message.error(
+          isPipeline
+            ? { key: saveAndTestMessageKey, content: t('system.integrationCenter.testFailed') }
+            : t('system.integrationCenter.testFailed'),
+        );
       }
     } finally {
       setTesting(false);
     }
+  };
+
+  const handleTestConnection = async () => {
+    if (isFormDirty) {
+      Modal.confirm({
+        title: t('system.integrationCenter.saveAndTestTitle'),
+        content: t('system.integrationCenter.saveAndTestContent'),
+        okText: t('system.integrationCenter.saveAndTest'),
+        cancelText: t('common.cancel'),
+        onOk: async () => {
+          setTesting(true);
+          message.loading({
+            key: saveAndTestMessageKey,
+            content: t('system.integrationCenter.savingAndTesting'),
+            duration: 0,
+          });
+          const saved = await saveConfig({ showSuccess: false, refresh: false });
+          if (saved) {
+            await runTestRequest({ savedBeforeTest: true, isPipeline: true });
+          } else {
+            message.destroy(saveAndTestMessageKey);
+            setTesting(false);
+          }
+        },
+      });
+      return;
+    }
+
+    await runTestRequest();
   };
 
   const handleCopyLoginAuthCallbackUrl = async () => {
@@ -325,6 +398,14 @@ const IntegrationDetailPage: React.FC = () => {
     return null;
   }
 
+  const testDisabled = activeTab !== 'base' && instance.status !== 'ready';
+  const diagnostic: CapabilityExecutionError | null = lastTestResult?.data.errors?.[0] || null;
+  const showErrorSummary = Boolean(lastTestResult && !lastTestResult.result && lastTestedTab === activeTab);
+  const diagnosticFieldLabel = diagnostic?.field
+    ? activeFields.find((field) => field.key === diagnostic.field)?.label || diagnostic.field
+    : '';
+  const diagnosticDetail = diagnostic?.detail || diagnostic?.message || '';
+
   return (
     <div className="w-full space-y-4">
       <div className="flex items-center gap-3">
@@ -351,6 +432,14 @@ const IntegrationDetailPage: React.FC = () => {
           {activeTab === 'base' ? (
             <div className="mt-1">
               <Form form={form} layout="vertical" onValuesChange={() => setIsFormDirty(true)}>
+                {instance.provider_key === 'wechat' ? (
+                  <Alert
+                    className="mb-4"
+                    type="info"
+                    showIcon
+                    message={t('system.integrationCenter.wechatBaseValidationNotice')}
+                  />
+                ) : null}
                 {baseGroups ? (
                   baseGroups.map((group, idx) => (
                     <div
@@ -386,6 +475,34 @@ const IntegrationDetailPage: React.FC = () => {
                   </>
                 )}
               </Form>
+            </div>
+          ) : activeTab === 'im_group' ? (
+            <div className="space-y-4 py-4">
+              <Alert
+                type="info"
+                showIcon
+                message={t('system.integrationCenter.imGroupOverviewTitle')}
+                description={(
+                  <div className="space-y-1">
+                    <div>{t('system.integrationCenter.imGroupOverviewDescription')}</div>
+                    <div>{t('system.integrationCenter.imGroupNoExtraConfig')}</div>
+                  </div>
+                )}
+              />
+              <div className="rounded-md border border-[var(--color-border)] px-5 py-4">
+                <div className="mb-3 text-[16px] font-semibold text-[var(--color-text)]">
+                  {t('system.integrationCenter.imGroupPreparationTitle')}
+                </div>
+                <ul className="list-disc space-y-2 pl-5 text-[14px] leading-6 text-[var(--color-text-2)]">
+                  <li>{t('system.integrationCenter.imGroupCredentialRequirement')}</li>
+                  <li>{t('system.integrationCenter.imGroupUserMappingRequirement')}</li>
+                  <li>
+                    {instance.provider_key === 'wecom'
+                      ? t('system.integrationCenter.imGroupWeComPermissionHint')
+                      : t('system.integrationCenter.imGroupFeishuPermissionHint')}
+                  </li>
+                </ul>
+              </div>
             </div>
           ) : (
             <div className="pt-1">
@@ -438,9 +555,11 @@ const IntegrationDetailPage: React.FC = () => {
             <div className="text-[13px] text-[var(--color-text-3)]">
               {activeTab === 'base'
                 ? t('system.integrationCenter.baseConnectionHint')
-                : started
-                  ? t('system.integrationCenter.startedHint')
-                  : t('system.integrationCenter.notStartedHint')}
+                : activeTab === 'im_group'
+                  ? t('system.integrationCenter.imGroupCheckHint')
+                  : started
+                    ? t('system.integrationCenter.startedHint')
+                    : t('system.integrationCenter.notStartedHint')}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 mt-3">
               <Button
@@ -452,19 +571,23 @@ const IntegrationDetailPage: React.FC = () => {
                 {t('system.integrationCenter.back')}
               </Button>
               <div className="flex flex-wrap items-center gap-3">
+                {activeTab !== 'im_group' ? (
+                  <PermissionWrapper requiredPermissions={['Edit']}>
+                    <Button onClick={handleSave} loading={saving}>
+                      {t('common.save')}
+                    </Button>
+                  </PermissionWrapper>
+                ) : null}
                 <PermissionWrapper requiredPermissions={['Edit']}>
-                  <Button onClick={handleSave} loading={saving}>
-                    {t('common.save')}
-                  </Button>
-                </PermissionWrapper>
-                <PermissionWrapper requiredPermissions={['Edit']}>
-                  <Button onClick={handleTestConnection} loading={testing} type="primary">
-                    {testing
-                      ? t('system.integrationCenter.testing')
-                      : activeTab === 'base'
-                        ? t('system.integrationCenter.testAllConnections')
-                        : t('system.integrationCenter.testConnection')}
-                  </Button>
+                  <Tooltip title={testDisabled ? t('system.integrationCenter.baseConnectionRequired') : undefined}>
+                    <span>
+                      <Button onClick={handleTestConnection} loading={testing} disabled={testDisabled} type="primary">
+                        {activeTab === 'im_group'
+                          ? t('system.integrationCenter.checkGroupCapability')
+                          : t('system.integrationCenter.testRequest')}
+                      </Button>
+                    </span>
+                  </Tooltip>
                 </PermissionWrapper>
                 {activeTab !== 'base' && (
                   <PermissionWrapper requiredPermissions={['Edit']}>
@@ -499,6 +622,55 @@ const IntegrationDetailPage: React.FC = () => {
               </div>
             ))}
           </div>
+          {capabilityStatusItems.length > 0 ? (
+            <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+              <div className="mb-2 text-sm font-medium text-[var(--color-text)]">
+                {t('system.integrationCenter.capabilityStatus')}
+              </div>
+              <div className="space-y-3">
+                {capabilityStatusItems.map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2"
+                  >
+                    <Tooltip title={item.label}>
+                      <div className="mb-1 truncate text-xs text-[var(--color-text-3)]">{item.label}</div>
+                    </Tooltip>
+                    <Badge
+                      status={item.tone === 'success' ? 'success' : item.tone === 'error' ? 'error' : 'default'}
+                      text={<span className="whitespace-nowrap text-[14px] text-[var(--color-text)]">{item.value}</span>}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {showErrorSummary ? (
+            <div
+              className="mt-4 rounded-md border px-3 py-3"
+              style={{
+                borderColor: 'var(--color-fail)',
+                backgroundColor: 'color-mix(in srgb, var(--color-fail) 6%, var(--color-bg))',
+              }}
+            >
+              <div className="flex items-center gap-2 text-[14px] font-medium text-[var(--color-text)]">
+                <CloseCircleFilled className="text-[var(--color-fail)]" />
+                <span>{t('system.integrationCenter.errorSummary')}</span>
+              </div>
+              <div className="mt-2 space-y-1 text-[13px] leading-5 text-[var(--color-text-2)]">
+                <div>{getIntegrationDiagnosticMessage(diagnostic?.code, t)}</div>
+                {diagnosticFieldLabel ? (
+                  <div className="break-words">{`${t('system.integrationCenter.problemField')}: ${diagnosticFieldLabel}`}</div>
+                ) : null}
+                {diagnostic?.external_code ? (
+                  <div className="break-words">{`${t('system.integrationCenter.externalErrorCode')}: ${diagnostic.external_code}`}</div>
+                ) : null}
+                {diagnosticDetail ? (
+                  <div className="break-words">{`${t('system.integrationCenter.errorDetail')}: ${diagnosticDetail}`}</div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </aside>
       </section>
     </div>

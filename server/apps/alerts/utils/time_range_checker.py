@@ -14,7 +14,7 @@
 """
 
 import datetime
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from django.db.models import Q
 from django.utils import timezone
@@ -68,10 +68,10 @@ class TimeRangeChecker:
         Returns:
             ``Q`` 对象（可直接传给 ``.filter()``），或 ``None``（表示无法下推）。
         """
-        if not self.config:
+        if not self.config or "type" not in self.config:
             return Q()  # 无配置 → 全部匹配，返回空 Q（.filter(Q()) 等同于无条件）
 
-        time_type = self.config.get("type", "one")
+        time_type = self.config["type"]
         if time_type != "one":
             return None  # 循环型时段无法用 SQL 精确下推，由调用方退化到 Python 过滤
 
@@ -81,6 +81,9 @@ class TimeRangeChecker:
             return None  # 配置不完整，退安全，让 Python 层处理
 
         try:
+            # TODO(timezone): 一次性时段的 make_aware 未指定时区，解释结果取决于调用线程的激活时区。
+            # 摄入链路（NATS/celery，默认 UTC）与 web 请求线程（用户时区）下，同一规则的窗口解释不同。
+            # 需要产品确认：一次性时段配置的时区契约（统一按 UTC？按用户时区？按配置时区？）
             start_time = timezone.make_aware(
                 datetime.datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
             )
@@ -99,10 +102,10 @@ class TimeRangeChecker:
         Returns:
             bool: 是否在时间范围内
         """
-        if not self.config:
+        if not self.config or "type" not in self.config:
             return True
 
-        time_type = self.config.get("type", "one")
+        time_type = self.config["type"]
 
         try:
             if time_type == "one":

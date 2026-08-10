@@ -15,6 +15,15 @@ export type { BrowserTaskReceivedData };
 export type BrowserStepProgressValue = BrowserStepProgressData;
 export type BrowserTaskReceivedValue = BrowserTaskReceivedData;
 export type AgentStepProgressValue = AgentStepProgressData;
+
+export interface PlannedExecutionStepValue {
+  phase: 'start' | 'end' | string;
+  step_index: number;
+  total_steps: number;
+  objective: string;
+  tools?: string[];
+}
+
 export interface SkillViewValue {
   items: SkillViewItem[];
 }
@@ -61,6 +70,7 @@ export interface ConfigDiffReportValue {
   report_id: string;
   title: string;
   cluster_name: string;
+  skill_id?: number;
   a2ui?: A2UIReportContract;
   items: Array<{
     workload_name: string;
@@ -70,6 +80,7 @@ export interface ConfigDiffReportValue {
     summary: string;
     before_yaml: string;
     after_yaml: string;
+    skill_id?: number;
   }>;
 }
 
@@ -83,7 +94,7 @@ export interface ConfigAnalysisReportItemValue {
 
 export interface ConfigAnalysisReportScopeValue {
   cluster_name?: string;
-  namespace?: string | null;
+  namespace?: string | string[] | null;
   instance_name?: string | null;
   name?: string | null;
   target_name?: string | null;
@@ -234,7 +245,7 @@ export interface AGUIMessage {
   message?: string;
   code?: string;
   name?: string;
-  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | UserChoiceRequestValue | AgentStepProgressValue | SubAgentProgressValue | SkillViewValue | ConfigAnalysisReportValue | Record<string, unknown>;
+  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | UserChoiceRequestValue | AgentStepProgressValue | SubAgentProgressValue | SkillViewValue | ConfigAnalysisReportValue | PlannedExecutionStepValue | Record<string, unknown>;
 }
 
 export interface GuideParseResult {

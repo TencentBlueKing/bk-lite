@@ -6,8 +6,12 @@ import os
 from pathlib import Path
 from typing import Dict, Any, Optional, Union
 
-from jinja2 import Environment, FileSystemLoader, Template, TemplateNotFound
+from jinja2 import FileSystemLoader, Template, TemplateNotFound
+from jinja2.defaults import DEFAULT_FILTERS
+from jinja2.sandbox import SandboxedEnvironment
 from loguru import logger
+
+from apps.core.utils.safe_template import build_trusted_file_template_env
 
 
 class TemplateLoader:
@@ -19,7 +23,7 @@ class TemplateLoader:
     """
 
     _default_base_path: Optional[Path] = None
-    _env_cache: Dict[str, Environment] = {}
+    _env_cache: Dict[str, SandboxedEnvironment] = {}
 
     @classmethod
     def configure(cls, base_path: Optional[str] = None) -> None:
@@ -57,7 +61,7 @@ class TemplateLoader:
         return fallback_path
 
     @classmethod
-    def _get_environment(cls, base_path: Optional[str] = None) -> Environment:
+    def _get_environment(cls, base_path: Optional[str] = None) -> SandboxedEnvironment:
         """
         获取 Jinja2 环境对象，使用缓存避免重复创建
 
@@ -87,11 +91,12 @@ class TemplateLoader:
             base_path_obj.mkdir(parents=True, exist_ok=True)
 
         # 创建新的环境对象
-        env = Environment(
+        env = build_trusted_file_template_env(
             loader=FileSystemLoader(base_path_str),
             autoescape=True,  # 默认开启自动转义
             trim_blocks=True,
-            lstrip_blocks=True
+            lstrip_blocks=True,
+            extra_filters={"string": DEFAULT_FILTERS["string"]},
         )
 
         # 缓存环境对象

@@ -1,3 +1,5 @@
+import { isDashboardExecutionRenderRoute } from '@/app/routeScope';
+
 const SESSION_EXPIRED_EVENT = 'bk-lite:session-expired';
 
 const SESSION_EXPIRY_IGNORED_PATH_PREFIXES = [
@@ -18,6 +20,8 @@ const SESSION_EXPIRY_IGNORED_REQUEST_PATHS = [
   '/api/proxy/core/api/start_login_auth/',
   '/api/proxy/core/api/reset_pwd/',
   '/api/proxy/core/api/verify_otp_code/',
+  // 分享 prepare 故意无 Bearer；401 不应当成会话过期
+  '/api/proxy/operation_analysis/api/dashboard_share/prepare/',
 ];
 
 let sessionExpiredDispatched = false;
@@ -29,6 +33,11 @@ export interface SessionExpiredDetail {
 
 export const emitSessionExpired = (detail?: SessionExpiredDetail) => {
   if (typeof window === 'undefined' || sessionExpiredDispatched) {
+    return;
+  }
+
+  // Chromium 报告渲染页：任何 401 都不得弹「登录已过期」，否则会污染 PDF
+  if (isDashboardExecutionRenderRoute(window.location.pathname)) {
     return;
   }
 
@@ -108,6 +117,7 @@ export const shouldTriggerSessionExpiry = (
   return Boolean(currentSessionIdentity)
     && requestSessionIdentity === currentSessionIdentity
     && !isAuthPath(window.location.pathname)
+    && !isDashboardExecutionRenderRoute(window.location.pathname)
     && shouldHandleSessionExpiry(input);
 };
 

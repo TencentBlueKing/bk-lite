@@ -72,5 +72,6 @@ class MarkItDownParser:
         if vision_client is not None and vision_model:
             kwargs["llm_client"] = vision_client
             kwargs["llm_model"] = vision_model
-        result = MarkItDown(**kwargs).convert(source)
+        # 内嵌图片为 data URI，便于摄取阶段落盘到 wiki/media 并改写为可访问链接
+        result = MarkItDown(**kwargs).convert(source, keep_data_uris=True)
         return (getattr(result, "text_content", "") or "").strip()

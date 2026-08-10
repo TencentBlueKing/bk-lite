@@ -262,6 +262,7 @@ export const useNodeConfigFlow = ({
           logoUrl: values.logoUrl,
           valueConfig: {
             compare: !!values.compare,
+            compareMode: values.compareMode || 'percent',
             selectedFields: values.selectedFields || [],
             chartType: values.chartType,
             dataSource: values.dataSource,

@@ -1,5 +1,5 @@
-from rest_framework import serializers
 from django.db import transaction
+from rest_framework import serializers
 
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.services.custom_pull_plugin import CustomPullPluginService
@@ -63,16 +63,19 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
 
     def get_parent_monitor_object(self, obj):
         """
-        获取唯一的父监控对象ID（过滤掉子对象）
-        """
-        # 获取所有关联的监控对象中的父对象（parent 为 None 的对象）
-        parent_objects = obj.monitor_object.filter(parent__isnull=True)
+        获取唯一的父监控对象ID(过滤掉子对象)。
 
-        # 如果存在父对象，返回第一个父对象的 ID
+        优先读 to_attr='parent_objects' 的 Prefetch 缓存(list view 路径,无 N+1);
+        缺省时回退到 .filter(parent__isnull=True)(单对象 retrieve / update 等路径,
+        此时 view 不会传 Prefetch)。
+        """
+        cached = getattr(obj, "parent_objects", None)
+        if cached is not None:
+            return cached[0].id if cached else None
+
+        parent_objects = obj.monitor_object.filter(parent__isnull=True)
         if parent_objects.exists():
             return parent_objects.first().id
-
-        # 如果没有父对象，返回 None
         return None
 
     @staticmethod
@@ -110,4 +113,29 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
                 CustomPullPluginService.initialize_templates(plugin)
             elif template_type == "snmp":
                 CustomSnmpPluginService.initialize_templates(plugin)
-        return plugin
+            return plugin
+
+
+class MonitorPluginListSerializer(serializers.ModelSerializer):
+    """集成卡片 / 下拉等 list 场景专用:只序列化可见字段,缩小 payload。"""
+
+    is_pre = serializers.BooleanField(read_only=True)
+    parent_monitor_object = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = MonitorPlugin
+        fields = (
+            "id",
+            "name",
+            "display_name",
+            "description",
+            "template_type",
+            "template_id",
+            "collect_type",
+            "collector",
+            "is_pre",
+            "parent_monitor_object",
+        )
+
+    def get_parent_monitor_object(self, obj):
+        return MonitorPluginSerializer.get_parent_monitor_object(self, obj)

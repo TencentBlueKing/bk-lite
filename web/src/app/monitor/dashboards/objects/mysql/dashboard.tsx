@@ -24,6 +24,7 @@ import styles from './index.module.scss';
 import useMonitorApi from '@/app/monitor/api';
 import {
   DEFAULT_REFRESH_FREQUENCY_LIST,
+  fetchDashboardInstancePages,
   formatMetricValue,
   buildSearchParams,
   getLatestChartValue,
@@ -37,6 +38,9 @@ import {
   buildInstanceSearchTokens,
   parseLegacyParamList,
   buildCollectionStatusTimeline,
+  formatCollectionStatusTimelineHint,
+  resolveCollectionStatusRange,
+  freezeTimeValues,
   toMetricSeries,
   buildMetricItem,
   mergeChartSeries,
@@ -283,6 +287,7 @@ export default function MysqlDashboardPage() {
   const [series, setSeries] = useState<Record<string, MetricSeries>>({});
   const [previousSeries, setPreviousSeries] = useState<Record<string, MetricSeries>>({});
   const [collectionStatusMetric, setCollectionStatusMetric] = useState<MetricSeries | null>(null);
+  const [queryTimeRange, setQueryTimeRange] = useState<{ startMs: number; endMs: number } | null>(null);
   const [instanceOptions, setInstanceOptions] = useState<MysqlInstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
@@ -324,14 +329,14 @@ export default function MysqlDashboardPage() {
     const loadInstances = async () => {
       try {
         setInstanceLoading(true);
-        const data = await getInstanceList(monitorObjectId, { page_size: -1 });
+        const data = await fetchDashboardInstancePages(getInstanceList, monitorObjectId);
         if (!active) {
           return;
         }
 
         const uniqueOptions = new Map<string, MysqlInstanceOption>();
 
-        (data?.results || []).forEach((item: any) => {
+        (data.results || []).forEach((item: any) => {
           const value = String(item.instance_id || '');
           if (!value || uniqueOptions.has(value)) {
             return;
@@ -405,13 +410,16 @@ export default function MysqlDashboardPage() {
 
     try {
       if (isDashboardMode) {
-        const previousTimeValues = buildPreviousPeriodTimeValues(timeValues);
+        const frozenTimeValues = freezeTimeValues(timeValues);
+        const frozenRange = resolveCollectionStatusRange(frozenTimeValues);
+        if (frozenRange) setQueryTimeRange(frozenRange);
+        const previousTimeValues = buildPreviousPeriodTimeValues(frozenTimeValues);
         const compareMetrics = MYSQL_COMPARE_METRICS.map((name) => MYSQL_METRIC_CONFIG_BY_NAME.get(name)).filter(
           (metric): metric is MysqlMetricConfig => Boolean(metric)
         );
-        const summaryResultsPromise = loadMetricGroup(MYSQL_METRIC_GROUPS[0].names, timeValues);
+        const summaryResultsPromise = loadMetricGroup(MYSQL_METRIC_GROUPS[0].names, frozenTimeValues);
 
-        const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(buildSearchParams(MYSQL_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, RAW_VALUE_METRICS, undefined, currentInstanceInterval))
+        const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(buildSearchParams(MYSQL_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, frozenTimeValues, RAW_VALUE_METRICS, undefined, currentInstanceInterval))
           .then((result) =>
             toMetricSeries(
               {
@@ -482,7 +490,7 @@ export default function MysqlDashboardPage() {
         }
 
         MYSQL_METRIC_GROUPS.slice(1).forEach((group) => {
-          loadMetricGroup(group.names, timeValues).then((results) => {
+          loadMetricGroup(group.names, frozenTimeValues).then((results) => {
             if (!loadSequence.isCurrent(loadSeq)) {
               return;
             }
@@ -592,7 +600,16 @@ export default function MysqlDashboardPage() {
   const logSlaveUpdatesValue = getLatest('mysql_variables_log_slave_updates');
   const statusInfo = getCollectionStatus(collectionStatusMetric);
   const metricEmptyText = statusInfo.label === '异常' ? '查询失败' : '暂无采集数据';
-  const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
+  const collectionStatusRange = queryTimeRange ?? resolveCollectionStatusRange(timeValues);
+  const collectionStatusTimeline = buildCollectionStatusTimeline(
+    collectionStatusMetric?.loadState,
+    collectionStatusMetric?.viewData,
+    collectionStatusRange?.startMs ?? Date.now() - 15 * 60_000,
+    collectionStatusRange?.endMs ?? Date.now()
+  );
+  const collectionStatusTimelineHint = collectionStatusRange
+    ? formatCollectionStatusTimelineHint(collectionStatusRange.startMs, collectionStatusRange.endMs)
+    : undefined;
   const qpsDisplay = formatMetricValue(qpsValue, 'cps');
   const connDisplay = formatMetricValue(connValue, 'percent');
   const slowDisplay = formatMetricValue(slowValue, 'cps');
@@ -929,10 +946,6 @@ export default function MysqlDashboardPage() {
     setFrequence(val);
   };
 
-  const goBack = () => {
-    router.push('/monitor/view');
-  };
-
   const onInstanceChange = (value: string) => {
     const target = instanceOptions.find((item) => item.value === value);
     const params = new URLSearchParams(searchParams.toString());
@@ -964,7 +977,6 @@ export default function MysqlDashboardPage() {
             onTimeChange={onTimeChange}
             onFrequenceChange={onFrequenceChange}
             onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
-            onBack={goBack}
             showTimeSelector={false}
             styles={styles}
           />
@@ -1005,6 +1017,7 @@ export default function MysqlDashboardPage() {
                       styles={styles}
                       status={statusInfo}
                       timeline={collectionStatusTimeline}
+                      timelineHint={collectionStatusTimelineHint}
                     />
                     <StatCard
                       styles={styles}

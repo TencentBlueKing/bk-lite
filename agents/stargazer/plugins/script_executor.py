@@ -4,12 +4,17 @@ SSH 脚本执行器插件
 用于统一处理所有基于脚本的采集任务
 """
 
+import asyncio
 import os
 import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, List
-from core.nats_utils import nats_request
+from core.infra.nats_utils import nats_request
+from core.collection.contracts import (
+    AccessProbeResult,
+    AccessProbeStatus,
+)
 
 logger = logging.getLogger("stargazer.ssh_plugin")
 
@@ -39,14 +44,27 @@ class SSHPlugin:
                 - execute_timeout: 超时时间（默认 60）
                 - node_info: 节点信息（可选，用于判断本地执行）
         """
-        self.node_id = params["node_id"]
+        # CMDB/监控侧偶发传 ansible_node_id；配置采集 header 为 cmdbnode_id→node_id
+        self.node_id = str(
+            params.get("node_id") or params.get("ansible_node_id") or ""
+        ).strip()
+        if not self.node_id:
+            raise ValueError("node_id is required for SSHPlugin")
         self.host = params.get("host", "")
         self.connect_ip = params.get("connect_ip") or self.host
         script_path = params.get("script_path")
         self.username = params.get("username")
         self.password = params.get("password")
-        self.port = params.get("port", 22)
-        self.execute_timeout = int(params.get("execute_timeout", 60))
+        self.private_key = params.get("private_key")
+        self.passphrase = params.get("passphrase")
+        # header 常把缺省 port 打成 ""；params.get("port", 22) 无法回落到默认值
+        self.port = self._coerce_port(params.get("port"), default=22)
+        self.execute_timeout = self._coerce_positive_int(
+            params.get("execute_timeout"), default=60
+        )
+        self.probe_timeout = self._coerce_positive_float(
+            params.get("timeout"), default=5.0
+        )
         self.node_info = params.get("node_info", {})
         self.model_id = params.get("model_id")
 
@@ -59,6 +77,33 @@ class SSHPlugin:
         if not script_path:
             raise ValueError("script_path is required for SSHPlugin")
         self.script_path = script_path
+
+    @staticmethod
+    def _coerce_port(raw, *, default: int = 22) -> int:
+        if raw in (None, ""):
+            return default
+        port = int(raw)
+        if not 1 <= port <= 65535:
+            raise ValueError("port must be between 1 and 65535")
+        return port
+
+    @staticmethod
+    def _coerce_positive_int(raw, *, default: int) -> int:
+        if raw in (None, ""):
+            return default
+        value = int(raw)
+        if value <= 0:
+            raise ValueError("timeout must be positive")
+        return value
+
+    @staticmethod
+    def _coerce_positive_float(raw, *, default: float) -> float:
+        if raw in (None, ""):
+            return default
+        value = float(raw)
+        if value <= 0:
+            raise ValueError("timeout must be positive")
+        return value
 
     @property
     def namespace(self):
@@ -127,10 +172,15 @@ class SSHPlugin:
                     "user": self.username,
                     "username": self.username,
                     "password": self.password,
-                    "port": int(self.port),
+                    "port": self.port,
                     "connection_test": True,
                 }
             )
+            # 私钥认证（可选）：与密码路径互斥由上层任务参数保证
+            if self.private_key:
+                exec_params["private_key"] = self.private_key
+            if self.passphrase:
+                exec_params["passphrase"] = self.passphrase
         else:
             # 本地执行时指定脚本类型
             shell_type = self._get_shell_type()
@@ -163,6 +213,56 @@ class SSHPlugin:
                 continue
         return records
 
+    async def probe(self) -> AccessProbeResult:
+        if self.node_info:
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+        exec_params = self._build_exec_params("true")
+        subject = f"ssh.execute.{self.node_id}"
+        payload = json.dumps({"args": [exec_params], "kwargs": {}}).encode()
+        try:
+            response = await nats_request(
+                subject,
+                payload=payload,
+                timeout=self.probe_timeout,
+            )
+        except TimeoutError:
+            return AccessProbeResult(
+                status=AccessProbeStatus.NO_RESPONSE,
+                error_code="protocol_probe_no_response",
+            )
+        if response.get("success"):
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+        error = str(response.get("error") or response.get("result") or "").lower()
+        if any(
+            marker in error
+            for marker in (
+                "permission denied",
+                "authentication failed",
+                "unauthorized",
+            )
+        ):
+            return AccessProbeResult(
+                status=AccessProbeStatus.AUTH_FAILED,
+                error_code="authentication_failed",
+            )
+        if any(
+            marker in error
+            for marker in ("no route", "connection refused", "host is down")
+        ):
+            return AccessProbeResult(
+                status=AccessProbeStatus.TARGET_UNREACHABLE,
+                error_code="target_unreachable",
+            )
+        if "timed out" in error or "timeout" in error:
+            return AccessProbeResult(
+                status=AccessProbeStatus.NO_RESPONSE,
+                error_code="protocol_probe_no_response",
+            )
+        return AccessProbeResult(
+            status=AccessProbeStatus.SERVICE_UNAVAILABLE,
+            error_code="remote_probe_failed",
+        )
+
     async def list_all_resources(self, need_raw=False) -> Dict[str, Any]:
         """
         执行脚本采集
@@ -173,7 +273,7 @@ class SSHPlugin:
         """
         try:
             # 1. 读取脚本内容
-            script_content = self._read_script()
+            script_content = await asyncio.to_thread(self._read_script)
 
             # 2. 构建执行参数
             exec_params = self._build_exec_params(script_content)

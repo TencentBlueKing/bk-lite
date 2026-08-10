@@ -3,7 +3,7 @@
 import React, { useState, forwardRef, useImperativeHandle } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Tabs } from 'antd';
-import OperateDrawer from '@/app/monitor/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import { ModalRef, TabItem, ChartProps, ObjectItem } from '@/app/monitor/types';
 import { ViewModalProps } from '@/app/monitor/types/view';
 import { useTranslation } from '@/utils/i18n';
@@ -12,6 +12,9 @@ import MonitorAlarm from './monitorAlarm';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
+import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
+import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
+import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
 
 const ViewModal = forwardRef<ModalRef, ViewModalProps>(
   ({ monitorObject, monitorName, plugins, metrics, objects = [] }, ref) => {
@@ -62,24 +65,27 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
     };
 
     const linkToDetial = () => {
-      const monitorItem = objects.find(
-        (item: ObjectItem) => item.id === monitorObject
-      );
-      const row: any = {
-        monitorObjId: monitorObject || '',
+      const monitorItem = findByMonitorId(objects, monitorObject);
+      const row: Record<string, string> = {
+        monitorObjId: String(monitorObject || ''),
         name: monitorName,
         monitorObjDisplayName: monitorItem?.display_name || '',
         icon: monitorItem?.icon || OBJECT_DEFAULT_ICON,
-        instance_id: viewConfig.instance_id,
-        instance_name: viewConfig.instance_name,
-        instance_id_values: viewConfig.instance_id_values,
+        instance_id: String(viewConfig.instance_id || ''),
+        instance_name: String(viewConfig.instance_name || ''),
+        instance_id_values: encodeInstanceIdValuesParam(
+          viewConfig.instance_id_values
+        ),
         instance_id_keys: Array.isArray(viewConfig.instance_id_keys) && viewConfig.instance_id_keys.length
           ? viewConfig.instance_id_keys.join(',')
           : Array.isArray(monitorItem?.instance_id_keys)
             ? monitorItem.instance_id_keys.join(',')
             : 'instance_id'
       };
-      const params = new URLSearchParams(row);
+      const params = withDashboardReturnContext(new URLSearchParams(row), {
+        objectId: String(monitorObject || ''),
+        objectName: String(monitorItem?.display_name || monitorItem?.name || '')
+      });
       const professionalDashboardUrl = getProfessionalDashboardUrl(monitorName, monitorItem?.display_name, params.toString());
       const targetUrl = professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
       router.push(targetUrl);

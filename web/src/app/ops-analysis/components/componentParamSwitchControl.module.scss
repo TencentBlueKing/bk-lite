@@ -1,0 +1,26 @@
+.control:global(.ant-segmented) {
+  color: var(--screen-component-switch-color, var(--color-text-2));
+  background: var(--screen-component-switch-bg, var(--color-fill-2));
+  border: 1px solid var(--screen-component-switch-border, transparent);
+  box-shadow: var(--screen-component-switch-shadow, none);
+}
+
+.control:global(.ant-segmented) :global(.ant-segmented-item) {
+  color: inherit;
+}
+
+.control:global(.ant-segmented) :global(.ant-segmented-item:hover) {
+  color: var(--screen-component-switch-hover-color, var(--color-text-1));
+  background: var(--screen-component-switch-hover-bg, transparent);
+}
+
+.control:global(.ant-segmented) :global(.ant-segmented-item-selected) {
+  color: var(--screen-component-switch-selected-color, var(--color-primary));
+  background: var(--screen-component-switch-selected-bg, var(--color-bg-1));
+  box-shadow: var(--screen-component-switch-selected-shadow, none);
+}
+
+.control:global(.ant-segmented) :global(.ant-segmented-thumb) {
+  background: var(--screen-component-switch-selected-bg, var(--color-bg-1));
+  box-shadow: var(--screen-component-switch-selected-shadow, none);
+}

@@ -14,6 +14,7 @@ import MessageActions from '../custom-chat/actions';
 import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
+import PlannedExecutionSteps from './PlannedExecutionSteps';
 import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
@@ -141,7 +142,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }
 
   const authContext = useAuth();
-  const token = (session?.user as any)?.token || authContext?.token || null;
+  const token = authContext?.token || (session?.user as any)?.token || null;
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [value, setValue] = useState('');
@@ -432,6 +433,19 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     async (msg: string, images?: UploadFile[]) => {
       if (pendingChoice && msg.trim() && token) {
         const answer = msg.trim();
+        // 乐观关闭，避免后台慢时用户重复发送
+        updateMessages(prev => prev.map(message => {
+          if (!message.userChoiceRequests) return message;
+          return {
+            ...message,
+            userChoiceRequests: message.userChoiceRequests.map(request =>
+              request.choice_id === pendingChoice.choice_id
+                ? { ...request, status: 'submitted' as const, selected: [answer] }
+                : request
+            ),
+          };
+        }));
+        const hideLoading = antMessage.loading(t('chat.choiceSubmitting') || '正在提交选择...', 0);
         try {
           await postUserChoice(token, {
             execution_id: pendingChoice.execution_id,
@@ -439,19 +453,21 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             choice_id: pendingChoice.choice_id,
             selected: [answer],
           });
+        } catch {
+          antMessage.error(t('chat.choiceSubmitFailed'));
           updateMessages(prev => prev.map(message => {
             if (!message.userChoiceRequests) return message;
             return {
               ...message,
               userChoiceRequests: message.userChoiceRequests.map(request =>
                 request.choice_id === pendingChoice.choice_id
-                  ? { ...request, status: 'submitted' as const, selected: [answer] }
+                  ? { ...request, status: 'pending' as const, selected: undefined }
                   : request
               ),
             };
           }));
-        } catch {
-          antMessage.error(t('chat.choiceSubmitFailed'));
+        } finally {
+          hideLoading();
         }
         return;
       }
@@ -556,18 +572,20 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     }));
   }, [updateMessages]);
 
-  const handleUserChoiceSubmit = useCallback((choiceId: string, status: 'submitted' | 'timeout', selected: string[]) => {
+  const handleUserChoiceSubmit = useCallback((choiceId: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => {
     updateMessages(prev => prev.map(msg => {
       if (!msg.userChoiceRequests) return msg;
       const updated = msg.userChoiceRequests.map(req =>
-        req.choice_id === choiceId ? { ...req, status, selected } : req
+        req.choice_id === choiceId
+          ? { ...req, status, selected: status === 'pending' ? undefined : selected }
+          : req
       );
       return { ...msg, userChoiceRequests: updated };
     }));
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews } = msg;
+    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, toolCalls, isStreamingTools } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
       ? reportFileDownloads.filter(download => Boolean(download.content_base64))
       : [];
@@ -575,85 +593,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
 
-    // 当技能包声明了 config_analysis_report / repair_diff_report capability 且实际有
-    // 报告 emit 时,LLM 自己在 text 里写的 markdown 表格就跟卡片重复了(Gemini
-    // 经常不听 system message 的简短说明提示)。这种情况 hide 整段 text,只保留卡片。
-    // 没声明 capability 时回退老行为:全显示 LLM text。
-    const hasStructuredReports =
-      (Array.isArray(configAnalysisReports) && configAnalysisReports.length > 0) ||
-      (Array.isArray(configDiffReports) && configDiffReports.length > 0);
-
-    // 从 content 字符串里抠出 tool-call-group HTML(getFullContent 把 LLM text 和
-    // tool call HTML 拼成同一个字符串了),只在 hasStructuredReports 时用得上,避免
-    // 前端 hasStructuredReports 分支把"已调用 N 个工具"那块隐藏,让用户看不到过程。
-    //
-    // 实现:用 DOMParser 而不是 regex,因为 tool-call-group 是嵌套 div
-    // (outer > header + body > items),regex 的非贪婪 `.*?` 会匹配到第一个 `</div></div>`
-    // 就停,把 data-tool-id 等关键属性截断,点击展开 handler 就找不到目标。
-    const extractToolCallGroups = (html: string): string => {
-      if (typeof DOMParser === 'undefined' || !html) return '';
-      try {
-        const doc = new DOMParser().parseFromString(
-          `<div id="__root">${html}</div>`,
-          'text/html',
-        );
-        const groups = doc.querySelectorAll('#__root > .tool-call-group');
-        return Array.from(groups).map((g) => g.outerHTML).join('');
-      } catch {
-        return '';
-      }
-    };
-
     // Split content at placeholder markers and render components inline
     const renderContentWithInlineComponents = () => {
       if (!content) return null;
-      // 有结构化报告时:LLM 写的 markdown 表格整段换简短说明,但 tool call 调用
-      // 记录(已调用 N 个工具 + 工具详情)用 DOMParser 抠出来保留——用户能看
-      // 到"agent 实际调了哪些工具得到这份报告",而不只是结论。
-      if (hasStructuredReports) {
-        const summary = '已通过上方结构化卡片展示详细报告,请查看卡片中的统计、问题分组和修复建议。';
-        const preservedToolCalls = extractToolCallGroups(replacedContent);
-        return (
-          <>
-            <div className={styles.markdownBody}>
-              <p className="m-0 text-sm text-[var(--color-text-3)]">{summary}</p>
-            </div>
-            {preservedToolCalls && (
-              <div
-                className="mt-2"
-                dangerouslySetInnerHTML={{ __html: preservedToolCalls }}
-                onClick={(e) => {
-                  handleToolCallClick(e);
-                  handleSuggestionClick(e);
-                }}
-              />
-            )}
-            {(() => {
-              // 把 analysis + diff 合并按 received_at 排,统一渲染。
-              // 之前分两个数组各自排,JSX 又是 diff 在 analysis 前,导致对比卡总在报告卡上面。
-              const orderedReports: Array<{ kind: 'analysis' | 'diff'; report: any }> = [
-                ...(configAnalysisReports || []).map(r => ({ kind: 'analysis' as const, report: r })),
-                ...(configDiffReports || []).map(r => ({ kind: 'diff' as const, report: r })),
-              ].sort((a, b) => (a.report.received_at || 0) - (b.report.received_at || 0));
-              return orderedReports.map(({ kind, report }) => (
-                <div key={report.report_id} className="mt-2">
-                  {kind === 'analysis'
-                    ? <ConfigAnalysisReportCard report={report} />
-                    : <DiffReportCard report={report} />}
-                </div>
-              ));
-            })()}
-            {visibleReportFileDownloads.length > 0 && (
-              <div className="mt-2">
-                {visibleReportFileDownloads.map(dl => (
-                  <ReportDownloadCard key={dl.download_id} download={dl} />
-                ))}
-              </div>
-            )}
-          </>
-        );
-      }
-
       // Check if content has inline markers
       const markerPattern = /<!--(CONFIG_DIFF|CONFIG_ANALYSIS|USER_CHOICE):([^>]+)-->/g;
       const hasMarkers = markerPattern.test(replacedContent);
@@ -887,6 +829,13 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         <SkillView items={skillViews} />
         {Array.isArray(agentStepProgress) && agentStepProgress.length > 0 && (
           <AgentStepProgress steps={agentStepProgress} />
+        )}
+        {Array.isArray(plannedExecutionSteps) && plannedExecutionSteps.length > 0 && (
+          <PlannedExecutionSteps
+            steps={plannedExecutionSteps}
+            toolCalls={Array.isArray(toolCalls) ? toolCalls : []}
+            isStreaming={Boolean(isStreamingTools)}
+          />
         )}
         {browserStepsHistory && browserStepsHistory.steps.length > 0 && (
           <BrowserStepProgress history={browserStepsHistory} />

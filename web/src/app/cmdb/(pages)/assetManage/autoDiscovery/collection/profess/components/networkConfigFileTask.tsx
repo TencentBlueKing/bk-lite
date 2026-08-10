@@ -3,8 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Form, Input, Spin, Tooltip } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
-import { useLocale } from '@/context/locale';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useTranslation } from '@/utils/i18n';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import CredentialPoolEditor from './credentialPoolEditor';
 import { useTaskForm, getCleanupFormValues, getCycleFormValues } from '../hooks/useTaskForm';
@@ -23,6 +23,8 @@ import {
 } from '../hooks/formatTaskValues';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import { useCollectApi } from '@/app/cmdb/api';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
+import { resolveCredentialHelp } from './credentialHelp';
 
 interface NetworkConfigFileTaskProps {
   onClose: () => void;
@@ -41,7 +43,8 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
   modelItem,
   editId,
 }) => {
-  const localeContext = useLocale();
+  const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const { selectedGroup } = useUserInfoContext();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const copyTaskData = useAssetManageStore((state) => state.copyTaskData);
@@ -164,9 +167,8 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
   return (
     <Spin spinning={loading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="horizontal"
-        labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
         onFinish={onFinish}
         initialValues={initialFormValues}
       >
@@ -228,7 +230,11 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
           </Form.Item>
 
           <Form.Item name="credentialPool">
-            <CredentialPoolEditor credentialShape="network_config_file" editMode={Boolean(editId)} />
+            <CredentialPoolEditor
+              credentialShape="network_config_file"
+              credentialHelp={resolveCredentialHelp(modelItem, t)}
+              editMode={Boolean(editId)}
+            />
           </Form.Item>
         </BaseTaskForm>
       </Form>

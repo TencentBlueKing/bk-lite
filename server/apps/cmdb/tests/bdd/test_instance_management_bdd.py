@@ -1,6 +1,6 @@
 """CMDB 实例管理 BDD（中文 Gherkin）。
 
-对照 spec/prd/CMDB·资产·实例：
+对照 specs/capabilities/legacy-prd-cmdb-资产.md·实例：
 - 模型属性 → 实例创建/更新校验属性映射；
 - 导入结果聚合消息生成；
 - 拓扑节点权限裁剪（按 inst 可见集合 + 中心节点保留策略）；

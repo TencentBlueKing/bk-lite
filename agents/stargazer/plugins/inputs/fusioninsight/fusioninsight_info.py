@@ -14,6 +14,7 @@ PrivateCloudManage、@register、双类 __getattr__ 分发、监控相关方法�
 输出结构：{"result": {"fusioninsight_cluster":[...], "fusioninsight_host":[...]},
 "success": bool}
 """
+import asyncio
 import base64
 import traceback
 
@@ -93,7 +94,15 @@ class FusionInsightManager:
         self.region = self.params.get("region", "") or ""
         self.host = self.params.get("host", "") or ""
         self.scheme = self.params.get("scheme", "https") or "https"
-        self.basic_url = f"{self.scheme}://{self.host}/web"
+        self.port = int(self.params.get("port", 443))
+        raw_verify_tls = self.params.get("verify_tls", True)
+        self.verify_tls = (
+            raw_verify_tls
+            if isinstance(raw_verify_tls, bool)
+            else str(raw_verify_tls).strip().lower() in {"1", "true", "yes", "on"}
+        )
+        port_suffix = "" if self.port == 443 else f":{self.port}"
+        self.basic_url = f"{self.scheme}://{self.host}{port_suffix}/web"
         self.cw_headers = {"Content-Type": "application/json"}
         self._handle_request = handle_request
         self._session = None
@@ -111,7 +120,13 @@ class FusionInsightManager:
         new_string = _str2base64(f"{self.account}:{self.password}")
         headers = {"Authorization": f"Basic {new_string}"}
         url = get_resource_uri("get_session", self.basic_url)
-        resp = self._handle_request("GET", url, session=self._session, headers=headers, verify=False)
+        resp = self._handle_request(
+            "GET",
+            url,
+            session=self._session,
+            headers=headers,
+            verify=self.verify_tls,
+        )
         if not resp["result"]:
             raise Exception(resp["message"])
         return self._session
@@ -128,7 +143,13 @@ class FusionInsightManager:
     def list_clusters(self, **kwargs):
         self._ensure_auth()
         url = get_resource_uri("get_clusters", self.basic_url)
-        resp = self._handle_request("GET", url, session=self._session, headers=self.cw_headers, verify=False)
+        resp = self._handle_request(
+            "GET",
+            url,
+            session=self._session,
+            headers=self.cw_headers,
+            verify=self.verify_tls,
+        )
         if not resp["result"]:
             return {"result": False, "message": resp["message"]}
         data = _filter_obj_fields_by_list(resp["data"], ["id", "name"])
@@ -139,7 +160,12 @@ class FusionInsightManager:
         url = get_resource_uri("get_hosts", self.basic_url)
         params = {"no_page": True}
         resp = self._handle_request(
-            "GET", url, session=self._session, params=params, headers=self.cw_headers, verify=False
+            "GET",
+            url,
+            session=self._session,
+            params=params,
+            headers=self.cw_headers,
+            verify=self.verify_tls,
         )
         if not resp["result"]:
             return {"result": False, "message": resp["message"]}
@@ -207,7 +233,10 @@ class FusionInsightManager:
             "fusioninsight_host": hosts,
         }
 
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         try:
             result = self.exec_script()
             return {"result": result, "success": True}

@@ -113,7 +113,7 @@ export default function OtpVerificationForm({
           </div>
           <p className="text-sm text-[var(--color-text-1)] mb-3">{t('signin.otp.scanQrStep')}</p>
           <div className="flex pl-4">
-            <img src={`data:image/png;base64, ${qrCodeUrl}`} alt={t('signin.otp.qrAlt')} className="w-48 h-48 border border-gray-300 rounded-lg" />
+            <img src={`data:image/png;base64, ${qrCodeUrl}`} alt={t('signin.otp.qrAlt')} className="h-48 w-48 rounded-md border border-(--color-border)" />
           </div>
         </div>
       )}

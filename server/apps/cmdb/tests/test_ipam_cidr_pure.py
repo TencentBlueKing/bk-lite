@@ -1,4 +1,4 @@
-"""IPAM CIDR/利用率纯逻辑测试。规格见 docs/superpowers/specs/2026-06-23-cmdb-ipam-p1-design.md §3/§4。"""
+"""IPAM CIDR/利用率纯逻辑测试。"""
 import pytest
 from apps.cmdb.utils.ipam_cidr import (
     parse_subnet, subnets_overlap, subnet_capacity, ip_in_subnet, compute_utilization,

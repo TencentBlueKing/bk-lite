@@ -2,8 +2,11 @@
 from typing import List
 from collections import defaultdict
 
+from django.db import transaction
+
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.constants.constants import AlertStatus, EventAction, SessionStatus
+from apps.alerts.aggregation.recovery.match_key import build_recovery_match_key
 from apps.core.logger import alert_logger as logger
 
 
@@ -51,16 +54,16 @@ class AlertRecoveryChecker:
         
         # 2. 按 action 分组，构建索引
         created_events = []
-        recovery_by_external_id = defaultdict(list)  # external_id -> [recovery_events]
+        recovery_by_match_key = defaultdict(list)
         for event in all_events:
             if event.action == EventAction.CREATED:
                 created_events.append(event)
             elif event.action in [EventAction.RECOVERY, EventAction.CLOSED]:
                 # 只记录有 external_id 的恢复事件
                 if event.external_id:
-                    recovery_by_external_id[event.external_id].append(event)
+                    recovery_by_match_key[build_recovery_match_key(event)].append(event)
         # 3. 如果没有 CREATED 事件，无需恢复
-        if not created_events and recovery_by_external_id.keys().__len__() == 0:
+        if not created_events and not recovery_by_match_key:
             logger.debug("[AlertRecovery] Alert %s 没有 CREATED 事件和 恢复事件，无需恢复", alert.alert_id)
             return False
         
@@ -80,7 +83,9 @@ class AlertRecoveryChecker:
                 continue
             
             # 查找相同 external_id 的 RECOVERY/CLOSED 事件
-            recovery_events = recovery_by_external_id.get(external_id, [])
+            recovery_events = recovery_by_match_key.get(
+                build_recovery_match_key(created_event), []
+            )
             
             created_event_time = AlertRecoveryChecker._get_created_event_time(created_event)
 
@@ -123,7 +128,9 @@ class AlertRecoveryChecker:
             )
 
         from apps.alerts.service.reminder_service import ReminderService
+        from apps.alerts.service.recovery_notify import notify_alert_recovered
 
         ReminderService.stop_reminder_task(alert)
-        
+        transaction.on_commit(lambda a=alert: notify_alert_recovered(a))
+
         return True

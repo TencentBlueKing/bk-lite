@@ -15,6 +15,8 @@
       "required": true,
       "editable": false,
       "description": "用于访问接口的用户名",
+      "guide_short": "建议使用只读监控账号并授予 pg_monitor 角色，用于读取 pg_stat_* 视图。",
+      "guide_short_en": "Use a read-only monitoring account with the pg_monitor role to read the required pg_stat_* views.",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -22,7 +24,7 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.address",
         "to_form": {
-          "regex": "user=([^ ]+)"
+          "regex": "://([^:]+):"
         }
       },
       "label_en": "Username",
@@ -36,6 +38,8 @@
       "editable": false,
       "encrypted": true,
       "description": "对应的登录密码",
+      "guide_short": "填写与用户名对应的登录密码，注意不要带入首尾空格；支持含特殊字符的密码。",
+      "guide_short_en": "Enter the password for the configured username without leading or trailing spaces. Passwords containing special characters are supported.",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"
@@ -54,13 +58,15 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的主机",
+      "guide_short": "填写 PostgreSQL 服务所在的主机 IP 或域名，例如 10.0.0.10；保存前在采集节点 ping/telnet 验证可达。",
+      "guide_short_en": "Enter the PostgreSQL service IP address or hostname, such as 10.0.0.10, and verify network reachability from the collector node.",
       "widget_props": {
         "placeholder": "主机地址"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.address",
         "to_form": {
-          "regex": "host=([^ ]+)"
+          "regex": "@([^:]+):"
         }
       },
       "label_en": "Host"
@@ -73,6 +79,8 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的端口",
+      "guide_short": "PostgreSQL 服务端口，默认 5432；如使用非默认端口请如实填写。",
+      "guide_short_en": "Enter the actual PostgreSQL service port, commonly 5432. Use the configured value for non-default deployments.",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -82,10 +90,73 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.address",
         "to_form": {
-          "regex": "port=(\\d+)"
+          "regex": ":(\\d+)/"
         }
       },
       "label_en": "Port"
+    },
+    {
+      "name": "dbname",
+      "label": "数据库名",
+      "type": "input",
+      "required": true,
+      "default_value": "postgres",
+      "editable": false,
+      "description": "用于建立监控连接的数据库名",
+      "guide_short": "填写监控账号可登录的数据库名，默认 postgres；Telegraf 会通过该连接采集各库统计，并忽略 template0/template1。",
+      "guide_short_en": "Enter a database the monitoring account can log into, commonly postgres. Telegraf uses this connection to collect per-database stats and ignores template0/template1.",
+      "widget_props": {
+        "placeholder": "数据库名",
+        "placeholder_en": "Database Name"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.address",
+        "to_form": {
+          "regex": "/([^/?]+)(?:\\?|$)"
+        }
+      },
+      "label_en": "Database Name",
+      "description_en": "Database name used to establish the monitoring connection"
+    },
+    {
+      "name": "sslmode",
+      "label": "SSL 模式",
+      "type": "select",
+      "required": true,
+      "default_value": "disable",
+      "editable": false,
+      "description": "PostgreSQL 连接的 SSL 模式",
+      "guide_short": "按目标要求选择 disable、prefer 或 require。本模板不支持证书路径，verify-ca / verify-full 暂不可用。",
+      "guide_short_en": "Choose disable, prefer, or require according to the target. Certificate paths are not supported; verify-ca and verify-full are unavailable in this template.",
+      "widget_props": {
+        "placeholder": "SSL 模式",
+        "placeholder_en": "SSL Mode"
+      },
+      "options": [
+        {
+          "label": "disable",
+          "value": "disable",
+          "label_en": "disable"
+        },
+        {
+          "label": "prefer",
+          "value": "prefer",
+          "label_en": "prefer"
+        },
+        {
+          "label": "require",
+          "value": "require",
+          "label_en": "require"
+        }
+      ],
+      "transform_on_edit": {
+        "origin_path": "child.content.config.address",
+        "to_form": {
+          "regex": "sslmode=([^&]+)"
+        }
+      },
+      "label_en": "SSL Mode",
+      "description_en": "SSL mode for the PostgreSQL connection"
     },
     {
       "name": "interval",
@@ -94,6 +165,8 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "默认 60 秒；过低会增加数据库压力，过高会延误告警。",
+      "guide_short_en": "The default is 60 seconds. Short intervals increase database load, while long intervals delay alerts.",
       "widget_props": {
         "min": 1,
         "precision": 0,

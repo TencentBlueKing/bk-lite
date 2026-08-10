@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models.functions import Cast, Concat
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
@@ -7,15 +8,57 @@ from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_object import MonitorObject
 
 
-class PolicyTemplate(models.Model):
+class PolicyTemplate(TimeInfo, MaintainerInfo):
+    TYPE_BUILTIN = "builtin"
+    TYPE_CUSTOM = "custom"
+    TYPE_CHOICES = ((TYPE_BUILTIN, "内置"), (TYPE_CUSTOM, "自定义"))
+
+    key = models.CharField(max_length=255, verbose_name="模板稳定标识")
+    scope_key = models.CharField(max_length=64, db_index=True, verbose_name="模板唯一性作用域")
+    template_type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES,
+        db_index=True,
+        verbose_name="模板类型",
+    )
+    organization = models.IntegerField(null=True, blank=True, db_index=True, verbose_name="所属项目")
     monitor_object = models.ForeignKey(MonitorObject, on_delete=models.CASCADE, verbose_name="监控对象")
     plugin = models.ForeignKey(MonitorPlugin, on_delete=models.CASCADE, verbose_name="监控插件")
-    templates = models.JSONField(default=list, verbose_name="策略模板列表")
+    name = models.CharField(max_length=100, verbose_name="模板名称")
+    description = models.TextField(blank=True, default="", verbose_name="模板描述")
+    config = models.JSONField(default=dict, verbose_name="策略模板配置")
 
     class Meta:
         verbose_name = "监控策略模板"
         verbose_name_plural = "监控策略模板"
-        unique_together = ("monitor_object", "plugin")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("scope_key", "key"),
+                name="uniq_policy_template_scope_key",
+            ),
+            models.UniqueConstraint(
+                fields=("scope_key", "monitor_object", "plugin", "name"),
+                name="uniq_policy_template_scope_name",
+            ),
+            models.CheckConstraint(
+                check=(
+                    models.Q(
+                        template_type="builtin",
+                        organization__isnull=True,
+                        scope_key="builtin",
+                    )
+                    | models.Q(
+                        template_type="custom",
+                        organization__isnull=False,
+                        scope_key=Concat(
+                            models.Value("custom:"),
+                            Cast(models.F("organization"), output_field=models.CharField()),
+                        ),
+                    )
+                ),
+                name="policy_template_type_org_consistent",
+            ),
+        ]
 
 
 class MonitorPolicy(TimeInfo, MaintainerInfo):

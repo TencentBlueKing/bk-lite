@@ -5,11 +5,11 @@ const COUNT_LABELS = ['', 'K', 'Mil', 'Bil', 'Tri', 'Quadr', 'Quint', 'Sext', 'S
 const DATA_BITS_UNITS: MetricUnit[] = ['bits', 'kilobits', 'megabits', 'gigabits', 'terabits', 'petabits'];
 const DATA_BITS_LABELS = ['b', 'Kb', 'Mb', 'Gb', 'Tb', 'Pb'];
 const DATA_BYTES_UNITS: MetricUnit[] = ['bytes', 'kibibytes', 'mebibytes', 'gibibytes', 'tebibytes', 'pebibytes'];
-const DATA_BYTES_LABELS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+const DATA_BYTES_LABELS = ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
 const DATA_RATE_BITS_UNITS: MetricUnit[] = ['bitps', 'kbitps', 'mbitps', 'gbitps', 'tbitps', 'pbitps'];
 const DATA_RATE_BITS_LABELS = ['b/s', 'Kb/s', 'Mb/s', 'Gb/s', 'Tb/s', 'Pb/s'];
 const DATA_RATE_BYTES_UNITS: MetricUnit[] = ['byteps', 'kibyteps', 'mibyteps', 'gibyteps', 'tibyteps', 'pibyteps'];
-const DATA_RATE_BYTES_LABELS = ['B/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s', 'PiB/s'];
+const DATA_RATE_BYTES_LABELS = ['Bytes/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s', 'PiB/s'];
 const HERTZ_UNITS: MetricUnit[] = ['hertz', 'kilohertz', 'megahertz'];
 const HERTZ_LABELS = ['Hz', 'KHz', 'MHz'];
 const TIME_UNITS = ['ns', 'µs', 'ms', 's', 'm', 'h', 'd'] as const;
@@ -103,30 +103,32 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
     return { value: '--', unit: '' };
   }
 
-  if (unit === 'percent') return { value: value.toFixed(1), unit: '%' };
-  if (unit === 'msps') return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: 'ms/s' };
-  if (unit === 'cps') return formatCountRate(value);
-  if (COUNT_UNITS.includes(unit)) return formatAutoScaled(value, unit, COUNT_UNITS, COUNT_LABELS, 1000);
-  if (DATA_BITS_UNITS.includes(unit)) return formatAutoScaled(value, unit, DATA_BITS_UNITS, DATA_BITS_LABELS, 1000);
-  if (DATA_BYTES_UNITS.includes(unit)) return formatAutoScaled(value, unit, DATA_BYTES_UNITS, DATA_BYTES_LABELS, 1024);
-  if (DATA_RATE_BITS_UNITS.includes(unit)) return formatAutoScaled(value, unit, DATA_RATE_BITS_UNITS, DATA_RATE_BITS_LABELS, 1000);
-  if (DATA_RATE_BYTES_UNITS.includes(unit)) return formatAutoScaled(value, unit, DATA_RATE_BYTES_UNITS, DATA_RATE_BYTES_LABELS, 1024);
-  if ((TIME_UNITS as readonly string[]).includes(unit)) return formatTimeValue(value, unit);
-  if (unit === 'us') return formatTimeValue(value, 'µs');
-  if (HERTZ_UNITS.includes(unit)) return formatAutoScaled(value, unit, HERTZ_UNITS, HERTZ_LABELS, 1000);
-  if (unit === 'celsius') return { value: formatScaledValue(value), unit: '°C' };
-  if (unit === 'fahrenheit') return { value: formatScaledValue(value), unit: '°F' };
-  if (unit === 'kelvin') return { value: formatScaledValue(value), unit: 'K' };
-  if (unit === 'watts') return { value: formatScaledValue(value), unit: 'W' };
-  if (unit === 'volts') return { value: formatScaledValue(value), unit: 'V' };
+  const normalizedUnit = unit === 'Bps' ? 'byteps' : unit;
 
-  if (unit === 'none') {
+  if (normalizedUnit === 'percent') return { value: value.toFixed(1), unit: '%' };
+  if (normalizedUnit === 'msps') return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: 'ms/s' };
+  if (normalizedUnit === 'cps') return formatCountRate(value);
+  if (COUNT_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, COUNT_UNITS, COUNT_LABELS, 1000);
+  if (DATA_BITS_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_BITS_UNITS, DATA_BITS_LABELS, 1000);
+  if (DATA_BYTES_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_BYTES_UNITS, DATA_BYTES_LABELS, 1024);
+  if (DATA_RATE_BITS_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_RATE_BITS_UNITS, DATA_RATE_BITS_LABELS, 1000);
+  if (DATA_RATE_BYTES_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_RATE_BYTES_UNITS, DATA_RATE_BYTES_LABELS, 1024);
+  if ((TIME_UNITS as readonly string[]).includes(normalizedUnit)) return formatTimeValue(value, normalizedUnit);
+  if (normalizedUnit === 'us') return formatTimeValue(value, 'µs');
+  if (HERTZ_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, HERTZ_UNITS, HERTZ_LABELS, 1000);
+  if (normalizedUnit === 'celsius') return { value: formatScaledValue(value), unit: '°C' };
+  if (normalizedUnit === 'fahrenheit') return { value: formatScaledValue(value), unit: '°F' };
+  if (normalizedUnit === 'kelvin') return { value: formatScaledValue(value), unit: 'K' };
+  if (normalizedUnit === 'watts') return { value: formatScaledValue(value), unit: 'W' };
+  if (normalizedUnit === 'volts') return { value: formatScaledValue(value), unit: 'V' };
+
+  if (normalizedUnit === 'none') {
     return { value: value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'), unit: '' };
   }
 
   return {
     value: formatScaledValue(value),
-    unit: String(unit || '')
+    unit: String(normalizedUnit || '')
   };
 };
 
@@ -135,15 +137,22 @@ export const formatEnumValue = (value: number, enumMap?: MetricEnumMap) => {
     return { value: '--', color: undefined as string | undefined };
   }
 
+  // 优先精确匹配（如端口部分失活 0.5），避免 Math.round(0.5)→1 误映射为存活。
+  const exactMatch = enumMap[value];
+  if (exactMatch) {
+    return { value: exactMatch.label, color: exactMatch.color };
+  }
+
   const normalizedValue = Math.round(value);
   const match = enumMap[normalizedValue];
   if (match) {
     return { value: match.label, color: match.color };
   }
 
+  // 枚举失配（常见于 mock 用连续浮点冒充 0/1）：显示「未知」，禁止退化成裸数字误导。
   return {
-    value: formatMetricValue(value, 'none').value,
-    color: undefined
+    value: '未知',
+    color: '#8c95a8'
   };
 };
 

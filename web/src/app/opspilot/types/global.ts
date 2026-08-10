@@ -86,6 +86,23 @@ export interface AgentStepProgressData {
   total_elapsed_seconds?: number;
 }
 
+/** DeepAgent planned_execution_step 分组后的对话展示数据 */
+export interface PlannedExecutionStepView {
+  step_index: number;
+  total_steps: number;
+  objective: string;
+  status: 'running' | 'done';
+  toolCallIds: string[];
+}
+
+export interface PlannedStepToolCallView {
+  id: string;
+  name: string;
+  args: string;
+  status: 'calling' | 'completed';
+  result?: string;
+}
+
 export interface SkillViewItem {
   id: string;
   name: string;
@@ -117,6 +134,11 @@ export interface CustomChatMessage {
   reportFileDownloads?: ReportFileDownload[];
   repairCommands?: RepairCommands[];
   agentStepProgress?: AgentStepProgressData[];
+  plannedExecutionSteps?: PlannedExecutionStepView[];
+  /** 与 plannedExecutionSteps 配套的工具快照；无步骤分组时也可用于历史回放 */
+  toolCalls?: PlannedStepToolCallView[];
+  /** 流式进行中为 true；结束后收起计划步骤 */
+  isStreamingTools?: boolean;
   skillViews?: SkillViewItem[];
   wikiCitations?: WikiCitation[];
 }
@@ -174,6 +196,7 @@ export interface ConfigDiffReport {
   report_id: string;
   title: string;
   cluster_name: string;
+  skill_id?: number;
   a2ui?: A2UIReportContract;
   items: ConfigDiffItem[];
   received_at: number;
@@ -189,7 +212,7 @@ export interface ConfigAnalysisReportItem {
 
 export interface ConfigAnalysisReportScope {
   cluster_name?: string;
-  namespace?: string | null;
+  namespace?: string | string[] | null;
   instance_name?: string | null;
   name?: string | null;
   target_name?: string | null;

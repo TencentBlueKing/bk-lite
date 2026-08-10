@@ -6,11 +6,15 @@ from django.utils import timezone
 
 from apps.monitor.models import CollectDetectTask, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.services.collect_detect_runtime import (
-    build_write_config_and_telegraf_command,
+    build_telegraf_detect_execution,
     disable_real_outputs,
     render_telegraf_config_template,
     sanitize_execution_result,
 )
+from apps.monitor.services.website_config import normalize_website_request_config
+from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.models import Node
+from apps.node_mgmt.services.package import PackageService
 from apps.rpc.executor import Executor
 
 
@@ -35,6 +39,8 @@ class CollectDetectService:
     def create_task(cls, payload: dict, user, organization: int):
         plugin = cls._get_supported_plugin(payload.get("monitor_plugin_id"))
         instance = payload.get("instance") or {}
+        if plugin.collect_type == "web":
+            instance = normalize_website_request_config(instance)
         env = payload.get("env") or {}
         runtime_payload = {
             "instance": instance,
@@ -92,18 +98,26 @@ class CollectDetectService:
             config_content = disable_real_outputs(
                 "\n\n".join(render_telegraf_config_template(template.content, config_context) for template in templates)
             )
-            config_path = f"/tmp/bklite-telegraf-detect-{task.id}-{uuid.uuid4().hex}.toml"
-            command = build_write_config_and_telegraf_command(config_path, config_content)
+            operating_system, executable_path = cls._resolve_telegraf_runtime(task.node_id)
+            config_file_name = f"bklite-telegraf-detect-{task.id}-{uuid.uuid4().hex}.toml"
+            command, shell = build_telegraf_detect_execution(
+                operating_system=operating_system,
+                executable_path=executable_path,
+                config_file_name=config_file_name,
+                config_content=config_content,
+            )
 
             task.phase = "execute_once"
             task.save(update_fields=["phase", "updated_at"])
             raw_result = Executor(task.node_id).execute_local(
                 command,
                 timeout=int(runtime_payload.get("timeout") or 60),
-                shell="sh",
+                shell=shell,
                 env=env,
             )
             result = sanitize_execution_result(raw_result, sensitive_values=list(env.values()))
+            if plugin.collect_type == "web" and instance.get("request_url"):
+                result["request_url"] = instance["request_url"]
             task.result = result
             task.status = "success" if result["success"] else "failed"
             task.phase = "parse_output"
@@ -124,11 +138,30 @@ class CollectDetectService:
             return task.result
 
     @staticmethod
+    def _resolve_telegraf_runtime(node_id):
+        node = Node.objects.filter(id=node_id).first()
+        if not node:
+            raise ValueError("采集节点不存在")
+        if node.operating_system not in {NodeConstants.LINUX_OS, NodeConstants.WINDOWS_OS}:
+            raise ValueError(f"不支持的节点操作系统: {node.operating_system}")
+
+        collector = PackageService.resolve_collector_by_architecture(
+            node.operating_system,
+            "Telegraf",
+            node.cpu_architecture,
+        )
+        if not collector:
+            raise ValueError("未找到适用的 Telegraf 采集器")
+        return node.operating_system, collector.executable_path
+
+    @staticmethod
     def _get_supported_plugin(plugin_id):
+        from apps.monitor.services.ui_template_locale import resolve_support_collect_detect
+
         plugin = MonitorPlugin.objects.filter(id=plugin_id).first()
         if not plugin:
             raise ValueError("监控插件不存在")
-        if not plugin.support_collect_detect:
+        if not resolve_support_collect_detect(plugin, fallback=plugin.support_collect_detect):
             raise ValueError("当前插件不支持采集检测")
         if plugin.collector != "Telegraf" or plugin.template_type != "builtin":
             raise ValueError("当前插件不支持采集检测")
@@ -189,7 +222,10 @@ class CollectDetectService:
         for key, value in (instance or {}).items():
             if value in (None, "") or not cls._is_sensitive_key(key):
                 continue
-            env[f"{str(key).upper()}__{config_id}"] = str(value)
+            env_key = str(key).upper()
+            if env_key.startswith("ENV_"):
+                env_key = env_key[4:]
+            env[f"{env_key}__{config_id}"] = str(value)
         env.update(explicit_env or {})
         return env
 
