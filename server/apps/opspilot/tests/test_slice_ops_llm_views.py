@@ -169,13 +169,19 @@ class TestLLMModelViewSet:
         msg2 = vs._validate_llm_model_name("same", [{"id": 1, "name": "T1"}], [1], v1.id)
         assert msg2 == "T1"
 
-    def test_destroy(self, mocker):
+    def test_destroy_保留关联智能体并置空模型(self, mocker):
         mocker.patch(f"{LLM_MOD}.log_operation")
         vendor = _vendor()
         m = LLMModel.objects.create(name="del-m", team=[1], vendor=vendor, model="x")
+        skill = LLMSkill.objects.create(name="keep-skill", team=[1], llm_model=m, is_template=False)
+
         resp = _dispatch(LLMModelViewSet, "destroy", "delete", pk=m.id)
+
         assert resp.status_code == 204
         assert not LLMModel.objects.filter(id=m.id).exists()
+        assert LLMSkill.objects.filter(id=skill.id).exists()
+        skill.refresh_from_db()
+        assert skill.llm_model_id is None
 
     def test_update_重名返回false(self, mocker):
         mocker.patch(f"{LLM_MOD}.log_operation")
