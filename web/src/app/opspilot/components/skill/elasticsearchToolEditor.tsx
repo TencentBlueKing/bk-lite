@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
-import { Button, Empty, Input, Switch, Tag } from 'antd';
+import { Button, Empty, Input, Switch } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import ToolConnectionStatusTag from '@/app/opspilot/components/opspilot-tool-editor/tool-connection-status-tag';
 
 export type ElasticsearchTestStatus = 'untested' | 'success' | 'failed';
 
@@ -29,11 +30,6 @@ interface ElasticsearchToolEditorProps {
   onTest: () => void;
 }
 
-const statusColorMap: Record<ElasticsearchTestStatus, string> = {
-  untested: 'default',
-  success: 'blue',
-  failed: 'red',
-};
 
 const ElasticsearchToolEditor: React.FC<ElasticsearchToolEditorProps> = ({
   instances,
@@ -58,9 +54,6 @@ const ElasticsearchToolEditor: React.FC<ElasticsearchToolEditorProps> = ({
     prevLengthRef.current = instances.length;
   }, [instances.length]);
 
-  const renderStatus = (status: ElasticsearchTestStatus) => {
-    return <Tag color={statusColorMap[status]}>{t(`tool.elasticsearch.status.${status}`)}</Tag>;
-  };
 
   return (
     <div className="flex gap-4 min-h-[480px]">
@@ -115,7 +108,7 @@ const ElasticsearchToolEditor: React.FC<ElasticsearchToolEditorProps> = ({
               <div className="text-lg font-medium">
                 {t('tool.elasticsearch.configTitle').replace('{name}', selectedInstance.name || t('tool.elasticsearch.unnamedInstance'))}
               </div>
-              {renderStatus(selectedInstance.testStatus)}
+              <ToolConnectionStatusTag scope="tool.elasticsearch" status={selectedInstance.testStatus} />
             </div>
 
             <div>

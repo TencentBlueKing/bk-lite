@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
-import { Button, Empty, Input, InputNumber, Tag } from 'antd';
+import { Button, Empty, Input, InputNumber } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import ToolConnectionStatusTag from '@/app/opspilot/components/opspilot-tool-editor/tool-connection-status-tag';
 
 export type MssqlTestStatus = 'untested' | 'success' | 'failed';
 
@@ -29,11 +30,6 @@ interface MssqlToolEditorProps {
   onTest: () => void;
 }
 
-const statusColorMap: Record<MssqlTestStatus, string> = {
-  untested: 'default',
-  success: 'blue',
-  failed: 'red',
-};
 
 const MssqlToolEditor: React.FC<MssqlToolEditorProps> = ({
   instances,
@@ -58,9 +54,6 @@ const MssqlToolEditor: React.FC<MssqlToolEditorProps> = ({
     prevLengthRef.current = instances.length;
   }, [instances.length]);
 
-  const renderStatus = (status: MssqlTestStatus) => {
-    return <Tag color={statusColorMap[status]}>{t(`tool.mssql.status.${status}`)}</Tag>;
-  };
 
   return (
     <div className="flex gap-4 min-h-[480px]">
@@ -115,7 +108,7 @@ const MssqlToolEditor: React.FC<MssqlToolEditorProps> = ({
               <div className="text-lg font-medium">
                 {t('tool.mssql.configTitle').replace('{name}', selectedInstance.name || t('tool.mssql.unnamedInstance'))}
               </div>
-              {renderStatus(selectedInstance.testStatus)}
+              <ToolConnectionStatusTag scope="tool.mssql" status={selectedInstance.testStatus} />
             </div>
 
             <div>

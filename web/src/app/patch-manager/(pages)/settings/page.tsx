@@ -11,6 +11,7 @@ import dayjs from 'dayjs';
 import { PlusOutlined, ClockCircleOutlined, LinkOutlined, EditOutlined, PlayCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import type { ColumnsType } from 'antd/es/table';
+import SearchActionBar from '@/components/search-action-bar';
 import useApiClient from '@/utils/request';
 import usePatchManagerApi from '@/app/patch-manager/api';
 import type { PatchSource, PatchSourceType } from '@/app/patch-manager/types';
@@ -354,19 +355,24 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
   return (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, flexShrink: 0 }}>
-          <Input.Search
-            placeholder={t('patchManager.patchSourceName')}
-            value={sourceSearch}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            onSearch={() => loadSources(1)}
-            allowClear
-            style={{ width: 200 }}
-          />
-          <Space>
-            <PermissionWrapper requiredPermissions={['Add']}><Button type="primary" icon={<PlusOutlined />} onClick={() => openSourceModal()}>{t('patchManager.settingsPage.addSource')}</Button></PermissionWrapper>
-          </Space>
-        </div>
+        <SearchActionBar
+          spacing="flush"
+          searchClassName="!w-[200px]"
+          searchProps={{
+            placeholder: t('patchManager.patchSourceName'),
+            value: sourceSearch,
+            onChange: (e) => handleSearchChange(e.target.value),
+            onSearch: () => loadSources(1),
+            allowClear: true,
+          }}
+          actions={(
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openSourceModal()}>
+                {t('patchManager.settingsPage.addSource')}
+              </Button>
+            </PermissionWrapper>
+          )}
+        />
         <div style={{ flex: 1, minHeight: 0 }}>
           <CustomTable
             loading={listLoading || actionLoading}

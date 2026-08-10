@@ -16,7 +16,7 @@ import ComplianceTag, { ComplianceStatus } from '@/app/patch-manager/components/
 import DualSelector from '@/app/patch-manager/components/dual-selector';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { buildTargetFilterSearch, parseBaselineFilter } from './filter-state';

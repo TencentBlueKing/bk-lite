@@ -16,7 +16,7 @@ import SeverityTag from '@/app/patch-manager/components/severity-tag';
 import ReadyTag from '@/app/patch-manager/components/ready-tag';
 import PatchSourceDisplay from '@/app/patch-manager/components/patch-source-display';
 import CustomTable from '@/components/custom-table';
-import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import { getWindowsPackageUploadState } from '@/app/patch-manager/components/windows-package-upload-state';
 import {

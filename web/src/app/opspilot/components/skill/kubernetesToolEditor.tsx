@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
-import { Button, Empty, Input, Tag } from 'antd';
+import { Button, Empty, Input } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import ToolConnectionStatusTag from '@/app/opspilot/components/opspilot-tool-editor/tool-connection-status-tag';
 
 export type KubernetesTestStatus = 'untested' | 'success' | 'failed';
 
@@ -25,11 +26,6 @@ interface KubernetesToolEditorProps {
   onTest: () => void;
 }
 
-const statusColorMap: Record<KubernetesTestStatus, string> = {
-  untested: 'default',
-  success: 'blue',
-  failed: 'red',
-};
 
 const KubernetesToolEditor: React.FC<KubernetesToolEditorProps> = ({
   instances,
@@ -54,9 +50,6 @@ const KubernetesToolEditor: React.FC<KubernetesToolEditorProps> = ({
     prevLengthRef.current = instances.length;
   }, [instances.length]);
 
-  const renderStatus = (status: KubernetesTestStatus) => {
-    return <Tag color={statusColorMap[status]}>{t(`tool.kubernetes.status.${status}`)}</Tag>;
-  };
 
   const getKubeconfigPreview = (kubeconfigData: string) => {
     if (!kubeconfigData) {
@@ -119,7 +112,7 @@ const KubernetesToolEditor: React.FC<KubernetesToolEditorProps> = ({
               <div className="text-lg font-medium">
                 {t('tool.kubernetes.configTitle').replace('{name}', selectedInstance.name || t('tool.kubernetes.unnamedInstance'))}
               </div>
-              {renderStatus(selectedInstance.testStatus)}
+              <ToolConnectionStatusTag scope="tool.kubernetes" status={selectedInstance.testStatus} />
             </div>
 
             <div>

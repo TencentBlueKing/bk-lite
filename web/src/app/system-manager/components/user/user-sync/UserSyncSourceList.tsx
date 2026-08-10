@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Button, Dropdown, Empty, Input, Menu, Space, Spin, Tag, Tooltip } from 'antd';
-import type { MenuProps } from 'antd';
+import { Button, Empty, Input, Space, Spin, Tag, Tooltip } from 'antd';
 import Icon from '@/components/icon';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import { useTranslation } from '@/utils/i18n';
 import styles from './UserSyncSourceList.module.scss';
 
@@ -74,27 +75,24 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
     return data.filter((item) => item.name.toLowerCase().includes(keyword));
   }, [data, searchTerm]);
 
-  const renderMenu = (item: T) => {
-    const menuItems: MenuProps['items'] = [
-      {
-        key: 'edit',
-        label: t('common.edit'),
-        onClick: () => onEdit(item),
-      },
-      {
-        key: 'config',
-        label: t('system.user.userSyncPage.accessConfigMenu'),
-        onClick: () => onConfig(item),
-      },
-      {
-        key: 'delete',
-        label: t('common.delete'),
-        onClick: () => onDelete(item),
-      },
-    ];
-
-    return <Menu items={menuItems} />;
-  };
+  const actionItemsFor = (item: T): MoreActionsDropdownItem[] => [
+    {
+      key: 'edit',
+      label: t('common.edit'),
+      onClick: () => onEdit(item),
+    },
+    {
+      key: 'config',
+      label: t('system.user.userSyncPage.accessConfigMenu'),
+      onClick: () => onConfig(item),
+    },
+    {
+      key: 'delete',
+      label: t('common.delete'),
+      danger: true,
+      onClick: () => onDelete(item),
+    },
+  ];
 
   return (
     <div className="h-full w-full">
@@ -157,14 +155,11 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
                   </div>
                 </div>
 
-                <Dropdown overlay={renderMenu(item)} trigger={['click']} placement="bottomRight">
-                  <button
-                    type="button"
-                    className="cursor-pointer border-none bg-transparent p-0.5 text-[var(--color-text-3)]"
-                  >
-                    <Icon type="sangedian-copy" className="text-sm" />
-                  </button>
-                </Dropdown>
+                <MoreActionsDropdown
+                  items={actionItemsFor(item)}
+                  placement="bottomRight"
+                  stopPropagation
+                />
               </div>
 
               <p className={`${styles.description} text-[11px]`}>{item.description || '--'}</p>

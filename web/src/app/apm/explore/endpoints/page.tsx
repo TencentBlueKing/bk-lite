@@ -18,6 +18,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import dayjs from 'dayjs';
+import FilterToolbar from '@/components/filter-toolbar';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
@@ -297,7 +298,7 @@ export default function ApmEndpointsPage() {
           />
         ) : null}
         <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center gap-3">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input
               allowClear
               aria-label="搜索路径模板或服务"
@@ -349,7 +350,7 @@ export default function ApmEndpointsPage() {
               ))}
             </Radio.Group>
             <Button aria-label="刷新端点" icon={<ReloadOutlined aria-hidden="true" />} onClick={load} />
-          </div>
+          </FilterToolbar>
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">
           {state === 'ready' ? (

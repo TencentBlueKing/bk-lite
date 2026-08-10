@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
-import { Button, Empty, Input, InputNumber, Tag } from 'antd';
+import { Button, Empty, Input, InputNumber } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import ToolConnectionStatusTag from '@/app/opspilot/components/opspilot-tool-editor/tool-connection-status-tag';
 
 export type OracleTestStatus = 'untested' | 'success' | 'failed';
 
@@ -30,11 +31,6 @@ interface OracleToolEditorProps {
   onTest: () => void;
 }
 
-const statusColorMap: Record<OracleTestStatus, string> = {
-  untested: 'default',
-  success: 'blue',
-  failed: 'red',
-};
 
 const OracleToolEditor: React.FC<OracleToolEditorProps> = ({
   instances,
@@ -59,9 +55,6 @@ const OracleToolEditor: React.FC<OracleToolEditorProps> = ({
     prevLengthRef.current = instances.length;
   }, [instances.length]);
 
-  const renderStatus = (status: OracleTestStatus) => {
-    return <Tag color={statusColorMap[status]}>{t(`tool.oracle.status.${status}`)}</Tag>;
-  };
 
   return (
     <div className="flex gap-4 min-h-[480px]">
@@ -116,7 +109,7 @@ const OracleToolEditor: React.FC<OracleToolEditorProps> = ({
               <div className="text-lg font-medium">
                 {t('tool.oracle.configTitle').replace('{name}', selectedInstance.name || t('tool.oracle.unnamedInstance'))}
               </div>
-              {renderStatus(selectedInstance.testStatus)}
+              <ToolConnectionStatusTag scope="tool.oracle" status={selectedInstance.testStatus} />
             </div>
 
             <div>
