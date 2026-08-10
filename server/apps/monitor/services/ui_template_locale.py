@@ -26,6 +26,8 @@ _FILE_OVERLAY_TABLE_COLUMN_KEYS = (
     "description_en",
     "tooltip",
     "dependency",
+    # 接入表 change_handler 仅影响前端填表，不影响已下发采集配置；允许磁盘热更新。
+    "change_handler",
 )
 _FILE_OVERLAY_TOP_KEYS = ("advanced_panel",)
 

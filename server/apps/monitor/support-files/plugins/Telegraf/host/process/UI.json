@@ -96,10 +96,10 @@
       "label": "进程名称",
       "type": "input",
       "required": true,
-      "description": "进程别名，写入指标维度 process_name，用于监控列表与主机进程视图展示。",
-      "description_en": "Process alias written to the process_name metric dimension for list and host process views.",
+      "description": "进程别名，写入指标维度 process_name；监控列表「进程名称」列与主机进程视图使用该字段。",
+      "description_en": "Process alias written to the process_name metric dimension; used by the Process Name list column and host process views.",
       "guide_short": "这里填展示用的进程别名，不必与系统进程名完全一致；同主机下建议唯一。",
-      "guide_short_en": "Display name for this process row. It does not have to match the OS process name; keep it unique on the same host.",
+      "guide_short_en": "Display alias for this process; it does not have to match the OS process name. Keep it unique on the same host.",
       "widget_props": {
         "placeholder": "nginx",
         "placeholder_en": "nginx"
