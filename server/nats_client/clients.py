@@ -7,7 +7,6 @@ import queue
 from typing import Optional
 from urllib.parse import unquote, urlsplit, urlunsplit
 
-import jsonpickle
 from django.conf import settings
 from nats.aio.client import Client
 from nats.js.api import DiscardPolicy, StreamConfig
@@ -50,6 +49,38 @@ def _stringify_error_detail(detail) -> str:
     if isinstance(sanitized, str):
         return sanitized
     return str(sanitized)
+
+
+def _extract_legacy_exception_message(serialized_exception) -> Optional[str]:
+    """从旧 jsonpickle 异常结构中只读取字符串消息，不还原 Python 对象。"""
+    if not isinstance(serialized_exception, str):
+        return None
+    try:
+        payload = json.loads(serialized_exception)
+    except (TypeError, json.JSONDecodeError, RecursionError):
+        return None
+
+    if not isinstance(payload, dict) or set(payload) != {"py/reduce"}:
+        return None
+    reduction = payload["py/reduce"]
+    if not isinstance(reduction, list) or len(reduction) != 3:
+        return None
+
+    exception_type, arguments, state = reduction
+    if (
+        not isinstance(exception_type, dict)
+        or set(exception_type) != {"py/type"}
+        or not isinstance(exception_type["py/type"], str)
+        or not isinstance(arguments, dict)
+        or set(arguments) != {"py/tuple"}
+        or not isinstance(arguments["py/tuple"], list)
+        or not arguments["py/tuple"]
+        or not isinstance(state, dict)
+    ):
+        return None
+
+    message = arguments["py/tuple"][0]
+    return message if isinstance(message, str) and message else None
 
 
 def _sanitize_connection_error(error, servers, user=None, password=None) -> str:
@@ -152,22 +183,13 @@ async def request(namespace: str, method_name: str, *args, _timeout: Optional[fl
         return parsed
 
     if not parsed["success"]:
-
-        def _decode_pickled_exception_message() -> Optional[str]:
-            try:
-                decoded_exc = jsonpickle.decode(parsed["pickled_exc"])
-                decoded_message = str(decoded_exc)
-                return decoded_message or None
-            except (TypeError, KeyError):
-                return None
-
         # 优先使用新的error字段（Go服务的规范化错误格式）
         if "error" in parsed and parsed["error"]:
             error_message = parsed["error"]
             if "message" in parsed and parsed["message"]:
                 error_message += f": {_stringify_error_detail(parsed['message'])}"
             elif error_message == "BaseAppException":
-                decoded_message = _decode_pickled_exception_message()
+                decoded_message = _extract_legacy_exception_message(parsed.get("pickled_exc"))
                 if decoded_message:
                     error_message += f": {_stringify_error_detail(decoded_message)}"
             # 如果有result字段，将其作为详细信息添加
@@ -179,7 +201,7 @@ async def request(namespace: str, method_name: str, *args, _timeout: Optional[fl
             exc = NatsClientException(_stringify_error_detail(parsed["result"]))
         else:
             # 向后兼容：尝试使用旧的pickled_exc格式
-            decoded_message = _decode_pickled_exception_message()
+            decoded_message = _extract_legacy_exception_message(parsed.get("pickled_exc"))
             if decoded_message:
                 exc = NatsClientException(_stringify_error_detail(decoded_message))
             else:
@@ -241,22 +263,13 @@ async def request_v2(
         return parsed
 
     if not parsed["success"]:
-
-        def _decode_pickled_exception_message() -> Optional[str]:
-            try:
-                decoded_exc = jsonpickle.decode(parsed["pickled_exc"])
-                decoded_message = str(decoded_exc)
-                return decoded_message or None
-            except (TypeError, KeyError):
-                return None
-
         # 优先使用新的error字段（Go服务的规范化错误格式）
         if "error" in parsed and parsed["error"]:
             error_message = parsed["error"]
             if "message" in parsed and parsed["message"]:
                 error_message += f": {_stringify_error_detail(parsed['message'])}"
             elif error_message == "BaseAppException":
-                decoded_message = _decode_pickled_exception_message()
+                decoded_message = _extract_legacy_exception_message(parsed.get("pickled_exc"))
                 if decoded_message:
                     error_message += f": {_stringify_error_detail(decoded_message)}"
             # 如果有result字段，将其作为详细信息添加
@@ -268,7 +281,7 @@ async def request_v2(
             exc = NatsClientException(_stringify_error_detail(parsed["result"]))
         else:
             # 向后兼容：尝试使用旧的pickled_exc格式
-            decoded_message = _decode_pickled_exception_message()
+            decoded_message = _extract_legacy_exception_message(parsed.get("pickled_exc"))
             if decoded_message:
                 exc = NatsClientException(_stringify_error_detail(decoded_message))
             else:
