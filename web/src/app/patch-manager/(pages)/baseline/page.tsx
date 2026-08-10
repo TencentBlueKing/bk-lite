@@ -494,7 +494,7 @@ export default function BaselineManagementPage() {
   }, [pickerSelected, patchList, requirements, draftOs]);
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <FilterToolbar align="between" spacing="flush">
+      <FilterToolbar align="between">
         <Space wrap>
           <Input.Search
             placeholder={t('patchManager.baseline.name')}

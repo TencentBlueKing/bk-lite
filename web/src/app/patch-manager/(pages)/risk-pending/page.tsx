@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Table, Tag, Button, Segmented, Space, Modal, DatePicker, Alert, message, Select, Row, Col, Dropdown, Drawer, Tooltip, Switch, Radio, Steps, Popconfirm, Input, Popover, Form } from 'antd';
+import { Table, Tag, Button, Segmented, Space, Modal, DatePicker, Alert, message, Select, Dropdown, Drawer, Tooltip, Switch, Radio, Steps, Popconfirm, Input, Popover, Form } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import { ToolOutlined, ExportOutlined, ReloadOutlined, DownOutlined, CloseOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
@@ -682,8 +682,90 @@ export default function RiskPendingPage() {
 
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <FilterToolbar align="between" spacing="flush">
-        <Segmented options={(['host', 'patch', 'baseline'] as const).map((value) => ({ label: t(`patchManager.risk.view.${value}`), value }))} value={view} onChange={(v) => { setView(v as typeof view); setSelected([]); setFilters({}); setSearchInputs({}); }} />
+      <FilterToolbar align="between">
+        <Space wrap size={12}>
+          <Segmented options={(['host', 'patch', 'baseline'] as const).map((value) => ({ label: t(`patchManager.risk.view.${value}`), value }))} value={view} onChange={(v) => { setView(v as typeof view); setSelected([]); setFilters({}); setSearchInputs({}); }} />
+          {view === 'host' && (
+            <>
+              <Input.Search
+                placeholder={t('patchManager.risk.hostName')}
+                allowClear
+                value={searchInputs.host_name}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSearchInputs((s) => ({ ...s, host_name: value }));
+                  if (value === '') {
+                    setHostIdFilter(undefined);
+                    setFilters((f) => ({ ...f, host_name: undefined }));
+                  }
+                }}
+                onSearch={(v) => {
+                  setHostIdFilter(undefined);
+                  setFilters((f) => ({ ...f, host_name: v || undefined }));
+                }}
+                style={{ width: 180 }}
+              />
+              <Select
+                placeholder={t('patchManager.osType')}
+                style={{ width: 120 }}
+                allowClear
+                value={filters.os_type}
+                onChange={(v) => setFilters((f) => ({ ...f, os_type: v }))}
+                options={[{ label: 'Windows', value: 'win' }, { label: 'Linux', value: 'linux' }]}
+              />
+            </>
+          )}
+          {view === 'patch' && (
+            <>
+              <Input.Search
+                placeholder={t('patchManager.risk.patchSearch')}
+                allowClear
+                value={searchInputs.patch_name}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSearchInputs((s) => ({ ...s, patch_name: value }));
+                  if (value === '') {
+                    setFilters((f) => ({ ...f, patch_name: undefined }));
+                  }
+                }}
+                onSearch={(v) => { setFilters((f) => ({ ...f, patch_name: v || undefined })); }}
+                style={{ width: 200 }}
+              />
+              <Select
+                placeholder={t('patchManager.severity')}
+                style={{ width: 120 }}
+                allowClear
+                value={filters.severity}
+                onChange={(v) => setFilters((f) => ({ ...f, severity: v }))}
+                options={(['critical', 'important', 'moderate', 'low'] as const).map((value) => ({ label: t(`patchManager.severityValues.${value}`), value }))}
+              />
+            </>
+          )}
+          {view === 'baseline' && (
+            <Input.Search
+              placeholder={t('patchManager.baseline.name')}
+              allowClear
+              value={searchInputs.baseline_name}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSearchInputs((s) => ({ ...s, baseline_name: value }));
+                if (value === '') {
+                  setFilters((f) => ({ ...f, baseline_name: undefined }));
+                }
+              }}
+              onSearch={(v) => { setFilters((f) => ({ ...f, baseline_name: v || undefined })); }}
+              style={{ width: 200 }}
+            />
+          )}
+          <Select
+            placeholder={t('patchManager.risk.remediationStatus')}
+            style={{ width: 130 }}
+            allowClear
+            value={filters.remediation}
+            onChange={(v) => setFilters((f) => ({ ...f, remediation: v }))}
+            options={(['unplanned', 'scheduled', 'installing', 'pending_reboot', 'rebooting', 'verifying', 'failed', 'invalidated'] as const).map((value) => ({ label: t(`patchManager.remediationStatus.${value}`), value }))}
+          />
+        </Space>
         <Space>
           <Button icon={<ExportOutlined />} onClick={handleExportAll}>{t('patchManager.risk.exportAll')}</Button>
           <Dropdown
@@ -721,102 +803,6 @@ export default function RiskPendingPage() {
           </Dropdown>
         </Space>
       </FilterToolbar>
-      <Row gutter={[12, 12]} style={{ marginBottom: 12 }} align="middle">
-        {view === 'host' && (
-          <>
-            <Col>
-              <Input.Search
-                placeholder={t('patchManager.risk.hostName')}
-                allowClear
-                value={searchInputs.host_name}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setSearchInputs((s) => ({ ...s, host_name: value }));
-                  if (value === '') {
-                    setHostIdFilter(undefined);
-                    setFilters((f) => ({ ...f, host_name: undefined }));
-                  }
-                }}
-                onSearch={(v) => {
-                  setHostIdFilter(undefined);
-                  setFilters((f) => ({ ...f, host_name: v || undefined }));
-                }}
-                style={{ width: 180 }}
-              />
-            </Col>
-            <Col>
-              <Select
-                placeholder={t('patchManager.osType')}
-                style={{ width: 120 }}
-                allowClear
-                value={filters.os_type}
-                onChange={(v) => setFilters((f) => ({ ...f, os_type: v }))}
-                options={[{ label: 'Windows', value: 'win' }, { label: 'Linux', value: 'linux' }]}
-              />
-            </Col>
-          </>
-        )}
-        {view === 'patch' && (
-          <>
-            <Col>
-              <Input.Search
-                placeholder={t('patchManager.risk.patchSearch')}
-                allowClear
-                value={searchInputs.patch_name}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setSearchInputs((s) => ({ ...s, patch_name: value }));
-                  if (value === '') {
-                    setFilters((f) => ({ ...f, patch_name: undefined }));
-                  }
-                }}
-                onSearch={(v) => { setFilters((f) => ({ ...f, patch_name: v || undefined })); }}
-                style={{ width: 200 }}
-              />
-            </Col>
-            <Col>
-              <Select
-                placeholder={t('patchManager.severity')}
-                style={{ width: 120 }}
-                allowClear
-                value={filters.severity}
-                onChange={(v) => setFilters((f) => ({ ...f, severity: v }))}
-                options={(['critical', 'important', 'moderate', 'low'] as const).map((value) => ({ label: t(`patchManager.severityValues.${value}`), value }))}
-              />
-            </Col>
-          </>
-        )}
-        {view === 'baseline' && (
-          <>
-            <Col>
-              <Input.Search
-                placeholder={t('patchManager.baseline.name')}
-                allowClear
-                value={searchInputs.baseline_name}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setSearchInputs((s) => ({ ...s, baseline_name: value }));
-                  if (value === '') {
-                    setFilters((f) => ({ ...f, baseline_name: undefined }));
-                  }
-                }}
-                onSearch={(v) => { setFilters((f) => ({ ...f, baseline_name: v || undefined })); }}
-                style={{ width: 200 }}
-              />
-            </Col>
-          </>
-        )}
-        <Col>
-          <Select
-            placeholder={t('patchManager.risk.remediationStatus')}
-            style={{ width: 130 }}
-            allowClear
-            value={filters.remediation}
-            onChange={(v) => setFilters((f) => ({ ...f, remediation: v }))}
-            options={(['unplanned', 'scheduled', 'installing', 'pending_reboot', 'rebooting', 'verifying', 'failed', 'invalidated'] as const).map((value) => ({ label: t(`patchManager.remediationStatus.${value}`), value }))}
-          />
-        </Col>
-      </Row>
       <div style={{ flex: 1, minHeight: 0 }}>
         <CustomTable
           rowKey="key"

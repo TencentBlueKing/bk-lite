@@ -563,7 +563,7 @@ export default function RiskExecutionPage() {
   ];
 
   return <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: 16, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-    <FilterToolbar align="between" spacing="flush">
+    <FilterToolbar align="between">
       <Space>
         <Input.Search placeholder={t('patchManager.execution.taskName')} value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} onSearch={(value) => {
           setAppliedTaskSearch(value);
