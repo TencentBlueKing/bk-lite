@@ -4,13 +4,19 @@ from jinja2 import BaseLoader, DebugUndefined
 from jinja2.defaults import DEFAULT_FILTERS
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.utils.safe_template import (
+    TemplateSecurityError,
+    build_sandboxed_env,
+    sanitize_template_context,
+    validate_template_variables,
+)
 from apps.core.logger import monitor_logger as logger
-from apps.core.utils.safe_template import TemplateSecurityError, build_sandboxed_env, sanitize_template_context, validate_template_variables
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import CollectConfig, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.services.website_config import normalize_website_request_config
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.rpc.node_mgmt import NodeMgmt
+
 
 _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "default",
@@ -106,7 +112,13 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
 def _escape_toml_string(value):
     if not isinstance(value, str):
         value = str(value)
-    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
 
 
 def to_toml_dict(d):
@@ -126,10 +138,11 @@ def to_toml_str_array(value):
 
 def normalize_filter_list(value):
     """兼容旧导入路径；实现见 snmp_interface_filters.normalize_filter_list。"""
-    from apps.monitor.utils.snmp_interface_filters import normalize_filter_list as _normalize_filter_list
+    from apps.monitor.utils.snmp_interface_filters import (
+        normalize_filter_list as _normalize_filter_list,
+    )
 
     return _normalize_filter_list(value)
-
 
 def _escape_toml_context_strings(value):
     if isinstance(value, str):
@@ -174,10 +187,20 @@ class Controller:
                     "to_toml_str_array": to_toml_str_array,
                 },
             )
-            missing_filters = [name for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS if name not in DEFAULT_FILTERS and name not in env.filters]
+            missing_filters = [
+                name
+                for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS
+                if name not in DEFAULT_FILTERS and name not in env.filters
+            ]
             if missing_filters:
                 raise BaseAppException(f"Missing default Jinja filters: {', '.join(missing_filters)}")
-            env.filters.update({name: DEFAULT_FILTERS[name] for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS if name in DEFAULT_FILTERS})
+            env.filters.update(
+                {
+                    name: DEFAULT_FILTERS[name]
+                    for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS
+                    if name in DEFAULT_FILTERS
+                }
+            )
             self._jinja_env = env
         return self._jinja_env
 
@@ -256,7 +279,9 @@ class Controller:
         template_content = ensure_core_network_ifmib_jinja(template_content, _context)
         # 接口过滤与公共 IF-MIB 同能力边界：非 Network Device（如 hardware_server）
         # 即使模板含 ifDescr，也不得静默注入默认 ifType 排除。
-        if is_ifmib_capable_render_context(_context) and needs_snmp_interface_filter_jinja(template_content):
+        if is_ifmib_capable_render_context(_context) and needs_snmp_interface_filter_jinja(
+            template_content
+        ):
             template_content = ensure_snmp_interface_filter_jinja(template_content)
 
         safe_context = sanitize_template_context(_context)
@@ -317,7 +342,7 @@ class Controller:
 
         return configs
 
-    def controller(self):  # noqa: C901
+    def controller(self):
         """
         创建采集配置的控制器方法
 
@@ -411,15 +436,24 @@ class Controller:
                     # 与 IF-MIB 能力判定一致：覆盖 snmp / snmp_h3c 等厂商 collect_type。
                     snmp_collect = str(collect_type or "").startswith("snmp")
                     if snmp_collect and is_child:
-                        from apps.monitor.utils.snmp_interface_filters import assert_snmp_interface_filter_mutex_from_values
+                        from apps.monitor.utils.snmp_interface_filters import (
+                            assert_snmp_interface_filter_mutex_from_values,
+                        )
 
                         # 互斥校验放在模板渲染前，避免被包装成「渲染采集模板失败」
                         assert_snmp_interface_filter_mutex_from_values(render_context)
-                    if is_child and str(collect_type or "") == "exporter" and str(type_name or "").lower() == "kafka":
-                        from apps.monitor.utils.kafka_collect_timeouts import assert_kafka_group_metrics_timeout_lt_interval
+                    if (
+                        is_child
+                        and str(collect_type or "") == "exporter"
+                        and str(type_name or "").lower() == "kafka"
+                    ):
+                        from apps.monitor.utils.kafka_collect_timeouts import (
+                            assert_kafka_group_metrics_timeout_lt_interval,
+                        )
 
                         assert_kafka_group_metrics_timeout_lt_interval(
-                            config_info.get("ENV_GROUP_METRICS_TIMEOUT") or env_config.get("GROUP_METRICS_TIMEOUT"),
+                            config_info.get("ENV_GROUP_METRICS_TIMEOUT")
+                            or env_config.get("GROUP_METRICS_TIMEOUT"),
                             config_info.get("interval"),
                         )
                     template_config = self.render_template(
@@ -433,7 +467,9 @@ class Controller:
                     raw_id = config_info.get("instance_id")
                     logical_id = config_info.get("logical_instance_value")
                     storage_id = config_info.get("storage_instance_key")
-                    logger.error(f"实例识别失败：type={type_name}, raw={raw_id}, logical={logical_id}, storage={storage_id}, 错误: {e}")
+                    logger.error(
+                        f"实例识别失败：type={type_name}, raw={raw_id}, logical={logical_id}, storage={storage_id}, 错误: {e}"
+                    )
                     raise BaseAppException(f"实例识别失败：type={type_name}, instance_id={raw_id}") from e
                 except Exception as e:
                     logger.error(f"渲染模板失败：type={type_name}, config_id={config_id}, instance_id={config_info.get('instance_id')}, 错误: {e}")
