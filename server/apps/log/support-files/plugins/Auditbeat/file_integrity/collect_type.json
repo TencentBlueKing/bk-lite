@@ -8,6 +8,7 @@
     "collect_type",
     "collector",
     "instance_id",
+    "message",
     "file.elf.go_imports",
     "file.elf.go_imports_names_entropy",
     "file.elf.go_imports_names_var_entropy",

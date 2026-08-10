@@ -7,11 +7,16 @@ MySQL Server Information Collector
 A standalone script to gather information about MySQL servers.
 """
 
+import asyncio
 from decimal import Decimal
 import pymysql
 from pymysql.constants import CLIENT
 
 from core.decorator import timer
+from core.collection.contracts import (
+    AccessProbeResult,
+    AccessProbeStatus,
+)
 from sanic.log import logger
 
 
@@ -59,7 +64,35 @@ class MysqlInfo:
             )
             self.cursor = self.connection.cursor()
         except Exception as e:
-            raise RuntimeError(f"Failed to connect to MySQL: {str(e)}")
+            raise RuntimeError("Failed to connect to MySQL") from e
+
+    async def probe(self) -> AccessProbeResult:
+        return await asyncio.to_thread(self._probe_sync)
+
+    def _probe_sync(self) -> AccessProbeResult:
+        try:
+            self._connect()
+            rows = self._exec_sql("SHOW GLOBAL VARIABLES LIKE 'version'")
+            version = str(rows[0].get("Value") or "") if rows else ""
+            return AccessProbeResult(
+                status=AccessProbeStatus.READY,
+                evidence={"server_version": version},
+            )
+        except RuntimeError as error:
+            cause = error.__cause__
+            error_number = (
+                cause.args[0]
+                if cause is not None and cause.args
+                else None
+            )
+            if error_number == 1045:
+                return AccessProbeResult(
+                    status=AccessProbeStatus.AUTH_FAILED,
+                    error_code="authentication_failed",
+                )
+            raise
+        finally:
+            self.close()
 
     def _exec_sql(self, query):
         """Execute SQL query and return results."""
@@ -285,7 +318,10 @@ class MysqlInfo:
         }
 
     @timer(logger=logger)
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         """
         Convert collected data to a standard format.
         """

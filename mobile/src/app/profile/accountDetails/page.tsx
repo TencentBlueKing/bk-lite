@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Button, Toast, Picker, SpinLoading } from 'antd-mobile';
+import { Form, Input, Button, Toast, Picker } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
 import { useTranslation } from '@/utils/i18n';
 import { useAuth } from '@/context/auth';
@@ -9,6 +9,7 @@ import { timezoneOptions, languageOptions } from '@/constants/userPicker';
 import { getUserInfo, updateUserInfo } from '@/api/user';
 import MobileSafeHeader from '@/components/mobile-safe-header';
 import { useMobileBack } from '@/navigation/mobile-back';
+import { MobileSkeleton } from '@/components/mobile-feedback';
 
 
 
@@ -93,6 +94,10 @@ export default function AccountDetailsPage() {
                 setLocale(saveData.locale);
             }
 
+            if (saveData.timezone !== originalData.timezone) {
+                await updateStoredUserInfo({ timezone: saveData.timezone });
+            }
+
             Toast.show({
                 content: t('account.saveSuccess'),
                 icon: 'success',
@@ -137,9 +142,7 @@ export default function AccountDetailsPage() {
                 </span>
             </MobileSafeHeader>
             {loading ? (
-                <div className="flex-1 flex items-center justify-center">
-                    <SpinLoading color="primary" style={{ '--size': '32px' }} />
-                </div>
+                <MobileSkeleton label={t('common.loading')} variant="detail" rows={5} />
             ) : <div className="flex-1 overflow-y-auto px-4 pt-4">
                 {/* 基本信息卡片 */}
                 <div className="mb-4 bg-[var(--color-bg)] rounded-2xl shadow-sm">

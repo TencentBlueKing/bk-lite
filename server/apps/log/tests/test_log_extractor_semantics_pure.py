@@ -121,6 +121,22 @@ def test_protected_fields_cannot_be_overwritten_or_deleted():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("target", ["_msg", "log_message", "raw_message", "trap_message"])
+def test_legacy_message_aliases_cannot_be_reintroduced(target):
+    with pytest.raises(RuleValidationError, match="保护字段"):
+        normalize_rule(
+            {
+                "extractor_type": "copy",
+                "source_field": "message",
+                "target_field": target,
+                "condition": {},
+                "config": {},
+                "delete_source": False,
+            }
+        )
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("pattern", [r"value(?=end)", r"(?P<value>.+)-(?P=value)", r"(.)\1"])
 def test_regex_rejects_python_constructs_unsupported_by_vector_048(pattern):
     with pytest.raises(RuleValidationError, match="Vector 0.48"):

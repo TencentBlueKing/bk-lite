@@ -15,7 +15,8 @@ interface LoadSavedQueryResourcesArgs {
   loadPlugins: (objectId: React.Key) => Promise<PluginItem[]>;
   loadMetrics: (
     objectId: React.Key,
-    pluginId: React.Key | null
+    pluginId: React.Key | null,
+    selectedMetricId?: React.Key | null
   ) => Promise<MetricItem[]>;
   loadInstances: (
     objectId: React.Key,
@@ -90,10 +91,13 @@ export const loadSavedQueryResources = async ({
           const pluginId = resolvePlugin(plugins, group);
           if (pluginId && !group.plugin) group.plugin = pluginId;
           const resourceKey = getResourceKey(objectId, pluginId);
-          const metricsPromise = loadedMetricsMap[resourceKey]
+          const metricRequestKey = `${resourceKey}|${String(group.metric || '')}`;
+          const metricsPromise = loadedMetricsMap[resourceKey]?.some(
+            (metric) => String(metric.id) === String(group.metric)
+          )
             ? Promise.resolve(loadedMetricsMap[resourceKey])
-            : getOrCreateRequest(metricRequests, resourceKey, () =>
-              loadMetrics(objectId, pluginId)
+            : getOrCreateRequest(metricRequests, metricRequestKey, () =>
+              loadMetrics(objectId, pluginId, group.metric)
             );
           const instancesPromise = loadedInstancesMap[resourceKey]
             ? Promise.resolve(loadedInstancesMap[resourceKey])

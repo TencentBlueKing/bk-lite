@@ -7,6 +7,7 @@ import type { AvailableInstance, UserSyncSource, UserSyncSourceConfigFormValues 
 import {
   getWriteOnlyKeys,
   getEffectiveRootDepartmentFieldKey,
+  excludeUserSyncRootScope,
   mergeUserSyncBusinessConfigWithDefaults,
   resolveUserSyncTemplate,
 } from '@/app/system-manager/utils/userSyncUtils';
@@ -61,13 +62,14 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
     () => getEffectiveRootDepartmentFieldKey(source, resolvedTemplate),
     [resolvedTemplate, source],
   );
+  const initialRootScopeValue = source?.business_config?.[rootScopeFieldKey];
 
   useEffect(() => {
     if (!open || !source) return;
     form.resetFields();
     form.setFieldsValue({
       business_config: mergeUserSyncBusinessConfigWithDefaults(
-        source.business_config || {},
+        excludeUserSyncRootScope(source.business_config, rootScopeFieldKey),
         resolvedTemplate,
         { excludeRootScope: true, rootScopeFieldKey },
       ),
@@ -146,6 +148,7 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
         }}
         mappingError={mappingError}
         rootScopeField={source?.root_scope_field}
+        initialRootScopeValue={typeof initialRootScopeValue === 'string' ? initialRootScopeValue : ''}
       />
     </Form>
   </OperateModal>

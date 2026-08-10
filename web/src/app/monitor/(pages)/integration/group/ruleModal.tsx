@@ -16,7 +16,6 @@ import useApiClient from '@/utils/request';
 import {
   ModalRef,
   ListItem,
-  GroupInfo,
   ObjectItem,
   MetricItem,
   IndexViewItem,
@@ -27,6 +26,10 @@ import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelector from '@/components/group-tree-select';
 import useMonitorApi from '@/app/monitor/api';
+import {
+  fetchAllMetricsGroups,
+  fetchAllMonitorMetrics
+} from '@/app/monitor/api/fetchMetricCatalogPages';
 import { useConditionList } from '@/app/monitor/hooks';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
@@ -123,27 +126,26 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
     const getMetrics = async (params = {}) => {
       try {
         setMetricsLoading(true);
-        const getGroupList = getMetricsGroup(params);
-        const getMetrics = getMonitorMetrics(params);
+        const getGroupList = fetchAllMetricsGroups(getMetricsGroup, params);
+        const getMetrics = fetchAllMonitorMetrics(getMonitorMetrics, params);
         Promise.all([getGroupList, getMetrics])
           .then((res) => {
-            const metricData = cloneDeep(res[1] || []);
-            setMetrics(res[1] || []);
-            const groupData = res[0].map((item: GroupInfo) => ({
+            const metricData = cloneDeep(res[1].items);
+            setMetrics(res[1].items);
+            const groupData: IndexViewItem[] = res[0].items.map((item) => ({
               ...item,
+              id: Number(item.id),
               child: []
             }));
             metricData.forEach((metric: MetricItem) => {
               const target = groupData.find(
-                (item: GroupInfo) => item.id === metric.metric_group
+                (item) => item.id === metric.metric_group
               );
               if (target) {
-                target.child.push(metric);
+                target.child?.push(metric);
               }
             });
-            const _groupData = groupData.filter(
-              (item: any) => !!item.child?.length
-            );
+            const _groupData = groupData.filter((item) => !!item.child?.length);
             setOriginMetricData(_groupData);
           })
           .finally(() => {

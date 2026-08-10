@@ -33,22 +33,7 @@ class BaseUserSyncAdapter(BaseCapabilityAdapter):
 
     @classmethod
     def list_departments(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
-        return CapabilityExecutionResult.success_result(
-            "Department list loaded",
-            payload={
-                "items": [
-                    {
-                        "id": "__all__",
-                        "name": "全部部门",
-                        "parent_id": None,
-                        "children": [],
-                        "selectable": True,
-                        "is_all": True,
-                    }
-                ],
-                "all_department_id": "0",
-            },
-        )
+        return CapabilityExecutionResult.not_implemented(capability_key, "list_departments")
 
 
 class BaseIMNotificationAdapter(BaseCapabilityAdapter):

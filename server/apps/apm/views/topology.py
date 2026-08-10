@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework import serializers, status, viewsets
 from rest_framework.response import Response
 
-from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTraceStore
+from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
 from apps.apm.models import ApmService, ApmServiceInstance
 from apps.apm.renderers import ApmRenderer
 from apps.apm.services import DjangoApmTopologyService
@@ -40,7 +40,7 @@ class ApmTopologyViewSet(viewsets.ViewSet):
 
     @staticmethod
     def _service():
-        return DjangoApmTopologyService(VictoriaTracesTraceStore())
+        return DjangoApmTopologyService(VictoriaTracesTelemetryStore())
 
     @HasPermission("services-View")
     def list(self, request):

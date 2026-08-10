@@ -1,0 +1,87 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  file_storage:
+    directory: /var/lib/otelcol/queue
+    create_directory: true
+    timeout: 1s
+    compaction:
+      directory: /var/lib/otelcol/queue
+      on_start: true
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        max_recv_msg_size_mib: 8
+        include_metadata: true
+      http:
+        endpoint: 0.0.0.0:4318
+        include_metadata: true
+        max_request_body_size: 8388608
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: ${env:APM_COLLECTOR_MEMORY_LIMIT_MIB}
+    spike_limit_mib: ${env:APM_COLLECTOR_MEMORY_SPIKE_MIB}
+  trace_guard:
+    cloud_region_id: ${env:APM_CLOUD_REGION_ID}
+    max_resource_attributes: 64
+    max_scope_attributes: 32
+    max_span_attributes: 100
+    max_event_attributes: 32
+    max_link_attributes: 32
+    max_attribute_runes: 4096
+  batch/traces:
+    timeout: 2s
+    send_batch_size: ${env:APM_TRACE_BATCH_SIZE}
+    send_batch_max_size: ${env:APM_TRACE_BATCH_MAX_SIZE}
+
+exporters:
+  nats_jetstream:
+    urls: ["${env:APM_NATS_URL}"]
+    subject: apm.traces.${env:APM_CLOUD_REGION_ID}
+    credentials_file: ${env:APM_NATS_CREDENTIALS_FILE}
+    connect_timeout: 5s
+    timeout: 10s
+    max_message_bytes: ${env:APM_NATS_MAX_MESSAGE_BYTES}
+    tls:
+      ca_file: ${env:APM_NATS_CA_FILE}
+      cert_file: ${env:APM_NATS_CERT_FILE}
+      key_file: ${env:APM_NATS_KEY_FILE}
+      server_name: ${env:APM_NATS_TLS_SERVER_NAME}
+      insecure_skip_verify: false
+    sending_queue:
+      enabled: true
+      sizer: bytes
+      queue_size: ${env:APM_REGIONAL_QUEUE_MAX_BYTES}
+      num_consumers: 4
+      block_on_overflow: false
+      storage: file_storage
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 0s
+
+service:
+  extensions: [health_check, file_storage]
+  telemetry:
+    metrics:
+      level: normal
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors:
+        - memory_limiter
+        - trace_guard
+        - batch/traces
+      exporters: [nats_jetstream]

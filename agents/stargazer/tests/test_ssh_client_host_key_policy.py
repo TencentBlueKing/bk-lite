@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import paramiko
 
-from core.ssh_client import SSHClient
+from core.infra.ssh_client import SSHClient
 
 
 class TestSSHClientHostKeyPolicy:

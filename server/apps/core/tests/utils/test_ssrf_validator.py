@@ -40,12 +40,12 @@ class TestSSRFValidatorStrictMode:
 
     def test_blocks_gcp_metadata_hostname(self):
         """阻断 GCP 元数据主机名"""
-        with pytest.raises(SSRFError, match="云元数据"):
+        with pytest.raises(SSRFError, match="危险主机名|云元数据"):
             SSRFValidator.validate("http://metadata.google.internal/computeMetadata/v1/")
 
     def test_blocks_gcp_metadata_alt_hostname(self):
         """阻断 GCP 元数据备用主机名"""
-        with pytest.raises(SSRFError, match="云元数据"):
+        with pytest.raises(SSRFError, match="危险主机名|云元数据"):
             SSRFValidator.validate("http://metadata.goog/computeMetadata/v1/")
 
     # -------------------------------------------------------------------------
@@ -79,12 +79,12 @@ class TestSSRFValidatorStrictMode:
 
     def test_blocks_localhost_hostname(self):
         """阻断 localhost 主机名"""
-        with pytest.raises(SSRFError, match="禁止的网段"):
+        with pytest.raises(SSRFError, match="危险主机名|禁止的网段"):
             SSRFValidator.validate("http://localhost:8080/admin")
 
     def test_blocks_127_0_0_1(self):
-        """阻断 127.0.0.1"""
-        with pytest.raises(SSRFError, match="禁止的网段"):
+        """阻断 127.0.0.1（纯 IP 未加白名单）"""
+        with pytest.raises(SSRFError, match="不在白名单|禁止的网段"):
             SSRFValidator.validate("http://127.0.0.1:3000/api")
 
     @patch("socket.getaddrinfo")
@@ -366,6 +366,20 @@ class TestSSRFValidatorThreeLayerComparison:
         result = SSRFValidator.validate_llm_endpoint("http://localhost:8080/")
         assert result is not None
 
+    def test_public_literal_ip_requires_whitelist_in_strict(self):
+        """严格模式：公网纯 IP 也必须命中 CIDR 白名单"""
+        with patch.object(SSRFValidator, "_get_allowed_networks", return_value=[]):
+            with pytest.raises(SSRFError) as exc_info:
+                SSRFValidator.validate("http://93.184.216.34/")
+            assert exc_info.value.code == "NETWORK_WHITELIST_REQUIRED"
+
+        with patch.object(
+            SSRFValidator,
+            "_get_allowed_networks",
+            return_value=[ipaddress.ip_network("93.184.216.34/32")],
+        ):
+            assert SSRFValidator.validate("http://93.184.216.34/") == "http://93.184.216.34/"
+
     def test_cloud_metadata_blocked_in_all_modes(self):
         """云元数据：所有模式都阻断"""
         url = "http://169.254.169.254/latest/meta-data/"
@@ -407,7 +421,7 @@ class TestSSRFValidatorWhitelist:
     def test_non_whitelisted_private_ip_blocked(self, mock_getaddrinfo):
         mock_getaddrinfo.return_value = [(2, 1, 6, "", ("10.0.0.1", 80))]
         with patch.object(SSRFValidator, "_get_allowed_networks", return_value=[ipaddress.ip_network("10.11.73.0/24")]):
-            with pytest.raises(SSRFError, match="禁止的网段"):
+            with pytest.raises(SSRFError, match="禁止的网段|不在白名单"):
                 SSRFValidator.validate("http://10.0.0.1/api")
 
     @patch("socket.getaddrinfo")
@@ -421,15 +435,70 @@ class TestSSRFValidatorWhitelist:
     def test_empty_whitelist_keeps_strict(self, mock_getaddrinfo):
         mock_getaddrinfo.return_value = [(2, 1, 6, "", ("10.0.0.1", 80))]
         with patch.object(SSRFValidator, "_get_allowed_networks", return_value=[]):
-            with pytest.raises(SSRFError, match="禁止的网段"):
+            with pytest.raises(SSRFError, match="禁止的网段|不在白名单"):
                 SSRFValidator.validate("http://10.0.0.1/api")
 
     @patch("socket.getaddrinfo")
     def test_metadata_ip_blocked_via_resolution_even_if_whitelisted(self, mock_getaddrinfo):
         # 非元数据主机名 DNS 解析到元数据 IP（rebinding 场景）+ 白名单含该网段；
-        # 必须被 _is_blocked_ip 的元数据硬挡拦下，证明白名单不可覆盖元数据，
-        # 且确实走到了 _is_blocked_ip（而非 validate() 早期的主机名级元数据检查）。
+        # 必须被元数据硬挡拦下，证明白名单不可覆盖元数据。
         mock_getaddrinfo.return_value = [(2, 1, 6, "", ("169.254.169.254", 80))]
         with patch.object(SSRFValidator, "_get_allowed_networks", return_value=[ipaddress.ip_network("169.254.0.0/16")]):
             with pytest.raises(SSRFError, match="云元数据"):
                 SSRFValidator.validate("http://internal.example.com/api")
+
+    @patch("socket.getaddrinfo")
+    def test_domain_whitelist_allows_private_resolved_ips(self, mock_getaddrinfo):
+        """域名白名单全等命中后，解析到的多个内网 IP 放行。"""
+        mock_getaddrinfo.return_value = [
+            (2, 1, 6, "", ("10.1.2.3", 443)),
+            (2, 1, 6, "", ("10.1.2.4", 443)),
+        ]
+        with (
+            patch.object(SSRFValidator, "_get_allowed_networks", return_value=[]),
+            patch.object(SSRFValidator, "_get_allowed_domains", return_value={"corp-wecom.example.com"}),
+        ):
+            assert SSRFValidator.validate("https://corp-wecom.example.com/hook") == "https://corp-wecom.example.com/hook"
+
+    @patch("socket.getaddrinfo")
+    def test_domain_whitelist_exact_does_not_cover_subdomain(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("10.1.2.3", 443))]
+        with (
+            patch.object(SSRFValidator, "_get_allowed_networks", return_value=[]),
+            patch.object(SSRFValidator, "_get_allowed_domains", return_value={"example.com"}),
+        ):
+            with pytest.raises(SSRFError, match="禁止的网段"):
+                SSRFValidator.validate("https://api.example.com/hook")
+
+    @patch("socket.getaddrinfo")
+    def test_domain_whitelist_wildcard_covers_nested_subdomains(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("10.1.2.3", 443))]
+        with (
+            patch.object(SSRFValidator, "_get_allowed_networks", return_value=[]),
+            patch.object(SSRFValidator, "_get_allowed_domains", return_value={"*.example.com"}),
+        ):
+            assert SSRFValidator.validate("https://api.example.com/hook") == "https://api.example.com/hook"
+            assert SSRFValidator.validate("https://a.b.example.com/hook") == "https://a.b.example.com/hook"
+
+    def test_hostname_matches_domain_patterns_helpers(self):
+        assert SSRFValidator.hostname_matches_domain_patterns("api.weops.com", {"*.weops.com"})
+        assert SSRFValidator.hostname_matches_domain_patterns("a.b.weops.com", {"*.weops.com"})
+        assert not SSRFValidator.hostname_matches_domain_patterns("weops.com", {"*.weops.com"})
+        assert SSRFValidator.hostname_matches_domain_patterns("corp.example.com", {"corp.example.com"})
+
+    @patch("socket.getaddrinfo")
+    def test_domain_whitelist_cannot_override_metadata(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("169.254.169.254", 80))]
+        with (
+            patch.object(SSRFValidator, "_get_allowed_networks", return_value=[]),
+            patch.object(SSRFValidator, "_get_allowed_domains", return_value={"evil.example.com"}),
+        ):
+            with pytest.raises(SSRFError, match="云元数据"):
+                SSRFValidator.validate("http://evil.example.com/api")
+
+    def test_decimal_ip_literal_requires_whitelist(self):
+        """十进制变形 IP 按纯 IP 处理。"""
+        with patch.object(SSRFValidator, "_get_allowed_networks", return_value=[]):
+            with pytest.raises(SSRFError) as exc_info:
+                SSRFValidator.validate("http://2130706433/")
+            assert exc_info.value.code == "NETWORK_WHITELIST_REQUIRED"

@@ -22,7 +22,7 @@ const FieldGuideTip: React.FC<FieldGuideTipProps> = ({ short }) => {
       mouseEnterDelay={0.15}
       color="var(--color-bg)"
       overlayInnerStyle={{
-        maxWidth: 320,
+        maxWidth: 420,
         padding: '10px 12px',
         color: 'var(--color-text-1)',
         border: '1px solid var(--color-border-1)',
@@ -45,7 +45,8 @@ const FieldGuideTip: React.FC<FieldGuideTipProps> = ({ short }) => {
             style={{
               fontSize: 12,
               lineHeight: '20px',
-              color: 'var(--color-text-2)'
+              color: 'var(--color-text-2)',
+              whiteSpace: 'pre-line'
             }}
           >
             {short}

@@ -392,7 +392,7 @@ const transformDataByMode = (data: any, config: any) => {
   if (mode === 'rabbitmqRecentEvents') {
     const rows = Array.isArray(data) ? data : [];
     return rows.map((item) => {
-      const message = String(item?.['rabbitmq.log.message'] || item?._msg || '').toLowerCase();
+      const message = String(item?.['rabbitmq.log.message'] || item?.message || '').toLowerCase();
       const keyword =
         (message.includes('access_refused') || message.includes('credential'))
           ? 'auth'

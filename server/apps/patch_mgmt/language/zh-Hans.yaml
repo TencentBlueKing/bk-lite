@@ -1,4 +1,9 @@
 error:
+  source_sync_in_progress: "补丁源正在同步，暂时不能删除或重复同步"
+  patch_dependency_referenced: "该补丁仍被其他补丁的依赖或替代关系引用，无法删除"
+  patch_deleted: "补丁已不存在，该风险项无法重试"
+  task_name_required: "请输入任务名称"
+  task_name_too_long: "任务名称不能超过 128 个字符"
   hosts_busy: "以下主机正在执行补丁任务: {ids}"
   execution_window_required: "执行窗口模式下必须提供开始/结束时间"
   invalid_execution_window: "执行窗口时间格式错误"
@@ -8,6 +13,7 @@ error:
   targets_without_baseline: "以下主机未绑定基线: {ids}"
   patches_not_found: "补丁不存在: {ids}"
   patches_not_in_baseline: "所选补丁不属于对应主机的当前基线: {pairs}"
+  patches_not_remediable: "所选补丁不在最新评估的待治理范围内: {pairs}"
   targets_not_pending_reboot: "以下主机当前不是待重启状态: {ids}"
   reboot_scope_changed: "待重启范围已变化，请刷新后重新确认"
   risk_item_not_retryable: "该风险项不可重试或不存在"

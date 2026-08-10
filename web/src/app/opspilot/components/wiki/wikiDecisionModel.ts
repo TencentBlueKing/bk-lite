@@ -1,4 +1,5 @@
 import type {
+  CheckAlternative,
   CheckDecisionAction,
   CheckItem,
   DecisionListView,
@@ -17,6 +18,9 @@ export interface WikiDecisionSnapshot {
   sourceCount?: number;
   relationCount?: number;
   versionLabel: string;
+  materialId?: number;
+  candidateVersionId?: number;
+  kind?: 'current' | 'candidate';
 }
 
 export interface WikiDecisionViewModel {
@@ -29,6 +33,7 @@ export interface WikiDecisionViewModel {
   recoverability: string;
   current: WikiDecisionSnapshot;
   incoming: WikiDecisionSnapshot;
+  alternatives: WikiDecisionSnapshot[];
   identitySource?: 'frozen' | 'legacy_display';
 }
 
@@ -127,6 +132,17 @@ const buildSnapshot = (
   };
 };
 
+const alternativeRecords = (item: CheckItem): UnknownRecord[] => {
+  if (Array.isArray(item.alternatives) && item.alternatives.length) {
+    return item.alternatives.map((item) => asRecord(item));
+  }
+  const context = asRecord(item.decision_context);
+  if (Array.isArray(context.alternatives) && context.alternatives.length) {
+    return context.alternatives.map((item) => asRecord(item));
+  }
+  return [];
+};
+
 const hasCompleteFrozenKnowledgeConflictContext = (item: CheckItem): boolean => {
   const context = asRecord(item.decision_context);
   const participants = Array.isArray(context.participants)
@@ -145,6 +161,52 @@ const hasCompleteFrozenKnowledgeConflictContext = (item: CheckItem): boolean => 
         asNumber(participant.material_id) !== undefined &&
         Boolean(asString(participant.content_hash).trim()),
     );
+  const baseOk = Boolean(
+    item.candidate_version &&
+    context.decision_type === 'knowledge_conflict' &&
+    asString(context.subject_key).trim() &&
+    asString(context.schema_fingerprint).trim() &&
+    lockedCurrentVersionId !== undefined &&
+    asString(context.current_body_hash).trim() &&
+    asNumber(pageIdentity.page_id) !== undefined &&
+    participantsComplete,
+  );
+  if (!baseOk) return false;
+
+  const alternatives = alternativeRecords(item).filter(
+    (alt) => asString(alt.kind) !== 'current',
+  );
+  if (alternatives.length) {
+    const participantByMaterial = new Map(
+      participants
+        .map((participant) => {
+          const materialId = asNumber(participant.material_id);
+          return materialId === undefined
+            ? null
+            : ([
+              materialId,
+              asString(participant.content_hash).trim(),
+            ] as const);
+        })
+        .filter((item): item is readonly [number, string] => item !== null),
+    );
+    return alternatives.every((alt) => {
+      const materialId = asNumber(alt.material_id);
+      const contentHash =
+        asString(alt.content_hash).trim() ||
+        (materialId !== undefined ? participantByMaterial.get(materialId) || '' : '');
+      const altCandidateId =
+        asNumber(alt.candidate_version_id) ?? asNumber(alt.version_id);
+      return (
+        materialId !== undefined &&
+        Boolean(contentHash) &&
+        altCandidateId !== undefined &&
+        Boolean(asString(alt.body_hash).trim() || asString(alt.body).trim()) &&
+        participantByMaterial.get(materialId) === contentHash
+      );
+    });
+  }
+
   const incomingIsParticipant = participants.some(
     (participant) =>
       asNumber(participant.material_id) === incomingMaterialId &&
@@ -153,20 +215,81 @@ const hasCompleteFrozenKnowledgeConflictContext = (item: CheckItem): boolean => 
 
   return Boolean(
     item.decision_key &&
-    item.candidate_version &&
     candidateVersionId === item.candidate_version &&
-    context.decision_type === 'knowledge_conflict' &&
-    asString(context.subject_key).trim() &&
-    asString(context.schema_fingerprint).trim() &&
-    lockedCurrentVersionId !== undefined &&
-    asString(context.current_body_hash).trim() &&
     asString(context.candidate_body_hash).trim() &&
-    asNumber(pageIdentity.page_id) !== undefined &&
     incomingMaterialId !== undefined &&
     incomingContentHash &&
-    participantsComplete &&
     incomingIsParticipant
   );
+};
+
+const snapshotFromAlternative = (
+  alt: Partial<CheckAlternative> | UnknownRecord,
+  fallback: Partial<WikiDecisionSnapshot> = {},
+): WikiDecisionSnapshot => {
+  const record = asRecord(alt);
+  const kind = asString(record.kind) === 'current' ? 'current' : 'candidate';
+  return {
+    id: asNumber(record.page_id) ?? asNumber(record.id) ?? fallback.id,
+    title: firstString([record], ['title']) || fallback.title || '',
+    pageType:
+      firstString([record], ['page_type', 'pageType']) || fallback.pageType || '',
+    body: firstString([record], ['body', 'content']) || fallback.body || '',
+    sourceLabel:
+      firstString([record], ['source_label', 'sourceLabel', 'material_name']) ||
+      fallback.sourceLabel ||
+      '',
+    contribution:
+      firstString([record], ['contribution', 'update_method']) ||
+      fallback.contribution ||
+      '',
+    sourceCount: asNumber(record.source_count) ?? fallback.sourceCount,
+    relationCount: asNumber(record.relation_count) ?? fallback.relationCount,
+    versionLabel:
+      firstString([record], ['version_label', 'versionLabel']) ||
+      fallback.versionLabel ||
+      '',
+    materialId: asNumber(record.material_id),
+    candidateVersionId:
+      asNumber(record.candidate_version_id) ?? asNumber(record.version_id),
+    kind,
+  };
+};
+
+export const getKnowledgeConflictAlternatives = (
+  item: CheckItem,
+): WikiDecisionSnapshot[] => {
+  const serialized = Array.isArray(item.alternatives) ? item.alternatives : [];
+  if (serialized.length) {
+    return serialized.map((alt) => snapshotFromAlternative(alt));
+  }
+  const current = item.current_knowledge
+    ? snapshotFromAlternative({ ...item.current_knowledge, kind: 'current' })
+    : null;
+  const incoming = item.new_knowledge
+    ? snapshotFromAlternative({ ...item.new_knowledge, kind: 'candidate' })
+    : null;
+  return [current, incoming].filter(Boolean) as WikiDecisionSnapshot[];
+};
+
+export const resolveSelectedConflictAlternative = (
+  item: CheckItem,
+  selectedMaterialId?: number | null,
+): WikiDecisionSnapshot | null => {
+  const alternatives = getKnowledgeConflictAlternatives(item).filter(
+    (alt) => alt.kind !== 'current',
+  );
+  if (!alternatives.length) return null;
+  if (selectedMaterialId != null) {
+    return (
+      alternatives.find((alt) => alt.materialId === selectedMaterialId) || null
+    );
+  }
+  if (alternatives.length === 1) return alternatives[0];
+  const primary = alternatives.find(
+    (alt) => alt.candidateVersionId === item.candidate_version,
+  );
+  return primary || alternatives[alternatives.length - 1];
 };
 
 export const getDecisionKind = (item: CheckItem): WikiDecisionType | null => {
@@ -174,12 +297,17 @@ export const getDecisionKind = (item: CheckItem): WikiDecisionType | null => {
   if (!expectedKind) return null;
   if (item.decision_type && item.decision_type !== expectedKind) return null;
   if (item.status === 'open' && expectedKind === 'knowledge_conflict') {
+    const alternatives = getKnowledgeConflictAlternatives(item);
+    const hasCandidate =
+      Boolean(item.candidate_version) &&
+      (Boolean(item.candidate) ||
+        alternatives.some((alt) => alt.kind === 'candidate' && alt.body));
     if (
       !hasCompleteFrozenKnowledgeConflictContext(item) ||
-      !item.candidate_version ||
-      !item.candidate ||
+      !hasCandidate ||
       !item.current_knowledge ||
-      !item.new_knowledge
+      (!item.new_knowledge &&
+        !alternatives.some((alt) => alt.kind === 'candidate'))
     ) {
       return null;
     }
@@ -360,6 +488,20 @@ export const buildDecisionViewModel = (
     sourceLabel: incomingSource,
     versionLabel: item.candidate_version ? `v${item.candidate_version}` : '',
   });
+  const alternatives =
+    kind === 'knowledge_conflict'
+      ? getKnowledgeConflictAlternatives(item).map((alt) =>
+        alt.kind === 'current'
+          ? { ...current, ...alt, kind: 'current' as const }
+          : {
+            ...incoming,
+            ...alt,
+            kind: 'candidate' as const,
+            title: alt.title || incoming.title || current.title,
+            pageType: alt.pageType || incoming.pageType || current.pageType,
+          },
+      )
+      : [current, incoming];
 
   return {
     kind,
@@ -388,6 +530,7 @@ export const buildDecisionViewModel = (
     ),
     current,
     incoming,
+    alternatives,
   };
 };
 

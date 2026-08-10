@@ -19,6 +19,7 @@ from apps.patch_mgmt.constants import (
     PatchSourceType,
 )
 from apps.patch_mgmt.models import (
+    BaselineRequirement,
     GovernanceTask,
     GovernanceTaskHost,
     HostBaselineBinding,
@@ -378,7 +379,8 @@ class TestPatchSourceViewApi:
         assert resp.data == {"items": [], "total": 0, "page": 1, "page_size": 20}
         preview.assert_called_once_with(source)
 
-    def test_linux_preview_search_matches_package_name_only(self, su_client, mocker):
+    @pytest.mark.integration
+    def test_linux_preview_search_matches_any_advisory_package(self, su_client, mocker):
         source = PatchSource.objects.create(
             name="YUM-Test",
             source_type=PatchSourceType.YUM_REPO,
@@ -393,6 +395,10 @@ class TestPatchSourceViewApi:
                     "name": "kernel",
                     "title": "Important: kernel security update",
                     "version": "1.0-1",
+                    "packages": [
+                        {"name": "kernel", "version": "1.0-1", "arch": "x86_64"},
+                        {"name": "kernel-tools", "version": "1.0-1", "arch": "x86_64"},
+                    ],
                 },
                 {
                     "key": "RLSA-BPFTOOL",
@@ -405,7 +411,7 @@ class TestPatchSourceViewApi:
 
         resp = su_client.post(
             f"{PATCH_SOURCE_URL}{source.id}/preview_sync/",
-            {"search": "kernel", "page": 1, "page_size": 20},
+            {"search": "kernel-tools", "page": 1, "page_size": 20},
             format="json",
         )
 
@@ -541,6 +547,48 @@ class TestPatchViewApi:
         assert data["linux_detail"]["pkg_version"] == "1.1.1k-7"
         assert data["linux_detail"]["repo_type"] == "yum"
         assert data["linux_detail"]["os_version_range"] == ">=7"
+
+    @pytest.mark.integration
+    def test_update_linux_legacy_fields_keeps_package_snapshot_in_sync(self, su_client):
+        from apps.patch_mgmt.models import LinuxPatchDetail
+
+        patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
+        LinuxPatchDetail.objects.create(
+            patch=patch,
+            pkg_name="openssl",
+            pkg_version="1.0",
+            packages=[
+                {"name": "openssl", "version": "1.0", "arch": "x86_64"},
+                {"name": "openssl-libs", "version": "1.0", "arch": "x86_64"},
+            ],
+        )
+
+        response = su_client.put(
+            f"{PATCH_URL}{patch.id}/",
+            {
+                "title": "openssl",
+                "os_type": OSType.LINUX,
+                "team": [1],
+                "linux_detail": {
+                    "pkg_name": "openssl3",
+                    "pkg_version": "3.0",
+                    "distro_name": "",
+                    "os_version_range": "",
+                    "architectures": ["x86_64"],
+                    "repo_type": "yum",
+                },
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        patch.linux_detail.refresh_from_db()
+        assert patch.linux_detail.pkg_name == "openssl3"
+        assert patch.linux_detail.pkg_version == "3.0"
+        assert patch.linux_detail.packages == [
+            {"name": "openssl3", "version": "3.0", "arch": "x86_64"},
+            {"name": "openssl-libs", "version": "1.0", "arch": "x86_64"},
+        ]
 
 
 # ── PatchTarget ViewSet ────────────────────────────────────────────────────────
@@ -692,9 +740,10 @@ class TestPatchTargetViewApi:
 
         assert resp.status_code == status.HTTP_200_OK
         assert not PatchTarget.objects.filter(pk=target.id).exists()
-        assert GovernanceTaskHost.objects.filter(task=task, target_id=target.id).exists()
+        assert not GovernanceTaskHost.objects.filter(task_id=task.id, target_id=target.id).exists()
+        assert not GovernanceTask.objects.filter(pk=task.id).exists()
 
-    def test_destroy_api_removes_binding_and_key_but_keeps_history(self, su_client, mocker):
+    def test_destroy_api_removes_binding_key_and_patch_history(self, su_client, mocker):
         target = PatchTarget.objects.create(
             name="retired-host",
             ip="10.0.0.34",
@@ -727,7 +776,8 @@ class TestPatchTargetViewApi:
         assert resp.status_code == status.HTTP_200_OK
         assert not PatchTarget.objects.filter(pk=target.id).exists()
         assert not HostBaselineBinding.objects.filter(target_id=target.id).exists()
-        assert GovernanceTaskHost.objects.filter(pk=history.id).exists()
+        assert not GovernanceTaskHost.objects.filter(pk=history.id).exists()
+        assert not GovernanceTask.objects.filter(pk=task.id).exists()
         storage_delete.assert_called_once_with("ssh_keys/2026/08/03/id_rsa")
 
     def test_destroy_api_keeps_target_when_key_cleanup_fails(self, su_client, mocker):
@@ -775,9 +825,12 @@ class TestPatchDashboardViewApi:
         assert "patch_severity_distribution" in resp.data
 
     def test_stats_api_counts_match_db(self, su_client):
-        PatchTarget.objects.create(name="t1", ip="1.1.1.1", team=[1])
+        target = PatchTarget.objects.create(name="t1", ip="1.1.1.1", team=[1])
         PatchTarget.objects.create(name="t2", ip="1.1.1.2", team=[1])
-        Patch.objects.create(title="p1", os_type=OSType.WINDOWS, team=[1])
+        patch = Patch.objects.create(title="p1", os_type=OSType.WINDOWS, team=[1])
+        baseline = PatchBaseline.objects.create(name="b1", os_type=OSType.WINDOWS, team=[1])
+        BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+        HostBaselineBinding.objects.create(target=target, baseline=baseline)
 
         resp = su_client.get(DASHBOARD_STATS_URL)
         assert resp.status_code == status.HTTP_200_OK
@@ -785,19 +838,25 @@ class TestPatchDashboardViewApi:
         assert resp.data["target_total"] >= 2
         assert resp.data["patch_total"] >= 1
 
-    def test_stats_scoped_to_current_team(self, su_client):
-        """首页按当前团队收口:超管同样只统计当前团队(current_team=1)。"""
-        PatchTarget.objects.create(name="own", ip="1.1.1.1", team=[1])
-        PatchTarget.objects.create(name="other-team", ip="2.2.2.2", team=[2])
-        Patch.objects.create(title="own-patch", os_type=OSType.WINDOWS, team=[1])
-        Patch.objects.create(title="other-patch", os_type=OSType.WINDOWS, team=[2])
+    def test_superuser_dashboard_includes_all_target_roots(self, su_client):
+        own = PatchTarget.objects.create(name="own", ip="1.1.1.1", team=[1])
+        other = PatchTarget.objects.create(name="other-team", ip="2.2.2.2", team=[2])
+        own_patch = Patch.objects.create(title="own-patch", os_type=OSType.WINDOWS, team=[1])
+        other_patch = Patch.objects.create(title="other-patch", os_type=OSType.WINDOWS, team=[2])
+        own_baseline = PatchBaseline.objects.create(name="own-b", os_type=OSType.WINDOWS, team=[1])
+        other_baseline = PatchBaseline.objects.create(name="other-b", os_type=OSType.WINDOWS, team=[2])
+        BaselineRequirement.objects.create(baseline=own_baseline, patch=own_patch)
+        BaselineRequirement.objects.create(baseline=other_baseline, patch=other_patch)
+        HostBaselineBinding.objects.create(target=own, baseline=own_baseline)
+        HostBaselineBinding.objects.create(target=other, baseline=other_baseline)
 
         resp = su_client.get(DASHBOARD_STATS_URL)
         assert resp.status_code == status.HTTP_200_OK
-        assert resp.data["target_total"] == 1  # 仅团队 1
-        assert resp.data["patch_total"] == 1
+        assert resp.data["target_total"] == 2
+        assert resp.data["patch_total"] == 2
 
     def test_recent_tasks_mirror_visible_execution_record_roots(self, su_client):
+        target = PatchTarget.objects.create(name="record-host", ip="10.0.0.88", team=[1])
         install = GovernanceTask.objects.create(
             name="治理记录",
             task_type=GovernanceTaskType.INSTALL,
@@ -825,6 +884,8 @@ class TestPatchDashboardViewApi:
             execution_mode="window",
             team=[1],
         )
+        GovernanceTaskHost.objects.create(task=install, target_id=target.id, target_name=target.name, stage="completed")
+        GovernanceTaskHost.objects.create(task=reboot, target_id=target.id, target_name=target.name, stage="waiting")
 
         resp = su_client.get(DASHBOARD_STATS_URL)
 
@@ -853,16 +914,33 @@ RISK_URL = f"{_BASE}/api/risk/"
 @pytest.mark.django_db
 class TestRiskViewApi:
     def _setup(self):
-        from apps.patch_mgmt.models import PatchBaseline, HostBaselineBinding, BaselineRequirement
-        from apps.patch_mgmt.constants import ComplianceStatus
+        from django.utils import timezone
+
+        from apps.patch_mgmt.constants import ComplianceStatus, RequirementAssessmentStatus
+        from apps.patch_mgmt.models import (
+            BaselineRequirement,
+            HostBaselineBinding,
+            HostComplianceSnapshot,
+            PatchBaseline,
+            WindowsPatchDetail,
+        )
 
         target = PatchTarget.objects.create(name="web-01", ip="10.0.0.1", os_type=OSType.WINDOWS, team=[1])
         patch = Patch.objects.create(title="Security Update", os_type=OSType.WINDOWS, severity="critical", team=[1])
+        WindowsPatchDetail.objects.create(patch=patch, kb_number="KB5000003")
         baseline = PatchBaseline.objects.create(name="Win2019", os_type=OSType.WINDOWS, team=[1])
         binding = HostBaselineBinding.objects.create(target=target, baseline=baseline)
         binding.compliance_status = ComplianceStatus.NON_COMPLIANT
         binding.save(update_fields=["compliance_status", "updated_at"])
-        BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+        requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+        HostComplianceSnapshot.objects.create(
+            binding=binding,
+            requirement=requirement,
+            satisfied=False,
+            status=RequirementAssessmentStatus.MISSING,
+            reason="KB5000003 适用但未安装",
+            evaluated_at=timezone.now(),
+        )
         return target, patch, baseline
 
     def test_risk_list_returns_results(self, su_client):
@@ -893,12 +971,85 @@ class TestRiskViewApi:
         target, patch, _baseline = self._setup()
         resp = su_client.post(
             f"{RISK_URL}remediate/",
-            {"items": [{"host_id": target.id, "patch_id": patch.id}], "execution_mode": "now"},
+            {"name": "治理任务", "items": [{"host_id": target.id, "patch_id": patch.id}], "execution_mode": "now"},
             format="json",
         )
         assert resp.status_code == status.HTTP_201_CREATED
         task = GovernanceTask.objects.get(task_type="install")
         trigger.assert_called_once_with(task.id)
+
+    def test_risk_remediate_preserves_preview_failure_warning(self, su_client, mocker):
+        from apps.patch_mgmt.models import GovernanceTask, HostComplianceSnapshot
+
+        mocker.patch("apps.patch_mgmt.services.governance_service._trigger_async")
+        target, patch, _baseline = self._setup()
+        HostComplianceSnapshot.objects.filter(
+            binding__target=target,
+            requirement__patch=patch,
+        ).update(
+            evidence={
+                "install_impact": {
+                    "summary": "",
+                    "error": "apt-get dry-run failed",
+                }
+            }
+        )
+
+        response = su_client.post(
+            f"{RISK_URL}remediate/",
+            {
+                "name": "坚持治理任务",
+                "items": [{"host_id": target.id, "patch_id": patch.id}],
+                "execution_mode": "now",
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        risk_snapshot = GovernanceTask.objects.get(task_type="install").risk_snapshot
+        assert risk_snapshot[0]["preview_warning"] == "apt-get dry-run failed"
+
+    def test_risk_remediate_requires_task_name(self, su_client):
+        target, patch, _baseline = self._setup()
+
+        response = su_client.post(
+            f"{RISK_URL}remediate/",
+            {
+                "items": [{"host_id": target.id, "patch_id": patch.id}],
+                "execution_mode": "now",
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["code"] == "task_name_required"
+
+    def test_risk_remediate_rejects_requirement_that_is_not_missing(self, su_client, mocker):
+        from apps.patch_mgmt.constants import RequirementAssessmentStatus
+        from apps.patch_mgmt.models import HostComplianceSnapshot
+
+        trigger = mocker.patch(
+            "apps.patch_mgmt.services.governance_service._trigger_async"
+        )
+        target, patch, _baseline = self._setup()
+        HostComplianceSnapshot.objects.filter(
+            binding__target=target,
+            requirement__patch=patch,
+        ).update(
+            status=RequirementAssessmentStatus.NOT_APPLICABLE,
+            satisfied=False,
+            reason="不适用于当前主机",
+        )
+
+        resp = su_client.post(
+            f"{RISK_URL}remediate/",
+            {"name": "治理任务", "items": [{"host_id": target.id, "patch_id": patch.id}], "execution_mode": "now"},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == "patches_not_remediable"
+        trigger.assert_not_called()
 
     def test_risk_reboot_requires_window(self, su_client):
         target, _patch, _baseline = self._setup()
@@ -952,7 +1103,7 @@ class TestRiskViewApi:
 
         resp = su_client.post(
             f"{RISK_URL}reboot/",
-            {"target_ids": [target.id], **self._valid_reboot_window()},
+            {"name": "重启任务", "target_ids": [target.id], **self._valid_reboot_window()},
             format="json",
         )
 
@@ -985,6 +1136,7 @@ class TestRiskViewApi:
             f"{RISK_URL}reboot/",
             {
                 "target_ids": [target.id],
+                "name": "重启任务",
                 "scope_token": preview.data["scope_token"],
                 **self._valid_reboot_window(),
             },
@@ -1003,6 +1155,7 @@ class TestRiskViewApi:
             f"{RISK_URL}reboot/",
             {
                 "target_ids": [target.id],
+                "name": "重启任务",
                 "scope_token": "stale-token",
                 **self._valid_reboot_window(),
             },
@@ -1070,6 +1223,7 @@ class TestRiskViewApi:
         resp = su_client.post(
             f"{RISK_URL}reboot/",
             {
+                "name": "重启任务",
                 "target_ids": [pending_target.id, normal_target.id],
                 **self._valid_reboot_window(),
             },
@@ -1171,21 +1325,27 @@ class TestGovernanceTaskViewApi:
         from apps.patch_mgmt.constants import GovernanceTaskStatus
         from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
 
+        targets = [
+            PatchTarget.objects.create(
+                name=f"host-{index}", ip=f"10.20.0.{index}", team=[1]
+            )
+            for index in range(1, len(stages) + 1)
+        ]
         task = GovernanceTask.objects.create(
             name="cancel-test",
             task_type="install",
-            target_list=list(range(1, len(stages) + 1)),
+            target_list=[target.id for target in targets],
             status=task_status,
             team=[1],
         )
         hosts = [
             GovernanceTaskHost.objects.create(
                 task=task,
-                target_id=index,
+                target_id=target.id,
                 target_name=f"host-{index}",
                 stage=stage,
             )
-            for index, stage in enumerate(stages, start=1)
+            for index, (target, stage) in enumerate(zip(targets, stages), start=1)
         ]
         return task, hosts
 

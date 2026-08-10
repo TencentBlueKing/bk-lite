@@ -31,7 +31,10 @@ jobs:
         run: npm run lint
 
       - name: Build packages
-        run: npm run build
+        run: npm run build:core && npm run build:ui && npm run build:browser
+
+      - name: Sync browser bundle to web/public
+        run: npm run sync:web
 
       - name: Run tests
         run: npm run test

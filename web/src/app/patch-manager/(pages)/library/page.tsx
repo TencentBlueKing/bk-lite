@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Popconfirm, Tooltip, Upload, Dropdown } from 'antd';
+import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Tooltip, Upload, Dropdown } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, CloudDownloadOutlined, EditOutlined, DeleteOutlined, CloseOutlined, DownOutlined, InboxOutlined, UploadOutlined } from '@ant-design/icons';
@@ -11,11 +11,13 @@ import useApiClient from '@/utils/request';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import usePatchManagerApi from '@/app/patch-manager/api';
 import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
-import type { Patch, PatchSeverity, OSType, PackageStatus, PatchParams, CandidateItem, PatchSource, IngestResult } from '@/app/patch-manager/types';
+import type { Patch, PatchOriginType, PatchSeverity, OSType, PackageStatus, PatchParams, CandidateItem, PatchSource, IngestResult } from '@/app/patch-manager/types';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
 import ReadyTag from '@/app/patch-manager/components/ready-tag';
+import PatchSourceDisplay from '@/app/patch-manager/components/patch-source-display';
 import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import { getWindowsPackageUploadState } from '@/app/patch-manager/components/windows-package-upload-state';
 import {
   createCandidateSelection,
@@ -23,6 +25,7 @@ import {
   removeCandidateFromSelection,
 } from '@/app/patch-manager/components/candidate-selection';
 import { useTranslation } from '@/utils/i18n';
+import { useRouter } from 'next/navigation';
 import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
 import {
   formatArchitecture,
@@ -35,7 +38,6 @@ import {
 } from '@/app/patch-manager/constants/architecture';
 
 type TabKey = 'win' | 'linux';
-type SourceType = 'auto' | 'manual';
 
 const OS_TYPE_MAP: Record<TabKey, OSType> = {
   win: 'windows',
@@ -56,26 +58,18 @@ function mapPkgStatus(pkgStatus?: string): string {
   }
 }
 
-function getSourceType(patch: Patch): SourceType {
-  return patch.sources.length > 0 ? 'auto' : 'manual';
-}
+const SOURCE_TYPE_LABELS: Record<PatchOriginType, string> = {
+  manual: '手动',
+  wsus: 'WSUS',
+  yum_repo: 'yum repo',
+  dnf_repo: 'dnf repo',
+  apt_repo: 'apt repo',
+};
 
-function getSourceLabel(patch: Patch): string {
-  switch (patch.source_type) {
-    case 'wsus':
-      return 'WSUS';
-    case 'yum_repo':
-      return 'yum';
-    case 'dnf_repo':
-      return 'dnf';
-    case 'apt_repo':
-      return 'apt';
-    case null:
-    case undefined:
-      return 'manual';
-    default:
-      return patch.source_type;
-  }
+function getPatchSourceTypes(patch: Patch): PatchOriginType[] {
+  const types: PatchOriginType[] = (patch.source_details || []).map((item) => item.source_type);
+  if (types.length === 0 && patch.source_type) types.push(patch.source_type);
+  return Array.from(new Set(types));
 }
 
 function getPatchName(patch: Patch): string {
@@ -114,6 +108,7 @@ function normalizeRepoType(repoType?: string): string {
 
 export default function LibraryPage() {
   const { t } = useTranslation();
+  const router = useRouter();
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -174,7 +169,7 @@ export default function LibraryPage() {
           else if (key === 'ready') params.pkg_status = arr[0] as PackageStatus;
           else if (key === 'arch') params.arch = arr[0];
           else if (key === 'version') params.version = arr[0];
-          else if (key === 'sourceType') params.source_isnull = arr[0] === 'manual';
+          else if (key === 'sourceType') params.source_type = arr[0] as PatchOriginType;
         }
       });
     });
@@ -270,7 +265,7 @@ export default function LibraryPage() {
     { name: 'arch', label: t('patchManager.arch'), lookup_expr: 'in', options: WINDOWS_ARCHITECTURE_FILTER_OPTIONS },
     { name: 'severity', label: t('patchManager.severity'), lookup_expr: 'in', options: severityFilterOptions },
     { name: 'ready', label: t('patchManager.libraryPage.readyStatus'), lookup_expr: 'in', options: readyFilterOptions },
-    { name: 'sourceType', label: t('patchManager.libraryPage.sourceType'), lookup_expr: 'in', options: [{ id: 'auto', name: t('patchManager.libraryPage.automatic') }, { id: 'manual', name: t('patchManager.manual') }] },
+    { name: 'sourceType', label: t('patchManager.libraryPage.sourceType'), lookup_expr: 'in', options: [{ id: 'manual', name: t('patchManager.manual') }, { id: 'wsus', name: 'WSUS' }] },
   ];
 
   const linuxFieldConfigs: FieldConfig[] = [
@@ -280,19 +275,15 @@ export default function LibraryPage() {
     { name: 'arch', label: t('patchManager.arch'), lookup_expr: 'in', options: LINUX_ARCHITECTURE_FILTER_OPTIONS },
     { name: 'severity', label: t('patchManager.severity'), lookup_expr: 'in', options: severityFilterOptions },
     { name: 'ready', label: t('patchManager.libraryPage.readyStatus'), lookup_expr: 'in', options: readyFilterOptions },
-    { name: 'sourceType', label: t('patchManager.libraryPage.sourceType'), lookup_expr: 'in', options: [{ id: 'auto', name: t('patchManager.libraryPage.automatic') }, { id: 'manual', name: t('patchManager.manual') }] },
+    { name: 'sourceType', label: t('patchManager.libraryPage.sourceType'), lookup_expr: 'in', options: [{ id: 'manual', name: t('patchManager.manual') }, { id: 'apt_repo', name: 'apt repo' }, { id: 'dnf_repo', name: 'dnf repo' }, { id: 'yum_repo', name: 'yum repo' }] },
   ];
 
   const selectedPatches = useMemo(
     () => data.filter((patch) => selectedPatchIds.includes(patch.id)),
     [data, selectedPatchIds],
   );
-  const selectedSource = useMemo(
-    () => sources.find((source) => source.id === selectedSourceId),
-    [selectedSourceId, sources],
-  );
   const batchDeleteBlocked = selectedPatches.some(
-    (patch) => (patch.baseline_requirement_count ?? 0) > 0 || !patch.permission?.includes('Operate'),
+    (patch) => (patch.baseline_requirement_count ?? 0) > 0,
   );
 
   const handleDelete = async (patchIds: number[]) => {
@@ -333,13 +324,36 @@ export default function LibraryPage() {
       { title: t('patchManager.severity'), dataIndex: 'severity', width: 100, render: (v: PatchSeverity) => <SeverityTag severity={v} /> },
       { title: isWin ? t('patchManager.libraryPage.applicableVersion') : t('patchManager.distro'), dataIndex: 'version', width: 140, render: (_: unknown, r: Patch) => getPatchVersion(r) },
       { title: t('patchManager.arch'), dataIndex: 'arch', width: 100, render: (_: unknown, r: Patch) => getPatchArch(r) },
-      { title: t('patchManager.libraryPage.source'), dataIndex: 'sources', width: 120, render: (_: unknown, r: Patch) => <span style={{ color: '#8c8c8c' }}>{getSourceLabel(r) === 'manual' ? t('patchManager.manual') : getSourceLabel(r)}</span> },
-      { title: t('patchManager.libraryPage.sourceType'), dataIndex: 'sourceType', width: 100, render: (_: unknown, r: Patch) => {
-        const sourceType = getSourceType(r);
-        return <Tag color={sourceType === 'auto' ? 'default' : 'warning'}>{sourceType === 'auto' ? t('patchManager.libraryPage.automatic') : t('patchManager.manual')}</Tag>;
-      }},
+      {
+        title: t('patchManager.libraryPage.source'),
+        dataIndex: 'sources',
+        width: 220,
+        render: (_: unknown, r: Patch) => (
+          <PatchSourceDisplay
+            sourceType={r.source_type}
+            sourceDetails={r.source_details}
+          />
+        ),
+      },
+      {
+        title: t('patchManager.libraryPage.sourceType'),
+        dataIndex: 'sourceType',
+        width: 140,
+        render: (_: unknown, r: Patch) => {
+          const sourceTypes = getPatchSourceTypes(r);
+          const text = sourceTypes.map((value) => value === 'manual' ? t('patchManager.manual') : SOURCE_TYPE_LABELS[value]).join('，') || '—';
+          return <Tooltip title={text}><Tag color={sourceTypes.includes('manual') ? 'warning' : 'default'} style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</Tag></Tooltip>;
+        },
+      },
       { title: t('patchManager.libraryPage.readyStatus'), dataIndex: 'pkg_status', width: 120, render: (_: unknown, r: Patch) => <ReadyTag status={mapPkgStatus(r.pkg_status)} /> },
-      { title: t('patchManager.libraryPage.baselineReferences'), dataIndex: 'baseline_requirement_count', width: 110, render: (v: number) => <span style={{ color: '#bfbfbf' }}>{v ?? 0}</span> },
+      {
+        title: t('patchManager.libraryPage.baselineReferences'),
+        dataIndex: 'baseline_requirement_count',
+        width: 110,
+        render: (v: number, r: Patch) => (v ?? 0) > 0
+          ? <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={() => router.push(`/patch-manager/baseline?patch_ids=${r.id}`)}>{v}</Button>
+          : <span style={{ color: 'var(--color-text-4, #bfbfbf)' }}>0</span>,
+      },
       { title: t('patchManager.libraryPage.lastUpdated'), dataIndex: 'last_synced_at', width: 180, render: (v: string | null, r: Patch) => convertToLocalizedTime(v || r.updated_at) || '—' },
       { title: t('patchManager.operation'), dataIndex: 'op', width: 180, fixed: 'right', render: (_: unknown, r: Patch) => {
         const deleteBlocked = (r.baseline_requirement_count ?? 0) > 0;
@@ -354,16 +368,16 @@ export default function LibraryPage() {
           {t('patchManager.delete')}
         </Button>;
         return <Space size={12}>
-          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: '#1677ff' }} onClick={() => setEditingPatch(r)}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}>
-            {deleteBlocked ? <Tooltip title={t('patchManager.libraryPage.deleteReferenced')}><span>{deleteButton}</span></Tooltip> : <Popconfirm title={t('patchManager.libraryPage.deleteConfirm')} onConfirm={() => handleDelete([r.id])} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: '#1677ff' }} onClick={() => setEditingPatch(r)}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']}>
+            {deleteBlocked ? <Tooltip title={t('patchManager.libraryPage.deleteReferenced')}><span>{deleteButton}</span></Tooltip> : <PatchDeletePopconfirm title={t('patchManager.libraryPage.deleteConfirm')} onConfirm={() => handleDelete([r.id])} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
               {deleteButton}
-            </Popconfirm>}
+            </PatchDeletePopconfirm>}
           </PermissionWrapper>
         </Space>;
       }},
     ];
-  }, [activeTab, convertToLocalizedTime, deleting, t]);
+  }, [activeTab, convertToLocalizedTime, deleting, router, t]);
 
   const handleCreateSubmit = async () => {
     let values;
@@ -664,7 +678,6 @@ export default function LibraryPage() {
           rowSelection={{
             selectedRowKeys: selectedPatchIds,
             onChange: (keys) => setSelectedPatchIds(keys.map(Number)),
-            getCheckboxProps: (record) => ({ disabled: !record.permission?.includes('Operate') }),
           }}
           pagination={{
             current: pagination.current,
@@ -767,7 +780,7 @@ export default function LibraryPage() {
         footer={
           <Space>
             <Button onClick={closeImportDrawer}>{t('patchManager.cancel')}</Button>
-            <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/settings" instPermissions={selectedSource?.permission}>
+            <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/settings">
               <Button type="primary" loading={candidateActionLoading} disabled={candidateSelection.keys.length === 0} icon={<CloudDownloadOutlined />} onClick={handleImportSubmit}>{t('patchManager.libraryPage.batchIngest', undefined, { count: candidateSelection.keys.length })}</Button>
             </PermissionWrapper>
           </Space>
@@ -884,7 +897,6 @@ export default function LibraryPage() {
           if (!editSaving) setEditingPatch(null);
         }}
         confirmLoading={editSaving}
-        okButtonProps={{ disabled: !editingPatch?.permission?.includes('Operate') }}
         cancelButtonProps={{ disabled: editSaving }}
         closable={!editSaving}
         maskClosable={!editSaving}

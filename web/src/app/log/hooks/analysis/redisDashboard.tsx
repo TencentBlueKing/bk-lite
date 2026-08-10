@@ -48,8 +48,8 @@ export const useRedisDashboard = () => {
           color: '#EF4444',
           displayMaps: { type: 'single', key: '_time', value: 'err_count' },
           dataSourceParams: {
-            searchQuery: `${REDIS_BASE} _msg:"ERR "`,
-            query: `${REDIS_BASE} | stats by (_time:\${_time}) count() if (_msg:"ERR ") as err_count`
+            searchQuery: `${REDIS_BASE} message:"ERR "`,
+            query: `${REDIS_BASE} | stats by (_time:\${_time}) count() if (message:"ERR ") as err_count`
           }
         }
       },
@@ -67,8 +67,8 @@ export const useRedisDashboard = () => {
           color: '#F97316',
           displayMaps: { type: 'single', key: '_time', value: 'type_err_count' },
           dataSourceParams: {
-            searchQuery: `${REDIS_BASE} (_msg:"WRONGTYPE " OR _msg:"CLUSTERDOWN ")`,
-            query: `${REDIS_BASE} | stats by (_time:\${_time}) count() if (_msg:"WRONGTYPE " OR _msg:"CLUSTERDOWN ") as type_err_count`
+            searchQuery: `${REDIS_BASE} (message:"WRONGTYPE " OR message:"CLUSTERDOWN ")`,
+            query: `${REDIS_BASE} | stats by (_time:\${_time}) count() if (message:"WRONGTYPE " OR message:"CLUSTERDOWN ") as type_err_count`
           }
         }
       },
@@ -86,8 +86,8 @@ export const useRedisDashboard = () => {
           color: '#8B5CF6',
           displayMaps: { type: 'single', key: '_time', value: 'auth_err_count' },
           dataSourceParams: {
-            searchQuery: `${REDIS_BASE} (_msg:"WRONGPASS " OR _msg:"NOAUTH " OR _msg:"AUTH failed")`,
-            query: `${REDIS_BASE} | stats by (_time:\${_time}) count() if (_msg:"WRONGPASS " OR _msg:"NOAUTH " OR _msg:"AUTH failed") as auth_err_count`
+            searchQuery: `${REDIS_BASE} (message:"WRONGPASS " OR message:"NOAUTH " OR message:"AUTH failed")`,
+            query: `${REDIS_BASE} | stats by (_time:\${_time}) count() if (message:"WRONGPASS " OR message:"NOAUTH " OR message:"AUTH failed") as auth_err_count`
           }
         }
       },
@@ -111,7 +111,7 @@ export const useRedisDashboard = () => {
           },
           dataSourceParams: {
             searchQuery: `${REDIS_BASE}`,
-            query: `${REDIS_BASE} | stats by (_time:\${_time}) count() as total_count, count() if (_msg:"ERR ") as err_count`
+            query: `${REDIS_BASE} | stats by (_time:\${_time}) count() as total_count, count() if (message:"ERR ") as err_count`
           }
         }
       },
@@ -128,7 +128,7 @@ export const useRedisDashboard = () => {
           dataSource: 1,
           dataSourceParams: {
             searchQuery: `${REDIS_BASE}`,
-            query: `${REDIS_BASE} | stats count() as total_count, count() if (_msg:"ERR ") as err_count, count() if (_msg:"WRONGTYPE " OR _msg:"CLUSTERDOWN ") as type_err_count, count() if (_msg:"WRONGPASS " OR _msg:"NOAUTH " OR _msg:"AUTH failed") as auth_err_count, count() if (_msg:"command: ") as cmd_count`
+            query: `${REDIS_BASE} | stats count() as total_count, count() if (message:"ERR ") as err_count, count() if (message:"WRONGTYPE " OR message:"CLUSTERDOWN ") as type_err_count, count() if (message:"WRONGPASS " OR message:"NOAUTH " OR message:"AUTH failed") as auth_err_count, count() if (message:"command: ") as cmd_count`
           }
         }
       },
@@ -145,8 +145,8 @@ export const useRedisDashboard = () => {
           dataSource: 1,
           displayMaps: { key: 'err_case', value: 'case_count' },
           dataSourceParams: {
-            searchQuery: `${REDIS_BASE} _msg:"case="`,
-            query: `${REDIS_BASE} _msg:"case=" | extract "case=<err_case>" from _msg | stats by (err_case) count() as case_count | sort by (case_count desc) | limit 10`
+            searchQuery: `${REDIS_BASE} message:"case="`,
+            query: `${REDIS_BASE} message:"case=" | extract "case=<err_case>" from message | stats by (err_case) count() as case_count | sort by (case_count desc) | limit 10`
           }
         }
       },
@@ -162,8 +162,8 @@ export const useRedisDashboard = () => {
           dataSource: 1,
           displayMaps: { key: 'node_ip', value: 'err_count' },
           dataSourceParams: {
-            searchQuery: `${REDIS_BASE} _msg:"ERR " node_ip:*`,
-            query: `${REDIS_BASE} _msg:"ERR " node_ip:* | stats by (node_ip) count() as err_count | sort by (err_count desc) | limit 10`
+            searchQuery: `${REDIS_BASE} message:"ERR " node_ip:*`,
+            query: `${REDIS_BASE} message:"ERR " node_ip:* | stats by (node_ip) count() as err_count | sort by (err_count desc) | limit 10`
           }
         }
       },
@@ -179,8 +179,8 @@ export const useRedisDashboard = () => {
           dataSource: 1,
           displayMaps: { key: 'node_ip', value: 'auth_err_count' },
           dataSourceParams: {
-            searchQuery: `${REDIS_BASE} (_msg:"WRONGPASS " OR _msg:"NOAUTH " OR _msg:"AUTH failed") node_ip:*`,
-            query: `${REDIS_BASE} node_ip:* | stats by (node_ip) count() if (_msg:"WRONGPASS " OR _msg:"NOAUTH " OR _msg:"AUTH failed") as auth_err_count | sort by (auth_err_count desc) | limit 10`
+            searchQuery: `${REDIS_BASE} (message:"WRONGPASS " OR message:"NOAUTH " OR message:"AUTH failed") node_ip:*`,
+            query: `${REDIS_BASE} node_ip:* | stats by (node_ip) count() if (message:"WRONGPASS " OR message:"NOAUTH " OR message:"AUTH failed") as auth_err_count | sort by (auth_err_count desc) | limit 10`
           }
         }
       },
@@ -196,8 +196,8 @@ export const useRedisDashboard = () => {
           chartType: 'redisLogTable',
           dataSource: 1,
           dataSourceParams: {
-            searchQuery: `${REDIS_BASE} _msg:"ERR "`,
-            query: `${REDIS_BASE} _msg:"ERR " | sort by (_time desc) | limit 30`
+            searchQuery: `${REDIS_BASE} message:"ERR "`,
+            query: `${REDIS_BASE} message:"ERR " | sort by (_time desc) | limit 30`
           }
         }
       },
@@ -213,8 +213,8 @@ export const useRedisDashboard = () => {
           chartType: 'redisLogTable',
           dataSource: 1,
           dataSourceParams: {
-            searchQuery: `${REDIS_BASE} (_msg:"WRONGPASS " OR _msg:"NOAUTH " OR _msg:"AUTH failed")`,
-            query: `${REDIS_BASE} (_msg:"WRONGPASS " OR _msg:"NOAUTH " OR _msg:"AUTH failed") | sort by (_time desc) | limit 30`
+            searchQuery: `${REDIS_BASE} (message:"WRONGPASS " OR message:"NOAUTH " OR message:"AUTH failed")`,
+            query: `${REDIS_BASE} (message:"WRONGPASS " OR message:"NOAUTH " OR message:"AUTH failed") | sort by (_time desc) | limit 30`
           }
         }
       }

@@ -6,10 +6,13 @@ from apps.system_mgmt.models import (
     LoginAuthBinding,
     LoginAuthBindingUnmatchedActionChoices,
 )
+from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
 
 
 class LoginAuthBindingSerializer(UsernameSerializer):
     integration_instance_name = serializers.SerializerMethodField()
+    provider_key = serializers.SerializerMethodField()
+    dependency_status = serializers.SerializerMethodField()
     builtin_provider_key = "bk_lite_builtin"
 
     class Meta:
@@ -18,6 +21,14 @@ class LoginAuthBindingSerializer(UsernameSerializer):
 
     def get_integration_instance_name(self, obj):
         return obj.integration_instance.name if obj.integration_instance_id else ""
+
+    def get_provider_key(self, obj):
+        return obj.integration_instance.provider_key if obj.integration_instance_id else ""
+
+    def get_dependency_status(self, obj):
+        if not obj.integration_instance_id:
+            return {"available": False, "reason": "instance_not_ready"}
+        return get_integration_capability_availability(obj.integration_instance, "login_auth")
 
     def validate(self, attrs):
         if self.instance and self.instance.integration_instance.provider_key == self.builtin_provider_key:
@@ -46,9 +57,17 @@ class LoginAuthBindingSerializer(UsernameSerializer):
         if instance.provider_key == "":
             raise serializers.ValidationError({"integration_instance": "Integration instance provider is invalid"})
 
-        if instance.status != IntegrationInstanceStatusChoices.READY or instance.capability_status.get(
-            "login_auth"
-        ) != IntegrationInstanceStatusChoices.READY:
+        changes_instance = bool(
+            self.instance
+            and "integration_instance" in attrs
+            and instance.id != self.instance.integration_instance_id
+        )
+        enables_binding = bool(
+            self.instance and attrs.get("enabled") is True and not self.instance.enabled
+        )
+        if (self.instance is None or changes_instance or enables_binding) and not get_integration_capability_availability(
+            instance, "login_auth"
+        )["available"]:
             raise serializers.ValidationError(
                 {"integration_instance": "Integration instance login_auth capability is not ready"}
             )

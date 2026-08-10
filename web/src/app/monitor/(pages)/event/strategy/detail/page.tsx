@@ -3,6 +3,10 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { Spin, Button, Form, message, Steps } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
+import {
+  fetchAllMetricsGroups,
+  fetchAllMonitorMetrics
+} from '@/app/monitor/api/fetchMetricCatalogPages';
 import useEventApi from '@/app/monitor/api/event';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -10,7 +14,6 @@ import {
   UserItem,
   SegmentedItem,
   TableDataItem,
-  GroupInfo,
   ObjectItem,
   MetricItem,
   IndexViewItem,
@@ -49,13 +52,13 @@ import {
 } from '@/app/monitor/constants/event';
 import {
   buildMetricUnitCascaderOptions,
-  filterInvalidCalculationUnit,
   getCalculationUnitOnMetricRowsChange,
   getReverseModeCalculationUnit,
   getThresholdUnitOnCalculationUnitChange,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
   resolveThresholdUnit,
+  resolveUnitOnMetricSelect,
   restoreCalculationUnitState
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
@@ -70,9 +73,6 @@ import {
   toMetricExpressionStateFromQueryCondition
 } from './formulaExpressionUtils';
 const defaultGroup = ['instance_id'];
-
-// 过滤无效的单位值（none 、 short 和 JSON 字符串格式 已从单位列表中移除，不能作为单位值）
-// 已上提至 strategyDetailUtils.filterInvalidCalculationUnit
 
 const StrategyOperation = () => {
   const { t } = useTranslation();
@@ -277,7 +277,7 @@ const StrategyOperation = () => {
           const target = initMetricData.find((item) => item.name === _metricId);
           if (target) {
             const _labels = getMetricDimensionNames(target?.dimensions);
-            const initialBuiltInUnit = filterInvalidCalculationUnit(target?.unit);
+            const initialBuiltInUnit = resolveUnitOnMetricSelect(target?.unit);
             setCalculationUnit(initialBuiltInUnit);
             // 计算完整的分组维度选项列表并设置为所有选项
             const fixedList =
@@ -338,7 +338,9 @@ const StrategyOperation = () => {
     const nextLabelsByRef: Record<string, string[]> = {};
     metricRows.forEach((row) => {
       const target = metrics.find(
-        (item) => item.id === row.metricId || item.name === row.metricName
+        (item) =>
+          (row.metricId != null && String(item.id) === String(row.metricId)) ||
+          (!!row.metricName && item.name === row.metricName)
       );
       nextLabelsByRef[row.ref] = getMetricDimensionNames(target?.dimensions);
     });
@@ -347,7 +349,9 @@ const StrategyOperation = () => {
     if (metricRows.length === 1) {
       const row = metricRows[0];
       const target = metrics.find(
-        (item) => item.id === row.metricId || item.name === row.metricName
+        (item) =>
+          (row.metricId != null && String(item.id) === String(row.metricId)) ||
+          (!!row.metricName && item.name === row.metricName)
       );
       setMetric(row.metricName || target?.name || null);
       setConditions(row.filters || []);
@@ -485,7 +489,7 @@ const StrategyOperation = () => {
     const { query_condition } = data;
     if (query_condition?.type === 'metric' && initMetricData.length > 0) {
       const _metrics = initMetricData.find(
-        (item) => item.id === query_condition?.metric_id
+        (item) => query_condition?.metric_id != null && String(item.id) === String(query_condition.metric_id)
       );
       if (_metrics) {
         setMetric(_metrics?.name || '');
@@ -523,7 +527,7 @@ const StrategyOperation = () => {
         query_condition
       );
       const rows = restoredState.rows.map((row) => {
-        const target = initMetricData.find((item) => item.id === row.metricId);
+        const target = initMetricData.find((item) => row.metricId != null && String(item.id) === String(row.metricId));
         return {
           ...row,
           metricName: target?.name || row.metricName
@@ -607,59 +611,38 @@ const StrategyOperation = () => {
 
     // 选择指标后触发验证，清除错误信息（包括指标、条件维度和告警阈值）
     form.validateFields(['metric', 'threshold']);
-    // 自动设置告警阈值单位为指标的默认单位（过滤掉 none 和 short）
-    const filteredUnit = filterInvalidCalculationUnit(target?.unit);
-    if (filteredUnit) {
-      setCalculationUnit(filteredUnit);
-      setThresholdUnit(filteredUnit);
-      return;
-    }
-    const unitList = commonContext?.unitList || [];
-    const baseFilteredList = unitList.filter(
-      (item) => !['none', 'short'].includes(item.unit_id)
-    );
-    const metricUnitItem = unitList.find(
-      (item) => item.unit_id === target?.unit
-    );
-    let defaultUnit: string | null = null;
-    if (metricUnitItem) {
-      // 找到相同 system 的第一个单位
-      const sameSystemUnit = baseFilteredList.find(
-        (item) => item.system === metricUnitItem.system
-      );
-      defaultUnit = sameSystemUnit?.unit_id || null;
-    }
-    setCalculationUnit(defaultUnit);
-    setThresholdUnit(defaultUnit);
+    // none/short/枚举 → null，禁止再按 system===null 回落到 cps 等独立单位
+    const nextUnit = resolveUnitOnMetricSelect(target?.unit);
+    setCalculationUnit(nextUnit);
+    setThresholdUnit(nextUnit);
   };
 
   const getMetrics = async (params = {}, type = '') => {
     try {
       setMetricsLoading(true);
-      const getGroupList = getMetricsGroup(params);
-      const getMetrics = getMonitorMetrics(params);
+      const getGroupList = fetchAllMetricsGroups(getMetricsGroup, params);
+      const getMetrics = fetchAllMonitorMetrics(getMonitorMetrics, params);
       Promise.all([getGroupList, getMetrics])
         .then((res) => {
-          const metricData = cloneDeep(res[1] || []);
-          setMetrics(res[1] || []);
-          const groupData = res[0].map((item: GroupInfo) => ({
+          const metricData = cloneDeep(res[1].items);
+          setMetrics(res[1].items);
+          const groupData: IndexViewItem[] = res[0].items.map((item) => ({
             ...item,
+            id: Number(item.id),
             child: []
           }));
           metricData.forEach((metric: MetricItem) => {
             const target = groupData.find(
-              (item: GroupInfo) => item.id === metric.metric_group
+              (item) => item.id === metric.metric_group
             );
             if (target) {
-              target.child.push(metric);
+              target.child?.push(metric);
             }
           });
-          const _groupData = groupData.filter(
-            (item: any) => !!item.child?.length
-          );
+          const _groupData = groupData.filter((item) => !!item.child?.length);
           setOriginMetricData(_groupData);
           if (type === 'init') {
-            setInitMetricData(res[1] || []);
+            setInitMetricData(res[1].items);
           }
         })
         .finally(() => {
@@ -830,7 +813,8 @@ const StrategyOperation = () => {
         const primaryMetric = metricRows[0];
         const mertricTarget = metrics.find(
           (item) =>
-            item.id === primaryMetric?.metricId ||
+            (primaryMetric?.metricId != null &&
+              String(item.id) === String(primaryMetric.metricId)) ||
             item.name === primaryMetric?.metricName
         );
         selectedMetricSourceUnit = mertricTarget?.unit;

@@ -14,7 +14,7 @@ This capability uses kafka_exporter to access brokers through the Kafka client p
 ## Setup Steps
 
 1. From the actual collector node, verify both the initial broker and its advertised addresses.
-2. Enter a Kafka protocol version (at least `0.10.2.0`). Enable authentication and enter the SASL username, password, and mechanism when required.
+2. Enter a Kafka protocol version (at least `0.10.2.0`). Enable authentication and enter the SASL username, password, and mechanism (default `plain`) when required.
 3. Enter an unused listen port, one Kafka server address, topic/group include and exclude expressions, and the interval (default `60` seconds).
 4. For large topic or consumer-group fleets, tune concurrency, batch size, and consumer-group collection timeout as needed.
 5. In the monitored objects table, select the node and enter the listen port, server address, instance name, and optional group.
@@ -37,7 +37,7 @@ Also run a Kafka client metadata query with the same authentication mode. Confir
 | Version | Yes | Kafka client protocol version, such as `2.0.0`; it must be compatible with the broker. **Minimum: `0.10.2.0`**. |
 | Enable Authentication | No | SASL switch; disabled by default. |
 | Username, Password | Conditional | Required when authentication is enabled. |
-| Operation Mode | No | SASL mechanism: `plain`, `sha256`, `sha512`, or `gssapi`; empty uses PLAIN as the current exporter default. |
+| SASL Mechanism | Conditional | Required when authentication is enabled: `plain`, `scram-sha256`, or `scram-sha512`; default `plain`. |
 | Listen Port | Yes | Local port where the exporter exposes `/metrics`. |
 | Server Address | Yes | One broker `host:port`. |
 | Topic Include / Exclude | No | Regular expressions default to `.*` and `^$`. |
@@ -109,6 +109,7 @@ Then confirm that these metrics are queryable in the platform:
 ### SASL authentication fails
 
 - Check that the authentication switch, username, password, and mechanism match the broker.
+- Choose the mechanism explicitly (`plain` / `scram-sha256` / `scram-sha512`); do not rely on the placeholder.
 - Enter the password only in the password field; do not embed it in the server address or another field.
 
 ### Topic or consumer-group data is missing

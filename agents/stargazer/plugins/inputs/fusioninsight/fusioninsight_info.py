@@ -14,6 +14,7 @@ PrivateCloudManage、@register、双类 __getattr__ 分发、监控相关方法�
 输出结构：{"result": {"fusioninsight_cluster":[...], "fusioninsight_host":[...]},
 "success": bool}
 """
+import asyncio
 import base64
 import traceback
 
@@ -232,7 +233,10 @@ class FusionInsightManager:
             "fusioninsight_host": hosts,
         }
 
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         try:
             result = self.exec_script()
             return {"result": result, "success": True}

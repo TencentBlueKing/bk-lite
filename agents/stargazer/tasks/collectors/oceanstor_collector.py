@@ -6,6 +6,9 @@ from .base_collector import BaseCollector
 
 class OceanStorCollector(BaseCollector):
     async def collect(self) -> str:
+        return await asyncio.to_thread(self._collect_sync)
+
+    def _collect_sync(self) -> str:
         from common.monitor_plugins.oceanstor.api import OceanStorApiMonitor
         from utils.convert import convert_to_prometheus
 
@@ -14,7 +17,7 @@ class OceanStorCollector(BaseCollector):
         host = self.params.get("host") or self.params.get("base_url", "")
         instance_id = self.params.get("instance_id", host)
 
-        logger.info(f"[OceanStor Collector] Host={host}, User={username}")
+        logger.info(f"[OceanStor Collector] Host={host}")
 
         base_url = f"https://{host}" if host and not host.startswith("http") else host
 
@@ -34,8 +37,7 @@ class OceanStorCollector(BaseCollector):
 
         monitor = OceanStorApiMonitor(monitor_input)
 
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, monitor.execute)
+        monitor.execute()
 
         if not monitor.data:
             logger.warning("[OceanStor Collector] No data collected")

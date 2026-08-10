@@ -1,3 +1,4 @@
+'use client';
 import React, { useEffect, useState, memo, useMemo, useRef } from 'react';
 import chartStyle from './index.module.scss';
 import CustomTable from '@/components/custom-table';

@@ -27,7 +27,6 @@ class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
     )
     name = serializers.CharField(max_length=128)
     description = serializers.CharField(max_length=512, required=False, allow_blank=True)
-    is_enabled = serializers.BooleanField(required=False)
 
     def validate_application_id(self, value):
         if ApmApplication.objects.filter(application_id=value).exists():
@@ -42,17 +41,35 @@ class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
 
 class IngestSnippetSerializer(serializers.Serializer):
     application_id = serializers.CharField(max_length=128)
+    cloud_region_id = serializers.IntegerField(min_value=1)
     language = serializers.ChoiceField(choices=("python", "nodejs", "java", "go"))
     runtime = serializers.ChoiceField(choices=("kubernetes", "docker", "host", "other"))
-    endpoint = serializers.URLField(max_length=512)
+    endpoint = serializers.CharField(max_length=512, required=False, write_only=True)
     service_name = serializers.CharField(max_length=256)
     service_version = serializers.CharField(max_length=256, required=False, allow_blank=True)
     environment = serializers.CharField(max_length=256, allow_blank=True)
 
-    def validate_endpoint(self, value):
-        if not value.lower().startswith(("http://", "https://")):
-            raise serializers.ValidationError("OTLP 端点只支持 HTTP 或 HTTPS。")
-        return value
+    def validate_endpoint(self, _value):
+        raise serializers.ValidationError("OTLP 端点必须由服务器根据云区域配置解析，客户端不得提交。")
+
+
+class CatalogListQuerySerializer(serializers.Serializer):
+    page = serializers.IntegerField(min_value=1, required=False)
+    page_size = serializers.IntegerField(min_value=1, required=False)
+    application = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    environment = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=("active", "silent", "archived"), required=False)
+    include_archived = serializers.BooleanField(required=False, default=False)
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    keyword = serializers.CharField(max_length=256, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        started_at = attrs.get("started_at")
+        ended_at = attrs.get("ended_at")
+        if started_at is not None and ended_at is not None and started_at >= ended_at:
+            raise serializers.ValidationError("started_at 必须早于 ended_at。")
+        return attrs
 
 
 class ApmApplicationSerializer(serializers.ModelSerializer):
@@ -66,7 +83,7 @@ class ApmApplicationSerializer(serializers.ModelSerializer):
             "application_id",
             "name",
             "description",
-            "is_enabled",
+            "is_builtin",
             "service_count",
             "organization_ids",
             "created_at",
@@ -77,6 +94,7 @@ class ApmApplicationSerializer(serializers.ModelSerializer):
 
     def get_organization_ids(self, obj):
         return list(obj.organization_links.order_by("organization").values_list("organization", flat=True))
+
 
 class ApmServiceSerializer(serializers.ModelSerializer):
     application_id = serializers.CharField(source="application.application_id", read_only=True)
@@ -237,6 +255,10 @@ class TraceSearchSerializer(serializers.Serializer):
     service_name = serializers.CharField(max_length=256)
     environment = serializers.CharField(max_length=256, allow_blank=True)
     instance_id = serializers.CharField(max_length=512, required=False)
+    span_name = serializers.CharField(max_length=512, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=("ok", "error"), required=False)
+    min_duration_ms = serializers.FloatField(required=False, min_value=0)
+    max_duration_ms = serializers.FloatField(required=False, min_value=0)
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
     cursor = serializers.CharField(max_length=512, required=False)
@@ -250,6 +272,47 @@ class TraceSearchSerializer(serializers.Serializer):
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
+        min_duration = attrs.get("min_duration_ms")
+        max_duration = attrs.get("max_duration_ms")
+        if min_duration is not None and max_duration is not None and min_duration > max_duration:
+            raise serializers.ValidationError("min_duration_ms 不能大于 max_duration_ms")
+        if attrs.get("span_name") == "":
+            attrs.pop("span_name", None)
+        return attrs
+
+
+class SpanSearchSerializer(serializers.Serializer):
+    service_namespace = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    service_name = serializers.CharField(max_length=256)
+    environment = serializers.CharField(max_length=256, allow_blank=True)
+    instance_id = serializers.CharField(max_length=512, required=False)
+    span_name = serializers.CharField(max_length=512, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=("ok", "error"), required=False)
+    kind = serializers.ChoiceField(
+        choices=("internal", "server", "client", "producer", "consumer"),
+        required=False,
+    )
+    min_duration_ms = serializers.FloatField(required=False, min_value=0)
+    max_duration_ms = serializers.FloatField(required=False, min_value=0)
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    cursor = serializers.CharField(max_length=512, required=False)
+    limit = serializers.IntegerField(min_value=1, max_value=100, default=20)
+
+    def validate(self, attrs):
+        unsupported = sorted(set(self.initial_data) - set(self.fields))
+        if unsupported:
+            raise serializers.ValidationError(f"不支持的 Span 查询参数: {', '.join(unsupported)}")
+        ended_at = attrs.get("ended_at") or timezone.now()
+        started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
+        attrs["started_at"] = started_at
+        attrs["ended_at"] = ended_at
+        min_duration = attrs.get("min_duration_ms")
+        max_duration = attrs.get("max_duration_ms")
+        if min_duration is not None and max_duration is not None and min_duration > max_duration:
+            raise serializers.ValidationError("min_duration_ms 不能大于 max_duration_ms")
+        if attrs.get("span_name") == "":
+            attrs.pop("span_name", None)
         return attrs
 
 
@@ -341,11 +404,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             getattr(self.instance, "notice_type_ids", []),
         )
         notification_targets = attrs.get("notification_targets")
-        existing_targets = (
-            list(self.instance.notification_targets.values_list("channel_id", flat=True))
-            if self.instance is not None
-            else []
-        )
+        existing_targets = list(self.instance.notification_targets.values_list("channel_id", flat=True)) if self.instance is not None else []
         if notice and not notice_type_ids and not notification_targets and not existing_targets:
             raise serializers.ValidationError({"notification_targets": "启用通知时至少选择一个渠道。"})
         if notification_targets is not None:
@@ -370,6 +429,14 @@ class ApmPolicySerializer(serializers.ModelSerializer):
                         recipients.append(recipient)
             data["notice_users"] = recipients
         return data
+
+
+class ApmDashboardQuerySerializer(serializers.Serializer):
+    window = serializers.ChoiceField(
+        choices=("15m", "1h", "4h", "1d", "7d"),
+        default="1h",
+        required=False,
+    )
 
 
 class ApmEventQuerySerializer(serializers.Serializer):

@@ -3,15 +3,19 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Table, Tag, Button, Input, Space, Form, Select, Alert, Tooltip, message, Popconfirm, Spin, Modal } from 'antd';
 import PermissionWrapper from '@/components/permission';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import TimeSelector from '@/components/time-selector';
 import { PlusOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import usePatchManagerApi from '@/app/patch-manager/api';
+import type { Patch } from '@/app/patch-manager/types';
 import DualSelector from '@/app/patch-manager/components/dual-selector';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
+import PatchSourceDisplay from '@/app/patch-manager/components/patch-source-display';
 import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
-import { useRouter } from 'next/navigation';
+import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
@@ -27,6 +31,7 @@ import {
 export default function BaselineManagementPage() {
   const { t } = useTranslation();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { convertToLocalizedTime } = useLocalizedTime();
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
@@ -52,6 +57,14 @@ export default function BaselineManagementPage() {
   const [bindHostPagination, setBindHostPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const hostCacheRef = useRef<Map<number, any>>(new Map());
   const [baselineSearch, setBaselineSearch] = useState('');
+  const [selectedPatchIds, setSelectedPatchIds] = useState<number[]>(() => (
+    (searchParams.get('patch_ids') || '')
+      .split(',')
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0)
+  ));
+  const [patchFilterOptions, setPatchFilterOptions] = useState<Patch[]>([]);
+  const [patchFilterLoading, setPatchFilterLoading] = useState(false);
   const [patchSearch, setPatchSearch] = useState('');
   const [patchPickerPagination, setPatchPickerPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [patchPickerLoading, setPatchPickerLoading] = useState(false);
@@ -85,12 +98,18 @@ export default function BaselineManagementPage() {
     pageSize = pagination.pageSize,
     search = baselineSearch,
     silent = false,
+    patchIds = selectedPatchIds,
   ) => {
     const ticket = baselineRequestCoordinatorRef.current.begin({ visible: !silent });
     if (!ticket) return;
     try {
       const res = await api.getBaselineList(
-        { page, page_size: pageSize, search: search || undefined },
+        {
+          page,
+          page_size: pageSize,
+          search: search || undefined,
+          patch_ids: patchIds.length ? patchIds.join(',') : undefined,
+        },
         { signal: ticket.signal },
       );
       if (!baselineRequestCoordinatorRef.current.shouldApply(ticket)) return;
@@ -111,6 +130,14 @@ export default function BaselineManagementPage() {
   useEffect(() => {
     if (isLoading) return;
     loadData(1, pagination.pageSize);
+    setPatchFilterLoading(true);
+    void api.getPatchList({ page_size: -1 }).then((res) => {
+      setPatchFilterOptions(Array.isArray(res) ? res : (res.items || []));
+    }).catch(() => {
+      setPatchFilterOptions([]);
+    }).finally(() => {
+      setPatchFilterLoading(false);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
@@ -242,10 +269,75 @@ export default function BaselineManagementPage() {
     patchPickerRequestCoordinatorRef.current.invalidate();
   };
 
+  const openBindDrawer = async (baseline: any) => {
+    setBindTarget(baseline);
+    setSelectedHosts([]);
+    setOriginalSelectedHosts([]);
+    setHostSearch('');
+    setBindOpen(true);
+    hostCacheRef.current = new Map();
+    setBindHostPagination({ current: 1, pageSize: 20, total: 0 });
+    const coordinator = bindHostRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: true });
+    if (!ticket) return;
+    try {
+      const [hostsRes, bindings] = await Promise.all([
+        api.getPatchTargetList(
+          { page: 1, page_size: 20, os_type: baseline.os_type },
+          { signal: ticket.signal },
+        ),
+        api.getBaselineHosts(baseline.id, { signal: ticket.signal }),
+      ]);
+      if (!coordinator.shouldApply(ticket)) return;
+      setBindHostList(hostsRes.items || []);
+      setBindHostPagination({ current: 1, pageSize: 20, total: hostsRes.count || 0 });
+      (hostsRes.items || []).forEach((host: any) => hostCacheRef.current.set(host.id, host));
+      (bindings || []).forEach((binding: any) => {
+        if (!hostCacheRef.current.has(binding.target)) {
+          hostCacheRef.current.set(binding.target, {
+            id: binding.target,
+            name: binding.target_name,
+            ip: binding.target_ip,
+            os_type_display: baseline.os_type === 'windows' ? 'Windows' : 'Linux',
+            permission: binding.permission,
+          });
+        }
+      });
+      const bindingTargetIds = (bindings || []).map((item: any) => item.target);
+      setSelectedHosts(bindingTargetIds);
+      setOriginalSelectedHosts(bindingTargetIds);
+    } catch {
+      if (!coordinator.shouldApply(ticket)) return;
+      setBindHostList([]);
+    } finally {
+      coordinator.finish(ticket);
+    }
+  };
+
   const columns = [
     { title: t('patchManager.baseline.name'), dataIndex: 'name', width: 170 },
     { title: t('patchManager.osType'), dataIndex: 'os_type', width: 100, render: (v: string) => t(`patchManager.${v === 'windows' ? 'windows' : 'linux'}`) },
-    { title: t('patchManager.baseline.boundTargets'), dataIndex: 'bound_host_count', width: 90, render: (v: number) => t('patchManager.dashboard.targetCount', undefined, { count: v || 0 }) },
+    {
+      title: t('patchManager.baseline.patchRequirements'),
+      dataIndex: 'requirement_names',
+      width: 220,
+      render: (names: string[]) => {
+        const text = (names || []).join(',') || '—';
+        return <EllipsisWithTooltip text={text} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />;
+      },
+    },
+    {
+      title: t('patchManager.baseline.boundTargets'),
+      dataIndex: 'bound_host_count',
+      width: 100,
+      render: (v: number, r: any) => (
+        <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/target">
+          <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={() => openBindDrawer(r)}>
+            {t('patchManager.dashboard.targetCount', undefined, { count: v || 0 })}
+          </Button>
+        </PermissionWrapper>
+      ),
+    },
     {
       title: t('patchManager.baseline.complianceDistribution'),
       dataIndex: 'compliance_distribution',
@@ -279,58 +371,15 @@ export default function BaselineManagementPage() {
       render: (_: unknown, r: any) => {
         const deleteBlocked = (r.bound_host_count || 0) > 0;
         const deleteTip = deleteBlocked ? t('patchManager.baseline.deleteBlocked') : '';
-        const editEl = <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><Button type="link" size="small" onClick={() => { setEditing(r); setDraftOs(r.os_type === 'windows' ? 'win' : 'linux'); form.setFieldsValue({ name: r.name, description: r.description }); setEditOpen(true); }}>{t('patchManager.edit')}</Button></PermissionWrapper>;
-        const bindEl = <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><Button type="link" size="small" onClick={async () => {
-          setBindTarget(r);
-          setSelectedHosts([]);
-          setOriginalSelectedHosts([]);
-          setHostSearch('');
-          setBindOpen(true);
-          hostCacheRef.current = new Map();
-          setBindHostPagination({ current: 1, pageSize: 20, total: 0 });
-          const coordinator = bindHostRequestCoordinatorRef.current;
-          const ticket = coordinator.begin({ visible: true });
-          if (!ticket) return;
-          try {
-            const [hostsRes, bindings] = await Promise.all([
-              api.getPatchTargetList(
-                { page: 1, page_size: 20, os_type: r.os_type },
-                { signal: ticket.signal },
-              ),
-              api.getBaselineHosts(r.id, { signal: ticket.signal }),
-            ]);
-            if (!coordinator.shouldApply(ticket)) return;
-            setBindHostList(hostsRes.items || []);
-            setBindHostPagination({ current: 1, pageSize: 20, total: hostsRes.count || 0 });
-            (hostsRes.items || []).forEach((h: any) => hostCacheRef.current.set(h.id, h));
-            (bindings || []).forEach((b: any) => {
-              if (!hostCacheRef.current.has(b.target)) {
-                hostCacheRef.current.set(b.target, {
-                  id: b.target,
-                  name: b.target_name,
-                  ip: b.target_ip,
-                  os_type_display: r.os_type === 'windows' ? 'Windows' : 'Linux',
-                  permission: b.permission,
-                });
-              }
-            });
-            const bindingTargetIds = (bindings || []).map((i: any) => i.target);
-            setSelectedHosts(bindingTargetIds);
-            setOriginalSelectedHosts(bindingTargetIds);
-          } catch {
-            if (!coordinator.shouldApply(ticket)) return;
-            setBindHostList([]);
-          } finally {
-            coordinator.finish(ticket);
-          }
-        }}>{t('patchManager.baseline.bindTargets')}</Button></PermissionWrapper>;
+        const editEl = <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={() => { setEditing(r); setDraftOs(r.os_type === 'windows' ? 'win' : 'linux'); form.setFieldsValue({ name: r.name, description: r.description }); setEditOpen(true); }}>{t('patchManager.edit')}</Button></PermissionWrapper>;
+        const bindEl = <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/target"><Button type="link" size="small" onClick={() => openBindDrawer(r)}>{t('patchManager.baseline.bindTargets')}</Button></PermissionWrapper>;
         const deleteEl = deleteBlocked
           ? <Button type="link" size="small" danger disabled>{t('patchManager.delete')}</Button>
-          : <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><Popconfirm title={t('patchManager.baseline.deleteTitle')} description={t('patchManager.baseline.deleteConfirm', undefined, { name: r.name })} onConfirm={async () => { await api.deleteBaseline(r.id); message.success(t('patchManager.baseline.deleted')); await loadData(); }} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+          : <PermissionWrapper requiredPermissions={['Delete']}><PatchDeletePopconfirm title={t('patchManager.baseline.deleteTitle')} description={t('patchManager.baseline.deleteConfirm', undefined, { name: r.name })} onConfirm={async () => { await api.deleteBaseline(r.id); message.success(t('patchManager.baseline.deleted')); await loadData(); }} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
               <Button type="link" size="small" danger>{t('patchManager.delete')}</Button>
-            </Popconfirm></PermissionWrapper>;
+            </PatchDeletePopconfirm></PermissionWrapper>;
         const assessEl = (
-          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}>
+          <PermissionWrapper requiredPermissions={['Add']} permissionPath="/patch-manager/risk-execution">
             <Popconfirm
               title={t('patchManager.baseline.assessTitle')}
               description={t('patchManager.baseline.assessConfirm', undefined, { name: r.name, count: r.bound_host_count || 0 })}
@@ -363,6 +412,16 @@ export default function BaselineManagementPage() {
 
   const reqColumns = [
     { title: t('patchManager.baseline.requirement'), width: 120, render: (_: unknown, r: any) => r.patch_kb_number || r.patch_pkg_name || '' },
+    {
+      title: t('patchManager.libraryPage.source'),
+      width: 180,
+      render: (_: unknown, r: any) => (
+        <PatchSourceDisplay
+          sourceType={r.patch_source_type}
+          sourceDetails={r.patch_source_details}
+        />
+      ),
+    },
     { title: t('patchManager.severity'), dataIndex: 'patch_severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
     { title: t('patchManager.baseline.description'), dataIndex: 'patch_title', ellipsis: true },
     { title: t('patchManager.baseline.applicableVersion'), dataIndex: 'patch_version', width: 100, render: (v: string) => v || '--' },
@@ -406,6 +465,8 @@ export default function BaselineManagementPage() {
           id: r.patch,
           title: r.patch_title,
           severity: r.patch_severity,
+          source_type: r.patch_source_type,
+          source_details: r.patch_source_details,
           windows_detail:
             draftOs === 'win'
               ? {
@@ -430,21 +491,44 @@ export default function BaselineManagementPage() {
       .map((key) => recordMap.get(Number(key)))
       .filter(Boolean);
   }, [pickerSelected, patchList, requirements, draftOs]);
-  const pickerPermissionBlocked = selectedPatchRecords.some(
-    (record) => !requirements.some((item) => item.patch === record.id)
-      && !record.permission?.includes('Operate'),
-  );
-
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-        <Input.Search
-          placeholder={t('patchManager.baseline.name')}
-          value={baselineSearch}
-          onChange={(e) => setBaselineSearch(e.target.value)}
-          onSearch={(v) => { setPagination((p) => ({ ...p, current: 1 })); loadData(1, pagination.pageSize, v); }}
-          style={{ width: 220 }}
-        />
+        <Space wrap>
+          <Input.Search
+            placeholder={t('patchManager.baseline.name')}
+            value={baselineSearch}
+            onChange={(e) => setBaselineSearch(e.target.value)}
+            onSearch={(v) => { setPagination((p) => ({ ...p, current: 1 })); loadData(1, pagination.pageSize, v); }}
+            style={{ width: 220 }}
+          />
+          <Select
+            mode="multiple"
+            allowClear
+            showSearch
+            virtual
+            loading={patchFilterLoading}
+            value={selectedPatchIds}
+            placeholder={t('patchManager.baseline.patchFilter')}
+            optionFilterProp="label"
+            maxTagCount="responsive"
+            style={{ width: 360 }}
+            options={patchFilterOptions.map((patch) => ({
+              value: patch.id,
+              label: patch.windows_detail?.kb_number || patch.linux_detail?.pkg_name || patch.title,
+            }))}
+            onChange={(values) => {
+              setSelectedPatchIds(values);
+              const next = new URLSearchParams(searchParams.toString());
+              if (values.length) next.set('patch_ids', values.join(','));
+              else next.delete('patch_ids');
+              const query = next.toString();
+              router.replace(query ? `/patch-manager/baseline?${query}` : '/patch-manager/baseline', { scroll: false });
+              setPagination((current) => ({ ...current, current: 1 }));
+              loadData(1, pagination.pageSize, baselineSearch, false, values);
+            }}
+          />
+        </Space>
         <Space size={0}>
           <PermissionWrapper requiredPermissions={['Add']}><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setDraftOs('win'); setRequirements([]); setOriginalRequirements([]); form.resetFields(); setEditOpen(true); }}>{t('patchManager.baseline.create')}</Button></PermissionWrapper>
           <TimeSelector
@@ -483,7 +567,7 @@ export default function BaselineManagementPage() {
             <Button onClick={() => setEditOpen(false)}>{t('patchManager.cancel')}</Button>
             <Tooltip title={requirements.length === 0 ? t('patchManager.baseline.requirementRequired') : ''}>
               <span>
-                <PermissionWrapper requiredPermissions={[editing ? 'Edit' : 'Add']} instPermissions={editing?.permission}>
+                <PermissionWrapper requiredPermissions={[editing ? 'Edit' : 'Add']}>
                   <Button
                     type="primary"
                     disabled={requirements.length === 0 || reqLoading}
@@ -542,7 +626,7 @@ export default function BaselineManagementPage() {
             <span style={{ fontWeight: 500 }}>{t('patchManager.baseline.requirementList')}</span>
             <Tag color="warning">{t('patchManager.baseline.allRequired')}</Tag>
           </div>
-          <Table size="small" pagination={false} dataSource={requirements} rowKey={(r: any) => r.id ?? r.patch} columns={reqColumns as any} scroll={{ x: 780 }} />
+          <Table size="small" pagination={false} dataSource={requirements} rowKey={(r: any) => r.id ?? r.patch} columns={reqColumns as any} scroll={{ x: 960 }} />
           <div style={{ marginTop: 8 }}>
             {draftOs ? (
               <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => { setPatchPickerOpen(true); }}>{t('patchManager.baseline.addFromLibrary')}</Button>
@@ -563,7 +647,7 @@ export default function BaselineManagementPage() {
           <Space>
             <Button onClick={closeBindDrawer}>{t('patchManager.cancel')}</Button>
             <Tooltip title={selectedHosts.length === 0 ? t('patchManager.baseline.targetRequired') : ''}>
-              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={bindTarget?.permission}>
+              <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/target">
                 <Button
                   type="primary"
                     disabled={selectedHosts.length === 0 || bindDrawerLoading || bindPermissionBlocked}
@@ -620,7 +704,6 @@ export default function BaselineManagementPage() {
           ]}
           selectedKeys={selectedHosts}
           onChange={setSelectedHosts}
-          getCheckboxProps={(record) => ({ disabled: !record.permission?.includes('Operate') })}
           selectedRecordsData={selectedHostRecords}
           renderSelectedLabel={(r) => r.name}
           leftTitle={<Input.Search placeholder={t('patchManager.baseline.targetSearch')} value={hostSearch} onSearch={(v) => { setBindHostPagination((p) => ({ ...p, current: 1 })); loadBindHosts(1, bindHostPagination.pageSize, v); }} onChange={(e) => setHostSearch(e.target.value)} allowClear style={{ width: 240, marginBottom: 12 }} />}
@@ -641,7 +724,7 @@ export default function BaselineManagementPage() {
               <span>
                 <Button
                   type="primary"
-                  disabled={pickerSelected.length === 0 || pickerPermissionBlocked}
+                  disabled={pickerSelected.length === 0}
                   onClick={() => {
                     const recordMap = new Map<number, any>();
                     patchCacheRef.current.forEach((p, id) => recordMap.set(id, p));
@@ -661,6 +744,8 @@ export default function BaselineManagementPage() {
                           patch: patch.id,
                           patch_title: patch.title,
                           patch_severity: patch.severity,
+                          patch_source_type: patch.source_type,
+                          patch_source_details: patch.source_details,
                           patch_kb_number: patch.windows_detail?.kb_number,
                           patch_pkg_name: patch.linux_detail?.pkg_name,
                           patch_pkg_version: patch.linux_detail?.pkg_version,
@@ -702,6 +787,16 @@ export default function BaselineManagementPage() {
           onPageChange={(page, pageSize) => loadPatches(page, pageSize)}
           columns={[
             { title: draftOs === 'win' ? t('patchManager.kbNumber') : t('patchManager.packageName'), width: 120, render: (_: unknown, r: any) => r.windows_detail?.kb_number || r.linux_detail?.pkg_name || '' },
+            {
+              title: t('patchManager.libraryPage.source'),
+              width: 180,
+              render: (_: unknown, r: any) => (
+                <PatchSourceDisplay
+                  sourceType={r.source_type}
+                  sourceDetails={r.source_details}
+                />
+              ),
+            },
             { title: t('patchManager.severity'), dataIndex: 'severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
             { title: t('patchManager.baseline.description'), dataIndex: 'title', ellipsis: true },
             { title: t('patchManager.baseline.applicableVersion'), width: 100, render: (_: unknown, r: any) => r.windows_detail?.product_list?.join('、') || r.linux_detail?.os_version_range || r.linux_detail?.distro_name || '--' },
@@ -709,6 +804,7 @@ export default function BaselineManagementPage() {
           ]}
           selectedKeys={pickerSelected}
           onChange={setPickerSelected}
+          selectionColumnFixed
           getCheckboxProps={(record) => ({ disabled: !record.permission?.includes('Operate') })}
           selectedRecordsData={selectedPatchRecords}
           renderSelectedLabel={(r) => r.windows_detail?.kb_number || r.linux_detail?.pkg_name || r.title}

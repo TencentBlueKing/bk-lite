@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 
 from apps.apm.services.contracts import (
     InstanceActivity,
@@ -8,13 +8,18 @@ from apps.apm.services.contracts import (
     NotificationDelivery,
     NotificationDeliveryResult,
     ServiceMetricQuery,
+    ServiceDependency,
     ServiceRed,
     SloMeasurement,
     SloMetricQuery,
+    SpanPage,
+    SpanSearchQuery,
+    SpanSummary,
     TraceDetail,
     TracePage,
     TraceSearchQuery,
     TraceSummary,
+    TopologyDependencyQuery,
 )
 from apps.apm.services.identity import normalize_identity
 
@@ -25,15 +30,22 @@ class InMemoryTraceStore:
         *,
         summaries: Iterable[TraceSummary] = (),
         details: Iterable[TraceDetail] = (),
+        spans: Iterable[SpanSummary] = (),
+        dependencies: Iterable[ServiceDependency] = (),
     ):
         self._summaries = {item.trace_id: item for item in summaries}
         self._details = {item.trace_id: item for item in details}
+        self._spans = list(spans)
+        self._dependencies = tuple(dependencies)
 
     def add(self, summary: TraceSummary, detail: TraceDetail) -> None:
         if summary.trace_id != detail.trace_id:
             raise ValueError("Trace 摘要与详情的 trace_id 不一致")
         self._summaries[summary.trace_id] = summary
         self._details[detail.trace_id] = detail
+
+    def add_span(self, span: SpanSummary) -> None:
+        self._spans.append(span)
 
     def search(self, query: TraceSearchQuery) -> TracePage:
         if query.limit < 1:
@@ -53,6 +65,10 @@ class InMemoryTraceStore:
             )
             and (query.environment is None or item.environment == query.environment)
             and (query.instance_id is None or item.instance_id == query.instance_id)
+            and (query.span_name is None or item.root_span_name == query.span_name)
+            and (query.status is None or item.status == query.status)
+            and (query.min_duration_ms is None or item.duration_ms >= query.min_duration_ms)
+            and (query.max_duration_ms is None or item.duration_ms <= query.max_duration_ms)
         ]
         items.sort(key=lambda item: (item.started_at, item.trace_id), reverse=True)
         page_items = tuple(items[start_index : start_index + query.limit])
@@ -60,8 +76,38 @@ class InMemoryTraceStore:
         next_cursor = str(next_index) if next_index < len(items) else None
         return TracePage(items=page_items, next_cursor=next_cursor)
 
+    def search_spans(self, query: SpanSearchQuery) -> SpanPage:
+        if query.limit < 1:
+            raise ValueError("limit 必须大于 0")
+        start_index = int(query.cursor or "0")
+        items = [
+            item
+            for item in self._spans
+            if query.started_at <= item.started_at <= query.ended_at
+            and normalize_identity(item.service_name) == normalize_identity(query.service_name)
+            and item.environment == query.environment
+            and (
+                query.service_namespace is None
+                or normalize_identity(item.service_namespace) == normalize_identity(query.service_namespace)
+            )
+            and (query.instance_id is None or item.instance_id == query.instance_id)
+            and (query.span_name is None or item.name == query.span_name)
+            and (query.status is None or item.status == query.status)
+            and (query.kind is None or item.kind == query.kind)
+            and (query.min_duration_ms is None or item.duration_ms >= query.min_duration_ms)
+            and (query.max_duration_ms is None or item.duration_ms <= query.max_duration_ms)
+        ]
+        items.sort(key=lambda item: (item.started_at, item.span_id), reverse=True)
+        page_items = tuple(items[start_index : start_index + query.limit])
+        next_index = start_index + len(page_items)
+        next_cursor = str(next_index) if next_index < len(items) else None
+        return SpanPage(items=page_items, next_cursor=next_cursor)
+
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         return self._details.get(trace_id)
+
+    def service_dependencies(self, query: TopologyDependencyQuery) -> tuple[ServiceDependency, ...]:
+        return self._dependencies
 
 
 class InMemoryMetricStore:

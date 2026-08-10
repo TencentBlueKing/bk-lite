@@ -9,6 +9,7 @@
     "collect_type",
     "collector",
     "instance_id",
+    "message",
     "apache.access.remote_ip",
     "apache.access.user_name",
     "apache.access.method",

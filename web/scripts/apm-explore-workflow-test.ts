@@ -6,26 +6,45 @@ import { fileURLToPath } from 'node:url';
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(webRoot, path), 'utf8');
 
-const traces = read('src/app/apm/traces/page.tsx');
-const endpoints = read('src/app/apm/endpoints/page.tsx');
-const errors = read('src/app/apm/errors/page.tsx');
+const traces = read('src/app/apm/explore/traces/page.tsx');
+const endpoints = read('src/app/apm/explore/endpoints/page.tsx');
+const errors = read('src/app/apm/explore/errors/page.tsx');
+const traceDetail = read('src/app/apm/explore/traces/[traceId]/page.tsx');
+const legacyTraces = read('src/app/apm/traces/page.tsx');
 
 assert.match(traces, /title="调用链"/, 'Trace 搜索页应使用产品术语“调用链”');
 assert.match(traces, /TraceDistribution/, '调用链页应提供与原型一致的耗时分布视图');
 assert.match(traces, /分面筛选/, '调用链页应提供真实数据驱动的分面筛选');
+assert.match(traces, /ResultMode = 'detail' \| 'aggregate'/, '调用链页必须支持明细与聚合切换');
+assert.match(traces, /buildAggregate/, '聚合视图必须基于当前命中样本计算');
+assert.match(traces, /traces\/s/, '调用链页必须展示命中速率');
+assert.match(traces, /按 key:value 过滤/, '调用链页搜索框应对齐 Storybook 的 key:value 形态');
+assert.match(traces, /value: 'spans', label: 'Spans'/, '调用链页必须开放 Spans 视角');
+assert.match(traces, /getSpans\(/, 'Spans 视角必须调用受控 Span 检索 API');
+assert.doesNotMatch(traces, /Spans 检索将在数据能力就绪后开放/, 'Spans 能力就绪后不得再展示禁用提示');
+assert.doesNotMatch(traces, /应用 namespace/, '调用链页不得使用表单网格堆砌筛选字段');
+assert.match(traces, /\/apm\/explore\/traces/, '调用链页站内导航必须使用目录化路径');
+assert.match(traceDetail, /span_id/, 'Trace 详情必须支持从 URL 选中指定 Span');
 assert.match(endpoints, /getServices\(\)/, '端点列表必须来自真实服务目录');
 assert.match(endpoints, /getServiceRed\(/, '端点列表必须来自真实 RED 指标');
 assert.match(endpoints, /top_endpoints/, '端点列表必须使用服务 RED 的端点聚合结果');
 assert.match(endpoints, /'7d'/, '端点页应支持原型中的 7 天时间范围');
 assert.match(endpoints, /metricFailureCount/, '端点列表必须显式记录部分 RED 查询失败');
 assert.match(endpoints, /部分服务的端点指标查询失败/, '端点列表不能静默隐藏查询失败的服务');
+assert.match(endpoints, /Drawer/, '端点列表必须提供详情抽屉下钻');
+assert.match(endpoints, /样本调用链/, '端点详情必须提供样本 Trace');
 assert.match(errors, /getTraces\(/, '错误页必须来自真实 Trace 查询');
 assert.match(errors, /item\.status === 'error'/, '错误页只展示真实错误 Trace');
 assert.match(errors, /Issue 自动聚类将在数据能力就绪后接入/, 'MVP 必须明确 Issue 聚类尚未接入');
 assert.match(errors, /当前版本按错误调用链展示/, 'MVP 必须清晰说明当前错误页的数据口径');
 assert.match(errors, /查看样本 Trace/, '错误页应保留原型中的样本 Trace 下钻入口');
+assert.match(errors, /clusterErrors|入口归并/, '错误页必须对入口操作做客户端归并展示');
+assert.match(traceDetail, /跳到首个错误/, 'Trace 详情必须支持跳到首个错误 Span');
+assert.match(traceDetail, /服务耗时分解/, 'Trace 详情必须展示服务耗时分解');
+assert.match(traceDetail, /跨度列表/, 'Trace 详情必须支持跨度列表视图');
+assert.match(legacyTraces, /\/apm\/explore\/traces/, '旧 /apm/traces 必须兼容跳转到探索目录');
 
-for (const source of [endpoints, errors]) {
+for (const source of [endpoints, errors, traces, traceDetail]) {
   assert.doesNotMatch(source, /(?:stories|fixtures?)\//i, '探索生产页面不得导入 Story/fixture');
 }
 

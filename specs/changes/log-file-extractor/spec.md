@@ -117,7 +117,7 @@ Status: implemented
 - 每条规则在当前事件上独立判断条件和源字段。前序成功输出立即进入事件，后序规则可以读取；多条规则写同一普通字段时后写覆盖前写。
 - 源字段不存在时跳过当前规则。除 `copy` 外需要文本输入的动作在源值不是字符串时跳过；解析函数返回错误、split 下标不存在、JSON 不是对象、regex/regex_replace 无匹配或 kv 没有可写键时，本事件上的当前规则执行结果为失败。跳过或失败都继续下一规则。
 - Vector remap 必须使用可失败调用的结果/错误分支，不使用会中断 transform 的 bang 调用；transform 设置 `drop_on_error: false`。条件不匹配、单规则失败和全部规则失败都保留当前事件，并继续进入 VictoriaLogs sink。
-- `instance_id`、`source_type`、`timestamp` 是保护字段。任何源删除路径、目标路径、regex 默认/映射输出或 kv 映射输出以保护字段为根时，保存即拒绝；kv/json/regex 的动态根合并在运行时再次移除这些根字段。用户输入绝不能覆盖或删除原保护值。
+- `instance_id`、`source_type`、`timestamp` 以及旧正文别名 `_msg`、`log_message`、`raw_message`、`trap_message` 是保护字段。任何源删除路径、目标路径、regex 默认/映射输出或 kv 映射输出以保护字段为根时，保存即拒绝；kv/json/regex 的动态根合并在运行时再次移除这些根字段。用户输入绝不能覆盖或删除原保护值，也不能重新引入完整正文别名。
 - 保护字段与 `message` 均不能作为删除源字段的目标。`message` 可以被 `regex_replace` 显式覆盖以支持脱敏，但不能删除。目标为空的 `regex_replace` 与 `delete_source=true` 组合无意义，必须拒绝。
 - `delete_source=true` 只在当前规则确认至少一个经过路径安全检查的预期输出成功写入后执行。条件不匹配、源缺失、类型不适用、解析失败或没有输出时，源字段保持不变。
 - 字段路径、实例 ID、字符串、分隔符、replacement 与 regex 必须由编译器按其目标语法转义，不能直接拼接。规则名称等展示文本不进入 VRL 注释，避免换行或注释注入。
@@ -181,7 +181,7 @@ Status: implemented
 
 - 每次发布查询所有实例的所有第一版有效规则，按 `collect_instance_id`、`sort_order`、规则主键稳定排序，生成一份全局完整 YAML。查询和编译不按组织、current_team、采集类型或云区域过滤。
 - 同一份 YAML 可同时包含来自默认及非默认云区域的多个实例规则；运行时各分支只比较 `instance_id`。配置中不出现 `cloud_region_id`。
-- 完整拓扑固定为 `Server NATS source → 现有事件 JSON 规范化 → log extractor remap → VictoriaLogs sink`。没有任何规则时仍保留相同 source、transform、sink，extractor transform 使用显式 no-op；不能因规则数量为零切换拓扑或返回空文件。
+- 完整拓扑固定为 `Server NATS source → 日志正文规范化 → log extractor remap → VictoriaLogs 写入适配 → VictoriaLogs sink`。规范化阶段只向提取器暴露顶层 `message`，写入适配器在所有规则执行后以移动语义生成 VictoriaLogs 物理 `_msg`；没有任何规则时仍保留相同 source、transform、sink，extractor transform 使用显式 no-op，不能因规则数量为零切换拓扑或返回空文件。
 - 编译器只替换 extractor transform 的受控规则源，其余生产 source/sink、TLS、NATS 与 VictoriaLogs 环境占位符来自同一完整模板。YAML 使用安全解析/序列化，固定键顺序、换行与 UTF-8 编码；相同规则状态必须生成逐字节相同内容。
 - 动态值全部经过 VRL 字符串、字段路径和 regex 转义。编译期间发现数据库中存在不符合现行规则规范的数据时，整个 generation 失败并保留旧快照，不能静默略过坏规则后发布部分配置。
 - 发布前至少完成 YAML 结构、固定拓扑、VRL 片段与保护字段不变量校验。发布模块测试和部署验收使用固定 Vector 0.48 二进制/镜像验证完整远程 YAML；不以较新 Vector 的宽松行为替代 0.48 契约。

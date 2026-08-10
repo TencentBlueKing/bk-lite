@@ -6,6 +6,25 @@ const enterpriseWebLink = path.resolve(process.cwd(), 'enterprise');
 const enterpriseWebRoot = fs.existsSync(enterpriseWebLink) ? fs.realpathSync(enterpriseWebLink) : '';
 const repositoryRoot = path.resolve(process.cwd(), '..');
 
+// Local enterprise layout keeps WeOpsX-Enterprise as a sibling of bk-lite.
+// Turbopack/file tracing must cover that realpath, not only the BK-Lite repo root.
+function commonFilesystemRoot(left, right) {
+  const leftParts = path.resolve(left).split(path.sep);
+  const rightParts = path.resolve(right).split(path.sep);
+  const shared = [];
+  for (let i = 0; i < Math.min(leftParts.length, rightParts.length); i += 1) {
+    if (leftParts[i] !== rightParts[i]) {
+      break;
+    }
+    shared.push(leftParts[i]);
+  }
+  return shared.length > 1 ? shared.join(path.sep) : path.sep;
+}
+
+const workspaceRoot = enterpriseWebRoot
+  ? commonFilesystemRoot(repositoryRoot, enterpriseWebRoot)
+  : undefined;
+
 const nextConfig = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
 })({
@@ -22,11 +41,9 @@ const nextConfig = withBundleAnalyzer({
   typescript: {
     tsconfigPath: 'tsconfig.build.json',
   },
-  outputFileTracingRoot: enterpriseWebRoot
-    ? repositoryRoot
-    : undefined,
-  turbopack: enterpriseWebRoot
-    ? { root: repositoryRoot }
+  outputFileTracingRoot: workspaceRoot,
+  turbopack: workspaceRoot
+    ? { root: workspaceRoot }
     : undefined,
   experimental: {
     externalDir: true,

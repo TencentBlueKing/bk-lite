@@ -70,10 +70,14 @@ def _chain_hosts(root: GovernanceTask) -> list[GovernanceTaskHost]:
     cached = getattr(root, "_execution_record_hosts", None)
     if cached is not None:
         return cached
+    queryset = GovernanceTaskHost.objects.filter(
+        task_id__in=[task.id for task in _task_chain(root)]
+    )
+    visible_target_ids = getattr(root, "_visible_target_ids", None)
+    if visible_target_ids is not None:
+        queryset = queryset.filter(target_id__in=visible_target_ids)
     hosts = list(
-        GovernanceTaskHost.objects.filter(
-            task_id__in=[task.id for task in _task_chain(root)]
-        )
+        queryset
         .select_related("task")
         .order_by("created_at", "id")
     )
@@ -126,8 +130,16 @@ def _attempt(task: GovernanceTask, host: GovernanceTaskHost, include_log: bool) 
 
 
 def _risk_snapshot(root: GovernanceTask) -> list[dict]:
+    visible_target_ids = getattr(root, "_visible_target_ids", None)
     if root.risk_snapshot:
-        return list(root.risk_snapshot)
+        snapshot = list(root.risk_snapshot)
+        if visible_target_ids is not None:
+            snapshot = [
+                item
+                for item in snapshot
+                if int(item.get("host_id") or 0) in visible_target_ids
+            ]
+        return snapshot
     return [
         {
             "id": f"{target_id}:0:0",
@@ -140,6 +152,7 @@ def _risk_snapshot(root: GovernanceTask) -> list[dict]:
             "baseline_name": "",
         }
         for target_id in (root.target_list or [])
+        if visible_target_ids is None or int(target_id) in visible_target_ids
         for host in [root.host_results.filter(target_id=target_id).first()]
     ]
 
@@ -263,6 +276,12 @@ def _item_status(root: GovernanceTask, item: dict) -> str:
 def _item_can_retry(root: GovernanceTask, item: dict, status: str) -> bool:
     if status not in {"failed", "unknown", "unmet"}:
         return False
+    patch_id = int(item.get("patch_id") or 0)
+    if patch_id:
+        from apps.patch_mgmt.models import Patch
+
+        if not Patch.objects.filter(pk=patch_id).exists():
+            return False
     risk_item_id = str(item.get("id") or "")
     if GovernanceTask.objects.filter(
         parent_task__isnull=True,

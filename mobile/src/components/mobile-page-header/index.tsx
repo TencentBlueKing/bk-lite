@@ -15,10 +15,13 @@ interface MobilePageHeaderProps {
   title: string;
   searchType?: SearchType;
   backHref?: string;
+  onBeforeBack?: () => boolean;
   actions?: Array<{
     href: string;
     icon: ReactNode;
     label: string;
+    /** 跳转前副作用（例如清空独立搜索页上次结果） */
+    onBeforeNavigate?: () => void;
   }>;
 }
 
@@ -26,11 +29,15 @@ export default function MobilePageHeader({
   title,
   searchType,
   backHref,
+  onBeforeBack,
   actions = [],
 }: MobilePageHeaderProps) {
   const router = useRouter();
   const { t } = useTranslation();
-  const handleBack = useMobileBack({ fallbackHref: backHref || '/workbench' });
+  const handleBack = useMobileBack({
+    fallbackHref: backHref || '/workbench',
+    onBeforeBack,
+  });
 
   return (
     <MobileSafeHeader contentClassName={styles.headerContent}>

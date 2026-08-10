@@ -167,6 +167,15 @@ export function mergeUserSyncBusinessConfigWithDefaults(
   };
 }
 
+export function excludeUserSyncRootScope(
+  businessConfig: Record<string, unknown> | undefined,
+  rootScopeFieldKey: string,
+): Record<string, unknown> {
+  const configWithoutRootScope = { ...(businessConfig || {}) };
+  delete configWithoutRootScope[rootScopeFieldKey];
+  return configWithoutRootScope;
+}
+
 export function getRootDepartmentInputMode(
   template: BusinessTemplate | null,
 ): 'department_select' | 'manual_input' {
@@ -189,11 +198,15 @@ export function isManualInputMode(template: BusinessTemplate | null): boolean {
 export function shouldFetchDepartmentOptions(input: {
   selectedInstanceId: number | undefined;
   template: BusinessTemplate | null;
+  departmentIdType?: string;
 }): boolean {
-  if (!input.selectedInstanceId) {
+  if (!input.selectedInstanceId || !input.template) {
     return false;
   }
-  return getRootDepartmentInputMode(input.template) === 'department_select';
+  if (getRootDepartmentInputMode(input.template) !== 'department_select') {
+    return false;
+  }
+  return !getUserSyncTemplateField(input.template, 'department_id_type') || Boolean(input.departmentIdType);
 }
 
 function buildExistingSourcePayload(source: UserSyncSource): Partial<UserSyncSource> {

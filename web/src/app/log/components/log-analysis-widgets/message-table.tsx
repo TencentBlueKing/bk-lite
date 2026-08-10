@@ -65,8 +65,8 @@ const LogAnalysisMessageTable: React.FC<LogAnalysisMessageTableProps> = ({
       <div className="w-full pl-9">
         <div className="border-b border-[var(--color-border-1)] pb-2.5">
           <div className="mb-1">
-            <CopyTwoTone className="mr-[4px] cursor-pointer" onClick={() => copy(record._msg)} />
-            <span className="break-all font-[500]">{record._msg}</span>
+            <CopyTwoTone className="mr-[4px] cursor-pointer" onClick={() => copy(record.message)} />
+            <span className="break-all font-[500]">{record.message}</span>
           </div>
           <div>
             <span className="mr-3">

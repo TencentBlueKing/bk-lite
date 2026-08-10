@@ -16,15 +16,13 @@ import pytest
 from django.core.cache import cache
 from django.utils import timezone
 
-from apps.system_mgmt.utils import channel_utils
-from apps.system_mgmt.utils import token_blacklist
-from apps.system_mgmt.utils import user_status
+from apps.system_mgmt.utils import channel_utils, token_blacklist, user_status
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 
 
 # --------------------------------------------------------------------------- #
-# channel_utils.is_valid_webhook_url —— 纯函数 SSRF 白名单校验
+# channel_utils.is_valid_webhook_url —— 对齐 SSRFValidator 统一语义
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize(
     "url",
@@ -35,22 +33,15 @@ from apps.system_mgmt.utils.password_validator import PasswordValidator
         "https://open.larksuite.com/open-apis/bot/v2/hook/yyy",
     ],
 )
-def test_is_valid_webhook_url_accepts_allowlisted_domains(url, mocker):
-    mocker.patch.object(
-        channel_utils,
-        "get_network_whitelist_domains",
-        return_value=[
-            "qyapi.weixin.qq.com",
-            "open.feishu.cn",
-            "oapi.dingtalk.com",
-            "open.larksuite.com",
-        ],
+def test_is_valid_webhook_url_accepts_public_im_domains(url, mocker):
+    from apps.core.utils.ssrf_validator import SSRFValidator
+
+    mocker.patch(
+        "socket.getaddrinfo",
+        return_value=[(2, 1, 6, "", ("93.184.216.34", 443))],
     )
-    mocker.patch.object(
-        channel_utils,
-        "get_network_whitelist_cidrs",
-        return_value=[],
-    )
+    mocker.patch.object(SSRFValidator, "_get_allowed_networks", return_value=[])
+    mocker.patch.object(SSRFValidator, "_get_allowed_domains", return_value=set())
 
     assert channel_utils.is_valid_webhook_url(url) is True
 
@@ -60,16 +51,31 @@ def test_is_valid_webhook_url_accepts_allowlisted_domains(url, mocker):
     [
         "",
         None,
-        "https://evil.example.com/hook",
         "https://qyapi.weixin.qq.com\\@evil.com/hook",  # 反斜杠绕过
         "https://user@qyapi.weixin.qq.com/hook",  # userinfo 绕过
         "ftp://qyapi.weixin.qq.com/hook",  # 非 http(s)
-        "https://qyapi.weixin.qq.com%23.evil.com/hook",  # 编码绕过
         "not-a-url",
+        "https://10.1.2.3/hook",  # 纯内网 IP 无白名单
     ],
 )
-def test_is_valid_webhook_url_rejects_invalid_or_unlisted(url):
+def test_is_valid_webhook_url_rejects_invalid_or_literal_private(url, mocker):
+    from apps.core.utils.ssrf_validator import SSRFValidator
+
+    mocker.patch.object(SSRFValidator, "_get_allowed_networks", return_value=[])
+    mocker.patch.object(SSRFValidator, "_get_allowed_domains", return_value=set())
     assert channel_utils.is_valid_webhook_url(url) is False
+
+
+def test_is_valid_webhook_url_rejects_private_domain_without_exception(mocker):
+    from apps.core.utils.ssrf_validator import SSRFValidator
+
+    mocker.patch(
+        "socket.getaddrinfo",
+        return_value=[(2, 1, 6, "", ("10.1.2.3", 443))],
+    )
+    mocker.patch.object(SSRFValidator, "_get_allowed_networks", return_value=[])
+    mocker.patch.object(SSRFValidator, "_get_allowed_domains", return_value=set())
+    assert channel_utils.is_valid_webhook_url("https://evil.example.com/hook") is False
 
 
 def test_replace_placeholder_recurses_into_nested_structures():
@@ -364,7 +370,8 @@ def test_get_bk_user_info_first_phase_failure(monkeypatch):
     from apps.system_mgmt.utils import bk_user_utils
 
     monkeypatch.setattr(
-        bk_user_utils.requests, "get",
+        bk_user_utils.requests,
+        "get",
         lambda url, params=None, timeout=None: _fake_resp({"result": False, "message": "bad token"}),
     )
     ok, data = bk_user_utils.get_bk_user_info("tok", "app", "secret", "https://bk.example.com")

@@ -5,7 +5,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { Form, Input, message, Select, Button } from 'antd';
+import { Form, Input, InputNumber, message, Select, Button } from 'antd';
 const { Option } = Select;
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
@@ -130,7 +130,13 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
               },
             ]}
           >
-            <Input placeholder={t('common.inputTip')} />
+            <InputNumber
+              min={1}
+              max={65535}
+              precision={0}
+              className="w-full"
+              placeholder={t('common.inputTip')}
+            />
           </Form.Item>
           <Form.Item
             name="username"

@@ -9,7 +9,7 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { ConfigProvider } from 'antd';
+import { App, ConfigProvider } from 'antd';
 import { createAntdTheme } from './antd-adapter';
 import { applyThemeMode } from './css-adapter';
 import { defaultTheme } from './defaults';
@@ -60,7 +60,10 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <ThemeContext.Provider value={value}>
-      <ConfigProvider theme={antdTheme}>{children}</ConfigProvider>
+      <ConfigProvider theme={antdTheme}>
+        {/* App 提供 message/modal/notification 的动态主题上下文，避免静态 API 告警 */}
+        <App>{children}</App>
+      </ConfigProvider>
     </ThemeContext.Provider>
   );
 };

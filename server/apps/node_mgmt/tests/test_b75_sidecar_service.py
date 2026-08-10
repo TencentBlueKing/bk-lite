@@ -95,6 +95,13 @@ def test_get_node_or_404_missing():
 # --------------------------------------------------------------------------- #
 # configuration_bound_to_node / get_bound_*
 # --------------------------------------------------------------------------- #
+def test_config_section_headers_separate_base_and_instance_templates():
+    template = Sidecar.add_config_section_headers("\n[[inputs.netflow]]", has_child_configs=True)
+
+    assert template.index(Sidecar.BASE_CONFIG_HEADER.strip()) < template.index("[[inputs.netflow]]")
+    assert template.index(Sidecar.INSTANCE_CONFIG_HEADER.strip()) > template.index("[[inputs.netflow]]")
+
+
 @pytest.mark.django_db
 def test_configuration_bound_to_node(node):
     collector = Collector.objects.create(

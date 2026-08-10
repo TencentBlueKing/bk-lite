@@ -14,6 +14,7 @@ import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
 import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
+import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
 
 const ViewModal = forwardRef<ModalRef, ViewModalProps>(
   ({ monitorObject, monitorName, plugins, metrics, objects = [] }, ref) => {
@@ -64,9 +65,7 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
     };
 
     const linkToDetial = () => {
-      const monitorItem = objects.find(
-        (item: ObjectItem) => item.id === monitorObject
-      );
+      const monitorItem = findByMonitorId(objects, monitorObject);
       const row: Record<string, string> = {
         monitorObjId: String(monitorObject || ''),
         name: monitorName,

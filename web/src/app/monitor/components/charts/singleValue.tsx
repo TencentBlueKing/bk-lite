@@ -1,3 +1,4 @@
+'use client';
 import React from 'react';
 import { getEnumValue } from '@/app/monitor/utils/common';
 import { MetricItem } from '@/app/monitor/types';

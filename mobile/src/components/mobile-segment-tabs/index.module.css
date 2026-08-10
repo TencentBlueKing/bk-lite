@@ -1,0 +1,82 @@
+/* 一级列表页分段 Tabs：胶囊选中态（待办 / 监控 / 资产共用） */
+.tabs {
+  flex: 0 0 auto;
+  padding: 6px 12px 8px;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border-1);
+}
+
+.tabs :global(.adm-tabs-header) {
+  border: 0;
+  padding: 0;
+}
+
+.tabs :global(.adm-tabs-header-mask) {
+  display: none;
+}
+
+.tabs :global(.adm-tabs-tab-list) {
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tabs :global(.adm-tabs-tab-list)::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs :global(.adm-tabs-tab-wrapper) {
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+.tabs :global(.adm-tabs-tab) {
+  position: relative;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: var(--font-size-body);
+  font-weight: 550;
+  line-height: 34px;
+  color: var(--color-text-3);
+  cursor: pointer;
+  background: transparent;
+  border-radius: 999px;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.tabs :global(.adm-tabs-tab-active) {
+  font-weight: 650;
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+.tabs :global(.adm-tabs-tab-line) {
+  display: none;
+}
+
+.tabs :global(.adm-tabs-tab:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 340px) {
+  .tabs {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .tabs :global(.adm-tabs-tab) {
+    padding: 0 10px;
+    font-size: var(--font-size-secondary);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabs :global(.adm-tabs-tab) {
+    transition: none;
+  }
+}

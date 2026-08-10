@@ -3,35 +3,36 @@
 把 assess 任务在目标主机上收集到的原始输出，解析成基线要求级别的满足状态。
 
 支持的输入：
-- Linux apt: `apt-get -s upgrade`
-- Linux yum/dnf: `yum --security check-update` / `dnf --security check-update`
-- Windows: WUA 当前已安装/待安装更新 + `Get-HotFix` 兼容补充
+- Linux 主机/包结构化事实，兼容旧 apt、yum、dnf 输出；
+- Windows 主机事实、WUA 当前已安装/待安装更新，以及 `Get-HotFix` 兼容补充。
 
-MVP 判断逻辑：
-- Linux：如果基线要求的包名出现在「可升级包列表」中，则认为不满足；否则认为满足。
-  这里假设基线补丁来自同一 repo，未出现即表示当前已安装版本不低于要求版本。
-- Windows：如果基线要求的 KB 号出现在已安装 KB 列表中，则认为满足；否则不满足。
-  暂时不考虑替代 KB 链（MVP 后续可扩展）。
+解析后统一交由合规评估器生成 `satisfied`、`missing`、`not_applicable`、
+`unknown` 四态结果；只有明确适用且低于最低版本或未安装时才进入待治理。
 """
 
 from __future__ import annotations
 
-import logging
 import re
 from dataclasses import replace
 from typing import Iterable
 
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.constants import OSType, RequirementAssessmentStatus
 from apps.patch_mgmt.services.compliance_evaluator import (
     HostAssessmentFacts,
     LinuxPackageFact,
     RequirementAssessment,
     RequirementSpec,
+    WindowsHostFacts,
     WindowsUpdateFacts,
     evaluate_requirements,
 )
+from apps.patch_mgmt.services.linux_platform import (
+    package_manager_family,
+    parse_linux_host_facts,
+    validate_linux_host_facts,
+)
 
-logger = logging.getLogger("app")
 
 # WUA MsrcSeverity -> PatchSeverity 映射
 _WUA_SEVERITY_MAP = {
@@ -178,63 +179,236 @@ def _detect_linux_parser(stdout: str):
     return parse_yum_dnf_upgradable
 
 
-def _linux_specs(requirements: list) -> list[RequirementSpec]:
-    specs = []
+def _linux_specs(requirements: list) -> dict[int, list[RequirementSpec]]:
+    specs: dict[int, list[RequirementSpec]] = {}
     for requirement in requirements:
         try:
             detail = requirement.patch.linux_detail
-            package_name = (getattr(detail, "pkg_name", "") or "").strip()
-            required_version = (getattr(detail, "pkg_version", "") or "").strip()
-            configuration_error = "" if package_name else "missing package name"
+            distro_name = (getattr(detail, "distro_name", "") or "").strip()
+            os_version_range = (getattr(detail, "os_version_range", "") or "").strip()
+            architectures = tuple(getattr(detail, "architectures", None) or ())
+            package_manager = (getattr(detail, "repo_type", "") or "").strip()
+            source_families = {
+                package_manager_family(source.source_type)
+                for source in requirement.patch.sources.all()
+                if package_manager_family(source.source_type)
+            }
+            source_families.update(
+                package_manager_family(snapshot.get("source_type", ""))
+                for snapshot in (requirement.patch.deleted_source_snapshots or [])
+                if isinstance(snapshot, dict) and package_manager_family(snapshot.get("source_type", ""))
+            )
+            if package_manager_family(package_manager):
+                source_families.add(package_manager_family(package_manager))
+            configuration_error = (
+                "conflicting linux package families" if len(source_families) > 1 else ""
+            )
+            package_items = getattr(detail, "package_items", None)
+            if callable(package_items):
+                items = package_items()
+            else:
+                package_name = (getattr(detail, "pkg_name", "") or "").strip()
+                items = [
+                    {
+                        "name": package_name,
+                        "version": (getattr(detail, "pkg_version", "") or "").strip(),
+                    }
+                ] if package_name else []
         except Exception:  # noqa: BLE001
-            package_name = ""
-            required_version = ""
-            configuration_error = "missing linux_detail"
-        specs.append(
+            specs[requirement.id] = [
+                RequirementSpec(
+                    requirement.id,
+                    OSType.LINUX,
+                    "",
+                    configuration_error="missing linux_detail",
+                )
+            ]
+            continue
+        if not items:
+            specs[requirement.id] = [
+                RequirementSpec(
+                    requirement.id,
+                    OSType.LINUX,
+                    "",
+                    configuration_error="missing package name",
+                )
+            ]
+            continue
+        specs[requirement.id] = [
             RequirementSpec(
                 requirement.id,
                 OSType.LINUX,
-                package_name,
-                required_version=required_version,
+                item["name"],
+                required_version=item["version"],
+                distro_name=distro_name,
+                os_version_range=os_version_range,
+                architectures=architectures,
+                package_manager=package_manager,
                 configuration_error=configuration_error,
             )
-        )
+            for item in items
+        ]
     return specs
 
 
-def _parse_linux_facts(stdout: str) -> HostAssessmentFacts:
-    packages: dict[str, LinuxPackageFact] = {}
-    parsed_lines = 0
-    for raw_line in stdout.splitlines():
-        if not raw_line.startswith("BKPATCH_LINUX|"):
-            continue
-        parts = raw_line.split("|", 6)
-        if len(parts) != 7:
-            continue
+def linux_requirement_specs(requirements: Iterable) -> dict[int, list[RequirementSpec]]:
+    """构造 Linux 要求规格，供评估与治理前适用性复核共享。"""
+    return _linux_specs(list(requirements))
+
+
+def _parse_linux_fact_line(raw_line: str) -> tuple[int | None, int | None, str, LinuxPackageFact] | None:
+    if not raw_line.startswith("BKPATCH_LINUX|"):
+        return None
+    parts = raw_line.split("|", 7)
+    if len(parts) == 8:
+        _, requirement_id, spec_index, package_name, state, installed_version, comparison, error = parts
+        try:
+            fact_key = (int(requirement_id), int(spec_index))
+        except ValueError:
+            fact_key = (None, None)
+    elif len(parts) == 7:
         _, _requirement_id, package_name, state, installed_version, comparison, error = parts
-        package_name = package_name.strip()
-        if not package_name:
-            continue
-        parsed_lines += 1
-        parsed_comparison = None
-        if comparison.strip() in {"-1", "0", "1"}:
-            parsed_comparison = int(comparison.strip())
-        installed = {"installed": True, "absent": False}.get(state.strip())
-        packages[package_name] = LinuxPackageFact(
+        fact_key = (None, None)
+    else:
+        return None
+    package_name = package_name.strip()
+    if not package_name:
+        return None
+    parsed_comparison = None
+    if comparison.strip() in {"-1", "0", "1"}:
+        parsed_comparison = int(comparison.strip())
+    installed = {"installed": True, "absent": False}.get(state.strip())
+    return (
+        fact_key[0],
+        fact_key[1],
+        package_name,
+        LinuxPackageFact(
             installed=installed,
             installed_version=installed_version.strip(),
             comparison=parsed_comparison,
             error=error.strip(),
-        )
+        ),
+    )
+
+
+def _parse_linux_facts(stdout: str) -> HostAssessmentFacts:
+    packages: dict[str, LinuxPackageFact] = {}
+    linux_host = parse_linux_host_facts(stdout)
+    parsed_lines = 0
+    for raw_line in stdout.splitlines():
+        if raw_line.startswith("BKPATCH_HOST|LINUX|"):
+            continue
+        parsed = _parse_linux_fact_line(raw_line)
+        if parsed is None:
+            continue
+        _, _, package_name, fact = parsed
+        package_name = package_name.strip()
+        parsed_lines += 1
+        packages[package_name] = fact
     if parsed_lines == 0:
-        return HostAssessmentFacts(collection_error="评估输出缺少结构化 Linux 包事实")
-    return HostAssessmentFacts(linux_packages=packages)
+        return HostAssessmentFacts(
+            linux_host=linux_host,
+            collection_error="评估输出缺少结构化 Linux 包事实",
+        )
+    return HostAssessmentFacts(linux_packages=packages, linux_host=linux_host)
+
+
+def linux_assessment_host_error(stdout: str) -> str:
+    """校验本次 Linux 评估是否取得了足以安全判断适用性的主机事实。"""
+    return validate_linux_host_facts(parse_linux_host_facts(stdout))
+
+
+def _parse_linux_requirement_facts(stdout: str) -> dict[tuple[int, int, str], LinuxPackageFact]:
+    facts: dict[tuple[int, int, str], LinuxPackageFact] = {}
+    for raw_line in stdout.splitlines():
+        parsed = _parse_linux_fact_line(raw_line)
+        if parsed is None:
+            continue
+        requirement_id, spec_index, package_name, fact = parsed
+        if requirement_id is None or spec_index is None:
+            continue
+        facts[(requirement_id, spec_index, package_name)] = fact
+    return facts
 
 
 def assess_linux_requirements(stdout: str, requirements: Iterable) -> dict[int, RequirementAssessment]:
     """使用目标机原生版本比较结果评估 Linux 基线要求。"""
     requirements = list(requirements)
-    return evaluate_requirements(_linux_specs(requirements), _parse_linux_facts(stdout))
+    facts = _parse_linux_facts(stdout)
+    requirement_facts = _parse_linux_requirement_facts(stdout)
+    result: dict[int, RequirementAssessment] = {}
+    for requirement_id, specs in linux_requirement_specs(requirements).items():
+        assessments = []
+        for spec_index, spec in enumerate(specs):
+            fact_key = (requirement_id, spec_index, spec.identifier)
+            if fact_key in requirement_facts:
+                spec_facts = HostAssessmentFacts(
+                    linux_packages={spec.identifier: requirement_facts[fact_key]},
+                    linux_host=facts.linux_host,
+                )
+            elif requirement_facts:
+                # 新格式按要求与规格序号隔离；已有结构化事实时，缺失规格不得回退复用同名包的其他规格结果。
+                spec_facts = HostAssessmentFacts(
+                    linux_packages={},
+                    linux_host=facts.linux_host,
+                )
+            else:
+                # 兼容升级前已下发、尚未完成的旧格式评估输出。
+                spec_facts = facts
+            assessments.append(evaluate_requirements([spec], spec_facts)[requirement_id])
+        if len(assessments) == 1:
+            result[requirement_id] = assessments[0]
+            continue
+
+        missing_pkg_names = [
+            spec.identifier
+            for spec, assessment in zip(specs, assessments)
+            if assessment.status == RequirementAssessmentStatus.MISSING
+        ]
+        unknown_pkg_names = [
+            spec.identifier
+            for spec, assessment in zip(specs, assessments)
+            if assessment.status == RequirementAssessmentStatus.UNKNOWN
+        ]
+        not_applicable_pkg_names = [
+            spec.identifier
+            for spec, assessment in zip(specs, assessments)
+            if assessment.status == RequirementAssessmentStatus.NOT_APPLICABLE
+        ]
+        if missing_pkg_names:
+            status = RequirementAssessmentStatus.MISSING
+            reason = f"{'、'.join(missing_pkg_names)} 未满足最低版本要求"
+        elif unknown_pkg_names:
+            status = RequirementAssessmentStatus.UNKNOWN
+            reason = f"无法确认 {'、'.join(unknown_pkg_names)} 的合规状态"
+        elif len(not_applicable_pkg_names) == len(specs):
+            status = RequirementAssessmentStatus.NOT_APPLICABLE
+            reason = assessments[0].reason
+        else:
+            status = RequirementAssessmentStatus.SATISFIED
+            reason = f"{'、'.join(spec.identifier for spec in specs)} 均满足版本要求"
+        result[requirement_id] = RequirementAssessment(
+            requirement_id=requirement_id,
+            status=status,
+            evidence={
+                "pkg_name": specs[0].identifier,
+                "pkg_names": [spec.identifier for spec in specs],
+                "missing_pkg_names": missing_pkg_names,
+                "unknown_pkg_names": unknown_pkg_names,
+                "not_applicable_pkg_names": not_applicable_pkg_names,
+                "packages": [
+                    {
+                        "name": spec.identifier,
+                        "required_version": spec.required_version,
+                        "status": assessment.status,
+                        **assessment.evidence,
+                    }
+                    for spec, assessment in zip(specs, assessments)
+                ],
+            },
+            reason=reason,
+        )
+    return result
 
 
 def _replacement_kbs(requirement) -> tuple[str, ...]:
@@ -286,16 +460,34 @@ def assess_windows_requirements(stdout: str, requirements: Iterable) -> dict[int
         installed_kbs = parse_windows_hotfixes(stdout)
 
     missing_kbs = set(wua_results.keys())
+    windows_host = WindowsHostFacts()
+    for raw_line in stdout.splitlines():
+        if not raw_line.startswith("BKPATCH_HOST|WINDOWS|"):
+            continue
+        parts = raw_line.split("|", 5)
+        if len(parts) == 6:
+            _, _, product_name, version, build_number, architecture = parts
+            windows_host = WindowsHostFacts(
+                product_name=product_name.strip(),
+                version=version.strip(),
+                build_number=build_number.strip(),
+                architecture=architecture.strip(),
+            )
+        break
     requirements = list(requirements)
     specs = []
     for req in requirements:
         try:
             detail = req.patch.windows_detail
             kb_number = (detail.kb_number or "").upper()
+            products = tuple(getattr(detail, "product_list", ()) or ())
+            architectures = tuple(getattr(detail, "architectures", ()) or ())
             configuration_error = "" if kb_number else "missing KB number"
         except Exception:  # noqa: BLE001
             logger.warning("要求 %s 缺少 Windows 补丁详情，无法评估", req.id)
             kb_number = ""
+            products = ()
+            architectures = ()
             configuration_error = "missing windows_detail"
         specs.append(
             RequirementSpec(
@@ -303,6 +495,8 @@ def assess_windows_requirements(stdout: str, requirements: Iterable) -> dict[int
                 OSType.WINDOWS,
                 kb_number,
                 replacement_identifiers=_replacement_kbs(req),
+                products=products,
+                architectures=architectures,
                 configuration_error=configuration_error,
             )
         )
@@ -312,6 +506,7 @@ def assess_windows_requirements(stdout: str, requirements: Iterable) -> dict[int
             installed_kbs=frozenset(installed_kbs),
             applicable_missing_kbs=frozenset(missing_kbs),
         ),
+        windows_host=windows_host,
         collection_error="" if stdout.strip() else "Windows 更新评估输出为空",
     )
     result = evaluate_requirements(specs, facts)

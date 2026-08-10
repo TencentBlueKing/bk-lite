@@ -27,6 +27,8 @@ import {
   TrendChartPanel,
   UnackedIcon,
   type CollectionStatusCardStyles,
+  type CollectionStatusTimelineSegment,
+  type CollectionStatusTone,
   type DashboardPageHeaderStyles,
   type DashboardPanelStyles,
   type DashboardInstanceCardStyles,
@@ -198,9 +200,10 @@ const collectionStatusStyles: CollectionStatusCardStyles = {
   collectionStatusTimelineBlock:
     'rounded-[14px] bg-[var(--color-fill-1)] px-4 py-3',
   collectionStatusTimelineTitle:
-    'mb-2 text-[12px] font-medium text-[var(--color-text-3)]',
+    'mb-2 flex items-center justify-between gap-2 text-[12px] font-medium text-[var(--color-text-3)]',
+  collectionStatusTimelineHint: 'shrink-0 text-[11px] font-normal text-[var(--color-text-4)]',
   collectionStatusTimeline: 'mb-3 flex gap-1.5',
-  collectionStatusSegment: 'h-2 flex-1 rounded-full',
+  collectionStatusSegment: 'block h-2 w-full flex-1 cursor-default rounded-full',
   collectionStatusSegmentSuccess: 'bg-[var(--color-success)]',
   collectionStatusSegmentWarning: 'bg-[#f59e0b]',
   collectionStatusSegmentError: 'bg-[#f04438]',
@@ -479,10 +482,23 @@ const collectionStatusGuideItems = [
   },
   {
     label: '状态时间线',
-    detail: '绿色表示正常，橙色表示警告，红色表示严重。',
+    detail: '时间线覆盖当前时间窗并均分为若干段；绿色表示正常，橙色表示警告，红色表示严重。',
   },
 ];
 
+const buildDemoTimeline = (
+  tones: CollectionStatusTone[],
+  windowMinutes = 15
+): CollectionStatusTimelineSegment[] => {
+  const endMs = Date.now();
+  const startMs = endMs - windowMinutes * 60_000;
+  const width = (endMs - startMs) / tones.length;
+  return tones.map((tone, index) => ({
+    tone,
+    startMs: startMs + index * width,
+    endMs: index === tones.length - 1 ? endMs : startMs + (index + 1) * width,
+  }));
+};
 const metricIconItems = [
   { label: 'Health', color: '#16a34a', icon: <HealthIcon /> },
   { label: 'Memory', color: '#2563eb', icon: <MemoryIcon /> },
@@ -701,7 +717,8 @@ const FamilyOverview = () => {
               summary: '采集稳定',
               tagColor: 'success',
             }}
-            timeline={[
+            timelineHint="每格约 75 秒"
+            timeline={buildDemoTimeline([
               'success',
               'success',
               'success',
@@ -714,7 +731,7 @@ const FamilyOverview = () => {
               'success',
               'success',
               'success',
-            ]}
+            ])}
           />
 
           <CollectionStatusCard
@@ -725,7 +742,8 @@ const FamilyOverview = () => {
               summary: '连续缺口',
               tagColor: 'error',
             }}
-            timeline={[
+            timelineHint="每格约 75 秒"
+            timeline={buildDemoTimeline([
               'success',
               'success',
               'error',
@@ -738,7 +756,7 @@ const FamilyOverview = () => {
               'success',
               'error',
               'error',
-            ]}
+            ])}
           />
 
           <CollectionStatusCard
@@ -748,7 +766,8 @@ const FamilyOverview = () => {
               detail: '该实例尚未返回最近时间窗内的指标数据。',
               summary: '等待首次采集',
             }}
-            timeline={Array.from({ length: 12 }, () => 'empty' as const)}
+            timelineHint="每格约 75 秒"
+            timeline={buildDemoTimeline(Array.from({ length: 12 }, () => 'empty' as const))}
           />
 
           <CollectionStatusCard
@@ -762,7 +781,8 @@ const FamilyOverview = () => {
             }}
             statusTone="warning"
             guideItems={collectionStatusGuideItems}
-            timeline={[
+            timelineHint="每格约 75 秒"
+            timeline={buildDemoTimeline([
               'success',
               'success',
               'warning',
@@ -775,7 +795,7 @@ const FamilyOverview = () => {
               'warning',
               'success',
               'success',
-            ]}
+            ])}
             legendItems={[
               { key: 'success', label: '正常', color: '#22c55e' },
               { key: 'warning', label: '警告', color: '#f59e0b' },

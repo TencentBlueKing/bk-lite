@@ -13,7 +13,7 @@ def test_no_rules_compile_to_complete_noop_topology():
 
     assert set(config) == {"sources", "transforms", "sinks"}
     assert config["transforms"]["log_extractors"]["source"] == ". = ."
-    assert config["sinks"]["victoria_logs"]["inputs"] == ["log_extractors"]
+    assert config["sinks"]["victoria_logs"]["inputs"] == ["prepare_victoria_logs"]
     assert config["sources"]["server_nats"]["url"] == "${VECTOR_NATS_SERVERS}"
     assert config["sources"]["server_nats"]["decoding"] == {"codec": "json"}
     assert config["sinks"]["victoria_logs"]["framing"] == {"method": "newline_delimited"}

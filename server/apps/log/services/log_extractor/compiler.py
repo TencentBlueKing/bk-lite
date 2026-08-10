@@ -4,6 +4,7 @@ from typing import Any, Iterable
 
 import yaml
 
+from apps.log.services.log_event_contract import NORMALIZE_EVENT_VRL, PREPARE_VICTORIA_LOGS_VRL
 from apps.log.services.log_extractor.semantics import NormalizedRule, normalize_rule, parse_path
 
 
@@ -249,13 +250,19 @@ def compile_system_vector_config(records: Iterable[Any]) -> str:
             }
         },
         "transforms": {
-            "normalize_event": {"type": "remap", "inputs": ["server_nats"], "source": ". = ."},
+            "normalize_event": {"type": "remap", "inputs": ["server_nats"], "drop_on_error": False, "source": NORMALIZE_EVENT_VRL},
             "log_extractors": {"type": "remap", "inputs": ["normalize_event"], "drop_on_error": False, "source": extractor_source},
+            "prepare_victoria_logs": {
+                "type": "remap",
+                "inputs": ["log_extractors"],
+                "drop_on_error": False,
+                "source": PREPARE_VICTORIA_LOGS_VRL,
+            },
         },
         "sinks": {
             "victoria_logs": {
                 "type": "http",
-                "inputs": ["log_extractors"],
+                "inputs": ["prepare_victoria_logs"],
                 "uri": "${VECTOR_VICTORIA_LOGS_URL}/insert/jsonline?_stream_fields=streams&_msg_field=_msg&_time_field=timestamp",
                 "method": "post",
                 "encoding": {"codec": "json"},
@@ -275,7 +282,9 @@ def _validate_compiled_config(content: str) -> None:
         raise ValueError("中心 Vector 配置拓扑无效")
     if parsed["transforms"].get("log_extractors", {}).get("inputs") != ["normalize_event"]:
         raise ValueError("日志提取 transform 输入无效")
-    if parsed["sinks"].get("victoria_logs", {}).get("inputs") != ["log_extractors"]:
+    if parsed["transforms"].get("prepare_victoria_logs", {}).get("inputs") != ["log_extractors"]:
+        raise ValueError("VictoriaLogs 适配 transform 输入无效")
+    if parsed["sinks"].get("victoria_logs", {}).get("inputs") != ["prepare_victoria_logs"]:
         raise ValueError("VictoriaLogs sink 输入无效")
     source = parsed["transforms"]["log_extractors"].get("source")
     if not isinstance(source, str) or not source:

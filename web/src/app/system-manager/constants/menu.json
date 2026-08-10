@@ -134,7 +134,7 @@
         {
           "title": "白名单",
           "url": "/system-manager/settings/network-whitelist",
-          "icon": "Firewall",
+          "icon": "whitelist",
           "name": "network_white_list"
         }
       ]
@@ -273,7 +273,7 @@
         {
           "title": "Network Whitelist",
           "url": "/system-manager/settings/network-whitelist",
-          "icon": "Firewall",
+          "icon": "whitelist",
           "name": "network_white_list"
         }
       ]

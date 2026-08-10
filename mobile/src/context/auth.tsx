@@ -9,7 +9,8 @@ import React, {
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { getSession, signIn, signOut } from 'next-auth/react';
-import { Button, SpinLoading, Toast } from 'antd-mobile';
+import { Button, Toast } from 'antd-mobile';
+import { MobileAppLoading } from '@/components/mobile-feedback';
 import {
   AuthContextType,
   AuthLoginCredentials,
@@ -42,6 +43,7 @@ import { isTauriApp } from '@/utils/tauriFetch';
 import { useTranslation } from '@/utils/i18n';
 import { clearConversationSessionCache } from '@/utils/conversationCache';
 import { conversationManager } from '@/context/conversation';
+import { clearMobileViewCache } from '@/navigation/mobile-view-cache';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -71,6 +73,7 @@ function normalizeUserInfo(
     display_name: String(data.display_name ?? baseUserInfo?.display_name ?? ''),
     domain: String(data.domain ?? baseUserInfo?.domain ?? ''),
     locale: String(data.locale ?? baseUserInfo?.locale ?? 'zh-CN'),
+    timezone: String(data.timezone ?? baseUserInfo?.timezone ?? 'Asia/Shanghai'),
     token,
     temporary_pwd: false,
     enable_otp: false,
@@ -103,6 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Failed to clear persisted authentication data:', error);
     } finally {
       clearConversationSessionCache();
+      clearMobileViewCache();
       conversationManager.clearAll();
       clearCurrentTeamCookie();
       setRuntimeAuthToken(isTauriApp() ? undefined : null);
@@ -149,7 +153,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [setLocale]);
 
   const navigateAfterLogin = useCallback(() => {
-    router.replace('/workbench');
+    router.replace('/');
   }, [router]);
 
   const clearH5Session = useCallback(async () => {
@@ -380,20 +384,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-  if (isInitializing && !isPublicPath) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-[var(--color-background-body)]">
-        <SpinLoading color="primary" style={{ '--size': '32px' }} />
-      </div>
-    );
+  // 含 /login：避免已登录刷新时先闪登录表再跳转。
+  if (isInitializing || (isAuthenticated && pathname === '/login')) {
+    return <MobileAppLoading label={t('common.loading')} />;
   }
 
-  if (!isAuthenticated && !isPublicPath && !isInitializing) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-[var(--color-background-body)]">
-        <SpinLoading color="primary" style={{ '--size': '32px' }} />
-      </div>
-    );
+  if (!isAuthenticated && !isPublicPath) {
+    return <MobileAppLoading label={t('common.loading')} />;
   }
 
   return (
