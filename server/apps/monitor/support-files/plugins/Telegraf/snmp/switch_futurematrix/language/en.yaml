@@ -1,8 +1,8 @@
-Switch Huawei SNMP:
-  name: Huawei (Telegraf)
-  desc: SNMP monitoring template for Huawei switch. It reports CPU utilization, memory
-    utilization, temperature, fan status, SFP optical Rx/Tx power (attenuation-related),
-    per-port inbound traffic rate, and other key metrics
+Switch FutureMatrix SNMP:
+  name: Huawei FutureMatrix (Telegraf)
+  desc: SNMP monitoring template for FutureMatrix switches (enterprise 56813). Metric
+    set mirrors Switch Huawei SNMP — CPU, memory, temperature, fan, SFP optical Rx/Tx
+    (attenuation-related), and interface traffic
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -118,12 +118,12 @@ monitor_object_metric:
         more effective traffic management and optimization.
     device_cpu_usage:
       name: CPU Utilization
-      desc: Per-entity CPU utilization of the Huawei device control plane (hwEntityCpuUsage,
+      desc: Per-entity CPU utilization of the FutureMatrix device control plane (FMEntityCpuUsage,
         0-100). Dimension descr is entPhysicalName. Sustained high CPU usage can indicate
         control-plane overload, routing instability, or attack traffic.
     device_memory_usage:
       name: Memory Utilization
-      desc: Per-entity memory utilization of the Huawei device (hwEntityMemUsage, direct
+      desc: Per-entity memory utilization of the FutureMatrix device (FMEntityMemUsage, direct
         0-100 percentage). Dimension descr is entPhysicalName. High memory usage may
         indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity.
     device_memory_used:

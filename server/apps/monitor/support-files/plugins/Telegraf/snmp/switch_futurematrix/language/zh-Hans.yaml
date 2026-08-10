@@ -1,6 +1,6 @@
-Switch Huawei SNMP:
-  name: 华为（Telegraf）
-  desc: 面向 Huawei 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、温度、风扇、光模块收/发光功率（光衰相关）及每端口入向流量速率等主要指标。
+Switch FutureMatrix SNMP:
+  name: 华为 FutureMatrix（Telegraf）
+  desc: 面向 FutureMatrix 交换机的 SNMP 监控模板（企业号 56813），指标口径对齐华为交换机：CPU、内存、温度、风扇、光模块收/发光功率（光衰）及接口流量等。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -68,10 +68,10 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标按实体报告华为交换机控制平面 CPU 使用率（hwEntityCpuUsage，0～100），维度 descr 为 entPhysicalName。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量。
+      desc: 该指标按实体报告FutureMatrix 交换机控制平面 CPU 使用率（FMEntityCpuUsage，0～100），维度 descr 为 entPhysicalName。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标按实体报告华为交换机内存使用率（hwEntityMemUsage，直接百分比 0～100），维度 descr 为 entPhysicalName。内存偏高可能由内存泄漏、路由/MAC/ARP 表项过大或容量不足导致。
+      desc: 该指标按实体报告FutureMatrix 交换机内存使用率（FMEntityMemUsage，直接百分比 0～100），维度 descr 为 entPhysicalName。内存偏高可能由内存泄漏、路由/MAC/ARP 表项过大或容量不足导致。
     device_memory_used:
       name: 内存已用量
       desc: 该指标表示设备各内存池当前已使用的字节数。它帮助管理员了解每个内存池（如 Processor、I/O 池）的绝对内存消耗，并定位承压的内存池。

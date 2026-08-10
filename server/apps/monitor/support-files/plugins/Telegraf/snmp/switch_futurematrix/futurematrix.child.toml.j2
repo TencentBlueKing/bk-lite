@@ -21,9 +21,9 @@
     [inputs.snmp.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"
-        collect_type = "snmp_huawei"
-        config_type = "huawei"
-        brand = "huawei"
+        collect_type = "snmp_futurematrix"
+        config_type = "futurematrix"
+        brand = "futurematrix"
     # ---- System ----
     [[inputs.snmp.field]]
         oid = "1.3.6.1.2.1.1.3.0"
@@ -42,15 +42,15 @@
         name = "ifDescr"
         is_tag = true
     # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
-    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    # Info-Finder FM S1730S：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.6"
         name = "ifHCInOctets"
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- Huawei CPU utilization (HUAWEI-ENTITY-EXTENT-MIB hwEntityCpuUsage, per entity) ----
-    # 待现网核验：hwEntityCpuUsage 1.3.6.1.4.1.2011.5.25.31.1.1.1.1.5（已归一化为 0-100 百分比）
+    # ---- FutureMatrix CPU utilization (FutureMatrix ENTITY-EXTENT (enterprise 56813) FMEntityCpuUsage, per entity) ----
+    # Info-Finder FM S1730S：FMEntityCpuUsage 1.3.6.1.4.1.56813.5.25.31.1.1.1.1.5（已归一化为 0-100 百分比）
     # descr 取 ENTITY-MIB entPhysicalName（与 CPU 同行 entPhysicalIndex）；metrics 声明 dimensions=descr。
     [[inputs.snmp.table]]
         name = "device_cpu"
@@ -60,11 +60,11 @@
         name = "descr"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.5"
+        oid = "1.3.6.1.4.1.56813.5.25.31.1.1.1.1.5"
         name = "usage"
-    # ---- Huawei Memory utilization (HUAWEI-ENTITY-EXTENT-MIB hwEntityMemUsage, per entity) ----
-    # 待现网核验：华为以利用率(%)直接上报内存，无 used/free 字节 → 统一字段名 device_memory_usage(原始百分比)
-    # hwEntityMemUsage 1.3.6.1.4.1.2011.5.25.31.1.1.1.1.7；多实体 → descr 维度。
+    # ---- FutureMatrix Memory utilization (FutureMatrix ENTITY-EXTENT (enterprise 56813) FMEntityMemUsage, per entity) ----
+    # Info-Finder FM S1730S：华为以利用率(%)直接上报内存，无 used/free 字节 → 统一字段名 device_memory_usage(原始百分比)
+    # FMEntityMemUsage 1.3.6.1.4.1.56813.5.25.31.1.1.1.1.7；多实体 → descr 维度。
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]
@@ -73,10 +73,10 @@
         name = "descr"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.7"
+        oid = "1.3.6.1.4.1.56813.5.25.31.1.1.1.1.7"
         name = "usage"
-    # ---- Huawei Temperature sensors (HUAWEI-ENTITY-EXTENT-MIB hwEntityTemperature, per entity) ----
-    # 待现网核验：温度 hwEntityTemperature 1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11；
+    # ---- FutureMatrix Temperature sensors (FutureMatrix ENTITY-EXTENT (enterprise 56813) FMEntityTemperature, per entity) ----
+    # Info-Finder FM S1730S：温度 FMEntityTemperature 1.3.6.1.4.1.56813.5.25.31.1.1.1.1.11；
     # descr 取 ENTITY-MIB entPhysicalName 1.3.6.1.2.1.47.1.1.1.1.7（与温度同 entPhysicalIndex，按 index 关联）
     [[inputs.snmp.table]]
         name = "device_temperature"
@@ -86,25 +86,25 @@
         name = "descr"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11"
+        oid = "1.3.6.1.4.1.56813.5.25.31.1.1.1.1.11"
         name = "celsius"
-    # ---- Huawei Fans (HUAWEI-ENTITY-EXTENT-MIB hwEntityFanState) ----
-    # 待现网核验：风扇状态 hwEntityFanState 1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7；
+    # ---- FutureMatrix Fans (FutureMatrix ENTITY-EXTENT (enterprise 56813) FMEntityFanState) ----
+    # Info-Finder FM S1730S：风扇状态 FMEntityFanState 1.3.6.1.4.1.56813.5.25.31.1.1.10.1.7；
     # 华为原生编码 1=normal,2=abnormal（已与统一约定 1=normal 对齐，无需重映射，偏离 1 即异常）；
-    # descr 取风扇槽位 1.3.6.1.4.1.2011.5.25.31.1.1.10.1.1
+    # descr 取风扇槽位 1.3.6.1.4.1.56813.5.25.31.1.1.10.1.1
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.1"
+        oid = "1.3.6.1.4.1.56813.5.25.31.1.1.10.1.1"
         name = "descr"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7"
+        oid = "1.3.6.1.4.1.56813.5.25.31.1.1.10.1.7"
         name = "state"
-    # 注：华为该模板未提供电源(PSU)状态 OID，按"Zabbix 无则不做"原则省略 device_psu_state。
-    # ---- Huawei SFP optical DDM (HUAWEI-ENTITY-EXTENT-MIB hwOpticalModuleInfoTable) ----
-    # RX=hwEntityOpticalRxPower ...3.1.8 / TX=hwEntityOpticalTxPower ...3.1.9。
+    # 注：与华为交换机模板对齐，本模板不做电源(PSU)状态（虽 MIB 有 FMEntityPwrState）。
+    # ---- FutureMatrix SFP optical DDM (FMOpticalModuleInfoTable / FMEntityOptical*) ----
+    # RX=FMEntityOpticalRxPower ...3.1.8 / TX=FMEntityOpticalTxPower ...3.1.9。
     # 实际单位 µW（MIB 曾误标 dBm）；无模块/无效常为 <=0；descr=entPhysicalName。
     # 不做 starlark 换算（避免 processor 与 IF-MIB 注入顺序冲突 / starlark 版本差异）；
     # metrics 查询侧 10*log10(µW/1000) → dBm。
@@ -116,8 +116,8 @@
         name = "descr"
         is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.8"
+        oid = "1.3.6.1.4.1.56813.5.25.31.1.1.3.1.8"
         name = "rx_power"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.9"
+        oid = "1.3.6.1.4.1.56813.5.25.31.1.1.3.1.9"
         name = "tx_power"
