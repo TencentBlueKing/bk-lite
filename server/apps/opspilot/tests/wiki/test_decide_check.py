@@ -1617,3 +1617,74 @@ def test_create_candidate_append_race_keeps_single_open_check():
     open_checks = list(CheckItem.objects.filter(knowledge_base=kb, status="open"))
     assert len(open_checks) == 1
     assert len(open_checks[0].decision_context.get("alternatives") or []) == 2
+
+
+@pytest.mark.django_db
+def test_decide_use_new_requires_material_id_when_multiple_alternatives():
+    from apps.opspilot.models import PageEvidence
+    from apps.opspilot.services.wiki.check_service import create_candidate, decide_check
+
+    kb = _bootstrap_kb("kb-need-material")
+    page = _create_page_with_body(kb, title="主题页", body="current")
+    source, source_version = _create_material_with_version(kb, "source", "hash-source")
+    PageEvidence.objects.create(page=page, material=source, material_version=source_version)
+    m1, v1 = _create_material_with_version(kb, "m1", "hash-m1")
+    m2, v2 = _create_material_with_version(kb, "m2", "hash-m2")
+    check = create_candidate(
+        page,
+        body="candidate-1",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m1,
+        incoming_material_version=v1,
+    )
+    create_candidate(
+        page,
+        body="candidate-2",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m2,
+        incoming_material_version=v2,
+    )
+
+    with pytest.raises(ValueError, match="必须指定 material_id"):
+        decide_check(check, action="use_new", operator="reviewer")
+
+    with pytest.raises(ValueError, match="不在候选列表中"):
+        decide_check(check, action="use_new", operator="reviewer", material=source)
+
+
+@pytest.mark.django_db
+def test_create_candidate_replaces_same_material_alternative_body():
+    from apps.opspilot.models import PageEvidence, PageVersion
+    from apps.opspilot.services.wiki.check_service import _body_hash, create_candidate
+
+    kb = _bootstrap_kb("kb-replace-alt")
+    page = _create_page_with_body(kb, title="主题页", body="current")
+    source, source_version = _create_material_with_version(kb, "source", "hash-source")
+    PageEvidence.objects.create(page=page, material=source, material_version=source_version)
+    m1, v1 = _create_material_with_version(kb, "m1", "hash-m1")
+
+    first = create_candidate(
+        page,
+        body="candidate-old",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m1,
+        incoming_material_version=v1,
+    )
+    second = create_candidate(
+        page,
+        body="candidate-new",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m1,
+        incoming_material_version=v1,
+    )
+
+    assert first.id == second.id
+    second.refresh_from_db()
+    alternatives = second.decision_context["alternatives"]
+    assert len(alternatives) == 1
+    assert alternatives[0]["body_hash"] == _body_hash("candidate-new")
+    assert PageVersion.objects.filter(page=page, change_type="candidate").count() == 2

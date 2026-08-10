@@ -439,3 +439,34 @@ def test_resolve_material_status_filters_supports_groups_and_multi():
 
     request = FakeRequest(FakeQueryDict({}))
     assert resolve_material_status_filters(request) == []
+
+
+@pytest.mark.django_db
+def test_material_list_filters_by_status_group(api_client, wiki_factory):
+    from apps.opspilot.models import Material
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    kb = wiki_factory.knowledge_base(team=[1])
+    bootstrap_knowledge_base(kb, operator="admin")
+    pending = Material.objects.create(knowledge_base=kb, name="p", material_type="text", status="pending")
+    failed = Material.objects.create(knowledge_base=kb, name="f", material_type="text", status="build_failed")
+    built = Material.objects.create(knowledge_base=kb, name="b", material_type="text", status="built")
+    queued = Material.objects.create(knowledge_base=kb, name="q", material_type="text", status="queued")
+
+    resp = api_client.get(
+        "/api/v1/opspilot/wiki_mgmt/material/",
+        {"knowledge_base": kb.pk, "status_group": "pending,failed", "page_size": 50},
+    )
+    assert resp.status_code == 200, resp.content
+    items = resp.json()["data"]["items"]
+    ids = {item["id"] for item in items}
+    assert pending.id in ids
+    assert failed.id in ids
+    assert built.id not in ids
+    assert queued.id not in ids
+
+    queued_only = api_client.get(
+        "/api/v1/opspilot/wiki_mgmt/material/",
+        {"knowledge_base": kb.pk, "status_group": "queued"},
+    )
+    assert {item["id"] for item in queued_only.json()["data"]["items"]} == {queued.id}
