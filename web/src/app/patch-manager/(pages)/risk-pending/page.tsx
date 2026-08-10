@@ -763,7 +763,7 @@ export default function RiskPendingPage() {
             allowClear
             value={filters.remediation}
             onChange={(v) => setFilters((f) => ({ ...f, remediation: v }))}
-            options={(['unplanned', 'scheduled', 'installing', 'pending_reboot', 'rebooting', 'verifying', 'failed', 'invalidated'] as const).map((value) => ({ label: t(`patchManager.remediationStatus.${value}`), value }))}
+            options={(['unplanned', 'scheduled', 'installing', 'pending_reboot', 'rebooting', 'verifying', 'failed'] as const).map((value) => ({ label: t(`patchManager.remediationStatus.${value}`), value }))}
           />
         </Space>
         <Space>

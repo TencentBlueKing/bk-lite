@@ -208,7 +208,7 @@
       "pending": "待评估",
       "evaluating": "评估中",
       "failed": "评估失败",
-      "unknown": "评估异常/未知",
+      "unknown": "无法判定",
       "not_applicable": "不适用",
       "unconfigured": "未配置",
       "missingCount": "{status} · 缺 {count}"

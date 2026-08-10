@@ -13,6 +13,7 @@ import pytest
 from rest_framework import status
 
 from apps.patch_mgmt.constants import (
+    ComplianceStatus,
     GovernanceTaskStatus,
     GovernanceTaskType,
     OSType,
@@ -837,6 +838,34 @@ class TestPatchDashboardViewApi:
         # Non-zero counts after creating objects
         assert resp.data["target_total"] >= 2
         assert resp.data["patch_total"] >= 1
+
+    def test_stats_api_uses_unable_to_determine_for_unknown_compliance(self, su_client):
+        target = PatchTarget.objects.create(
+            name="unknown-compliance-target",
+            ip="10.0.0.199",
+            os_type=OSType.LINUX,
+            team=[1],
+        )
+        baseline = PatchBaseline.objects.create(
+            name="unknown-compliance-baseline",
+            os_type=OSType.LINUX,
+            team=[1],
+        )
+        HostBaselineBinding.objects.create(
+            target=target,
+            baseline=baseline,
+            compliance_status=ComplianceStatus.UNKNOWN,
+        )
+
+        resp = su_client.get(DASHBOARD_STATS_URL)
+
+        assert resp.status_code == status.HTTP_200_OK
+        unknown = next(
+            item
+            for item in resp.data["compliance_distribution"]
+            if item["filter"] == "unknown"
+        )
+        assert unknown["label"] == "无法判定"
 
     def test_superuser_dashboard_includes_all_target_roots(self, su_client):
         own = PatchTarget.objects.create(name="own", ip="1.1.1.1", team=[1])
