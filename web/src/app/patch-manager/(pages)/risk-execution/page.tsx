@@ -20,7 +20,8 @@ import ExcelJS from 'exceljs';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
-import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
+import FilterToolbar from '@/components/filter-toolbar';
 import usePatchManagerApi from '@/app/patch-manager/api';
 import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
 import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
@@ -562,7 +563,7 @@ export default function RiskExecutionPage() {
   ];
 
   return <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: 16, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
+    <FilterToolbar align="between" spacing="flush">
       <Space>
         <Input.Search placeholder={t('patchManager.execution.taskName')} value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} onSearch={(value) => {
           setAppliedTaskSearch(value);
@@ -591,7 +592,7 @@ export default function RiskExecutionPage() {
           <Button type="primary">{t('patchManager.risk.batchActions')}{selectedTasks.length ? `(${selectedTasks.length})` : ''} <DownOutlined /></Button>
         </Dropdown>
       </Space>
-    </div>
+    </FilterToolbar>
     <div style={{ flex: 1, minHeight: 0 }}>
       <CustomTable<TaskRow>
         loading={loading}

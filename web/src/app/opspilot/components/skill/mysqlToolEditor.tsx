@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
-import { Button, Empty, Input, InputNumber, Switch, Tag } from 'antd';
+import { Button, Empty, Input, InputNumber, Switch } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import ToolConnectionStatusTag from '@/app/opspilot/components/opspilot-tool-editor/tool-connection-status-tag';
 
 export type MysqlTestStatus = 'untested' | 'success' | 'failed';
 
@@ -35,11 +36,6 @@ interface MysqlToolEditorProps {
   onTest: () => void;
 }
 
-const statusColorMap: Record<MysqlTestStatus, string> = {
-  untested: 'default',
-  success: 'blue',
-  failed: 'red',
-};
 
 const MysqlToolEditor: React.FC<MysqlToolEditorProps> = ({
   instances,
@@ -64,9 +60,6 @@ const MysqlToolEditor: React.FC<MysqlToolEditorProps> = ({
     prevLengthRef.current = instances.length;
   }, [instances.length]);
 
-  const renderStatus = (status: MysqlTestStatus) => {
-    return <Tag color={statusColorMap[status]}>{t(`tool.mysql.status.${status}`)}</Tag>;
-  };
 
   return (
     <div className="flex gap-4 min-h-[480px]">
@@ -121,7 +114,7 @@ const MysqlToolEditor: React.FC<MysqlToolEditorProps> = ({
               <div className="text-lg font-medium">
                 {t('tool.mysql.configTitle').replace('{name}', selectedInstance.name || t('tool.mysql.unnamedInstance'))}
               </div>
-              {renderStatus(selectedInstance.testStatus)}
+              <ToolConnectionStatusTag scope="tool.mysql" status={selectedInstance.testStatus} />
             </div>
 
             <div>

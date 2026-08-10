@@ -12,7 +12,8 @@ import RemediationTag from '@/app/patch-manager/components/remediation-tag';
 import ExcelJS from 'exceljs';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
 import CustomTable from '@/components/custom-table';
-import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
+import FilterToolbar from '@/components/filter-toolbar';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
@@ -681,7 +682,7 @@ export default function RiskPendingPage() {
 
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+      <FilterToolbar align="between" spacing="flush">
         <Segmented options={(['host', 'patch', 'baseline'] as const).map((value) => ({ label: t(`patchManager.risk.view.${value}`), value }))} value={view} onChange={(v) => { setView(v as typeof view); setSelected([]); setFilters({}); setSearchInputs({}); }} />
         <Space>
           <Button icon={<ExportOutlined />} onClick={handleExportAll}>{t('patchManager.risk.exportAll')}</Button>
@@ -719,7 +720,7 @@ export default function RiskPendingPage() {
             </Button>
           </Dropdown>
         </Space>
-      </div>
+      </FilterToolbar>
       <Row gutter={[12, 12]} style={{ marginBottom: 12 }} align="middle">
         {view === 'host' && (
           <>

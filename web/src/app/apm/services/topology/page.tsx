@@ -8,6 +8,7 @@ import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyHealth, ApmTopologyNode } from '@/app/apm/types';
+import FilterToolbar from '@/components/filter-toolbar';
 
 type LayoutMode = 'layered' | 'force';
 type TimeWindow = '15m' | '1h' | '4h' | '1d' | '7d';
@@ -204,7 +205,7 @@ export default function ApmTopologyPage() {
       <div className="flex flex-col gap-3">
         {graph.truncated ? <Alert showIcon type="warning" message="当前拓扑按有界 Trace 样本聚合；服务或调用链过多时仅展示最近样本。" /> : null}
         <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center gap-3">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-1.5 text-xs">
               <strong className="tabular-nums text-sm">{graph.nodes.length}</strong><span className="text-[var(--color-text-3)]">服务</span>
               <span className="text-[var(--color-border)]">·</span>
@@ -219,7 +220,7 @@ export default function ApmTopologyPage() {
             <Segmented<LayoutMode> aria-label="拓扑布局" options={[{ value: 'layered', label: '分层' }, { value: 'force', label: '力导向' }]} value={layout} onChange={setLayout} />
             <Button danger={anomalyOnly} icon={<WarningOutlined aria-hidden="true" />} type={anomalyOnly ? 'primary' : 'default'} onClick={() => setAnomalyOnly((value) => !value)}>只看异常</Button>
             <Button aria-label="刷新拓扑" icon={<ReloadOutlined aria-hidden="true" />} onClick={() => void load()} />
-          </div>
+          </FilterToolbar>
         </ApmSurface>
         <ApmSurface className="relative min-h-[520px] overflow-hidden" padding="none">
           {state === 'ready' ? (

@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
-import { Button, Empty, Input, Switch, Tag } from 'antd';
+import { Button, Empty, Input, Switch } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import ToolConnectionStatusTag from '@/app/opspilot/components/opspilot-tool-editor/tool-connection-status-tag';
 
 export type RedisTestStatus = 'untested' | 'success' | 'failed';
 
@@ -34,11 +35,6 @@ interface RedisToolEditorProps {
   onTest: () => void;
 }
 
-const statusColorMap: Record<RedisTestStatus, string> = {
-  untested: 'default',
-  success: 'blue',
-  failed: 'red',
-};
 
 const RedisToolEditor: React.FC<RedisToolEditorProps> = ({
   instances,
@@ -63,9 +59,6 @@ const RedisToolEditor: React.FC<RedisToolEditorProps> = ({
     prevLengthRef.current = instances.length;
   }, [instances.length]);
 
-  const renderStatus = (status: RedisTestStatus) => {
-    return <Tag color={statusColorMap[status]}>{t(`tool.redis.status.${status}`)}</Tag>;
-  };
 
   return (
     <div className="flex gap-4 min-h-[480px]">
@@ -120,7 +113,7 @@ const RedisToolEditor: React.FC<RedisToolEditorProps> = ({
               <div className="text-lg font-medium">
                 {t('tool.redis.configTitle').replace('{name}', selectedInstance.name || t('tool.redis.unnamedInstance'))}
               </div>
-              {renderStatus(selectedInstance.testStatus)}
+              <ToolConnectionStatusTag scope="tool.redis" status={selectedInstance.testStatus} />
             </div>
 
             <div>

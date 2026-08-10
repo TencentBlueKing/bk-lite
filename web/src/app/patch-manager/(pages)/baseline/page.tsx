@@ -13,8 +13,9 @@ import DualSelector from '@/app/patch-manager/components/dual-selector';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
 import PatchSourceDisplay from '@/app/patch-manager/components/patch-source-display';
 import CustomTable from '@/components/custom-table';
-import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
+import FilterToolbar from '@/components/filter-toolbar';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
@@ -493,7 +494,7 @@ export default function BaselineManagementPage() {
   }, [pickerSelected, patchList, requirements, draftOs]);
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+      <FilterToolbar align="between" spacing="flush">
         <Space wrap>
           <Input.Search
             placeholder={t('patchManager.baseline.name')}
@@ -538,7 +539,7 @@ export default function BaselineManagementPage() {
             onRefresh={() => loadData()}
           />
         </Space>
-      </div>
+      </FilterToolbar>
       <div style={{ flex: 1, minHeight: 0 }}>
         <CustomTable
           columns={columns as any}

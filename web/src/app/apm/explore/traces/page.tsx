@@ -16,6 +16,7 @@ import type {
   ApmTraceSearchParams,
   ApmTraceSummary,
 } from '@/app/apm/types';
+import FilterToolbar from '@/components/filter-toolbar';
 
 type PageState = CatalogStateKind | 'ready' | 'idle';
 type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d';
@@ -588,7 +589,7 @@ export default function ApmTracesPage() {
     >
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center gap-3">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Segmented<EntityMode>
               size="small"
               aria-label="调用链查询粒度"
@@ -656,7 +657,7 @@ export default function ApmTracesPage() {
                 options={[{ value: 'off', label: 'off' }]}
               />
             </Space>
-          </div>
+          </FilterToolbar>
         </ApmSurface>
         {state === 'idle' ? (
           <ApmSurface padding="none">
