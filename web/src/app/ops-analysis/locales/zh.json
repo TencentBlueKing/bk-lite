@@ -278,6 +278,7 @@
     "radar": "雷达图",
     "eventTable": "事件表",
     "eventTimeline": "事件时间线",
+    "topologyMap": "关系拓扑",
     "room3D": "3D机房",
     "message": "事件表",
     "responseFieldSchemaConfig": "接口字段定义",
@@ -343,6 +344,7 @@
         "pie": "饼图",
         "topN": "排行榜",
         "eventTable": "事件/告警流",
+        "topologyMap": "关系拓扑",
         "networkStatusTopology": "网络状态拓扑"
       },
       "widgetDescriptions": {
@@ -355,6 +357,7 @@
         "table": "展示结构化明细数据",
         "topN": "展示热点对象、异常对象和重点对象排行",
         "eventTable": "展示动态事件、告警流和最新状态",
+        "topologyMap": "展示通用实体关系和当前告警摘要",
         "room3D": "展示单个机房的 3D 机柜布局",
         "networkStatusTopology": "展示只读网络关系和健康态"
       }
@@ -576,6 +579,20 @@
     "selectModel": "请选择模型",
     "selectInstance": "请选择实例",
     "dataFormatMismatch": "数据格式不匹配",
+    "topologyMapEmpty": "暂无拓扑关系",
+    "topologyMapFit": "适应画布",
+    "topologyMapRenderFailed": "关系拓扑渲染失败",
+    "topologyMapPopoverModel": "模型",
+    "topologyMapPopoverSubtitle": "副标题",
+    "topologyMapPopoverAlerts": "活跃告警",
+    "topologyMapPopoverSeverity": "最高级别",
+    "topologyMapStatus": {
+      "critical": "严重",
+      "error": "错误",
+      "warning": "警告",
+      "unknown": "未知",
+      "normal": "正常"
+    },
     "addView": "添加视图",
     "filterType": "筛选类型",
     "startTime": "开始时间",

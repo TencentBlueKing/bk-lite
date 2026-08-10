@@ -18,6 +18,7 @@ import {
   OpsAnalysisWidgetErrorState,
 } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import OpsAnalysisWidgetRenderer from '@/app/ops-analysis/components/ops-analysis-widget-renderer';
+import TopologyMap from '@/app/ops-analysis/components/widgets/topologyMap';
 import {
   GaugeSettingsSection,
   MetricFieldSelectorFormItem,
@@ -95,6 +96,114 @@ const valueMappings: ValueMapping[] = [
   { type: 'value', value: '0', result: { text: '离线', color: '#fd666d' } },
   { type: 'value', value: '1', result: { text: '在线', color: '#67a567' } },
 ];
+
+const topologyNode = (
+  id: string,
+  instanceName: string,
+  alertCount = 0,
+  alertLevel?: string,
+) => ({
+  id,
+  instance_id: id,
+  instance_name: instanceName,
+  model_name: 'Service',
+  subtitle: `instance ${id}`,
+  alert_count: alertCount,
+  ...(alertLevel === undefined ? {} : { alert_level: alertLevel }),
+});
+
+const topologyChainFixture = {
+  nodes: [
+    topologyNode('gateway', 'API Gateway', 2, '2'),
+    topologyNode('checkout', 'Checkout Service', 1, '1'),
+    topologyNode('database', 'Order Database'),
+  ],
+  edges: [
+    { source: 'gateway', target: 'checkout', connection_type: 'single' as const },
+    { source: 'checkout', target: 'database', line_style: 'dashed' as const },
+  ],
+};
+
+const topologyTreeFixture = {
+  nodes: [
+    topologyNode('root', 'Public API', 1, '0'),
+    topologyNode('orders', 'Orders'),
+    topologyNode('inventory', 'Inventory', 7, '2'),
+    topologyNode('payment', 'Payment', 3, '1'),
+    topologyNode('stock', 'Stock Database'),
+  ],
+  edges: [
+    { source: 'root', target: 'orders', connection_type: 'single' as const },
+    { source: 'root', target: 'inventory', connection_type: 'single' as const },
+    { source: 'orders', target: 'payment', connection_type: 'single' as const },
+    { source: 'inventory', target: 'stock' },
+  ],
+};
+
+const topologyCyclicFixture = {
+  nodes: [
+    topologyNode('scheduler', 'Scheduler'),
+    topologyNode('worker', 'Worker', 12, '0'),
+    topologyNode('queue', 'Message Queue', 4, 'unexpected'),
+  ],
+  edges: [
+    { source: 'scheduler', target: 'worker', connection_type: 'single' as const },
+    { source: 'worker', target: 'scheduler', connection_type: 'single' as const },
+    { source: 'worker', target: 'queue', connection_type: 'single' as const },
+    { source: 'queue', target: 'scheduler', connection_type: 'single' as const },
+  ],
+};
+
+const topologyDisconnectedFixture = {
+  nodes: [
+    topologyNode('web', 'Web Frontend'),
+    topologyNode('api', 'Internal API'),
+    topologyNode('cron', 'Independent Cron Job', 101, '1'),
+    topologyNode('archive', 'Archive Storage'),
+  ],
+  edges: [
+    { source: 'web', target: 'api', connection_type: 'double' as const },
+    { source: 'cron', target: 'archive', line_style: 'dashed' as const },
+  ],
+};
+
+const topologyLongTextFixture = {
+  nodes: [
+    {
+      ...topologyNode(
+        'long-name',
+        'A very long production service instance name that must not overflow the node',
+        100,
+        '0',
+      ),
+      model_name: 'A very long model name used to verify truncation',
+      subtitle: 'region-cn-shanghai / availability-zone-three / production',
+    },
+    topologyNode('target', 'Downstream Service', 6, 'unknown-level'),
+  ],
+  edges: [{ source: 'long-name', target: 'target', label: 'depends on' }],
+};
+
+const TopologyFixture = ({
+  data,
+  dark = false,
+}: {
+  data: unknown;
+  dark?: boolean;
+}) => (
+  <div
+    // App theme tokens switch via html.dark; Storybook dark story mirrors that class locally.
+    className={dark ? 'dark' : undefined}
+    style={{
+      height: 440,
+      padding: 12,
+      background: 'var(--color-bg-1)',
+      color: 'var(--color-text-1)',
+    }}
+  >
+    <TopologyMap rawData={data} />
+  </div>
+);
 
 const FamilyOverview = () => {
   return (
@@ -849,3 +958,47 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = {};
+
+export const TopologyMapChain: Story = {
+  render: () => <TopologyFixture data={topologyChainFixture} />,
+};
+
+export const TopologyMapTree: Story = {
+  render: () => <TopologyFixture data={topologyTreeFixture} />,
+};
+
+export const TopologyMapCyclic: Story = {
+  render: () => <TopologyFixture data={topologyCyclicFixture} />,
+};
+
+export const TopologyMapDisconnected: Story = {
+  render: () => <TopologyFixture data={topologyDisconnectedFixture} />,
+};
+
+export const TopologyMapEmpty: Story = {
+  render: () => <TopologyFixture data={{ nodes: [], edges: [] }} />,
+};
+
+export const TopologyMapInvalid: Story = {
+  render: () => (
+    <div className="space-y-3">
+      <p className="text-sm text-[var(--color-text-2)]">
+        Invalid graph fixture: the existing widget data-format guard owns the visible error state.
+      </p>
+      <div style={{ height: 320 }}>
+        <OpsAnalysisWidgetErrorState message="Topology edge references an unknown node: missing-node" />
+      </div>
+    </div>
+  ),
+};
+
+export const TopologyMapDark: Story = {
+  render: () => <TopologyFixture data={topologyCyclicFixture} dark />,
+  parameters: {
+    backgrounds: { default: 'dark' },
+  },
+};
+
+export const TopologyMapLongText: Story = {
+  render: () => <TopologyFixture data={topologyLongTextFixture} />,
+};

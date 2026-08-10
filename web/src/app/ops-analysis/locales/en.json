@@ -278,6 +278,7 @@
     "radar": "Radar",
     "eventTable": "Event Table",
     "eventTimeline": "Event Timeline",
+    "topologyMap": "Relationship Topology",
     "room3D": "3D Room",
     "message": "Event Table",
     "responseFieldSchemaConfig": "API Field Definition",
@@ -343,6 +344,7 @@
         "pie": "Pie Chart",
         "topN": "Top N",
         "eventTable": "Event / Alert Stream",
+        "topologyMap": "Relationship Topology",
         "networkStatusTopology": "Network Status Topology"
       },
       "widgetDescriptions": {
@@ -355,6 +357,7 @@
         "table": "Show structured detail data",
         "topN": "Show hot, abnormal, or important ranked objects",
         "eventTable": "Show dynamic events, alert streams, and latest status",
+        "topologyMap": "Show generic entity relationships and current alert summaries",
         "room3D": "Show the 3D rack layout of one server room",
         "networkStatusTopology": "Show read-only network relationships and health"
       }
@@ -576,6 +579,20 @@
     "selectModel": "Please select model",
     "selectInstance": "Please select instance",
     "dataFormatMismatch": "Data format mismatch",
+    "topologyMapEmpty": "No topology relationships",
+    "topologyMapFit": "Fit to canvas",
+    "topologyMapRenderFailed": "Failed to render topology",
+    "topologyMapPopoverModel": "Model",
+    "topologyMapPopoverSubtitle": "Subtitle",
+    "topologyMapPopoverAlerts": "Active alerts",
+    "topologyMapPopoverSeverity": "Highest severity",
+    "topologyMapStatus": {
+      "critical": "Critical",
+      "error": "Error",
+      "warning": "Warning",
+      "unknown": "Unknown",
+      "normal": "Normal"
+    },
     "addView": "Add View",
     "filterType": "Filter Type",
     "startTime": "Start Time",

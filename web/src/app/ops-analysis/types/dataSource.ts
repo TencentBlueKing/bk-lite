@@ -12,6 +12,7 @@ export type ChartType =
   | 'topN'
   | 'gauge'
   | 'radar'
+  | 'topologyMap'
   | 'room3D'
   | 'message';
 
