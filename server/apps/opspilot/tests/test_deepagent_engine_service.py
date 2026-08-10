@@ -567,7 +567,7 @@ class TestBuildDeepagentNodes:
         assert all(not isinstance(message, HumanMessage) for message in result["messages"])
 
     def test_planned_execution_hides_deepagent_builtin_tools(self):
-        from langchain.agents.middleware import ModelCallLimitMiddleware
+        from apps.opspilot.metis.llm.middleware.planned_execution_limits import PlannedExecutionLimitMiddleware
 
         node = ToolsNodes()
         node._dynamic_mode = True
@@ -606,9 +606,10 @@ class TestBuildDeepagentNodes:
             ["list_kubernetes_events"],
             [],
         ]
-        call_limit = next(middleware for middleware in kwargs["middleware"] if isinstance(middleware, ModelCallLimitMiddleware))
-        assert call_limit.run_limit == 3
-        assert call_limit.thread_limit == 10
+        call_limit = next(middleware for middleware in kwargs["middleware"] if isinstance(middleware, PlannedExecutionLimitMiddleware))
+        assert call_limit.run_limit == 10
+        assert call_limit.token_budget == 0
+        assert call_limit.enforce_limits is False  # 总结轮关闭硬限制
 
     def test_tool_failure_replans_only_unfinished_steps(self):
         # 不用 namespace 反查类工具，避免规划硬校验改写步骤顺序。
