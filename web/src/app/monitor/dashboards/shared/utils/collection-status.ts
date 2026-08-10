@@ -3,6 +3,55 @@ import { getRecentTimeRange } from '@/app/monitor/utils/common';
 import { CollectionStatusResult } from '../types';
 import { COLLECTION_STATUS_SEGMENT_COUNT } from './constants';
 
+export type CollectionStatusTone = 'success' | 'empty' | 'error';
+
+export interface CollectionStatusTimelineSegment {
+  tone: CollectionStatusTone;
+  startMs: number;
+  endMs: number;
+}
+
+const COLLECTION_STATUS_TONE_LABEL: Record<CollectionStatusTone, string> = {
+  success: '正常',
+  empty: '无数据',
+  error: '异常'
+};
+
+/** Prometheus/VM 点时间通常是秒；时间窗用毫秒。 */
+const toTimestampMs = (value: number): number => (value < 1e12 ? value * 1000 : value);
+
+/**
+ * 采样间隔常大于桶宽（如默认 15m / 18 格 ≈ 50s，而 scrape/step 多为 60s），
+ * 仅按「点落在桶内」会出现周期性假灰。用相邻成功点的中位间隔作为覆盖半径。
+ */
+const estimateSampleCoverageMs = (successTimes: number[], bucketWidth: number): number => {
+  if (successTimes.length < 2) return bucketWidth;
+  const gaps: number[] = [];
+  for (let i = 1; i < successTimes.length; i += 1) {
+    const gap = successTimes[i] - successTimes[i - 1];
+    if (gap > 0) gaps.push(gap);
+  }
+  if (gaps.length === 0) return bucketWidth;
+  gaps.sort((a, b) => a - b);
+  const medianGap = gaps[Math.floor(gaps.length / 2)];
+  return Math.max(bucketWidth, medianGap);
+};
+
+export const getCollectionStatusToneLabel = (tone: CollectionStatusTone): string =>
+  COLLECTION_STATUS_TONE_LABEL[tone];
+
+export const getLatestCollectionTone = (
+  viewData: ChartData[] | undefined
+): 'success' | 'empty' | undefined => {
+  if (!Array.isArray(viewData) || viewData.length === 0) return undefined;
+  const latest = [...viewData]
+    .sort((a, b) => Number(a.time) - Number(b.time))
+    .at(-1);
+  if (!latest) return undefined;
+  return Number(latest.value1 ?? 0) > 0 ? 'success' : 'empty';
+};
+
+/** @deprecated 仅保留兼容；时间线已改为按时间窗均分桶。 */
 export const getCollectionStatusTones = (
   viewData: ChartData[] | undefined,
   segmentCount = COLLECTION_STATUS_SEGMENT_COUNT
@@ -11,23 +60,60 @@ export const getCollectionStatusTones = (
   return [...viewData]
     .sort((a, b) => Number(a.time) - Number(b.time))
     .slice(-segmentCount)
-    .map((point) => (Number(point.value1 ?? 0) > 0 ? 'success' as const : 'empty' as const));
+    .map((point) => (Number(point.value1 ?? 0) > 0 ? ('success' as const) : ('empty' as const)));
 };
 
 export const buildCollectionStatusTimeline = (
   loadState: string | undefined,
   viewData: ChartData[] | undefined,
+  startMs: number,
+  endMs: number,
   segmentCount = COLLECTION_STATUS_SEGMENT_COUNT
-): Array<'success' | 'empty' | 'error'> => {
+): CollectionStatusTimelineSegment[] => {
+  const safeStart = Number(startMs);
+  const safeEnd = Number(endMs);
+  const count = Math.max(1, Math.floor(segmentCount));
+  const hasValidRange = Number.isFinite(safeStart) && Number.isFinite(safeEnd) && safeEnd > safeStart;
+  const resolvedStart = hasValidRange ? safeStart : Date.now() - 15 * 60_000;
+  const resolvedEnd = hasValidRange ? safeEnd : Date.now();
+  const duration = resolvedEnd - resolvedStart;
+  const bucketWidth = duration / count;
+
+  const makeSegment = (index: number, tone: CollectionStatusTone): CollectionStatusTimelineSegment => {
+    const bucketStart = resolvedStart + index * bucketWidth;
+    const bucketEnd = index === count - 1 ? resolvedEnd : resolvedStart + (index + 1) * bucketWidth;
+    return { tone, startMs: bucketStart, endMs: bucketEnd };
+  };
+
   if (loadState === 'error') {
-    return Array.from({ length: segmentCount }, () => 'error' as const);
+    return Array.from({ length: count }, (_, index) => makeSegment(index, 'error'));
   }
-  const tones = getCollectionStatusTones(viewData, segmentCount);
-  if (tones.length >= segmentCount) return tones;
-  return [
-    ...Array.from({ length: segmentCount - tones.length }, () => 'empty' as const),
-    ...tones
-  ];
+
+  const hits = Array.from({ length: count }, () => false);
+  const successTimes: number[] = [];
+  if (Array.isArray(viewData)) {
+    for (const point of viewData) {
+      if (Number(point.value1 ?? 0) <= 0) continue;
+      const pointMs = toTimestampMs(Number(point.time));
+      if (!Number.isFinite(pointMs) || pointMs < resolvedStart || pointMs > resolvedEnd) continue;
+      successTimes.push(pointMs);
+    }
+  }
+  successTimes.sort((a, b) => a - b);
+  const coverageMs = estimateSampleCoverageMs(successTimes, bucketWidth);
+  const halfCoverage = coverageMs / 2;
+  for (const pointMs of successTimes) {
+    const coverStart = Math.max(resolvedStart, pointMs - halfCoverage);
+    const coverEnd = Math.min(resolvedEnd, pointMs + halfCoverage);
+    if (coverEnd <= coverStart) continue;
+    const startIndex = Math.max(0, Math.floor((coverStart - resolvedStart) / bucketWidth));
+    const endIndex = Math.min(count - 1, Math.floor((coverEnd - Number.EPSILON - resolvedStart) / bucketWidth));
+    for (let index = startIndex; index <= endIndex; index += 1) {
+      hits[index] = true;
+    }
+  }
+
+  return hits.map((hasData, index) => makeSegment(index, hasData ? 'success' : 'empty'));
 };
 
 export const getCollectionStatus = (
@@ -44,8 +130,7 @@ export const getCollectionStatus = (
     };
   }
 
-  const tones = getCollectionStatusTones(metric?.viewData);
-  const latestTone = tones.at(-1);
+  const latestTone = getLatestCollectionTone(metric?.viewData);
 
   if (latestTone === 'success') {
     return {
@@ -66,12 +151,48 @@ export const getCollectionStatus = (
   };
 };
 
-export const formatCollectionStatusWindow = (timeValues: TimeValuesProps) => {
-  const [startTime, endTime] = getRecentTimeRange(timeValues);
-  if (!startTime || !endTime) return '最近 15 分钟';
-  const totalMinutes = Math.max(Math.round((endTime - startTime) / 60000), 1);
+export const formatDurationApprox = (durationMs: number): string => {
+  const seconds = Math.max(1, Math.round(durationMs / 1000));
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const remainMinutes = minutes % 60;
+  return remainMinutes > 0 ? `${hours} 小时 ${remainMinutes} 分钟` : `${hours} 小时`;
+};
+
+export const formatCollectionStatusWindowFromMs = (startMs: number, endMs: number): string => {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    return '最近 15 分钟';
+  }
+  const totalMinutes = Math.max(Math.round((endMs - startMs) / 60000), 1);
   if (totalMinutes < 60) return `最近 ${totalMinutes} 分钟`;
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return minutes > 0 ? `最近 ${hours} 小时 ${minutes} 分钟` : `最近 ${hours} 小时`;
+};
+
+export const formatCollectionStatusWindow = (timeValues: TimeValuesProps) => {
+  const [startTime, endTime] = getRecentTimeRange(timeValues);
+  return formatCollectionStatusWindowFromMs(Number(startTime), Number(endTime));
+};
+
+export const formatCollectionStatusTimelineHint = (
+  startMs: number,
+  endMs: number,
+  segmentCount = COLLECTION_STATUS_SEGMENT_COUNT
+): string => {
+  const count = Math.max(1, Math.floor(segmentCount));
+  const segmentMs = Math.max(endMs - startMs, 0) / count;
+  return `每格约 ${formatDurationApprox(segmentMs)}`;
+};
+
+export const resolveCollectionStatusRange = (
+  timeValues: TimeValuesProps
+): { startMs: number; endMs: number } | null => {
+  const [startTime, endTime] = getRecentTimeRange(timeValues);
+  const startMs = Number(startTime);
+  const endMs = Number(endTime);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
+  return { startMs, endMs };
 };
