@@ -1,12 +1,11 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { DatePicker, Select } from 'antd';
 import { CalendarOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 
 import {
-  DEFAULT_DATE_RANGE_VALUE,
   DateRangeType,
   DateRangeValue,
 } from '@/app/ops-analysis/types/dateRange';
@@ -50,7 +49,7 @@ const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
   className,
 }) => {
   const { t } = useTranslation();
-  const initializedRef = useRef(false);
+  // undefined 时仅展示默认快捷范围，不回写 Form，避免挂载期 onChange 把字段标成 touched
   const effectiveValue = getDateRangeSelectorValue(value);
   const effectiveStatus = status ?? (
     value !== undefined && !validateDateRangeValue(value).valid ? 'error' : undefined
@@ -61,13 +60,6 @@ const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
   const [customDraft, setCustomDraft] = useState<[Dayjs | null, Dayjs | null] | null>(
     () => toDateRangePickerValue(value),
   );
-
-  useEffect(() => {
-    if (value === undefined && !initializedRef.current) {
-      initializedRef.current = true;
-      onChange?.({ ...DEFAULT_DATE_RANGE_VALUE });
-    }
-  }, [onChange, value]);
 
   const options = useMemo(() => [
     ...QUICK_RANGE_TYPES.map((rangeType) => ({

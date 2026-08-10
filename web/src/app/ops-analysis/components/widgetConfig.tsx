@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
+import { markFormPristine } from '@/utils/formPristine';
 import {
   ViewConfigProps,
   ViewConfigItem,
@@ -581,6 +582,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         dataSource: undefined,
         networkStatusTopology,
       });
+      // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
+      markFormPristine(form);
       return;
     }
 
@@ -782,6 +785,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     singleValueConfig.setThresholdColors(initThresholdColors(valueConfig?.thresholdColors));
 
     form.setFieldsValue(formValues);
+    // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
+    markFormPristine(form);
   };
 
   const resetForm = (): void => {
