@@ -124,6 +124,41 @@ def test_max_tokens_budget_env_and_request(monkeypatch):
     assert get_planned_execution_max_tokens_budget() == 0
 
 
+@pytest.mark.asyncio
+async def test_ask_limit_continue_defaults_node_id_to_skill_test(mocker):
+    """无工作流 node_id 时必须发 skill_test，否则 submit_choice 会 404。"""
+    from apps.opspilot.metis.llm.middleware.planned_execution_limits import ask_limit_continue
+
+    captured = {}
+
+    def _dispatch(name, data, config=None):
+        captured["event"] = data
+
+    async def _wait(**kwargs):
+        captured["wait"] = kwargs
+        return {"selected": ["continue"]}
+
+    mocker.patch(
+        "apps.opspilot.metis.llm.chain.report_renderers.k8s.build_a2ui_report_contract",
+        return_value={"component": "user-choice"},
+    )
+    mocker.patch(
+        "apps.opspilot.metis.llm.middleware.planned_execution_limits.dispatch_custom_event",
+        side_effect=_dispatch,
+    )
+    mocker.patch("apps.opspilot.utils.user_choice.wait_for_choice", side_effect=_wait)
+
+    ok = await ask_limit_continue(
+        kind="model_calls",
+        step_objective="排查",
+        config={"configurable": {"execution_id": "exec-1"}},
+    )
+    assert ok is True
+    assert captured["event"]["node_id"] == "skill_test"
+    assert captured["event"]["execution_id"] == "exec-1"
+    assert captured["wait"]["node_id"] == "skill_test"
+
+
 def test_planned_execution_limit_middleware_messages_and_continue():
     from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
     from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
@@ -495,6 +530,60 @@ async def test_planner_normalize_hard_enforces_namespace_lookup():
     plan = await ToolExecutionPlanner(FakeLLM()).plan("Unhealthy server-xxx", tools)
     assert plan.steps[0].tools == ["resolve_k8s_target_from_alert"]
     assert plan.steps[1].tools == ["diagnose_kubernetes_pod_issues"]
+
+
+@pytest.mark.asyncio
+async def test_planner_keeps_use_skills_sentinel_when_packages_present():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import USE_SKILLS_TOOL_NAME
+
+    tools = [_tool("shell", "执行命令")]
+    packages = [{"name": "kubernetes-specialist", "description": "排查 K8s Pod / Event"}]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "按技能排查",
+                        "steps": [{"objective": "读取技能并执行", "tools": [USE_SKILLS_TOOL_NAME]}],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan("用 k8s 技能排查 Pod", tools, skill_packages=packages)
+    assert plan.steps[0].tools == [USE_SKILLS_TOOL_NAME]
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "可用技能包" in prompt
+    assert "kubernetes-specialist" in prompt
+    assert USE_SKILLS_TOOL_NAME in prompt
+
+
+@pytest.mark.asyncio
+async def test_planner_drops_use_skills_without_packages():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import USE_SKILLS_TOOL_NAME
+
+    tools = [_tool("shell", "执行命令")]
+
+    class FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "闲聊",
+                        "steps": [{"objective": "误挂技能", "tools": [USE_SKILLS_TOOL_NAME]}],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    plan = await ToolExecutionPlanner(FakeLLM()).plan("你好", tools, skill_packages=[])
+    assert plan.steps == []
 
 
 def test_token_usage_middleware_records_each_model_call_and_visible_tools():

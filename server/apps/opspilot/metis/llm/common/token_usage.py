@@ -22,16 +22,41 @@ def _token_count(value: Any) -> int | None:
     return count
 
 
-def _extract_usage_source(message: Any) -> tuple[Any, str, str]:
+def _first_token_count(source: Any, keys: tuple[str, ...]) -> int | None:
+    for key in keys:
+        count = _token_count(_get_value(source, key))
+        if count is not None:
+            return count
+    return None
+
+
+_PROMPT_KEYS = ("input_tokens", "prompt_tokens", "prompt_token_count", "input_token_count")
+_COMPLETION_KEYS = ("output_tokens", "completion_tokens", "completion_token_count", "output_token_count")
+_TOTAL_KEYS = ("total_tokens", "total_token_count")
+
+
+def _extract_usage_source(message: Any) -> Any:
+    """Locate provider usage payload on an AIMessage / chunk.
+
+    Prefer LangChain ``usage_metadata``; fall back to OpenAI-style
+    ``response_metadata.token_usage`` / ``response_metadata.usage``.
+    Some OpenAI-compatible gateways (e.g. MiniMax) only populate the latter
+    when streaming without ``stream_options.include_usage``, or put OpenAI
+    key names inside ``usage_metadata``.
+    """
     usage_metadata = getattr(message, "usage_metadata", None)
-    if usage_metadata:
-        return usage_metadata, "input_tokens", "output_tokens"
+    if usage_metadata and (_first_token_count(usage_metadata, _PROMPT_KEYS + _COMPLETION_KEYS + _TOTAL_KEYS) is not None):
+        return usage_metadata
 
     response_metadata = getattr(message, "response_metadata", None) or {}
-    token_usage = _get_value(response_metadata, "token_usage")
-    if token_usage:
-        return token_usage, "prompt_tokens", "completion_tokens"
-    return None, "", ""
+    for key in ("token_usage", "usage"):
+        token_usage = _get_value(response_metadata, key)
+        if token_usage and (_first_token_count(token_usage, _PROMPT_KEYS + _COMPLETION_KEYS + _TOTAL_KEYS) is not None):
+            return token_usage
+    # usage_metadata 存在但全空时仍返回它,便于调用方标记「有字段但无有效用量」
+    if usage_metadata:
+        return usage_metadata
+    return None
 
 
 @dataclass(frozen=True)
@@ -64,16 +89,32 @@ class TokenUsageCall:
 
 
 def extract_token_usage(message: Any) -> TokenUsage:
-    source, prompt_key, completion_key = _extract_usage_source(message)
+    source = _extract_usage_source(message)
     if source is None:
         return TokenUsage()
 
-    prompt_tokens = _token_count(_get_value(source, prompt_key)) or 0
-    completion_tokens = _token_count(_get_value(source, completion_key)) or 0
+    prompt_tokens = _first_token_count(source, _PROMPT_KEYS)
+    completion_tokens = _first_token_count(source, _COMPLETION_KEYS)
+    reported_total = _first_token_count(source, _TOTAL_KEYS)
+
+    # 有 usage 容器但三种计数都缺 → 视为未上报
+    if prompt_tokens is None and completion_tokens is None and reported_total is None:
+        return TokenUsage()
+
+    prompt_tokens = prompt_tokens or 0
+    completion_tokens = completion_tokens or 0
     calculated_total = prompt_tokens + completion_tokens
-    reported_total = _token_count(_get_value(source, "total_tokens"))
     total_tokens = reported_total if reported_total not in (None, 0) else calculated_total
-    return TokenUsage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens, total_tokens=total_tokens, reported=True)
+    # LangChain/兼容网关常塞来全 0 的 usage_metadata(空 usage 对象或流式终包丢失),
+    # 不能当成「已上报 0」,否则 AGUI 日志永远是 0 且不再走兜底。
+    if prompt_tokens == 0 and completion_tokens == 0 and total_tokens == 0:
+        return TokenUsage()
+    return TokenUsage(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+        reported=True,
+    )
 
 
 @dataclass
