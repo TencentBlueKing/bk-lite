@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
-import { Button, Empty, Input, Tag } from 'antd';
+import { Button, Empty, Input } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import ToolConnectionStatusTag from '@/app/opspilot/components/opspilot-tool-editor/tool-connection-status-tag';
 
 export type JenkinsTestStatus = 'untested' | 'success' | 'failed';
 
@@ -27,11 +28,6 @@ interface JenkinsToolEditorProps {
   onTest: () => void;
 }
 
-const statusColorMap: Record<JenkinsTestStatus, string> = {
-  untested: 'default',
-  success: 'blue',
-  failed: 'red',
-};
 
 const JenkinsToolEditor: React.FC<JenkinsToolEditorProps> = ({
   instances,
@@ -56,9 +52,6 @@ const JenkinsToolEditor: React.FC<JenkinsToolEditorProps> = ({
     prevLengthRef.current = instances.length;
   }, [instances.length]);
 
-  const renderStatus = (status: JenkinsTestStatus) => {
-    return <Tag color={statusColorMap[status]}>{t(`tool.jenkins.status.${status}`)}</Tag>;
-  };
 
   return (
     <div className="flex gap-4 min-h-[480px]">
@@ -113,7 +106,7 @@ const JenkinsToolEditor: React.FC<JenkinsToolEditorProps> = ({
               <div className="text-lg font-medium">
                 {t('tool.jenkins.configTitle').replace('{name}', selectedInstance.name || t('tool.jenkins.unnamedInstance'))}
               </div>
-              {renderStatus(selectedInstance.testStatus)}
+              <ToolConnectionStatusTag scope="tool.jenkins" status={selectedInstance.testStatus} />
             </div>
 
             <div>

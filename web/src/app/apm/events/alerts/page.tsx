@@ -23,6 +23,7 @@ import {
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
+import FilterToolbar from '@/components/filter-toolbar';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmEvent, ApmEventQuery, ApmNotificationDelivery, ApmPolicyMetric, ApmPolicySeverity } from '@/app/apm/types';
 
@@ -352,7 +353,7 @@ export default function ApmEventsPage() {
     >
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
-          <div className="mb-3 flex flex-wrap items-center gap-3">
+          <FilterToolbar align="start" spacing="flush" className="mb-3 w-full" contentClassName="w-full">
             <Input.Search
               allowClear
               aria-label="搜索告警标题、服务或规则"
@@ -386,7 +387,7 @@ export default function ApmEventsPage() {
               ))}
             </Radio.Group>
             <Button icon={<ReloadOutlined aria-hidden="true" />} onClick={load}>刷新</Button>
-          </div>
+          </FilterToolbar>
           <div className="mb-3 rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <Typography.Text strong>告警分布（近 {timeRange}）</Typography.Text>

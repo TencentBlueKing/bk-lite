@@ -194,18 +194,19 @@ export const auditComponentOwnership = async ({ rootDir, primitiveAllowlist = {}
     } else if (transitive.length >= 2) {
       classification = 'shared-cross-app';
       reason = `consumed transitively by ${transitive.length} apps`;
-    } else if (transitive.length === 1) {
-      classification = 'app-local';
-      reason = `consumed by only ${transitive[0]}`;
-    } else if (allowlist.has(component) && activeStoryFiles.length > 0) {
-      // shared-primitive requires at least 1 active story JSX render (a real contract).
-      // Without active renders, the allowlist entry is effectively a ghost contract.
+    } else if (allowlist.has(component) && (activeStoryFiles.length > 0 || transitive.length > 0)) {
+      // Allowlisted primitives may have 0 or 1 real app consumers ("不足两个").
+      // Evidence is either an active Storybook JSX contract or at least one app consumer.
+      // App count alone must not demote a documented primitive into app-local.
       classification = 'shared-primitive';
       reason = `primitive allowlist: ${allowlist.get(component).reason}`;
     } else if (allowlist.has(component)) {
-      // Allowlisted but no active story render and no app consumer — ghost contract.
+      // Allowlisted but neither app consumers nor active story render — ghost contract.
       classification = 'shared-primitive-ghost';
       reason = `allowlisted primitive with no active story render or app consumers: ${allowlist.get(component).reason}`;
+    } else if (transitive.length === 1) {
+      classification = 'app-local';
+      reason = `consumed by only ${transitive[0]}`;
     } else if (storyFiles.length) {
       classification = 'story-only-review';
       reason = 'consumed only by Storybook stories (not in allowlist)';
