@@ -233,7 +233,7 @@ class LLMSkill(MaintainerInfo):
     name = models.CharField(max_length=255, verbose_name="名称")
     llm_model = models.ForeignKey(
         "LLMModel",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         verbose_name="LLM模型",
         blank=True,
         null=True,
