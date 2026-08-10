@@ -1013,7 +1013,6 @@ class InstanceConfigService:
                 except ValueError as exc:
                     raise BaseAppException(str(exc)) from exc
             if (config_obj.collect_type or "").startswith("snmp"):
-                from apps.monitor.utils.config_format import ConfigFormat
                 from apps.monitor.utils.snmp_interface_filters import normalize_snmp_interface_filter_config
                 from apps.monitor.utils.snmp_interface_template import has_interface_collection
 

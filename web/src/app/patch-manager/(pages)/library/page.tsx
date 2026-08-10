@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Tooltip, Upload, Dropdown } from 'antd';
 import PermissionWrapper from '@/components/permission';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, CloudDownloadOutlined, EditOutlined, DeleteOutlined, CloseOutlined, DownOutlined, InboxOutlined, UploadOutlined } from '@ant-design/icons';
 import SearchCombination from '@/components/search-combination';
@@ -15,9 +14,11 @@ import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-req
 import type { Patch, PatchOriginType, PatchSeverity, OSType, PackageStatus, PatchParams, CandidateItem, PatchSource, IngestResult } from '@/app/patch-manager/types';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
 import ReadyTag from '@/app/patch-manager/components/ready-tag';
+import PatchSourceDisplay from '@/app/patch-manager/components/patch-source-display';
 import CustomTable from '@/components/custom-table';
-import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
+import FilterToolbar from '@/components/filter-toolbar';
 import { getWindowsPackageUploadState } from '@/app/patch-manager/components/windows-package-upload-state';
 import {
   createCandidateSelection,
@@ -328,18 +329,12 @@ export default function LibraryPage() {
         title: t('patchManager.libraryPage.source'),
         dataIndex: 'sources',
         width: 220,
-        render: (_: unknown, r: Patch) => {
-          if (r.source_type === 'manual') {
-            return <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{t('patchManager.libraryPage.manualEntry')}</span>;
-          }
-          const details = r.source_details || [];
-          const visibleText = details.length
-            ? details.map((item) => item.deleted
-              ? `${t('patchManager.libraryPage.sourceDeleted')}${item.url ? `:${item.url}` : ''}`
-              : item.url || '—').join(',')
-            : t('patchManager.libraryPage.sourceDeleted');
-          return <EllipsisWithTooltip text={visibleText} className="w-full overflow-hidden text-ellipsis whitespace-nowrap text-[var(--color-text-3,#8c8c8c)]" />;
-        },
+        render: (_: unknown, r: Patch) => (
+          <PatchSourceDisplay
+            sourceType={r.source_type}
+            sourceDetails={r.source_details}
+          />
+        ),
       },
       {
         title: t('patchManager.libraryPage.sourceType'),
@@ -628,7 +623,7 @@ export default function LibraryPage() {
         { key: 'linux', label: 'Linux', children: null },
       ]} />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+      <FilterToolbar align="between">
         <SearchCombination
           fieldConfigs={activeTab === 'win' ? winFieldConfigs : linuxFieldConfigs}
           onChange={(next) => {
@@ -672,7 +667,7 @@ export default function LibraryPage() {
             <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>{t('patchManager.libraryPage.addPatch')}</Button></PermissionWrapper>
           )}
         </Space>
-      </div>
+      </FilterToolbar>
 
       <div style={{ flex: 1, minHeight: 0 }}>
         <CustomTable<Patch>

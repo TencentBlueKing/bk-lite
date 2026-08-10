@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Dialog, Popup, Tabs, Toast } from 'antd-mobile';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -12,6 +12,7 @@ import { useMobileAvailability } from '@/platform/availability/context';
 import { formatAccountDateTime } from '@/platform/preferences/dateTime';
 import { getAlert, listAlertChanges, listAlertEvents, listAlertLevels, listAssignees, performAlertAction } from '@/features/todo/adapter';
 import {
+  alertNotifyStatusKey,
   alertRequestErrorKind,
   availableAlertActions,
   isPermissionDenied,
@@ -66,21 +67,23 @@ function TodoAlertDetailContent() {
     return true;
   }, [closePicker, pickerAction, submitting]);
 
-  const loadDetail = useCallback(async () => {
+  const loadDetail = useCallback(async (options?: { quiet?: boolean }) => {
     if (!Number.isInteger(id) || id <= 0) {
       setAlert(null);
       setStatus('missing');
-      return;
+      return null;
     }
-    setStatus('loading');
+    if (!options?.quiet) setStatus('loading');
     try {
       const [detail, levelResult] = await Promise.all([getAlert(id), listAlertLevels().catch(() => [])]);
       setAlert(detail);
       setLevels(levelResult);
       setStatus('ready');
+      return detail;
     } catch (error) {
       setAlert(null);
       setStatus(alertRequestErrorKind(error));
+      return null;
     }
   }, [id]);
 
@@ -93,10 +96,11 @@ function TodoAlertDetailContent() {
     catch { setEventStatus('error'); }
   }, [alert]);
 
-  const loadChanges = useCallback(async () => {
-    if (!alert) return;
+  const loadChanges = useCallback(async (alertId?: string) => {
+    const targetId = alertId || alert?.alertId;
+    if (!targetId) return;
     setChangeStatus('loading');
-    try { setChanges((await listAlertChanges(alert.alertId)).items); setChangeStatus('ready'); }
+    try { setChanges((await listAlertChanges(targetId)).items); setChangeStatus('ready'); }
     catch (error) { setChangeStatus(isPermissionDenied(error) ? 'forbidden' : 'error'); }
   }, [alert]);
 
@@ -121,16 +125,19 @@ function TodoAlertDetailContent() {
   const runAction = async (action: AlertAction, selected: string[] = []) => {
     if (!alert || submitting) return;
     setSubmitting(true);
+    const alertId = alert.alertId;
     try {
-      const message = await performAlertAction(action, alert.alertId, selected);
+      const message = await performAlertAction(action, alertId, selected);
       invalidateMobileViewSnapshots(cacheScope, ['todo-root']);
       Toast.show({ icon: 'success', content: message || t('todo.actionSuccess') });
       closePicker();
-      await loadDetail();
-      if (activeTab === 'changes') await loadChanges();
+      // 静默刷新详情，并立刻重拉变更记录（不依赖当前 Tab）
+      await loadDetail({ quiet: true });
+      setEventStatus('idle');
+      await loadChanges(alertId);
     } catch (error) {
       Toast.show({ icon: 'fail', content: error instanceof Error ? error.message : t('todo.actionFailed') });
-      await loadDetail();
+      await loadDetail({ quiet: true });
     } finally { setSubmitting(false); }
   };
 
@@ -195,7 +202,8 @@ function TodoAlertDetailContent() {
   const resource = alert.resourceName || alert.resourceId || alert.sourceName || '--';
   const operator = alert.operatorDisplay.trim();
   const summaryStrip = [alert.duration || '--', resource, operator].filter(Boolean).join(' · ');
-  const detailFields = [
+  const notifyKey = alertNotifyStatusKey(alert.notifyStatus);
+  const detailFields: Array<[string, ReactNode]> = [
     [t('todo.fields.firstEvent'), formatTime(alert.firstEventTime)],
     [t('todo.fields.lastEvent'), formatTime(alert.lastEventTime)],
     [t('todo.fields.duration'), alert.duration || '--'],
@@ -203,7 +211,11 @@ function TodoAlertDetailContent() {
     [t('todo.fields.source'), alert.sourceName || '--'],
     [t('todo.fields.resourceType'), alert.resourceType || '--'],
     [t('todo.fields.resourceName'), resource],
-    [t('todo.fields.notifyStatus'), alert.notifyStatus || '--'],
+    [t('todo.fields.notifyStatus'), (
+      <span key="notifyStatus" className={styles.notifyStatusTag} data-status={notifyKey}>
+        {t(`todo.notifyStatus.${notifyKey}`, alert.notifyStatus || t('todo.notifyStatus.not_notified'))}
+      </span>
+    )],
   ];
 
   const sectionState = (sectionStatus: string, retry: () => void, forbidden = false) => (
@@ -248,7 +260,7 @@ function TodoAlertDetailContent() {
           <Tabs.Tab key="events" title={`${t('todo.sections.events')} (${alert.eventCount})`} />
           <Tabs.Tab key="changes" title={t('todo.sections.changes')} />
         </Tabs>
-        {activeTab === 'summary' && <section className={styles.sectionCard}><div className={styles.sectionHeading}>{t('todo.sections.alertInfo')}</div><div className={styles.detailGrid}>{detailFields.map(([label, value]) => <Fragment key={label}><span className={styles.detailLabel}>{label}</span><span className={styles.detailValue}>{value}</span></Fragment>)}</div><div className={styles.contentBlock}><span className={styles.contentLabel}>{t('todo.fields.content')}</span>{alert.content || '--'}</div></section>}
+        {activeTab === 'summary' && <section className={styles.sectionCard} aria-label={t('todo.sections.alertInfo')}><div className={styles.detailGrid}>{detailFields.map(([label, value]) => <Fragment key={label}><span className={styles.detailLabel}>{label}</span><span className={styles.detailValue}>{value}</span></Fragment>)}</div><div className={styles.contentBlock}><span className={styles.contentLabel}>{t('todo.fields.content')}</span>{alert.content || '--'}</div></section>}
         {activeTab === 'events' && (eventStatus === 'loading' ? <MobileSkeleton label={t('common.loading')} variant="list" rows={3} compact /> : eventStatus === 'error' ? sectionState(eventStatus, () => void loadEvents()) : events.length === 0 ? <MobileResult kind="empty" title={t('todo.noEvents')} compact /> : <section className={styles.sectionCard}><div className={styles.timeline}>{events.map((event) => <article className={styles.timelineItem} key={event.id}><strong className={styles.timelineTitle}>{event.title || event.eventId}</strong><span className={styles.timelineMeta}>{formatTime(event.receivedAt || event.startTime)} · {event.sourceName || '--'}</span><span className={styles.timelineBody}>{event.description || event.resourceName || '--'}</span></article>)}</div></section>)}
         {activeTab === 'changes' && (changeStatus === 'loading' ? <MobileSkeleton label={t('common.loading')} variant="list" rows={3} compact /> : changeStatus === 'forbidden' ? sectionState(changeStatus, () => undefined, true) : changeStatus === 'error' ? sectionState(changeStatus, () => void loadChanges()) : changes.length === 0 ? <MobileResult kind="empty" title={t('todo.noChanges')} compact /> : <section className={styles.sectionCard}><div className={styles.timeline}>{changes.map((change) => <article className={styles.timelineItem} key={change.id}><strong className={styles.timelineTitle}>{change.operatorObject || change.action}</strong><span className={styles.timelineMeta}>{formatTime(change.createdAt)} · {change.operator}</span><span className={styles.timelineBody}>{change.overview || '--'}</span></article>)}</div></section>)}
       </div>

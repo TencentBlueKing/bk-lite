@@ -4,6 +4,7 @@ MSSQL Server Information Collector
 
 A standalone script to gather information about MSSQL servers.
 """
+import asyncio
 import pyodbc
 from sanic.log import logger
 from typing import Dict, Any
@@ -94,7 +95,10 @@ class MSSQLInfo:
             raise
 
     @timer(logger=logger)
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         """Public method to collect all info and format it for Prometheus."""
         try:
             self._connect()

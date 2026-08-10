@@ -775,14 +775,18 @@ def submit_choice(request):  # pragma: no cover
         .first()
     )
     if not task_result:
-        if node_id != "skill_test":
+        # 技能调试 / AGUI DeepAgent 本地会话没有 WorkFlowTaskResult；
+        # 与 request_user_choice、ask_limit_continue 默认 node_id 对齐后放行。
+        local_choice_nodes = {"skill_test", "deep_agent"}
+        if node_id not in local_choice_nodes:
             return JsonResponse(
                 {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
                 status=404,
             )
         logger.warning(
-            "Local skill test choice submitted without workflow task result: execution_id=%s, choice_id=%s",
+            "Local skill/AGUI choice submitted without workflow task result: execution_id=%s, node_id=%s, choice_id=%s",
             execution_id,
+            node_id,
             choice_id,
         )
 

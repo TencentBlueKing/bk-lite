@@ -1,15 +1,16 @@
 name: openresty
-version: "2.0.0"
+version: 2.0.0
 category: middleware
-
 metadata:
-  display_name: "OpenResty Web 服务"
-  description: "OpenResty 采集插件，支持脚本方式采集"
-  author: "WeOps"
-  tags: [middleware, openresty, nginx]
+  display_name: OpenResty Web 服务
+  description: OpenResty 采集插件，支持脚本方式采集
+  author: WeOps
+  tags:
+  - middleware
+  - openresty
+  - nginx
   cloud_protocol: false
   model_id: openresty
-
 executors:
   job:
     type: job
@@ -20,5 +21,6 @@ executors:
       module: plugins.script_executor
       class: SSHPlugin
     default_script: linux
-
+    target_policy:
+      mode: remote_channel
 default_executor: job

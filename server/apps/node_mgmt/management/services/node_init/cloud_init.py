@@ -56,10 +56,29 @@ def cloud_init():
                     _type = EnvVariableConstants.TYPE_SECRET
                 elif new_key in EnvVariableConstants.TEXT_KEYS:
                     _type = EnvVariableConstants.TYPE_TEXT
-                SidecarEnv.objects.get_or_create(
+                env_var, created = SidecarEnv.objects.get_or_create(
                     key=new_key,
                     cloud_region_id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID,
                     defaults={"value": stored_value, "cloud_region_id": CloudRegionConstants.DEFAULT_CLOUD_REGION_ID, "is_pre": True, "type": _type},
                 )
+                if created or not env_var.is_pre:
+                    continue
+
+                value_changed = env_var.value != stored_value
+                if _type == EnvVariableConstants.TYPE_SECRET:
+                    try:
+                        value_changed = aes_obj.decode(env_var.value) != value
+                    except Exception:
+                        value_changed = True
+                update_fields = []
+                if value_changed:
+                    env_var.value = stored_value
+                    update_fields.append("value")
+                if env_var.type != _type:
+                    env_var.type = _type
+                    update_fields.append("type")
+                if update_fields:
+                    env_var.save(update_fields=update_fields)
+                    logger.info("Synchronized preconfigured default-zone variable: %s", new_key)
     except Exception as e:
         logger.exception(e)

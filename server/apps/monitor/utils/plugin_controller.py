@@ -70,12 +70,15 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "node_id",
     "os_type",
     "password",
+    "pattern",
     "plugin_id",
     "port",
+    "ports",
     "private_key_content",
     "private_key_passphrase",
     "priv_password",
     "priv_protocol",
+    "process_name",
     "protocol",
     "request_body",
     "request_headers",
@@ -159,6 +162,10 @@ def _normalize_template_context(context: dict) -> dict:
     for key in ("winrm_cert_validation",):
         if isinstance(normalized.get(key), bool):
             normalized[key] = "true" if normalized[key] else "false"
+    # Process 端口存活：逗号串/列表统一为 list[str]；缺失或空 → []，模板可安全跳过。
+    from apps.monitor.utils.snmp_interface_filters import normalize_filter_list
+
+    normalized["ports"] = normalize_filter_list(normalized.get("ports"))
     return normalized
 
 
@@ -261,6 +268,7 @@ class Controller:
                     logger.error(f"解析 instance_id 失败: {instance_id}, 错误: {e}")
                     raise ValueError(f"无效的 instance_id 格式: {instance_id}") from e
 
+        from apps.monitor.utils.snmp_ifmib_capability import is_ifmib_capable_render_context
         from apps.monitor.utils.snmp_interface_template import (
             ensure_core_network_ifmib_jinja,
             ensure_snmp_interface_filter_jinja,
@@ -269,8 +277,11 @@ class Controller:
         )
 
         template_content = ensure_core_network_ifmib_jinja(template_content, _context)
-        # SNMP 接口过滤 Jinja 单一真相源：渲染前幂等注入，插件 child 模板无需复制
-        if needs_snmp_interface_filter_jinja(template_content):
+        # 接口过滤与公共 IF-MIB 同能力边界：非 Network Device（如 hardware_server）
+        # 即使模板含 ifDescr，也不得静默注入默认 ifType 排除。
+        if is_ifmib_capable_render_context(_context) and needs_snmp_interface_filter_jinja(
+            template_content
+        ):
             template_content = ensure_snmp_interface_filter_jinja(template_content)
 
         safe_context = sanitize_template_context(_context)
@@ -416,12 +427,14 @@ class Controller:
                         # IF-MIB 是本次下发选项。接入页默认启用；用户可以只对当前
                         # 新实例关闭，已下发实例的 TOML 快照不会受影响。
                         render_context.setdefault("enable_ifmib", True)
+                        # 默认 ifType 排除仅对具备过滤 UI 的 Network Device 注入，
+                        # 避免 hardware_server 等无开关对象静默丢接口。
+                        if "iftype_exclude" not in render_context:
+                            from apps.monitor.constants.snmp_interface import DEFAULT_IFTYPE_EXCLUDE
+
+                            render_context["iftype_exclude"] = list(DEFAULT_IFTYPE_EXCLUDE)
                     # 与 IF-MIB 能力判定一致：覆盖 snmp / snmp_h3c 等厂商 collect_type。
                     snmp_collect = str(collect_type or "").startswith("snmp")
-                    if snmp_collect and "iftype_exclude" not in render_context:
-                        from apps.monitor.constants.snmp_interface import DEFAULT_IFTYPE_EXCLUDE
-
-                        render_context["iftype_exclude"] = list(DEFAULT_IFTYPE_EXCLUDE)
                     if snmp_collect and is_child:
                         from apps.monitor.utils.snmp_interface_filters import (
                             assert_snmp_interface_filter_mutex_from_values,

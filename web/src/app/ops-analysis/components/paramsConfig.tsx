@@ -9,7 +9,7 @@ import type {
   InputOption,
   ParamItem,
 } from '@/app/ops-analysis/types/dataSource';
-import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import { getDataSourceFormParamInitialValue } from '@/app/ops-analysis/utils/dataSourceFormParams';

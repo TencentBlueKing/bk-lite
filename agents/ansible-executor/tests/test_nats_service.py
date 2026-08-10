@@ -256,6 +256,35 @@ async def test_invoke_callback_allows_configured_subject_pattern(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_invoke_callback_forwards_trusted_callback_context(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.nc = DummyNATSClient({"success": True})
+    callback = {
+        "subject": "job.ansible_task_callback",
+        "context": {
+            "caller": "ansible-executor",
+            "execution_id": 42,
+            "attempt_id": "attempt-1",
+            "token": "secret",
+        },
+    }
+
+    await service._invoke_callback(callback, {"task_id": "42", "result": []})
+
+    request_payload = json.loads(service.nc.requests[0][1].decode("utf-8"))
+    assert request_payload["args"][0]["callback_context"] == callback["context"]
+
+
+@pytest.mark.asyncio
 async def test_invoke_callback_allows_default_host_remote_callback_subject(tmp_path):
     service = AnsibleNATSService(
         ServiceConfig(
@@ -278,6 +307,27 @@ async def test_invoke_callback_allows_default_host_remote_callback_subject(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_invalid_callback_log_does_not_expose_context_token(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        warning = []
+        monkeypatch.setattr("service.nats_service.logger.warning", lambda *args: warning.append(args))
+        await service._invoke_callback({"context": {"token": "must-not-leak"}}, {"task_id": "task-invalid"})
+
+    assert "must-not-leak" not in repr(warning)
+
+
+@pytest.mark.asyncio
 async def test_enqueue_task_publishes_sanitized_queue_payload(tmp_path):
     service = AnsibleNATSService(
         ServiceConfig(
@@ -296,6 +346,10 @@ async def test_enqueue_task_publishes_sanitized_queue_payload(tmp_path):
             "inventory_content": "[all]\n10.0.0.1 ansible_user=root ansible_password=secret\n",
             "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": "secret"}],
             "private_key_content": "-----BEGIN RSA PRIVATE KEY-----\nMIIE...",
+            "callback": {
+                "subject": "job.ansible_task_callback",
+                "context": {"execution_id": 1, "attempt_id": "a1", "token": "callback-secret"},
+            },
         }
     )
 
@@ -307,10 +361,13 @@ async def test_enqueue_task_publishes_sanitized_queue_payload(tmp_path):
     assert "password" not in published["payload"]["host_credentials"][0]
     assert "private_key_content" not in published["payload"]
     assert "inventory_content" not in published["payload"]
+    assert published["callback"]["context"]["token"] == "***"
+    assert published["payload"]["callback"]["context"]["token"] == "***"
 
     execution_payload = service.task_store.get_execution_payload("task-queue-safe")
     assert execution_payload["private_key_content"].startswith("-----BEGIN RSA PRIVATE KEY-----")
     assert execution_payload["host_credentials"][0]["password"] == "secret"
+    assert execution_payload["callback"]["context"]["token"] == "***"
 
 
 def test_build_task_dlq_payload_uses_sanitized_snapshot():
@@ -436,13 +493,358 @@ async def test_enqueue_callback_retry_uses_compact_payload(tmp_path):
         }
     )
 
-    await service._enqueue_callback_retry({"subject": "job.ansible_task_callback"}, payload, "callback failed")
+    await service._enqueue_callback_retry(
+        {"subject": "job.ansible_task_callback", "context": {"attempt_id": "a1", "token": "callback-secret"}},
+        payload,
+        "callback failed",
+    )
 
     subject, published = service.js.published[0]
     assert subject == "ansible_executor.callback.retry.default"
     assert len(json.dumps(published, ensure_ascii=False).encode("utf-8")) < service.nc.max_payload
     assert published["payload"]["callback_payload_truncated"] is True
     assert published["payload"]["result"] == ""
+    assert published["callback"]["context"]["token"] == "***"
+
+
+def test_callback_retry_reloads_token_from_encrypted_callback_secret(tmp_path):
+    service = _make_service(tmp_path)
+    callback = {
+        "subject": "job.ansible_task_callback",
+        "context": {"execution_id": 1, "attempt_id": "a1", "token": "callback-secret"},
+    }
+    service.task_store.create_if_absent(
+        "task-callback-ref",
+        "queued",
+        {"task_id": "task-callback-ref", "callback": callback},
+        callback,
+        service._now_iso(),
+    )
+    service.task_store.update_execution_result(
+        "task-callback-ref",
+        "success",
+        {"task_id": "task-callback-ref", "success": True},
+        service._now_iso(),
+    )
+    assert service.task_store.get_execution_payload("task-callback-ref") is None
+
+    loaded = service._load_callback(
+        "task-callback-ref",
+        {"subject": "job.ansible_task_callback", "context": {"token": "***"}},
+    )
+
+    assert loaded["context"]["token"] == "callback-secret"
+
+
+@pytest.mark.asyncio
+async def test_retry_publish_failure_remains_pending_and_is_recoverable(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    service.nc = DummyNATSClient({"success": True})
+    callback = {
+        "subject": "job.ansible_task_callback",
+        "context": {"execution_id": 1, "attempt_id": "a1", "token": "callback-secret"},
+    }
+    result = {"task_id": "task-retry-publish", "success": True}
+    service.task_store.create_if_absent(
+        result["task_id"],
+        "queued",
+        {**result, "callback": callback},
+        callback,
+        service._now_iso(),
+    )
+    service.task_store.update_execution_result(
+        result["task_id"],
+        "success",
+        result,
+        service._now_iso(),
+    )
+
+    async def callback_fails(callback_config, callback_payload):
+        raise RuntimeError("server unavailable")
+
+    async def retry_publish_fails(callback_config, callback_payload, reason):
+        raise RuntimeError("jetstream unavailable")
+
+    monkeypatch.setattr(service, "_invoke_callback", callback_fails)
+    monkeypatch.setattr(service, "_enqueue_callback_retry", retry_publish_fails)
+
+    with pytest.raises(RuntimeError, match="jetstream unavailable"):
+        await service._deliver_callback_result(result["task_id"], callback, result, "success")
+
+    assert service.task_store.get_task(result["task_id"])["callback_status"] == "pending"
+
+    published = []
+
+    async def retry_publish_succeeds(callback_config, callback_payload, reason):
+        published.append((callback_config, callback_payload, reason))
+
+    monkeypatch.setattr(service, "_enqueue_callback_retry", retry_publish_succeeds)
+    await service._resume_pending_callback(result["task_id"])
+
+    assert published
+    assert service.task_store.get_task(result["task_id"])["callback_status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_retry_consumer_sent_state_fences_late_failed_write(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    service.nc = DummyNATSClient({"success": True})
+    callback = {"subject": "job.ansible_task_callback", "context": {"token": "callback-secret"}}
+    result = {"task_id": "task-retry-race", "success": True}
+    service.task_store.create_if_absent(
+        result["task_id"],
+        "queued",
+        {**result, "callback": callback},
+        callback,
+        service._now_iso(),
+    )
+    service.task_store.update_execution_result(
+        result["task_id"],
+        "success",
+        result,
+        service._now_iso(),
+    )
+
+    async def callback_fails(callback_config, callback_payload):
+        raise RuntimeError("response lost")
+
+    async def retry_is_consumed_before_publish_returns(callback_config, callback_payload, reason):
+        service.task_store.update_callback_status(
+            result["task_id"],
+            "sent",
+            result,
+            service._now_iso(),
+            preserve_status="success",
+        )
+
+    monkeypatch.setattr(service, "_invoke_callback", callback_fails)
+    monkeypatch.setattr(
+        service,
+        "_enqueue_callback_retry",
+        retry_is_consumed_before_publish_returns,
+    )
+
+    await service._deliver_callback_result(result["task_id"], callback, result, "success")
+
+    stored = service.task_store.get_task(result["task_id"])
+    assert stored["status"] == "success"
+    assert stored["callback_status"] == "sent"
+    assert service.task_store.get_callback_config(result["task_id"]) is None
+
+
+@pytest.mark.asyncio
+async def test_worker_final_dlq_clears_all_callback_material(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    service.nc = RecordingNATSClient()
+    callback = {
+        "subject": "job.ansible_task_callback",
+        "context": {"execution_id": 1, "attempt_id": "a1", "token": "callback-secret"},
+    }
+    service.task_store.create_if_absent(
+        "task-main-dlq",
+        "queued",
+        {"task_id": "task-main-dlq", "callback": callback},
+        callback,
+        service._now_iso(),
+    )
+    task = QueuedTask(
+        task_id="task-main-dlq",
+        task_type="adhoc",
+        payload={"task_id": "task-main-dlq", "callback": {"context": {"token": "***"}}},
+        callback={"subject": callback["subject"], "context": {"token": "***"}},
+        instance_id="default",
+    )
+
+    class TaskMessage:
+        data = json.dumps(task.to_json()).encode("utf-8")
+        metadata = DummyMetadata(service.config.js_max_deliver)
+        subject = "bk.ans_exec.tasks.adhoc.default"
+        acked = False
+
+        async def ack(self):
+            self.acked = True
+
+        async def nak(self):
+            raise AssertionError("最终投递不应 NAK")
+
+        async def in_progress(self):
+            return None
+
+    message = TaskMessage()
+
+    class TaskSubscription:
+        calls = 0
+
+        async def fetch(self, batch, timeout):
+            self.calls += 1
+            if self.calls == 1:
+                return [message]
+            raise asyncio.CancelledError
+
+    async def execution_fails(message_arg, task_arg, owner_id):
+        raise RuntimeError("execution failed")
+
+    service.psub = TaskSubscription()
+    monkeypatch.setattr(service, "_run_task_with_ack_progress", execution_fails)
+
+    with pytest.raises(asyncio.CancelledError):
+        await service._worker_loop(1)
+
+    assert message.acked is True
+    assert service.task_store.get_callback_config(task.task_id) is None
+    assert service.task_store.get_execution_payload(task.task_id) is None
+    assert service.nc.published[0][0] == service.config.dlq_subject
+
+
+@pytest.mark.asyncio
+async def test_claim_observing_terminal_resumes_pending_callback_before_ack(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    task = QueuedTask(
+        task_id="task-claim-terminal",
+        task_type="adhoc",
+        payload={"task_id": "task-claim-terminal"},
+        callback={},
+        instance_id="default",
+    )
+
+    class TaskMessage:
+        data = json.dumps(task.to_json()).encode("utf-8")
+        metadata = DummyMetadata(1)
+        subject = "bk.ans_exec.tasks.adhoc.default"
+        acked = False
+
+        async def ack(self):
+            self.acked = True
+
+        async def nak(self):
+            raise AssertionError("terminal task 不应 NAK")
+
+    message = TaskMessage()
+
+    class TaskSubscription:
+        calls = 0
+
+        async def fetch(self, batch, timeout):
+            self.calls += 1
+            if self.calls == 1:
+                return [message]
+            raise asyncio.CancelledError
+
+    resumed = []
+
+    async def resume_pending(task_id):
+        resumed.append(task_id)
+
+    service.psub = TaskSubscription()
+    monkeypatch.setattr(service.task_store, "get_status", lambda task_id: "queued")
+    monkeypatch.setattr(
+        service.task_store,
+        "claim_task",
+        lambda *args, **kwargs: {"claimed": False, "reason": "terminal"},
+    )
+    monkeypatch.setattr(service, "_resume_pending_callback", resume_pending)
+
+    with pytest.raises(asyncio.CancelledError):
+        await service._worker_loop(1)
+
+    assert resumed == [task.task_id]
+    assert message.acked is True
+
+
+@pytest.mark.asyncio
+async def test_callback_retry_exhaustion_clears_encrypted_callback(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    service.nc = RecordingNATSClient()
+    callback = {
+        "subject": "job.ansible_task_callback",
+        "context": {"execution_id": 1, "attempt_id": "a1", "token": "callback-secret"},
+    }
+    service.task_store.create_if_absent(
+        "task-callback-dlq",
+        "queued",
+        {"task_id": "task-callback-dlq", "callback": callback},
+        callback,
+        service._now_iso(),
+    )
+
+    class RetryMessage:
+        def __init__(self):
+            self.data = json.dumps(
+                {
+                    "task_id": "task-callback-dlq",
+                    "callback": {"subject": callback["subject"], "context": {"token": "***"}},
+                    "payload": {"task_id": "task-callback-dlq", "success": True},
+                }
+            ).encode("utf-8")
+            self.metadata = DummyMetadata(service.config.js_max_deliver)
+            self.acked = False
+
+        async def ack(self):
+            self.acked = True
+
+        async def nak(self):
+            raise AssertionError("最终重试不应 NAK")
+
+    message = RetryMessage()
+
+    class RetrySubscription:
+        def __init__(self):
+            self.calls = 0
+
+        async def fetch(self, batch, timeout):
+            self.calls += 1
+            if self.calls == 1:
+                return [message]
+            raise asyncio.CancelledError
+
+    async def fail_callback(callback_config, payload):
+        raise RuntimeError("callback unavailable")
+
+    service.retry_psub = RetrySubscription()
+    monkeypatch.setattr(service, "_invoke_callback", fail_callback)
+
+    with pytest.raises(asyncio.CancelledError):
+        await service._callback_retry_loop()
+
+    assert message.acked is True
+    assert service.task_store.get_callback_config("task-callback-dlq") is None
+    assert service.nc.published[0][0] == service.config.dlq_subject
+
+
+@pytest.mark.asyncio
+async def test_malformed_callback_retry_exhaustion_is_acked(tmp_path):
+    service = _make_service(tmp_path)
+    service.nc = RecordingNATSClient()
+
+    class MalformedMessage:
+        data = b"not-json"
+        metadata = DummyMetadata(service.config.js_max_deliver)
+        acked = False
+
+        async def ack(self):
+            self.acked = True
+
+        async def nak(self):
+            raise AssertionError("最终重试不应 NAK")
+
+    message = MalformedMessage()
+
+    class RetrySubscription:
+        calls = 0
+
+        async def fetch(self, batch, timeout):
+            self.calls += 1
+            if self.calls == 1:
+                return [message]
+            raise asyncio.CancelledError
+
+    service.retry_psub = RetrySubscription()
+
+    with pytest.raises(asyncio.CancelledError):
+        await service._callback_retry_loop()
+
+    assert message.acked is True
+    assert service.nc.published[0][0] == service.config.dlq_subject
 
 
 def test_build_task_result_keeps_structured_results_when_output_is_truncated(monkeypatch):

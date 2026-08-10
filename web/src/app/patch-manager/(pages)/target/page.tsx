@@ -16,10 +16,15 @@ import ComplianceTag, { ComplianceStatus } from '@/app/patch-manager/components/
 import DualSelector from '@/app/patch-manager/components/dual-selector';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
+import FilterToolbar from '@/components/filter-toolbar';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { buildTargetFilterSearch, parseBaselineFilter } from './filter-state';
+import {
+  buildTargetFilterSearch,
+  parseBaselineFilter,
+  resolveSelectedTargetOsType,
+} from './filter-state';
 import { useTranslation } from '@/utils/i18n';
 import {
   createPatchManagerPollFrequencyOptions,
@@ -35,6 +40,7 @@ interface HostRow {
   name: string;
   ip: string;
   os: string;
+  osType: OSType;
   teamNames: string[];
   source_type?: 'manual' | 'node_mgmt';
   baseline: string | null;
@@ -48,6 +54,11 @@ interface HostRow {
   hasPendingReboot?: boolean;
   complianceFailureReason?: string;
   permission?: string[];
+}
+
+interface BaselineOption {
+  id: number;
+  name: string;
 }
 
 const CONN_TAG: Record<HostRow['connectivity'], { color: string }> = {
@@ -95,6 +106,7 @@ function mapTargetToRow(item: PatchTargetItem): HostRow {
     name: item.name ?? '',
     ip: item.ip ?? '',
     os: item.os_type_display ?? item.os_type ?? '',
+    osType: item.os_type,
     teamNames: item.team_name ?? [],
     source_type: item.source_type,
     baseline: item.baseline_name ?? item.baseline ?? null,
@@ -171,7 +183,9 @@ export default function TargetPage() {
   const [cred, setCred] = useState<'password' | 'key'>('password');
   const [selectedNodes, setSelectedNodes] = useState<React.Key[]>([]);
   const [nodeSearch, setNodeSearch] = useState('');
-  const [baselines, setBaselines] = useState<any[]>([]);
+  const [baselines, setBaselines] = useState<BaselineOption[]>([]);
+  const [bindBaselines, setBindBaselines] = useState<BaselineOption[]>([]);
+  const [bindBaselineLoading, setBindBaselineLoading] = useState(false);
   const [bindBaseline, setBindBaseline] = useState<number | undefined>();
   const [cloudRegions, setCloudRegions] = useState<Array<{ id: number; name: string; display_name?: string }>>([]);
   const [cloudRegionLoading, setCloudRegionLoading] = useState(false);
@@ -336,12 +350,6 @@ export default function TargetPage() {
   }, [manualOpen]);
 
   useEffect(() => {
-    if (bindOpen) {
-      loadBaselines();
-    }
-  }, [bindOpen]);
-
-  useEffect(() => {
     if (nodeOpen) {
       setSelectedNodes([]);
       setNodeSearch('');
@@ -371,13 +379,50 @@ export default function TargetPage() {
 
   const rows = useMemo<HostRow[]>(() => data.map((item) => mapTargetToRow(item as PatchTargetItem)), [data]);
 
-  const bulkBindDisabled = useMemo(() => {
-    if (selectedKeys.length === 0) return true;
-    return selectedKeys.some((key) => {
+  const selectedTargetOsType = useMemo(
+    () => resolveSelectedTargetOsType(selectedKeys, rows),
+    [selectedKeys, rows],
+  );
+
+  useEffect(() => {
+    if (!bindOpen || (selectedTargetOsType !== 'linux' && selectedTargetOsType !== 'windows')) {
+      setBindBaselines([]);
+      setBindBaselineLoading(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    setBindBaselines([]);
+    setBindBaselineLoading(true);
+    api.getBaselineList(
+      { page: 1, page_size: -1, os_type: selectedTargetOsType },
+      { signal: controller.signal },
+    ).then((res) => {
+      if (!controller.signal.aborted) {
+        setBindBaselines(Array.isArray(res) ? res : (res.items || []));
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) setBindBaselines([]);
+    }).finally(() => {
+      if (!controller.signal.aborted) setBindBaselineLoading(false);
+    });
+    return () => controller.abort();
+  }, [bindOpen, selectedTargetOsType]);
+
+  const bulkBindDisabledReason = useMemo(() => {
+    if (selectedTargetOsType === 'mixed') {
+      return t('patchManager.targetPage.bulkBindMixedOs');
+    }
+    if (selectedTargetOsType === 'incomplete') {
+      return t('patchManager.targetPage.bulkBindSelectionExpired');
+    }
+    const hasBlockedTarget = selectedKeys.some((key) => {
       const row = rows.find((r) => r.key === String(key));
       return !!row && (row.hasActiveTask || row.hasPendingReboot || !row.permission?.includes('Operate'));
     });
-  }, [selectedKeys, rows]);
+    return hasBlockedTarget ? t('patchManager.targetPage.bulkBindBlocked') : '';
+  }, [selectedKeys, selectedTargetOsType, rows, t]);
+
+  const bulkBindDisabled = selectedKeys.length === 0 || Boolean(bulkBindDisabledReason);
 
   const includedNodeIds = useMemo(
     () => new Set(importedNodes.map((n) => n.node_id)),
@@ -753,7 +798,7 @@ export default function TargetPage() {
 
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+      <FilterToolbar align="between">
         <Space>
           <Input.Search
             placeholder="IP"
@@ -796,11 +841,7 @@ export default function TargetPage() {
         <Space size={0}>
           <Space size={8}>
             <Tooltip
-              title={
-                bulkBindDisabled && selectedKeys.length > 0
-                  ? t('patchManager.targetPage.bulkBindBlocked')
-                  : ''
-              }
+              title={bulkBindDisabledReason}
             >
               <PermissionWrapper requiredPermissions={['Edit']}><Button icon={<LinkOutlined />} disabled={bulkBindDisabled} onClick={() => { setBindBaseline(undefined); setBindOpen(true); }}>
                 {t('patchManager.targetPage.bulkBind')}{selectedKeys.length ? `(${selectedKeys.length})` : ''}
@@ -816,7 +857,7 @@ export default function TargetPage() {
             onRefresh={() => loadData()}
           />
         </Space>
-      </div>
+      </FilterToolbar>
 
       <div style={{ flex: 1, minHeight: 0 }}>
         <CustomTable<HostRow>
@@ -849,7 +890,10 @@ export default function TargetPage() {
           style={{ width: '100%' }}
           placeholder={t('patchManager.targetPage.selectBaseline')}
           virtual
-          options={baselines.map((b) => ({ label: b.name, value: b.id }))}
+          showSearch
+          optionFilterProp="label"
+          loading={bindBaselineLoading}
+          options={bindBaselines.map((b) => ({ label: b.name, value: b.id }))}
           value={bindBaseline}
           onChange={setBindBaseline}
         />

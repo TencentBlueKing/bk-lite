@@ -1,3 +1,4 @@
+from apps.job_mgmt.models.completion_outbox import JobCompletionOutbox  # noqa
 from apps.job_mgmt.models.dangerous_path import DangerousPath  # noqa
 from apps.job_mgmt.models.dangerous_rule import DangerousRule  # noqa
 from apps.job_mgmt.models.distribution_file import DistributionFile  # noqa
@@ -13,6 +14,7 @@ __all__ = [
     "Playbook",
     "DangerousRule",
     "DangerousPath",
+    "JobCompletionOutbox",
     "JobExecution",
     "ScheduledTask",
     "DistributionFile",

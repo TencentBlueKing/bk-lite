@@ -10,6 +10,10 @@ from apps.patch_mgmt.models import (
     PatchBaseline,
 )
 from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
+from apps.patch_mgmt.services.patch_origin import (
+    source_details_for_patch,
+    source_type_for_patch,
+)
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
@@ -26,6 +30,8 @@ class BaselineRequirementSerializer(serializers.ModelSerializer):
     patch_version = serializers.SerializerMethodField()
     patch_arch = serializers.SerializerMethodField()
     patch_condition = serializers.SerializerMethodField()
+    patch_source_type = serializers.SerializerMethodField()
+    patch_source_details = serializers.SerializerMethodField()
 
     class Meta:
         model = BaselineRequirement
@@ -44,6 +50,8 @@ class BaselineRequirementSerializer(serializers.ModelSerializer):
             "patch_version",
             "patch_arch",
             "patch_condition",
+            "patch_source_type",
+            "patch_source_details",
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
@@ -82,6 +90,12 @@ class BaselineRequirementSerializer(serializers.ModelSerializer):
     def get_patch_arch(self, obj):
         archs = self._get_detail(obj, "architectures")
         return ", ".join(archs) if archs else ""
+
+    def get_patch_source_type(self, obj):
+        return source_type_for_patch(obj.patch)
+
+    def get_patch_source_details(self, obj):
+        return source_details_for_patch(obj.patch)
 
     def get_patch_condition(self, obj):
         if obj.condition:

@@ -80,10 +80,12 @@ test('监控指标查询严格转义实例值并只替换 Web labels 占位符',
 test('实例列表按元数据顺序展示前三条摘要，空值保留为 null', async () => {
   const {
     INSTANCE_LIST_SUMMARY_LIMIT,
+    buildDisplayMetricUnitIndex,
     displayFieldKey,
     instanceListSummaryEntries,
     instanceSummaryEntries,
     parseMonitorInstanceLookupHints,
+    resolveEnumMetricLabel,
     resolveMonitorReportingStatus,
   } = await loadModel('src/features/monitor/model.ts');
   assert.equal(parseMonitorInstanceLookupHints("('mobile-demo-host-01',)").name, 'mobile-demo-host-01');
@@ -144,6 +146,43 @@ test('实例列表按元数据顺序展示前三条摘要，空值保留为 null
     { label: 'CPU使用率', value: '12.5%' },
     { label: '磁盘使用率', value: '70%' },
   ]);
+
+  const enumObject = {
+    displayFields: [{
+      key: 'metric:probe',
+      name: '探测结果',
+      type: 'metric',
+      order: 0,
+      metrics: [{ plugin: 'Website', metric: 'probe_success', field: '' }],
+    }],
+  };
+  const enumInstance = {
+    raw: { 'Website::probe_success': { value: '1', unit: '' } },
+    facts: {},
+  };
+  const enumUnits = buildDisplayMetricUnitIndex([{
+    name: 'probe_success',
+    pluginName: 'Website',
+    unit: JSON.stringify([{ id: 0, name: '失败' }, { id: 1, name: '成功' }]),
+  }]);
+  assert.equal(resolveEnumMetricLabel(enumUnits.get('Website::probe_success'), '1'), '成功');
+  assert.deepEqual(instanceListSummaryEntries(enumObject, enumInstance, 1, enumUnits), [
+    { label: '探测结果', value: '成功' },
+  ]);
+  assert.deepEqual(instanceListSummaryEntries(enumObject, enumInstance, 1), [
+    { label: '探测结果', value: '1' },
+  ]);
+});
+
+test('实例列表会拉取 display_fields 指标 unit 以映射枚举摘要', async () => {
+  const [adapter, panel] = await Promise.all([
+    readProjectFile('src/features/monitor/adapter.ts'),
+    readProjectFile('src/features/monitor/instances-panel.tsx'),
+  ]);
+  assert.match(adapter, /listDisplayFieldMetrics/);
+  assert.match(adapter, /name_in:\s*names\.join\(','\)/);
+  assert.match(panel, /listDisplayFieldMetrics\(monitorObject\.id/);
+  assert.match(panel, /instanceListSummaryEntries\(monitorObject, instance, INSTANCE_LIST_SUMMARY_LIMIT, metricUnits\)/);
 });
 
 test('实例列表面板把摘要指标放进表格列并支持横向滚动', async () => {
@@ -152,7 +191,7 @@ test('实例列表面板把摘要指标放进表格列并支持横向滚动', as
     readProjectFile('src/features/monitor/monitor.module.css'),
     readProjectFile('src/features/monitor/adapter.ts'),
   ]);
-  assert.match(panel, /instanceListSummaryEntries\(monitorObject, instance\)/);
+  assert.match(panel, /instanceListSummaryEntries\(monitorObject, instance, INSTANCE_LIST_SUMMARY_LIMIT, metricUnits\)/);
   assert.match(panel, /summaryFields\.map/);
   assert.match(panel, /columnReportTime|columnReportingStatus/);
   assert.match(panel, /resolveMonitorReportingStatus/);
@@ -179,12 +218,12 @@ test('实例列表面板把摘要指标放进表格列并支持横向滚动', as
 });
 
 test('最近查看默认 Tab 在前且详情成功后会记录浏览', async () => {
-  const [page, detail, storage, model, panel] = await Promise.all([
+  const [page, detail, storage, panel, styles] = await Promise.all([
     readProjectFile('src/app/monitor/page.tsx'),
     readProjectFile('src/app/monitor/detail/page.tsx'),
     readProjectFile('src/features/monitor/recent-views-storage.ts'),
-    readProjectFile('src/features/monitor/model.ts'),
     readProjectFile('src/features/monitor/recent-views-panel.tsx'),
+    readProjectFile('src/features/monitor/monitor.module.css'),
   ]);
   assert.match(page, /key="recent"[\s\S]*key="all"/);
   assert.match(page, /activeTab.*'recent'/);
@@ -198,11 +237,20 @@ test('最近查看默认 Tab 在前且详情成功后会记录浏览', async () 
   assert.doesNotMatch(detail, /userInfo\?\.id \|\| 0/);
   assert.match(panel, /formatRecentViewTime/);
   assert.match(panel, /returnTab: 'recent'/);
-  assert.match(panel, /instanceListSummaryEntries/);
+  assert.match(panel, /instanceSummaryEntries/);
   assert.match(panel, /recentMetricsLine/);
   assert.match(panel, /recentMetricLabel/);
-  assert.match(panel, /recentStatusInline/);
+  assert.match(panel, /recentStatusText/);
   assert.match(panel, /recentMetaLine/);
+  assert.match(panel, /recentViewedAt/);
+  assert.match(panel, /size=\{26\}/);
+  assert.match(styles, /\.recentRowIcon[\s\S]*?width:\s*26px/);
+  assert.match(styles, /\.recentRow\s*\{[^}]*align-items:\s*start/s);
+  assert.match(styles, /\.recentRow\s*\{[^}]*align-content:\s*center/s);
+  assert.doesNotMatch(panel, /recentStatusInline/);
+  assert.doesNotMatch(panel, /recentMetricValueEmpty/);
+  assert.match(styles, /\.recentStatusText\[data-status='unavailable'\]\s*\{\s*color:\s*var\(--color-fail\)/);
+  assert.match(styles, /\.recentStatusText\[data-status='normal'\]\s*\{\s*color:\s*var\(--color-success\)/);
   const { normalizeRecentViews, MAX_RECENT_VIEWS } = await loadModel('src/features/monitor/model.ts');
   assert.equal(MAX_RECENT_VIEWS, 20);
   const config = normalizeRecentViews({ items: Array.from({ length: 25 }, (_, index) => ({
@@ -276,8 +324,49 @@ test('资产复用 Web CMDB 接口、两阶段搜索和元数据字段详情', a
   assert.doesNotMatch(adapter, /field:\s*'inst_name',\s*type:\s*'str',\s*value:\s*keyword/);
   assert.match(detail, /group\.fields\.map/);
   assert.match(detail, /getFollowedConfig\(\)[\s\S]*updateFollowedConfig/);
+  // 详情字段须读 `${field.id}_display`，否则组织/用户等会落到原始 ID
+  assert.match(detail, /assetValueText\([\s\S]*asset\.values\[`\$\{field\.id\}_display`\]/);
   assert.match(search, /canAccess\('assets', 'Search'\)/);
   assert.doesNotMatch(`${adapter}\n${detail}\n${search}`, /assetSearchHistory|mock|fixture/i);
+});
+
+test('资产详情字段展示优先 *_display，不把组织/用户原始 ID 当文案', async () => {
+  const { assetValueText } = await loadModel('src/features/assets/model.ts');
+  const time = (value) => `T:${value}`;
+  const org = { id: 'organization', name: '组织', type: 'organization', option: null, order: 1 };
+  assert.equal(assetValueText(org, [1], 'Yes', 'No', time, '默认组织'), '默认组织');
+  assert.equal(assetValueText(org, [1], 'Yes', 'No', time), '--');
+  assert.equal(assetValueText(org, [1], 'Yes', 'No', time, ''), '--');
+
+  const user = { id: 'owner', name: '负责人', type: 'user', option: null, order: 2 };
+  assert.equal(assetValueText(user, [9], 'Yes', 'No', time, '管理员(admin)'), '管理员(admin)');
+  assert.equal(assetValueText(user, [9], 'Yes', 'No', time), '--');
+
+  const status = {
+    id: 'status',
+    name: '状态',
+    type: 'enum',
+    option: [{ id: '1', name: '运行中' }, { id: 2, name: '已停止' }],
+    order: 3,
+  };
+  assert.equal(assetValueText(status, '1', 'Yes', 'No', time, '运行中'), '运行中');
+  assert.equal(assetValueText(status, 2, 'Yes', 'No', time), '已停止');
+  assert.equal(assetValueText(status, ['1', '2'], 'Yes', 'No', time), '运行中, 已停止');
+
+  const pwd = { id: 'password', name: '密码', type: 'pwd', option: null, order: 4 };
+  assert.equal(assetValueText(pwd, 'secret', 'Yes', 'No', time), '***');
+  assert.equal(assetValueText(pwd, '', 'Yes', 'No', time), '--');
+
+  const tag = { id: 'tags', name: '标签', type: 'tag', option: null, order: 5 };
+  assert.equal(assetValueText(tag, ['env:prod'], 'Yes', 'No', time, 'env:prod'), 'env:prod');
+  assert.equal(assetValueText(tag, [{ value: 'app:web' }], 'Yes', 'No', time), 'app:web');
+
+  const file = { id: 'doc', name: '附件', type: 'attachment', option: null, order: 6 };
+  assert.equal(assetValueText(file, [{ name: 'report.pdf' }], 'Yes', 'No', time, 'report'), 'report');
+  assert.equal(assetValueText(file, [{ name: 'report.pdf' }], 'Yes', 'No', time), 'report.pdf');
+
+  assert.equal(assetValueText({ id: 'online', name: '在线', type: 'bool', option: null, order: 7 }, true, 'Yes', 'No', time), 'Yes');
+  assert.equal(assetValueText({ id: 'ts', name: '时间', type: 'time', option: null, order: 8 }, '2026-01-01', 'Yes', 'No', time), 'T:2026-01-01');
 });
 
 test('资产列表卡片复用真实数据，不以模型首字母伪装图标', async () => {

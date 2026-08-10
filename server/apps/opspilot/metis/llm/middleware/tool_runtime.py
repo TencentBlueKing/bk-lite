@@ -14,6 +14,12 @@ from apps.opspilot.metis.llm.agent.tool_execution_planner import (
     compact_planned_execution_messages,
 )
 
+# 兼容旧导入路径（实现见 planned_execution_limits）。
+from apps.opspilot.metis.llm.middleware.planned_execution_limits import (  # noqa: F401
+    get_planned_execution_max_tokens_budget,
+    get_planned_execution_run_model_call_limit,
+)
+
 # 规划/执行分步模式下禁止暴露给模型的 DeepAgent 内置能力。
 # FS 工具允许在执行步常驻（便于大结果落盘）；write_todos / task / execute 会绕过
 # 「按步精确工具可见性」，必须隐藏。

@@ -74,6 +74,16 @@ class WindowsRemoteBootstrapService:
         ]
 
     @staticmethod
+    def _validate_target(target: WindowsBootstrapTarget) -> None:
+        if (
+            target.scheme != "https"
+            or not 1 <= target.port <= 65535
+            or target.transport != "ntlm"
+            or target.validate_certificate is not True
+        ):
+            raise BaseAppException("Windows remote operation requires HTTPS, NTLM, a valid port, and server certificate validation")
+
+    @staticmethod
     def _wait_for_task(executor: AnsibleExecutor, task_id: str, timeout: int, terminal_callback=None) -> dict:
         deadline = time.monotonic() + timeout
         while True:
@@ -165,15 +175,18 @@ class WindowsRemoteBootstrapService:
                         "block": [
                             {
                                 "name": "Verify supported Windows and PowerShell version",
-                                "ansible.builtin.raw": (
-                                    'powershell.exe -NoProfile -NonInteractive -Command "'
-                                    "$ErrorActionPreference='Stop'; "
-                                    "$os=[Environment]::OSVersion.Version; "
-                                    "$ps=$PSVersionTable.PSVersion; "
-                                    "if ($os.Major -lt 10 -or $ps -lt [Version]'5.1') { "
-                                    "Write-Error 'BK-Lite remote installation requires Windows 10/Server 2016 and PowerShell 5.1 or newer'; "
-                                    "exit 42 }; "
-                                    "Write-Output ('Windows {0}; PowerShell {1}' -f $os,$ps)\""
+                                # Use win_shell instead of nested powershell.exe -Command via raw.
+                                # WinRM pipelining already executes inside PowerShell; an outer
+                                # double-quoted -Command layer expands $os/$ps before assignment.
+                                "ansible.windows.win_shell": (
+                                    "$ErrorActionPreference = 'Stop'\n"
+                                    "$os = [Environment]::OSVersion.Version\n"
+                                    "$ps = $PSVersionTable.PSVersion\n"
+                                    "if ($os.Major -lt 10 -or $ps -lt [Version]'5.1') {\n"
+                                    "  Write-Error 'BK-Lite remote installation requires Windows 10/Server 2016 and PowerShell 5.1 or newer'\n"
+                                    "  exit 42\n"
+                                    "}\n"
+                                    "Write-Output ('Windows ' + $os.ToString() + '; PowerShell ' + $ps.ToString())\n"
                                 ),
                                 "changed_when": False,
                             },
@@ -319,6 +332,96 @@ class WindowsRemoteBootstrapService:
         ]
         return yaml.safe_dump(playbook, allow_unicode=True, sort_keys=False)
 
+    @staticmethod
+    def _uninstall_playbook() -> str:
+        command = r"""
+$ErrorActionPreference = 'Stop'
+$changed = $false
+$service = Get-Service -Name 'sidecar' -ErrorAction SilentlyContinue
+if ($null -ne $service) {
+  if ($service.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
+    Stop-Service -Name 'sidecar' -Force
+    $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(30))
+    $changed = $true
+  }
+  $service.Close()
+  & sc.exe delete sidecar | Out-Null
+  if ($LASTEXITCODE -notin @(0, 1060, 1072)) {
+    throw "Delete sidecar service failed with exit code $LASTEXITCODE"
+  }
+  $changed = $true
+  for ($attempt = 0; $attempt -lt 30; $attempt++) {
+    if ($null -eq (Get-Service -Name 'sidecar' -ErrorAction SilentlyContinue)) { break }
+    Start-Sleep -Seconds 1
+  }
+  if ($null -ne (Get-Service -Name 'sidecar' -ErrorAction SilentlyContinue)) {
+    throw 'Timed out waiting for sidecar service deletion'
+  }
+}
+
+$ownedPaths = @(
+  'C:\fusion-collectors',
+  'C:\fusion-collectors.bklite-staging',
+  'C:\fusion-collectors.bklite-backup',
+  'C:\fusion-collectors.bklite-install.fence',
+  'C:\fusion-collectors.bklite-install.lock'
+)
+foreach ($ownedPath in $ownedPaths) {
+  if (Test-Path -LiteralPath $ownedPath) {
+    Remove-Item -LiteralPath $ownedPath -Recurse -Force
+    $changed = $true
+  }
+}
+
+Get-ChildItem -LiteralPath 'C:\' -Filter 'fusion-collectors.bklite-backup-retained-*' -Directory -ErrorAction SilentlyContinue |
+  ForEach-Object {
+    if ($_.FullName -notlike 'C:\fusion-collectors.bklite-backup-retained-*') {
+      throw "Refusing to remove unexpected path: $($_.FullName)"
+    }
+    Remove-Item -LiteralPath $_.FullName -Recurse -Force
+    $changed = $true
+  }
+
+Write-Output ('BKUNINSTALL_CHANGED=' + $changed.ToString().ToLowerInvariant())
+""".strip()
+        playbook = [
+            {
+                "name": "Uninstall BK-Lite Windows controller",
+                "hosts": "all",
+                "gather_facts": False,
+                "tasks": [
+                    {
+                        "name": "Stop and remove the controller within its owned paths",
+                        "ansible.windows.win_shell": {"_raw_params": command},
+                        "register": "bklite_uninstall",
+                        "changed_when": "'BKUNINSTALL_CHANGED=true' in bklite_uninstall.stdout",
+                    }
+                ],
+            }
+        ]
+        return yaml.safe_dump(playbook, allow_unicode=True, sort_keys=False)
+
+    def uninstall(
+        self,
+        *,
+        cloud_region_id: int,
+        task_node_id: int,
+        target: WindowsBootstrapTarget,
+        timeout: int,
+    ) -> str:
+        self._validate_target(target)
+        executor_id = self.resolver.resolve(cloud_region_id)
+        executor = self.executor_factory(executor_id)
+        task_id = f"controller-uninstall-{task_node_id}-{uuid.uuid4().hex}"
+        accepted = executor.playbook(
+            host_credentials=self._host_credentials(target),
+            playbook_content=self._uninstall_playbook(),
+            task_id=task_id,
+            timeout=timeout,
+        )
+        result = self._wait_for_task(executor, self._accepted_task_id(accepted, task_id), timeout)
+        return self._extract_stdout(result)
+
     def _cleanup_remote_files(
         self,
         executor: AnsibleExecutor,
@@ -355,8 +458,7 @@ class WindowsRemoteBootstrapService:
         ownership_validator=None,
         execution_deadline_unix: int = 0,
     ) -> str:
-        if target.scheme != "https" or target.port != 5986 or target.transport != "ntlm" or target.validate_certificate is not True:
-            raise BaseAppException("Windows remote installation requires HTTPS, NTLM, port 5986, and server certificate validation")
+        self._validate_target(target)
         parsed_session_url = urlparse(session_url)
         if parsed_session_url.scheme.lower() != "https" or not parsed_session_url.hostname:
             raise BaseAppException("Windows remote installation requires an HTTPS installer session URL")

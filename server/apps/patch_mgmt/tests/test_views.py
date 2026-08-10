@@ -978,6 +978,37 @@ class TestRiskViewApi:
         task = GovernanceTask.objects.get(task_type="install")
         trigger.assert_called_once_with(task.id)
 
+    def test_risk_remediate_preserves_preview_failure_warning(self, su_client, mocker):
+        from apps.patch_mgmt.models import GovernanceTask, HostComplianceSnapshot
+
+        mocker.patch("apps.patch_mgmt.services.governance_service._trigger_async")
+        target, patch, _baseline = self._setup()
+        HostComplianceSnapshot.objects.filter(
+            binding__target=target,
+            requirement__patch=patch,
+        ).update(
+            evidence={
+                "install_impact": {
+                    "summary": "",
+                    "error": "apt-get dry-run failed",
+                }
+            }
+        )
+
+        response = su_client.post(
+            f"{RISK_URL}remediate/",
+            {
+                "name": "坚持治理任务",
+                "items": [{"host_id": target.id, "patch_id": patch.id}],
+                "execution_mode": "now",
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        risk_snapshot = GovernanceTask.objects.get(task_type="install").risk_snapshot
+        assert risk_snapshot[0]["preview_warning"] == "apt-get dry-run failed"
+
     def test_risk_remediate_requires_task_name(self, su_client):
         target, patch, _baseline = self._setup()
 
@@ -1473,6 +1504,23 @@ BASELINE_URL = f"{_BASE}/api/baseline/"
 
 @pytest.mark.django_db
 class TestBaselineViewApi:
+    def test_list_filters_baselines_by_operating_system(self, su_client):
+        linux_baseline = PatchBaseline.objects.create(
+            name="Linux baseline",
+            os_type=OSType.LINUX,
+            team=[1],
+        )
+        PatchBaseline.objects.create(
+            name="Windows baseline",
+            os_type=OSType.WINDOWS,
+            team=[1],
+        )
+
+        resp = su_client.get(BASELINE_URL, {"os_type": OSType.LINUX, "page_size": -1})
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert [item["id"] for item in resp.data] == [linux_baseline.id]
+
     def test_requirements_api_returns_windows_version_and_arch(self, su_client):
         from apps.patch_mgmt.models import (
             BaselineRequirement,
@@ -1512,6 +1560,30 @@ class TestBaselineViewApi:
         resp = su_client.post(f"{BASELINE_URL}{baseline.id}/bind_hosts/", {"target_ids": [target.id]}, format="json")
         assert resp.status_code == status.HTTP_200_OK
         assert HostBaselineBinding.objects.filter(target=target, baseline=baseline).exists()
+
+    def test_bind_hosts_rejects_target_with_different_operating_system(self, su_client):
+        from apps.patch_mgmt.models import HostBaselineBinding
+
+        target = PatchTarget.objects.create(
+            name="linux-web-01",
+            ip="10.0.0.11",
+            os_type=OSType.LINUX,
+            team=[1],
+        )
+        baseline = PatchBaseline.objects.create(
+            name="Windows baseline",
+            os_type=OSType.WINDOWS,
+            team=[1],
+        )
+
+        resp = su_client.post(
+            f"{BASELINE_URL}{baseline.id}/bind_hosts/",
+            {"target_ids": [target.id]},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert not HostBaselineBinding.objects.filter(target=target).exists()
 
     def test_hosts_api_returns_bound_targets_with_permissions(self, su_client):
         from apps.patch_mgmt.models import HostBaselineBinding, PatchBaseline

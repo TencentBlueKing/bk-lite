@@ -55,7 +55,7 @@ export const useMessageHandlers = ({
         // Resend the user message
         const contentToSend = typeof userMessage.content === 'string' 
           ? userMessage.content 
-          : (userMessage.content.find((item: any) => item.type === 'text')?.text || '');
+          : (userMessage.content.find((item) => item.type === 'text')?.text || '');
         setTimeout(() => handleSendMessage(contentToSend), 100);
       }
     },
@@ -64,8 +64,7 @@ export const useMessageHandlers = ({
 
   // Handle message copy
   const handleCopy = useCallback(() => {
-    // Optional: show a toast notification
-    console.log('Message copied to clipboard');
+    // Clipboard write is handled by MessageActions; hook kept for API symmetry.
   }, []);
 
   // Handle message deletion

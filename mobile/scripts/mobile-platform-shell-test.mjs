@@ -166,14 +166,22 @@ test('菜单权限不因普通窗口焦点切换而整组重载', async () => {
   assert.match(availabilityProvider, /refreshPromiseRef/);
 });
 
-test('我的页可用性失败用顶栏 Banner，账号失败仅头像区局部重试', async () => {
-  const profile = await readProjectFile('src/app/profile/page.tsx');
-  assert.match(profile, /availabilityBanner/);
-  assert.match(profile, /availability\.loadFailed/);
+test('我的页可用性失败不展示 Banner，账号失败仅头像区局部刷新重试', async () => {
+  const [profile, styles] = await Promise.all([
+    readProjectFile('src/app/profile/page.tsx'),
+    readProjectFile('src/app/profile/page.module.css'),
+  ]);
+  assert.doesNotMatch(profile, /availabilityBanner|availability\.loadFailed/);
   assert.match(profile, /MobilePullToRefresh/);
+  assert.match(profile, /availabilityStatus === 'error'/);
+  assert.match(profile, /refreshAvailability/);
   assert.match(profile, /identityError/);
   assert.match(profile, /account\.loadFailed/);
+  assert.match(profile, /RedoOutline/);
+  assert.match(profile, /identityRetry/);
+  assert.match(styles, /\.identityRetry\s*\{[^}]*border:\s*0/s);
   assert.doesNotMatch(profile, /inlineNotice/);
+  assert.doesNotMatch(styles, /\.availabilityBanner\s*\{/);
 });
 
 test('桌面鼠标下拉刷新先锁定纵向意图，再按阈值触发', async () => {

@@ -170,8 +170,8 @@ class Material(MaintainerInfo, TimeInfo):
     )
     content_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
     ai_summary = models.TextField(blank=True, default="")
-    # 用户只看到未构建/构建中/构建成功/构建失败；内部保留阶段 key 供排障。
-    # pending / parsing / done / building / built / parse_failed /
+    # 用户只看到未构建/排队中/构建中/构建成功/构建失败；内部保留阶段 key 供排障。
+    # pending / queued / parsing / done / building / built / parse_failed /
     # build_failed / updated / invalid
     status = models.CharField(max_length=20, default="pending")
     current_version = models.ForeignKey(

@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import re
 import time
@@ -82,7 +83,10 @@ class NetworkConfigFileInfo:
             "content_base64": encoded,
         }
 
-    def list_all_resources(self, need_raw=False):
+    async def list_all_resources(self, need_raw=False):
+        return await asyncio.to_thread(self._list_all_resources_sync, need_raw)
+
+    def _list_all_resources_sync(self, need_raw=False):
         del need_raw
         command_results = []
         failures = []

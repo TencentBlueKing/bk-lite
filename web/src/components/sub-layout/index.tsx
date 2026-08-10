@@ -56,8 +56,7 @@ const WithSideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   const getMenuItemsForPath = useCallback((menus: MenuItem[], currentPath: string, targetLevel?: number): MenuItem[] => {
     if (!currentPath || menus.length === 0) return [];
 
-    // Prefer longest-path matching so app-root menus (e.g. `/apm`) do not
-    // steal secondary nav from `/apm/integration/*` or `/apm/services`.
+    // Longest-path matching + leaf sibling fallback (see menuHelpers).
     if (targetLevel === undefined) {
       return getDeepestMatchedMenuItems(menus, currentPath);
     }

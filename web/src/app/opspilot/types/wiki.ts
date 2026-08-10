@@ -808,6 +808,15 @@ export interface CheckPage {
   content_hash?: string;
 }
 
+export interface CheckAlternative extends CheckPage {
+  kind: 'current' | 'candidate';
+  material_name?: string;
+  candidate_version_id?: number | null;
+  body_hash?: string;
+  relation?: string;
+  created_at?: string;
+}
+
 export interface CheckItem {
   id: number;
   knowledge_base: number;
@@ -819,6 +828,7 @@ export interface CheckItem {
   candidate?: { id: number; body: string } | null;
   current_knowledge?: CheckPage | null;
   new_knowledge?: CheckPage | null;
+  alternatives?: CheckAlternative[];
   suggested_actions?: string[];
   assignee?: string;
   due_at?: string | null;

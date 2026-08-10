@@ -1,11 +1,13 @@
 name: opengauss
-version: "1.0.0"
+version: 1.0.0
 category: database
 metadata:
-  display_name: "openGauss 数据库"
-  description: "openGauss 数据库协议采集插件（PG 兼容）"
-  author: "WeOps"
-  tags: [database, opengauss]
+  display_name: openGauss 数据库
+  description: openGauss 数据库协议采集插件（PG 兼容）
+  author: WeOps
+  tags:
+  - database
+  - opengauss
   cloud_protocol: false
   model_id: opengauss
 executors:
@@ -15,4 +17,7 @@ executors:
     collector:
       module: plugins.inputs.opengauss.opengauss_info
       class: OpenGaussInfo
+    target_policy:
+      mode: tcp
+      port: 5432
 default_executor: protocol

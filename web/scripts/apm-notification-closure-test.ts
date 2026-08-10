@@ -7,8 +7,8 @@ const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(webRoot, path), 'utf8');
 
 const api = read('src/app/apm/api/index.ts');
-const policies = read('src/app/apm/policies/page.tsx');
-const events = read('src/app/apm/events/page.tsx');
+const policies = read('src/app/apm/events/policies/page.tsx');
+const events = read('src/app/apm/events/alerts/page.tsx');
 const types = read('src/app/apm/types.ts');
 
 assert.match(types, /delivery_mode:\s*ApmNotificationDeliveryMode/, '渠道必须公开投递模式');

@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Case, IntegerField, Value, When
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
@@ -17,6 +18,64 @@ from apps.opspilot.services.wiki.update_service import handle_material_deletion,
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
+# 列表排序优先级(越小越靠前):
+# 构建中 > 排队中 > 构建失败 > 未构建 > 已构建；组内 -id。
+_MATERIAL_LIST_BUILDING_STATUSES = ("parsing", "building")
+_MATERIAL_LIST_QUEUED_STATUSES = ("queued",)
+_MATERIAL_LIST_FAILED_STATUSES = (
+    "parse_failed",
+    "build_failed",
+    "failed",
+    "invalid",
+    "partial",
+)
+_MATERIAL_LIST_PENDING_STATUSES = ("pending", "done", "updated")
+_MATERIAL_LIST_BUILT_STATUSES = ("built",)
+_MATERIAL_STATUS_GROUPS = {
+    "pending": _MATERIAL_LIST_PENDING_STATUSES,
+    "queued": _MATERIAL_LIST_QUEUED_STATUSES,
+    "building": _MATERIAL_LIST_BUILDING_STATUSES,
+    "built": _MATERIAL_LIST_BUILT_STATUSES,
+    "failed": _MATERIAL_LIST_FAILED_STATUSES,
+}
+
+
+def _split_query_values(request, key):
+    values = []
+    for item in request.GET.getlist(key) or ([] if request.GET.get(key) in (None, "") else [request.GET.get(key)]):
+        for part in str(item).split(","):
+            part = part.strip()
+            if part:
+                values.append(part)
+    return values
+
+
+def resolve_material_status_filters(request):
+    """解析资料列表状态筛选:支持 status(原始) 与 status_group(展示分组),均可多选。"""
+    raw_statuses = _split_query_values(request, "status")
+    group_statuses = []
+    for group in _split_query_values(request, "status_group"):
+        group_statuses.extend(_MATERIAL_STATUS_GROUPS.get(group, ()))
+    merged = []
+    for status in [*raw_statuses, *group_statuses]:
+        if status not in merged:
+            merged.append(status)
+    return merged
+
+
+def order_materials_for_list(queryset):
+    """资料列表默认排序:构建中 > 排队中 > 失败 > 未构建 > 已构建,组内 -id。"""
+    return queryset.annotate(
+        list_priority=Case(
+            When(status__in=_MATERIAL_LIST_BUILDING_STATUSES, then=Value(0)),
+            When(status__in=_MATERIAL_LIST_QUEUED_STATUSES, then=Value(1)),
+            When(status__in=_MATERIAL_LIST_FAILED_STATUSES, then=Value(2)),
+            When(status__in=_MATERIAL_LIST_PENDING_STATUSES, then=Value(3)),
+            default=Value(4),
+            output_field=IntegerField(),
+        )
+    ).order_by("list_priority", "-id")
+
 
 class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
     """Wiki 资料 CRUD + 摄取(解析 + AI 摘要)。按 knowledge_base 维度组织。"""
@@ -31,9 +90,10 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
         kb_id = request.GET.get("knowledge_base")
         if kb_id:
             queryset = queryset.filter(knowledge_base_id=kb_id)
-        status_filter = request.GET.get("status")
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
+        status_filters = resolve_material_status_filters(request)
+        if status_filters:
+            queryset = queryset.filter(status__in=status_filters)
+        queryset = order_materials_for_list(queryset)
         try:
             page = max(int(request.GET.get("page", 1)), 1)
             page_size = max(int(request.GET.get("page_size", 20)), 1)
@@ -202,7 +262,13 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
     @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def build(self, request, pk=None):
-        """从该资料构建知识页面(Schema 驱动)。async=true 走 Celery 异步(前端默认),资料置「构建中」、前端轮询出结果;否则同步返回构建记录(供测试/脚本)。"""
+        """从该资料构建知识页面(Schema 驱动)。
+
+        async=true(前端默认):加入知识库串行构建队列,同 KB 顺序执行、跨 KB 可并发;
+        async=false:同步执行(测试/脚本),不走队列。
+        """
+        from apps.opspilot.services.wiki.material_build_queue_service import MaterialBuildQueueError, enqueue_material_builds
+
         material = self.get_object()
         operator = getattr(request.user, "username", "")
         source_status = material.status
@@ -216,33 +282,29 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 },
                 status=409,
             )
-        with transaction.atomic():
-            material = Material.objects.select_for_update().get(pk=material.pk)
-            material.status = "parsing"
-            material.error_message = ""
-            material.save(update_fields=["status", "error_message", "updated_at"])
-        task_kwargs = {
-            "classification_root_id": material.classification_root_id,
-            "ensure_parsed": True,
-            "source_status": source_status,
-        }
         if request.data.get("async"):
             try:
-                _opspilot_tasks.wiki_build_material_task.delay(
-                    material.id,
-                    material.knowledge_base.llm_model_id,
-                    operator,
-                    **task_kwargs,
+                result = enqueue_material_builds(
+                    knowledge_base_id=material.knowledge_base_id,
+                    material_ids=[material.pk],
+                    operator=operator,
+                )
+            except MaterialBuildQueueError as error:
+                return JsonResponse(
+                    {
+                        "result": False,
+                        "code": error.code,
+                        "message": error.message,
+                        "details": error.details,
+                        "retryable": error.status_code >= 500,
+                    },
+                    status=error.status_code,
                 )
             except Exception as error:  # noqa: BLE001 - task broker failure
                 logger.exception(
-                    "wiki 构建任务投递失败 material=%s kb=%s",
+                    "wiki 构建入队失败 material=%s kb=%s",
                     material.pk,
                     material.knowledge_base_id,
-                )
-                Material.objects.filter(pk=material.pk).update(
-                    status="build_failed",
-                    error_message=str(error)[:2000],
                 )
                 return JsonResponse(
                     {
@@ -250,18 +312,91 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                         "code": "task_dispatch_failed",
                         "message": "知识构建任务投递失败，请稍后重试",
                         "retryable": True,
+                        "error": str(error)[:500],
                     },
                     status=503,
                 )
-            return JsonResponse({"result": True, "data": self.get_serializer(material).data})
+            material.refresh_from_db()
+            return JsonResponse(
+                {
+                    "result": True,
+                    "data": {
+                        **self.get_serializer(material).data,
+                        "queue": result,
+                    },
+                }
+            )
+
+        with transaction.atomic():
+            material = Material.objects.select_for_update().get(pk=material.pk)
+            if material.status in {"parsing", "building"}:
+                return JsonResponse(
+                    {
+                        "result": False,
+                        "code": "material_build_in_progress",
+                        "message": "资料正在构建中，请勿重复提交",
+                        "retryable": True,
+                    },
+                    status=409,
+                )
+            material.status = "parsing"
+            material.error_message = ""
+            material.save(update_fields=["status", "error_message", "updated_at"])
         build_id = _opspilot_tasks.wiki_build_material_task.run(
             material.id,
             material.knowledge_base.llm_model_id,
             operator,
-            **task_kwargs,
+            classification_root_id=material.classification_root_id,
+            ensure_parsed=True,
+            source_status=source_status,
         )
         record = BuildRecord.objects.get(pk=build_id)
         return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
+
+    @HasPermission("wiki_list-Edit")
+    @action(methods=["POST"], detail=False, url_path="batch_build")
+    def batch_build(self, request):
+        """批量将资料加入知识库串行构建队列。同 KB 顺序执行，跨 KB 可并发。"""
+        from apps.opspilot.services.wiki.material_build_queue_service import MaterialBuildQueueError, enqueue_material_builds
+
+        try:
+            kb_id = int(request.data.get("knowledge_base") or 0)
+        except (TypeError, ValueError):
+            kb_id = 0
+        material_ids = request.data.get("material_ids") or []
+        if not kb_id:
+            return JsonResponse({"result": False, "message": "knowledge_base 必填"}, status=400)
+        if self.accessible_knowledge_base_or_none(kb_id) is None:
+            return JsonResponse({"result": False, "message": "知识库不存在或无权限"}, status=404)
+        try:
+            result = enqueue_material_builds(
+                knowledge_base_id=kb_id,
+                material_ids=material_ids,
+                operator=getattr(request.user, "username", ""),
+            )
+        except MaterialBuildQueueError as error:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "code": error.code,
+                    "message": error.message,
+                    "details": error.details,
+                },
+                status=error.status_code,
+            )
+        except Exception as error:  # noqa: BLE001
+            logger.exception("wiki 批量构建入队失败 kb=%s", kb_id)
+            return JsonResponse(
+                {
+                    "result": False,
+                    "code": "task_dispatch_failed",
+                    "message": "知识构建任务投递失败，请稍后重试",
+                    "retryable": True,
+                    "error": str(error)[:500],
+                },
+                status=503,
+            )
+        return JsonResponse({"result": True, "data": result})
 
     @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
