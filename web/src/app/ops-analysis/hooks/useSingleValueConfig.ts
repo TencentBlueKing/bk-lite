@@ -182,7 +182,7 @@ export function useSingleValueConfig({
         requestParams.namespace_id = builtinNamespaceId;
       }
 
-      const data = await getSourceDataByApiId(resolvedId, requestParams);
+      const { data } = await getSourceDataByApiId(resolvedId, requestParams);
       const tree = buildTreeData(data, selectedDataSource.field_schema);
       setSingleValueTreeData(tree);
     } catch (error) {

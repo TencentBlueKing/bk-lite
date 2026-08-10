@@ -222,8 +222,25 @@
       "mysql": "MySQL",
       "postgresql": "PostgreSQL",
       "restApi": "REST API",
-      "excel": "Excel"
+      "excel": "Excel",
+      "prometheus": "Prometheus"
     },
+    "authType": "Auth Type",
+    "authTypes": {
+      "none": "None",
+      "basic": "Basic Auth",
+      "bearer": "Bearer Token"
+    },
+    "token": "Token",
+    "testConnection": "Test Connection",
+    "testConnectionSuccess": "Connection test succeeded",
+    "testConnectionFailed": "Connection test failed",
+    "promql": "PromQL",
+    "queryType": "Query Type",
+    "step": "Step",
+    "maxSeries": "Max Series",
+    "prometheusPreviewQuery": "Prometheus Preview Query",
+    "seriesTruncated": "Total {total} series, truncated to {max}",
     "connectionConfig": "Connection",
     "queryConfig": "Query",
     "previewData": "Data Preview",

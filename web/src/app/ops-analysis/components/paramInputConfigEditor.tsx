@@ -300,9 +300,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     const requestId = ++previewRequestIdRef.current;
     setDynamicPreviewLoading(true);
     return getSourceDataByApiId(sourceId, {})
-      .then((response) => {
+      .then(({ data }) => {
         if (requestId !== previewRequestIdRef.current) return;
-        setDynamicPreview(extractDataSourceItems(response).slice(0, 5));
+        setDynamicPreview(extractDataSourceItems(data).slice(0, 5));
       })
       .catch((error: any) => {
         if (requestId !== previewRequestIdRef.current) return;

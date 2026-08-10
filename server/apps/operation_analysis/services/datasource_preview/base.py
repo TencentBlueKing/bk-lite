@@ -15,13 +15,23 @@ class PreviewResult:
     items: list[dict[str, Any]]
     count: int
     fields: list[dict[str, str]]
+    warnings: list[str] | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "items": self.items,
             "count": self.count,
             "fields": self.fields,
         }
+        if self.warnings:
+            payload["warnings"] = self.warnings
+        return payload
+
+
+@dataclass
+class ExecuteResult:
+    data: Any
+    warnings: list[str] | None = None
 
 
 class BaseConnectorExecutor:

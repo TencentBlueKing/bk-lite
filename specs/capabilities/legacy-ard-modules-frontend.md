@@ -8,10 +8,24 @@
 - **API 通信（两层）**：客户端 `utils/request.ts` axios baseURL=`/api/proxy`，由 **axios 请求拦截器注入 `Authorization: Bearer {token}`**（`utils/request.ts:56`）；route handler `(core)/api/proxy/[...path]/route.ts` 为**透明代理**（不再注入鉴权），转发到 `NEXTAPI_URL/api/v1`。
 - **响应拦截分支**【已实现】（`utils/request.ts:74-89`）：`460`→`forceLogoutAndRedirect()` 强制登出并跳转；`401`→`emitSessionExpired({reason:'api-session-expired'})` 发出会话过期事件（非直接重登）；`400/403/500/其它`→统一 `message.error(messageText)` 弹错并抛 `HandledRequestError`（静默化已处理错误，避免上层重复弹窗）；无响应时：先放行非 axios 错误与超时（`code==='ECONNABORTED'`）按原始 error 透传（`utils/request.ts:93-95`），其余无响应的网络错误抛 `HandledRequestError('网络异常')`（`utils/request.ts:96`）。
 - **透明代理行为**【已实现】（`(core)/api/proxy/[...path]/route.ts`）：经 `AbortController` 控制超时（`:5-8`、`:88-91`、`:119`）——所有请求先以 `SSE_TIMEOUT_MS=300s` 计时等待响应头（`:91`），收到响应后若为 SSE 则清除计时不再限时（`:113`），若为普通响应则改用 `DEFAULT_TIMEOUT_MS=60s` 计时其余传输（`:118-119`）；目标路径不以 `/` 结尾时自动补 `/`（`:66-69`）；注入 `X-Forwarded-Host`/`X-Forwarded-For`/`X-Forwarded-Proto`（`:84-86`）；检测到 `content-type: text/event-stream` 即判为 SSE，清除超时并设 `X-Accel-Buffering: no`（禁用 Nginx 缓冲，`:110-114`、`:49`）；异常时 `AbortError` 返回 504、其它返回 500（`:129-141`）。
-- **i18n**：react-intl，`locales/{en,zh}.json`，`next.config.mjs:combineLocales()` 合并模块级语言包。
+- **i18n**：react-intl，`locales/{en,zh}.json`；模块级语言包在显式构建资源准备阶段汇总。
 - **UI**：antd v5 + echarts + @antv/g6/x6（拓扑/图）。
 - **本轮功能面扩展**【已实现/已存在】：`alarm` 新增告警丰富、告警处理、执行记录三组设置页；`system-manager` 新增内网白名单页；`ops-analysis` 新增大屏、报表与网络状态拓扑组件入口；`monitor` 集成页新增采集探测任务与资产视图路由组装。
-- **构建**：多阶段 Dockerfile（builder→node:24-alpine），多模块 Docker 构建目标。
+- **构建与资源准备契约**：生产构建经显式入口串行完成企业扩展路由、语言包与菜单汇总、公共资源复制后再启动 Next.js 构建；任一准备步骤失败即中止，不再由框架配置加载时隐式触发副作用。生产类型检查使用面向交付代码的独立配置，排除脚本、端到端用例、故事与单元测试等非交付范围。
+
+> 证据来源：web/scripts/build.mjs:68-119、web/scripts/prepare-build-assets.mjs:8-13、web/next.config.mjs:22-24、web/tsconfig.build.json:1-21　|　同步基线：d2769559　|　【已实现】
+
+- **构建与验证环境契约**：容器构建与运行时统一使用 Node 24、pnpm 11.20，并以锁文件冻结依赖；开发和默认生产构建启用 Turbopack。企业扩展存在时，构建追踪与 Turbopack 的根目录提升至仓库根以覆盖其依赖边界。端到端冒烟验证先完成生产构建，再以本地生产服务校验应用外壳可访问、返回非服务端错误并具备可见页面主体。
+
+> 证据来源：web/package.json:5-15、web/package.json:114-116、web/Dockerfile:1-2、web/Dockerfile:22-23、web/Dockerfile:37-41、web/next.config.mjs:25-34、web/playwright.config.ts:15-25、web/e2e/app-shell.spec.ts:3-9　|　同步基线：d2769559　|　【已实现】
+
+- **按应用裁剪工作区**：`NEXTAPI_INSTALL_APP` 仅在显式执行“生成工作区”流程时用于生成工作区包范围并完成冻结依赖安装；常规构建不自动改变工作区范围。运行期菜单及可安装应用发现仍可读取该配置，二者与后端安装清单的一致性由部署流程保障。
+
+> 证据来源：web/package.json:13-15、web/scripts/generate-workspace.js:69-78、web/src/app/(core)/api/_utils/installApps.ts:23　|　同步基线：d2769559　|　【已实现】
+
+- **共享更多操作菜单**：跨模块的更多操作入口在呈现前按所需权限包装；危险操作必须通过二次确认后才执行。用于表格行、卡片等可点击容器时，可启用事件阻断，使展开菜单及选择操作不触发父容器的点击行为。
+
+> 证据来源：web/src/components/more-actions-dropdown/index.tsx:51-65、web/src/components/more-actions-dropdown/index.tsx:68-112　|　同步基线：d2769559　|　【已实现】
 
 ## mobile —— Next.js 15 + Tauri 2【已实现/已存在】
 - 路径 `mobile/src/app`：`login`、`workbench`(+detail)、`conversation`（opspilot 会话）、`search`、`profile`。功能为 web 子集（聚焦 AI 会话 + 工作台）。
@@ -28,7 +42,9 @@
 - demo 为 Next 入口（`webchat-demo/app/page.tsx:9`）。
 
 ## 风险 / 待确认
-- web 模块按 `NEXTAPI_INSTALL_APP` 启用已实际落地【已实现】：运行期由 `(core)/api/_utils/installApps.ts:23` 解析 `process.env.NEXTAPI_INSTALL_APP`（为空时回退到目录发现）；构建期由 `scripts/generate-workspace.js:10-11`、`scripts/generate-tsconfig.js:9-10` 据其生成 `pnpm-workspace.yaml` 与 `tsconfig.lint.json` 的 include 范围。其与后端 `INSTALL_APPS` 的对齐/同步策略【待确认】。
+- web 模块按 `NEXTAPI_INSTALL_APP` 启用已实际落地【已实现】：运行期解析该配置（为空时回退到目录发现）；工作区裁剪须通过显式生成流程执行，普通构建不会自动改变工作区范围。其与后端 `INSTALL_APPS` 的对齐/同步策略【待确认】。
+
+> 证据来源：web/src/app/(core)/api/_utils/installApps.ts:23、web/scripts/generate-workspace.js:69-78、web/package.json:13-15　|　同步基线：d2769559　|　【已实现】
 - mobile 仅暴露会话+工作台，其余模块是否规划【待确认】。
 
 ## 2026-07-01 Code-ARD 校准
