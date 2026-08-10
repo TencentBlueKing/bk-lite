@@ -1085,6 +1085,7 @@
     "choiceMinSelect": "Please select at least {min} option(s)",
     "choiceMaxSelect": "You can select at most {max} option(s)",
     "choiceSubmitFailed": "Failed to submit choice",
+    "choiceSubmitting": "Submitting choice...",
     "choicePlaceholder": "Please select...",
     "choiceConfirm": "Confirm",
     "choiceTimeout": "Timed Out",

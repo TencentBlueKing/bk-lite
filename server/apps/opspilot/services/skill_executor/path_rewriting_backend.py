@@ -28,10 +28,11 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-from deepagents.backends.protocol import BackendProtocol, SandboxBackendProtocol
+from deepagents.backends.protocol import SandboxBackendProtocol
 
 logger = logging.getLogger("apps.opspilot.skill_executor.path_rewriting_backend")
 
@@ -39,6 +40,24 @@ logger = logging.getLogger("apps.opspilot.skill_executor.path_rewriting_backend"
 _SKILLS_PATH_PATTERN = re.compile(r"/skills/[^\s'\"\|;&<>(){}\\`$?!*]*")
 # L3 扩展:匹配 ``/tmp/`` 开头、连续路径字符(不含 shell 特殊字符)
 _TMP_PATH_PATTERN = re.compile(r"/tmp/[^\s'\"\|;&<>(){}\\`$?!*]*")
+
+
+def extract_skill_names_from_text(text: str, skills_root: str = "/skills") -> list[str]:
+    """从命令或文件路径里抽出被访问的技能目录名(去重、保序)。"""
+    if not text:
+        return []
+    root = skills_root.rstrip("/")
+    # 统一成以 / 开头,便于匹配 ``/skills/<name>/...``
+    haystack = text if text.startswith("/") else f"/{text}"
+    pattern = re.compile(re.escape(root) + r"/([a-z0-9][a-z0-9-]{0,63})(?:/|$|\s|[\"'])")
+    names: list[str] = []
+    seen: set[str] = set()
+    for match in pattern.finditer(haystack):
+        name = match.group(1)
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
 
 
 def rewrite_skill_paths(command: str, sandbox_dir: Path, skills_root: str = "/skills") -> str:
@@ -125,27 +144,39 @@ class PathRewritingBackend(SandboxBackendProtocol):
         inner: Any,
         sandbox_dir: str | Path,
         skills_root: str = "/skills",
+        on_skill_access: Callable[[Iterable[str]], None] | None = None,
     ) -> None:
         self._inner = inner
         self._sandbox_dir = Path(sandbox_dir)
         self._skills_root = skills_root
+        # 渐进披露:仅在真正访问 /skills/<name>/... 时回调,用于按需装依赖。
+        self._on_skill_access = on_skill_access
 
     @property
     def id(self) -> str:
         """透传底层 backend 的 sandbox id(deepagents SandboxBackendProtocol 要求)。"""
         return getattr(self._inner, "id", f"path-rewriting-{id(self._inner)}")
 
+    def _notify_skill_access(self, text: str) -> None:
+        if not self._on_skill_access or not text:
+            return
+        names = extract_skill_names_from_text(text, self._skills_root)
+        if names:
+            self._on_skill_access(names)
+
     # ------------------------------------------------------------------
     # 重写的执行方法
     # ------------------------------------------------------------------
 
     def execute(self, command: str, *, timeout: int | None = None) -> Any:
+        self._notify_skill_access(command)
         rewritten = rewrite_sandbox_paths(command, self._sandbox_dir, self._skills_root)
         self._validate_command(rewritten, original=command)
         self._ensure_sandbox_dirs(rewritten)
         return self._inner.execute(rewritten, timeout=timeout)
 
     async def aexecute(self, command: str, *, timeout: int | None = None) -> Any:
+        self._notify_skill_access(command)
         rewritten = rewrite_sandbox_paths(command, self._sandbox_dir, self._skills_root)
         self._validate_command(rewritten, original=command)
         self._ensure_sandbox_dirs(rewritten)
@@ -156,36 +187,99 @@ class PathRewritingBackend(SandboxBackendProtocol):
     # 白名单是 P0 短期方案,Phase 1 NATS worker + Docker 沙箱是长期方案。
     # 安全约定:任何需要出网的命令(curl / wget / ssh / scp / rsync / nc)
     # 都不在白名单;对应的网络行为由工具函数显式提供(参考 SSRFValidator)。
-    _ALLOWED_COMMANDS = frozenset({
-        # 文件/文本
-        "ls", "cat", "head", "tail", "grep", "find", "wc", "echo", "pwd",
-        "less", "more", "file", "stat", "diff", "sort", "uniq", "cut",
-        "tr", "tee", "xargs", "tee",
-        # 目录/文件操作(受限,见 _BLOCKED_PATTERNS 里的 rm 限制)
-        "mkdir", "touch", "mv", "cp", "ln", "rm", "chmod", "chown",
-        # 解压/归档
-        "tar", "unzip", "zip", "gzip", "gunzip", "zcat",
-        # Python / Node 工具链
-        "python3", "python", "pip", "pip3", "uv", "uvx",
-        "node", "npm", "npx", "node-gyp",
-        # 浏览器 / 文档工具
-        "agent-browser", "ab", "playwright", "chromium", "google-chrome",
-        "pdftotext", "pdfinfo", "pdftoppm", "qpdf", "wkhtmltopdf",
-        "pdf2htmlEX", "mutool", "pandoc",
-        # k8s
-        "kubectl", "helm", "kustomize", "kubectx", "kubens",
-        # 网络工具(curl/wget/ssh 等)显式不在白名单。
-        # 真正出网需求由业务工具(uvx / git / npm)或 SSRF 校验过的 fetch 工具处理。
-        # 其他常用
-        "git", "tar", "date", "echo", "true", "false", "test", "[",
-        "which", "whereis", "type",
-    })
+    _ALLOWED_COMMANDS = frozenset(
+        {
+            # 文件/文本
+            "ls",
+            "cat",
+            "head",
+            "tail",
+            "grep",
+            "find",
+            "wc",
+            "echo",
+            "pwd",
+            "less",
+            "more",
+            "file",
+            "stat",
+            "diff",
+            "sort",
+            "uniq",
+            "cut",
+            "tr",
+            "tee",
+            "xargs",
+            "tee",
+            # 目录/文件操作(受限,见 _BLOCKED_PATTERNS 里的 rm 限制)
+            "mkdir",
+            "touch",
+            "mv",
+            "cp",
+            "ln",
+            "rm",
+            "chmod",
+            "chown",
+            # 解压/归档
+            "tar",
+            "unzip",
+            "zip",
+            "gzip",
+            "gunzip",
+            "zcat",
+            # Python / Node 工具链
+            "python3",
+            "python",
+            "pip",
+            "pip3",
+            "uv",
+            "uvx",
+            "node",
+            "npm",
+            "npx",
+            "node-gyp",
+            # 浏览器 / 文档工具
+            "agent-browser",
+            "ab",
+            "playwright",
+            "chromium",
+            "google-chrome",
+            "pdftotext",
+            "pdfinfo",
+            "pdftoppm",
+            "qpdf",
+            "wkhtmltopdf",
+            "pdf2htmlEX",
+            "mutool",
+            "pandoc",
+            # k8s
+            "kubectl",
+            "helm",
+            "kustomize",
+            "kubectx",
+            "kubens",
+            # 网络工具(curl/wget/ssh 等)显式不在白名单。
+            # 真正出网需求由业务工具(uvx / git / npm)或 SSRF 校验过的 fetch 工具处理。
+            # 其他常用
+            "git",
+            "tar",
+            "date",
+            "echo",
+            "true",
+            "false",
+            "test",
+            "[",
+            "which",
+            "whereis",
+            "type",
+        }
+    )
     # 黑名单正则(任何匹配都拒绝)
     # 收紧后比 L3 shell_tools 严:L3 只禁纯命令词,这层连管道 / 替换 / 展开一起拦。
     _BLOCKED_PATTERNS = (
         r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r|-rf|-fr)\s+/\s*",  # rm -rf /
         r"\brm\s+-rf\s+/",
-        r"\brm\s+-rf\s+~",            # rm -rf ~
+        r"\brm\s+-rf\s+~",  # rm -rf ~
         r"\brm\s+-rf\s+\$HOME",
         r"\brm\s+-rf\s+/\*",
         r"\bdd\s+",
@@ -197,10 +291,10 @@ class PathRewritingBackend(SandboxBackendProtocol):
         r"\bhalt\s+",
         r"\bsudo\s+",
         r"\bsu\s+",
-        r"\bssh\s+",                   # 远程爆破
+        r"\bssh\s+",  # 远程爆破
         r"\bscp\s+",
         r"\brsync\s+",
-        r"\bnc\s+",                    # netcat
+        r"\bnc\s+",  # netcat
         r"\|\s*sh\b",
         r"\|\s*bash\b",
         r"\beval\s*\(",
@@ -222,18 +316,18 @@ class PathRewritingBackend(SandboxBackendProtocol):
         r"\bmkfs\.ext",
         r"\b>/dev/sd",
         r"\bcrontab\s+",
-        r"\bat\s+now\b",              # at 立即执行
+        r"\bat\s+now\b",  # at 立即执行
         # S4 防御:网络工具原命令被 _ALLOWED_COMMANDS 拿掉,这里再做一次
         # 黑名单兜底防止 LLM 通过管道 `cat|curl` / `echo|curl` 之类绕开
         r"\bcurl\b",
         r"\bwget\b",
         # M6 防御:路径展开绕开路径白名单(原正则只查 /xxx,LLM 写 ~/.ssh/id_rsa
         # / $HOME/.aws/credentials / `cat $(echo /etc/passwd)` 都不触发)
-        r"\$\(",                      # 命令替换 $(...) 任何出现都拦
-        r"`[^`]*`",                   # 反引号命令替换
-        r"(?:^|\s)~/[^\s'\"]*",       # ~/path 任意字符(隐藏文件 / 任意位置展开)
-        r"\$HOME\b",                  # $HOME 环境变量展开
-        r"\$\{[A-Z_][A-Z0-9_]*\}",   # ${HOME} ${PATH} 形式
+        r"\$\(",  # 命令替换 $(...) 任何出现都拦
+        r"`[^`]*`",  # 反引号命令替换
+        r"(?:^|\s)~/[^\s'\"]*",  # ~/path 任意字符(隐藏文件 / 任意位置展开)
+        r"\$HOME\b",  # $HOME 环境变量展开
+        r"\$\{[A-Z_][A-Z0-9_]*\}",  # ${HOME} ${PATH} 形式
         r"(?:^|\s|\|)\$[A-Z_][A-Z0-9_]*\b",  # $PATH $USER $SECRET 等无大括号形式
     )
 
@@ -252,9 +346,7 @@ class PathRewritingBackend(SandboxBackendProtocol):
         # 1. 黑名单(防 LLM 用 sed/awk/python -c 等绕过)
         for pattern in self._BLOCKED_PATTERNS:
             if re.search(pattern, original) or re.search(pattern, rewritten_command):
-                raise PermissionError(
-                    f"[sandbox] 命令被黑名单拦截(模式 {pattern!r}): {original!r}"
-                )
+                raise PermissionError(f"[sandbox] 命令被黑名单拦截(模式 {pattern!r}): {original!r}")
 
         # 2. 首命令白名单(查 rewritten 的首 token,去除路径前缀)
         stripped = rewritten_command.strip()
@@ -275,10 +367,7 @@ class PathRewritingBackend(SandboxBackendProtocol):
             first_cmd = tokens[idx].rsplit("/", 1)[-1]
 
         if first_cmd not in self._ALLOWED_COMMANDS:
-            raise PermissionError(
-                f"[sandbox] 命令 {first_cmd!r} 不在白名单。"
-                f"允许的命令: {sorted(self._ALLOWED_COMMANDS)}"
-            )
+            raise PermissionError(f"[sandbox] 命令 {first_cmd!r} 不在白名单。" f"允许的命令: {sorted(self._ALLOWED_COMMANDS)}")
 
         # 3. 路径沙箱(只查原 command,防止 LLM 访问 host 路径)
         # 允许: /skills/xxx, /tmp/xxx(虚拟根,会被重写到 sandbox_dir),
@@ -287,16 +376,16 @@ class PathRewritingBackend(SandboxBackendProtocol):
         # /dev/fd/(可反推进程打开文件)、/dev/shm/(跨进程共享内存泄露)。整个 /proc
         # 前缀都不在白名单,堵死 /proc/cpuinfo /proc/meminfo /proc/net/tcp 等。
         allowed_path_prefixes = (
-            "/skills/", "/tmp/", "/dev/null", "/dev/stdout",
+            "/skills/",
+            "/tmp/",
+            "/dev/null",
+            "/dev/stdout",
             "/dev/stderr",
         )
         for match in re.finditer(r"(?:^|\s)(/[^\s'\"]+)", original):
             path = match.group(1)
             if not any(path.startswith(p) for p in allowed_path_prefixes):
-                    raise PermissionError(
-                        f"[sandbox] 拒绝 host 路径 {path!r}。"
-                        f"只允许 {allowed_path_prefixes} 下的路径。"
-                    )
+                raise PermissionError(f"[sandbox] 拒绝 host 路径 {path!r}。" f"只允许 {allowed_path_prefixes} 下的路径。")
 
         # 4. SSRF 兜底:扫命令字符串里所有 http(s):// URL,用 LLM 端点宽松模式
         # 校验(只挡云元数据,内网 / localhost 由 ops-system-mgmt 的内网白名单统一管)。
@@ -309,14 +398,13 @@ class PathRewritingBackend(SandboxBackendProtocol):
         # deep_wrapper_node 是 async,但 _validate_command 是同步调用,
         # validate_llm_endpoint 内部用 socket.getaddrinfo 同步,host 解析在
         # 50ms 以内,可接受;Phase 1 容器化时再考虑包 to_thread。
-        from apps.core.utils.ssrf_validator import SSRFValidator, SSRFError
+        from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+
         for url in re.findall(r"https?://[^\s'\"|;&<>]+", original):
             try:
                 SSRFValidator.validate_llm_endpoint(url)
             except SSRFError as e:
-                raise PermissionError(
-                    f"[sandbox] 网络目标被 SSRF 拦截: {url!r}({e})"
-                ) from e
+                raise PermissionError(f"[sandbox] 网络目标被 SSRF 拦截: {url!r}({e})") from e
 
     def _ensure_sandbox_dirs(self, rewritten_command: str) -> None:
         """提前 mkdir sandbox_dir 下可能被写到的子目录,避免 open() 因父目录不存在而失败。
@@ -344,9 +432,12 @@ class PathRewritingBackend(SandboxBackendProtocol):
     # ------------------------------------------------------------------
 
     def write(self, file_path: str, content: str) -> Any:
+        # 不在 write 回调:建沙箱物化会 write SKILL.md,那不代表用户在用技能。
         return self._inner.write(file_path, content)
 
     def read(self, file_path: str, offset: int = 0, limit: int = 2000) -> Any:
+        # 读 SKILL.md / scripts 视为「开始使用该技能」,再装依赖。
+        self._notify_skill_access(file_path)
         return self._inner.read(file_path, offset=offset, limit=limit)
 
     def ls(self, path: str) -> Any:
