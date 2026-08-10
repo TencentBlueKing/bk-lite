@@ -879,6 +879,7 @@
         "addChannel": "新增通知渠道",
         "smtp_pwd": "Smtp 密码",
         "smtp_usessl": "是否使用 SSL",
+        "smtp_auth_enabled": "启用 SMTP 认证",
         "smtp_server": "Smtp 服务器地址",
         "description": "描述",
         "webhook_url": "Webhook地址",
