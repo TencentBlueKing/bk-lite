@@ -79,14 +79,8 @@ class ControllerInstallRequestSerializer(serializers.Serializer):
             if node_os == NodeConstants.WINDOWS_OS:
                 if not node.get("password"):
                     raise serializers.ValidationError({"nodes": "Windows remote installation requires a password"})
-                if (
-                    node.get("winrm_scheme") != "https"
-                    or node.get("winrm_transport") != "ntlm"
-                    or node.get("winrm_cert_validation") is not True
-                ):
-                    raise serializers.ValidationError(
-                        {"nodes": "Windows remote installation currently requires HTTPS, NTLM, and server certificate validation"}
-                    )
+                if node.get("winrm_scheme") != "https" or node.get("winrm_transport") != "ntlm":
+                    raise serializers.ValidationError({"nodes": "Windows remote installation currently requires HTTPS and NTLM"})
             node["os"] = node_os
             node["cpu_architecture"] = InstallerService.normalize_required_cpu_architecture(
                 node_os,

@@ -26,6 +26,8 @@ FAILURE_SUMMARY_MAP = {
     "object_missing": "Required installation package was not found in object storage",
     "bucket_missing": "Object storage bucket is missing or not initialized",
     "connection": "Failed to connect to the required service during installation",
+    "certificate": "WinRM HTTPS certificate validation failed; the Executor does not trust the target certificate",
+    "winrm_busy": "The target WinRM session is busy or stalled while receiving the remote command",
     "timeout": "The installation step timed out before completion",
     "auth": "Authentication failed while accessing the required resource",
     "permission": "Insufficient permissions blocked the installation step",
@@ -145,6 +147,33 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
     if any(
         marker in normalized_text
         for marker in [
+            "certificate_verify_failed",
+            "certificate verify failed",
+            "unable to get local issuer certificate",
+            "sslcerverificationerror",
+            "winrm https certificate validation failed",
+            "does not trust the target",
+            "server certificate validation",
+            "hostname mismatch",
+            "certificate has expired",
+        ]
+    ):
+        return "certificate"
+    if any(
+        marker in normalized_text
+        for marker in [
+            "winrm session is busy",
+            "wsman fault 170",
+            "wsmanfault_code': 170",
+            "wsmanfault_code': '170'",
+            "请求的资源在使用中",
+            "winrm send_input failed",
+        ]
+    ):
+        return "winrm_busy"
+    if any(
+        marker in normalized_text
+        for marker in [
             "authentication failed",
             "unable to authenticate",
             "no supported methods remain",
@@ -156,7 +185,18 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
     ):
         return "auth"
     if explicit_error_type == "connection" or any(
-        marker in normalized_text for marker in ["connection refused", "connection reset", "no route to host", "network is unreachable", "ssh client"]
+        marker in normalized_text
+        for marker in [
+            "connection refused",
+            "connection reset",
+            "no route to host",
+            "network is unreachable",
+            "ssh client",
+            "unreachable!",
+            "unreachable over winrm",
+            "winrm connection",
+            "establish winrm connection",
+        ]
     ):
         return "connection"
     if any(marker in normalized_text for marker in ["permission denied", "operation not permitted", "read-only file system"]):
@@ -188,7 +228,8 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
 
     return (
         explicit_error_type
-        if explicit_error_type in {"connection", "timeout", "manual_recovery_required", "clock_skew"}
+        if explicit_error_type
+        in {"connection", "certificate", "winrm_busy", "timeout", "manual_recovery_required", "clock_skew"}
         else "unknown"
     )
 
@@ -319,7 +360,7 @@ def normalize_failure(message=None, error=None, details=None) -> dict | None:
         "code": failure_code,
         "summary": FAILURE_SUMMARY_MAP.get(failure_type, FAILURE_SUMMARY_MAP["unknown"]),
         "context": failure_context,
-        "retriable": failure_type in {"timeout", "connection"},
+        "retriable": failure_type in {"timeout", "connection", "winrm_busy"},
         "raw_error": _clean_text(error),
     }
 

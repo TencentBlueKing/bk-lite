@@ -336,6 +336,7 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     ]
     assert stage["files"][0]["file_key"].endswith("windows/x86_64/bklite-controller-bootstrap.exe")
     assert stage["file_distribution"]["target_path"] == "C:/Windows/Temp"
+    assert stage["extra_vars"]["ansible_winrm_connection_timeout"] == 60
 
     playbook = yaml.safe_load(execution["playbook_content"])
     block = playbook[0]["tasks"][0]
@@ -372,6 +373,7 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     assert execution["extra_vars"]["bklite_session_user"] == "Administrator"
     assert execution["extra_vars"]["bklite_session_file"].endswith("/session.url")
     assert execution["extra_vars"]["bklite_execution_id"] == "0123456789abcdef0123456789abcdef"
+    assert execution["extra_vars"]["ansible_winrm_connection_timeout"] == 60
     cleanup_playbook = yaml.safe_load(cleanup["playbook_content"])
     cleanup_tasks = cleanup_playbook[0]["tasks"]
     cleanup_paths = {
@@ -383,6 +385,7 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
         "C:/Windows/Temp/bklite-controller-bootstrap-31-2.exe",
         "C:/Windows/Temp/bklite-controller-session-0123456789abcdef0123456789abcdef",
     }
+    assert cleanup["extra_vars"]["ansible_winrm_connection_timeout"] == 60
     assert output.startswith("BKINSTALL_EVENT ")
 
 
@@ -439,6 +442,7 @@ def test_windows_remote_uninstall_submits_secure_winrm_playbook():
     assert call["task_id"].startswith("controller-uninstall-41-")
     assert call["timeout"] == 60
     assert "execute_timeout" not in call
+    assert call["extra_vars"]["ansible_winrm_connection_timeout"] == 60
     assert call["host_credentials"][0] == {
         "host": "10.0.0.8",
         "port": 7443,
@@ -755,6 +759,75 @@ def test_windows_remote_bootstrap_extracts_events_from_ansible_combined_output()
     }
 
     assert WindowsRemoteBootstrapService._extract_stdout(result) == ('BKINSTALL_EVENT {"step":"complete","status":"success"}')
+
+
+def test_windows_remote_bootstrap_describes_winrm_certificate_failure():
+    result = {
+        "status": "failed",
+        "error": "ansible playbook failed with exit code 4",
+        "result": {
+            "result": [
+                {
+                    "host": "10.10.40.57",
+                    "status": "failed",
+                    "raw_status": "FAILED",
+                    "stdout": "",
+                    "stderr": "",
+                    "error_message": "",
+                }
+            ],
+            "result_summary": {
+                "stdout_combined": (
+                    "TASK [Copy bootstrap] **********************************************************\n"
+                    "fatal: [10.10.40.57]: UNREACHABLE! => {\n"
+                    '  "changed": false,\n'
+                    '  "msg": "ntlm: HTTPSConnectionPool(host=\'10.10.40.57\', port=5986): '
+                    "Max retries exceeded with url: /wsman (Caused by SSLError(SSLCertVerificationError(1, "
+                    "'[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer "
+                    "certificate (_ssl.c:1000)')))\",\n"
+                    '  "unreachable": true\n'
+                    "}\n"
+                )
+            },
+        },
+    }
+
+    message = WindowsRemoteBootstrapService._describe_ansible_failure(result)
+
+    assert "WinRM HTTPS certificate validation failed" in message
+    assert "does not trust the target host certificate" in message
+    assert "certificate validation can be disabled explicitly" in message
+    assert "task_id" not in message
+
+
+def test_windows_remote_bootstrap_describes_busy_winrm_session():
+    result = {
+        "status": "failed",
+        "result": {
+            "result": [
+                {
+                    "host": "10.10.40.117",
+                    "status": "failed",
+                    "raw_status": "FAILED",
+                    "error_message": 'winrm send_input failed; stdout: stderr',
+                }
+            ],
+            "result_summary": {
+                "stdout_combined": (
+                    "WSMan OperationTimeout during send input, attempting to continue.\n"
+                    "WSManFaultError 请求的资源在使用中。 "
+                    "(extended fault data: {'http_status_code': 500, 'wsmanfault_code': 170})\n"
+                    'fatal: [10.10.40.117]: FAILED! => {"msg": "winrm send_input failed; stdout: stderr"}'
+                )
+            },
+        },
+    }
+
+    message = WindowsRemoteBootstrapService._describe_ansible_failure(result)
+
+    assert "WinRM session is busy" in message
+    assert "WSMan fault 170" in message
+    assert "NATS" not in message
 
 
 def test_installer_init_uploads_windows_bootstrap_artifact(tmp_path, monkeypatch):
@@ -1322,7 +1395,6 @@ def test_windows_remote_request_rejects_unsafe_credentials(payload):
         {"winrm_transport": "kerberos"},
         {"winrm_transport": "credssp"},
         {"winrm_transport": "basic"},
-        {"winrm_cert_validation": False},
     ],
 )
 def test_windows_remote_install_accepts_only_the_stable_winrm_profile(winrm_overrides):
@@ -1351,6 +1423,50 @@ def test_windows_remote_install_accepts_only_the_stable_winrm_profile(winrm_over
 
     assert not serializer.is_valid()
     assert "nodes" in serializer.errors
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+def test_windows_remote_install_allows_explicit_certificate_validation_opt_out():
+    serializer = ControllerInstallRequestSerializer(
+        data={
+            "cloud_region_id": 7,
+            "work_node": "executor-node",
+            "package_id": 1,
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "nodes": [
+                {
+                    "ip": "10.0.0.8",
+                    "os": "windows",
+                    "organizations": [1],
+                    "port": 5986,
+                    "username": "Administrator",
+                    "password": "credential",
+                    "winrm_scheme": "https",
+                    "winrm_transport": "ntlm",
+                    "winrm_cert_validation": False,
+                }
+            ],
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["nodes"][0]["winrm_cert_validation"] is False
+
+
+@pytest.mark.unit
+def test_windows_remote_bootstrap_passes_certificate_validation_opt_out_to_executor():
+    target = WindowsBootstrapTarget(
+        host="10.0.0.8",
+        port=5986,
+        user="Administrator",
+        password="credential",
+        validate_certificate=False,
+    )
+
+    WindowsRemoteBootstrapService._validate_target(target)
+
+    assert WindowsRemoteBootstrapService._host_credentials(target)[0]["winrm_cert_validation"] is False
 
 
 @pytest.mark.unit
@@ -1405,6 +1521,7 @@ def test_windows_remote_install_defaults_to_https_port():
 
     assert serializer.is_valid(), serializer.errors
     assert serializer.validated_data["nodes"][0]["port"] == 5986
+    assert serializer.validated_data["nodes"][0]["winrm_cert_validation"] is True
 
 
 @pytest.mark.unit

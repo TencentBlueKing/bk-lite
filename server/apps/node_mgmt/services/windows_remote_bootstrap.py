@@ -20,6 +20,34 @@ from config.components.nats import NATS_NAMESPACE
 ANSIBLE_EXECUTOR_COLLECTOR_ID = "ansibleexecutor_linux"
 ANSIBLE_COLLECTOR_NORMAL_STATUS = 0
 ANSIBLE_TASK_POLL_INTERVAL_SECONDS = 1
+WINRM_CONNECTION_TIMEOUT_SECONDS = 60
+WINRM_CLEANUP_TIMEOUT_SECONDS = 90
+
+_ANSIBLE_MSG_PATTERN = re.compile(r'"msg"\s*:\s*"(?P<msg>(?:\\.|[^"\\])*)"')
+_WINRM_CERTIFICATE_MARKERS = (
+    "certificate_verify_failed",
+    "certificate verify failed",
+    "unable to get local issuer certificate",
+    "sslcerverificationerror",
+    "hostname mismatch",
+    "certificate has expired",
+)
+_WINRM_AUTH_MARKERS = (
+    "authentication failed",
+    "access is denied",
+    "access denied",
+    "invalid credentials",
+    "unauthorized",
+    "login failure",
+)
+_WINRM_BUSY_MARKERS = (
+    "wsman operationtimeout during send input",
+    "winrm send_input failed",
+    "wsmanfault_code': 170",
+    "wsmanfault_code': '170'",
+    "请求的资源在使用中",
+    "error_busy",
+)
 
 
 @dataclass(frozen=True)
@@ -75,13 +103,104 @@ class WindowsRemoteBootstrapService:
 
     @staticmethod
     def _validate_target(target: WindowsBootstrapTarget) -> None:
-        if (
-            target.scheme != "https"
-            or not 1 <= target.port <= 65535
-            or target.transport != "ntlm"
-            or target.validate_certificate is not True
-        ):
-            raise BaseAppException("Windows remote operation requires HTTPS, NTLM, a valid port, and server certificate validation")
+        if target.scheme != "https" or not 1 <= target.port <= 65535 or target.transport != "ntlm":
+            raise BaseAppException("Windows remote operation requires HTTPS, NTLM, and a valid port")
+
+    @staticmethod
+    def _winrm_extra_vars() -> dict[str, int]:
+        return {"ansible_winrm_connection_timeout": WINRM_CONNECTION_TIMEOUT_SECONDS}
+
+    @staticmethod
+    def _collect_ansible_failure_text(result: dict) -> str:
+        chunks: list[str] = []
+
+        for key in ("error", "status"):
+            value = result.get(key)
+            if value not in (None, ""):
+                chunks.append(str(value))
+
+        task_result = result.get("result")
+        if isinstance(task_result, dict):
+            for key in ("error", "error_message", "status"):
+                value = task_result.get(key)
+                if value not in (None, ""):
+                    chunks.append(str(value))
+
+            summary = task_result.get("result_summary")
+            if isinstance(summary, dict):
+                combined = summary.get("stdout_combined")
+                if combined:
+                    chunks.append(str(combined))
+
+            host_results = task_result.get("result")
+            if isinstance(host_results, list):
+                for item in host_results:
+                    if not isinstance(item, dict):
+                        continue
+                    for key in ("error_message", "stderr", "stdout", "status", "raw_status"):
+                        value = item.get(key)
+                        if value not in (None, ""):
+                            chunks.append(str(value))
+            elif host_results not in (None, ""):
+                chunks.append(str(host_results))
+        elif task_result not in (None, ""):
+            chunks.append(str(task_result))
+
+        return "\n".join(chunks)
+
+    @staticmethod
+    def _extract_ansible_msg(text: str) -> str | None:
+        match = _ANSIBLE_MSG_PATTERN.search(text)
+        if not match:
+            return None
+        raw_msg = match.group("msg")
+        try:
+            return str(json.loads(f'"{raw_msg}"')).strip() or None
+        except (json.JSONDecodeError, TypeError):
+            return raw_msg.replace('\\"', '"').strip() or None
+
+    @classmethod
+    def _describe_ansible_failure(cls, result: dict) -> str:
+        text = cls._collect_ansible_failure_text(result)
+        normalized = text.lower()
+        ansible_msg = cls._extract_ansible_msg(text)
+
+        if any(marker in normalized for marker in _WINRM_CERTIFICATE_MARKERS):
+            detail = ansible_msg or "unable to verify the target WinRM HTTPS certificate"
+            return (
+                "WinRM HTTPS certificate validation failed: the Ansible Executor does not trust "
+                f"the target host certificate ({detail}). Import the WinRM issuing CA into the "
+                "Executor trust store, confirm the certificate matches the target host/IP, then retry. "
+                "For trusted private networks, certificate validation can be disabled explicitly in the install configuration."
+            )
+
+        if any(marker in normalized for marker in _WINRM_BUSY_MARKERS):
+            return (
+                "WinRM session is busy or stalled (WSMan fault 170 while sending module input). "
+                "The target accepted the WinRM connection but could not accept this operation. "
+                "Wait for the current WinRM operation to finish, restart the WinRM service if safe, "
+                "and check the WinRS per-user shell and concurrent-operation quotas before retrying."
+            )
+
+        if any(marker in normalized for marker in _WINRM_AUTH_MARKERS):
+            detail = ansible_msg or "invalid WinRM credentials"
+            return f"WinRM authentication failed ({detail}). Check the username and password, then retry."
+
+        if "unreachable" in normalized or "establish winrm connection" in normalized:
+            detail = ansible_msg or "the target host did not accept the WinRM HTTPS connection"
+            return (
+                f"Target host is unreachable over WinRM HTTPS ({detail}). "
+                "Check TCP/5986 connectivity, firewall rules, and the HTTPS WinRM listener."
+            )
+
+        if ansible_msg:
+            return f"Ansible task failed: {ansible_msg}"
+
+        compact_error = result.get("error")
+        if isinstance(compact_error, str) and compact_error.strip():
+            return f"Ansible task failed: {compact_error.strip()}"
+
+        return "Ansible task failed during Windows remote bootstrap"
 
     @staticmethod
     def _wait_for_task(executor: AnsibleExecutor, task_id: str, timeout: int, terminal_callback=None) -> dict:
@@ -98,8 +217,7 @@ class WindowsRemoteBootstrapService:
                     except Exception:
                         logger.exception("Failed to persist terminal Windows bootstrap events: task_id=%s", task_id)
                 if status != "success":
-                    detail = result.get("error") or result.get("result") or status
-                    raise BaseAppException(f"Ansible task failed: {detail}")
+                    raise BaseAppException(WindowsRemoteBootstrapService._describe_ansible_failure(result))
                 return result
             if time.monotonic() >= deadline:
                 raise BaseAppException("Ansible task timed out")
@@ -416,6 +534,7 @@ Write-Output ('BKUNINSTALL_CHANGED=' + $changed.ToString().ToLowerInvariant())
         accepted = executor.playbook(
             host_credentials=self._host_credentials(target),
             playbook_content=self._uninstall_playbook(),
+            extra_vars=self._winrm_extra_vars(),
             task_id=task_id,
             timeout=timeout,
         )
@@ -432,11 +551,12 @@ Write-Output ('BKUNINSTALL_CHANGED=' + $changed.ToString().ToLowerInvariant())
         session_dir: str,
         timeout: int,
     ) -> None:
-        cleanup_timeout = min(timeout, 30)
+        cleanup_timeout = min(timeout, WINRM_CLEANUP_TIMEOUT_SECONDS)
         cleanup_task_id = f"controller-bootstrap-cleanup-{task_node_id}-{attempt}"
         accepted = executor.playbook(
             host_credentials=credentials,
             playbook_content=self._cleanup_playbook(remote_path, session_dir),
+            extra_vars=self._winrm_extra_vars(),
             task_id=cleanup_task_id,
             timeout=cleanup_timeout,
         )
@@ -483,6 +603,7 @@ Write-Output ('BKUNINSTALL_CHANGED=' + $changed.ToString().ToLowerInvariant())
                     "target_path": "C:/Windows/Temp",
                     "overwrite": True,
                 },
+                extra_vars=self._winrm_extra_vars(),
                 task_id=stage_task_id,
                 timeout=timeout,
             )
@@ -495,6 +616,7 @@ Write-Output ('BKUNINSTALL_CHANGED=' + $changed.ToString().ToLowerInvariant())
                 host_credentials=credentials,
                 playbook_content=self._execution_playbook(),
                 extra_vars={
+                    **self._winrm_extra_vars(),
                     "bklite_session_url": session_url,
                     "bklite_session_dir": session_dir,
                     "bklite_session_file": session_file,

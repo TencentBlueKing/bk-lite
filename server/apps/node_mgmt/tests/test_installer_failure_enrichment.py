@@ -213,6 +213,54 @@ def test_normalize_failure_classifies_ssh_auth_failure_before_connection():
     assert failure["summary"] == "Authentication failed while accessing the required resource"
 
 
+def test_normalize_failure_classifies_winrm_certificate_error():
+    failure = normalize_failure(
+        message=(
+            "Ansible task failed: WinRM HTTPS certificate validation failed: the Ansible "
+            "Executor does not trust the target host certificate "
+            "(ntlm: HTTPSConnectionPool(... CERTIFICATE_VERIFY_FAILED ... unable to get local issuer certificate))"
+        ),
+        error=(
+            "WinRM HTTPS certificate validation failed: the Ansible Executor does not trust "
+            "the target host certificate (CERTIFICATE_VERIFY_FAILED)"
+        ),
+        details={},
+    )
+
+    assert failure is not None
+    assert failure["type"] == "certificate"
+    assert failure["retriable"] is False
+    assert "does not trust the target certificate" in failure["summary"]
+
+
+def test_normalize_failure_classifies_winrm_unreachable_as_connection():
+    failure = normalize_failure(
+        message="Target host is unreachable over WinRM HTTPS (connection refused)",
+        error="fatal: [10.10.40.57]: UNREACHABLE! => connection refused",
+        details={},
+    )
+
+    assert failure is not None
+    assert failure["type"] == "connection"
+    assert failure["retriable"] is True
+
+
+def test_normalize_failure_classifies_busy_winrm_session_before_connection():
+    failure = normalize_failure(
+        message=(
+            "WinRM session is busy or stalled (WSMan fault 170 while sending module input). "
+            "Wait for the current WinRM operation to finish, then retry."
+        ),
+        error="WSManFaultError 请求的资源在使用中。 wsmanfault_code: 170; winrm send_input failed",
+        details={},
+    )
+
+    assert failure is not None
+    assert failure["type"] == "winrm_busy"
+    assert failure["retriable"] is True
+    assert "WinRM session is busy" in failure["summary"]
+
+
 def test_build_installer_event_record_attaches_typed_failure_metadata():
     event = build_installer_event_record(
         {
