@@ -107,7 +107,7 @@ class PolicyService:
         return normalized
 
     @staticmethod
-    def sync_builtin_policy_templates(documents):
+    def sync_builtin_policy_templates(documents, delete_missing=True):
         normalized = PolicyService._normalize_builtin_documents(documents)
         object_names = {item["object_name"] for item in normalized}
         plugin_names = {item["plugin_name"] for item in normalized}
@@ -131,9 +131,11 @@ class PolicyService:
                 )
                 created_count += int(created)
                 updated_count += int(not created)
-            deleted_count, _ = PolicyTemplate.objects.filter(
-                template_type=PolicyTemplate.TYPE_BUILTIN
-            ).exclude(key__in=expected_keys).delete()
+            deleted_count = 0
+            if delete_missing:
+                deleted_count, _ = PolicyTemplate.objects.filter(
+                    template_type=PolicyTemplate.TYPE_BUILTIN
+                ).exclude(key__in=expected_keys).delete()
         return {
             "created_count": created_count,
             "updated_count": updated_count,
