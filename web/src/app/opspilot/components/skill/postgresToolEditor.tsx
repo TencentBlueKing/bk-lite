@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
-import { Button, Empty, Input, InputNumber, Tag } from 'antd';
+import { Button, Empty, Input, InputNumber } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import ToolConnectionStatusTag from '@/app/opspilot/components/opspilot-tool-editor/tool-connection-status-tag';
 
 export type PostgresTestStatus = 'untested' | 'success' | 'failed';
 
@@ -29,11 +30,6 @@ interface PostgresToolEditorProps {
   onTest: () => void;
 }
 
-const statusColorMap: Record<PostgresTestStatus, string> = {
-  untested: 'default',
-  success: 'blue',
-  failed: 'red',
-};
 
 const PostgresToolEditor: React.FC<PostgresToolEditorProps> = ({
   instances,
@@ -58,9 +54,6 @@ const PostgresToolEditor: React.FC<PostgresToolEditorProps> = ({
     prevLengthRef.current = instances.length;
   }, [instances.length]);
 
-  const renderStatus = (status: PostgresTestStatus) => {
-    return <Tag color={statusColorMap[status]}>{t(`tool.postgres.status.${status}`)}</Tag>;
-  };
 
   return (
     <div className="flex gap-4 min-h-[480px]">
@@ -115,7 +108,7 @@ const PostgresToolEditor: React.FC<PostgresToolEditorProps> = ({
               <div className="text-lg font-medium">
                 {t('tool.postgres.configTitle').replace('{name}', selectedInstance.name || t('tool.postgres.unnamedInstance'))}
               </div>
-              {renderStatus(selectedInstance.testStatus)}
+              <ToolConnectionStatusTag scope="tool.postgres" status={selectedInstance.testStatus} />
             </div>
 
             <div>

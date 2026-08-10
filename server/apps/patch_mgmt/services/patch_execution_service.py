@@ -2203,6 +2203,16 @@ def _schedule_post_install_verify(install_task: GovernanceTask) -> None:
 
 def _run_terminal_followups(task: GovernanceTask) -> None:
     '''任务首次进入终态后触发后续治理链路。'''
+    if task.task_type == GovernanceTaskType.ASSESS and task.trigger_source == "periodic_scan":
+        try:
+            from apps.patch_mgmt.services.assessment_notification import (
+                reconcile_periodic_assessment_notification_intent,
+            )
+
+            reconcile_periodic_assessment_notification_intent(task)
+        except Exception:  # noqa: BLE001
+            logger.exception("周期评估通知意图生成失败 task=%s", task.id)
+
     if task.task_type == GovernanceTaskType.INSTALL and task.auto_reboot:
         _schedule_auto_reboot(task)
 

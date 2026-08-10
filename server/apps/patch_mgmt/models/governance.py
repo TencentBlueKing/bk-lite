@@ -79,6 +79,22 @@ class GovernanceTask(TimeInfo, MaintainerInfo):
         default=list,
         verbose_name="执行结果快照",
     )
+    trigger_source = models.CharField(
+        max_length=32,
+        default="manual",
+        db_index=True,
+        verbose_name="任务触发来源",
+    )
+    notification_snapshot = models.JSONField(
+        default=dict,
+        verbose_name="通知配置快照",
+    )
+    notification_reconciled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="通知意图已对账时间",
+    )
     chain_started_at = models.DateTimeField(null=True, blank=True, verbose_name="治理链路开始时间")
     chain_deadline_at = models.DateTimeField(null=True, blank=True, verbose_name="治理链路超期时间")
     overdue_at = models.DateTimeField(null=True, blank=True, verbose_name="首次超期时间")
