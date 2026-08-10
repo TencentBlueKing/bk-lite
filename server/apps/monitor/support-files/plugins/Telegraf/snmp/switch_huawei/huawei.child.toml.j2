@@ -94,3 +94,42 @@
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7"
         name = "state"
     # 注：华为该模板未提供电源(PSU)状态 OID，按"Zabbix 无则不做"原则省略 device_psu_state。
+    # ---- Huawei SFP optical DDM (HUAWEI-ENTITY-EXTENT-MIB hwOpticalModuleInfoTable) ----
+    # 待现网核验：RX=hwEntityOpticalRxPower ...3.1.8 / TX=hwEntityOpticalTxPower ...3.1.9。
+    # MIB 标注单位曾写 dBm，实际读数为 µW；无模块/无效常为 <=0。
+    # descr 取 ENTITY-MIB entPhysicalName（与光模块同行 entPhysicalIndex）。
+    # 下方 starlark 将 µW→centi-dBm（dBm*100），与锐捷/Parks 及共享仪表盘「原始值/100=dBm」约定对齐。
+    [[inputs.snmp.table]]
+        name = "device_optical"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.8"
+        name = "rx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.3.1.9"
+        name = "tx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+
+# ---- 光功率单位归一：µW → centi-dBm（dBm*100）。无效/无模块（<=0）丢弃字段；双字段皆空则丢弃整行。----
+[[processors.starlark]]
+    namepass = ["device_optical"]
+    source = '''
+load("math.star", "log")
+
+def apply(metric):
+    for field in ["rx_power", "tx_power"]:
+        uw = metric.fields.get(field)
+        if uw == None or uw <= 0:
+            if field in metric.fields:
+                metric.fields.pop(field)
+            continue
+        # dBm = 10 * log10(uW/1000) = 10 * ln(uW/1000) / ln(10)
+        dbm = 10.0 * log(float(uw) / 1000.0) / log(10.0)
+        metric.fields[field] = int(round(dbm * 100.0))
+    if "rx_power" not in metric.fields and "tx_power" not in metric.fields:
+        return None
+    return metric
+'''
