@@ -35,6 +35,7 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { useClientData } from '@/context/client';
 import { getSoldModulePushTargets } from '@/app/node-manager/utils/modulePush';
 import { message } from 'antd';
+import { applyWinrmCertificateValidation } from './utils';
 
 interface InstallConfigProps {
   onNext: (data: any) => void;
@@ -76,6 +77,8 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const [versionLoading, setVersionLoading] = useState<boolean>(false);
   const [platformLoading, setPlatformLoading] = useState<boolean>(false);
   const [installMethod, setInstallMethod] = useState<string>('remoteInstall');
+  const [winrmCertValidation, setWinrmCertValidation] =
+    useState<boolean>(true);
   const [os, setOs] = useState<string>('');
   const [cpuArchitecture, setCpuArchitecture] = useState<string>('');
   const [controllerPlatforms, setControllerPlatforms] = useState<
@@ -92,7 +95,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     form.setFieldsValue({ push_targets: soldPushTargets });
   }, [form, soldPushTargets]);
   const createInfoItem = useCallback(
-    (targetOS: string) => ({
+    (targetOS: string, validateWinrmCertificate = true) => ({
       key: uuidv4(),
       ip: null,
       organizations: [commonContext.selectedGroup?.id],
@@ -102,12 +105,16 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       password: null,
       winrm_scheme: 'https',
       winrm_transport: 'ntlm',
-      winrm_cert_validation: true,
+      winrm_cert_validation:
+        targetOS === 'windows' ? validateWinrmCertificate : true,
       node_name: null
     }),
     [commonContext.selectedGroup?.id]
   );
-  const INFO_ITEM = useMemo(() => createInfoItem(os), [createInfoItem, os]);
+  const INFO_ITEM = useMemo(
+    () => createInfoItem(os, winrmCertValidation),
+    [createInfoItem, os, winrmCertValidation]
+  );
 
   useEffect(() => {
     if (tableData.length === 0) {
@@ -285,7 +292,8 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
     if (nextOs !== os) {
       setOs(nextOs);
-      setTableData([{ ...createInfoItem(nextOs), key: uuidv4() }]);
+      setWinrmCertValidation(true);
+      setTableData([{ ...createInfoItem(nextOs, true), key: uuidv4() }]);
       setSelectedRowKeys([]);
     }
 
@@ -374,7 +382,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   const handleImportSuccess = (importedData: any[]) => {
     const newRows = importedData.map((row) => ({
-      ...createInfoItem(os),
+      ...createInfoItem(os, winrmCertValidation),
       ...row,
       key: uuidv4()
     }));
@@ -478,8 +486,16 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   const changeCollectType = (id: string) => {
     setInstallMethod(id);
-    setTableData([{ ...INFO_ITEM, key: uuidv4() }]);
+    setWinrmCertValidation(true);
+    setTableData([{ ...createInfoItem(os, true), key: uuidv4() }]);
     setSelectedRowKeys([]);
+  };
+
+  const changeWinrmCertValidation = (enabled: boolean) => {
+    setWinrmCertValidation(enabled);
+    setTableData((rows) =>
+      applyWinrmCertificateValidation(rows, enabled)
+    );
   };
 
   const getSidecarList = async () => {
@@ -593,7 +609,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             value={os}
             onChange={(value) => {
               setOs(value);
-              setTableData([{ ...createInfoItem(value), key: uuidv4() }]);
+              setWinrmCertValidation(true);
+              setTableData([
+                { ...createInfoItem(value, true), key: uuidv4() }
+              ]);
               setSelectedRowKeys([]);
               form.setFieldValue('sidecar_package', null);
             }}
@@ -638,6 +657,36 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
               : t('node-manager.cloudregion.node.autoInstallDes')}
           </div>
         </Form.Item>
+        {isRemote && os === 'windows' && (
+          <Form.Item
+            label={t('node-manager.cloudregion.node.winrmCertValidation')}
+          >
+            <Checkbox
+              checked={winrmCertValidation}
+              onChange={(event) =>
+                changeWinrmCertValidation(event.target.checked)
+              }
+            >
+              {t(
+                'node-manager.cloudregion.node.winrmCertValidationEnabled'
+              )}
+            </Checkbox>
+            {!winrmCertValidation && (
+              <div className="mt-[8px] max-w-[560px]">
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={t(
+                    'node-manager.cloudregion.node.winrmCertValidationWarningTitle'
+                  )}
+                  description={t(
+                    'node-manager.cloudregion.node.winrmCertValidationWarningDesc'
+                  )}
+                />
+              </div>
+            )}
+          </Form.Item>
+        )}
         <Form.Item<ControllerInstallFields>
           required
           label={t('node-manager.cloudregion.node.sidecarVersion')}

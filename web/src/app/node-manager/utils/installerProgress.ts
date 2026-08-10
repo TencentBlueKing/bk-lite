@@ -378,10 +378,31 @@ export const INSTALLER_STEP_SUGGESTION_KEYS: InstallerStepLabelMap = {
     'node-manager.cloudregion.node.installerSuggestionInstall'
 };
 
+export const INSTALLER_FAILURE_REASON_KEYS: Partial<Record<InstallerFailureType, string>> = {
+  object_missing: 'node-manager.cloudregion.node.installerFailureObjectMissing',
+  bucket_missing: 'node-manager.cloudregion.node.installerFailureBucketMissing',
+  connection: 'node-manager.cloudregion.node.installerFailureConnection',
+  certificate: 'node-manager.cloudregion.node.installerFailureCertificate',
+  winrm_busy: 'node-manager.cloudregion.node.installerFailureWinrmBusy',
+  timeout: 'node-manager.cloudregion.node.installerFailureTimeout',
+  auth: 'node-manager.cloudregion.node.installerFailureAuth',
+  permission: 'node-manager.cloudregion.node.installerFailurePermission',
+  file_busy: 'node-manager.cloudregion.node.installerFailureFileBusy',
+  disk: 'node-manager.cloudregion.node.installerFailureDisk',
+  package_invalid: 'node-manager.cloudregion.node.installerFailurePackageInvalid',
+  arch_mismatch: 'node-manager.cloudregion.node.installerFailureArchMismatch',
+  manual_recovery_required:
+    'node-manager.cloudregion.node.installerFailureManualRecoveryRequired',
+  clock_skew: 'node-manager.cloudregion.node.installerFailureClockSkew',
+  unknown: 'node-manager.cloudregion.node.installerFailureUnknown'
+};
+
 export const INSTALLER_FAILURE_SUGGESTION_KEYS: Partial<Record<InstallerFailureType, string>> = {
   object_missing: 'node-manager.cloudregion.node.installerSuggestionObjectMissing',
   bucket_missing: 'node-manager.cloudregion.node.installerSuggestionBucketMissing',
   connection: 'node-manager.cloudregion.node.installerSuggestionConnection',
+  certificate: 'node-manager.cloudregion.node.installerSuggestionCertificate',
+  winrm_busy: 'node-manager.cloudregion.node.installerSuggestionWinrmBusy',
   timeout: 'node-manager.cloudregion.node.installerSuggestionTimeout',
   auth: 'node-manager.cloudregion.node.installerSuggestionAuth',
   permission: 'node-manager.cloudregion.node.installerSuggestionPermission',
@@ -546,6 +567,17 @@ export const getInstallerFailureSuggestion = (
   return t('node-manager.cloudregion.node.installerSuggestionGeneric');
 };
 
+export const getInstallerFailureReasonByType = (
+  t: TranslationFunction,
+  failureType?: InstallerFailureType | null
+) => {
+  if (failureType && INSTALLER_FAILURE_REASON_KEYS[failureType]) {
+    return t(INSTALLER_FAILURE_REASON_KEYS[failureType]);
+  }
+
+  return null;
+};
+
 export const getInstallerFailureSuggestionByType = (
   t: TranslationFunction,
   failureType?: InstallerFailureType | null
@@ -559,7 +591,8 @@ export const getInstallerFailureSuggestionByType = (
 
 export const getInstallerSummaryGuidance = (
   t: TranslationFunction,
-  summary?: InstallerEventSummary | null
+  summary?: InstallerEventSummary | null,
+  options?: { suppressNoInstallerEvents?: boolean }
 ) => {
   const state = normalizeText(summary?.state);
   const guidanceKeyMap: Record<string, string> = {
@@ -578,6 +611,24 @@ export const getInstallerSummaryGuidance = (
     duplicated_events:
       'node-manager.cloudregion.node.installerSummaryDuplicatedEvents'
   };
+
+  // Bootstrap/WinRM failures happen before installer events exist. In that case
+  // "no installer events" is expected noise and must not override typed guidance.
+  if (
+    options?.suppressNoInstallerEvents &&
+    (state === 'no_installer_events' ||
+      summary?.anomalies?.includes('no_installer_events'))
+  ) {
+    const filteredState =
+      state === 'no_installer_events' ? null : state;
+    if (filteredState && guidanceKeyMap[filteredState]) {
+      return t(guidanceKeyMap[filteredState]);
+    }
+    const anomaly = summary?.anomalies?.find(
+      (item) => item !== 'no_installer_events' && guidanceKeyMap[item]
+    );
+    return anomaly ? t(guidanceKeyMap[anomaly]) : null;
+  }
 
   if (state && guidanceKeyMap[state]) {
     return t(guidanceKeyMap[state]);
@@ -629,9 +680,16 @@ export const getInstallerFailureGuidance = (
   const failedStep = getFailedInstallerStep(result?.steps);
   const rawStep = failedStep?.details?.raw_step || failedStep?.action;
   const failure = failedStep?.details?.failure || result?.failure;
+  const typedReason = getInstallerFailureReasonByType(t, failure?.type);
+  const typedSuggestion = getInstallerFailureSuggestionByType(t, failure?.type);
+  const stepSuggestion =
+    rawStep && INSTALLER_STEP_SUGGESTION_KEYS[rawStep]
+      ? getInstallerFailureSuggestion(t, rawStep)
+      : null;
 
   const reason = normalizeText(
-    failure?.summary ||
+    typedReason ||
+      failure?.summary ||
       failure?.message ||
       failedStep?.details?.error ||
       failedStep?.message ||
@@ -644,9 +702,7 @@ export const getInstallerFailureGuidance = (
   return {
     reason,
     context: contextEntries,
-    suggestion:
-      getInstallerFailureSuggestionByType(t, failure?.type) ||
-      getInstallerFailureSuggestion(t, rawStep)
+    suggestion: typedSuggestion || stepSuggestion
   };
 };
 
