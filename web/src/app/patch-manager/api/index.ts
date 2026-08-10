@@ -11,6 +11,8 @@ import {
   PatchParams,
   CandidateItem,
   IngestResult,
+  NoticeCandidates,
+  NoticeRuleInput,
   ScanSetting,
 } from '@/app/patch-manager/types';
 
@@ -221,8 +223,15 @@ const usePatchManagerApi = () => {
   const getScanSetting = async (): Promise<ScanSetting> =>
     get(`${BASE}/scan_setting/`);
 
-  const updateScanSetting = async (data: Partial<ScanSetting>): Promise<ScanSetting> =>
+  const updateScanSetting = async (
+    data: Omit<Partial<ScanSetting>, 'notification_rules'> & {
+      notification_rules?: NoticeRuleInput[];
+    }
+  ): Promise<ScanSetting> =>
     put(`${BASE}/scan_setting/save/`, data);
+
+  const getScanNotificationCandidates = async (): Promise<NoticeCandidates> =>
+    get(`${BASE}/scan_setting/notification_candidates/`);
 
   // ── 基线管理 ──────────────────────────────────────────────────────────────────
 
@@ -373,6 +382,7 @@ const usePatchManagerApi = () => {
     // ── 扫描设置 ──
     getScanSetting,
     updateScanSetting,
+    getScanNotificationCandidates,
     // ── 基线管理 ──
     getBaselineList,
     getBaselineDetail,

@@ -325,9 +325,16 @@
       "weeklyTrigger": "Automatically assess all targets on {weekday} at {time}",
       "triggerBaselineBound": "A target enters pending assessment when first bound to a baseline", "triggerBaselineChanged": "A target resets to pending assessment when its baseline or requirements change",
       "triggerManual": "Runs immediately when Assess Now is selected", "triggerPostRemediation": "Verifies automatically after installation or reboot",
-      "loading": "Loading...", "globalSchedule": "Global Assessment Schedule", "frequency": { "hourly": "Hourly", "daily": "Daily", "weekly": "Weekly" },
+      "loading": "Loading...", "globalSchedule": "Global Assessment Schedule", "frequency": { "hourly": "Hourly", "daily": "Daily", "weekly": "Weekly" }, "frequencyRequired": "Select an assessment frequency", "hourIntervalRequired": "Enter an hourly interval", "hourIntervalRange": "Enter a number between 1 and 24", "weekdayRequired": "Select a weekday", "assessmentTimeRequired": "Select an assessment time",
       "every": "Every", "hoursOnce": "hours", "weekday": { "1": "Monday", "2": "Tuesday", "3": "Wednesday", "4": "Thursday", "5": "Friday", "6": "Saturday", "7": "Sunday" },
       "enableScheduledAssessment": "Enable scheduled assessments", "scheduleHelp": "When enabled, the system periodically assesses all target compliance. Disabling it stops automatic scheduled tasks; manual assessments are unaffected.",
+      "periodicAssessmentNotice": "Scheduled Assessment Notifications", "periodicAssessmentNoticeHelp": "Send one summary through each configured channel when a scheduled assessment finds non-compliant targets or failures. No notification is sent when everything is compliant.",
+      "noticeScheduleDisabled": "Scheduled assessments are disabled. This notification configuration is retained but inactive.",
+      "noticeChannel": "Notification Channel", "noticeChannelType": "Channel Type", "noticeReceivers": "Recipients",
+      "channelType": { "email": "Email", "enterpriseWechatApp": "WeCom", "enterpriseWechat": "WeCom Bot", "feishu": "Feishu Bot", "dingtalk": "DingTalk Bot", "customWebhook": "Custom Webhook", "nats": "NATS" },
+      "selectNoticeChannel": "Select a notification channel", "noticeChannelRequired": "Select a notification channel", "useChannelConfiguration": "Uses the channel configuration",
+      "selectNoticeReceivers": "Select recipients", "selectChannelFirst": "Select a channel first", "noticeReceiversRequired": "Select at least one recipient",
+      "deleteNoticeRule": "Remove notification channel", "firstNoticeRuleRequired": "Keep at least one notification channel", "insertNoticeRule": "Add a notification channel below", "noMoreNoticeChannels": "No more notification channels are available", "noticeConfigurationIncomplete": "Complete the notification configuration first",
       "triggerTitle": "Assessment Triggers", "saveSettings": "Save Settings", "scanSettings": "Scan Settings"
     }
   }
