@@ -81,8 +81,11 @@
         "placeholder_en": "Please select node"
       },
       "change_handler": {
-        "type": "option_field",
-        "source_field": "name",
+        "type": "option_then_combine",
+        "source_field": "label",
+        "stash_field": "node_label",
+        "source_fields": ["process_name", "node_label"],
+        "separator": "-",
         "target_field": "instance_name"
       },
       "enable_row_filter": true,
@@ -102,8 +105,9 @@
         "placeholder_en": "nginx"
       },
       "change_handler": {
-        "type": "simple",
-        "source_fields": ["process_name"],
+        "type": "combine",
+        "source_fields": ["process_name", "node_label"],
+        "separator": "-",
         "target_field": "instance_name"
       },
       "label_en": "Process Name"
@@ -146,6 +150,10 @@
       "type": "input",
       "required": true,
       "is_only": true,
+      "description": "默认自动生成为「进程名称-节点」，可修改；同一接入表单内须唯一。",
+      "description_en": "Defaults to process name plus node label; editable. Must be unique within this access form.",
+      "guide_short": "选节点并填写进程名称后自动拼接，例如 nginx-fusion-collector (10.42.4.103)；可按需修改。",
+      "guide_short_en": "Auto-filled as process name plus node after both are set, e.g. nginx-fusion-collector (10.42.4.103). Edit if needed.",
       "widget_props": {
         "placeholder": "实例名称",
         "placeholder_en": "Instance Name"
