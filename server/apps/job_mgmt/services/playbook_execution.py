@@ -131,10 +131,9 @@ class PlaybookExecution(ExecutionTaskBaseService):
         )
 
         # 构建回调配置
-        callback_config = {
-            "subject": f"{NATS_NAMESPACE}.ansible_task_callback",
-            "timeout": 30,
-        }
+        from apps.job_mgmt.services.ansible_callback_service import build_ansible_callback_config
+
+        callback_config = build_ansible_callback_config(execution, f"{NATS_NAMESPACE}.ansible_task_callback")
 
         # 构建 extra_vars（从 execution.params 和 playbook.params 还原）
         extra_vars = cls._build_extra_vars(execution.params, playbook.params)

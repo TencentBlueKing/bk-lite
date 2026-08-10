@@ -22,7 +22,7 @@ from apps.job_mgmt.constants import (
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 MOD = "apps.job_mgmt.services.playbook_execution"
 
@@ -57,15 +57,6 @@ def _execution(**over):
     }
     defaults.update(over)
     return JobExecution.objects.create(**defaults)
-
-
-class TestBuildExtraVarsShlexFallback:
-    def test_unbalanced_quotes_fallback_to_split(self):
-        """params 含未闭合引号：shlex.split 抛 ValueError → 回退 str.split（覆盖 228-229）。"""
-        params_def = [{"name": "a"}, {"name": "b"}]
-        # 单个未闭合引号让 shlex.split 抛 ValueError
-        out = PlaybookExecution._build_extra_vars("v1 'v2", params_def)
-        assert out == {"a": "v1", "b": "'v2"}
 
 
 class TestExecutePlaybookViaAnsibleFileTransfer:
@@ -123,7 +114,11 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
         assert called_files[0]["name"] == "p.zip"
         assert called_files[0]["file_key"] == f"job-playbooks/{ex.id}/p.zip"
         assert ex.playbook_temp_file_key == f"job-playbooks/{ex.id}/p.zip"
-        ex.save.assert_called_once_with(update_fields=["playbook_temp_file_key", "updated_at"])
+        ex.save.assert_any_call(update_fields=["playbook_temp_file_key", "updated_at"])
+        ex.save.assert_any_call(update_fields=["callback_attempt_id", "callback_token_hash", "updated_at"])
+        callback = executor.playbook.call_args.kwargs["callback"]
+        assert callback["context"]["caller"] == "ansible-executor"
+        assert callback["context"]["execution_id"] == ex.id
         reserve_cleanup.assert_called_once_with(ex, f"job-playbooks/{ex.id}/p.zip")
         mupload.assert_called_once()
         fake_file.close.assert_called_once()

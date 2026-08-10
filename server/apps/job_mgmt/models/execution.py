@@ -39,6 +39,20 @@ class JobExecution(TimeInfo, MaintainerInfo):
         db_index=True,
         verbose_name="取消兜底收敛时间",
     )
+    callback_attempt_id = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        null=True,
+        verbose_name="Ansible 回调执行 attempt ID",
+    )
+    callback_token_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        null=True,
+        verbose_name="Ansible 回调令牌摘要",
+    )
 
     # 关联的脚本/Playbook（可为空，快速执行场景）
     script = models.ForeignKey(Script, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联脚本")

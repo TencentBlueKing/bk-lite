@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource
 from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
+from apps.job_mgmt.tests.callback_helpers import authorize_execution, with_callback_identity
 
 
 @pytest.mark.django_db
@@ -20,7 +21,7 @@ class TestAnsibleCallbackFailureConvergence:
     """测试 Ansible 回调解析异常与终态 outbox 同时收敛。"""
 
     def _create_execution(self, status=ExecutionStatus.RUNNING):
-        return JobExecution.objects.create(
+        return authorize_execution(JobExecution.objects.create(
             name="callback-convergence",
             job_type=JobType.SCRIPT,
             status=status,
@@ -33,13 +34,13 @@ class TestAnsibleCallbackFailureConvergence:
             team=[1],
             created_by="testuser",
             updated_by="testuser",
-        )
+        ))
 
     def _run(self, execution, result):
         from apps.job_mgmt.nats_api import ansible_task_callback
 
         with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
-            return ansible_task_callback({"task_id": execution.id, "result": result})
+            return ansible_task_callback(with_callback_identity(execution, {"task_id": execution.id, "result": result}))
 
     @pytest.mark.parametrize(
         ("raw_result", "expected_message"),
@@ -89,7 +90,7 @@ class TestAnsibleCallbackFailureConvergence:
         assert not JobCompletionOutbox.objects.filter(execution_id=execution.id).exists()
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 @pytest.mark.django_db
 class TestScheduledTaskTransactionProtection:
     """测试定时任务事务保护 (Issue #2962)"""
@@ -198,7 +199,6 @@ class TestScheduledTaskTransactionProtection:
 
 
 @pytest.mark.unit
-@pytest.mark.django_db
 class TestAnsibleInterpreterSelection:
     """测试 ansible 路径的解释器选择行为"""
 

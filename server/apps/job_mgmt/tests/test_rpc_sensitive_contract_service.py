@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource, TriggerSource
 from apps.job_mgmt.models import JobExecution
 from apps.job_mgmt.nats_api import ansible_task_callback
+from apps.job_mgmt.tests.callback_helpers import authorize_execution, with_callback_identity
 from nats_client import clients
 from nats_client.exceptions import NatsClientException
 
@@ -15,7 +16,7 @@ from nats_client.exceptions import NatsClientException
 @pytest.mark.integration
 @pytest.mark.django_db
 def test_ansible_task_callback_masks_sensitive_output_in_logs_and_results():
-    execution = JobExecution.objects.create(
+    execution = authorize_execution(JobExecution.objects.create(
         name="rpc-sensitive-test",
         job_type=JobType.SCRIPT,
         trigger_source=TriggerSource.MANUAL,
@@ -25,8 +26,8 @@ def test_ansible_task_callback_masks_sensitive_output_in_logs_and_results():
         total_count=1,
         team=[1],
         started_at=timezone.now(),
-    )
-    callback_payload = {
+    ))
+    callback_payload = with_callback_identity(execution, {
         "task_id": execution.id,
         "task_type": "adhoc",
         "status": "success",
@@ -42,9 +43,11 @@ def test_ansible_task_callback_masks_sensitive_output_in_logs_and_results():
                 "error_message": "passphrase=my-passphrase",
             }
         ],
-    }
+    })
 
-    with patch("apps.job_mgmt.nats_api.logger") as mock_logger, patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
+    with patch("apps.job_mgmt.services.ansible_callback_service.logger") as mock_logger, patch(
+        "apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"
+    ):
         result = ansible_task_callback(callback_payload)
 
     execution.refresh_from_db()

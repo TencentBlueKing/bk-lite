@@ -13,12 +13,13 @@ from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
 from apps.job_mgmt.nats_api import ansible_task_callback
 from apps.job_mgmt.services.completion_outbox_service import deliver_outbox_record
 from apps.job_mgmt.tasks import finalize_cancelling_execution
+from apps.job_mgmt.tests.callback_helpers import authorize_execution, callback_context
 
 pytestmark = [pytest.mark.integration, pytest.mark.django_db(transaction=True)]
 
 
 def _execution(status=ExecutionStatus.RUNNING, callback_type=CallbackType.WEB, callback_url=None):
-    return JobExecution.objects.create(
+    return authorize_execution(JobExecution.objects.create(
         name="callback-race",
         job_type=JobType.SCRIPT,
         status=status,
@@ -31,12 +32,13 @@ def _execution(status=ExecutionStatus.RUNNING, callback_type=CallbackType.WEB, c
         team=[1],
         created_by="testuser",
         updated_by="testuser",
-    )
+    ))
 
 
 def _callback(execution_id, host_status="success", stdout="ok"):
     return {
         "task_id": execution_id,
+        "callback_context": callback_context(execution_id),
         "result": [
             {
                 "host": "10.0.0.1",
@@ -90,16 +92,16 @@ def test_callback_holding_row_lock_fences_timeout_finalizer():
     callback_has_lock = threading.Event()
     allow_callback_commit = threading.Event()
 
-    from apps.job_mgmt import nats_api
+    from apps.job_mgmt.services import ansible_callback_service
 
-    original_write = nats_api._write_ansible_terminal
+    original_write = ansible_callback_service._write_terminal
 
     def paused_write(locked_execution, data, **kwargs):
         callback_has_lock.set()
         assert allow_callback_commit.wait(timeout=10)
         return original_write(locked_execution, data, **kwargs)
 
-    with patch("apps.job_mgmt.nats_api._write_ansible_terminal", side_effect=paused_write), patch(
+    with patch("apps.job_mgmt.services.ansible_callback_service._write_terminal", side_effect=paused_write), patch(
         "apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"
     ):
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -228,16 +230,16 @@ def test_callback_row_lock_first_refreshes_payload_before_delivery_claim():
 
     callback_has_lock = threading.Event()
     allow_callback_commit = threading.Event()
-    from apps.job_mgmt import nats_api
+    from apps.job_mgmt.services import ansible_callback_service
 
-    original_write = nats_api._write_ansible_terminal
+    original_write = ansible_callback_service._write_terminal
 
     def paused_write(locked_execution, data, **kwargs):
         callback_has_lock.set()
         assert allow_callback_commit.wait(timeout=10)
         return original_write(locked_execution, data, **kwargs)
 
-    with patch("apps.job_mgmt.nats_api._write_ansible_terminal", side_effect=paused_write), patch(
+    with patch("apps.job_mgmt.services.ansible_callback_service._write_terminal", side_effect=paused_write), patch(
         "apps.job_mgmt.services.completion_outbox_service.publish_done_sentinel"
     ) as publish, patch("apps.job_mgmt.tasks.deliver_job_completion_outbox.delay"):
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -281,7 +283,13 @@ def test_invalid_callback_observes_current_cancelling_state():
     JobExecution.objects.filter(id=execution.id).update(status=ExecutionStatus.CANCELLING)
 
     with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
-        result = ansible_task_callback({"task_id": execution.id, "result": "invalid"})
+        result = ansible_task_callback(
+            {
+                "task_id": execution.id,
+                "callback_context": callback_context(execution.id),
+                "result": "invalid",
+            }
+        )
 
     execution.refresh_from_db()
     assert result["success"] is False
@@ -292,7 +300,7 @@ def test_invalid_callback_observes_current_cancelling_state():
 def test_outbox_failure_rolls_back_terminal_write():
     execution = _execution()
     with patch(
-        "apps.job_mgmt.nats_api.enqueue_terminal_effects",
+        "apps.job_mgmt.services.ansible_callback_service.enqueue_terminal_effects",
         side_effect=RuntimeError("outbox unavailable"),
     ):
         with pytest.raises(RuntimeError, match="outbox unavailable"):

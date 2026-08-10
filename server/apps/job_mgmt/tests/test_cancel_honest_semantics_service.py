@@ -7,18 +7,27 @@
 """
 
 from datetime import timedelta
-from unittest.mock import MagicMock, patch
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from django.utils import timezone
 
-from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource
+from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TargetSource
 from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
 from apps.job_mgmt.nats_api import ansible_task_callback, job_task_terminate
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.services.execution_cancellation_service import (
+    ExecutionCancellationAuthorizationError,
+    ExecutionCancellationError,
+    request_execution_cancel,
+)
 from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunner
 from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
 from apps.job_mgmt.tasks import dispatch_pending_job_completion_outbox, finalize_cancelling_execution
+from apps.job_mgmt.tests.callback_helpers import authorize_execution, callback_context
 
 pytestmark = pytest.mark.integration
 
@@ -36,7 +45,7 @@ def _make_execution(status, **kwargs):
         updated_by="testuser",
     )
     defaults.update(kwargs)
-    return JobExecution.objects.create(**defaults)
+    return authorize_execution(JobExecution.objects.create(**defaults))
 
 
 class TestCancellingStatusDefinition:
@@ -111,10 +120,11 @@ class TestCancelViewCAS:
         assert execution.status == ExecutionStatus.CANCELLED
         assert execution.finished_at is not None
 
-    def test_running_execution_enters_cancelling(self, api_client):
+    def test_running_execution_enters_cancelling(self, api_client, django_capture_on_commit_callbacks):
         execution = _make_execution(ExecutionStatus.RUNNING)
-        with patch("apps.job_mgmt.views.execution.finalize_cancelling_execution") as mock_task:
-            resp = self._cancel(api_client, execution)
+        with patch("apps.job_mgmt.tasks.finalize_cancelling_execution") as mock_task:
+            with django_capture_on_commit_callbacks(execute=True):
+                resp = self._cancel(api_client, execution)
         assert resp.status_code == 200
         assert resp.data["status"] == ExecutionStatus.CANCELLING
         execution.refresh_from_db()
@@ -127,14 +137,15 @@ class TestCancelViewCAS:
         assert kwargs["args"] == [execution.id]
         assert kwargs["countdown"] > execution.timeout
 
-    def test_broker_failure_keeps_persistent_cancel_deadline(self, api_client):
+    def test_broker_failure_keeps_persistent_cancel_deadline(self, api_client, django_capture_on_commit_callbacks):
         execution = _make_execution(ExecutionStatus.RUNNING)
 
         with patch(
-            "apps.job_mgmt.views.execution.finalize_cancelling_execution.apply_async",
+            "apps.job_mgmt.tasks.finalize_cancelling_execution.apply_async",
             side_effect=RuntimeError("broker down"),
         ):
-            resp = self._cancel(api_client, execution)
+            with django_capture_on_commit_callbacks(execute=True):
+                resp = self._cancel(api_client, execution)
 
         assert resp.status_code == 200
         execution.refresh_from_db()
@@ -142,13 +153,12 @@ class TestCancelViewCAS:
         assert execution.cancel_finalize_at is not None
         assert execution.cancel_finalize_at > timezone.now() + timedelta(seconds=execution.timeout)
 
-    def test_running_cancel_revokes_celery_task(self, api_client):
+    def test_running_cancel_revokes_celery_task(self, api_client, django_capture_on_commit_callbacks):
         execution = _make_execution(ExecutionStatus.RUNNING, celery_task_id="ct-1")
-        with (
-            patch("apps.job_mgmt.views.execution.finalize_cancelling_execution"),
-            patch("apps.job_mgmt.views.execution.current_app.control.revoke") as mock_revoke,
-        ):
-            resp = self._cancel(api_client, execution)
+        with patch("apps.job_mgmt.tasks.finalize_cancelling_execution"):
+            with patch("apps.job_mgmt.services.execution_cancellation_service.current_app.control.revoke") as mock_revoke:
+                with django_capture_on_commit_callbacks(execute=True):
+                    resp = self._cancel(api_client, execution)
         assert resp.status_code == 200
         mock_revoke.assert_called_once_with("ct-1")
 
@@ -166,11 +176,12 @@ class TestCancelViewCAS:
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.CANCELLING
 
-    def test_revoke_failure_does_not_block_cancel(self, api_client):
+    def test_revoke_failure_does_not_block_cancel(self, api_client, django_capture_on_commit_callbacks):
         """revoke 是尽力而为：失败不阻断取消流程"""
         execution = _make_execution(ExecutionStatus.PENDING, celery_task_id="ct-2")
-        with patch("apps.job_mgmt.views.execution.current_app.control.revoke", side_effect=Exception("broker down")):
-            resp = self._cancel(api_client, execution)
+        with patch("apps.job_mgmt.services.execution_cancellation_service.current_app.control.revoke", side_effect=Exception("broker down")):
+            with django_capture_on_commit_callbacks(execute=True):
+                resp = self._cancel(api_client, execution)
         assert resp.status_code == 200
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.CANCELLED
@@ -178,9 +189,10 @@ class TestCancelViewCAS:
     def test_concurrent_state_change_returns_400(self, api_client):
         """检查后状态被并发改变（两次 CAS 都未命中）时按最新状态拒绝"""
         execution = _make_execution(ExecutionStatus.RUNNING)
-        miss_qs = MagicMock()
-        miss_qs.update.return_value = 0
-        with patch("apps.job_mgmt.views.execution.JobExecution.objects.filter", return_value=miss_qs):
+        with patch(
+            "apps.job_mgmt.views.execution.request_execution_cancel",
+            side_effect=ExecutionCancellationError("状态已变更，请刷新后重试"),
+        ):
             resp = self._cancel(api_client, execution)
         assert resp.status_code == 400
         assert "状态已变更" in resp.data["error"]
@@ -188,10 +200,15 @@ class TestCancelViewCAS:
 
 @pytest.mark.django_db
 class TestTerminateTaskNatsAPI:
+    @pytest.fixture(autouse=True)
+    def _authenticated_caller(self):
+        with patch("apps.job_mgmt.nats_api._verify_token", return_value=SimpleNamespace(group_list=[1])):
+            yield
+
     def test_pending_execution_is_cancelled_directly(self):
         execution = _make_execution(ExecutionStatus.PENDING)
 
-        result = job_task_terminate({"task_id": execution.id, "caller_team": [1]})
+        result = job_task_terminate({"task_id": execution.id, "caller_token": "valid-token"})
 
         assert result["result"] is True
         assert result["data"]["status"] == ExecutionStatus.CANCELLED
@@ -199,11 +216,30 @@ class TestTerminateTaskNatsAPI:
         assert execution.status == ExecutionStatus.CANCELLED
         assert execution.finished_at is not None
 
-    def test_running_execution_enters_cancelling(self):
+    def test_pending_cancel_persists_nats_notification_outbox(self):
+        execution = _make_execution(
+            ExecutionStatus.PENDING,
+            callback_type=CallbackType.NATS,
+            callback_subject="bklite.job.cancelled",
+        )
+
+        with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
+            result = job_task_terminate({"task_id": execution.id, "caller_token": "valid-token"})
+
+        assert result["result"] is True
+        record = JobCompletionOutbox.objects.get(
+            execution_id=execution.id,
+            kind=JobCompletionOutbox.Kind.NATS_CALLBACK,
+        )
+        assert record.payload["callback_payload"]["status"] == ExecutionStatus.CANCELLED
+        assert record.payload["delivery_id"]
+
+    def test_running_execution_enters_cancelling(self, django_capture_on_commit_callbacks):
         execution = _make_execution(ExecutionStatus.RUNNING)
 
-        with patch("apps.job_mgmt.nats_api.finalize_cancelling_execution") as mock_task:
-            result = job_task_terminate({"task_id": execution.id, "caller_team": [1]})
+        with patch("apps.job_mgmt.tasks.finalize_cancelling_execution") as mock_task:
+            with django_capture_on_commit_callbacks(execute=True):
+                result = job_task_terminate({"task_id": execution.id, "caller_token": "valid-token"})
 
         assert result["result"] is True
         assert result["data"]["status"] == ExecutionStatus.CANCELLING
@@ -215,36 +251,58 @@ class TestTerminateTaskNatsAPI:
         assert kwargs["args"] == [execution.id]
         assert kwargs["countdown"] > execution.timeout
 
-    def test_broker_failure_keeps_persistent_cancel_deadline(self):
+    def test_broker_failure_keeps_persistent_cancel_deadline(self, django_capture_on_commit_callbacks):
         execution = _make_execution(ExecutionStatus.RUNNING)
 
         with patch(
-            "apps.job_mgmt.nats_api.finalize_cancelling_execution.apply_async",
+            "apps.job_mgmt.tasks.finalize_cancelling_execution.apply_async",
             side_effect=RuntimeError("broker down"),
         ):
-            result = job_task_terminate({"task_id": execution.id, "caller_team": [1]})
+            with django_capture_on_commit_callbacks(execute=True):
+                result = job_task_terminate({"task_id": execution.id, "caller_token": "valid-token"})
 
         assert result["result"] is True
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.CANCELLING
         assert execution.cancel_finalize_at is not None
 
-    def test_missing_caller_team_rejected(self):
-        """不传 caller_team 时拒绝取消，防止枚举 task_id 跨租户操作"""
+    def test_missing_caller_token_rejected(self):
+        """不传 caller_token 时拒绝取消，防止伪造团队身份。"""
         execution = _make_execution(ExecutionStatus.PENDING)
 
         result = job_task_terminate({"task_id": execution.id})
 
         assert result["result"] is False
-        assert "caller_team" in result["message"]
+        assert "caller_token" in result["message"]
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.PENDING  # 状态未变
+
+    @pytest.mark.parametrize(
+        "task_id",
+        [True, {}, [], "abc", "", "0", -1, 2**63, str(2**63), "9" * 5000],
+    )
+    def test_invalid_task_id_rejected_without_querying_orm(self, task_id):
+        result = job_task_terminate({"task_id": task_id, "caller_token": "valid-token"})
+
+        assert result["result"] is False
+        assert "task_id 必须为正整数" in result["message"]
+
+    def test_invalid_caller_token_rejected(self):
+        execution = _make_execution(ExecutionStatus.PENDING)
+
+        with patch("apps.job_mgmt.nats_api._verify_token", side_effect=ValueError("expired")):
+            result = job_task_terminate({"task_id": execution.id, "caller_token": "invalid"})
+
+        assert result == {"result": False, "message": "Unauthorized: invalid caller_token"}
+        execution.refresh_from_db()
+        assert execution.status == ExecutionStatus.PENDING
 
     def test_wrong_team_cannot_cancel(self):
         """调用方 team 与执行记录 team 无交集时，返回无权操作"""
         execution = _make_execution(ExecutionStatus.PENDING, team=[1])
 
-        result = job_task_terminate({"task_id": execution.id, "caller_team": [999]})
+        with patch("apps.job_mgmt.nats_api._verify_token", return_value=SimpleNamespace(group_list=[999])):
+            result = job_task_terminate({"task_id": execution.id, "caller_token": "valid-token"})
 
         assert result["result"] is False
         assert "无权取消" in result["message"]
@@ -255,22 +313,71 @@ class TestTerminateTaskNatsAPI:
         """调用方 team 与执行记录 team 有交集时，正常取消"""
         execution = _make_execution(ExecutionStatus.PENDING, team=[1, 2])
 
-        result = job_task_terminate({"task_id": execution.id, "caller_team": [2, 3]})
+        with patch("apps.job_mgmt.nats_api._verify_token", return_value=SimpleNamespace(group_list=[2, 3])):
+            result = job_task_terminate({"task_id": execution.id, "caller_token": "valid-token"})
 
         assert result["result"] is True
         assert result["data"]["status"] == ExecutionStatus.CANCELLED
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.CANCELLED
 
-    def test_kwargs_caller_team_can_cancel(self):
-        """NATS request(..., task_id=..., caller_team=...) 的 kwargs 调用路径也必须可用。"""
+    def test_kwargs_caller_token_can_cancel(self):
+        """NATS request(..., task_id=..., caller_token=...) 的 kwargs 调用路径也必须可用。"""
         execution = _make_execution(ExecutionStatus.PENDING, team=[1])
 
-        result = job_task_terminate(task_id=execution.id, caller_team=[1])
+        result = job_task_terminate(task_id=execution.id, caller_token="valid-token")
 
         assert result["result"] is True
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.CANCELLED
+
+
+@pytest.mark.django_db
+def test_cancel_service_rechecks_team_on_locked_row():
+    execution = _make_execution(ExecutionStatus.PENDING, team=[2])
+
+    with pytest.raises(ExecutionCancellationAuthorizationError, match="无权取消"):
+        request_execution_cancel(execution.id, authorized_team_ids={1})
+
+    execution.refresh_from_db()
+    assert execution.status == ExecutionStatus.PENDING
+
+
+@pytest.mark.django_db(transaction=True)
+def test_cancel_commit_fences_late_worker_start():
+    """取消先锁住 PENDING 行时，晚到 worker 只能看到 CANCELLED，不能覆盖为 RUNNING。"""
+    execution = _make_execution(ExecutionStatus.PENDING)
+    cancel_has_lock = Event()
+    release_cancel = Event()
+
+    def pause_after_cancel_lock(obj_team, authorized_team_ids):
+        cancel_has_lock.set()
+        assert release_cancel.wait(timeout=5)
+        return True
+
+    def cancel():
+        with patch(
+            "apps.job_mgmt.services.execution_cancellation_service.is_team_authorized",
+            side_effect=pause_after_cancel_lock,
+        ):
+            return request_execution_cancel(execution.id, authorized_team_ids={1})
+
+    def start():
+        return ExecutionTaskBaseService(execution.id, "race-test").prepare_execution()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        cancel_future = pool.submit(cancel)
+        assert cancel_has_lock.wait(timeout=5)
+        start_future = pool.submit(start)
+        release_cancel.set()
+        cancelled, _ = cancel_future.result(timeout=5)
+        started, targets = start_future.result(timeout=5)
+
+    assert cancelled.status == ExecutionStatus.CANCELLED
+    assert started is None
+    assert targets == []
+    execution.refresh_from_db()
+    assert execution.status == ExecutionStatus.CANCELLED
 
 
 @pytest.mark.django_db
@@ -378,6 +485,7 @@ class TestFinalizeCancellingExecutionTask:
         enqueue.assert_called_once_with(due.id)
         assert result["cancel_scheduled"] == 1
 
+
 @pytest.mark.django_db
 class TestAnsibleCallbackWithCancelling:
     """CANCELLING 非终态：Ansible 真实结果正常落库，最终收敛为 CANCELLED（修复结果丢弃）"""
@@ -394,6 +502,7 @@ class TestAnsibleCallbackWithCancelling:
         execution = _make_execution(ExecutionStatus.CANCELLING)
         data = self._callback_data()
         data["task_id"] = execution.id
+        data["callback_context"] = callback_context(execution.id)
 
         with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
             result = ansible_task_callback(data)
@@ -415,6 +524,7 @@ class TestAnsibleCallbackWithCancelling:
         execution = _make_execution(ExecutionStatus.CANCELLED)
         data = self._callback_data()
         data["task_id"] = execution.id
+        data["callback_context"] = callback_context(execution.id)
 
         result = ansible_task_callback(data)
 
