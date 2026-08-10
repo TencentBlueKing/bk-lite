@@ -74,6 +74,11 @@ REBOOT_VERIFY_POLL_INTERVAL = _int_env("PATCH_REBOOT_VERIFY_POLL_INTERVAL", 60)
 # 重启后主机恢复最大等待时间（秒），超时标记失败
 REBOOT_VERIFY_MAX_WAIT = _int_env("PATCH_REBOOT_VERIFY_MAX_WAIT", 3600)
 
+# 周期评估通知意图/重试运行期对账间隔（秒）
+ASSESSMENT_NOTIFICATION_RECONCILE_INTERVAL = _int_env(
+    "PATCH_ASSESSMENT_NOTIFICATION_RECONCILE_INTERVAL", 60
+)
+
 CELERY_BEAT_SCHEDULE: dict = {
     "patch_mgmt_watch_governance_timeouts": {
         "task": "apps.patch_mgmt.tasks.watch_governance_timeouts",
@@ -82,6 +87,10 @@ CELERY_BEAT_SCHEDULE: dict = {
     "patch_mgmt_verify_pending_reboot": {
         "task": "apps.patch_mgmt.tasks.verify_pending_reboot_hosts",
         "schedule": timedelta(seconds=REBOOT_VERIFY_POLL_INTERVAL),
+    },
+    "patch_mgmt_reconcile_assessment_notifications": {
+        "task": "apps.patch_mgmt.tasks.reconcile_assessment_notification_deliveries",
+        "schedule": timedelta(seconds=ASSESSMENT_NOTIFICATION_RECONCILE_INTERVAL),
     },
 }
 

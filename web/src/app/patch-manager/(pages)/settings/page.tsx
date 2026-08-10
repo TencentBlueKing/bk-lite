@@ -6,6 +6,7 @@ import PermissionWrapper from '@/components/permission';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import Password from '@/components/password';
 import SourceOriginBadge from '@/components/source-origin-badge';
+import NotificationRuleMatrix from '@/app/patch-manager/components/notification-rule-matrix';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { PlusOutlined, ClockCircleOutlined, LinkOutlined, EditOutlined, PlayCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
@@ -14,7 +15,13 @@ import type { ColumnsType } from 'antd/es/table';
 import SearchActionBar from '@/components/search-action-bar';
 import useApiClient from '@/utils/request';
 import usePatchManagerApi from '@/app/patch-manager/api';
-import type { PatchSource, PatchSourceType } from '@/app/patch-manager/types';
+import type {
+  NoticeChannel,
+  NoticeRuleDraft,
+  NoticeUser,
+  PatchSource,
+  PatchSourceType,
+} from '@/app/patch-manager/types';
 import styles from './page.module.scss';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
@@ -497,45 +504,102 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
   const { t } = useTranslation();
   const api = usePatchManagerApi();
   const { isLoading: authLoading } = useApiClient();
+  const [scheduleForm] = Form.useForm<{
+    frequency: 'hourly' | 'daily' | 'weekly';
+    hour_interval: number;
+    weekday: number;
+    time: Dayjs;
+  }>();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [freq, setFreq] = useState<'hourly' | 'daily' | 'weekly'>('daily');
-  const [hourInterval, setHourInterval] = useState(1);
-  const [weekday, setWeekday] = useState(1);
-  const [time, setTime] = useState<Dayjs>(dayjs('02:00', 'HH:mm'));
   const [isEnabled, setIsEnabled] = useState(true);
+  const [notificationEnabled, setNotificationEnabled] = useState(false);
+  const [notificationRules, setNotificationRules] = useState<NoticeRuleDraft[]>([]);
+  const [noticeChannels, setNoticeChannels] = useState<NoticeChannel[]>([]);
+  const [noticeUsers, setNoticeUsers] = useState<NoticeUser[]>([]);
+  const [noticeCandidatesLoading, setNoticeCandidatesLoading] = useState(false);
+  const [notificationValidationRequested, setNotificationValidationRequested] = useState(false);
+  const freq = Form.useWatch('frequency', scheduleForm) || 'daily';
+  const hourInterval = Form.useWatch('hour_interval', scheduleForm) ?? 1;
+  const weekday = Form.useWatch('weekday', scheduleForm) ?? 1;
+  const time = Form.useWatch('time', scheduleForm);
 
   const loadSettings = async () => {
     setLoading(true);
     try {
       const data = await api.getScanSetting();
-      setFreq(data.frequency || 'daily');
-      setHourInterval(data.hour_interval || 1);
-      setWeekday(data.weekday || 1);
-      setTime(dayjs(data.time || '02:00', 'HH:mm'));
+      scheduleForm.setFieldsValue({
+        frequency: data.frequency || 'daily',
+        hour_interval: data.hour_interval || 1,
+        weekday: data.weekday || 1,
+        time: dayjs(data.time || '02:00', 'HH:mm'),
+      });
       setIsEnabled(data.is_enabled !== false);
+      setNotificationEnabled(data.notification_enabled === true);
+      setNotificationRules((data.notification_rules || []).map((rule, index) => ({
+        key: `saved-notice-rule-${rule.channel_id}-${index}`,
+        channel_id: rule.channel_id,
+        receivers: rule.receivers || [],
+      })));
     } catch {
     } finally {
       setLoading(false);
+    }
+
+    setNoticeCandidatesLoading(true);
+    try {
+      const candidates = await api.getScanNotificationCandidates();
+      setNoticeChannels(candidates.channels || []);
+      setNoticeUsers(candidates.users || []);
+    } catch {
+      setNoticeChannels([]);
+      setNoticeUsers([]);
+    } finally {
+      setNoticeCandidatesLoading(false);
     }
   };
 
   useEffect(() => {
     if (authLoading || activeKey !== 'scan') return;
     loadSettings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, activeKey]);
 
   const handleSave = async () => {
+    let scheduleValues = scheduleForm.getFieldsValue();
+    if (isEnabled) {
+      try {
+        scheduleValues = await scheduleForm.validateFields();
+      } catch {
+        return;
+      }
+    }
+
+    setNotificationValidationRequested(true);
+    if (!isNotificationConfigurationValid) {
+      message.error(t('patchManager.settingsPage.noticeConfigurationIncomplete'));
+      return;
+    }
     setSaving(true);
     try {
-      await api.updateScanSetting({
-        frequency: freq,
-        hour_interval: hourInterval,
-        weekday,
-        time: time.format('HH:mm'),
+      const saved = await api.updateScanSetting({
+        frequency: scheduleValues.frequency || 'daily',
+        hour_interval: scheduleValues.hour_interval || 1,
+        weekday: scheduleValues.weekday || 1,
+        time: scheduleValues.time?.format('HH:mm') || '02:00',
         is_enabled: isEnabled,
+        notification_enabled: notificationEnabled,
+        notification_rules: notificationRules.map((rule) => ({
+          channel_id: rule.channel_id!,
+          receivers: rule.receivers,
+        })),
       });
+      setNotificationEnabled(saved.notification_enabled === true);
+      setNotificationRules((saved.notification_rules || []).map((rule, index) => ({
+        key: `saved-notice-rule-${rule.channel_id}-${index}`,
+        channel_id: rule.channel_id,
+        receivers: rule.receivers || [],
+      })));
+      setNotificationValidationRequested(false);
       message.success(t('patchManager.settingsPage.scanSaved'));
     } catch {
     } finally {
@@ -547,8 +611,8 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
     freq === 'hourly'
       ? t('patchManager.settingsPage.hourlyTrigger', undefined, { count: hourInterval })
       : freq === 'daily'
-        ? t('patchManager.settingsPage.dailyTrigger', undefined, { time: time.format('HH:mm') })
-        : t('patchManager.settingsPage.weeklyTrigger', undefined, { weekday: t(`patchManager.settingsPage.weekday.${weekday}`), time: time.format('HH:mm') });
+        ? t('patchManager.settingsPage.dailyTrigger', undefined, { time: time?.format('HH:mm') || '--:--' })
+        : t('patchManager.settingsPage.weeklyTrigger', undefined, { weekday: t(`patchManager.settingsPage.weekday.${weekday}`), time: time?.format('HH:mm') || '--:--' });
 
   const triggers = [
     { icon: <ClockCircleOutlined />, text: triggerText },
@@ -558,40 +622,121 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
     { icon: <CheckCircleOutlined />, text: t('patchManager.settingsPage.triggerPostRemediation') },
   ];
 
+  const isNotificationConfigurationValid = !isEnabled || !notificationEnabled || (
+    notificationRules.length > 0
+    && notificationRules.every((rule) => {
+      if (rule.channel_id === undefined) return false;
+      const channel = noticeChannels.find((item) => item.id === rule.channel_id);
+      if (!channel) return false;
+      return channel.channel_type === 'nats' || rule.receivers.length > 0;
+    })
+  );
+
   return (
     <Spin spinning={loading} tip={t('patchManager.settingsPage.loading')}>
       <div>
-        <div style={{ fontWeight: 500, marginBottom: 8 }}>{t('patchManager.settingsPage.globalSchedule')}</div>
-        <Space style={{ marginBottom: 16, alignItems: 'flex-start' }}>
-          <Select
-            value={freq}
-            style={{ width: 120 }}
-            onChange={setFreq}
-            options={['hourly', 'daily', 'weekly'].map((value) => ({ label: t(`patchManager.settingsPage.frequency.${value}`), value }))}
-          />
-          {freq === 'hourly' && (
-            <Space>
-              <span>{t('patchManager.settingsPage.every')}</span>
-              <InputNumber min={1} max={24} value={hourInterval} onChange={(v) => setHourInterval(v || 1)} style={{ width: 70 }} />
-              <span>{t('patchManager.settingsPage.hoursOnce')}</span>
-            </Space>
-          )}
-          {(freq === 'daily' || freq === 'weekly') && (
-            <Space>
-              {freq === 'weekly' && (
-                <Select value={weekday} onChange={setWeekday} style={{ width: 100 }} options={[1, 2, 3, 4, 5, 6, 7].map((value) => ({ label: t(`patchManager.settingsPage.weekday.${value}`), value }))} />
-              )}
-              <TimePicker value={time} format="HH:mm" onChange={(v) => v && setTime(v)} placeholder="02:00" />
-            </Space>
-          )}
-        </Space>
-
-        <div style={{ marginBottom: 12 }}>
-          <span style={{ marginRight: 8 }}>{t('patchManager.settingsPage.enableScheduledAssessment')}</span>
-          <Switch checked={isEnabled} onChange={setIsEnabled} />
+        <div className={styles.assessmentAutomationControl}>
+          <div className={styles.assessmentAutomationHeader}>
+            <span className={styles.assessmentAutomationTitle}>
+              {t('patchManager.settingsPage.enableScheduledAssessment')}
+            </span>
+            <Switch
+              checked={isEnabled}
+              aria-label={t('patchManager.settingsPage.enableScheduledAssessment')}
+              onChange={setIsEnabled}
+            />
+          </div>
+          <Alert type="info" showIcon message={t('patchManager.settingsPage.scheduleHelp')} />
         </div>
 
-        <Alert style={{ marginBottom: 18 }} type="info" showIcon message={t('patchManager.settingsPage.scheduleHelp')} />
+        {isEnabled && (
+          <div className={styles.assessmentAutomationPanel}>
+            <div className={styles.assessmentScheduleSection}>
+              <div className={styles.requiredSectionTitle}>
+                {t('patchManager.settingsPage.globalSchedule')}
+                <span aria-hidden="true">*</span>
+              </div>
+              <Form
+                form={scheduleForm}
+                layout="inline"
+                className={styles.assessmentScheduleForm}
+                initialValues={{
+                  frequency: 'daily',
+                  hour_interval: 1,
+                  weekday: 1,
+                  time: dayjs('02:00', 'HH:mm'),
+                }}
+              >
+                <Form.Item
+                  name="frequency"
+                  rules={[{ required: true, message: t('patchManager.settingsPage.frequencyRequired') }]}
+                >
+                  <Select
+                    style={{ width: 120 }}
+                    options={['hourly', 'daily', 'weekly'].map((value) => ({
+                      label: t(`patchManager.settingsPage.frequency.${value}`),
+                      value,
+                    }))}
+                  />
+                </Form.Item>
+                {freq === 'hourly' && (
+                  <>
+                    <span className={styles.scheduleAffix}>{t('patchManager.settingsPage.every')}</span>
+                    <Form.Item
+                      name="hour_interval"
+                      rules={[
+                        { required: true, message: t('patchManager.settingsPage.hourIntervalRequired') },
+                        { type: 'number', min: 1, max: 24, message: t('patchManager.settingsPage.hourIntervalRange') },
+                      ]}
+                    >
+                      <InputNumber min={1} max={24} style={{ width: 70 }} />
+                    </Form.Item>
+                    <span className={styles.scheduleAffix}>{t('patchManager.settingsPage.hoursOnce')}</span>
+                  </>
+                )}
+                {(freq === 'daily' || freq === 'weekly') && (
+                  <>
+                    {freq === 'weekly' && (
+                      <Form.Item
+                        name="weekday"
+                        rules={[{ required: true, message: t('patchManager.settingsPage.weekdayRequired') }]}
+                      >
+                        <Select
+                          style={{ width: 100 }}
+                          options={[1, 2, 3, 4, 5, 6, 7].map((value) => ({
+                            label: t(`patchManager.settingsPage.weekday.${value}`),
+                            value,
+                          }))}
+                        />
+                      </Form.Item>
+                    )}
+                    <Form.Item
+                      name="time"
+                      rules={[{ required: true, message: t('patchManager.settingsPage.assessmentTimeRequired') }]}
+                    >
+                      <TimePicker format="HH:mm" placeholder="02:00" />
+                    </Form.Item>
+                  </>
+                )}
+              </Form>
+            </div>
+
+            <NotificationRuleMatrix
+              scheduleEnabled={isEnabled}
+              notificationEnabled={notificationEnabled}
+              rules={notificationRules}
+              channels={noticeChannels}
+              users={noticeUsers}
+              loading={noticeCandidatesLoading}
+              showValidationErrors={notificationValidationRequested}
+              onNotificationEnabledChange={(enabled) => {
+                setNotificationEnabled(enabled);
+                if (!enabled) setNotificationValidationRequested(false);
+              }}
+              onRulesChange={setNotificationRules}
+            />
+          </div>
+        )}
 
         <div style={{ fontWeight: 500, marginBottom: 8 }}>{t('patchManager.settingsPage.triggerTitle')}</div>
         <div style={{ background: 'var(--color-fill-1, #f4f6f9)', borderRadius: 8, padding: '4px 14px', marginBottom: 16 }}>
@@ -619,7 +764,7 @@ export default function SettingsPage() {
       <Tabs
         activeKey={activeKey}
         onChange={setActiveKey}
-        className={styles.settingsTabs}
+        className={`${styles.settingsTabs} ${activeKey === 'scan' ? styles.scanSettingsTabs : ''}`}
         items={[
           { key: 'source', label: t('patchManager.patchSource'), children: <SourcesTab activeKey={activeKey} /> },
           { key: 'scan', label: t('patchManager.settingsPage.scanSettings'), children: <ScanSettingTab activeKey={activeKey} /> },
