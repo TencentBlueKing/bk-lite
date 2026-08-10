@@ -218,11 +218,10 @@ test('实例列表面板把摘要指标放进表格列并支持横向滚动', as
 });
 
 test('最近查看默认 Tab 在前且详情成功后会记录浏览', async () => {
-  const [page, detail, storage, model, panel, styles] = await Promise.all([
+  const [page, detail, storage, panel, styles] = await Promise.all([
     readProjectFile('src/app/monitor/page.tsx'),
     readProjectFile('src/app/monitor/detail/page.tsx'),
     readProjectFile('src/features/monitor/recent-views-storage.ts'),
-    readProjectFile('src/features/monitor/model.ts'),
     readProjectFile('src/features/monitor/recent-views-panel.tsx'),
     readProjectFile('src/features/monitor/monitor.module.css'),
   ]);
