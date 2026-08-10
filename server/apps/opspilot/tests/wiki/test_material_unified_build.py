@@ -21,11 +21,11 @@ def test_async_build_defers_generation_identity_until_parse_finishes(
         source_identity="text:pending.md",
         status="pending",
     )
-    calls = []
+    kicks = []
 
     monkeypatch.setattr(
-        "apps.opspilot.tasks.wiki_build_material_task.delay",
-        lambda *args, **kwargs: calls.append((args, kwargs)),
+        "apps.opspilot.tasks.wiki_process_kb_material_builds_task.delay",
+        lambda kb_id, operator="": kicks.append((kb_id, operator)),
     )
 
     response = api_client.post(
@@ -36,16 +36,9 @@ def test_async_build_defers_generation_identity_until_parse_finishes(
 
     material.refresh_from_db()
     assert response.status_code == 200
-    assert material.status == "parsing"
-    assert len(calls) == 1
-    args, kwargs = calls[0]
-    assert args[0] == material.pk
-    assert args[1] == knowledge_base.llm_model_id
-    assert kwargs == {
-        "classification_root_id": None,
-        "ensure_parsed": True,
-        "source_status": "pending",
-    }
+    assert material.status == "queued"
+    assert len(kicks) == 1
+    assert kicks[0][0] == knowledge_base.pk
 
 
 def test_unified_task_records_parse_failure_without_starting_generation(

@@ -364,20 +364,78 @@ class TestMaterialViews:
         assert self._data(ingest)["status"] == "parsing"
         Material.objects.filter(pk=material.pk).update(status="done")
 
-        calls = []
+        kicks = []
 
-        class Task:
+        class RunnerTask:
             @staticmethod
-            def delay(material_id, llm_model_id, operator, **kwargs):
-                calls.append((material_id, llm_model_id, operator, kwargs))
+            def delay(kb_id, operator=""):
+                kicks.append((kb_id, operator))
 
-        monkeypatch.setattr("apps.opspilot.tasks.wiki_build_material_task", Task)
+        monkeypatch.setattr("apps.opspilot.tasks.wiki_process_kb_material_builds_task", RunnerTask)
         build = api_client.post(self.BASE + f"{material.id}/build/", {"async": True}, format="json")
         assert build.status_code == 200
-        assert self._data(build)["status"] == "parsing"
-        assert calls and calls[0][0] == material.id
-        assert calls[0][3] == {
-            "classification_root_id": None,
-            "ensure_parsed": True,
-            "source_status": "done",
-        }
+        assert self._data(build)["status"] == "queued"
+        assert kicks and kicks[0][0] == kb.id
+        material.refresh_from_db()
+        assert material.status == "queued"
+
+
+@pytest.mark.django_db
+def test_order_materials_for_list_puts_attention_statuses_first():
+    """构建中 > 排队中 > 失败 > 未构建 > 已构建;组内按 id 倒序。"""
+    from apps.opspilot.models import Material, WikiKnowledgeBase
+    from apps.opspilot.viewsets.wiki_material_view import order_materials_for_list
+
+    kb = WikiKnowledgeBase.objects.create(name="kb-sort", team=[1])
+    built_old = Material.objects.create(knowledge_base=kb, name="built-old", material_type="text", status="built")
+    pending = Material.objects.create(knowledge_base=kb, name="pending", material_type="text", status="pending")
+    built_new = Material.objects.create(knowledge_base=kb, name="built-new", material_type="text", status="built")
+    failed = Material.objects.create(knowledge_base=kb, name="failed", material_type="text", status="build_failed")
+    building = Material.objects.create(knowledge_base=kb, name="building", material_type="text", status="building")
+    queued = Material.objects.create(knowledge_base=kb, name="queued", material_type="text", status="queued")
+
+    ids = list(order_materials_for_list(Material.objects.filter(knowledge_base=kb)).values_list("id", flat=True))
+    assert ids == [
+        building.id,
+        queued.id,
+        failed.id,
+        pending.id,
+        built_new.id,
+        built_old.id,
+    ]
+
+
+@pytest.mark.django_db
+def test_resolve_material_status_filters_supports_groups_and_multi():
+    from apps.opspilot.viewsets.wiki_material_view import resolve_material_status_filters
+
+    class FakeRequest:
+        def __init__(self, params):
+            self.GET = params
+
+    class FakeQueryDict(dict):
+        def getlist(self, key):
+            value = self.get(key)
+            if value is None:
+                return []
+            if isinstance(value, list):
+                return value
+            return [value]
+
+    request = FakeRequest(FakeQueryDict({"status_group": "pending,failed"}))
+    assert resolve_material_status_filters(request) == [
+        "pending",
+        "done",
+        "updated",
+        "parse_failed",
+        "build_failed",
+        "failed",
+        "invalid",
+        "partial",
+    ]
+
+    request = FakeRequest(FakeQueryDict({"status": ["queued", "built"]}))
+    assert resolve_material_status_filters(request) == ["queued", "built"]
+
+    request = FakeRequest(FakeQueryDict({}))
+    assert resolve_material_status_filters(request) == []
