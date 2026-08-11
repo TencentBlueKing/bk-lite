@@ -102,6 +102,13 @@ class MonitorPluginService:
         MonitorPluginService._sync_plugin_monitor_objects(plugin_name, monitor_object_names)
 
     @staticmethod
+    def import_monitor_plugins(documents: list[dict]) -> None:
+        """跨插件批量导入，供内置目录初始化使用。"""
+        from apps.monitor.services.plugin_import_bulk import import_monitor_plugins
+
+        import_monitor_plugins(documents)
+
+    @staticmethod
     def _ensure_language_skeleton(plugin_dir, plugin_name: str) -> None:
         """为新 plugin 在 metrics.json 同目录生成 language/{en,zh-Hans}.yaml 空骨架。
 

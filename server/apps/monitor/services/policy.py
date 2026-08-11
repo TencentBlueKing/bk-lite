@@ -9,8 +9,11 @@ from pathlib import PurePosixPath
 
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
+from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorObject, MonitorPlugin, PolicyTemplate
 from apps.monitor.models.monitor_metrics import Metric
 
@@ -44,18 +47,23 @@ class PolicyService:
         return f"builtin:{digest}"
 
     @staticmethod
+    def _extract_builtin_pair(data):
+        if not isinstance(data, dict):
+            raise BaseAppException("policy.json 必须是对象")
+        object_name = str(data.get("object") or "").strip()
+        plugin_name = str(data.get("plugin") or "").strip()
+        if not object_name or not plugin_name:
+            raise BaseAppException("policy.json 缺少 object 或 plugin")
+        return object_name, plugin_name
+
+    @staticmethod
     def _normalize_builtin_documents(documents):
         normalized = []
         seen_pairs = set()
         seen_keys = set()
         for data in documents:
-            if not isinstance(data, dict):
-                raise BaseAppException("policy.json 必须是对象")
-            object_name = str(data.get("object") or "").strip()
-            plugin_name = str(data.get("plugin") or "").strip()
+            object_name, plugin_name = PolicyService._extract_builtin_pair(data)
             pair = (object_name, plugin_name)
-            if not all(pair):
-                raise BaseAppException("policy.json 缺少 object 或 plugin")
             if pair in seen_pairs:
                 raise BaseAppException(f"内置策略模板重复定义: {object_name}/{plugin_name}")
             seen_pairs.add(pair)
@@ -108,37 +116,132 @@ class PolicyService:
 
     @staticmethod
     def sync_builtin_policy_templates(documents):
-        normalized = PolicyService._normalize_builtin_documents(documents)
-        object_names = {item["object_name"] for item in normalized}
-        plugin_names = {item["plugin_name"] for item in normalized}
+        parsed_by_pair = {}
+        failed_pairs = set()
+        for data in documents:
+            pair = None
+            try:
+                pair = PolicyService._extract_builtin_pair(data)
+                items = PolicyService._normalize_builtin_documents([data])
+            except Exception as exc:
+                if pair is None:
+                    logger.warning("跳过无法识别的策略文档，不影响其它内置模板: %s", exc)
+                else:
+                    failed_pairs.add(pair)
+                    logger.warning("跳过策略文档 %s/%s，保留该对象对上一次模板: %s", pair[0], pair[1], exc)
+                continue
+            if pair in failed_pairs:
+                continue
+            if pair in parsed_by_pair:
+                failed_pairs.add(pair)
+                parsed_by_pair.pop(pair, None)
+                logger.warning("内置策略模板重复定义: %s/%s，跳过该对象对以避免误删", pair[0], pair[1])
+                continue
+            parsed_by_pair[pair] = items
+        for pair in failed_pairs:
+            parsed_by_pair.pop(pair, None)
+
+        object_names = {pair[0] for pair in parsed_by_pair}
+        plugin_names = {pair[1] for pair in parsed_by_pair}
         objects = {item.name: item for item in MonitorObject.objects.filter(name__in=object_names)}
         plugins = {item.name: item for item in MonitorPlugin.objects.filter(name__in=plugin_names)}
-        missing_objects = sorted(object_names - objects.keys())
-        missing_plugins = sorted(plugin_names - plugins.keys())
-        if missing_objects:
-            raise BaseAppException(f"监控对象不存在: {', '.join(missing_objects)}")
-        if missing_plugins:
-            raise BaseAppException(f"监控插件不存在: {', '.join(missing_plugins)}")
+        ready_pairs = {}
+        for pair, items in parsed_by_pair.items():
+            object_name, plugin_name = pair
+            if object_name not in objects or plugin_name not in plugins:
+                logger.warning(
+                    "跳过策略文档，监控对象或插件不存在: %s/%s",
+                    object_name,
+                    plugin_name,
+                )
+                continue
+            ready_pairs[pair] = items
 
+        if not ready_pairs:
+            logger.warning("没有可对账的有效内置策略文档，保留上一次有效内置模板")
+            return {"created_count": 0, "updated_count": 0, "deleted_count": 0}
+
+        normalized = [item for items in ready_pairs.values() for item in items]
         expected_keys = {item["key"] for item in normalized}
-        created_count = updated_count = 0
+        pair_ids = {
+            (objects[object_name].id, plugins[plugin_name].id)
+            for object_name, plugin_name in ready_pairs
+        }
+        existing = {
+            template.key: template
+            for template in PolicyTemplate.objects.filter(
+                template_type=PolicyTemplate.TYPE_BUILTIN,
+                scope_key=PolicyTemplate.TYPE_BUILTIN,
+            )
+        }
+        now = timezone.now()
+        to_create = []
+        to_update = []
         with transaction.atomic():
             for item in normalized:
-                _, created = PolicyService._upsert_builtin_template(
-                    item,
-                    objects[item["object_name"]],
-                    plugins[item["plugin_name"]],
+                monitor_object = objects[item["object_name"]]
+                plugin = plugins[item["plugin_name"]]
+                current = existing.get(item["key"])
+                if current is None:
+                    to_create.append(
+                        PolicyTemplate(
+                            scope_key=PolicyTemplate.TYPE_BUILTIN,
+                            key=item["key"],
+                            template_type=PolicyTemplate.TYPE_BUILTIN,
+                            organization=None,
+                            monitor_object=monitor_object,
+                            plugin=plugin,
+                            name=item["name"],
+                            description=item["description"],
+                            config=item["config"],
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                    continue
+                if not PolicyService._builtin_template_changed(current, item, monitor_object, plugin):
+                    continue
+                current.monitor_object = monitor_object
+                current.plugin = plugin
+                current.name = item["name"]
+                current.description = item["description"]
+                current.config = item["config"]
+                current.updated_at = now
+                to_update.append(current)
+            if to_create:
+                PolicyTemplate.objects.bulk_create(
+                    to_create, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
                 )
-                created_count += int(created)
-                updated_count += int(not created)
-            deleted_count, _ = PolicyTemplate.objects.filter(
-                template_type=PolicyTemplate.TYPE_BUILTIN
-            ).exclude(key__in=expected_keys).delete()
+            if to_update:
+                PolicyTemplate.objects.bulk_update(
+                    to_update,
+                    ["name", "description", "config", "monitor_object", "plugin"],
+                    batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE,
+                )
+            stale_ids = [
+                template.id
+                for template in existing.values()
+                if (template.monitor_object_id, template.plugin_id) in pair_ids
+                and template.key not in expected_keys
+            ]
+            deleted_count = 0
+            if stale_ids:
+                deleted_count, _ = PolicyTemplate.objects.filter(id__in=stale_ids).delete()
         return {
-            "created_count": created_count,
-            "updated_count": updated_count,
+            "created_count": len(to_create),
+            "updated_count": len(to_update),
             "deleted_count": deleted_count,
         }
+
+    @staticmethod
+    def _builtin_template_changed(template, item, monitor_object, plugin):
+        return (
+            template.name != item["name"]
+            or template.description != item["description"]
+            or template.config != item["config"]
+            or template.monitor_object_id != monitor_object.id
+            or template.plugin_id != plugin.id
+        )
 
     @staticmethod
     def _upsert_builtin_template(item, monitor_object, plugin):
