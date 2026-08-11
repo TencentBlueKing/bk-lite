@@ -132,6 +132,32 @@ def test_verify_bk_token_keeps_plaintext_records_compatible_before_migration():
     )
 
 
+def test_verify_bk_token_keeps_unversioned_encrypted_records_compatible():
+    login_module = LoginModule.objects.create(
+        name="bk-login-unversioned-runtime",
+        source_type="bk_login",
+        other_config=_bk_config(),
+        enabled=True,
+    )
+    old_config = _bk_config("old-encrypted-secret")
+    LoginModule.encrypt_field("app_token", old_config)
+    LoginModule.objects.filter(pk=login_module.pk).update(other_config=old_config)
+
+    with patch(
+        "apps.system_mgmt.nats.settings.get_bk_user_info",
+        return_value=(False, None),
+    ) as get_bk_user_info:
+        result = verify_bk_token("bk-user-token")
+
+    assert result["result"] is True
+    get_bk_user_info.assert_called_once_with(
+        "bk-user-token",
+        "bk-lite",
+        "old-encrypted-secret",
+        "https://bk.example.com",
+    )
+
+
 def test_verify_bk_token_fails_closed_for_corrupted_versioned_app_token():
     login_module = LoginModule.objects.create(
         name="bk-login-corrupted-runtime",
@@ -191,6 +217,29 @@ def test_data_migration_uses_a_stable_cursor_across_batches(monkeypatch):
     )
     assert len(app_tokens) == migration.BATCH_SIZE + 1
     assert all(value.startswith(BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX) for value in app_tokens)
+
+
+def test_data_migration_upgrades_unversioned_encrypted_app_token_and_rolls_back():
+    login_module = LoginModule.objects.create(
+        name="bk-login-unversioned-migration",
+        source_type="bk_login",
+        other_config=_bk_config(),
+    )
+    old_config = _bk_config("old-encrypted-secret")
+    LoginModule.encrypt_field("app_token", old_config)
+    LoginModule.objects.filter(pk=login_module.pk).update(other_config=old_config)
+    migration = importlib.import_module("apps.system_mgmt.migrations.0046_encrypt_bk_login_app_token")
+
+    migration.encrypt_existing_bk_login_app_tokens(django_apps, None)
+    login_module.refresh_from_db()
+
+    assert login_module.other_config["app_token"].startswith(BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX)
+    assert login_module.decrypted_other_config["app_token"] == "old-encrypted-secret"
+
+    migration.decrypt_existing_bk_login_app_tokens(django_apps, None)
+    login_module.refresh_from_db()
+
+    assert login_module.other_config["app_token"] == "old-encrypted-secret"
 
 
 def test_data_migration_stops_when_app_token_encryption_fails(monkeypatch):

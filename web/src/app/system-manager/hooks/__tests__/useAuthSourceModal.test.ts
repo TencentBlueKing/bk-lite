@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
 import type { AuthSource } from '../../types/security';
@@ -22,4 +23,12 @@ test('replaceAuthSource keeps the masked server response instead of submitted pl
   const result = replaceAuthSource([originalSource], serverResponse);
 
   assert.equal(result[0].other_config.app_token, '******');
+});
+
+test('useAuthSourceModal updates state from the server response', async () => {
+  const hookSource = await readFile(new URL('../useAuthSourceModal.ts', import.meta.url), 'utf8');
+
+  assert.match(hookSource, /const updatedSource = await updateAuthSource\(editingSource\.id, updateData\)/);
+  assert.match(hookSource, /replaceAuthSource\(authSources, enhancedSource\)/);
+  assert.doesNotMatch(hookSource, /const updatedSource = \{ \.\.\.editingSource, \.\.\.updateData \}/);
 });

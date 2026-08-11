@@ -1,5 +1,6 @@
 from copy import deepcopy
 
+from cryptography.fernet import InvalidToken
 from django.db import models
 from django.utils.functional import cached_property
 
@@ -50,12 +51,17 @@ class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
 
     @classmethod
     def _decrypt_app_token_value(cls, value):
-        if not value or not isinstance(value, str) or not value.startswith(BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX):
+        if not value or not isinstance(value, str):
             return value
 
-        encrypted_value = value.removeprefix(BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX)
+        is_versioned = value.startswith(BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX)
+        encrypted_value = value.removeprefix(BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX) if is_versioned else value
         try:
             return cls.get_cipher_suite().decrypt(encrypted_value.encode(cls.ENCODING)).decode(cls.ENCODING)
+        except InvalidToken:
+            if not is_versioned:
+                return value
+            raise ValueError("Failed to decrypt bk_login app_token") from None
         except Exception as exc:
             raise ValueError("Failed to decrypt bk_login app_token") from exc
 
