@@ -636,6 +636,86 @@ def test_windows_direct_winrm_is_rejected_outside_debug(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_windows_executor_waits_for_queued_adhoc_result(monkeypatch):
+    """Ansible 只返回受理回执时，必须等到终态后再解析命令输出。"""
+    monkeypatch.setattr(pes.settings, 'PATCH_MGMT_WINDOWS_EXECUTION_MODE', 'executor')
+    cloud_region = CloudRegion.objects.create(name='queued-windows-assess-region')
+    target = _make_manual_windows_target(cloud_region)
+    query_calls = []
+
+    class FakeAnsibleExecutor:
+        def adhoc(self, **kwargs):
+            assert kwargs['task_id'].startswith(f'patch-command-{target.id}-')
+            return {'accepted': True, 'status': 'queued', 'task_id': 'queued-task-1'}
+
+        def task_query(self, task_id, timeout):
+            query_calls.append((task_id, timeout))
+            if len(query_calls) == 1:
+                return {'task_id': task_id, 'status': 'running'}
+            return {
+                'task_id': task_id,
+                'status': 'success',
+                'result': {
+                    'status': 'success',
+                    'success': True,
+                    'result': [
+                        {
+                            'host': target.ip,
+                            'status': 'success',
+                            'stdout': '===HOTFIX===\nKB4577586',
+                            'stderr': '',
+                            'exit_code': 0,
+                        }
+                    ],
+                },
+            }
+
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
+    monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
+    monkeypatch.setattr(pes.time, 'sleep', lambda _seconds: None)
+
+    result = pes._execute_windows_manual(target, 'Get-HotFix')
+
+    assert result == {'stdout': '===HOTFIX===\nKB4577586', 'stderr': '', 'exit_code': 0}
+    assert [call[0] for call in query_calls] == ['queued-task-1', 'queued-task-1']
+
+
+def test_wait_for_ansible_command_rejects_terminal_failure_pure():
+    class FailedExecutor:
+        @staticmethod
+        def task_query(task_id, timeout):  # noqa: ARG004
+            return {'status': 'failed', 'error': 'WinRM connection failed'}
+
+    with pytest.raises(RuntimeError, match='WinRM connection failed'):
+        pes._wait_for_ansible_command(
+            FailedExecutor(),
+            'failed-task-1',
+            target_host='10.0.0.3',
+            timeout=30,
+        )
+
+
+def test_wait_for_ansible_command_times_out_queued_task_pure(monkeypatch):
+    monotonic_values = iter([0, 0, 2])
+
+    class QueuedExecutor:
+        @staticmethod
+        def task_query(task_id, timeout):  # noqa: ARG004
+            return {'status': 'queued'}
+
+    monkeypatch.setattr(pes.time, 'monotonic', lambda: next(monotonic_values))
+    monkeypatch.setattr(pes.time, 'sleep', lambda _seconds: None)
+
+    with pytest.raises(TimeoutError, match='queued-task-forever'):
+        pes._wait_for_ansible_command(
+            QueuedExecutor(),
+            'queued-task-forever',
+            target_host='10.0.0.3',
+            timeout=1,
+        )
+
+
+@pytest.mark.django_db
 def test_async_dispatch_failure_is_explicitly_persisted(monkeypatch):
     from apps.patch_mgmt.services import governance_service
     from apps.patch_mgmt import tasks as patch_tasks

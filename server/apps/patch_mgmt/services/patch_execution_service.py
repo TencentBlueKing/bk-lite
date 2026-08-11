@@ -55,6 +55,8 @@ from apps.rpc.executor import Executor
 
 DEFAULT_TIMEOUT = 3600
 WINDOWS_PATCH_STAGE_DIR = 'C:/Windows/Temp/bk-lite-patches'
+ANSIBLE_TASK_POLL_INTERVAL_SECONDS = 1
+ANSIBLE_TASK_QUERY_TIMEOUT_SECONDS = 30
 # Linux 常见的单参数上限为 128 KiB；保留一半余量给执行器和系统环境差异。
 LINUX_ASSESS_COMMAND_MAX_BYTES = 64 * 1024
 
@@ -76,6 +78,79 @@ def _read_ssh_key(target: PatchTarget) -> Optional[str]:
     except Exception as exc:  # noqa: BLE001
         logger.warning('读取目标 %s SSH 私钥失败: %s', target.id, exc)
         return None
+
+
+def _extract_ansible_command_result(task_result: dict[str, Any], target_host: str) -> dict[str, Any]:
+    """从 Ansible 异步任务结果中提取单主机命令结果。"""
+    result_payload = task_result.get('result')
+    if not isinstance(result_payload, dict):
+        raise RuntimeError('Ansible 任务未返回有效的执行结果')
+    if result_payload.get('output_truncated'):
+        raise RuntimeError('Ansible 任务输出被截断，无法判定补丁结果')
+
+    host_results = result_payload.get('result')
+    if isinstance(host_results, dict):
+        host_results = [host_results]
+    if not isinstance(host_results, list):
+        # 兼容过渡期执行器直接把命令结果放在任务结果层。
+        if any(key in result_payload for key in ('stdout', 'stderr', 'exit_code')):
+            return _normalize_result(result_payload)
+        raise RuntimeError('Ansible 任务未返回主机执行结果')
+
+    candidates = [item for item in host_results if isinstance(item, dict)]
+    matched = [item for item in candidates if str(item.get('host') or '') == str(target_host)]
+    if len(matched) == 1:
+        host_result = matched[0]
+    elif len(candidates) == 1:
+        host_result = candidates[0]
+    else:
+        raise RuntimeError(f'Ansible 任务未返回目标主机 {target_host} 的唯一结果')
+
+    if host_result.get('output_truncated'):
+        raise RuntimeError('Ansible 主机输出被截断，无法判定补丁结果')
+    status = str(host_result.get('status') or '')
+    error = host_result.get('error_message') or host_result.get('error')
+    exit_code = host_result.get('exit_code')
+    if exit_code is None:
+        exit_code = 0 if status == 'success' and not error else 1
+    normalized = {
+        'stdout': str(host_result.get('stdout') or ''),
+        'stderr': str(host_result.get('stderr') or ''),
+        'exit_code': exit_code,
+    }
+    if error:
+        normalized['error'] = str(error)
+    return normalized
+
+
+def _wait_for_ansible_command(
+    executor: AnsibleExecutor,
+    task_id: str,
+    *,
+    target_host: str,
+    timeout: int,
+) -> dict[str, Any]:
+    """等待 Ansible ad-hoc 任务进入终态，避免把 queued 受理回执当成执行成功。"""
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f'Ansible 任务超时: {task_id}')
+        query = executor.task_query(
+            task_id,
+            timeout=min(remaining, ANSIBLE_TASK_QUERY_TIMEOUT_SECONDS),
+        )
+        if not isinstance(query, dict):
+            raise RuntimeError('Ansible 任务查询返回了无效结果')
+        status = query.get('status')
+        if status == 'success':
+            return _extract_ansible_command_result(query, target_host)
+        if status in {'failed', 'callback_failed'}:
+            result_payload = query.get('result')
+            nested_error = result_payload.get('error') if isinstance(result_payload, dict) else None
+            detail = query.get('error') or nested_error or status
+            raise RuntimeError(f'Ansible 任务执行失败: {detail}')
+        time.sleep(min(ANSIBLE_TASK_POLL_INTERVAL_SECONDS, max(remaining, 0)))
 
 
 def _execute_windows_manual(
@@ -112,14 +187,28 @@ def _execute_windows_manual(
             'winrm_cert_validation': target.winrm_cert_validation,
         }
     ]
-    return executor.adhoc(
+    task_id = f'patch-command-{target.id}-{uuid.uuid4().hex[:8]}'
+    accepted = executor.adhoc(
         host_credentials=host_credentials,
         module='win_shell',
         module_args=command,
+        task_id=task_id,
         timeout=timeout,
         execution_id=execution_id,
         stream_log_topic=stream_log_topic,
     ) or {}
+    # 旧版执行器可能同步返回 stdout/exit_code，混合版本升级期继续兼容。
+    if not isinstance(accepted, dict) or not (
+        accepted.get('accepted') is True or accepted.get('status') in {'queued', 'running'}
+    ):
+        return _normalize_result(accepted)
+    accepted_task_id = str(accepted.get('task_id') or task_id)
+    return _wait_for_ansible_command(
+        executor,
+        accepted_task_id,
+        target_host=target.ip,
+        timeout=timeout,
+    )
 
 
 def _execute_winrm_direct(
