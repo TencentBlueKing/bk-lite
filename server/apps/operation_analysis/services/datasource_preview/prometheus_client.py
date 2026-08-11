@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 import requests
 
 from apps.core.logger import operation_analysis_logger as logger
+from apps.core.utils.safe_requests import SafeRequestsError, safe_request
+from apps.core.utils.ssrf_validator import SSRFError
 from apps.operation_analysis.services.datasource_preview.base import ConnectorError
 from apps.operation_analysis.services.datasource_preview.rest_api import read_limited_json
 
@@ -17,6 +19,17 @@ DEFAULT_TIMEOUT_SECONDS = 30
 MAX_TIMEOUT_SECONDS = 60
 CONNECT_TIMEOUT_SECONDS = 10
 MAX_ERROR_TEXT_LENGTH = 500
+
+
+def _is_timeout_error(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        if isinstance(current, requests.Timeout):
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def normalize_prometheus_origin(url: str) -> str:
@@ -71,8 +84,8 @@ def build_auth_headers(connection_config: dict[str, Any]) -> dict[str, str]:
 
 
 class PrometheusHttpClient:
-    def __init__(self, http_client=None):
-        self.http_client = http_client or requests
+    def __init__(self, request_func=None):
+        self.request_func = request_func or safe_request
 
     def query_range(
         self,
@@ -129,7 +142,7 @@ class PrometheusHttpClient:
 
     def _is_successful_get(self, connection_config: dict[str, Any], url: str) -> bool:
         try:
-            response = self.http_client.request(
+            response = self.request_func(
                 method="GET",
                 url=url,
                 headers=self._build_headers(connection_config),
@@ -140,7 +153,19 @@ class PrometheusHttpClient:
                 return 200 <= response.status_code < 300
             finally:
                 response.close()
-        except requests.RequestException as exc:
+        except SSRFError as exc:
+            raise ConnectorError(
+                str(exc),
+                code=exc.code,
+                status_code=400,
+            ) from exc
+        except (SafeRequestsError, requests.RequestException) as exc:
+            if _is_timeout_error(exc):
+                raise ConnectorError(
+                    f"Prometheus 请求超时: {exc}",
+                    code="prometheus_timeout",
+                    status_code=502,
+                ) from exc
             logger.debug("Prometheus health check request failed: %s", exc)
             return False
 
@@ -152,7 +177,7 @@ class PrometheusHttpClient:
         params: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         try:
-            response = self.http_client.request(
+            response = self.request_func(
                 method=method,
                 url=url,
                 headers=self._build_headers(connection_config),
@@ -185,6 +210,12 @@ class PrometheusHttpClient:
                 response.close()
         except ConnectorError:
             raise
+        except SSRFError as exc:
+            raise ConnectorError(
+                str(exc),
+                code=exc.code,
+                status_code=400,
+            ) from exc
         except requests.Timeout as exc:
             raise ConnectorError(
                 f"Prometheus 请求超时: {exc}",
@@ -192,6 +223,18 @@ class PrometheusHttpClient:
                 status_code=502,
             ) from exc
         except requests.RequestException as exc:
+            raise ConnectorError(
+                f"Prometheus 请求失败: {exc}",
+                code="prometheus_request_failed",
+                status_code=502,
+            ) from exc
+        except SafeRequestsError as exc:
+            if _is_timeout_error(exc):
+                raise ConnectorError(
+                    f"Prometheus 请求超时: {exc}",
+                    code="prometheus_timeout",
+                    status_code=502,
+                ) from exc
             raise ConnectorError(
                 f"Prometheus 请求失败: {exc}",
                 code="prometheus_request_failed",

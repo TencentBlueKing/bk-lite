@@ -1,26 +1,40 @@
 .control:global(.ant-segmented) {
-  color: var(--screen-component-switch-color, var(--color-text-2));
-  background: var(--screen-component-switch-bg, var(--color-fill-2));
-  border: 1px solid var(--screen-component-switch-border, transparent);
-  box-shadow: var(--screen-component-switch-shadow, none);
+  color: var(--screen-table-text, var(--screen-component-switch-color, var(--color-text-2)));
+  background: var(--screen-table-control-bg, var(--screen-component-switch-bg, var(--color-fill-2)));
+  border: 1px solid var(--screen-table-border, var(--screen-component-switch-border, transparent));
+  box-shadow: none;
 }
 
 .control:global(.ant-segmented) :global(.ant-segmented-item) {
   color: inherit;
 }
 
-.control:global(.ant-segmented) :global(.ant-segmented-item:hover) {
-  color: var(--screen-component-switch-hover-color, var(--color-text-1));
-  background: var(--screen-component-switch-hover-bg, transparent);
+.control:global(.ant-segmented) :global(.ant-segmented-item-label) {
+  color: inherit;
+}
+
+.control:global(.ant-segmented) :global(.ant-segmented-item:not(.ant-segmented-item-selected)) :global(.ant-segmented-item-label) {
+  color: var(--screen-table-text, var(--screen-component-switch-color, var(--color-text-2))) !important;
+}
+
+.control:global(.ant-segmented) :global(.ant-segmented-item:hover:not(.ant-segmented-item-selected)) {
+  background: var(--screen-table-row-hover-bg, var(--screen-component-switch-hover-bg, transparent));
+}
+
+.control:global(.ant-segmented) :global(.ant-segmented-item:hover:not(.ant-segmented-item-selected)) :global(.ant-segmented-item-label) {
+  color: var(--screen-table-heading, var(--screen-component-switch-hover-color, var(--color-text-1))) !important;
 }
 
 .control:global(.ant-segmented) :global(.ant-segmented-item-selected) {
-  color: var(--screen-component-switch-selected-color, var(--color-primary));
-  background: var(--screen-component-switch-selected-bg, var(--color-bg-1));
-  box-shadow: var(--screen-component-switch-selected-shadow, none);
+  background: var(--screen-table-control-active-bg, var(--screen-component-switch-selected-bg, var(--color-bg-1)));
+  box-shadow: none;
+}
+
+.control:global(.ant-segmented) :global(.ant-segmented-item-selected) :global(.ant-segmented-item-label) {
+  color: var(--screen-table-heading, var(--screen-component-switch-selected-color, var(--color-primary))) !important;
 }
 
 .control:global(.ant-segmented) :global(.ant-segmented-thumb) {
-  background: var(--screen-component-switch-selected-bg, var(--color-bg-1));
-  box-shadow: var(--screen-component-switch-selected-shadow, none);
+  background: var(--screen-table-control-active-bg, var(--screen-component-switch-selected-bg, var(--color-bg-1)));
+  box-shadow: none;
 }

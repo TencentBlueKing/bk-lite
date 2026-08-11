@@ -433,9 +433,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 if instance.source_type == DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS:
                     executor = get_preview_executor(instance.source_type)
                     result = executor.execute(instance.connection_config or {}, params)
-                    if result.warnings:
-                        return Response({"data": result.data, "warnings": result.warnings})
-                    return Response(result.data)
+                    return Response({"data": result.data, "warnings": result.warnings or []})
                 runtime_limit = _normalize_preview_limit(params.get("page_size") or request.data.get("limit"))
                 payload = _execute_inline_preview(
                     instance.source_type,
@@ -458,7 +456,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 )
                 return _build_error_response("数据查询失败", status.HTTP_502_BAD_GATEWAY)
 
-            return Response(payload.get("items", []))
+            return Response({"data": payload.get("items", []), "warnings": []})
 
         namespace_list = instance.namespaces.all()
         if "/" not in instance.rest_api:
@@ -501,7 +499,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 result.get("data"),
             )
 
-        return Response(result.get("data"))
+        return Response({"data": result.get("data"), "warnings": []})
 
     @HasPermission("data_source-Add,data_source-Edit")
     @action(detail=False, methods=["post"], url_path="preview")

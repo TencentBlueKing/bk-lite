@@ -25,6 +25,7 @@ import type {
 import type { DisplayColumnRow } from '../utils/columnProbing';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { ActionInteractionModal } from './actionInteractionModal';
+import { ColumnCellStyleModal } from './columnCellStyleModal';
 
 type FilterFieldRow = TableFilterFieldConfig & { id: string };
 
@@ -41,6 +42,7 @@ interface TableSettingsSectionProps {
   filterFields: FilterFieldRow[];
   filterFieldOptions: FilterFieldOption[];
   showFilterFields: boolean;
+  showColumnCellStyle?: boolean;
   invalidConfiguredFieldKeys: string[];
   isProbingColumns: boolean;
   paramsChangedAfterProbe: boolean;
@@ -58,7 +60,14 @@ interface TableSettingsSectionProps {
   onDisplayColumnChange: (
     id: string,
     fieldName: keyof TableColumnConfigItem,
-    value: string | boolean,
+    value: TableColumnConfigItem[keyof TableColumnConfigItem],
+  ) => void;
+  onDisplayColumnStyleChange: (
+    id: string,
+    style: Pick<
+      TableColumnConfigItem,
+      'cellType' | 'valueMappings' | 'cellThresholdColors'
+    >,
   ) => void;
   onDisplayColumnKeyBlur: (id: string) => void;
   onDisplayColumnDragEnd: (targetTableData: DisplayColumnRow[]) => void;
@@ -76,6 +85,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
   filterFields,
   filterFieldOptions,
   showFilterFields,
+  showColumnCellStyle = false,
   invalidConfiguredFieldKeys,
   isProbingColumns,
   paramsChangedAfterProbe,
@@ -86,6 +96,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
   onAddDisplayColumn,
   onDeleteDisplayColumn,
   onDisplayColumnChange,
+  onDisplayColumnStyleChange,
   onDisplayColumnKeyBlur,
   onDisplayColumnDragEnd,
   onReProbeColumns,
@@ -95,6 +106,18 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
 }) => {
   const [interactionColumn, setInteractionColumn] =
     useState<DisplayColumnRow | null>(null);
+  const [styleColumnId, setStyleColumnId] = useState<string | null>(null);
+
+  const styleColumn =
+    displayColumns.find(
+      (column) =>
+        column.id === styleColumnId && column.columnType !== 'actions',
+    ) || null;
+
+  const hasColumnCellStyle = (column: DisplayColumnRow) =>
+    column.cellType === 'colorBackground' ||
+    (column.valueMappings?.length ?? 0) > 0 ||
+    (column.cellThresholdColors?.length ?? 0) > 0;
 
   const localizedFilterInputTypeOptions = [
     { label: t('dashboard.keyword'), value: 'keyword' },
@@ -258,7 +281,12 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
             type="text"
             size="small"
             icon={<MinusCircleOutlined />}
-            onClick={() => onDeleteDisplayColumn(record.id)}
+            onClick={() => {
+              if (styleColumnId === record.id) {
+                setStyleColumnId(null);
+              }
+              onDeleteDisplayColumn(record.id);
+            }}
             style={{ border: 'none', padding: '4px' }}
           />
           {record.columnType === 'actions' && (
@@ -266,9 +294,28 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
               <Button
                 type="text"
                 size="small"
-                icon={<SettingOutlined />}
+                icon={<SettingOutlined aria-hidden />}
+                aria-label={t('dashboard.interactionConfig')}
                 onClick={() => setInteractionColumn(record)}
                 style={{ border: 'none', padding: '4px' }}
+              />
+            </Tooltip>
+          )}
+          {showColumnCellStyle && record.columnType !== 'actions' && (
+            <Tooltip title={t('dashboard.columnCellStyleConfig')}>
+              <Button
+                type="text"
+                size="small"
+                icon={<SettingOutlined aria-hidden />}
+                aria-label={t('dashboard.columnCellStyleConfig')}
+                onClick={() => setStyleColumnId(record.id)}
+                style={{
+                  border: 'none',
+                  padding: '4px',
+                  color: hasColumnCellStyle(record)
+                    ? 'var(--color-primary)'
+                    : 'var(--color-text-2)',
+                }}
               />
             </Tooltip>
           )}
@@ -444,6 +491,17 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
         onConfirm={(nextActions) => {
           onActionsChange(nextActions);
           setInteractionColumn(null);
+        }}
+      />
+      <ColumnCellStyleModal
+        open={!!styleColumn}
+        column={styleColumn}
+        t={t}
+        onCancel={() => setStyleColumnId(null)}
+        onConfirm={(nextStyle) => {
+          if (!styleColumn) return;
+          onDisplayColumnStyleChange(styleColumn.id, nextStyle);
+          setStyleColumnId(null);
         }}
       />
     </div>

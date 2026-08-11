@@ -23,18 +23,49 @@ export const getIfmibDeploymentPatch = (
   return { enable_ifmib: enableIfmibFromUrl };
 };
 
-const hasInterfaceTable = (tables: unknown): boolean => (
+const PUBLIC_IFMIB_TABLE_OIDS = new Set([
+  '1.3.6.1.2.1.2.2',
+  '1.3.6.1.2.1.31.1.1',
+  'IF-MIB::ifTable',
+  'IF-MIB::ifXTable'
+]);
+
+const PUBLIC_IFDESCR_OIDS = new Set([
+  '1.3.6.1.2.1.2.2.1.2',
+  '1.3.6.1.2.1.31.1.1.1.1',
+  'IF-MIB::ifDescr'
+]);
+
+const isPublicIfmibTable = (table: Record<string, unknown>): boolean => {
+  const tableOid = table.oid;
+  if (typeof tableOid === 'string' && PUBLIC_IFMIB_TABLE_OIDS.has(tableOid)) {
+    return true;
+  }
+  if ((tableOid != null && tableOid !== '') || table.name !== 'interface') {
+    return false;
+  }
+  const fields = table.field;
+  return Array.isArray(fields) && fields.some((field) => (
+    typeof field === 'object'
+    && field !== null
+    && (field as Record<string, unknown>).name === 'ifDescr'
+    && typeof (field as Record<string, unknown>).oid === 'string'
+    && PUBLIC_IFDESCR_OIDS.has((field as Record<string, unknown>).oid as string)
+  ));
+};
+
+const hasPublicIfmibTable = (tables: unknown): boolean => (
   Array.isArray(tables)
   && tables.some((table) => (
     typeof table === 'object'
     && table !== null
-    && (table as Record<string, unknown>).name === 'interface'
+    && isPublicIfmibTable(table as Record<string, unknown>)
   ))
 );
 
 const snmpInputHasInterfaceTable = (input: unknown): boolean => {
   if (typeof input !== 'object' || input === null) return false;
-  return hasInterfaceTable((input as Record<string, unknown>).table);
+  return hasPublicIfmibTable((input as Record<string, unknown>).table);
 };
 
 /**

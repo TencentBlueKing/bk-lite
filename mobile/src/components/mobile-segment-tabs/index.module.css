@@ -34,11 +34,11 @@
 .tabs :global(.adm-tabs-tab) {
   position: relative;
   min-width: 0;
-  min-height: 34px;
-  padding: 0 14px;
-  font-size: var(--font-size-body);
+  min-height: 28px;
+  padding: 0 12px;
+  font-size: var(--font-size-secondary);
   font-weight: 550;
-  line-height: 34px;
+  line-height: 28px;
   color: var(--color-text-3);
   cursor: pointer;
   background: transparent;
@@ -71,7 +71,6 @@
 
   .tabs :global(.adm-tabs-tab) {
     padding: 0 10px;
-    font-size: var(--font-size-secondary);
   }
 }
 

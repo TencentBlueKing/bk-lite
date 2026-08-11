@@ -13,7 +13,10 @@ export const getChartTypeList = (): ChartTypeItem[] => {
     { label: 'dataSource.gauge', value: 'gauge' },
     { label: 'dataSource.table', value: 'table' },
     { label: 'dataSource.eventTable', value: 'eventTable' },
+    { label: 'dataSource.eventTimeline', value: 'eventTimeline' },
     { label: 'dataSource.topN', value: 'topN' },
+    { label: 'dataSource.radar', value: 'radar' },
+    { label: 'dataSource.topologyMap', value: 'topologyMap' },
     { label: 'dataSource.room3D', value: 'room3D' },
   ];
 };

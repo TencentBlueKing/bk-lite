@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import WikiGenerationOverview
 from apps.opspilot.services.wiki.wiki_budget_service import estimate_tokens
 
@@ -91,17 +92,25 @@ def route_overview_scopes(
 
     prompt = (
         "根据用户问题，从目录概览中选择最可能包含答案的目录，最多 3 个。"
-        '只输出 JSON：{"scopes":[{"kb_id":1,"directory_id":2}]}。'
-        "没有可靠目录时返回空 scopes，不得编造 ID。\n"
+        '只输出一行 JSON：{"scopes":[{"kb_id":1,"directory_id":2}]}。'
+        '不要解释、不要 Markdown。没有可靠目录时返回 {"scopes":[]}，不得编造 ID。\n'
         f"用户问题：{query}\n目录概览：" + json.dumps(catalog, ensure_ascii=False)
     )
-    raw = invoke_llm(
-        llm_model_id,
-        prompt,
-        budget=call_budget,
-        stage="query_overview_route",
-        output_reserve=500,
-    )
+    # 查询路由是可选增强：LLM 截断/空输出不得打断主对话，降级为未选目录继续检索。
+    try:
+        raw = invoke_llm(
+            llm_model_id,
+            prompt,
+            budget=call_budget,
+            stage="query_overview_route",
+            output_reserve=800,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Wiki overview route LLM 失败，降级为未选目录: %s",
+            exc,
+        )
+        return OverviewRouteResult((), used_tokens, True, "llm_failed")
     selected = _parse_scopes(raw, allowed)
     return OverviewRouteResult(
         selected,
