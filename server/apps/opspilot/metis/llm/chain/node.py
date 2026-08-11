@@ -2787,13 +2787,27 @@ class ToolsNodes(BasicNode):
         sandbox_dir: Optional[str] = None,
         log_reason: str = "",
     ) -> dict:
+        from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
+            classify_llm_error,
+            format_llm_empty_response_log,
+            format_llm_failure_log,
+            summarize_llm_endpoint,
+        )
+
+        graph_request = (config or {}).get("configurable", {}).get("graph_request")
+        endpoint = summarize_llm_endpoint(graph_request)
         logger.info(
-            "DeepAgent 轻量直答: %s system_prompt_len=%s",
+            "DeepAgent 轻量直答: %s system_prompt_len=%s model=%s api_base=%s",
             log_reason or "direct",
             len(light_system),
+            endpoint.get("model") or "-",
+            endpoint.get("api_base") or "-",
         )
         try:
-            light_messages = [SystemMessage(content=light_system), *original_messages]
+            # Qwen 等网关要求：仅允许一条 system，且必须在 messages[0]。
+            # 图前置节点已写入 SystemMessage，再前置 light_system 会变成
+            # [system, system, user...]，触发 400 "System message must be at the beginning."
+            light_messages = normalize_messages_for_llm([SystemMessage(content=light_system), *list(original_messages or [])])
             response: AIMessage | None = None
             astream = getattr(llm, "astream", None)
             if callable(astream):
@@ -2823,10 +2837,28 @@ class ToolsNodes(BasicNode):
                 response = await llm.ainvoke(light_messages, config=config)
                 if not isinstance(response, AIMessage):
                     response = AIMessage(content=str(getattr(response, "content", "") or ""))
+            if not str(getattr(response, "content", "") or "").strip():
+                logger.warning(
+                    format_llm_empty_response_log(
+                        stage="lightweight_direct_reply",
+                        endpoint=endpoint,
+                        extra=f"reason={log_reason or 'direct'}",
+                    )
+                )
             if isinstance(token_usage_accumulator, TokenUsageAccumulator):
                 token_usage_accumulator.middleware_tracking = True
                 token_usage_accumulator.add(None, response, visible_tools=[])
             return {"messages": [response]}
+        except Exception as exc:
+            classification = classify_llm_error(exc)
+            logger.exception(
+                format_llm_failure_log(
+                    stage="lightweight_direct_reply",
+                    classification=classification,
+                    endpoint=endpoint,
+                )
+            )
+            raise
         finally:
             if sandbox_dir:
                 self._cleanup_sandbox(sandbox_dir)
@@ -2877,7 +2909,7 @@ class ToolsNodes(BasicNode):
             llm = self.get_llm_client(graph_request)
             if getattr(graph_request, "max_model_calls", 0) == 1:
                 response = await llm.ainvoke(
-                    [SystemMessage(content=final_system_prompt), *list(state.get("messages") or [])],
+                    normalize_messages_for_llm([SystemMessage(content=final_system_prompt), *list(state.get("messages") or [])]),
                     config=config,
                 )
                 return {"messages": [response]}

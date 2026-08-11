@@ -30,7 +30,7 @@ from apps.opspilot.services.chat_request import ChatRequest
 from apps.opspilot.services.history_service import history_service
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, load_wiki_budget_config
-from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace
+from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace, should_skip_wiki_retrieval
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
@@ -505,10 +505,21 @@ class ChatService:
         # 处理 skill_params: 解密并替换 prompt 中的 {{key}} 占位符
         resolved_prompt = resolve_skill_params(kwargs["skill_prompt"], kwargs.get("skill_params", []))
 
-        # Wiki 知识库复用:若技能选择了 Wiki 知识库,则检索并把上下文注入系统提示词
+        # Wiki 知识库复用:若技能选择了 Wiki 知识库,则检索并把上下文注入系统提示词。
+        # 寒暄/闲聊跳过检索与 Wiki 答疑预算收口，按普通对话回复。
         wiki_budget_trace = {}
         wiki_kb_ids = kwargs.get("wiki_kb_ids")
-        if wiki_kb_ids:
+        wiki_active = bool(wiki_kb_ids) and not should_skip_wiki_retrieval(user_message)
+        if wiki_kb_ids and not wiki_active:
+            wiki_budget_trace = {
+                "overview_status": "skipped_chitchat",
+                "overview_scopes": [],
+                "overview_tokens": 0,
+                "llm_budget": {"used_calls": 0},
+            }
+            extra_config["wiki_budget"] = wiki_budget_trace
+            logger.info("Wiki 问答跳过(寒暄/闲聊): query=%r", str(user_message)[:32])
+        if wiki_active:
             resolved_prompt, wiki_citations, wiki_budget_trace = augment_prompt_with_trace(
                 resolved_prompt,
                 wiki_kb_ids,
@@ -539,7 +550,7 @@ class ChatService:
             "locale": kwargs.get("locale", "en"),
         }
 
-        if wiki_kb_ids:
+        if wiki_active:
             budget_config = load_wiki_budget_config()
             route_calls = int((wiki_budget_trace.get("llm_budget") or {}).get("used_calls") or 0)
             remaining_calls = budget_config.qa_max_llm_calls - route_calls
