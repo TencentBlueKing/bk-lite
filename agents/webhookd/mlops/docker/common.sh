@@ -61,7 +61,8 @@ json_error() {
 }
 
 # 通过可选 runner 执行 GPU 探针；serve 会传入共享启动预算 runner，train
-# 保持原调用方式。先检查本地镜像并使用 --pull never，禁止探针隐式拉镜像。
+# 保持原调用方式。Serving 缺镜像时显式、受预算约束地拉取，再禁止 docker
+# run 隐式拉取；训练链不传 runner，保持原有按需拉取行为。
 run_gpu_probe_command() {
     local runner="$1"
     shift
@@ -78,11 +79,18 @@ check_gpu_available() {
     local probe_id="${2:-$$}"
     GPU_PROBE_CONTAINER_NAME="bk-lite-gpu-probe-${probe_id}"
 
-    run_gpu_probe_command "$runner" docker image inspect nvidia/cuda:11.0-base >/dev/null 2>&1 || return 1
-    run_gpu_probe_command "$runner" docker run --rm --pull never \
-        --name "$GPU_PROBE_CONTAINER_NAME" \
-        --label "bk-lite.startup-id=$probe_id" \
-        --gpus all nvidia/cuda:11.0-base nvidia-smi >/dev/null 2>&1
+    if [ -n "$runner" ]; then
+        if ! run_gpu_probe_command "$runner" docker image inspect nvidia/cuda:11.0-base >/dev/null 2>&1; then
+            run_gpu_probe_command "$runner" docker pull nvidia/cuda:11.0-base >/dev/null 2>&1 || return 1
+        fi
+        run_gpu_probe_command "$runner" docker run --rm --pull never \
+            --name "$GPU_PROBE_CONTAINER_NAME" \
+            --label "bk-lite.startup-id=$probe_id" \
+            --gpus all nvidia/cuda:11.0-base nvidia-smi >/dev/null 2>&1
+        return $?
+    fi
+
+    docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi >/dev/null 2>&1
 }
 
 # Device 配置函数

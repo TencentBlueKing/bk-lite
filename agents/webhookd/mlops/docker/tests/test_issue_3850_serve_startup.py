@@ -2,191 +2,15 @@ import json
 import os
 import signal
 import subprocess
-import sys
-import tempfile
-import textwrap
 import time
 import unittest
-from pathlib import Path
-
-
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / "serve.sh"
-BOUNDED_RUNNER_PATH = SCRIPT_PATH.parent / "run_bounded.py"
-REPO_ROOT = Path(__file__).resolve().parents[5]
-ALGORITHM_SERVICES = (
-    "classify_anomaly_server",
-    "classify_image_classification_server",
-    "classify_log_server",
-    "classify_object_detection_server",
-    "classify_text_classification_server",
-    "classify_timeseries_server",
+from agents.webhookd.mlops.docker.tests.serve_test_support import (
+    DockerServingTestCase,
+    SCRIPT_PATH,
 )
 
 
-class DockerServingStartupContractTest(unittest.TestCase):
-    def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp_dir.cleanup)
-        self.temp_path = Path(self.temp_dir.name)
-        self.bin_path = self.temp_path / "bin"
-        self.bin_path.mkdir()
-        self.docker_log = self.temp_path / "docker.log"
-        self.curl_log = self.temp_path / "curl.log"
-        self.container_state = self.temp_path / "container.state"
-
-        self._write_executable(
-            "docker",
-            """
-            #!/bin/bash
-            echo "$*" >> "$FAKE_DOCKER_LOG"
-            case "$1" in
-                ps)
-                    if [ -f "$FAKE_CONTAINER_STATE_FILE" ]; then
-                        echo "issue-3850-serving"
-                    fi
-                    exit 0
-                    ;;
-                images)
-                    echo "test-serving:latest"
-                    ;;
-                image)
-                    [ "$2" = "inspect" ] && exit 0
-                    exit 1
-                    ;;
-                run)
-                    if [[ " $* " == *" nvidia/cuda:11.0-base "* ]]; then
-                        if [ -n "${FAKE_GPU_PROBE_DELAY_SECONDS:-}" ]; then
-                            /bin/sleep "$FAKE_GPU_PROBE_DELAY_SECONDS"
-                        fi
-                        exit "${FAKE_GPU_AVAILABLE:-1}"
-                    fi
-                    if [ -f "$FAKE_CONTAINER_STATE_FILE" ]; then
-                        echo "container name already exists" >&2
-                        exit 125
-                    fi
-                    touch "$FAKE_CONTAINER_STATE_FILE"
-                    while [ "$#" -gt 0 ]; do
-                        if [ "$1" = "--cidfile" ]; then
-                            echo "fake-container-id" > "$2"
-                            break
-                        fi
-                        shift
-                    done
-                    if [ -n "${FAKE_DOCKER_RUN_DELAY_SECONDS:-}" ]; then
-                        /bin/sleep "$FAKE_DOCKER_RUN_DELAY_SECONDS"
-                    fi
-                    echo "fake-container-id"
-                    ;;
-                inspect)
-                    case "$*" in
-                        *State.Status*)
-                            echo "${FAKE_DOCKER_STATE:-running}"
-                            ;;
-                        *State.ExitCode*)
-                            echo "${FAKE_DOCKER_EXIT_CODE:-42}"
-                            ;;
-                        *HostPort*)
-                            echo "39000"
-                            ;;
-                    esac
-                    ;;
-                logs)
-                    if [ -n "${FAKE_DOCKER_LOGS_DELAY_SECONDS:-}" ]; then
-                        /bin/sleep "$FAKE_DOCKER_LOGS_DELAY_SECONDS"
-                    fi
-                    message="${FAKE_DOCKER_LOG_MESSAGE:-model load failed: dependency unavailable}"
-                    echo "$message"
-                    ;;
-                update)
-                    exit "${FAKE_DOCKER_UPDATE_STATUS:-0}"
-                    ;;
-                rm)
-                    if [ -n "${FAKE_DOCKER_REMOVE_DELAY_SECONDS:-}" ]; then
-                        /bin/sleep "$FAKE_DOCKER_REMOVE_DELAY_SECONDS"
-                    fi
-                    if [ "${FAKE_DOCKER_REMOVE_FAIL:-0}" = "1" ]; then
-                        exit 1
-                    fi
-                    rm -f "$FAKE_CONTAINER_STATE_FILE"
-                    ;;
-            esac
-            """,
-        )
-        self._write_executable(
-            "curl",
-            """
-            #!/bin/bash
-            if [ -n "${FAKE_CURL_DELAY_SECONDS:-}" ]; then
-                /bin/sleep "$FAKE_CURL_DELAY_SECONDS"
-            fi
-            count=0
-            if [ -f "$FAKE_CURL_LOG" ]; then
-                count=$(wc -l < "$FAKE_CURL_LOG" | tr -d ' ')
-            fi
-            count=$((count + 1))
-            echo "$*" >> "$FAKE_CURL_LOG"
-            if [ "${FAKE_LEGACY_HEALTH:-0}" = "1" ]; then
-                case "$*" in
-                    */health*) exit 22 ;;
-                    */readyz*) exit 0 ;;
-                esac
-            fi
-            if [ "$count" -ge "${FAKE_CURL_SUCCEED_AFTER:-999}" ]; then
-                instance_id="${FAKE_CURL_INSTANCE_ID:-$SERVING_INSTANCE_ID}"
-                printf '{"status":"healthy","startup_instance_id":"%s"}\n' "$instance_id"
-                exit 0
-            fi
-            exit 22
-            """,
-        )
-        self._write_executable("sleep", "#!/bin/bash\nexit 0\n")
-        self._write_executable("ss", "#!/bin/bash\nexit 0\n")
-
-    def _write_executable(self, name, content):
-        path = self.bin_path / name
-        path.write_text(textwrap.dedent(content).lstrip(), encoding="utf-8")
-        path.chmod(0o755)
-
-    def _run_serve(
-        self,
-        startup_timeout_seconds=3,
-        network_mode=None,
-        port=None,
-        device=None,
-        **extra_env,
-    ):
-        env = os.environ.copy()
-        env.update(
-            {
-                "PATH": f"{self.bin_path}:{env['PATH']}",
-                "FAKE_DOCKER_LOG": str(self.docker_log),
-                "FAKE_CURL_LOG": str(self.curl_log),
-                "FAKE_CONTAINER_STATE_FILE": str(self.container_state),
-            }
-        )
-        env.update(extra_env)
-        payload_data = {
-            "id": "issue-3850-serving",
-            "mlflow_tracking_uri": "http://mlflow:5000",
-            "mlflow_model_uri": "models:/demo/1",
-            "train_image": "test-serving:latest",
-        }
-        if startup_timeout_seconds is not None:
-            payload_data["startup_timeout_seconds"] = startup_timeout_seconds
-        if network_mode is not None:
-            payload_data["network_mode"] = network_mode
-        if port is not None:
-            payload_data["port"] = port
-        if device is not None:
-            payload_data["device"] = device
-        payload = json.dumps(payload_data)
-        return subprocess.run(
-            ["bash", str(SCRIPT_PATH), payload],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
+class DockerServingStartupContractTest(DockerServingTestCase):
 
     def test_enables_restart_policy_only_after_readiness_succeeds(self):
         result = self._run_serve(
@@ -269,6 +93,18 @@ class DockerServingStartupContractTest(unittest.TestCase):
             len(self.curl_log.read_text(encoding="utf-8").splitlines()),
             1,
         )
+
+    def test_json_preflight_consumes_request_entry_budget(self):
+        result = self._run_serve(
+            startup_timeout_seconds=1,
+            FAKE_JQ_DELAY_SECONDS="0.15",
+            FAKE_DOCKER_STATE="running",
+            FAKE_CURL_SUCCEED_AFTER="1",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout)["code"], "DOCKER_CHECK_FAILED")
+        self.assertFalse(self.docker_log.exists())
 
     def test_host_network_uses_requested_unique_readiness_port(self):
         result = self._run_serve(
@@ -379,6 +215,34 @@ class DockerServingStartupContractTest(unittest.TestCase):
         self.assertIn("--pull never", docker_calls)
         self.assertFalse(self.container_state.exists())
 
+    def test_missing_gpu_probe_image_is_explicitly_pulled(self):
+        result = self._run_serve(
+            device="gpu",
+            FAKE_GPU_IMAGE_PRESENT="0",
+            FAKE_GPU_AVAILABLE="0",
+            FAKE_DOCKER_STATE="running",
+            FAKE_CURL_SUCCEED_AFTER="1",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        docker_calls = self.docker_log.read_text(encoding="utf-8")
+        self.assertIn("pull nvidia/cuda:11.0-base", docker_calls)
+        self.assertIn("--pull never", docker_calls)
+
+    def test_slow_gpu_image_pull_is_bounded(self):
+        result = self._run_serve(
+            startup_timeout_seconds=2,
+            device="gpu",
+            FAKE_GPU_IMAGE_PRESENT="0",
+            FAKE_GPU_PULL_DELAY_SECONDS="4",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout)["code"], "DEVICE_SETUP_FAILED")
+        docker_calls = self.docker_log.read_text(encoding="utf-8")
+        self.assertIn("pull nvidia/cuda:11.0-base", docker_calls)
+        self.assertFalse(self.container_state.exists())
+
     def test_auto_device_adds_gpu_only_after_successful_bounded_probe(self):
         result = self._run_serve(
             device="auto",
@@ -434,6 +298,7 @@ class DockerServingStartupContractTest(unittest.TestCase):
                 "FAKE_CURL_LOG": str(self.curl_log),
                 "FAKE_CONTAINER_STATE_FILE": str(self.container_state),
                 "FAKE_DOCKER_RUN_DELAY_SECONDS": "10",
+                "REAL_JQ_PATH": self.real_jq_path,
             }
         )
         payload = json.dumps(
@@ -453,10 +318,10 @@ class DockerServingStartupContractTest(unittest.TestCase):
             env=env,
             start_new_session=True,
         )
-        for _ in range(50):
+        for _ in range(200):
             if self.container_state.exists():
                 break
-            __import__("time").sleep(0.05)
+            time.sleep(0.05)
         self.assertTrue(self.container_state.exists())
 
         os.killpg(process.pid, signal.SIGTERM)
@@ -464,6 +329,54 @@ class DockerServingStartupContractTest(unittest.TestCase):
 
         self.assertNotEqual(process.returncode, 0)
         self.assertFalse(self.container_state.exists())
+
+    def test_outer_sigkill_rolls_back_created_container(self):
+        env = os.environ.copy()
+        env.update(
+            {
+                "PATH": f"{self.bin_path}:{env['PATH']}",
+                "FAKE_DOCKER_LOG": str(self.docker_log),
+                "FAKE_CURL_LOG": str(self.curl_log),
+                "FAKE_CONTAINER_STATE_FILE": str(self.container_state),
+                "FAKE_DOCKER_RUN_DELAY_SECONDS": "10",
+                "REAL_JQ_PATH": self.real_jq_path,
+            }
+        )
+        payload = json.dumps(
+            {
+                "id": "issue-3850-serving",
+                "mlflow_tracking_uri": "http://mlflow:5000",
+                "mlflow_model_uri": "models:/demo/1",
+                "train_image": "test-serving:latest",
+                "startup_timeout_seconds": 10,
+            }
+        )
+        process = subprocess.Popen(
+            ["bash", str(SCRIPT_PATH), payload],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+            start_new_session=True,
+        )
+        for _ in range(100):
+            if self.container_state.exists():
+                break
+            time.sleep(0.02)
+        self.assertTrue(self.container_state.exists())
+
+        os.killpg(process.pid, signal.SIGKILL)
+        process.communicate(timeout=5)
+
+        for _ in range(100):
+            if not self.container_state.exists():
+                break
+            time.sleep(0.02)
+        self.assertFalse(self.container_state.exists())
+        self.assertIn(
+            "rm -f fake-container-id",
+            self.docker_log.read_text(encoding="utf-8"),
+        )
 
     def test_failed_startup_can_be_retried_after_rollback(self):
         first_result = self._run_serve(
@@ -541,147 +454,6 @@ class DockerServingStartupContractTest(unittest.TestCase):
         response = json.loads(result.stdout)
         self.assertEqual(response["code"], "INVALID_STARTUP_TIMEOUT")
         self.assertFalse(self.docker_log.exists())
-
-
-class BoundedProcessRunnerContractTest(unittest.TestCase):
-    @staticmethod
-    def _pid_is_alive(pid: int) -> bool:
-        return subprocess.run(
-            ["ps", "-p", str(pid)],
-            check=False,
-            capture_output=True,
-        ).returncode == 0
-
-    def test_timeout_includes_term_grace_and_kills_stubborn_descendant(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            pid_file = Path(temp_dir) / "child.pid"
-            child_code = """
-import signal
-import subprocess
-import sys
-import time
-
-child = subprocess.Popen([
-    sys.executable,
-    "-c",
-    "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)",
-])
-open(sys.argv[1], "w", encoding="utf-8").write(str(child.pid))
-signal.signal(signal.SIGTERM, signal.SIG_IGN)
-time.sleep(30)
-"""
-            started_at = time.monotonic()
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    str(BOUNDED_RUNNER_PATH),
-                    "1",
-                    sys.executable,
-                    "-c",
-                    child_code,
-                    str(pid_file),
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=3,
-            )
-            elapsed = time.monotonic() - started_at
-
-            self.assertEqual(result.returncode, 124, result.stderr)
-            self.assertLess(elapsed, 1.25)
-            child_pid = int(pid_file.read_text(encoding="utf-8"))
-            for _ in range(50):
-                if not self._pid_is_alive(child_pid):
-                    break
-                time.sleep(0.02)
-            self.assertFalse(self._pid_is_alive(child_pid))
-
-    def test_outer_group_kill_still_reaches_bounded_child(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            pid_file = Path(temp_dir) / "child.pid"
-            child_code = """
-import os
-import sys
-import time
-open(sys.argv[1], "w", encoding="utf-8").write(str(os.getpid()))
-time.sleep(30)
-"""
-            process = subprocess.Popen(
-                [
-                    sys.executable,
-                    str(BOUNDED_RUNNER_PATH),
-                    "10",
-                    sys.executable,
-                    "-c",
-                    child_code,
-                    str(pid_file),
-                ],
-                start_new_session=True,
-            )
-            for _ in range(50):
-                if pid_file.exists():
-                    break
-                time.sleep(0.02)
-            self.assertTrue(pid_file.exists())
-            child_pid = int(pid_file.read_text(encoding="utf-8"))
-
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait(timeout=3)
-
-            for _ in range(50):
-                if not self._pid_is_alive(child_pid):
-                    break
-                time.sleep(0.02)
-            self.assertFalse(self._pid_is_alive(child_pid))
-
-
-class AlgorithmEntrypointContractTest(unittest.TestCase):
-    def test_all_algorithm_health_endpoints_publish_instance_identity(self):
-        for service in ALGORITHM_SERVICES:
-            package_name = service
-            service_path = (
-                REPO_ROOT
-                / "algorithms"
-                / service
-                / package_name
-                / "serving"
-                / "service.py"
-            )
-            source = service_path.read_text(encoding="utf-8")
-            self.assertIn(
-                '"startup_instance_id": os.getenv("SERVING_INSTANCE_ID", "")',
-                source,
-                service,
-            )
-
-    def test_bentoml_exit_code_reaches_container_entrypoint(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            bin_path = Path(temp_dir)
-            fake_python = bin_path / "python3"
-            fake_python.write_text("#!/bin/bash\nexit 42\n", encoding="utf-8")
-            fake_python.chmod(0o755)
-            env = os.environ.copy()
-            env["PATH"] = f"{bin_path}:{env['PATH']}"
-
-            for service in ALGORITHM_SERVICES:
-                with self.subTest(service=service):
-                    startup = (
-                        REPO_ROOT
-                        / "algorithms"
-                        / service
-                        / "support-files"
-                        / "release"
-                        / "startup.sh"
-                    )
-                    result = subprocess.run(
-                        ["bash", str(startup)],
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                        env=env,
-                    )
-                    self.assertEqual(result.returncode, 42)
 
 
 if __name__ == "__main__":

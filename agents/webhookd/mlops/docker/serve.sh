@@ -5,6 +5,10 @@
 
 set -e
 
+# 从 shell 入口记录请求起点。后续即使 JSON 解析、随机标识生成或其他
+# preflight 变慢，也不能重新获得一份完整的启动预算。
+REQUEST_STARTED_SECONDS=$SECONDS
+
 # 加载公共配置
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
@@ -70,7 +74,7 @@ if [ "$SERVING_REQUIRE_INSTANCE_ID" != "true" ] && [ "$SERVING_REQUIRE_INSTANCE_
     json_error "INVALID_IDENTITY_POLICY" "$ID" "SERVING_REQUIRE_INSTANCE_ID must be true or false"
     exit 1
 fi
-STARTUP_DEADLINE=$((SECONDS + STARTUP_TIMEOUT_SECONDS))
+STARTUP_DEADLINE=$((REQUEST_STARTED_SECONDS + STARTUP_TIMEOUT_SECONDS))
 ROLLBACK_DEADLINE=0
 
 run_bounded() {
@@ -110,10 +114,14 @@ run_with_rollback_budget() {
 # 清理 trap 必须早于任何 Docker 副作用（包括 GPU 探针）安装。
 CID_FILE=$(mktemp)
 rm -f "$CID_FILE"
+WATCHDOG_COMMIT_FILE="${CID_FILE}.committed"
+WATCHDOG_HANDLED_FILE="${CID_FILE}.handled"
+WATCHDOG_READY_FILE="${CID_FILE}.watchdog-ready"
 CREATED_CONTAINER_ID=""
 GPU_PROBE_CONTAINER_NAME=""
 STARTUP_COMMITTED="false"
 ROLLBACK_IN_PROGRESS="false"
+WATCHDOG_PID=""
 
 cleanup_on_exit() {
     local status=$?
@@ -125,16 +133,47 @@ cleanup_on_exit() {
         && [ "$STARTUP_COMMITTED" != "true" ] \
         && [ "$ROLLBACK_IN_PROGRESS" != "true" ]; then
         if [ -n "$CREATED_CONTAINER_ID" ]; then
-            run_with_rollback_budget docker rm -f "$CREATED_CONTAINER_ID" >/dev/null 2>&1 || true
+            if run_with_rollback_budget docker rm -f "$CREATED_CONTAINER_ID" >/dev/null 2>&1; then
+                : > "$WATCHDOG_HANDLED_FILE"
+            fi
         fi
         if [ -n "$GPU_PROBE_CONTAINER_NAME" ]; then
             run_with_rollback_budget docker rm -f "$GPU_PROBE_CONTAINER_NAME" >/dev/null 2>&1 || true
         fi
     fi
+    if [ "$STARTUP_COMMITTED" = "true" ]; then
+        : > "$WATCHDOG_COMMIT_FILE"
+        if [ -n "$WATCHDOG_PID" ]; then
+            wait "$WATCHDOG_PID" 2>/dev/null || true
+        fi
+        rm -f "$WATCHDOG_COMMIT_FILE" "$WATCHDOG_HANDLED_FILE" "$WATCHDOG_READY_FILE"
+    fi
 }
 
 trap cleanup_on_exit EXIT
 trap 'exit 143' TERM INT HUP
+
+# EXIT trap 无法处理 webhookd 的最终 SIGKILL。独立 session 中的 watcher
+# 观察 launcher 生存期；若未提交便退出，则按本次 CID/label 有界回滚。
+python3 "$SCRIPT_DIR/startup_cleanup_watchdog.py" \
+    "$$" \
+    "$CID_FILE" \
+    "$SERVING_INSTANCE_ID" \
+    "$WATCHDOG_COMMIT_FILE" \
+    "$WATCHDOG_HANDLED_FILE" \
+    "$WATCHDOG_READY_FILE" \
+    "$ROLLBACK_TIMEOUT_SECONDS" >/dev/null 2>&1 &
+WATCHDOG_PID=$!
+for _ in $(seq 1 50); do
+    if [ -f "$WATCHDOG_READY_FILE" ]; then
+        break
+    fi
+    /bin/sleep 0.02
+done
+if [ ! -f "$WATCHDOG_READY_FILE" ]; then
+    json_error "CLEANUP_WATCHDOG_FAILED" "$ID" "Failed to establish startup rollback watchdog"
+    exit 1
+fi
 
 # 检查容器是否已存在；Docker 查询也属于同一个启动预算。
 set +e
@@ -175,7 +214,11 @@ PORT_ARGS=()
 # 构建端口映射参数。host 网络不接受 -p，BentoML 直接监听独占宿主端口。
 if [ "$NETWORK_MODE" = "host" ]; then
     if [ -z "$PORT" ]; then
-        PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
+        if ! PORT=$(run_with_startup_budget python3 -c \
+            'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'); then
+            json_error "PORT_ALLOCATION_FAILED" "$ID" "Failed to allocate host port within startup budget"
+            exit 1
+        fi
     fi
     CONTAINER_PORT="$PORT"
 elif [ -n "$PORT" ]; then
@@ -254,12 +297,14 @@ rollback_failed_startup() {
     if [ "$ROLLBACK_DEADLINE" -eq 0 ]; then
         ROLLBACK_DEADLINE=$((SECONDS + ROLLBACK_TIMEOUT_SECONDS))
     fi
-    # 日志最多占 1 秒，优先把共享回滚预算留给 docker rm。
+    # 日志最多占半秒，明确给 docker rm 留出至少一秒以及调度余量。
     log_timeout_seconds=$((ROLLBACK_DEADLINE - SECONDS))
     if [ "$log_timeout_seconds" -gt 1 ]; then
-        log_timeout_seconds=1
+        log_timeout_seconds="0.5"
+    else
+        log_timeout_seconds=0
     fi
-    if [ "$log_timeout_seconds" -gt 0 ]; then
+    if [ "$log_timeout_seconds" != "0" ]; then
         container_logs=$(run_bounded "$log_timeout_seconds" docker logs --tail 50 "$CREATED_CONTAINER_ID" 2>&1 || true)
     fi
     set +e
@@ -277,6 +322,7 @@ rollback_failed_startup() {
     fi
 
     CREATED_CONTAINER_ID=""
+    : > "$WATCHDOG_HANDLED_FILE"
     json_error "$original_code" "$ID" "$original_message" "$container_logs"
     exit 1
 }
