@@ -108,6 +108,30 @@ def test_verify_bk_token_uses_decrypted_app_token():
     )
 
 
+def test_verify_bk_token_keeps_plaintext_records_compatible_before_migration():
+    login_module = LoginModule.objects.create(
+        name="bk-login-legacy-runtime",
+        source_type="bk_login",
+        other_config=_bk_config(),
+        enabled=True,
+    )
+    LoginModule.objects.filter(pk=login_module.pk).update(other_config=_bk_config("legacy-plaintext"))
+
+    with patch(
+        "apps.system_mgmt.nats.settings.get_bk_user_info",
+        return_value=(False, None),
+    ) as get_bk_user_info:
+        result = verify_bk_token("bk-user-token")
+
+    assert result["result"] is True
+    get_bk_user_info.assert_called_once_with(
+        "bk-user-token",
+        "bk-lite",
+        "legacy-plaintext",
+        "https://bk.example.com",
+    )
+
+
 def test_verify_bk_token_fails_closed_for_corrupted_versioned_app_token():
     login_module = LoginModule.objects.create(
         name="bk-login-corrupted-runtime",
@@ -148,6 +172,25 @@ def test_data_migration_encrypts_existing_plaintext_app_token():
     login_module.refresh_from_db()
 
     assert login_module.other_config["app_token"] == "legacy-plaintext"
+
+
+def test_data_migration_uses_a_stable_cursor_across_batches(monkeypatch):
+    migration = importlib.import_module("apps.system_mgmt.migrations.0046_encrypt_bk_login_app_token")
+    monkeypatch.setattr(migration, "BATCH_SIZE", 2)
+    LoginModule.objects.bulk_create(
+        [
+            LoginModule(name=f"bk-login-batch-{index}", source_type="bk_login", other_config=_bk_config())
+            for index in range(migration.BATCH_SIZE + 1)
+        ]
+    )
+
+    migration.encrypt_existing_bk_login_app_tokens(django_apps, None)
+
+    app_tokens = LoginModule.objects.filter(name__startswith="bk-login-batch-").values_list(
+        "other_config__app_token", flat=True
+    )
+    assert len(app_tokens) == migration.BATCH_SIZE + 1
+    assert all(value.startswith(BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX) for value in app_tokens)
 
 
 def test_data_migration_stops_when_app_token_encryption_fails(monkeypatch):

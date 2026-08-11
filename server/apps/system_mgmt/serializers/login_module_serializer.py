@@ -14,7 +14,17 @@ class LoginModuleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = LoginModule
-        fields = "__all__"
+        fields = (
+            "id",
+            "name",
+            "source_type",
+            "app_id",
+            "app_secret",
+            "other_config",
+            "enabled",
+            "is_build_in",
+            "display_name",
+        )
 
     def get_display_name(self, obj):
         # 如果是内置模块，翻译name

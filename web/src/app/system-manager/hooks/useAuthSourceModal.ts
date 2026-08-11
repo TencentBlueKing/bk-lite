@@ -78,7 +78,7 @@ export function useAuthSourceModal({
           values,
           selectedRoles
         );
-        const updatedSource = await updateAuthSource(editingSource.id, updateData) as AuthSource;
+        const updatedSource = await updateAuthSource(editingSource.id, updateData);
 
         const enhancedSource = enhanceAuthSourcesList([updatedSource], t)[0];
 

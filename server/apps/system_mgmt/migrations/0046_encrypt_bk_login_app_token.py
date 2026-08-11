@@ -4,6 +4,20 @@ from apps.core.mixinx import EncryptMixin
 
 
 ENCRYPTION_PREFIX = "bklite:v1:"
+BATCH_SIZE = 500
+
+
+def _iter_bk_login_modules(login_module_model):
+    last_pk = 0
+    while True:
+        batch = list(
+            login_module_model.objects.filter(source_type="bk_login", pk__gt=last_pk)
+            .order_by("pk")[:BATCH_SIZE]
+        )
+        if not batch:
+            return
+        yield from batch
+        last_pk = batch[-1].pk
 
 
 def _decrypt_versioned_app_token(value):
@@ -31,7 +45,7 @@ def _encrypt_app_token(value):
 
 def encrypt_existing_bk_login_app_tokens(apps, schema_editor):
     login_module_model = apps.get_model("system_mgmt", "LoginModule")
-    for login_module in login_module_model.objects.filter(source_type="bk_login").iterator():
+    for login_module in _iter_bk_login_modules(login_module_model):
         config = dict(login_module.other_config or {})
         if not config.get("app_token"):
             continue
@@ -42,7 +56,7 @@ def encrypt_existing_bk_login_app_tokens(apps, schema_editor):
 
 def decrypt_existing_bk_login_app_tokens(apps, schema_editor):
     login_module_model = apps.get_model("system_mgmt", "LoginModule")
-    for login_module in login_module_model.objects.filter(source_type="bk_login").iterator():
+    for login_module in _iter_bk_login_modules(login_module_model):
         config = dict(login_module.other_config or {})
         if not config.get("app_token"):
             continue

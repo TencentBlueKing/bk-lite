@@ -1,5 +1,5 @@
 import useApiClient from '@/utils/request';
-import { SystemSettings } from '@/app/system-manager/types/security';
+import type { AuthSource, SystemSettings } from '@/app/system-manager/types/security';
 
 export const useSecurityApi = () => {
   const { get, post, patch, del } = useApiClient();
@@ -81,8 +81,8 @@ export const useSecurityApi = () => {
    * @param data - Updated auth source data
    * @returns Promise with updated auth source
    */
-  async function updateAuthSource(id: number, data: any): Promise<any> {
-    return await patch(`/system_mgmt/login_module/${id}/`, data);
+  async function updateAuthSource(id: number, data: unknown): Promise<AuthSource> {
+    return await patch<AuthSource>(`/system_mgmt/login_module/${id}/`, data);
   }
 
   /**
