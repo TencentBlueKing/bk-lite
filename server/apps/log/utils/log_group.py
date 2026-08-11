@@ -78,8 +78,10 @@ class LogGroupQueryBuilder:
                     char in value_text for char in cls.LEGACY_REGEX_SPECIAL_CHARS
                 ):
                     raise ValueError("Rule regex condition value is unsafe for legacy LogsQL syntax")
+                if condition["op"] == "endswith":
+                    raise ValueError("Rule endswith condition is unsupported by legacy LogsQL syntax")
                 if (
-                    condition["op"] in {"startswith", "endswith"}
+                    condition["op"] == "startswith"
                     and not cls.LEGACY_SAFE_WILDCARD_PATTERN.fullmatch(value_text)
                 ):
                     raise ValueError("Rule wildcard condition value is unsafe for legacy LogsQL syntax")

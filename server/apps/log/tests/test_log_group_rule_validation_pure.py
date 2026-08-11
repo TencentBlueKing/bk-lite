@@ -92,6 +92,18 @@ def test_serializer_legacy_mode_rejects_strict_only_rule_shapes(settings, condit
     assert "unsafe for legacy" in str(serializer.errors["rule"])
 
 
+def test_serializer_legacy_mode_rejects_endswith_operation(settings):
+    settings.LOG_GROUP_RULE_MODE_ENFORCEMENT = "legacy"
+    serializer = LogGroupSerializer(
+        data=_payload(
+            {"mode": "AND", "conditions": [{"field": "cluster", "op": "endswith", "value": "prod"}]}
+        )
+    )
+
+    assert serializer.is_valid() is False
+    assert "unsupported by legacy" in str(serializer.errors["rule"])
+
+
 @pytest.mark.parametrize(
     "rule",
     [

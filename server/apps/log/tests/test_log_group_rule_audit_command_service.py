@@ -118,6 +118,7 @@ def test_audit_command_strict_preflight_rejects_logs_query_injection_rule():
         {"field": "cluster", "op": "startswith", "value": "prod*) OR (*) OR (cluster:prod"},
         {"field": "request", "op": "startswith", "value": "GET /api"},
         {"field": "user.email", "op": "endswith", "value": "@example.com"},
+        {"field": "cluster", "op": "endswith", "value": "prod"},
         {"field": "@timestamp", "op": "==", "value": "prod"},
         {"field": "message", "op": "contains", "value": "a.b"},
     ],
