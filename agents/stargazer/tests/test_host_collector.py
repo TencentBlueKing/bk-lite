@@ -770,6 +770,26 @@ class TestHostCollectorExtractStdout:
         with pytest.raises(RuntimeError, match="missing expected host 10.0.0.1"):
             self.collector._extract_stdout(result)
 
+    def test_list_uses_expected_host_among_multiple_hosts(self):
+        result = {
+            "result": [
+                {"host": "10.0.0.2", "stdout": '{"cpu": {}}'},
+                {"host": "10.0.0.1", "stdout": '{"mem": {}}'},
+            ]
+        }
+
+        assert self.collector._extract_stdout(result) == '{"mem": {}}'
+
+    def test_list_with_empty_expected_host_stdout_raises(self):
+        result = {
+            "result": [
+                {"host": "10.0.0.1", "status": "success", "stdout": ""},
+            ]
+        }
+
+        with pytest.raises(RuntimeError, match="missing expected host 10.0.0.1"):
+            self.collector._extract_stdout(result)
+
     def test_empty_result(self):
         result = {"result": {}}
         # 空 dict 应返回 JSON 序列化
