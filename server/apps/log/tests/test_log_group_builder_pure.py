@@ -124,6 +124,14 @@ def test_json_to_logsql_encodes_normal_wildcard_values(op, value, expected):
     assert LogGroupQueryBuilder.json_to_logsql_expression(rule) == expected
 
 
+def test_json_to_logsql_strict_mode_quotes_legacy_wildcard_structure():
+    rule = {"conditions": [{"field": "cluster", "op": "startswith", "value": "prod* OR (*)"}]}
+
+    expression = LogGroupQueryBuilder.json_to_logsql_expression(rule)
+
+    assert expression == 'cluster:"prod* OR (*)"*'
+
+
 def test_json_to_logsql_unsupported_op_raises():
     rule = {"conditions": [{"field": "f", "op": "~~", "value": "v"}]}
     with pytest.raises(ValueError, match="unsupported"):

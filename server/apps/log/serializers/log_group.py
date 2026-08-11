@@ -111,7 +111,10 @@ class LogGroupSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("日志分组规则必须是对象（object）格式")
 
         try:
-            LogGroupQueryBuilder.validate_rule(value)
+            LogGroupQueryBuilder.validate_rule(
+                value,
+                require_legacy_safe=LogGroupQueryBuilder._legacy_migration_mode_enabled(),
+            )
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
 

@@ -20,6 +20,10 @@ class LogGroupQueryBuilder:
     ACCEPTED_FIELD_PATTERN = re.compile(r"^[A-Za-z_@][A-Za-z0-9_.@/-]*$")
     RAW_FIELD_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
     UNSAFE_QUOTED_VALUE_PATTERN = re.compile(r'["\\\x00-\x1f\x7f]')
+    UNSAFE_LEGACY_WILDCARD_PATTERN = re.compile(
+        r"[*|()]|^\s*[!-]|(?:^|\s)(?:AND|OR|NOT)(?:\s|$)",
+        re.IGNORECASE,
+    )
 
     @classmethod
     def classify_rule_mode(cls, rule_json):
@@ -46,7 +50,7 @@ class LogGroupQueryBuilder:
         return normalized_mode
 
     @classmethod
-    def validate_rule(cls, rule_json, *, allow_legacy_or=False):
+    def validate_rule(cls, rule_json, *, allow_legacy_or=False, require_legacy_safe=False):
         mode, used_legacy_or = cls._resolve_rule_mode(rule_json, allow_legacy_or=allow_legacy_or)
         conditions = rule_json.get("conditions", [])
         if not isinstance(conditions, list):
@@ -69,6 +73,12 @@ class LogGroupQueryBuilder:
             value_text = str(condition["value"])
             if cls.UNSAFE_QUOTED_VALUE_PATTERN.search(value_text):
                 raise ValueError("Rule condition value contains unsupported LogsQL syntax")
+            if (
+                require_legacy_safe
+                and condition["op"] in {"startswith", "endswith"}
+                and cls.UNSAFE_LEGACY_WILDCARD_PATTERN.search(value_text)
+            ):
+                raise ValueError("Rule wildcard condition value is unsafe for legacy LogsQL syntax")
 
         return mode, used_legacy_or
 
