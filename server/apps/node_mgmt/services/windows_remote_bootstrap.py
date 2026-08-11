@@ -282,7 +282,33 @@ class WindowsRemoteBootstrapService:
         return "\n".join(events)
 
     @staticmethod
-    def _execution_playbook() -> str:
+    def _execution_playbook(*, validate_certificate: bool = True) -> str:
+        bootstrap_argv = [
+            "{{ bklite_bootstrap_path }}",
+            "--url-file",
+            "{{ bklite_session_file }}",
+            "--require-https",
+        ]
+        if not validate_certificate:
+            # The user-facing trusted-network opt-out covers both WinRM and
+            # the bootstrap's HTTPS requests while still forbidding HTTP.
+            bootstrap_argv.append("--skip-tls")
+        bootstrap_argv.extend(
+            [
+                "--install-dir",
+                r"C:\fusion-collectors",
+                "--execution-id",
+                "{{ bklite_execution_id }}",
+                "--task-node-id",
+                "{{ bklite_task_node_id }}",
+                "--attempt",
+                "{{ bklite_execution_attempt }}",
+                "--deadline-unix",
+                "{{ bklite_execution_deadline_unix }}",
+                "--progress-subject",
+                "{{ bklite_progress_subject }}",
+            ]
+        )
         playbook = [
             {
                 "hosts": "all",
@@ -365,24 +391,7 @@ class WindowsRemoteBootstrapService:
                             {
                                 "name": "Run BK-Lite controller bootstrap",
                                 "ansible.windows.win_command": {
-                                    "argv": [
-                                        "{{ bklite_bootstrap_path }}",
-                                        "--url-file",
-                                        "{{ bklite_session_file }}",
-                                        "--require-https",
-                                        "--install-dir",
-                                        r"C:\fusion-collectors",
-                                        "--execution-id",
-                                        "{{ bklite_execution_id }}",
-                                        "--task-node-id",
-                                        "{{ bklite_task_node_id }}",
-                                        "--attempt",
-                                        "{{ bklite_execution_attempt }}",
-                                        "--deadline-unix",
-                                        "{{ bklite_execution_deadline_unix }}",
-                                        "--progress-subject",
-                                        "{{ bklite_progress_subject }}",
-                                    ]
+                                    "argv": bootstrap_argv
                                 },
                                 "register": "bklite_bootstrap_result",
                             },
@@ -614,7 +623,9 @@ Write-Output ('BKUNINSTALL_CHANGED=' + $changed.ToString().ToLowerInvariant())
             run_task_id = f"controller-bootstrap-run-{task_node_id}-{attempt}"
             accepted = executor.playbook(
                 host_credentials=credentials,
-                playbook_content=self._execution_playbook(),
+                playbook_content=self._execution_playbook(
+                    validate_certificate=target.validate_certificate,
+                ),
                 extra_vars={
                     **self._winrm_extra_vars(),
                     "bklite_session_url": session_url,

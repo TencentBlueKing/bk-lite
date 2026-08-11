@@ -44,6 +44,21 @@ def _extract_latest_failure_from_steps(steps):
     return None
 
 
+def _extract_latest_installer_failure_from_steps(steps):
+    """Prefer a terminal installer event over a later transport wrapper error."""
+    if not isinstance(steps, list):
+        return None
+
+    for step in reversed(steps):
+        if not isinstance(step, dict):
+            continue
+        details = step.get("details")
+        if isinstance(details, dict) and details.get("installer_event") is True and details.get("failure"):
+            return details.get("failure")
+
+    return None
+
+
 def _prefer_failure(current, candidate):
     if not isinstance(candidate, dict):
         return current
@@ -69,7 +84,10 @@ def _is_installer_event_step(step):
 
 def _canonical_installer_step(step):
     details = step.get("details") if isinstance(step.get("details"), dict) else {}
-    return normalize_installer_action(details.get("raw_step") or step.get("action"))
+    tracked_action = step.get("action")
+    if tracked_action in EXPECTED_INSTALLER_STEPS or tracked_action in OPTIONAL_INSTALLER_STEPS:
+        return tracked_action
+    return normalize_installer_action(details.get("raw_step") or tracked_action)
 
 
 def _dedupe_installer_events(installer_steps):
@@ -297,6 +315,7 @@ def normalize_task_result_for_read(result=None):
     steps = prepared_result.get("steps", [])
     normalized_steps = []
     latest_failure = None
+    latest_installer_failure = None
 
     for step in steps:
         if not isinstance(step, dict):
@@ -321,6 +340,11 @@ def normalize_task_result_for_read(result=None):
         if step_details:
             normalized_step["details"] = step_details
             latest_failure = _prefer_failure(latest_failure, step_details.get("failure"))
+            if step_details.get("installer_event") is True:
+                latest_installer_failure = _prefer_failure(
+                    latest_installer_failure,
+                    step_details.get("failure"),
+                )
 
         normalized_steps.append(normalized_step)
 
@@ -332,6 +356,7 @@ def normalize_task_result_for_read(result=None):
 
     latest_failure = _prefer_failure(latest_failure, prepared_result.get("failure"))
     latest_failure = latest_failure or _extract_latest_failure_from_steps(prepared_result.get("steps"))
+    latest_failure = _prefer_failure(latest_failure, latest_installer_failure)
 
     if latest_failure and prepared_result.get("overall_status") in {"error", "timeout", "cancelled"}:
         prepared_result["failure"] = latest_failure

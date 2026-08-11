@@ -59,6 +59,7 @@ from apps.node_mgmt.utils.installer_schema import (
 )
 from apps.node_mgmt.utils.task_result_schema import (
     _extract_latest_failure_from_steps,
+    _extract_latest_installer_failure_from_steps,
     apply_result_envelope,
 )
 from apps.node_mgmt.tasks.version_discovery import discover_node_versions
@@ -396,7 +397,10 @@ def _save_node_result(node_obj, overall_status, final_message):
         result,
         overall_status=normalize_overall_status(overall_status),
         final_message=final_message,
-        failure=_extract_latest_failure_from_steps(result.get("steps")),
+        failure=(
+            _extract_latest_installer_failure_from_steps(result.get("steps"))
+            or _extract_latest_failure_from_steps(result.get("steps"))
+        ),
     )
     result[InstallerConstants.EXECUTION_PHASE_KEY] = InstallerConstants.EXECUTION_PHASE_FINISHED
     result["installer_progress"] = summarize_installer_progress(result)
@@ -1206,7 +1210,18 @@ def timeout_controller_install_task(task_id, expected_attempt=1, task_node_ids=N
 
 
 @shared_task
-def retry_controller(task_id, task_node_ids, password=None, private_key=None, passphrase=None, port=None, username=None):
+def retry_controller(
+    task_id,
+    task_node_ids,
+    password=None,
+    private_key=None,
+    passphrase=None,
+    port=None,
+    username=None,
+    winrm_scheme=None,
+    winrm_transport=None,
+    winrm_cert_validation=None,
+):
     """
     重试控制器安装任务中的特定节点
 
@@ -1218,6 +1233,9 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
         passphrase: 私钥密码短语（明文，将被加密后存储，可选）
         port: 远程连接端口（可选）
         username: 远程连接账号（可选）
+        winrm_scheme: Windows WinRM 协议（可选，仅支持 HTTPS）
+        winrm_transport: Windows WinRM 认证传输（可选，仅支持 NTLM）
+        winrm_cert_validation: 是否校验 WinRM 与安装服务 HTTPS 证书（可选）
     """
 
     task_obj = ControllerTask.objects.filter(id=task_id).first()
@@ -1259,6 +1277,18 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
         update_data["private_key"] = aes_obj.encode(private_key)
     if passphrase:
         update_data["passphrase"] = aes_obj.encode(passphrase)
+    if winrm_scheme is not None:
+        if winrm_scheme != "https":
+            raise BaseAppException("Windows remote retry requires WinRM HTTPS")
+        update_data["winrm_scheme"] = winrm_scheme
+    if winrm_transport is not None:
+        if winrm_transport != "ntlm":
+            raise BaseAppException("Windows remote retry requires WinRM NTLM")
+        update_data["winrm_transport"] = winrm_transport
+    if winrm_cert_validation is not None:
+        if not isinstance(winrm_cert_validation, bool):
+            raise BaseAppException("WinRM certificate validation must be a boolean")
+        update_data["winrm_cert_validation"] = winrm_cert_validation
 
     if update_data:
         retry_nodes.update(**update_data)

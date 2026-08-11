@@ -158,6 +158,8 @@ class RegionService:
         node_id = uuid.uuid4().hex
         api_token = generate_node_token(node_id, proxy_ip, "system")
         redis_password = uuid.uuid4().hex[:12]
+        apm_nats_username = f"apm_region_{cloud_region_id}"
+        apm_nats_password = uuid.uuid4().hex
 
         region_executor_instance_id = RegionService.get_region_service_instance_id(
             cloud_region.name,
@@ -177,6 +179,8 @@ class RegionService:
             "proxy_ip": proxy_ip,
             "nats_monitor_username": nats_monitor_username,
             "nats_monitor_password": nats_monitor_password,
+            "apm_nats_username": apm_nats_username,
+            "apm_nats_password": apm_nats_password,
             "traefik_web_port": env_vars.get("TRAEFIK_WEB_PORT", "443"),
         }
 

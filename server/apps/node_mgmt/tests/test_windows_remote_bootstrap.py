@@ -298,6 +298,56 @@ def test_retry_controller_preserves_generated_install_node_id(monkeypatch):
     }
 
 
+@pytest.mark.django_db
+def test_retry_controller_updates_explicit_winrm_configuration(monkeypatch):
+    region = CloudRegion.objects.create(name="retry-winrm-config-region")
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.WINDOWS_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="retry-winrm-config",
+        name="controller-windows",
+    )
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="install",
+        status="finished",
+        package_version_id=package.id,
+    )
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.85",
+        node_name="windows-node",
+        os=NodeConstants.WINDOWS_OS,
+        organizations=[1],
+        port=5986,
+        username="Administrator",
+        password="encrypted-password",
+        status="error",
+        winrm_scheme="https",
+        winrm_transport="ntlm",
+        winrm_cert_validation=True,
+        result={InstallerConstants.EXECUTION_ATTEMPT_KEY: 1},
+    )
+    monkeypatch.setattr(installer_tasks, "_dispatch_or_finalize_controller_task", lambda task_id: None)
+
+    installer_tasks.retry_controller(
+        task.id,
+        [task_node.id],
+        port=7443,
+        winrm_scheme="https",
+        winrm_transport="ntlm",
+        winrm_cert_validation=False,
+    )
+
+    task_node.refresh_from_db()
+    assert task_node.port == 7443
+    assert task_node.winrm_scheme == "https"
+    assert task_node.winrm_transport == "ntlm"
+    assert task_node.winrm_cert_validation is False
+
+
 def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     executor = FakeExecutor("executor-node")
     service = WindowsRemoteBootstrapService(executor_factory=lambda _: executor, resolver=FakeResolver)
@@ -354,6 +404,7 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
         "{{ bklite_session_file }}",
         "--require-https",
     ]
+    assert "--skip-tls" not in commands[7]["ansible.windows.win_command"]["argv"]
     assert commands[7]["ansible.windows.win_command"]["argv"][-10:] == [
         "--execution-id",
         "{{ bklite_execution_id }}",
@@ -387,6 +438,36 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     }
     assert cleanup["extra_vars"]["ansible_winrm_connection_timeout"] == 60
     assert output.startswith("BKINSTALL_EVENT ")
+
+
+def test_windows_remote_bootstrap_certificate_opt_out_applies_to_bootstrap_https():
+    executor = FakeExecutor("executor-node")
+    service = WindowsRemoteBootstrapService(executor_factory=lambda _: executor, resolver=FakeResolver)
+
+    service.run(
+        cloud_region_id=7,
+        task_node_id=32,
+        attempt=1,
+        cpu_architecture="x86_64",
+        session_url="https://server.example/api/installer/session/secret",
+        target=WindowsBootstrapTarget(
+            host="10.0.0.8",
+            port=5986,
+            user="Administrator",
+            password="credential",
+            validate_certificate=False,
+        ),
+        timeout=60,
+        execution_id="1123456789abcdef0123456789abcdef",
+        progress_subject="installer.progress.1123456789abcdef0123456789abcdef",
+    )
+
+    execution = executor.playbook_calls[1]
+    playbook = yaml.safe_load(execution["playbook_content"])
+    argv = playbook[0]["tasks"][0]["block"][7]["ansible.windows.win_command"]["argv"]
+
+    assert "--require-https" in argv
+    assert "--skip-tls" in argv
 
 
 def test_windows_preflight_uses_win_shell_instead_of_nested_powershell_command():

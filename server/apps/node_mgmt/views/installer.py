@@ -188,6 +188,9 @@ class InstallerViewSet(ViewSet):
             username=data.get("username"),
             private_key=data.get("private_key"),
             passphrase=data.get("passphrase"),
+            winrm_scheme=data.get("winrm_scheme"),
+            winrm_transport=data.get("winrm_transport"),
+            winrm_cert_validation=data.get("winrm_cert_validation"),
         )
         return WebUtils.response_success()
 

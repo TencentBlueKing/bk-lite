@@ -102,6 +102,9 @@ class ControllerRetryRequestSerializer(serializers.Serializer):
     password = serializers.CharField(required=False, allow_blank=True, write_only=True)
     private_key = serializers.CharField(required=False, allow_blank=True, write_only=True)
     passphrase = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    winrm_scheme = serializers.ChoiceField(choices=("https",), required=False)
+    winrm_transport = serializers.ChoiceField(choices=("ntlm",), required=False)
+    winrm_cert_validation = serializers.BooleanField(required=False)
 
 
 class ControllerUninstallNodeSerializer(serializers.Serializer):

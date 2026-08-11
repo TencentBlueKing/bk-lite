@@ -390,6 +390,9 @@ class InstallerService:
                     organizations=task_node.organizations,
                     username=task_node.username,
                     port=task_node.port,
+                    winrm_scheme=task_node.winrm_scheme,
+                    winrm_transport=task_node.winrm_transport,
+                    winrm_cert_validation=task_node.winrm_cert_validation,
                     status=task_node.status,
                     result=normalize_task_result_for_read(task_node.result),
                 )

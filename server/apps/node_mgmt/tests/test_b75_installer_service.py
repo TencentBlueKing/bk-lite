@@ -235,6 +235,32 @@ def test_install_controller_nodes_returns_info():
 
 
 @pytest.mark.django_db
+def test_install_controller_nodes_returns_persisted_winrm_retry_configuration():
+    region = CloudRegion.objects.create(name="cr-ctrl-windows-retry-config")
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="waiting", package_version_id=1)
+    ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.85",
+        os="windows",
+        port=7443,
+        username="Administrator",
+        password="x",
+        node_name="windows-retry",
+        organizations=[1],
+        status="error",
+        winrm_scheme="https",
+        winrm_transport="ntlm",
+        winrm_cert_validation=False,
+    )
+
+    result = InstallerService.install_controller_nodes(task.id)
+
+    assert result[0]["winrm_scheme"] == "https"
+    assert result[0]["winrm_transport"] == "ntlm"
+    assert result[0]["winrm_cert_validation"] is False
+
+
+@pytest.mark.django_db
 def test_install_controller_nodes_filters_by_authorized_nodes():
     region = CloudRegion.objects.create(name="cr-ctrl-auth")
     allowed_node = Node.objects.create(

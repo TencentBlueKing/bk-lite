@@ -26,7 +26,7 @@ FAILURE_SUMMARY_MAP = {
     "object_missing": "Required installation package was not found in object storage",
     "bucket_missing": "Object storage bucket is missing or not initialized",
     "connection": "Failed to connect to the required service during installation",
-    "certificate": "WinRM HTTPS certificate validation failed; the Executor does not trust the target certificate",
+    "certificate": "HTTPS certificate validation failed; the remote peer certificate is not trusted",
     "winrm_busy": "The target WinRM session is busy or stalled while receiving the remote command",
     "timeout": "The installation step timed out before completion",
     "auth": "Authentication failed while accessing the required resource",
@@ -53,6 +53,10 @@ FAILURE_CONTEXT_FIELDS = (
     "clock_offset_seconds",
     "clock_skew_seconds",
     "max_clock_skew_seconds",
+)
+
+SENSITIVE_QUERY_VALUE_PATTERN = re.compile(
+    r"(?i)([?&](?:token|access_token|password|secret)=)[^&\s\"'<>]+"
 )
 
 
@@ -83,6 +87,13 @@ def _clean_text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _redact_sensitive_text(value: Any) -> str | None:
+    text = _clean_text(value)
+    if not text:
+        return None
+    return SENSITIVE_QUERY_VALUE_PATTERN.sub(r"\1<redacted>", text)
 
 
 def _extract_target_path(message: str | None) -> str | None:
@@ -156,6 +167,8 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
             "server certificate validation",
             "hostname mismatch",
             "certificate has expired",
+            "certificate signed by unknown authority",
+            "x509: certificate",
         ]
     ):
         return "certificate"
@@ -388,28 +401,32 @@ def _installer_event_position(event: dict[str, Any], action: str) -> tuple[int |
 
 def build_installer_event_details(event: dict[str, Any]) -> dict:
     """Build canonical details payload for one installer event line."""
-    action = normalize_installer_action(event.get("step"))
+    safe_event = {
+        key: _redact_sensitive_text(value) if isinstance(value, str) else value
+        for key, value in event.items()
+    }
+    action = normalize_installer_action(safe_event.get("step"))
     progress = normalize_progress(
-        percent=event.get("progress"),
-        current=event.get("downloaded_bytes"),
-        total=event.get("total_bytes"),
+        percent=safe_event.get("progress"),
+        current=safe_event.get("downloaded_bytes"),
+        total=safe_event.get("total_bytes"),
     )
     failure = normalize_failure(
-        message=event.get("message"),
-        error=event.get("error"),
-        details=event,
+        message=safe_event.get("message"),
+        error=safe_event.get("error"),
+        details=safe_event,
     )
-    step_index, step_total = _installer_event_position(event, action)
+    step_index, step_total = _installer_event_position(safe_event, action)
     details = {
         "installer_event": True,
-        "raw_step": _clean_text(event.get("step")),
-        "raw_status": _clean_text(event.get("status")),
+        "raw_step": _clean_text(safe_event.get("step")),
+        "raw_status": _clean_text(safe_event.get("status")),
         "step_index": step_index,
         "step_total": step_total,
         "progress": progress,
-        "timestamp": _clean_text(event.get("timestamp")) or now_iso(),
-        "error": _clean_text(event.get("error")),
-        "installer_message": _clean_text(event.get("message")),
+        "timestamp": _clean_text(safe_event.get("timestamp")) or now_iso(),
+        "error": _clean_text(safe_event.get("error")),
+        "installer_message": _clean_text(safe_event.get("message")),
         "failure": failure,
     }
     for field_name in (
@@ -428,7 +445,7 @@ def build_installer_event_details(event: dict[str, Any]) -> dict:
         "clock_skew_seconds",
         "max_clock_skew_seconds",
     ):
-        normalized_value = event.get(field_name)
+        normalized_value = safe_event.get(field_name)
         if normalized_value not in (None, ""):
             details[field_name] = normalized_value
     return details
