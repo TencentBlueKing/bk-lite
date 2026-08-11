@@ -54,30 +54,40 @@ def normalize_website_request_config(config: dict) -> dict:
     if auth_type == "bearer":
         _require_value(normalized.get("ENV_BEARER_TOKEN"), "Bearer Token")
     normalized["auth_type"] = auth_type
+    # 前端可选开关缺省时可能被补成 ""；空串会让 Jinja default(false) 渲出非法 TOML。
+    normalized["insecure_skip_verify"] = _coerce_bool(normalized.get("insecure_skip_verify"), False)
     return normalized
 
 
 def validate_rendered_website_config(config: dict, env_config: dict | None = None) -> None:
     """Validate the TOML-shaped config used by the edit API."""
     env_config = env_config or {}
-    urls = config.get("urls") or []
+    # 编辑接口 content 通常是 ConfigFormat 形态 {plugin, config}；兼容扁平 config。
+    target = (
+        config["config"]
+        if isinstance(config.get("config"), dict) and config.get("plugin") is not None
+        else config
+    )
+    urls = target.get("urls") or []
     if not isinstance(urls, list) or len(urls) != 1:
         raise ValueError("网站拨测必须配置一个 URL")
     parts = urlsplit(str(urls[0] or ""))
     if parts.scheme not in {"http", "https"} or not parts.netloc or parts.fragment:
         raise ValueError("URL 必须是有效的 HTTP 或 HTTPS 地址，且不能包含 fragment")
 
-    method = str(config.get("method") or "GET").upper()
+    method = str(target.get("method") or "GET").upper()
     if method not in SUPPORTED_METHODS:
         raise ValueError("请求方式仅支持 GET、HEAD 或 POST")
-    if method != "POST" and config.get("body") not in (None, ""):
+    if method != "POST" and target.get("body") not in (None, ""):
         raise ValueError("仅 POST 请求允许填写请求体")
-    _validate_optional_int(config.get("response_status_code"), "期望状态码", MIN_HTTP_STATUS_CODE, MAX_HTTP_STATUS_CODE)
-    timeout = config.get("response_timeout")
+    _validate_optional_int(target.get("response_status_code"), "期望状态码", MIN_HTTP_STATUS_CODE, MAX_HTTP_STATUS_CODE)
+    timeout = target.get("response_timeout")
     if isinstance(timeout, str) and timeout.endswith("s"):
         timeout = timeout[:-1]
     _validate_optional_int(timeout, "请求超时", MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS)
-    headers = config.get("headers") or {}
+    # 空串/缺省统一成 bool，避免 toml.dumps 写出 insecure_skip_verify = ""。
+    target["insecure_skip_verify"] = _coerce_bool(target.get("insecure_skip_verify"), False)
+    headers = target.get("headers") or {}
     if not isinstance(headers, dict):
         raise ValueError("请求头必须是键值列表")
     authorization_values = [value for key, value in headers.items() if str(key).lower() == "authorization"]
@@ -90,8 +100,8 @@ def validate_rendered_website_config(config: dict, env_config: dict | None = Non
         if str(key).lower() != "authorization"
     ]
     _normalize_headers(non_authorization_headers)
-    username = config.get("username")
-    password = config.get("password")
+    username = target.get("username")
+    password = target.get("password")
     if username or password:
         _require_value(username, "Basic Auth 用户名")
         password_env_key = _extract_env_reference(password, "PASSWORD")
@@ -103,6 +113,24 @@ def validate_rendered_website_config(config: dict, env_config: dict | None = Non
             raise ValueError("Authorization 请求头请使用认证配置")
         if env_config.get(bearer_env_key) in (None, ""):
             raise ValueError("Bearer Token 不能为空")
+
+
+def _coerce_bool(value, default=False):
+    """Normalize optional TLS/switch values before Telegraf TOML render/edit."""
+    if value in (None, ""):
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+        raise ValueError("跳过证书校验必须是布尔值")
+    raise ValueError("跳过证书校验必须是布尔值")
 
 
 def _normalize_entries(entries, field_name):
