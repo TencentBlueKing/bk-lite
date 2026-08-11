@@ -83,10 +83,6 @@ def test_json_to_logsql_not_contains():
     [
         {"field": 'cluster") OR (*)', "op": "==", "value": "prod"},
         {"field": "cluster", "op": "==", "value": 'prod") OR (*)'},
-        {"field": "cluster", "op": "startswith", "value": "prod* OR (*)"},
-        {"field": "cluster", "op": "startswith", "value": "-prod"},
-        {"field": "cluster", "op": "endswith", "value": "-prod"},
-        {"field": "cluster", "op": "startswith", "value": "@prod"},
     ],
 )
 def test_json_to_logsql_rejects_values_that_can_change_query_structure(condition):
@@ -109,6 +105,23 @@ def test_json_to_logsql_quotes_supported_special_field_names(field):
     expression = LogGroupQueryBuilder.json_to_logsql_expression(rule)
 
     assert expression == f'"{field}":"prod"'
+
+
+@pytest.mark.parametrize(
+    ("op", "value", "expected"),
+    [
+        ("startswith", "/var/log", 'cluster:"/var/log"*'),
+        ("startswith", "ops@example.com", 'cluster:"ops@example.com"*'),
+        ("startswith", "GET /api", 'cluster:"GET /api"*'),
+        ("endswith", "/var/log", 'cluster:re(".*/var/log$")'),
+        ("endswith", "ops@example.com", r'cluster:re(".*ops@example\\.com$")'),
+        ("endswith", "GET /api", r'cluster:re(".*GET\\ /api$")'),
+    ],
+)
+def test_json_to_logsql_encodes_normal_wildcard_values(op, value, expected):
+    rule = {"conditions": [{"field": "cluster", "op": op, "value": value}]}
+
+    assert LogGroupQueryBuilder.json_to_logsql_expression(rule) == expected
 
 
 def test_json_to_logsql_unsupported_op_raises():
