@@ -11,7 +11,6 @@ from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.utils.dimension import build_safe_instance_id
 from apps.monitor.views import monitor_instance as monitor_instance_view
 
-
 NODE_MGMT_PATH = "apps.monitor.services.monitor_instance_removal.NodeMgmt"
 
 
@@ -791,9 +790,7 @@ def test_effective_plugins_action_normalizes_clean_instance_id(db, monkeypatch):
         ),
     )
 
-    response = monitor_instance_view.MonitorInstanceViewSet().effective_plugins(
-        request, str(monitor_object.id)
-    )
+    response = monitor_instance_view.MonitorInstanceViewSet().effective_plugins(request, str(monitor_object.id))
     payload = json.loads(response.content)
 
     assert service_calls["args"] == (monitor_object.id, "('host-a',)", "zh-Hans")
@@ -839,9 +836,7 @@ def test_effective_plugins_action_allows_derived_instance_without_row(db, monkey
         ),
     )
 
-    response = monitor_instance_view.MonitorInstanceViewSet().effective_plugins(
-        request, str(monitor_object.id)
-    )
+    response = monitor_instance_view.MonitorInstanceViewSet().effective_plugins(request, str(monitor_object.id))
     payload = json.loads(response.content)
 
     assert payload["data"] == expected
@@ -893,9 +888,7 @@ def test_effective_plugins_action_keeps_multi_dimension_instance_id(monkeypatch)
         ),
     )
 
-    response = monitor_instance_view.MonitorInstanceViewSet().effective_plugins(
-        request, "19"
-    )
+    response = monitor_instance_view.MonitorInstanceViewSet().effective_plugins(request, "19")
     payload = json.loads(response.content)
 
     assert service_calls["args"] == (
@@ -904,3 +897,80 @@ def test_effective_plugins_action_keeps_multi_dimension_instance_id(monkeypatch)
         "zh-Hans",
     )
     assert payload["data"] == expected
+
+
+def test_monitor_instance_list_passes_normalized_instance_id(monkeypatch):
+    """list 可选 instance_id：标量归一为存储键后再交给 service。"""
+    captured = {}
+
+    def fake_scope(request):
+        return CurrentTeamDataScope(1, frozenset({1}), False, "tester", "default", True)
+
+    def fake_get_monitor_instance(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return {"count": 1, "results": [{"instance_id": "('h1',)", "instance_name": "主机1"}]}
+
+    monkeypatch.setattr(monitor_instance_view, "resolve_current_team_data_scope", fake_scope)
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "get_permission_rules",
+        lambda *args, **kwargs: {"team": [1], "instance": []},
+    )
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "scope_permission_queryset",
+        lambda *args, **kwargs: MonitorInstance.objects.none(),
+    )
+    monkeypatch.setattr(
+        monitor_instance_view.MonitorObjectService,
+        "get_monitor_instance",
+        staticmethod(fake_get_monitor_instance),
+    )
+
+    request = types.SimpleNamespace(
+        GET={"instance_id": "h1", "page": "1", "page_size": "1"},
+        COOKIES={"current_team": "1"},
+        user=types.SimpleNamespace(
+            username="tester",
+            domain="default",
+            locale="zh-Hans",
+            is_superuser=True,
+            group_list=[],
+        ),
+    )
+    response = monitor_instance_view.MonitorInstanceViewSet().monitor_instance_list(request, "19")
+    payload = json.loads(response.content)
+
+    assert captured["kwargs"]["instance_id"] == "('h1',)"
+    assert payload["data"]["count"] == 1
+
+
+def test_monitor_instance_list_invalid_instance_id_returns_empty(monkeypatch):
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "resolve_current_team_data_scope",
+        lambda request: CurrentTeamDataScope(1, frozenset({1}), False, "tester", "default", True),
+    )
+    called = {"service": False}
+
+    def boom(*args, **kwargs):
+        called["service"] = True
+        raise AssertionError("service should not run for invalid instance_id")
+
+    monkeypatch.setattr(
+        monitor_instance_view.MonitorObjectService,
+        "get_monitor_instance",
+        staticmethod(boom),
+    )
+
+    request = types.SimpleNamespace(
+        GET={"instance_id": "()"},
+        COOKIES={"current_team": "1"},
+        user=types.SimpleNamespace(is_superuser=True, group_list=[]),
+    )
+    response = monitor_instance_view.MonitorInstanceViewSet().monitor_instance_list(request, "19")
+    payload = json.loads(response.content)
+
+    assert called["service"] is False
+    assert payload["data"] == {"count": 0, "results": []}
