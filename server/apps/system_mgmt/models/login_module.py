@@ -1,7 +1,15 @@
+from copy import deepcopy
+
+from cryptography.fernet import InvalidToken
 from django.db import models
 from django.utils.functional import cached_property
 
 from apps.core.mixinx import EncryptMixin, PeriodicTaskUtils
+
+
+BK_LOGIN_APP_TOKEN_ENVELOPE_KEY = "__bklite_encrypted__"
+BK_LOGIN_APP_TOKEN_ENVELOPE_VERSION = 1
+BK_LOGIN_APP_TOKEN_MASK = "******"
 
 
 class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
@@ -21,13 +29,76 @@ class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
         self.decrypt_field("app_secret", config)
         self.encrypt_field("app_secret", config)
         self.app_secret = config["app_secret"]
+
+        if self.source_type == "bk_login":
+            other_config = deepcopy(self.other_config or {})
+            self._encrypt_app_token(other_config)
+            self.other_config = other_config
         super().save(*args, **kwargs)
+
+    @classmethod
+    def _encrypt_app_token(cls, config):
+        value = config.get("app_token")
+        if value is None or value == "":
+            return
+
+        if isinstance(value, dict):
+            cls._decrypt_app_token_value(value)
+            return
+        if not isinstance(value, str):
+            raise ValueError("bk_login app_token must be a string")
+
+        plaintext = cls._decrypt_app_token_value(value)
+        encrypted_config = {"app_token": plaintext}
+        cls.encrypt_field("app_token", encrypted_config)
+        encrypted_value = encrypted_config["app_token"]
+        if encrypted_value == plaintext:
+            raise ValueError("Failed to encrypt bk_login app_token")
+        config["app_token"] = {
+            BK_LOGIN_APP_TOKEN_ENVELOPE_KEY: {
+                "version": BK_LOGIN_APP_TOKEN_ENVELOPE_VERSION,
+                "ciphertext": encrypted_value,
+            }
+        }
+
+    @classmethod
+    def _decrypt_app_token_value(cls, value):
+        if value is None or value == "":
+            return value
+
+        if isinstance(value, dict):
+            envelope = value.get(BK_LOGIN_APP_TOKEN_ENVELOPE_KEY)
+            if not isinstance(envelope, dict) or envelope.get("version") != BK_LOGIN_APP_TOKEN_ENVELOPE_VERSION:
+                raise ValueError("Invalid bk_login app_token envelope")
+            encrypted_value = envelope.get("ciphertext")
+            if not isinstance(encrypted_value, str) or not encrypted_value:
+                raise ValueError("Invalid bk_login app_token envelope")
+        elif isinstance(value, str):
+            encrypted_value = value
+        else:
+            raise ValueError("bk_login app_token must be a string")
+
+        try:
+            return cls.get_cipher_suite().decrypt(encrypted_value.encode(cls.ENCODING)).decode(cls.ENCODING)
+        except InvalidToken as exc:
+            if isinstance(value, str):
+                return value
+            raise ValueError("Failed to decrypt bk_login app_token") from exc
+        except Exception as exc:
+            raise ValueError("Failed to decrypt bk_login app_token") from exc
 
     @cached_property
     def decrypted_app_secret(self):
         config = {"app_secret": self.app_secret}
         self.decrypt_field("app_secret", config)
         return config["app_secret"]
+
+    @property
+    def decrypted_other_config(self):
+        config = deepcopy(self.other_config or {})
+        if self.source_type == "bk_login":
+            config["app_token"] = self._decrypt_app_token_value(config.get("app_token"))
+        return config
 
     def create_sync_periodic_task(self):
         sync_time = self.other_config.get("sync_time", "00:00")
