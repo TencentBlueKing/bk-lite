@@ -394,6 +394,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
   const actionLabel = (action?: CheckDecisionAction) => {
     const keys: Partial<Record<CheckDecisionAction, string>> = {
       keep_current: 'wiki.decisionKeepCurrent',
+      keep_all: 'wiki.decisionKeepAll',
       use_new: 'wiki.decisionUseNew',
       edit_accept: 'wiki.decisionEditAccept',
       keep_separate: 'wiki.decisionKeepSeparate',
@@ -426,7 +427,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
     action: CheckDecisionAction,
     body?: string,
   ): CheckDecisionRequest | null => {
-    if (action === 'keep_current') return { action };
+    if (action === 'keep_current' || action === 'keep_all') return { action };
     const selected = resolveSelectedConflictAlternative(item, selectedMaterialId);
     const materialId = selected?.materialId;
     const candidates = getDecisionActions(item).includes('use_new')
@@ -487,6 +488,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
                 !interaction.canDecide ||
                 (model?.kind === 'knowledge_conflict' &&
                   action !== 'keep_current' &&
+                  action !== 'keep_all' &&
                   candidateAlternatives.length > 1 &&
                   selectedMaterialId == null)
               }

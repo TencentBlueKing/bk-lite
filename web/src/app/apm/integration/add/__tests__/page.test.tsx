@@ -21,7 +21,6 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
 
 function renderPage() {
   return render(
-    // @ts-expect-error react-intl type incompatibility with React 19
     <IntlProvider locale="zh" messages={{
       'apm.integration.copyEndpoint': '复制 HTTP 上报端点',
       'apm.integration.copyEndpointSuccess': 'HTTP 上报端点已复制',

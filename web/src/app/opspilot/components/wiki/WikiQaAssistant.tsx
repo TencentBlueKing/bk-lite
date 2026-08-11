@@ -22,10 +22,56 @@ import {
   SearchOutlined,
   SendOutlined,
 } from '@ant-design/icons';
+import DOMPurify from 'dompurify';
+import MarkdownIt from 'markdown-it';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiCitation } from '@/app/opspilot/types/global';
 import WikiCitations from '@/app/opspilot/components/custom-chat-sse/WikiCitations';
+import styles from '@/app/opspilot/components/custom-chat/index.module.scss';
+
+const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
+
+const renderMarkdown = (text: string) =>
+  DOMPurify.sanitize(markdown.render(text), {
+    ALLOWED_TAGS: [
+      'p',
+      'br',
+      'strong',
+      'em',
+      'u',
+      'code',
+      'pre',
+      'span',
+      'div',
+      'a',
+      'ul',
+      'ol',
+      'li',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'blockquote',
+      'table',
+      'thead',
+      'tbody',
+      'tr',
+      'th',
+      'td',
+    ],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+  });
+
+const WaitingDots: React.FC = () => (
+  <span className={styles.thinkingDots} aria-label="loading">
+    <span />
+    <span />
+    <span />
+  </span>
+);
 
 interface Msg {
   id: string;
@@ -135,7 +181,18 @@ const MessageList: React.FC<{
                   : 'max-w-[92%] rounded-lg rounded-bl-sm bg-[var(--color-fill-1)] px-3 py-2 text-sm text-[var(--color-text-1)]'
               }
             >
-              <p className="m-0 whitespace-pre-wrap break-words">{m.text || (m.streaming ? '…' : '')}</p>
+              {m.role === 'bot' ? (
+                m.text ? (
+                  <div
+                    className={styles.markdownBody}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }}
+                  />
+                ) : m.streaming ? (
+                  <WaitingDots />
+                ) : null
+              ) : (
+                <p className="m-0 whitespace-pre-wrap break-words">{m.text}</p>
+              )}
               {m.warning && (
                 <div className="mt-2 text-xs text-[var(--color-warning)] opacity-90">
                   {m.warning}
