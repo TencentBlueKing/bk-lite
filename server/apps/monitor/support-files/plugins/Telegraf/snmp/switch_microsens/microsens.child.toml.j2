@@ -82,6 +82,7 @@
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.3181.10.6.1.6.1.1.2"
         name = "state"
