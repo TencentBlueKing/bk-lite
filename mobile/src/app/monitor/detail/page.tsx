@@ -127,7 +127,7 @@ function MonitorDetailContent() {
       getMonitorInstance(
         objectId,
         instanceId,
-        { name: routeInstanceName, idValues },
+        {},
         controller.signal,
       ),
       listEffectivePlugins(objectId, instanceId, controller.signal),

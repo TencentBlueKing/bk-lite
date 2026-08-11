@@ -3104,6 +3104,7 @@ class ToolsNodes(BasicNode):
                     tools,
                     skill_packages=skill_packages,
                     config=config,
+                    agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
                 )
             except Exception as planning_exc:
                 # 规划失败时保持零工具可见，仍允许模型直接回答，绝不退回全量工具。
@@ -3405,6 +3406,7 @@ class ToolsNodes(BasicNode):
                                 failure=failure,
                                 skill_packages=skill_packages,
                                 config=config,
+                                agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
                             )
                             _ensure_skill_runtime_for_plan(replacement)
                             pending_steps = list(replacement.steps)
@@ -3503,6 +3505,7 @@ class ToolsNodes(BasicNode):
                                 failure=failure,
                                 skill_packages=skill_packages,
                                 config=config,
+                                agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
                             )
                             _ensure_skill_runtime_for_plan(replacement)
                             pending_steps = list(replacement.steps)
