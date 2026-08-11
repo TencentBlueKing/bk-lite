@@ -57,6 +57,9 @@ def test_serializer_rejects_malformed_rule_conditions(conditions):
     [
         "prod* OR (*)",
         "prod*) OR (*) OR (cluster:prod",
+        "/var/log",
+        "ops@example.com",
+        "GET /api",
         "-prod",
         "!prod",
         "prod | stats",
@@ -68,6 +71,22 @@ def test_serializer_legacy_mode_rejects_wildcard_query_structure(settings, value
     serializer = LogGroupSerializer(
         data=_payload({"mode": "AND", "conditions": [{"field": "cluster", "op": "startswith", "value": value}]})
     )
+
+    assert serializer.is_valid() is False
+    assert "unsafe for legacy" in str(serializer.errors["rule"])
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"field": "@timestamp", "op": "==", "value": "prod"},
+        {"field": "http/request", "op": "==", "value": "ok"},
+        {"field": "message", "op": "contains", "value": "a.b"},
+    ],
+)
+def test_serializer_legacy_mode_rejects_strict_only_rule_shapes(settings, condition):
+    settings.LOG_GROUP_RULE_MODE_ENFORCEMENT = "legacy"
+    serializer = LogGroupSerializer(data=_payload({"mode": "AND", "conditions": [condition]}))
 
     assert serializer.is_valid() is False
     assert "unsafe for legacy" in str(serializer.errors["rule"])

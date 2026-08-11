@@ -112,19 +112,23 @@ def test_audit_command_strict_preflight_rejects_logs_query_injection_rule():
         call_command("audit_log_group_rule_modes", format="jsonl", fail_on_uncovered=True, stdout=io.StringIO())
 
 
-def test_audit_command_legacy_rollback_preflight_rejects_strict_only_wildcard_rule():
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"field": "cluster", "op": "startswith", "value": "prod*) OR (*) OR (cluster:prod"},
+        {"field": "request", "op": "startswith", "value": "GET /api"},
+        {"field": "user.email", "op": "endswith", "value": "@example.com"},
+        {"field": "@timestamp", "op": "==", "value": "prod"},
+        {"field": "message", "op": "contains", "value": "a.b"},
+    ],
+)
+def test_audit_command_legacy_rollback_preflight_rejects_strict_only_rule(condition):
     LogGroup.objects.create(
         id="g-strict-only",
         name="strict-only",
         rule={
             "mode": "AND",
-            "conditions": [
-                {
-                    "field": "cluster",
-                    "op": "startswith",
-                    "value": "prod*) OR (*) OR (cluster:prod",
-                }
-            ],
+            "conditions": [condition],
         },
     )
 
