@@ -1,5 +1,6 @@
 import json
 import re
+import traceback
 from copy import deepcopy
 from pathlib import Path
 
@@ -274,13 +275,17 @@ def _import_plugins_from_files(path_list):
 
         except Exception as e:
             logger.error(f"导入插件失败: {file_path}, 错误: {e}")
-            import traceback
-
             logger.error(traceback.format_exc())
             error_count += 1
 
     if documents:
-        MonitorPluginService.import_monitor_plugins(documents)
+        try:
+            MonitorPluginService.import_monitor_plugins(documents)
+        except Exception as e:
+            logger.error("批量导入插件失败，已回滚本次插件写入: %s", e)
+            logger.error(traceback.format_exc())
+            error_count += success_count
+            success_count = 0
 
     return success_count, error_count, supplementary_map
 

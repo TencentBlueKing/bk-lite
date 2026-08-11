@@ -4,7 +4,6 @@ import io
 import json
 import uuid
 import zipfile
-from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
 from django.db import transaction
@@ -125,10 +124,20 @@ class PolicyService:
                 items = PolicyService._normalize_builtin_documents([data])
             except Exception as exc:
                 if pair is None:
-                    logger.warning("跳过无法识别的策略文档，不影响其它内置模板: %s", exc)
+                    logger.warning(
+                        "跳过无法识别的策略文档，不影响其它内置模板: %s: %s",
+                        type(exc).__name__,
+                        exc,
+                    )
                 else:
                     failed_pairs.add(pair)
-                    logger.warning("跳过策略文档 %s/%s，保留该对象对上一次模板: %s", pair[0], pair[1], exc)
+                    logger.warning(
+                        "跳过策略文档 %s/%s，保留该对象对上一次模板: %s: %s",
+                        pair[0],
+                        pair[1],
+                        type(exc).__name__,
+                        exc,
+                    )
                 continue
             if pair in failed_pairs:
                 continue
@@ -508,7 +517,7 @@ class PolicyService:
                     {
                         "format": ARCHIVE_FORMAT,
                         "schema_version": ARCHIVE_SCHEMA_VERSION,
-                        "exported_at": datetime.now(timezone.utc).isoformat(),
+                        "exported_at": timezone.now().isoformat(),
                         "templates": manifest_items,
                     },
                     ensure_ascii=False,
