@@ -174,6 +174,11 @@ export interface ControllerInstallProgressRow {
   os?: string;
   cpu_architecture?: string;
   organizations?: string[];
+  port?: number;
+  username?: string;
+  winrm_scheme?: 'https';
+  winrm_transport?: 'ntlm';
+  winrm_cert_validation?: boolean;
   status?: InstallerTaskStatus | null;
   result?: OperationTaskResult | null;
 }
@@ -199,6 +204,9 @@ export interface RetryInstallParams {
   port?: string | number;
   username?: string;
   private_key?: string;
+  winrm_scheme?: 'https';
+  winrm_transport?: 'ntlm';
+  winrm_cert_validation?: boolean;
 }
 
 export interface InstallingProps {

@@ -13,6 +13,9 @@ import {
 } from '../src/app/node-manager/utils/installerProgress.ts';
 
 const translations: Record<string, string> = {
+  'node-manager.cloudregion.node.installerFailureObjectMissing': 'Required installation package was not found in object storage',
+  'node-manager.cloudregion.node.installerFailureFileBusy': 'A running process is blocking the target file from being replaced',
+  'node-manager.cloudregion.node.installerFailureClockSkew': 'The node and Server clocks differ beyond the allowed threshold',
   'node-manager.cloudregion.node.installerSuggestionObjectMissing': 'localized object-missing guidance',
   'node-manager.cloudregion.node.installerSuggestionFileBusy': 'localized file-busy guidance',
   'node-manager.cloudregion.node.installerSuggestionClockSkew': 'localized clock-skew guidance',
