@@ -90,6 +90,9 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
         kb_id = request.GET.get("knowledge_base")
         if kb_id:
             queryset = queryset.filter(knowledge_base_id=kb_id)
+        search = (request.GET.get("search") or "").strip()
+        if search:
+            queryset = queryset.filter(name__icontains=search)
         status_filters = resolve_material_status_filters(request)
         if status_filters:
             queryset = queryset.filter(status__in=status_filters)

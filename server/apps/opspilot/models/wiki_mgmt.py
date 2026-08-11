@@ -790,12 +790,14 @@ class WikiDecisionRule(MaintainerInfo, TimeInfo):
     ]
 
     ACTION_KEEP_CURRENT = "keep_current"
+    ACTION_KEEP_ALL = "keep_all"
     ACTION_USE_NEW = "use_new"
     ACTION_EDIT_ACCEPT = "edit_accept"
     ACTION_KEEP_SEPARATE = "keep_separate"
     ACTION_MERGE = "merge"
     ACTION_CHOICES = [
         (ACTION_KEEP_CURRENT, "保留当前知识"),
+        (ACTION_KEEP_ALL, "全部保留"),
         (ACTION_USE_NEW, "使用新知识"),
         (ACTION_EDIT_ACCEPT, "编辑后采用"),
         (ACTION_KEEP_SEPARATE, "保持页面独立"),
