@@ -110,15 +110,8 @@ def _sync_groups(group_list, parent_group, parent_group_id):
                 affected_query = Q()
                 for group_id in affected_group_ids[offset : offset + 100]:
                     affected_query |= Q(group_list__contains=[group_id])
-                affected_identities.update(
-                    User.objects.filter(affected_query)
-                    .values_list("username", "domain")
-                    .iterator(chunk_size=1000)
-                )
-            affected_users = [
-                {"username": username, "domain": domain}
-                for username, domain in sorted(affected_identities)
-            ]
+                affected_identities.update(User.objects.filter(affected_query).values_list("username", "domain").iterator(chunk_size=1000))
+            affected_users = [{"username": username, "domain": domain} for username, domain in sorted(affected_identities)]
             Group.objects.filter(id__in=delete_groups).delete()
             if affected_users:
                 clear_users_permission_cache(affected_users)
@@ -469,7 +462,14 @@ def send_initial_password_email_batch(run_id: int):
         deliveries.append({"user": user, "username": username, "raw_password": raw_password})
     if deliveries:
         results = send_initial_password_emails(run.source, deliveries)
-        outcomes.extend({"username": item["username"], "ok": bool(results.get(item["username"], {}).get("result")), "reason": results.get(item["username"], {}).get("message", "邮件发送失败")} for item in deliveries)
+        outcomes.extend(
+            {
+                "username": item["username"],
+                "ok": bool(results.get(item["username"], {}).get("result")),
+                "reason": results.get(item["username"], {}).get("message", "邮件发送失败"),
+            }
+            for item in deliveries
+        )
     has_pending = complete_password_email_batch(run_id, outcomes)
     if has_pending:
         send_initial_password_email_batch.delay(run_id)

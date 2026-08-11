@@ -7,11 +7,7 @@ def ensure_extractor_keys_unique(apps, schema_editor):
     LogExtractor = apps.get_model("log", "LogExtractor")
     attached = LogExtractor.objects.using(alias).filter(collect_instance_id__isnull=False)
     duplicate_name = (
-        attached.values("collect_instance_id", "name")
-        .annotate(total=Count("id"))
-        .filter(total__gt=1)
-        .order_by("collect_instance_id", "name")
-        .first()
+        attached.values("collect_instance_id", "name").annotate(total=Count("id")).filter(total__gt=1).order_by("collect_instance_id", "name").first()
     )
     duplicate_order = (
         attached.values("collect_instance_id", "sort_order")

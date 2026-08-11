@@ -1,6 +1,14 @@
 import pydantic.root_model  # noqa
 
+from types import SimpleNamespace
+
+import pytest
+
 from apps.log.services.search import SearchService
+from apps.log.utils.log_group import LogGroupQueryBuilder
+
+
+pytestmark = pytest.mark.unit
 
 
 # ----------------------- _apply_default_time_window -----------------------
@@ -62,6 +70,39 @@ def test_build_storage_query_maps_logical_message_added_by_log_group(mocker):
 
     assert query == '_msg:"failed" AND host:*'
     assert group_info == [{"id": "g1"}]
+
+
+def test_build_storage_query_denies_unknown_rule_mode_without_mocking_builder():
+    group = SimpleNamespace(
+        id="g1",
+        name="group",
+        rule={"mode": "ADN", "conditions": [{"field": "cluster", "op": "==", "value": "prod"}]},
+    )
+
+    query, group_info = SearchService._build_storage_query("host:web", ["g1"], resolved_groups=[group])
+
+    assert query == LogGroupQueryBuilder.DENY_ALL_QUERY
+    assert group_info[0]["status"] == "invalid_rule"
+
+
+def test_build_storage_query_applies_explicit_legacy_or_without_mocking_builder(settings):
+    settings.LOG_GROUP_LEGACY_OR_GROUP_IDS = frozenset({"g1"})
+    group = SimpleNamespace(
+        id="g1",
+        name="group",
+        rule={
+            "mode": "ADN",
+            "conditions": [
+                {"field": "cluster", "op": "==", "value": "prod"},
+                {"field": "namespace", "op": "==", "value": "blue"},
+            ],
+        },
+    )
+
+    query, group_info = SearchService._build_storage_query("host:web", ["g1"], resolved_groups=[group])
+
+    assert query == '(host:web) AND ((cluster:"prod" OR namespace:"blue"))'
+    assert group_info[0]["status"] == "legacy_or"
 
 
 # ----------------------- _normalize_count -----------------------

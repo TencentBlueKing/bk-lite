@@ -1,9 +1,13 @@
 #!/bin/bash
 
 # webhookd mlops serve script
-# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://127.0.0.1:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "network_mode": "bridge", "device": "auto|cpu|gpu", "timeseries_predict_timeout_seconds": 120}
+# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://127.0.0.1:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "network_mode": "bridge", "device": "auto|cpu|gpu", "startup_timeout_seconds": 120, "timeseries_predict_timeout_seconds": 120}
 
 set -e
+
+# 从 shell 入口记录请求起点。后续即使 JSON 解析、随机标识生成或其他
+# preflight 变慢，也不能重新获得一份完整的启动预算。
+REQUEST_STARTED_SECONDS=$SECONDS
 
 # 加载公共配置
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,6 +21,15 @@ fi
 
 JSON_DATA="$1"
 
+# 模型加载可能需要访问 MLflow。初次启动必须在超时内通过 BentoML
+# readiness，随后才启用容器自动重启，避免加载失败被重启环掩盖。
+STARTUP_TIMEOUT_SECONDS=$(echo "$JSON_DATA" | jq -r '.startup_timeout_seconds // empty')
+STARTUP_TIMEOUT_SECONDS="${STARTUP_TIMEOUT_SECONDS:-${SERVING_STARTUP_TIMEOUT_SECONDS:-120}}"
+if ! [[ "$STARTUP_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || [ "$STARTUP_TIMEOUT_SECONDS" -gt 290 ]; then
+    json_error "INVALID_STARTUP_TIMEOUT" "" "startup_timeout_seconds must be an integer between 1 and 290"
+    exit 1
+fi
+
 # 提取必需参数
 ID=$(echo "$JSON_DATA" | jq -r '.id // empty')
 MLFLOW_TRACKING_URI=$(echo "$JSON_DATA" | jq -r '.mlflow_tracking_uri // empty')
@@ -27,6 +40,8 @@ NETWORK_MODE=$(echo "$JSON_DATA" | jq -r '.network_mode // "bridge"')
 TRAIN_IMAGE=$(echo "$JSON_DATA" | jq -r '.train_image // empty')
 DEVICE=$(echo "$JSON_DATA" | jq -r '.device // empty')  # 未传递时为空字符串
 TIMESERIES_PREDICT_TIMEOUT_SECONDS=$(echo "$JSON_DATA" | jq -r '.timeseries_predict_timeout_seconds // empty')
+SERVING_INSTANCE_ID=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
+export SERVING_INSTANCE_ID
 
 # 验证必需参数
 if [ -z "$ID" ] || [ -z "$MLFLOW_TRACKING_URI" ] || [ -z "$MLFLOW_MODEL_URI" ]; then
@@ -46,40 +61,176 @@ if [ -n "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" ]; then
     fi
 fi
 
-# 检查容器是否已存在
-if docker ps -a --format '{{.Names}}' | grep -q "^${ID}$"; then
+# startup_timeout_seconds 是从请求进入脚本到 readiness 完成的总预算；
+# webhookd 另外预留 5 秒用于有界回滚，因此这里把单次回滚限制为 4 秒。
+ROLLBACK_TIMEOUT_SECONDS="${SERVING_ROLLBACK_TIMEOUT_SECONDS:-4}"
+if ! [[ "$ROLLBACK_TIMEOUT_SECONDS" =~ ^[1-4]$ ]]; then
+    json_error "INVALID_ROLLBACK_TIMEOUT" "$ID" "SERVING_ROLLBACK_TIMEOUT_SECONDS must be between 1 and 4"
+    exit 1
+fi
+SERVING_REQUIRE_INSTANCE_ID="${SERVING_REQUIRE_INSTANCE_ID:-false}"
+SERVING_REQUIRE_INSTANCE_ID=$(echo "$SERVING_REQUIRE_INSTANCE_ID" | tr '[:upper:]' '[:lower:]')
+if [ "$SERVING_REQUIRE_INSTANCE_ID" != "true" ] && [ "$SERVING_REQUIRE_INSTANCE_ID" != "false" ]; then
+    json_error "INVALID_IDENTITY_POLICY" "$ID" "SERVING_REQUIRE_INSTANCE_ID must be true or false"
+    exit 1
+fi
+STARTUP_DEADLINE=$((REQUEST_STARTED_SECONDS + STARTUP_TIMEOUT_SECONDS))
+ROLLBACK_DEADLINE=0
+
+run_bounded() {
+    local timeout_seconds="$1"
+    shift
+    python3 "$SCRIPT_DIR/run_bounded.py" "$timeout_seconds" "$@"
+}
+
+remaining_startup_seconds() {
+    local remaining=$((STARTUP_DEADLINE - SECONDS))
+    if [ "$remaining" -lt 0 ]; then
+        remaining=0
+    fi
+    echo "$remaining"
+}
+
+run_with_startup_budget() {
+    local remaining
+    remaining=$(remaining_startup_seconds)
+    if [ "$remaining" -le 0 ]; then
+        return 124
+    fi
+    run_bounded "$remaining" "$@"
+}
+
+run_with_rollback_budget() {
+    if [ "$ROLLBACK_DEADLINE" -eq 0 ]; then
+        ROLLBACK_DEADLINE=$((SECONDS + ROLLBACK_TIMEOUT_SECONDS))
+    fi
+    local remaining=$((ROLLBACK_DEADLINE - SECONDS))
+    if [ "$remaining" -le 0 ]; then
+        return 124
+    fi
+    run_bounded "$remaining" "$@"
+}
+
+# 清理 trap 必须早于任何 Docker 副作用（包括 GPU 探针）安装。
+CID_FILE=$(mktemp)
+rm -f "$CID_FILE"
+WATCHDOG_COMMIT_FILE="${CID_FILE}.committed"
+WATCHDOG_HANDLED_FILE="${CID_FILE}.handled"
+WATCHDOG_FAILURE_FILE="${CID_FILE}.cleanup-failed"
+WATCHDOG_READY_FILE="${CID_FILE}.watchdog-ready"
+CREATED_CONTAINER_ID=""
+GPU_PROBE_CONTAINER_NAME=""
+STARTUP_COMMITTED="false"
+ROLLBACK_IN_PROGRESS="false"
+WATCHDOG_PID=""
+
+cleanup_on_exit() {
+    local status=$?
+    if [ -z "$CREATED_CONTAINER_ID" ] && [ -f "$CID_FILE" ]; then
+        CREATED_CONTAINER_ID=$(cat "$CID_FILE" 2>/dev/null || true)
+    fi
+    rm -f "$CID_FILE"
+    if [ "$status" -ne 0 ] \
+        && [ "$STARTUP_COMMITTED" != "true" ] \
+        && [ "$ROLLBACK_IN_PROGRESS" != "true" ]; then
+        if [ -n "$CREATED_CONTAINER_ID" ]; then
+            if run_with_rollback_budget docker rm -f "$CREATED_CONTAINER_ID" >/dev/null 2>&1; then
+                : > "$WATCHDOG_HANDLED_FILE"
+            fi
+        fi
+        if [ -n "$GPU_PROBE_CONTAINER_NAME" ]; then
+            run_with_rollback_budget docker rm -f "$GPU_PROBE_CONTAINER_NAME" >/dev/null 2>&1 || true
+        fi
+    fi
+    if [ "$STARTUP_COMMITTED" = "true" ]; then
+        : > "$WATCHDOG_COMMIT_FILE"
+        if [ -n "$WATCHDOG_PID" ]; then
+            wait "$WATCHDOG_PID" 2>/dev/null || true
+        fi
+        rm -f "$WATCHDOG_COMMIT_FILE" "$WATCHDOG_HANDLED_FILE" "$WATCHDOG_FAILURE_FILE" "$WATCHDOG_READY_FILE"
+    fi
+}
+
+trap cleanup_on_exit EXIT
+trap 'exit 143' TERM INT HUP
+
+# EXIT trap 无法处理 webhookd 的最终 SIGKILL。独立 session 中的 watcher
+# 观察 launcher 生存期；若未提交便退出，则按本次 CID/label 有界回滚。
+python3 "$SCRIPT_DIR/startup_cleanup_watchdog.py" \
+    "$$" \
+    "$CID_FILE" \
+    "$SERVING_INSTANCE_ID" \
+    "$WATCHDOG_COMMIT_FILE" \
+    "$WATCHDOG_HANDLED_FILE" \
+    "$WATCHDOG_FAILURE_FILE" \
+    "$WATCHDOG_READY_FILE" \
+    "$ROLLBACK_TIMEOUT_SECONDS" >/dev/null 2>>"$WATCHDOG_FAILURE_FILE" &
+WATCHDOG_PID=$!
+for _ in $(seq 1 50); do
+    if [ -f "$WATCHDOG_READY_FILE" ]; then
+        break
+    fi
+    /bin/sleep 0.02
+done
+if [ ! -f "$WATCHDOG_READY_FILE" ]; then
+    json_error "CLEANUP_WATCHDOG_FAILED" "$ID" "Failed to establish startup rollback watchdog"
+    exit 1
+fi
+
+# 检查容器是否已存在；Docker 查询也属于同一个启动预算。
+set +e
+EXISTING_CONTAINERS=$(run_with_startup_budget docker ps -a --format '{{.Names}}' 2>&1)
+DOCKER_CHECK_STATUS=$?
+set -e
+if [ "$DOCKER_CHECK_STATUS" -ne 0 ]; then
+    json_error "DOCKER_CHECK_FAILED" "$ID" "Failed to inspect existing containers within startup budget" "$EXISTING_CONTAINERS"
+    exit 1
+fi
+if echo "$EXISTING_CONTAINERS" | grep -q "^${ID}$"; then
     json_error "CONTAINER_ALREADY_EXISTS" "$ID" "Container already exists. Use remove.sh to delete it first."
     exit 1
 fi
 
-# 用户指定端口时检查是否被占用
+# 用户指定端口时用 Python 做真实 bind 检查；最终 readiness 仍会校验本次
+# 启动的随机实例标识，因此 bind 与容器启动间的竞争不会被误报为成功。
 if [ -n "$PORT" ]; then
-    if ss -tln 2>/dev/null | grep -E ":(${PORT})[^0-9]" | grep -q "LISTEN"; then
+    if ! run_with_startup_budget python3 -c \
+        'import socket, sys; s=socket.socket(); s.bind(("0.0.0.0", int(sys.argv[1]))); s.close()' \
+        "$PORT" >/dev/null 2>&1; then
         json_error "PORT_IN_USE" "$ID" "Port $PORT is already in use. Please choose a different port."
         exit 1
     fi
 fi
 
 # 检查镜像是否存在
-if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^${TRAIN_IMAGE}$"; then
+if ! run_with_startup_budget docker image inspect "$TRAIN_IMAGE" >/dev/null 2>&1; then
     json_error "IMAGE_NOT_FOUND" "$ID" "Serving image not found: $TRAIN_IMAGE"
     exit 1
 fi
 
-# 容器内固定端口 3000
+# bridge 模式继续使用容器端口 3000；host 模式必须使用本次启动独占的
+# 宿主端口，避免 readiness 命中宿主上另一个服务。
 CONTAINER_PORT="3000"
+PORT_ARGS=()
 
-# 构建端口映射参数
-if [ -n "$PORT" ]; then
-    # 用户指定端口：映射到指定端口
-    PORT_MAPPING="${PORT}:${CONTAINER_PORT}"
+# 构建端口映射参数。host 网络不接受 -p，BentoML 直接监听独占宿主端口。
+if [ "$NETWORK_MODE" = "host" ]; then
+    if [ -z "$PORT" ]; then
+        if ! PORT=$(run_with_startup_budget python3 -c \
+            'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'); then
+            json_error "PORT_ALLOCATION_FAILED" "$ID" "Failed to allocate host port within startup budget"
+            exit 1
+        fi
+    fi
+    CONTAINER_PORT="$PORT"
+elif [ -n "$PORT" ]; then
+    PORT_ARGS=(-p "${PORT}:${CONTAINER_PORT}")
 else
-    # Docker 自动分配：只指定容器端口，宿主机端口由 Docker 随机分配
-    PORT_MAPPING="${CONTAINER_PORT}"
+    PORT_ARGS=(-p "${CONTAINER_PORT}")
 fi
 
 # 配置设备参数
-setup_device_args "$DEVICE" || {
+setup_device_args "$DEVICE" run_with_startup_budget "$SERVING_INSTANCE_ID" || {
     json_error "DEVICE_SETUP_FAILED" "$ID" "Failed to setup device"
     exit 1
 }
@@ -90,14 +241,18 @@ if [ -n "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" ]; then
     PREDICT_TIMEOUT_ENV_ARGS=(-e "TIMESERIES_PREDICT_TIMEOUT_SECONDS=$TIMESERIES_PREDICT_TIMEOUT_SECONDS")
 fi
 
-# 启动 serving 容器（使用 Dockerfile 定义的 ENTRYPOINT: startup.sh -> supervisord）
+# 初次启动禁用重启策略；readiness 通过后再恢复 unless-stopped。
+# 否则 BentoML 因模型加载失败退出时，Docker 重启环会让 docker ps 持续可见，
+# 从而把失败发布误报为 running。
 set +e
-DOCKER_OUTPUT=$(docker run -d \
+DOCKER_OUTPUT=$(run_with_startup_budget docker run -d \
     --name "$ID" \
+    --cidfile "$CID_FILE" \
+    --label "bk-lite.startup-id=$SERVING_INSTANCE_ID" \
     --network "$NETWORK_MODE" \
-    -p "${PORT_MAPPING}" \
+    "${PORT_ARGS[@]}" \
     $DEVICE_ARGS \
-    --restart unless-stopped \
+    --restart no \
     --log-driver json-file \
     --log-opt max-size=100m \
     --log-opt max-file=3 \
@@ -108,33 +263,182 @@ DOCKER_OUTPUT=$(docker run -d \
     -e MLFLOW_MODEL_URI="$MLFLOW_MODEL_URI" \
     -e WORKERS="$WORKERS" \
     -e ALLOW_DUMMY_FALLBACK="false" \
+    -e BENTOML_CONTAINERIZED="true" \
+    -e SERVING_INSTANCE_ID="$SERVING_INSTANCE_ID" \
     "${PREDICT_TIMEOUT_ENV_ARGS[@]}" \
     "$TRAIN_IMAGE" 2>&1)
 
 DOCKER_STATUS=$?
 set -e
+CREATED_CONTAINER_ID=$(cat "$CID_FILE" 2>/dev/null || true)
+if [ -z "$CREATED_CONTAINER_ID" ]; then
+    ROLLBACK_DEADLINE=$((SECONDS + ROLLBACK_TIMEOUT_SECONDS))
+    CREATED_CONTAINER_ID=$(run_with_rollback_budget docker ps -aq \
+        --filter "label=bk-lite.startup-id=$SERVING_INSTANCE_ID" \
+        --no-trunc 2>/dev/null | head -n 1 || true)
+fi
+if [ "$DOCKER_STATUS" -eq 0 ]; then
+    ROLLBACK_DEADLINE=0
+fi
+
+rollback_failed_startup() {
+    local original_code="$1"
+    local original_message="$2"
+    local container_logs=""
+    local log_timeout_seconds=0
+    local rollback_status=0
+
+    if [ -z "$CREATED_CONTAINER_ID" ]; then
+        json_error "$original_code" "$ID" "$original_message"
+        exit 1
+    fi
+
+    # 先保留有限原始日志，再按本次 docker run 写入 cidfile 的精确 ID 回滚，
+    # 避免误删同名存量容器或留下阻塞重试的半成品。
+    ROLLBACK_IN_PROGRESS="true"
+    if [ "$ROLLBACK_DEADLINE" -eq 0 ]; then
+        ROLLBACK_DEADLINE=$((SECONDS + ROLLBACK_TIMEOUT_SECONDS))
+    fi
+    # 日志最多占半秒，明确给 docker rm 留出至少一秒以及调度余量。
+    log_timeout_seconds=$((ROLLBACK_DEADLINE - SECONDS))
+    if [ "$log_timeout_seconds" -gt 1 ]; then
+        log_timeout_seconds="0.5"
+    else
+        log_timeout_seconds=0
+    fi
+    if [ "$log_timeout_seconds" != "0" ]; then
+        container_logs=$(run_bounded "$log_timeout_seconds" docker logs --tail 50 "$CREATED_CONTAINER_ID" 2>&1 || true)
+    fi
+    set +e
+    run_with_rollback_budget docker rm -f "$CREATED_CONTAINER_ID" >/dev/null 2>&1
+    rollback_status=$?
+    set -e
+    if [ "$rollback_status" -ne 0 ]; then
+        ROLLBACK_IN_PROGRESS="false"
+        json_error \
+            "CONTAINER_ROLLBACK_FAILED" \
+            "$ID" \
+            "$original_message; failed to rollback container $CREATED_CONTAINER_ID" \
+            "$container_logs"
+        exit 1
+    fi
+
+    CREATED_CONTAINER_ID=""
+    : > "$WATCHDOG_HANDLED_FILE"
+    json_error "$original_code" "$ID" "$original_message" "$container_logs"
+    exit 1
+}
 
 if [ $DOCKER_STATUS -ne 0 ]; then
+    if [ -n "$CREATED_CONTAINER_ID" ]; then
+        rollback_failed_startup \
+            "CONTAINER_START_FAILED" \
+            "Failed to start container: $DOCKER_OUTPUT"
+    fi
     json_error "CONTAINER_START_FAILED" "$ID" "Failed to start container" "$DOCKER_OUTPUT"
     exit 1
 fi
 
-# 等待容器稳定（5秒）
-sleep 5
-
-# 检查容器是否还在运行
-if ! docker ps -q -f name="^${ID}$" | grep -q .; then
-    # 容器已退出，获取退出状态
-    EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' "$ID" 2>/dev/null || echo "unknown")
-    json_error "CONTAINER_EXITED" "$ID" "Container exited with code $EXIT_CODE. Use logs.sh to view logs and remove.sh to cleanup."
-    exit 1
+# 进程可能在端口映射可查询前就因模型加载失败退出，先保留真实退出原因。
+INITIAL_STATE=$(run_with_startup_budget docker inspect -f '{{.State.Status}}' "$CREATED_CONTAINER_ID" 2>/dev/null || echo "unknown")
+if [ "$INITIAL_STATE" = "exited" ] || [ "$INITIAL_STATE" = "dead" ]; then
+    EXIT_CODE=$(run_with_startup_budget docker inspect -f '{{.State.ExitCode}}' "$CREATED_CONTAINER_ID" 2>/dev/null || echo "unknown")
+    rollback_failed_startup \
+        "CONTAINER_EXITED" \
+        "Container exited with code $EXIT_CODE before readiness and was rolled back"
 fi
 
-# 获取实际分配的宿主机端口（Docker 自动分配时需要）
+# 获取 bridge 模式下 Docker 自动分配的宿主机端口。
+if [ "$NETWORK_MODE" != "host" ] && [ -z "$PORT" ]; then
+    PORT=$(run_with_startup_budget docker inspect "$CREATED_CONTAINER_ID" -f '{{(index (index .NetworkSettings.Ports "3000/tcp") 0).HostPort}}' 2>/dev/null || echo "")
+fi
+
 if [ -z "$PORT" ]; then
-    PORT=$(docker inspect "$ID" -f '{{(index (index .NetworkSettings.Ports "3000/tcp") 0).HostPort}}' 2>/dev/null || echo "")
+    rollback_failed_startup \
+        "PORT_ALLOCATION_FAILED" \
+        "Failed to resolve serving port; container was rolled back"
 fi
 
-# 返回成功（格式与 status.sh 一致）
-echo "{\"status\":\"success\",\"id\":\"$ID\",\"state\":\"running\",\"port\":\"$PORT\",\"detail\":\"Up\"}"
-exit 0
+# 必须等模型加载完成，并由业务 health API 回显本次随机实例标识。
+# 这会把响应绑定到本次容器，即使 host 端口在启动竞争中被其他服务抢占，
+# 也不会把无关服务的 /readyz 误认成本次模型服务。
+HEALTH_URL="http://127.0.0.1:${PORT}/health"
+LAST_STATE="unknown"
+
+while [ "$SECONDS" -lt "$STARTUP_DEADLINE" ]; do
+    LAST_STATE=$(run_with_startup_budget docker inspect -f '{{.State.Status}}' "$CREATED_CONTAINER_ID" 2>/dev/null || echo "unknown")
+
+    if [ "$LAST_STATE" = "exited" ] || [ "$LAST_STATE" = "dead" ]; then
+        EXIT_CODE=$(run_with_startup_budget docker inspect -f '{{.State.ExitCode}}' "$CREATED_CONTAINER_ID" 2>/dev/null || echo "unknown")
+        rollback_failed_startup \
+            "CONTAINER_EXITED" \
+            "Container exited with code $EXIT_CODE before readiness and was rolled back"
+    fi
+
+    REMAINING_SECONDS=$((STARTUP_DEADLINE - SECONDS))
+    CURL_TIMEOUT_SECONDS=2
+    if [ "$REMAINING_SECONDS" -lt "$CURL_TIMEOUT_SECONDS" ]; then
+        CURL_TIMEOUT_SECONDS="$REMAINING_SECONDS"
+    fi
+
+    HEALTH_RESPONSE=""
+    IDENTITY_READY="false"
+    HEALTH_HAS_INSTANCE_ID="false"
+    LEGACY_BRIDGE_READY="false"
+    LEGACY_CURL_TIMEOUT_SECONDS=0
+    if [ "$LAST_STATE" = "running" ]; then
+        HEALTH_RESPONSE=$(curl --fail --silent --show-error \
+            --max-time "$CURL_TIMEOUT_SECONDS" \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data '{}' \
+            "$HEALTH_URL" 2>/dev/null || true)
+    fi
+
+    if echo "$HEALTH_RESPONSE" | jq -e \
+        --arg instance_id "$SERVING_INSTANCE_ID" \
+        '.status == "healthy" and .startup_instance_id == $instance_id' >/dev/null 2>&1; then
+        IDENTITY_READY="true"
+    elif echo "$HEALTH_RESPONSE" | jq -e \
+        '.startup_instance_id | (type == "string" and length > 0)' >/dev/null 2>&1; then
+        HEALTH_HAS_INSTANCE_ID="true"
+    fi
+
+    # 分阶段升级兼容：bridge 端口由本次 CID 的 Docker 映射独占，旧镜像尚未
+    # 回显 instance ID 时可临时沿用 /readyz；host 始终强制 identity fencing。
+    # 全部算法镜像升级后设置 SERVING_REQUIRE_INSTANCE_ID=true 关闭兼容分支。
+    LEGACY_CURL_TIMEOUT_SECONDS=$((STARTUP_DEADLINE - SECONDS))
+    if [ "$LEGACY_CURL_TIMEOUT_SECONDS" -gt 2 ]; then
+        LEGACY_CURL_TIMEOUT_SECONDS=2
+    fi
+    if [ "$LEGACY_CURL_TIMEOUT_SECONDS" -gt 0 ] \
+        && [ "$IDENTITY_READY" != "true" ] \
+        && [ "$HEALTH_HAS_INSTANCE_ID" != "true" ] \
+        && [ "$NETWORK_MODE" != "host" ] \
+        && [ "$SERVING_REQUIRE_INSTANCE_ID" != "true" ] \
+        && curl --fail --silent --show-error \
+            --max-time "$LEGACY_CURL_TIMEOUT_SECONDS" \
+            "http://127.0.0.1:${PORT}/readyz" >/dev/null 2>&1; then
+        LEGACY_BRIDGE_READY="true"
+    fi
+
+    if [ "$IDENTITY_READY" = "true" ] || [ "$LEGACY_BRIDGE_READY" = "true" ]; then
+        if ! run_with_startup_budget docker update --restart unless-stopped "$CREATED_CONTAINER_ID" >/dev/null 2>&1; then
+            rollback_failed_startup \
+                "RESTART_POLICY_UPDATE_FAILED" \
+                "Serving became ready but restart policy update failed; container was rolled back"
+        fi
+
+        STARTUP_COMMITTED="true"
+        echo "{\"status\":\"success\",\"id\":\"$ID\",\"state\":\"running\",\"port\":\"$PORT\",\"detail\":\"Ready\"}"
+        exit 0
+    fi
+
+    if [ "$SECONDS" -lt "$STARTUP_DEADLINE" ]; then
+        sleep 1
+    fi
+done
+
+rollback_failed_startup \
+    "CONTAINER_NOT_READY" \
+    "Serving did not become ready within ${STARTUP_TIMEOUT_SECONDS} seconds (container state: ${LAST_STATE}); container was rolled back"

@@ -92,7 +92,7 @@ def test_mysql_guard_migration_rejects_duplicate_without_invalidating_links(dash
         active_guard=None,
     )
 
-    migration = import_module("apps.operation_analysis.migrations.0022_cross_database_active_share_guard")
+    migration = import_module("apps.operation_analysis.migrations.0023_cross_database_active_share_guard")
     schema_editor = SimpleNamespace(connection=connection)
     with pytest.raises(RuntimeError, match="重复的有效画布分享链接"):
         migration.ensure_active_links_unique(apps, schema_editor)

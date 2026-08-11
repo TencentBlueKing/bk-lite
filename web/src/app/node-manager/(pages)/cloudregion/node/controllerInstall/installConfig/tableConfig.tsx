@@ -57,6 +57,7 @@ export const useTableConfig = (installMethod: string, os: string) => {
       default_value: 22,
       widget_props: {
         min: 1,
+        max: 65535,
         precision: 0,
         placeholder: t('common.inputTip'),
       },
@@ -106,6 +107,19 @@ export const useTableConfig = (installMethod: string, os: string) => {
 
   const windowsRemoteColumns = [
     ...identityColumns,
+    {
+      name: 'port',
+      label: t('node-manager.cloudregion.node.loginPort'),
+      type: 'inputNumber',
+      required: true,
+      default_value: 5986,
+      widget_props: {
+        min: 1,
+        max: 65535,
+        precision: 0,
+        placeholder: t('common.inputTip'),
+      },
+    },
     {
       name: 'username',
       label: t('node-manager.cloudregion.node.loginAccount'),

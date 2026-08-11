@@ -85,9 +85,7 @@ def test_database_rejects_open_non_decision_checks():
                 status="open",
             )
     with pytest.raises(IntegrityError):
-        CheckItem.objects.bulk_create(
-            [CheckItem(knowledge_base=kb, check_type="orphan", status="open")]
-        )
+        CheckItem.objects.bulk_create([CheckItem(knowledge_base=kb, check_type="orphan", status="open")])
     with pytest.raises(ValueError, match="逐条 save"):
         CheckItem.objects.update(status="open")
     from django.db.models import Value

@@ -22,8 +22,34 @@ export interface NoticeChannel {
 }
 
 export interface NoticeUser {
+  id: number;
+  user_id?: string;
   username: string;
   display_name?: string;
+}
+
+export interface NoticeRule {
+  channel_id: number;
+  channel_name: string;
+  channel_type: string;
+  receivers: number[];
+  team_id?: number;
+}
+
+export interface NoticeRuleInput {
+  channel_id: number;
+  receivers: number[];
+}
+
+export interface NoticeRuleDraft {
+  key: string;
+  channel_id?: number;
+  receivers: number[];
+}
+
+export interface NoticeCandidates {
+  channels: NoticeChannel[];
+  users: NoticeUser[];
 }
 
 // ── 通用响应 ──────────────────────────────────────────────────────────────────
@@ -76,6 +102,8 @@ export interface ScanSetting {
   weekday: number;
   time: string;
   is_enabled: boolean;
+  notification_enabled: boolean;
+  notification_rules: NoticeRule[];
   created_at: string;
   updated_at: string;
 }

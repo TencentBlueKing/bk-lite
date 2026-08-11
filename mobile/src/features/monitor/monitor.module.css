@@ -903,10 +903,10 @@
 .recentList { display: flex; flex-direction: column; background: var(--color-bg); }
 .recentRow {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 26px minmax(0, 1fr);
   column-gap: 10px;
-  row-gap: var(--mobile-dense-list-row-inner-gap);
   align-items: start;
+  align-content: center;
   box-sizing: border-box;
   min-height: var(--mobile-dense-list-row-min-height);
   padding: var(--mobile-dense-list-row-padding-block) var(--mobile-dense-list-row-padding-inline);
@@ -915,42 +915,50 @@
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-border-1);
 }
+/* 弱图标：与主标题顶对齐，不随整块内容垂直居中 */
 .recentRowIcon {
-  flex: 0 0 26px;
   width: 26px;
   height: 26px;
-  grid-row: 1 / -1;
-  align-self: start;
+  margin-top: 1px;
   object-fit: contain;
-  background: var(--color-fill-1);
-  border-radius: 6px;
+  background: transparent;
+  border-radius: 0;
 }
-.recentTitleRow {
-  grid-column: 2;
-  grid-row: 1;
+.recentBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
 }
-.recentRow .colRight {
-  grid-column: 3;
-  grid-row: 1;
-  flex: 0 0 auto;
-  padding-top: 1px;
-  font-size: var(--font-size-secondary);
-  color: var(--color-text-4);
-  white-space: nowrap;
+.recentTitleRow {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
 }
 .recentTitleRow .instanceName {
-  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   color: var(--color-text-1);
-  -webkit-line-clamp: 1;
+  font-size: var(--font-size-body);
+  font-weight: 600;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.recentStatusText {
+  flex: 0 0 auto;
+  font-size: var(--font-size-secondary);
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.recentStatusText[data-status='normal'] { color: var(--color-success); }
+.recentStatusText[data-status='unavailable'] { color: var(--color-fail); }
 .recentMetaLine {
   display: flex;
-  grid-column: 2;
-  grid-row: 2;
   gap: 6px;
   align-items: center;
   min-width: 0;
@@ -964,7 +972,7 @@
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--color-text-2);
+  color: var(--color-text-3);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -972,54 +980,29 @@
   flex: 0 0 auto;
   color: var(--color-text-4);
 }
-.recentStatusInline {
-  display: inline-flex;
+.recentViewedAt {
   flex: 0 0 auto;
-  gap: 4px;
-  align-items: center;
-  font-weight: 500;
-}
-.recentStatusDot {
-  flex: 0 0 auto;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--color-text-4);
-}
-.recentStatusInline[data-status='normal'] {
-  color: var(--color-success);
-}
-.recentStatusInline[data-status='normal'] .recentStatusDot {
-  background: var(--color-success);
-}
-.recentStatusInline[data-status='unavailable'] {
-  color: var(--color-warning);
-}
-.recentStatusInline[data-status='unavailable'] .recentStatusDot {
-  background: var(--color-warning);
-}
-.recentMetricsLine {
-  grid-column: 2 / -1;
-  grid-row: 3;
-  min-width: 0;
-  overflow: hidden;
+  padding-top: 2px;
   font-size: var(--font-size-secondary);
-  line-height: 1.35;
-  text-overflow: ellipsis;
+  line-height: 1.3;
+  color: var(--color-text-3);
   white-space: nowrap;
 }
+.recentMetricsLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  min-width: 0;
+  font-size: var(--font-size-secondary);
+  line-height: 1.35;
+}
 .recentMetricItem { display: inline; white-space: nowrap; }
-.recentMetricLabel { color: var(--color-text-2); }
+.recentMetricLabel { color: var(--color-text-3); }
 .recentMetricValue {
-  color: var(--color-text-1);
+  color: var(--color-text-2);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.recentMetricValueEmpty {
-  color: var(--color-text-4);
-  font-weight: 500;
-}
-.recentMetricSep { color: var(--color-text-4); }
 .recentRow:active { opacity: .76; }
 .recentRow:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 .metricEmpty { display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; font-size: var(--font-size-secondary); color: var(--color-text-3); text-align: center; }

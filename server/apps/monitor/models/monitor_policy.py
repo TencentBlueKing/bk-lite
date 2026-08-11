@@ -1,10 +1,10 @@
 from django.db import IntegrityError, models
 from django.db.models.functions import Cast, Concat
 
+from apps.core.fields.s3_json_field import S3JSONField
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.core.utils.database_constraints import ConstraintValidatedQuerySet
-from apps.core.fields.s3_json_field import S3JSONField
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_object import MonitorObject
 

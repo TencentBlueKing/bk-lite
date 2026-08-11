@@ -95,8 +95,11 @@ class UserAppSetViewSet(viewsets.ModelViewSet):
             if app_config_list:
                 locale = getattr(request.user, "locale", "en")
                 loader = LanguageLoader(app="core", default_lang=locale)
-                # 预先加载所有内置应用的最新 tags（从 App 表获取，只查询需要的字段）
-                builtin_apps = {app["name"]: app["tags"] for app in App.objects.filter(is_build_in=True).values("name", "tags")}
+                # 预先加载内置应用的最新入口与 tags（用户快照可能仍是旧 url）
+                builtin_apps = {
+                    app["name"]: app
+                    for app in App.objects.filter(is_build_in=True).values("name", "url", "icon", "tags")
+                }
                 for app_config in app_config_list:
                     if app_config.get("is_build_in"):
                         app_name = app_config.get("name")
@@ -106,12 +109,16 @@ class UserAppSetViewSet(viewsets.ModelViewSet):
                             translated = loader.get(translation_key)
                             if translated:
                                 app_config["description"] = translated
-                        # 从 App 表获取最新的 tags 并翻译
-                        # （用户保存的 tags 可能是旧数据，内置应用的 tags 应使用最新配置）
+                        # 从 App 表获取最新的入口 url / icon / tags 并翻译 tags
+                        # （用户保存的快照可能是旧数据，内置应用应以产品配置为准）
                         if app_name and app_name in builtin_apps:
-                            latest_tags = builtin_apps[app_name]
+                            latest = builtin_apps[app_name]
+                            if latest.get("url"):
+                                app_config["url"] = latest["url"]
+                            if latest.get("icon"):
+                                app_config["icon"] = latest["icon"]
                             translated_tags = []
-                            for tag in latest_tags:
+                            for tag in latest.get("tags") or []:
                                 # tag 格式为 "tag.xxx"，直接作为翻译 key
                                 translated_tag = loader.get(tag)
                                 translated_tags.append(translated_tag if translated_tag else tag)

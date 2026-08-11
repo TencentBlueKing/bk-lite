@@ -1,11 +1,12 @@
 from sanic import Sanic
 from api import api, enterprise_api
 from core.config import YamlConfig
-from core.credential_state_cache import register_credential_state_cache_lifecycle
+from core.infra.credential_state_cache import register_credential_state_cache_lifecycle
 from dotenv import load_dotenv
-from core.host_remote_runtime import register_host_remote_runtime
-from core.nats import initialize_nats
-from core.task_queue import initialize_task_queue
+from core.collection.host_remote.runtime import register_host_remote_runtime
+from core.infra.nats import initialize_nats
+from core.collection.application import initialize_collection_application
+from core.infra.redis_client import register_redis_lifecycle
 from service.collect_credential_result_push_task import register_collect_credential_result_push_loop
 import os
 
@@ -21,8 +22,8 @@ nats_instance_id = os.getenv("NATS_INSTANCE_ID", "default")
 service_name = f"{nats_instance_id}_stargazer"
 nats = initialize_nats(app, service_name=service_name)
 
-# 初始化任务队列
-task_queue = initialize_task_queue(app)
+register_redis_lifecycle(app)
+initialize_collection_application(app)
 register_credential_state_cache_lifecycle(app)
 register_collect_credential_result_push_loop(app)
 register_host_remote_runtime(app)

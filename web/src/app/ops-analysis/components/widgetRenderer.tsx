@@ -17,6 +17,7 @@ interface WidgetRendererProps {
   dataSource?: DatasourceItem;
   screenRenderContext?: ScreenRenderContext;
   onReady?: (ready?: boolean) => void;
+  onError?: (message: string) => void;
   onQueryChange?: (params: Record<string, any>) => void;
   layoutEditable?: boolean;
   onTopologyLayoutChange?: (
@@ -37,6 +38,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   dataSource,
   screenRenderContext,
   onReady,
+  onError,
   onQueryChange,
   layoutEditable,
   onTopologyLayoutChange,
@@ -59,6 +61,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       dataSource={dataSource}
       screenRenderContext={screenRenderContext}
       onReady={onReady}
+      onError={onError}
       onQueryChange={onQueryChange}
       layoutEditable={layoutEditable}
       onTopologyLayoutChange={onTopologyLayoutChange}

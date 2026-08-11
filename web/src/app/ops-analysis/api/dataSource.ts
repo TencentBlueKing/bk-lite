@@ -1,6 +1,10 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { useSharedDataSourceQuery } from '@/app/ops-analysis/context/shareDataSource';
+import {
+  parseSourceDataResponse,
+  type SourceDataResult,
+} from '@/app/ops-analysis/utils/sourceDataResponse';
 
 export const useDataSourceApi = () => {
   const { get, post, put, del } = useApiClient();
@@ -58,12 +62,20 @@ export const useDataSourceApi = () => {
     return get(`/operation_analysis/api/data_source/${id}/`);
   }, [get]);
 
-  const getSourceDataByApiId = useCallback(async (id: number, params?: any) => {
-    if (sharedAccess) {
-      return sharedAccess.queryDataSource(id, params);
-    }
-    return post(`/operation_analysis/api/data_source/get_source_data/${id}/`, params);
+  const getSourceDataByApiId = useCallback(async (id: number, params?: any): Promise<SourceDataResult> => {
+    const raw = sharedAccess
+      ? await sharedAccess.queryDataSource(id, params)
+      : await post(`/operation_analysis/api/data_source/get_source_data/${id}/`, params);
+    return parseSourceDataResponse(raw);
   }, [post, sharedAccess]);
+
+  const testDataSourceConnectionConfig = useCallback(async (data: any) => {
+    return post('/operation_analysis/api/data_source/test_connection/', data);
+  }, [post]);
+
+  const testDataSourceConnection = useCallback(async (id: number, data?: any) => {
+    return post(`/operation_analysis/api/data_source/${id}/test_connection/`, data || {});
+  }, [post]);
 
   const previewDataSourceConfig = useCallback(async (data: any) => {
     const isFormData =
@@ -89,6 +101,8 @@ export const useDataSourceApi = () => {
     getDataSourceDetail,
     getSourceDataByApiId,
     previewDataSourceConfig,
-    previewDataSource
+    previewDataSource,
+    testDataSourceConnectionConfig,
+    testDataSourceConnection,
   };
 };

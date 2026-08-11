@@ -19,13 +19,18 @@
   "metrics": [
     {
       "metric_group": "Router",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Hardware temperature of the LANCOM router in degrees Celsius (LCOS-MIB lcsStatusHardwareInfoTemperatureDegrees)."

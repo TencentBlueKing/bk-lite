@@ -4,6 +4,7 @@ import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSou
 import { buildWidgetRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import type { DateRangeResolutionContext } from '@/app/ops-analysis/utils/dateRange';
+import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
 
 type RequestParams = Record<string, any>;
 
@@ -13,6 +14,7 @@ type MinimalDataSource = Pick<DatasourceItem, 'params'> | { params: ParamItem[] 
 export interface CompareQueryResult<T = unknown> {
   currentData: T | null;
   baselineData: T | null;
+  warnings?: string[];
 }
 
 interface BuildRequestParamsInput {
@@ -27,8 +29,13 @@ interface BuildRequestParamsInput {
 
 interface FetchCompareDataInput extends BuildRequestParamsInput {
   dataSourceId: number;
-  getSourceDataByApiId: (id: number, params?: any) => Promise<any>;
+  getSourceDataByApiId: (id: number, params?: any) => Promise<SourceDataResult>;
 }
+
+const mergeWarnings = (...groups: Array<string[] | undefined>): string[] | undefined => {
+  const merged = Array.from(new Set(groups.flatMap((group) => group ?? [])));
+  return merged.length > 0 ? merged : undefined;
+};
 
 const isTimeRangeTuple = (value: unknown): value is [string, string] =>
   Array.isArray(value) && value.length === 2 && value.every((item) => typeof item === 'string' && item.trim().length > 0);
@@ -149,19 +156,21 @@ export const fetchCompareData = async ({
   ...rest
 }: FetchCompareDataInput): Promise<CompareQueryResult> => {
   const { currentParams, baselineParams } = buildCompareRequestParams(rest);
-  const currentData = await getSourceDataByApiId(dataSourceId, currentParams);
+  const currentResult = await getSourceDataByApiId(dataSourceId, currentParams);
 
   if (!baselineParams) {
     return {
-      currentData,
+      currentData: currentResult.data,
       baselineData: null,
+      warnings: mergeWarnings(currentResult.warnings),
     };
   }
 
-  const baselineData = await getSourceDataByApiId(dataSourceId, baselineParams);
+  const baselineResult = await getSourceDataByApiId(dataSourceId, baselineParams);
   return {
-    currentData,
-    baselineData,
+    currentData: currentResult.data,
+    baselineData: baselineResult.data,
+    warnings: mergeWarnings(currentResult.warnings, baselineResult.warnings),
   };
 };
 

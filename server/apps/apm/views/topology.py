@@ -66,9 +66,7 @@ class ApmTopologyViewSet(viewsets.ViewSet):
         if environment := data.get("environment"):
             instances = instances.filter(environment=environment)
         target_rows = (
-            instances.values("service_id", "service__namespace", "service__name", "environment")
-            .order_by("service_id", "environment")
-            .distinct()
+            instances.values("service_id", "service__namespace", "service__name", "environment").order_by("service_id", "environment").distinct()
         )
         targets = [TopologyTarget(row["service__namespace"], row["service__name"], row["environment"]) for row in target_rows]
         try:

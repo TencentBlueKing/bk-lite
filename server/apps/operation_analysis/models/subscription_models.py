@@ -232,32 +232,21 @@ class DashboardReportSubscription(TimeInfo):
         if self.status == self.Status.ACTIVE:
             if self.resource_id is None:
                 errors["resource_id"] = "启用状态的报告订阅必须关联画布资源"
-            if (
-                self.resource_type == _RESOURCE_TYPE_DASHBOARD
-                and self.dashboard_id is None
-            ):
+            if self.resource_type == _RESOURCE_TYPE_DASHBOARD and self.dashboard_id is None:
                 errors["dashboard"] = "启用状态的报告订阅必须关联仪表盘"
         if self.schedule_type is not None:
             if self.schedule_hour is None or not (0 <= self.schedule_hour <= 23):
                 errors["schedule_hour"] = "已配置调度时必须指定 0–23 小时"
-            if self.schedule_minute is None or not (
-                0 <= self.schedule_minute <= 59
-            ):
+            if self.schedule_minute is None or not (0 <= self.schedule_minute <= 59):
                 errors["schedule_minute"] = "已配置调度时必须指定 0–59 分钟"
             if not self.timezone:
                 errors["timezone"] = "已配置调度时必须指定 IANA 时区"
-            if self.schedule_type == self.ScheduleType.WEEKLY and (
-                self.schedule_weekday is None
-                or not (0 <= self.schedule_weekday <= 6)
-            ):
+            if self.schedule_type == self.ScheduleType.WEEKLY and (self.schedule_weekday is None or not (0 <= self.schedule_weekday <= 6)):
                 errors["schedule_weekday"] = "每周调度必须指定 weekday（0–6）"
             if self.schedule_type == self.ScheduleType.MONTHLY and (
-                self.schedule_day_of_month is None
-                or not (1 <= self.schedule_day_of_month <= 31)
+                self.schedule_day_of_month is None or not (1 <= self.schedule_day_of_month <= 31)
             ):
-                errors["schedule_day_of_month"] = (
-                    "每月调度必须指定 day_of_month（1–31）"
-                )
+                errors["schedule_day_of_month"] = "每月调度必须指定 day_of_month（1–31）"
         if errors:
             raise ValidationError(errors)
 
@@ -292,9 +281,7 @@ class DashboardReportExecutionQuerySet(models.QuerySet):
             if isinstance(trigger_type, BaseExpression) or isinstance(scheduled_time_utc, BaseExpression):
                 raise ValueError("计划执行字段的表达式更新无法安全推导 scheduled_guard")
             kwargs["scheduled_guard"] = (
-                True
-                if trigger_type == DashboardReportExecution.TriggerType.SCHEDULED and scheduled_time_utc is not None
-                else None
+                True if trigger_type == DashboardReportExecution.TriggerType.SCHEDULED and scheduled_time_utc is not None else None
             )
         return super().update(**kwargs)
 
@@ -329,9 +316,7 @@ class DashboardReportExecutionQuerySet(models.QuerySet):
     def _sync_guards(obj):
         obj.request_guard = True if obj.request_id else None
         obj.scheduled_guard = (
-            True
-            if obj.trigger_type == DashboardReportExecution.TriggerType.SCHEDULED and obj.scheduled_time_utc is not None
-            else None
+            True if obj.trigger_type == DashboardReportExecution.TriggerType.SCHEDULED and obj.scheduled_time_utc is not None else None
         )
 
 
@@ -439,6 +424,7 @@ class DashboardReportExecution(TimeInfo):
     started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
     finished_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
     delivered_at = models.DateTimeField(null=True, blank=True, verbose_name="投递时间")
+
     class DeliveryOutcome(models.TextChoices):
         NOT_DELIVERED = "not_delivered", "未确认投递"
         DELIVERED = "delivered", "已确认投递"
@@ -520,11 +506,7 @@ class DashboardReportExecution(TimeInfo):
     def save(self, *args, **kwargs):
         _sync_dashboard_resource_fields(self)
         self.request_guard = True if self.request_id else None
-        self.scheduled_guard = (
-            True
-            if self.trigger_type == self.TriggerType.SCHEDULED and self.scheduled_time_utc is not None
-            else None
-        )
+        self.scheduled_guard = True if self.trigger_type == self.TriggerType.SCHEDULED and self.scheduled_time_utc is not None else None
         update_fields = kwargs.get("update_fields")
         if update_fields is not None:
             update_fields = set(update_fields)

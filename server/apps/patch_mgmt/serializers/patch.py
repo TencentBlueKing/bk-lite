@@ -164,6 +164,42 @@ class PatchListSerializer(PatchPermissionSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         os_type = attrs.get("os_type", getattr(self.instance, "os_type", None))
+        linux_detail = attrs.get("linux_detail")
+        if os_type == "linux" and (self.instance is None or linux_detail is not None):
+            existing = None
+            if self.instance is not None:
+                try:
+                    existing = self.instance.linux_detail
+                except LinuxPatchDetail.DoesNotExist:
+                    pass
+            values = {
+                "pkg_name": getattr(existing, "pkg_name", ""),
+                "pkg_version": getattr(existing, "pkg_version", ""),
+                "distro_name": getattr(existing, "distro_name", ""),
+                "os_version_range": getattr(existing, "os_version_range", ""),
+                "architectures": getattr(existing, "architectures", []),
+                "repo_type": getattr(existing, "repo_type", ""),
+            }
+            if linux_detail:
+                values.update(linux_detail)
+            labels = {
+                "pkg_name": "包名",
+                "pkg_version": "包版本",
+                "distro_name": "发行版",
+                "os_version_range": "系统版本范围",
+                "architectures": "架构",
+                "repo_type": "包管理器",
+            }
+            missing = [label for field, label in labels.items() if not values.get(field)]
+            existing_complete = existing is not None and all(
+                getattr(existing, field, None) for field in labels
+            )
+            # 新建补丁和原本完整的补丁必须保持元数据完整；历史不完整记录允许
+            # 继续编辑，评估时会安全归为 unknown，避免升级后突然无法维护旧数据。
+            if missing and (self.instance is None or existing is None or existing_complete):
+                raise serializers.ValidationError(
+                    {"linux_detail": f"Linux 补丁元数据缺少：{', '.join(missing)}"}
+                )
         windows_detail = attrs.get("windows_detail")
         if os_type != "windows" or windows_detail is None:
             return attrs

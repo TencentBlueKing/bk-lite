@@ -13,16 +13,8 @@ from apps.system_mgmt.serializers.im_notification_channel_serializer import (
     IMNotificationSyncRunSerializer,
     IMNotificationUserMappingSerializer,
 )
-from apps.system_mgmt.services.im_channel_access import (
-    can_access_im_channel,
-    filter_accessible_im_channels,
-    get_user_group_ids,
-)
-from apps.system_mgmt.services.im_notification_service import (
-    create_im_notification_sync_run,
-    send_im_notification,
-    send_im_notification_to_users,
-)
+from apps.system_mgmt.services.im_channel_access import can_access_im_channel, filter_accessible_im_channels, get_user_group_ids
+from apps.system_mgmt.services.im_notification_service import create_im_notification_sync_run, send_im_notification, send_im_notification_to_users
 from apps.system_mgmt.tasks import execute_im_notification_sync_run_task
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from config.drf.pagination import CustomPageNumberPagination
@@ -54,11 +46,7 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
 
     def _validate_channel_permission(self, request, channel):
         if not can_access_im_channel(request.user, channel):
-            message = (
-                self.loader.get("error.no_permission_access_team", "无权访问该团队数据")
-                if self.loader
-                else "无权访问该团队数据"
-            )
+            message = self.loader.get("error.no_permission_access_team", "无权访问该团队数据") if self.loader else "无权访问该团队数据"
             return False, JsonResponse({"result": False, "message": message}, status=403)
         return True, None
 
@@ -81,11 +69,7 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
 
         invalid = set(normalized) - user_group_ids
         if invalid:
-            message = (
-                self.loader.get("error.no_permission_for_groups", "您没有以下组织的权限")
-                if self.loader
-                else "您没有以下组织的权限"
-            )
+            message = self.loader.get("error.no_permission_for_groups", "您没有以下组织的权限") if self.loader else "您没有以下组织的权限"
             return False, JsonResponse({"result": False, "message": message}, status=403)
         return True, None
 

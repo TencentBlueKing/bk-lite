@@ -15,8 +15,104 @@ export const SOURCE_TYPE_MYSQL: DataSourceSourceType = "mysql";
 export const SOURCE_TYPE_POSTGRESQL: DataSourceSourceType = "postgresql";
 export const SOURCE_TYPE_REST_API: DataSourceSourceType = "rest_api";
 export const SOURCE_TYPE_EXCEL: DataSourceSourceType = "excel";
+export const SOURCE_TYPE_PROMETHEUS: DataSourceSourceType = "prometheus";
+
+export const PROMETHEUS_DEFAULT_CHART_TYPES = [
+  "line",
+  "bar",
+  "single",
+  "pie",
+  "multiValue",
+  "gauge",
+  "table",
+  "topN",
+] as const;
+
+export function createPrometheusDefaultParams(): ParamItem[] {
+  return [
+    {
+      id: uuidv4(),
+      name: "query",
+      alias_name: "PromQL",
+      type: "string",
+      filterType: "params",
+      value: "",
+      required: true,
+    },
+    {
+      id: uuidv4(),
+      name: "query_type",
+      alias_name: "查询类型",
+      type: "string",
+      filterType: "params",
+      value: "range",
+      inputConfig: {
+        control: "select",
+        optionsSource: {
+          type: "static",
+          staticItems: [
+            { label: "range", value: "range" },
+            { label: "instant", value: "instant" },
+          ],
+        },
+      },
+    },
+    {
+      id: uuidv4(),
+      name: "time_range",
+      alias_name: "时间范围",
+      type: "timeRange",
+      filterType: "filter",
+      value: 60,
+    },
+    {
+      id: uuidv4(),
+      name: "step",
+      alias_name: "Step",
+      type: "string",
+      filterType: "params",
+      value: "1m",
+    },
+    {
+      id: uuidv4(),
+      name: "max_series",
+      alias_name: "最大序列数",
+      type: "number",
+      filterType: "params",
+      value: 20,
+    },
+  ];
+}
 export const TABLE_CHART_TYPE = "table";
 export const PASSWORD_PLACEHOLDER = "******";
+
+export function normalizePrometheusTimeRange(
+  value: unknown,
+): string[] | number | undefined {
+  if (typeof value === "number" && value > 0) {
+    const end = new Date();
+    const start = new Date(end.getTime() - value * 60 * 1000);
+    return [start.toISOString(), end.toISOString()];
+  }
+  if (Array.isArray(value) && value.length === 2) {
+    return value.map(String) as string[];
+  }
+  return undefined;
+}
+
+export function prometheusTimeRangeToMinutes(value: unknown): number {
+  if (typeof value === "number" && value > 0) {
+    return value;
+  }
+  if (Array.isArray(value) && value.length === 2) {
+    const start = new Date(String(value[0])).getTime();
+    const end = new Date(String(value[1])).getTime();
+    if (!Number.isNaN(start) && !Number.isNaN(end) && end > start) {
+      return Math.max(1, Math.round((end - start) / 60000));
+    }
+  }
+  return 60;
+}
 
 export type SchemaField = ResponseFieldDefinition & { id: string };
 
@@ -170,6 +266,7 @@ export const normalizeParams = (params: ParamItem[]) =>
       type: param.type,
       filterType: param.filterType,
       value: param.value,
+      required: param.required,
     }));
 
 export const buildConnectorPayload = (
@@ -248,6 +345,47 @@ export const buildConnectorPayload = (
           options.previewData?.items?.length ||
           0,
       },
+    };
+  }
+
+  if (currentSourceType === SOURCE_TYPE_PROMETHEUS) {
+    const authType = connectionConfig.auth_type || "none";
+    const prometheusConnectionConfig: Record<string, unknown> = {
+      url: connectionConfig.url,
+      auth_type: authType,
+    };
+    if (
+      connectionConfig.timeout_seconds !== undefined &&
+      connectionConfig.timeout_seconds !== null &&
+      connectionConfig.timeout_seconds !== ""
+    ) {
+      prometheusConnectionConfig.timeout_seconds =
+        connectionConfig.timeout_seconds;
+    }
+    if (authType === "basic") {
+      prometheusConnectionConfig.username = connectionConfig.username;
+      prometheusConnectionConfig.password = connectionConfig.password;
+    }
+    if (authType === "bearer") {
+      prometheusConnectionConfig.token = connectionConfig.token;
+    }
+    const queryType = queryConfig.query_type || "range";
+    const normalizedQueryConfig: Record<string, unknown> = {
+      query: queryConfig.query || "",
+      query_type: queryType,
+      step: queryConfig.step || "1m",
+      max_series: queryConfig.max_series ?? 20,
+    };
+    if (queryType === "range") {
+      const timeRange = normalizePrometheusTimeRange(queryConfig.time_range);
+      if (timeRange) {
+        normalizedQueryConfig.time_range = timeRange;
+      }
+    }
+    return {
+      source_type: currentSourceType,
+      connection_config: prometheusConnectionConfig,
+      query_config: normalizedQueryConfig,
     };
   }
 

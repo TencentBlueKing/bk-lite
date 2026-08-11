@@ -8,15 +8,9 @@ from django.db import IntegrityError, close_old_connections, transaction
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from apps.operation_analysis.models.models import Dashboard, Directory
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportSubscription,
-)
-from apps.operation_analysis.services.execution_service import (
-    DashboardReportExecutionService,
-)
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportSubscription
+from apps.operation_analysis.services.execution_service import DashboardReportExecutionService
 from apps.system_mgmt.models import Channel
-
 
 pytestmark = pytest.mark.django_db
 
@@ -57,8 +51,7 @@ def mock_request(authenticated_user):
 @pytest.fixture(autouse=True)
 def allow_view_and_skip_dispatch(monkeypatch):
     monkeypatch.setattr(
-        "apps.operation_analysis.services.subscription_service."
-        "DashboardSubscriptionService.require_canvas_view",
+        "apps.operation_analysis.services.subscription_service." "DashboardSubscriptionService.require_canvas_view",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
@@ -68,9 +61,7 @@ def allow_view_and_skip_dispatch(monkeypatch):
     )
 
 
-def test_same_request_id_returns_existing_execution(
-    subscription, mock_request
-):
+def test_same_request_id_returns_existing_execution(subscription, mock_request):
     first, created_first = DashboardReportExecutionService.execute_manual(
         mock_request,
         subscription,
@@ -86,12 +77,7 @@ def test_same_request_id_returns_existing_execution(
     assert created_second is False
     assert first.id == second.id
     assert first.request_guard is True
-    assert (
-        DashboardReportExecution.objects.filter(
-            subscription=subscription
-        ).count()
-        == 1
-    )
+    assert DashboardReportExecution.objects.filter(subscription=subscription).count() == 1
     with pytest.raises(IntegrityError), transaction.atomic():
         DashboardReportExecution.objects.create(
             subscription=subscription,
@@ -150,7 +136,7 @@ def test_mysql_execution_guard_migration_rejects_duplicate_without_clearing_requ
         request_id="legacy-duplicate",
     )
 
-    migration = import_module("apps.operation_analysis.migrations.0023_cross_database_execution_guards")
+    migration = import_module("apps.operation_analysis.migrations.0024_cross_database_execution_guards")
     schema_editor = SimpleNamespace(connection=connection)
     with pytest.raises(RuntimeError, match="重复幂等键或计划时间"):
         migration.ensure_execution_keys_unique(apps, schema_editor)
@@ -162,9 +148,7 @@ def test_mysql_execution_guard_migration_rejects_duplicate_without_clearing_requ
     assert duplicate.request_guard is None
 
 
-def test_in_flight_execution_rejects_different_request_id(
-    subscription, mock_request
-):
+def test_in_flight_execution_rejects_different_request_id(subscription, mock_request):
     first, created = DashboardReportExecutionService.execute_manual(
         mock_request,
         subscription,
@@ -180,17 +164,10 @@ def test_in_flight_execution_rejects_different_request_id(
             request_id="req-b",
         )
 
-    assert (
-        DashboardReportExecution.objects.filter(
-            subscription=subscription
-        ).count()
-        == 1
-    )
+    assert DashboardReportExecution.objects.filter(subscription=subscription).count() == 1
 
 
-def test_finished_execution_allows_new_request_id(
-    subscription, mock_request
-):
+def test_finished_execution_allows_new_request_id(subscription, mock_request):
     first, _ = DashboardReportExecutionService.execute_manual(
         mock_request,
         subscription,
@@ -211,12 +188,7 @@ def test_finished_execution_allows_new_request_id(
 
     assert created is True
     assert second.id != first.id
-    assert (
-        DashboardReportExecution.objects.filter(
-            subscription=subscription
-        ).count()
-        == 2
-    )
+    assert DashboardReportExecution.objects.filter(subscription=subscription).count() == 2
 
 
 def test_missing_request_id_is_rejected(subscription, mock_request):
@@ -229,12 +201,9 @@ def test_missing_request_id_is_rejected(subscription, mock_request):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_concurrent_different_request_ids_allow_only_one(
-    subscription, authenticated_user, monkeypatch
-):
+def test_concurrent_different_request_ids_allow_only_one(subscription, authenticated_user, monkeypatch):
     monkeypatch.setattr(
-        "apps.operation_analysis.services.subscription_service."
-        "DashboardSubscriptionService.require_canvas_view",
+        "apps.operation_analysis.services.subscription_service." "DashboardSubscriptionService.require_canvas_view",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
@@ -262,18 +231,10 @@ def test_concurrent_different_request_ids_allow_only_one(
             close_old_connections()
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(
-            executor.map(run, ["concurrent-a", "concurrent-b"])
-        )
+        results = list(executor.map(run, ["concurrent-a", "concurrent-b"]))
 
-    successes = [
-        item
-        for item in results
-        if isinstance(item, tuple) and item[1] is True
-    ]
-    rejections = [
-        item for item in results if isinstance(item, DRFValidationError)
-    ]
+    successes = [item for item in results if isinstance(item, tuple) and item[1] is True]
+    rejections = [item for item in results if isinstance(item, DRFValidationError)]
     assert len(successes) == 1
     assert len(rejections) == 1
     assert (
@@ -289,12 +250,9 @@ def test_concurrent_different_request_ids_allow_only_one(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_concurrent_same_request_id_creates_one_execution(
-    subscription, authenticated_user, monkeypatch
-):
+def test_concurrent_same_request_id_creates_one_execution(subscription, authenticated_user, monkeypatch):
     monkeypatch.setattr(
-        "apps.operation_analysis.services.subscription_service."
-        "DashboardSubscriptionService.require_canvas_view",
+        "apps.operation_analysis.services.subscription_service." "DashboardSubscriptionService.require_canvas_view",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(

@@ -17,7 +17,6 @@ from apps.apm.models import (
 from apps.apm.services import DjangoApmPolicyService
 from apps.apm.services.contracts import MetricDataState, NotificationDeliveryResult, ServiceRed
 
-
 pytestmark = pytest.mark.django_db
 
 
@@ -127,9 +126,7 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     assert result.failed == 0
     assert len(dispatcher.deliveries) == 2
     assert {delivery.channel_id for delivery in dispatcher.deliveries} == {7}
-    assert not ApmAlertOutbox.objects.filter(
-        delivery_status=ApmAlertOutbox.DeliveryStatus.PENDING
-    ).exists()
+    assert not ApmAlertOutbox.objects.filter(delivery_status=ApmAlertOutbox.DeliveryStatus.PENDING).exists()
 
 
 def test_mysql_outbox_portable_constraint_rejects_raw_queryset_duplicate(policy):

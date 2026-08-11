@@ -5,10 +5,12 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+
 from apps.core.mixinx import PeriodicTaskUtils
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.core.utils.conditional_unique import ConditionalUniqueGuardQuerySet
+
 
 class UserSyncTriggerModeChoices(models.TextChoices):
     MANUAL = "manual", _("Manual")

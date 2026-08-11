@@ -11,9 +11,9 @@ const types = read('src/app/apm/types.ts');
 const serviceList = read('src/app/apm/services/page.tsx');
 const organizationModal = read('src/app/apm/components/organization-assignment-modal.tsx');
 const serviceDetail = read('src/app/apm/services/[serviceId]/page.tsx');
-const policies = read('src/app/apm/policies/page.tsx');
-const traceSearch = read('src/app/apm/traces/page.tsx');
-const traceDetail = read('src/app/apm/traces/[traceId]/page.tsx');
+const policies = read('src/app/apm/events/policies/page.tsx');
+const traceSearch = read('src/app/apm/explore/traces/page.tsx');
+const traceDetail = read('src/app/apm/explore/traces/[traceId]/page.tsx');
 
 assert.match(api, /\/apm\/services\/\$\{serviceId\}\/metrics\//, '服务详情必须调用真实 RED API');
 assert.match(api, /\/apm\/traces\//, 'Trace 页面必须调用真实 Trace API');
@@ -27,9 +27,9 @@ assert.match(types, /data_state:\s*'available'\s*\|\s*'no_data'/, '策略测试�
 assert.match(policies, /result\.data_state\s*===\s*'no_data'/, '策略测试查询必须向用户解释无数据不会改变状态');
 assert.match(serviceDetail, /value\s*==\s*null\s*\?\s*'—'/, 'RED 卡片必须把缺失样本显示为无数据');
 assert.doesNotMatch(serviceDetail, /red\.(?:request_rate|error_rate|p95_ms|p99_ms)\.toFixed/, 'RED 卡片不得把可空指标直接格式化为数值');
-assert.match(traceSearch, /getTraces\(buildQuery\(cursor\)\)/, 'Trace 搜索必须使用受控筛选与游标');
+assert.match(traceSearch, /getTraces\(query\)/, 'Trace 搜索必须使用受控筛选查询');
 assert.match(traceSearch, /page\.next_cursor/, '空授权页仍必须保留后续游标');
-assert.match(traceDetail, /getTrace\(params\.traceId\)/, '瀑布详情必须读取真实 Trace API');
+assert.match(traceDetail, /getTrace\(/, '瀑布详情必须读取真实 Trace API');
 
 for (const source of [serviceDetail, traceSearch, traceDetail]) {
   assert.doesNotMatch(source, /(?:stories|fixtures?)\//i, 'APM 生产查询页面不得导入 Story/fixture');

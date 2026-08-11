@@ -8,6 +8,7 @@ import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmApplication, ApmApplicationInput } from '@/app/apm/types';
+import FilterToolbar from '@/components/filter-toolbar';
 import GroupTreeSelect from '@/components/group-tree-select';
 import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -47,12 +48,14 @@ export default function ApmApplicationsPage() {
 
   const openCreate = () => {
     setEditing(null);
+    form.resetFields();
     form.setFieldsValue({ name: '', application_id: '', description: '', organization_ids: [] });
     setModalOpen(true);
   };
 
   const openEdit = (application: ApmApplication) => {
     setEditing(application);
+    form.resetFields();
     form.setFieldsValue({
       name: application.name,
       description: application.description,
@@ -132,13 +135,13 @@ export default function ApmApplicationsPage() {
       {messageContextHolder}
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center gap-3">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input allowClear className="min-w-64 flex-1 md:max-w-sm" prefix={<SearchOutlined />} placeholder="搜索应用 ID / 名称" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
             <Typography.Text type="secondary" className="text-xs">共 {filtered.length} 个应用</Typography.Text>
             <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>创建应用</Button>
             </Permission>
-          </div>
+          </FilterToolbar>
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">
           {state === 'ready' ? <Table rowKey="id" columns={columns} dataSource={filtered} pagination={{ defaultPageSize: 20, showSizeChanger: true }} /> : <CatalogState kind={state} />}

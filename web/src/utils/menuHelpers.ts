@@ -2,8 +2,8 @@ import { MenuItem } from '@/types/index';
 
 /**
  * Exact menu path, or a descendant under it (path-segment boundary).
- * `/apm` matches `/apm` and `/apm/services`, but callers that need the
- * active top-level item must still prefer the longest sibling match.
+ * Callers that need the active top-level item must still prefer the
+ * longest sibling match among directoryized menus.
  */
 export const isMenuPathMatch = (menuUrl: string, currentPath: string): boolean => {
   const menu = menuUrl.replace(/\/+$/, '') || '/';
@@ -26,7 +26,7 @@ const isBetterMatch = (candidate: MenuItem[], current: MenuItem[]): boolean => {
 /**
  * Find the complete menu path matching the current path (from top to deepest layer).
  * Among siblings that all prefix-match the path, prefer the longest URL so that
- * app-root menus (e.g. `/apm`) do not steal active state from `/apm/services`.
+ * shorter directory prefixes do not steal active state from longer children.
  */
 export const findMatchedMenuPath = (
   items: MenuItem[],

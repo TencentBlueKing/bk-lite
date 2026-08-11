@@ -148,7 +148,7 @@ class PatchDashboardViewSet(AuthViewSet):
             {"label": "待评估", "count": pending_hosts, "color": "default", "filter": "pending"},
             {"label": "评估中", "count": evaluating_hosts, "color": "processing", "filter": "evaluating"},
             {"label": "评估失败", "count": failed_hosts, "color": "default", "filter": "failed"},
-            {"label": "评估异常/未知", "count": unknown_hosts, "color": "warning", "filter": "unknown"},
+            {"label": "无法判定", "count": unknown_hosts, "color": "warning", "filter": "unknown"},
             {"label": "不适用", "count": not_applicable_hosts, "color": "default", "filter": "not_applicable"},
             {"label": "未配置", "count": unconfigured_hosts, "color": "warning", "filter": "unconfigured"},
         ]

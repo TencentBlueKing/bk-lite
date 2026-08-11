@@ -127,11 +127,16 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_virtual_server_state",
-      "query": "max(network_service_virtual_server_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "network_service_virtual_server_state{instance_type='network_service', __$labels__}",
       "display_name": "Virtual Server Status",
       "data_type": "Enum",
       "unit": "none",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "ltmVirtualServName",
+          "description": "Virtual server name"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -140,11 +145,16 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_node_state",
-      "query": "max(network_service_node_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "network_service_node_state{instance_type='network_service', __$labels__}",
       "display_name": "Node Status",
       "data_type": "Enum",
       "unit": "none",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "ltmNodeAddrStatusName",
+          "description": "Node name"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -153,11 +163,16 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_pool_state",
-      "query": "max(network_service_pool_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "network_service_pool_state{instance_type='network_service', __$labels__}",
       "display_name": "Pool Status",
       "data_type": "Enum",
       "unit": "none",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "ltmPoolStatusName",
+          "description": "Pool name"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -166,11 +181,24 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_pool_member_state",
-      "query": "max(network_service_pool_member_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "network_service_pool_member_state{instance_type='network_service', __$labels__}",
       "display_name": "Pool Member Status",
       "data_type": "Enum",
       "unit": "none",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "ltmPoolMbrStatusPoolName",
+          "description": "Pool name"
+        },
+        {
+          "name": "ltmPoolMbrStatusNodeName",
+          "description": "Node name"
+        },
+        {
+          "name": "ltmPoolMbrStatusPort",
+          "description": "Member port"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],

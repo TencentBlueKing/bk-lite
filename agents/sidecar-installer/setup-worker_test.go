@@ -22,6 +22,37 @@ type recordingProgressPublisher struct {
 	flushes  int
 }
 
+type recordingCloser struct {
+	closed bool
+}
+
+func (closer *recordingCloser) Close() error {
+	closer.closed = true
+	return nil
+}
+
+func TestCloseAndRemovePartialDownloadClosesBeforeRemove(t *testing.T) {
+	closer := &recordingCloser{}
+	removed := false
+	remove := func(path string) error {
+		if !closer.closed {
+			t.Fatal("partial download must be closed before removal on Windows")
+		}
+		if path != `C:\Windows\Temp\sidecar-partial.zip` {
+			t.Fatalf("unexpected removal path: %s", path)
+		}
+		removed = true
+		return nil
+	}
+
+	if err := closeAndRemovePartialDownload(closer, `C:\Windows\Temp\sidecar-partial.zip`, remove); err != nil {
+		t.Fatalf("cleanup partial download: %v", err)
+	}
+	if !removed {
+		t.Fatal("partial download was not removed")
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -360,6 +391,48 @@ func TestInstallWindowsPackageTreatsPreCreatedEmptyDirectoryAsFreshInstall(t *te
 	}
 	if string(content) != "new-binary" {
 		t.Fatalf("new installation was not activated: %q", content)
+	}
+}
+
+func TestInstallWindowsPackageReportsActualPhaseBoundaries(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	zipPath := writeControllerZip(t, map[string]string{
+		"controller/collector-sidecar.exe": "new-binary",
+	})
+	controller := &observingWindowsServiceController{backupDir: installDir + ".bklite-backup"}
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		OS:         "windows",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+	}
+	events := []string{}
+
+	err := installWindowsPackageWithProgress(
+		cfg,
+		zipPath,
+		controller,
+		func(step, status, _ string) { events = append(events, step+":"+status) },
+	)
+
+	if err != nil {
+		t.Fatalf("install Windows package: %v", err)
+	}
+	want := []string{
+		"extract_package:running",
+		"extract_package:success",
+		"configure_runtime:running",
+		"configure_runtime:success",
+		"run_package_installer:running",
+		"run_package_installer:success",
+	}
+	if strings.Join(events, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected Windows install progress: got %v, want %v", events, want)
 	}
 }
 
@@ -1079,6 +1152,33 @@ func TestWriteConfigKeepsSidecarTLSVerificationEnabled(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "tls_skip_verify: false") {
 		t.Fatalf("TLS verification was not enabled: %s", content)
+	}
+}
+
+func TestWriteConfigPersistsNATSTLSCAForWindowsCollectors(t *testing.T) {
+	installDir := t.TempDir()
+	caContent := "-----BEGIN CERTIFICATE-----\ntest-ca\n-----END CERTIFICATE-----\n"
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+		Storage:    StorageConfig{NATSTLSCA: caContent},
+	}
+
+	if err := writeConfig(cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(installDir, "certs", "nats-ca.crt"))
+	if err != nil {
+		t.Fatalf("read persisted NATS CA: %v", err)
+	}
+	if string(content) != caContent {
+		t.Fatalf("unexpected persisted NATS CA: %q", content)
 	}
 }
 

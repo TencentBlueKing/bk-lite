@@ -29,6 +29,12 @@ from langgraph.constants import START
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, BasicLLMResponse
 from apps.opspilot.metis.llm.chain.report_renderers import find_unclosed_phantom_tool_call_start, strip_phantom_tool_calls
+from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
+    classify_llm_error,
+    format_llm_empty_response_log,
+    format_llm_failure_log,
+    summarize_llm_endpoint,
+)
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 
@@ -158,6 +164,10 @@ async def _merge_async_streams(
         try:
             async for chunk in langgraph_stream:
                 await output_queue.put(("langgraph", chunk))
+        except Exception as exc:
+            # 必须显式上报：create_task 的异常否则会被 finally 里 await 静默吞掉，
+            # 表现为「问答无输出 / RUN_FINISHED 空跑」。
+            await output_queue.put(("langgraph_error", exc))
         finally:
             # 标记 LangGraph 流结束
             await output_queue.put(("langgraph_done", None))
@@ -180,6 +190,7 @@ async def _merge_async_streams(
     browser_task = asyncio.create_task(browser_event_consumer())
 
     langgraph_done = False
+    langgraph_error: Optional[BaseException] = None
 
     try:
         while True:
@@ -187,6 +198,9 @@ async def _merge_async_streams(
                 # 从合并队列获取事件
                 event_type, data = await asyncio.wait_for(output_queue.get(), timeout=0.1)
 
+                if event_type == "langgraph_error":
+                    langgraph_error = data if isinstance(data, BaseException) else RuntimeError(str(data))
+                    continue
                 if event_type == "langgraph_done":
                     langgraph_done = True
                     # 设置停止信号，通知浏览器消费者停止
@@ -203,6 +217,9 @@ async def _merge_async_streams(
                 if langgraph_done and output_queue.empty():
                     break
                 continue
+
+        if langgraph_error is not None:
+            raise langgraph_error
 
     finally:
         # 清理: 设置停止信号并取消任务
@@ -1581,6 +1598,16 @@ class BasicGraph(ABC):
                     )
                 )
 
+            if not emitted_text_signatures and not message_started:
+                llm_calls = int(getattr(token_usage_accumulator, "call_count", 0) or 0) if token_usage_accumulator else 0
+                logger.warning(
+                    format_llm_empty_response_log(
+                        stage="agui_stream",
+                        endpoint=summarize_llm_endpoint(request),
+                        extra=f"llm_calls={llm_calls} run_id={run_id}",
+                    )
+                )
+
             # 发送 RUN_FINISHED 事件
             yield encoder.encode(
                 RunFinishedEvent(
@@ -1592,12 +1619,19 @@ class BasicGraph(ABC):
             )
 
         except Exception as e:
-            logger.exception(f"agui_stream 执行出错: {e}")
+            classification = classify_llm_error(e)
+            logger.exception(
+                format_llm_failure_log(
+                    stage="agui_stream",
+                    classification=classification,
+                    endpoint=summarize_llm_endpoint(request),
+                )
+            )
             yield encoder.encode(
                 RunErrorEvent(
                     type=EventType.RUN_ERROR,
-                    message=str(e),
-                    code="EXECUTION_ERROR",
+                    message=f"{classification['user_message']}: {classification['detail']}"[:1000],
+                    code=str(classification["code"]),
                     timestamp=int(time.time() * 1000),
                 )
             )

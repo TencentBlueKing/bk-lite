@@ -52,8 +52,12 @@ class IMNotificationChannel(MaintainerInfo, TimeInfo, PeriodicTaskUtils):
     integration_instance = models.ForeignKey("system_mgmt.IntegrationInstance", on_delete=models.CASCADE, related_name="im_notification_channels")
     enabled = models.BooleanField(default=True)
     description = models.TextField(blank=True, default="")
-    status = models.CharField(max_length=32, choices=IMNotificationChannelStatusChoices.choices, default=IMNotificationChannelStatusChoices.PENDING_SYNC)
-    platform_match_field = models.CharField(max_length=32, choices=IMNotificationMappingStrategyChoices.choices, default=IMNotificationMappingStrategyChoices.EMAIL)
+    status = models.CharField(
+        max_length=32, choices=IMNotificationChannelStatusChoices.choices, default=IMNotificationChannelStatusChoices.PENDING_SYNC
+    )
+    platform_match_field = models.CharField(
+        max_length=32, choices=IMNotificationMappingStrategyChoices.choices, default=IMNotificationMappingStrategyChoices.EMAIL
+    )
     external_match_field = models.CharField(max_length=64, default=IMNotificationExternalFieldChoices.EMAIL)
     external_receive_field = models.CharField(max_length=64, default=IMNotificationExternalFieldChoices.USER_ID)
     schedule_config = models.JSONField(default=dict, blank=True)
@@ -111,7 +115,9 @@ class IMNotificationSyncRun(TimeInfo):
         choices=IMNotificationTriggerModeChoices.choices,
         default=IMNotificationTriggerModeChoices.MANUAL,
     )
-    status = models.CharField(max_length=32, choices=IMNotificationSyncRunStatusChoices.choices, default=IMNotificationSyncRunStatusChoices.RUNNING, db_index=True)
+    status = models.CharField(
+        max_length=32, choices=IMNotificationSyncRunStatusChoices.choices, default=IMNotificationSyncRunStatusChoices.RUNNING, db_index=True
+    )
     summary = models.CharField(max_length=255, blank=True, default="")
     total_external_user_count = models.PositiveIntegerField(default=0)
     matched_count = models.PositiveIntegerField(default=0)

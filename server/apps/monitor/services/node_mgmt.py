@@ -253,10 +253,7 @@ class InstanceConfigService:
             return 0
 
         instances_to_update = []
-        existing_map = {
-            obj.id: obj
-            for obj in MonitorInstance.objects.filter(id__in=[item["instance_id"] for item in existing_instances])
-        }
+        existing_map = {obj.id: obj for obj in MonitorInstance.objects.filter(id__in=[item["instance_id"] for item in existing_instances])}
         for instance in existing_instances:
             current = existing_map[instance["instance_id"]]
             summary_facts = InstanceFactResolver.merge(
@@ -301,7 +298,20 @@ class InstanceConfigService:
                 configs = NodeMgmt().get_configs_by_ids([config_obj.id])
             config = configs[0]
             if config_obj.file_type == "toml":
-                config["content"] = ConfigFormat.toml_to_dict(config[content_key])
+                raw_content = config[content_key]
+                config["content"] = ConfigFormat.toml_to_dict(raw_content)
+                from apps.monitor.utils.snmp_ifmib_capability import is_interface_filter_capable_plugin
+
+                if (config_obj.collect_type or "").startswith("snmp") and is_interface_filter_capable_plugin(
+                    getattr(config_obj, "monitor_plugin", None)
+                ):
+                    from apps.monitor.utils.snmp_interface_filters import expose_snmp_interface_filters_for_edit
+                    from apps.monitor.utils.snmp_interface_template import mark_closed_ifmib_edit_state
+
+                    # 关闭态依赖注释标记；dict roundtrip 会丢注释，读取时打旗标供写回恢复。
+                    config["content"] = mark_closed_ifmib_edit_state(raw_content, config["content"])
+                    # tagpass 隔离后过滤在 snmp[1]；表单只读 content.config，需投影回显。
+                    config["content"] = expose_snmp_interface_filters_for_edit(config["content"])
             elif config_obj.file_type == "yaml":
                 config["content"] = ConfigFormat.yaml_to_dict(config[content_key])
             else:
@@ -530,16 +540,14 @@ class InstanceConfigService:
             raise BaseAppException(f"请求中存在重复的监控实例标识: {', '.join(sorted(duplicate_ids))}")
 
         # 主键是全局唯一的，必须跨监控对象检查占用。调用方保证当前位于事务内。
-        existing_instances_qs = MonitorInstance.objects.select_for_update().filter(id__in=instance_ids).values_list(
-            "id", "is_deleted", "monitor_object_id"
+        existing_instances_qs = (
+            MonitorInstance.objects.select_for_update().filter(id__in=instance_ids).values_list("id", "is_deleted", "monitor_object_id")
         )
         existing_map = {row[0]: {"is_deleted": row[1], "monitor_object_id": row[2]} for row in existing_instances_qs}
         reclaimable_ids = {instance_id for instance_id, state in existing_map.items() if state["is_deleted"]}
 
         active_cross_object_ids = sorted(
-            instance_id
-            for instance_id, state in existing_map.items()
-            if not state["is_deleted"] and state["monitor_object_id"] != monitor_object_id
+            instance_id for instance_id, state in existing_map.items() if not state["is_deleted"] and state["monitor_object_id"] != monitor_object_id
         )
         if active_cross_object_ids:
             raise BaseAppException(f"监控实例标识已被占用: {', '.join(active_cross_object_ids)}")
@@ -726,10 +734,7 @@ class InstanceConfigService:
             identity = normalize_instance_identity((host_logical_id, process_name))
             storage_key = identity["storage_instance_key"]
             if len(storage_key) > 200:
-                raise ValueError(
-                    "process instance id too long "
-                    f"({len(storage_key)} > 200); shorten process_name or host id"
-                )
+                raise ValueError("process instance id too long " f"({len(storage_key)} > 200); shorten process_name or host id")
             prepared.append(
                 {
                     **instance,
@@ -835,13 +840,14 @@ class InstanceConfigService:
                 monitor_object=monitor_object_id,
                 collector=collector,
                 collect_type=collect_type,
-            ).order_by("id").first()
+            )
+            .order_by("id")
+            .first()
         )
         if monitor_plugin_id not in (None, "") and not plugin:
             raise BaseAppException("监控插件不存在")
         requires_nodes = bool(plugin) and any(
-            binding.get("resolver") in {"selected_node", "selected_nodes"}
-            for binding in (plugin.instance_fact_bindings or [])
+            binding.get("resolver") in {"selected_node", "selected_nodes"} for binding in (plugin.instance_fact_bindings or [])
         )
         prepared_fact_instances = []
         for instance in sanitized_instances:
@@ -872,17 +878,12 @@ class InstanceConfigService:
         if is_host_monitoring_onboarding:
             requested_node_ids = list(
                 dict.fromkeys(
-                    str(node_id)
-                    for instance in sanitized_instances
-                    for node_id in instance.get("node_ids", [])
-                    if node_id not in (None, "")
+                    str(node_id) for instance in sanitized_instances for node_id in instance.get("node_ids", []) if node_id not in (None, "")
                 )
             )
             configured_node_ids = HostDeploymentStatus().get_configured_node_ids(requested_node_ids)
             if configured_node_ids:
-                raise BaseAppException(
-                    f"以下节点已接入主机监控，请刷新节点列表: {', '.join(sorted(configured_node_ids))}"
-                )
+                raise BaseAppException(f"以下节点已接入主机监控，请刷新节点列表: {', '.join(sorted(configured_node_ids))}")
         prepared_instances = sanitized_instances
         if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
             try:
@@ -925,10 +926,7 @@ class InstanceConfigService:
                     logger.info("没有需要处理的实例")
                     return
 
-                logger.info(
-                    f"需要创建 {len(new_instances)} 个新实例,需要复用 {len(existing_instances)} 个已存在实例,"
-                    f"需要回收 {len(reclaimable_ids)} 个历史墓碑"
-                )
+                logger.info(f"需要创建 {len(new_instances)} 个新实例,需要复用 {len(existing_instances)} 个已存在实例," f"需要回收 {len(reclaimable_ids)} 个历史墓碑")
                 if reclaimable_ids:
                     from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 
@@ -946,11 +944,7 @@ class InstanceConfigService:
                 # 注意：所有实例（新建+已存在）都需要创建采集配置
                 sanitized_data = {**data}
                 sanitized_data["instances"] = [
-                    {
-                        key: value
-                        for key, value in instance.items()
-                        if key not in {"_summary_fact_source", "summary_facts"}
-                    }
+                    {key: value for key, value in instance.items() if key not in {"_summary_fact_source", "summary_facts"}}
                     for instance in new_instances + existing_instances
                 ]
                 sanitized_data["monitor_plugin_id"] = monitor_plugin_id
@@ -1021,7 +1015,14 @@ class InstanceConfigService:
                     validate_rendered_website_config(child_info.get("content") or {}, env_config)
                 except ValueError as exc:
                     raise BaseAppException(str(exc)) from exc
-            if (config_obj.collect_type or "").startswith("snmp"):
+            from apps.monitor.utils.snmp_ifmib_capability import is_interface_filter_capable_plugin
+
+            # 与创建路径同一能力边界：hardware_server 等非 Network Device 模板即便自带
+            # IF-MIB 表，也不得在编辑时被加上 ifType 排除或接口过滤。
+            ifmib_capable = (config_obj.collect_type or "").startswith("snmp") and is_interface_filter_capable_plugin(
+                getattr(config_obj, "monitor_plugin", None)
+            )
+            if ifmib_capable:
                 from apps.monitor.utils.snmp_interface_filters import normalize_snmp_interface_filter_config
                 from apps.monitor.utils.snmp_interface_template import has_interface_collection
 
@@ -1040,14 +1041,24 @@ class InstanceConfigService:
 
                 ensure_kafka_sasl_mechanism_in_env(env_config)
                 child_content = child_info.get("content") or {}
-                child_interval = (
-                    (child_content.get("config") or {}).get("interval")
-                    if isinstance(child_content, dict)
-                    else None
-                )
+                child_interval = (child_content.get("config") or {}).get("interval") if isinstance(child_content, dict) else None
                 assert_kafka_group_metrics_timeout_lt_interval(
                     extract_group_metrics_timeout_from_env(env_config),
                     child_interval,
                 )
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
+            if ifmib_capable and content is not None:
+                from apps.monitor.utils.snmp_interface_template import (
+                    isolate_snmp_interface_tagpass,
+                    preserve_closed_ifmib_markers,
+                    restore_managed_ifmib_markers,
+                )
+
+                # 编辑改为「仅采集」时 create 路径的 isolate 不会重跑；这里强制拆分，
+                # 避免 tagpass 落在含厂商表的同一 input 上把 CPU/内存等指标过滤掉。
+                # tagexclude 走 dict 序列化天然落在 input 级，不需要再做文本补写。
+                # json_to_toml 会丢掉管理区间注释；无 tagpass 时 isolate 不 dump，必须补 restore。
+                content = isolate_snmp_interface_tagpass(content, force=True)
+                content = restore_managed_ifmib_markers(content)
+                content = preserve_closed_ifmib_markers(content, child_info.get("content"))
             NodeMgmt().update_child_config_content(child_info["id"], content, env_config)

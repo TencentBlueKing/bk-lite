@@ -235,7 +235,16 @@ function AssetDetailContent() {
                   {group.fields.map((field) => (
                     <Fragment key={field.id}>
                       <span className={styles.fieldLabel}>{field.name}</span>
-                      <span className={styles.fieldValue}>{assetValueText(field, asset.values[field.id], t('assets.yes'), t('assets.no'), time)}</span>
+                      <span className={styles.fieldValue}>
+                        {assetValueText(
+                          field,
+                          asset.values[field.id],
+                          t('assets.yes'),
+                          t('assets.no'),
+                          time,
+                          asset.values[`${field.id}_display`],
+                        )}
+                      </span>
                     </Fragment>
                   ))}
                 </div>

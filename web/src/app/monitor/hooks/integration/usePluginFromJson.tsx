@@ -13,11 +13,15 @@ import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 
 /**
- * 兜底：把 formFields 中非必填且用户未填的字段补成空串。
+ * 兜底：把 formFields 中非必填且用户未填的字段补齐。
  * 原因：前端表单只回填用户实际改过的字段，未改的 key 不会出现在 formData 里。
  * 但后端 Jinja2 模板（child.toml.j2）用 `{{ 字段名 }}` 渲染时，未定义的 key 会抛
- * UndefinedError,触发 "渲染采集模板失败"。非必填字段以空串提交,模板侧
- * `{% if send %}{% endif %}` 会跳过该行,既保留可选语义又避免渲染失败。
+ * UndefinedError,触发 "渲染采集模板失败"。
+ *
+ * 文本类可选字段补空串，配合模板 `{% if send %}{% endif %}` 跳过该行。
+ * 布尔开关（或带 default_value 的字段）绝不能补空串：Jinja
+ * `{{ x | default(false) }}` 对已定义的空串不会兜底，会渲出
+ * `insecure_skip_verify = ` 这类非法 TOML，拖垮同机 Telegraf。
  *
  * 导出供单元测试使用。
  */
@@ -29,9 +33,16 @@ export const fillOptionalFormFields = (
   const result = { ...formData };
   formFields.forEach((field: any) => {
     if (field.required === true) return;
-    if (result[field.name] === undefined) {
-      result[field.name] = '';
+    if (result[field.name] !== undefined) return;
+    if (Object.prototype.hasOwnProperty.call(field, 'default_value')) {
+      result[field.name] = field.default_value;
+      return;
     }
+    if (field.type === 'switch') {
+      result[field.name] = false;
+      return;
+    }
+    result[field.name] = '';
   });
   return result;
 };
@@ -276,49 +287,56 @@ export const usePluginFromJson = () => {
           {basicFields.map((fieldConfig: any) =>
             renderFormField(fieldConfig, extra.mode)
           )}
-          {advancedFields.length > 0 && (
-            <Form.Item
-              noStyle
-              shouldUpdate={
-                isInterfaceFilterAdvanced
-                  ? (previousValues, currentValues) =>
-                    previousValues.enable_ifmib !== currentValues.enable_ifmib
-                  : false
-              }
-            >
-              {({ getFieldValue }) =>
-                // 未初始化时沿用 enable_ifmib 默认 true；只有明确关闭才隐藏整个区域。
-                !shouldRenderAdvancedFieldsPanel(
-                  isInterfaceFilterAdvanced,
-                  getFieldValue('enable_ifmib')
-                ) ? null : (
-            <Collapse
-              bordered={false}
-              ghost
-              className="mb-4 max-w-[720px] bg-transparent [&_.ant-collapse-header]:!items-center [&_.ant-collapse-header]:!px-0 [&_.ant-collapse-expand-icon]:!me-2 [&_.ant-collapse-content-box]:!px-0 [&_.ant-collapse-content-box]:!pb-1 [&_.ant-collapse-content-box]:!pt-3"
-              expandIconPosition="start"
-              items={[{
-                key: 'advanced-options',
-                label: (
-                  <div>
-                    <div className="text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
-                      {advancedTitle}
-                    </div>
-                    {advancedHint ? (
-                      <div className="mt-0.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]">
-                        {advancedHint}
+          {advancedFields.length > 0 && (() => {
+            // Ant Design：函数子节点的 Form.Item 必须带 truthy 的 shouldUpdate/dependencies，
+            // 否则子节点不会渲染。网站拨测等非 IF-MIB 面板不能写 shouldUpdate={false}。
+            const advancedCollapse = (
+              <Collapse
+                bordered={false}
+                ghost
+                className="mb-4 max-w-[720px] bg-transparent [&_.ant-collapse-header]:!items-center [&_.ant-collapse-header]:!px-0 [&_.ant-collapse-expand-icon]:!me-2 [&_.ant-collapse-content-box]:!px-0 [&_.ant-collapse-content-box]:!pb-1 [&_.ant-collapse-content-box]:!pt-3"
+                expandIconPosition="start"
+                items={[{
+                  key: 'advanced-options',
+                  label: (
+                    <div>
+                      <div className="text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
+                        {advancedTitle}
                       </div>
-                    ) : null}
-                  </div>
-                ),
-                forceRender: true,
-                children: renderAdvancedFieldGroups(advancedFields),
-              }]}
-            />
-                )
-              }
-            </Form.Item>
-          )}
+                      {advancedHint ? (
+                        <div className="mt-0.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]">
+                          {advancedHint}
+                        </div>
+                      ) : null}
+                    </div>
+                  ),
+                  forceRender: true,
+                  children: renderAdvancedFieldGroups(advancedFields),
+                }]}
+              />
+            );
+            if (!isInterfaceFilterAdvanced) {
+              return advancedCollapse;
+            }
+            return (
+              <Form.Item
+                noStyle
+                shouldUpdate={(previousValues, currentValues) =>
+                  previousValues.enable_ifmib !== currentValues.enable_ifmib
+                }
+              >
+                {({ getFieldValue }) =>
+                  // 未初始化时沿用 enable_ifmib 默认 true；只有明确关闭才隐藏整个区域。
+                  !shouldRenderAdvancedFieldsPanel(
+                    isInterfaceFilterAdvanced,
+                    getFieldValue('enable_ifmib')
+                  )
+                    ? null
+                    : advancedCollapse
+                }
+              </Form.Item>
+            );
+          })()}
         </>
       );
 
@@ -647,6 +665,11 @@ export const usePluginFromJson = () => {
               } else {
                 childConfig.follow_redirects = filledFormData.follow_redirects;
               }
+              // 布尔开关：空串/缺省一律写成 false，避免 toml.dumps 产出
+              // insecure_skip_verify = "" 拖垮同机 Telegraf。
+              childConfig.insecure_skip_verify =
+                filledFormData.insecure_skip_verify === true ||
+                filledFormData.insecure_skip_verify === 'true';
               if (filledFormData.auth_type === 'basic') {
                 delete result.child.content.config.bearer_token;
                 delete result.child.content.config.headers.Authorization;

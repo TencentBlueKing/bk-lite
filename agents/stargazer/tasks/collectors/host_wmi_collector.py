@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from typing import Any
@@ -31,6 +32,9 @@ class WindowsWmiCollector(BaseCollector):
         )
 
     async def collect(self) -> str:
+        return await asyncio.to_thread(self._collect_sync)
+
+    def _collect_sync(self) -> str:
         context = self._context()
         modules = resolve_modules(self.params.get("metrics_modules"))
         logger.info("event=wmi_collect_start %s", context)

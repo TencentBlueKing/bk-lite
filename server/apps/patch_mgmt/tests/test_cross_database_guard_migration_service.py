@@ -6,7 +6,7 @@ from django.db.migrations.recorder import MigrationRecorder
 from apps.core.tests.migration_helpers import migrate_to, migrated_from
 
 OLD_TARGET = [("patch_mgmt", "0008_patch_deleted_source_snapshots")]
-NEW_TARGET = [("patch_mgmt", "0009_cross_database_kb_guard")]
+NEW_TARGET = [("patch_mgmt", "0010_cross_database_kb_guard")]
 
 
 @pytest.mark.integration
@@ -104,7 +104,7 @@ def test_mysql_duplicate_kb_preflight_can_be_fixed_and_retried():
             with connection.cursor() as cursor:
                 columns = {column.name for column in connection.introspection.get_table_description(cursor, WindowsPatchDetail._meta.db_table)}
             assert "kb_number_guard" not in columns
-            assert not MigrationRecorder(connection).migration_qs.filter(app="patch_mgmt", name="0009_cross_database_kb_guard").exists()
+            assert not MigrationRecorder(connection).migration_qs.filter(app="patch_mgmt", name="0010_cross_database_kb_guard").exists()
         finally:
             duplicate.delete()
 

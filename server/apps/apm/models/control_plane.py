@@ -15,9 +15,7 @@ class AuditedModel(TimeInfo, MaintainerInfo):
 
 
 class ApmConstraintQuerySet(ConstraintValidatedQuerySet):
-    protected_fields = frozenset(
-        {"normalized_name", "normalized_instance_id", "objective", "sli_type", "latency_threshold_ms"}
-    )
+    protected_fields = frozenset({"normalized_name", "normalized_instance_id", "objective", "sli_type", "latency_threshold_ms"})
 
 
 class ApmApplication(AuditedModel):

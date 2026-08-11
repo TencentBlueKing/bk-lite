@@ -8,7 +8,6 @@ from django.db import IntegrityError, transaction
 from apps.monitor.models import Metric, MetricGroup, MonitorObject, MonitorPlugin, PolicyTemplate
 from apps.monitor.services.policy import PolicyService
 
-
 pytestmark = pytest.mark.django_db
 
 
@@ -228,7 +227,5 @@ def test_formula_config_is_stored_portably_and_resolved_for_runtime():
         "memory_usage",
     ]
 
-    runtime = PolicyService._runtime_query_condition(
-        portable["query_condition"], monitor_object
-    )
+    runtime = PolicyService._runtime_query_condition(portable["query_condition"], monitor_object)
     assert [item["metric_id"] for item in runtime["queries"]] == [cpu.id, memory.id]

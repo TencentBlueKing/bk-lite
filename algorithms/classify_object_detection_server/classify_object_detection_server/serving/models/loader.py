@@ -1,11 +1,23 @@
 """统一的模型加载器."""
 
+import os
 from typing import Any
 
 from loguru import logger
 
 from ..config import ModelConfig
 from .dummy_model import DummyModel
+
+
+def _fallback_or_raise(message: str, error: Exception | None = None) -> Any:
+    """Use DummyModel only when the fallback is explicitly enabled."""
+    if os.getenv("ALLOW_DUMMY_FALLBACK", "false").strip().lower() == "true":
+        logger.warning(f"{message}; ALLOW_DUMMY_FALLBACK=true, using DummyModel")
+        return DummyModel()
+
+    if error is None:
+        raise ValueError(message)
+    raise RuntimeError(message) from error
 
 
 def load_model(config: ModelConfig) -> Any:
@@ -30,15 +42,13 @@ def load_model(config: ModelConfig) -> Any:
     elif config.source == "dummy":
         return DummyModel()
     else:
-        logger.warning(f"Unknown source '{config.source}', falling back to dummy")
-        return DummyModel()
+        return _fallback_or_raise(f"Unknown model source: {config.source}")
 
 
 def _load_from_mlflow(config: ModelConfig) -> Any:
     """从 MLflow 加载模型."""
     if not config.mlflow_model_uri:
-        logger.warning("MLflow model URI not provided, falling back to dummy")
-        return DummyModel()
+        return _fallback_or_raise("MLflow model URI not provided")
 
     try:
         import mlflow
@@ -54,8 +64,7 @@ def _load_from_mlflow(config: ModelConfig) -> Any:
 
     except Exception as e:
         logger.error(f"Failed to load MLflow model: {e}")
-        logger.warning("Falling back to dummy model")
-        return DummyModel()
+        return _fallback_or_raise("Failed to load model from MLflow", e)
 
 
 def _load_from_local(config: ModelConfig) -> Any:
@@ -67,8 +76,7 @@ def _load_from_local(config: ModelConfig) -> Any:
         这样可以确保加载的是完整的 YOLOWrapper。
     """
     if not config.model_path:
-        logger.warning("Local model path not provided, falling back to dummy")
-        return DummyModel()
+        return _fallback_or_raise("Local model path not provided")
 
     try:
         import mlflow
@@ -94,5 +102,4 @@ def _load_from_local(config: ModelConfig) -> Any:
 
     except Exception as e:
         logger.error(f"Failed to load local model: {e}")
-        logger.warning("Falling back to dummy model")
-        return DummyModel()
+        return _fallback_or_raise("Failed to load model from local path", e)

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { SwapOutlined } from '@ant-design/icons';
 import { Alert, Button, Empty, Input, Modal, Pagination, Popconfirm, Space, Spin, Tag } from 'antd';
 import DOMPurify from 'dompurify';
@@ -19,6 +19,7 @@ import {
   getDecisionInteractionState,
   isDecisionRuleRevocable,
   resolveDecisionRevokedReason,
+  resolveSelectedConflictAlternative,
   type WikiDecisionSnapshot,
   type DecisionSubmittingState,
 } from './wikiDecisionModel';
@@ -331,6 +332,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
   const { t } = useTranslation();
   const [editingItem, setEditingItem] = useState<CheckItem | null>(null);
   const [editBody, setEditBody] = useState('');
+  const [selectedMaterialId, setSelectedMaterialId] = useState<number | null>(null);
   const currentCount = view === 'pending' ? pendingCount : processedCount;
   const decisionItems = useMemo(() => filterDecisionItems(items), [items]);
   const activeItem = useMemo(
@@ -338,10 +340,35 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
     [activeId, decisionItems]
   );
   const model = useMemo(() => (activeItem ? buildDecisionViewModel(activeItem) : null), [activeItem]);
+  const candidateAlternatives = useMemo(
+    () => (model?.kind === 'knowledge_conflict'
+      ? model.alternatives.filter((alt) => alt.kind !== 'current')
+      : []),
+    [model],
+  );
+  const selectedAlternative = useMemo(() => {
+    if (!activeItem || !model || model.kind !== 'knowledge_conflict') return null;
+    return (
+      resolveSelectedConflictAlternative(activeItem, selectedMaterialId) ||
+      candidateAlternatives[0] ||
+      model.incoming
+    );
+  }, [activeItem, candidateAlternatives, model, selectedMaterialId]);
   const conflictDiff = useMemo<KnowledgeConflictDiff | null>(() => {
-    if (!model || model.kind !== 'knowledge_conflict') return null;
-    return buildKnowledgeConflictDiff(model.current.body, model.incoming.body);
-  }, [model]);
+    if (!model || model.kind !== 'knowledge_conflict' || !selectedAlternative) return null;
+    return buildKnowledgeConflictDiff(model.current.body, selectedAlternative.body);
+  }, [model, selectedAlternative]);
+  useEffect(() => {
+    if (!activeItem || !model || model.kind !== 'knowledge_conflict') {
+      setSelectedMaterialId(null);
+      return;
+    }
+    const preferred =
+      resolveSelectedConflictAlternative(activeItem, null)?.materialId ??
+      candidateAlternatives[0]?.materialId ??
+      null;
+    setSelectedMaterialId(preferred ?? null);
+  }, [activeItem, candidateAlternatives, model]);
   const highlightLabels = useMemo(
     () => ({
       added: t('wiki.decisionDiffAddedPrefix'),
@@ -378,8 +405,9 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
   const openEditor = (item: CheckItem) => {
     const itemModel = buildDecisionViewModel(item);
     if (!itemModel || !getDecisionInteractionState(item, submitting, outdatedItemId).canEditSubmit) return;
+    const selected = resolveSelectedConflictAlternative(item, selectedMaterialId);
     setEditingItem(item);
-    setEditBody(item.candidate?.body || itemModel.incoming.body);
+    setEditBody(selected?.body || item.candidate?.body || itemModel.incoming.body);
   };
 
   const submitDecision = async (item: CheckItem, request: CheckDecisionRequest) => {
@@ -393,12 +421,30 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
     }
   };
 
+  const buildConflictDecisionRequest = (
+    item: CheckItem,
+    action: CheckDecisionAction,
+    body?: string,
+  ): CheckDecisionRequest | null => {
+    if (action === 'keep_current') return { action };
+    const selected = resolveSelectedConflictAlternative(item, selectedMaterialId);
+    const materialId = selected?.materialId;
+    const candidates = getDecisionActions(item).includes('use_new')
+      ? (buildDecisionViewModel(item)?.alternatives || []).filter((alt) => alt.kind !== 'current')
+      : [];
+    if (candidates.length > 1 && materialId == null) return null;
+    return {
+      action,
+      ...(body !== undefined ? { body } : {}),
+      ...(materialId != null ? { material_id: materialId } : {}),
+    };
+  };
+
   const submitEditedBody = async () => {
     if (!editingItem || !editBody.trim() || !editingInteraction?.canEditSubmit) return;
-    const saved = await submitDecision(editingItem, {
-      action: 'edit_accept',
-      body: editBody.trim(),
-    });
+    const request = buildConflictDecisionRequest(editingItem, 'edit_accept', editBody.trim());
+    if (!request) return;
+    const saved = await submitDecision(editingItem, request);
     if (!saved) return;
     setEditingItem(null);
     setEditBody('');
@@ -437,10 +483,24 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
               key={action}
               type={action === 'use_new' || action === 'merge' ? 'primary' : 'default'}
               loading={isSubmitting(item, action)}
-              disabled={!interaction.canDecide}
+              disabled={
+                !interaction.canDecide ||
+                (model?.kind === 'knowledge_conflict' &&
+                  action !== 'keep_current' &&
+                  candidateAlternatives.length > 1 &&
+                  selectedMaterialId == null)
+              }
               onClick={() => {
-                if (action === 'edit_accept') openEditor(item);
-                else void submitDecision(item, { action });
+                if (action === 'edit_accept') {
+                  openEditor(item);
+                  return;
+                }
+                const request =
+                  model?.kind === 'knowledge_conflict'
+                    ? buildConflictDecisionRequest(item, action)
+                    : { action };
+                if (!request) return;
+                void submitDecision(item, request);
               }}
             >
               {actionLabel(action)}
@@ -712,6 +772,32 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
                 <div className="mb-2 mt-5 text-sm font-semibold text-[var(--color-text-1)]">
                   {model.kind === 'knowledge_conflict' ? t('wiki.decisionCompareKnowledge') : t('wiki.decisionCompareIdentity')}
                 </div>
+                {model.kind === 'knowledge_conflict' && candidateAlternatives.length > 1 && (
+                  <div className="mb-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3">
+                    <div className="mb-2 text-xs font-semibold text-[var(--color-text-1)]">
+                      {t('wiki.decisionChooseAlternative')}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {candidateAlternatives.map((alt) => {
+                        const active = alt.materialId != null && alt.materialId === selectedMaterialId;
+                        return (
+                          <Button
+                            key={`${alt.materialId ?? 'x'}-${alt.candidateVersionId ?? alt.versionLabel}`}
+                            size="small"
+                            type={active ? 'primary' : 'default'}
+                            disabled={activeItem.status !== 'open' || alt.materialId == null}
+                            onClick={() => setSelectedMaterialId(alt.materialId ?? null)}
+                          >
+                            {alt.sourceLabel || `${t('wiki.decisionNewKnowledge')} #${alt.materialId}`}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <p className="mb-0 mt-2 text-xs leading-5 text-[var(--color-text-3)]">
+                      {t('wiki.decisionChooseCandidateHint')}
+                    </p>
+                  </div>
+                )}
                 {model.kind === 'knowledge_conflict' && conflictDiff && conflictDiff.highlights.length > 0 && (
                   <div className="mb-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3">
                     <div className="mb-1.5 text-xs font-semibold text-[var(--color-text-1)]">
@@ -727,7 +813,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
                   </div>
                 )}
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_40px_minmax(0,1fr)] xl:items-stretch">
-                  {model.kind === 'knowledge_conflict' && conflictDiff ? (
+                  {model.kind === 'knowledge_conflict' && conflictDiff && selectedAlternative ? (
                     <>
                       <DiffSnapshotCard
                         snapshot={model.current}
@@ -740,7 +826,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
                       />
                       <ComparisonConnector />
                       <DiffSnapshotCard
-                        snapshot={model.incoming}
+                        snapshot={selectedAlternative}
                         eyebrow={t('wiki.decisionNewKnowledge')}
                         incoming
                         segments={conflictDiff.rightSegments}
@@ -761,7 +847,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
                       />
                       <ComparisonConnector />
                       <SnapshotCard
-                        snapshot={model.incoming}
+                        snapshot={selectedAlternative || model.incoming}
                         eyebrow={t('wiki.decisionNewKnowledge')}
                         incoming
                         sourceCountLabel={t('wiki.decisionSourceCount')}

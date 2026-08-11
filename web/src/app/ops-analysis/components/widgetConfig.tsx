@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
+import { markFormPristine } from '@/utils/formPristine';
 import {
   ViewConfigProps,
   ViewConfigItem,
@@ -59,6 +60,7 @@ import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
 import { TableSettingsSection } from './widgetConfig/sections/tableSettingsSection';
 import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection';
 import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
+import { RadarSettingsSection } from './widgetConfig/sections/radarSettingsSection';
 import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
@@ -78,6 +80,7 @@ import {
   getDefaultScreenWidgetAppearance,
   resolveScreenWidgetAppearance,
 } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
+import { ensurePrometheusQueryRequired } from '@/app/ops-analysis/utils/dataSourceParamContract';
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
@@ -144,20 +147,16 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   const getFilteredChartTypes = (
     dataSource: DatasourceItem | undefined,
-  ): ChartTypeItem[] => {
-    if (!dataSource?.chart_type?.length) {
-      return [];
-    }
-    return resolveDatasourceChartTypes({
-      chartTypes: dataSource.chart_type,
+  ): ChartTypeItem[] =>
+    resolveDatasourceChartTypes({
+      chartTypes: dataSource?.chart_type || [],
       chartTypeDefinitions: getChartTypeList(),
       surface,
     });
-  };
 
   const getDataSourceChartTypes = useMemo(() => {
     return getFilteredChartTypes(selectedDataSource);
-  }, [selectedDataSource]);
+  }, [selectedDataSource, surface]);
 
   const computePreviewDefinitions = (
     existingDefinitions: UnifiedFilterDefinition[],
@@ -304,6 +303,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           gaugeMin: 0,
           gaugeMax: 100,
           gaugeShape: 'semicircle',
+          eventTimeline: {
+            sortOrder: 'desc',
+          },
+          radar: {
+            min: 0,
+            max: 100,
+            indicators: [],
+          },
           compare: false,
           compareMode: 'percent',
           tableConfig: undefined,
@@ -358,6 +365,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         gaugeMin: 0,
         gaugeMax: 100,
         gaugeShape: 'semicircle',
+        eventTimeline: {
+          sortOrder: 'desc',
+        },
+        radar: {
+          min: 0,
+          max: 100,
+          indicators: [],
+        },
         compare: false,
         compareMode: 'percent',
       });
@@ -493,6 +508,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     const newChartType = e.target.value;
     setChartType(newChartType);
     form.setFieldValue('chartType', newChartType);
+    if (newChartType === 'eventTimeline' && !form.getFieldValue('eventTimeline')) {
+      form.setFieldValue('eventTimeline', { sortOrder: 'desc' });
+    }
+    if (newChartType === 'radar' && !form.getFieldValue('radar')) {
+      form.setFieldValue('radar', { min: 0, max: 100, indicators: [] });
+    }
     if (surface === 'screen') {
       form.setFieldValue(
         'appearance',
@@ -562,6 +583,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         dataSource: undefined,
         networkStatusTopology,
       });
+      // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
+      markFormPristine(form);
       return;
     }
 
@@ -710,6 +733,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       singleValueConfig.setSelectedFields([]);
     }
 
+    if ((valueConfig as ValueConfig | undefined)?.descriptionField !== undefined) {
+      formValues.descriptionField = (valueConfig as ValueConfig).descriptionField;
+    } else {
+      formValues.descriptionField = undefined;
+    }
+
     if (valueConfig?.topNLabelField !== undefined) {
       formValues.topNLabelField = valueConfig.topNLabelField;
     }
@@ -740,6 +769,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (valueConfig?.gaugeShape !== undefined) {
       formValues.gaugeShape = valueConfig.gaugeShape;
     }
+    if (valueConfig?.eventTimeline !== undefined) {
+      formValues.eventTimeline = valueConfig.eventTimeline;
+    }
+    if (valueConfig?.radar !== undefined) {
+      formValues.radar = valueConfig.radar;
+    }
     if (valueConfig?.compare !== undefined) {
       formValues.compare = valueConfig.compare && canEnableCompare({
         config: { chartType: 'single', dataSourceParams: targetDataSource?.params },
@@ -751,6 +786,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     singleValueConfig.setThresholdColors(initThresholdColors(valueConfig?.thresholdColors));
 
     form.setFieldsValue(formValues);
+    // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
+    markFormPristine(form);
   };
 
   const resetForm = (): void => {
@@ -817,10 +854,19 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   // 把组件级 inputConfig 覆盖合并到 selectedDataSource，供参数表渲染。
   const effectiveDataSource = useMemo(() => {
     if (!selectedDataSource) return undefined;
-    if (widgetParamOverrides.length === 0) return selectedDataSource;
+    const sourceParams =
+      selectedDataSource.source_type === 'prometheus'
+        ? ensurePrometheusQueryRequired(selectedDataSource.params)
+        : selectedDataSource.params;
+
+    if (widgetParamOverrides.length === 0) {
+      return sourceParams === selectedDataSource.params
+        ? selectedDataSource
+        : { ...selectedDataSource, params: sourceParams };
+    }
     return {
       ...selectedDataSource,
-      params: selectedDataSource.params.map((p) => {
+      params: sourceParams.map((p) => {
         const override = widgetParamOverrides.find((o) => o.name === p.name);
         return override?.inputConfig !== undefined
           ? { ...p, inputConfig: override.inputConfig }
@@ -878,7 +924,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
       if (
         values.sceneWidgetType !== 'networkStatusTopology' &&
-        selectedDataSource?.params?.length
+        effectiveDataSource?.params?.length
       ) {
         const formParams = values.params || form.getFieldValue('params') || {};
         const reconciledFormParams = { ...formParams };
@@ -897,7 +943,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         }
         const processed = processFormParamsForSubmit(
           reconciledFormParams,
-          selectedDataSource.params,
+          effectiveDataSource.params,
         );
         // 合并组件级 inputConfig 覆盖
         values.dataSourceParams = processed.map((param) => {
@@ -1208,6 +1254,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             filterFields={tableConfig.filterFields}
             filterFieldOptions={filterFieldOptions}
             showFilterFields={showTableFilterFields}
+            showColumnCellStyle={chartType === 'table'}
             invalidConfiguredFieldKeys={invalidConfiguredFieldKeys}
             isProbingColumns={tableConfig.isProbingColumns}
             paramsChangedAfterProbe={tableConfig.paramsChangedAfterProbe}
@@ -1231,6 +1278,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               }
             }}
             onDisplayColumnChange={tableConfig.handleDisplayColumnChange}
+            onDisplayColumnStyleChange={
+              tableConfig.handleDisplayColumnStyleChange
+            }
             onDisplayColumnKeyBlur={tableConfig.handleDisplayColumnKeyBlur}
             onDisplayColumnDragEnd={tableConfig.handleDisplayColumnDragEnd}
             onReProbeColumns={tableConfig.handleReProbeColumns}
@@ -1272,6 +1322,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
             compareAvailable={singleValueConfig.compareAvailable}
+            showDescriptionField
           />
         )}
 
@@ -1294,6 +1345,31 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onThresholdBlur={singleValueConfig.handleThresholdBlur}
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
+          />
+        )}
+
+        {chartType === 'eventTimeline' && (
+          <div className="mb-6">
+            <div className="font-medium mb-4">{t('dashboard.eventTimelineSettings')}</div>
+            <Form.Item
+              label={t('dashboard.eventTimelineSortOrder')}
+              name={['eventTimeline', 'sortOrder']}
+              initialValue="desc"
+            >
+              <Select
+                options={[
+                  { label: t('dashboard.eventTimelineSortDesc'), value: 'desc' },
+                  { label: t('dashboard.eventTimelineSortAsc'), value: 'asc' },
+                ]}
+              />
+            </Form.Item>
+          </div>
+        )}
+
+        {chartType === 'radar' && (
+          <RadarSettingsSection
+            t={t}
+            availableFields={availableFields}
           />
         )}
 

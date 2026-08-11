@@ -33,7 +33,9 @@ def migrate_policy():
             logger.error(f'读取策略配置失败: {file_path}, 错误: {e}')
             error_count += 1
     if error_count:
-        logger.error(f"策略配置读取失败，保留上一次有效内置模板: 失败={error_count}")
+        logger.error("部分策略配置读取失败，将跳过损坏文件并对账其余有效文档: 失败=%s", error_count)
+    if not documents:
+        logger.error("没有可读的策略配置，保留上一次有效内置模板: 失败=%s", error_count)
         return
     try:
         result = PolicyService.sync_builtin_policy_templates(documents)

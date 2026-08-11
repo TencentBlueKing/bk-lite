@@ -1,8 +1,8 @@
 import json
+import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import uuid
 import pytest
 from django.db import IntegrityError, transaction
 
@@ -371,6 +371,7 @@ def test_pending_sync_channel_completes_first_sync_through_schedule_path(channel
 
     with patch("apps.system_mgmt.services.im_notification_service.RuntimeApplicationService.execute", return_value=payload):
         with patch("apps.system_mgmt.tasks.execute_im_notification_sync_run_task.delay") as mock_delay:
+
             def run_immediately(run_id):
                 return execute_im_notification_sync_run(run_id)
 

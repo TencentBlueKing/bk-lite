@@ -121,9 +121,7 @@ class EventAlertManager:
             if new_alert_events:
                 representative_events_by_key = {}
                 for event in new_alert_events:
-                    representative_events_by_key.setdefault(
-                        self._get_event_alert_key(event), event
-                    )
+                    representative_events_by_key.setdefault(self._get_event_alert_key(event), event)
                 representative_events = list(representative_events_by_key.values())
                 new_alerts = self._create_alerts_from_events(representative_events)
 
@@ -197,11 +195,7 @@ class EventAlertManager:
         alert_type: str,
         monitor_instance_id: str = "",
     ) -> tuple:
-        identity = (
-            monitor_instance_id
-            if alert_type == "no_data" and monitor_instance_id
-            else metric_instance_id
-        )
+        identity = monitor_instance_id if alert_type == "no_data" and monitor_instance_id else metric_instance_id
         return identity, alert_type
 
     def _get_event_alert_key(self, event) -> tuple:

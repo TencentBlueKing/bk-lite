@@ -447,15 +447,28 @@ func run(client *http.Client) {
 		emitEventWithOptions("download_package", "success", "Controller package downloaded", intPtr(100), 0, 0, "", downloadEventOptions(cfg))
 		if !isLinux(cfg.OS) {
 			log("[4/6] Staging and validating files...")
-			emitEventWithOptions("extract_package", "running", "Staging controller package", intPtr(0), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
-			installErr := installWindowsPackage(cfg, zipPath, &scWindowsServiceController{})
+			installErr := installWindowsPackageWithProgress(
+				cfg,
+				zipPath,
+				&scWindowsServiceController{},
+				func(step, status, message string) {
+					options := &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}
+					if step == "extract_package" {
+						options.PackageName = firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName)
+					}
+					progress := (*int)(nil)
+					if status == "running" {
+						progress = intPtr(0)
+					} else if status == "success" {
+						progress = intPtr(100)
+					}
+					emitEventWithOptions(step, status, message, progress, 0, 0, "", options)
+				},
+			)
 			_ = os.Remove(zipPath)
 			if installErr != nil {
-				fatalStepWithOptions("run_package_installer", "Transactional Windows installation failed: %v", installErr, eventOptionsForExecError(installErr, &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}))
+				fatalStepWithOptions(windowsInstallErrorStep(installErr), "Transactional Windows installation failed: %v", installErr, eventOptionsForExecError(installErr, &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}))
 			}
-			emitEventWithOptions("extract_package", "success", "Controller package staged and activated", intPtr(100), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
-			emitEvent("configure_runtime", "success", "Installer runtime configured", intPtr(100), 0, 0, "")
-			emitEventWithOptions("run_package_installer", "success", "Package installer finished", intPtr(100), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture})
 			log("")
 			log("Installation complete!")
 			emitEvent("complete", "success", "Installation complete", intPtr(100), 0, 0, "")
@@ -917,6 +930,10 @@ func connectNATS(storage *StorageConfig) (*nats.Conn, error) {
 	return nc, nil
 }
 
+func closeAndRemovePartialDownload(file io.Closer, path string, remove func(string) error) error {
+	return errors.Join(file.Close(), remove(path))
+}
+
 func downloadFromStorage(storage *StorageConfig) (string, error) {
 	if strings.TrimSpace(storage.NATSServers) == "" {
 		return "", fmt.Errorf("missing nats_servers")
@@ -964,7 +981,6 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 
 	limitedObject := io.LimitReader(obj, controllerPackageMaxDownloadBytes+1)
 	var downloaded int64
@@ -981,7 +997,13 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 		err = fmt.Errorf("controller package exceeds download size limit: %d", controllerPackageMaxDownloadBytes)
 	}
 	if err != nil {
-		os.Remove(tmp)
+		if cleanupErr := closeAndRemovePartialDownload(f, tmp, os.Remove); cleanupErr != nil {
+			return "", fmt.Errorf("%w; cleanup partial download: %v", err, cleanupErr)
+		}
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
 		return "", err
 	}
 
@@ -1212,6 +1234,20 @@ func writeConfig(cfg *Config) error {
 }
 
 func writeConfigTo(cfg *Config, outputDir string) error {
+	if strings.TrimSpace(cfg.Storage.NATSTLSCA) != "" {
+		certDir := filepath.Join(outputDir, "certs")
+		if err := os.MkdirAll(certDir, 0755); err != nil {
+			return fmt.Errorf("create NATS CA directory: %w", err)
+		}
+		certPath := filepath.Join(certDir, "nats-ca.crt")
+		if err := os.WriteFile(certPath, []byte(cfg.Storage.NATSTLSCA), 0600); err != nil {
+			return fmt.Errorf("write NATS CA: %w", err)
+		}
+		if err := restrictSensitiveFile(certPath); err != nil {
+			return fmt.Errorf("restrict NATS CA: %w", err)
+		}
+	}
+
 	escapePath := func(p string) string {
 		return strings.ReplaceAll(p, `\`, `\\`)
 	}
@@ -1587,7 +1623,51 @@ func discardEmptyWindowsInstallDir(installDir string) error {
 	return nil
 }
 
+type windowsInstallProgressFunc func(step, status, message string)
+
+type windowsInstallPhaseError struct {
+	step string
+	err  error
+}
+
+func (err *windowsInstallPhaseError) Error() string { return err.err.Error() }
+func (err *windowsInstallPhaseError) Unwrap() error { return err.err }
+
+func windowsInstallErrorStep(err error) string {
+	var phaseErr *windowsInstallPhaseError
+	if errors.As(err, &phaseErr) && phaseErr.step != "" {
+		return phaseErr.step
+	}
+	return "run_package_installer"
+}
+
+func reportWindowsInstallProgress(progress windowsInstallProgressFunc, step, status, message string) {
+	if progress != nil {
+		progress(step, status, message)
+	}
+}
+
 func installWindowsPackage(cfg *Config, zipPath string, controller windowsServiceController) error {
+	return installWindowsPackageWithProgress(cfg, zipPath, controller, nil)
+}
+
+func installWindowsPackageWithProgress(
+	cfg *Config,
+	zipPath string,
+	controller windowsServiceController,
+	progress windowsInstallProgressFunc,
+) (returnErr error) {
+	currentStep := "extract_package"
+	defer func() {
+		if returnErr == nil {
+			return
+		}
+		var phaseErr *windowsInstallPhaseError
+		if !errors.As(returnErr, &phaseErr) {
+			returnErr = &windowsInstallPhaseError{step: currentStep, err: returnErr}
+		}
+	}()
+
 	installDir := filepath.Clean(cfg.InstallDir)
 	stagingDir := installDir + ".bklite-staging"
 	backupDir := installDir + ".bklite-backup"
@@ -1636,18 +1716,27 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 		return fmt.Errorf("clean staging directory: %w", err)
 	}
 	defer os.RemoveAll(stagingDir)
+	reportWindowsInstallProgress(progress, "extract_package", "running", "Staging controller package")
 	if err := prepareDirs(stagingDir); err != nil {
 		return fmt.Errorf("prepare staging directory: %w", err)
 	}
 	if _, err := extract(zipPath, stagingDir); err != nil {
 		return fmt.Errorf("extract package to staging directory: %w", err)
 	}
+	reportWindowsInstallProgress(progress, "extract_package", "success", "Controller package staged")
+
+	currentStep = "configure_runtime"
+	reportWindowsInstallProgress(progress, "configure_runtime", "running", "Writing installer runtime configuration")
 	if err := writeConfigTo(cfg, stagingDir); err != nil {
 		return fmt.Errorf("write staged configuration: %w", err)
 	}
 	if _, err := os.Stat(filepath.Join(stagingDir, "collector-sidecar.exe")); err != nil {
 		return fmt.Errorf("staged collector-sidecar.exe validation failed: %w", err)
 	}
+	reportWindowsInstallProgress(progress, "configure_runtime", "success", "Installer runtime configured")
+
+	currentStep = "run_package_installer"
+	reportWindowsInstallProgress(progress, "run_package_installer", "running", "Activating controller and starting service")
 	if err := validateRemoteExecutionDeadline(cfg); err != nil {
 		return err
 	}
@@ -1767,6 +1856,7 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 		}
 		cleanupActivatedWindowsBackup(backupDir)
 	}
+	reportWindowsInstallProgress(progress, "run_package_installer", "success", "Package installer finished")
 	return nil
 }
 

@@ -1,14 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, type ComponentPropsWithoutRef } from 'react';
 import { Bubble } from '@ant-design/x';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeSanitize from 'rehype-sanitize';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Message } from '@webchat/core';
+import { Message, type MessageContent } from '@webchat/core';
 import { MessageActions } from './MessageActions';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ImagePreview } from './ImagePreview';
 import { ToolCallDisplay, type ToolCall } from './ToolCallDisplay';
+
+const syntaxHighlightTheme = vscDarkPlus as Record<string, React.CSSProperties>;
+
+const markdownPlugins = {
+  remarkPlugins: [remarkGfm],
+  rehypePlugins: [rehypeSanitize],
+};
 
 interface MessageBubbleProps {
   message: Message;
@@ -24,17 +32,23 @@ type ContentChunk =
   | { type: 'text'; content: string }
   | { type: 'toolCalls'; toolCalls: ToolCall[] };
 
+type CodeBlockProps = ComponentPropsWithoutRef<'code'> & {
+  inline?: boolean;
+  node?: unknown;
+};
+
 // Custom code block renderer with syntax highlighting
-const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
+const CodeBlock = ({ inline, className, children, style, ...props }: CodeBlockProps) => {
   const match = /language-(\w+)/.exec(className || '');
   const language = match ? match[1] : '';
   
   return !inline && language ? (
     <SyntaxHighlighter
-      style={vscDarkPlus}
+      style={syntaxHighlightTheme}
       language={language}
       PreTag="div"
       customStyle={{
+        ...style,
         margin: '0.5rem 0',
         borderRadius: '0.375rem',
         fontSize: '0.875rem',
@@ -45,7 +59,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
       {String(children).replace(/\n$/, '')}
     </SyntaxHighlighter>
   ) : (
-    <code className={className} {...props}>
+    <code className={className} style={style} {...props}>
       {children}
     </code>
   );
@@ -91,23 +105,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
 
       return (
         <div className="space-y-2">
-          {message.content.map((item: any, index: number) => {
-            if (item.type === 'image_url' && item.image_url) {
+          {message.content.map((item: MessageContent, index: number) => {
+            const imageUrl = item.image_url;
+            if (item.type === 'image_url' && imageUrl) {
               return (
                 <div key={`img-${index}`} className="max-w-xs">
                   <img 
-                    src={item.image_url} 
+                    src={imageUrl}
                     alt={`Image ${index + 1}`}
                     className="rounded border border-gray-200 w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => setPreviewImage({ src: item.image_url, alt: `Image ${index + 1}` })}
+                    onClick={() => setPreviewImage({ src: imageUrl, alt: `Image ${index + 1}` })}
                   />
                 </div>
               );
             } else if (item.type === 'message' && item.message) {
               return (
                 <div key={`msg-${index}`} className="prose prose-sm max-w-none">
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
+                  <ReactMarkdown
+                    {...markdownPlugins}
                     components={{
                       code: CodeBlock
                     }}
@@ -119,8 +134,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
             } else if (item.type === 'text' && item.text) {
               return (
                 <div key={`text-${index}`} className="prose prose-sm max-w-none">
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
+                  <ReactMarkdown
+                    {...markdownPlugins}
                     components={{
                       code: CodeBlock
                     }}
@@ -144,8 +159,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
             if (chunk.type === 'text') {
               return (
                 <div key={`text-${index}`} className="prose prose-sm max-w-none prose-hr:my-3 prose-h1:mt-3 prose-h1:mb-2 prose-h2:mt-3 prose-h2:mb-2 prose-h3:mt-2 prose-h3:mb-1 prose-h4:mt-2 prose-h4:mb-1 prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5">
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
+                  <ReactMarkdown
+                    {...markdownPlugins}
                     components={{
                       code: CodeBlock
                     }}
@@ -166,8 +181,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
         ) : hasContent ? (
           // Fallback to display content if no chunks (for backward compatibility)
           <div className="prose prose-sm max-w-none prose-hr:my-3 prose-h1:mt-3 prose-h1:mb-2 prose-h2:mt-3 prose-h2:mb-2 prose-h3:mt-2 prose-h3:mb-1 prose-h4:mt-2 prose-h4:mb-1 prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5">
-            <ReactMarkdown 
-              remarkPlugins={[remarkGfm]}
+            <ReactMarkdown
+              {...markdownPlugins}
               components={{
                 code: CodeBlock
               }}

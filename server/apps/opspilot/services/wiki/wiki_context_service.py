@@ -6,6 +6,7 @@
 """
 
 import logging
+import re
 
 from django.db.models import Q
 
@@ -27,6 +28,35 @@ from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, 
 logger = logging.getLogger("opspilot")
 
 _RETRIEVAL_MODES = {"keyword", "hybrid", "chunk"}
+
+# 寒暄/致谢/短确认：不走 Wiki 检索与 overview 路由，避免问候也烧 LLM/知识库。
+_WIKI_SKIP_QUERY_RE = re.compile(
+    r"^(?:"
+    r"你[好呀啊吗嘛]*|您好|大家好|"
+    r"早上好|中午好|下午好|晚上好|早安|晚安|"
+    r"hi+|hello|hey|yo+|good\s*(?:morning|afternoon|evening|night)|"
+    r"在吗|在不在|有人吗|嗨+|哈喽|嘿+|"
+    r"谢谢(?:你|您)?|感谢|多谢|thanks|thank\s*you|"
+    r"好的|嗯+|哦+|噢+|哈哈+|呵呵+|嘿嘿+|"
+    r"没事|没关系|不用了|ok|okay|bye|再见|拜拜|"
+    r"测试一下|test"
+    r")[\s!！。.?？~～…]*$",
+    re.IGNORECASE,
+)
+
+
+def should_skip_wiki_retrieval(query: str) -> bool:
+    """判断是否应跳过 Wiki 检索（问好/闲聊/短确认）。
+
+    仅覆盖无需知识库即可回复的短句；稍长或含业务意图的问题仍走检索。
+    """
+    text = " ".join(str(query or "").strip().split())
+    if not text:
+        return True
+    # 过长几乎不可能是纯寒暄，避免误伤正常业务问句。
+    if len(text) > 32:
+        return False
+    return bool(_WIKI_SKIP_QUERY_RE.match(text))
 
 
 def _estimate_tokens(text):
@@ -292,6 +322,20 @@ def build_context(
 ):
     """Search compact Index first and spend at most one call on Overview routing."""
 
+    if should_skip_wiki_retrieval(query):
+        return {
+            "context": "",
+            "citations": [],
+            "hits": [],
+            "budget": {
+                "overview_status": "skipped_chitchat",
+                "overview_scopes": [],
+                "overview_tokens": 0,
+                "llm_budget": {"used_calls": 0},
+            },
+            "retrieval_mode": _normalize_retrieval_mode(retrieval_mode),
+        }
+
     retrieval_mode = _normalize_retrieval_mode(retrieval_mode)
     config = load_wiki_budget_config()
     requested_budget = int(token_budget) if token_budget is not None and int(token_budget) > 0 else config.qa_max_knowledge_tokens
@@ -422,6 +466,18 @@ def augment_prompt_with_trace(
 ):
     if not kb_ids or not (query or "").strip():
         return system_prompt, [], {}
+    if should_skip_wiki_retrieval(query):
+        logger.info("Wiki 检索跳过(寒暄/闲聊): query=%r", str(query)[:32])
+        return (
+            system_prompt,
+            [],
+            {
+                "overview_status": "skipped_chitchat",
+                "overview_scopes": [],
+                "overview_tokens": 0,
+                "llm_budget": {"used_calls": 0},
+            },
+        )
     result = build_context(
         kb_ids,
         query,

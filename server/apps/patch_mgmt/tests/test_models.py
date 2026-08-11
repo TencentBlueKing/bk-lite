@@ -9,17 +9,8 @@ from types import SimpleNamespace
 import pytest
 from django.db import IntegrityError, transaction
 
-from apps.patch_mgmt.constants import (
-    OSType,
-    PackageStatus,
-    PatchSourceType,
-)
-from apps.patch_mgmt.models import (
-    LinuxPatchDetail,
-    Patch,
-    PatchSource,
-    WindowsPatchDetail,
-)
+from apps.patch_mgmt.constants import OSType, PackageStatus, PatchSourceType
+from apps.patch_mgmt.models import LinuxPatchDetail, Patch, PatchSource, WindowsPatchDetail
 
 # ── Patch + detail table creation ───────────────────────────────────────────
 
@@ -82,7 +73,7 @@ class TestPatchRecordCreation:
         duplicate = WindowsPatchDetail(patch=duplicate_patch, kb_number="KB5034443", kb_number_guard=None)
         models.QuerySet(model=WindowsPatchDetail, using="default").bulk_create([duplicate])
 
-        migration = import_module("apps.patch_mgmt.migrations.0009_cross_database_kb_guard")
+        migration = import_module("apps.patch_mgmt.migrations.0010_cross_database_kb_guard")
         schema_editor = SimpleNamespace(connection=connection)
         with pytest.raises(RuntimeError, match="重复 KB 编号"):
             migration.ensure_kb_numbers_unique(apps, schema_editor)

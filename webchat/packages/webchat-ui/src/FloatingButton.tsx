@@ -1,10 +1,16 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Chat } from './Chat';
-import { WebChatConfig, ChatState } from '@webchat/core';
+import { Chat, type ChatProps } from './Chat';
+import { ChatState } from '@webchat/core';
+import { createFloatingButtonChatCallbacks } from './floatingButtonCallbacks';
 
-export interface FloatingButtonProps extends WebChatConfig {
+/**
+ * Floating launcher options plus the complete Chat configuration contract.
+ * `onChatStateChange` takes precedence over `onStateChange`; closing the Chat
+ * notifies `onClose` before the floating container is hidden.
+ */
+export interface FloatingButtonProps extends ChatProps {
   buttonText?: string;
   buttonIcon?: React.ReactNode;
   buttonStyle?: React.CSSProperties;
@@ -13,7 +19,7 @@ export interface FloatingButtonProps extends WebChatConfig {
   onChatStateChange?: (state: ChatState) => void;
 }
 
-export const FloatingButton = React.forwardRef<any, FloatingButtonProps>((props, _ref) => {
+export const FloatingButton = React.forwardRef<HTMLDivElement, FloatingButtonProps>((props, _ref) => {
   const {
     buttonText,
     buttonIcon = '💬',
@@ -21,6 +27,8 @@ export const FloatingButton = React.forwardRef<any, FloatingButtonProps>((props,
     buttonClassName,
     position = 'bottom-right',
     onChatStateChange,
+    onStateChange,
+    onClose,
     ...chatProps
   } = props;
 
@@ -28,7 +36,6 @@ export const FloatingButton = React.forwardRef<any, FloatingButtonProps>((props,
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const chatRef = useRef<any>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dragStartY = useRef(0);
   const initialBottom = useRef(0);
@@ -87,6 +94,12 @@ export const FloatingButton = React.forwardRef<any, FloatingButtonProps>((props,
     'top-right': 'top-6 right-6',
     'top-left': 'top-6 left-6',
   };
+  const chatCallbacks = createFloatingButtonChatCallbacks({
+    onChatStateChange,
+    onStateChange,
+    onClose,
+    close: () => setIsOpen(false),
+  });
 
   return (
     <div
@@ -101,10 +114,8 @@ export const FloatingButton = React.forwardRef<any, FloatingButtonProps>((props,
           style={{ height: '650px', maxHeight: 'calc(100vh - 2rem)' }}
         >
           <Chat
-            ref={chatRef}
             {...chatProps}
-            onStateChange={onChatStateChange}
-            onClose={() => setIsOpen(false)}
+            {...chatCallbacks}
           />
         </div>
       )}

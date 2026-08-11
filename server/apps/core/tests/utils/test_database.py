@@ -73,14 +73,14 @@ def test_bulk_create_with_primary_keys_inserts_individually_when_backend_cannot_
     ("module_name", "preflight_name"),
     [
         (
-            "apps.operation_analysis.migrations.0022_cross_database_active_share_guard",
+            "apps.operation_analysis.migrations.0023_cross_database_active_share_guard",
             "ensure_active_links_unique",
         ),
         (
-            "apps.operation_analysis.migrations.0023_cross_database_execution_guards",
+            "apps.operation_analysis.migrations.0024_cross_database_execution_guards",
             "ensure_execution_keys_unique",
         ),
-        ("apps.patch_mgmt.migrations.0009_cross_database_kb_guard", "ensure_kb_numbers_unique"),
+        ("apps.patch_mgmt.migrations.0010_cross_database_kb_guard", "ensure_kb_numbers_unique"),
         ("apps.system_mgmt.migrations.0045_cross_database_running_guards", "ensure_running_runs_unique"),
     ],
 )

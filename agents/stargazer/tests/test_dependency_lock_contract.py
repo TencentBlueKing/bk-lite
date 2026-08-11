@@ -10,7 +10,6 @@ PYPROJECT_PATH = STARGAZER_ROOT / "pyproject.toml"
 LOCK_PATH = STARGAZER_ROOT / "uv.lock"
 DOCKERFILE_PATH = STARGAZER_ROOT / "support-files" / "docker" / "Dockerfile"
 README_PATH = STARGAZER_ROOT / "README.md"
-TASK_QUEUE_CLI_PATH = STARGAZER_ROOT / "scripts" / "clear_task_queue.py"
 
 
 def _read_toml(path: Path) -> dict:
@@ -51,32 +50,22 @@ def test_dockerfile_installs_pinned_dependencies_via_pip() -> None:
     assert "uv sync" not in dockerfile
 
 
-def test_docker_context_and_runbook_expose_task_queue_cleanup_cli() -> None:
-    dockerfile = _logical_dockerfile()
+def test_arq_queue_runtime_is_absent_from_dependencies_and_runbook() -> None:
+    dependencies = _read_toml(PYPROJECT_PATH)["project"]["dependencies"]
     readme = README_PATH.read_text(encoding="utf-8")
 
-    assert TASK_QUEUE_CLI_PATH.is_file()
-    assert "ADD . ." in dockerfile
-    assert "python /app/scripts/clear_task_queue.py" in readme
-    assert "--all-pending" in readme
-    assert "--include-in-progress" in readme
-    assert "--dispatch-stopped" in readme
-    assert "--restore-backup" in readme
-    assert "FLUSHDB" in readme
+    assert not any(item.split("=", 1)[0] == "arq" for item in dependencies)
+    assert "ARQ Worker" in readme
+    assert "不把 Redis 当作任务队列" in readme
 
 
-def test_runbook_documents_startup_orphan_cleanup_toggle() -> None:
+def test_runbook_documents_stateless_runtime_limits() -> None:
     readme = README_PATH.read_text(encoding="utf-8")
 
-    assert "TASK_QUEUE_STARTUP_ORPHAN_CLEANUP_ENABLED=false" in readme
-    assert "只删除明确孤儿" in readme
-    assert "不影响 Sanic 启动" in readme
-    assert "确认等待 5 秒" in readme
-    assert "最大 10000" in readme
-    assert "总预算 30 秒" in readme
-    assert "分布式锁" in readme
-    assert "status=warning" in readme
-    assert "脱敏" in readme
+    assert "MAX_ACTIVE_RUNS" in readme
+    assert "MAX_ACTIVE_TARGETS" in readme
+    assert "TARGET_TASK_WINDOW" in readme
+    assert "CONNECT_TIMEOUT" in readme
 
 
 def test_sanic_imports_with_the_approved_tracerite_api() -> None:

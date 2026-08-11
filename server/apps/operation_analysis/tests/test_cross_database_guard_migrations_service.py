@@ -8,7 +8,7 @@ from django.db.migrations.recorder import MigrationRecorder
 from apps.core.tests.migration_helpers import migrate_to, migrated_from
 
 OLD_TARGET = [("operation_analysis", "0021_datasource_builtin_fields")]
-NEW_TARGET = [("operation_analysis", "0024_execution_guard_constraints")]
+NEW_TARGET = [("operation_analysis", "0025_execution_guard_constraints")]
 
 
 def _table_columns(table_name):
@@ -159,12 +159,12 @@ def test_mysql_duplicate_active_share_preflight_can_be_fixed_and_retried():
 
         try:
             with pytest.raises(RuntimeError, match="重复的有效画布分享链接"):
-                MigrationExecutor(connection).migrate([("operation_analysis", "0022_cross_database_active_share_guard")])
+                MigrationExecutor(connection).migrate([("operation_analysis", "0023_cross_database_active_share_guard")])
 
             assert "active_guard" not in _table_columns(ShareLink._meta.db_table)
             assert (
                 not MigrationRecorder(connection)
-                .migration_qs.filter(app="operation_analysis", name="0022_cross_database_active_share_guard")
+                .migration_qs.filter(app="operation_analysis", name="0023_cross_database_active_share_guard")
                 .exists()
             )
         finally:
@@ -182,7 +182,7 @@ def test_mysql_duplicate_report_execution_preflight_can_be_fixed_and_retried(dup
     if connection.vendor != "mysql":
         pytest.skip("验证 MySQL 5.7 非事务 DDL 的失败恢复")
 
-    share_guard_target = [("operation_analysis", "0022_cross_database_active_share_guard")]
+    share_guard_target = [("operation_analysis", "0023_cross_database_active_share_guard")]
     with migrated_from(connection, share_guard_target, NEW_TARGET) as old_apps:
         Subscription = old_apps.get_model("operation_analysis", "DashboardReportSubscription")
         Execution = old_apps.get_model("operation_analysis", "DashboardReportExecution")
@@ -217,7 +217,7 @@ def test_mysql_duplicate_report_execution_preflight_can_be_fixed_and_retried(dup
             assert "request_guard" not in columns
             assert "scheduled_guard" not in columns
             assert (
-                not MigrationRecorder(connection).migration_qs.filter(app="operation_analysis", name="0023_cross_database_execution_guards").exists()
+                not MigrationRecorder(connection).migration_qs.filter(app="operation_analysis", name="0024_cross_database_execution_guards").exists()
             )
         finally:
             duplicate.delete()

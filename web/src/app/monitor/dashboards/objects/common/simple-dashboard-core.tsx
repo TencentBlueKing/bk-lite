@@ -25,6 +25,8 @@ import {
   buildMetricItem,
   getCollectionStatus,
   buildCollectionStatusTimeline,
+  formatCollectionStatusTimelineHint,
+  resolveCollectionStatusRange,
   useLoadSequence,
   buildClusterFilterOptions,
   filterInstanceOptionsByCluster,
@@ -359,6 +361,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const [series, setSeries] = useState<Record<string, MetricSeries>>({});
   const [previousSeries, setPreviousSeries] = useState<Record<string, MetricSeries>>({});
   const [collectionStatusMetric, setCollectionStatusMetric] = useState<MetricSeries | null>(null);
+  const [queryTimeRange, setQueryTimeRange] = useState<{ startMs: number; endMs: number } | null>(null);
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
@@ -498,6 +501,8 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         // 本次刷新冻结一个绝对时间窗,所有序列(含 KPI/采集状态/趋势/对比)复用,
         // 避免每条序列各自现算 now 导致时间戳网格错位、多序列面板 tooltip 只显示一条。
         const frozenTimeValues = freezeTimeValues(timeValues);
+        const frozenRange = resolveCollectionStatusRange(frozenTimeValues);
+        if (frozenRange) setQueryTimeRange(frozenRange);
         const previousTimeValues = buildPreviousPeriodTimeValues(frozenTimeValues);
         const compareMetrics = config.metrics.filter((m) => config.summaryCards.some((c) => c.compare && c.metric === m.name));
 
@@ -599,7 +604,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     setLoading(false);
     // loadMetrics already captures displayMode, idValuesKey, instanceId, timeValues internally.
     // Do NOT add timeValues here to avoid double-trigger infinite loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [loadMetrics]);
 
   useEffect(() => {
@@ -666,49 +671,49 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         return !(target?.loadState === 'success' && (!Array.isArray(target.viewData) || target.viewData.length === 0));
       })
       .map((card) => {
-      const hasData = hasMetricData(card.metric);
-      const healthResult = card.formatter === 'enumHealth' && !card.enumMap && hasData
-        ? formatClusterHealth(getLatest(card.metric))
-        : null;
-      const enumResult = card.enumMap && hasData
-        ? formatMappedEnum(getLatest(card.metric), card.enumMap)
-        : null;
+        const hasData = hasMetricData(card.metric);
+        const healthResult = card.formatter === 'enumHealth' && !card.enumMap && hasData
+          ? formatClusterHealth(getLatest(card.metric))
+          : null;
+        const enumResult = card.enumMap && hasData
+          ? formatMappedEnum(getLatest(card.metric), card.enumMap)
+          : null;
 
-      const mainValue = !hasData
-        ? { value: card.emptyValue || '--', unit: '' }
-        : card.formatter === 'duration'
-          ? { value: formatDuration(getLatest(card.metric)), unit: '' }
-          : healthResult
-            ? { value: healthResult.value, unit: healthResult.unit }
-            : enumResult
-              ? { value: enumResult.value, unit: enumResult.unit }
-              : formatMetricValue(getLatest(card.metric), card.unit || metricMap[card.metric]?.unit || 'none');
+        const mainValue = !hasData
+          ? { value: card.emptyValue || '--', unit: '' }
+          : card.formatter === 'duration'
+            ? { value: formatDuration(getLatest(card.metric)), unit: '' }
+            : healthResult
+              ? { value: healthResult.value, unit: healthResult.unit }
+              : enumResult
+                ? { value: enumResult.value, unit: enumResult.unit }
+                : formatMetricValue(getLatest(card.metric), card.unit || metricMap[card.metric]?.unit || 'none');
 
-      const uptimeState = card.isUptimeCard
-        ? !hasData
-          ? { label: '状态未知', tone: 'empty' as const }
-          : countRestartsInRange(metricMap[card.metric]?.viewData || []) > 0
-            ? { label: '期间有重启', tone: 'warning' as const }
-            : { label: '运行正常', tone: 'success' as const }
-        : undefined;
+        const uptimeState = card.isUptimeCard
+          ? !hasData
+            ? { label: '状态未知', tone: 'empty' as const }
+            : countRestartsInRange(metricMap[card.metric]?.viewData || []) > 0
+              ? { label: '期间有重启', tone: 'warning' as const }
+              : { label: '运行正常', tone: 'success' as const }
+          : undefined;
 
-      // 枚举卡失配时趋势线无语义（连续浮点冒充 0/1），清空避免误导。
-      const enumUnresolved = Boolean(card.enumMap && hasData && enumResult?.value === '未知');
+        // 枚举卡失配时趋势线无语义（连续浮点冒充 0/1），清空避免误导。
+        const enumUnresolved = Boolean(card.enumMap && hasData && enumResult?.value === '未知');
 
-      return {
-        card: enumUnresolved ? { ...card, hideTrend: true } : card,
-        mainValue,
-        valueColor: enumResult?.color || healthResult?.color || (!hasData && card.emptyValue ? '#8c95a8' : undefined),
-        // 无数据时 getLatest 会退化成 0，若仍算环比会误显示「较上一周期 0.0%」。
-        compare: card.compare && hasData
-          ? getPeriodCompare(getLatest(card.metric), getLatestChartValue(previousMetricMap[card.metric]?.viewData || []))
-          : null,
-        footerItems: (card.footer || []).map((field) => ({ label: field.label, value: formatField(field) })),
-        trendData: enumUnresolved ? [] : (metricMap[card.metric]?.viewData || []),
-        noDataType: getNoDataType(card.metric),
-        uptimeState
-      };
-    })
+        return {
+          card: enumUnresolved ? { ...card, hideTrend: true } : card,
+          mainValue,
+          valueColor: enumResult?.color || healthResult?.color || (!hasData && card.emptyValue ? '#8c95a8' : undefined),
+          // 无数据时 getLatest 会退化成 0，若仍算环比会误显示「较上一周期 0.0%」。
+          compare: card.compare && hasData
+            ? getPeriodCompare(getLatest(card.metric), getLatestChartValue(previousMetricMap[card.metric]?.viewData || []))
+            : null,
+          footerItems: (card.footer || []).map((field) => ({ label: field.label, value: formatField(field) })),
+          trendData: enumUnresolved ? [] : (metricMap[card.metric]?.viewData || []),
+          noDataType: getNoDataType(card.metric),
+          uptimeState
+        };
+      })
   ), [config.summaryCards, formatField, getLatest, getNoDataType, hasMetricData, metricMap, previousMetricMap]);
 
   const chartPanels = useMemo<PreparedChartPanel[]>(() => (
@@ -855,7 +860,16 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   ), [config.details, formatField, metricMap, getLatest, hasMetricData]);
 
   const collectionStatus = getCollectionStatus(collectionStatusMetric, config.objectFallbackName);
-  const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
+  const activeTimeRange = queryTimeRange ?? resolveCollectionStatusRange(timeValues);
+  const collectionStatusTimeline = buildCollectionStatusTimeline(
+    collectionStatusMetric?.loadState,
+    collectionStatusMetric?.viewData,
+    activeTimeRange?.startMs ?? Date.now() - 15 * 60_000,
+    activeTimeRange?.endMs ?? Date.now()
+  );
+  const collectionStatusTimelineHint = activeTimeRange
+    ? formatCollectionStatusTimelineHint(activeTimeRange.startMs, activeTimeRange.endMs)
+    : undefined;
   const pageTitle = displayMode === 'metrics' ? `${objectDisplayText} 全量指标` : config.pageTitle;
   // 标题头 meta-metric chips:有数据则「label: 值」放对象名后,无数据自动跳过(通用能力)。
   const metaMetricChips = (config.metaMetrics || [])
@@ -911,6 +925,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     idValues,
     collectionStatus,
     collectionStatusTimeline,
+    collectionStatusTimelineHint,
     objectMetaItems,
     objectFallbackName: config.objectFallbackName,
     instanceSelectValue,

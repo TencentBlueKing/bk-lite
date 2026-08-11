@@ -9,13 +9,7 @@ from django_minio_backend import MinioBackend
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.core.utils.conditional_unique import ConditionalUniqueGuardQuerySet
-from apps.patch_mgmt.constants import (
-    OSType,
-    PackageManagerType,
-    PackageStatus,
-    PatchSeverity,
-    PatchType,
-)
+from apps.patch_mgmt.constants import OSType, PackageManagerType, PackageStatus, PatchSeverity, PatchType
 
 PATCH_PACKAGE_BUCKET = "patch-mgmt-packages"
 
@@ -36,12 +30,8 @@ class Patch(TimeInfo, MaintainerInfo):
     """
 
     title = models.CharField(max_length=512, verbose_name="标题")
-    os_type = models.CharField(
-        max_length=16, choices=OSType.CHOICES, db_index=True, verbose_name="OS类型"
-    )
-    patch_type = models.CharField(
-        max_length=16, choices=PatchType.CHOICES, default=PatchType.SECURITY, verbose_name="补丁类型"
-    )
+    os_type = models.CharField(max_length=16, choices=OSType.CHOICES, db_index=True, verbose_name="OS类型")
+    patch_type = models.CharField(max_length=16, choices=PatchType.CHOICES, default=PatchType.SECURITY, verbose_name="补丁类型")
     severity = models.CharField(
         max_length=16,
         choices=PatchSeverity.CHOICES,

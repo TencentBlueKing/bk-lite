@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 
 from config.components.base import APP_CODE, BASE_DIR, DEBUG
 
@@ -14,6 +15,36 @@ if not os.path.exists(log_dir):
 
 # 根据 DEBUG 环境变量设置日志级别
 LOG_LEVEL = "DEBUG" if DEBUG else "INFO"
+
+# 仅用于历史日志分组规则的迁移窗口。默认空集合保持 fail-closed；上线前通过
+# audit_log_group_rule_modes 盘点并只加入已明确需要短期保留旧 OR 语义的分组 ID。
+LOG_GROUP_LEGACY_OR_GROUP_IDS = frozenset(
+    item.strip() for item in os.getenv("LOG_GROUP_LEGACY_OR_GROUP_IDS", "").split(",") if item.strip()
+)
+LOG_GROUP_RULE_MODE_ENFORCEMENT = os.getenv("LOG_GROUP_RULE_MODE_ENFORCEMENT", "strict").strip().lower()
+if LOG_GROUP_RULE_MODE_ENFORCEMENT not in {"legacy", "strict"}:
+    raise ValueError("LOG_GROUP_RULE_MODE_ENFORCEMENT must be legacy or strict")
+
+
+class SafeConsoleHandler(logging.StreamHandler):
+    """Windows GBK 控制台写 UTF-8 日志时避免 UnicodeEncodeError 中断 emit。"""
+
+    def __init__(self, stream=None):
+        super().__init__(stream or sys.stderr)
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            stream = self.stream
+            try:
+                stream.write(msg + self.terminator)
+            except UnicodeEncodeError:
+                encoding = getattr(stream, "encoding", None) or "utf-8"
+                safe = msg.encode(encoding, errors="replace").decode(encoding, errors="replace")
+                stream.write(safe + self.terminator)
+            self.flush()
+        except Exception:
+            self.handleError(record)
 
 
 class IgnoreSpecificPaths(logging.Filter):
@@ -89,13 +120,13 @@ LOGGING = {
     "handlers": {
         "console": {
             "level": "DEBUG",
-            "class": "logging.StreamHandler",
+            "()": SafeConsoleHandler,
             "formatter": "simple",
             "filters": ["ignore_paths"],  # 添加 filter
         },
         "uvicorn_access_console": {
             "level": "INFO",
-            "class": "logging.StreamHandler",
+            "()": SafeConsoleHandler,
             "formatter": "simple",
             "filters": ["suppress_successful_sidecar_access_logs"],
         },
@@ -104,11 +135,13 @@ LOGGING = {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "%s.log" % APP_CODE),
+            "encoding": "utf-8",
         },
         "db": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "db.log"),
+            "encoding": "utf-8",
         },
         "alert": {
             "class": "logging.handlers.RotatingFileHandler",
@@ -122,51 +155,61 @@ LOGGING = {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "cmdb.log"),
+            "encoding": "utf-8",
         },
         "operation_analysis": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "operation_analysis.log"),
+            "encoding": "utf-8",
         },
         "nats": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "nats.log"),
+            "encoding": "utf-8",
         },
         "monitor": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "monitor.log"),
+            "encoding": "utf-8",
         },
         "node": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "node.log"),
+            "encoding": "utf-8",
         },
         "ops-console": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "ops-console.log"),
+            "encoding": "utf-8",
         },
         "system-manager": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "system-manager.log"),
+            "encoding": "utf-8",
         },
         "opspilot": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "opspilot.log"),
+            "encoding": "utf-8",
         },
         "job": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "job.log"),
+            "encoding": "utf-8",
         },
         "playground": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "verbose",
             "filename": os.path.join(log_dir, "playground.log"),
+            "encoding": "utf-8",
         },
     },
     "loggers": {

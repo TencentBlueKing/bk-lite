@@ -209,7 +209,7 @@ describe('APM 服务目录应用视角', () => {
     expect(within(card).getByText('2.00%')).not.toBeNull();
     expect(within(card).getByLabelText('警告')).not.toBeNull();
     const alertLink = within(card).getByRole('link', { name: /应用内 1 个活跃告警/ });
-    expect(alertLink.getAttribute('href')).toBe('/apm/events?service=bklite-server');
+    expect(alertLink.getAttribute('href')).toBe('/apm/events/alerts?service=bklite-server');
   });
 });
 
@@ -228,7 +228,7 @@ describe('APM 服务目录服务视角与归档', () => {
     );
     expect(
       screen.getByRole('link', { name: /bklite-server 有 1 个活跃告警/ }).getAttribute('href')
-    ).toBe('/apm/events?service=bklite-server&environment=production');
+    ).toBe('/apm/events/alerts?service=bklite-server&environment=production');
     await waitFor(() => expect(screen.getAllByText('12.5').length).toBeGreaterThan(0));
     expect(screen.getAllByText('2.00%').length).toBeGreaterThan(0);
   });

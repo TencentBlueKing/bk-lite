@@ -5,11 +5,11 @@ from django.http import JsonResponse
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.core.logger import logger
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import logger
 from apps.core.utils.viewset_utils import MaintainerViewSet
-from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.models import Group, IntegrationInstance, IntegrationInstanceStatusChoices, UserSyncRun, UserSyncSource
+from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.serializers.user_sync_source_serializer import UserSyncRunSerializer, UserSyncSourceSerializer
 from apps.system_mgmt.services.user_sync_service import (
     delete_user_sync_source,
@@ -197,9 +197,7 @@ class UserSyncSourceViewSet(MaintainerViewSet):
             return JsonResponse({"result": False, "message": "Source not found"}, status=404)
 
         # 沿用 records 端点的源可见性判定
-        visible_sources = self.get_queryset_by_permission(
-            request, UserSyncSource.objects.filter(id=source.id)
-        )
+        visible_sources = self.get_queryset_by_permission(request, UserSyncSource.objects.filter(id=source.id))
         if not visible_sources.exists():
             return JsonResponse({"result": False, "message": "Permission denied"}, status=403)
 
@@ -245,8 +243,5 @@ class UserSyncSourceViewSet(MaintainerViewSet):
             )
 
         result = preview_user_sync(preview_source)
-        logger.info(
-            f"User sync preview result: source_id={source_id or 'new'}, "
-            f"payload={request.data}, result={result}"
-        )
+        logger.info(f"User sync preview result: source_id={source_id or 'new'}, " f"payload={request.data}, result={result}")
         return JsonResponse(result)

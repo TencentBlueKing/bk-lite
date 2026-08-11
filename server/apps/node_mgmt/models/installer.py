@@ -1,10 +1,10 @@
 from django.db import models, transaction
-from django.db.models.expressions import BaseExpression
 from django.db.models import JSONField
+from django.db.models.expressions import BaseExpression
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.node_mgmt.models import CloudRegion, Node, Collector
+from apps.node_mgmt.models import CloudRegion, Collector, Node
 
 
 class NodeCollectorInstallStatus(models.Model):
@@ -74,7 +74,14 @@ class ControllerTaskNode(models.Model):
     passphrase = models.TextField(default="", blank=True, verbose_name="私钥密码短语")
     winrm_scheme = models.CharField(max_length=16, blank=True, default="https", verbose_name="WinRM协议")
     winrm_transport = models.CharField(max_length=32, blank=True, default="ntlm", verbose_name="WinRM认证方式")
-    winrm_cert_validation = models.BooleanField(default=True, verbose_name="WinRM证书校验")
+    winrm_cert_validation = models.BooleanField(default=False, verbose_name="WinRM证书校验")
+    connectivity_observed_at = models.DateTimeField(null=True, blank=True, verbose_name="节点提前回连时间")
+    connectivity_observed_node_id = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="提前回连节点ID",
+    )
     resolved_package_version_id = models.IntegerField(default=0, verbose_name="解析后的控制器版本")
     status = models.CharField(max_length=100, default="", verbose_name="任务状态")
     result = JSONField(default=dict, verbose_name="结果")
