@@ -91,6 +91,22 @@ USE_SKILLS_TOOL_NAME = "__use_skills__"
 _SKILL_CATALOG_DESC_LIMIT = 120
 _SKILL_CATALOG_HINT = "能力导读：目录含「可用技能包」时，若用户任务匹配某技能包能力边界，" f"必须规划至少一步且 tools 含 {USE_SKILLS_TOOL_NAME}；" "寒暄、问候、与技能无关的简单闲聊必须返回空 steps，禁止为闲聊挂技能运行时。"
 
+# 工作流附件：弱模型常把「写报告」当成纯文本直出；目录含该工具时必须规划落盘。
+GENERATE_ATTACHMENT_FILE_TOOL_NAME = "generate_attachment_file"
+_ATTACHMENT_CATALOG_HINT = (
+    "能力导读：目录含 generate_attachment_file 时，凡任务涉及生成/创建/导出报告、月报、文档、"
+    "Markdown/.md 或任何可下载附件，必须规划至少一步且 tools 含 generate_attachment_file；"
+    "禁止返回空 steps 后在对话中直接渲染全文；寒暄问候除外。"
+)
+_FILE_GENERATION_INTENT_RE = re.compile(
+    r"月报|报告|\.md\b|markdown|附件|导出|下载|文档|文件|notion|" r"report|document|attachment|generate_attachment_file|附件生成强制规则|" r"放在\.?md|生成一份|产出.*文件",
+    re.IGNORECASE,
+)
+_ATTACHMENT_CHITCHAT_RE = re.compile(
+    r"^(你好|您好|hello|hi|hey|谢谢|thanks|thank you|在吗|早上好|晚上好)[\s!！.。?？～~]*$",
+    re.IGNORECASE,
+)
+
 
 def is_context_size_error(exc: BaseException | str) -> bool:
     """识别模型上下文窗口不足（如 request exceeds available context size）。"""
@@ -233,6 +249,47 @@ def enforce_k8s_namespace_lookup_first(
         first_required_idx,
     )
     return ToolExecutionPlan(goal=plan.goal, steps=steps)
+
+
+def looks_like_attachment_file_task(user_message: str = "", agent_system_prompt: str = "") -> bool:
+    """判断是否应强制走附件落盘（结合用户输入与智能体 system prompt）。"""
+    if _ATTACHMENT_CHITCHAT_RE.match((user_message or "").strip()):
+        return False
+    blob = f"{user_message or ''}\n{agent_system_prompt or ''}"
+    return bool(_FILE_GENERATION_INTENT_RE.search(blob))
+
+
+def enforce_generate_attachment_file(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    *,
+    user_message: str = "",
+    agent_system_prompt: str = "",
+    max_steps: int = 4,
+) -> ToolExecutionPlan:
+    """若可用且任务像「生成报告/文件」，确保计划包含 generate_attachment_file。"""
+    if GENERATE_ATTACHMENT_FILE_TOOL_NAME not in available_names:
+        return plan
+    if not looks_like_attachment_file_task(user_message, agent_system_prompt):
+        return plan
+    if any(GENERATE_ATTACHMENT_FILE_TOOL_NAME in (step.tools or []) for step in (plan.steps or [])):
+        return plan
+
+    attachment_step = ToolExecutionStep(
+        objective="生成可下载的报告/文档附件",
+        tools=[GENERATE_ATTACHMENT_FILE_TOOL_NAME],
+    )
+    steps = list(plan.steps or [])
+    if len(steps) >= max_steps > 0:
+        # 保留既有步骤的同时保证附件步在场：替换最后一步。
+        steps = [*steps[: max_steps - 1], attachment_step]
+    else:
+        steps = [*steps, attachment_step]
+    logger.info(
+        "DeepAgent 规划硬校验：已注入 generate_attachment_file（原 steps=%s）",
+        len(plan.steps or []),
+    )
+    return ToolExecutionPlan(goal=plan.goal or "生成报告附件", steps=steps)
 
 
 def _looks_like_empty_message_reply(raw_text: str) -> bool:
@@ -384,6 +441,7 @@ class ToolExecutionPlanner:
         lines = []
         has_monitor = False
         has_k8s_lookup = False
+        has_attachment = False
         used = 0
         skill_block = self._skill_catalog(skill_packages)
         if skill_block:
@@ -396,6 +454,8 @@ class ToolExecutionPlanner:
                 has_monitor = True
             if name in _K8S_NAMESPACE_LOOKUP_TOOLS:
                 has_k8s_lookup = True
+            if name == GENERATE_ATTACHMENT_FILE_TOOL_NAME:
+                has_attachment = True
             # 预算耗尽后只保留工具名，避免 60+ 长描述撑爆 8K 窗口。
             remaining = self._catalog_char_budget - used
             if remaining <= len(name) + 4:
@@ -413,6 +473,8 @@ class ToolExecutionPlanner:
             hints.append(_MONITOR_CATALOG_HINT)
         if has_k8s_lookup:
             hints.append(_K8S_NAMESPACE_LOOKUP_HINT)
+        if has_attachment:
+            hints.append(_ATTACHMENT_CATALOG_HINT)
         parts: list[str] = []
         if hints:
             parts.append("\n".join(hints))
@@ -427,6 +489,9 @@ class ToolExecutionPlanner:
         payload: Any,
         tools: Sequence[BaseTool],
         skill_packages: Sequence[Any] = (),
+        *,
+        user_message: str = "",
+        agent_system_prompt: str = "",
     ) -> ToolExecutionPlan:
         if not isinstance(payload, dict):
             raise ToolPlanningError("规划模型未返回 JSON 对象")
@@ -465,7 +530,14 @@ class ToolExecutionPlanner:
             goal=str(payload.get("goal") or "").strip(),
             steps=steps,
         )
-        return enforce_k8s_namespace_lookup_first(plan, available_names, max_steps=self._max_steps)
+        plan = enforce_k8s_namespace_lookup_first(plan, available_names, max_steps=self._max_steps)
+        return enforce_generate_attachment_file(
+            plan,
+            available_names,
+            user_message=user_message,
+            agent_system_prompt=agent_system_prompt,
+            max_steps=self._max_steps,
+        )
 
     def _system_prompt(self) -> str:
         return (
@@ -478,6 +550,8 @@ class ToolExecutionPlanner:
             "纯分析或最终总结不要列为步骤，系统会在工具执行后单独完成。"
             "若用户要查平台已纳管主机/实例的指标或告警，且目录含 monitor_* 或能力导读，"
             "必须规划对应 monitor_* 步骤，禁止返回空 steps。"
+            "若目录含 generate_attachment_file，且任务是生成报告/月报/文档/Markdown/.md 文件，"
+            "必须规划 generate_attachment_file 步骤，禁止空 steps 后在对话里直接输出全文。"
             f"若任务需要「可用技能包」中的能力，对应步骤的 tools 必须包含 {USE_SKILLS_TOOL_NAME}；"
             "寒暄/问候/与工具和技能无关的简单闲聊必须返回空 steps。"
             "已完成步骤不可重做；发生失败时只规划当前失败步骤及后续步骤。"
@@ -530,6 +604,7 @@ class ToolExecutionPlanner:
         failure: str = "",
         skill_packages: Sequence[Any] = (),
         config: dict[str, Any] | None = None,
+        agent_system_prompt: str = "",
     ) -> ToolExecutionPlan:
         completed_text = "\n".join(f"- {step.objective}: {step.result}" for step in completed_steps) or "无"
         failure_text = failure.strip() or "无"
@@ -573,4 +648,10 @@ class ToolExecutionPlanner:
                     " ".join(raw_text.split())[:500],
                 )
                 raise first_error from None
-        return self._normalize(payload, tools, packages)
+        return self._normalize(
+            payload,
+            tools,
+            packages,
+            user_message=user_message,
+            agent_system_prompt=agent_system_prompt,
+        )
