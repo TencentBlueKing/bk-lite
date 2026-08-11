@@ -45,6 +45,8 @@ def test_model_rejects_forbidden_supernets(network):
 
     with pytest.raises(DjangoValidationError):
         entry.full_clean()
+    with pytest.raises(DjangoValidationError):
+        entry.save()
 
 
 # ---- validate_domain_name ----
@@ -146,3 +148,11 @@ def test_remark_is_optional_and_allows_blank():
     field = NetworkWhiteListSerializer().fields["remark"]
     assert field.required is False
     assert field.allow_blank is True
+
+
+@pytest.mark.django_db
+def test_universal_cidr_cannot_be_written_through_bulk_orm():
+    with pytest.raises(DjangoValidationError):
+        NetworkWhiteList.objects.bulk_create([NetworkWhiteList(network="0.0.0.0/0")])
+    with pytest.raises(ValueError, match="逐条 save"):
+        NetworkWhiteList.objects.update(network="::/0")

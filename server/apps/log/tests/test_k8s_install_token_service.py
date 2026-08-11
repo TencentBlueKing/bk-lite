@@ -4,7 +4,7 @@ from datetime import timedelta
 import pydantic.root_model  # noqa
 import pytest
 from django.core.cache import caches
-from django.db import close_old_connections
+from django.db import IntegrityError, close_old_connections
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -44,6 +44,47 @@ def test_token_lifecycle_increments_usage():
     assert data["remaining_usage"] == K8s.TOKEN_MAX_USAGE - 1
     token_record.refresh_from_db()
     assert token_record.usage_count == 1
+
+
+@pytest.mark.parametrize(
+    ("usage_count", "max_usage", "constraint_name"),
+    [(0, 0, "log_k8s_token_max_usage_gt_0"), (2, 1, "log_k8s_token_usage_lte_max")],
+)
+def test_token_check_contracts_are_enforced_by_the_model_layer(usage_count, max_usage, constraint_name):
+    with pytest.raises(IntegrityError, match=constraint_name):
+        K8sInstallToken.objects.create(
+            token_hash=f"invalid-{usage_count}-{max_usage}",
+            cluster_name="cluster-a",
+            cloud_region_id="cr-1",
+            usage_count=usage_count,
+            max_usage=max_usage,
+            expires_at=timezone.now() + timedelta(minutes=1),
+        )
+
+
+def test_token_check_contracts_cannot_be_bypassed_by_bulk_writes():
+    invalid = K8sInstallToken(
+        token_hash="invalid-bulk-token",
+        cluster_name="cluster-a",
+        cloud_region_id="cr-1",
+        usage_count=2,
+        max_usage=1,
+        expires_at=timezone.now() + timedelta(minutes=1),
+    )
+    with pytest.raises(IntegrityError, match="log_k8s_token_usage_lte_max"):
+        K8sInstallToken.objects.bulk_create([invalid])
+    with pytest.raises(ValueError, match="逐条 save"):
+        K8sInstallToken.objects.update(max_usage=0)
+
+    capped = K8sInstallToken.objects.create(
+        token_hash="capped-token",
+        cluster_name="cluster-a",
+        cloud_region_id="cr-1",
+        usage_count=1,
+        max_usage=1,
+        expires_at=timezone.now() + timedelta(minutes=1),
+    )
+    assert K8sInstallToken.objects.filter(pk=capped.pk).claim_usage() == 0
 
 
 @pytest.mark.django_db(transaction=True)

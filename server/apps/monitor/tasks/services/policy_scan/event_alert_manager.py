@@ -2,12 +2,13 @@ import uuid
 
 from django.db import transaction
 
+from apps.core.logger import celery_logger as logger
+from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorEventRawData
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.utils.dimension import format_dimension_str
-from apps.core.logger import celery_logger as logger
 
 
 class EventAlertManager:
@@ -120,9 +121,7 @@ class EventAlertManager:
             if new_alert_events:
                 representative_events_by_key = {}
                 for event in new_alert_events:
-                    representative_events_by_key.setdefault(
-                        self._get_event_alert_key(event), event
-                    )
+                    representative_events_by_key.setdefault(self._get_event_alert_key(event), event)
                 representative_events = list(representative_events_by_key.values())
                 new_alerts = self._create_alerts_from_events(representative_events)
 
@@ -196,11 +195,7 @@ class EventAlertManager:
         alert_type: str,
         monitor_instance_id: str = "",
     ) -> tuple:
-        identity = (
-            monitor_instance_id
-            if alert_type == "no_data" and monitor_instance_id
-            else metric_instance_id
-        )
+        identity = monitor_instance_id if alert_type == "no_data" and monitor_instance_id else metric_instance_id
         return identity, alert_type
 
     def _get_event_alert_key(self, event) -> tuple:
@@ -253,18 +248,11 @@ class EventAlertManager:
                 )
             )
 
-        new_alerts = MonitorAlert.objects.bulk_create(create_alerts, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
-
-        if not new_alerts or not hasattr(new_alerts[0], "id"):
-            metric_instance_ids = [event.get("metric_instance_id", "") for event in events]
-            new_alerts = list(
-                MonitorAlert.objects.filter(
-                    policy_id=self.policy.id,
-                    metric_instance_id__in=metric_instance_ids,
-                    start_event_time=self.policy.last_run_time,
-                    status="new",
-                ).order_by("id")
-            )
+        new_alerts = bulk_create_with_primary_keys(
+            MonitorAlert.objects,
+            create_alerts,
+            batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+        )
 
         logger.info(f"Created {len(new_alerts)} new alerts for policy {self.policy.id}")
 

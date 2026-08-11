@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
+from django.db.models.expressions import BaseExpression
 
 from apps.core.models.time_info import TimeInfo
 from apps.operation_analysis.models.models import Dashboard
@@ -231,32 +232,21 @@ class DashboardReportSubscription(TimeInfo):
         if self.status == self.Status.ACTIVE:
             if self.resource_id is None:
                 errors["resource_id"] = "启用状态的报告订阅必须关联画布资源"
-            if (
-                self.resource_type == _RESOURCE_TYPE_DASHBOARD
-                and self.dashboard_id is None
-            ):
+            if self.resource_type == _RESOURCE_TYPE_DASHBOARD and self.dashboard_id is None:
                 errors["dashboard"] = "启用状态的报告订阅必须关联仪表盘"
         if self.schedule_type is not None:
             if self.schedule_hour is None or not (0 <= self.schedule_hour <= 23):
                 errors["schedule_hour"] = "已配置调度时必须指定 0–23 小时"
-            if self.schedule_minute is None or not (
-                0 <= self.schedule_minute <= 59
-            ):
+            if self.schedule_minute is None or not (0 <= self.schedule_minute <= 59):
                 errors["schedule_minute"] = "已配置调度时必须指定 0–59 分钟"
             if not self.timezone:
                 errors["timezone"] = "已配置调度时必须指定 IANA 时区"
-            if self.schedule_type == self.ScheduleType.WEEKLY and (
-                self.schedule_weekday is None
-                or not (0 <= self.schedule_weekday <= 6)
-            ):
+            if self.schedule_type == self.ScheduleType.WEEKLY and (self.schedule_weekday is None or not (0 <= self.schedule_weekday <= 6)):
                 errors["schedule_weekday"] = "每周调度必须指定 weekday（0–6）"
             if self.schedule_type == self.ScheduleType.MONTHLY and (
-                self.schedule_day_of_month is None
-                or not (1 <= self.schedule_day_of_month <= 31)
+                self.schedule_day_of_month is None or not (1 <= self.schedule_day_of_month <= 31)
             ):
-                errors["schedule_day_of_month"] = (
-                    "每月调度必须指定 day_of_month（1–31）"
-                )
+                errors["schedule_day_of_month"] = "每月调度必须指定 day_of_month（1–31）"
         if errors:
             raise ValidationError(errors)
 
@@ -266,6 +256,68 @@ class DashboardReportSubscription(TimeInfo):
 
     def __str__(self):
         return self.name
+
+
+class DashboardReportExecutionQuerySet(models.QuerySet):
+    GUARDED_FIELDS = {"request_id", "trigger_type", "scheduled_time_utc"}
+
+    def update(self, **kwargs):
+        if "request_guard" in kwargs and "request_id" not in kwargs:
+            raise ValueError("request_guard 是派生保护字段，不能单独更新")
+        if "scheduled_guard" in kwargs and not {"trigger_type", "scheduled_time_utc"}.intersection(kwargs):
+            raise ValueError("scheduled_guard 是派生保护字段，不能单独更新")
+        protected_updates = self.GUARDED_FIELDS.intersection(kwargs)
+        if "request_id" in protected_updates:
+            request_id = kwargs["request_id"]
+            if isinstance(request_id, BaseExpression):
+                raise ValueError("request_id 表达式更新无法安全推导 request_guard")
+            kwargs["request_guard"] = True if request_id else None
+        schedule_updates = {"trigger_type", "scheduled_time_utc"}.intersection(protected_updates)
+        if schedule_updates:
+            if schedule_updates != {"trigger_type", "scheduled_time_utc"}:
+                raise ValueError("trigger_type 与 scheduled_time_utc 必须通过 save 或在同一次 update 中更新")
+            trigger_type = kwargs["trigger_type"]
+            scheduled_time_utc = kwargs["scheduled_time_utc"]
+            if isinstance(trigger_type, BaseExpression) or isinstance(scheduled_time_utc, BaseExpression):
+                raise ValueError("计划执行字段的表达式更新无法安全推导 scheduled_guard")
+            kwargs["scheduled_guard"] = (
+                True if trigger_type == DashboardReportExecution.TriggerType.SCHEDULED and scheduled_time_utc is not None else None
+            )
+        return super().update(**kwargs)
+
+    def bulk_create(self, objs, *args, **kwargs):
+        objs = list(objs)
+        for obj in objs:
+            self._sync_guards(obj)
+        return super().bulk_create(objs, *args, **kwargs)
+
+    def bulk_update(self, objs, fields, *args, **kwargs):
+        objs = list(objs)
+        fields = list(fields)
+        if "request_guard" in fields and "request_id" not in fields:
+            raise ValueError("request_guard 是派生保护字段，不能单独更新")
+        if "scheduled_guard" in fields and not {"trigger_type", "scheduled_time_utc"}.intersection(fields):
+            raise ValueError("scheduled_guard 是派生保护字段，不能单独更新")
+        guarded_update = bool(self.GUARDED_FIELDS.intersection(fields))
+        if "request_id" in fields and "request_guard" not in fields:
+            fields.append("request_guard")
+        if {"trigger_type", "scheduled_time_utc"}.intersection(fields) and "scheduled_guard" not in fields:
+            fields.append("scheduled_guard")
+        for obj in objs:
+            self._sync_guards(obj)
+        if guarded_update:
+            with transaction.atomic(using=self.db):
+                for obj in objs:
+                    obj.save(update_fields=fields, using=self.db)
+            return len(objs)
+        return super().bulk_update(objs, fields, *args, **kwargs)
+
+    @staticmethod
+    def _sync_guards(obj):
+        obj.request_guard = True if obj.request_id else None
+        obj.scheduled_guard = (
+            True if obj.trigger_type == DashboardReportExecution.TriggerType.SCHEDULED and obj.scheduled_time_utc is not None else None
+        )
 
 
 class DashboardReportExecution(TimeInfo):
@@ -372,6 +424,7 @@ class DashboardReportExecution(TimeInfo):
     started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
     finished_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
     delivered_at = models.DateTimeField(null=True, blank=True, verbose_name="投递时间")
+
     class DeliveryOutcome(models.TextChoices):
         NOT_DELIVERED = "not_delivered", "未确认投递"
         DELIVERED = "delivered", "已确认投递"
@@ -411,6 +464,10 @@ class DashboardReportExecution(TimeInfo):
         default=False,
         verbose_name="执行期间源画布被删除",
     )
+    request_guard = models.BooleanField(null=True, default=None, editable=False)
+    scheduled_guard = models.BooleanField(null=True, default=None, editable=False)
+
+    objects = DashboardReportExecutionQuerySet.as_manager()
 
     class Meta:
         db_table = "operation_analysis_dashboard_report_execution"
@@ -436,10 +493,28 @@ class DashboardReportExecution(TimeInfo):
                 ),
                 name="uniq_dashboard_report_execution_scheduled",
             ),
+            models.UniqueConstraint(
+                fields=["subscription", "request_id", "trigger_type", "request_guard"],
+                name="uniq_dashboard_report_execution_request_guard",
+            ),
+            models.UniqueConstraint(
+                fields=["subscription", "scheduled_time_utc", "trigger_type", "scheduled_guard"],
+                name="uniq_dashboard_report_execution_scheduled_guard",
+            ),
         ]
 
     def save(self, *args, **kwargs):
         _sync_dashboard_resource_fields(self)
+        self.request_guard = True if self.request_id else None
+        self.scheduled_guard = True if self.trigger_type == self.TriggerType.SCHEDULED and self.scheduled_time_utc is not None else None
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            update_fields = set(update_fields)
+            if "request_id" in update_fields:
+                update_fields.add("request_guard")
+            if {"trigger_type", "scheduled_time_utc"}.intersection(update_fields):
+                update_fields.add("scheduled_guard")
+            kwargs["update_fields"] = update_fields
         super().save(*args, **kwargs)
 
 
