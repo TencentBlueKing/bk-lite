@@ -812,6 +812,8 @@ func isLinux(osName string) bool {
 	return strings.EqualFold(strings.TrimSpace(osName), "linux")
 }
 
+const linuxInstallerOutputLimit = 4000
+
 func runLinuxInstaller(cfg *Config) error {
 	installScript := filepath.Join(cfg.InstallDir, "install.sh")
 	if _, err := os.Stat(installScript); err != nil {
@@ -841,9 +843,33 @@ func runLinuxInstaller(cfg *Config) error {
 		cmd.Env = append(os.Environ(), apiTokenEnv)
 	}
 	cmd.Dir = cfg.InstallDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	// Keep console streaming for operators, and capture the same bytes so failed
+	// events can surface install.sh usage/errors instead of bare "exit status 1".
+	var combined bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &combined)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &combined)
+	if err := cmd.Run(); err != nil {
+		return wrapExecErrorWithOutput(err, combined.String(), linuxInstallerOutputLimit)
+	}
+	return nil
+}
+
+func wrapExecErrorWithOutput(err error, output string, maxBytes int) error {
+	if err == nil {
+		return nil
+	}
+	trimmed := truncateInstallerOutput(strings.TrimSpace(output), maxBytes)
+	if trimmed == "" {
+		return err
+	}
+	return fmt.Errorf("%w\n%s", err, trimmed)
+}
+
+func truncateInstallerOutput(output string, maxBytes int) string {
+	if maxBytes <= 0 || len(output) <= maxBytes {
+		return output
+	}
+	return "..." + output[len(output)-maxBytes:]
 }
 
 func linuxInstallerAPITokenInputs(installDir, apiToken string) (string, string, func(), error) {

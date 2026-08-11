@@ -1420,6 +1420,54 @@ func TestLinuxInstallerAPITokenInputsKeepsEmptyTokenOnArgv(t *testing.T) {
 	}
 }
 
+func TestRunLinuxInstallerIncludesScriptOutputOnFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test is only for Unix-like systems")
+	}
+
+	installDir := t.TempDir()
+	installScript := filepath.Join(installDir, "install.sh")
+	script := `#!/bin/sh
+echo "用法: install.sh {server_url} ..."
+exit 1
+`
+	if err := os.WriteFile(installScript, []byte(script), 0755); err != nil {
+		t.Fatalf("write install.sh: %v", err)
+	}
+
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "",
+		ZoneID:     "zone-a",
+		GroupID:    "group-a",
+		NodeName:   "node-a",
+		NodeID:     "node-1",
+		InstallDir: installDir,
+		Package: PackageConfig{
+			CPUArchitecture: "x86_64",
+		},
+	}
+
+	err := runLinuxInstaller(cfg)
+	if err == nil {
+		t.Fatal("expected install.sh failure")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "exit status 1") {
+		t.Fatalf("expected exit status in error, got %q", message)
+	}
+	if !strings.Contains(message, "用法: install.sh") {
+		t.Fatalf("expected install.sh stdout in error, got %q", message)
+	}
+}
+
+func TestTruncateInstallerOutputKeepsTail(t *testing.T) {
+	got := truncateInstallerOutput("abcdefghij", 4)
+	if got != "...ghij" {
+		t.Fatalf("unexpected truncation: %q", got)
+	}
+}
+
 func readTestFile(t *testing.T, path string) string {
 	t.Helper()
 	content, err := os.ReadFile(path)

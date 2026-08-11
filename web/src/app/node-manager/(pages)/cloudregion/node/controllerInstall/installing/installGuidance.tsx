@@ -199,7 +199,8 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
       installDisplay.state
     );
     const summaryGuidance = getInstallerSummaryGuidance(t, installerSummary, {
-      suppressNoInstallerEvents
+      suppressNoInstallerEvents,
+      suppressIncompleteWhenFailedStep: true
     });
     const shouldShowConnectivityGuidance =
       !!summaryGuidance &&
@@ -261,17 +262,24 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                   log?.details?.step_index,
                   log?.details?.step_total
                 );
+                const isInstallerPhase = phase.code === 'installer_execution';
                 const failureSuggestion = getInstallerFailureSuggestion(
                   t,
                   log?.details?.raw_step || log?.action
                 );
-                const failureGuidance = getInstallerFailureGuidance(t, {
-                  steps: log ? [log] : []
-                });
+                const failureGuidance = getInstallerFailureGuidance(
+                  t,
+                  isInstallerPhase
+                    ? {
+                        steps: installerDetailSteps.length
+                          ? installerDetailSteps
+                          : logs
+                      }
+                    : { steps: log ? [log] : [] }
+                );
                 const isFailureLog =
                   phase.status === 'error' ||
                   ['error', 'timeout'].includes(log?.status || '');
-                const isInstallerPhase = phase.code === 'installer_execution';
                 const isConnectivityStep = phase.code === 'node_connectivity';
                 return {
                   status: statusConfig.stepStatus,
