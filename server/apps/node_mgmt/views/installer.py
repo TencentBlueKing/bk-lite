@@ -128,7 +128,9 @@ class InstallerViewSet(ViewSet):
                     **requested_node,
                     "node_id": str(actual_node.id),
                     "ip": actual_node.ip,
+                    "node_name": actual_node.name,
                     "os": actual_node.operating_system,
+                    "organizations": [relation.organization for relation in actual_node.nodeorganization_set.all()],
                 }
             )
 

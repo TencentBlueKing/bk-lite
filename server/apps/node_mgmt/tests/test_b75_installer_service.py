@@ -150,7 +150,9 @@ def test_uninstall_controller_creates_task_and_nodes():
         {
             "ip": "10.0.0.2",
             "node_id": "node-ctrl-uninstall",
+            "node_name": "controller-to-remove",
             "os": "linux",
+            "organizations": [1],
             "port": 22,
             "username": "root",
             "password": "",
@@ -171,6 +173,8 @@ def test_uninstall_controller_creates_task_and_nodes():
     assert task.domain == "example.com"
     node = ControllerTaskNode.objects.get(task=task)
     assert node.node_id == "node-ctrl-uninstall"
+    assert node.node_name == "controller-to-remove"
+    assert node.organizations == [1]
     assert node.private_key != "key"
 
 

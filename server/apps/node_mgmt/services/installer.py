@@ -301,8 +301,10 @@ class InstallerService:
                     task_id=task_obj.id,
                     node_id=node.get("node_id", ""),
                     ip=node["ip"],
+                    node_name=node.get("node_name", ""),
                     os=node["os"],
                     cpu_architecture=node.get("cpu_architecture", ""),
+                    organizations=node.get("organizations", []),
                     port=node["port"],
                     username=node["username"],
                     password=password,
@@ -328,11 +330,25 @@ class InstallerService:
         if scope is None:
             return linked_nodes
 
+        snapshot_node_ids = {
+            str(node_id)
+            for node_id in task_nodes.values_list("node_id", flat=True)
+            if node_id
+        }
+        existing_node_ids = {
+            str(node_id)
+            for node_id in Node.objects.filter(id__in=snapshot_node_ids).values_list("id", flat=True)
+        }
         data_team_ids = set(scope.data_team_ids)
-        legacy_nodes = [
-            item for item in task_nodes.filter(Q(node_id="") | Q(node_id__isnull=True)) if normalize_orgs(item.organizations) & data_team_ids
-        ]
-        return sorted([*linked_nodes, *legacy_nodes], key=lambda item: item.id)
+        historical_nodes = []
+        for item in task_nodes:
+            if item.node_id and str(item.node_id) in existing_node_ids:
+                continue
+            snapshot_organizations = normalize_orgs(item.organizations)
+            is_legacy_superuser_snapshot = item.organizations in (None, []) and getattr(scope, "is_superuser", False)
+            if snapshot_organizations & data_team_ids or is_legacy_superuser_snapshot:
+                historical_nodes.append(item)
+        return sorted([*linked_nodes, *historical_nodes], key=lambda item: item.id)
 
     @staticmethod
     def get_authorized_controller_task_node_queryset(
@@ -354,11 +370,21 @@ class InstallerService:
 
         username = getattr(request_user, "username", "") if request_user is not None else ""
         domain = getattr(request_user, "domain", "") if request_user is not None else ""
-        legacy_owner_filter = Q(pk__in=[])
-        legacy_node_filter = Q(node_id="") | Q(node_id__isnull=True)
+        snapshot_node_ids = {str(task_node.node_id) for task_node in scoped_task_nodes if task_node.node_id}
+        existing_node_ids = {
+            str(node_id)
+            for node_id in Node.objects.filter(id__in=snapshot_node_ids).values_list("id", flat=True)
+        }
+        historical_task_node_ids = [
+            task_node.id
+            for task_node in scoped_task_nodes
+            if not task_node.node_id or str(task_node.node_id) not in existing_node_ids
+        ]
+        historical_node_filter = Q(pk__in=historical_task_node_ids)
+        historical_owner_filter = Q(pk__in=[])
         if username and domain:
-            legacy_owner_filter = legacy_node_filter & Q(task__created_by=username, task__domain=domain)
-        return task_nodes.filter(~legacy_node_filter | legacy_owner_filter)
+            historical_owner_filter = historical_node_filter & Q(task__created_by=username, task__domain=domain)
+        return task_nodes.filter(~historical_node_filter | historical_owner_filter)
 
     @staticmethod
     def install_controller_nodes(task_id, authorized_nodes=None, scope=None):

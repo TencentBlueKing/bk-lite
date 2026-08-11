@@ -236,7 +236,9 @@ def test_controller_uninstall_binds_target_to_authorized_node_facts(monkeypatch)
     uninstall_node = captured["args"][2][0]
     assert uninstall_node["node_id"] == node.id
     assert uninstall_node["ip"] == node.ip
+    assert uninstall_node["node_name"] == node.name
     assert uninstall_node["os"] == "windows"
+    assert uninstall_node["organizations"] == [1]
     assert uninstall_node["port"] == 7443
     assert uninstall_node["winrm_scheme"] == "https"
     assert captured["task_id"] == 81
@@ -1114,6 +1116,193 @@ def test_controller_task_nodes_follow_current_node_org_and_legacy_snapshot(
         linked_current.id,
         legacy_current.id,
     ]
+
+
+@pytest.mark.django_db
+def test_controller_uninstall_task_snapshot_remains_visible_after_node_deleted(
+    monkeypatch,
+):
+    region = _region("controller-uninstall-task-snapshot")
+    node = _node(region, "controller-uninstall-task-node", 1)
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="uninstall",
+        status="running",
+        work_node="worker",
+        created_by="admin",
+        updated_by="admin",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        node_id=node.id,
+        ip=node.ip,
+        node_name=node.name,
+        os="windows",
+        organizations=[1],
+        port=5986,
+        username="Administrator",
+        password="",
+        status="running",
+        result={
+            "steps": [
+                {
+                    "action": "credential_check",
+                    "status": "success",
+                    "message": "Check credential configuration (password)",
+                },
+                {
+                    "action": "stop_run",
+                    "status": "running",
+                    "message": "Stop controller service",
+                },
+            ]
+        },
+    )
+    node.delete()
+    monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(
+        installer_view,
+        "get_authorized_node_queryset",
+        lambda request: Node.objects.none(),
+    )
+
+    response = installer_view.InstallerViewSet.as_view({"post": "controller_install_nodes"})(
+        _request(permissions=("cloud_region_node-Edit",)),
+        task_id=str(task.id),
+    )
+    data = _response_data(response)
+
+    assert len(data) == 1
+    assert data[0]["task_node_id"] == task_node.id
+    assert data[0]["status"] == "running"
+    assert data[0]["result"]["steps"][-1]["action"] == "stop_run"
+
+
+@pytest.mark.django_db
+def test_deleted_controller_task_snapshot_stays_within_original_team():
+    region = _region("controller-deleted-snapshot-team-scope")
+    node = _node(region, "controller-deleted-snapshot-sibling", 2)
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="uninstall",
+        status="running",
+        work_node="worker",
+        created_by="admin",
+        updated_by="admin",
+    )
+    ControllerTaskNode.objects.create(
+        task=task,
+        node_id=node.id,
+        ip=node.ip,
+        node_name=node.name,
+        os="windows",
+        organizations=[2],
+        port=5986,
+        username="Administrator",
+        password="",
+        status="running",
+    )
+    node.delete()
+
+    task_nodes = InstallerService.get_authorized_controller_task_nodes(
+        task.id,
+        authorized_nodes=Node.objects.none(),
+        scope=SimpleNamespace(data_team_ids=frozenset({1})),
+    )
+
+    assert task_nodes == []
+
+
+@pytest.mark.django_db
+def test_deleted_controller_task_snapshot_rejects_other_task_owner():
+    region = _region("controller-deleted-snapshot-owner")
+    node = _node(region, "controller-deleted-snapshot-owned-node", 1)
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="uninstall",
+        status="running",
+        work_node="worker",
+        created_by="other-user",
+        updated_by="other-user",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    ControllerTaskNode.objects.create(
+        task=task,
+        node_id=node.id,
+        ip=node.ip,
+        node_name=node.name,
+        os="windows",
+        organizations=[1],
+        port=5986,
+        username="Administrator",
+        password="",
+        status="success",
+    )
+    node.delete()
+
+    data = InstallerService.install_controller_nodes(
+        task.id,
+        authorized_nodes=Node.objects.none(),
+        scope=SimpleNamespace(
+            data_team_ids=frozenset({1}),
+            username="admin",
+            domain="domain.com",
+            is_superuser=False,
+        ),
+    )
+
+    assert data == []
+
+
+@pytest.mark.django_db
+def test_deleted_legacy_snapshot_without_team_is_visible_only_to_superuser():
+    region = _region("controller-deleted-legacy-snapshot")
+    node = _node(region, "controller-deleted-legacy-node", 1)
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="uninstall",
+        status="running",
+        work_node="worker",
+        created_by="admin",
+        updated_by="admin",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        node_id=node.id,
+        ip=node.ip,
+        node_name="",
+        os="windows",
+        organizations=[],
+        port=5986,
+        username="Administrator",
+        password="",
+        status="success",
+    )
+    node.delete()
+    base_scope = {
+        "data_team_ids": frozenset({1}),
+        "username": "admin",
+        "domain": "domain.com",
+    }
+
+    ordinary_data = InstallerService.install_controller_nodes(
+        task.id,
+        authorized_nodes=Node.objects.none(),
+        scope=SimpleNamespace(**base_scope, is_superuser=False),
+    )
+    superuser_data = InstallerService.install_controller_nodes(
+        task.id,
+        authorized_nodes=Node.objects.none(),
+        scope=SimpleNamespace(**base_scope, is_superuser=True),
+    )
+
+    assert ordinary_data == []
+    assert [item["task_node_id"] for item in superuser_data] == [task_node.id]
 
 
 @pytest.mark.django_db

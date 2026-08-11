@@ -110,7 +110,14 @@ class ControllerRetryRequestSerializer(serializers.Serializer):
 class ControllerUninstallNodeSerializer(serializers.Serializer):
     node_id = serializers.CharField(allow_blank=False)
     ip = serializers.CharField()
+    node_name = serializers.CharField(required=False, allow_blank=True, default="")
     os = serializers.ChoiceField(choices=(NodeConstants.LINUX_OS, NodeConstants.WINDOWS_OS))
+    organizations = serializers.ListField(
+        child=CanonicalOrganizationIdField(),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
     port = serializers.IntegerField(required=False, min_value=1, max_value=65535)
     username = serializers.CharField(allow_blank=False, max_length=100)
     password = serializers.CharField(required=False, allow_blank=True, write_only=True)
