@@ -319,6 +319,10 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+.instanceRow .colRight {
+  font-size: var(--font-size-secondary);
+  font-weight: 500;
+}
 /* 与 Web Ant Tag 上报状态列一致：正常 success，失联 default 灰底。 */
 .statusCell {
   min-width: 0;
