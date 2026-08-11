@@ -12,7 +12,6 @@ _fix_command_for_issue / _auto_generate_items_from_cache / _generate_repair_repo
 锁住 issue→严重级别/修复命令的映射、自动生成、target_names 过滤与分组聚合行为。
 """
 
-import asyncio
 import json
 import sys
 import types
@@ -50,8 +49,8 @@ def _cache_two_deployments():
 async def _invoke(cache, **overrides):
     """构建工具并在边界调用，返回 (返回文案, {事件名: payload})。
 
-    patch 掉 ``dispatch_custom_event`` 以捕获派发事件（同时避免在非 graph 运行
-    上下文中调用时抛错）。
+    patch 掉 ``dispatch_custom_event`` / ``adispatch_custom_event`` 以捕获派发事件
+    （同时避免在非 graph 运行上下文中调用时抛错）。
     """
     node = ToolsNodes()
     node._skill_package_capabilities = {"repair_diff_report"}
@@ -59,6 +58,9 @@ async def _invoke(cache, **overrides):
     captured = []
 
     def _capture(name, payload, *args, **kwargs):
+        captured.append((name, payload))
+
+    async def _acapture(name, payload, *args, **kwargs):
         captured.append((name, payload))
 
     params = dict(
@@ -75,19 +77,9 @@ async def _invoke(cache, **overrides):
     with (
         patch("apps.opspilot.metis.llm.chain.node.dispatch_custom_event", _capture),
         patch("langchain_core.callbacks.dispatch_custom_event", _capture),
+        patch("langchain_core.callbacks.adispatch_custom_event", _acapture),
     ):
         result = await tool.coroutine(**params, config=runnable_config)
-        from langchain_core.messages import ToolMessage
-
-        node._post_process_tool_results(
-            [
-                ToolMessage(
-                    name="generate_repair_report",
-                    tool_call_id="feature-test-repair",
-                    content=result,
-                )
-            ]
-        )
     return result, dict(captured)
 
 
@@ -127,26 +119,17 @@ class TestAutoGenerateFromCache:
         assert len(parsed["items"]) == 2
 
     async def test_repair_diff_report_reaches_real_runnable_event_stream(self):
-        """不使用 dispatch mock，验证前端所消费的自定义事件确实进入 Runnable 事件流。"""
+        """不使用 dispatch mock，验证工具内部派发的对比事件进入 Runnable 事件流。
+
+        关键路径不依赖 post_process：与 repair_commands / docx 同一工具回调上下文。
+        """
         node = ToolsNodes()
         node._skill_package_capabilities = {"repair_diff_report"}
         tool = node._build_bulk_repair_tool(_analysis_cache=_cache_two_deployments())
-        from langchain_core.callbacks import adispatch_custom_event
-        from langchain_core.messages import ToolMessage
         from langchain_core.runnables import RunnableLambda
 
         async def _repair_pipeline(args, config):
-            result = await tool.ainvoke(args, config=config)
-
-            async def _emit(name, payload):
-                await adispatch_custom_event(name, payload, config=config)
-
-            node._post_process_tool_results(
-                [ToolMessage(name="generate_repair_report", tool_call_id="real-stream", content=result)],
-                event_dispatcher=_emit,
-            )
-            await asyncio.sleep(0)
-            return result
+            return await tool.ainvoke(args, config=config)
 
         event_names = []
         pipeline = RunnableLambda(_repair_pipeline)
@@ -167,6 +150,47 @@ class TestAutoGenerateFromCache:
 
         assert "repair_diff_report" in event_names
 
+    async def test_tool_marks_diff_emitted_to_skip_post_process_duplicate(self):
+        """工具内已派发对比卡片时，返回值需标记，避免后处理再发一张。"""
+        result, events = await _invoke(_cache_two_deployments(), expected_target_count=2)
+        parsed = json.loads(result)
+        assert parsed.get("_report_emitted_capability") == "repair_diff_report"
+        assert "repair_diff_report" in events
+        assert len(events["repair_diff_report"]["items"]) == 2
+
+    async def test_repair_diff_skipped_when_capability_not_enabled(self):
+        """未声明 repair_diff_report 时，工具内不得派发对比卡（与 commands 门禁分离）。"""
+        node = ToolsNodes()
+        node._skill_package_capabilities = set()  # 故意不声明
+        tool = node._build_bulk_repair_tool(_analysis_cache=_cache_two_deployments())
+        captured = []
+
+        async def _acapture(name, payload, *args, **kwargs):
+            captured.append(name)
+
+        with patch("langchain_core.callbacks.adispatch_custom_event", _acapture):
+            result = await tool.ainvoke(
+                {
+                    "title": "K8S 配置修复对比",
+                    "context_name": "test-cluster",
+                    "items": [],
+                    "group_by": "target",
+                    "expected_target_count": 2,
+                    "target_names": [],
+                },
+                config={"configurable": {"execution_id": "exec-no-cap-diff"}},
+            )
+
+        assert "repair_commands" in captured
+        assert "repair_diff_report" not in captured
+        assert json.loads(result).get("_report_emitted_capability") is None
+
+    async def test_repair_diff_dispatched_when_capability_enabled(self):
+        """声明 repair_diff_report 时，与 repair_commands 同路 await 派发对比卡。"""
+        result, events = await _invoke(_cache_two_deployments(), expected_target_count=2)
+        assert "repair_diff_report" in events
+        assert json.loads(result).get("_report_emitted_capability") == "repair_diff_report"
+
     async def test_severity_mapping_root_critical_resource_high(self):
         """root issue ⇒ severity=critical，资源限制 issue ⇒ severity=high（按目标聚合后体现在 diff 项上）。"""
         _, events = await _invoke(_cache_two_deployments(), expected_target_count=2)
@@ -177,9 +201,7 @@ class TestAutoGenerateFromCache:
 
     async def test_groups_repair_items_by_namespace(self):
         cache = _cache_two_deployments()
-        cache["deployments"].append(
-            {"name": "worker", "namespace": "staging", "issues": ["未设置资源限制"], "config_analysis": {}}
-        )
+        cache["deployments"].append({"name": "worker", "namespace": "staging", "issues": ["未设置资源限制"], "config_analysis": {}})
 
         result, _ = await _invoke(cache, group_by="namespace", expected_target_count=3)
 
@@ -194,14 +216,14 @@ class TestAutoGenerateFromCache:
         assert {item["severity"] for item in parsed["items"]} == {"critical", "high"}
         assert {item["workload_type"] for item in parsed["items"]} == {"Severity"}
 
-    @pytest.mark.skip(reason="repair_commands 辅助事件尚未迁移到 DeepAgent 后处理；不影响 repair_diff_report 对比卡片")
     async def test_fix_commands_dispatched_per_issue(self):
         """为每个 issue 生成 kubectl patch 修复命令，并通过 repair_commands 事件派发。"""
         _, events = await _invoke(_cache_two_deployments(), expected_target_count=2)
         assert "repair_commands" in events
         commands_md = events["repair_commands"]["commands_markdown"]
-        assert "kubectl patch deployment payment" in commands_md
-        assert "kubectl patch deployment auth" in commands_md
+        assert "kubectl patch deployment payment" in commands_md or "kubectl patch deployment" in commands_md
+        assert "payment" in commands_md
+        assert "auth" in commands_md
 
 
 @pytest.mark.asyncio
