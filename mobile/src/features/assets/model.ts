@@ -17,6 +17,8 @@ export interface FollowedAssetItem { modelId: string; instanceId: string | numbe
 export interface FollowedAssetsConfig { items: FollowedAssetItem[]; }
 export interface SearchModelStat { modelId: string; count: number; }
 export interface PageResult<T> { count: number; items: T[]; }
+export interface AssetTableColumn { id: string; name: string; type: string; order: number; }
+export interface AssetFileMeta { fileId: string; fileName: string; fileSize: number | null; mimeType: string; }
 
 export function assetRequestErrorKind(error: unknown): 'forbidden' | 'missing' | 'error' {
   if (!(error instanceof Error)) return 'error';
@@ -103,9 +105,6 @@ const ASSET_DISPLAY_FIELD_TYPES = new Set([
   'user',
   'enum',
   'tag',
-  'table',
-  'attachment',
-  'image',
 ]);
 
 function displayText(value: unknown): string {
@@ -136,33 +135,62 @@ function tagItemText(value: unknown): string {
   return String(value).trim();
 }
 
-function fileNamesText(value: unknown): string {
-  const items = Array.isArray(value) ? value : [];
-  const names = items.flatMap((item) => {
-    if (typeof item !== 'object' || item === null) return [];
-    const name = (item as Record<string, unknown>).name;
-    return name === undefined || name === null || name === '' ? [] : [String(name)];
-  });
-  return names.join(', ');
+function jsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
-function tableCellsText(value: unknown): string {
-  let rows: unknown[] = [];
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      rows = Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return value.trim();
-    }
-  } else if (Array.isArray(value)) {
-    rows = value;
-  }
+export function parseAssetTableColumns(value: unknown): AssetTableColumn[] {
+  return jsonArray(value).flatMap((raw) => {
+    if (typeof raw !== 'object' || raw === null) return [];
+    const item = raw as Record<string, unknown>;
+    const id = String(item.column_id ?? '').trim();
+    if (!id) return [];
+    const order = Number(item.order);
+    return [{
+      id,
+      name: String(item.column_name || id),
+      type: String(item.column_type || 'str'),
+      order: Number.isFinite(order) ? order : 0,
+    }];
+  }).sort((left, right) => left.order - right.order);
+}
+
+export function parseAssetTableRows(value: unknown): Array<Record<string, unknown>> {
+  return jsonArray(value).filter((row): row is Record<string, unknown> => (
+    typeof row === 'object' && row !== null && !Array.isArray(row)
+  ));
+}
+
+export function parseAssetFiles(value: unknown): AssetFileMeta[] {
+  return jsonArray(value).flatMap((raw) => {
+    const item = typeof raw === 'object' && raw !== null
+      ? raw as Record<string, unknown>
+      : { file_id: raw, file_name: raw };
+    const fileId = String(item.file_id ?? item.id ?? '').trim();
+    if (!fileId) return [];
+    const size = Number(item.file_size ?? item.size);
+    return [{
+      fileId,
+      fileName: String(item.file_name ?? item.name ?? fileId),
+      fileSize: Number.isFinite(size) ? size : null,
+      mimeType: String(item.mime_type ?? ''),
+    }];
+  });
+}
+
+function tableCellsText(field: AssetField, value: unknown): string {
+  const rows = parseAssetTableRows(value);
+  const columns = parseAssetTableColumns(field.option);
   const cells = rows.flatMap((row) => {
-    if (typeof row !== 'object' || row === null) return [];
-    return Object.values(row as Record<string, unknown>)
-      .filter((cell) => cell !== undefined && cell !== null && cell !== '')
-      .map((cell) => String(cell));
+    const values = columns.length ? columns.map((column) => row[column.id]) : Object.values(row);
+    return values.filter((cell) => cell !== undefined && cell !== null && cell !== '').map(String);
   });
   return cells.join(', ');
 }
@@ -191,7 +219,10 @@ export function assetValueText(
 
   if (value === undefined || value === null || value === '') return '--';
 
-  if (field.type === 'bool') return value ? yes : no;
+  if (field.type === 'bool') {
+    const normalized = typeof value === 'string' ? value.trim().toLowerCase() : value;
+    return normalized === true || normalized === 1 || normalized === '1' || normalized === 'true' ? yes : no;
+  }
 
   if (field.type === 'enum') {
     const options = Array.isArray(field.option) ? field.option : [];
@@ -211,11 +242,11 @@ export function assetValueText(
   }
 
   if (field.type === 'table') {
-    return tableCellsText(value) || '--';
+    return tableCellsText(field, value) || '--';
   }
 
   if (field.type === 'attachment' || field.type === 'image') {
-    return fileNamesText(value) || '--';
+    return parseAssetFiles(value).map((item) => item.fileName).join(', ') || '--';
   }
 
   // 组织/用户在无 _display 时不应回落成原始 ID

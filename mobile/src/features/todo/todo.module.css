@@ -30,85 +30,95 @@
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
+  scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
 
-.refreshContent { min-height: 100%; }
+.scroll::-webkit-scrollbar { display: none; }
+
+.refreshContent {
+  min-height: 100%;
+  background: color-mix(in srgb, var(--color-bg) 58%, var(--color-background-body));
+}
+
 .alertList {
-  padding-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
   overflow: hidden;
-  background: var(--color-bg);
+  background: transparent;
 }
 
 .alertCard {
   position: relative;
   display: grid;
-  grid-template-columns: 3px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
   width: 100%;
-  min-height: 92px;
+  min-height: 102px;
   padding: 12px 16px;
   color: inherit;
   text-align: left;
   cursor: pointer;
-  background: transparent;
-  border: 0;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-2);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(29 45 74 / 2%);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  transition: background-color 140ms ease;
+  transition: background-color 140ms ease, border-color 140ms ease;
 }
 
-.alertCard::after {
-  position: absolute;
-  right: 16px;
-  bottom: 0;
-  left: 31px;
-  height: 1px;
-  content: '';
-  background: var(--color-border-1);
-}
-
-.alertCard:last-of-type::after { display: none; }
 .alertCard:active { background: var(--color-fill-1); }
 .alertCard:focus-visible { z-index: 1; outline: 2px solid var(--color-primary); outline-offset: -2px; }
 
 .severityMark {
-  width: 3px;
-  height: 28px;
-  min-height: 28px;
-  align-self: stretch;
-  height: auto;
-  margin: 2px 0;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
   background: var(--color-warning);
-  border-radius: 999px;
+  border-radius: 8px 0 0 8px;
 }
 
-.cardBody { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.cardBody { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; }
 .cardTopline { display: flex; gap: 10px; align-items: center; justify-content: space-between; min-width: 0; }
-.cardState { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.cardState { display: flex; gap: 10px; align-items: center; min-width: 0; }
+
+.levelIdentity {
+  display: inline-flex;
+  flex: 0 1 auto;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  color: var(--color-fail);
+}
+
+.levelIcon {
+  display: inline-block;
+  flex: 0 0 13px;
+  width: 13px;
+  height: 13px;
+  font-size: 13px;
+  line-height: 13px;
+  text-align: center;
+  object-fit: contain;
+  opacity: .9;
+}
 
 .levelName {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
   overflow: hidden;
   font-size: var(--font-size-secondary);
-  font-weight: 650;
-  color: var(--color-text-2);
+  font-weight: 600;
+  color: currentcolor;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  border: 0;
-  clip-path: inset(50%);
-}
-
-.metaDot {
-  flex: 0 0 3px;
-  width: 3px;
-  height: 3px;
-  background: var(--color-border-4);
-  border-radius: 50%;
 }
 
 .statusText, .cardDuration {
@@ -125,8 +135,8 @@
   flex: 0 0 auto;
   align-items: center;
   max-width: 40%;
-  min-height: 20px;
-  padding: 0 8px;
+  min-height: 18px;
+  padding: 0 7px;
   overflow: hidden;
   font-size: var(--font-size-secondary);
   font-weight: 600;
@@ -135,7 +145,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   background: var(--color-fill-2);
-  border-radius: 999px;
+  border-radius: 6px;
 }
 
 .cardDuration {
@@ -147,16 +157,22 @@
 }
 
 .alertCard[data-status='unassigned'] .statusText,
-.alertCard[data-status='unassigned'] .statusPill { color: var(--color-warning); background: var(--color-fill-2); }
+.alertCard[data-status='unassigned'] .statusPill {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-bg));
+}
 .alertCard[data-status='pending'] .statusText,
 .alertCard[data-status='pending'] .statusPill { color: var(--color-primary); background: var(--color-primary-bg); }
 .alertCard[data-status='processing'] .statusText,
-.alertCard[data-status='processing'] .statusPill { color: var(--color-success); background: var(--color-fill-2); }
+.alertCard[data-status='processing'] .statusPill {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-bg));
+}
 
 .alertTitle {
   display: -webkit-box;
   overflow: hidden;
-  font-size: var(--font-size-subtitle);
+  font-size: var(--font-size-body);
   font-weight: 600;
   line-height: 1.4;
   color: var(--color-text-1);
@@ -167,8 +183,9 @@
 
 .cardResource {
   display: flex;
-  gap: 6px;
+  gap: 10px;
   align-items: center;
+  justify-content: space-between;
   min-width: 0;
   overflow: hidden;
   font-size: var(--font-size-secondary);
@@ -594,6 +611,31 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.timelineLoadError {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 16px 10px;
+  font-size: var(--font-size-secondary);
+  color: var(--color-text-3);
+}
+
+.timelineRetry {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: transparent;
+  border: 0;
+}
+
+.timelineRetry:disabled { opacity: .5; }
+.timelineRetry:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 
 .actionBar {
   display: flex;

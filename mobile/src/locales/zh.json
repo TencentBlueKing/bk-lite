@@ -122,11 +122,12 @@
         "viewedAtMinutes": "{count} 分钟前",
         "viewedAtHours": "{count} 小时前",
         "viewedAtYesterday": "昨天",
+        "lastReportedLabel": "最后上报 {time}",
         "objects": "监控对象", "instances": "监控实例", "searchWithin": "在{name}中搜索", "resultCount": "共 {count} 个实例", "objectCountLabel": "{name}（{count}）",
         "allObjects": "选择", "selectObjectAction": "选择", "selectObjectTitle": "选择监控对象", "searchObjects": "搜索对象名称", "searchInstances": "按实例名称搜索", "currentObject": "当前",
         "columnName": "名称", "columnReportTime": "上报时间", "columnReportingStatus": "上报状态", "summaryField": "摘要",
         "filterReportingStatus": "筛选上报状态", "resetFilter": "重置",
-        "objectLoadFailed": "监控对象加载失败", "instanceLoadFailed": "实例加载失败", "detailLoadFailed": "实例指标加载失败", "detailForbidden": "没有查看此实例的权限", "detailMissing": "实例不存在或已删除", "backToMonitor": "返回监控", "retryHint": "请检查网络或权限后重试",
+        "objectLoadFailed": "监控对象加载失败", "instanceLoadFailed": "实例加载失败", "detailLoadFailed": "实例指标加载失败", "detailForbidden": "没有查看此实例的权限", "detailMissing": "实例不存在或已删除", "detailUnavailable": "实例不可用、已删除或当前无权查看", "backToMonitor": "返回监控", "retryHint": "请检查网络或权限后重试",
         "noObjects": "暂无可见监控对象", "noInstances": "当前对象暂无实例", "noSearchResults": "没有匹配的实例", "endOfList": "已经到底了",
         "noReportTime": "暂无上报时间", "detailTitle": "实例详情", "instanceId": "实例 ID", "dataSource": "数据源", "selectPluginTitle": "选择数据源", "selectPluginAction": "选择", "currentPlugin": "当前", "timeRange": "时间范围",
         "fields": {
@@ -147,7 +148,7 @@
         "resultCount": "共 {count} 项", "shortCount": "{count} 项", "catalogSummary": "{assets} 项资产 · {models} 个模型", "categorySummary": "{assets} 项资产 · {models} 个模型", "organization": "组织", "ipAddress": "IP", "noFollowed": "还没有关注资产", "noFollowedHint": "进入资产详情后可添加关注，结果与 Web 同步", "noModels": "暂无可见资产模型", "noInstances": "当前模型暂无资产", "noInstancesHint": "可切换上方模型继续浏览", "endOfList": "已经到底了",
         "currentModel": "当前模型", "changeModel": "选择", "selectModelTitle": "选择模型", "searchModels": "筛选模型名称", "selectModelAction": "选择", "currentModelBadge": "当前", "columnName": "名称",
         "searchModel": "在「{name}」中筛选", "searchPlaceholder": "输入资产关键词", "searchHint": "搜索全部资产", "searchHintDescription": "输入关键词后按模型查看真实命中结果", "searchResultsByModel": "按模型切换搜索结果", "searchFailed": "资产搜索失败", "noSearchResults": "没有匹配的资产", "exactMatch": "精确匹配", "searchForbidden": "没有全局资产搜索权限",
-        "detailTitle": "资产详情", "follow": "关注", "unfollow": "取消关注", "followUnavailable": "关注不可用", "followSuccess": "已关注", "unfollowSuccess": "已取消关注", "followFailed": "关注状态保存失败，请重试", "noFieldGroups": "当前模型没有可展示字段", "yes": "是", "no": "否"
+        "detailTitle": "资产详情", "follow": "关注", "unfollow": "取消关注", "followUnavailable": "关注不可用", "followSuccess": "已关注", "unfollowSuccess": "已取消关注", "followFailed": "关注状态保存失败，请重试", "noFieldGroups": "当前模型没有可展示字段", "downloadFile": "下载{name}", "previewFile": "预览{name}", "fileLoadFailed": "文件加载失败", "yes": "是", "no": "否"
     },
 
     "conversations": {

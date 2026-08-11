@@ -378,6 +378,18 @@
   border-bottom: 1px solid var(--color-border-1);
 }
 
+.assetRowLink {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-column: 1 / 3;
+  gap: 0 14px;
+  align-items: center;
+  min-width: 0;
+  align-self: stretch;
+  color: inherit;
+  text-decoration: none;
+}
+
 .listChrome .assetTableHead {
   min-height: 32px;
   padding-top: 8px;
@@ -734,6 +746,43 @@
 .fieldLabel, .fieldValue { min-height: 47px; padding: 13px 16px 13px 0; border-bottom: 1px solid var(--color-border-1); }
 .fieldLabel { font-size: var(--font-size-body); color: var(--color-text-3); }
 .fieldValue { font-size: var(--font-size-body); color: var(--color-text-1); text-align: right; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.structuredField {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 12px 16px 14px 0;
+  border-bottom: 1px solid var(--color-border-1);
+}
+.structuredFieldLabel { display: block; margin-bottom: 9px; font-size: var(--font-size-body); color: var(--color-text-3); }
+.structuredEmpty { color: var(--color-text-3); }
+.structuredTableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border-1);
+  border-radius: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.structuredTable { width: max-content; min-width: 100%; border-spacing: 0; border-collapse: separate; font-size: var(--font-size-secondary); color: var(--color-text-2); }
+.structuredTable th,
+.structuredTable td { min-width: 88px; max-width: 220px; padding: 9px 10px; text-align: left; white-space: nowrap; border-right: 1px solid var(--color-border-1); border-bottom: 1px solid var(--color-border-1); }
+.structuredTable th { font-weight: 650; color: var(--color-text-2); background: var(--color-fill-1); }
+.structuredTable tr:last-child td { border-bottom: 0; }
+.structuredTable th:last-child,
+.structuredTable td:last-child { border-right: 0; }
+
+.assetFileList { display: flex; flex-direction: column; gap: 8px; }
+.assetFileRow { display: flex; gap: 10px; align-items: center; width: 100%; min-height: 44px; padding: 8px 10px; color: var(--color-text-1); text-align: left; cursor: pointer; background: var(--color-fill-1); border: 1px solid var(--color-border-1); border-radius: 8px; }
+.assetFileIcon { flex: 0 0 auto; font-size: var(--font-size-subtitle); color: var(--color-primary); }
+.assetFileCopy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.assetFileName { overflow: hidden; font-size: var(--font-size-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.assetFileSize { font-size: var(--font-size-caption); color: var(--color-text-3); }
+.assetFileDownload { flex: 0 0 auto; color: var(--color-text-3); }
+
+.assetImageGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
+.assetImagePreview { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: var(--color-text-2); text-decoration: none; }
+.assetImagePreview img,
+.assetImageLoading,
+.assetImageFallback { display: grid; width: 100%; aspect-ratio: 1.25; overflow: hidden; object-fit: cover; color: var(--color-text-3); background: var(--color-fill-2); border: 1px solid var(--color-border-1); border-radius: 8px; place-items: center; }
 
 .assetRow:active,
 .categoryRow:active,
