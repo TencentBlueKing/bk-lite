@@ -78,6 +78,7 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   const [pickerKeyword, setPickerKeyword] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
+  const monitorObjectIdRef = useRef(monitorObject?.id || 0);
   const snapshotRefreshPending = useRef(Boolean(initialSnapshot.current));
   const statusFilterKey = statusFilters.join(',');
   const lastRequestedKey = useRef<string | null>(
@@ -92,6 +93,7 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   const listController = useRef<AbortController | null>(null);
   const metricUnitController = useRef<AbortController | null>(null);
   const preferences = { locale: userInfo?.locale || 'en', timezone: userInfo?.timezone || 'Asia/Shanghai' };
+  monitorObjectIdRef.current = monitorObject?.id || 0;
 
   const orderedObjects = useMemo(() => orderedMonitorObjects(objects), [objects]);
   const objectGroups = useMemo(() => groupMonitorObjects(objects), [objects]);
@@ -116,7 +118,7 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   }, [router]);
 
   const applyObject = useCallback((next: MonitorObject, replaceUrl = true) => {
-    if (monitorObject?.id === next.id) {
+    if (monitorObjectIdRef.current === next.id) {
       setPickerOpen(false);
       return;
     }
@@ -133,7 +135,21 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
     setPickerOpen(false);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
     if (replaceUrl) syncUrl(next);
-  }, [monitorObject?.id, syncUrl]);
+  }, [syncUrl]);
+
+  const resetObjectSelection = useCallback((next: MonitorObject) => {
+    setMonitorObject(next);
+    setInput('');
+    setKeyword('');
+    setStatusFilters([]);
+    setStatusFilterOpen(false);
+    lastRequestedKey.current = null;
+    setInstances([]);
+    setCount(0);
+    setPage(0);
+    setListStatus('idle');
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, []);
 
   const loadObjects = useCallback(async (preserveContent = false) => {
     const currentId = ++objectRequestId.current;
@@ -199,32 +215,32 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 只跟随 URL / 对象树变化。点击轨上项会先改本地再 replace URL；
+  // 若把 monitorObject.id 放进依赖，会在 URL 尚未更新时用旧 objectId 把选中打回去。
   useEffect(() => {
     if (!objects.length) return;
     const ordered = orderedMonitorObjects(objects);
-    const nextObject = (objectId && ordered.find((item) => item.id === objectId))
-      || ordered.find((item) => item.id === monitorObject?.id)
+    const fromUrl = objectId ? ordered.find((item) => item.id === objectId) || null : null;
+    if (fromUrl) {
+      setObjectStatus('ready');
+      if (monitorObjectIdRef.current === fromUrl.id) return;
+      resetObjectSelection(fromUrl);
+      return;
+    }
+    const preferred = ordered.find((item) => item.id === monitorObjectIdRef.current)
       || ordered[0]
       || null;
-    if (!nextObject) {
+    if (!preferred) {
       setMonitorObject(null);
       setObjectStatus('missing');
       return;
     }
     setObjectStatus('ready');
-    if (monitorObject?.id === nextObject.id) return;
-    setMonitorObject(nextObject);
-    setInput('');
-    setKeyword('');
-    setStatusFilters([]);
-    setStatusFilterOpen(false);
-    lastRequestedKey.current = null;
-    setInstances([]);
-    setCount(0);
-    setPage(0);
-    setListStatus('idle');
-    if (nextObject.id !== objectId) syncUrl(nextObject);
-  }, [monitorObject?.id, objectId, objects, syncUrl]);
+    if (monitorObjectIdRef.current !== preferred.id) {
+      resetObjectSelection(preferred);
+    }
+    if (preferred.id !== objectId) syncUrl(preferred);
+  }, [objectId, objects, resetObjectSelection, syncUrl]);
 
   useEffect(() => {
     if (!monitorObject) {
@@ -304,8 +320,13 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   }, []);
 
   useEffect(() => {
-    const active = railRef.current?.querySelector<HTMLElement>(`[data-object-id="${monitorObject?.id || ''}"]`);
-    active?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    const rail = railRef.current;
+    const active = rail?.querySelector<HTMLElement>(`[data-object-id="${monitorObject?.id || ''}"]`);
+    if (!rail || !active) return;
+    const railRect = rail.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    if (activeRect.left >= railRect.left && activeRect.right <= railRect.right) return;
+    active.scrollIntoView({ behavior: 'auto', inline: 'nearest', block: 'nearest' });
   }, [monitorObject?.id]);
 
   const saveSnapshot = useCallback((scrollTop = scrollRef.current?.scrollTop || 0) => {
@@ -368,7 +389,9 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                     onClick={() => applyObject(object)}
                   >
                     <span>{object.displayName}</span>
-                    <span className={styles.objectChipCount}>{object.instanceCount}</span>
+                    {object.instanceCount > 0 ? (
+                      <span className={styles.objectChipCount}>·{object.instanceCount}</span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -590,7 +613,6 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
           </div>
           <div className={styles.pickerSearch}>
             <MobileSearchBar
-              size="page"
               value={pickerKeyword}
               onChange={setPickerKeyword}
               placeholder={t('monitor.searchObjects')}
@@ -612,11 +634,9 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                       onClick={() => applyObject(object)}
                     >
                       <span className={styles.pickerRowCopy}>
-                        <span className={styles.pickerRowName}>
-                          {t('monitor.objectCountLabel', undefined, {
-                            name: object.displayName,
-                            count: object.instanceCount,
-                          })}
+                        <span className={styles.pickerRowName}>{object.displayName}</span>
+                        <span className={styles.pickerRowCount}>
+                          {t('monitor.objectInstanceCount', undefined, { count: object.instanceCount })}
                         </span>
                       </span>
                       {active ? (

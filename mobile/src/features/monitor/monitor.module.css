@@ -25,17 +25,18 @@
 }
 .objectRail {
   display: flex;
-  gap: 8px;
-  padding: 6px 4px 8px 12px;
-  align-items: center;
-  min-height: 36px;
+  gap: 0;
+  padding: 0 0 0 12px;
+  align-items: stretch;
+  min-height: 40px;
+  border-bottom: 1px solid var(--color-border-1);
 }
 .objectChips {
   display: flex;
   flex: 1;
   min-width: 0;
-  gap: 8px;
-  align-items: center;
+  gap: 16px;
+  align-items: stretch;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -56,38 +57,39 @@
   appearance: none;
 }
 .objectChip {
-  gap: 5px;
-  min-height: 28px;
-  padding: 5px 10px;
+  gap: 0;
+  min-height: 40px;
+  padding: 10px 0 9px;
   color: var(--color-text-2);
   font-size: var(--font-size-secondary);
   font-weight: 550;
   background: transparent;
-  border: 1px solid var(--color-border-2);
-  border-radius: 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
 }
 .objectChipCount {
-  color: inherit;
+  color: var(--color-text-3);
   font-size: var(--font-size-secondary);
-  font-weight: 550;
+  font-weight: 500;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  opacity: 0.72;
 }
 .objectChipActive {
   color: var(--color-primary);
   font-weight: 700;
-  background: var(--color-fill-1);
-  border-color: var(--color-primary);
+  background: transparent;
+  border-bottom-color: var(--color-primary);
 }
 .objectChipActive .objectChipCount {
-  font-weight: 650;
-  opacity: 0.78;
+  color: color-mix(in srgb, var(--color-primary) 58%, var(--color-text-3));
+  font-weight: 500;
 }
 .objectRailAll {
   gap: 2px;
+  align-self: center;
   min-height: 28px;
-  padding: 0 10px 0 12px;
+  padding: 0 12px 0 10px;
   color: var(--color-primary);
   font-size: var(--font-size-secondary);
   font-weight: 650;
@@ -107,8 +109,8 @@
   line-height: 1;
   opacity: 0.72;
 }
-.instanceSearch { padding: 0 12px 8px; }
-.pickerSearch { padding: 10px 12px; border-bottom: 1px solid var(--color-border-1); }
+.instanceSearch { padding: 8px 12px; }
+.pickerSearch { padding: 8px 12px; border-bottom: 1px solid var(--color-border-1); }
 .instanceTableScroll {
   overflow-x: auto;
   overscroll-behavior-x: contain;
@@ -352,32 +354,83 @@
   border-color: var(--color-border-2);
 }
 .picker { display: flex; height: 100%; min-height: 0; flex-direction: column; background: var(--color-bg); }
-.pickerHeader { display: flex; min-height: 48px; padding: 0 14px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-border-1); }
+.pickerHeader { display: flex; min-height: 48px; padding: 0 16px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-border-1); }
 .pickerTitle { font-size: var(--font-size-subtitle); font-weight: 680; }
-.pickerClose { min-height: 36px; padding: 0 4px; color: var(--color-primary); font-size: var(--font-size-subtitle); font-weight: 650; background: transparent; border: 0; cursor: pointer; }
-.pickerBody { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.pickerGroup { padding: 12px 14px 4px; font-size: var(--font-size-secondary); font-weight: 700; color: var(--color-text-3); }
-.pickerRow { display: flex; width: 100%; gap: 10px; align-items: center; padding: 12px 14px; color: inherit; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--color-border-1); cursor: pointer; }
-.pickerRowActive { background: var(--color-fill-1); }
-.pickerRowCopy {
-  flex: 1;
-  min-width: 0;
+.pickerClose { min-height: 36px; padding: 0 4px; color: var(--color-primary); font-size: var(--font-size-body); font-weight: 650; background: transparent; border: 0; cursor: pointer; }
+.pickerBody { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--color-bg); }
+.pickerGroup {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 16px 6px;
+  font-size: var(--font-size-caption);
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--color-text-3);
+  letter-spacing: 0.02em;
+  background: var(--color-fill-1);
+  border-bottom: 1px solid var(--color-border-1);
+}
+.pickerRow {
   display: flex;
+  width: 100%;
+  gap: 12px;
   align-items: center;
+  min-height: 48px;
+  padding: 12px 16px 12px 40px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-1);
+  cursor: pointer;
+}
+.pickerRowActive { background: var(--color-primary-bg); }
+.pickerRowCopy {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
 }
 .pickerRowName {
   overflow: hidden;
   min-width: 0;
-  font-size: var(--font-size-subtitle);
-  font-weight: 680;
+  font-size: var(--font-size-secondary);
+  font-weight: 550;
+  line-height: 1.35;
+  color: var(--color-text-1);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.pickerRowActive .pickerRowName {
+  font-weight: 650;
+  color: var(--color-primary);
+}
+.pickerRowCount {
+  flex: 0 0 auto;
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pickerRowActive .pickerRowCount {
+  color: var(--color-primary);
+  opacity: 0.72;
 }
 .pickerRowMeta {
   font-size: var(--font-size-secondary);
   color: var(--color-text-3);
 }
-.pickerRowAction { flex: 0 0 auto; font-size: var(--font-size-secondary); font-weight: 650; color: var(--color-text-3); }
+.pickerRowAction {
+  flex: 0 0 auto;
+  font-size: var(--font-size-caption);
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--color-text-3);
+}
 .pickerRowActive .pickerRowAction { color: var(--color-primary); }
 .detailScroll { display: flex; flex-direction: column; gap: 8px; padding: 8px 12px 16px; background: var(--color-background-body); }
 .detailBody { display: flex; flex-direction: column; gap: 8px; min-width: 0; }

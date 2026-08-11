@@ -123,7 +123,7 @@
         "viewedAtHours": "{count}h ago",
         "viewedAtYesterday": "Yesterday",
         "lastReportedLabel": "Last reported {time}",
-        "objects": "Monitor objects", "instances": "Instances", "searchWithin": "Search in {name}", "resultCount": "{count} instances", "objectCountLabel": "{name} ({count})",
+        "objects": "Monitor objects", "instances": "Instances", "searchWithin": "Search in {name}", "resultCount": "{count} instances", "objectCountLabel": "{name} ({count})", "objectInstanceCount": "({count} instances)",
         "allObjects": "Select", "selectObjectAction": "Select", "selectObjectTitle": "Select monitor object", "searchObjects": "Search objects", "searchInstances": "Search by instance name", "currentObject": "Current",
         "columnName": "Name", "columnReportTime": "Report time", "columnReportingStatus": "Reporting status", "summaryField": "Summary",
         "filterReportingStatus": "Filter reporting status", "resetFilter": "Reset",

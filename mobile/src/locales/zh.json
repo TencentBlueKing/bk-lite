@@ -123,7 +123,7 @@
         "viewedAtHours": "{count} 小时前",
         "viewedAtYesterday": "昨天",
         "lastReportedLabel": "最后上报 {time}",
-        "objects": "监控对象", "instances": "监控实例", "searchWithin": "在{name}中搜索", "resultCount": "共 {count} 个实例", "objectCountLabel": "{name}（{count}）",
+        "objects": "监控对象", "instances": "监控实例", "searchWithin": "在{name}中搜索", "resultCount": "共 {count} 个实例", "objectCountLabel": "{name}（{count}）", "objectInstanceCount": "（{count}个实例）",
         "allObjects": "选择", "selectObjectAction": "选择", "selectObjectTitle": "选择监控对象", "searchObjects": "搜索对象名称", "searchInstances": "按实例名称搜索", "currentObject": "当前",
         "columnName": "名称", "columnReportTime": "上报时间", "columnReportingStatus": "上报状态", "summaryField": "摘要",
         "filterReportingStatus": "筛选上报状态", "resetFilter": "重置",

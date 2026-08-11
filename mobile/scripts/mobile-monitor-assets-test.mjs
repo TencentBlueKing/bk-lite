@@ -687,12 +687,13 @@ test('Mobile 搜索框高度走统一变量，业务页不再各自覆盖盒型'
 });
 
 test('资产全部采用分类落地再进入分类内模型工作台，不用列表区横滑切模型', async () => {
-  const [page, panel, modelPage, styles, detail] = await Promise.all([
+  const [page, panel, modelPage, styles, detail, variables] = await Promise.all([
     readProjectFile('src/app/assets/page.tsx'),
     readProjectFile('src/features/assets/all-assets-panel.tsx'),
     readProjectFile('src/app/assets/model/page.tsx'),
     readProjectFile('src/features/assets/assets.module.css'),
     readProjectFile('src/app/assets/detail/page.tsx'),
+    readProjectFile('src/styles/variables.css'),
   ]);
 
   assert.match(page, /AllAssetsPanel/);
@@ -717,6 +718,10 @@ test('资产全部采用分类落地再进入分类内模型工作台，不用�
   assert.match(panel, /listAssetInstances/);
   assert.match(panel, /browseByCategory|categoryRow/);
   assert.match(panel, /categoryRowCount|categoryModelCount/);
+  assert.match(panel, /resolveAssetModelIconUrl/);
+  assert.match(panel, /group\.models\.slice\(0,\s*3\)/);
+  assert.match(panel, /categoryModelIcons|categoryModelIcon|categoryModelImage/);
+  assert.doesNotMatch(panel, /categoryModelOverflow|remainingModelCount/);
   assert.match(panel, /backToLanding/);
   assert.doesNotMatch(panel, /categoryContext|categorySwitch/);
   assert.match(panel, /selectClassificationTitle|pickClassification/);
@@ -742,18 +747,28 @@ test('资产全部采用分类落地再进入分类内模型工作台，不用�
   assert.match(detail, /classificationId/);
   assert.match(styles, /\.categoryRow\s*\{/);
   assert.match(styles, /\.categoryRowCount\s*\{/);
+  assert.match(styles, /\.categoryList\s*\{[^}]*display:\s*grid[^}]*gap:\s*8px/s);
+  assert.match(styles, /\.categoryRow\s*\{[^}]*min-height:\s*68px[^}]*grid-template-columns:\s*58px minmax\(0, 1fr\) auto 16px[^}]*gap:\s*10px[^}]*padding:\s*10px 12px[^}]*border-radius:\s*12px/s);
+  assert.match(styles, /\.categoryModelIcon\s*\{[^}]*width:\s*34px[^}]*height:\s*34px[^}]*border:\s*2px solid var\(--color-bg\)[^}]*border-radius:\s*9px/s);
+  assert.match(styles, /\.categoryModelIcon:nth-child\(2\)\s*\{\s*left:\s*10px/);
+  assert.match(styles, /\.categoryModelIcon:nth-child\(3\)\s*\{\s*left:\s*20px/);
+  assert.match(styles, /\.categoryModelImage\s*\{[^}]*width:\s*30px[^}]*height:\s*30px/s);
+  assert.match(styles, /\.categoryRowName\s*\{[^}]*font-size:\s*var\(--font-size-compact-title\)/s);
+  assert.match(styles, /\.categoryRowCountEmpty\s*\{/);
+  assert.equal((variables.match(/--font-size-compact-title:\s*14px/g) || []).length, 2);
   assert.match(styles, /\.allTabTitle\s*\{/);
   assert.match(styles, /\.allTabTitleChevron\s*\{/);
   assert.match(styles, /\.landingBody\s*\{/);
-  assert.doesNotMatch(styles, /\.categoryCard\s*\{[^}]*border-radius:\s*12px/s);
   assert.match(styles, /\.modelRail\s*\{/);
-  assert.match(styles, /\.neighborChip\s*\{[^}]*border-radius:\s*999px/s);
+  assert.match(styles, /\.neighborChip\s*\{[^}]*border-bottom:\s*2px\s+solid\s+transparent/s);
+  assert.match(styles, /\.neighborChipActive\s*\{[^}]*border-bottom-color:\s*var\(--color-primary\)/s);
   assert.match(styles, /\.neighborChipCount\s*\{/);
   assert.match(styles, /\.assetRow\s*\{[^}]*min-height:\s*var\(--mobile-table-row-min-height\)/s);
   assert.match(styles, /\.assetName\s*\{[^}]*font-size:\s*var\(--font-size-body\)/s);
-  assert.match(styles, /\.assetLead\s*\{[^}]*width:\s*28px/s);
+  assert.match(styles, /\.assetLead\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/s);
+  assert.match(styles, /\.assetLeadImage\s*\{[^}]*width:\s*30px[^}]*height:\s*30px/s);
   assert.match(styles, /\.assetMetaSwatch\s*\{/);
-  assert.match(styles, /\.assetLead\s*\{[^}]*border:\s*1px solid var\(--color-primary-border\)/s);
+  assert.match(styles, /\.assetLead\s*\{[^}]*background:\s*var\(--color-bg\)[^}]*border:\s*1px solid var\(--color-border-1\)[^}]*box-shadow:\s*var\(--shadow-composer\)/s);
   assert.doesNotMatch(styles, /\.assetTag\s*\{/);
   assert.match(styles, /\.assetMetaIp\s*\{[^}]*font-family:\s*ui-monospace/s);
   // 等宽 IP 与中文混排按基线对齐，色点保持居中
@@ -922,7 +937,8 @@ test('资产详情头部使用模型元数据真实图标并按需回退', async
   assert.match(detail, /resolveAssetModelIconUrl\(modelIcon, resolvedModelId\)/);
   assert.match(detail, /heroIconImage/);
   assert.match(detail, /onError=\{\(\) => setIconFailed\(true\)\}/);
-  assert.match(styles, /\.heroIconImage\s*\{[^}]*object-fit:\s*contain/s);
+  assert.match(styles, /\.heroIcon\s*\{[^}]*width:\s*36px[^}]*height:\s*36px[^}]*background:\s*var\(--color-bg\)[^}]*border:\s*1px solid var\(--color-border-1\)[^}]*box-shadow:\s*var\(--shadow-composer\)/s);
+  assert.match(styles, /\.heroIconImage\s*\{[^}]*width:\s*32px[^}]*height:\s*32px[^}]*object-fit:\s*contain/s);
 });
 
 test('详情返回时按账号与团队恢复列表数据与滚动位置；独立搜索页不缓存结果', async () => {

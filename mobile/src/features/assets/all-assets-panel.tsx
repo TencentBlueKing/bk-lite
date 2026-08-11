@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { InfiniteScroll, Popup } from 'antd-mobile';
+import { AppstoreOutline } from 'antd-mobile-icons';
 import { useRouter } from 'next/navigation';
 import MobilePullToRefresh from '@/components/mobile-pull-to-refresh';
 import { MobileResult, MobileSkeleton } from '@/components/mobile-feedback';
@@ -9,6 +10,7 @@ import MobileSearchBar from '@/components/mobile-search-bar';
 import { useAuth } from '@/context/auth';
 import { listAssetCatalog, listAssetInstances } from '@/features/assets/adapter';
 import AssetListCard from '@/features/assets/asset-list-card';
+import { resolveAssetModelIconUrl } from '@/features/assets/model-icon';
 import { useFollowedAssets } from '@/features/assets/use-followed-assets';
 import {
   classificationIdForModel,
@@ -58,6 +60,26 @@ interface AllAssetsPanelProps {
   categoryPickerOpen?: boolean;
   onCategoryPickerOpenChange?: (open: boolean) => void;
   onWorkbenchMetaChange?: (meta: { name: string; modelCount: number } | null) => void;
+}
+
+function CategoryModelIcon({ model }: { model: AssetModel }) {
+  const src = resolveAssetModelIconUrl(model.icon, model.id);
+  const [failed, setFailed] = useState(false);
+
+  return (
+    <span className={styles.categoryModelIcon} aria-hidden="true">
+      {src && !failed ? (
+        <img
+          className={styles.categoryModelImage}
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+        />
+      ) : <AppstoreOutline className={styles.categoryModelFallback} />}
+    </span>
+  );
 }
 
 export default function AllAssetsPanel({
@@ -135,6 +157,8 @@ export default function AllAssetsPanel({
   const listRequestId = useRef(0);
   const catalogController = useRef<AbortController | null>(null);
   const listController = useRef<AbortController | null>(null);
+  // 点击轨上模型会先改本地再 replace URL；URL 未追上前忽略旧 modelId，避免选中被打回。
+  const optimisticModelIdRef = useRef<string | null>(null);
 
   selectedClassificationIdRef.current = selectedClassificationId;
   selectedModelIdRef.current = selectedModelId;
@@ -227,6 +251,7 @@ export default function AllAssetsPanel({
       return;
     }
     const caches = captureCurrentCache();
+    optimisticModelIdRef.current = next.id;
     restoreModelState(next, caches);
     if (replaceUrl) syncUrl(next.classificationId, next);
   }, [captureCurrentCache, restoreModelState, syncUrl]);
@@ -374,6 +399,7 @@ export default function AllAssetsPanel({
     const resolvedClassificationId = classificationId
       || classificationIdForModel(models, modelId);
     if (!resolvedClassificationId && !modelId) {
+      optimisticModelIdRef.current = null;
       if (selectedClassificationIdRef.current) {
         setSelectedClassificationId('');
         setSelectedModelId('');
@@ -382,6 +408,24 @@ export default function AllAssetsPanel({
       return;
     }
     const scoped = modelsInClassification(models, resolvedClassificationId);
+
+    if (optimisticModelIdRef.current && modelId !== optimisticModelIdRef.current) {
+      const optimistic = scoped.find((item) => item.id === optimisticModelIdRef.current) || null;
+      if (optimistic) {
+        if (
+          selectedModelIdRef.current !== optimistic.id
+          || selectedClassificationIdRef.current !== optimistic.classificationId
+        ) {
+          restoreModelState(optimistic, captureCurrentCache());
+        }
+        return;
+      }
+      optimisticModelIdRef.current = null;
+    }
+    if (optimisticModelIdRef.current && modelId === optimisticModelIdRef.current) {
+      optimisticModelIdRef.current = null;
+    }
+
     const nextModel = resolveDefaultAssetModel(scoped, modelId || selectedModelIdRef.current);
     if (!nextModel) {
       if (selectedClassificationIdRef.current !== resolvedClassificationId) {
@@ -443,8 +487,13 @@ export default function AllAssetsPanel({
   }, []);
 
   useEffect(() => {
-    const active = railRef.current?.querySelector<HTMLElement>(`[data-model-id="${selectedModel?.id || ''}"]`);
-    active?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    const rail = railRef.current;
+    const active = rail?.querySelector<HTMLElement>(`[data-model-id="${selectedModel?.id || ''}"]`);
+    if (!rail || !active) return;
+    const railRect = rail.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    if (activeRect.left >= railRect.left && activeRect.right <= railRect.right) return;
+    active.scrollIntoView({ behavior: 'auto', inline: 'nearest', block: 'nearest' });
   }, [selectedModel?.id]);
 
   const saveSnapshot = useCallback((scrollTop = scrollRef.current?.scrollTop || 0) => {
@@ -524,7 +573,9 @@ export default function AllAssetsPanel({
                       onClick={() => applyModel(model)}
                     >
                       <span>{model.name}</span>
-                      <span className={styles.neighborChipCount}>{model.count}</span>
+                      {model.count > 0 ? (
+                        <span className={styles.neighborChipCount}>·{model.count}</span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -569,9 +620,6 @@ export default function AllAssetsPanel({
           >
             <div className={styles.refreshContent}>
               <div className={styles.landingBody}>
-                <div className={styles.landingIntro}>
-                  <strong className={styles.landingTitle}>{t('assets.browseByCategory')}</strong>
-                </div>
                 <div className={styles.categoryList}>
                   {modelGroups.map((group) => {
                     const assetTotal = group.models.reduce((sum, model) => sum + model.count, 0);
@@ -582,13 +630,22 @@ export default function AllAssetsPanel({
                         key={group.classification.id}
                         onClick={() => openClassification(group.classification.id)}
                       >
+                        <span className={styles.categoryModelIcons} aria-hidden="true">
+                          {group.models.slice(0, 3).map((model) => (
+                            <CategoryModelIcon key={model.id} model={model} />
+                          ))}
+                        </span>
                         <span className={styles.categoryRowCopy}>
                           <span className={styles.categoryRowName}>{group.classification.name}</span>
                           <span className={styles.categoryRowMeta}>
                             {t('assets.categoryModelCount', undefined, { count: group.models.length })}
                           </span>
                         </span>
-                        <span className={styles.categoryRowCount}>{assetTotal}</span>
+                        <span
+                          className={`${styles.categoryRowCount}${assetTotal === 0 ? ` ${styles.categoryRowCountEmpty}` : ''}`}
+                        >
+                          {assetTotal}
+                        </span>
                         <span className={styles.categoryRowChevron} aria-hidden="true">›</span>
                       </button>
                     );

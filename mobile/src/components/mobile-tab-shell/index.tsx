@@ -64,8 +64,10 @@ export default function MobileTabShell({ activeTab, children }: MobileTabShellPr
               aria-current={active ? 'page' : undefined}
               onClick={() => navigateToTab(tab.key)}
             >
-              <span className={styles.navIcon}>{tab.icon}</span>
-              <span className={styles.navLabel}>{tab.label}</span>
+              <span className={styles.navItemInner}>
+                <span className={styles.navIcon}>{tab.icon}</span>
+                <span className={styles.navLabel}>{tab.label}</span>
+              </span>
             </button>
           );
         })}
