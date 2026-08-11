@@ -13,7 +13,7 @@ from apps.system_mgmt.nats.settings import verify_bk_token
 from apps.system_mgmt.serializers.login_module_serializer import LoginModuleSerializer
 
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
 def _bk_config(app_token="blueking-secret"):
