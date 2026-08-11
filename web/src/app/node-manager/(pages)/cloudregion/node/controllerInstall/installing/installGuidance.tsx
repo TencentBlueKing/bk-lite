@@ -195,7 +195,12 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
     );
     const installDisplay = deriveControllerInstallDisplay(phaseResult);
     const installPhases = deriveControllerInstallPhases(phaseResult);
-    const summaryGuidance = getInstallerSummaryGuidance(t, installerSummary);
+    const suppressNoInstallerEvents = ['command_failed', 'credential_failed'].includes(
+      installDisplay.state
+    );
+    const summaryGuidance = getInstallerSummaryGuidance(t, installerSummary, {
+      suppressNoInstallerEvents
+    });
     const shouldShowConnectivityGuidance =
       !!summaryGuidance &&
       ['installer_success_connectivity_pending', 'installer_success_connectivity_timeout'].includes(
@@ -351,7 +356,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                           <div className="mt-[4px] text-[12px] text-[var(--color-text-2)]">
                             {t('node-manager.cloudregion.node.nextAction')}:
                             {' '}
-                            {summaryGuidance || failureGuidance.suggestion || failureSuggestion}
+                            {failureGuidance.suggestion || summaryGuidance || failureSuggestion}
                           </div>
                         )}
                         {isInstallerPhase && phase.detailState !== 'none' && installerSummary && (

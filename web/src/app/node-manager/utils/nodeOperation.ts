@@ -40,7 +40,7 @@ export const buildControllerUninstallRow = (node: TableDataItem) => {
     key_file_name: undefined,
     winrm_scheme: 'https',
     winrm_transport: 'ntlm',
-    winrm_cert_validation: true
+    winrm_cert_validation: false
   };
 };
 
@@ -54,8 +54,13 @@ export const buildControllerUninstallRequestNode = (row: TableDataItem) => ({
   private_key: row.os === 'windows' ? '' : row.private_key || '',
   winrm_scheme: row.winrm_scheme || 'https',
   winrm_transport: row.winrm_transport || 'ntlm',
-  winrm_cert_validation: row.winrm_cert_validation !== false
+  winrm_cert_validation: row.winrm_cert_validation ?? false
 });
+
+export const applyControllerUninstallCertificateValidation = (
+  rows: TableDataItem[],
+  enabled: boolean
+) => rows.map((row) => ({ ...row, winrm_cert_validation: enabled }));
 
 const normalizeText = (value: unknown) => {
   return typeof value === 'string' ? value.trim() : '';

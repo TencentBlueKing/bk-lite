@@ -9,6 +9,7 @@ import uuid
 from celery import shared_task
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -59,6 +60,7 @@ from apps.node_mgmt.utils.installer_schema import (
 )
 from apps.node_mgmt.utils.task_result_schema import (
     _extract_latest_failure_from_steps,
+    _extract_latest_installer_failure_from_steps,
     apply_result_envelope,
 )
 from apps.node_mgmt.tasks.version_discovery import discover_node_versions
@@ -96,6 +98,23 @@ def _apply_installer_events_to_node(node_obj, output_text: str):
     if not events:
         return False
 
+    steps = (node_obj.result or {}).get("steps", [])
+    command_step = next(
+        (
+            step
+            for step in reversed(steps)
+            if isinstance(step, dict) and step.get("action") == "run"
+        ),
+        None,
+    )
+    if command_step and command_step.get("status") == InstallerConstants.STEP_STATUS_RUNNING:
+        _update_step_status_by_action(
+            node_obj,
+            "run",
+            InstallerConstants.STEP_STATUS_SUCCESS,
+            "Installer command accepted",
+        )
+
     result = node_obj.result or {}
     fingerprints = list(result.get("_installer_event_fingerprints") or [])
     seen_fingerprints = set(fingerprints)
@@ -130,7 +149,7 @@ def _apply_installer_events_to_node(node_obj, output_text: str):
                 _add_step(node_obj, action, status, message, details=details)
         else:
             if not _update_step_status_by_action(node_obj, action, status, message, details=details):
-                _update_step_status(node_obj, status, message, details=details)
+                _add_step(node_obj, action, status, message, details=details)
 
     if applied:
         _refresh_installer_progress(node_obj)
@@ -396,7 +415,10 @@ def _save_node_result(node_obj, overall_status, final_message):
         result,
         overall_status=normalize_overall_status(overall_status),
         final_message=final_message,
-        failure=_extract_latest_failure_from_steps(result.get("steps")),
+        failure=(
+            _extract_latest_installer_failure_from_steps(result.get("steps"))
+            or _extract_latest_failure_from_steps(result.get("steps"))
+        ),
     )
     result[InstallerConstants.EXECUTION_PHASE_KEY] = InstallerConstants.EXECUTION_PHASE_FINISHED
     result["installer_progress"] = summarize_installer_progress(result)
@@ -418,11 +440,31 @@ def _save_node_pending_connectivity(node_obj, final_message):
     node_obj.result = result
     node_obj.save(update_fields=["status", "result"])
 
+    observation = (
+        ControllerTaskNode.objects.filter(id=node_obj.id)
+        .values("connectivity_observed_at", "connectivity_observed_node_id")
+        .first()
+        or {}
+    )
+    observed_at = observation.get("connectivity_observed_at")
+    if observed_at:
+        result[InstallerConstants.CONNECTIVITY_OBSERVED_KEY] = True
+        result[InstallerConstants.CONNECTIVITY_OBSERVED_NODE_ID_KEY] = observation.get(
+            "connectivity_observed_node_id"
+        )
+        result[InstallerConstants.CONNECTIVITY_OBSERVED_AT_KEY] = observed_at.isoformat()
+        node_obj.result = result
+        node_obj.save(update_fields=["result"])
+
     # Sidecar may register while the bootstrap result is still being persisted.
     # Reconcile once after entering connectivity_waiting so an early callback is
     # not forced to wait for the next heartbeat.
     install_node_id = result.get(InstallerConstants.INSTALL_NODE_ID_KEY)
-    if install_node_id and Node.objects.filter(id=install_node_id).exists():
+    observed_node_id = result.get(InstallerConstants.CONNECTIVITY_OBSERVED_NODE_ID_KEY)
+    connectivity_node_id = observed_node_id or install_node_id
+    if result.get(InstallerConstants.CONNECTIVITY_OBSERVED_KEY) is True and connectivity_node_id:
+        converge_controller_install_connectivity_for_node(connectivity_node_id)
+    elif install_node_id and Node.objects.filter(id=install_node_id).exists():
         converge_controller_install_connectivity_for_node(install_node_id)
 
 
@@ -1100,7 +1142,34 @@ def converge_controller_install_connectivity_for_node(node_id):
         if not _matches_install_connectivity_target(task_node, node_id, node.ip):
             continue
 
-        if _get_execution_phase(task_node) != InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING:
+        execution_phase = _get_execution_phase(task_node)
+        if execution_phase == InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING:
+            with transaction.atomic():
+                locked_node = ControllerTaskNode.objects.select_for_update().get(id=task_node.id)
+                if (
+                    locked_node.status != InstallerConstants.STEP_STATUS_RUNNING
+                    or _get_execution_phase(locked_node) != InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING
+                    or not _matches_install_connectivity_target(locked_node, node_id, node.ip)
+                ):
+                    continue
+                result = (locked_node.result or {}).copy()
+                result[InstallerConstants.CONNECTIVITY_OBSERVED_KEY] = True
+                result[InstallerConstants.CONNECTIVITY_OBSERVED_NODE_ID_KEY] = node_id
+                observed_at = timezone.now()
+                result[InstallerConstants.CONNECTIVITY_OBSERVED_AT_KEY] = observed_at.isoformat()
+                locked_node.result = result
+                locked_node.connectivity_observed_at = observed_at
+                locked_node.connectivity_observed_node_id = node_id
+                locked_node.save(
+                    update_fields=[
+                        "result",
+                        "connectivity_observed_at",
+                        "connectivity_observed_node_id",
+                    ]
+                )
+            continue
+
+        if execution_phase != InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING:
             continue
 
         result = task_node.result or {}
@@ -1206,7 +1275,18 @@ def timeout_controller_install_task(task_id, expected_attempt=1, task_node_ids=N
 
 
 @shared_task
-def retry_controller(task_id, task_node_ids, password=None, private_key=None, passphrase=None, port=None, username=None):
+def retry_controller(
+    task_id,
+    task_node_ids,
+    password=None,
+    private_key=None,
+    passphrase=None,
+    port=None,
+    username=None,
+    winrm_scheme=None,
+    winrm_transport=None,
+    winrm_cert_validation=None,
+):
     """
     重试控制器安装任务中的特定节点
 
@@ -1218,6 +1298,9 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
         passphrase: 私钥密码短语（明文，将被加密后存储，可选）
         port: 远程连接端口（可选）
         username: 远程连接账号（可选）
+        winrm_scheme: Windows WinRM 协议（可选，仅支持 HTTPS）
+        winrm_transport: Windows WinRM 认证传输（可选，仅支持 NTLM）
+        winrm_cert_validation: 是否校验 WinRM 与安装服务 HTTPS 证书（可选）
     """
 
     task_obj = ControllerTask.objects.filter(id=task_id).first()
@@ -1259,6 +1342,18 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
         update_data["private_key"] = aes_obj.encode(private_key)
     if passphrase:
         update_data["passphrase"] = aes_obj.encode(passphrase)
+    if winrm_scheme is not None:
+        if winrm_scheme != "https":
+            raise BaseAppException("Windows remote retry requires WinRM HTTPS")
+        update_data["winrm_scheme"] = winrm_scheme
+    if winrm_transport is not None:
+        if winrm_transport != "ntlm":
+            raise BaseAppException("Windows remote retry requires WinRM NTLM")
+        update_data["winrm_transport"] = winrm_transport
+    if winrm_cert_validation is not None:
+        if not isinstance(winrm_cert_validation, bool):
+            raise BaseAppException("WinRM certificate validation must be a boolean")
+        update_data["winrm_cert_validation"] = winrm_cert_validation
 
     if update_data:
         retry_nodes.update(**update_data)
@@ -1267,13 +1362,22 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
         next_attempt = _get_execution_attempt(retry_node) + 1
         previous_result = retry_node.result or {}
         retry_node.status = InstallerConstants.STEP_STATUS_WAITING
+        retry_node.connectivity_observed_at = None
+        retry_node.connectivity_observed_node_id = ""
         retry_node.result = {
             InstallerConstants.EXECUTION_ATTEMPT_KEY: next_attempt,
         }
         install_node_id = previous_result.get(InstallerConstants.INSTALL_NODE_ID_KEY)
         if install_node_id:
             retry_node.result[InstallerConstants.INSTALL_NODE_ID_KEY] = install_node_id
-        retry_node.save(update_fields=["status", "result"])
+        retry_node.save(
+            update_fields=[
+                "status",
+                "result",
+                "connectivity_observed_at",
+                "connectivity_observed_node_id",
+            ]
+        )
 
     _dispatch_or_finalize_controller_task(task_id)
 
