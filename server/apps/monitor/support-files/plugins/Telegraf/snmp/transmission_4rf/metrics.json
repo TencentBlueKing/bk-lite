@@ -47,7 +47,7 @@
     {
       "metric_group": "Fan",
       "name": "device_fan_fan1_state",
-      "query": "device_fan_fan1_state{instance_type='transmission', __$labels__}",
+      "query": "max(device_fan_fan1_state{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Fan 1 State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",

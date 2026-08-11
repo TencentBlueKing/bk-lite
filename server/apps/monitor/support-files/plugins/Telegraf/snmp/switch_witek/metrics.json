@@ -117,16 +117,11 @@
     {
       "metric_group": "Fan",
       "name": "device_fan_ac_state",
-      "query": "device_fan_ac_state{instance_type='switch', __$labels__}",
+      "query": "max(device_fan_ac_state{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "Fan AC Power State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [
-        {
-          "name": "descr",
-          "description": "Fan description"
-        }
-      ],
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -135,16 +130,11 @@
     {
       "metric_group": "Power",
       "name": "device_psu_ac_dc_state",
-      "query": "device_psu_ac_dc_state{instance_type='switch', __$labels__}",
+      "query": "max(device_psu_ac_dc_state{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "PSU AC/DC State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [
-        {
-          "name": "descr",
-          "description": "PSU description"
-        }
-      ],
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],

@@ -36,7 +36,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='switch', __$labels__}",
+      "query": "sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "device_memory_used{instance_type='switch', __$labels__}",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",

@@ -21,7 +21,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='router', __$labels__}",
+      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -73,7 +73,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
+      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",

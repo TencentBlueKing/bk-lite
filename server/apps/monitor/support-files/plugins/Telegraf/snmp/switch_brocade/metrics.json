@@ -47,7 +47,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",

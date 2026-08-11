@@ -67,8 +67,8 @@
       "unit": "[{\"name\":\"powered\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"unpowered\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
-          "name": "descr",
-          "description": "PSU description"
+          "name": "psu",
+          "description": "Power supply"
         }
       ],
       "instance_id_keys": [
@@ -85,8 +85,8 @@
       "unit": "[{\"name\":\"present\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"absent\",\"id\":2,\"color\":\"#d9d9d9\"}]",
       "dimensions": [
         {
-          "name": "descr",
-          "description": "PSU description"
+          "name": "psu",
+          "description": "Power supply"
         }
       ],
       "instance_id_keys": [
