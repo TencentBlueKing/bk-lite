@@ -470,8 +470,8 @@ export class AGUIMessageHandler {
       toolCall.result = content;
       this.syncAttachmentDownloadFromToolResult(toolCallId, toolCall.name, content);
 
-      // Fallback: if report_config_diff completed but CUSTOM event wasn't received,
-      // construct the DiffReportCard from tool args
+      // Fallback: if report_config_diff / generate_repair_report completed but CUSTOM
+      // repair_diff_report event wasn't received, construct DiffReportCard from args/result.
       if (toolCall.name === 'report_config_diff' && toolCall.args) {
         try {
           const args = JSON.parse(toolCall.args);
@@ -492,6 +492,27 @@ export class AGUIMessageHandler {
           }
         } catch {
           // args parse failed, skip fallback
+        }
+      }
+
+      if (toolCall.name === 'generate_repair_report' && content) {
+        try {
+          const parsed = JSON.parse(content);
+          const items = Array.isArray(parsed?.items) ? parsed.items : [];
+          if (items.length > 0 && this.configDiffReports.length === 0) {
+            const report: ConfigDiffReport = {
+              report_id: `fallback_repair_${toolCallId}`,
+              title: parsed.title || 'K8S 配置修复对比',
+              cluster_name: parsed.cluster_name || '',
+              items,
+              received_at: Date.now(),
+            };
+            this.configDiffReports.push(report);
+            this.flushCurrentTextBlock();
+            this.contentBlocks.push({ type: 'configDiff', reportId: report.report_id });
+          }
+        } catch {
+          // result parse failed, skip fallback
         }
       }
 
