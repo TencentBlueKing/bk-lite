@@ -63,7 +63,7 @@ def _rollback(
     cid_file: Path,
     instance_id: str,
     timeout_seconds: float,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, list[str]]:
     deadline = time.monotonic() + timeout_seconds
     container_ids: set[str] = set()
     last_error = ""
@@ -103,7 +103,7 @@ def _rollback(
                     timeout=min(0.5, remaining),
                 )
                 if result.returncode == 0:
-                    return True, ""
+                    return True, "", sorted(container_ids)
                 detail = result.stderr.strip() or f"exit code {result.returncode}"
                 last_error = f"docker rm failed: {detail}"
             except OSError as exc:
@@ -116,8 +116,12 @@ def _rollback(
             time.sleep(min(POLL_INTERVAL_SECONDS, remaining))
 
     if not container_ids and successful_label_query and not last_error:
-        return True, ""
-    return False, last_error or "startup container cleanup deadline exhausted"
+        return True, "", []
+    return (
+        False,
+        last_error or "startup container cleanup deadline exhausted",
+        sorted(container_ids),
+    )
 
 
 def main() -> int:
@@ -146,14 +150,21 @@ def main() -> int:
             time.sleep(POLL_INTERVAL_SECONDS)
 
         if not commit_file.exists() and not handled_file.exists():
-            cleanup_succeeded, error = _rollback(
+            cleanup_succeeded, error, container_ids = _rollback(
                 cid_file,
                 instance_id,
                 timeout_seconds,
             )
             if not cleanup_succeeded:
+                if container_ids:
+                    cid_file.write_text(
+                        "\n".join(container_ids) + "\n",
+                        encoding="utf-8",
+                    )
+                container_detail = ",".join(container_ids) or "unknown"
                 message = (
-                    f"startup cleanup failed for instance {instance_id}: {error}\n"
+                    "startup cleanup failed for "
+                    f"instance {instance_id}; containers={container_detail}: {error}\n"
                 )
                 failure_file.write_text(message, encoding="utf-8")
                 print(message, file=sys.stderr, end="")

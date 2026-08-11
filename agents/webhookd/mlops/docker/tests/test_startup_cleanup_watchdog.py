@@ -64,8 +64,10 @@ class StartupCleanupWatchdogContractTest(DockerServingTestCase):
         self.assertLess(elapsed, 1.5)
         self.assertEqual(watchdog_status, 1)
         self.assertTrue(self.container_state.exists())
-        self.assertTrue(cid_file.exists() or failure_file.exists())
-        self.assertIn("docker rm timed out", failure_file.read_text(encoding="utf-8"))
+        self.assertEqual(cid_file.read_text(encoding="utf-8"), "fake-container-id\n")
+        failure_detail = failure_file.read_text(encoding="utf-8")
+        self.assertIn("containers=fake-container-id", failure_detail)
+        self.assertIn("docker rm timed out", failure_detail)
         self.assertIn(
             "rm -f fake-container-id",
             self.docker_log.read_text(encoding="utf-8"),
