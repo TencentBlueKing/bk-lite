@@ -30,22 +30,28 @@ import {
   Spin,
   message,
   Radio,
+  Collapse,
 } from "antd";
 import type { UploadFile } from "antd/es/upload/interface";
 import ParamTable, { ParamTableRef } from "./paramTable";
 import FieldSchemaTable, { FieldSchemaTableRef } from "./fieldSchemaTable";
 import PreviewPanel from "./previewPanel";
+import { ensurePrometheusQueryRequired } from "@/app/ops-analysis/utils/dataSourceParamContract";
 import {
   buildConnectorPayload,
+  createPrometheusDefaultParams,
   formatJsonText,
   normalizeFieldSchema,
   normalizeParams,
   PASSWORD_PLACEHOLDER,
+  prometheusTimeRangeToMinutes,
+  PROMETHEUS_DEFAULT_CHART_TYPES,
   SchemaField,
   SOURCE_TYPE_EXCEL,
   SOURCE_TYPE_MYSQL,
   SOURCE_TYPE_NATS,
   SOURCE_TYPE_POSTGRESQL,
+  SOURCE_TYPE_PROMETHEUS,
   SOURCE_TYPE_REST_API,
   TABLE_CHART_TYPE,
 } from "./operateModalUtils";
@@ -71,6 +77,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const [tagList, setTagList] = React.useState<TagItem[]>([]);
   const [tagsLoading, setTagsLoading] = React.useState(false);
   const [previewLoading, setPreviewLoading] = React.useState(false);
+  const [testConnectionLoading, setTestConnectionLoading] =
+    React.useState(false);
   const [previewData, setPreviewData] =
     React.useState<DataSourcePreviewResult | null>(null);
   const [excelFile, setExcelFile] = React.useState<File | null>(null);
@@ -87,6 +95,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
     updateDataSource,
     previewDataSource,
     previewDataSourceConfig,
+    testDataSourceConnection,
+    testDataSourceConnectionConfig,
   } = useDataSourceApi();
   const { getTagList } = useNamespaceApi();
   const sourceType =
@@ -99,15 +109,29 @@ const OperateModal: React.FC<OperateModalProps> = ({
     { label: "PostgreSQL", value: SOURCE_TYPE_POSTGRESQL },
     { label: "REST API", value: SOURCE_TYPE_REST_API },
     { label: "Excel", value: SOURCE_TYPE_EXCEL },
+    { label: t("dataSource.sourceTypes.prometheus"), value: SOURCE_TYPE_PROMETHEUS },
   ];
 
   const isNatsSource = sourceType === SOURCE_TYPE_NATS;
   const isRestApiSource = sourceType === SOURCE_TYPE_REST_API;
+  const isPrometheusSource = sourceType === SOURCE_TYPE_PROMETHEUS;
   const isDatabaseSource =
     sourceType === SOURCE_TYPE_MYSQL || sourceType === SOURCE_TYPE_POSTGRESQL;
   const isExcelSource = sourceType === SOURCE_TYPE_EXCEL;
+  const prometheusAuthType =
+    Form.useWatch(["connection_config", "auth_type"], form) || "none";
+  const prometheusQueryType =
+    Form.useWatch(["query_config", "query_type"], form) || "range";
   const chartTypeOptions = getChartTypeList()
-    .filter((item) => isNatsSource || item.value === TABLE_CHART_TYPE)
+    .filter((item) => {
+      if (isNatsSource) return true;
+      if (isPrometheusSource) {
+        return PROMETHEUS_DEFAULT_CHART_TYPES.includes(
+          item.value as (typeof PROMETHEUS_DEFAULT_CHART_TYPES)[number],
+        );
+      }
+      return item.value === TABLE_CHART_TYPE;
+    })
     .map((item) => ({
       label: t(item.label),
       value: item.value,
@@ -161,6 +185,15 @@ const OperateModal: React.FC<OperateModalProps> = ({
     const connectionConfig = currentRow.connection_config || {};
     const queryConfig = currentRow.query_config || {};
     const rowSourceType = currentRow.source_type || SOURCE_TYPE_NATS;
+    const prometheusConnectionConfig = { ...connectionConfig };
+    if (rowSourceType === SOURCE_TYPE_PROMETHEUS) {
+      if (prometheusConnectionConfig.password) {
+        prometheusConnectionConfig.password = PASSWORD_PLACEHOLDER;
+      }
+      if (prometheusConnectionConfig.token) {
+        prometheusConnectionConfig.token = PASSWORD_PLACEHOLDER;
+      }
+    }
     const formValues = {
       ...currentRow,
       source_type: rowSourceType,
@@ -169,15 +202,25 @@ const OperateModal: React.FC<OperateModalProps> = ({
       chart_type:
         rowSourceType === SOURCE_TYPE_NATS
           ? currentRow.chart_type || []
-          : [TABLE_CHART_TYPE],
+          : rowSourceType === SOURCE_TYPE_PROMETHEUS
+            ? currentRow.chart_type?.length
+              ? currentRow.chart_type
+              : [...PROMETHEUS_DEFAULT_CHART_TYPES]
+            : [TABLE_CHART_TYPE],
       connection_config: {
-        ...connectionConfig,
+        ...prometheusConnectionConfig,
         headersText: formatJsonText(connectionConfig.headers),
       },
       query_config: {
         ...queryConfig,
         paramsText: formatJsonText(queryConfig.params),
         bodyText: formatJsonText(queryConfig.body),
+        ...(rowSourceType === SOURCE_TYPE_PROMETHEUS
+          ? {
+            time_range: prometheusTimeRangeToMinutes(queryConfig.time_range),
+            max_series: queryConfig.max_series ?? 20,
+          }
+          : {}),
       },
     };
     form.setFieldsValue(formValues);
@@ -212,16 +255,21 @@ const OperateModal: React.FC<OperateModalProps> = ({
       currentRow.params.length > 0;
 
     if (hasValidParams) {
+      const restoredParams = currentRow.params.map((param: any) => ({
+        ...param,
+        type: param.type || "string",
+        filterType:
+          param.filterType ||
+          (param.type === "timeRange" ? "filter" : "fixed"),
+        id: param.id || uuidv4(),
+      }));
       setParams(
-        currentRow.params.map((param: any) => ({
-          ...param,
-          type: param.type || "string",
-          filterType:
-            param.filterType ||
-            (param.type === "timeRange" ? "filter" : "fixed"),
-          id: param.id || uuidv4(),
-        })),
+        rowSourceType === SOURCE_TYPE_PROMETHEUS
+          ? ensurePrometheusQueryRequired(restoredParams)
+          : restoredParams,
       );
+    } else if (rowSourceType === SOURCE_TYPE_PROMETHEUS) {
+      setParams(createPrometheusDefaultParams());
     } else {
       setParams([]);
     }
@@ -256,8 +304,25 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
 
     if (previousSourceType !== sourceType) {
-      if (sourceType !== SOURCE_TYPE_NATS) {
+      if (sourceType === SOURCE_TYPE_PROMETHEUS) {
+        form.setFieldsValue({
+          chart_type: [...PROMETHEUS_DEFAULT_CHART_TYPES],
+          connection_config: {
+            auth_type: "none",
+            timeout_seconds: 30,
+          },
+          query_config: {
+            query: "up",
+            query_type: "range",
+            time_range: 60,
+            step: "1m",
+            max_series: 20,
+          },
+        });
+        setParams(createPrometheusDefaultParams());
+      } else if (sourceType !== SOURCE_TYPE_NATS) {
         form.setFieldValue("chart_type", [TABLE_CHART_TYPE]);
+        setParams([]);
       }
       setPreviewData(null);
       setExcelFile(null);
@@ -285,6 +350,19 @@ const OperateModal: React.FC<OperateModalProps> = ({
         ["connection_config", "username"],
         ["connection_config", "password"],
       ];
+    }
+    if (isPrometheusSource) {
+      const fieldNames: (string | (string | number)[])[] = [
+        "source_type",
+        ["connection_config", "url"],
+        ["query_config", "query"],
+        ["query_config", "query_type"],
+      ];
+      if (prometheusQueryType === "range") {
+        fieldNames.push(["query_config", "time_range"]);
+        fieldNames.push(["query_config", "step"]);
+      }
+      return fieldNames;
     }
     return ["source_type"];
   };
@@ -344,20 +422,77 @@ const OperateModal: React.FC<OperateModalProps> = ({
     fieldSchemaTableRef.current?.clearValidation();
   };
 
-  const handlePasswordFocus = (event: React.FocusEvent<HTMLInputElement>) => {
+  const handleSecretFocus = (
+    fieldPath: (string | number)[],
+    event: React.FocusEvent<HTMLInputElement>,
+  ) => {
     if (!currentRow) return;
     if (event.target.value === PASSWORD_PLACEHOLDER) {
-      form.setFieldValue(["connection_config", "password"], "");
+      form.setFieldValue(fieldPath, "");
     }
   };
 
-  const handlePasswordBlur = (event: React.FocusEvent<HTMLInputElement>) => {
+  const handleSecretBlur = (
+    fieldPath: (string | number)[],
+    event: React.FocusEvent<HTMLInputElement>,
+  ) => {
     if (!currentRow) return;
     if (!event.target.value?.trim()) {
-      form.setFieldValue(
-        ["connection_config", "password"],
-        PASSWORD_PLACEHOLDER,
-      );
+      form.setFieldValue(fieldPath, PASSWORD_PLACEHOLDER);
+    }
+  };
+
+  const handlePasswordFocus = (event: React.FocusEvent<HTMLInputElement>) => {
+    handleSecretFocus(["connection_config", "password"], event);
+  };
+
+  const handlePasswordBlur = (event: React.FocusEvent<HTMLInputElement>) => {
+    handleSecretBlur(["connection_config", "password"], event);
+  };
+
+  const handleTestConnection = async () => {
+    if (readOnly || !isPrometheusSource) return;
+
+    try {
+      setTestConnectionLoading(true);
+      const validateFields: (string | (string | number)[])[] = [
+        "source_type",
+        ["connection_config", "url"],
+      ];
+      if (prometheusAuthType === "basic") {
+        validateFields.push(
+          ["connection_config", "username"],
+          ["connection_config", "password"],
+        );
+      }
+      if (prometheusAuthType === "bearer") {
+        validateFields.push(["connection_config", "token"]);
+      }
+      await form.validateFields(validateFields);
+      const values = form.getFieldsValue(true);
+      const payload = buildConnectorPayload(values, {
+        excelFileName: excelFile?.name,
+        previewData,
+        t,
+      });
+
+      if (currentRow) {
+        await testDataSourceConnection(currentRow.id, {
+          source_type: SOURCE_TYPE_PROMETHEUS,
+          connection_config: payload.connection_config,
+        });
+      } else {
+        await testDataSourceConnectionConfig({
+          source_type: SOURCE_TYPE_PROMETHEUS,
+          connection_config: payload.connection_config,
+        });
+      }
+      message.success(t("dataSource.testConnectionSuccess"));
+    } catch (error: any) {
+      if (error?.errorFields) return;
+      message.error(error?.message || t("dataSource.testConnectionFailed"));
+    } finally {
+      setTestConnectionLoading(false);
     }
   };
 
@@ -401,10 +536,15 @@ const OperateModal: React.FC<OperateModalProps> = ({
         desc: values.desc ? values.desc.trim() : "",
         namespaces: isNatsSource ? values.namespaces || [] : [],
         tag: values.tag || [],
-        chart_type: isNatsSource ? values.chart_type || [] : [TABLE_CHART_TYPE],
+        chart_type: isNatsSource
+          ? values.chart_type || []
+          : isPrometheusSource
+            ? values.chart_type || [...PROMETHEUS_DEFAULT_CHART_TYPES]
+            : [TABLE_CHART_TYPE],
         groups: values.groups || [],
         field_schema: fieldSchema,
-        params: isNatsSource ? normalizeParams(params) : [],
+        params:
+          isNatsSource || isPrometheusSource ? normalizeParams(params) : [],
       };
 
       if (currentRow) {
@@ -496,8 +636,29 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   },
                 });
               }
-              if (nextSourceType !== SOURCE_TYPE_NATS) {
+              if (nextSourceType === SOURCE_TYPE_PROMETHEUS) {
+                form.setFieldsValue({
+                  chart_type: [...PROMETHEUS_DEFAULT_CHART_TYPES],
+                  connection_config: {
+                    auth_type: "none",
+                    timeout_seconds: 30,
+                  },
+                  query_config: {
+                    query: "up",
+                    query_type: "range",
+                    time_range: 60,
+                    step: "1m",
+                    max_series: 20,
+                  },
+                });
+                setParams(createPrometheusDefaultParams());
+              }
+              if (
+                nextSourceType !== SOURCE_TYPE_NATS &&
+                nextSourceType !== SOURCE_TYPE_PROMETHEUS
+              ) {
                 form.setFieldValue("chart_type", [TABLE_CHART_TYPE]);
+                setParams([]);
               }
             }}
           />
@@ -769,6 +930,185 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   placeholder="SELECT * FROM table_name"
                 />
               </Form.Item>
+            </div>
+          </Form.Item>
+        )}
+        {isPrometheusSource && (
+          <Form.Item label={t("dataSource.connectionConfig")}>
+            <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-3 pb-0 pt-3">
+              <div className="grid grid-cols-2 gap-x-3">
+                <Form.Item
+                  name={["connection_config", "url"]}
+                  label={t("dataSource.url")}
+                  className="!mb-2"
+                  rules={[{ required: true, message: t("common.inputMsg") }]}
+                >
+                  <Input placeholder="https://prometheus.example.com" />
+                </Form.Item>
+                <Form.Item
+                  name={["connection_config", "auth_type"]}
+                  label={t("dataSource.authType")}
+                  className="!mb-2"
+                  initialValue="none"
+                >
+                  <Select
+                    options={[
+                      { label: t("dataSource.authTypes.none"), value: "none" },
+                      { label: t("dataSource.authTypes.basic"), value: "basic" },
+                      { label: t("dataSource.authTypes.bearer"), value: "bearer" },
+                    ]}
+                  />
+                </Form.Item>
+                {prometheusAuthType === "basic" && (
+                  <>
+                    <Form.Item
+                      name={["connection_config", "username"]}
+                      label={t("dataSource.username")}
+                      className="!mb-2"
+                      rules={[
+                        { required: true, message: t("common.inputMsg") },
+                      ]}
+                    >
+                      <Input />
+                    </Form.Item>
+                    <Form.Item
+                      name={["connection_config", "password"]}
+                      label={t("dataSource.password")}
+                      className="!mb-2"
+                      rules={[
+                        { required: true, message: t("common.inputMsg") },
+                      ]}
+                    >
+                      <Input.Password
+                        autoComplete="new-password"
+                        onFocus={handlePasswordFocus}
+                        onBlur={handlePasswordBlur}
+                      />
+                    </Form.Item>
+                  </>
+                )}
+                {prometheusAuthType === "bearer" && (
+                  <Form.Item
+                    name={["connection_config", "token"]}
+                    label={t("dataSource.token")}
+                    className="!mb-2"
+                    rules={[{ required: true, message: t("common.inputMsg") }]}
+                  >
+                    <Input.Password
+                      autoComplete="new-password"
+                      onFocus={(event) =>
+                        handleSecretFocus(
+                          ["connection_config", "token"],
+                          event,
+                        )
+                      }
+                      onBlur={(event) =>
+                        handleSecretBlur(["connection_config", "token"], event)
+                      }
+                    />
+                  </Form.Item>
+                )}
+                <Form.Item
+                  name={["connection_config", "timeout_seconds"]}
+                  label={t("dataSource.timeout")}
+                  className="!mb-2"
+                  initialValue={30}
+                >
+                  <InputNumber min={1} max={120} style={{ width: "100%" }} />
+                </Form.Item>
+              </div>
+              {readOnly ? null : (
+                <div className="mb-3 text-right">
+                  <Button
+                    size="small"
+                    loading={testConnectionLoading}
+                    onClick={handleTestConnection}
+                  >
+                    {t("dataSource.testConnection")}
+                  </Button>
+                </div>
+              )}
+              <Collapse
+                ghost
+                items={[
+                  {
+                    key: "prometheus-preview-query",
+                    label: t("dataSource.prometheusPreviewQuery"),
+                    children: (
+                      <div className="grid grid-cols-2 gap-x-3">
+                        <Form.Item
+                          name={["query_config", "query"]}
+                          label={t("dataSource.promql")}
+                          className="!mb-2 col-span-2"
+                          rules={[
+                            { required: true, message: t("common.inputMsg") },
+                          ]}
+                        >
+                          <Input.TextArea
+                            rows={2}
+                            placeholder="up"
+                          />
+                        </Form.Item>
+                        <Form.Item
+                          name={["query_config", "query_type"]}
+                          label={t("dataSource.queryType")}
+                          className="!mb-2"
+                          initialValue="range"
+                        >
+                          <Select
+                            options={[
+                              { label: "range", value: "range" },
+                              { label: "instant", value: "instant" },
+                            ]}
+                          />
+                        </Form.Item>
+                        {prometheusQueryType === "range" && (
+                          <>
+                            <Form.Item
+                              name={["query_config", "time_range"]}
+                              label={t("dataSource.paramTypes.timeRange")}
+                              className="!mb-2"
+                              initialValue={60}
+                              rules={[
+                                {
+                                  required: true,
+                                  message: t("common.inputMsg"),
+                                },
+                              ]}
+                            >
+                              <InputNumber
+                                min={1}
+                                max={44640}
+                                style={{ width: "100%" }}
+                              />
+                            </Form.Item>
+                            <Form.Item
+                              name={["query_config", "step"]}
+                              label={t("dataSource.step")}
+                              className="!mb-2"
+                              initialValue="1m"
+                            >
+                              <Input placeholder="1m" />
+                            </Form.Item>
+                          </>
+                        )}
+                        <Form.Item
+                          name={["query_config", "max_series"]}
+                          label={t("dataSource.maxSeries")}
+                          className="!mb-2"
+                          initialValue={20}
+                        >
+                          <InputNumber
+                            min={1}
+                            max={50}
+                            style={{ width: "100%" }}
+                          />
+                        </Form.Item>
+                      </div>
+                    ),
+                  },
+                ]}
+              />
             </div>
           </Form.Item>
         )}

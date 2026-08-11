@@ -274,6 +274,93 @@ def test_create_if_absent_stores_sanitized_payload(tmp_path):
     assert task["payload"]["host_credentials"][0]["user"] == "root"
 
 
+def test_create_if_absent_redacts_callback_token_from_query_state(tmp_path):
+    store = TaskStore(str(tmp_path / "callback.db"), "test-encryption-secret")
+    callback_token = "callback-bearer-7f82d19a"
+    callback = {
+        "subject": "job.ansible_task_callback",
+        "context": {"caller": "ansible-executor", "execution_id": 1, "attempt_id": "a1", "token": callback_token},
+    }
+
+    store.create_if_absent(
+        "callback-task",
+        "queued",
+        {"task_id": "callback-task", "callback": callback},
+        callback,
+        "2026-08-10T00:00:00Z",
+    )
+
+    task = store.get_task("callback-task")
+    assert task["callback"]["context"]["token"] == "***"
+    assert task["payload"]["callback"]["context"]["token"] == "***"
+    assert task["callback"]["context"]["attempt_id"] == "a1"
+    assert store.get_callback_config("callback-task")["context"]["token"] == callback_token
+    assert callback_token.encode() not in (tmp_path / "callback.db").read_bytes()
+
+    store.update_callback_status(
+        "callback-task",
+        "sent",
+        {"task_id": "callback-task", "success": True},
+        "2026-08-10T00:01:00Z",
+        preserve_status="success",
+    )
+
+    assert store.get_callback_config("callback-task") is None
+
+
+def test_create_without_callback_keeps_callback_secret_column_null(tmp_path):
+    store = TaskStore(str(tmp_path / "no-callback.db"), "test-encryption-secret")
+    store.create_if_absent(
+        "no-callback-task",
+        "queued",
+        {"task_id": "no-callback-task"},
+        {},
+        "2026-08-10T00:00:00Z",
+    )
+
+    with store._connect() as connection:
+        value = connection.execute(
+            "SELECT callback_secret_json FROM task_state WHERE task_id = ?",
+            ("no-callback-task",),
+        ).fetchone()[0]
+
+    assert value is None
+
+
+def test_reading_legacy_execution_payload_scrubs_callback_token_copy(tmp_path):
+    store = TaskStore(str(tmp_path / "legacy-callback.db"), "test-encryption-secret")
+    callback_token = "legacy-callback-bearer-93ab"
+    store.create_if_absent(
+        "legacy-callback-task",
+        "queued",
+        {"task_id": "legacy-callback-task"},
+        {},
+        "2026-08-10T00:00:00Z",
+    )
+    legacy_payload = {
+        "task_id": "legacy-callback-task",
+        "password": "execution-password",
+        "callback": {"context": {"token": callback_token}},
+    }
+    with store._connect() as connection:
+        connection.execute(
+            "UPDATE task_state SET execution_payload_json = ? WHERE task_id = ?",
+            (store._encrypt_execution_payload(legacy_payload), "legacy-callback-task"),
+        )
+
+    loaded = store.get_execution_payload("legacy-callback-task")
+
+    assert loaded["password"] == "execution-password"
+    assert loaded["callback"]["context"]["token"] == "***"
+    with store._connect() as connection:
+        encrypted = connection.execute(
+            "SELECT execution_payload_json FROM task_state WHERE task_id = ?",
+            ("legacy-callback-task",),
+        ).fetchone()[0]
+    assert store._decrypt_execution_payload(encrypted)["callback"]["context"]["token"] == "***"
+    assert callback_token.encode() not in (tmp_path / "legacy-callback.db").read_bytes()
+
+
 def test_create_if_absent_preserves_execution_payload_for_worker_use(tmp_path):
     store = TaskStore(str(tmp_path / "task.db"))
     payload_with_creds = {

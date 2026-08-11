@@ -300,7 +300,20 @@ class InstanceConfigService:
                 configs = NodeMgmt().get_configs_by_ids([config_obj.id])
             config = configs[0]
             if config_obj.file_type == "toml":
-                config["content"] = ConfigFormat.toml_to_dict(config[content_key])
+                raw_content = config[content_key]
+                config["content"] = ConfigFormat.toml_to_dict(raw_content)
+                from apps.monitor.utils.snmp_ifmib_capability import is_interface_filter_capable_plugin
+
+                if (config_obj.collect_type or "").startswith("snmp") and is_interface_filter_capable_plugin(
+                    getattr(config_obj, "monitor_plugin", None)
+                ):
+                    from apps.monitor.utils.snmp_interface_filters import expose_snmp_interface_filters_for_edit
+                    from apps.monitor.utils.snmp_interface_template import mark_closed_ifmib_edit_state
+
+                    # 关闭态依赖注释标记；dict roundtrip 会丢注释，读取时打旗标供写回恢复。
+                    config["content"] = mark_closed_ifmib_edit_state(raw_content, config["content"])
+                    # tagpass 隔离后过滤在 snmp[1]；表单只读 content.config，需投影回显。
+                    config["content"] = expose_snmp_interface_filters_for_edit(config["content"])
             elif config_obj.file_type == "yaml":
                 config["content"] = ConfigFormat.yaml_to_dict(config[content_key])
             else:
@@ -1012,7 +1025,14 @@ class InstanceConfigService:
                     validate_rendered_website_config(child_info.get("content") or {}, env_config)
                 except ValueError as exc:
                     raise BaseAppException(str(exc)) from exc
-            if (config_obj.collect_type or "").startswith("snmp"):
+            from apps.monitor.utils.snmp_ifmib_capability import is_interface_filter_capable_plugin
+
+            # 与创建路径同一能力边界：hardware_server 等非 Network Device 模板即便自带
+            # IF-MIB 表，也不得在编辑时被加上 ifType 排除或接口过滤。
+            ifmib_capable = (config_obj.collect_type or "").startswith("snmp") and is_interface_filter_capable_plugin(
+                getattr(config_obj, "monitor_plugin", None)
+            )
+            if ifmib_capable:
                 from apps.monitor.utils.snmp_interface_filters import normalize_snmp_interface_filter_config
                 from apps.monitor.utils.snmp_interface_template import has_interface_collection
 
@@ -1041,4 +1061,18 @@ class InstanceConfigService:
                     child_interval,
                 )
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
+            if ifmib_capable and content is not None:
+                from apps.monitor.utils.snmp_interface_template import (
+                    isolate_snmp_interface_tagpass,
+                    preserve_closed_ifmib_markers,
+                    restore_managed_ifmib_markers,
+                )
+
+                # 编辑改为「仅采集」时 create 路径的 isolate 不会重跑；这里强制拆分，
+                # 避免 tagpass 落在含厂商表的同一 input 上把 CPU/内存等指标过滤掉。
+                # tagexclude 走 dict 序列化天然落在 input 级，不需要再做文本补写。
+                # json_to_toml 会丢掉管理区间注释；无 tagpass 时 isolate 不 dump，必须补 restore。
+                content = isolate_snmp_interface_tagpass(content, force=True)
+                content = restore_managed_ifmib_markers(content)
+                content = preserve_closed_ifmib_markers(content, child_info.get("content"))
             NodeMgmt().update_child_config_content(child_info["id"], content, env_config)

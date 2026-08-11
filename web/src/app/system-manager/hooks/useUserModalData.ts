@@ -238,7 +238,7 @@ export function useUserModalData(): UseUserModalDataReturn {
           formRef.current?.setFieldsValue({
             groups: groupKeys,
             zoneinfo: 'Asia/Shanghai',
-            locale: 'en',
+            locale: 'zh-Hans',
             is_superuser: false,
           });
         }, 0);

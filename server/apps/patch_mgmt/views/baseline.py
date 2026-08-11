@@ -153,6 +153,18 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
         if not target_ids:
             raise DRFValidationError(patch_message(request, "error.target_ids_required", "Select at least one target"))
         require_target_ids(request, target_ids, "Operate")
+        if PatchTarget.objects.filter(id__in=target_ids).exclude(
+            os_type=baseline.os_type
+        ).exists():
+            raise DRFValidationError(
+                {
+                    "detail": patch_message(
+                        request,
+                        "error.baseline_target_os_mismatch",
+                        "Selected targets must use the same operating system as the baseline",
+                    )
+                }
+            )
         operable_target_ids = target_access_scope(request).queryset(
             "Operate"
         ).values("id")

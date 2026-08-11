@@ -942,9 +942,15 @@ def test_serializer_accepts_user_sync_external_field_not_declared_by_manifest(re
         payload={"items": [{"id": "dept-real", "name": "Real Department", "parent_id": None, "children": []}]},
     )
 
-    with patch("apps.system_mgmt.providers.runtime.RuntimeApplicationService.execute", return_value=payload):
+    # Patch the serializer's lookup point so validation cannot reach the real Feishu directory.
+    with patch(
+        "apps.system_mgmt.serializers.user_sync_source_serializer.RuntimeApplicationService.execute",
+        return_value=payload,
+    ) as mock_execute:
         assert serializer.is_valid(), serializer.errors
 
+    mock_execute.assert_called_once()
+    assert mock_execute.call_args.kwargs["operation"] == "list_departments"
     assert serializer.validated_data["field_mapping"] == {"username": "private_token"}
 
 

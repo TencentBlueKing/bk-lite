@@ -7,10 +7,12 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .settingsTabs {
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 
@@ -21,13 +23,110 @@
   :global(.ant-tabs-content-holder) {
     flex: 1;
     min-height: 0;
+    overflow: hidden;
   }
 
   :global(.ant-tabs-content) {
     height: 100%;
+    min-height: 0;
   }
 
   :global(.ant-tabs-tabpane) {
     height: 100%;
+    min-height: 0;
+  }
+}
+
+.scanSettingsTabs {
+  :global(.ant-tabs-content-holder) {
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+}
+
+.assessmentAutomationControl {
+  margin-bottom: 14px;
+}
+
+.assessmentAutomationHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.assessmentAutomationTitle {
+  color: var(--color-text-1, #1f1f1f);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.assessmentAutomationPanel {
+  margin-bottom: 18px;
+  padding: 16px;
+  background: var(--color-fill-1, #f5f7fa);
+  border: 1px solid var(--color-border-1, #e8eaed);
+  border-radius: 8px;
+  animation: assessment-notification-enter 180ms ease-out;
+}
+
+.assessmentScheduleSection {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border-1, #e1e5eb);
+}
+
+.requiredSectionTitle {
+  margin-bottom: 8px;
+  color: var(--color-text-1, #1f1f1f);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+
+  span {
+    margin-left: 4px;
+    color: var(--color-error, #ff4d4f);
+  }
+}
+
+.assessmentScheduleForm {
+  align-items: flex-start;
+
+  :global(.ant-form-item) {
+    margin-inline-end: 8px;
+    margin-bottom: 0;
+  }
+
+  :global(.ant-form-item-with-help) {
+    margin-bottom: 0;
+  }
+}
+
+.scheduleAffix {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px;
+  color: var(--color-text-2, #595959);
+}
+
+@keyframes assessment-notification-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assessmentAutomationPanel {
+    animation: none;
   }
 }

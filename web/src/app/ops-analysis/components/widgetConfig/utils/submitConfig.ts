@@ -28,6 +28,7 @@ export interface WidgetConfigFormValues {
   params?: Record<string, string | number | boolean | [number, number] | null>;
   tableConfig?: TableConfig;
   selectedFields?: string[];
+  descriptionField?: string;
   topNLabelField?: string;
   topNValueField?: string;
   unit?: string;
@@ -38,6 +39,8 @@ export interface WidgetConfigFormValues {
   gaugeMin?: number;
   gaugeMax?: number;
   gaugeShape?: 'semicircle' | 'circle';
+  eventTimeline?: ValueConfig['eventTimeline'];
+  radar?: ValueConfig['radar'];
   actions?: DashboardActionConfig[];
   appearance?: ValueConfig['appearance'];
 }
@@ -74,6 +77,18 @@ export interface BuildWidgetSubmitConfigResult {
   error?: WidgetSubmitError;
 }
 
+const buildWidgetConfigBase = (
+  values: WidgetConfigFormValues,
+  chartType: string,
+): WidgetConfig => ({
+  name: values.name,
+  ...(values.description ? { description: values.description } : {}),
+  chartType,
+  ...(values.dataSource !== undefined ? { dataSource: values.dataSource } : {}),
+  ...(values.dataSourceParams ? { dataSourceParams: values.dataSourceParams } : {}),
+  ...(values.appearance ? { appearance: values.appearance } : {}),
+});
+
 const buildSceneWidgetConfig = (
   values: WidgetConfigFormValues,
 ): WidgetConfig => {
@@ -100,10 +115,11 @@ const buildTableConfig = ({
   displayColumns,
   filterFields,
   showTableFilterFields,
+  includeCellStyle,
 }: Pick<
   BuildWidgetSubmitConfigInput,
   'displayColumns' | 'filterFields' | 'showTableFilterFields'
->): BuildWidgetSubmitConfigResult & { tableConfig?: TableConfig } => {
+> & { includeCellStyle: boolean }): BuildWidgetSubmitConfigResult & { tableConfig?: TableConfig } => {
   const tableConfig: TableConfig = {};
 
   if (showTableFilterFields && filterFields.length > 0) {
@@ -143,13 +159,28 @@ const buildTableConfig = ({
   }
 
   if (validDisplayColumns.length > 0) {
-    tableConfig.columns = validDisplayColumns.map((column, index) => ({
-      key: column.key,
-      title: column.title,
-      visible: column.visible,
-      order: index,
-      columnType: column.columnType,
-    }));
+    tableConfig.columns = validDisplayColumns.map((column, index) => {
+      const next: TableColumnConfigItem = {
+        key: column.key,
+        title: column.title,
+        visible: column.visible,
+        order: index,
+        columnType: column.columnType,
+      };
+      if (column.columnType === 'actions' || !includeCellStyle) {
+        return next;
+      }
+      if (column.cellType === 'colorBackground') {
+        next.cellType = 'colorBackground';
+      }
+      if (column.valueMappings?.length) {
+        next.valueMappings = column.valueMappings;
+      }
+      if (column.cellThresholdColors?.length) {
+        next.cellThresholdColors = column.cellThresholdColors;
+      }
+      return next;
+    });
   }
 
   return {
@@ -170,6 +201,10 @@ const applySingleValueConfig = (
   result.thresholdColors = thresholdColors;
   result.compare = !!values.compare;
   result.compareMode = values.compareMode || 'percent';
+  const descriptionField = values.descriptionField?.trim();
+  if (descriptionField) {
+    result.descriptionField = descriptionField;
+  }
   if (values.unit !== undefined) result.unit = values.unit;
   result.unitId = values.unitId;
   result.valueMappings = values.valueMappings || undefined;
@@ -219,7 +254,7 @@ export const buildWidgetSubmitConfig = ({
     return { config: buildSceneWidgetConfig(values) };
   }
 
-  const result: WidgetConfig = { ...values } as WidgetConfig;
+  const result: WidgetConfig = buildWidgetConfigBase(values, chartType);
   if (validateComponentSwitchParams(values.dataSourceParams)) {
     return { error: 'multipleComponentSwitchParams' };
   }
@@ -229,6 +264,7 @@ export const buildWidgetSubmitConfig = ({
       displayColumns,
       filterFields,
       showTableFilterFields,
+      includeCellStyle: chartType === 'table',
     });
     if (tableResult.error) {
       return { error: tableResult.error };
@@ -239,9 +275,9 @@ export const buildWidgetSubmitConfig = ({
   }
 
   if (!showChartThemeMode) {
-    delete result.chartThemeMode;
-  } else if (result.chartThemeMode === 'default') {
-    delete result.chartThemeMode;
+    // chartThemeMode is omitted by default
+  } else if (values.chartThemeMode && values.chartThemeMode !== 'default') {
+    result.chartThemeMode = values.chartThemeMode;
   }
 
   if (chartType === 'table') {
@@ -269,6 +305,27 @@ export const buildWidgetSubmitConfig = ({
   if (chartType === 'topN') {
     result.topNLabelField = values.topNLabelField;
     result.topNValueField = values.topNValueField;
+  }
+
+  if (chartType === 'eventTimeline') {
+    result.eventTimeline = {
+      sortOrder: values.eventTimeline?.sortOrder || 'desc',
+    };
+  }
+
+  if (chartType === 'radar') {
+    const indicators = (values.radar?.indicators || [])
+      .map((item) => ({
+        key: String(item.key || '').trim(),
+        label: String(item.label || '').trim() || undefined,
+      }))
+      .filter((item) => item.key);
+
+    result.radar = {
+      min: values.radar?.min,
+      max: values.radar?.max,
+      indicators,
+    };
   }
 
   if (filterBindings && Object.keys(filterBindings).length > 0) {

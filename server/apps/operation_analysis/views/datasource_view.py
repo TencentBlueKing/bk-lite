@@ -430,6 +430,10 @@ class DataSourceAPIModelViewSet(AuthViewSet):
 
         if instance.source_type != DataSourceAPIModel.SOURCE_TYPE_NATS:
             try:
+                if instance.source_type == DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS:
+                    executor = get_preview_executor(instance.source_type)
+                    result = executor.execute(instance.connection_config or {}, params)
+                    return Response({"data": result.data, "warnings": result.warnings or []})
                 runtime_limit = _normalize_preview_limit(params.get("page_size") or request.data.get("limit"))
                 payload = _execute_inline_preview(
                     instance.source_type,
@@ -452,7 +456,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 )
                 return _build_error_response("数据查询失败", status.HTTP_502_BAD_GATEWAY)
 
-            return Response(payload.get("items", []))
+            return Response({"data": payload.get("items", []), "warnings": []})
 
         namespace_list = instance.namespaces.all()
         if "/" not in instance.rest_api:
@@ -495,7 +499,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 result.get("data"),
             )
 
-        return Response(result.get("data"))
+        return Response({"data": result.get("data"), "warnings": []})
 
     @HasPermission("data_source-Add,data_source-Edit")
     @action(detail=False, methods=["post"], url_path="preview")
@@ -564,6 +568,60 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             return _build_error_response("数据源预览失败", status.HTTP_502_BAD_GATEWAY)
 
         return Response(payload)
+
+    @HasPermission("data_source-Edit")
+    @action(detail=False, methods=["post"], url_path="test_connection")
+    def test_connection_config(self, request, *args, **kwargs):
+        source_type = request.data.get("source_type") or DataSourceAPIModel.SOURCE_TYPE_NATS
+        connection_config = _normalize_preview_config(request.data.get("connection_config"))
+        try:
+            executor = get_preview_executor(source_type)
+            executor.test_connection(connection_config)
+        except ConnectorError as exc:
+            return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
+        except Exception as exc:
+            logger.error(
+                "[DataSourceTestConnection] 未保存配置连接测试失败 source_type=%s：%s",
+                source_type,
+                exc,
+                exc_info=True,
+            )
+            return _build_error_response("连接测试失败", status.HTTP_502_BAD_GATEWAY)
+        return Response({"result": True, "message": "连接成功"})
+
+    @HasPermission("data_source-Edit")
+    @action(detail=True, methods=["post"], url_path="test_connection")
+    def test_connection(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+        except Http404:
+            return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
+
+        current_team = self._validate_current_team_permission(request)
+        if current_team not in (instance.groups or []):
+            return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
+
+        source_type = request.data.get("source_type") or instance.source_type
+        connection_config = request.data.get("connection_config")
+        if isinstance(connection_config, dict):
+            connection_config = merge_redacted_config(instance.connection_config or {}, connection_config)
+        else:
+            connection_config = instance.connection_config or {}
+        try:
+            executor = get_preview_executor(source_type)
+            executor.test_connection(connection_config)
+        except ConnectorError as exc:
+            return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
+        except Exception as exc:
+            logger.error(
+                "[DataSourceTestConnection] 保存数据源连接测试失败 datasource_id=%s source_type=%s：%s",
+                instance.id,
+                source_type,
+                exc,
+                exc_info=True,
+            )
+            return _build_error_response("连接测试失败", status.HTTP_502_BAD_GATEWAY)
+        return Response({"result": True, "message": "连接成功"})
 
     @HasPermission("data_source-View")
     def retrieve(self, request, *args, **kwargs):

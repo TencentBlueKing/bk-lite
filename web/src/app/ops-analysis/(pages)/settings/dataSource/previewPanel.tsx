@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Button, Empty } from "antd";
+import { Alert, Button, Empty } from "antd";
 import CustomTable from "@/components/custom-table";
 import { useTranslation } from "@/utils/i18n";
 import {
@@ -85,6 +85,14 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           </div>
         )}
       </div>
+      {previewData?.warnings?.length ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={previewData.warnings.join("；")}
+        />
+      ) : null}
       {previewData?.items?.length ? (
         <CustomTable
           rowKey={(_, index) => String(index)}

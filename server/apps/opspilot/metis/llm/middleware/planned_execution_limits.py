@@ -259,7 +259,8 @@ async def ask_limit_continue(
     if not isinstance(configurable, dict):
         configurable = {}
     execution_id = str(configurable.get("execution_id") or "") or str(int(time.time() * 1000))
-    node_id = str(configurable.get("node_id") or "deep_agent")
+    # 与 request_user_choice 一致：技能调试/AGUI 无工作流任务时，submit_choice 仅放行 skill_test。
+    node_id = str(configurable.get("node_id") or "skill_test")
     choice_id = str(uuid.uuid4())[:8]
 
     if kind == "token_budget":

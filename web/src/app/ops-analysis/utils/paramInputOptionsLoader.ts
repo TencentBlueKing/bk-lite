@@ -1,4 +1,5 @@
 import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/dataSource';
+import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
 import {
   extractDataSourceItems,
   mapDynamicItems,
@@ -19,7 +20,7 @@ export interface ParamInputOptionsLoad {
 
 interface OptionsApi {
   getDataSourceList: (params?: unknown) => Promise<unknown>;
-  getSourceDataByApiId: (id: number, params?: unknown) => Promise<unknown>;
+  getSourceDataByApiId: (id: number, params?: unknown) => Promise<SourceDataResult>;
 }
 
 const typedOption = (option: InputOption) => [option.label, typeof option.value, option.value];
@@ -101,7 +102,7 @@ export const createParamInputOptionsLoader = (api: OptionsApi) => {
         if (requestGeneration !== generation) return null;
         const sourceId = resolveDynamicSourceId(source, sourceItems as Array<{ id: number; rest_api?: string }>);
         if (!sourceId) return requestGeneration === generation ? { status: 'error', options: [] } : null;
-        const data = await api.getSourceDataByApiId(sourceId, {});
+        const { data } = await api.getSourceDataByApiId(sourceId, {});
         const options = mapDynamicItems(
           extractDataSourceItems(data), source.valueField, source.labelField,
         );

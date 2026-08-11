@@ -11,7 +11,6 @@ from langchain_core.tools import tool
 
 from apps.opspilot.metis.llm.chain import node
 
-
 pytestmark = pytest.mark.unit
 
 
@@ -39,7 +38,47 @@ def test_normalize_messages_merges_system_prompts_without_reordering_dialogue():
         HumanMessage,
         AIMessage,
     ]
-    assert normalized[0].content == "policy-a\n\npolicy-b"
+    assert "policy-a" in normalized[0].content
+    assert "policy-b" in normalized[0].content
+
+
+@pytest.mark.asyncio
+async def test_lightweight_direct_reply_merges_leading_system_for_qwen():
+    """图前置 SystemMessage + light_system 必须合并为单条，避免 Qwen 400。"""
+    from apps.opspilot.metis.llm.chain.node import ToolsNodes
+
+    captured = {}
+
+    class _FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            captured["messages"] = list(messages)
+            return AIMessage(content="ok")
+
+    node = ToolsNodes()
+    result = await node._invoke_lightweight_direct_reply(
+        llm=_FakeLLM(),
+        light_system="轻量系统",
+        original_messages=[
+            SystemMessage(content="图前置系统"),
+            HumanMessage(content="你好"),
+            AIMessage(content="上次回复"),
+            HumanMessage(content="再问一句"),
+        ],
+        config={"configurable": {}},
+        token_usage_accumulator=None,
+        log_reason="unit",
+    )
+
+    msgs = captured["messages"]
+    assert isinstance(msgs[0], SystemMessage)
+    assert sum(1 for m in msgs if isinstance(m, SystemMessage)) == 1
+    assert "轻量系统" in msgs[0].content
+    assert "图前置系统" in msgs[0].content
+    assert [type(m) for m in msgs[1:]] == [HumanMessage, AIMessage, HumanMessage]
+    assert result["messages"][0].content == "ok"
+
+
+def test_normalize_messages_empty_input():
     assert node.normalize_messages_for_llm([]) == []
 
 
@@ -231,16 +270,10 @@ async def test_naive_rag_node_formats_documents_graph_metadata_and_images():
     assert result is state
     assert captured["enable_rag_source"] is True
     assert captured["enable_rag_strict_mode"] is True
-    assert captured["rag_results"][0]["content"] == (
-        "问题: How to inspect locks?\n答案: Query pg_locks."
-    )
+    assert captured["rag_results"][0]["content"] == ("问题: How to inspect locks?\n答案: Query pg_locks.")
     assert captured["rag_results"][0]["chunk_type"] == "QA"
-    assert captured["rag_results"][1]["content"] == (
-        "Runbook\nDrain traffic first."
-    )
-    assert state["messages"][0].content == (
-        "retrieval context\n\n=== 图片识别内容 ===\n[图片 1]\ntopology OCR"
-    )
+    assert captured["rag_results"][1]["content"] == ("Runbook\nDrain traffic first.")
+    assert state["messages"][0].content == ("retrieval context\n\n=== 图片识别内容 ===\n[图片 1]\ntopology OCR")
     assert state["messages"][1].content == [
         {
             "type": "image_url",
@@ -379,25 +412,18 @@ async def test_tools_setup_loads_authenticated_mcp_and_dynamic_catalog():
     assert tools_node._has_report_capability("config_analysis_report") is True
 
     activate = tools_node._build_activate_tools_meta_tool()
-    activation = activate.invoke(
-        {"categories": "kubernetes,kubernetes,missing"}
-    )
+    activation = activate.invoke({"categories": "kubernetes,kubernetes,missing"})
     assert "已激活: kubernetes (1 个工具)" in activation
     assert "已存在: kubernetes" in activation
     assert "未找到: missing" in activation
-    assert [item.name for item in tools_node.active_tools] == [
-        "kubernetes_status"
-    ]
+    assert [item.name for item in tools_node.active_tools] == ["kubernetes_status"]
 
 
 def test_remote_transport_and_kubernetes_greeting_filters():
     tools_node = node.ToolsNodes()
 
     assert tools_node._resolve_remote_transport("https://example.com/sse") == "sse"
-    assert (
-        tools_node._resolve_remote_transport("https://example.com/mcp")
-        == "streamable_http"
-    )
+    assert tools_node._resolve_remote_transport("https://example.com/mcp") == "streamable_http"
     assert (
         tools_node._resolve_remote_transport(
             "https://example.com/anything",

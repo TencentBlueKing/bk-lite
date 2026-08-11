@@ -70,12 +70,15 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "node_id",
     "os_type",
     "password",
+    "pattern",
     "plugin_id",
     "port",
+    "ports",
     "private_key_content",
     "private_key_passphrase",
     "priv_password",
     "priv_protocol",
+    "process_name",
     "protocol",
     "request_body",
     "request_headers",
@@ -141,6 +144,7 @@ def normalize_filter_list(value):
 
     return _normalize_filter_list(value)
 
+
 def _escape_toml_context_strings(value):
     if isinstance(value, str):
         return _escape_toml_string(value)
@@ -159,6 +163,10 @@ def _normalize_template_context(context: dict) -> dict:
     for key in ("winrm_cert_validation",):
         if isinstance(normalized.get(key), bool):
             normalized[key] = "true" if normalized[key] else "false"
+    # Process 端口存活：逗号串/列表统一为 list[str]；缺失或空 → []，模板可安全跳过。
+    from apps.monitor.utils.snmp_interface_filters import normalize_filter_list
+
+    normalized["ports"] = normalize_filter_list(normalized.get("ports"))
     return normalized
 
 
@@ -264,7 +272,9 @@ class Controller:
         from apps.monitor.utils.snmp_ifmib_capability import is_ifmib_capable_render_context
         from apps.monitor.utils.snmp_interface_template import (
             ensure_core_network_ifmib_jinja,
+            ensure_public_ifmib_input_tagexclude,
             ensure_snmp_interface_filter_jinja,
+            isolate_snmp_interface_tagpass,
             needs_snmp_interface_filter_jinja,
             validate_rendered_core_network_ifmib,
         )
@@ -289,6 +299,9 @@ class Controller:
 
         template = self.jinja_env.from_string(template_content)
         rendered_template = template.render(safe_context)
+        rendered_template = isolate_snmp_interface_tagpass(rendered_template, _context)
+        # Jinja 不能在 table.field 后裸写 tagexclude（会绑到 field）；渲染后补到 input 级。
+        rendered_template = ensure_public_ifmib_input_tagexclude(rendered_template, _context)
         validate_rendered_core_network_ifmib(rendered_template, _context)
         return rendered_template
 

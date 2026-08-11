@@ -8,8 +8,11 @@ export type ChartType =
   | 'multiValue'
   | 'table'
   | 'eventTable'
+  | 'eventTimeline'
   | 'topN'
   | 'gauge'
+  | 'radar'
+  | 'topologyMap'
   | 'room3D'
   | 'message';
 
@@ -18,7 +21,8 @@ export type DataSourceSourceType =
   | 'mysql'
   | 'postgresql'
   | 'rest_api'
-  | 'excel';
+  | 'excel'
+  | 'prometheus';
 
 /** 接口返回字段定义（数据源级配置） */
 export interface ResponseFieldDefinition {
@@ -78,6 +82,7 @@ export interface DataSourcePreviewResult {
   items: Record<string, any>[];
   count: number;
   fields: ResponseFieldDefinition[];
+  warnings?: string[];
 }
 
 export interface OperateModalProps {

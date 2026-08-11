@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 
 from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.monitor.constants.snmp_interface import (
@@ -13,6 +14,28 @@ from apps.monitor.constants.snmp_interface import (
 )
 
 _IFTYPE_LABELED_RE = re.compile(r"^(\d+)\s+-\s+.+$")
+_INTERFACE_FILTER_KEYS = ("tagpass", "tagdrop", "tagexclude")
+_SNMP_INPUT_PAYLOAD_KEYS = frozenset({"field", "table", *_INTERFACE_FILTER_KEYS})
+# 同步连接参数和采集间隔。编辑表单只绑 snmp[0]，拆分后的 IF-MIB input 必须跟上间隔。
+# name_override 仍按 input 保留，避免把厂商块的覆盖名写到接口块。
+_SHARED_SNMP_CONNECTION_KEYS = frozenset(
+    {
+        "agents",
+        "interval",
+        "version",
+        "community",
+        "timeout",
+        "retries",
+        "sec_name",
+        "sec_level",
+        "auth_protocol",
+        "auth_password",
+        "priv_protocol",
+        "priv_password",
+        "tags",
+        "agent_host_tag",
+    }
+)
 
 _MSG_IFTYPE_MUTEX = {
     "zh": "排除与仅采集的接口类型不能同时配置，请先清空其中一侧",
@@ -21,6 +44,10 @@ _MSG_IFTYPE_MUTEX = {
 _MSG_IFDESCR_MUTEX = {
     "zh": "排除与仅采集的接口名称不能同时配置，请先清空其中一侧",
     "en": "Excluded and included interface names cannot be set together. Clear one side first",
+}
+_MSG_IFTYPE_INVALID = {
+    "zh": "ifType 只能填写数字或“数字 - 名称”格式，非法值：{values}",
+    "en": "ifType accepts only numbers or 'number - name'; invalid values: {values}",
 }
 
 
@@ -65,6 +92,17 @@ def normalize_iftype_list(value) -> list[str]:
     return values
 
 
+def _assert_valid_iftype_input(value) -> None:
+    invalid = [
+        item
+        for item in normalize_filter_list(value)
+        if not item.isdigit() and _IFTYPE_LABELED_RE.match(item) is None
+    ]
+    if invalid:
+        message = _mutex_message(_MSG_IFTYPE_INVALID).format(values=", ".join(invalid))
+        raise ValidationAppException(message)
+
+
 def _prune_table_key(config: dict, table_name: str, key: str, values: list[str]) -> None:
     table = config.get(table_name)
     if values:
@@ -103,8 +141,10 @@ def assert_snmp_interface_filter_mutex_from_values(values: dict | None) -> None:
     """从创建/编辑表单字段校验黑白名单互斥；顺带规范化 ifType 为数字。"""
     values = values or {}
     if FIELD_IFTYPE_INCLUDE in values:
+        _assert_valid_iftype_input(values.get(FIELD_IFTYPE_INCLUDE))
         values[FIELD_IFTYPE_INCLUDE] = normalize_iftype_list(values.get(FIELD_IFTYPE_INCLUDE))
     if FIELD_IFTYPE_EXCLUDE in values:
+        _assert_valid_iftype_input(values.get(FIELD_IFTYPE_EXCLUDE))
         values[FIELD_IFTYPE_EXCLUDE] = normalize_iftype_list(values.get(FIELD_IFTYPE_EXCLUDE))
     assert_snmp_interface_filter_mutex(
         iftype_include=values.get(FIELD_IFTYPE_INCLUDE),
@@ -155,4 +195,136 @@ def normalize_snmp_interface_filter_config(content: dict | None, form_values: di
 
     if "tagexclude" not in config:
         config["tagexclude"] = ["ifType"]
+    return sync_snmp_interface_split_inputs(content)
+
+
+def _iter_snmp_input_configs(content: dict) -> list[dict]:
+    document = content.get("_toml_document") if isinstance(content, dict) else None
+    if isinstance(document, dict):
+        inputs = document.get("inputs")
+        snmp_inputs = inputs.get("snmp") if isinstance(inputs, dict) else None
+        if isinstance(snmp_inputs, list):
+            return [item for item in snmp_inputs if isinstance(item, dict)]
+        if isinstance(snmp_inputs, dict):
+            return [snmp_inputs]
+    config = content.get("config") if isinstance(content, dict) else None
+    return [config] if isinstance(config, dict) else []
+
+
+def _public_ifmib_snmp_inputs(content: dict) -> list[dict]:
+    from apps.monitor.utils.snmp_interface_template import is_public_ifmib_table
+
+    owners = []
+    for snmp_input in _iter_snmp_input_configs(content):
+        tables = snmp_input.get("table")
+        if not isinstance(tables, list):
+            continue
+        if any(isinstance(table, dict) and is_public_ifmib_table(table) for table in tables):
+            owners.append(snmp_input)
+    return owners
+
+
+def _select_interface_filter_owner(owners: list[dict]) -> dict:
+    return max(
+        owners,
+        key=lambda snmp_input: (
+            any(key in snmp_input for key in ("tagpass", "tagdrop")),
+            "tagexclude" in snmp_input,
+        ),
+    )
+
+
+def expose_snmp_interface_filters_for_edit(content: dict | None) -> dict | None:
+    """表单只绑定 content.config；把承载公共 IF-MIB 的 snmp input 上的过滤投影回去显。
+
+    必须投影到 config 的副本：content.config 常与 _toml_document.inputs.snmp[0] 是同一对象，
+    就地写入会污染 snmp[0]，导致后续 owner 选举翻转到无过滤的 public 副本。
+    """
+    if not isinstance(content, dict):
+        return content
+    config = content.get("config")
+    if not isinstance(config, dict):
+        return content
+    owners = _public_ifmib_snmp_inputs(content)
+    if not owners:
+        return content
+    owner = _select_interface_filter_owner(owners)
+    if owner is config:
+        return content
+    projected = deepcopy(config)
+    for key in _INTERFACE_FILTER_KEYS:
+        if key in owner:
+            projected[key] = deepcopy(owner[key])
+        else:
+            projected.pop(key, None)
+    content["config"] = projected
+    return content
+
+
+def sync_snmp_interface_split_inputs(content: dict | None) -> dict | None:
+    """tagpass 隔离后过滤真正落在 snmp[1]；把表单对 config 的修改写回接口 input，并同步 agents 等连接参数。
+
+    ConfigFormat.json_to_toml 始终用 content.config 覆盖 snmp[0]。前端编辑会浅拷贝
+    config，使其不再是 document 里的同一对象；若公共表在 snmp[0]，必须把过滤留在
+    config 上，否则写回会丢掉刚同步到 owner 的 tagpass/tagdrop。
+    """
+    if not isinstance(content, dict):
+        return content
+    config = content.get("config")
+    if not isinstance(config, dict):
+        return content
+    snmp_inputs = _iter_snmp_input_configs(content)
+    owners = _public_ifmib_snmp_inputs(content)
+    if len(snmp_inputs) <= 1 or not owners:
+        return content
+
+    from apps.monitor.utils.snmp_interface_template import is_public_ifmib_table
+
+    owner = _select_interface_filter_owner(owners)
+    for key in _INTERFACE_FILTER_KEYS:
+        if key in config:
+            owner[key] = deepcopy(config[key])
+        else:
+            owner.pop(key, None)
+
+    shared = {
+        key: deepcopy(value)
+        for key, value in config.items()
+        if key in _SHARED_SNMP_CONNECTION_KEYS
+    }
+    for snmp_input in snmp_inputs:
+        for key, value in shared.items():
+            snmp_input[key] = deepcopy(value)
+        if snmp_input is owner:
+            continue
+        for key in _INTERFACE_FILTER_KEYS:
+            snmp_input.pop(key, None)
+        # 历史双公共表存量：非过滤承载方上的公共表会绕过白名单，编辑写回时去掉。
+        tables = snmp_input.get("table")
+        if isinstance(tables, list):
+            remaining = [
+                table for table in tables if not (isinstance(table, dict) and is_public_ifmib_table(table))
+            ]
+            if remaining != tables:
+                snmp_input["table"] = remaining
+
+    first = snmp_inputs[0]
+    if owner is first:
+        # snmp[0] 即过滤承载方：config 必须带上过滤，供 json_to_toml 写回。
+        for key in _INTERFACE_FILTER_KEYS:
+            if key in owner:
+                config[key] = deepcopy(owner[key])
+            else:
+                config.pop(key, None)
+    else:
+        for key in _INTERFACE_FILTER_KEYS:
+            config.pop(key, None)
+        # config 会覆盖 snmp[0]；若它是 expose 投影副本且仍含公共表，必须剥离，否则重复无过滤 public。
+        tables = config.get("table")
+        if isinstance(tables, list):
+            remaining = [
+                table for table in tables if not (isinstance(table, dict) and is_public_ifmib_table(table))
+            ]
+            if remaining != tables:
+                config["table"] = remaining
     return content

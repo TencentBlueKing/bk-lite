@@ -9,6 +9,9 @@ from rest_framework import status
 from apps.log.models.log_group import LogGroup, LogGroupOrganization
 
 
+pytestmark = pytest.mark.integration
+
+
 def _mock_permission(mocker, teams=None, instance_permissions=None):
     """直接 patch access_scope 使用的权限规则获取函数。"""
     mocker.patch(
@@ -101,6 +104,33 @@ def test_create_success_persists_group_and_organizations(api_client, authenticat
     assert LogGroupOrganization.objects.filter(log_group_id="new-group", organization=1).exists()
     # 创建者被记录
     assert LogGroup.objects.get(id="new-group").created_by == authenticated_user.username
+
+
+@pytest.mark.django_db
+def test_create_rejects_unknown_rule_mode_without_persisting(api_client, authenticated_user, mocker):
+    _mock_permission(mocker, teams=[1])
+    api_client.cookies["current_team"] = "1"
+
+    response = api_client.post(
+        "/api/v1/log/log_group/",
+        data={
+            "id": "invalid-mode",
+            "name": "非法规则",
+            "organizations": [1],
+            "rule": {
+                "mode": "ADN",
+                "conditions": [
+                    {"field": "cluster", "op": "==", "value": "A"},
+                    {"field": "namespace", "op": "==", "value": "B"},
+                ],
+            },
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "AND or OR" in response.json()["message"]
+    assert not LogGroup.objects.filter(id="invalid-mode").exists()
 
 
 @pytest.mark.django_db

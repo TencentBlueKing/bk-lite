@@ -1093,6 +1093,7 @@
     "choiceMinSelect": "请至少选择 {min} 项",
     "choiceMaxSelect": "最多只能选择 {max} 项",
     "choiceSubmitFailed": "提交选择失败",
+    "choiceSubmitting": "正在提交选择...",
     "choicePlaceholder": "请选择...",
     "choiceConfirm": "确认选择",
     "choiceTimeout": "已超时",

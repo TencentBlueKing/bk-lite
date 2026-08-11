@@ -2,6 +2,7 @@ import useApiClient from '@/utils/request';
 import { AxiosRequestConfig } from 'axios';
 import {
   ListResponse,
+  OSType,
   Patch,
   PatchDashboardStats,
   PatchSource,
@@ -11,6 +12,8 @@ import {
   PatchParams,
   CandidateItem,
   IngestResult,
+  NoticeCandidates,
+  NoticeRuleInput,
   ScanSetting,
 } from '@/app/patch-manager/types';
 
@@ -221,13 +224,20 @@ const usePatchManagerApi = () => {
   const getScanSetting = async (): Promise<ScanSetting> =>
     get(`${BASE}/scan_setting/`);
 
-  const updateScanSetting = async (data: Partial<ScanSetting>): Promise<ScanSetting> =>
+  const updateScanSetting = async (
+    data: Omit<Partial<ScanSetting>, 'notification_rules'> & {
+      notification_rules?: NoticeRuleInput[];
+    }
+  ): Promise<ScanSetting> =>
     put(`${BASE}/scan_setting/save/`, data);
+
+  const getScanNotificationCandidates = async (): Promise<NoticeCandidates> =>
+    get(`${BASE}/scan_setting/notification_candidates/`);
 
   // ── 基线管理 ──────────────────────────────────────────────────────────────────
 
   const getBaselineList = async (
-    params: { page?: number; page_size?: number; search?: string; patch_ids?: string } = {},
+    params: { page?: number; page_size?: number; search?: string; patch_ids?: string; os_type?: OSType } = {},
     config?: AxiosRequestConfig
   ): Promise<ListResponse<any>> =>
     get(`${BASE}/baseline/`, { params, ...config });
@@ -373,6 +383,7 @@ const usePatchManagerApi = () => {
     // ── 扫描设置 ──
     getScanSetting,
     updateScanSetting,
+    getScanNotificationCandidates,
     // ── 基线管理 ──
     getBaselineList,
     getBaselineDetail,

@@ -394,6 +394,48 @@ func TestInstallWindowsPackageTreatsPreCreatedEmptyDirectoryAsFreshInstall(t *te
 	}
 }
 
+func TestInstallWindowsPackageReportsActualPhaseBoundaries(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	zipPath := writeControllerZip(t, map[string]string{
+		"controller/collector-sidecar.exe": "new-binary",
+	})
+	controller := &observingWindowsServiceController{backupDir: installDir + ".bklite-backup"}
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		OS:         "windows",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+	}
+	events := []string{}
+
+	err := installWindowsPackageWithProgress(
+		cfg,
+		zipPath,
+		controller,
+		func(step, status, _ string) { events = append(events, step+":"+status) },
+	)
+
+	if err != nil {
+		t.Fatalf("install Windows package: %v", err)
+	}
+	want := []string{
+		"extract_package:running",
+		"extract_package:success",
+		"configure_runtime:running",
+		"configure_runtime:success",
+		"run_package_installer:running",
+		"run_package_installer:success",
+	}
+	if strings.Join(events, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected Windows install progress: got %v, want %v", events, want)
+	}
+}
+
 func TestInstallWindowsPackageRestoresExistingInstallationWhenNewServiceFails(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
 	if err := os.MkdirAll(installDir, 0755); err != nil {

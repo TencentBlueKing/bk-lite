@@ -2,19 +2,21 @@ import React from 'react';
 import { Drawer, DrawerProps } from 'antd';
 import customDrawerStyle from './index.module.scss';
 
-interface CustomDrawerProps
-  extends Omit<DrawerProps, 'title' | 'footer' | 'headerStyle' | 'bodyStyle'> {
+export interface OperateDrawerProps
+  extends Omit<DrawerProps, 'title' | 'footer' | 'headerStyle'> {
   title?: React.ReactNode;
   footer?: React.ReactNode;
   subTitle?: React.ReactNode;
   headerExtra?: React.ReactNode;
 }
 
-const OperateDrawer: React.FC<CustomDrawerProps> = ({
+const OperateDrawer: React.FC<OperateDrawerProps> = ({
   title,
   footer,
   subTitle = '',
   headerExtra,
+  bodyStyle,
+  styles,
   ...drawerProps
 }) => {
   return (
@@ -44,6 +46,13 @@ const OperateDrawer: React.FC<CustomDrawerProps> = ({
           <div className={customDrawerStyle.customDrawerFooter}>{footer}</div>
         ) : undefined
       }
+      styles={{
+        ...styles,
+        body: {
+          ...bodyStyle,
+          ...styles?.body,
+        },
+      }}
       {...drawerProps}
     />
   );

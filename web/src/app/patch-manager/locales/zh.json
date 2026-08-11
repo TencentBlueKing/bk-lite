@@ -208,7 +208,7 @@
       "pending": "待评估",
       "evaluating": "评估中",
       "failed": "评估失败",
-      "unknown": "评估异常/未知",
+      "unknown": "无法判定",
       "not_applicable": "不适用",
       "unconfigured": "未配置",
       "missingCount": "{status} · 缺 {count}"
@@ -288,7 +288,7 @@
       "deleted": "已删除", "connectivityRetestRequired": "连接参数或凭据已修改，请先完成连通性测试", "updated": "目标已更新", "saved": "目标已保存", "selectBaseline": "请选择基线", "baselineBound": "已绑定基线", "selectNodes": "请选择节点", "nodesImported": "已纳入 {count} 台节点",
       "host": "主机", "organization": "组织", "source": "来源", "sourceType": { "node": "节点纳入", "manual": "手动录入" }, "currentBaseline": "当前基线", "complianceStatus": "合规状态", "lastAssessment": "最后评估", "lastCheck": "最后检测",
       "activeTaskBlocked": "该主机有正在执行的任务，请等待完成或取消后再操作", "pendingRebootBlocked": "该主机有待重启补丁，请先完成重启治理后再操作", "bindFirst": "请先绑定基线", "activeTask": "该主机有正在执行的任务", "editInNodeManagement": "节点纳入目标请在节点管理编辑", "connectivityCompleted": "连通性检测完成", "bindBaseline": "绑基线", "assessmentName": "评估 - {name}", "assessmentCreated": "已创建评估任务", "deleteConfirm": "删除后，该目标将退出补丁管理，相关基线绑定、合规数据和待治理风险将一并清除，历史执行记录保留；节点管理中的原始节点不受影响。确定删除吗？",
-      "baseline": "基线", "bulkBindBlocked": "选中主机存在正在执行的任务或待重启状态，请先处理后再绑定基线", "bulkBind": "批量绑定基线", "manualEntry": "手动录入", "nodeImport": "节点纳入", "bindSelection": "已选 {count} 台主机，请选择要绑定的唯一基线：", "bindHelp": "每台主机仅能绑定一个基线；已绑定的将被替换。绑定后主机进入「待评估」，可手动或按全局周期评估。",
+      "baseline": "基线", "bulkBindBlocked": "选中主机存在正在执行的任务或待重启状态，请先处理后再绑定基线", "bulkBindMixedOs": "请选择操作系统相同的主机后再绑定基线", "bulkBindSelectionExpired": "部分已选主机不在当前页，请重新选择后再绑定基线", "bulkBind": "批量绑定基线", "manualEntry": "手动录入", "nodeImport": "节点纳入", "bindSelection": "已选 {count} 台主机，请选择要绑定的唯一基线：", "bindHelp": "每台主机仅能绑定一个基线；已绑定的将被替换。绑定后主机进入「待评估」，可手动或按全局周期评估。",
       "bindAssessmentTitle": "绑定确认 · 评估方式", "bindAndAssess": "确认绑定并评估", "back": "返回", "assessmentModePrompt": "将把 {count} 台主机绑定到 {name}，这些主机将进入「待评估」。请选择评估方式：", "selectedBaseline": "所选基线", "scanNow": "立即扫描", "scanNowHelp": "立即创建评估任务，马上看到合规变化", "cycleScan": "按周期扫描", "cycleScanHelp": "按全局扫描周期评估，无需在此设时间", "assessmentResetHelp": "无论哪种方式，这些主机立即进入「待评估」，旧评估结果过期、不再计入合规率。",
       "editTarget": "编辑目标", "create": "创建", "hostName": "主机名", "hostNameRequired": "请输入主机名", "hostNamePlaceholder": "如 web-03", "ipAddress": "IP 地址", "ipRequired": "请输入 IP 地址", "ipPlaceholder": "如 10.0.1.30", "organizationRequired": "请选择组织", "selectOrganization": "选择组织", "cloudRegion": "云区域", "cloudRegionRequired": "请选择云区域", "selectCloudRegion": "选择云区域",
       "sshPort": "SSH 端口", "sshUser": "SSH 用户名", "sshUserRequired": "请输入 SSH 用户名", "sshUserPlaceholder": "如 root", "sshCredential": "SSH 凭据", "sshPassword": "SSH 密码", "sshPasswordRequired": "请输入 SSH 密码", "uploadedKey": "已上传私钥：{name}", "privateKeyFile": "私钥文件", "replaceKey": "替换私钥", "sshKeyFile": "SSH 私钥文件", "sshKeyRequired": "请上传 SSH 私钥文件", "sshKeyDrop": "点击或拖拽私钥文件到此处",
@@ -325,9 +325,16 @@
       "weeklyTrigger": "全局周期到达（{weekday} {time}）自动评估所有主机",
       "triggerBaselineBound": "主机首次绑定基线后进入待评估", "triggerBaselineChanged": "主机更换基线或基线补丁要求变更后重置为待评估",
       "triggerManual": "页面点击「立即评估」立即执行", "triggerPostRemediation": "安装或重启完成后自动验证",
-      "loading": "加载中...", "globalSchedule": "全局评估周期", "frequency": { "hourly": "每小时", "daily": "每天", "weekly": "每周" },
+      "loading": "加载中...", "globalSchedule": "全局评估周期", "frequency": { "hourly": "每小时", "daily": "每天", "weekly": "每周" }, "frequencyRequired": "请选择评估频率", "hourIntervalRequired": "请输入小时间隔", "hourIntervalRange": "请输入 1 到 24 之间的小时数", "weekdayRequired": "请选择星期", "assessmentTimeRequired": "请选择评估时间",
       "every": "每", "hoursOnce": "小时执行一次", "weekday": { "1": "周一", "2": "周二", "3": "周三", "4": "周四", "5": "周五", "6": "周六", "7": "周日" },
       "enableScheduledAssessment": "启用周期评估", "scheduleHelp": "启用后系统将按周期自动评估所有主机合规状态。关闭后不会自动创建周期评估任务，手动评估不受影响。",
+      "periodicAssessmentNotice": "周期评估通知", "periodicAssessmentNoticeHelp": "周期评估发现不合规主机或评估失败时，按下方方式发送一条汇总通知。全部合规时不通知。",
+      "noticeScheduleDisabled": "周期评估已关闭，通知配置会保留，但暂不生效。",
+      "noticeChannel": "通知方式", "noticeChannelType": "渠道类型", "noticeReceivers": "接收人",
+      "channelType": { "email": "邮件", "enterpriseWechatApp": "企业微信", "enterpriseWechat": "企业微信机器人", "feishu": "飞书机器人", "dingtalk": "钉钉机器人", "customWebhook": "自定义 Webhook", "nats": "NATS" },
+      "selectNoticeChannel": "请选择通知方式", "noticeChannelRequired": "请选择通知方式", "useChannelConfiguration": "使用渠道自身配置",
+      "selectNoticeReceivers": "请选择接收人", "selectChannelFirst": "请先选择通知方式", "noticeReceiversRequired": "请至少选择一位接收人",
+      "deleteNoticeRule": "删除通知方式", "firstNoticeRuleRequired": "至少保留一种通知方式", "insertNoticeRule": "在下方添加通知方式", "noMoreNoticeChannels": "暂无更多可添加的通知方式", "noticeConfigurationIncomplete": "请先完善通知配置",
       "triggerTitle": "什么时候会触发评估", "saveSettings": "保存设置", "scanSettings": "扫描设置"
     }
   }

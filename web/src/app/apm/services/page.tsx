@@ -8,7 +8,6 @@ import {
   BarsOutlined,
   BellOutlined,
   EditOutlined,
-  EllipsisOutlined,
   InboxOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -17,7 +16,6 @@ import {
   Alert,
   Button,
   Drawer,
-  Dropdown,
   Empty,
   Input,
   List,
@@ -30,9 +28,11 @@ import {
   Tag,
   Tooltip,
   Typography,
-  type MenuProps,
   type TableColumnsType,
 } from 'antd';
+import FilterToolbar from '@/components/filter-toolbar';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -492,23 +492,21 @@ export default function ApmServicesPage() {
 
   const selectedApplication = applications.find((item) => item.application_id === namespace);
 
-  const actionMenu = (item: ServiceEnvironmentRow): MenuProps => ({
-    items: [
-      {
-        key: 'org',
-        icon: <EditOutlined aria-hidden="true" />,
-        label: '调整组织',
-        onClick: () => setOrganizationService(services.find((service) => service.id === item.serviceId) ?? null),
-      },
-      {
-        key: 'archive',
-        icon: <InboxOutlined aria-hidden="true" />,
-        danger: true,
-        label: '归档',
-        onClick: () => confirmArchive(item.serviceId, true),
-      },
-    ],
-  });
+  const actionMenuItems = (item: ServiceEnvironmentRow): MoreActionsDropdownItem[] => [
+    {
+      key: 'org',
+      icon: <EditOutlined aria-hidden="true" />,
+      label: '调整组织',
+      onClick: () => setOrganizationService(services.find((service) => service.id === item.serviceId) ?? null),
+    },
+    {
+      key: 'archive',
+      icon: <InboxOutlined aria-hidden="true" />,
+      danger: true,
+      label: '归档',
+      onClick: () => confirmArchive(item.serviceId, true),
+    },
+  ];
 
   const columns: TableColumnsType<ServiceEnvironmentRow> = [
     {
@@ -716,9 +714,11 @@ export default function ApmServicesPage() {
       fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
-          <Dropdown menu={actionMenu(item)} trigger={['click']}>
-            <Button type="text" size="small" icon={<EllipsisOutlined aria-hidden="true" />} aria-label="更多操作" />
-          </Dropdown>
+          <MoreActionsDropdown
+            items={actionMenuItems(item)}
+            ariaLabel="更多操作"
+            stopPropagation
+          />
         </Permission>
       ),
     },
@@ -762,7 +762,7 @@ export default function ApmServicesPage() {
       ) : null}
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center gap-3">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <div className="flex items-center gap-2 border-r border-[var(--color-border)] pr-3">
               <Typography.Text type="secondary" className="!text-xs">视角</Typography.Text>
               <Segmented<ServicePerspective>
@@ -835,7 +835,7 @@ export default function ApmServicesPage() {
                 ) : null}
               </Button>
             </div>
-          </div>
+          </FilterToolbar>
         </ApmSurface>
         {perspective === 'application' ? (
           state === 'ready' ? (

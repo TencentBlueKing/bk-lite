@@ -120,13 +120,18 @@
     },
     {
       "metric_group": "Hardware Status",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_psu_state",
       "display_name": "电源状态",
-      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "Power-supply state of the Edgecore managed switch, normalised to 1=normal / 2=abnormal."

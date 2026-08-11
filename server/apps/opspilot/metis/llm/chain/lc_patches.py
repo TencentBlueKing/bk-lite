@@ -84,6 +84,46 @@ def _patched_create_chat_result(self, response, generation_info=None):
                 if isinstance(gen_msg, AIMessage) and "reasoning_content" not in gen_msg.additional_kwargs:
                     gen_msg.additional_kwargs["reasoning_content"] = rc
 
+    # MiniMax 等兼容网关:model_dump 后 usage 可能变空/全 0,但从原始 response.usage
+    # 仍能读到 prompt_tokens/completion_tokens。这里回填到 AIMessage。
+    raw_usage = getattr(response, "usage", None)
+    if raw_usage is not None and result.generations:
+        prompt = getattr(raw_usage, "prompt_tokens", None)
+        completion = getattr(raw_usage, "completion_tokens", None)
+        total = getattr(raw_usage, "total_tokens", None)
+        if prompt is None and isinstance(raw_usage, dict):
+            prompt = raw_usage.get("prompt_tokens")
+            completion = raw_usage.get("completion_tokens")
+            total = raw_usage.get("total_tokens")
+        try:
+            prompt_i = int(prompt or 0)
+            completion_i = int(completion or 0)
+            total_i = int(total or 0) or (prompt_i + completion_i)
+        except (TypeError, ValueError):
+            prompt_i = completion_i = total_i = 0
+        if prompt_i or completion_i or total_i:
+            for generation in result.generations:
+                gen_msg = generation.message
+                if not isinstance(gen_msg, AIMessage):
+                    continue
+                existing = getattr(gen_msg, "usage_metadata", None) or {}
+                existing_total = int(existing.get("total_tokens") or 0) if isinstance(existing, dict) else 0
+                existing_input = int(existing.get("input_tokens") or existing.get("prompt_tokens") or 0) if isinstance(existing, dict) else 0
+                if existing_total or existing_input:
+                    continue
+                gen_msg.usage_metadata = {
+                    "input_tokens": prompt_i,
+                    "output_tokens": completion_i,
+                    "total_tokens": total_i,
+                }
+                metadata = dict(getattr(gen_msg, "response_metadata", None) or {})
+                metadata["token_usage"] = {
+                    "prompt_tokens": prompt_i,
+                    "completion_tokens": completion_i,
+                    "total_tokens": total_i,
+                }
+                gen_msg.response_metadata = metadata
+
     return result
 
 
