@@ -46,6 +46,18 @@ pnpm type-check
 pnpm storybook # :6006
 ```
 
+### APM 数据面（仓库根目录）
+
+```bash
+make apm-up       # 启动参考 Collector/NATS/VictoriaTraces 数据面
+make apm-ps       # 查看状态
+make apm-logs     # 跟随日志
+make apm-down     # 停止数据面
+make apm-test     # Collector 单元测试
+make apm-validate # Compose 与 Collector 配置校验
+make apm-contract # 真实 SDK 全链路容器契约
+```
+
 ### Mobile（`mobile/`）
 ```bash
 pnpm dev            # :3001
@@ -114,7 +126,7 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 | `INSTALL_APPS` | 逗号分隔的加载 app(空=全加载) |
 | `NEXTAPI_URL` | 前端访问后端的 API 地址 |
 
-模板:`server/envs/.env.example`、`server/support-files/env/*.example`、`web/.env.example`、`agents/stargazer/.env.example`、K8s `secret.*.template`。
+模板:`server/envs/.env.example`、`server/support-files/env/*.example`（APM 使用 `.env.apm.example`）、`web/.env.example`、`agents/stargazer/.env.example`、K8s `secret.*.template`。
 > 新增 env 走 `os.getenv` 默认值,不改 `.env.example`(易冲突,见团队约定)。
 
 ## 5. Runbook（常见故障）

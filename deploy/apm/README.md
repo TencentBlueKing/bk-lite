@@ -10,8 +10,9 @@ OTel SDK / Agent
   -> VictoriaTraces
 ```
 
-APM 不使用 VictoriaMetrics，不生成 Span Metrics，不做尾采样，也不再部署独立 APM Edge
-Nginx。`/telegraf/api` 仍只属于 Monitor 的 Telegraf Influx 接口。
+APM 不使用 VictoriaMetrics，不生成 Span Metrics，不做尾采样，也不包含独立 APM Edge
+Nginx。`/telegraf/api` 仍只属于 Monitor 的 Telegraf Influx 接口。APM 从未正式部署，本文只
+描述首次生产上线，不存在旧 APM 数据面迁移。
 
 ## 目录与角色
 
@@ -42,22 +43,30 @@ Subject；中心凭据只需要 Stream/Consumer info、pull、ACK 与 inbox。`a
 
 ## 启动与配置
 
-复制 `.env.example` 的变量到受管部署环境。文件中的 `replace-me` 和 Compose 的默认密码仅供
-隔离本地契约，禁止用于共享或生产环境；生产凭据、CA 和客户端证书必须由 Secret/环境注入。
+复制 `.env.example` 的变量到受管数据面部署环境。Server 运行期健康探测使用
+[`server/support-files/env/.env.apm.example`](../../server/support-files/env/.env.apm.example)
+作为正式模板；这些 endpoint 只由运行期任务使用，不参与 Server 启动。文件中的 `replace-me`
+和 Compose 的默认密码仅供隔离本地契约，禁止用于共享或生产环境；生产凭据、CA 和客户端
+证书必须由 Secret/环境注入。
 
 ```bash
-docker compose -f deploy/apm/compose.yaml up -d --wait
+make apm-up
 ```
 
-区域 Collector 的宿主机绑定默认是 `127.0.0.1:4317/4318`。生产应把
-`APM_OTLP_GRPC_BIND`、`APM_OTLP_HTTP_BIND` 配置为区域内受控地址，并把 NodeMgmt 中该云区域
-受信代理地址的 4318 映射到 HTTP receiver；直连区域未设置代理地址时，Server 会从该区域
-`NODE_SERVER_URL` 提取主机名。Server 固定生成
+区域 Collector 的宿主机绑定默认是 `127.0.0.1:4317/4318`。受管 NodeMgmt 区域代理发布包已
+包含区域 Collector、持久队列和宿主机 4318 映射；自定义代理部署仍必须把该云区域受信代理
+地址的 4318 映射到区域 Collector，并用防火墙/安全组限制为受信区域内网来源。直连区域未设置
+代理地址时，Server 会从该区域 `NODE_SERVER_URL` 提取主机名。Server 固定生成
 `http://<receiver_host>:4318/v1/traces`，不得通过浏览器提交 endpoint。4317 保留给手工 gRPC
-接入兼容，普通接入页面不展示。VT 默认保留 35 天，覆盖产品 30 天/月历月 SLO 窗口。
+接入兼容，普通接入页面不展示。当前不提供应用级 Token，公网、跨租户或其他不受信网络接入
+不受支持；完整边界见 [ADR 0008](../../docs/adr/0008-apm-trusted-regional-ingress.md)。VT 默认保留
+35 天，覆盖产品 30 天/月历月 SLO 窗口。
 
-本地 Stream/Consumer 创建是幂等的“存在则复用、缺失则创建”。生产升级不能只跳过已存在
-对象：运维必须对照以下边界检查漂移，再显式 edit/reconcile：
+Server 生成受管代理安装包时会为区域 Collector 创建独立随机 NATS 密码；本地 NATS 账号只
+允许发布该区域的 `apm.traces.<cloud_region_id>` 并订阅 ACK inbox，不复用管理员账号。
+
+本地 Stream/Consumer 创建是幂等的“存在则复用、缺失则创建”。首次生产声明遇到同名对象时
+不能只跳过：运维必须对照以下边界检查漂移，再显式 edit/reconcile：
 
 - Stream：file/limits/discard-old、max bytes、max age、8 MiB 单消息、duplicate window；
 - Consumer：durable pull、AckExplicit、ack wait、max deliver、max ack pending；
@@ -94,20 +103,19 @@ docker compose -f deploy/apm/compose.yaml up -d --wait
 ## 验证
 
 ```bash
-make -C deploy/apm/collector test
-make -C deploy/apm/collector validate
-
-RUN_APM_CONTAINER_CONTRACT=1 \
-  server/.venv/bin/python -m pytest -q deploy/apm/tests/test_data_plane_contract.py
+make apm-test
+make apm-validate
+make apm-contract
 ```
 
 容器契约使用独立 Compose project、随机宿主端口和独立卷，验证 OTLP/HTTP 与 gRPC 入口、
-JetStream 持久化/ACK、VT 查询、保留字段清理和重复批次去重；结束后只删除自己创建的资源。
+JetStream 持久化/ACK、VT 查询、保留字段清理和重复批次去重；还会执行 Server 生成的配置并
+由真实 Python OpenTelemetry SDK 发出 Trace。结束后只删除自己创建的资源。
 
-## 启动与迁移边界
+## 启动与首次上线边界
 
 该数据面不是 `batch_init`、迁移、API、Worker、Beat 或 Listener 的启动依赖。NATS、Collector
-或 VT 不可用只使 APM 运行期 degraded，不能阻断 Server 启动。升级时先部署 Stream/中心/VT，
-再逐区域切换 4317/4318，最后停止旧 Edge、tail sampling 和 APM Span Metrics 写读。不得删除或
-修改 Monitor 的 VictoriaMetrics 数据与配置；旧镜像和路由至少保留一个发布窗口用于回滚。
-逐步升级、验证、回滚和可恢复清理步骤见 [MIGRATION.md](./MIGRATION.md)。
+或 VT 不可用只使 APM 运行期 degraded，不能阻断 Server 启动。首次上线先部署 Stream、VT 和
+系统级 Collector，再用单个区域验证 4318 与真实 SDK 链路，最后逐区域开放并发布 Server/Web。
+回滚只安全关闭或回退本次上线的正式组件，不恢复 Edge、APM VictoriaMetrics、spanmetrics 或
+tail sampling。完整门禁、顺序、验收与回滚见 [ROLLOUT.md](./ROLLOUT.md)。

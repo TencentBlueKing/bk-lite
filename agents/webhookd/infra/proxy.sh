@@ -35,9 +35,11 @@ INSTALL_PATH="${INSTALL_PATH:-/opt/bk-lite/proxy}"
 PROXY_IP=$(get proxy_ip)
 MONITOR_USER=$(get nats_monitor_username)
 MONITOR_PASS=$(get nats_monitor_password)
+APM_NATS_USER=$(get apm_nats_username)
+APM_NATS_PASS=$(get apm_nats_password)
 TRAEFIK_WEB_PORT=$(get traefik_web_port)
 
-for p in node_id zone_id zone_name server_url nats_url nats_username nats_password api_token redis_password proxy_ip nats_monitor_username nats_monitor_password traefik_web_port; do
+for p in node_id zone_id zone_name server_url nats_url nats_username nats_password api_token redis_password proxy_ip nats_monitor_username nats_monitor_password apm_nats_username apm_nats_password traefik_web_port; do
     [ -n "$(get $p)" ] || die "missing $p"
 done
 
@@ -97,6 +99,8 @@ export SIDECAR_NODE_NAME="${NODE_ID}"
 export SIDECAR_INIT_TOKEN="${API_TOKEN}"
 export NATS_ADMIN_USERNAME="${NATS_USER}"
 export NATS_ADMIN_PASSWORD="${NATS_PASS}"
+export APM_NATS_USERNAME="${APM_NATS_USER}"
+export APM_NATS_PASSWORD="${APM_NATS_PASS}"
 export REDIS_PASSWORD="${REDIS_PASS}"
 export TRAEFIK_WEB_PORT
 
@@ -106,6 +110,7 @@ export REMOTE_HOST="${NATS_HOST}"
 export REMOTE_NATS_PORT="${NATS_PORT}"
 export NATS_MONITOR_USERNAME="${MONITOR_USER}"
 export NATS_MONITOR_PASSWORD="${MONITOR_PASS}"
+export APM_NATS_USERNAME APM_NATS_PASSWORD
 
 envsubst < "$WORK/conf/nats/nats.conf.template" > "$WORK/conf/nats/nats.conf"
 
@@ -120,7 +125,7 @@ INSTALL_PATH="__INSTALL_PATH__"
 ARCHIVE="__ARCHIVE__"
 mkdir -p "$INSTALL_PATH"
 echo "$ARCHIVE" | base64 -d | tar -xzf - -C "$INSTALL_PATH"
-chmod 600 "$INSTALL_PATH/conf/certs/proxy.key" "$INSTALL_PATH/conf/traefik/certs/proxy.key"
+chmod 600 "$INSTALL_PATH/.env" "$INSTALL_PATH/conf/certs/proxy.key" "$INSTALL_PATH/conf/traefik/certs/proxy.key"
 cd "$INSTALL_PATH" && ./bootstrap.sh
 SCRIPT
 )

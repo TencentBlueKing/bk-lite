@@ -52,6 +52,68 @@ services:
       - 6343:6343/udp
     restart: always
 
+  apm-regional-queue-init:
+    image: ${DOCKER_IMAGE_APM_QUEUE_INIT}
+    restart: "no"
+    user: "0:0"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        chown 65532:65532 /var/lib/otelcol/queue
+        chmod 0700 /var/lib/otelcol/queue
+    network_mode: none
+    read_only: true
+    volumes:
+      - apm-regional-queue:/var/lib/otelcol/queue
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+
+  apm-regional-collector:
+    image: ${DOCKER_IMAGE_APM_COLLECTOR}
+    restart: always
+    user: "65532:65532"
+    command:
+      - --config=/etc/bklite-apm/regional.yaml
+    depends_on:
+      nats:
+        condition: service_started
+      apm-regional-queue-init:
+        condition: service_completed_successfully
+    environment:
+      APM_CLOUD_REGION_ID: ${ZONE_ID}
+      APM_NATS_URL: tls://${APM_NATS_USERNAME}:${APM_NATS_PASSWORD}@nats:4222
+      APM_NATS_CREDENTIALS_FILE: ""
+      APM_NATS_CA_FILE: /etc/nats/certs/ca.crt
+      APM_NATS_CERT_FILE: ""
+      APM_NATS_KEY_FILE: ""
+      APM_NATS_TLS_SERVER_NAME: nats
+      APM_NATS_MAX_MESSAGE_BYTES: "8388608"
+      APM_COLLECTOR_MEMORY_LIMIT_MIB: "384"
+      APM_COLLECTOR_MEMORY_SPIKE_MIB: "96"
+      APM_TRACE_BATCH_SIZE: "256"
+      APM_TRACE_BATCH_MAX_SIZE: "512"
+      APM_REGIONAL_QUEUE_MAX_BYTES: "1073741824"
+    ports:
+      # 生产宿主机防火墙/安全组必须把 4318 限制为受信区域内网来源。
+      - "4318:4318"
+    volumes:
+      - ./conf/apm/regional.yaml:/etc/bklite-apm/regional.yaml:ro
+      - ./conf/certs:/etc/nats/certs:ro
+      - apm-regional-queue:/var/lib/otelcol/queue
+    networks:
+      - prod
+    mem_limit: 512m
+    cpus: 1.00
+    security_opt:
+      - no-new-privileges:true
+
   traefik:
     image: ${DOCKER_IMAGE_TRAEFIK}
     restart: always
@@ -117,3 +179,4 @@ services:
 volumes:
   nats:
   redis:
+  apm-regional-queue:
