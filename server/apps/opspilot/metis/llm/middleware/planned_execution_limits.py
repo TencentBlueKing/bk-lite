@@ -259,7 +259,9 @@ async def ask_limit_continue(
     if not isinstance(configurable, dict):
         configurable = {}
     execution_id = str(configurable.get("execution_id") or "") or str(int(time.time() * 1000))
-    node_id = str(configurable.get("node_id") or "deep_agent")
+    # 与 request_user_choice / submit_choice 的 skill_test 兜底保持一致：
+    # 技能本地测试不写 WorkFlowTaskResult，node_id=deep_agent 会导致提交 404。
+    node_id = str(configurable.get("node_id") or "skill_test")
     choice_id = str(uuid.uuid4())[:8]
 
     if kind == "token_budget":

@@ -775,14 +775,16 @@ def submit_choice(request):  # pragma: no cover
         .first()
     )
     if not task_result:
-        if node_id != "skill_test":
+        # skill_test：技能本地测试；deep_agent：历史默认 node_id（已发出的选择卡仍需可提交）
+        if node_id not in {"skill_test", "deep_agent"}:
             return JsonResponse(
                 {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
                 status=404,
             )
         logger.warning(
-            "Local skill test choice submitted without workflow task result: execution_id=%s, choice_id=%s",
+            "Local skill test choice submitted without workflow task result: execution_id=%s, node_id=%s, choice_id=%s",
             execution_id,
+            node_id,
             choice_id,
         )
 

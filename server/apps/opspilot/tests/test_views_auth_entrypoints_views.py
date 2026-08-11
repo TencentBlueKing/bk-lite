@@ -945,6 +945,30 @@ class TestSubmitChoice:
             selected=["opt1"],
         )
 
+    def test_deep_agent_limit_choice_without_workflow_task_result_is_allowed(self, request_factory, mocker):
+        """技能测试触达模型次数上限时 historically 用 node_id=deep_agent，仍须可提交。"""
+        _stub_valid_token(mocker, team=99)
+        mocker.patch.object(views, "extract_api_token", return_value="tok")
+        qs_mock = mocker.MagicMock()
+        qs_mock.order_by.return_value.first.return_value = None
+        mocker.patch.object(views.WorkFlowTaskResult.objects, "filter", return_value=qs_mock)
+        submit = mocker.patch("apps.opspilot.utils.user_choice.submit_user_choice")
+
+        request = _make_request(
+            request_factory,
+            token="Bearer tok",
+            body={"execution_id": "e1", "node_id": "deep_agent", "choice_id": "c1", "selected": ["continue"]},
+        )
+        resp = views.submit_choice(request)
+
+        assert resp.status_code == 200
+        submit.assert_called_once_with(
+            execution_id="e1",
+            node_id="deep_agent",
+            choice_id="c1",
+            selected=["continue"],
+        )
+
     # --- field validation ---
 
     def test_missing_fields_returns_400(self, request_factory, mocker):

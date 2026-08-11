@@ -69,6 +69,32 @@ def _split_text_deltas(text: str, max_chars: int = _AGUI_LIVE_DELTA_CHARS) -> li
     return [value[i : i + max_chars] for i in range(0, len(value), max_chars)]
 
 
+def _record_emitted_text_signatures(encoded_events: list[str], signatures: set[str]) -> str:
+    """从已编码的 SSE 事件里登记正文指纹。
+
+    `_emit_assistant_text_message` 会把长文拆成多段 TEXT_MESSAGE_CONTENT；
+    若只登记各段 delta，后续 on_chain_end 用整段 AIMessage.content 比对会落空，
+    再把同一份回答发一遍。这里同时登记分段与拼接后的全文。
+    """
+    parts: list[str] = []
+    for ev in encoded_events or []:
+        if "TEXT_MESSAGE_CONTENT" not in ev:
+            continue
+        try:
+            payload = json.loads(ev.split("data: ", 1)[1])
+        except (json.JSONDecodeError, IndexError):
+            continue
+        content = payload.get("delta") or ""
+        if not content:
+            continue
+        signatures.add(content)
+        parts.append(content)
+    full = "".join(parts)
+    if full:
+        signatures.add(full)
+    return full
+
+
 def _is_hidden_builtin_tool(tool_name: str) -> bool:
     """该工具是否为应在 AG-UI 流中隐藏的 deepagents 内置工具。"""
     import os
@@ -180,6 +206,7 @@ async def _merge_async_streams(
     browser_task = asyncio.create_task(browser_event_consumer())
 
     langgraph_done = False
+    langgraph_error: Exception | None = None
 
     try:
         while True:
@@ -209,16 +236,20 @@ async def _merge_async_streams(
         stop_event.set()
         browser_task.cancel()
 
-        # 等待任务完成
+        # 等待任务完成。旧逻辑 `except Exception: pass` 会吞掉轻量直答/节点内
+        # LLM 失败，表现为 RUN_STARTED→RUN_FINISHED、无正文、llm_call_count=0。
         try:
             await langgraph_task
-        except Exception:
-            pass
+        except Exception as e:
+            langgraph_error = e
 
         try:
             await browser_task
         except asyncio.CancelledError:
             pass
+
+    if langgraph_error is not None:
+        raise langgraph_error
 
 
 def create_browser_step_callback(
@@ -956,13 +987,21 @@ class BasicGraph(ABC):
         encoder: EventEncoder,
         current_tool_calls: Dict[str, Dict],
     ) -> tuple[list[str], bool, Optional[AIMessage]]:
-        """遍历 messages，补齐缺失的工具 START，并回填 RESULT。"""
+        """遍历 messages，补齐缺失的工具 START，并回填 RESULT。
+
+        返回的 AIMessage 优先取「工具结果之后」的最终回答；若本轮无工具
+        （轻量直答寒暄），则回退为最后一条带正文的 AIMessage，避免 chain_end
+        丢弃纯文本导致前端空白。
+        """
         events: list[str] = []
         emitted_tool_result = False
         latest_ai_message_after_tool_result: Optional[AIMessage] = None
+        latest_plain_ai_message: Optional[AIMessage] = None
 
         for message in messages:
             if isinstance(message, AIMessage):
+                if getattr(message, "content", "") or "":
+                    latest_plain_ai_message = message
                 if emitted_tool_result and (getattr(message, "content", "") or ""):
                     latest_ai_message_after_tool_result = message
                 continue
@@ -1016,6 +1055,9 @@ class BasicGraph(ABC):
             tool_info["result_sent"] = True
             emitted_tool_result = True
             latest_ai_message_after_tool_result = None
+
+        if latest_ai_message_after_tool_result is None and not emitted_tool_result:
+            latest_ai_message_after_tool_result = latest_plain_ai_message
 
         return events, emitted_tool_result, latest_ai_message_after_tool_result
 
@@ -1124,6 +1166,8 @@ class BasicGraph(ABC):
                 allow_non_streaming_text=True,
             ):
                 events.append(ev)
+            if content:
+                emitted_text_signatures.add(content)
 
         return events
 
@@ -1238,6 +1282,7 @@ class BasicGraph(ABC):
         turn_saw_tool_call_chunks = False
         turn_plain_text_chunks = 0
         turn_text_live = False
+        live_turn_emitted_text = ""
         pending_turn_strip_key = "__pending_turn__"
         output_truncated = False
         # 跨 streaming chunk 的 phantom tool call strip buffer。
@@ -1248,6 +1293,8 @@ class BasicGraph(ABC):
         # 时)与 on_chain_end 的 output.messages 里的同一份 AIMessage 会重复 emit。
         # 而且父/子图会多次触发 on_chain_end,都带同一份文本,所以用内容指纹去重:
         # 任何源 emit 过这份文本后,后续 chain_end 再遇到相同内容就跳过。
+        # 注意:长文会被拆成多段 delta,必须同时登记「全文」指纹,否则 chain_end
+        # 用整段 content 比对会落空,前端就会看到同一段回答出现两次。
         emitted_text_signatures: set[str] = set()
         show_think = bool((request.extra_config or {}).get("show_think", True))
         execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
@@ -1327,6 +1374,7 @@ class BasicGraph(ABC):
                         pending_turn_text = ""
                         turn_plain_text_chunks = 0
                         turn_text_live = False
+                        live_turn_emitted_text = ""
                     for ev in tool_chunk_events:
                         yield ev
 
@@ -1365,15 +1413,9 @@ class BasicGraph(ABC):
                                 message_started=message_started,
                             )
                             for ev in live_events:
-                                if "TEXT_MESSAGE_CONTENT" in ev:
-                                    try:
-                                        payload = json.loads(ev.split("data: ", 1)[1])
-                                        content = payload.get("delta") or ""
-                                        if content:
-                                            emitted_text_signatures.add(content)
-                                    except (json.JSONDecodeError, IndexError):
-                                        pass
                                 yield ev
+                            _record_emitted_text_signatures(live_events, emitted_text_signatures)
+                            live_turn_emitted_text += pending_turn_text
                             pending_turn_text = ""
                             turn_text_live = True
 
@@ -1433,16 +1475,12 @@ class BasicGraph(ABC):
                                 message_started=message_started,
                             )
                             for ev in live_events:
-                                if "TEXT_MESSAGE_CONTENT" in ev:
-                                    try:
-                                        payload = json.loads(ev.split("data: ", 1)[1])
-                                        content = payload.get("delta") or ""
-                                        if content:
-                                            emitted_text_signatures.add(content)
-                                    except (json.JSONDecodeError, IndexError):
-                                        pass
                                 yield ev
+                            _record_emitted_text_signatures(live_events, emitted_text_signatures)
+                            live_turn_emitted_text += pending_turn_text
                             pending_turn_text = ""
+                        if live_turn_emitted_text:
+                            emitted_text_signatures.add(live_turn_emitted_text)
                         if message_started and current_message_id is not None:
                             yield encoder.encode(
                                 TextMessageEndEvent(
@@ -1476,23 +1514,16 @@ class BasicGraph(ABC):
                         allow_non_streaming_text=allow_non_streaming_text,
                         fallback_text=fallback_text,
                     )
-                    # 收集本轮 chat_model_end 实际 emit 的文本指纹,
+                    # 收集本轮 chat_model_end 实际 emit 的文本指纹(含拆段后的全文),
                     # 后续 on_chain_end 若再 emit 相同内容会基于此集合去重。
-                    for ev in chat_model_end_events:
-                        if "TEXT_MESSAGE_CONTENT" in ev:
-                            try:
-                                payload = json.loads(ev.split("data: ", 1)[1])
-                                content = payload.get("delta") or ""
-                                if content:
-                                    emitted_text_signatures.add(content)
-                            except (json.JSONDecodeError, IndexError):
-                                pass
+                    _record_emitted_text_signatures(chat_model_end_events, emitted_text_signatures)
                     for ev in chat_model_end_events:
                         yield ev
                     pending_turn_text = ""
                     turn_saw_tool_call_chunks = False
                     turn_plain_text_chunks = 0
                     turn_text_live = False
+                    live_turn_emitted_text = ""
                     message_started = False
                     tool_result_seen_since_model_end = False
 
@@ -1505,16 +1536,9 @@ class BasicGraph(ABC):
                         current_tool_calls,
                         emitted_text_signatures,
                     )
-                    # 把本次 chain_end emit 的文本也加入指纹,防止后续 chain_end 再发一遍
+                    # 把本次 chain_end emit 的文本也加入指纹(含拆段全文),防止后续 chain_end 再发一遍
+                    _record_emitted_text_signatures(chain_events, emitted_text_signatures)
                     for ev in chain_events:
-                        if "TEXT_MESSAGE_CONTENT" in ev:
-                            try:
-                                payload = json.loads(ev.split("data: ", 1)[1])
-                                content = payload.get("delta") or ""
-                                if content:
-                                    emitted_text_signatures.add(content)
-                            except (json.JSONDecodeError, IndexError):
-                                pass
                         yield ev
 
                 elif event_type == "on_custom_event":
