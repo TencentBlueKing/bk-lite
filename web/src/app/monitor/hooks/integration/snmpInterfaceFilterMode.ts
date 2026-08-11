@@ -34,7 +34,8 @@ export const resolveSnmpInterfaceFilterMode = (values: {
 };
 
 export const getSnmpInterfaceFilterModePatch = (
-  changedValues: Record<string, unknown>
+  changedValues: Record<string, unknown>,
+  defaultIfTypeExclude: unknown = DEFAULT_SNMP_IFTYPE_EXCLUDE
 ): Record<string, unknown> => {
   const mode = changedValues.interface_filter_mode as SnmpInterfaceFilterMode | undefined;
   if (!mode) return {};
@@ -51,7 +52,9 @@ export const getSnmpInterfaceFilterModePatch = (
   );
   // 切回“排除部分”时恢复产品默认的虚拟接口排除，避免策略名称与实际规则不一致。
   if (mode === 'exclude') {
-    patch.iftype_exclude = DEFAULT_SNMP_IFTYPE_EXCLUDE;
+    patch.iftype_exclude = Array.isArray(defaultIfTypeExclude)
+      ? defaultIfTypeExclude.map((value) => String(value).trim()).filter(Boolean)
+      : DEFAULT_SNMP_IFTYPE_EXCLUDE;
   }
   return patch;
 };
