@@ -89,3 +89,17 @@ def test_audit_command_strict_preflight_rejects_malformed_conditions():
 
     with pytest.raises(CommandError, match="uncovered=1"):
         call_command("audit_log_group_rule_modes", format="jsonl", fail_on_uncovered=True, stdout=io.StringIO())
+
+
+def test_audit_command_strict_preflight_rejects_logs_query_injection_rule():
+    LogGroup.objects.create(
+        id="g-injection",
+        name="injection",
+        rule={
+            "mode": "AND",
+            "conditions": [{"field": "cluster", "op": "==", "value": 'prod") OR (*) OR (cluster:"prod'}],
+        },
+    )
+
+    with pytest.raises(CommandError, match="uncovered=1"):
+        call_command("audit_log_group_rule_modes", format="jsonl", fail_on_uncovered=True, stdout=io.StringIO())

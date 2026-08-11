@@ -70,12 +70,33 @@ def test_json_to_logsql_unknown_mode_raises():
 def test_json_to_logsql_contains_escapes_regex():
     rule = {"conditions": [{"field": "msg", "op": "contains", "value": "a.b"}]}
     out = LogGroupQueryBuilder.json_to_logsql_expression(rule)
-    assert out == 'msg:re(".*a\\.b.*")'
+    assert out == r'msg:re(".*a\\.b.*")'
 
 
 def test_json_to_logsql_not_contains():
     rule = {"conditions": [{"field": "msg", "op": "!contains", "value": "x"}]}
     assert LogGroupQueryBuilder.json_to_logsql_expression(rule) == '!msg:re(".*x.*")'
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"field": 'cluster") OR (*)', "op": "==", "value": "prod"},
+        {"field": "cluster", "op": "==", "value": 'prod") OR (*)'},
+        {"field": "cluster", "op": "startswith", "value": "prod* OR (*)"},
+    ],
+)
+def test_json_to_logsql_rejects_values_that_can_change_query_structure(condition):
+    with pytest.raises(ValueError, match="LogsQL syntax"):
+        LogGroupQueryBuilder.json_to_logsql_expression({"conditions": [condition]})
+
+
+def test_json_to_logsql_legacy_mode_preserves_previous_unescaped_expression():
+    rule = {"conditions": [{"field": "cluster", "op": "==", "value": 'prod") OR (*)'}]}
+
+    expression = LogGroupQueryBuilder.json_to_logsql_expression(rule, preserve_legacy_structure=True)
+
+    assert expression == 'cluster:"prod") OR (*)"'
 
 
 def test_json_to_logsql_unsupported_op_raises():

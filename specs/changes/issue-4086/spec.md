@@ -6,11 +6,11 @@
 
 ## 修复方案
 
-- 写入端仅接受大小写不敏感的 `AND` / `OR`，缺省仍为 `AND`。
+- 写入端仅接受大小写不敏感的 `AND` / `OR`，缺省仍为 `AND`；字段名和值在拼接 LogsQL 前按字面量编码，并拒绝可跳出旧引号/通配符上下文的语法字符。
 - 读取端 `strict` 模式对未知值和 falsey 非对象规则 fail-closed，并在查询分组信息中标记 `invalid_rule`。
 - 为已盘点且明确需要短期维持旧行为的历史分组提供按 ID 显式配置的兼容列表；只有列表内的历史未知字符串才按旧 `OR` 解释，并标记 `legacy_or`。
 - 提供只读盘点命令，按稳定主键分批扫描，仅输出分组 ID、名称、创建人、组织范围和分类，不输出完整规则值。
-- 滚动升级先将新版本设为 `LOG_GROUP_RULE_MODE_ENFORCEMENT=legacy`：新 writer 已拒绝坏规则，新 reader 与旧 reader 保持相同语义；等旧 writer 全部排空后再盘点。falsey 非对象规则必须修正，未知字符串必须修正或加入 `LOG_GROUP_LEGACY_OR_GROUP_IDS`；`audit_log_group_rule_modes --fail-on-uncovered` 通过后才滚动切换 `strict`。
+- 滚动升级先将新版本设为 `LOG_GROUP_RULE_MODE_ENFORCEMENT=legacy`：新 writer 已拒绝坏规则，新 reader 与旧 reader 保持相同语义；等旧 writer 全部排空后再盘点。falsey 非对象、畸形结构及可改变 LogsQL 结构的字段/值必须修正，未知字符串必须修正或加入 `LOG_GROUP_LEGACY_OR_GROUP_IDS`；`audit_log_group_rule_modes --fail-on-uncovered` 通过后才滚动切换 `strict`。
 - 切换 `strict` 后先把某分组修正为合法规则，再移除其兼容 ID。回滚前重新运行严格预检；未覆盖项为零时可先切回 `legacy` 再回滚旧镜像，数据库无需逆向迁移。
 
 ## 测试方案

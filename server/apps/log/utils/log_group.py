@@ -1,3 +1,6 @@
+import json
+import re
+
 from django.conf import settings
 
 from apps.core.logger import log_logger as logger
@@ -14,6 +17,9 @@ class LogGroupQueryBuilder:
     MODE_LEGACY_EMPTY_RULE = "legacy_empty_rule"
     MODE_INVALID = "invalid"
     SUPPORTED_OPERATIONS = frozenset({"==", "!=", "contains", "!contains", "startswith", "endswith"})
+    SAFE_FIELD_PATTERN = re.compile(r"^[A-Za-z_@][A-Za-z0-9_.@/-]*$")
+    UNSAFE_QUOTED_VALUE_PATTERN = re.compile(r'["\\\x00-\x1f\x7f]')
+    SAFE_WILDCARD_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9_.@/-]+$")
 
     @classmethod
     def classify_rule_mode(cls, rule_json):
@@ -57,6 +63,14 @@ class LogGroupQueryBuilder:
                 raise ValueError("Rule condition op is unsupported")
             if condition["value"] is None or isinstance(condition["value"], (dict, list)):
                 raise ValueError("Rule condition value must be a scalar")
+            if not cls.SAFE_FIELD_PATTERN.fullmatch(condition["field"]):
+                raise ValueError("Rule condition field contains unsupported LogsQL syntax")
+
+            value_text = str(condition["value"])
+            if cls.UNSAFE_QUOTED_VALUE_PATTERN.search(value_text):
+                raise ValueError("Rule condition value contains unsupported LogsQL syntax")
+            if condition["op"] in {"startswith", "endswith"} and not cls.SAFE_WILDCARD_VALUE_PATTERN.fullmatch(value_text):
+                raise ValueError("Rule wildcard condition value contains unsupported LogsQL syntax")
 
         return mode, used_legacy_or
 
@@ -103,36 +117,68 @@ class LogGroupQueryBuilder:
         return False
 
     @classmethod
-    def json_to_logsql_expression(cls, rule_json, *, allow_legacy_or=False, preserve_legacy_structure=False):
-        """将规则JSON转换为VictoriaLogs LogsQL表达式"""
+    def _encode_logsql_field(cls, field):
+        """把字段名编码为 LogsQL 字段标识符，防止字段名改变查询结构。"""
+        if cls.SAFE_FIELD_PATTERN.fullmatch(field):
+            return field
+        return cls._encode_logsql_string(field)
 
+    @staticmethod
+    def _encode_logsql_string(value):
+        """按 LogsQL 双引号字符串规则编码不可信字面量。"""
+        return json.dumps(str(value), ensure_ascii=False)
+
+    @staticmethod
+    def _escape_regex_value(value):
+        """把不可信值转换为只匹配其字面量的正则片段。"""
+        return re.escape(str(value))
+
+    @classmethod
+    def _strict_operation_map(cls):
+        def regex_filter(field, pattern, *, negate=False):
+            prefix = "!" if negate else ""
+            return f"{prefix}{cls._encode_logsql_field(field)}:re({cls._encode_logsql_string(pattern)})"
+
+        return {
+            "==": lambda field, value: (
+                f"{cls._encode_logsql_field(field)}:{cls._encode_logsql_string(value)}"
+            ),
+            "!=": lambda field, value: (
+                f"!{cls._encode_logsql_field(field)}:{cls._encode_logsql_string(value)}"
+            ),
+            "contains": lambda field, value: regex_filter(
+                field, f".*{cls._escape_regex_value(value)}.*"
+            ),
+            "!contains": lambda field, value: regex_filter(
+                field, f".*{cls._escape_regex_value(value)}.*", negate=True
+            ),
+            "startswith": lambda field, value: (
+                f"{cls._encode_logsql_field(field)}:{value}*"
+            ),
+            "endswith": lambda field, value: f"{cls._encode_logsql_field(field)}:*{value}",
+        }
+
+    @staticmethod
+    def _legacy_operation_map():
         def escape_regex_value(value):
-            """转义正则表达式中的特殊字符"""
-            # 转义正则表达式特殊字符
             special_chars = r"\.^$*+?{}[]|()"
             escaped = str(value)
             for char in special_chars:
                 escaped = escaped.replace(char, "\\" + char)
             return escaped
 
-        def build_contains_query(field, value):
-            """构建包含查询，使用正则表达式"""
-            escaped_value = escape_regex_value(value)
-            return f'{field}:re(".*{escaped_value}.*")'
-
-        def build_not_contains_query(field, value):
-            """构建不包含查询，使用正则表达式"""
-            escaped_value = escape_regex_value(value)
-            return f'!{field}:re(".*{escaped_value}.*")'
-
-        op_map = {
-            "==": lambda f, v: f'{f}:"{v}"',
-            "!=": lambda f, v: f'!{f}:"{v}"',
-            "contains": build_contains_query,
-            "!contains": build_not_contains_query,
-            "startswith": lambda f, v: f"{f}:{v}*",
-            "endswith": lambda f, v: f"{f}:*{v}",
+        return {
+            "==": lambda field, value: f'{field}:"{value}"',
+            "!=": lambda field, value: f'!{field}:"{value}"',
+            "contains": lambda field, value: f'{field}:re(".*{escape_regex_value(value)}.*")',
+            "!contains": lambda field, value: f'!{field}:re(".*{escape_regex_value(value)}.*")',
+            "startswith": lambda field, value: f"{field}:{value}*",
+            "endswith": lambda field, value: f"{field}:*{value}",
         }
+
+    @classmethod
+    def json_to_logsql_expression(cls, rule_json, *, allow_legacy_or=False, preserve_legacy_structure=False):
+        """将规则JSON转换为VictoriaLogs LogsQL表达式"""
 
         # 如果不存在规则，返回空字符串
         if rule_json == {}:
@@ -140,8 +186,10 @@ class LogGroupQueryBuilder:
 
         if preserve_legacy_structure:
             mode, _ = cls._resolve_rule_mode(rule_json, allow_legacy_or=allow_legacy_or)
+            op_map = cls._legacy_operation_map()
         else:
             mode, _ = cls.validate_rule(rule_json, allow_legacy_or=allow_legacy_or)
+            op_map = cls._strict_operation_map()
         connector = " AND " if mode == "AND" else " OR "
 
         expressions = []
