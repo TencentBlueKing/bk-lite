@@ -9,6 +9,8 @@ from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDE
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.services.datasource_preview.base import ConnectorError, ExecuteResult, PreviewResult
 from apps.operation_analysis.views import datasource_view
+from apps.system_mgmt.models.network_white_list import NetworkWhiteList
+from apps.system_mgmt.utils.network_whitelist_cache import invalidate_network_whitelist_cache
 
 CHART_PAYLOAD = [
     {"series": "cpu", "name": "2026-01-01T00:00:00Z", "value": 1.0},
@@ -71,6 +73,135 @@ def _build_get_source_data_request(user, data=None):
     )
 
 
+def _prometheus_create_payload(url):
+    return {
+        "name": "prometheus-policy-check",
+        "rest_api": "",
+        "groups": [1],
+        "source_type": DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS,
+        "connection_config": {"url": url, "auth_type": "none"},
+        "query_config": {"query": "up", "query_type": "instant"},
+        "params": [{"name": "query", "type": "string", "value": "up", "filterType": "params"}],
+    }
+
+
+@pytest.mark.django_db
+def test_create_prometheus_datasource_rejects_target_outside_outbound_whitelist(authenticated_user):
+    authenticated_user.is_superuser = True
+    request = APIRequestFactory().post(
+        "/operation_analysis/api/data_source/",
+        data=_prometheus_create_payload("http://10.0.0.1:9090"),
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "create"})(request)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["connection_config"]["url"][0].code == "NETWORK_WHITELIST_REQUIRED"
+    assert not DataSourceAPIModel.objects.filter(name="prometheus-policy-check").exists()
+
+
+@pytest.mark.django_db
+def test_update_prometheus_datasource_rejects_target_outside_outbound_whitelist(authenticated_user):
+    authenticated_user.is_superuser = True
+    datasource = DataSourceAPIModel.objects.create(
+        name="prometheus-policy-check",
+        rest_api="",
+        groups=[1],
+        source_type=DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS,
+        connection_config={"url": "https://prom.example.com", "auth_type": "none"},
+        query_config={"query": "up", "query_type": "instant"},
+        params=[],
+    )
+    payload = _prometheus_create_payload("http://10.0.0.1:9090")
+    request = APIRequestFactory().put(
+        f"/operation_analysis/api/data_source/{datasource.pk}/",
+        data=payload,
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"put": "update"})(
+        request,
+        pk=str(datasource.pk),
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["connection_config"]["url"][0].code == "NETWORK_WHITELIST_REQUIRED"
+    datasource.refresh_from_db()
+    assert datasource.connection_config["url"] == "https://prom.example.com"
+
+
+@pytest.mark.django_db
+def test_prometheus_datasource_crud_round_trip(authenticated_user):
+    authenticated_user.is_superuser = True
+    NetworkWhiteList.objects.create(network="10.11.73.0/24", enabled=True)
+    invalidate_network_whitelist_cache()
+    factory = APIRequestFactory()
+    payload = {
+        "name": "prometheus-crud",
+        "rest_api": "",
+        "groups": [1],
+        "source_type": DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS,
+        "connection_config": {"url": "http://10.11.73.15:9090", "auth_type": "none"},
+        "query_config": {"query": "up", "query_type": "instant"},
+        "params": [{"name": "query", "type": "string", "value": "up", "filterType": "params"}],
+        "chart_type": ["line", "bar", "single"],
+        "field_schema": [{"key": "value", "type": "number"}],
+    }
+
+    create_request = factory.post("/operation_analysis/api/data_source/", data=payload, format="json")
+    create_request.COOKIES["current_team"] = "1"
+    force_authenticate(create_request, user=authenticated_user)
+    create_response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "create"})(create_request)
+
+    assert create_response.status_code == status.HTTP_201_CREATED
+    datasource_id = create_response.data["id"]
+
+    payload["query_config"] = {"query": "rate(up[5m])", "query_type": "range", "step": "1m"}
+    update_request = factory.put(
+        f"/operation_analysis/api/data_source/{datasource_id}/",
+        data=payload,
+        format="json",
+    )
+    update_request.COOKIES["current_team"] = "1"
+    force_authenticate(update_request, user=authenticated_user)
+    update_response = datasource_view.DataSourceAPIModelViewSet.as_view({"put": "update"})(
+        update_request,
+        pk=str(datasource_id),
+    )
+
+    assert update_response.status_code == status.HTTP_200_OK
+    assert update_response.data["query_config"] == payload["query_config"]
+
+    retrieve_request = factory.get(f"/operation_analysis/api/data_source/{datasource_id}/")
+    retrieve_request.COOKIES["current_team"] = "1"
+    force_authenticate(retrieve_request, user=authenticated_user)
+    retrieve_response = datasource_view.DataSourceAPIModelViewSet.as_view({"get": "retrieve"})(
+        retrieve_request,
+        pk=str(datasource_id),
+    )
+
+    assert retrieve_response.status_code == status.HTTP_200_OK
+    assert retrieve_response.data["source_type"] == DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS
+    assert retrieve_response.data["query_config"] == payload["query_config"]
+
+    delete_request = factory.delete(f"/operation_analysis/api/data_source/{datasource_id}/")
+    delete_request.COOKIES["current_team"] = "1"
+    force_authenticate(delete_request, user=authenticated_user)
+    delete_response = datasource_view.DataSourceAPIModelViewSet.as_view({"delete": "destroy"})(
+        delete_request,
+        pk=str(datasource_id),
+    )
+
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+    assert not DataSourceAPIModel.objects.filter(pk=datasource_id).exists()
+    invalidate_network_whitelist_cache()
+
+
 def _build_prometheus_instance():
     return SimpleNamespace(
         id=1,
@@ -128,7 +259,10 @@ def test_get_source_data_prometheus_passes_runtime_params(authenticated_user, mo
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
-    assert payload["data"] == CHART_PAYLOAD
+    assert payload["data"] == {
+        "data": CHART_PAYLOAD,
+        "warnings": [],
+    }
 
     captured = executor.calls[0]
     assert captured["connection_config"] == {"url": "https://prom.example.com"}

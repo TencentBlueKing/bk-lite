@@ -6,6 +6,7 @@ from django.http import Http404
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.operation_analysis.services.datasource_preview.base import PreviewResult
 from apps.operation_analysis.views import datasource_view
 
 
@@ -121,10 +122,112 @@ def test_get_source_data_returns_success_data(authenticated_user, monkeypatch):
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
     assert payload["message"] == "success"
-    assert payload["data"] == {"count": 0, "items": []}
+    assert payload["data"] == {
+        "data": {"count": 0, "items": []},
+        "warnings": [],
+    }
     assert captured["kwargs"]["params"]["limit"] == 12
     assert captured["kwargs"]["params"]["group_by"] == "day"
     assert isinstance(captured["kwargs"]["params"]["time_range"], list)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "business_payload",
+    [
+        [{"id": 1}],
+        {"items": [{"id": 1}]},
+        {"foo": "bar"},
+        {},
+        {"data": {"foo": "business-data"}},
+        {"warnings": ["business-warning"]},
+        {
+            "data": {"foo": "business-data"},
+            "warnings": ["business-warning"],
+        },
+    ],
+)
+def test_get_source_data_preserves_nats_business_payload_inside_transport_envelope(
+    authenticated_user,
+    monkeypatch,
+    business_payload,
+):
+    authenticated_user.is_superuser = True
+    request = _build_request(authenticated_user)
+
+    response, payload, _ = _build_view_response(
+        request,
+        monkeypatch,
+        {"result": True, "data": business_payload, "message": ""},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"] == {
+        "data": business_payload,
+        "warnings": [],
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "source_type",
+    [
+        datasource_view.DataSourceAPIModel.SOURCE_TYPE_MYSQL,
+        datasource_view.DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,
+        datasource_view.DataSourceAPIModel.SOURCE_TYPE_REST_API,
+        datasource_view.DataSourceAPIModel.SOURCE_TYPE_EXCEL,
+    ],
+)
+def test_get_source_data_wraps_inline_datasources_in_transport_envelope(
+    authenticated_user,
+    monkeypatch,
+    source_type,
+):
+    authenticated_user.is_superuser = True
+    request = _build_request(authenticated_user)
+    business_rows = [{"id": 1, "name": source_type}]
+
+    instance = SimpleNamespace(
+        id=1,
+        name=f"{source_type}-datasource",
+        groups=[1],
+        rest_api="",
+        source_type=source_type,
+        connection_config={},
+        query_config={},
+        params=[],
+    )
+
+    class FakeExecutor:
+        def preview(self, connection_config, query_config, limit=100):
+            return PreviewResult(
+                items=business_rows,
+                count=len(business_rows),
+                fields=[],
+            )
+
+    monkeypatch.setattr(
+        datasource_view.DataSourceAPIModelViewSet,
+        "get_object",
+        lambda self: instance,
+    )
+    monkeypatch.setattr(
+        datasource_view,
+        "get_preview_executor",
+        lambda current_source_type: FakeExecutor(),
+    )
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view(
+        {"post": "get_source_data"}
+    )(request, pk="1")
+    response.render()
+    payload = json.loads(response.rendered_content)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"] == {
+        "data": business_rows,
+        "warnings": [],
+    }
 
 
 @pytest.mark.django_db

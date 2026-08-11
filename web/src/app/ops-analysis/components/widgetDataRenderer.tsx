@@ -53,11 +53,14 @@ import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widget
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
+import { validateEventTimelinePayload } from "@/app/ops-analysis/utils/eventTimeline";
+import { resolveRadarSeriesData } from "@/app/ops-analysis/utils/radarData";
 import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
+import type { DashboardWidgetRenderResult } from "@/app/ops-analysis/renderContract";
 import {
-  hasRenderableWidgetData,
-  type DashboardWidgetRenderResult,
-} from "@/app/ops-analysis/renderContract";
+  hasRenderableChartData,
+  validateTopologyMapWidgetData,
+} from "@/app/ops-analysis/utils/topologyMapWidgetContract";
 
 const validateTopNData = (
   data: unknown,
@@ -197,6 +200,43 @@ const validateEventTableData = (
   return hasExpectedRow
     ? { isValid: true }
     : { isValid: false, message: failMessage };
+};
+
+const validateEventTimelineData = (
+  data: unknown,
+): { isValid: boolean; message?: string } =>
+  validateEventTimelinePayload(data);
+
+const validateRadarData = (
+  data: unknown,
+  config?: ValueConfig,
+): { isValid: boolean; message?: string } => {
+  if (!data || (Array.isArray(data) && data.length === 0)) {
+    return { isValid: true };
+  }
+
+  const series = resolveRadarSeriesData(
+    data,
+    config?.radar,
+    config?.selectedFields || [],
+  );
+
+  if (series.unsupported === "multi_series") {
+    return {
+      isValid: false,
+      message: "雷达图当前仅支持单实体多维数据，不支持多实体对比输入",
+    };
+  }
+
+  if (series.indicatorLabels.length === 0) {
+    return {
+      isValid: false,
+      message:
+        "数据结构不符：雷达图期望 [{name,value}] 或对象 + 指标字段映射",
+    };
+  }
+
+  return { isValid: true };
 };
 
 export interface WidgetWrapperProps {
@@ -601,6 +641,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
   const validateChartData = useCallback(
     (data: unknown, type?: string) => {
+      const errorMessage = t("dashboard.dataFormatMismatch");
+      if (type === "topologyMap") {
+        return validateTopologyMapWidgetData(data, errorMessage);
+      }
       const isDataEmpty = () =>
         !data || (Array.isArray(data) && data.length === 0);
 
@@ -608,7 +652,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         return { isValid: true };
       }
 
-      const errorMessage = t("dashboard.dataFormatMismatch");
       switch (type) {
         case "pie":
           return ChartDataTransformer.validatePieData(data, errorMessage);
@@ -621,6 +664,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           return validateGaugeData(data, config);
         case "eventTable":
           return validateEventTableData(data);
+        case "eventTimeline":
+          return validateEventTimelineData(data);
+        case "radar":
+          return validateRadarData(data, config);
         case "multiValue":
           const result = validateMultiValueData(data, errorMessage);
           return { isValid: result.isValid, message: result.errorMessage };
@@ -810,7 +857,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     }
 
     fetchDataRef.current(requestKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     requestEnabled,
     requestKey,
@@ -840,7 +886,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         onRenderStatus?.({ widgetId, status: "loading" });
         return;
       }
-      if (!hasData && hasRenderableWidgetData(rawData)) {
+      if (!hasData && hasRenderableChartData(chartType, rawData)) {
         onRenderStatus?.({ widgetId, status: "loading" });
         return;
       }
@@ -851,6 +897,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     },
     [
       hasSettledRequest,
+      chartType,
       isTableLikeChart,
       loading,
       onReady,
@@ -860,6 +907,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       tableLoading,
       widgetId,
     ],
+  );
+  const handleRendererError = useCallback(
+    (message: string) => {
+      onRenderStatus?.({ widgetId, status: "failed", error: message });
+    },
+    [onRenderStatus, widgetId],
   );
   const hasRawPayload = rawData !== null && rawData !== undefined;
   const hasActiveRuntimeControl =
@@ -925,6 +978,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
             refreshKey={reloadVersion}
             screenRenderContext={screenRenderContext}
             onReady={handleRendererReady}
+            onError={handleRendererError}
             layoutEditable={layoutEditable}
             onTopologyLayoutChange={onTopologyLayoutChange}
             fallback={renderError(
@@ -995,6 +1049,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           dataSource={dataSource}
           screenRenderContext={screenRenderContext}
           onReady={handleRendererReady}
+          onError={handleRendererError}
           onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
           componentSwitchControl={inlineComponentSwitchControl}
           errorMessage={

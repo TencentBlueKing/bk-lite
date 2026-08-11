@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { useSharedDataSourceQuery } from '@/app/ops-analysis/context/shareDataSource';
 import {
-  unwrapSourceDataResponse,
+  parseSourceDataResponse,
   type SourceDataResult,
 } from '@/app/ops-analysis/utils/sourceDataResponse';
 
@@ -66,7 +66,7 @@ export const useDataSourceApi = () => {
     const raw = sharedAccess
       ? await sharedAccess.queryDataSource(id, params)
       : await post(`/operation_analysis/api/data_source/get_source_data/${id}/`, params);
-    return unwrapSourceDataResponse(raw);
+    return parseSourceDataResponse(raw);
   }, [post, sharedAccess]);
 
   const testDataSourceConnectionConfig = useCallback(async (data: any) => {

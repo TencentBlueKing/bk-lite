@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { unwrapSourceDataResponse } from "../src/app/ops-analysis/utils/sourceDataResponse";
+import { parseSourceDataResponse } from "../src/app/ops-analysis/utils/sourceDataResponse";
 
 const arrayPayload = [{ name: "a", value: 1 }];
-assert.deepEqual(unwrapSourceDataResponse(arrayPayload), {
+assert.deepEqual(parseSourceDataResponse({ data: arrayPayload, warnings: [] }), {
   data: arrayPayload,
   warnings: [],
 });
@@ -10,7 +10,7 @@ assert.deepEqual(unwrapSourceDataResponse(arrayPayload), {
 const multiSeriesMap = {
   a: [{ name: 1, value: "2" }],
 };
-assert.deepEqual(unwrapSourceDataResponse(multiSeriesMap), {
+assert.deepEqual(parseSourceDataResponse({ data: multiSeriesMap, warnings: [] }), {
   data: multiSeriesMap,
   warnings: [],
 });
@@ -19,7 +19,7 @@ const envelopeWithWarnings = {
   data: [{ series: "cpu", name: "t", value: 1 }],
   warnings: ["x"],
 };
-assert.deepEqual(unwrapSourceDataResponse(envelopeWithWarnings), {
+assert.deepEqual(parseSourceDataResponse(envelopeWithWarnings), {
   data: envelopeWithWarnings.data,
   warnings: ["x"],
 });
@@ -28,7 +28,7 @@ const envelopeWithEmptyWarnings = {
   data: [{ series: "cpu", name: "t", value: 1 }],
   warnings: [],
 };
-assert.deepEqual(unwrapSourceDataResponse(envelopeWithEmptyWarnings), {
+assert.deepEqual(parseSourceDataResponse(envelopeWithEmptyWarnings), {
   data: envelopeWithEmptyWarnings.data,
   warnings: [],
 });
@@ -36,9 +36,6 @@ assert.deepEqual(unwrapSourceDataResponse(envelopeWithEmptyWarnings), {
 const dataOnlyPayload = {
   data: { series_a: [{ name: "t", value: 1 }] },
 };
-assert.deepEqual(unwrapSourceDataResponse(dataOnlyPayload), {
-  data: dataOnlyPayload,
-  warnings: [],
-});
+assert.throws(() => parseSourceDataResponse(dataOnlyPayload), /统一取数响应格式无效/);
 
-console.log("ops analysis prometheus source data unwrap tests passed");
+console.log("ops analysis source data transport envelope tests passed");

@@ -49,13 +49,22 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
           <div
             key={`${index}-${item.label}`}
             className="flex min-w-0 items-center justify-between gap-3 rounded px-2 py-1"
-            style={{ color: theme.singleValueColor }}
           >
             <Tooltip title={item.label}>
-              <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+              <span
+                className="min-w-0 flex-1 truncate text-left"
+                style={{ color: theme.axisLabelColor }}
+              >
+                {item.label}
+              </span>
             </Tooltip>
             <Tooltip title={item.value}>
-              <span className="shrink-0 truncate text-right font-semibold tabular-nums">{item.value}</span>
+              <span
+                className="shrink-0 truncate text-right font-semibold tabular-nums"
+                style={{ color: theme.pieValueColor }}
+              >
+                {item.value}
+              </span>
             </Tooltip>
           </div>
         ))}

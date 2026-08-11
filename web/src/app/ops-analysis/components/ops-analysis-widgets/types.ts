@@ -11,8 +11,10 @@ export type ChartType =
   | 'single'
   | 'table'
   | 'eventTable'
+  | 'eventTimeline'
   | 'topN'
   | 'gauge'
+  | 'radar'
   | 'message';
 
 export interface ResponseFieldDefinition {
@@ -184,6 +186,17 @@ export interface ValueConfig {
   gaugeMin?: number;
   gaugeMax?: number;
   gaugeShape?: 'semicircle' | 'circle';
+  eventTimeline?: {
+    sortOrder?: 'asc' | 'desc';
+  };
+  radar?: {
+    min?: number;
+    max?: number;
+    indicators?: Array<{
+      key: string;
+      label?: string;
+    }>;
+  };
   actions?: DashboardActionConfig[];
 }
 
