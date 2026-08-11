@@ -23,6 +23,7 @@
 - **APM 应用**：由用户维护的 APM 业务边界；应用 ID 是遥测属性 `service.namespace` 的稳定值，并决定新发现服务和实例的默认组织范围。_Avoid_：接入源、数据源。
 - **未归类应用**：平台内置且受保护的 APM 应用，用于归属未设置 `service.namespace` 的服务；非空但未知的 namespace 不属于未归类应用。_Avoid_：虚拟应用、默认 namespace。
 - **APM 接入配置**：根据应用、服务名称、服务版本和运行环境即时生成的 SDK/探针配置；仅用于复制执行，不持久化。_Avoid_：接入源、接入实例。
+- **APM 遥测入口**：区域代理上只向受信区域内网开放的 OTLP/HTTP 4318 接收边界；`service.namespace` 只表达应用归属，不是认证或授权凭据。_Avoid_：公网 OTLP 端点、APM Token 入口。
 - **APM 接入实例**：由遥测数据中的 `service.instance.id` 自动发现的一个服务运行实例；不能通过接入页面手工创建。_Avoid_：接入服务、服务。
 - **APM 服务**：由遥测数据中的 `service.namespace` 与 `service.name` 自动发现的逻辑服务，是服务健康与性能指标的聚合对象；一个 APM 应用可以包含多个服务。_Avoid_：接入实例、节点。
 - **区域 Collector**：部署在一个云区域内、直接接收该区域 OTLP 遥测并把数据可靠送入中心传输通道的采集运行单元。_Avoid_：APM Edge、中心 Collector。

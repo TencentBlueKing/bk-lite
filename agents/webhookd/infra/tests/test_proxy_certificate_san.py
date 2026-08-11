@@ -58,6 +58,8 @@ def _generate_proxy_archive(proxy_address, certificate_authority):
         "proxy_ip": proxy_address,
         "nats_monitor_username": "monitor",
         "nats_monitor_password": "monitor-password",
+        "apm_nats_username": "apm_region_2",
+        "apm_nats_password": "apm-password",
         "traefik_web_port": "443",
     }
     env = os.environ | {
@@ -102,6 +104,9 @@ def test_proxy_certificate_contains_typed_san_and_valid_nats_route(
         nats_config = archive.extractfile(
             "./conf/nats/nats.conf"
         ).read().decode()
+        compose_config = archive.extractfile("./docker-compose.yaml").read().decode()
+        generated_env = archive.extractfile("./.env").read().decode()
+        regional_config = archive.extractfile("./conf/apm/regional.yaml").read().decode()
 
     if expected_dns:
         assert expected_dns in san.get_values_for_type(x509.DNSName)
@@ -111,3 +116,9 @@ def test_proxy_certificate_contains_typed_san_and_valid_nats_route(
             for address in san.get_values_for_type(x509.IPAddress)
         }
     assert f'url: "tls://{proxy_address}:4222"' in nats_config
+    assert 'publish = ["apm.traces.2"]' in nats_config
+    assert 'subscribe = ["_INBOX.>"]' in nats_config
+    assert "apm-regional-collector:" in compose_config
+    assert "APM_NATS_USERNAME=apm_region_2" in generated_env
+    assert "APM_NATS_PASSWORD=apm-password" in generated_env
+    assert "trace_guard:" in regional_config

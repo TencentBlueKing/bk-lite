@@ -21,7 +21,6 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
 
 function renderPage() {
   return render(
-    // @ts-expect-error react-intl type incompatibility with React 19
     <IntlProvider locale="zh" messages={{
       'apm.integration.copyEndpoint': '复制 HTTP 上报端点',
       'apm.integration.copyEndpointSuccess': 'HTTP 上报端点已复制',
@@ -130,6 +129,53 @@ describe('APM 添加接入', () => {
     await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
 
     expect(screen.getByRole('radiogroup', { name: '运行方式' })).not.toBeNull();
+    expect(screen.getByRole('radio', { name: 'Kubernetes Pod（Downward API）' })).not.toBeNull();
+  });
+
+  it('选择 Kubernetes SDK 运行方式后请求 Pod 运行时配置', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'spec:\n  template: {}',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Python 接入' }));
+    await user.click(screen.getByText('Kubernetes Pod（Downward API）'));
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await user.click(screen.getByRole('button', { name: /生成临时配置/ }));
+
+    expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
+      language: 'python',
+      runtime: 'kubernetes',
+    }));
+    expect(await screen.findByText('Kubernetes 配置片段')).not.toBeNull();
+  });
+
+  it('明确把 Go 呈现为手动 SDK 接入而不是自动探针', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'Go 无通用零代码探针',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    expect((await screen.findAllByText('手动 SDK')).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'Go 接入' }));
+    expect(screen.getByRole('radio', { name: 'Go 手动 SDK' })).not.toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Go 自动探针' })).toBeNull();
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await user.click(screen.getByRole('button', { name: /生成临时配置/ }));
+
+    expect(await screen.findByText('Go SDK 接入指南')).not.toBeNull();
   });
 
   it('将区域接收地址缺失转换为可恢复的用户提示', async () => {

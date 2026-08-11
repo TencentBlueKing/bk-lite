@@ -8,6 +8,7 @@ import json
 import os
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -25,6 +26,7 @@ pytestmark = pytest.mark.skipif(
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 COMPOSE_FILE = REPOSITORY_ROOT / "deploy/apm/compose.yaml"
+PYTHON_SDK_EMITTER = REPOSITORY_ROOT / "deploy/apm/tests/emit_python_sdk_trace.py"
 
 
 def _free_port() -> int:
@@ -228,6 +230,11 @@ def _query(url: str, **params):
 def _vector_values(body: str):
     result = json.loads(body)["data"]["result"]
     return {item["metric"]["__name__"]: float(item["value"][1]) for item in result}
+
+
+def _configuration_script(code: str) -> str:
+    section = code.split("# 2. 配置上报", maxsplit=1)[1].split("# 3. 启动应用", maxsplit=1)[0]
+    return section.split("\n", maxsplit=1)[1]
 
 
 def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
@@ -460,6 +467,52 @@ def test_trace_crosses_bounded_jetstream_and_reaches_victoria_traces_once():
             and item.get("resource_attr:service.version") == "1.2.3"
             for item in activities
         )
+
+        # Server 生成的标准环境变量必须能驱动真实 Python SDK 通过同一 4318 链路写入 VT。
+        import django
+
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
+        server_path = str(REPOSITORY_ROOT / "server")
+        if server_path not in sys.path:
+            sys.path.insert(0, server_path)
+        django.setup()
+        from apps.apm.services import DjangoIntegrationConfigurationService
+        from apps.apm.services.contracts import IngestSnippetRequest
+
+        generated = DjangoIntegrationConfigurationService().render_snippet(
+            IngestSnippetRequest(
+                language="python",
+                runtime="host",
+                endpoint=f"http://127.0.0.1:{http_port}",
+                service_namespace="sdk-contract-app",
+                service_name="sdk-checkout",
+                service_version="3.2.1",
+                environment="contract",
+            )
+        )
+        sdk = subprocess.run(
+            [
+                "/bin/sh",
+                "-c",
+                f'{_configuration_script(generated.code)}\nexec "{REPOSITORY_ROOT / "server/.venv/bin/python"}" "{PYTHON_SDK_EMITTER}"',
+            ],
+            cwd=REPOSITORY_ROOT,
+            env={**environment, "APM_INSTANCE_ID": "sdk-contract-instance"},
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert sdk.returncode == 0, f"{sdk.stdout}\n{sdk.stderr}"
+        sdk_trace_id = sdk.stdout.strip()
+        assert len(sdk_trace_id) == 32
+        sdk_status, sdk_body = _eventually(
+            lambda: _request(f"http://127.0.0.1:{traces_port}/select/tempo/api/v2/traces/{sdk_trace_id}"),
+            lambda value: value[0] == 200 and "sdk-checkout" in value[1],
+        )
+        assert sdk_status == 200
+        assert "sdk-contract-app" in sdk_body
+        assert "sdk-contract-instance" in sdk_body
     finally:
         subprocess.run(
             [*compose, "down", "--volumes", "--remove-orphans"],

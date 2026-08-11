@@ -27,7 +27,7 @@ const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods
       { key: 'java', title: 'Java', description: 'Java Agent 字节码注入，支持 Spring / Dubbo / gRPC', badge: '推荐', language: 'java', available: true },
       { key: 'python', title: 'Python', description: '自动探针接入，支持 Django / Flask / FastAPI', language: 'python', available: true },
       { key: 'dotnet', title: '.NET', description: '基于 OpenTelemetry .NET 自动探针', available: false },
-      { key: 'go', title: 'Go', description: '通过 OpenTelemetry Go SDK 完成应用内埋点', language: 'go', available: true },
+      { key: 'go', title: 'Go', description: '手动初始化 OpenTelemetry Go SDK，生成完整 Provider 示例', badge: '手动 SDK', language: 'go', available: true },
     ],
   },
   { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined />, methods: [{ key: 'otel-collector', title: 'OTel Collector', description: '复用自建 Collector，将链路转发到平台 OTLP 端点', available: false }] },
@@ -36,7 +36,7 @@ const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods
 ];
 
 type PageState = 'loading' | 'empty' | 'ready' | 'error';
-type SnippetMode = 'agent' | 'docker';
+type SnippetMode = 'agent' | 'docker' | 'kubernetes';
 type SnippetForm = Omit<ApmIngestSnippetInput, 'language' | 'runtime'>;
 type CatalogSource = 'applications' | 'cloud-regions';
 
@@ -175,6 +175,10 @@ export default function ApmIntegrationAddPage() {
     value: region.id,
     label: region.name,
   })), [cloudRegions]);
+  const isGo = selectedMethod?.language === 'go';
+  const generatedSnippetLabel = mode === 'kubernetes'
+    ? 'Kubernetes 配置片段'
+    : isGo ? 'Go SDK 接入指南' : 'Shell 接入片段';
 
   const openMethod = (method: IntegrationMethod) => {
     if (!method.available || !method.language) {
@@ -204,7 +208,7 @@ export default function ApmIntegrationAddPage() {
       const result = await getIngestSnippet({
         ...values,
         language: selectedMethod.language,
-        runtime: mode === 'docker' ? 'docker' : 'host',
+        runtime: mode === 'agent' ? 'host' : mode,
       });
       setSnippet(result);
       messageApi.success('临时接入配置已生成');
@@ -306,7 +310,16 @@ export default function ApmIntegrationAddPage() {
                 <Form.Item name="environment" label="部署环境" rules={[{ required: true, whitespace: true, message: '请输入部署环境' }, { max: 256 }]}><Input placeholder="deployment.environment，例如 production" /></Form.Item>
               </div>
               <Form.Item label="运行方式" className="!mb-4">
-                <Segmented aria-label="运行方式" value={mode} onChange={(value) => { setMode(value as SnippetMode); setSnippet(null); setGenerationError(null); }} options={[{ label: `${selectedMethod?.title ?? ''} 自动探针`, value: 'agent' }, { label: 'Docker 运行（-e 注入）', value: 'docker' }]} />
+                <Segmented
+                  aria-label="运行方式"
+                  value={mode}
+                  onChange={(value) => { setMode(value as SnippetMode); setSnippet(null); setGenerationError(null); }}
+                  options={[
+                    { label: isGo ? 'Go 手动 SDK' : `${selectedMethod?.title ?? ''} 自动探针`, value: 'agent' },
+                    { label: 'Docker 运行（-e 注入）', value: 'docker' },
+                    { label: 'Kubernetes Pod（Downward API）', value: 'kubernetes' },
+                  ]}
+                />
               </Form.Item>
               {generationError ? <Alert className="mb-4" showIcon type="error" message="配置生成失败" description={generationError} /> : null}
               <div className="flex justify-end">
@@ -342,17 +355,17 @@ export default function ApmIntegrationAddPage() {
               <div className="mt-4 border-t border-[var(--color-border)] pt-4">
                 <div role="group" aria-labelledby="apm-shell-snippet-title" className="mb-2 flex items-center justify-between gap-3">
                   <div>
-                    <Typography.Text id="apm-shell-snippet-title" strong>Shell 接入片段</Typography.Text>
+                    <Typography.Text id="apm-shell-snippet-title" strong>{generatedSnippetLabel}</Typography.Text>
                     <Typography.Text type="secondary" className="mt-1 block text-xs">
                       {t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
                     </Typography.Text>
                   </div>
                   <Button
-                    aria-label={t('apm.integration.copyShellSnippet', '复制 Shell 接入片段')}
+                    aria-label={isGo && mode !== 'kubernetes' ? '复制 Go SDK 接入指南' : mode === 'kubernetes' ? '复制 Kubernetes 配置片段' : t('apm.integration.copyShellSnippet', '复制 Shell 接入片段')}
                     icon={<CopyOutlined aria-hidden />}
                     onClick={() => void copyWithFeedback(
                       snippet.code,
-                      t('apm.integration.copyShellSnippetSuccess', 'Shell 接入片段已复制')
+                      `${generatedSnippetLabel}已复制`
                     )}
                   >复制片段</Button>
                 </div>
