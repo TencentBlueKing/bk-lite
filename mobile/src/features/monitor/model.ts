@@ -93,9 +93,23 @@ export interface MetricSeries {
   values: Array<[number, string | null]>;
 }
 
+export interface GapInterval {
+  start: number;
+  end: number;
+  duration?: number;
+  series?: Array<{
+    metric?: Record<string, string>;
+    missing_points?: number;
+  }>;
+}
+
 export interface MetricRangeResult {
   unit: string;
   series: MetricSeries[];
+  gaps: GapInterval[];
+  /** 与本次 query_range 一致的时间窗（毫秒），供 X 轴定域。 */
+  startMs: number;
+  endMs: number;
 }
 
 export interface PageResult<T> {
@@ -447,6 +461,11 @@ export function buildMetricQuery(metric: MonitorMetric, idValues: string[]) {
   return metric.query.replace(/__\$labels__/g, labels);
 }
 
+/** Prometheus 秒级时间戳；兼容已是毫秒的值，统一为秒。 */
+export function metricTimestampSeconds(timestamp: number) {
+  return timestamp >= 1e12 ? timestamp / 1000 : timestamp;
+}
+
 export function metricPoints(result: MetricRangeResult) {
   return result.series.flatMap((series) => series.values)
     .flatMap(([timestamp, value]) => {
@@ -459,6 +478,10 @@ export function metricPoints(result: MetricRangeResult) {
     .sort((left, right) => left[0] - right[0]);
 }
 
+/**
+ * 与 Web `renderChart` 对齐：丢弃非有限值，只保留有效采样点。
+ * 缺口断线由 gap-intervals 注入 null，而不是保留 API 里的缺失占位。
+ */
 export function metricSeriesPoints(result: MetricRangeResult) {
   return result.series.map((series) => ({
     labels: series.metric,
@@ -466,10 +489,69 @@ export function metricSeriesPoints(result: MetricRangeResult) {
       .flatMap(([timestamp, value]) => {
         const nextTimestamp = Number(timestamp);
         if (!Number.isFinite(nextTimestamp)) return [];
-        if (value === null || value === '') return [[nextTimestamp, null] as const];
+        if (value === null || value === '') return [];
         const nextValue = Number(value);
-        return [[nextTimestamp, Number.isFinite(nextValue) ? nextValue : null] as const];
+        return Number.isFinite(nextValue)
+          ? [[nextTimestamp, nextValue] as const]
+          : [];
       })
       .sort((left, right) => left[0] - right[0]),
   })).filter((series) => series.points.some((point) => point[1] !== null));
+}
+
+export type MetricSeriesView = ReturnType<typeof metricSeriesPoints>[number];
+
+/** 详情图断线后的序列：points 可含 null 断点。 */
+export interface MetricSeriesChartView {
+  labels: Record<string, string>;
+  points: Array<readonly [number, number | null]>;
+}
+
+/** 将多序列合并为 Web ChartData，供缺口断线/阴影算法复用。 */
+export function metricSeriesToChartData(series: ReadonlyArray<MetricSeriesView>) {
+  const byTime = new Map<number, {
+    time: number;
+    seriesMetrics: Record<string, Record<string, string>>;
+    [key: string]: unknown;
+  }>();
+
+  series.forEach((item, index) => {
+    const valueKey = `value${index + 1}`;
+    item.points.forEach(([timestamp, value]) => {
+      if (!Number.isFinite(value)) return;
+      const time = metricTimestampSeconds(timestamp);
+      if (!Number.isFinite(time)) return;
+      const row = byTime.get(time) || { time, seriesMetrics: {} };
+      row[valueKey] = value;
+      row.seriesMetrics = {
+        ...row.seriesMetrics,
+        [valueKey]: item.labels,
+      };
+      byTime.set(time, row);
+    });
+  });
+
+  return Array.from(byTime.values()).sort((left, right) => left.time - right.time);
+}
+
+/** 将带断点的 ChartData 还原为各序列 points（含 null 断点）。 */
+export function chartDataToMetricSeries(
+  data: ReadonlyArray<{ time: number; seriesMetrics?: Record<string, Record<string, string>>; [key: string]: unknown }>,
+  series: ReadonlyArray<MetricSeriesView>,
+): MetricSeriesChartView[] {
+  return series.map((item, index) => {
+    const valueKey = `value${index + 1}`;
+    return {
+      labels: item.labels,
+      points: data.flatMap((row) => {
+        if (!Object.prototype.hasOwnProperty.call(row, valueKey)) return [];
+        const raw = row[valueKey];
+        const time = Number(row.time);
+        if (!Number.isFinite(time)) return [];
+        if (raw === null || raw === undefined) return [[time, null] as const];
+        const value = Number(raw);
+        return [[time, Number.isFinite(value) ? value : null] as const];
+      }),
+    };
+  });
 }

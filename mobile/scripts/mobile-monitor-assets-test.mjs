@@ -93,20 +93,106 @@ test('监控详情兼容 Server 指标目录的分页响应', async () => {
   assert.match(adapter, /monitorCatalogItems\(unwrap<unknown>\(metricRaw\)\)/);
 });
 
-test('监控曲线保留缺失点并在缺口处断线', async () => {
-  const { metricSeriesPoints } = await loadModel('src/features/monitor/model.ts');
-  const { buildSeriesPath } = await loadModel('src/features/monitor/metric-chart-utils.ts');
+test('监控曲线丢弃非有限值，缺口由 gaps 断线并保留连续段', async () => {
+  const {
+    chartDataToMetricSeries,
+    metricSeriesPoints,
+    metricSeriesToChartData,
+  } = await loadModel('src/features/monitor/model.ts');
+  const {
+    attachGapIntervals,
+    getChartDataWithGapBreaks,
+    getRenderedGapIntervals,
+  } = await loadModel('src/features/monitor/gap-intervals.ts');
+  const {
+    buildSeriesPath,
+    buildSeriesSinglePoint,
+    metricAxisTimeOptions,
+  } = await loadModel('src/features/monitor/metric-chart-utils.ts');
+
+  // 与 Web renderChart 一致：API null 不进入序列。
   const series = metricSeriesPoints({
     unit: 'percent',
+    startMs: 0,
+    endMs: 4_000,
+    gaps: [],
     series: [{
-      metric: {},
+      metric: { instance_id: 'host-1' },
       values: [[1, '1'], [2, null], [3, '3'], [4, '4']],
     }],
   });
-  assert.deepEqual(series[0].points, [[1, 1], [2, null], [3, 3], [4, 4]]);
+  assert.deepEqual(series[0].points, [[1, 1], [3, 3], [4, 4]]);
+
+  const gaps = [{
+    start: 1.5,
+    end: 2.5,
+    duration: 1,
+    series: [{ metric: { instance_id: 'host-1' }, missing_points: 1 }],
+  }];
+  const chartData = attachGapIntervals(metricSeriesToChartData(series), gaps);
+  const broken = getChartDataWithGapBreaks(chartData, gaps, [0, 4]);
+  const prepared = chartDataToMetricSeries(broken, series);
+  assert.ok(prepared[0].points.some((point) => point[1] === null), '缺口中点应注入 null 断线');
+  assert.ok(prepared[0].points.filter((point) => point[1] !== null).length >= 3);
+
+  const rendered = getRenderedGapIntervals(chartData, gaps, [0, 4]);
+  assert.equal(rendered.length, 1);
+  assert.ok(rendered[0].start >= 0 && rendered[0].end <= 4);
+
+  // 卡片 sparkline：只连有效点，单点打圆；详情主图不走孤立点打点。
   const path = buildSeriesPath(series[0].points);
-  assert.equal((path.match(/M /g) || []).length, 2);
-  assert.equal((path.match(/L /g) || []).length, 1);
+  assert.equal((path.match(/M /g) || []).length, 1);
+  assert.equal((path.match(/L /g) || []).length, 2);
+  assert.deepEqual(buildSeriesSinglePoint([[1, 19]]), { cx: 50, cy: 18 });
+  assert.equal(buildSeriesSinglePoint(series[0].points), null);
+
+  // 常量序列应对齐 Web mini-trend：垂直居中，不贴底。
+  const flatPath = buildSeriesPath([[1, 0], [2, 0], [3, 0]]);
+  const flatYs = [...flatPath.matchAll(/[\d.]+ ([\d.]+)/g)].map((match) => Number(match[1]));
+  assert.ok(flatYs.length >= 2);
+  assert.ok(flatYs.every((y) => y > 10 && y < 24), `flat sparkline should be vertically centered, got y=${flatYs.join(',')}`);
+
+  // 完整时间窗下，靠后的数据应落在右侧（与 Web 7 天小图观感一致）。
+  const windowed = buildSeriesPath(
+    [[8, 10], [9, 20], [10, 15]],
+    100,
+    34,
+    6,
+    4,
+    { startMs: 0, endMs: 10_000 },
+  );
+  const windowXs = [...windowed.matchAll(/([\d.]+) [\d.]+/g)].map((match) => Number(match[1]));
+  assert.ok(windowXs[0] >= 70, `late data should sit on the right, got x=${windowXs.join(',')}`);
+
+  // 7 天窗 → MM-DD HH:mm；1 小时窗 → HH:mm:ss
+  assert.deepEqual(metricAxisTimeOptions(7 * 24 * 60 * 60 * 1000), {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+  assert.deepEqual(metricAxisTimeOptions(60 * 60 * 1000), {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+});
+
+test('监控 Y 轴 nice 刻度与 Web lineChart 对齐', async () => {
+  const {
+    buildMetricNiceAxis,
+    buildMetricYAxisDomain,
+    formatMetricAxisNumber,
+    getMetricNiceStep,
+  } = await loadModel('src/features/monitor/metric-chart-utils.ts');
+  assert.equal(getMetricNiceStep(3), 5);
+  assert.equal(getMetricNiceStep(0.7), 1);
+  assert.deepEqual(buildMetricYAxisDomain([0]), [0, 1]);
+  const padded = buildMetricYAxisDomain([20, 30]);
+  assert.ok(padded[0] <= 20);
+  assert.ok(padded[0] >= 0);
+  assert.ok(padded[1] >= 30);
+  const nice = buildMetricNiceAxis(padded, 3);
+  assert.equal(nice.ticks[0], nice.domain[0]);
+  assert.equal(nice.ticks[nice.ticks.length - 1], nice.domain[1]);
+  assert.ok(nice.interval > 0);
+  assert.equal(formatMetricAxisNumber(20), '20');
+  assert.equal(formatMetricAxisNumber(20.5), '20.5');
 });
 
 test('最终单位使用 query_range 响应，而不是指标定义的初始单位', async () => {
@@ -581,8 +667,16 @@ test('监控根页「全部实例」直接展示实例面板，旧 instances 路
   assert.match(await readProjectFile('src/features/monitor/metric-chart-sheet.tsx'), /MetricSheetEcharts|metricSheetChartWrap/);
   assert.match(await readProjectFile('src/features/monitor/metric-chart-utils.ts'), /formatMetricDisplay|formatMetricValue\(value, unit\)/);
   assert.match(await readProjectFile('src/features/monitor/metric-sheet-echarts.tsx'), /echarts-setup|tooltip|axisPointer/);
-  assert.match(await readProjectFile('src/features/monitor/echarts-setup.ts'), /LineChart|CanvasRenderer|AxisPointerComponent/);
+  assert.match(await readProjectFile('src/features/monitor/metric-sheet-echarts.tsx'), /buildMetricNiceAxis|formatMetricAxisNumber|showSymbol:\s*false/);
+  assert.match(await readProjectFile('src/features/monitor/metric-sheet-echarts.tsx'), /min:\s*startMs|max:\s*endMs|getRenderedGapIntervals|GAP_FILL_COLOR|markArea/);
+  assert.match(await readProjectFile('src/features/monitor/metric-chart-utils.ts'), /export function buildMetricNiceAxis|export function formatMetricAxisNumber|export function metricAxisTimeOptions|export function buildSeriesSinglePoint/);
+  assert.match(await readProjectFile('src/features/monitor/echarts-setup.ts'), /LineChart|CanvasRenderer|AxisPointerComponent|MarkAreaComponent|MarkLineComponent/);
   assert.match(await readProjectFile('src/features/monitor/metric-chart-utils.ts'), /export function pickPointByRatio/);
+  assert.match(await readProjectFile('src/features/monitor/gap-intervals.ts'), /getChartDataWithGapBreaks|getRenderedGapIntervals|attachGapIntervals/);
+  assert.match(await readProjectFile('src/features/monitor/adapter.ts'), /gaps:|startMs:|endMs:|detect_gaps:\s*true/);
+  assert.match(await readProjectFile('src/features/monitor/metric-chart-sheet.tsx'), /setGaps\(result\.gaps\)|startMs=\{windowMs\.startMs\}/);
+  assert.match(await readProjectFile('src/features/monitor/metric-card.tsx'), /buildSeriesSinglePoint|chartPoint/);
+  assert.doesNotMatch(await readProjectFile('src/features/monitor/metric-sheet-echarts.tsx'), /metricPointSymbolSize/);
   assert.match(await readProjectFile('package.json'), /"echarts"/);
   const monitorStyles = await readProjectFile('src/features/monitor/monitor.module.css');
   assert.match(monitorStyles, /\.metricSheetChart\s*\{[^}]*min-height:\s*180px/s);
@@ -596,10 +690,16 @@ test('监控根页「全部实例」直接展示实例面板，旧 instances 路
 
 test('监控详情头部通过现有 list 接口回源状态与上报时间', async () => {
   const adapter = await readProjectFile('src/features/monitor/adapter.ts');
-  assert.match(adapter, /export async function getMonitorInstance/);
-  assert.match(adapter, /monitor_instance\/\$\{objectId\}\/list\//);
-  assert.match(adapter, /add_metrics:\s*hints\.addMetrics\s*\?\?\s*false/);
-  assert.match(adapter, /item\.id === instanceId/);
+  const fn = adapter.slice(
+    adapter.indexOf('export async function getMonitorInstance'),
+    adapter.indexOf('export async function listEffectivePlugins'),
+  );
+  assert.match(fn, /monitor_instance\/\$\{objectId\}\/list\//);
+  assert.match(fn, /instance_id:\s*instanceId/);
+  assert.match(fn, /add_metrics:\s*hints\.addMetrics\s*\?\?\s*false/);
+  assert.match(fn, /item\.id === instanceId/);
+  assert.doesNotMatch(fn, /name:\s*keyword/);
+  assert.doesNotMatch(fn, /parseMonitorInstanceLookupHints/);
 });
 
 test('监控详情只在实例确认存在后记录最近查看，不可用场景统一反馈', async () => {

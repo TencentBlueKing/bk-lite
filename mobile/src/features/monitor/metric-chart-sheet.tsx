@@ -7,6 +7,7 @@ import { MobileResult, MobileSkeleton } from '@/components/mobile-feedback';
 import { useAuth } from '@/context/auth';
 import { useTranslation } from '@/utils/i18n';
 import { getMonitorUnitList, queryMetricRange } from './adapter';
+import type { GapInterval } from './gap-intervals';
 import MetricSheetEcharts from './metric-sheet-echarts';
 import { buildMetricQuery, metricSeriesPoints, type MonitorMetric } from './model';
 import { resolveMonitorUnitLabel } from './unit-label';
@@ -45,6 +46,8 @@ function MetricSheetPane({
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [unit, setUnit] = useState(metric.unit);
   const [series, setSeries] = useState<ReturnType<typeof metricSeriesPoints>>([]);
+  const [gaps, setGaps] = useState<GapInterval[]>([]);
+  const [windowMs, setWindowMs] = useState<{ startMs: number; endMs: number } | null>(null);
   const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
@@ -54,6 +57,8 @@ function MetricSheetPane({
       .then((result) => {
         if (controller.signal.aborted) return;
         setSeries(metricSeriesPoints(result));
+        setGaps(result.gaps);
+        setWindowMs({ startMs: result.startMs, endMs: result.endMs });
         setUnit(result.unit);
         onUnitChange?.(result.unit);
         setStatus('ready');
@@ -80,7 +85,7 @@ function MetricSheetPane({
       </div>
     );
   }
-  if (!series.length) {
+  if (!series.length || !windowMs) {
     return (
       <div className={styles.metricSheetEmptyWrap}>
         <MobileResult kind="empty" title={t('common.noData')} compact />
@@ -93,8 +98,10 @@ function MetricSheetPane({
       <div className={styles.metricSheetChartWrap}>
         <MetricSheetEcharts
           series={series}
+          gaps={gaps}
           unit={unit}
-          rangeMinutes={rangeMinutes}
+          startMs={windowMs.startMs}
+          endMs={windowMs.endMs}
           preferences={preferences}
         />
       </div>

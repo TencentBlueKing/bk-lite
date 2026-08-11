@@ -923,7 +923,9 @@
   justify-content: center;
 }
 .metricBodyChart {
-  align-items: flex-end;
+  /* 小图统一落在卡片底部槽位，与各卡同高对齐 */
+  align-items: stretch;
+  justify-content: flex-end;
 }
 .metricBodySkeleton {
   display: block;
@@ -951,11 +953,13 @@
   display: block;
   width: 100%;
   height: 34px;
+  margin-top: auto;
   color: var(--color-primary);
   overflow: visible;
 }
 .chartBaseline { stroke: var(--color-border-1); stroke-width: 1; }
 .chartLine { fill: none; stroke: currentcolor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.chartPoint { fill: currentcolor; stroke: none; }
 .recentPanel { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .recentList { display: flex; flex-direction: column; background: var(--color-bg); }
 .recentRow {
