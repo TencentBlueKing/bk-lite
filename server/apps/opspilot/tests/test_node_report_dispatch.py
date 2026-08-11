@@ -9,16 +9,10 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from apps.opspilot.metis.llm.chain.k8s_report_tools import (
-    RENDERER_REGISTRY,
-    register_renderer,
-)
-
 
 pytestmark = pytest.mark.unit
 
@@ -59,9 +53,7 @@ def test_emit_report_event_dispatches_with_capability_name_as_event():
     node = _make_node(skill_capabilities=["config_analysis_report"])
     parsed = {
         "cluster_name": "Kubernetes - 1",
-        "issues_detail": [
-            {"severity": "high", "issue": "未配置存活探针", "count": 7, "workloads": ["admin-panel"]}
-        ],
+        "issues_detail": [{"severity": "high", "issue": "未配置存活探针", "count": 7, "workloads": ["admin-panel"]}],
     }
     with patch("langchain_core.callbacks.dispatch_custom_event") as mock_dispatch:
         result = node._emit_report_event("config_analysis_report", parsed)
@@ -83,9 +75,7 @@ def test_emit_report_event_uses_execution_id_as_stable_report_id():
     )
     parsed = {
         "cluster_name": "Kubernetes - 1",
-        "issues_detail": [
-            {"severity": "high", "issue": "未配置存活探针", "count": 1, "workloads": ["api"]}
-        ],
+        "issues_detail": [{"severity": "high", "issue": "未配置存活探针", "count": 1, "workloads": ["api"]}],
     }
 
     with patch("langchain_core.callbacks.dispatch_custom_event") as mock_dispatch:
@@ -117,6 +107,23 @@ async def test_aemit_report_event_uses_runnable_execution_id_as_stable_report_id
 
     assert result == "repair_diff_report_exec-async-stable"
     assert mock_dispatch.await_args.args[1]["report_id"] == result
+
+
+@pytest.mark.asyncio
+async def test_aflush_pending_report_emits_awaits_tracked_tasks():
+    """flush 必须等完 `_pending_async_report_emits` 里挂起的派发任务。"""
+    node = _make_node(skill_capabilities=["repair_diff_report"])
+    finished = asyncio.Event()
+
+    async def _job():
+        await asyncio.sleep(0)
+        finished.set()
+
+    node._pending_async_report_emits = [asyncio.create_task(_job())]
+    assert not finished.is_set()
+    await node._aflush_pending_report_emits()
+    assert finished.is_set()
+    assert node._pending_async_report_emits == []
 
 
 def test_emit_report_event_skips_when_renderer_returns_none():
@@ -192,7 +199,7 @@ def test_dispatch_isolates_two_capabilities():
         r2 = node._emit_report_event("repair_diff_report", items_diff)
 
     assert r1 is not None  # declared → emitted
-    assert r2 is None      # NOT declared → skipped
+    assert r2 is None  # NOT declared → skipped
     # 只发了一次,且是 config_analysis_report
     assert mock_dispatch.call_count == 1
     assert mock_dispatch.call_args.args[0] == "config_analysis_report"
@@ -512,6 +519,7 @@ async def test_deep_wrapper_checks_pending_repair_against_full_message_history()
     from types import SimpleNamespace
 
     from langchain_core.messages import AIMessage, ToolMessage
+    from langchain_core.tools import StructuredTool
 
     node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
     graph_builder = MagicMock()
@@ -532,7 +540,12 @@ async def test_deep_wrapper_checks_pending_repair_against_full_message_history()
     node._run_pending_k8s_repair_workflow = AsyncMock(return_value=True)
     node._post_process_tool_results = MagicMock()
     node.get_llm_client = MagicMock(return_value=object())
-    node._collect_deepagent_tools = MagicMock(return_value=[])
+    # 提供业务工具，避免走轻量直答短路
+    node._collect_deepagent_tools = MagicMock(
+        return_value=[
+            StructuredTool.from_function(func=lambda: "ok", name="analyze_deployment_configurations", description="analyze"),
+        ]
+    )
     node._build_skill_backend_and_sources = MagicMock(return_value=(None, [], None))
     node._build_interrupt_on = MagicMock(return_value=None)
     graph_request = SimpleNamespace(system_message_prompt="", skill_id=1)
@@ -540,6 +553,7 @@ async def test_deep_wrapper_checks_pending_repair_against_full_message_history()
     with (
         patch("apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template", return_value="system"),
         patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
+        patch("apps.opspilot.metis.llm.chain.node.is_progressive_tools_enabled", return_value=False),
     ):
         await node.build_deepagent_nodes(graph_builder)
         wrapper = graph_builder.add_node.call_args.args[1]
@@ -553,12 +567,97 @@ async def test_deep_wrapper_checks_pending_repair_against_full_message_history()
 
 
 @pytest.mark.asyncio
+async def test_deep_wrapper_repair_workflow_uses_collected_messages_after_step_compaction():
+    """分步执行步间压缩后 final_messages 无分析 ToolMessage 时，仍须用 collected 历史跑修复闭环。"""
+    from types import SimpleNamespace
+
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+    from langchain_core.tools import StructuredTool
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep
+
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    graph_builder = MagicMock()
+    analysis = ToolMessage(
+        name="analyze_deployment_configurations",
+        tool_call_id="analysis-compacted",
+        content=(
+            '{"cluster_name":"Kubernetes","problematic":1,' '"issues_detail":[{"severity":"high","issue":"未配置资源限制","count":1,"workloads":["api"]}]}'
+        ),
+    )
+    step_ai = AIMessage(content="本步分析完成")
+    compact_summary = HumanMessage(
+        content="【步骤摘要】分析完成",
+        additional_kwargs={"opspilot_planned_execution": True},
+    )
+    final_answer = AIMessage(content="仅基于摘要给出文字建议，无对比卡")
+
+    call_count = {"n": 0}
+
+    async def _ainvoke(payload, config=None):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            # 执行步：返回分析工具结果
+            return {"messages": list(payload.get("messages") or []) + [analysis, step_ai]}
+        # 总结步：上下文已压缩，没有分析 ToolMessage
+        return {"messages": [compact_summary, final_answer]}
+
+    deep_agent = MagicMock()
+    deep_agent.ainvoke = AsyncMock(side_effect=_ainvoke)
+    node._run_pending_k8s_repair_workflow = AsyncMock(return_value=True)
+    node._post_process_tool_results = MagicMock()
+    node.get_llm_client = MagicMock(return_value=object())
+    analyze_tool = StructuredTool.from_function(
+        func=lambda: "ok",
+        name="analyze_deployment_configurations",
+        description="analyze",
+    )
+    node._collect_deepagent_tools = MagicMock(return_value=[analyze_tool])
+    node._build_skill_backend_and_sources = MagicMock(return_value=(None, ["/skills/"], None))
+    node._build_interrupt_on = MagicMock(return_value=None)
+    graph_request = SimpleNamespace(
+        system_message_prompt="",
+        skill_id=1,
+        user_message="检查 K8s 配置",
+        max_tokens_budget=0,
+        soft_budget_ratio=0.8,
+    )
+
+    with (
+        patch("apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template", return_value="system"),
+        patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
+        patch("apps.opspilot.metis.llm.chain.node.is_progressive_tools_enabled", return_value=True),
+        patch(
+            "apps.opspilot.metis.llm.agent.tool_execution_planner.ToolExecutionPlanner.plan",
+            new=AsyncMock(
+                return_value=ToolExecutionPlan(
+                    goal="检查配置",
+                    steps=[ToolExecutionStep(objective="分析 Deployment", tools=["analyze_deployment_configurations"])],
+                )
+            ),
+        ),
+    ):
+        await node.build_deepagent_nodes(graph_builder)
+        wrapper = graph_builder.add_node.call_args.args[1]
+        await wrapper(
+            {"messages": [HumanMessage(content="检查配置")]},
+            {"configurable": {"graph_request": graph_request, "execution_id": "exec-compact-repair"}},
+        )
+
+    workflow_messages = node._run_pending_k8s_repair_workflow.await_args.args[0]
+    assert any(
+        getattr(message, "name", "") == "analyze_deployment_configurations" for message in workflow_messages
+    ), "修复闭环必须仍能看到被步间压缩丢掉的 analyze ToolMessage"
+
+
+@pytest.mark.asyncio
 async def test_deep_wrapper_emits_config_choice_and_repair_events_in_order():
     """覆盖线上完整顺序：附加检查工具不能吞掉分析后的选择与修复报告。"""
     from types import SimpleNamespace
 
     from langchain_core.messages import AIMessage, ToolMessage
     from langchain_core.runnables import RunnableLambda
+    from langchain_core.tools import StructuredTool
 
     from apps.opspilot.metis.llm.tools.kubernetes.analysis import _cache_k8s_analysis_details
 
@@ -593,7 +692,11 @@ async def test_deep_wrapper_emits_config_choice_and_repair_events_in_order():
     deep_agent = MagicMock()
     deep_agent.ainvoke = AsyncMock(return_value={"messages": final_messages})
     node.get_llm_client = MagicMock(return_value=object())
-    node._collect_deepagent_tools = MagicMock(return_value=[])
+    node._collect_deepagent_tools = MagicMock(
+        return_value=[
+            StructuredTool.from_function(func=lambda: "ok", name="analyze_deployment_configurations", description="analyze"),
+        ]
+    )
     node._build_skill_backend_and_sources = MagicMock(return_value=(None, [], None))
     node._build_interrupt_on = MagicMock(return_value=None)
     graph_request = SimpleNamespace(system_message_prompt="", skill_id=1)
@@ -601,6 +704,7 @@ async def test_deep_wrapper_emits_config_choice_and_repair_events_in_order():
     with (
         patch("apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template", return_value="system"),
         patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
+        patch("apps.opspilot.metis.llm.chain.node.is_progressive_tools_enabled", return_value=False),
         patch(
             "apps.opspilot.metis.llm.chain.node.wait_for_choice",
             new=AsyncMock(return_value={"selected": ["全部一次性展示"], "source": "user"}),
@@ -708,9 +812,7 @@ def test_post_process_tool_results_dispatches_mapped_tool():
     """ToolMessage.name 命中 TOOL_RESULT_TO_CAPABILITY 时,自动 dispatch 对应 capability。"""
     from langchain_core.messages import ToolMessage
 
-    from apps.opspilot.metis.llm.chain.k8s_report_tools import (
-        TOOL_RESULT_TO_CAPABILITY,
-    )
+    from apps.opspilot.metis.llm.chain.k8s_report_tools import TOOL_RESULT_TO_CAPABILITY
 
     node = _make_node(skill_capabilities=["config_analysis_report"])
     assert TOOL_RESULT_TO_CAPABILITY.get("analyze_deployment_configurations") == "config_analysis_report"
@@ -814,10 +916,12 @@ def test_post_process_tool_results_iterates_only_tool_messages():
     node = _make_node(skill_capabilities=["config_analysis_report"])
 
     with patch("langchain_core.callbacks.dispatch_custom_event") as mock_dispatch:
-        node._post_process_tool_results([
-            HumanMessage(content="hi"),
-            AIMessage(content="thinking"),
-        ])
+        node._post_process_tool_results(
+            [
+                HumanMessage(content="hi"),
+                AIMessage(content="thinking"),
+            ]
+        )
 
     mock_dispatch.assert_not_called()
 
@@ -846,9 +950,7 @@ def test_post_process_tool_results_coalesces_multiple_calls_into_one_card():
         node._post_process_tool_results(tool_messages)
 
     # 关键断言:7 次调用,只 emit 1 张卡
-    assert mock_dispatch.call_count == 1, (
-        f"Expected 1 merged report, got {mock_dispatch.call_count} cards"
-    )
+    assert mock_dispatch.call_count == 1, f"Expected 1 merged report, got {mock_dispatch.call_count} cards"
     event_name, payload = mock_dispatch.call_args.args
     assert event_name == "config_analysis_report"
     # total / problematic 累加后写到 summary

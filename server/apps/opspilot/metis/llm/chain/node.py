@@ -877,19 +877,24 @@ class ToolsNodes(BasicNode):
         if stable_report_id:
             payload["report_id"] = stable_report_id
         if event_dispatcher is not None:
-            # async 路径:deep_wrapper_node 传入的 adispatch_custom_event 回调
+            # async 路径:deep_wrapper_node 传入的 adispatch_custom_event 回调。
+            # 已有 running loop 时不能 fire-and-forget：包装节点可能立刻返回，
+            # ensure_future 任务会被取消，表现为有工具结果但前端收不到卡片。
             try:
                 import asyncio as _asyncio
 
                 coro = event_dispatcher(capability, payload)
                 try:
-                    _asyncio.get_running_loop()
+                    loop = _asyncio.get_running_loop()
                 except RuntimeError:
                     # 同步上下文里没运行 loop,把 coroutine 跑到底
                     _asyncio.run(coro)
                 else:
-                    # 已有 loop(在 async 函数里),创建 task 不阻塞
-                    _asyncio.ensure_future(coro)
+                    pending = getattr(self, "_pending_async_report_emits", None)
+                    if not isinstance(pending, list):
+                        pending = []
+                        self._pending_async_report_emits = pending
+                    pending.append(loop.create_task(coro))
             except Exception as e:
                 logger.warning(f"dispatch {capability} (async) failed: {e}")
                 return None
@@ -902,6 +907,16 @@ class ToolsNodes(BasicNode):
                 logger.warning(f"dispatch {capability} failed: {e}")
                 return None
         return payload.get("report_id")
+
+    async def _aflush_pending_report_emits(self) -> None:
+        """等待 `_emit_report_event` 在 running loop 下挂起的异步派发任务。"""
+        pending = getattr(self, "_pending_async_report_emits", None) or []
+        self._pending_async_report_emits = []
+        if not pending:
+            return
+        import asyncio as _asyncio
+
+        await _asyncio.gather(*pending, return_exceptions=True)
 
     async def _aemit_report_event(
         self,
@@ -2097,6 +2112,46 @@ class ToolsNodes(BasicNode):
                 except Exception as e:
                     logger.warning(f"dispatch repair_commands failed: {e}")
 
+            # 修复对比与 repair_commands / docx 同路 await 派发（避免后处理丢事件），
+            # 但仍受 repair_diff_report capability 门禁约束：未声明能力时不推对比卡。
+            emitted_diff_capability = None
+            if diff_items:
+                if not self._enable_repair_diff_report():
+                    logger.warning(
+                        "skip repair_diff_report: capability not enabled (items=%s)",
+                        len(diff_items),
+                    )
+                else:
+                    try:
+                        from apps.opspilot.metis.llm.chain.report_renderers.k8s import render_repair_diff_report
+
+                        diff_payload = render_repair_diff_report(
+                            {
+                                "title": title,
+                                "cluster_name": context_name,
+                                "items": diff_items,
+                            },
+                            {},
+                        )
+                        if diff_payload:
+                            stable_report_id = self._stable_report_id("repair_diff_report", config)
+                            if stable_report_id:
+                                diff_payload["report_id"] = stable_report_id
+                            await adispatch_custom_event("repair_diff_report", diff_payload, config=config)
+                            emitted_diff_capability = "repair_diff_report"
+                            logger.info(
+                                "dispatched repair_diff_report report_id=%s items=%s",
+                                diff_payload.get("report_id"),
+                                len(diff_items),
+                            )
+                        else:
+                            logger.warning(
+                                "repair_diff_report renderer returned empty payload; items=%s",
+                                len(diff_items),
+                            )
+                    except Exception as e:
+                        logger.warning(f"dispatch repair_diff_report failed: {e}")
+
             # 生成 .docx 报告并 dispatch 下载事件
             try:
                 from apps.opspilot.metis.llm.tools.kubernetes.report_generator import generate_k8s_report_docx
@@ -2126,15 +2181,15 @@ class ToolsNodes(BasicNode):
             else:
                 result_parts.append("\n\n修复建议已在对比报告中展示。")
 
-            return json.dumps(
-                {
-                    "message": "".join(result_parts),
-                    "title": title,
-                    "cluster_name": context_name,
-                    "items": diff_items,
-                },
-                ensure_ascii=False,
-            )
+            payload = {
+                "message": "".join(result_parts),
+                "title": title,
+                "cluster_name": context_name,
+                "items": diff_items,
+            }
+            if emitted_diff_capability:
+                payload["_report_emitted_capability"] = emitted_diff_capability
+            return json.dumps(payload, ensure_ascii=False)
 
         bulk_repair_tool = StructuredTool.from_function(
             coroutine=_generate_repair_report,
@@ -2247,7 +2302,11 @@ class ToolsNodes(BasicNode):
             parsed_repair = json.loads(repair_result) if isinstance(repair_result, str) else repair_result
         except (json.JSONDecodeError, TypeError):
             parsed_repair = None
-        if isinstance(parsed_repair, dict) and parsed_repair.get("items"):
+        if (
+            isinstance(parsed_repair, dict)
+            and parsed_repair.get("items")
+            and parsed_repair.get("_report_emitted_capability") != "repair_diff_report"
+        ):
             await self._aemit_report_event("repair_diff_report", parsed_repair, config=config)
         return True
 
@@ -3020,6 +3079,7 @@ class ToolsNodes(BasicNode):
                         skill_id=getattr(graph_request, "skill_id", None),
                         event_dispatcher=_emit_via_async_config_legacy,
                     )
+                    await self._aflush_pending_report_emits()
                     await self._run_pending_k8s_repair_workflow(final_messages, config)
                 except Exception:
                     raise
@@ -3578,9 +3638,14 @@ class ToolsNodes(BasicNode):
                     skill_id=getattr(graph_request, "skill_id", None),
                     event_dispatcher=_emit_via_async_config,
                 )
-                # 报告后处理只看本轮新增消息，避免重复派发；修复状态机必须看
-                # 完整历史，因为 HITL 恢复时分析结果和用户选择常分属不同轮次。
-                await self._run_pending_k8s_repair_workflow(final_messages, config)
+                await self._aflush_pending_report_emits()
+                # 报告后处理只看本轮新增消息，避免重复派发。
+                # 修复状态机必须能看到 analyze ToolMessage：分步执行会在步间把
+                # agent_state 压成摘要，final_messages 往往已丢失分析结果；
+                # 此时应使用 original + collected_output（含各步工具结果）。
+                # 非分步路径 collected 为空，仍回退到 final_messages（含完整历史）。
+                repair_history = list(original_messages) + list(collected_output_messages) if collected_output_messages else final_messages
+                await self._run_pending_k8s_repair_workflow(repair_history, config)
             except Exception:
                 # PPR 失败时 re-raise,让上层 langgraph 走正常 ERROR 处理路径
                 raise
