@@ -84,6 +84,8 @@ def test_json_to_logsql_not_contains():
         {"field": 'cluster") OR (*)', "op": "==", "value": "prod"},
         {"field": "cluster", "op": "==", "value": 'prod") OR (*)'},
         {"field": "cluster", "op": "startswith", "value": "prod* OR (*)"},
+        {"field": "cluster", "op": "startswith", "value": "-prod"},
+        {"field": "cluster", "op": "endswith", "value": "-prod"},
     ],
 )
 def test_json_to_logsql_rejects_values_that_can_change_query_structure(condition):

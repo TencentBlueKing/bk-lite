@@ -19,7 +19,7 @@ class LogGroupQueryBuilder:
     SUPPORTED_OPERATIONS = frozenset({"==", "!=", "contains", "!contains", "startswith", "endswith"})
     SAFE_FIELD_PATTERN = re.compile(r"^[A-Za-z_@][A-Za-z0-9_.@/-]*$")
     UNSAFE_QUOTED_VALUE_PATTERN = re.compile(r'["\\\x00-\x1f\x7f]')
-    SAFE_WILDCARD_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9_.@/-]+$")
+    SAFE_WILDCARD_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9_@][A-Za-z0-9_.@/-]*$")
 
     @classmethod
     def classify_rule_mode(cls, rule_json):

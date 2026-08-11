@@ -103,3 +103,17 @@ def test_audit_command_strict_preflight_rejects_logs_query_injection_rule():
 
     with pytest.raises(CommandError, match="uncovered=1"):
         call_command("audit_log_group_rule_modes", format="jsonl", fail_on_uncovered=True, stdout=io.StringIO())
+
+
+def test_audit_command_strict_preflight_rejects_wildcard_negation_rule():
+    LogGroup.objects.create(
+        id="g-wildcard-negation",
+        name="wildcard-negation",
+        rule={
+            "mode": "AND",
+            "conditions": [{"field": "cluster", "op": "startswith", "value": "-prod"}],
+        },
+    )
+
+    with pytest.raises(CommandError, match="uncovered=1"):
+        call_command("audit_log_group_rule_modes", format="jsonl", fail_on_uncovered=True, stdout=io.StringIO())
