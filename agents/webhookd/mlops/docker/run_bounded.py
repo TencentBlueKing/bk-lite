@@ -13,39 +13,9 @@ import time
 TIMEOUT_EXIT_CODE = 124
 
 
-def _descendant_pids(root_pid: int) -> list[int]:
-    """Return descendants deepest-first without moving them out of the hook PG."""
+def _process_group_exists(process_group_id: int) -> bool:
     try:
-        output = subprocess.check_output(
-            ["ps", "-eo", "pid=,ppid="],
-            text=True,
-            timeout=0.2,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
-
-    children: dict[int, list[int]] = {}
-    for line in output.splitlines():
-        try:
-            pid_text, parent_text = line.split()
-            children.setdefault(int(parent_text), []).append(int(pid_text))
-        except (ValueError, TypeError):
-            continue
-
-    descendants: list[int] = []
-
-    def visit(parent_pid: int) -> None:
-        for child_pid in children.get(parent_pid, []):
-            visit(child_pid)
-            descendants.append(child_pid)
-
-    visit(root_pid)
-    return descendants
-
-
-def _is_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
+        os.killpg(process_group_id, 0)
         return True
     except ProcessLookupError:
         return False
@@ -53,28 +23,55 @@ def _is_alive(pid: int) -> bool:
         return True
 
 
-def _signal_tree(pids: list[int], signum: int) -> None:
-    for pid in pids:
-        try:
-            os.kill(pid, signum)
-        except ProcessLookupError:
-            pass
+def _signal_process_group(process_group_id: int, signum: int) -> None:
+    try:
+        os.killpg(process_group_id, signum)
+    except ProcessLookupError:
+        pass
 
 
-def _terminate_process_tree(
+def _terminate_process_group(
     process: subprocess.Popen[bytes],
     deadline: float,
 ) -> None:
-    pids = _descendant_pids(process.pid) + [process.pid]
-    _signal_tree(pids, signal.SIGTERM)
+    _signal_process_group(process.pid, signal.SIGTERM)
 
-    while time.monotonic() < deadline and any(_is_alive(pid) for pid in pids):
+    while time.monotonic() < deadline and _process_group_exists(process.pid):
         time.sleep(min(0.01, max(0.0, deadline - time.monotonic())))
 
-    _signal_tree([pid for pid in pids if _is_alive(pid)], signal.SIGKILL)
+    _signal_process_group(process.pid, signal.SIGKILL)
     try:
         process.wait(timeout=0.1)
     except subprocess.TimeoutExpired:
+        pass
+
+
+def _start_parent_death_watchdog(process_group_id: int) -> tuple[int, int]:
+    """Kill the detached command group even if webhookd SIGKILLs this runner."""
+    read_fd, write_fd = os.pipe()
+    watchdog_pid = os.fork()
+    if watchdog_pid == 0:
+        try:
+            os.close(write_fd)
+            os.setsid()
+            while os.read(read_fd, 1):
+                pass
+            _signal_process_group(process_group_id, signal.SIGKILL)
+        finally:
+            os._exit(0)
+
+    os.close(read_fd)
+    return watchdog_pid, write_fd
+
+
+def _stop_parent_death_watchdog(watchdog_pid: int, write_fd: int) -> None:
+    try:
+        os.close(write_fd)
+    except OSError:
+        pass
+    try:
+        os.waitpid(watchdog_pid, 0)
+    except ChildProcessError:
         pass
 
 
@@ -91,25 +88,31 @@ def main() -> int:
     if timeout_seconds <= 0:
         return TIMEOUT_EXIT_CODE
 
-    # Keep the command in webhookd's hook process group. If webhookd reaches its
-    # outer hard timeout, one group kill must still cover the wrapper and child.
-    process = subprocess.Popen(sys.argv[2:])
+    # A dedicated command group lets the runner terminate all descendants. A
+    # detached watchdog observes runner death and kills that group even when
+    # webhookd uses SIGKILL, which cannot be handled by an EXIT/signal trap.
+    process = subprocess.Popen(sys.argv[2:], start_new_session=True)
+    watchdog_pid, watchdog_write_fd = _start_parent_death_watchdog(process.pid)
     deadline = time.monotonic() + timeout_seconds
     termination_grace = min(0.2, max(0.02, timeout_seconds * 0.1))
     command_deadline = deadline - termination_grace
 
     def forward_signal(signum: int, _frame: object) -> None:
-        _terminate_process_tree(process, time.monotonic() + termination_grace)
+        _terminate_process_group(process, time.monotonic() + termination_grace)
+        _stop_parent_death_watchdog(watchdog_pid, watchdog_write_fd)
         raise SystemExit(128 + signum)
 
     for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(signum, forward_signal)
 
     try:
-        return process.wait(timeout=max(0.0, command_deadline - time.monotonic()))
+        result = process.wait(timeout=max(0.0, command_deadline - time.monotonic()))
     except subprocess.TimeoutExpired:
-        _terminate_process_tree(process, deadline)
-        return TIMEOUT_EXIT_CODE
+        _terminate_process_group(process, deadline)
+        result = TIMEOUT_EXIT_CODE
+
+    _stop_parent_death_watchdog(watchdog_pid, watchdog_write_fd)
+    return result
 
 
 if __name__ == "__main__":
