@@ -10,7 +10,7 @@
 
 ## 方案
 
-通过 `pnpm` 的精确依赖锁定，将 `@rc-component/trigger` 固定到经浏览器回归验证、不存在首次打开定位回归的兼容版本。只调整依赖解析和锁文件，不修改 OpsPilot 菜单、引导文案或交互逻辑。
+通过 `pnpm` 的定向依赖覆盖，仅将 Ant Design 使用的 `@rc-component/tour` 升级到经浏览器回归验证、兼容 React 19 的 `2.4.0`。新版使用带 DOM 引用的 `Placeholder` 作为定位锚点，避免旧版通过 `Portal` 包裹锚点时无法完成首次对齐。只调整依赖解析和锁文件，不修改 OpsPilot 菜单、引导文案或交互逻辑，也不替换其他组件使用的 `@rc-component/trigger`。
 
 不采用以下方案：
 
@@ -30,4 +30,4 @@
 
 ## 范围与回滚
 
-改动范围限于 `web/package.json`、`web/pnpm-lock.yaml` 和该浏览器回归测试。若固定版本带来其他弹层回归，删除精确锁定并恢复锁文件即可回滚。
+改动范围限于 `web/package.json`、`web/pnpm-workspace.yaml`、`web/pnpm-lock.yaml` 和该浏览器回归测试。若固定版本带来其他弹层回归，删除精确锁定并恢复锁文件即可回滚。
