@@ -1361,6 +1361,60 @@ def test_receive_alert_events_reports_partial_ingestion(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(monkeypatch):
+    from apps.alerts.models.alert_source import AlertSource
+
+    AlertSource.objects.create(
+        name="nats逐事件ACK",
+        source_id="nats-ack",
+        source_type="nats",
+        secret="x",
+        is_active=True,
+        is_effective=True,
+    )
+
+    class FakeAdapter:
+        def __init__(self, events, **kwargs):
+            self.events = events
+
+        def main(self):
+            status = self.events[0]["test_status"]
+            return {
+                "received": 1,
+                "accepted": int(status == "accepted"),
+                "skipped": int(status in {"duplicate", "rejected"}),
+                "errored": int(status == "errored"),
+                "duplicates": int(status == "duplicate"),
+                "rejected": int(status == "rejected"),
+            }
+
+    monkeypatch.setattr(
+        N.AlertSourceAdapterFactory,
+        "get_adapter",
+        staticmethod(lambda source: FakeAdapter),
+    )
+    events = [
+        {"delivery_id": "d1", "test_status": "accepted"},
+        {"delivery_id": "d2", "test_status": "duplicate"},
+        {"delivery_id": "d3", "test_status": "rejected"},
+    ]
+
+    result = N.receive_alert_events(
+        source_id="nats-ack",
+        events=events,
+        pusher="lite-monitor",
+        ack_mode=N.PER_EVENT_ACK_MODE,
+    )
+
+    assert result["result"] is False
+    assert result["data"]["event_results"] == [
+        {"delivery_id": "d1", "status": "accepted", "retryable": False},
+        {"delivery_id": "d2", "status": "duplicate", "retryable": False},
+        {"delivery_id": "d3", "status": "rejected", "retryable": False},
+    ]
+
+
+@pytest.mark.django_db
 def test_receive_alert_events_marks_lite_log_as_trusted_internal(mocker):
     from apps.alerts.models.alert_source import AlertSource
 

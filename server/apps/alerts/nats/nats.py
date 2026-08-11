@@ -31,6 +31,23 @@ from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
 TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log", "lite-apm"}
+PER_EVENT_ACK_MODE = "per_event_v1"
+
+
+def _event_ack(delivery_id, ingestion):
+    if ingestion.get("accepted", 0):
+        status = "accepted"
+    elif ingestion.get("duplicates", 0):
+        status = "duplicate"
+    elif ingestion.get("rejected", 0):
+        status = "rejected"
+    else:
+        status = "errored"
+    return {
+        "delivery_id": delivery_id,
+        "status": status,
+        "retryable": status == "errored",
+    }
 
 
 def _positive_int_env(name, default):
@@ -760,6 +777,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         source_id = kwargs.pop("source_id", "")
         events = kwargs.pop("events", [])
         pusher = kwargs.pop("pusher", None)
+        ack_mode = kwargs.pop("ack_mode", "")
 
         # 参数校验
         if not source_id:
@@ -811,25 +829,61 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         logger.info("[AlertEvent] 开始处理 %s 条事件 source_id=%s pusher=%s", len(events), source_id, pusher)
 
         # 处理告警事件
-        ingestion = adapter.main() or {
-            "received": len(events),
-            "accepted": len(events),
-            "skipped": 0,
-            "errored": 0,
-        }
+        event_results = None
+        if ack_mode == PER_EVENT_ACK_MODE:
+            # receiver-first 兼容扩展：只有新生产者显式 opt-in 才逐条处理并返回身份化 ACK；
+            # 旧生产者仍走原批量路径和原 result/data 契约。
+            ingestions = []
+            event_results = []
+            for index, normalized_event in enumerate(normalized_events):
+                single_adapter = adapter_class(
+                    alert_source=event_source,
+                    secret="",
+                    events=[normalized_event],
+                    trusted_internal=trusted_internal,
+                )
+                single_ingestion = single_adapter.main() or {
+                    "received": 1,
+                    "accepted": 0,
+                    "skipped": 0,
+                    "errored": 1,
+                    "duplicates": 0,
+                    "rejected": 0,
+                }
+                ingestions.append(single_ingestion)
+                event_results.append(
+                    _event_ack(normalized_event.get("delivery_id", str(index)), single_ingestion)
+                )
+            ingestion = {
+                key: sum(item.get(key, 0) for item in ingestions)
+                for key in ("received", "accepted", "skipped", "errored", "duplicates", "rejected")
+            }
+        else:
+            ingestion = adapter.main() or {
+                "received": len(events),
+                "accepted": len(events),
+                "skipped": 0,
+                "errored": 0,
+            }
 
         logger.info("[AlertEvent] 成功处理 %s 条事件 pusher=%s source_id=%s", len(events), pusher, source_id)
 
         fully_accepted = ingestion.get("skipped", 0) == 0 and ingestion.get("errored", 0) == 0
+        if event_results is not None:
+            # duplicate 是幂等终态；rejected/errored 仍失败。旧模式 result 语义完全不变。
+            fully_accepted = all(item["status"] in {"accepted", "duplicate"} for item in event_results)
+        data = {
+            "processed_events": ingestion.get("accepted", 0),
+            "ingestion": ingestion,
+            "source_id": source_id,
+            "pusher": pusher,
+            "timestamp": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        if event_results is not None:
+            data["event_results"] = event_results
         return {
             "result": fully_accepted,
-            "data": {
-                "processed_events": ingestion.get("accepted", 0),
-                "ingestion": ingestion,
-                "source_id": source_id,
-                "pusher": pusher,
-                "timestamp": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
-            },
+            "data": data,
             "message": ("Events received and processed successfully." if fully_accepted else "Alert events were only partially accepted."),
         }
 

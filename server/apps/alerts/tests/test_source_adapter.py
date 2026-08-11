@@ -294,6 +294,39 @@ def test_create_events_persists(event_levels, restful_source):
     assert bulk
 
 
+@pytest.mark.django_db
+def test_create_events_reports_duplicate_and_rejected_details(event_levels, restful_source):
+    adapter = RestFulAdapter(alert_source=restful_source)
+    valid = {
+        "title": "事件A",
+        "level": "0",
+        "item": "cpu",
+        "external_id": "detail-ext",
+        "action": "created",
+        "start_time": "1700000000",
+    }
+
+    adapter.create_events([valid])
+    assert adapter.last_ingestion_result == {
+        "received": 1,
+        "accepted": 1,
+        "skipped": 0,
+        "errored": 0,
+        "duplicates": 0,
+        "rejected": 0,
+    }
+
+    adapter.create_events([valid, {"level": "0"}])
+    assert adapter.last_ingestion_result == {
+        "received": 2,
+        "accepted": 0,
+        "skipped": 2,
+        "errored": 0,
+        "duplicates": 1,
+        "rejected": 1,
+    }
+
+
 # --------------------------------------------------------------------------
 # bulk_save_events 去重
 # --------------------------------------------------------------------------

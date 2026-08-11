@@ -100,11 +100,17 @@ def scan_policy_task(policy_id):
 def retry_alert_center_lifecycle_notify_task():
     """补偿任务：重试推送到告警中心失败的告警通知（每5分钟执行，每次最多处理200条）"""
     from apps.monitor.models import MonitorAlert, MonitorPolicy
-    from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
+    from apps.monitor.services.alert_lifecycle_notify import (
+        ALERT_CENTER_CREATED_RETRY_ENABLED,
+        AlertLifecycleNotifier,
+    )
 
+    retry_statuses = ["recovered", "closed"]
+    if ALERT_CENTER_CREATED_RETRY_ENABLED:
+        retry_statuses.insert(0, "new")
     alerts = list(
         MonitorAlert.objects.filter(
-            status__in=["new", "recovered", "closed"],
+            status__in=retry_statuses,
             alert_center_notified=False,
             alert_center_retry_count__lt=10,
         ).order_by("id")[:200]

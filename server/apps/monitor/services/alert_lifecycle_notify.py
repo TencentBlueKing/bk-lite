@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timezone
+import os
 
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
@@ -24,6 +25,12 @@ LEVEL_TO_ALERT_CENTER = {
 NOTIFY_SCOPE_NONE = "none"
 NOTIFY_SCOPE_ALERT_CENTER_ONLY = "alert_center_only"
 NOTIFY_SCOPE_ALL_CONFIGURED = "all_configured"
+ALERT_CENTER_PER_EVENT_ACK_ENABLED = os.getenv(
+    "MONITOR_ALERT_CENTER_PER_EVENT_ACK_ENABLED", "false"
+).lower() in {"1", "true", "yes"}
+ALERT_CENTER_CREATED_RETRY_ENABLED = os.getenv(
+    "MONITOR_ALERT_CENTER_CREATED_RETRY_ENABLED", "false"
+).lower() in {"1", "true", "yes"}
 
 
 class AlertLifecycleNotifier:
@@ -283,16 +290,33 @@ class AlertLifecycleNotifier:
     def _push_to_alert_center(self, channel_id, channel_name, alerts, action, operator, reason):
         now = datetime.now(timezone.utc).isoformat()
         instance_org_map = self._build_instance_org_map(alerts)
+        payloads = [
+            self._build_alert_center_payload(alert, action, operator, reason, instance_org_map)
+            for alert in alerts
+        ]
+        if ALERT_CENTER_PER_EVENT_ACK_ENABLED:
+            for alert, payload in zip(alerts, payloads):
+                payload["delivery_id"] = self._build_delivery_id(alert, action)
         content = {
             "source_id": "nats",
             "pusher": "lite-monitor",
-            "events": [self._build_alert_center_payload(alert, action, operator, reason, instance_org_map) for alert in alerts],
+            "events": payloads,
         }
+        if ALERT_CENTER_PER_EVENT_ACK_ENABLED:
+            content["ack_mode"] = "per_event_v1"
         success = False
         error_msg = ""
+        event_results = {}
         try:
             send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, "", content, [])
             success, error_msg = self._parse_channel_result(send_result)
+            if ALERT_CENTER_PER_EVENT_ACK_ENABLED and isinstance(send_result, dict):
+                details = send_result.get("data") or {}
+                event_results = {
+                    item.get("delivery_id"): item
+                    for item in details.get("event_results") or []
+                    if isinstance(item, dict) and item.get("delivery_id")
+                }
             if success:
                 logger.info(f"Lifecycle push to alert center success: action={action}, count={len(alerts)}")
             else:
@@ -303,18 +327,40 @@ class AlertLifecycleNotifier:
 
         results = []
         for alert in alerts:
+            alert_success = success
+            alert_error = error_msg
+            if event_results:
+                ack = event_results.get(self._build_delivery_id(alert, action), {})
+                alert_success = ack.get("status") in {"accepted", "duplicate"}
+                if not alert_success:
+                    alert_error = ack.get("status") or "missing per-event acknowledgement"
             log_entry = {
                 "time": now,
                 "action": action,
                 "channel_id": channel_id,
                 "channel_name": channel_name,
                 "is_alert_center": True,
-                "success": success,
+                "success": alert_success,
             }
-            if not success:
-                log_entry["error"] = error_msg
+            if not alert_success:
+                log_entry["error"] = alert_error
             results.append((alert, log_entry))
         return results
+
+    @staticmethod
+    def _build_delivery_id(alert, action):
+        """旧链路的 ACK 关联键；未来 outbox 可直接替换为其持久化 generation key。"""
+        return ":".join(
+            str(value or "")
+            for value in (
+                alert.id,
+                action,
+                getattr(alert, "start_event_time", None),
+                getattr(alert, "end_event_time", None),
+                getattr(alert, "level", None),
+                getattr(alert, "value", None),
+            )
+        )
 
     def _build_instance_org_map(self, alerts):
         """按本批告警的实例一次性查出 实例ID -> [组织id] 映射，避免逐条 N+1 查询。"""

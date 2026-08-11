@@ -255,11 +255,16 @@ class AlertSourceAdapter(ABC):
             )
         bulk_events = self.bulk_save_events(events)
         accepted = sum(len(batch or []) for batch in (bulk_events or []))
+        rejected = skipped_missing
+        duplicates = max(0, len(add_events) - accepted - rejected - errored)
         self.last_ingestion_result = {
             "received": len(add_events),
             "accepted": accepted,
-            "skipped": max(0, len(add_events) - accepted - errored),
+            # 保留既有 skipped 汇总语义；细分字段供显式 opt-in 的逐事件 ACK 使用。
+            "skipped": rejected + duplicates,
             "errored": errored,
+            "duplicates": duplicates,
+            "rejected": rejected,
         }
         return bulk_events
 

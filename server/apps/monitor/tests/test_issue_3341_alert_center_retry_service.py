@@ -88,6 +88,7 @@ def test_schedule_notifications_persists_pending_state_before_on_commit():
         "EventAlertManager",
         "_schedule_notifications",
         {
+            "ALERT_CENTER_CREATED_RETRY_ENABLED": True,
             "transaction": types.SimpleNamespace(on_commit=on_commit),
             "MonitorAlert": types.SimpleNamespace(
                 objects=_PendingObjects(notified_by_id, events)
@@ -125,6 +126,7 @@ def test_schedule_notifications_disabled_keeps_notified_state():
         "EventAlertManager",
         "_schedule_notifications",
         {
+            "ALERT_CENTER_CREATED_RETRY_ENABLED": True,
             "transaction": types.SimpleNamespace(
                 on_commit=lambda callback: events.append(("on_commit", callback))
             ),
@@ -140,6 +142,34 @@ def test_schedule_notifications_disabled_keeps_notified_state():
 
     assert notified_by_id == {101: True}
     assert events == []
+
+
+def test_schedule_notifications_default_compatibility_keeps_legacy_pending_state():
+    notified_by_id = {101: True}
+    events = []
+    callbacks = []
+    subject = _load_method(
+        MONITOR_ROOT / "tasks/services/policy_scan/event_alert_manager.py",
+        "EventAlertManager",
+        "_schedule_notifications",
+        {
+            "ALERT_CENTER_CREATED_RETRY_ENABLED": False,
+            "transaction": types.SimpleNamespace(on_commit=callbacks.append),
+            "MonitorAlert": types.SimpleNamespace(
+                objects=_PendingObjects(notified_by_id, events)
+            ),
+            "AlertLifecycleNotifier": lambda policy: types.SimpleNamespace(
+                notify_alerts=lambda alerts, action: None
+            ),
+        },
+    )()
+    subject.policy = types.SimpleNamespace(notice=True)
+
+    subject._schedule_notifications([types.SimpleNamespace(id=101)], [])
+
+    assert notified_by_id == {101: True}
+    assert events == []
+    assert len(callbacks) == 1
 
 
 class _RetryQuery:
@@ -239,6 +269,7 @@ def test_retry_task_selects_pending_lifecycle_actions(monkeypatch):
     notify_module = types.ModuleType(
         "apps.monitor.services.alert_lifecycle_notify"
     )
+    notify_module.ALERT_CENTER_CREATED_RETRY_ENABLED = True
 
     def build_notifier(notifier_policy=None, policies_by_id=None):
         notifier_policies.append((notifier_policy, policies_by_id))
@@ -332,3 +363,44 @@ def test_retry_payload_uses_new_alert_policy_without_changing_terminal_actions()
     assert created_payload["labels"]["policy_name"] == "策略 A"
     assert recovered_payload["organizations"] == []
     assert recovered_payload["labels"]["policy_name"] == ""
+
+
+def test_sender_per_event_ack_marks_only_accepted_or_duplicate(monkeypatch):
+    from apps.monitor.services import alert_lifecycle_notify as notify_module
+
+    alerts = [
+        types.SimpleNamespace(
+            id=201, start_event_time=None, end_event_time=None, level="critical", value=1
+        ),
+        types.SimpleNamespace(
+            id=202, start_event_time=None, end_event_time=None, level="critical", value=2
+        ),
+    ]
+    notifier = notify_module.AlertLifecycleNotifier()
+    monkeypatch.setattr(notify_module, "ALERT_CENTER_PER_EVENT_ACK_ENABLED", True)
+    monkeypatch.setattr(notifier, "_build_instance_org_map", lambda values: {})
+    monkeypatch.setattr(
+        notifier,
+        "_build_alert_center_payload",
+        lambda alert, action, operator, reason, instance_org_map: {"external_id": str(alert.id)},
+    )
+    delivery_ids = [notifier._build_delivery_id(alert, "created") for alert in alerts]
+    monkeypatch.setattr(
+        notify_module.SystemMgmtUtils,
+        "send_msg_with_channel",
+        lambda *args: {
+            "result": False,
+            "data": {
+                "event_results": [
+                    {"delivery_id": delivery_ids[0], "status": "duplicate", "retryable": False},
+                    {"delivery_id": delivery_ids[1], "status": "rejected", "retryable": False},
+                ]
+            },
+            "message": "partial",
+        },
+    )
+
+    results = notifier._push_to_alert_center(7, "告警中心", alerts, "created", "", "")
+
+    assert [entry["success"] for _, entry in results] == [True, False]
+    assert results[1][1]["error"] == "rejected"
