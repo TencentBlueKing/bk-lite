@@ -976,6 +976,53 @@ def test_run_assess_success_parses_output_and_writes_snapshot(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_run_assess_batches_large_multi_package_dnf_advisory(monkeypatch):
+    baseline = PatchBaseline.objects.create(
+        name='large-dnf-advisory', os_type=OSType.LINUX, team=[1]
+    )
+    target = _make_node_mgmt_target()
+    binding = HostBaselineBinding.objects.create(target=target, baseline=baseline)
+    patch = Patch.objects.create(title='large dnf advisory', os_type=OSType.LINUX, team=[1])
+    packages = [
+        {'name': f'pkg-{index}', 'version': '1.0-1.el9', 'arch': 'x86_64'}
+        for index in range(100)
+    ]
+    LinuxPatchDetail.objects.create(
+        patch=patch,
+        pkg_name=packages[0]['name'],
+        pkg_version=packages[0]['version'],
+        packages=packages,
+        distro_name='Rocky Linux',
+        os_version_range='9',
+        architectures=['x86_64'],
+        repo_type='dnf',
+    )
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    task = _make_task(GovernanceTaskType.ASSESS, [target.id])
+    executed_commands = []
+
+    class FakeExecutor:
+        def execute_local_stream(self, command, **kwargs):  # noqa: ARG002
+            executed_commands.append(command)
+            output = ['BKPATCH_HOST|LINUX|rocky|rhel|9.6|x86_64|dnf']
+            for index, package in enumerate(packages):
+                marker = f'BKPATCH_LINUX|{requirement.id}|{index}|{package["name"]}|'
+                if marker in command:
+                    output.append(f'{marker}installed|{package["version"]}|0|')
+            return {'exit_code': 0, 'stdout': '\n'.join(output)}
+
+    monkeypatch.setattr(pes, 'Executor', lambda instance_id: FakeExecutor())
+
+    pes.run_governance_task(task)
+
+    assert len(executed_commands) > 1
+    assert all(len(command.encode('utf-8')) <= 64 * 1024 for command in executed_commands)
+    binding.refresh_from_db()
+    assert binding.compliance_status == ComplianceStatus.COMPLIANT
+    assert binding.missing_count == 0
+
+
+@pytest.mark.django_db
 def test_run_assess_fails_whole_host_when_linux_facts_are_missing(monkeypatch):
     baseline = PatchBaseline.objects.create(name='facts-required', os_type=OSType.LINUX, team=[1])
     target = _make_node_mgmt_target()
