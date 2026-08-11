@@ -60,10 +60,29 @@ json_error() {
     fi
 }
 
+# 通过可选 runner 执行 GPU 探针；serve 会传入共享启动预算 runner，train
+# 保持原调用方式。先检查本地镜像并使用 --pull never，禁止探针隐式拉镜像。
+run_gpu_probe_command() {
+    local runner="$1"
+    shift
+    if [ -n "$runner" ]; then
+        "$runner" "$@"
+    else
+        "$@"
+    fi
+}
+
 # 检查 GPU 是否可用
 check_gpu_available() {
-    # 检查是否有 NVIDIA Docker Runtime
-    docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi >/dev/null 2>&1
+    local runner="$1"
+    local probe_id="${2:-$$}"
+    GPU_PROBE_CONTAINER_NAME="bk-lite-gpu-probe-${probe_id}"
+
+    run_gpu_probe_command "$runner" docker image inspect nvidia/cuda:11.0-base >/dev/null 2>&1 || return 1
+    run_gpu_probe_command "$runner" docker run --rm --pull never \
+        --name "$GPU_PROBE_CONTAINER_NAME" \
+        --label "bk-lite.startup-id=$probe_id" \
+        --gpus all nvidia/cuda:11.0-base nvidia-smi >/dev/null 2>&1
 }
 
 # Device 配置函数
@@ -76,7 +95,10 @@ check_gpu_available() {
 #   - "gpu"：必须使用 GPU，无 GPU 则报错
 setup_device_args() {
     local device="$1"
+    local runner="$2"
+    local probe_id="$3"
     DEVICE_ARGS=""
+    GPU_PROBE_CONTAINER_NAME=""
     
     # 未传递、null 或 cpu：默认 CPU 模式
     if [ -z "$device" ] || [ "$device" = "null" ] || [ "$device" = "cpu" ]; then
@@ -86,14 +108,14 @@ setup_device_args() {
     case "$device" in
         "auto")
             # 自动检测 GPU
-            if check_gpu_available; then
+            if check_gpu_available "$runner" "$probe_id"; then
                 DEVICE_ARGS="--gpus all"
             fi
             return 0
             ;;
         "gpu")
             # 必须使用 GPU
-            if ! check_gpu_available; then
+            if ! check_gpu_available "$runner" "$probe_id"; then
                 return 1
             fi
             DEVICE_ARGS="--gpus all"

@@ -64,6 +64,12 @@ if ! [[ "$ROLLBACK_TIMEOUT_SECONDS" =~ ^[1-4]$ ]]; then
     json_error "INVALID_ROLLBACK_TIMEOUT" "$ID" "SERVING_ROLLBACK_TIMEOUT_SECONDS must be between 1 and 4"
     exit 1
 fi
+SERVING_REQUIRE_INSTANCE_ID="${SERVING_REQUIRE_INSTANCE_ID:-false}"
+SERVING_REQUIRE_INSTANCE_ID=$(echo "$SERVING_REQUIRE_INSTANCE_ID" | tr '[:upper:]' '[:lower:]')
+if [ "$SERVING_REQUIRE_INSTANCE_ID" != "true" ] && [ "$SERVING_REQUIRE_INSTANCE_ID" != "false" ]; then
+    json_error "INVALID_IDENTITY_POLICY" "$ID" "SERVING_REQUIRE_INSTANCE_ID must be true or false"
+    exit 1
+fi
 STARTUP_DEADLINE=$((SECONDS + STARTUP_TIMEOUT_SECONDS))
 ROLLBACK_DEADLINE=0
 
@@ -100,6 +106,35 @@ run_with_rollback_budget() {
     fi
     run_bounded "$remaining" "$@"
 }
+
+# 清理 trap 必须早于任何 Docker 副作用（包括 GPU 探针）安装。
+CID_FILE=$(mktemp)
+rm -f "$CID_FILE"
+CREATED_CONTAINER_ID=""
+GPU_PROBE_CONTAINER_NAME=""
+STARTUP_COMMITTED="false"
+ROLLBACK_IN_PROGRESS="false"
+
+cleanup_on_exit() {
+    local status=$?
+    if [ -z "$CREATED_CONTAINER_ID" ] && [ -f "$CID_FILE" ]; then
+        CREATED_CONTAINER_ID=$(cat "$CID_FILE" 2>/dev/null || true)
+    fi
+    rm -f "$CID_FILE"
+    if [ "$status" -ne 0 ] \
+        && [ "$STARTUP_COMMITTED" != "true" ] \
+        && [ "$ROLLBACK_IN_PROGRESS" != "true" ]; then
+        if [ -n "$CREATED_CONTAINER_ID" ]; then
+            run_with_rollback_budget docker rm -f "$CREATED_CONTAINER_ID" >/dev/null 2>&1 || true
+        fi
+        if [ -n "$GPU_PROBE_CONTAINER_NAME" ]; then
+            run_with_rollback_budget docker rm -f "$GPU_PROBE_CONTAINER_NAME" >/dev/null 2>&1 || true
+        fi
+    fi
+}
+
+trap cleanup_on_exit EXIT
+trap 'exit 143' TERM INT HUP
 
 # 检查容器是否已存在；Docker 查询也属于同一个启动预算。
 set +e
@@ -150,7 +185,7 @@ else
 fi
 
 # 配置设备参数
-setup_device_args "$DEVICE" || {
+setup_device_args "$DEVICE" run_with_startup_budget "$SERVING_INSTANCE_ID" || {
     json_error "DEVICE_SETUP_FAILED" "$ID" "Failed to setup device"
     exit 1
 }
@@ -164,29 +199,6 @@ fi
 # 初次启动禁用重启策略；readiness 通过后再恢复 unless-stopped。
 # 否则 BentoML 因模型加载失败退出时，Docker 重启环会让 docker ps 持续可见，
 # 从而把失败发布误报为 running。
-CID_FILE=$(mktemp)
-rm -f "$CID_FILE"
-CREATED_CONTAINER_ID=""
-STARTUP_COMMITTED="false"
-ROLLBACK_IN_PROGRESS="false"
-
-cleanup_on_exit() {
-    local status=$?
-    if [ -z "$CREATED_CONTAINER_ID" ] && [ -f "$CID_FILE" ]; then
-        CREATED_CONTAINER_ID=$(cat "$CID_FILE" 2>/dev/null || true)
-    fi
-    rm -f "$CID_FILE"
-    if [ "$status" -ne 0 ] \
-        && [ "$STARTUP_COMMITTED" != "true" ] \
-        && [ "$ROLLBACK_IN_PROGRESS" != "true" ] \
-        && [ -n "$CREATED_CONTAINER_ID" ]; then
-        run_with_rollback_budget docker rm -f "$CREATED_CONTAINER_ID" >/dev/null 2>&1 || true
-    fi
-}
-
-trap cleanup_on_exit EXIT
-trap 'exit 143' TERM INT HUP
-
 set +e
 DOCKER_OUTPUT=$(run_with_startup_budget docker run -d \
     --name "$ID" \
@@ -322,6 +334,10 @@ while [ "$SECONDS" -lt "$STARTUP_DEADLINE" ]; do
     fi
 
     HEALTH_RESPONSE=""
+    IDENTITY_READY="false"
+    HEALTH_HAS_INSTANCE_ID="false"
+    LEGACY_BRIDGE_READY="false"
+    LEGACY_CURL_TIMEOUT_SECONDS=0
     if [ "$LAST_STATE" = "running" ]; then
         HEALTH_RESPONSE=$(curl --fail --silent --show-error \
             --max-time "$CURL_TIMEOUT_SECONDS" \
@@ -334,6 +350,31 @@ while [ "$SECONDS" -lt "$STARTUP_DEADLINE" ]; do
     if echo "$HEALTH_RESPONSE" | jq -e \
         --arg instance_id "$SERVING_INSTANCE_ID" \
         '.status == "healthy" and .startup_instance_id == $instance_id' >/dev/null 2>&1; then
+        IDENTITY_READY="true"
+    elif echo "$HEALTH_RESPONSE" | jq -e \
+        '.startup_instance_id | (type == "string" and length > 0)' >/dev/null 2>&1; then
+        HEALTH_HAS_INSTANCE_ID="true"
+    fi
+
+    # 分阶段升级兼容：bridge 端口由本次 CID 的 Docker 映射独占，旧镜像尚未
+    # 回显 instance ID 时可临时沿用 /readyz；host 始终强制 identity fencing。
+    # 全部算法镜像升级后设置 SERVING_REQUIRE_INSTANCE_ID=true 关闭兼容分支。
+    LEGACY_CURL_TIMEOUT_SECONDS=$((STARTUP_DEADLINE - SECONDS))
+    if [ "$LEGACY_CURL_TIMEOUT_SECONDS" -gt 2 ]; then
+        LEGACY_CURL_TIMEOUT_SECONDS=2
+    fi
+    if [ "$LEGACY_CURL_TIMEOUT_SECONDS" -gt 0 ] \
+        && [ "$IDENTITY_READY" != "true" ] \
+        && [ "$HEALTH_HAS_INSTANCE_ID" != "true" ] \
+        && [ "$NETWORK_MODE" != "host" ] \
+        && [ "$SERVING_REQUIRE_INSTANCE_ID" != "true" ] \
+        && curl --fail --silent --show-error \
+            --max-time "$LEGACY_CURL_TIMEOUT_SECONDS" \
+            "http://127.0.0.1:${PORT}/readyz" >/dev/null 2>&1; then
+        LEGACY_BRIDGE_READY="true"
+    fi
+
+    if [ "$IDENTITY_READY" = "true" ] || [ "$LEGACY_BRIDGE_READY" = "true" ]; then
         if ! run_with_startup_budget docker update --restart unless-stopped "$CREATED_CONTAINER_ID" >/dev/null 2>&1; then
             rollback_failed_startup \
                 "RESTART_POLICY_UPDATE_FAILED" \
