@@ -12,6 +12,12 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--batch-size", type=int, default=500, help="稳定主键分页的批大小")
         parser.add_argument("--format", choices=("text", "jsonl"), default="text", help="输出格式")
+        parser.add_argument(
+            "--target-enforcement",
+            choices=("strict", "legacy"),
+            default="strict",
+            help="按目标 reader 模式检查；回滚旧编码前必须选择 legacy",
+        )
         parser.add_argument("--fail-on-invalid", action="store_true", help="发现需处理规则时以非零状态退出")
         parser.add_argument("--fail-on-uncovered", action="store_true", help="发现严格模式未覆盖规则时以非零状态退出")
 
@@ -21,6 +27,7 @@ class Command(BaseCommand):
             raise CommandError("batch-size 必须是正整数")
 
         output_format = options["format"]
+        target_enforcement = options["target_enforcement"]
         summary = {
             LogGroupQueryBuilder.MODE_VALID: 0,
             LogGroupQueryBuilder.MODE_LEGACY_OR: 0,
@@ -49,7 +56,10 @@ class Command(BaseCommand):
                 organizations_by_group[group_id].append(organization)
 
             for group in groups:
-                classification, _ = LogGroupQueryBuilder.classify_rule(group["rule"])
+                classification, _ = LogGroupQueryBuilder.classify_rule(
+                    group["rule"],
+                    require_legacy_safe=target_enforcement == "legacy",
+                )
                 summary[classification] += 1
                 if classification == LogGroupQueryBuilder.MODE_VALID:
                     continue
@@ -71,7 +81,7 @@ class Command(BaseCommand):
 
             last_id = groups[-1]["id"]
 
-        summary_record = {"type": "summary", **summary}
+        summary_record = {"type": "summary", "target_enforcement": target_enforcement, **summary}
         self._write_record(summary_record, output_format)
 
         finding_count = summary[LogGroupQueryBuilder.MODE_LEGACY_OR] + summary[LogGroupQueryBuilder.MODE_INVALID]

@@ -52,7 +52,14 @@ def test_audit_command_reports_only_identifiers_and_scope_without_full_rules():
             "organizations": [2, 3],
         },
     ]
-    assert summary == {"type": "summary", "valid": 1, "legacy_or": 1, "invalid": 1, "uncovered": 2}
+    assert summary == {
+        "type": "summary",
+        "target_enforcement": "strict",
+        "valid": 1,
+        "legacy_or": 1,
+        "invalid": 1,
+        "uncovered": 2,
+    }
     assert "cluster" not in stdout.getvalue()
     assert "prod" not in stdout.getvalue()
     assert "ADN" not in stdout.getvalue()
@@ -104,3 +111,35 @@ def test_audit_command_strict_preflight_rejects_logs_query_injection_rule():
     with pytest.raises(CommandError, match="uncovered=1"):
         call_command("audit_log_group_rule_modes", format="jsonl", fail_on_uncovered=True, stdout=io.StringIO())
 
+
+def test_audit_command_legacy_rollback_preflight_rejects_strict_only_wildcard_rule():
+    LogGroup.objects.create(
+        id="g-strict-only",
+        name="strict-only",
+        rule={
+            "mode": "AND",
+            "conditions": [
+                {
+                    "field": "cluster",
+                    "op": "startswith",
+                    "value": "prod*) OR (*) OR (cluster:prod",
+                }
+            ],
+        },
+    )
+
+    call_command(
+        "audit_log_group_rule_modes",
+        format="jsonl",
+        target_enforcement="strict",
+        fail_on_uncovered=True,
+        stdout=io.StringIO(),
+    )
+    with pytest.raises(CommandError, match="uncovered=1"):
+        call_command(
+            "audit_log_group_rule_modes",
+            format="jsonl",
+            target_enforcement="legacy",
+            fail_on_uncovered=True,
+            stdout=io.StringIO(),
+        )

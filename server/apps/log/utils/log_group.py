@@ -83,10 +83,14 @@ class LogGroupQueryBuilder:
         return mode, used_legacy_or
 
     @classmethod
-    def classify_rule(cls, rule_json):
+    def classify_rule(cls, rule_json, *, require_legacy_safe=False):
         classification, normalized_mode = cls.classify_rule_mode(rule_json)
         try:
-            cls.validate_rule(rule_json, allow_legacy_or=classification == cls.MODE_LEGACY_OR)
+            cls.validate_rule(
+                rule_json,
+                allow_legacy_or=classification == cls.MODE_LEGACY_OR,
+                require_legacy_safe=require_legacy_safe,
+            )
         except (TypeError, ValueError):
             return cls.MODE_INVALID, None
         return classification, normalized_mode

@@ -10,9 +10,10 @@
 - 读取端 `strict` 模式对未知值和 falsey 非对象规则 fail-closed，并在查询分组信息中标记 `invalid_rule`。
 - 为已盘点且明确需要短期维持旧行为的历史分组提供按 ID 显式配置的兼容列表；只有列表内的历史未知字符串才按旧 `OR` 解释，并标记 `legacy_or`。
 - 提供只读盘点命令，按稳定主键分批扫描，仅输出分组 ID、名称、创建人、组织范围和分类，不输出完整规则值。
-- 首轮滚动升级将新版本设为 `LOG_GROUP_RULE_MODE_ENFORCEMENT=legacy`：新 writer 拒绝坏规则，并额外拒绝会逃逸旧 prefix/suffix 裸通配符上下文的 `*`、布尔连接、管道、括号和前导否定；新 reader 与旧 reader 保持相同语义。等旧 writer 全部排空后再盘点，falsey 非对象及畸形结构必须修正，未知字符串必须修正或加入 `LOG_GROUP_LEGACY_OR_GROUP_IDS`。
-- 安全字面量编码会修正旧查询语法（例如正则元字符、prefix/suffix），因此 `legacy` 到 `strict` **禁止滚动混部**：先冻结日志分组写入并停止搜索流量，排空在途搜索，运行 `audit_log_group_rule_modes --fail-on-uncovered`，一次性让全部实例以 `strict` 启动后再恢复流量。切回 `legacy` 同样须停流、排空并一次性切换；不得让同一规则随机落到两种编码。数据库无需逆向迁移。
-- 切换 `strict` 后先把某分组修正为合法规则，再移除其兼容 ID。旧镜像只允许在上述停流切换到 `legacy` 后回滚，不得与 `strict` 实例混部。
+- 首轮滚动升级前，先用新镜像 one-off 运行 `audit_log_group_rule_modes --target-enforcement legacy --fail-on-uncovered`，修正所有会逃逸旧 prefix/suffix 裸通配符上下文的存量规则；未通过不得进入 legacy 滚动窗口。随后将新版本设为 `LOG_GROUP_RULE_MODE_ENFORCEMENT=legacy`：新 writer 拒绝坏规则及 `*`、布尔连接、管道、括号和前导否定，新 reader 与旧 reader 保持相同语义。等旧 writer 全部排空后再按 strict 目标盘点，falsey 非对象及畸形结构必须修正，未知字符串必须修正或加入 `LOG_GROUP_LEGACY_OR_GROUP_IDS`。
+- 安全字面量编码会修正旧查询语法（例如正则元字符、prefix/suffix），因此 `legacy` 到 `strict` **禁止滚动混部**：先冻结日志分组写入并停止搜索流量，排空在途搜索，运行 `audit_log_group_rule_modes --target-enforcement strict --fail-on-uncovered`，一次性让全部实例以 `strict` 启动后再恢复流量。
+- 切回 `legacy` 同样须先冻结写入、停流排空，并运行 `audit_log_group_rule_modes --target-enforcement legacy --fail-on-uncovered`；strict 可安全表达但旧裸通配符会逃逸的规则必须先修正，否则禁止回滚。预检通过后一次性切换全部实例，不得混部；数据库无需逆向迁移。
+- 切换 `strict` 后先把某分组修正为合法规则，再移除其兼容 ID。旧镜像只允许在上述 legacy 目标预检通过并整体切换后回滚。
 
 ## 测试方案
 
