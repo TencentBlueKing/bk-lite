@@ -585,11 +585,6 @@ dashboards:
       filterBindings:
         time__timeRange: true
       dataSourceParams:
-      - name: group_by
-        type: string
-        value: day
-        alias_name: 聚合粒度
-        filterType: fixed
       - name: time
         type: timeRange
         value: 10080
@@ -1634,11 +1629,6 @@ screens:
         filterBindings:
           time__timeRange: true
         dataSourceParams:
-        - name: group_by
-          type: string
-          value: day
-          alias_name: 聚合粒度
-          filterType: fixed
         - name: time
           type: timeRange
           value: 10080
@@ -1660,11 +1650,6 @@ screens:
         filterBindings:
           time__timeRange: true
         dataSourceParams:
-        - name: group_by
-          type: string
-          value: day
-          alias_name: 聚合粒度
-          filterType: fixed
         - name: time
           type: timeRange
           value: 10080
@@ -2059,11 +2044,6 @@ datasources:
     value: ''
     alias_name: 模型 ID
     filterType: params
-  - name: group_by
-    type: string
-    value: day
-    alias_name: 聚合粒度
-    filterType: fixed
   tags:
   - CMDB
   chart_type:
@@ -2402,11 +2382,6 @@ datasources:
   desc: 跟随时间范围，按告警等级分组的时间序列
   is_active: true
   params:
-  - name: group_by
-    type: string
-    value: day
-    alias_name: 聚合粒度
-    filterType: fixed
   - name: time
     type: timeRange
     value: 10080

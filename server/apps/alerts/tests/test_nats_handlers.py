@@ -629,7 +629,7 @@ def test_get_alert_level_trend_returns_multiseries_by_level(user_info):
     start = (now - datetime.timedelta(days=1)).isoformat()
     end = (now + datetime.timedelta(days=1)).isoformat()
 
-    result = N.get_alert_level_trend(user_info=user_info, time=[start, end], group_by="day")
+    result = N.get_alert_level_trend(user_info=user_info, time=[start, end])
 
     assert result["result"] is True
     assert set(result["data"]) == {"致命", "预警"}
@@ -638,14 +638,12 @@ def test_get_alert_level_trend_returns_multiseries_by_level(user_info):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize(
-    "group_by",
-    ["minute", "hour", "day", "week", "month"],
-)
-def test_get_alert_level_trend_span_over_limit_rejected_before_period_generation(monkeypatch, user_info, group_by):
+def test_get_alert_level_trend_span_over_limit_rejected_before_period_generation(monkeypatch, user_info):
     """超限区间必须在生成完整时间序列前被拒绝。"""
+    # 1 天窗会推导为 hour；压低 hour 上限以触发跨度拒绝。
+    monkeypatch.setitem(N._MAX_SPAN_SECONDS, "hour", 3600)
     start = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
-    end = start + datetime.timedelta(seconds=N._MAX_SPAN_SECONDS[group_by] + 1)
+    end = start + datetime.timedelta(days=1)
     monkeypatch.setattr(
         N,
         "_generate_time_periods",
@@ -655,24 +653,23 @@ def test_get_alert_level_trend_span_over_limit_rejected_before_period_generation
     result = N.get_alert_level_trend(
         user_info=user_info,
         time=[start.isoformat(), end.isoformat()],
-        group_by=group_by,
+        group_by="day",
     )
 
     assert result["result"] is False
     assert result["data"] == {}
-    assert group_by in result["message"]
+    assert "hour" in result["message"]
 
 
 @pytest.mark.django_db
 def test_get_alert_level_trend_exact_span_limit_is_accepted(monkeypatch, user_info):
     start = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
-    end = start + datetime.timedelta(seconds=N._MAX_SPAN_SECONDS["minute"])
+    end = start + datetime.timedelta(hours=6)
     monkeypatch.setattr(N, "_generate_time_periods", lambda *_args, **_kwargs: [])
 
     result = N.get_alert_level_trend(
         user_info=user_info,
         time=[start.isoformat(), end.isoformat()],
-        group_by="minute",
     )
 
     assert result["result"] is True
@@ -748,17 +745,16 @@ def test_alert_trend_rejects_reversed_time(user_info, handler, empty_data):
         (N.get_alert_level_trend, {}),
     ],
 )
-@pytest.mark.parametrize("group_by", ["level", ["day"]])
-def test_alert_trend_rejects_unsupported_group(user_info, handler, empty_data, group_by):
+@pytest.mark.parametrize("group_by", ["level", ["day"], "minute"])
+def test_alert_trend_ignores_client_group_by(user_info, handler, empty_data, group_by):
     result = handler(
         user_info=user_info,
-        time=["2025-01-01T00:00:00Z", "2025-01-02T00:00:00Z"],
+        time=["2025-01-01T00:00:00Z", "2025-01-01T02:00:00Z"],
         group_by=group_by,
     )
 
-    assert result["result"] is False
-    assert result["data"] == empty_data
-    assert "group_by" in result["message"]
+    assert result["result"] is True
+    assert "group_by" not in result.get("message", "")
 
 
 @pytest.mark.django_db
@@ -801,43 +797,51 @@ def test_get_alert_trend_data_requires_time(user_info):
 
 
 @pytest.mark.django_db
-def test_get_alert_trend_data_minute_span_over_limit_rejected(user_info):
-    """minute 粒度时间跨度超过 7 天上限时，应返回 result=False（拒绝生成超大时间序列）。
-    若移除 get_alert_trend_data 中的跨度校验代码，本测试将失败。
-    """
+def test_get_alert_trend_data_short_window_uses_minute(user_info):
     result = N.get_alert_trend_data(
         user_info=user_info,
-        time=["2026-01-01T00:00:00Z", "2026-01-09T00:00:00Z"],  # 8 天，超过 minute 粒度 7 天上限
-        group_by="minute",
-    )
-    assert result["result"] is False, "超出 minute 粒度上限的请求必须被拒绝，防止 OOM"
-    assert "minute" in result["message"]
-
-
-@pytest.mark.django_db
-def test_get_alert_trend_data_minute_span_within_limit_ok(user_info):
-    """minute 粒度时间跨度在 7 天以内，应正常返回数据。"""
-    result = N.get_alert_trend_data(
-        user_info=user_info,
-        time=["2026-01-01T00:00:00Z", "2026-01-06T00:00:00Z"],  # 5 天，在上限内
-        group_by="minute",
+        time=["2026-01-01T00:00:00Z", "2026-01-01T01:00:00Z"],
+        group_by="day",
     )
     assert result["result"] is True
     assert "告警数" in result["data"]
+    # 1 小时窗按 minute 补齐，应远多于按天的 1 个点
+    assert len(result["data"]["告警数"]) >= 60
 
 
 @pytest.mark.django_db
-def test_get_alert_trend_data_hour_span_over_limit_rejected(user_info):
-    """hour 粒度时间跨度超过 90 天上限时，应返回 result=False。
-    若移除跨度校验代码，本测试将失败。
-    """
+def test_get_alert_trend_data_hour_span_over_limit_rejected(monkeypatch, user_info):
+    """推导为 hour 后若超过 hour 上限，应拒绝。"""
+    monkeypatch.setitem(N._MAX_SPAN_SECONDS, "hour", 6 * 3600)
     result = N.get_alert_trend_data(
         user_info=user_info,
-        time=["2026-01-01T00:00:00Z", "2026-04-15T00:00:00Z"],  # ~104 天，超过 hour 粒度 90 天上限
-        group_by="hour",
+        time=["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"],
     )
     assert result["result"] is False, "超出 hour 粒度上限的请求必须被拒绝，防止 OOM"
     assert "hour" in result["message"]
+
+
+@pytest.mark.django_db
+def test_get_alert_trend_data_seven_day_window_uses_hour(user_info):
+    result = N.get_alert_trend_data(
+        user_info=user_info,
+        time=["2026-01-01T00:00:00Z", "2026-01-08T00:00:00Z"],
+    )
+    assert result["result"] is True
+    assert "告警数" in result["data"]
+    # 7 天按 hour，约 168 点，不应再是日粒度的 ~7 点
+    assert len(result["data"]["告警数"]) >= 160
+
+
+@pytest.mark.django_db
+def test_get_alert_trend_data_day_span_over_limit_rejected(monkeypatch, user_info):
+    monkeypatch.setitem(N._MAX_SPAN_SECONDS, "day", 30 * 24 * 3600)
+    result = N.get_alert_trend_data(
+        user_info=user_info,
+        time=["2026-01-01T00:00:00Z", "2026-03-01T00:00:00Z"],  # ~59 天 → day
+    )
+    assert result["result"] is False
+    assert "day" in result["message"]
 
 
 @pytest.mark.django_db
