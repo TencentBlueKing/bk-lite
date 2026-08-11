@@ -41,7 +41,7 @@ class InstallNodeSerializer(serializers.Serializer):
         required=False,
         default="ntlm",
     )
-    winrm_cert_validation = serializers.BooleanField(required=False, default=True)
+    winrm_cert_validation = serializers.BooleanField(required=False, default=False)
 
 
 class ControllerInstallRequestSerializer(serializers.Serializer):
@@ -122,7 +122,7 @@ class ControllerUninstallNodeSerializer(serializers.Serializer):
         required=False,
         default="ntlm",
     )
-    winrm_cert_validation = serializers.BooleanField(required=False, default=True)
+    winrm_cert_validation = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         is_windows = attrs["os"] == NodeConstants.WINDOWS_OS
@@ -130,13 +130,9 @@ class ControllerUninstallNodeSerializer(serializers.Serializer):
         if is_windows:
             if not attrs.get("password"):
                 raise serializers.ValidationError("Windows controller uninstallation requires a password")
-            if (
-                attrs["winrm_scheme"] != "https"
-                or attrs["winrm_transport"] != "ntlm"
-                or attrs["winrm_cert_validation"] is not True
-            ):
+            if attrs["winrm_scheme"] != "https" or attrs["winrm_transport"] != "ntlm":
                 raise serializers.ValidationError(
-                    "Windows controller uninstallation requires HTTPS, NTLM, and server certificate validation"
+                    "Windows controller uninstallation requires HTTPS and NTLM"
                 )
         elif not attrs.get("password") and not attrs.get("private_key"):
             raise serializers.ValidationError("Linux controller uninstallation requires a password or private key")

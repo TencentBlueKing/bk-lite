@@ -16,6 +16,7 @@ from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.serializers.installer import (
     ControllerInstallRequestSerializer,
     ControllerManualInstallRequestSerializer,
+    ControllerUninstallNodeSerializer,
     InstallNodeSerializer,
 )
 from apps.node_mgmt.services.install_token import InstallTokenService
@@ -1109,6 +1110,116 @@ def test_pending_connectivity_converges_when_node_connected_before_phase_transit
 
 
 @pytest.mark.django_db
+def test_first_installer_event_completes_command_dispatch_and_activates_child_step():
+    region = CloudRegion.objects.create(name="installer-event-dispatch-region")
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="install",
+        status="running",
+    )
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.90",
+        os=NodeConstants.WINDOWS_OS,
+        port=5986,
+        status="running",
+        result={
+            "steps": [
+                {"action": "run", "status": "running", "message": "Run installer"},
+            ],
+        },
+    )
+
+    installer_tasks._apply_installer_events_to_node(
+        task_node,
+        'BKINSTALL_EVENT {"step":"fetch_session","status":"running","message":"Fetching session"}',
+    )
+
+    task_node.refresh_from_db()
+    steps = task_node.result["steps"]
+    assert next(step for step in steps if step["action"] == "run")["status"] == "success"
+    assert next(step for step in steps if step["action"] == "fetch_session")["status"] == "running"
+    assert sum(step["status"] == "running" for step in steps) == 1
+
+
+@pytest.mark.django_db
+def test_connectivity_callback_is_latched_while_windows_bootstrap_is_still_running(monkeypatch):
+    region = CloudRegion.objects.create(name="latched-connectivity-region")
+    node_id = "latched-windows-node"
+    Node.objects.create(
+        id=node_id,
+        name="windows-node",
+        ip="10.0.0.89",
+        operating_system=NodeConstants.WINDOWS_OS,
+        collector_configuration_directory="C:\\fusion-collectors\\generated",
+        cloud_region=region,
+    )
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="install",
+        status="running",
+        work_node="region-nats-executor",
+    )
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        node_id=node_id,
+        ip="10.0.0.89",
+        os=NodeConstants.WINDOWS_OS,
+        port=5986,
+        status="running",
+        result={
+            InstallerConstants.INSTALL_NODE_ID_KEY: node_id,
+            InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING,
+            "steps": [
+                {"action": "run", "status": "running", "message": "Run installer"},
+            ],
+        },
+    )
+    dispatched = []
+    monkeypatch.setattr(installer_tasks, "_dispatch_or_finalize_controller_task", dispatched.append)
+
+    installer_tasks.converge_controller_install_connectivity_for_node(node_id)
+
+    task_node.refresh_from_db()
+    assert task_node.status == "running"
+    assert task_node.result["execution_phase"] == "bootstrap_running"
+    assert task_node.result["connectivity_observed"] is True
+    assert task_node.result["connectivity_observed_node_id"] == node_id
+    assert task_node.result["connectivity_observed_at"]
+    assert task_node.connectivity_observed_node_id == node_id
+    assert task_node.connectivity_observed_at is not None
+    assert dispatched == []
+
+    installer_tasks._update_step_status(
+        task_node,
+        "success",
+        "Installer bootstrap completed",
+    )
+    installer_tasks._advance_step(
+        task_node,
+        "success",
+        "Installer bootstrap completed",
+        next_steps=[
+            installer_tasks._build_step(
+                "connectivity_check",
+                "running",
+                "Wait for node connection",
+            )
+        ],
+    )
+    installer_tasks._save_node_pending_connectivity(
+        task_node,
+        "Installation command succeeded, waiting connectivity confirmation",
+    )
+
+    task_node.refresh_from_db()
+    assert task_node.status == "success"
+    assert task_node.result["overall_status"] == "success"
+    assert task_node.result["execution_phase"] == "finished"
+    assert dispatched == [task.id]
+
+
+@pytest.mark.django_db
 def test_windows_remote_session_token_rejects_revoked_execution_claim(settings):
     settings.CACHES = {
         "default": {
@@ -1602,7 +1713,41 @@ def test_windows_remote_install_defaults_to_https_port():
 
     assert serializer.is_valid(), serializer.errors
     assert serializer.validated_data["nodes"][0]["port"] == 5986
-    assert serializer.validated_data["nodes"][0]["winrm_cert_validation"] is True
+    assert serializer.validated_data["nodes"][0]["winrm_cert_validation"] is False
+
+
+@pytest.mark.unit
+def test_windows_remote_uninstall_defaults_to_certificate_validation_disabled():
+    serializer = ControllerUninstallNodeSerializer(
+        data={
+            "node_id": "windows-node",
+            "ip": "10.0.0.8",
+            "os": "windows",
+            "username": "Administrator",
+            "password": "credential",
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["port"] == 5986
+    assert serializer.validated_data["winrm_cert_validation"] is False
+
+
+@pytest.mark.unit
+def test_windows_remote_uninstall_allows_explicit_certificate_validation():
+    serializer = ControllerUninstallNodeSerializer(
+        data={
+            "node_id": "windows-node",
+            "ip": "10.0.0.8",
+            "os": "windows",
+            "username": "Administrator",
+            "password": "credential",
+            "winrm_cert_validation": True,
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["winrm_cert_validation"] is True
 
 
 @pytest.mark.unit

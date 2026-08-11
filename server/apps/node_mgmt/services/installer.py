@@ -243,7 +243,7 @@ class InstallerService:
                     passphrase=passphrase,
                     winrm_scheme=node.get("winrm_scheme", "https"),
                     winrm_transport=node.get("winrm_transport", "ntlm"),
-                    winrm_cert_validation=node.get("winrm_cert_validation", True),
+                    winrm_cert_validation=node.get("winrm_cert_validation", False),
                     status="waiting",
                 )
             )
@@ -310,7 +310,7 @@ class InstallerService:
                     passphrase=passphrase,
                     winrm_scheme=node.get("winrm_scheme", "https"),
                     winrm_transport=node.get("winrm_transport", "ntlm"),
-                    winrm_cert_validation=node.get("winrm_cert_validation", True),
+                    winrm_cert_validation=node.get("winrm_cert_validation", False),
                     status="waiting",
                 )
             )
@@ -379,6 +379,15 @@ class InstallerService:
 
         result = []
         for task_node in task_nodes:
+            task_result = (task_node.result or {}).copy()
+            if task_node.connectivity_observed_at:
+                task_result[InstallerConstants.CONNECTIVITY_OBSERVED_KEY] = True
+                task_result[InstallerConstants.CONNECTIVITY_OBSERVED_NODE_ID_KEY] = (
+                    task_node.connectivity_observed_node_id
+                )
+                task_result[InstallerConstants.CONNECTIVITY_OBSERVED_AT_KEY] = (
+                    task_node.connectivity_observed_at.isoformat()
+                )
             result.append(
                 dict(
                     task_node_id=task_node.id,
@@ -394,7 +403,7 @@ class InstallerService:
                     winrm_transport=task_node.winrm_transport,
                     winrm_cert_validation=task_node.winrm_cert_validation,
                     status=task_node.status,
-                    result=normalize_task_result_for_read(task_node.result),
+                    result=normalize_task_result_for_read(task_result),
                 )
             )
         return result

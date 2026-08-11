@@ -668,6 +668,44 @@ def test_normalize_task_result_for_read_reports_complete_success_display_state()
     assert display["installer_steps_received"] is True
 
 
+def test_normalize_task_result_for_read_terminal_success_dominates_partial_installer_telemetry():
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "success",
+            "steps": [
+                {"action": "credential_check", "status": "success", "message": "Validate credentials"},
+                {"action": "run", "status": "success", "message": "Installer bootstrap completed"},
+                {
+                    "action": "fetch_session",
+                    "status": "success",
+                    "message": "Installer session fetched",
+                    "details": {"installer_event": True, "raw_step": "fetch_session"},
+                },
+                {
+                    "action": "extract",
+                    "status": "success",
+                    "message": "Controller package staged and activated",
+                    "details": {"installer_event": True, "raw_step": "extract_package"},
+                },
+                {"action": "connectivity_check", "status": "success", "message": "Sidecar connectivity confirmed"},
+            ],
+        }
+    )
+
+    summary = normalized["installer_summary"]
+    assert summary["state"] == "installer_success_with_incomplete_detail"
+    assert summary["missing_steps"] == ["prepare_dirs", "download", "write_config", "install"]
+    assert "incomplete_installer_events" in summary["anomalies"]
+
+    display = normalized["controller_install_display"]
+    assert display == {
+        "state": "success_with_incomplete_detail",
+        "phase": "node_connectivity",
+        "severity": "success",
+        "installer_steps_received": True,
+    }
+
+
 def test_normalize_task_result_for_read_reports_incomplete_installer_events():
     normalized = normalize_task_result_for_read(
         {
