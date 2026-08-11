@@ -178,10 +178,10 @@ python manage.py migrate --no-input
 
 - Windows 10 或 Windows Server 2016 及以上版本。
 - PowerShell 5.1 或更高版本。
-- 已配置 HTTPS WinRM listener，端口固定为 5986。
+- 已配置 HTTPS WinRM listener，默认端口为 5986；自定义端口必须确认实际承载 HTTPS Listener，不能把通常用于 HTTP 的 5985 作为 HTTPS 端口。
 - 使用 NTLM 认证。
 - WinRM 服务端证书默认需要被 Ansible Executor 所在环境信任；仅可信内网环境可在安装页面显式关闭该次任务的证书校验。
-- 云区域 `NODE_SERVER_URL` 必须使用受信任证书的 `https://` 地址；Windows 远程 bootstrap 会拒绝 HTTP、HTTPS 降级重定向以及会话返回的非 HTTPS Server URL。
+- 云区域 `NODE_SERVER_URL` 必须使用 `https://` 地址，且默认要求目标 Windows 主机信任其证书。可信内网中显式关闭当前任务的证书校验时，bootstrap 仍拒绝 HTTP、HTTPS 降级重定向和非 HTTPS Server URL，但会跳过 WinRM 与安装服务 HTTPS 的证书链和名称校验。
 - 防火墙和网络策略允许云区域 Ansible Executor 访问目标主机 TCP/5986。
 - 使用具备安装 Windows 服务和写入 `C:\fusion-collectors` 权限的管理员账号。
 
@@ -219,11 +219,11 @@ bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`
 - [ ] 所需云区域至少有一个健康的 Ansible Executor。
 - [ ] 所需云区域已配置 `NATS_PROTOCOL=tls`、可信 NATS 证书和专用 `NATS_INSTALLER_USERNAME/PASSWORD`。
 - [ ] NodeMgmt 的 `0037`、`0038`、`0039` 迁移均已应用。
-- [ ] Windows 控制器安装页面显示远程安装，账号默认值为 Administrator；实际使用 5986、HTTPS 和 NTLM，证书校验开关默认开启。
+- [ ] Windows 控制器安装页面显示远程安装，账号默认值为 Administrator；默认使用 5986、HTTPS 和 NTLM，证书校验开关默认开启。失败后重试会带入任务节点保存的端口和证书校验状态，并要求重新输入凭据。
 - [ ] 安装执行期间，页面能在 Ansible 任务结束前持续看到下载、解压和服务切换进度，最终回放不产生重复步骤。
 - [ ] 使用测试 Windows 主机完成一次全新远程安装。
 - [ ] 对已安装主机执行一次升级，确认 `cache`、`logs`、`generated` 被保留。
-- [ ] 使用不受信任证书测试一次，确认默认连接被拒绝；显式关闭证书校验并确认风险提示后，同一任务可继续连接。
+- [ ] 分别使用不受信任的 WinRM 证书和安装服务 HTTPS 证书测试，确认默认连接被拒绝；显式关闭证书校验并确认风险提示后，同一任务可继续连接且仍只接受 HTTPS URL。
 - [ ] 模拟新服务注册失败，确认旧安装和旧服务恢复。
 - [ ] 确认目标机 `C:\Windows\Temp` 中本次 bootstrap 和 session 临时文件已清理。
 - [ ] 原 Linux 远程安装和 Windows 手动安装各完成一次冒烟验证。
