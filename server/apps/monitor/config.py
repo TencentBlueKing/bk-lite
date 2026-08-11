@@ -5,6 +5,10 @@
 from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
+    "reconcile_snmp_interface_filters": {
+        "task": "apps.monitor.tasks.snmp_ifmib_reconcile.reconcile_snmp_interface_filters",
+        "schedule": crontab(minute="*"),
+    },
     'sync_instance_and_group': {
         'task': 'apps.monitor.tasks.grouping_rule.sync_instance_and_group',
         'schedule': crontab(minute='*/10'),  # 每10分钟执行一次
@@ -14,4 +18,3 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(minute='*/5'),  # 每5分钟执行一次
     },
 }
-

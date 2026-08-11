@@ -22,6 +22,7 @@ import { getIfmibSnapshotEnabled } from '../list/detail/configure/ifmibDeploymen
 
 interface PluginFormField {
   name?: string;
+  default_value?: unknown;
 }
 
 interface PluginConfig {
@@ -201,7 +202,13 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
                 name="basic"
                 layout="vertical"
                 onValuesChange={(changed, all) => {
-                  const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(changed);
+                  const defaultIfTypeExclude = currentConfig?.form_fields?.find(
+                    (field) => field.name === 'iftype_exclude'
+                  )?.default_value;
+                  const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(
+                    changed,
+                    defaultIfTypeExclude
+                  );
                   const nextValues = Object.keys(interfaceFilterModePatch).length
                     ? { ...all, ...interfaceFilterModePatch }
                     : all;

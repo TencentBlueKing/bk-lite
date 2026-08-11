@@ -14,7 +14,8 @@ from apps.monitor.management.utils import (
 )
 from apps.monitor.services.plugin import MonitorPluginService
 from apps.monitor.services.plugin_import_bulk import prepare_plugin_import_plan
-from apps.monitor.utils.snmp_ifmib_capability import is_ifmib_capable_plugin_data
+from apps.monitor.utils.snmp_ifmib_capability import IFMIB_METRIC_CATALOG, is_ifmib_capable_plugin_data
+from apps.monitor.utils.snmp_interface_template import COMMON_IFMIB_TABLE_PATH
 from apps.rpc.node_mgmt import NodeMgmt
 
 TEMPLATE_COLLECT_TYPE_PATTERN = re.compile(r"""collect_type\s*=\s*["']([^"']+)["']""")
@@ -26,51 +27,10 @@ LOCAL_TEMPLATE_ASSET_PATTERN = re.compile(
     r"(?m)^[ \t]*# @bk_include_file (?P<path>\S+)[ \t]*$"
 )
 COMMON_IFMIB_TABLE_DIRECTIVE = "# @bk_include_ifmib_table"
-COMMON_IFMIB_TABLE_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "support-files/plugins/Telegraf/snmp/_common/ifmib.table.toml"
-)
+
 
 # IF-MIB 是所有 Network Device SNMP 模板共享的采集契约。此处只维护一次指标目录，
 # 导入时合并到每个厂商模板，避免为了显示指标而新增一个可被用户接入的公共插件。
-COMMON_IFMIB_METRICS = (
-    (
-        "Status", "interface_ifAdminStatus", "Interface Admin Status", "Enum",
-        '[{"name":"up","id":1,"color":"#1ac44a"},{"name":"down","id":2,"color":"#ff4d4f"},{"name":"testing","id":3,"color":"#faad14"}]',
-        "Interface administrative status.",
-    ),
-    (
-        "Status", "interface_ifOperStatus", "Interface Oper Status", "Enum",
-        '[{"name":"up","id":1,"color":"#1ac44a"},{"name":"down","id":2,"color":"#ff4d4f"},{"name":"testing","id":3,"color":"#faad14"}]',
-        "Actual interface operational status.",
-    ),
-    ("Bandwidth", "interface_ifSpeed", "Interface Bandwidth", "Number", "bitps", "Maximum supported interface speed."),
-    ("Packet Error", "interface_ifInErrors", "Incoming Errors Rate", "Number", "cps", "Average inbound error packets per second over five minutes."),
-    ("Packet Error", "interface_ifOutErrors", "Outgoing Errors Rate", "Number", "cps",
-     "Average outbound error packets per second over five minutes."),
-    ("Packet Loss", "interface_ifInDiscards", "Incoming Discards Rate", "Number", "cps",
-     "Average inbound discarded packets per second over five minutes."),
-    ("Packet Loss", "interface_ifOutDiscards", "Outgoing Discards Rate", "Number", "cps",
-     "Average outbound discarded packets per second over five minutes."),
-    ("Packet", "interface_ifInUcastPkts", "Incoming Unicast Packets Rate", "Number", "cps",
-     "Average inbound unicast packets per second over five minutes."),
-    ("Packet", "interface_ifOutUcastPkts", "Outgoing Unicast Packets Rate", "Number", "cps",
-     "Average outbound unicast packets per second over five minutes."),
-    ("Traffic", "interface_ifInOctets", "Interface Incoming Traffic Rate", "Number", "byteps",
-     "Average inbound interface bytes per second over five minutes."),
-    ("Traffic", "interface_ifOutOctets", "Interface Outgoing Traffic Rate", "Number", "byteps",
-     "Average outbound interface bytes per second over five minutes."),
-    ("Traffic", "interface_ifHCInOctets", "Interface Incoming Traffic Rate (HC)", "Number", "byteps",
-     "Average inbound 64-bit interface bytes per second over five minutes."),
-    ("Traffic", "interface_ifHCOutOctets", "Interface Outgoing Traffic Rate (HC)", "Number", "byteps",
-     "Average outbound 64-bit interface bytes per second over five minutes."),
-    ("Traffic", "device_total_incoming_traffic", "Device Total Incoming Traffic Rate", "Number", "byteps",
-     "Total inbound interface bytes per second over five minutes."),
-    ("Traffic", "device_total_outgoing_traffic", "Device Total Outgoing Traffic Rate", "Number", "byteps",
-     "Total outbound interface bytes per second over five minutes."),
-)
-
-
 _IFMIB_METRICS_BY_INSTANCE_TYPE = {}
 
 
@@ -80,17 +40,37 @@ def _build_common_ifmib_metrics(instance_type):
     if cached is not None:
         return deepcopy(cached)
     metrics = []
-    for group, name, display_name, data_type, unit, description in COMMON_IFMIB_METRICS:
+    interface_dimensions = [
+        {"name": "ifIndex", "description": "ifIndex"},
+        {"name": "ifDescr", "description": "ifDescr"},
+    ]
+    for group, name, display_name, data_type, unit, description in IFMIB_METRIC_CATALOG:
         if name.startswith("device_total_"):
             direction = "In" if name.endswith("incoming_traffic") else "Out"
-            query = f"sum(rate(interface_ifHC{direction}Octets{{instance_type='{instance_type}', __$labels__}}[5m])) by (instance_id)"
+            query = (
+                f"sum(rate(interface_ifHC{direction}Octets{{instance_type='{instance_type}', __$labels__}}[5m]) "
+                f"or rate(interface_if{direction}Octets{{instance_type='{instance_type}', __$labels__}}[5m])) by (instance_id)"
+            )
             dimensions = []
-        elif name in {"interface_ifAdminStatus", "interface_ifOperStatus", "interface_ifSpeed"}:
+        elif name == "interface_ifSpeed":
+            query = (
+                f"(interface_ifHighSpeed{{instance_type='{instance_type}', __$labels__}} > 0) * 1000000 "
+                f"or interface_ifSpeed{{instance_type='{instance_type}', __$labels__}}"
+            )
+            dimensions = interface_dimensions
+        elif name in {"interface_ifAdminStatus", "interface_ifOperStatus"}:
             query = f"{name}{{instance_type='{instance_type}', __$labels__}}"
-            dimensions = [{"name": "ifDescr", "description": "ifDescr"}]
+            dimensions = interface_dimensions
+        elif name in {"interface_ifInUcastPkts", "interface_ifOutUcastPkts"}:
+            direction = "In" if "InUcast" in name else "Out"
+            query = (
+                f"rate(interface_ifHC{direction}UcastPkts{{instance_type='{instance_type}', __$labels__}}[5m]) "
+                f"or rate({name}{{instance_type='{instance_type}', __$labels__}}[5m])"
+            )
+            dimensions = interface_dimensions
         else:
             query = f"rate({name}{{instance_type='{instance_type}', __$labels__}}[5m])"
-            dimensions = [{"name": "ifDescr", "description": "ifDescr"}]
+            dimensions = interface_dimensions
         metrics.append(
             {
                 "metric_group": group,
@@ -124,13 +104,9 @@ def merge_common_ifmib_metrics(plugin_data):
     for metric in result.get("metrics", []):
         metric_name = metric.get("name")
         if metric_name in common_metrics_by_name:
-            # 厂商可能为同一 IF-MIB 指标提供更准确的查询或分组。保留该定义，
-            # 仅标记来源，确保目录/API 的厂商优先级不被公共目录覆盖。
-            # device_total_* 强制使用公共 HC 聚合，避免厂商旧 32 位计数器在高速口 wrap。
-            if str(metric_name).startswith("device_total_"):
-                metric = {**common_metrics_by_name[metric_name]}
-            else:
-                metric = {**metric, "is_ifmib": True}
+            if metric_name in existing_common_names:
+                continue
+            metric = {**common_metrics_by_name[metric_name]}
             existing_common_names.add(metric_name)
         merged_metrics.append(metric)
     merged_metrics.extend(
@@ -401,7 +377,7 @@ def _load_templates_to_memory():
     # 按插件 ID 分组的 UI 模板
     all_ui_templates = {tpl.plugin_id: tpl for tpl in MonitorPluginUITemplate.objects.select_related("plugin").all()}
 
-    logger.info(f"已加载配置模板和 UI 模板到内存")
+    logger.info("已加载配置模板和 UI 模板到内存")
     return all_config_templates, all_ui_templates
 
 
@@ -642,7 +618,7 @@ def _cleanup_removed_plugins(path_list):
             removed_plugins.delete()
 
         logger.info(f"已删除 {removed_count} 个从内置目录中移除的插件: {removed_names}")
-        logger.info(f"关联的配置模板和 UI 模板已自动级联删除")
+        logger.info("关联的配置模板和 UI 模板已自动级联删除")
 
 
 def _cleanup_orphan_objects():
@@ -661,7 +637,7 @@ def _cleanup_orphan_objects():
             orphan_objects.delete()
 
         logger.info(f"已删除 {orphan_count} 个没有关联插件的监控对象: {orphan_names}")
-        logger.info(f"关联的指标组、指标、监控实例已自动级联删除")
+        logger.info("关联的指标组、指标、监控实例已自动级联删除")
 
 
 def _cleanup_empty_builtin_metric_groups():
