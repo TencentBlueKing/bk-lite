@@ -2,6 +2,7 @@
 # @File: physcial_server_info.py.py
 # @Time: 2025/12/25 11:14
 # @Author: windyzhao
+import asyncio
 import re
 import json
 from typing import Dict, Any
@@ -52,7 +53,10 @@ class PhyscialServerIPMIInfo:
         self.privilege = kwargs.get('privilege')
         self.model_id = kwargs.get('model_id', 'physcial_server')
 
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         try:
             try:
                 from pyghmi.ipmi.command import Command

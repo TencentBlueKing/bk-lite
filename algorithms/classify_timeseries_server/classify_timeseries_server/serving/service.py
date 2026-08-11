@@ -65,11 +65,10 @@ class MLService:
         self.config = get_model_config()
         logger.info(f"Config loaded: {self.config}")
 
-        # 启动时验证配置（快速失败）
-        self._validate_config()
-
-        # 尝试加载模型
+        # 配置验证与模型加载使用同一个显式降级策略：生产默认快速失败，
+        # 仅开发/测试明确设置 ALLOW_DUMMY_FALLBACK=true 时降级。
         try:
+            self._validate_config()
             load_start = time.time()
             self.model = load_model(self.config)
             load_time = time.time() - load_start
@@ -361,6 +360,7 @@ class MLService:
         health_check_counter.inc()
         return {
             "status": "healthy",
+            "startup_instance_id": os.getenv("SERVING_INSTANCE_ID", ""),
             "model_source": self.config.source,
             "model_version": getattr(self.model, "version", "unknown"),
         }

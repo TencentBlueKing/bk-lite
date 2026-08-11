@@ -1,15 +1,15 @@
 name: rocketmq
-version: "2.0.0"
+version: 2.0.0
 category: middleware
-
 metadata:
-  display_name: "RocketMQ 消息队列"
-  description: "RocketMQ 采集插件，支持脚本方式采集"
-  author: "WeOps"
-  tags: [middleware, rocketmq]
+  display_name: RocketMQ 消息队列
+  description: RocketMQ 采集插件，支持脚本方式采集
+  author: WeOps
+  tags:
+  - middleware
+  - rocketmq
   cloud_protocol: false
   model_id: rocketmq
-
 executors:
   job:
     type: job
@@ -20,5 +20,6 @@ executors:
       module: plugins.script_executor
       class: SSHPlugin
     default_script: linux
-
+    target_policy:
+      mode: remote_channel
 default_executor: job

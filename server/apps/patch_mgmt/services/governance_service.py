@@ -373,7 +373,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
             params={"pairs": invalid_pairs},
         )
 
-    remediable_pairs = set(
+    remediable_snapshots = list(
         HostComplianceSnapshot.objects.filter(
             binding_id__in=[binding.id for binding in bindings.values()],
             requirement__baseline_id__in={binding.baseline_id for binding in bindings.values()},
@@ -381,8 +381,18 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
             status=RequirementAssessmentStatus.MISSING,
         )
         .filter(requirement__baseline_id=F("binding__baseline_id"))
-        .values_list("binding__target_id", "requirement__patch_id")
+        .values("binding__target_id", "requirement__patch_id", "evidence")
     )
+    remediable_pairs = {
+        (snapshot["binding__target_id"], snapshot["requirement__patch_id"])
+        for snapshot in remediable_snapshots
+    }
+    preview_warnings = {
+        (snapshot["binding__target_id"], snapshot["requirement__patch_id"]): str(
+            ((snapshot.get("evidence") or {}).get("install_impact") or {}).get("error") or ""
+        )[:500]
+        for snapshot in remediable_snapshots
+    }
     not_remediable_pairs = [pair for pair in pairs if pair not in remediable_pairs]
     if not_remediable_pairs:
         raise PatchBusinessError(
@@ -401,6 +411,11 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
             "patch_name": patches[patch_id].title,
             "baseline_id": bindings[host_id].baseline_id,
             "baseline_name": bindings[host_id].baseline.name,
+            **(
+                {"preview_warning": preview_warnings[(host_id, patch_id)]}
+                if preview_warnings.get((host_id, patch_id))
+                else {}
+            ),
         }
         for host_id, patch_id in pairs
     ]

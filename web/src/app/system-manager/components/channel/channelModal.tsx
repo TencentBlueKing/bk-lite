@@ -64,6 +64,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const isWebhookChannel = channelType === 'enterprise_wechat_bot';
 
   const watchedSubType = Form.useWatch('sub_type', form);
+  const watchedSmtpAuthEnabled = Form.useWatch('smtp_auth_enabled', form);
   useEffect(() => {
     if (!isWebhookChannel || !watchedSubType || isFillingForm.current) return;
     if (watchedSubType as ChannelType !== subType) {
@@ -96,7 +97,9 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       }
       const mergedConfig = isWebhookChannel
         ? getMergedConfig(resolvedSubType, data.config || {})
-        : data.config;
+        : (actualType === 'email' || channelType === 'email')
+          ? { smtp_auth_enabled: true, ...(data.config || {}) }
+          : data.config;
       const enrichedData = { ...data, config: mergedConfig };
       setChannelData(enrichedData);
       const formValues: Record<string, unknown> = {
@@ -151,6 +154,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         config: channelType === 'email' ? {
           smtp_server: '',
           port: '',
+          smtp_auth_enabled: true,
           smtp_user: '',
           smtp_pwd: '',
           smtp_usessl: false,
@@ -252,7 +256,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   };
 
   const getFieldType = (key: string): string => {
-    if (['smtp_usessl', 'smtp_usetls'].includes(key)) {
+    if (['smtp_usessl', 'smtp_usetls', 'smtp_auth_enabled'].includes(key)) {
       return 'switch';
     }
     if (['smtp_pwd', 'webhook_url', 'sign_secret'].includes(key)) {
@@ -314,38 +318,45 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       });
     }
 
-    const configFields = Object.keys(channelData.config).map((key) => {
-      const nonRequiredKeys = ['smtp_usessl', 'smtp_usetls', 'sign_secret', 'headers'];
-      const fieldDef: Record<string, unknown> = {
-        name: key,
-        type: getFieldType(key),
-        label: t(`system.channel.settings.${key}`),
-        placeholder: `${t('common.inputMsg')}${t(`system.channel.settings.${key}`)}`,
-        initialValue: ['smtp_usessl', 'smtp_usetls'].includes(key) ? false : undefined,
-        rules: [{ required: !nonRequiredKeys.includes(key), message: `${t('common.inputMsg')}${t(`system.channel.settings.${key}`)}` }],
-      };
+    const smtpAuthEnabled = watchedSmtpAuthEnabled !== false;
+    const configFields = Object.keys(channelData.config)
+      .filter((key) => smtpAuthEnabled || !['smtp_user', 'smtp_pwd'].includes(key))
+      .map((key) => {
+        const nonRequiredKeys = ['smtp_usessl', 'smtp_usetls', 'smtp_auth_enabled', 'sign_secret', 'headers'];
+        const fieldDef: Record<string, unknown> = {
+          name: key,
+          type: getFieldType(key),
+          label: t(`system.channel.settings.${key}`),
+          placeholder: `${t('common.inputMsg')}${t(`system.channel.settings.${key}`)}`,
+          initialValue: ['smtp_usessl', 'smtp_usetls'].includes(key)
+            ? false
+            : key === 'smtp_auth_enabled'
+              ? true
+              : undefined,
+          rules: [{ required: !nonRequiredKeys.includes(key), message: `${t('common.inputMsg')}${t(`system.channel.settings.${key}`)}` }],
+        };
 
-      if (key === 'request_method') {
-        fieldDef.options = [
-          { value: 'POST', label: 'POST' },
-          { value: 'GET', label: 'GET' },
-        ];
-      }
+        if (key === 'request_method') {
+          fieldDef.options = [
+            { value: 'POST', label: 'POST' },
+            { value: 'GET', label: 'GET' },
+          ];
+        }
 
-      if (key === 'body_template') {
-        fieldDef.rows = 4;
-        fieldDef.placeholder = t('system.channel.settings.bodyTemplateHint');
-      }
+        if (key === 'body_template') {
+          fieldDef.rows = 4;
+          fieldDef.placeholder = t('system.channel.settings.bodyTemplateHint');
+        }
 
-      if (key === 'headers') {
-        fieldDef.rows = 4;
-      }
+        if (key === 'headers') {
+          fieldDef.rows = 4;
+        }
 
-      return fieldDef;
-    });
+        return fieldDef;
+      });
 
     return [...basicFields, ...configFields];
-  }, [channelData.config, t, isWebhookChannel]);
+  }, [channelData.config, t, isWebhookChannel, watchedSmtpAuthEnabled]);
 
   return (
     <OperateModal

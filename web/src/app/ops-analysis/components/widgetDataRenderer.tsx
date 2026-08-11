@@ -6,7 +6,7 @@ import React, {
   useRef,
 } from "react";
 import { createPortal } from "react-dom";
-import { Spin } from "antd";
+import { Spin, message } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import {
   FilterValue,
@@ -668,6 +668,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
       setRawData(data.currentData);
       setBaselineData(data.baselineData);
+
+      if (data.warnings?.length) {
+        message.warning(data.warnings.join("\n"));
+      }
 
       const validation = validateChartData(data.currentData, chartType);
       setDataValidation(validation);

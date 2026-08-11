@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 STARGAZER_ROOT = Path(__file__).resolve().parents[1]
 if str(STARGAZER_ROOT) not in sys.path:
     sys.path.insert(0, str(STARGAZER_ROOT))
@@ -62,10 +64,11 @@ def _fake_driver():
     return d
 
 
-def test_exec_script_emits_11_keys_existing_untouched():
+@pytest.mark.asyncio
+async def test_exec_script_emits_11_keys_existing_untouched():
     mgr = _make_manager()
     with patch.object(mgr, "_driver", return_value=_fake_driver()):
-        out = mgr.list_all_resources()
+        out = await mgr.list_all_resources()
     assert out["success"] is True
     r = out["result"]
     assert set(r.keys()) == {
@@ -138,7 +141,8 @@ def test_driver_passes_project_id_only_when_present():
     assert "project_id" not in without._driver().kwargs
 
 
-def test_new_object_failure_is_best_effort_and_does_not_break_collection():
+@pytest.mark.asyncio
+async def test_new_object_failure_is_best_effort_and_does_not_break_collection():
     """新对象采集失败应被吞掉（返回 []），不影响存量 ECS/platform。"""
     mgr = _make_manager()
     d = _fake_driver()
@@ -147,7 +151,7 @@ def test_new_object_failure_is_best_effort_and_does_not_break_collection():
     with patch.object(mgr, "_driver", return_value=d):
         assert mgr.get_vpc() == []
         assert mgr.get_evs() == []
-        out = mgr.list_all_resources()
+        out = await mgr.list_all_resources()
     assert out["success"] is True                       # 整次采集仍成功
     assert out["result"]["hwcloud_ecs"][0]["resource_id"] == "ecs-001"  # 存量不受影响
     assert out["result"]["hwcloud_vpc"] == [] and out["result"]["hwcloud_evs"] == []

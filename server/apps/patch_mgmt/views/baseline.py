@@ -41,6 +41,7 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
     queryset = PatchBaseline.objects.prefetch_related(
         "requirements__patch__windows_detail",
         "requirements__patch__linux_detail",
+        "requirements__patch__sources",
     ).all()
     serializer_class = PatchBaselineListSerializer
     filterset_class = PatchBaselineFilter
@@ -85,7 +86,7 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
         baseline = self.get_object()
         reqs = baseline.requirements.select_related(
             "patch__windows_detail", "patch__linux_detail"
-        )
+        ).prefetch_related("patch__sources")
         serializer = BaselineRequirementSerializer(reqs, many=True)
         return Response(serializer.data)
 
@@ -152,6 +153,18 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
         if not target_ids:
             raise DRFValidationError(patch_message(request, "error.target_ids_required", "Select at least one target"))
         require_target_ids(request, target_ids, "Operate")
+        if PatchTarget.objects.filter(id__in=target_ids).exclude(
+            os_type=baseline.os_type
+        ).exists():
+            raise DRFValidationError(
+                {
+                    "detail": patch_message(
+                        request,
+                        "error.baseline_target_os_mismatch",
+                        "Selected targets must use the same operating system as the baseline",
+                    )
+                }
+            )
         operable_target_ids = target_access_scope(request).queryset(
             "Operate"
         ).values("id")

@@ -55,6 +55,7 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
     idValues,
     collectionStatus,
     collectionStatusTimeline,
+    collectionStatusTimelineHint,
     objectMetaItems,
     instanceSelectValue,
     instanceLoading,
@@ -115,9 +116,10 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
                 <CollectionStatusCard
                   status={collectionStatus}
                   timeline={collectionStatusTimeline}
+                  timelineHint={collectionStatusTimelineHint}
                   guideItems={[
-                    { label: '采集状态', detail: `展示最近一段时间内该 ${config.objectFallbackName} 实例监控采集是否正常、缺失或异常。` },
-                    { label: '状态时间线', detail: '绿色表示采集成功，灰色表示暂无数据，红色表示采集或查询异常。' }
+                    { label: '采集状态', detail: `展示当前选中时间窗内该 ${config.objectFallbackName} 实例监控采集是否正常、缺失或异常。` },
+                    { label: '状态时间线', detail: '时间线覆盖当前时间窗并均分为 18 段；绿色表示该段有采集，灰色表示该段无数据，红色表示采集或查询异常。' }
                   ]}
                   styles={styles}
                 />

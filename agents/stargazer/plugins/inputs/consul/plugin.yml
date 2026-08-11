@@ -1,17 +1,14 @@
 name: consul
-version: "2.0.0"
+version: 2.0.0
 category: middleware
-
 metadata:
-  display_name: "Consul"
-  description: "Consul 中间件采集插件（脚本方式）"
-  author: "WeOps"
-  tags: [middleware, consul]
+  display_name: Consul
+  description: Consul 中间件采集插件（脚本方式）
+  author: WeOps
+  tags:
+  - middleware
+  - consul
   cloud_protocol: false
-
-# ============================================================================
-# 执行器配置
-# ============================================================================
 executors:
   job:
     type: job
@@ -22,5 +19,6 @@ executors:
       module: plugins.script_executor
       class: SSHPlugin
     default_script: linux
-
+    target_policy:
+      mode: remote_channel
 default_executor: job

@@ -5,13 +5,11 @@
 
 import './styles/chat.css';
 import './styles/floating-button.css';
-import { Chat, type ChatProps } from './Chat';
+import { Chat } from './Chat';
 import { FloatingButton, type FloatingButtonProps } from './FloatingButton';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import type { Root } from 'react-dom/client';
-
-type WebChatInitConfig = ChatProps & FloatingButtonProps;
 
 let floatingRoot: Root | null = null;
 let floatingContainer: HTMLElement | null = null;
@@ -22,6 +20,9 @@ const destroyFloatingWebChat = () => {
   floatingContainer?.remove();
   floatingContainer = null;
 };
+
+/** Configuration accepted by the browser-global WebChat initializer. */
+export type WebChatInitConfig = FloatingButtonProps;
 
 // Create global WebChat namespace
 declare global {

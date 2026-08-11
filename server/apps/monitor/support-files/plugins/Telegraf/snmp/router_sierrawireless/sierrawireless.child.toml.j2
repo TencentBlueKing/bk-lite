@@ -54,6 +54,7 @@
     [[inputs.snmp.table]]
         name = "device_temperature"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.20542.9.1.1.1.267"
         name = "celsius"

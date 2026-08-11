@@ -20,11 +20,16 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -68,65 +73,90 @@
     },
     {
       "metric_group": "Memory",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_used",
       "display_name": "内存已用",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__} * 1024) by (instance_id)",
+      "query": "device_memory_used{instance_type='switch', __$labels__} * 1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used memory of the Enterasys switch in bytes (ENTERASYS-MIB etsysResourceStorageUsed, KB*1024)."
     },
     {
       "metric_group": "Memory",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__} * 1024) by (instance_id)",
+      "query": "device_memory_free{instance_type='switch', __$labels__} * 1024",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free memory of the Enterasys switch in bytes (ENTERASYS-MIB etsysResourceStorageAvailable, KB*1024)."
     },
     {
       "metric_group": "Memory",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
+      "query": "device_memory_used{instance_type='switch', __$labels__} / (device_memory_used{instance_type='switch', __$labels__} + device_memory_free{instance_type='switch', __$labels__}) * 100",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Enterasys switch, derived as used/(used+free)."
     },
     {
       "metric_group": "Temperature",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Chassis temperature of the Enterasys switch in degrees Celsius (ENTERASYS-MIB chassis temperature sensor)."
     },
     {
       "metric_group": "Hardware Status",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_psu_state",
       "display_name": "电源状态",
-      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "Power-supply state of the Enterasys switch (ENTERASYS-MIB etsysChassisPowerSupplyState), normalised to 1=normal / 2=abnormal."

@@ -13,11 +13,15 @@ import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 
 /**
- * 兜底：把 formFields 中非必填且用户未填的字段补成空串。
+ * 兜底：把 formFields 中非必填且用户未填的字段补齐。
  * 原因：前端表单只回填用户实际改过的字段，未改的 key 不会出现在 formData 里。
  * 但后端 Jinja2 模板（child.toml.j2）用 `{{ 字段名 }}` 渲染时，未定义的 key 会抛
- * UndefinedError,触发 "渲染采集模板失败"。非必填字段以空串提交,模板侧
- * `{% if send %}{% endif %}` 会跳过该行,既保留可选语义又避免渲染失败。
+ * UndefinedError,触发 "渲染采集模板失败"。
+ *
+ * 文本类可选字段补空串，配合模板 `{% if send %}{% endif %}` 跳过该行。
+ * 布尔开关（或带 default_value 的字段）绝不能补空串：Jinja
+ * `{{ x | default(false) }}` 对已定义的空串不会兜底，会渲出
+ * `insecure_skip_verify = ` 这类非法 TOML，拖垮同机 Telegraf。
  *
  * 导出供单元测试使用。
  */
@@ -29,9 +33,16 @@ export const fillOptionalFormFields = (
   const result = { ...formData };
   formFields.forEach((field: any) => {
     if (field.required === true) return;
-    if (result[field.name] === undefined) {
-      result[field.name] = '';
+    if (result[field.name] !== undefined) return;
+    if (Object.prototype.hasOwnProperty.call(field, 'default_value')) {
+      result[field.name] = field.default_value;
+      return;
     }
+    if (field.type === 'switch') {
+      result[field.name] = false;
+      return;
+    }
+    result[field.name] = '';
   });
   return result;
 };
@@ -654,6 +665,11 @@ export const usePluginFromJson = () => {
               } else {
                 childConfig.follow_redirects = filledFormData.follow_redirects;
               }
+              // 布尔开关：空串/缺省一律写成 false，避免 toml.dumps 产出
+              // insecure_skip_verify = "" 拖垮同机 Telegraf。
+              childConfig.insecure_skip_verify =
+                filledFormData.insecure_skip_verify === true ||
+                filledFormData.insecure_skip_verify === 'true';
               if (filledFormData.auth_type === 'basic') {
                 delete result.child.content.config.bearer_token;
                 delete result.child.content.config.headers.Authorization;

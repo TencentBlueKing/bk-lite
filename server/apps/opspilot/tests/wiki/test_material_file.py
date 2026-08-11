@@ -150,7 +150,7 @@ def test_extract_text_parser_failure_and_unknown_type_return_empty(monkeypatch):
     assert material_service.extract_text(SimpleNamespace(id=2, material_type="video")) == ""
 
 
-def test_vision_options_skip_non_openai_and_client_init_failure(monkeypatch):
+def test_vision_options_skip_unsupported_protocol_and_client_init_failure(monkeypatch):
     material = SimpleNamespace(
         id=7,
         ocr_enhance=True,
@@ -173,6 +173,40 @@ def test_vision_options_skip_non_openai_and_client_init_failure(monkeypatch):
     )
 
     assert material_service._vision_options(material) == (None, None)
+
+
+def test_vision_options_builds_anthropic_compat_client(monkeypatch):
+    built = {}
+
+    def fake_build(*, api_base, api_key, vendor_type=""):
+        built.update(api_base=api_base, api_key=api_key, vendor_type=vendor_type)
+        return object()
+
+    monkeypatch.setattr(material_service, "build_anthropic_vision_client", fake_build)
+    material = SimpleNamespace(
+        id=8,
+        ocr_enhance=True,
+        knowledge_base=SimpleNamespace(
+            vision_model=SimpleNamespace(
+                id=5,
+                protocol_type="anthropic",
+                openai_api_base="https://api.anthropic.com",
+                openai_api_key="sk-ant",
+                model_name="claude-sonnet",
+                vendor=SimpleNamespace(vendor_type="anthropic"),
+            )
+        ),
+    )
+
+    client, model_name = material_service._vision_options(material)
+
+    assert client is not None
+    assert model_name == "claude-sonnet"
+    assert built == {
+        "api_base": "https://api.anthropic.com",
+        "api_key": "sk-ant",
+        "vendor_type": "anthropic",
+    }
 
 
 def test_extract_web_without_url_returns_empty_before_parser(monkeypatch):

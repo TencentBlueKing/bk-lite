@@ -1,10 +1,16 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Chat } from './Chat';
-import { WebChatConfig, ChatState } from '@webchat/core';
+import { Chat, type ChatProps } from './Chat';
+import { ChatState } from '@webchat/core';
+import { createFloatingButtonChatCallbacks } from './floatingButtonCallbacks';
 
-export interface FloatingButtonProps extends WebChatConfig {
+/**
+ * Floating launcher options plus the complete Chat configuration contract.
+ * `onChatStateChange` takes precedence over `onStateChange`; closing the Chat
+ * notifies `onClose` before the floating container is hidden.
+ */
+export interface FloatingButtonProps extends ChatProps {
   buttonText?: string;
   buttonIcon?: React.ReactNode;
   buttonStyle?: React.CSSProperties;
@@ -21,6 +27,8 @@ export const FloatingButton = React.forwardRef<HTMLDivElement, FloatingButtonPro
     buttonClassName,
     position = 'bottom-right',
     onChatStateChange,
+    onStateChange,
+    onClose,
     ...chatProps
   } = props;
 
@@ -86,6 +94,12 @@ export const FloatingButton = React.forwardRef<HTMLDivElement, FloatingButtonPro
     'top-right': 'top-6 right-6',
     'top-left': 'top-6 left-6',
   };
+  const chatCallbacks = createFloatingButtonChatCallbacks({
+    onChatStateChange,
+    onStateChange,
+    onClose,
+    close: () => setIsOpen(false),
+  });
 
   return (
     <div
@@ -101,8 +115,7 @@ export const FloatingButton = React.forwardRef<HTMLDivElement, FloatingButtonPro
         >
           <Chat
             {...chatProps}
-            onStateChange={onChatStateChange}
-            onClose={() => setIsOpen(false)}
+            {...chatCallbacks}
           />
         </div>
       )}

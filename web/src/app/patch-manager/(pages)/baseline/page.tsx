@@ -11,9 +11,11 @@ import usePatchManagerApi from '@/app/patch-manager/api';
 import type { Patch } from '@/app/patch-manager/types';
 import DualSelector from '@/app/patch-manager/components/dual-selector';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
+import PatchSourceDisplay from '@/app/patch-manager/components/patch-source-display';
 import CustomTable from '@/components/custom-table';
-import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
+import FilterToolbar from '@/components/filter-toolbar';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
@@ -411,6 +413,16 @@ export default function BaselineManagementPage() {
 
   const reqColumns = [
     { title: t('patchManager.baseline.requirement'), width: 120, render: (_: unknown, r: any) => r.patch_kb_number || r.patch_pkg_name || '' },
+    {
+      title: t('patchManager.libraryPage.source'),
+      width: 180,
+      render: (_: unknown, r: any) => (
+        <PatchSourceDisplay
+          sourceType={r.patch_source_type}
+          sourceDetails={r.patch_source_details}
+        />
+      ),
+    },
     { title: t('patchManager.severity'), dataIndex: 'patch_severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
     { title: t('patchManager.baseline.description'), dataIndex: 'patch_title', ellipsis: true },
     { title: t('patchManager.baseline.applicableVersion'), dataIndex: 'patch_version', width: 100, render: (v: string) => v || '--' },
@@ -454,6 +466,8 @@ export default function BaselineManagementPage() {
           id: r.patch,
           title: r.patch_title,
           severity: r.patch_severity,
+          source_type: r.patch_source_type,
+          source_details: r.patch_source_details,
           windows_detail:
             draftOs === 'win'
               ? {
@@ -480,7 +494,7 @@ export default function BaselineManagementPage() {
   }, [pickerSelected, patchList, requirements, draftOs]);
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+      <FilterToolbar align="between">
         <Space wrap>
           <Input.Search
             placeholder={t('patchManager.baseline.name')}
@@ -525,7 +539,7 @@ export default function BaselineManagementPage() {
             onRefresh={() => loadData()}
           />
         </Space>
-      </div>
+      </FilterToolbar>
       <div style={{ flex: 1, minHeight: 0 }}>
         <CustomTable
           columns={columns as any}
@@ -613,7 +627,7 @@ export default function BaselineManagementPage() {
             <span style={{ fontWeight: 500 }}>{t('patchManager.baseline.requirementList')}</span>
             <Tag color="warning">{t('patchManager.baseline.allRequired')}</Tag>
           </div>
-          <Table size="small" pagination={false} dataSource={requirements} rowKey={(r: any) => r.id ?? r.patch} columns={reqColumns as any} scroll={{ x: 780 }} />
+          <Table size="small" pagination={false} dataSource={requirements} rowKey={(r: any) => r.id ?? r.patch} columns={reqColumns as any} scroll={{ x: 960 }} />
           <div style={{ marginTop: 8 }}>
             {draftOs ? (
               <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => { setPatchPickerOpen(true); }}>{t('patchManager.baseline.addFromLibrary')}</Button>
@@ -731,6 +745,8 @@ export default function BaselineManagementPage() {
                           patch: patch.id,
                           patch_title: patch.title,
                           patch_severity: patch.severity,
+                          patch_source_type: patch.source_type,
+                          patch_source_details: patch.source_details,
                           patch_kb_number: patch.windows_detail?.kb_number,
                           patch_pkg_name: patch.linux_detail?.pkg_name,
                           patch_pkg_version: patch.linux_detail?.pkg_version,
@@ -772,6 +788,16 @@ export default function BaselineManagementPage() {
           onPageChange={(page, pageSize) => loadPatches(page, pageSize)}
           columns={[
             { title: draftOs === 'win' ? t('patchManager.kbNumber') : t('patchManager.packageName'), width: 120, render: (_: unknown, r: any) => r.windows_detail?.kb_number || r.linux_detail?.pkg_name || '' },
+            {
+              title: t('patchManager.libraryPage.source'),
+              width: 180,
+              render: (_: unknown, r: any) => (
+                <PatchSourceDisplay
+                  sourceType={r.source_type}
+                  sourceDetails={r.source_details}
+                />
+              ),
+            },
             { title: t('patchManager.severity'), dataIndex: 'severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
             { title: t('patchManager.baseline.description'), dataIndex: 'title', ellipsis: true },
             { title: t('patchManager.baseline.applicableVersion'), width: 100, render: (_: unknown, r: any) => r.windows_detail?.product_list?.join('、') || r.linux_detail?.os_version_range || r.linux_detail?.distro_name || '--' },
@@ -779,6 +805,7 @@ export default function BaselineManagementPage() {
           ]}
           selectedKeys={pickerSelected}
           onChange={setPickerSelected}
+          selectionColumnFixed
           getCheckboxProps={(record) => ({ disabled: !record.permission?.includes('Operate') })}
           selectedRecordsData={selectedPatchRecords}
           renderSelectedLabel={(r) => r.windows_detail?.kb_number || r.linux_detail?.pkg_name || r.title}

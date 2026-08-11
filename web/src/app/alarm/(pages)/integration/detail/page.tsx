@@ -12,6 +12,7 @@ import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelect from '@/components/group-tree-select';
 import RefreshIconButton from '@/components/refresh-icon-button';
+import SecretValueDisplay from '@/components/secret-value-display';
 import {
   CheckCircleFilled,
   CopyOutlined,
@@ -719,17 +720,10 @@ const IntegrationDetail: FC = () => {
         {showSecretRow ? (
           <Descriptions bordered size="small" column={1} labelStyle={{ width: 120 }}>
             <Descriptions.Item label={t('integration.secret')}>
-              {selectedGuideSecret ? (
-                <>
-                  <span className="font-mono">{'******************'}</span>
-                  <CopyOutlined
-                    className="ml-[10px] cursor-pointer hover:text-blue-500"
-                    onClick={() => copySecret(selectedGuideSecret)}
-                  />
-                </>
-              ) : (
-                <span className="text-[var(--color-text-3)]">{placeholder}</span>
-              )}
+              <SecretValueDisplay
+                value={selectedGuideSecret}
+                placeholder={<span className="text-[var(--color-text-3)]">{placeholder}</span>}
+              />
             </Descriptions.Item>
           </Descriptions>
         ) : null}
@@ -754,17 +748,10 @@ const IntegrationDetail: FC = () => {
 
         <Descriptions bordered size="small" column={1} labelStyle={{ width: 120 }}>
           <Descriptions.Item label={t('integration.secret')}>
-            {selectedGuideSecret ? (
-              <>
-                <span className="font-mono">{'******************'}</span>
-                <CopyOutlined
-                  className="ml-[10px] cursor-pointer hover:text-blue-500"
-                  onClick={() => copySecret(selectedGuideSecret)}
-                />
-              </>
-            ) : (
-              <span className="text-[var(--color-text-3)]">{placeholder}</span>
-            )}
+            <SecretValueDisplay
+              value={selectedGuideSecret}
+              placeholder={<span className="text-[var(--color-text-3)]">{placeholder}</span>}
+            />
           </Descriptions.Item>
           <Descriptions.Item label="CURL">
             <div className="relative">

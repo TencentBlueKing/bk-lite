@@ -5,14 +5,12 @@ import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeftOutlined,
-  EllipsisOutlined,
   InboxOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
 import {
   Button,
   Col,
-  Dropdown,
   Empty,
   List,
   Modal,
@@ -26,9 +24,10 @@ import {
   Tag,
   Typography,
   message,
-  type MenuProps,
   type TableColumnsType,
 } from 'antd';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -287,17 +286,15 @@ export default function ApmServiceDetailPage() {
     });
   };
 
-  const moreMenu: MenuProps = {
-    items: [
-      {
-        key: 'archive',
-        icon: <InboxOutlined aria-hidden="true" />,
-        danger: !service?.archived_at,
-        label: service?.archived_at ? '解档' : '归档',
-        onClick: archiveService,
-      },
-    ],
-  };
+  const moreMenuItems: MoreActionsDropdownItem[] = [
+    {
+      key: 'archive',
+      icon: <InboxOutlined aria-hidden="true" />,
+      danger: !service?.archived_at,
+      label: service?.archived_at ? '解档' : '归档',
+      onClick: archiveService,
+    },
+  ];
 
   const traceColumns: TableColumnsType<ApmTraceSummary> = [
     {
@@ -433,9 +430,12 @@ export default function ApmServiceDetailPage() {
                   <Button icon={<SearchOutlined aria-hidden="true" />}>在探索中打开</Button>
                 </Link>
                 <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
-                  <Dropdown menu={moreMenu} placement="bottomRight">
-                    <Button icon={<EllipsisOutlined aria-hidden="true" />} aria-label="更多操作" />
-                  </Dropdown>
+                  <MoreActionsDropdown
+                    items={moreMenuItems}
+                    ariaLabel="更多操作"
+                    buttonType="default"
+                    buttonSize="middle"
+                  />
                 </Permission>
               </Space>
             </div>
