@@ -51,7 +51,12 @@
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],

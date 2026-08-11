@@ -25,7 +25,12 @@
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -38,7 +43,12 @@
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
