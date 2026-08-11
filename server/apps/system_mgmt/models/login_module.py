@@ -1,7 +1,6 @@
 from copy import deepcopy
 
 from cryptography.fernet import InvalidToken
-from django.conf import settings
 from django.db import models
 from django.utils.functional import cached_property
 
@@ -10,6 +9,7 @@ from apps.core.mixinx import EncryptMixin, PeriodicTaskUtils
 
 BK_LOGIN_APP_TOKEN_ENVELOPE_KEY = "__bklite_encrypted__"
 BK_LOGIN_APP_TOKEN_ENVELOPE_VERSION = 1
+BK_LOGIN_APP_TOKEN_MASK = "******"
 
 
 class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
@@ -30,7 +30,7 @@ class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
         self.encrypt_field("app_secret", config)
         self.app_secret = config["app_secret"]
 
-        if self.source_type == "bk_login" and settings.BK_LOGIN_APP_TOKEN_ENCRYPTION_ENABLED:
+        if self.source_type == "bk_login":
             other_config = deepcopy(self.other_config or {})
             self._encrypt_app_token(other_config)
             self.other_config = other_config
