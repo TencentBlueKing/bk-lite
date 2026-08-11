@@ -28,6 +28,7 @@ export function createPrometheusDefaultParams(): ParamItem[] {
       type: "string",
       filterType: "params",
       value: "",
+      required: true,
     },
     {
       id: uuidv4(),
@@ -256,6 +257,7 @@ export const normalizeParams = (params: ParamItem[]) =>
       type: param.type,
       filterType: param.filterType,
       value: param.value,
+      required: param.required,
     }));
 
 export const buildConnectorPayload = (

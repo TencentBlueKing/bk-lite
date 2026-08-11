@@ -3,7 +3,10 @@ import base64
 import pytest
 import requests
 
+from apps.core.utils import safe_requests
+from apps.core.utils.ssrf_validator import SSRFError
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+from apps.operation_analysis.services.datasource_preview import prometheus_client
 from apps.operation_analysis.services.datasource_preview.base import ConnectorError, PreviewResult
 from apps.operation_analysis.services.datasource_preview.prometheus_client import (
     PrometheusHttpClient,
@@ -18,6 +21,7 @@ from apps.operation_analysis.services.datasource_preview.prometheus_transform im
     transform_range_result,
 )
 from apps.operation_analysis.services.datasource_preview.registry import get_preview_executor
+from apps.operation_analysis.services.datasource_preview.rest_api import MAX_RESPONSE_BYTES
 
 
 def test_prometheus_source_type_constant():
@@ -104,7 +108,7 @@ def test_query_range_sends_expected_request():
             calls.append(kwargs)
             return FakeResponse()
 
-    client = PrometheusHttpClient(http_client=FakeClient())
+    client = PrometheusHttpClient(request_func=FakeClient().request)
     payload = client.query_range(
         {"url": "https://prom.example.com", "auth_type": "bearer", "token": "t", "timeout_seconds": 15},
         query="up",
@@ -144,11 +148,61 @@ def test_query_sends_expected_request():
             calls.append(kwargs)
             return _success_json_response()
 
-    client = PrometheusHttpClient(http_client=FakeClient())
+    client = PrometheusHttpClient(request_func=FakeClient().request)
     payload = client.query({"url": "https://prom.example.com"}, query="up{job='api'}")
     assert payload["status"] == "success"
     assert calls[0]["url"] == "https://prom.example.com/api/v1/query"
     assert calls[0]["params"] == {"query": "up{job='api'}"}
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected_url"),
+    [
+        ("healthy", "https://prom.example.com/-/healthy"),
+        ("query", "https://prom.example.com/api/v1/query"),
+        ("query_range", "https://prom.example.com/api/v1/query_range"),
+    ],
+)
+def test_prometheus_outbound_operations_use_safe_request(monkeypatch, operation, expected_url):
+    calls = []
+
+    def fake_safe_request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return _success_json_response(b"OK" if operation == "healthy" else None)
+
+    monkeypatch.setattr(prometheus_client, "safe_request", fake_safe_request)
+    client = PrometheusHttpClient()
+
+    if operation == "healthy":
+        client.healthy({"url": "https://prom.example.com"})
+    elif operation == "query":
+        client.query({"url": "https://prom.example.com"}, query="up")
+    else:
+        client.query_range(
+            {"url": "https://prom.example.com"},
+            query="up",
+            start="1700000000",
+            end="1700003600",
+            step="1m",
+        )
+
+    assert calls[0][0] == "GET"
+    assert calls[0][1] == expected_url
+    assert calls[0][2]["allow_redirects"] is False
+
+
+def test_prometheus_maps_outbound_policy_rejection(monkeypatch):
+    def reject_private_target(*args, **kwargs):
+        raise SSRFError("目标地址被禁止", code="NETWORK_WHITELIST_REQUIRED")
+
+    monkeypatch.setattr(prometheus_client, "safe_request", reject_private_target)
+    client = PrometheusHttpClient()
+
+    with pytest.raises(ConnectorError) as exc_info:
+        client.query({"url": "http://10.0.0.1:9090"}, query="up")
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.code == "NETWORK_WHITELIST_REQUIRED"
 
 
 def test_healthy_succeeds_via_health_endpoint():
@@ -159,7 +213,7 @@ def test_healthy_succeeds_via_health_endpoint():
             calls.append(kwargs)
             return _success_json_response(b"OK")
 
-    client = PrometheusHttpClient(http_client=FakeClient())
+    client = PrometheusHttpClient(request_func=FakeClient().request)
     client.healthy({"url": "https://prom.example.com"})
     assert len(calls) == 1
     assert calls[0]["url"] == "https://prom.example.com/-/healthy"
@@ -182,7 +236,7 @@ def test_healthy_falls_back_to_buildinfo():
                 return UnhealthyResponse()
             return _success_json_response()
 
-    client = PrometheusHttpClient(http_client=FakeClient())
+    client = PrometheusHttpClient(request_func=FakeClient().request)
     client.healthy({"url": "https://prom.example.com"})
     assert len(calls) == 2
     assert calls[0]["url"] == "https://prom.example.com/-/healthy"
@@ -204,7 +258,7 @@ def test_request_json_maps_http_401_to_auth_failed():
         def request(self, **kwargs):
             return FakeResponse()
 
-    client = PrometheusHttpClient(http_client=FakeClient())
+    client = PrometheusHttpClient(request_func=FakeClient().request)
     with pytest.raises(ConnectorError) as exc_info:
         client.query({"url": "https://prom.example.com"}, query="up")
     assert exc_info.value.code == "prometheus_auth_failed"
@@ -226,7 +280,7 @@ def test_request_json_maps_prometheus_error_status():
         def request(self, **kwargs):
             return FakeResponse()
 
-    client = PrometheusHttpClient(http_client=FakeClient())
+    client = PrometheusHttpClient(request_func=FakeClient().request)
     with pytest.raises(ConnectorError) as exc_info:
         client.query({"url": "https://prom.example.com"}, query="bad{")
     assert exc_info.value.status_code == 400
@@ -234,14 +288,40 @@ def test_request_json_maps_prometheus_error_status():
     assert "parse error at 1:1" in exc_info.value.message
 
 
-def test_request_json_maps_timeout_to_502():
-    class FakeClient:
-        def request(self, **kwargs):
-            raise requests.Timeout("read timed out")
+def test_request_json_maps_safe_request_wrapped_timeout_to_502(monkeypatch):
+    monkeypatch.setattr(
+        safe_requests.SSRFValidator,
+        "validate",
+        lambda url, allowlist=None: url,
+    )
+    monkeypatch.setattr(
+        safe_requests.requests,
+        "request",
+        lambda *args, **kwargs: (_ for _ in ()).throw(requests.Timeout("read timed out")),
+    )
 
-    client = PrometheusHttpClient(http_client=FakeClient())
+    client = PrometheusHttpClient()
     with pytest.raises(ConnectorError) as exc_info:
         client.query({"url": "https://prom.example.com"}, query="up")
+    assert exc_info.value.code == "prometheus_timeout"
+    assert exc_info.value.status_code == 502
+
+
+def test_health_check_maps_safe_request_wrapped_timeout_to_502(monkeypatch):
+    monkeypatch.setattr(
+        safe_requests.SSRFValidator,
+        "validate",
+        lambda url, allowlist=None: url,
+    )
+    monkeypatch.setattr(
+        safe_requests.requests,
+        "request",
+        lambda *args, **kwargs: (_ for _ in ()).throw(requests.Timeout("connect timed out")),
+    )
+
+    client = PrometheusHttpClient()
+    with pytest.raises(ConnectorError) as exc_info:
+        client.healthy({"url": "https://prom.example.com"})
     assert exc_info.value.code == "prometheus_timeout"
     assert exc_info.value.status_code == 502
 
@@ -286,11 +366,33 @@ def test_request_json_maps_invalid_json_to_502():
         def request(self, **kwargs):
             return FakeResponse()
 
-    client = PrometheusHttpClient(http_client=FakeClient())
+    client = PrometheusHttpClient(request_func=FakeClient().request)
     with pytest.raises(ConnectorError) as exc_info:
         client.query({"url": "https://prom.example.com"}, query="up")
     assert exc_info.value.status_code == 502
     assert exc_info.value.code == "prometheus_invalid_response"
+
+
+def test_request_json_rejects_oversized_streamed_response():
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+        closed = False
+
+        def iter_content(self, chunk_size):
+            yield b"{"
+            yield b" " * MAX_RESPONSE_BYTES
+
+        def close(self):
+            self.closed = True
+
+    response = FakeResponse()
+    client = PrometheusHttpClient(request_func=lambda **kwargs: response)
+    with pytest.raises(ConnectorError) as exc_info:
+        client.query({"url": "https://prom.example.com"}, query="up")
+    assert exc_info.value.code == "rest_response_too_large"
+    assert exc_info.value.status_code == 400
+    assert response.closed is True
 
 
 def test_format_series_legend():

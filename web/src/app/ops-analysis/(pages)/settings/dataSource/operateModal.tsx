@@ -36,6 +36,7 @@ import type { UploadFile } from "antd/es/upload/interface";
 import ParamTable, { ParamTableRef } from "./paramTable";
 import FieldSchemaTable, { FieldSchemaTableRef } from "./fieldSchemaTable";
 import PreviewPanel from "./previewPanel";
+import { ensurePrometheusQueryRequired } from "@/app/ops-analysis/utils/dataSourceParamContract";
 import {
   buildConnectorPayload,
   createPrometheusDefaultParams,
@@ -216,9 +217,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
         bodyText: formatJsonText(queryConfig.body),
         ...(rowSourceType === SOURCE_TYPE_PROMETHEUS
           ? {
-              time_range: prometheusTimeRangeToMinutes(queryConfig.time_range),
-              max_series: queryConfig.max_series ?? 20,
-            }
+            time_range: prometheusTimeRangeToMinutes(queryConfig.time_range),
+            max_series: queryConfig.max_series ?? 20,
+          }
           : {}),
       },
     };
@@ -254,15 +255,18 @@ const OperateModal: React.FC<OperateModalProps> = ({
       currentRow.params.length > 0;
 
     if (hasValidParams) {
+      const restoredParams = currentRow.params.map((param: any) => ({
+        ...param,
+        type: param.type || "string",
+        filterType:
+          param.filterType ||
+          (param.type === "timeRange" ? "filter" : "fixed"),
+        id: param.id || uuidv4(),
+      }));
       setParams(
-        currentRow.params.map((param: any) => ({
-          ...param,
-          type: param.type || "string",
-          filterType:
-            param.filterType ||
-            (param.type === "timeRange" ? "filter" : "fixed"),
-          id: param.id || uuidv4(),
-        })),
+        rowSourceType === SOURCE_TYPE_PROMETHEUS
+          ? ensurePrometheusQueryRequired(restoredParams)
+          : restoredParams,
       );
     } else if (rowSourceType === SOURCE_TYPE_PROMETHEUS) {
       setParams(createPrometheusDefaultParams());

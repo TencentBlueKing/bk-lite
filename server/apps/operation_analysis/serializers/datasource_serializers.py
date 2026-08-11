@@ -4,6 +4,7 @@
 # @Author: windyzhao
 from rest_framework import serializers
 
+from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.serializers import AuthSerializer
 from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER, is_sensitive_field_name
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
@@ -137,6 +138,28 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             if param.get("filterType") == "filter" and param.get("type") not in bindable_types:
                 raise serializers.ValidationError(f"[{index}].type 仅 string、timeRange、dateRange 支持筛选联动")
         return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        source_type = attrs.get("source_type", getattr(self.instance, "source_type", None))
+        should_validate_target = (
+            self.instance is None or "connection_config" in attrs or "source_type" in attrs
+        )
+        if source_type != DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS or not should_validate_target:
+            return attrs
+
+        connection_config = attrs.get(
+            "connection_config",
+            getattr(self.instance, "connection_config", {}) or {},
+        )
+        url = connection_config.get("url", "") if isinstance(connection_config, dict) else ""
+        try:
+            SSRFValidator.validate(url)
+        except SSRFError as exc:
+            detail = serializers.ErrorDetail(str(exc), code=exc.code)
+            raise serializers.ValidationError({"connection_config": {"url": [detail]}}) from exc
+
+        return attrs
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

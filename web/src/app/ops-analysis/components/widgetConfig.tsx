@@ -80,6 +80,7 @@ import {
   getDefaultScreenWidgetAppearance,
   resolveScreenWidgetAppearance,
 } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
+import { ensurePrometheusQueryRequired } from '@/app/ops-analysis/utils/dataSourceParamContract';
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
@@ -853,10 +854,19 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   // 把组件级 inputConfig 覆盖合并到 selectedDataSource，供参数表渲染。
   const effectiveDataSource = useMemo(() => {
     if (!selectedDataSource) return undefined;
-    if (widgetParamOverrides.length === 0) return selectedDataSource;
+    const sourceParams =
+      selectedDataSource.source_type === 'prometheus'
+        ? ensurePrometheusQueryRequired(selectedDataSource.params)
+        : selectedDataSource.params;
+
+    if (widgetParamOverrides.length === 0) {
+      return sourceParams === selectedDataSource.params
+        ? selectedDataSource
+        : { ...selectedDataSource, params: sourceParams };
+    }
     return {
       ...selectedDataSource,
-      params: selectedDataSource.params.map((p) => {
+      params: sourceParams.map((p) => {
         const override = widgetParamOverrides.find((o) => o.name === p.name);
         return override?.inputConfig !== undefined
           ? { ...p, inputConfig: override.inputConfig }
@@ -914,7 +924,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
       if (
         values.sceneWidgetType !== 'networkStatusTopology' &&
-        selectedDataSource?.params?.length
+        effectiveDataSource?.params?.length
       ) {
         const formParams = values.params || form.getFieldValue('params') || {};
         const reconciledFormParams = { ...formParams };
@@ -933,7 +943,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         }
         const processed = processFormParamsForSubmit(
           reconciledFormParams,
-          selectedDataSource.params,
+          effectiveDataSource.params,
         );
         // 合并组件级 inputConfig 覆盖
         values.dataSourceParams = processed.map((param) => {
