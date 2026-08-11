@@ -81,6 +81,58 @@ def test_channel_destroy(super_client):
     assert not Channel.objects.filter(id=ch.id).exists()
 
 
+def test_channel_test_send_email_uses_login_user_email_not_base_user_pk(super_client):
+    """test_send 必须按登录身份定位 system_mgmt.User，不能用 base.User.id 当业务用户主键。
+
+    base.User 与 system_mgmt.User 是两张表，自增 id 通常不对齐。创建用户发信走 system_mgmt.User
+    能收到，而测试若误用 base id 会发到别人邮箱或空收件人。
+    """
+    from apps.base.models import User as BaseUser
+    from apps.system_mgmt.models import User as SysUser
+
+    login_base = BaseUser.objects.get(username="chadmin")
+    # 先插入若干业务用户，拉开 system_mgmt 自增，保证真实账号主键与 base 登录用户不同
+    for i in range(3):
+        SysUser.objects.create(
+            username=f"decoy{i}",
+            display_name=f"decoy{i}",
+            email=f"decoy{i}@example.com",
+            password="x",
+            domain="domain.com",
+        )
+    real = SysUser.objects.create(
+        username="chadmin",
+        display_name="Admin",
+        email="chadmin@x.com",
+        password="x",
+        domain="domain.com",
+    )
+    assert real.id != login_base.id
+
+    with patch("apps.system_mgmt.viewset.channel_viewset.send_email", return_value={"result": True}) as m_send:
+        resp = super_client.post(
+            f"{V}/channel/test_send/",
+            {
+                "channel_type": ChannelChoices.EMAIL,
+                "name": "mail",
+                "config": {
+                    "smtp_server": "smtp.example.com",
+                    "port": 465,
+                    "smtp_user": "u",
+                    "smtp_pwd": "p",
+                    "mail_sender": "noreply@example.com",
+                },
+            },
+            format="json",
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["result"] is True
+    user_list = m_send.call_args.args[3]
+    assert list(user_list.values_list("username", flat=True)) == ["chadmin"]
+    assert list(user_list.values_list("email", flat=True)) == ["chadmin@x.com"]
+
+
 def test_channel_test_send_unsupported_type(super_client):
     resp = super_client.post(f"{V}/channel/test_send/", {"channel_type": "totally_unknown", "config": {}}, format="json")
     assert resp.status_code == 400
