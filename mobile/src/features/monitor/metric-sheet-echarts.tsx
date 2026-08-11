@@ -100,8 +100,8 @@ export default function MetricSheetEcharts({
     const prepared = series
       .map((item) => item.points
         .map(([timestamp, value]) => [metricTimestampMs(timestamp), value] as const)
-        .filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1])))
-      .filter((points) => points.length > 0);
+        .filter((point) => Number.isFinite(point[0])))
+      .filter((points) => points.some((point) => point[1] !== null));
     if (!prepared.length) return null;
 
     const text3 = cssVar('--color-text-3', '#86909c');
@@ -117,7 +117,7 @@ export default function MetricSheetEcharts({
       minute: '2-digit',
       second: '2-digit',
     };
-    const allZero = prepared.every((points) => points.every((point) => point[1] === 0));
+    const allZero = prepared.every((points) => points.every((point) => point[1] === null || point[1] === 0));
     const areaTop = withAlpha(primary, '33');
     const areaBottom = withAlpha(primary, '05');
 
@@ -178,7 +178,7 @@ export default function MetricSheetEcharts({
         type: 'line' as const,
         showSymbol: false,
         smooth: false,
-        connectNulls: true,
+        connectNulls: false,
         data: points.map(([time, value]) => [time, value]),
         lineStyle: {
           width: 2,

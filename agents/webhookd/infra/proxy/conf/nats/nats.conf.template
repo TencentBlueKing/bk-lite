@@ -48,6 +48,14 @@ authorization {
         publish = ["metrics.>", "vector", "_INBOX.>"]
         subscribe = []
       }
+    },
+    {
+      user: "${APM_NATS_USERNAME}"
+      password: "${APM_NATS_PASSWORD}"
+      permissions: {
+        publish = ["apm.traces.${ZONE_ID}"]
+        subscribe = ["_INBOX.>"]
+      }
     }
   ]
 }

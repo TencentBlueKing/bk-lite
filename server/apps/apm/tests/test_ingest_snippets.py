@@ -6,6 +6,7 @@ from unittest.mock import Mock
 from urllib.parse import unquote
 
 import pytest
+import yaml
 
 from apps.apm.services import DjangoIntegrationConfigurationService
 from apps.apm.services.contracts import IngestSnippetRequest
@@ -45,7 +46,10 @@ def test_snippet_uses_a_runtime_instance_identity_instead_of_a_shared_constant(r
 
     assert "service.instance.id=${OTEL_SERVICE_INSTANCE_ID}" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
     assert "BK_INSTANCE_ID" not in snippet.code
-    assert "APM_INSTANCE_ID" in snippet.code
+    if runtime == "kubernetes":
+        assert "fieldPath: metadata.uid" in snippet.code
+    else:
+        assert "APM_INSTANCE_ID" in snippet.code
     assert "OTEL_EXPORTER_OTLP_HEADERS" not in snippet.environment
     assert "service.namespace=shop" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
     assert "service.name=checkout" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
@@ -123,7 +127,6 @@ def test_host_snippet_fails_closed_when_uuid_sources_are_unavailable(tmp_path):
     ("runtime", "runtime_environment", "expected"),
     [
         ("host", {"APM_INSTANCE_ID": "host-replica-a"}, "host-replica-a"),
-        ("kubernetes", {"POD_UID": "2f8a5cc2-2e44-4df5-a8c6-7182942541ce"}, "2f8a5cc2-2e44-4df5-a8c6-7182942541ce"),
         ("other", {"APM_INSTANCE_ID": "custom-runtime-a"}, "custom-runtime-a"),
     ],
 )
@@ -184,7 +187,7 @@ def test_explicit_instance_identity_fails_closed_outside_the_safe_boundary(inval
         ("python", 'python -m pip install "opentelemetry-distro[otlp]"', "opentelemetry-instrument python app.py"),
         ("nodejs", "npm install --save @opentelemetry/auto-instrumentations-node", "node --require"),
         ("java", "curl --fail --silent --show-error --location", "java -javaagent:./opentelemetry-javaagent.jar"),
-        ("go", "go get go.opentelemetry.io/otel", "Initialize the OpenTelemetry Go SDK"),
+        ("go", "go get go.opentelemetry.io/otel", "Go 无通用零代码探针"),
     ],
 )
 def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected_install, expected_start):
@@ -225,6 +228,58 @@ def test_docker_snippet_uses_runtime_environment_injection_instead_of_host_expor
     assert "OTEL_EXPORTER_OTLP_HEADERS" not in snippet.code
     assert "NODE_OPTIONS=" in snippet.code
     assert "export OTEL_EXPORTER_OTLP_ENDPOINT" not in snippet.code
+
+
+def test_kubernetes_snippet_uses_downward_api_pod_uid_and_standard_otel_environment():
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="python",
+            runtime="kubernetes",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+
+    manifest = yaml.safe_load(snippet.code)
+    container = manifest["spec"]["template"]["spec"]["containers"][0]
+    environment = {item["name"]: item for item in container["env"]}
+
+    assert container["name"] == "YOUR_CONTAINER_NAME"
+    assert environment["POD_UID"]["valueFrom"]["fieldRef"] == {
+        "apiVersion": "v1",
+        "fieldPath": "metadata.uid",
+    }
+    assert environment["OTEL_SERVICE_INSTANCE_ID"]["value"] == "$(POD_UID)"
+    assert environment["OTEL_EXPORTER_OTLP_ENDPOINT"]["value"] == "https://apm.example.com"
+    assert "service.instance.id=$(OTEL_SERVICE_INSTANCE_ID)" in environment["OTEL_RESOURCE_ATTRIBUTES"]["value"]
+    assert "${POD_UID" not in snippet.code
+
+
+def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup():
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="go",
+            runtime="host",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+
+    assert "Go 无通用零代码探针" in snippet.code
+    assert "telemetry/otel.go.example" in snippet.code
+    assert "func NewTracerProvider(ctx context.Context) (*sdktrace.TracerProvider, error)" in snippet.code
+    assert "otlptracehttp.New(ctx)" in snippet.code
+    assert "resource.WithFromEnv()" in snippet.code
+    assert "sdktrace.WithBatcher(exporter)" in snippet.code
+    assert "defer tracerProvider.Shutdown" in snippet.code
+    assert "Initialize the OpenTelemetry Go SDK" not in snippet.code
+    assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
 
 
 @pytest.mark.parametrize("runtime", ["host", "docker"])

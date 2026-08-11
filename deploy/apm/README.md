@@ -1,113 +1,85 @@
-# BK-Lite APM 数据面
+# BK-Lite APM 数据面契约夹具
 
-该目录提供与 Django Server 启动解耦的 traces-only 运行期部署参考：
+本目录**不是**生产编排手册，也不替运维设计流水线。它只提供：
+
+1. **硬契约**：链路拓扑、协议、ACK、清洗与安全边界；
+2. **产品自有组件**：BK-Lite traces-only Collector 发行版与参考配置；
+3. **可重复验证**：本地/CI 用 Compose 证明契约成立。
+
+生产上的 NATS Stream、VictoriaTraces、系统级 Collector、容量、告警与发布流水线由运维按自身平台落地；须满足本文与 [ACCEPTANCE.md](./ACCEPTANCE.md)（原上线验收清单）中的约束，编排方式自选。
+
+正式链路：
 
 ```text
 OTel SDK / Agent
-  -> 区域 Collector（直接监听 OTLP 4317/4318）
+  -> 区域 Collector（OTLP 4317/4318；产品页只生成 4318）
   -> NATS JetStream apm.traces.<cloud_region_id>
   -> 系统级 Collector
   -> VictoriaTraces
 ```
 
-APM 不使用 VictoriaMetrics，不生成 Span Metrics，不做尾采样，也不再部署独立 APM Edge
-Nginx。`/telegraf/api` 仍只属于 Monitor 的 Telegraf Influx 接口。
+APM 不使用 VictoriaMetrics，不生成 Span Metrics，不做尾采样，也不包含独立 APM Edge
+Nginx。`/telegraf/api` 仍只属于 Monitor。APM 从未正式部署，不存在旧数据面迁移。
+
+职责边界见 [ADR 0006](../../docs/adr/0006-apm-regional-nats-victoriatraces-pipeline.md)、
+[ADR 0008](../../docs/adr/0008-apm-trusted-regional-ingress.md) 与
+`docs/design/product-decisions/apm-data-plane.md`。
 
 ## 目录与角色
 
-- `collector/`：固定 OTel Collector `0.153.0` 的 BK-Lite 发行版；包含 traces-only
-  JetStream exporter/receiver 和 `trace_guard` 清洗处理器。
-- `otel/regional.yaml`：区域入口，先限制内存、清洗/限长、注入可信区域、批处理，再通过
-  bytes 计量的本地持久队列等待 JetStream publish ACK。
-- `otel/system.yaml`：绑定预创建 durable consumer，直接写 VictoriaTraces；下游失败时 NAK，
-  成功后才同步 ACK。
-- `nats/nats-server.conf`：本地契约环境的最小权限参考，不是生产凭据。
-- `compose.yaml`：可重复本地验证。生产 Stream、Consumer、系统 Collector、VT、容量和告警
-  由运维部署。
+| 路径 | 归属 | 说明 |
+| --- | --- | --- |
+| `collector/` | 研发（产品组件） | 固定 OTel Collector `0.153.0` 的 BK-Lite 发行版；JetStream exporter/receiver、`trace_guard` |
+| `otel/regional.yaml` / `otel/system.yaml` | 研发（契约参考配置） | 区域清洗/排队与中心消费写 VT 的行为基线；生产可换编排，语义须等价 |
+| `nats/nats-server.conf` | 契约夹具 | 本地最小权限示例，**不是**生产凭据或生产 NATS 拓扑 |
+| `compose.yaml` + `Makefile` | 契约夹具 | 仅本地/CI 验证；**不是**生产 Compose 真相源 |
+| `.env.example` | 契约夹具 | 隔离环境默认值；生产 Secret 由运维注入 |
 
-## 传输契约
+Server 运行期查询与健康探测模板：
+[`server/support-files/env/.env.apm.example`](../../server/support-files/env/.env.apm.example)。
+这些 endpoint 只由运行期任务使用，不参与 Server 启动。
+
+## 传输契约（硬约束）
 
 - Subject：区域仅可发布 `apm.traces.<自身区域>`；中心订阅 `apm.traces.>`。
 - Payload：OTLP Protobuf `ExportTraceServiceRequest`，`Content-Type: application/x-protobuf`。
 - Headers：`BK-Cloud-Region-Id`、`BK-OTLP-Schema-Version: 1`、`Nats-Msg-Id`。
 - `Nats-Msg-Id` 是 schema、区域和 Protobuf 正文的 SHA-256；Stream duplicate window 抑制
-  publish 重试。VT 接受后到 ACK 持久化前仍有崩溃窗口，所以端到端是至少一次，而非
-  exactly-once；Server 聚合必须按 `trace_id + span_id` 去重。
-- 非法 Subject、区域 header、schema、Content-Type 或 Protobuf 是 poison message，终止投递；
-  VT 不可用是可重试失败，消息不 ACK。
+  publish 重试。端到端至少一次；Server 聚合按 `trace_id + span_id` 去重。
+- 非法 Subject、区域 header、schema、Content-Type 或 Protobuf 为 poison message，终止投递；
+  VT 不可用为可重试失败，消息不 ACK。
+- 运行身份不得拥有 Stream/Consumer 管理权限。区域 publish ACL 精确到自身 Subject；中心只需
+  Stream/Consumer info、pull、ACK 与 inbox。
 
-生产运行身份不得拥有 Stream/Consumer 管理权限。区域凭据的 publish ACL 必须精确到自身
-Subject；中心凭据只需要 Stream/Consumer info、pull、ACK 与 inbox。`apm-nats-init` 使用的
-管理身份只用于本地契约，生产由运维在运行进程启动前创建并核对配置。
+## 入口与清洗（硬约束）
 
-## 启动与配置
+- 受管区域代理正式包含区域 Collector 与宿主机 4318 映射；4318 仅受信区域内网可达
+  （ADR 0008）。无应用级 Token；公网/跨租户接入当前不支持。
+- Server 固定生成 `http://<receiver_host>:4318/v1/traces`，客户端不得提交 endpoint。
+- `trace_guard`：删除客户端 `bk.*` 与敏感键后注入可信 `bk.cloud_region.id`；属性与字符串长度有界。
+- 区域队列与 JetStream 均有 bytes/age/message 硬上限；满载拒绝或丢弃须可观测，禁止无界膨胀。
 
-复制 `.env.example` 的变量到受管部署环境。文件中的 `replace-me` 和 Compose 的默认密码仅供
-隔离本地契约，禁止用于共享或生产环境；生产凭据、CA 和客户端证书必须由 Secret/环境注入。
+## 运维须满足、但自行编排
 
-```bash
-docker compose -f deploy/apm/compose.yaml up -d --wait
-```
+- 有界 `APM_TRACES` Stream 与 `BKLITE_APM_SYSTEM` durable consumer（语义见验收清单）。
+- VictoriaTraces 保留期 ≥ 35 天，并启用 service graph 任务；APM 唯一遥测事实源。
+- 容量下界与告警门槛见 [CAPACITY.md](./CAPACITY.md)；本地 256 MiB Stream 仅契约测试。
+- 验收与回滚约束见 [ACCEPTANCE.md](./ACCEPTANCE.md)。**如何**用 Helm/Ansible/现有流水线落地不在本目录规定。
 
-区域 Collector 的宿主机绑定默认是 `127.0.0.1:4317/4318`。生产应把
-`APM_OTLP_GRPC_BIND`、`APM_OTLP_HTTP_BIND` 配置为区域内受控地址，并把 NodeMgmt 中该云区域
-受信代理地址的 4318 映射到 HTTP receiver；直连区域未设置代理地址时，Server 会从该区域
-`NODE_SERVER_URL` 提取主机名。Server 固定生成
-`http://<receiver_host>:4318/v1/traces`，不得通过浏览器提交 endpoint。4317 保留给手工 gRPC
-接入兼容，普通接入页面不展示。VT 默认保留 35 天，覆盖产品 30 天/月历月 SLO 窗口。
-
-本地 Stream/Consumer 创建是幂等的“存在则复用、缺失则创建”。生产升级不能只跳过已存在
-对象：运维必须对照以下边界检查漂移，再显式 edit/reconcile：
-
-- Stream：file/limits/discard-old、max bytes、max age、8 MiB 单消息、duplicate window；
-- Consumer：durable pull、AckExplicit、ack wait、max deliver、max ack pending；
-- 达到 max deliver 后保留消息并通过 advisory/指标告警，不无限重投或静默 ACK。
-
-## 清洗与资源边界
-
-`trace_guard` 在数据进入本地持久队列和 NATS 前统一处理 Resource、Scope、Span、Event、Link：
-
-- 删除客户端提交的 `bk.*`、凭据/密码/cookie/token 类键、请求响应 body 和完整 URL；
-- 清洗后注入部署可信的 `bk.cloud_region.id`；
-- Resource/Scope/Span/Event/Link 属性上限分别为 64/32/100/32/32，字符串默认最多 4096
-  Unicode code points；应用归属字段被优先保留；
-- span name 删除 query/fragment，批次与 OTLP 请求不超过部署上限。
-
-区域队列使用 bytes 硬上限；满载时拒绝新批次并增加 exporter failure 指标，不能无限占用磁盘。
-重试持续到恢复，但同时受有界磁盘队列约束。JetStream 也同时受 max bytes/max age/max message
-约束。
-
-## 观测与容量
-
-至少采集并告警以下信号：
-
-- 区域 Collector：accepted/refused spans、exporter sent/send-failed、queue size/capacity、最后成功发布；
-- NATS `/jsz`：Stream bytes/messages、consumer pending/ack pending/redelivered、消息年龄、API error；
-- 系统 Collector：receiver accepted/refused、exporter sent/send-failed、处理延迟；
-- VT：写入错误、查询错误/延迟、磁盘使用/剩余空间和保留期一致性。
-
-区域队列和 Stream 使用 70%/85% 两级告警；pending 消息年龄接近 max age、持续 publish/VT
-失败和 max-delivery advisory 必须告警。生产容量至少按峰值 bytes/s、区域中断容忍时长、
-35 天 Trace 日写入量、存储放大、副本数和 30% 余量计算，不能直接照搬本地 256 MiB Stream。
-具体输入、公式和告警门槛见 [CAPACITY.md](./CAPACITY.md)。
-
-## 验证
+## 本地验证
 
 ```bash
-make -C deploy/apm/collector test
-make -C deploy/apm/collector validate
-
-RUN_APM_CONTAINER_CONTRACT=1 \
-  server/.venv/bin/python -m pytest -q deploy/apm/tests/test_data_plane_contract.py
+cd deploy/apm
+make up        # 仅拉起契约夹具
+make test
+make validate
+make contract  # 真实 SDK 全链路；需 Docker
 ```
 
-容器契约使用独立 Compose project、随机宿主端口和独立卷，验证 OTLP/HTTP 与 gRPC 入口、
-JetStream 持久化/ACK、VT 查询、保留字段清理和重复批次去重；结束后只删除自己创建的资源。
+`make contract` 使用独立 Compose project、随机端口与独立卷，验证入口、ACK、VT 查询、清洗与去重；
+结束后只删除自建资源。通过契约不等于完成生产上线。
 
-## 启动与迁移边界
+## 与 Server 启动的关系
 
-该数据面不是 `batch_init`、迁移、API、Worker、Beat 或 Listener 的启动依赖。NATS、Collector
-或 VT 不可用只使 APM 运行期 degraded，不能阻断 Server 启动。升级时先部署 Stream/中心/VT，
-再逐区域切换 4317/4318，最后停止旧 Edge、tail sampling 和 APM Span Metrics 写读。不得删除或
-修改 Monitor 的 VictoriaMetrics 数据与配置；旧镜像和路由至少保留一个发布窗口用于回滚。
-逐步升级、验证、回滚和可恢复清理步骤见 [MIGRATION.md](./MIGRATION.md)。
+NATS、Collector、VT 都是运行期可降级依赖：不可用只使 APM degraded，不得阻断
+`batch_init`、API、Worker、Beat 或 Listener 启动。

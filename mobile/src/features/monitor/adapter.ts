@@ -4,6 +4,7 @@ import type { MonitorUnitListItem } from './unit-label';
 import {
   buildDisplayMetricUnitIndex,
   displayFieldMetricNames,
+  monitorCatalogItems,
   normalizeReportingStatusFilters,
   parseMonitorInstanceLookupHints,
 } from './model';
@@ -182,10 +183,10 @@ export async function listMetricDefinition(objectId: number, pluginId: number, s
     apiGet('/monitor/api/metrics_group/', { monitor_object_id: objectId, monitor_plugin_id: pluginId }, { signal }),
     apiGet('/monitor/api/metrics/', { monitor_object_id: objectId, monitor_plugin_id: pluginId }, { signal }),
   ]);
-  const groups: MetricGroup[] = (Array.isArray(unwrap<unknown>(groupRaw)) ? unwrap<unknown[]>(groupRaw) : []).map((value) => { const item = record(value); return { id: number(item.id), name: text(item.name), displayName: text(item.display_name || item.name), order: number(item.sort_order) }; }).filter((item) => item.id);
-  const metrics: MonitorMetric[] = (Array.isArray(unwrap<unknown>(metricRaw)) ? unwrap<unknown[]>(metricRaw) : []).map((value) => { const item = record(value); return {
+  const groups: MetricGroup[] = monitorCatalogItems(unwrap<unknown>(groupRaw)).map((value) => { const item = record(value); return { id: number(item.id), name: text(item.name), displayName: text(item.display_name || item.name), order: number(item.sort_order) }; }).filter((item) => item.id);
+  const metrics: MonitorMetric[] = monitorCatalogItems(unwrap<unknown>(metricRaw)).map((value) => { const item = record(value); return {
     id: number(item.id), groupId: number(item.metric_group), name: text(item.name), displayName: text(item.display_name || item.name), description: text(item.display_description),
-    query: text(item.view_query || item.query), unit: text(item.unit), instanceIdKeys: texts(item.instance_id_keys), order: number(item.sort_order),
+    query: text(item.query), unit: text(item.unit), instanceIdKeys: texts(item.instance_id_keys), order: number(item.sort_order),
   }; }).filter((item) => item.id && item.query);
   return { groups: groups.sort((a, b) => a.order - b.order), metrics: metrics.sort((a, b) => a.order - b.order) };
 }
@@ -203,7 +204,11 @@ export async function queryMetricRange(query: string, unit: string, rangeMinutes
     unit: text(source.unit || unit),
     series: (Array.isArray(source.result) ? source.result : []).map((value) => { const item = record(value); return {
       metric: Object.fromEntries(Object.entries(record(item.metric)).map(([key, val]) => [key, text(val)])),
-      values: (Array.isArray(item.values) ? item.values : []).filter(Array.isArray).map((point) => [Number(point[0]), text(point[1])] as [number, string]),
+      values: (Array.isArray(item.values) ? item.values : []).filter(Array.isArray).flatMap((point) => {
+        const timestamp = Number(point[0]);
+        if (!Number.isFinite(timestamp)) return [];
+        return [[timestamp, point[1] === null || point[1] === undefined ? null : text(point[1])] as [number, string | null]];
+      }),
     }; }),
   };
 }

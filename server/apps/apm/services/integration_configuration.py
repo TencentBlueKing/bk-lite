@@ -1,3 +1,4 @@
+import json
 import shlex
 from dataclasses import dataclass
 from urllib.parse import quote, urlsplit
@@ -24,6 +25,50 @@ class CloudRegionEndpoints:
 
 OTLP_HTTP_PORT = 4318
 MAX_INSTANCE_ID_LENGTH = 512
+
+_GO_SDK_GUIDE = """# Go 无通用零代码探针；下面生成完整初始化示例，不会覆盖应用源码。
+mkdir -p telemetry
+if [ -e telemetry/otel.go.example ]; then
+  printf "%s\\n" "telemetry/otel.go.example already exists; refusing to overwrite" >&2
+  exit 1
+fi
+cat > telemetry/otel.go.example <<'GO'
+package telemetry
+
+import (
+    "context"
+    "fmt"
+
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+    "go.opentelemetry.io/otel/sdk/resource"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
+)
+
+func NewTracerProvider(ctx context.Context) (*sdktrace.TracerProvider, error) {
+    exporter, err := otlptracehttp.New(ctx)
+    if err != nil {
+        return nil, fmt.Errorf("create OTLP trace exporter: %w", err)
+    }
+    detected, err := resource.New(ctx, resource.WithFromEnv(), resource.WithTelemetrySDK())
+    if err != nil {
+        return nil, fmt.Errorf("detect OpenTelemetry resource: %w", err)
+    }
+    return sdktrace.NewTracerProvider(
+        sdktrace.WithBatcher(exporter),
+        sdktrace.WithResource(detected),
+    ), nil
+}
+GO
+cat <<'GO'
+审阅 telemetry/otel.go.example 后将其改名为 telemetry/otel.go，并在 main 中加入：
+
+tracerProvider, err := telemetry.NewTracerProvider(context.Background())
+if err != nil {
+    log.Fatal(err)
+}
+otel.SetTracerProvider(tracerProvider)
+defer tracerProvider.Shutdown(context.Background())
+GO"""
 
 
 @dataclass(frozen=True)
@@ -108,6 +153,55 @@ def _otel_resource_value(value: str) -> str:
     """按 OTEL_RESOURCE_ATTRIBUTES 语法编码值；Shell literal 由调用方另行处理。"""
 
     return quote(value, safe="-._~")
+
+
+def _kubernetes_snippet(language: str, environment: dict[str, str]) -> str:
+    """生成可作为 strategic merge patch 使用的容器环境片段。"""
+
+    image_guidance = {
+        "python": "应用镜像需预装 opentelemetry-distro[otlp] 并使用 opentelemetry-instrument 启动。",
+        "nodejs": "应用镜像需预装 @opentelemetry/auto-instrumentations-node。",
+        "java": "应用镜像需包含 /opt/opentelemetry-javaagent.jar。",
+        "go": "Go 无通用自动探针；应用二进制需先完成 OpenTelemetry Go SDK 初始化。",
+    }
+    runtime_environment = {
+        "nodejs": {"NODE_OPTIONS": "--require @opentelemetry/auto-instrumentations-node/register"},
+        "java": {"JAVA_TOOL_OPTIONS": "-javaagent:/opt/opentelemetry-javaagent.jar"},
+    }.get(language, {})
+    kubernetes_environment = {
+        **environment,
+        **runtime_environment,
+    }
+    kubernetes_environment["OTEL_RESOURCE_ATTRIBUTES"] = kubernetes_environment["OTEL_RESOURCE_ATTRIBUTES"].replace(
+        "${OTEL_SERVICE_INSTANCE_ID}",
+        "$(OTEL_SERVICE_INSTANCE_ID)",
+    )
+    lines = [
+        f"# {image_guidance.get(language, '应用镜像需预装所选 OpenTelemetry SDK。')}",
+        "# 把 YOUR_CONTAINER_NAME 替换为应用容器名，保存后执行：",
+        "# kubectl patch deployment YOUR_DEPLOYMENT_NAME --type strategic --patch-file apm-env.yaml",
+        "spec:",
+        "  template:",
+        "    spec:",
+        "      containers:",
+        "        - name: YOUR_CONTAINER_NAME",
+        "          env:",
+        "            - name: POD_UID",
+        "              valueFrom:",
+        "                fieldRef:",
+        "                  apiVersion: v1",
+        "                  fieldPath: metadata.uid",
+        "            - name: OTEL_SERVICE_INSTANCE_ID",
+        '              value: "$(POD_UID)"',
+    ]
+    for key, value in kubernetes_environment.items():
+        lines.extend(
+            (
+                f"            - name: {key}",
+                f"              value: {json.dumps(value, ensure_ascii=False)}",
+            )
+        )
+    return "\n".join(lines)
 
 
 def _normalize_proxy_address(value: object) -> str:
@@ -253,10 +347,12 @@ class DjangoIntegrationConfigurationService:
             "python": "opentelemetry-instrument python app.py",
             "nodejs": "node --require @opentelemetry/auto-instrumentations-node/register app.js",
             "java": "java -javaagent:./opentelemetry-javaagent.jar -jar app.jar",
-            "go": "# Initialize the OpenTelemetry Go SDK in your application, then start it normally.\ngo run .",
+            "go": _GO_SDK_GUIDE,
         }
 
-        if request.runtime == "docker":
+        if request.runtime == "kubernetes":
+            code = _kubernetes_snippet(request.language, environment)
+        elif request.runtime == "docker":
             image_install_commands = {
                 "python": 'RUN python -m pip install "opentelemetry-distro[otlp]" && opentelemetry-bootstrap -a install',
                 "nodejs": "RUN npm install --save @opentelemetry/auto-instrumentations-node",

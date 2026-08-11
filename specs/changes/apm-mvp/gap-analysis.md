@@ -1,5 +1,10 @@
 # APM MVP Phase 0 差距审计
 
+Status: historical / superseded by `specs/changes/apm-nats-vt-pipeline/spec.md`
+
+> 本文记录开发期审计证据，所审计方案从未正式部署。文中的 Edge、VictoriaMetrics、Token、
+> 本地容器与差距结论不得作为生产组件、迁移来源或回滚依据。
+
 > 审计基线：`codex/apm-notification-design@a2c80bdaf`
 >
 > 审计日期：2026-07-31
