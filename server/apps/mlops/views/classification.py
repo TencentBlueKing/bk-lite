@@ -1,45 +1,50 @@
-from config.drf.viewsets import ModelViewSet
+import json
+import os
+
+import numpy as np
+import pandas as pd
+import requests
+from django.http import FileResponse
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from apps.mlops.utils.i18n import mlops_message
-from django.http import FileResponse
-import os
-import requests
-import pandas as pd
-import numpy as np
-import json
 
-from apps.core.logger import mlops_logger as logger
 from apps.core.decorators.api_permission import HasPermission
-from apps.mlops.models.classification import *
-from apps.mlops.serializers.classification import *
-from apps.mlops.filters.classification import *
-from config.drf.pagination import CustomPageNumberPagination
-from apps.mlops.utils.webhook_client import (
-    WebhookClient,
-    WebhookError,
-    WebhookConnectionError,
-    WebhookTimeoutError,
+from apps.core.logger import mlops_logger as logger
+from apps.mlops.constants import DatasetReleaseStatus, TrainJobStatus
+from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+from apps.mlops.filters.classification import (
+    ClassificationDatasetFilter,
+    ClassificationDatasetReleaseFilter,
+    ClassificationServingFilter,
+    ClassificationTrainDataFilter,
+    ClassificationTrainJobFilter,
+)
+from apps.mlops.models import AlgorithmConfig
+from apps.mlops.models.classification import (
+    ClassificationDataset,
+    ClassificationDatasetRelease,
+    ClassificationServing,
+    ClassificationTrainData,
+    ClassificationTrainJob,
 )
 from apps.mlops.predict_url_builder import build_predict_url
+from apps.mlops.serializers.algorithm_config import AlgorithmConfigListSerializer, AlgorithmConfigSerializer
+from apps.mlops.serializers.classification import (
+    ClassificationDatasetReleaseSerializer,
+    ClassificationDatasetSerializer,
+    ClassificationServingSerializer,
+    ClassificationTrainDataSerializer,
+    ClassificationTrainJobSerializer,
+)
+from apps.mlops.services import ConfigurationError, get_image_by_prefix, get_mlflow_tracking_uri, get_mlflow_train_config
 from apps.mlops.utils import mlflow_service
-from apps.mlops.utils.validators import validate_serving_status_change
-from apps.mlops.services import (
-    get_image_by_prefix,
-    get_mlflow_train_config,
-    get_mlflow_tracking_uri,
-    ConfigurationError,
-)
-from apps.mlops.constants import DatasetReleaseStatus, TrainJobStatus, MLflowRunStatus
-from apps.mlops.models import AlgorithmConfig
-from apps.mlops.serializers.algorithm_config import (
-    AlgorithmConfigSerializer,
-    AlgorithmConfigListSerializer,
-)
-from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
-from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
+from apps.mlops.utils.i18n import mlops_message
+from apps.mlops.utils.webhook_client import WebhookClient, WebhookConnectionError, WebhookError, WebhookTimeoutError
+from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
+from config.drf.pagination import CustomPageNumberPagination
+from config.drf.viewsets import ModelViewSet
 
 
 class ClassificationDatasetViewSet(TeamModelViewSet):
@@ -631,7 +636,9 @@ class ClassificationServingViewSet(TeamModelViewSet):
                 return Response({"error": mlops_message(request, "error.predict_input_required", field="texts")}, status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(texts, list):
-                return Response({"error": mlops_message(request, "error.predict_input_must_be_array", field="texts")}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"error": mlops_message(request, "error.predict_input_must_be_array", field="texts")}, status=status.HTTP_400_BAD_REQUEST
+                )
 
             max_batch_size = int(os.getenv("MLOPS_PREDICT_MAX_BATCH_SIZE", "10000"))
             if len(texts) > max_batch_size:
@@ -647,7 +654,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
                 )
             except ValueError as e:
                 return Response(
-                    {"error": str(e)},
+                    {"error": mlops_message(request, str(e))},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -699,7 +706,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
                 return Response({"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         except requests.exceptions.Timeout:
-            error_msg = f"预测请求超时（超过 60 秒）"
+            error_msg = "预测请求超时（超过 60 秒）"
             logger.error(f"预测超时: serving_id={serving.id}")
             return Response({"error": error_msg}, status=status.HTTP_504_GATEWAY_TIMEOUT)
         except requests.exceptions.ConnectionError as e:
