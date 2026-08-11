@@ -22,6 +22,7 @@ export default function MetricCard({ metric, idValues, rangeMinutes, interval, o
   const [visible, setVisible] = useState(false);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [series, setSeries] = useState<ReturnType<typeof metricSeriesPoints>>([]);
+  const [displayUnit, setDisplayUnit] = useState<string | undefined>(undefined);
   const [retryToken, setRetryToken] = useState(0);
   const [unitList, setUnitList] = useState<Awaited<ReturnType<typeof getMonitorUnitList>>>([]);
 
@@ -56,6 +57,7 @@ export default function MetricCard({ metric, idValues, rangeMinutes, interval, o
       .then((result) => {
         if (controller.signal.aborted) return;
         setSeries(metricSeriesPoints(result));
+        setDisplayUnit(result.unit);
         setStatus('ready');
       })
       .catch((error: unknown) => {
@@ -66,8 +68,8 @@ export default function MetricCard({ metric, idValues, rangeMinutes, interval, o
 
   // Match Web overview / sheet: resolve from unitList by unit_id; do not pass query echo as displayUnit.
   const unitLabel = useMemo(
-    () => resolveMonitorUnitLabel(metric.unit, undefined, unitList),
-    [metric.unit, unitList],
+    () => resolveMonitorUnitLabel(metric.unit, displayUnit, unitList),
+    [displayUnit, metric.unit, unitList],
   );
 
   const paths = useMemo(

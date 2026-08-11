@@ -1,13 +1,14 @@
 import { apiGet, apiPost } from '@/api/request';
-import type {
-  AlertAction,
-  AlertAssignee,
-  AlertChange,
-  AlertEvent,
-  AlertLevel,
-  AlertListQuery,
-  PageResult,
-  TodoAlert,
+import {
+  parseAlertLevelId,
+  type AlertAction,
+  type AlertAssignee,
+  type AlertChange,
+  type AlertEvent,
+  type AlertLevel,
+  type AlertListQuery,
+  type PageResult,
+  type TodoAlert,
 } from './model';
 
 interface ApiEnvelope<T> {
@@ -85,26 +86,28 @@ export async function getAlert(id: number, signal?: AbortSignal) {
 export async function listAlertLevels(signal?: AbortSignal): Promise<AlertLevel[]> {
   const raw = unwrap<unknown>(await apiGet<unknown>('/alerts/api/level/', { type: 'alert' }, { signal }));
   const items = Array.isArray(raw) ? raw : pageItems(raw).items;
-  return items.map((value) => {
+  return items.flatMap((value) => {
     const item = record(value);
-    return {
+    const levelId = parseAlertLevelId(item.level_id);
+    if (levelId === null) return [];
+    return [{
       id: number(item.id),
-      levelId: number(item.level_id),
+      levelId,
       displayName: text(item.level_display_name || item.level_name),
       color: text(item.color),
       icon: text(item.icon),
-    };
+    }];
   });
 }
 
-export async function listAlertEvents(id: number, signal?: AbortSignal): Promise<PageResult<AlertEvent>> {
-  const page = pageItems(await apiGet<unknown>(`/alerts/api/alerts/${id}/events/`, {
-    page: 1,
-    page_size: 100,
+export async function listAlertEvents(id: number, page: number, signal?: AbortSignal): Promise<PageResult<AlertEvent>> {
+  const pageData = pageItems(await apiGet<unknown>(`/alerts/api/alerts/${id}/events/`, {
+    page,
+    page_size: 20,
   }, { signal }));
   return {
-    count: page.count,
-    items: page.items.map((value) => {
+    count: pageData.count,
+    items: pageData.items.map((value) => {
       const item = record(value);
       return {
         id: number(item.id),
@@ -145,11 +148,11 @@ export async function listAlertChanges(alertId: string, signal?: AbortSignal): P
   };
 }
 
-export async function listAssignees(search: string, signal?: AbortSignal): Promise<PageResult<AlertAssignee>> {
+export async function listAssignees(search: string, page: number, signal?: AbortSignal): Promise<PageResult<AlertAssignee>> {
   const data = record(unwrap<unknown>(await apiGet<unknown>('/core/api/user_group/user_list/', {
     search,
-    page: 1,
-    page_size: 50,
+    page,
+    page_size: 20,
   }, { signal })));
   const users = Array.isArray(data.users) ? data.users : [];
   return {

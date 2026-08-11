@@ -38,6 +38,16 @@ test('三个待办视图使用互斥的服务端筛选，第一个等级才是�
   assert.equal(buildPresetQuery('high', 1, null), null);
 });
 
+test('告警等级适配器不把非法 level_id 降级成 0', async () => {
+  const { parseAlertLevelId } = await loadModel();
+
+  assert.deepEqual(
+    [null, undefined, '', '   ', 'critical', Number.NaN].map(parseAlertLevelId),
+    [null, null, null, null, null, null],
+  );
+  assert.deepEqual([0, '0', 2, '2'].map(parseAlertLevelId), [0, 0, 2, 2]);
+});
+
 test('搜索只提交用户选择的一个服务端字段', async () => {
   const { buildSearchQuery } = await loadModel();
   assert.deepEqual(buildSearchQuery('title', ' disk ', 2), {
@@ -89,6 +99,112 @@ test('待办 adapter 只复用现有 Web/Server 接口和权限，不声明新�
   assert.match(adapter, /\/core\/api\/user_group\/user_list\//);
   assert.match(adapter, /operator\/\$\{action\}/);
   assert.doesNotMatch(adapter, /mobile[_/-](level|timeline)/i);
+});
+
+test('事件和处理人 adapter 按页请求，处理人通过滚动追加', async () => {
+  const [adapter, detail] = await Promise.all([
+    readProjectFile('src/features/todo/adapter.ts'),
+    readProjectFile('src/app/todo/alerts/detail/page.tsx'),
+  ]);
+  assert.match(adapter, /listAlertEvents\(id:\s*number,\s*page:\s*number/);
+  assert.match(adapter, /page_size:\s*20/);
+  assert.match(adapter, /listAssignees\(search:\s*string,\s*page:\s*number/);
+  assert.match(detail, /assigneeCount/);
+  assert.match(detail, /loadMore=\{\(\) => loadAssignees\(assigneeKeyword, assigneePage \+ 1, true\)\}/);
+});
+
+test('事件第二页失败后保留首页并记住原页码供重试', async () => {
+  const {
+    INITIAL_ALERT_EVENT_PAGINATION_STATE,
+    reduceAlertEventPagination,
+  } = await loadModel();
+  const firstPage = reduceAlertEventPagination(INITIAL_ALERT_EVENT_PAGINATION_STATE, {
+    type: 'load-succeeded',
+    generation: 0,
+    page: 1,
+    append: false,
+    result: { count: 2, items: [{ id: 1, title: 'first' }] },
+  });
+  const loadingSecondPage = reduceAlertEventPagination(firstPage, {
+    type: 'load-started',
+    generation: 0,
+    page: 2,
+    append: true,
+  });
+  const failedSecondPage = reduceAlertEventPagination(loadingSecondPage, {
+    type: 'load-failed',
+    generation: 0,
+    page: 2,
+    append: true,
+  });
+
+  assert.deepEqual(failedSecondPage, {
+    items: [{ id: 1, title: 'first' }],
+    count: 2,
+    page: 1,
+    generation: 0,
+    status: 'ready',
+    loadingMore: false,
+    failedPage: 2,
+  });
+});
+
+test('事件失败页重试期间保留页码，避免触发第二个自动加载', async () => {
+  const { reduceAlertEventPagination } = await loadModel();
+  const failedSecondPage = {
+    items: [{ id: 1, title: 'first' }],
+    count: 2,
+    page: 1,
+    generation: 0,
+    status: 'ready',
+    loadingMore: false,
+    failedPage: 2,
+  };
+
+  assert.deepEqual(
+    reduceAlertEventPagination(failedSecondPage, {
+      type: 'load-started',
+      generation: 0,
+      page: failedSecondPage.failedPage,
+      append: true,
+    }),
+    { ...failedSecondPage, loadingMore: true },
+  );
+});
+
+test('处置后已失效的事件分页响应不能回写新状态', async () => {
+  const {
+    INITIAL_ALERT_EVENT_PAGINATION_STATE,
+    reduceAlertEventPagination,
+  } = await loadModel();
+  const firstPage = reduceAlertEventPagination(INITIAL_ALERT_EVENT_PAGINATION_STATE, {
+    type: 'load-succeeded',
+    generation: 0,
+    page: 1,
+    append: false,
+    result: { count: 2, items: [{ id: 1, title: 'first' }] },
+  });
+  const resetAfterAction = reduceAlertEventPagination(firstPage, {
+    type: 'reset',
+    generation: 1,
+  });
+  const staleSecondPage = reduceAlertEventPagination(resetAfterAction, {
+    type: 'load-succeeded',
+    generation: 0,
+    page: 2,
+    append: true,
+    result: { count: 2, items: [{ id: 2, title: 'stale' }] },
+  });
+
+  assert.deepEqual(staleSecondPage, resetAfterAction);
+});
+
+test('处理人选择器打开先加载首页，只在提交搜索时查服务端', async () => {
+  const detail = await readProjectFile('src/app/todo/alerts/detail/page.tsx');
+  assert.match(detail, /onSearch=\{submitAssigneeSearch\}/);
+  assert.match(detail, /onClear=\{clearAssigneeSearch\}/);
+  assert.match(detail, /setPickerAction\(action\)[\s\S]*loadAssignees\('',\s*1/);
+  assert.doesNotMatch(detail, /setTimeout\(\(\) => void loadAssignees|\[assigneeSearch, loadAssignees, pickerAction\]/);
 });
 
 test('待办页面覆盖列表、搜索、详情三区段和轻处置且不跨模块跳转', async () => {
@@ -192,11 +308,43 @@ test('轻处置后标记列表缓存失效，返回时可先展示再静默刷�
 });
 
 test('关注告警列表使用紧凑色柱与语义字号层级', async () => {
-  const styles = await readProjectFile('src/features/todo/todo.module.css');
+  const [card, levelIcon, styles, iconfontCss, nextConfig] = await Promise.all([
+    readProjectFile('src/features/todo/alert-card.tsx'),
+    readProjectFile('src/features/todo/alert-level-icon.tsx'),
+    readProjectFile('src/features/todo/todo.module.css'),
+    readProjectFile('public/icon/font/iconfont.css'),
+    readProjectFile('next.config.ts'),
+  ]);
 
-  assert.match(styles, /\.severityMark\s*\{[^}]*height:\s*28px/s);
+  assert.match(card, /<AlertLevelIcon[\s\S]*icon=\{level\?\.icon\}[\s\S]*className=\{styles\.levelIcon\}/);
+  assert.match(levelIcon, /data:image\//);
+  assert.match(levelIcon, /MOBILE_ALERT_LEVEL_ICONS/);
+  assert.match(levelIcon, /iconfont icon-\$\{normalizedIcon\}/);
+  assert.match(levelIcon, /return null/);
+  assert.doesNotMatch(levelIcon, /MutationObserver|dangerouslySetInnerHTML|iconfont\.js/);
+  assert.doesNotMatch(levelIcon, /antd-mobile-icons|FallbackLevelIcon|levelId/);
+  assert.doesNotMatch(levelIcon, /DEFAULT_LEVEL_ICONS/);
+  for (const icon of [
+    'huoyanhuodongtuijian',
+    'weiwangguanicon-defuben-',
+    'gantanhao1',
+    'tixing',
+  ]) {
+    assert.ok(iconfontCss.includes(`.icon-${icon}:before`));
+  }
+  assert.doesNotMatch(nextConfig, /iconfont\.js/);
+  assert.match(styles, /\.alertList\s*\{[^}]*gap:\s*10px[^}]*padding:\s*12px 14px/s);
+  assert.match(styles, /\.scroll\s*\{[^}]*scrollbar-width:\s*none/s);
+  assert.match(styles, /\.scroll::\-webkit-scrollbar\s*\{[^}]*display:\s*none/s);
+  assert.match(styles, /\.alertCard\s*\{[^}]*min-height:\s*102px[^}]*padding:\s*12px 16px[^}]*border-radius:\s*8px/s);
+  assert.match(styles, /\.severityMark\s*\{[^}]*position:\s*absolute[^}]*bottom:\s*0/s);
+  assert.match(styles, /\.levelIcon\s*\{[^}]*width:\s*13px[^}]*height:\s*13px/s);
   assert.match(styles, /\.levelName\s*\{[^}]*font-size:\s*var\(--font-size-secondary\)/s);
+  assert.doesNotMatch(styles, /\.levelName\s*\{[^}]*clip-path:\s*inset\(50%\)/s);
+  assert.match(card, /cardTopline[\s\S]*levelName[\s\S]*cardDuration[\s\S]*statusPill/);
+  assert.doesNotMatch(card, /levelDot/);
+  assert.doesNotMatch(card, /metaDot/);
   assert.match(styles, /\.statusText,\s*\.cardDuration\s*\{[^}]*font-size:\s*var\(--font-size-secondary\)/s);
-  assert.match(styles, /\.alertTitle\s*\{[^}]*font-size:\s*var\(--font-size-subtitle\)/s);
-  assert.match(styles, /\.alertCard\s*\{[^}]*min-height:\s*92px/s);
+  assert.match(styles, /\.statusPill\s*\{[^}]*border-radius:\s*6px/s);
+  assert.match(styles, /\.alertTitle\s*\{[^}]*font-size:\s*var\(--font-size-body\)/s);
 });

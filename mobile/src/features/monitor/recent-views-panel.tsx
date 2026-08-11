@@ -13,6 +13,7 @@ import {
 } from '@/features/monitor/model';
 import { useRecentViews } from '@/features/monitor/use-recent-views';
 import { useAuth } from '@/context/auth';
+import { formatAccountDateTime } from '@/platform/preferences/dateTime';
 import {
   readMobileViewSnapshot,
   restoreMobileViewScroll,
@@ -141,6 +142,16 @@ export default function MonitorRecentViewsPanel() {
                             )}
                           </span>
                         </span>
+                        {reportingStatus === 'unavailable' && instance.lastReportedAt ? (
+                          <span className={styles.recentLastReported}>
+                            {t('monitor.lastReportedLabel', undefined, {
+                              time: formatAccountDateTime(
+                                new Date(instance.lastReportedAt * 1000).toISOString(),
+                                preferences,
+                              ),
+                            })}
+                          </span>
+                        ) : null}
                         <span className={styles.recentMetaLine}>
                           <span className={styles.recentMetaObject}>
                             {object.displayName}

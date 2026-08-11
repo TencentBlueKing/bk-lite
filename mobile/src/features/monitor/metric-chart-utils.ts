@@ -56,7 +56,7 @@ export type MetricUnit =
   | 'volts'
   | string;
 
-export type MetricPoint = readonly [number, number];
+export type MetricPoint = readonly [number, number | null];
 
 const COUNT_UNITS: MetricUnit[] = ['counts', 'thousand', 'million', 'billion', 'trillion', 'quadrillion', 'quintillion', 'sextillion', 'septillion'];
 const COUNT_LABELS = ['', 'K', 'Mil', 'Bil', 'Tri', 'Quadr', 'Quint', 'Sext', 'Sept'];
@@ -207,16 +207,23 @@ export function buildSeriesPath(
   padTop = 6,
   padBottom = 4,
 ) {
-  if (points.length < 2) return '';
-  const values = points.map((point) => point[1]);
+  const values = points.flatMap((point) => point[1] === null ? [] : [point[1]]);
+  if (points.length < 2 || values.length < 2) return '';
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
   const drawable = height - padTop - padBottom;
-  return points.map((point, index) => {
+  let beginsSegment = true;
+  return points.flatMap((point, index) => {
+    if (point[1] === null) {
+      beginsSegment = true;
+      return [];
+    }
     const x = (index / (points.length - 1)) * width;
     const y = padTop + drawable - ((point[1] - min) / span) * drawable;
-    return `${index ? 'L' : 'M'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    const command = beginsSegment ? 'M' : 'L';
+    beginsSegment = false;
+    return [`${command} ${x.toFixed(2)} ${y.toFixed(2)}`];
   }).join(' ');
 }
 
@@ -237,8 +244,8 @@ export function pickPointByRatio(
 }
 
 export function valueDomain(points: ReadonlyArray<MetricPoint>) {
-  if (!points.length) return { min: 0, max: 1 };
-  const values = points.map((point) => point[1]);
+  const values = points.flatMap((point) => point[1] === null ? [] : [point[1]]);
+  if (!values.length) return { min: 0, max: 1 };
   const min = Math.min(...values);
   const max = Math.max(...values);
   if (min === max) return { min: min - 1, max: max + 1 };
