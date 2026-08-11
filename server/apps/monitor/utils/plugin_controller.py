@@ -70,12 +70,15 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "node_id",
     "os_type",
     "password",
+    "pattern",
     "plugin_id",
     "port",
+    "ports",
     "private_key_content",
     "private_key_passphrase",
     "priv_password",
     "priv_protocol",
+    "process_name",
     "protocol",
     "request_body",
     "request_headers",
@@ -159,6 +162,10 @@ def _normalize_template_context(context: dict) -> dict:
     for key in ("winrm_cert_validation",):
         if isinstance(normalized.get(key), bool):
             normalized[key] = "true" if normalized[key] else "false"
+    # Process 端口存活：逗号串/列表统一为 list[str]；缺失或空 → []，模板可安全跳过。
+    from apps.monitor.utils.snmp_interface_filters import normalize_filter_list
+
+    normalized["ports"] = normalize_filter_list(normalized.get("ports"))
     return normalized
 
 

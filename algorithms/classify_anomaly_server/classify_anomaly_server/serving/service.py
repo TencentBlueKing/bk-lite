@@ -382,6 +382,7 @@ class MLService:
         health_check_counter.inc()
         return {
             "status": "healthy",
+            "startup_instance_id": os.getenv("SERVING_INSTANCE_ID", ""),
             "model_source": self.config.source,
             "model_version": getattr(self.model, "version", "unknown"),
         }

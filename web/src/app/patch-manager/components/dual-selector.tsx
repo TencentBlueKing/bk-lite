@@ -21,6 +21,7 @@ interface DualSelectorProps<T extends object> {
   onPageChange?: (page: number, pageSize: number) => void;
   selectedRecordsData?: T[];
   renderSelectedLabel: (record: T) => string;
+  selectionColumnFixed?: boolean;
 }
 
 export default function DualSelector<T extends object>({
@@ -38,6 +39,7 @@ export default function DualSelector<T extends object>({
   onPageChange,
   selectedRecordsData,
   renderSelectedLabel,
+  selectionColumnFixed = false,
 }: DualSelectorProps<T>) {
   const { t } = useTranslation();
   const getRecordKey = (record: T): React.Key => {
@@ -71,6 +73,7 @@ export default function DualSelector<T extends object>({
               onChange,
               getCheckboxProps,
               preserveSelectedRowKeys: true,
+              fixed: selectionColumnFixed,
             }}
             columns={columns}
             dataSource={dataSource}

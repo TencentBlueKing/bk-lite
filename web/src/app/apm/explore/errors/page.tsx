@@ -9,6 +9,7 @@ import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell'
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import { formatLatency, formatRelativeTime } from '@/app/apm/components/metric-format';
 import type { ApmService, ApmTraceSummary } from '@/app/apm/types';
+import FilterToolbar from '@/components/filter-toolbar';
 
 type PageState = CatalogStateKind | 'ready' | 'idle';
 type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d';
@@ -160,7 +161,7 @@ export default function ApmErrorsPage() {
           description="以下卡片按入口操作做了客户端归并，便于浏览，不代表正式 Issue 模型。"
         />
         <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center gap-3">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Radio.Group
               aria-label="时间范围"
               buttonStyle="solid"
@@ -197,7 +198,7 @@ export default function ApmErrorsPage() {
               onChange={setEnvironment}
             />
             <Button aria-label="刷新错误调用链" icon={<ReloadOutlined aria-hidden="true" />} disabled={!selectedService || !environment} onClick={search} />
-          </div>
+          </FilterToolbar>
         </ApmSurface>
 
         {selectedService ? (

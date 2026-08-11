@@ -471,19 +471,21 @@ export const showInstName = (
   row: TableDataItem,
   objects?: ObjectItem[]
 ) => {
-  // Process 列表已有「主机名称」列，名称列只展示指标维度 process_name。
-  if (objectItem?.name === 'Process') {
-    const processName = row?.instance_id_values?.[1];
-    if (processName != null && String(processName).trim() !== '') {
-      return String(processName);
-    }
-  }
   const isDerivative = objects
     ? isDerivativeObject(objectItem, objects)
     : isDerivativeObject(objectItem);
   return (
     (isDerivative ? row?.instance_id_values?.[1] : row?.instance_name) || '--'
   );
+};
+
+/** Process 列表：从身份第二段取进程别名 process_name。 */
+export const showProcessName = (row: TableDataItem) => {
+  const processName = row?.instance_id_values?.[1];
+  if (processName != null && String(processName).trim() !== '') {
+    return String(processName);
+  }
+  return '--';
 };
 
 // 监控实例名称处理
@@ -563,7 +565,7 @@ export const getBaseInstanceColumn = (config: {
         renderAssetText(formatSummaryFact(record.summary_facts?.[column.fact]))
     });
   });
-  // Process：归属主机作为列头多选过滤，替代顶栏「过滤项」。
+  // Process：名称列用接入实例名；另列展示进程别名；归属主机列头多选过滤。
   if (config.row?.name === 'Process') {
     const hostFilters = (config.queryData || [])
       .map((item: TableDataItem) => ({
@@ -571,28 +573,40 @@ export const getBaseInstanceColumn = (config: {
         value: String(item.id ?? '')
       }))
       .filter((item) => item.value);
-    columnItems.splice(1, 0, {
-      title: config.t('monitor.views.hostName'),
-      dataIndex: 'base_instance_name',
-      key: 'base_instance_name',
-      onCell: () => ({ style: { minWidth: 150 } }),
-      filterMultiple: true,
-      filterSearch: true,
-      filters: hostFilters.length ? hostFilters : undefined,
-      render: (_: unknown, record: TableDataItem) => {
-        const instanceIdValue = record.instance_id_values?.[0];
-        let displayName = instanceIdValue || '--';
-        if (config.queryData && instanceIdValue) {
-          const matchedItem = config.queryData.find(
-            (item: TableDataItem) => item.id === instanceIdValue
-          );
-          if (matchedItem) {
-            displayName = matchedItem.name || matchedItem.id;
+    columnItems.splice(
+      1,
+      0,
+      {
+        title: config.t('monitor.views.processName'),
+        dataIndex: 'process_name',
+        key: 'process_name',
+        onCell: () => ({ style: { minWidth: 120 } }),
+        render: (_: unknown, record: TableDataItem) =>
+          renderAssetText(showProcessName(record))
+      },
+      {
+        title: config.t('monitor.views.hostName'),
+        dataIndex: 'base_instance_name',
+        key: 'base_instance_name',
+        onCell: () => ({ style: { minWidth: 150 } }),
+        filterMultiple: true,
+        filterSearch: true,
+        filters: hostFilters.length ? hostFilters : undefined,
+        render: (_: unknown, record: TableDataItem) => {
+          const instanceIdValue = record.instance_id_values?.[0];
+          let displayName = instanceIdValue || '--';
+          if (config.queryData && instanceIdValue) {
+            const matchedItem = config.queryData.find(
+              (item: TableDataItem) => item.id === instanceIdValue
+            );
+            if (matchedItem) {
+              displayName = matchedItem.name || matchedItem.id;
+            }
           }
+          return renderAssetText(displayName);
         }
-        return renderAssetText(displayName);
       }
-    });
+    );
   }
   if (isDerivative) {
     const clusterFilters = (config.queryData || [])
@@ -647,6 +661,7 @@ export const getIconByObjectName = (objectName = '', objects: ObjectItem[]) => {
 // icon 可选：未提供时集成卡片回退到监控对象默认图标，仪表盘头部仍展示品牌文字标签。
 const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /^(?!.*san_cisco).*cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
+  { match: /futurematrix/i, label: 'FutureMatrix', icon: 'mm-huawei_华为' },
   { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' },
   { match: /aruba/i, label: 'Aruba', icon: 'mm-aruba_aruba' },
   { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },

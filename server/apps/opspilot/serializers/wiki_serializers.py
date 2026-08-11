@@ -92,6 +92,8 @@ class MaterialSerializer(serializers.ModelSerializer):
         ]
 
     _TERMINAL_BUILD_STATUSES = frozenset({"success", "failed", "partial", "cancelled"})
+    # 队列租约/排队项不是真实构建记录,不能用来展示构建起止时间
+    _BUILD_TIME_EXCLUDED_TRIGGERS = frozenset({"material_queue", "material_queue_item"})
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -122,7 +124,10 @@ class MaterialSerializer(serializers.ModelSerializer):
             cache[mid] = None
         missing_set = set(missing)
         for build in (
-            BuildRecord.objects.filter(inputs__material_id__in=missing).order_by("-id").only("id", "status", "created_at", "updated_at", "inputs")
+            BuildRecord.objects.filter(inputs__material_id__in=missing)
+            .exclude(trigger__in=self._BUILD_TIME_EXCLUDED_TRIGGERS)
+            .order_by("-id")
+            .only("id", "status", "created_at", "updated_at", "inputs", "trigger")
         ):
             raw_id = (build.inputs or {}).get("material_id")
             try:
@@ -137,6 +142,11 @@ class MaterialSerializer(serializers.ModelSerializer):
 
     def get_build_started_at(self, obj):
         build = self._latest_build(obj)
+        # 构建中但尚未落记录时(极端竞态),用资料 updated_at 兜底
+        if (not build or not build.created_at) and obj.status in {"parsing", "building"}:
+            if obj.updated_at:
+                return serializers.DateTimeField().to_representation(obj.updated_at)
+            return None
         if not build or not build.created_at:
             return None
         # SerializerMethodField 直接返回 datetime 会按 UTC 编码,需走 DateTimeField
@@ -296,6 +306,7 @@ class CheckItemSerializer(serializers.ModelSerializer):
     candidate = serializers.SerializerMethodField()
     current_knowledge = serializers.SerializerMethodField()
     new_knowledge = serializers.SerializerMethodField()
+    alternatives = serializers.SerializerMethodField()
     decision_type = serializers.SerializerMethodField()
     decision_action = serializers.SerializerMethodField()
     decision_operator = serializers.SerializerMethodField()
@@ -315,6 +326,7 @@ class CheckItemSerializer(serializers.ModelSerializer):
             "candidate",
             "current_knowledge",
             "new_knowledge",
+            "alternatives",
             "suggested_actions",
             "assignee",
             "due_at",
@@ -464,6 +476,26 @@ class CheckItemSerializer(serializers.ModelSerializer):
                 ).exists()
             ):
                 value["locked_current_version_id"] = locked_version_id
+        alternatives = self.get_alternatives(obj)
+        if alternatives:
+            value["alternatives"] = [
+                {
+                    key: item[key]
+                    for key in (
+                        "material_id",
+                        "material_name",
+                        "material_version_id",
+                        "content_hash",
+                        "candidate_version_id",
+                        "body_hash",
+                        "relation",
+                        "created_at",
+                    )
+                    if key in item
+                }
+                for item in alternatives
+                if item.get("kind") == "candidate"
+            ]
         return value
 
     def _get_page(self, obj, page_id):
@@ -578,6 +610,15 @@ class CheckItemSerializer(serializers.ModelSerializer):
             )
             return self._identity_card(obj, source_identity)
 
+        alternatives = self.get_alternatives(obj)
+        candidate_cards = [item for item in alternatives if item.get("kind") == "candidate"]
+        if candidate_cards:
+            primary = next(
+                (item for item in candidate_cards if item.get("candidate_version_id") == obj.candidate_version_id),
+                candidate_cards[-1],
+            )
+            return {key: value for key, value in primary.items() if key != "kind"}
+
         candidate = obj.candidate_version
         if candidate is None:
             return None
@@ -601,6 +642,76 @@ class CheckItemSerializer(serializers.ModelSerializer):
             }
         )
         return card
+
+    def get_alternatives(self, obj):
+        """当前锚点 + 各资料候选摘要，供决策中心择一对比。"""
+        if self.get_decision_type(obj) != "knowledge_conflict":
+            return []
+        context = obj.decision_context if isinstance(obj.decision_context, dict) else {}
+        current = self.get_current_knowledge(obj)
+        items = []
+        if current is not None:
+            items.append(
+                {
+                    "kind": "current",
+                    "material_id": None,
+                    "material_name": current.get("source_label") or "",
+                    "candidate_version_id": current.get("version_id"),
+                    "body_hash": context.get("current_body_hash") or "",
+                    **current,
+                }
+            )
+
+        raw_alternatives = context.get("alternatives") if isinstance(context.get("alternatives"), list) else []
+        if not raw_alternatives and obj.candidate_version_id:
+            incoming = context.get("incoming") if isinstance(context.get("incoming"), dict) else {}
+            if incoming.get("material_id") not in (None, ""):
+                raw_alternatives = [
+                    {
+                        "material_id": incoming.get("material_id"),
+                        "material_version_id": incoming.get("material_version_id"),
+                        "content_hash": incoming.get("content_hash") or "",
+                        "candidate_version_id": context.get("candidate_version_id") or obj.candidate_version_id,
+                        "body_hash": context.get("candidate_body_hash") or "",
+                    }
+                ]
+
+        page_snapshot = context.get("page_identity") if isinstance(context.get("page_identity"), dict) else {}
+        page = self._get_page(obj, page_snapshot.get("page_id") or getattr(obj.candidate_version, "page_id", None))
+        for raw in raw_alternatives:
+            if not isinstance(raw, dict):
+                continue
+            version = PageVersion.objects.filter(
+                id=raw.get("candidate_version_id"),
+                page_id=getattr(page, "id", None),
+            ).first()
+            if version is None or page is None:
+                continue
+            card = self._page_card(page, version=version)
+            if card is None:
+                continue
+            material = Material.objects.filter(
+                id=raw.get("material_id"),
+                knowledge_base_id=obj.knowledge_base_id,
+            ).first()
+            incoming_snapshot = self._sanitize_material_snapshot(obj, raw)
+            card.update(
+                {
+                    "kind": "candidate",
+                    "source_label": (raw.get("material_name") or (material.name if material else "") or ""),
+                    "source_count": 1 if material else 0,
+                    "material_id": material.id if material else None,
+                    "material_name": (raw.get("material_name") or (material.name if material else "") or ""),
+                    "material_version_id": (incoming_snapshot.get("material_version_id") if incoming_snapshot is not None else None),
+                    "content_hash": (incoming_snapshot.get("content_hash", "") if incoming_snapshot is not None else ""),
+                    "candidate_version_id": version.id,
+                    "body_hash": raw.get("body_hash") or "",
+                    "relation": raw.get("relation") or "",
+                    "created_at": raw.get("created_at") or "",
+                }
+            )
+            items.append(card)
+        return items
 
     def _get_decision_rule(self, obj):
         cache = self.context.setdefault("_wiki_decision_rule_cache", {})

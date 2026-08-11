@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Tooltip, Upload, Dropdown } from 'antd';
 import PermissionWrapper from '@/components/permission';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, CloudDownloadOutlined, EditOutlined, DeleteOutlined, CloseOutlined, DownOutlined, InboxOutlined, UploadOutlined } from '@ant-design/icons';
 import SearchCombination from '@/components/search-combination';
@@ -15,10 +14,17 @@ import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-req
 import type { Patch, PatchOriginType, PatchSeverity, OSType, PackageStatus, PatchParams, CandidateItem, PatchSource, IngestResult } from '@/app/patch-manager/types';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
 import ReadyTag from '@/app/patch-manager/components/ready-tag';
+import PatchSourceDisplay from '@/app/patch-manager/components/patch-source-display';
 import CustomTable from '@/components/custom-table';
-import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
+import FilterToolbar from '@/components/filter-toolbar';
 import { getWindowsPackageUploadState } from '@/app/patch-manager/components/windows-package-upload-state';
+import {
+  LINUX_SOURCE_TYPE_FILTER_VALUES,
+  PACKAGE_STATUS_FILTER_VALUES,
+  presentPackageStatus,
+} from '@/app/patch-manager/components/library-presentation';
 import {
   createCandidateSelection,
   reconcileCandidatePageSelection,
@@ -43,20 +49,6 @@ const OS_TYPE_MAP: Record<TabKey, OSType> = {
   win: 'windows',
   linux: 'linux',
 };
-
-function mapPkgStatus(pkgStatus?: string): string {
-  switch (pkgStatus) {
-    case 'ready':
-      return 'ready';
-    case 'downloading':
-    case 'pending':
-      return 'processing';
-    case 'download_failed':
-      return 'action_required';
-    default:
-      return 'unavailable';
-  }
-}
 
 const SOURCE_TYPE_LABELS: Record<PatchOriginType, string> = {
   manual: '手动',
@@ -147,8 +139,8 @@ export default function LibraryPage() {
     .map((value) => ({ label: t(`patchManager.severityValues.${value}`), value }));
   const severityFilterOptions = (['critical', 'important', 'moderate', 'low', 'unspecified'] as const)
     .map((id) => ({ id, name: t(`patchManager.severityValues.${id}`) }));
-  const readyFilterOptions = (['ready', 'processing', 'action_required', 'unavailable'] as const)
-    .map((id) => ({ id, name: t(`patchManager.readyStatus.${id}`) }));
+  const readyFilterOptions = PACKAGE_STATUS_FILTER_VALUES
+    .map((id) => ({ id, name: t(`patchManager.readyStatus.${presentPackageStatus(id)}`) }));
 
   const buildParams = (page: number, pageSize: number, currentFilters: SearchFilters): PatchParams => {
     const params: PatchParams = {
@@ -271,11 +263,11 @@ export default function LibraryPage() {
   const linuxFieldConfigs: FieldConfig[] = [
     { name: 'name', label: t('patchManager.packageName'), lookup_expr: 'icontains' },
     { name: 'title', label: t('patchManager.libraryPage.description'), lookup_expr: 'icontains' },
-    { name: 'version', label: t('patchManager.distro'), lookup_expr: 'in', options: [{ id: 'Rocky 8', name: 'Rocky 8' }, { id: 'Rocky 9', name: 'Rocky 9' }, { id: 'CentOS 7', name: 'CentOS 7' }] },
+    { name: 'version', label: t('patchManager.distro'), lookup_expr: 'icontains' },
     { name: 'arch', label: t('patchManager.arch'), lookup_expr: 'in', options: LINUX_ARCHITECTURE_FILTER_OPTIONS },
     { name: 'severity', label: t('patchManager.severity'), lookup_expr: 'in', options: severityFilterOptions },
     { name: 'ready', label: t('patchManager.libraryPage.readyStatus'), lookup_expr: 'in', options: readyFilterOptions },
-    { name: 'sourceType', label: t('patchManager.libraryPage.sourceType'), lookup_expr: 'in', options: [{ id: 'manual', name: t('patchManager.manual') }, { id: 'apt_repo', name: 'apt repo' }, { id: 'dnf_repo', name: 'dnf repo' }, { id: 'yum_repo', name: 'yum repo' }] },
+    { name: 'sourceType', label: t('patchManager.libraryPage.sourceType'), lookup_expr: 'in', options: LINUX_SOURCE_TYPE_FILTER_VALUES.map((id) => ({ id, name: SOURCE_TYPE_LABELS[id] })) },
   ];
 
   const selectedPatches = useMemo(
@@ -328,18 +320,12 @@ export default function LibraryPage() {
         title: t('patchManager.libraryPage.source'),
         dataIndex: 'sources',
         width: 220,
-        render: (_: unknown, r: Patch) => {
-          if (r.source_type === 'manual') {
-            return <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{t('patchManager.libraryPage.manualEntry')}</span>;
-          }
-          const details = r.source_details || [];
-          const visibleText = details.length
-            ? details.map((item) => item.deleted
-              ? `${t('patchManager.libraryPage.sourceDeleted')}${item.url ? `:${item.url}` : ''}`
-              : item.url || '—').join(',')
-            : t('patchManager.libraryPage.sourceDeleted');
-          return <EllipsisWithTooltip text={visibleText} className="w-full overflow-hidden text-ellipsis whitespace-nowrap text-[var(--color-text-3,#8c8c8c)]" />;
-        },
+        render: (_: unknown, r: Patch) => (
+          <PatchSourceDisplay
+            sourceType={r.source_type}
+            sourceDetails={r.source_details}
+          />
+        ),
       },
       {
         title: t('patchManager.libraryPage.sourceType'),
@@ -351,7 +337,7 @@ export default function LibraryPage() {
           return <Tooltip title={text}><Tag color={sourceTypes.includes('manual') ? 'warning' : 'default'} style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</Tag></Tooltip>;
         },
       },
-      { title: t('patchManager.libraryPage.readyStatus'), dataIndex: 'pkg_status', width: 120, render: (_: unknown, r: Patch) => <ReadyTag status={mapPkgStatus(r.pkg_status)} /> },
+      { title: t('patchManager.libraryPage.readyStatus'), dataIndex: 'pkg_status', width: 120, render: (_: unknown, r: Patch) => <ReadyTag status={presentPackageStatus(r.pkg_status)} /> },
       {
         title: t('patchManager.libraryPage.baselineReferences'),
         dataIndex: 'baseline_requirement_count',
@@ -628,7 +614,7 @@ export default function LibraryPage() {
         { key: 'linux', label: 'Linux', children: null },
       ]} />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+      <FilterToolbar align="between">
         <SearchCombination
           fieldConfigs={activeTab === 'win' ? winFieldConfigs : linuxFieldConfigs}
           onChange={(next) => {
@@ -672,7 +658,7 @@ export default function LibraryPage() {
             <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>{t('patchManager.libraryPage.addPatch')}</Button></PermissionWrapper>
           )}
         </Space>
-      </div>
+      </FilterToolbar>
 
       <div style={{ flex: 1, minHeight: 0 }}>
         <CustomTable<Patch>

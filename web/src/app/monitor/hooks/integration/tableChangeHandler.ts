@@ -1,10 +1,25 @@
 interface TableChangeHandler {
-  type: 'simple' | 'combine' | 'option_field';
+  type: 'simple' | 'combine' | 'option_field' | 'option_then_combine';
   target_field: string;
   source_fields?: string[];
   source_field?: string;
+  stash_field?: string;
   separator?: string;
 }
+
+const combineSourceFields = (
+  row: Record<string, any>,
+  sourceFields: string[] | undefined,
+  separator: string
+): string =>
+  (sourceFields || [])
+    .map((field) => {
+      const value = row[field];
+      if (value === undefined || value === null) return '';
+      return String(value).trim();
+    })
+    .filter(Boolean)
+    .join(separator);
 
 export const applyTableChangeHandler = (
   row: Record<string, any>,
@@ -22,12 +37,40 @@ export const applyTableChangeHandler = (
   }
 
   if (handler.type === 'combine') {
-    const sourceValues = (handler.source_fields || []).map(
-      (field) => row[field] || ''
-    );
     return {
       ...row,
-      [handler.target_field]: sourceValues.join(handler.separator || ':')
+      [handler.target_field]: combineSourceFields(
+        row,
+        handler.source_fields,
+        handler.separator || ':'
+      ),
+    };
+  }
+
+  if (handler.type === 'option_then_combine') {
+    const option = options.find((item) => item.value === value);
+    const optionValue = handler.source_field
+      ? option?.[handler.source_field]
+      : undefined;
+    if (
+      optionValue === undefined ||
+      optionValue === null ||
+      optionValue === ''
+    ) {
+      return row;
+    }
+    const stashField = handler.stash_field;
+    if (!stashField) {
+      return row;
+    }
+    const nextRow = { ...row, [stashField]: optionValue };
+    return {
+      ...nextRow,
+      [handler.target_field]: combineSourceFields(
+        nextRow,
+        handler.source_fields,
+        handler.separator || '-'
+      ),
     };
   }
 

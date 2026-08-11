@@ -51,7 +51,8 @@ class FakeNetConnect:
         return f"output for {command}"
 
 
-def test_collect_builds_success_payload(monkeypatch):
+@pytest.mark.asyncio
+async def test_collect_builds_success_payload(monkeypatch):
     fake = FakeNetConnect()
     monkeypatch.setattr(
         "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
@@ -73,7 +74,7 @@ def test_collect_builds_success_payload(monkeypatch):
         }
     )
 
-    result = plugin.list_all_resources()
+    result = await plugin.list_all_resources()
 
     assert result["success"] is True
     payload = result["result"]
@@ -85,7 +86,8 @@ def test_collect_builds_success_payload(monkeypatch):
     assert fake.enabled is True
 
 
-def test_collect_enables_privilege_mode_when_enable_password_is_present(monkeypatch):
+@pytest.mark.asyncio
+async def test_collect_enables_privilege_mode_when_enable_password_is_present(monkeypatch):
     fake = FakeNetConnect()
     monkeypatch.setattr(
         "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
@@ -106,13 +108,14 @@ def test_collect_enables_privilege_mode_when_enable_password_is_present(monkeypa
         }
     )
 
-    result = plugin.list_all_resources()
+    result = await plugin.list_all_resources()
 
     assert result["success"] is True
     assert fake.enabled is True
 
 
-def test_collect_skips_privilege_mode_without_enable_password(monkeypatch):
+@pytest.mark.asyncio
+async def test_collect_skips_privilege_mode_without_enable_password(monkeypatch):
     fake = FakeNetConnect()
     monkeypatch.setattr(
         "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
@@ -132,13 +135,14 @@ def test_collect_skips_privilege_mode_without_enable_password(monkeypatch):
         }
     )
 
-    result = plugin.list_all_resources()
+    result = await plugin.list_all_resources()
 
     assert result["success"] is True
     assert fake.enabled is False
 
 
-def test_collect_returns_error_when_one_command_fails(monkeypatch):
+@pytest.mark.asyncio
+async def test_collect_returns_error_when_one_command_fails(monkeypatch):
     class FailingNetConnect(FakeNetConnect):
         def send_command(self, command, **kwargs):
             if command == "show bad":
@@ -164,7 +168,7 @@ def test_collect_returns_error_when_one_command_fails(monkeypatch):
         }
     )
 
-    result = plugin.list_all_resources()
+    result = await plugin.list_all_resources()
 
     assert result["success"] is False
     assert "show bad" in result["result"]["cmdb_collect_error"]

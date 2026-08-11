@@ -218,35 +218,301 @@ def _has_frozen_page_identity_context(check):
     )
 
 
+def _alternative_entry(
+    *,
+    material=None,
+    material_version=None,
+    incoming_snapshot=None,
+    candidate_version_id=None,
+    body_hash="",
+    relation="",
+):
+    snapshot = incoming_snapshot if isinstance(incoming_snapshot, dict) else {}
+    material_id = snapshot.get("material_id")
+    if material_id is None and material is not None:
+        material_id = material.id
+    material_version_id = snapshot.get("material_version_id")
+    if material_version_id is None and material_version is not None:
+        material_version_id = material_version.id
+    content_hash = (snapshot.get("content_hash") or "").strip()
+    if not content_hash and material_version is not None:
+        content_hash = (material_version.content_hash or "").strip()
+    if not content_hash and material is not None:
+        content_hash = (material.content_hash or "").strip()
+    return {
+        "material_id": material_id,
+        "material_name": getattr(material, "name", "") or "",
+        "material_version_id": material_version_id,
+        "content_hash": content_hash,
+        "candidate_version_id": candidate_version_id,
+        "body_hash": body_hash or "",
+        "relation": relation or "",
+        "created_at": timezone.now().isoformat(),
+    }
+
+
+def _alternatives_complete(alternatives):
+    if not isinstance(alternatives, list) or not alternatives:
+        return False
+    for alt in alternatives:
+        if not isinstance(alt, dict):
+            return False
+        if alt.get("material_id") in (None, ""):
+            return False
+        if not (alt.get("content_hash") or "").strip():
+            return False
+        if alt.get("candidate_version_id") in (None, ""):
+            return False
+        if not (alt.get("body_hash") or "").strip():
+            return False
+    return True
+
+
+def _legacy_alternative_from_context(check, context):
+    """将单候选冻结上下文迁移为 alternatives 条目。"""
+    incoming = context.get("incoming") if isinstance(context.get("incoming"), dict) else {}
+    candidate_version_id = context.get("candidate_version_id") or check.candidate_version_id
+    if not candidate_version_id or incoming.get("material_id") in (None, ""):
+        return None
+    material = Material.objects.filter(
+        id=incoming.get("material_id"),
+        knowledge_base_id=check.knowledge_base_id,
+    ).first()
+    return {
+        "material_id": incoming.get("material_id"),
+        "material_name": getattr(material, "name", "") or "",
+        "material_version_id": incoming.get("material_version_id"),
+        "content_hash": (incoming.get("content_hash") or "").strip(),
+        "candidate_version_id": candidate_version_id,
+        "body_hash": context.get("candidate_body_hash") or "",
+        "relation": "",
+        "created_at": "",
+    }
+
+
+def _normalize_knowledge_alternatives(check, context=None):
+    context = context if isinstance(context, dict) else (check.decision_context if isinstance(check.decision_context, dict) else {})
+    alternatives = context.get("alternatives")
+    if isinstance(alternatives, list) and alternatives:
+        return [dict(item) for item in alternatives if isinstance(item, dict)]
+    legacy = _legacy_alternative_from_context(check, context)
+    return [legacy] if legacy is not None else []
+
+
+def _merge_related_material_ids(related, material_ids):
+    related = dict(related) if isinstance(related, dict) else {}
+    existing = related.get("materials") if isinstance(related.get("materials"), list) else []
+    merged = []
+    for item in list(existing) + list(material_ids or []):
+        material_id = item.get("material_id") or item.get("id") if isinstance(item, dict) else item
+        if type(material_id) is int and material_id not in merged:
+            merged.append(material_id)
+    related["materials"] = merged
+    return related
+
+
+def _participants_covering_alternatives(page, alternatives, *, incoming_snapshot=None):
+    participants = build_participants_from_page_evidence(page, incoming_snapshot=incoming_snapshot)
+    seen = {(item.get("material_id"), (item.get("content_hash") or "").strip()) for item in participants if isinstance(item, dict)}
+    for alt in alternatives or []:
+        if not isinstance(alt, dict):
+            continue
+        snapshot = {
+            "material_id": alt.get("material_id"),
+            "material_version_id": alt.get("material_version_id"),
+            "content_hash": (alt.get("content_hash") or "").strip(),
+        }
+        key = (snapshot["material_id"], snapshot["content_hash"])
+        if key[0] in (None, "") or not key[1] or key in seen:
+            continue
+        participants.append(snapshot)
+        seen.add(key)
+    return participants
+
+
+def _find_open_knowledge_conflict_check(*, knowledge_base, subject_key, locked_current_version_id, schema_fingerprint):
+    """同页 + 同冻结当前版本 + 同 schema 的 open 知识冲突归为一条。"""
+    if not subject_key or locked_current_version_id in (None, "") or not schema_fingerprint:
+        return None
+    open_checks = (
+        CheckItem.objects.select_for_update()
+        .filter(
+            knowledge_base=knowledge_base,
+            check_type__in=_CHECK_TYPES_BY_DECISION_TYPE["knowledge_conflict"],
+            status="open",
+        )
+        .order_by("id")
+    )
+    for existing in open_checks:
+        context = existing.decision_context if isinstance(existing.decision_context, dict) else {}
+        if (
+            context.get("subject_key") == subject_key
+            and context.get(_LOCK_KEY) == locked_current_version_id
+            and context.get("schema_fingerprint") == schema_fingerprint
+        ):
+            return existing
+    return None
+
+
+def _append_knowledge_conflict_alternative(
+    check,
+    *,
+    page,
+    body,
+    reason,
+    build_record,
+    created_by,
+    related,
+    change_type,
+    meta_snapshot,
+    incoming_material,
+    incoming_material_version,
+    incoming_snapshot,
+    subject_key,
+    schema_fingerprint,
+):
+    """向已有 open 知识冲突追加候选，不新建 CheckItem。"""
+    # 不可与可空 FK 的 select_related 联用：PostgreSQL 拒绝 nullable outer join 上的 FOR UPDATE
+    check = CheckItem.objects.select_for_update().get(pk=check.pk)
+    context = dict(check.decision_context or {})
+    alternatives = _normalize_knowledge_alternatives(check, context)
+    body_hash = _body_hash(body)
+    material_id = (incoming_snapshot or {}).get("material_id")
+    if material_id in (None, ""):
+        raise ValueError("appending knowledge conflict alternative requires incoming material")
+
+    for alt in alternatives:
+        if alt.get("material_id") == material_id and (alt.get("body_hash") or "") == body_hash:
+            return check
+
+    last = page.page_versions.order_by("-no").first()
+    next_no = (last.no + 1) if last else 1
+    candidate = PageVersion.objects.create(
+        page=page,
+        no=next_no,
+        body=body,
+        change_type=change_type,
+        is_current=False,
+        build_record=build_record,
+        created_by=created_by or "",
+        meta_snapshot=meta_snapshot or {},
+    )
+    entry = _alternative_entry(
+        material=incoming_material,
+        material_version=incoming_material_version,
+        incoming_snapshot=incoming_snapshot,
+        candidate_version_id=candidate.id,
+        body_hash=body_hash,
+    )
+    replaced = False
+    for index, alt in enumerate(alternatives):
+        if alt.get("material_id") == material_id:
+            alternatives[index] = entry
+            replaced = True
+            break
+    if not replaced:
+        alternatives.append(entry)
+
+    participants = _participants_covering_alternatives(
+        page,
+        alternatives,
+        incoming_snapshot=incoming_snapshot,
+    )
+    decision_key = ""
+    if subject_key and is_participant_complete(participants):
+        decision_key = compute_decision_signature(
+            knowledge_base_id=page.knowledge_base_id,
+            decision_type="knowledge_conflict",
+            subject_key=subject_key,
+            schema_fingerprint=schema_fingerprint,
+            participants=participants,
+        )
+
+    merged_related = _merge_related_material_ids(
+        related or check.related,
+        [alt.get("material_id") for alt in alternatives],
+    )
+    if "pages" not in merged_related:
+        merged_related["pages"] = [page.id]
+
+    context.update(
+        {
+            "decision_type": "knowledge_conflict",
+            "subject_key": subject_key,
+            "schema_fingerprint": schema_fingerprint,
+            "participants": participants,
+            "incoming": incoming_snapshot or {},
+            "candidate_body_hash": body_hash,
+            "candidate_version_id": candidate.id,
+            "alternatives": alternatives,
+            "reason": reason or context.get("reason") or "",
+        }
+    )
+    if _LOCK_KEY not in context:
+        context[_LOCK_KEY] = page.current_version_id
+    if "current_body_hash" not in context:
+        context["current_body_hash"] = _body_hash(page.current_version.body) if page.current_version else ""
+
+    check.candidate_version = candidate
+    check.related = merged_related
+    check.decision_key = decision_key
+    check.decision_context = context
+    check.updated_by = created_by or check.updated_by or ""
+    check.save(
+        update_fields=[
+            "candidate_version",
+            "related",
+            "decision_key",
+            "decision_context",
+            "updated_by",
+            "updated_at",
+        ]
+    )
+    return check
+
+
 def _has_frozen_knowledge_conflict_context(check):
     context = check.decision_context if isinstance(check.decision_context, dict) else {}
     participants = context.get("participants")
-    incoming = context.get("incoming")
     page_identity = context.get("page_identity")
     if not isinstance(participants, list) or not is_participant_complete(participants):
         return False
-    if not isinstance(incoming, dict) or not isinstance(page_identity, dict):
+    if not isinstance(page_identity, dict):
         return False
-    incoming_pair = (
-        incoming.get("material_id"),
-        (incoming.get("content_hash") or "").strip(),
-    )
     participant_pairs = {
         (participant.get("material_id"), (participant.get("content_hash") or "").strip())
         for participant in participants
         if isinstance(participant, dict)
     }
-    return bool(
-        check.decision_key
-        and check.candidate_version_id
+    base_ok = bool(
+        check.candidate_version_id
         and context.get("decision_type") == "knowledge_conflict"
         and context.get("subject_key")
         and context.get("schema_fingerprint")
         and context.get(_LOCK_KEY) not in (None, "")
-        and context.get("candidate_version_id") not in (None, "")
         and context.get("current_body_hash")
-        and context.get("candidate_body_hash")
         and page_identity.get("page_id") not in (None, "")
+    )
+    if not base_ok:
+        return False
+
+    alternatives = _normalize_knowledge_alternatives(check, context)
+    if _alternatives_complete(alternatives):
+        alt_pairs = {(alt.get("material_id"), (alt.get("content_hash") or "").strip()) for alt in alternatives}
+        candidate_ids = {alt.get("candidate_version_id") for alt in alternatives}
+        return bool(alt_pairs and alt_pairs.issubset(participant_pairs) and check.candidate_version_id in candidate_ids)
+
+    incoming = context.get("incoming")
+    if not isinstance(incoming, dict):
+        return False
+    incoming_pair = (
+        incoming.get("material_id"),
+        (incoming.get("content_hash") or "").strip(),
+    )
+    return bool(
+        check.decision_key
+        and context.get("candidate_version_id") not in (None, "")
+        and context.get("candidate_body_hash")
         and incoming_pair[0] not in (None, "")
         and incoming_pair[1]
         and incoming_pair in participant_pairs
@@ -708,6 +974,31 @@ def create_candidate(
         }
 
     participants = build_participants_from_page_evidence(page, incoming_snapshot=incoming_snapshot) if decision_type == "knowledge_conflict" else []
+    if decision_type == "knowledge_conflict":
+        existing = _find_open_knowledge_conflict_check(
+            knowledge_base=page.knowledge_base,
+            subject_key=subject_key,
+            locked_current_version_id=page.current_version_id,
+            schema_fingerprint=schema_fingerprint,
+        )
+        if existing is not None:
+            return _append_knowledge_conflict_alternative(
+                existing,
+                page=page,
+                body=body,
+                reason=reason,
+                build_record=build_record,
+                created_by=created_by,
+                related=related,
+                change_type=change_type,
+                meta_snapshot=meta_snapshot,
+                incoming_material=incoming_material,
+                incoming_material_version=incoming_material_version,
+                incoming_snapshot=incoming_snapshot,
+                subject_key=subject_key,
+                schema_fingerprint=schema_fingerprint,
+            )
+
     decision_key = ""
     if subject_key and is_participant_complete(participants):
         decision_key = compute_decision_signature(
@@ -742,6 +1033,7 @@ def create_candidate(
         created_by=created_by or "",
         meta_snapshot=meta_snapshot or {},
     )
+    candidate_body_hash = _body_hash(body)
     decision_context = {
         _LOCK_KEY: page.current_version_id,
         "decision_type": decision_type,
@@ -750,7 +1042,7 @@ def create_candidate(
         "participants": participants,
         "incoming": incoming_snapshot or {},
         "current_body_hash": _body_hash(page.current_version.body) if page.current_version else "",
-        "candidate_body_hash": _body_hash(body),
+        "candidate_body_hash": candidate_body_hash,
         "candidate_version_id": candidate.id,
         "reason": reason or "",
         "page_identity": {
@@ -761,6 +1053,20 @@ def create_candidate(
             "page_type": page.page_type,
         },
     }
+    if decision_type == "knowledge_conflict" and incoming_snapshot:
+        decision_context["alternatives"] = [
+            _alternative_entry(
+                material=incoming_material,
+                material_version=incoming_material_version,
+                incoming_snapshot=incoming_snapshot,
+                candidate_version_id=candidate.id,
+                body_hash=candidate_body_hash,
+            )
+        ]
+        related = _merge_related_material_ids(
+            related or {"pages": [page.id]},
+            [incoming_snapshot.get("material_id")],
+        )
     if suggested_actions is None:
         suggested_actions = sorted(_KNOWLEDGE_CONFLICT_ACTIONS) if decision_type == "knowledge_conflict" else sorted(_PAGE_IDENTITY_ACTIONS)
     check = CheckItem.objects.create(
@@ -865,19 +1171,38 @@ def decide_check(  # noqa: C901
             "知识冲突检查缺少候选版本",
         )
 
+    context = dict(check.decision_context or {})
+    alternatives = _normalize_knowledge_alternatives(check, context)
+    selected_alternative = None
+    if action in {"use_new", "edit_accept"}:
+        if material is not None:
+            selected_alternative = next(
+                (alt for alt in alternatives if alt.get("material_id") == material.id),
+                None,
+            )
+            if alternatives and selected_alternative is None:
+                raise ValueError("提交资料不在候选列表中")
+        elif len(alternatives) > 1:
+            raise ValueError("存在多个候选时必须指定 material_id")
+        elif len(alternatives) == 1:
+            selected_alternative = alternatives[0]
+
+    selected_candidate_id = selected_alternative.get("candidate_version_id") if selected_alternative is not None else check.candidate_version_id
     candidate = (
         PageVersion.objects.select_for_update()
         .filter(
-            pk=check.candidate_version_id,
+            pk=selected_candidate_id,
         )
         .first()
     )
     if candidate is None:
         return _auto_resolve_stale_decision(check, original_check, "候选版本不存在")
+    page_identity = context.get("page_identity") if isinstance(context.get("page_identity"), dict) else {}
+    page_id = page_identity.get("page_id") or candidate.page_id
     page = (
         KnowledgePage.objects.select_for_update()
         .filter(
-            pk=candidate.page_id,
+            pk=page_id,
             knowledge_base_id=check.knowledge_base_id,
         )
         .first()
@@ -889,7 +1214,6 @@ def decide_check(  # noqa: C901
             "候选版本页面不存在或不属于当前知识库",
         )
     current_version = PageVersion.objects.select_for_update().filter(pk=page.current_version_id).first() if page.current_version_id else None
-    context = dict(check.decision_context or {})
     frozen_participants = context.get("participants")
     frozen_rule_context_complete = _has_frozen_knowledge_conflict_context(check)
     locked_version_id = context.get(_LOCK_KEY)
@@ -899,13 +1223,30 @@ def decide_check(  # noqa: C901
             original_check,
             f"当前版本已变化: {page.current_version_id} != {locked_version_id}",
         )
-    frozen_candidate_id = context.get("candidate_version_id")
-    if frozen_candidate_id is not None and candidate.id != frozen_candidate_id:
-        return _auto_resolve_stale_decision(
-            check,
-            original_check,
-            "候选版本已变化",
-        )
+    if action in {"use_new", "edit_accept"}:
+        if selected_alternative is not None:
+            if candidate.id != selected_alternative.get("candidate_version_id"):
+                return _auto_resolve_stale_decision(
+                    check,
+                    original_check,
+                    "候选版本已变化",
+                )
+            frozen_candidate_hash = selected_alternative.get("body_hash") or ""
+        else:
+            frozen_candidate_id = context.get("candidate_version_id")
+            if frozen_candidate_id is not None and candidate.id != frozen_candidate_id:
+                return _auto_resolve_stale_decision(
+                    check,
+                    original_check,
+                    "候选版本已变化",
+                )
+            frozen_candidate_hash = context.get("candidate_body_hash") or ""
+        if frozen_candidate_hash and _body_hash(candidate.body) != frozen_candidate_hash:
+            return _auto_resolve_stale_decision(
+                check,
+                original_check,
+                "候选知识正文已变化",
+            )
     frozen_current_hash = context.get("current_body_hash")
     if frozen_current_hash and _body_hash(current_version.body if current_version else "") != frozen_current_hash:
         return _auto_resolve_stale_decision(
@@ -913,24 +1254,27 @@ def decide_check(  # noqa: C901
             original_check,
             "当前知识正文已变化",
         )
-    frozen_candidate_hash = context.get("candidate_body_hash")
-    if frozen_candidate_hash and _body_hash(candidate.body) != frozen_candidate_hash:
-        return _auto_resolve_stale_decision(
-            check,
-            original_check,
-            "候选知识正文已变化",
-        )
 
-    incoming_snapshot = context.get("incoming")
-    if not isinstance(incoming_snapshot, dict):
-        incoming_snapshot = {}
+    if selected_alternative is not None:
+        incoming_snapshot = {
+            "material_id": selected_alternative.get("material_id"),
+            "material_version_id": selected_alternative.get("material_version_id"),
+            "content_hash": (selected_alternative.get("content_hash") or "").strip(),
+        }
+    else:
+        incoming_snapshot = context.get("incoming")
+        if not isinstance(incoming_snapshot, dict):
+            incoming_snapshot = {}
     frozen_incoming_id = incoming_snapshot.get("material_id")
-    if material is not None and frozen_incoming_id and material.id != frozen_incoming_id:
+    alternative_material_ids = {alt.get("material_id") for alt in alternatives if alt.get("material_id") not in (None, "")}
+    if material is not None and alternative_material_ids and material.id not in alternative_material_ids:
+        raise ValueError("提交资料与冻结的决策上下文不一致")
+    if material is not None and not alternative_material_ids and frozen_incoming_id and material.id != frozen_incoming_id:
         raise ValueError("提交资料与冻结的决策上下文不一致")
 
     evidence_material = None
     evidence_material_version = None
-    if frozen_incoming_id:
+    if action in {"use_new", "edit_accept"} and frozen_incoming_id:
         evidence_material = (
             Material.objects.select_for_update()
             .filter(
@@ -957,7 +1301,7 @@ def decide_check(  # noqa: C901
                     original_check,
                     "冻结的资料版本不存在或不属于该资料",
                 )
-    elif material is not None:
+    elif action in {"use_new", "edit_accept"} and material is not None:
         evidence_material = material
         evidence_material_version = getattr(material, "current_version", None)
         incoming_snapshot = {
@@ -969,41 +1313,112 @@ def decide_check(  # noqa: C901
     frozen_participants = context.get("participants")
     current_schema_fingerprint = compute_schema_fingerprint(check.knowledge_base)
     if frozen_rule_context_complete:
-        live_material_version = None
-        if evidence_material.current_version_id:
-            live_material_version = (
-                MaterialVersion.objects.select_for_update()
-                .filter(
-                    pk=evidence_material.current_version_id,
-                    material_id=evidence_material.id,
-                )
-                .first()
-            )
-        live_incoming_snapshot = {
-            "material_id": evidence_material.id,
-            "material_version_id": getattr(live_material_version, "id", None),
-            "content_hash": (getattr(live_material_version, "content_hash", "") or evidence_material.content_hash or ""),
-        }
-        live_participants = build_participants_from_page_evidence(
-            page,
-            incoming_snapshot=live_incoming_snapshot,
-        )
         if current_schema_fingerprint != context["schema_fingerprint"]:
             return _auto_resolve_stale_decision(
                 check,
                 original_check,
                 "Schema 已发生变化",
             )
-        if _participant_counter(live_participants) != _participant_counter(frozen_participants):
-            return _auto_resolve_stale_decision(
-                check,
-                original_check,
-                "参与资料或资料内容已发生变化",
+        if alternatives:
+            live_alternative_snapshots = []
+            for alt in alternatives:
+                alt_material = (
+                    Material.objects.select_for_update()
+                    .filter(
+                        pk=alt.get("material_id"),
+                        knowledge_base_id=check.knowledge_base_id,
+                    )
+                    .first()
+                )
+                if alt_material is None:
+                    return _auto_resolve_stale_decision(
+                        check,
+                        original_check,
+                        "冻结的新资料不存在或不属于当前知识库",
+                    )
+                live_material_version = None
+                if alt_material.current_version_id:
+                    live_material_version = (
+                        MaterialVersion.objects.select_for_update()
+                        .filter(
+                            pk=alt_material.current_version_id,
+                            material_id=alt_material.id,
+                        )
+                        .first()
+                    )
+                live_hash = (getattr(live_material_version, "content_hash", "") or alt_material.content_hash or "").strip()
+                if live_hash != (alt.get("content_hash") or "").strip():
+                    return _auto_resolve_stale_decision(
+                        check,
+                        original_check,
+                        "参与资料或资料内容已发生变化",
+                    )
+                live_alternative_snapshots.append(
+                    {
+                        "material_id": alt_material.id,
+                        "material_version_id": getattr(live_material_version, "id", None),
+                        "content_hash": live_hash,
+                    }
+                )
+            selected_live = None
+            if evidence_material is not None:
+                selected_live = next(
+                    (item for item in live_alternative_snapshots if item["material_id"] == evidence_material.id),
+                    None,
+                )
+            live_participants = _participants_covering_alternatives(
+                page,
+                live_alternative_snapshots,
+                incoming_snapshot=selected_live,
             )
-        participants = live_participants
-        incoming_snapshot = live_incoming_snapshot
-        evidence_material_version = live_material_version
-        schema_fingerprint = current_schema_fingerprint
+            if _participant_counter(live_participants) != _participant_counter(frozen_participants):
+                return _auto_resolve_stale_decision(
+                    check,
+                    original_check,
+                    "参与资料或资料内容已发生变化",
+                )
+            participants = live_participants
+            if selected_live is not None:
+                incoming_snapshot = selected_live
+                evidence_material_version = (
+                    MaterialVersion.objects.filter(
+                        pk=selected_live.get("material_version_id"),
+                        material_id=evidence_material.id,
+                    ).first()
+                    if evidence_material is not None and selected_live.get("material_version_id")
+                    else evidence_material_version
+                )
+            schema_fingerprint = current_schema_fingerprint
+        else:
+            live_material_version = None
+            if evidence_material.current_version_id:
+                live_material_version = (
+                    MaterialVersion.objects.select_for_update()
+                    .filter(
+                        pk=evidence_material.current_version_id,
+                        material_id=evidence_material.id,
+                    )
+                    .first()
+                )
+            live_incoming_snapshot = {
+                "material_id": evidence_material.id,
+                "material_version_id": getattr(live_material_version, "id", None),
+                "content_hash": (getattr(live_material_version, "content_hash", "") or evidence_material.content_hash or ""),
+            }
+            live_participants = build_participants_from_page_evidence(
+                page,
+                incoming_snapshot=live_incoming_snapshot,
+            )
+            if _participant_counter(live_participants) != _participant_counter(frozen_participants):
+                return _auto_resolve_stale_decision(
+                    check,
+                    original_check,
+                    "参与资料或资料内容已发生变化",
+                )
+            participants = live_participants
+            incoming_snapshot = live_incoming_snapshot
+            evidence_material_version = live_material_version
+            schema_fingerprint = current_schema_fingerprint
     else:
         if isinstance(frozen_participants, list):
             participants = [dict(item) for item in frozen_participants]
@@ -1024,6 +1439,11 @@ def decide_check(  # noqa: C901
         canonical_title=canonical_title(check.knowledge_base, page.title),
     )
     original_body_hash = _body_hash(current_version.body) if current_version else ""
+    selected_candidate_hash = (
+        (selected_alternative.get("body_hash") if selected_alternative is not None else "")
+        or context.get("candidate_body_hash")
+        or _body_hash(candidate.body)
+    )
 
     if action in {"use_new", "edit_accept"} and evidence_material is not None:
         _add_evidence_for_decision(
@@ -1058,9 +1478,19 @@ def decide_check(  # noqa: C901
             source="decide_check",
         )
 
+    # resolve 时用最终 participants 回写 decision_key，open 期允许签名漂移
+    if subject_key and is_participant_complete(participants):
+        check.decision_key = compute_decision_signature(
+            knowledge_base_id=check.knowledge_base_id,
+            decision_type=decision_type,
+            subject_key=subject_key,
+            schema_fingerprint=schema_fingerprint,
+            participants=participants,
+        )
+
     check.status = "resolved"
     check.updated_by = operator or ""
-    check.save(update_fields=["status", "updated_by", "updated_at"])
+    check.save(update_fields=["status", "decision_key", "updated_by", "updated_at"])
     result_body_hash = _body_hash(result_version.body) if result_version else ""
     match_snapshot = {
         "participants": participants,
@@ -1068,8 +1498,9 @@ def decide_check(  # noqa: C901
         "policy_version": POLICY_VERSION,
         "subject_key": subject_key,
         "current_body_hash": context.get("current_body_hash") or original_body_hash,
-        "candidate_body_hash": context.get("candidate_body_hash") or _body_hash(candidate.body),
+        "candidate_body_hash": selected_candidate_hash,
         "incoming": incoming_snapshot,
+        "alternatives": alternatives,
         "page_identity": context.get("page_identity")
         or {
             "page_id": page.id,
@@ -1078,22 +1509,11 @@ def decide_check(  # noqa: C901
             "page_type": page.page_type,
         },
     }
-    incoming_pair = (
-        incoming_snapshot.get("material_id"),
-        (incoming_snapshot.get("content_hash") or "").strip(),
-    )
+    rejected_material_ids = alternative_material_ids or {mid for mid in [incoming_snapshot.get("material_id")] if mid not in (None, "")}
     if action == "keep_current":
-        winner_participants = [
-            dict(item)
-            for item in participants
-            if (
-                item.get("material_id"),
-                (item.get("content_hash") or "").strip(),
-            )
-            != incoming_pair
-        ]
+        winner_participants = [dict(item) for item in participants if item.get("material_id") not in rejected_material_ids]
     elif action == "use_new":
-        winner_participants = [dict(incoming_snapshot)]
+        winner_participants = [dict(incoming_snapshot)] if incoming_snapshot.get("material_id") not in (None, "") else []
     else:
         winner_participants = [dict(item) for item in participants]
     result_snapshot = {

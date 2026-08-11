@@ -16,17 +16,21 @@ import re
 from dataclasses import replace
 from typing import Iterable
 
-from apps.core.logger import logger
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.constants import OSType, RequirementAssessmentStatus
 from apps.patch_mgmt.services.compliance_evaluator import (
     HostAssessmentFacts,
-    LinuxHostFacts,
     LinuxPackageFact,
     RequirementAssessment,
     RequirementSpec,
     WindowsHostFacts,
     WindowsUpdateFacts,
     evaluate_requirements,
+)
+from apps.patch_mgmt.services.linux_platform import (
+    package_manager_family,
+    parse_linux_host_facts,
+    validate_linux_host_facts,
 )
 
 
@@ -184,6 +188,21 @@ def _linux_specs(requirements: list) -> dict[int, list[RequirementSpec]]:
             os_version_range = (getattr(detail, "os_version_range", "") or "").strip()
             architectures = tuple(getattr(detail, "architectures", None) or ())
             package_manager = (getattr(detail, "repo_type", "") or "").strip()
+            source_families = {
+                package_manager_family(source.source_type)
+                for source in requirement.patch.sources.all()
+                if package_manager_family(source.source_type)
+            }
+            source_families.update(
+                package_manager_family(snapshot.get("source_type", ""))
+                for snapshot in (requirement.patch.deleted_source_snapshots or [])
+                if isinstance(snapshot, dict) and package_manager_family(snapshot.get("source_type", ""))
+            )
+            if package_manager_family(package_manager):
+                source_families.add(package_manager_family(package_manager))
+            configuration_error = (
+                "conflicting linux package families" if len(source_families) > 1 else ""
+            )
             package_items = getattr(detail, "package_items", None)
             if callable(package_items):
                 items = package_items()
@@ -225,10 +244,16 @@ def _linux_specs(requirements: list) -> dict[int, list[RequirementSpec]]:
                 os_version_range=os_version_range,
                 architectures=architectures,
                 package_manager=package_manager,
+                configuration_error=configuration_error,
             )
             for item in items
         ]
     return specs
+
+
+def linux_requirement_specs(requirements: Iterable) -> dict[int, list[RequirementSpec]]:
+    """构造 Linux 要求规格，供评估与治理前适用性复核共享。"""
+    return _linux_specs(list(requirements))
 
 
 def _parse_linux_fact_line(raw_line: str) -> tuple[int | None, int | None, str, LinuxPackageFact] | None:
@@ -268,20 +293,10 @@ def _parse_linux_fact_line(raw_line: str) -> tuple[int | None, int | None, str, 
 
 def _parse_linux_facts(stdout: str) -> HostAssessmentFacts:
     packages: dict[str, LinuxPackageFact] = {}
-    linux_host = LinuxHostFacts()
+    linux_host = parse_linux_host_facts(stdout)
     parsed_lines = 0
     for raw_line in stdout.splitlines():
         if raw_line.startswith("BKPATCH_HOST|LINUX|"):
-            parts = raw_line.split("|", 6)
-            if len(parts) == 7:
-                _, _, distro_id, distro_like, version_id, architecture, package_manager = parts
-                linux_host = LinuxHostFacts(
-                    distro_id=distro_id.strip(),
-                    distro_like=tuple(distro_like.strip().split()),
-                    version_id=version_id.strip(),
-                    architecture=architecture.strip(),
-                    package_manager=package_manager.strip(),
-                )
             continue
         parsed = _parse_linux_fact_line(raw_line)
         if parsed is None:
@@ -296,6 +311,11 @@ def _parse_linux_facts(stdout: str) -> HostAssessmentFacts:
             collection_error="评估输出缺少结构化 Linux 包事实",
         )
     return HostAssessmentFacts(linux_packages=packages, linux_host=linux_host)
+
+
+def linux_assessment_host_error(stdout: str) -> str:
+    """校验本次 Linux 评估是否取得了足以安全判断适用性的主机事实。"""
+    return validate_linux_host_facts(parse_linux_host_facts(stdout))
 
 
 def _parse_linux_requirement_facts(stdout: str) -> dict[tuple[int, int, str], LinuxPackageFact]:
@@ -317,7 +337,7 @@ def assess_linux_requirements(stdout: str, requirements: Iterable) -> dict[int, 
     facts = _parse_linux_facts(stdout)
     requirement_facts = _parse_linux_requirement_facts(stdout)
     result: dict[int, RequirementAssessment] = {}
-    for requirement_id, specs in _linux_specs(requirements).items():
+    for requirement_id, specs in linux_requirement_specs(requirements).items():
         assessments = []
         for spec_index, spec in enumerate(specs):
             fact_key = (requirement_id, spec_index, spec.identifier)

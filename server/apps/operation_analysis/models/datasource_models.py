@@ -96,6 +96,7 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
     SOURCE_TYPE_POSTGRESQL = "postgresql"
     SOURCE_TYPE_REST_API = "rest_api"
     SOURCE_TYPE_EXCEL = "excel"
+    SOURCE_TYPE_PROMETHEUS = "prometheus"
 
     SOURCE_TYPE_CHOICES = [
         (SOURCE_TYPE_NATS, "NATS"),
@@ -103,6 +104,7 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
         (SOURCE_TYPE_POSTGRESQL, "PostgreSQL"),
         (SOURCE_TYPE_REST_API, "REST API"),
         (SOURCE_TYPE_EXCEL, "Excel"),
+        (SOURCE_TYPE_PROMETHEUS, "Prometheus"),
     ]
 
     name = models.CharField(max_length=255, verbose_name="数据源名称")

@@ -97,6 +97,12 @@
         "moreActions": "More",
         "searchFields": { "title": "Title", "content": "Content", "alertId": "Alert ID" },
         "status": { "unassigned": "Unassigned", "pending": "Pending response", "processing": "Processing", "closed": "Closed" },
+        "notifyStatus": {
+            "not_notified": "Not notified",
+            "success": "Success",
+            "failed": "Failed",
+            "partial_success": "Partial success"
+        },
         "sections": { "summary": "Summary", "events": "Events", "changes": "Changes", "alertInfo": "Alert information" },
         "fields": {
             "level": "Level", "status": "Status", "duration": "Duration", "operator": "Assignee",

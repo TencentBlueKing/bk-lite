@@ -1,6 +1,6 @@
 Switch Huawei SNMP:
   name: 华为（Telegraf）
-  desc: 面向 Huawei 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标。
+  desc: 面向 Huawei 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、温度、风扇、光模块收/发光功率（光衰相关）及每端口入向流量速率等主要指标。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -12,10 +12,10 @@ monitor_object_metric:
       desc: 该指标报告设备输入电压读数，单位伏特。电压偏离额定范围可能意味着供电不稳，存在硬件风险。
     device_optical_rx_power:
       name: 光模块接收功率
-      desc: 该指标报告光模块（SFP/SFP+）接收光功率读数。接收功率过低可能意味着链路衰减、光纤污染或对端发送异常，可能导致丢包或链路中断。
+      desc: 该指标按光模块报告接收光功率（dBm；设备原始为 µW，查询侧 10*log10(µW/1000) 换算，<=0 丢弃），维度 descr 为 entPhysicalName。接收功率过低可能意味着链路衰减（光衰）、光纤污染或对端发送异常。
     device_optical_tx_power:
       name: 光模块发送功率
-      desc: 该指标报告光模块（SFP/SFP+）发送光功率读数。发送功率异常可能意味着光模块老化或故障。
+      desc: 该指标按光模块报告发送光功率（dBm；设备原始为 µW，查询侧 10*log10(µW/1000) 换算，<=0 丢弃），维度 descr 为 entPhysicalName。发送功率异常偏低通常意味着本端光模块老化或故障，而非单纯光纤光衰。
     snmp_uptime:
       name: 系统运行时间
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
@@ -68,12 +68,10 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标表示设备控制平面的 CPU 使用率（通常为 5 分钟平均值），单位为百分比。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量，会导致管理响应变慢或转发延迟。数据来源于各品牌私有
-        SNMP OID，并归一化为 0-100 的百分比。
+      desc: 该指标按实体报告华为交换机控制平面 CPU 使用率（hwEntityCpuUsage，0～100），维度 descr 为 entPhysicalName。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示设备整体内存使用率，按 已用/(已用+空闲)*100 在所有内存池上汇总计算，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP
-        表项过大或容量不足导致，可能引发不稳定或分配失败。
+      desc: 该指标按实体报告华为交换机内存使用率（hwEntityMemUsage，直接百分比 0～100），维度 descr 为 entPhysicalName。内存偏高可能由内存泄漏、路由/MAC/ARP 表项过大或容量不足导致。
     device_memory_used:
       name: 内存已用量
       desc: 该指标表示设备各内存池当前已使用的字节数。它帮助管理员了解每个内存池（如 Processor、I/O 池）的绝对内存消耗，并定位承压的内存池。

@@ -21,6 +21,7 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
+import SearchActionBar from '@/components/search-action-bar';
 import useApmApi from '@/app/apm/api';
 import dayjs from 'dayjs';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -306,24 +307,27 @@ export default function ApmPoliciesPage() {
                 告警中策略 · 每分钟评估，查询失败时保持上次状态
               </Typography.Text>
             </div>
-            <Space wrap>
-              <Input.Search
-                allowClear
-                aria-label="搜索策略"
-                className="w-64"
-                placeholder="搜索策略名称或监控对象"
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-              />
-              <Button
-                type="primary"
-                icon={<PlusOutlined aria-hidden="true" />}
-                onClick={openCreate}
-                disabled={!services.length}
-              >
-                新建策略
-              </Button>
-            </Space>
+            <SearchActionBar
+              spacing="flush"
+              searchClassName="!w-64"
+              searchProps={{
+                allowClear: true,
+                'aria-label': '搜索策略',
+                placeholder: '搜索策略名称或监控对象',
+                value: keyword,
+                onChange: (event) => setKeyword(event.target.value),
+              }}
+              actions={(
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined aria-hidden="true" />}
+                  onClick={openCreate}
+                  disabled={!services.length}
+                >
+                  新建策略
+                </Button>
+              )}
+            />
           </div>
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">

@@ -1,5 +1,6 @@
 import json
 import re
+import traceback
 from copy import deepcopy
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from apps.monitor.management.utils import (
     parse_template_filename,
 )
 from apps.monitor.services.plugin import MonitorPluginService
+from apps.monitor.services.plugin_import_bulk import prepare_plugin_import_plan
 from apps.monitor.utils.snmp_ifmib_capability import is_ifmib_capable_plugin_data
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -69,8 +71,14 @@ COMMON_IFMIB_METRICS = (
 )
 
 
+_IFMIB_METRICS_BY_INSTANCE_TYPE = {}
+
+
 def _build_common_ifmib_metrics(instance_type):
     """Build the complete public IF-MIB metric catalog for one runtime object."""
+    cached = _IFMIB_METRICS_BY_INSTANCE_TYPE.get(instance_type)
+    if cached is not None:
+        return deepcopy(cached)
     metrics = []
     for group, name, display_name, data_type, unit, description in COMMON_IFMIB_METRICS:
         if name.startswith("device_total_"):
@@ -97,7 +105,8 @@ def _build_common_ifmib_metrics(instance_type):
                 "is_ifmib": True,
             }
         )
-    return metrics
+    _IFMIB_METRICS_BY_INSTANCE_TYPE[instance_type] = metrics
+    return deepcopy(metrics)
 
 
 def merge_common_ifmib_metrics(plugin_data):
@@ -244,6 +253,7 @@ def _import_plugins_from_files(path_list):
     success_count = 0
     error_count = 0
     supplementary_map = {}
+    documents = []
 
     for file_path in path_list:
         try:
@@ -258,16 +268,24 @@ def _import_plugins_from_files(path_list):
             plugin_data["_mark_objects_builtin"] = True
             # 新 plugin 首次导入时,自动生成 language/ 空骨架(check_plugin_languages CI 要求)
             MonitorPluginService._ensure_language_skeleton(Path(file_path).parent, plugin_name)
-            MonitorPluginService.import_monitor_plugin(plugin_data)
+            prepare_plugin_import_plan(plugin_data)
+            documents.append(plugin_data)
             logger.info(f"导入插件成功: {plugin_name} ({collector}/{collect_type})")
             success_count += 1
 
         except Exception as e:
             logger.error(f"导入插件失败: {file_path}, 错误: {e}")
-            import traceback
-
             logger.error(traceback.format_exc())
             error_count += 1
+
+    if documents:
+        try:
+            MonitorPluginService.import_monitor_plugins(documents)
+        except Exception as e:
+            logger.error("批量导入插件失败，已回滚本次插件写入: %s", e)
+            logger.error(traceback.format_exc())
+            error_count += success_count
+            success_count = 0
 
     return success_count, error_count, supplementary_map
 

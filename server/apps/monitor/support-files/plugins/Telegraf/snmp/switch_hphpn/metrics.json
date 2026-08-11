@@ -38,7 +38,12 @@
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -51,7 +56,12 @@
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -60,11 +70,16 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "query": "device_memory_used{instance_type='switch', __$labels__} / device_memory_total{instance_type='switch', __$labels__} * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],

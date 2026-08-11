@@ -1304,10 +1304,12 @@ def wiki_build_material_task(
     task_identity=None,
     ensure_parsed=False,
     source_status=None,
+    build_record_id=None,
 ):
     """统一执行资料解析与 generation 构建，并持久化阶段性失败 key。"""
 
     from apps.opspilot.models import BuildRecord, Material
+    from apps.opspilot.services.wiki.material_build_queue_service import ensure_running_material_build_record
     from apps.opspilot.services.wiki.material_service import ingest_material
 
     material = (
@@ -1324,6 +1326,24 @@ def wiki_build_material_task(
         return None
 
     initial_status = source_status or material.status
+    # 尽早落/复用 running BuildRecord,避免状态已是构建中但列表无开始时间
+    build = None
+    if build_record_id:
+        build = BuildRecord.objects.filter(
+            pk=build_record_id,
+            knowledge_base_id=material.knowledge_base_id,
+            trigger="material",
+            status="running",
+        ).first()
+    if build is None:
+        build = ensure_running_material_build_record(
+            knowledge_base_id=material.knowledge_base_id,
+            material_id=material.pk,
+            operator=operator,
+            source_status=initial_status if isinstance(initial_status, str) else None,
+            stage="preparing",
+        )
+
     if ensure_parsed:
         parse_fingerprint, build_fingerprint = _material_pipeline_fingerprints(
             material.knowledge_base,
@@ -1345,27 +1365,34 @@ def wiki_build_material_task(
                 previous,
             )
         ):
-            skipped = BuildRecord.objects.create(
-                knowledge_base=material.knowledge_base,
-                trigger="material",
-                operator=operator,
-                inputs={
-                    "material_id": material.pk,
-                    "outcome": "skipped_unchanged",
-                    "parse_fingerprint": parse_fingerprint,
-                    "build_fingerprint": build_fingerprint,
-                },
-                stage="done",
-                status="success",
-                progress=100,
-                counts={"skipped_unchanged": 1},
-                errors=[],
+            build.inputs = {
+                **(build.inputs or {}),
+                "material_id": material.pk,
+                "outcome": "skipped_unchanged",
+                "parse_fingerprint": parse_fingerprint,
+                "build_fingerprint": build_fingerprint,
+            }
+            build.stage = "done"
+            build.status = "success"
+            build.progress = 100
+            build.counts = {"skipped_unchanged": 1}
+            build.errors = []
+            build.save(
+                update_fields=[
+                    "inputs",
+                    "stage",
+                    "status",
+                    "progress",
+                    "counts",
+                    "errors",
+                    "updated_at",
+                ]
             )
             Material.objects.filter(pk=material.pk).update(
                 status="built",
                 error_message="",
             )
-            return skipped.pk
+            return build.pk
 
         must_parse = (
             material.current_version_id is None
@@ -1377,30 +1404,38 @@ def wiki_build_material_task(
                 status="parsing",
                 error_message="",
             )
+            build.stage = "parsing"
+            build.save(update_fields=["stage", "updated_at"])
             material.refresh_from_db()
             material = ingest_material(material, llm_model_id=llm_model_id)
             if material.status != "done":
                 material.status = "parse_failed"
                 material.save(update_fields=["status", "updated_at"])
-                failed = BuildRecord.objects.create(
-                    knowledge_base=material.knowledge_base,
-                    trigger="material",
-                    operator=operator,
-                    inputs={
-                        "material_id": material.pk,
-                        "parse_fingerprint": parse_fingerprint,
-                    },
-                    stage="parse_failed",
-                    status="failed",
-                    progress=100,
-                    errors=[
-                        {
-                            "code": "material_parse_failed",
-                            "message": material.error_message or "资料解析失败",
-                        }
-                    ],
+                build.inputs = {
+                    **(build.inputs or {}),
+                    "material_id": material.pk,
+                    "parse_fingerprint": parse_fingerprint,
+                }
+                build.stage = "parse_failed"
+                build.status = "failed"
+                build.progress = 100
+                build.errors = [
+                    {
+                        "code": "material_parse_failed",
+                        "message": material.error_message or "资料解析失败",
+                    }
+                ]
+                build.save(
+                    update_fields=[
+                        "inputs",
+                        "stage",
+                        "status",
+                        "progress",
+                        "errors",
+                        "updated_at",
+                    ]
                 )
-                return failed.pk
+                return build.pk
             material = Material.objects.select_related(
                 "knowledge_base__active_structure_revision",
                 "current_version",
@@ -1432,18 +1467,17 @@ def wiki_build_material_task(
         material.status = "building"
         material.error_message = ""
         material.save(update_fields=["status", "error_message", "updated_at"])
-        build = BuildRecord.objects.create(
-            knowledge_base=locked_kb,
-            trigger="material",
-            operator=operator,
-            inputs={
-                "material_id": material.pk,
-                "parse_fingerprint": parse_fingerprint,
-                "build_fingerprint": build_fingerprint,
-            },
-            stage="generating",
-            status="running",
-        )
+        build = BuildRecord.objects.select_for_update().get(pk=build.pk)
+        build.operator = operator or build.operator
+        build.inputs = {
+            **(build.inputs or {}),
+            "material_id": material.pk,
+            "parse_fingerprint": parse_fingerprint,
+            "build_fingerprint": build_fingerprint,
+        }
+        build.stage = "generating"
+        build.status = "running"
+        build.save(update_fields=["operator", "inputs", "stage", "status", "updated_at"])
         _persist_wiki_task_identity(build, identity)
 
     from apps.opspilot.services.wiki.generation_material_build_service import build_material_with_generation
@@ -1651,6 +1685,17 @@ def wiki_rebuild_kb_task(
                 outcome="superseded" if retryable else "failed",
             )
         raise
+
+
+@shared_task
+def wiki_process_kb_material_builds_task(kb_id, operator=""):
+    """按知识库串行消费资料构建队列。
+
+    同 KB 至多一个活跃 runner；入队侧只 kick 本任务，避免每条资料各投一个长任务。
+    """
+    from apps.opspilot.services.wiki.material_build_queue_service import process_kb_material_builds
+
+    return process_kb_material_builds(int(kb_id), operator=operator or "")
 
 
 @shared_task

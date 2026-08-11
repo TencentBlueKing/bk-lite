@@ -97,12 +97,13 @@ export default function MonitorRecentViewsPanel() {
               />
             ) : (
               <div className={styles.recentList}>
-                {entries.map(({ item, object, instance }) => {
+                {entries.map(({ item, object, instance, metricUnits }) => {
                   const reportingStatus = resolveMonitorReportingStatus(instance.status);
                   const summaryEntries = instanceSummaryEntries(
                     object,
                     instance,
                     RECENT_VIEW_SUMMARY_LIMIT,
+                    metricUnits,
                   );
                   const detailParams = new URLSearchParams({
                     objectId: String(object.id),

@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { Tooltip } from 'antd';
+import dayjs from 'dayjs';
 import type { CollectionStatusResult } from '@/app/monitor/components/monitor-dashboard-widgets/types';
 import { COLLECTION_STATUS_LEGEND } from '@/app/monitor/components/monitor-dashboard-widgets/runtime';
 import {
@@ -9,6 +11,12 @@ import {
 } from '@/app/monitor/components/monitor-dashboard-widgets/guide-tooltip';
 
 export type CollectionStatusTone = 'success' | 'warning' | 'error' | 'empty';
+
+export interface CollectionStatusTimelineSegment {
+  tone: CollectionStatusTone;
+  startMs?: number;
+  endMs?: number;
+}
 
 export interface CollectionStatusLegendItem {
   key: CollectionStatusTone;
@@ -30,6 +38,7 @@ export interface CollectionStatusCardStyles extends GuideTooltipStyles {
   collectionStatusValueEmpty?: string;
   collectionStatusTimelineBlock?: string;
   collectionStatusTimelineTitle?: string;
+  collectionStatusTimelineHint?: string;
   collectionStatusTimeline?: string;
   collectionStatusSegment?: string;
   collectionStatusSegmentSuccess?: string;
@@ -44,7 +53,8 @@ export interface CollectionStatusCardStyles extends GuideTooltipStyles {
 
 export interface CollectionStatusCardProps {
   status: CollectionStatusResult;
-  timeline: CollectionStatusTone[];
+  timeline: CollectionStatusTimelineSegment[];
+  timelineHint?: string;
   title?: React.ReactNode;
   timelineTitle?: React.ReactNode;
   statusTone?: CollectionStatusTone;
@@ -54,6 +64,13 @@ export interface CollectionStatusCardProps {
   className?: string;
   styles: CollectionStatusCardStyles;
 }
+
+const TONE_LABEL: Record<CollectionStatusTone, string> = {
+  success: '正常',
+  warning: '警告',
+  error: '异常',
+  empty: '无数据',
+};
 
 const getStatusTone = (
   status: CollectionStatusResult,
@@ -68,15 +85,49 @@ const getStatusTone = (
   return 'empty';
 };
 
+const formatSegmentTooltip = (segment: CollectionStatusTimelineSegment): string => {
+  const label = TONE_LABEL[segment.tone];
+  if (
+    Number.isFinite(segment.startMs) &&
+    Number.isFinite(segment.endMs) &&
+    typeof segment.startMs === 'number' &&
+    typeof segment.endMs === 'number'
+  ) {
+    const start = dayjs(segment.startMs).format('HH:mm:ss');
+    const end = dayjs(segment.endMs).format('HH:mm:ss');
+    return `${start} – ${end}\n${label}`;
+  }
+  return label;
+};
+
+const resolveSegmentClass = (
+  tone: CollectionStatusTone,
+  styles: CollectionStatusCardStyles
+): string => {
+  const suffix =
+    tone === 'success'
+      ? 'Success'
+      : tone === 'warning'
+        ? 'Warning'
+        : tone === 'error'
+          ? 'Error'
+          : 'Empty';
+  return `${styles.collectionStatusSegment} ${styles[`collectionStatusSegment${suffix}` as keyof CollectionStatusCardStyles] || ''}`;
+};
+
 export const CollectionStatusCard = ({
   status,
   timeline,
+  timelineHint,
   title = '采集状态',
   timelineTitle = '状态时间线',
   statusTone,
   guideItems = [
-    { label: '采集状态', detail: '展示最近一段时间内该实例监控采集是否正常、缺失或异常。' },
-    { label: '状态时间线', detail: '绿色表示采集成功，灰色表示暂无数据，红色表示采集或查询异常。' },
+    { label: '采集状态', detail: '展示当前选中时间窗内该实例监控采集是否正常、缺失或异常。' },
+    {
+      label: '状态时间线',
+      detail: '时间线覆盖当前时间窗并均分为若干段；绿色表示该段有采集，灰色表示该段无数据，红色表示采集或查询异常。',
+    },
   ],
   legendItems = COLLECTION_STATUS_LEGEND,
   emptyTimelineText,
@@ -119,28 +170,27 @@ export const CollectionStatusCard = ({
         >
           {status.label}
         </div>
-        <div className={styles.collectionStatusTimelineTitle}>{timelineTitle}</div>
+        <div className={styles.collectionStatusTimelineTitle}>
+          <span>{timelineTitle}</span>
+          {timelineHint ? (
+            <span className={styles.collectionStatusTimelineHint}>{timelineHint}</span>
+          ) : null}
+        </div>
         <div className={styles.collectionStatusTimelineBlock}>
           {timeline.length > 0 ? (
             <>
               <div className={styles.collectionStatusTimeline}>
-                {timeline.map((tone, index) => (
-                  <span
-                    key={`${tone}-${index}`}
-                    className={`${styles.collectionStatusSegment} ${
-                      styles[
-                        `collectionStatusSegment${
-                          tone === 'success'
-                            ? 'Success'
-                            : tone === 'warning'
-                              ? 'Warning'
-                              : tone === 'error'
-                                ? 'Error'
-                                : 'Empty'
-                        }`
-                      ]
-                    }`}
-                  />
+                {timeline.map((segment, index) => (
+                  <Tooltip
+                    key={`${segment.tone}-${segment.startMs ?? index}-${index}`}
+                    title={
+                      <span style={{ whiteSpace: 'pre-line' }}>
+                        {formatSegmentTooltip(segment)}
+                      </span>
+                    }
+                  >
+                    <span className={resolveSegmentClass(segment.tone, styles)} />
+                  </Tooltip>
                 ))}
               </div>
               <div className={styles.collectionStatusLegend}>

@@ -20,11 +20,16 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -68,39 +73,54 @@
     },
     {
       "metric_group": "Memory",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_memory_total{instance_type='switch', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total memory of the 3Com switch in bytes (hwMemSize)."
     },
     {
       "metric_group": "Memory",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_memory_free{instance_type='switch', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free memory of the 3Com switch in bytes (hwMemFree)."
     },
     {
       "metric_group": "Memory",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "(sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "query": "(device_memory_total{instance_type='switch', __$labels__} - device_memory_free{instance_type='switch', __$labels__}) / device_memory_total{instance_type='switch', __$labels__} * 100",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the 3Com switch, derived as (total-free)/total."

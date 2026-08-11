@@ -38,7 +38,12 @@
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -51,7 +56,12 @@
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -64,7 +74,12 @@
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -77,7 +92,12 @@
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],

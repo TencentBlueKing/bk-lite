@@ -143,7 +143,7 @@ class TestBuildCallbackPayload:
 
 @pytest.mark.unit
 class TestPublishJobResultToSubject:
-    """测试把作业结果 publish 到指定 NATS 主题（subject 拆分 namespace.method）"""
+    """测试按旧契约把作业结果 publish 到指定 NATS 主题。"""
 
     @patch("apps.job_mgmt.services.callback_service.publish_sync")
     def test_full_subject_split(self, mock_publish):

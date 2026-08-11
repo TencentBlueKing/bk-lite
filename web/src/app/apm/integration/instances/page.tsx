@@ -16,6 +16,7 @@ import ApmStatusTag from '@/app/apm/components/status-tag';
 import { formatRelativeTime } from '@/app/apm/components/metric-format';
 import type { ApmApplication, ApmServiceInstance, CatalogStatus } from '@/app/apm/types';
 import Permission from '@/components/permission';
+import FilterToolbar from '@/components/filter-toolbar';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 
@@ -239,7 +240,7 @@ export default function ApmIntegrationInstancesPage() {
       ) : null}
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center gap-3">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input.Search
               allowClear
               aria-label="按服务、应用或实例 ID 搜索"
@@ -316,7 +317,7 @@ export default function ApmIntegrationInstancesPage() {
             <Typography.Text type="secondary" className="basis-full text-xs">
               {t('apm.instances.defaultActiveHelp', '默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。')}
             </Typography.Text>
-          </div>
+          </FilterToolbar>
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">
           {state === 'ready' ? (

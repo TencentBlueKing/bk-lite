@@ -57,13 +57,11 @@ def test_decide_check_keep_current_marks_resolved_without_evicting_candidate():
 @pytest.mark.django_db
 def test_decide_check_use_new_promotes_candidate_and_records_evidence():
     """3.1: use_new 把候选正文置为 current,新资料写入 PageEvidence。"""
-    from apps.opspilot.models import KnowledgePage, Material, PageEvidence, PageVersion, WikiKnowledgeBase
+    from apps.opspilot.models import Material, PageEvidence
     from apps.opspilot.services.wiki.check_service import create_candidate, decide_check
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
-    page = KnowledgePage.objects.create(knowledge_base=kb, title="p", page_type="concept")
-    page.current_version = PageVersion.objects.create(page=page, no=1, body="current", is_current=True, change_type="ai_create")
-    page.save()
+    kb = _bootstrap_kb("kb-use-new")
+    page = _create_page_with_body(kb, title="p", body="current")
     mat = Material.objects.create(knowledge_base=kb, name="m", material_type="text", text_content="new", content_hash="h1")
     check = create_candidate(
         page,
@@ -381,15 +379,38 @@ def test_check_serializer_exposes_decision_fields():
     assert data.get("decision_context") == {}
 
 
+def _bootstrap_kb(name="kb-frozen-conflict"):
+    from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    kb = WikiKnowledgeBase.objects.create(name=name, team=[1], purpose_md="# Purpose", schema_md="# Schema")
+    bootstrap_knowledge_base(kb, operator="tester")
+    kb.refresh_from_db()
+    return kb
+
+
+def _create_page_with_body(kb, *, title, body):
+    from apps.opspilot.services.wiki.page_service import create_manual_page
+
+    return create_manual_page(
+        knowledge_base=kb,
+        page_type="concept",
+        title=title,
+        body=body,
+        created_by="tester",
+        contribution="ai",
+        update_method="ai_create",
+        change_type="ai_create",
+    )
+
+
 def _create_frozen_conflict():
-    from apps.opspilot.models import KnowledgePage, Material, MaterialVersion, PageEvidence, PageVersion, WikiKnowledgeBase
+    from apps.opspilot.models import Material, MaterialVersion, PageEvidence
     from apps.opspilot.services.wiki.check_service import create_candidate
 
-    kb = WikiKnowledgeBase.objects.create(name="kb-frozen-conflict", team=[1])
-    page = KnowledgePage.objects.create(knowledge_base=kb, title="服务手册", page_type="concept")
-    current = PageVersion.objects.create(page=page, no=1, body="current", is_current=True, change_type="ai_create")
-    page.current_version = current
-    page.save(update_fields=["current_version", "updated_at"])
+    kb = _bootstrap_kb()
+    page = _create_page_with_body(kb, title="服务手册", body="current")
+    current = page.current_version
     source = Material.objects.create(knowledge_base=kb, name="source-a", material_type="text", content_hash="material-a")
     source_version = MaterialVersion.objects.create(material=source, content_hash="version-a")
     PageEvidence.objects.create(page=page, material=source, material_version=source_version)
@@ -1391,3 +1412,279 @@ def test_decide_auto_resolves_schema_change_after_candidate_freeze():
     assert check.related["resolution"]["reason"] == "decision_context_stale"
     assert page.current_version_id == current.id
     assert not WikiDecisionRule.objects.filter(source_check=check).exists()
+
+
+def _create_material_with_version(kb, name, content_hash):
+    from apps.opspilot.models import Material, MaterialVersion
+
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name=name,
+        material_type="text",
+        content_hash=content_hash,
+    )
+    version = MaterialVersion.objects.create(material=material, content_hash=content_hash)
+    material.current_version = version
+    material.save(update_fields=["current_version", "updated_at"])
+    return material, version
+
+
+@pytest.mark.django_db
+def test_create_candidate_appends_alternatives_for_same_page_conflict():
+    """同页串行多份冲突材料只保留一条 open CheckItem，并累积 alternatives。"""
+    from apps.opspilot.models import CheckItem, PageEvidence
+    from apps.opspilot.serializers.wiki_serializers import CheckItemSerializer
+    from apps.opspilot.services.wiki.check_service import create_candidate
+
+    kb = _bootstrap_kb("kb-multi-alt")
+    page = _create_page_with_body(kb, title="主题页", body="current")
+    source, source_version = _create_material_with_version(kb, "source", "hash-source")
+    PageEvidence.objects.create(page=page, material=source, material_version=source_version)
+
+    m1, v1 = _create_material_with_version(kb, "m1", "hash-m1")
+    m2, v2 = _create_material_with_version(kb, "m2", "hash-m2")
+    m3, v3 = _create_material_with_version(kb, "m3", "hash-m3")
+
+    first = create_candidate(
+        page,
+        body="candidate-1",
+        reason="conflict",
+        check_type="cannot_merge",
+        related={"pages": [page.id], "materials": [m1.id]},
+        incoming_material=m1,
+        incoming_material_version=v1,
+    )
+    second = create_candidate(
+        page,
+        body="candidate-2",
+        reason="conflict",
+        check_type="cannot_merge",
+        related={"pages": [page.id], "materials": [m2.id]},
+        incoming_material=m2,
+        incoming_material_version=v2,
+    )
+    third = create_candidate(
+        page,
+        body="candidate-3",
+        reason="conflict",
+        check_type="cannot_merge",
+        related={"pages": [page.id], "materials": [m3.id]},
+        incoming_material=m3,
+        incoming_material_version=v3,
+    )
+
+    from apps.opspilot.services.wiki.check_service import _body_hash
+
+    assert first.id == second.id == third.id
+    assert CheckItem.objects.filter(knowledge_base=kb, status="open").count() == 1
+    third.refresh_from_db()
+    alternatives = third.decision_context["alternatives"]
+    assert len(alternatives) == 3
+    assert [item["material_id"] for item in alternatives] == [m1.id, m2.id, m3.id]
+    assert {item["body_hash"] for item in alternatives} == {_body_hash(body) for body in ("candidate-1", "candidate-2", "candidate-3")}
+    assert set(third.related["materials"]) == {m1.id, m2.id, m3.id}
+
+    data = CheckItemSerializer(third).data
+    candidate_alts = [item for item in data["alternatives"] if item.get("kind") == "candidate"]
+    assert len(candidate_alts) == 3
+    assert any(item.get("kind") == "current" for item in data["alternatives"])
+
+
+@pytest.mark.django_db
+def test_decide_check_use_new_selects_second_alternative():
+    from apps.opspilot.models import PageEvidence
+    from apps.opspilot.services.wiki.check_service import create_candidate, decide_check
+
+    kb = _bootstrap_kb("kb-pick-second")
+    page = _create_page_with_body(kb, title="主题页", body="current")
+    source, source_version = _create_material_with_version(kb, "source", "hash-source")
+    PageEvidence.objects.create(page=page, material=source, material_version=source_version)
+    m1, v1 = _create_material_with_version(kb, "m1", "hash-m1")
+    m2, v2 = _create_material_with_version(kb, "m2", "hash-m2")
+
+    check = create_candidate(
+        page,
+        body="candidate-1",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m1,
+        incoming_material_version=v1,
+    )
+    create_candidate(
+        page,
+        body="candidate-2",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m2,
+        incoming_material_version=v2,
+    )
+
+    decide_check(check, action="use_new", operator="reviewer", material=m2)
+
+    page.refresh_from_db()
+    check.refresh_from_db()
+    assert check.status == "resolved"
+    assert page.current_version.body == "candidate-2"
+    assert PageEvidence.objects.filter(page=page, material=m2).exists()
+    assert not PageEvidence.objects.filter(page=page, material=m1).exists()
+
+
+@pytest.mark.django_db
+def test_decide_check_keep_current_with_multiple_alternatives_leaves_body():
+    from apps.opspilot.models import PageEvidence
+    from apps.opspilot.services.wiki.check_service import create_candidate, decide_check
+
+    kb = _bootstrap_kb("kb-keep-multi")
+    page = _create_page_with_body(kb, title="主题页", body="current")
+    current = page.current_version
+    source, source_version = _create_material_with_version(kb, "source", "hash-source")
+    PageEvidence.objects.create(page=page, material=source, material_version=source_version)
+    m1, v1 = _create_material_with_version(kb, "m1", "hash-m1")
+    m2, v2 = _create_material_with_version(kb, "m2", "hash-m2")
+
+    check = create_candidate(
+        page,
+        body="candidate-1",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m1,
+        incoming_material_version=v1,
+    )
+    create_candidate(
+        page,
+        body="candidate-2",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m2,
+        incoming_material_version=v2,
+    )
+
+    decide_check(check, action="keep_current", operator="reviewer")
+
+    page.refresh_from_db()
+    check.refresh_from_db()
+    assert check.status == "resolved"
+    assert page.current_version_id == current.id
+    assert page.current_version.body == "current"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_create_candidate_append_race_keeps_single_open_check():
+    """select_for_update 下并发 create 不应产生双 Check。"""
+    import threading
+
+    from django.db import connection
+
+    from apps.opspilot.models import CheckItem, PageEvidence
+    from apps.opspilot.services.wiki.check_service import create_candidate
+
+    kb = _bootstrap_kb("kb-race")
+    page = _create_page_with_body(kb, title="主题页", body="current")
+    source, source_version = _create_material_with_version(kb, "source", "hash-source")
+    PageEvidence.objects.create(page=page, material=source, material_version=source_version)
+    m1, v1 = _create_material_with_version(kb, "m1", "hash-m1")
+    m2, v2 = _create_material_with_version(kb, "m2", "hash-m2")
+
+    barrier = threading.Barrier(2)
+    errors = []
+
+    def worker(material, version, body):
+        try:
+            barrier.wait(timeout=5)
+            create_candidate(
+                page,
+                body=body,
+                reason="conflict",
+                check_type="cannot_merge",
+                incoming_material=material,
+                incoming_material_version=version,
+            )
+        except Exception as exc:  # pragma: no cover - 失败时带回证据
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    threads = [
+        threading.Thread(target=worker, args=(m1, v1, "candidate-1")),
+        threading.Thread(target=worker, args=(m2, v2, "candidate-2")),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert errors == []
+    open_checks = list(CheckItem.objects.filter(knowledge_base=kb, status="open"))
+    assert len(open_checks) == 1
+    assert len(open_checks[0].decision_context.get("alternatives") or []) == 2
+
+
+@pytest.mark.django_db
+def test_decide_use_new_requires_material_id_when_multiple_alternatives():
+    from apps.opspilot.models import PageEvidence
+    from apps.opspilot.services.wiki.check_service import create_candidate, decide_check
+
+    kb = _bootstrap_kb("kb-need-material")
+    page = _create_page_with_body(kb, title="主题页", body="current")
+    source, source_version = _create_material_with_version(kb, "source", "hash-source")
+    PageEvidence.objects.create(page=page, material=source, material_version=source_version)
+    m1, v1 = _create_material_with_version(kb, "m1", "hash-m1")
+    m2, v2 = _create_material_with_version(kb, "m2", "hash-m2")
+    check = create_candidate(
+        page,
+        body="candidate-1",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m1,
+        incoming_material_version=v1,
+    )
+    create_candidate(
+        page,
+        body="candidate-2",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m2,
+        incoming_material_version=v2,
+    )
+
+    with pytest.raises(ValueError, match="必须指定 material_id"):
+        decide_check(check, action="use_new", operator="reviewer")
+
+    with pytest.raises(ValueError, match="不在候选列表中"):
+        decide_check(check, action="use_new", operator="reviewer", material=source)
+
+
+@pytest.mark.django_db
+def test_create_candidate_replaces_same_material_alternative_body():
+    from apps.opspilot.models import PageEvidence, PageVersion
+    from apps.opspilot.services.wiki.check_service import _body_hash, create_candidate
+
+    kb = _bootstrap_kb("kb-replace-alt")
+    page = _create_page_with_body(kb, title="主题页", body="current")
+    source, source_version = _create_material_with_version(kb, "source", "hash-source")
+    PageEvidence.objects.create(page=page, material=source, material_version=source_version)
+    m1, v1 = _create_material_with_version(kb, "m1", "hash-m1")
+
+    first = create_candidate(
+        page,
+        body="candidate-old",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m1,
+        incoming_material_version=v1,
+    )
+    second = create_candidate(
+        page,
+        body="candidate-new",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m1,
+        incoming_material_version=v1,
+    )
+
+    assert first.id == second.id
+    second.refresh_from_db()
+    alternatives = second.decision_context["alternatives"]
+    assert len(alternatives) == 1
+    assert alternatives[0]["body_hash"] == _body_hash("candidate-new")
+    assert PageVersion.objects.filter(page=page, change_type="candidate").count() == 2
