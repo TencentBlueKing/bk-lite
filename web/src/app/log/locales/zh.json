@@ -523,7 +523,7 @@
       "fileIntegrityRecursiveHint": "是否递归监控子目录下的文件"
     },
     "search": {
-      "enableScrolling": "开启自动滚动",
+      "resumeLogs": "继续日志",
       "histogram": "查询直方图",
       "selectGroup": "请选择分组",
       "total": "日志总条数",
@@ -532,7 +532,7 @@
       "noMatchValues": "无匹配的值",
       "clearLogs": "清空日志",
       "list": "列表",
-      "stopScrolling": "关闭自动滚动",
+      "pauseLogs": "暂停日志",
       "addToQuery": "添加到查询语句",
       "loadConditions": "加载条件",
       "searchPlaceHolder": "在此处输入您的搜索查询，然后按Enter",

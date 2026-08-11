@@ -51,7 +51,7 @@
     "test:log-group-field-bootstrap": "pnpm exec tsx scripts/log-group-field-bootstrap-test.ts",
     "test:log-search-field-stats": "pnpm exec tsx scripts/log-search-field-stats-test.ts",
     "test:log-analysis-group-bootstrap": "pnpm exec tsx scripts/log-analysis-group-bootstrap-test.ts",
-    "test:log-terminal-token": "pnpm exec tsx scripts/log-terminal-token-test.ts",
+    "test:log-terminal-token": "pnpm exec tsx scripts/log-terminal-token-test.ts && pnpm exec vitest run 'src/app/log/(pages)/search/logTerminal/__tests__/interaction.test.tsx'",
     "test:apm-dynamic-route-permission": "pnpm exec tsx scripts/apm-dynamic-route-permission-test.ts",
     "test:apm-home-menu-visibility": "pnpm exec tsx scripts/apm-home-menu-visibility-test.ts",
     "test:apm-menu-route": "pnpm exec tsx scripts/apm-menu-route-test.ts",
