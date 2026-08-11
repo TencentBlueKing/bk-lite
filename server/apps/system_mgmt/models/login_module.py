@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from cryptography.fernet import InvalidToken
+from django.conf import settings
 from django.db import models
 from django.utils.functional import cached_property
 
@@ -29,7 +30,7 @@ class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
         self.encrypt_field("app_secret", config)
         self.app_secret = config["app_secret"]
 
-        if self.source_type == "bk_login":
+        if self.source_type == "bk_login" and settings.BK_LOGIN_APP_TOKEN_ENCRYPTION_ENABLED:
             other_config = deepcopy(self.other_config or {})
             self._encrypt_app_token(other_config)
             self.other_config = other_config
@@ -38,7 +39,7 @@ class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
     @classmethod
     def _encrypt_app_token(cls, config):
         value = config.get("app_token")
-        if not value:
+        if value is None or value == "":
             return
 
         if isinstance(value, dict):
@@ -62,7 +63,7 @@ class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
 
     @classmethod
     def _decrypt_app_token_value(cls, value):
-        if not value:
+        if value is None or value == "":
             return value
 
         if isinstance(value, dict):
@@ -79,10 +80,10 @@ class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
 
         try:
             return cls.get_cipher_suite().decrypt(encrypted_value.encode(cls.ENCODING)).decode(cls.ENCODING)
-        except InvalidToken:
+        except InvalidToken as exc:
             if isinstance(value, str):
                 return value
-            raise ValueError("Failed to decrypt bk_login app_token") from None
+            raise ValueError("Failed to decrypt bk_login app_token") from exc
         except Exception as exc:
             raise ValueError("Failed to decrypt bk_login app_token") from exc
 

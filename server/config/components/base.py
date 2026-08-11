@@ -20,6 +20,7 @@ ALLOWED_HOSTS = ["*"]
 ASGI_APPLICATION = "asgi.application"
 
 DEBUG = os.getenv("DEBUG", "0").lower() in ["1", "true"]
+BK_LOGIN_APP_TOKEN_ENCRYPTION_ENABLED = os.getenv("BK_LOGIN_APP_TOKEN_ENCRYPTION_ENABLED", "false").lower() == "true"
 WEB_BASE_URL = os.getenv("WEB_BASE_URL", "").rstrip("/")
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles/")
