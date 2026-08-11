@@ -1,51 +1,55 @@
+import json
+import os
 from copy import deepcopy
 from uuid import uuid4
 
-from config.drf.viewsets import ModelViewSet
-from apps.mlops.filters.timeseries_predict import *
-from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRunStatus
-from rest_framework.decorators import action
-from rest_framework import status
-from rest_framework.response import Response
-from apps.mlops.utils.i18n import mlops_message
+import numpy as np
+import pandas as pd
+import requests
 from django.db import DatabaseError, transaction
 from django.db.models import Case, F, JSONField, Q, Value, When
 from django.http import FileResponse
-from apps.mlops.utils.webhook_client import (
-    WebhookClient,
-    WebhookError,
-    WebhookConnectionError,
-    WebhookTimeoutError,
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import mlops_logger as logger
+from apps.mlops.constants import DatasetReleaseStatus, MLflowRunStatus, TrainJobStatus
+from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+from apps.mlops.filters.timeseries_predict import (
+    TimeSeriesPredictDatasetFilter,
+    TimeSeriesPredictDatasetReleaseFilter,
+    TimeSeriesPredictServingFilter,
+    TimeSeriesPredictTrainDataFilter,
+    TimeSeriesPredictTrainJobFilter,
+)
+from apps.mlops.models import AlgorithmConfig
+from apps.mlops.models.timeseries_predict import (
+    TimeSeriesPredictDataset,
+    TimeSeriesPredictDatasetRelease,
+    TimeSeriesPredictServing,
+    TimeSeriesPredictTrainData,
+    TimeSeriesPredictTrainJob,
 )
 from apps.mlops.predict_url_builder import build_predict_url
+from apps.mlops.serializers.algorithm_config import AlgorithmConfigListSerializer, AlgorithmConfigSerializer
+from apps.mlops.serializers.timeseries_predict import (
+    TimeSeriesPredictDatasetReleaseSerializer,
+    TimeSeriesPredictDatasetSerializer,
+    TimeSeriesPredictServingSerializer,
+    TimeSeriesPredictTrainDataSerializer,
+    TimeSeriesPredictTrainJobSerializer,
+)
+from apps.mlops.services import ConfigurationError, get_image_by_prefix, get_mlflow_tracking_uri, get_mlflow_train_config
 from apps.mlops.utils import mlflow_service
-from apps.mlops.utils.validators import validate_serving_status_change
-from apps.mlops.services import (
-    get_image_by_prefix,
-    get_mlflow_train_config,
-    get_mlflow_tracking_uri,
-    ConfigurationError,
-)
-import requests
-import os
-import pandas as pd
-import numpy as np
-import json
-
-from apps.core.logger import mlops_logger as logger
-from apps.core.decorators.api_permission import HasPermission
-from apps.mlops.models.timeseries_predict import *
-from apps.mlops.serializers.timeseries_predict import *
-from config.drf.pagination import CustomPageNumberPagination
-from apps.mlops.models import AlgorithmConfig
-from apps.mlops.serializers.algorithm_config import (
-    AlgorithmConfigSerializer,
-    AlgorithmConfigListSerializer,
-)
-from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
-from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
-
+from apps.mlops.utils.i18n import mlops_message
+from apps.mlops.utils.validators import validate_serving_status_change
+from apps.mlops.utils.webhook_client import WebhookClient, WebhookConnectionError, WebhookError, WebhookTimeoutError
+from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
+from config.drf.pagination import CustomPageNumberPagination
+from config.drf.viewsets import ModelViewSet
 
 TIMESERIES_PREDICT_PROXY_TIMEOUT_MARGIN_SECONDS = 5
 MAX_TIMESERIES_PREDICT_TIMEOUT_SECONDS = 290
@@ -590,11 +594,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     @staticmethod
     def _snapshot_database_state(instance):
-        return {
-            field.attname: deepcopy(getattr(instance, field.attname))
-            for field in instance._meta.concrete_fields
-            if not field.primary_key
-        }
+        return {field.attname: deepcopy(getattr(instance, field.attname)) for field in instance._meta.concrete_fields if not field.primary_key}
 
     @classmethod
     def _restore_database_state(cls, instance, old_state, applied_state, **overrides):
@@ -653,13 +653,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         if not isinstance(runtime_statuses, list):
             return {}
         expected_ids = set(expected_ids)
-        return {
-            item["id"]: item
-            for item in runtime_statuses
-            if isinstance(item, dict)
-            and item.get("id") in expected_ids
-            and item.get("state")
-        }
+        return {item["id"]: item for item in runtime_statuses if isinstance(item, dict) and item.get("id") in expected_ids and item.get("state")}
 
     @classmethod
     def _matching_runtime_status(cls, runtime_statuses, serving_id):
@@ -788,10 +782,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
     @staticmethod
     def _cleanup_uncommitted_create_runtime(container_id, serving_id, cleanup_token):
         """事务回滚后先持久化清理意图，再同步清理并由任务持续补投。"""
-        from apps.mlops.services.timeseries_runtime_cleanup import (
-            create_runtime_cleanup_intent,
-            process_runtime_cleanup_intent,
-        )
+        from apps.mlops.services.timeseries_runtime_cleanup import create_runtime_cleanup_intent, process_runtime_cleanup_intent
 
         try:
             intent = create_runtime_cleanup_intent(
@@ -800,9 +791,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 cleanup_token,
             )
         except Exception as intent_error:
-            from apps.mlops.tasks.runtime_cleanup import (
-                bootstrap_timeseries_runtime_cleanup,
-            )
+            from apps.mlops.tasks.runtime_cleanup import bootstrap_timeseries_runtime_cleanup
 
             try:
                 bootstrap_timeseries_runtime_cleanup.apply_async(
@@ -827,9 +816,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         try:
             process_runtime_cleanup_intent(intent.pk)
         except Exception as cleanup_error:
-            from apps.mlops.tasks.runtime_cleanup import (
-                cleanup_orphan_timeseries_runtime,
-            )
+            from apps.mlops.tasks.runtime_cleanup import cleanup_orphan_timeseries_runtime
 
             try:
                 cleanup_orphan_timeseries_runtime.apply_async(
@@ -865,9 +852,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             return response
 
         serving_ids = [f"TimeseriesPredict_Serving_{s['id']}" for s in servings]
-        claims_by_id = self._reserve_runtime_status_sync(
-            [(serving_data["id"], serving_data.get("container_info")) for serving_data in servings]
-        )
+        claims_by_id = self._reserve_runtime_status_sync([(serving_data["id"], serving_data.get("container_info")) for serving_data in servings])
 
         try:
             # 批量查询
@@ -889,11 +874,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         "message": "webhookd 未返回此容器状态",
                     }
 
-            current_info_by_id = (
-                self._finalize_runtime_status_sync(claims_by_id, runtime_info_by_id)
-                if runtime_info_by_id
-                else {}
-            )
+            current_info_by_id = self._finalize_runtime_status_sync(claims_by_id, runtime_info_by_id) if runtime_info_by_id else {}
             for serving_data in servings:
                 instance_id = serving_data["id"]
                 if instance_id in runtime_info_by_id:
@@ -923,9 +904,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         response = super().retrieve(request, *args, **kwargs)
 
         serving_id = f"TimeseriesPredict_Serving_{response.data['id']}"
-        claims_by_id = self._reserve_runtime_status_sync(
-            [(response.data["id"], response.data.get("container_info"))]
-        )
+        claims_by_id = self._reserve_runtime_status_sync([(response.data["id"], response.data.get("container_info"))])
 
         try:
             result = WebhookClient.get_status([serving_id])
@@ -1054,9 +1033,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             cleanup_context["cleanup_token"] = str(uuid4())
 
             try:
-                from apps.mlops.services.timeseries_runtime_cleanup import (
-                    lock_timeseries_runtime_id,
-                )
+                from apps.mlops.services.timeseries_runtime_cleanup import lock_timeseries_runtime_id
 
                 # create 与失败补偿使用同一永久 guard。即使业务行尚未提交，唯一
                 # guard 插入也会阻塞并发 cleanup，直到本事务提交或回滚。
@@ -1137,7 +1114,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     @HasPermission("timeseries_predict-Edit")
     @transaction.atomic
-    def update(self, request, *args, **kwargs):
+    def update(self, request, *args, **kwargs):  # noqa: C901
         """
         更新 serving 配置，自动检测并重启容器
 
@@ -1159,9 +1136,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         deferred_delete_teams = []
         if self.ORGANIZATION_FIELD in request.data:
             new_teams = self._normalize_org_values(request.data, self.ORGANIZATION_FIELD)
-            deferred_delete_teams = [
-                team for team in old_database_state.get(self.ORGANIZATION_FIELD, []) if team not in new_teams
-            ]
+            deferred_delete_teams = [team for team in old_database_state.get(self.ORGANIZATION_FIELD, []) if team not in new_teams]
             kwargs["_skip_rule_cleanup"] = True
 
         # 兜底校验：容器未运行时不允许设置 status=active
@@ -1182,7 +1157,6 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
         # 获取容器实际状态（更新前），防御性处理 container_info 为空的情况
         container_info = instance.container_info or {}
-        old_container_info = dict(container_info)
         container_state = container_info.get("state")
         container_port = container_info.get("port")
 
@@ -1303,11 +1277,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                                 train_image=old_train_image,
                                 timeseries_predict_timeout_seconds=predict_budget_seconds,
                             )
-                            rollback_port = (
-                                int(rollback_result.get("port", 0))
-                                if rollback_result.get("port")
-                                else old_port
-                            )
+                            rollback_port = int(rollback_result.get("port", 0)) if rollback_result.get("port") else old_port
                             rollback_message = "配置已回滚，并在对账确认旧服务已删除后恢复旧服务"
                         except Exception as rollback_error:
                             logger.error(f"对账后恢复旧 serving 失败: {rollback_error}", exc_info=True)
@@ -1320,11 +1290,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                             rollback_message = "配置已回滚，但旧服务恢复失败"
                     elif observed_state == "running":
                         rollback_result = runtime_state
-                        rollback_port = (
-                            int(runtime_state.get("port", 0))
-                            if runtime_state.get("port")
-                            else old_port
-                        )
+                        rollback_port = int(runtime_state.get("port", 0)) if runtime_state.get("port") else old_port
                         rollback_message = "配置已回滚，并已对账确认旧服务仍在运行"
                     else:
                         rollback_result = runtime_state or {
@@ -1397,11 +1363,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                             train_image=old_train_image,
                             timeseries_predict_timeout_seconds=predict_budget_seconds,
                         )
-                        rollback_port = (
-                            int(rollback_result.get("port", 0))
-                            if rollback_result.get("port")
-                            else old_port
-                        )
+                        rollback_port = int(rollback_result.get("port", 0)) if rollback_result.get("port") else old_port
                         rollback_message = "新服务启动失败，已恢复旧配置与旧服务"
                     except Exception as rollback_error:
                         logger.error(f"恢复旧 serving 失败: {rollback_error}", exc_info=True)
@@ -1696,7 +1658,9 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 return Response({"error": mlops_message(request, "error.predict_input_required", field="data")}, status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(data, list):
-                return Response({"error": mlops_message(request, "error.predict_input_must_be_array", field="data")}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"error": mlops_message(request, "error.predict_input_must_be_array", field="data")}, status=status.HTTP_400_BAD_REQUEST
+                )
 
             max_batch_size = int(os.getenv("MLOPS_PREDICT_MAX_BATCH_SIZE", "10000"))
             if len(data) > max_batch_size:
@@ -1712,7 +1676,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 )
             except ValueError as e:
                 return Response(
-                    {"error": str(e)},
+                    {"error": mlops_message(request, str(e))},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1842,7 +1806,6 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
         """
         下载数据集版本的 ZIP 文件
         """
-        from django.http import FileResponse
 
         try:
             release = self.get_object()

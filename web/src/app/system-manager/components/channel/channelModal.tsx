@@ -20,6 +20,19 @@ const WEBHOOK_SUB_TYPES: ChannelType[] = ['enterprise_wechat_bot', 'feishu_bot',
 
 const isWebhookSubType = (ct: string): boolean => WEBHOOK_SUB_TYPES.includes(ct as ChannelType);
 
+/** 邮件通道 config 的稳定字段集；避免关闭认证保存后缺 smtp_user 导致编辑再开启时无法渲染。 */
+const ensureEmailConfig = (config: Record<string, unknown> = {}): Record<string, unknown> => ({
+  smtp_server: '',
+  port: '',
+  smtp_auth_enabled: true,
+  smtp_user: '',
+  smtp_pwd: '',
+  smtp_usessl: false,
+  smtp_usetls: false,
+  mail_sender: '',
+  ...config,
+});
+
 const getDefaultConfig = (st: ChannelType): Record<string, unknown> => {
   switch (st) {
     case 'feishu_bot':
@@ -98,7 +111,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       const mergedConfig = isWebhookChannel
         ? getMergedConfig(resolvedSubType, data.config || {})
         : (actualType === 'email' || channelType === 'email')
-          ? { smtp_auth_enabled: true, ...(data.config || {}) }
+          ? ensureEmailConfig(data.config || {})
           : data.config;
       const enrichedData = { ...data, config: mergedConfig };
       setChannelData(enrichedData);
@@ -151,16 +164,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         name: '',
         channel_type: isWebhookChannel ? defaultSubType : channelType,
         description: '',
-        config: channelType === 'email' ? {
-          smtp_server: '',
-          port: '',
-          smtp_auth_enabled: true,
-          smtp_user: '',
-          smtp_pwd: '',
-          smtp_usessl: false,
-          smtp_usetls: false,
-          mail_sender: '',
-        } : channelType === 'nats' ? {
+        config: channelType === 'email' ? ensureEmailConfig() : channelType === 'nats' ? {
           namespace: '',
           method_name: '',
           timeout: 60,
@@ -319,7 +323,10 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
     }
 
     const smtpAuthEnabled = watchedSmtpAuthEnabled !== false;
-    const configFields = Object.keys(channelData.config)
+    const configSource = channelType === 'email'
+      ? ensureEmailConfig(channelData.config)
+      : channelData.config;
+    const configFields = Object.keys(configSource)
       .filter((key) => smtpAuthEnabled || !['smtp_user', 'smtp_pwd'].includes(key))
       .map((key) => {
         const nonRequiredKeys = ['smtp_usessl', 'smtp_usetls', 'smtp_auth_enabled', 'sign_secret', 'headers'];
@@ -356,7 +363,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       });
 
     return [...basicFields, ...configFields];
-  }, [channelData.config, t, isWebhookChannel, watchedSmtpAuthEnabled]);
+  }, [channelData.config, t, isWebhookChannel, watchedSmtpAuthEnabled, channelType]);
 
   return (
     <OperateModal

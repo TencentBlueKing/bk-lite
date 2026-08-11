@@ -6,7 +6,6 @@ import {
   displayFieldMetricNames,
   monitorCatalogItems,
   normalizeReportingStatusFilters,
-  parseMonitorInstanceLookupHints,
 } from './model';
 
 function record(value: unknown): Record<string, unknown> {
@@ -98,43 +97,38 @@ export async function listMonitorInstances(
   };
 }
 
-/** 复用现有 list，按 instance_id 取回单条实例的真实状态与上报时间。 */
+/** 复用现有 list，按 instance_id 精确取回单条实例的真实状态与上报时间。 */
 export async function getMonitorInstance(
   objectId: number,
   instanceId: string,
-  hints: { name?: string; idValues?: string[]; addMetrics?: boolean } = {},
+  hints: { addMetrics?: boolean } = {},
   signal?: AbortSignal,
 ): Promise<MonitorInstance | null> {
   if (!objectId || !instanceId) return null;
-  const lookup = parseMonitorInstanceLookupHints(instanceId);
-  const keywords = [lookup.name, ...(lookup.idValues || []), hints.name, ...(hints.idValues || [])]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean);
-  const tried = new Set<string>();
-  const pageSize = hints.addMetrics ? 100 : 50;
-  for (const keyword of keywords.length ? keywords : ['']) {
-    if (tried.has(keyword)) continue;
-    tried.add(keyword);
-    const response = await apiGet(`/monitor/api/monitor_instance/${objectId}/list/`, {
-      page: 1,
-      page_size: pageSize,
-      name: keyword,
-      add_metrics: hints.addMetrics ?? false,
-    }, { signal });
-    const raw = record(unwrap<unknown>(response));
-    const results = Array.isArray(raw.results) ? raw.results : [];
-    const found = results.map((value) => {
-      const item = record(value);
-      return {
-        id: text(item.instance_id), name: text(item.instance_name || item.instance_id), idValues: texts(item.instance_id_values),
-        status: text(item.status), lastReportedAt: Number.isFinite(Number(item.time)) && Number(item.time) > 0 ? Number(item.time) : null,
-        interval: Number.isFinite(Number(item.interval)) && Number(item.interval) > 0 ? Number(item.interval) : null,
-        facts: record(item.summary_facts), raw: item,
-      };
-    }).find((item) => item.id === instanceId);
-    if (found) return found;
-  }
-  return null;
+
+  const response = await apiGet(`/monitor/api/monitor_instance/${objectId}/list/`, {
+    page: 1,
+    page_size: 1,
+    instance_id: instanceId,
+    add_metrics: hints.addMetrics ?? false,
+  }, { signal });
+  const raw = record(unwrap<unknown>(response));
+  const results = Array.isArray(raw.results) ? raw.results : [];
+  const mapped = results.map((value) => {
+    const item = record(value);
+    return {
+      id: text(item.instance_id),
+      name: text(item.instance_name || item.instance_id),
+      idValues: texts(item.instance_id_values),
+      status: text(item.status),
+      lastReportedAt: Number.isFinite(Number(item.time)) && Number(item.time) > 0 ? Number(item.time) : null,
+      interval: Number.isFinite(Number(item.interval)) && Number(item.interval) > 0 ? Number(item.interval) : null,
+      facts: record(item.summary_facts),
+      raw: item,
+    };
+  });
+  return mapped.find((item) => item.id === instanceId)
+    || (mapped.length === 1 ? mapped[0] : null);
 }
 
 export async function listEffectivePlugins(objectId: number, instanceId: string, signal?: AbortSignal): Promise<MonitorPlugin[]> {
@@ -200,8 +194,29 @@ export async function queryMetricRange(query: string, unit: string, rangeMinutes
   }, { signal })));
   const data = record(raw.data);
   const source = Object.keys(data).length ? data : raw;
+  const gaps = (Array.isArray(source.gaps) ? source.gaps : []).flatMap((value) => {
+    const item = record(value);
+    const gapStart = Number(item.start);
+    const gapEnd = Number(item.end);
+    if (!Number.isFinite(gapStart) || !Number.isFinite(gapEnd) || gapEnd < gapStart) return [];
+    return [{
+      start: gapStart,
+      end: gapEnd,
+      duration: Number.isFinite(Number(item.duration)) ? Number(item.duration) : gapEnd - gapStart,
+      series: (Array.isArray(item.series) ? item.series : []).map((entry) => {
+        const row = record(entry);
+        return {
+          metric: Object.fromEntries(Object.entries(record(row.metric)).map(([key, val]) => [key, text(val)])),
+          missing_points: Number.isFinite(Number(row.missing_points)) ? Number(row.missing_points) : undefined,
+        };
+      }),
+    }];
+  });
   return {
     unit: text(source.unit || unit),
+    startMs: start,
+    endMs: end,
+    gaps,
     series: (Array.isArray(source.result) ? source.result : []).map((value) => { const item = record(value); return {
       metric: Object.fromEntries(Object.entries(record(item.metric)).map(([key, val]) => [key, text(val)])),
       values: (Array.isArray(item.values) ? item.values : []).filter(Array.isArray).flatMap((point) => {

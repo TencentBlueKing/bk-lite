@@ -1357,6 +1357,48 @@ def test_legacy_controller_task_snapshot_rejects_any_noncanonical_organization(
 
 
 @pytest.mark.django_db
+def test_bulk_created_controller_task_snapshot_rejects_noncanonical_organization():
+    region = _region("controller-task-invalid-bulk-snapshot")
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="install",
+        status="running",
+        work_node="worker",
+        package_version_id=1,
+        created_by="admin",
+        updated_by="admin",
+    )
+    ControllerTaskNode.objects.bulk_create(
+        [
+            ControllerTaskNode(
+                task=task,
+                node_id="",
+                ip="10.0.2.2",
+                node_name="legacy-invalid-bulk",
+                os="linux",
+                organizations=[1.0],
+                port=22,
+                username="root",
+                password="",
+                status="waiting",
+            )
+        ]
+    )
+
+    task_node = ControllerTaskNode.objects.get(task=task, ip="10.0.2.2")
+    assert task_node.organizations == []
+
+    ControllerTaskNode.objects.filter(pk=task_node.pk).update(organizations=[1.0])
+    task_node.refresh_from_db()
+    assert task_node.organizations == []
+
+    task_node.organizations = [1.0]
+    ControllerTaskNode.objects.bulk_update([task_node], ["organizations"])
+    task_node.refresh_from_db()
+    assert task_node.organizations == []
+
+
+@pytest.mark.django_db
 def test_controller_retry_rejects_task_node_outside_current_team(monkeypatch):
     region = _region("controller-retry-current-team")
     current_node = _node(region, "controller-retry-current", 1)

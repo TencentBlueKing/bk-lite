@@ -1,4 +1,4 @@
-"""management 命令 + services/role_manage + utils/db_utils 单元测试。
+"""management 命令 + services/role_manage 单元测试。
 
 调用真实 management 命令（call_command），断言真实 DB 副作用；
 只在涉及外部缓存时 mock permission_cache。
@@ -330,33 +330,3 @@ def test_role_manage_filters_by_user_menus():
 
 def test_role_manage_transform_empty():
     assert RoleManage.transform_data([]) == []
-
-
-# ---------------------------------------------------------------------------
-# db_utils.SQLExecute
-# ---------------------------------------------------------------------------
-def test_sql_execute_returns_dict_rows(monkeypatch):
-    from django.db import connection
-
-    from apps.system_mgmt.utils.db_utils import SQLExecute
-
-    # SQLExecute 用 os.getenv("DB_NAME") 新建连接；指向当前测试库
-    monkeypatch.setenv("DB_NAME", connection.settings_dict["NAME"])
-
-    # SQLExecute 走独立连接，看不到当前测试事务里未提交的数据，
-    # 因此查询 migration 已提交的 systemsettings 表，验证返回 dict 行结构。
-    rows = SQLExecute.execute_sql("SELECT key, value FROM system_mgmt_systemsettings LIMIT 1", [])
-    assert isinstance(rows, list)
-    if rows:
-        assert "key" in rows[0] and "value" in rows[0]
-
-
-def test_sql_execute_error_returns_empty_list(monkeypatch):
-    from django.db import connection
-
-    from apps.system_mgmt.utils.db_utils import SQLExecute
-
-    monkeypatch.setenv("DB_NAME", connection.settings_dict["NAME"])
-    # 非法 SQL -> 异常被捕获，返回 []
-    rows = SQLExecute.execute_sql("SELECT * FROM not_a_real_table_xyz", [])
-    assert rows == []

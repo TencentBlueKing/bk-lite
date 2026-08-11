@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { buildSeriesPath } from './metric-chart-utils';
+import { buildSeriesPath, buildSeriesSinglePoint } from './metric-chart-utils';
 import { buildMetricQuery, metricSeriesPoints, type MonitorMetric } from './model';
 import { getMonitorUnitList, queryMetricRange } from './adapter';
 import { resolveMonitorUnitLabel } from './unit-label';
@@ -22,6 +22,7 @@ export default function MetricCard({ metric, idValues, rangeMinutes, interval, o
   const [visible, setVisible] = useState(false);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [series, setSeries] = useState<ReturnType<typeof metricSeriesPoints>>([]);
+  const [windowMs, setWindowMs] = useState<{ startMs: number; endMs: number } | null>(null);
   const [displayUnit, setDisplayUnit] = useState<string | undefined>(undefined);
   const [retryToken, setRetryToken] = useState(0);
   const [unitList, setUnitList] = useState<Awaited<ReturnType<typeof getMonitorUnitList>>>([]);
@@ -57,6 +58,7 @@ export default function MetricCard({ metric, idValues, rangeMinutes, interval, o
       .then((result) => {
         if (controller.signal.aborted) return;
         setSeries(metricSeriesPoints(result));
+        setWindowMs({ startMs: result.startMs, endMs: result.endMs });
         setDisplayUnit(result.unit);
         setStatus('ready');
       })
@@ -72,11 +74,14 @@ export default function MetricCard({ metric, idValues, rangeMinutes, interval, o
     [displayUnit, metric.unit, unitList],
   );
 
-  const paths = useMemo(
-    () => series.map((item) => buildSeriesPath(item.points)).filter(Boolean),
-    [series],
+  const sparklines = useMemo(
+    () => series.map((item) => ({
+      path: buildSeriesPath(item.points, 100, 34, 6, 4, windowMs),
+      point: buildSeriesSinglePoint(item.points),
+    })),
+    [series, windowMs],
   );
-  const showChart = status === 'ready' && series.length > 0 && paths.length > 0;
+  const showChart = status === 'ready' && sparklines.some((item) => item.path || item.point);
   const openable = Boolean(onOpen) && status === 'ready' && series.length > 0;
 
   return (
@@ -122,14 +127,32 @@ export default function MetricCard({ metric, idValues, rangeMinutes, interval, o
               {t('common.retry')}
             </button>
           </div>
-        ) : series.length === 0 ? (
+        ) : !showChart ? (
           <div className={styles.metricEmpty}>{t('common.noData')}</div>
-        ) : showChart ? (
+        ) : (
           <svg className={styles.chart} viewBox="0 0 100 34" preserveAspectRatio="none" role="img" aria-hidden="true">
             <line className={styles.chartBaseline} x1="0" x2="100" y1="32" y2="32" />
-            {paths.map((path, index) => <path className={styles.chartLine} style={{ opacity: Math.max(.42, 1 - index * .18) }} d={path} key={index} />)}
+            {sparklines.map((item, index) => (
+              item.path ? (
+                <path
+                  className={styles.chartLine}
+                  style={{ opacity: Math.max(.42, 1 - index * .18) }}
+                  d={item.path}
+                  key={`path-${index}`}
+                />
+              ) : item.point ? (
+                <circle
+                  className={styles.chartPoint}
+                  cx={item.point.cx}
+                  cy={item.point.cy}
+                  r={2.5}
+                  key={`point-${index}`}
+                  style={{ opacity: Math.max(.42, 1 - index * .18) }}
+                />
+              ) : null
+            ))}
           </svg>
-        ) : null}
+        )}
       </div>
     </article>
   );

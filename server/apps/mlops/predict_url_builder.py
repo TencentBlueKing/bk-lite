@@ -1,6 +1,9 @@
-from collections.abc import Mapping
 import os
+from collections.abc import Mapping
 from urllib.parse import urlparse
+
+SERVING_PORT_NOT_CONFIGURED = "error.serving_port_not_configured"
+SERVING_HOST_NOT_CONFIGURED = "error.serving_host_not_configured"
 
 
 def sanitize_k8s_name(name: str) -> str:
@@ -16,15 +19,13 @@ def get_host_address() -> str:
     return parsed.hostname or ""
 
 
-def build_predict_url(
-    serving_id: str, container_info: Mapping[str, object] | None
-) -> str:
+def build_predict_url(serving_id: str, container_info: Mapping[str, object] | None) -> str:
     container_info = container_info or {}
     runtime = os.getenv("MLOPS_RUNTIME", "docker").lower()
 
     port = container_info.get("port")
     if not port:
-        raise ValueError("服务端口未配置，请确认服务已启动")
+        raise ValueError(SERVING_PORT_NOT_CONFIGURED)
 
     if runtime == "kubernetes":
         namespace = os.getenv("MLOPS_KUBERNETES_NAMESPACE", "mlops")
@@ -38,4 +39,4 @@ def build_predict_url(
     if host_address:
         return f"http://{host_address}:{port}/predict"
 
-    raise ValueError("服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL")
+    raise ValueError(SERVING_HOST_NOT_CONFIGURED)

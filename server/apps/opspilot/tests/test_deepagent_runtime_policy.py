@@ -586,6 +586,54 @@ async def test_planner_drops_use_skills_without_packages():
     assert plan.steps == []
 
 
+def test_enforce_generate_attachment_file_injects_when_empty_plan():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        GENERATE_ATTACHMENT_FILE_TOOL_NAME,
+        ToolExecutionPlan,
+        enforce_generate_attachment_file,
+        looks_like_attachment_file_task,
+    )
+
+    assert looks_like_attachment_file_task("RC 数据", "你是月报生成器，输出 .md 文件") is True
+    assert looks_like_attachment_file_task("你好", "月报生成器") is False
+
+    fixed = enforce_generate_attachment_file(
+        ToolExecutionPlan(goal="写月报", steps=[]),
+        {GENERATE_ATTACHMENT_FILE_TOOL_NAME},
+        user_message='{"root_causes":[]}',
+        agent_system_prompt="生成 K8s 集群运维月报，内容放在 .md 文件",
+    )
+    assert len(fixed.steps) == 1
+    assert fixed.steps[0].tools == [GENERATE_ATTACHMENT_FILE_TOOL_NAME]
+
+
+@pytest.mark.asyncio
+async def test_planner_forces_attachment_tool_when_model_returns_empty_steps():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import GENERATE_ATTACHMENT_FILE_TOOL_NAME
+
+    tools = [_tool(GENERATE_ATTACHMENT_FILE_TOOL_NAME, "生成可下载附件")]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(content='{"goal":"写月报","steps":[]}')
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan(
+        "month=2026-06 root_causes=[...]",
+        tools,
+        agent_system_prompt="你是 OpsPilot K8s 月报生成器，月报是一个 .md 报告文件。",
+    )
+    assert plan.steps
+    assert GENERATE_ATTACHMENT_FILE_TOOL_NAME in plan.steps[0].tools
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "generate_attachment_file" in prompt
+    assert "禁止返回空 steps" in prompt or "禁止空 steps" in prompt
+
+
 def test_token_usage_middleware_records_each_model_call_and_visible_tools():
     accumulator = TokenUsageAccumulator()
     middleware = TokenUsageTrackingMiddleware(accumulator)

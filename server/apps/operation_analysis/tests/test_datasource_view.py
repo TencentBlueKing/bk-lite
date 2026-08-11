@@ -55,7 +55,7 @@ def test_builtin_datasource_rejects_regular_mutations(authenticated_user, method
     assert "内置数据源" in response.data["detail"]
 
 
-def _build_instance(groups=(1,), rest_api="monitor/query_latest_active_alerts"):
+def _build_instance(groups=(1,), rest_api="monitor/query_latest_active_alerts", params=None):
     return SimpleNamespace(
         id=1,
         name="test-datasource",
@@ -64,7 +64,9 @@ def _build_instance(groups=(1,), rest_api="monitor/query_latest_active_alerts"):
         source_type=datasource_view.DataSourceAPIModel.SOURCE_TYPE_NATS,
         connection_config={},
         query_config={},
-        params=[
+        params=params
+        if params is not None
+        else [
             {"name": "limit", "type": "number", "value": 10, "filterType": "params"},
             {"name": "time_range", "type": "timeRange", "value": 10080, "filterType": "params"},
             {"name": "group_by", "type": "string", "value": "day", "filterType": "fixed"},
@@ -85,7 +87,7 @@ def _build_namespace(namespace_id):
     )
 
 
-def _build_view_response(request, monkeypatch, downstream_result):
+def _build_view_response(request, monkeypatch, downstream_result, *, rest_api=None, params=None):
     captured = {}
 
     class FakeGetNatsData:
@@ -96,10 +98,16 @@ def _build_view_response(request, monkeypatch, downstream_result):
         def get_data(self):
             return downstream_result
 
+    instance_kwargs = {}
+    if rest_api is not None:
+        instance_kwargs["rest_api"] = rest_api
+    if params is not None:
+        instance_kwargs["params"] = params
+
     monkeypatch.setattr(
         datasource_view.DataSourceAPIModelViewSet,
         "get_object",
-        lambda self: _build_instance(),
+        lambda self: _build_instance(**instance_kwargs),
     )
     monkeypatch.setattr(datasource_view, "GetNatsData", FakeGetNatsData)
 
@@ -217,9 +225,7 @@ def test_get_source_data_wraps_inline_datasources_in_transport_envelope(
         lambda current_source_type: FakeExecutor(),
     )
 
-    response = datasource_view.DataSourceAPIModelViewSet.as_view(
-        {"post": "get_source_data"}
-    )(request, pk="1")
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "get_source_data"})(request, pk="1")
     response.render()
     payload = json.loads(response.rendered_content)
 
@@ -356,6 +362,31 @@ def test_get_source_data_applies_default_values_when_request_missing(authenticat
     assert payload["result"] is True
     assert captured["kwargs"]["params"]["limit"] == 10
     assert captured["kwargs"]["params"]["group_by"] == "day"
+
+
+@pytest.mark.django_db
+def test_get_source_data_strips_residual_group_by_for_trend_apis(authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = True
+    request = _build_request(
+        authenticated_user,
+        data={"time": ["2026-08-11T00:00:00Z", "2026-08-11T01:00:00Z"], "group_by": "day"},
+    )
+
+    response, payload, captured = _build_view_response(
+        request,
+        monkeypatch,
+        {"result": True, "data": {"告警数": []}, "message": ""},
+        rest_api="alert/get_alert_trend_data",
+        params=[
+            {"name": "time", "type": "timeRange", "value": 10080, "filterType": "filter"},
+            {"name": "group_by", "type": "string", "value": "day", "filterType": "fixed"},
+        ],
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["result"] is True
+    assert "group_by" not in captured["kwargs"]["params"]
+    assert "time" in captured["kwargs"]["params"]
 
 
 @pytest.mark.django_db
