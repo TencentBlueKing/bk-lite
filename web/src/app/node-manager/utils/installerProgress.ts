@@ -295,6 +295,12 @@ export const normalizeInstallerResult = (
   }
 
   return {
+    overall_status: result.overall_status,
+    connectivity_observed: result.connectivity_observed === true,
+    connectivity_observed_node_id: normalizeText(
+      result.connectivity_observed_node_id
+    ) || undefined,
+    connectivity_observed_at: normalizeText(result.connectivity_observed_at) || undefined,
     steps: normalizeInstallerLogs(result.steps),
     installer_progress: installerProgress,
     installer_summary: normalizeInstallerSummary(result.installer_summary),
@@ -608,6 +614,8 @@ export const getInstallerSummaryGuidance = (
       'node-manager.cloudregion.node.installerSummaryNoReportConnectivityTimeout',
     installer_success_without_detail:
       'node-manager.cloudregion.node.installerSummarySuccessWithoutDetail',
+    installer_success_with_incomplete_detail:
+      'node-manager.cloudregion.node.installerSummarySuccessWithIncompleteDetail',
     duplicated_events:
       'node-manager.cloudregion.node.installerSummaryDuplicatedEvents'
   };
@@ -846,6 +854,31 @@ export const deriveControllerInstallDisplay = (
   const credentialStep = findLatestStepByAction(steps, 'credential_check');
   const commandStep = findLatestStepByAction(steps, 'run');
 
+  if (normalizedResult?.overall_status === 'success') {
+    if (summary?.state === 'installer_success_without_detail') {
+      return buildDisplayResult(
+        'success_without_detail',
+        'node_connectivity',
+        'success',
+        false
+      );
+    }
+    if (summary?.state === 'installer_success_with_incomplete_detail') {
+      return buildDisplayResult(
+        'success_with_incomplete_detail',
+        'node_connectivity',
+        'success',
+        installerStepsReceived
+      );
+    }
+    return buildDisplayResult(
+      'success',
+      'node_connectivity',
+      'success',
+      installerStepsReceived
+    );
+  }
+
   if (['error', 'timeout'].includes(credentialStep?.status || '')) {
     return buildDisplayResult(
       'credential_failed',
@@ -906,6 +939,15 @@ export const deriveControllerInstallDisplay = (
         installerStepsReceived
       );
     }
+    case 'installer_events_in_progress':
+      return buildDisplayResult(
+        normalizedResult?.connectivity_observed
+          ? 'installer_finalizing'
+          : 'installer_running',
+        'installer_execution',
+        'processing',
+        installerStepsReceived
+      );
     case 'installer_success_connectivity_pending':
       return buildDisplayResult(
         'connectivity_waiting',
@@ -973,14 +1015,21 @@ export const deriveControllerInstallPhases = (
   const commandStep = findLatestStepByAction(steps, 'run');
   const connectivityStep = findLatestStepByAction(steps, 'connectivity_check');
   const installerStepsReceived = !!summary?.observed_count;
-  const showMissingSteps = installerStepsReceived && !!summary?.missing_steps?.length;
+  const terminalSuccess = normalizedResult?.overall_status === 'success';
+  const showMissingSteps =
+    !terminalSuccess &&
+    summary?.state === 'incomplete_installer_events' &&
+    installerStepsReceived &&
+    !!summary?.missing_steps?.length;
   const commandDispatched = commandStep?.status === 'success' || installerStepsReceived;
   let installerDetailState: ControllerInstallPhaseDetailState = 'none';
   if (commandDispatched && !installerStepsReceived) {
     installerDetailState = 'no_report';
   } else if (
     commandDispatched &&
-    (showMissingSteps || summary?.state === 'incomplete_installer_events')
+    (showMissingSteps ||
+      summary?.state === 'incomplete_installer_events' ||
+      summary?.state === 'installer_success_with_incomplete_detail')
   ) {
     installerDetailState = 'partial';
   } else if (commandDispatched) {
@@ -991,7 +1040,13 @@ export const deriveControllerInstallPhases = (
   if (display.phase === 'installer_execution') {
     installerStatus = displaySeverityToPhaseStatus(display.severity);
   } else if (
-    ['connectivity_waiting', 'connectivity_failed', 'success', 'success_without_detail'].includes(
+    [
+      'connectivity_waiting',
+      'connectivity_failed',
+      'success',
+      'success_without_detail',
+      'success_with_incomplete_detail'
+    ].includes(
       display.state
     )
   ) {
@@ -1023,7 +1078,9 @@ export const deriveControllerInstallPhases = (
     },
     {
       code: 'node_connectivity',
-      status: stepStatusToPhaseStatus(connectivityStep?.status),
+      status: normalizedResult?.connectivity_observed
+        ? 'success'
+        : stepStatusToPhaseStatus(connectivityStep?.status),
       detailState: 'none',
       showMissingSteps: false
     }
@@ -1050,12 +1107,15 @@ export const CONTROLLER_INSTALL_STATE_LABEL_KEYS: Partial<
   installer_waiting: 'node-manager.cloudregion.node.installStateInstallerWaiting',
   installer_no_report: 'node-manager.cloudregion.node.installStateInstallerNoReport',
   installer_running: 'node-manager.cloudregion.node.installStateInstallerRunning',
+  installer_finalizing: 'node-manager.cloudregion.node.installStateInstallerFinalizing',
   installer_failed: 'node-manager.cloudregion.node.installStateInstallerFailed',
   connectivity_waiting: 'node-manager.cloudregion.node.installStateConnectivityWaiting',
   connectivity_failed: 'node-manager.cloudregion.node.installStateConnectivityFailed',
   success: 'node-manager.cloudregion.node.installStateSuccess',
   success_without_detail:
-    'node-manager.cloudregion.node.installStateSuccessWithoutDetail'
+    'node-manager.cloudregion.node.installStateSuccessWithoutDetail',
+  success_with_incomplete_detail:
+    'node-manager.cloudregion.node.installStateSuccessWithIncompleteDetail'
 };
 
 export const getControllerInstallPhaseLabel = (

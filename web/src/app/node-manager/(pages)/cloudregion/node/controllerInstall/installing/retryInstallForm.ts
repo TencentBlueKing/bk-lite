@@ -30,7 +30,7 @@ export const getRetryInstallInitialValues = (
     winrm_scheme: isWindows ? node.winrm_scheme || 'https' : undefined,
     winrm_transport: isWindows ? node.winrm_transport || 'ntlm' : undefined,
     winrm_cert_validation: isWindows
-      ? node.winrm_cert_validation !== false
+      ? node.winrm_cert_validation ?? false
       : undefined
   };
 };
@@ -57,7 +57,7 @@ export const buildRetryInstallParams = (
   if (isWindows) {
     params.winrm_scheme = values.winrm_scheme || 'https';
     params.winrm_transport = values.winrm_transport || 'ntlm';
-    params.winrm_cert_validation = values.winrm_cert_validation !== false;
+    params.winrm_cert_validation = values.winrm_cert_validation ?? false;
   }
 
   return params;

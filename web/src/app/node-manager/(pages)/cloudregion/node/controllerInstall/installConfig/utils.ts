@@ -1,3 +1,5 @@
+export const DEFAULT_WINRM_CERTIFICATE_VALIDATION = false;
+
 export function applyWinrmCertificateValidation<T extends object>(
   rows: T[],
   enabled: boolean

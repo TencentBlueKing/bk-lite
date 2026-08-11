@@ -49,7 +49,7 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
       'winrm_cert_validation',
       form
     );
-    const winrmCertValidation = watchedWinrmCertValidation !== false;
+    const winrmCertValidation = watchedWinrmCertValidation === true;
     const [uploadedFileName, setUploadedFileName] = useState<
       string | undefined
     >();

@@ -59,4 +59,13 @@ describe('Windows controller retry configuration', () => {
     expect(validateWindowsRetryPort(5986)).toBe(true);
     expect(validateWindowsRetryPort(7443)).toBe(true);
   });
+
+  it('uses the private-network certificate default when legacy task data has no value', () => {
+    expect(
+      getRetryInstallInitialValues({
+        ...node,
+        winrm_cert_validation: undefined
+      }).winrm_cert_validation
+    ).toBe(false);
+  });
 });

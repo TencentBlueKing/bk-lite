@@ -35,7 +35,11 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { useClientData } from '@/context/client';
 import { getSoldModulePushTargets } from '@/app/node-manager/utils/modulePush';
 import { message } from 'antd';
-import { applyWinrmCertificateValidation } from './utils';
+import {
+  applyWinrmCertificateValidation,
+  DEFAULT_WINRM_CERTIFICATE_VALIDATION
+} from './utils';
+import WinrmCertificateValidationField from '@/app/node-manager/components/winrm-certificate-validation-field';
 
 interface InstallConfigProps {
   onNext: (data: any) => void;
@@ -78,7 +82,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const [platformLoading, setPlatformLoading] = useState<boolean>(false);
   const [installMethod, setInstallMethod] = useState<string>('remoteInstall');
   const [winrmCertValidation, setWinrmCertValidation] =
-    useState<boolean>(true);
+    useState<boolean>(DEFAULT_WINRM_CERTIFICATE_VALIDATION);
   const [os, setOs] = useState<string>('');
   const [cpuArchitecture, setCpuArchitecture] = useState<string>('');
   const [controllerPlatforms, setControllerPlatforms] = useState<
@@ -95,7 +99,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     form.setFieldsValue({ push_targets: soldPushTargets });
   }, [form, soldPushTargets]);
   const createInfoItem = useCallback(
-    (targetOS: string, validateWinrmCertificate = true) => ({
+    (
+      targetOS: string,
+      validateWinrmCertificate = DEFAULT_WINRM_CERTIFICATE_VALIDATION
+    ) => ({
       key: uuidv4(),
       ip: null,
       organizations: [commonContext.selectedGroup?.id],
@@ -292,8 +299,16 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
     if (nextOs !== os) {
       setOs(nextOs);
-      setWinrmCertValidation(true);
-      setTableData([{ ...createInfoItem(nextOs, true), key: uuidv4() }]);
+      setWinrmCertValidation(DEFAULT_WINRM_CERTIFICATE_VALIDATION);
+      setTableData([
+        {
+          ...createInfoItem(
+            nextOs,
+            DEFAULT_WINRM_CERTIFICATE_VALIDATION
+          ),
+          key: uuidv4()
+        }
+      ]);
       setSelectedRowKeys([]);
     }
 
@@ -486,8 +501,13 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   const changeCollectType = (id: string) => {
     setInstallMethod(id);
-    setWinrmCertValidation(true);
-    setTableData([{ ...createInfoItem(os, true), key: uuidv4() }]);
+    setWinrmCertValidation(DEFAULT_WINRM_CERTIFICATE_VALIDATION);
+    setTableData([
+      {
+        ...createInfoItem(os, DEFAULT_WINRM_CERTIFICATE_VALIDATION),
+        key: uuidv4()
+      }
+    ]);
     setSelectedRowKeys([]);
   };
 
@@ -609,9 +629,15 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             value={os}
             onChange={(value) => {
               setOs(value);
-              setWinrmCertValidation(true);
+              setWinrmCertValidation(DEFAULT_WINRM_CERTIFICATE_VALIDATION);
               setTableData([
-                { ...createInfoItem(value, true), key: uuidv4() }
+                {
+                  ...createInfoItem(
+                    value,
+                    DEFAULT_WINRM_CERTIFICATE_VALIDATION
+                  ),
+                  key: uuidv4()
+                }
               ]);
               setSelectedRowKeys([]);
               form.setFieldValue('sidecar_package', null);
@@ -658,34 +684,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           </div>
         </Form.Item>
         {isRemote && os === 'windows' && (
-          <Form.Item
-            label={t('node-manager.cloudregion.node.winrmCertValidation')}
-          >
-            <Checkbox
-              checked={winrmCertValidation}
-              onChange={(event) =>
-                changeWinrmCertValidation(event.target.checked)
-              }
-            >
-              {t(
-                'node-manager.cloudregion.node.winrmCertValidationEnabled'
-              )}
-            </Checkbox>
-            {!winrmCertValidation && (
-              <div className="mt-[8px] max-w-[560px]">
-                <Alert
-                  type="warning"
-                  showIcon
-                  message={t(
-                    'node-manager.cloudregion.node.winrmCertValidationWarningTitle'
-                  )}
-                  description={t(
-                    'node-manager.cloudregion.node.winrmCertValidationWarningDesc'
-                  )}
-                />
-              </div>
-            )}
-          </Form.Item>
+          <WinrmCertificateValidationField
+            checked={winrmCertValidation}
+            onChange={changeWinrmCertValidation}
+          />
         )}
         <Form.Item<ControllerInstallFields>
           required

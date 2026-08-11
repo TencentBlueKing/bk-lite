@@ -438,6 +438,44 @@ assert.equal(partialInstallerPhases[2].status, 'error');
 assert.equal(partialInstallerPhases[2].detailState, 'partial');
 assert.equal(partialInstallerPhases[2].showMissingSteps, true);
 
+const terminalSuccessWithPartialDetail = deriveControllerInstallPhases({
+  overall_status: 'success',
+  steps: [
+    { action: 'credential_check', status: 'success', message: 'Validate credentials', timestamp: '' },
+    { action: 'run', status: 'success', message: 'Installer bootstrap completed', timestamp: '' },
+    { action: 'connectivity_check', status: 'success', message: 'Sidecar connectivity confirmed', timestamp: '' }
+  ],
+  controller_install_display: {
+    state: 'success_with_incomplete_detail',
+    phase: 'node_connectivity',
+    severity: 'success',
+    installer_steps_received: true
+  },
+  installer_summary: {
+    state: 'installer_success_with_incomplete_detail',
+    expected_count: 6,
+    observed_count: 2,
+    completed_count: 2,
+    missing_steps: ['prepare_dirs', 'download', 'write_config', 'install'],
+    steps: [
+      { action: 'fetch_session', status: 'success', message: 'Installer session fetched', timestamp: '' },
+      { action: 'extract', status: 'success', message: 'Controller package staged and activated', timestamp: '' }
+    ]
+  }
+});
+
+assert.deepEqual(
+  terminalSuccessWithPartialDetail.map((phase) => [phase.code, phase.status]),
+  [
+    ['credential_validation', 'success'],
+    ['command_dispatch', 'success'],
+    ['installer_execution', 'success'],
+    ['node_connectivity', 'success']
+  ]
+);
+assert.equal(terminalSuccessWithPartialDetail[2].detailState, 'partial');
+assert.equal(terminalSuccessWithPartialDetail[2].showMissingSteps, false);
+
 assert.equal(
   getControllerInstallPhaseLabel(t, 'installer_execution'),
   'Installer execution'

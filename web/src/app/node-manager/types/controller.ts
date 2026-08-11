@@ -128,11 +128,13 @@ export type ControllerInstallDisplayState =
   | 'installer_waiting'
   | 'installer_no_report'
   | 'installer_running'
+  | 'installer_finalizing'
   | 'installer_failed'
   | 'connectivity_waiting'
   | 'connectivity_failed'
   | 'success'
   | 'success_without_detail'
+  | 'success_with_incomplete_detail'
   | (string & {});
 
 export type ControllerInstallDisplayPhase =
@@ -158,6 +160,10 @@ export interface ControllerInstallDisplay {
 }
 
 export interface OperationTaskResult {
+  overall_status?: InstallerTaskStatus;
+  connectivity_observed?: boolean;
+  connectivity_observed_node_id?: string;
+  connectivity_observed_at?: string;
   steps?: LogStep[];
   installer_progress?: InstallerProgressSummary;
   installer_summary?: InstallerEventSummary;

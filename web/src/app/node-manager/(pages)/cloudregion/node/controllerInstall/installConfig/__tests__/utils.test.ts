@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { applyWinrmCertificateValidation } from '../utils';
+import {
+  applyWinrmCertificateValidation,
+  DEFAULT_WINRM_CERTIFICATE_VALIDATION
+} from '../utils';
 
 describe('applyWinrmCertificateValidation', () => {
+  it('defaults new Windows remote operations to certificate validation disabled', () => {
+    expect(DEFAULT_WINRM_CERTIFICATE_VALIDATION).toBe(false);
+  });
+
   it('applies the explicit validation choice to every Windows install row', () => {
     const rows = [
       { key: 'node-1', ip: '10.0.0.8', winrm_cert_validation: true },
