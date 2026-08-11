@@ -1,14 +1,109 @@
-from apps.log.models.log_group import LogGroup
+from django.conf import settings
+
 from apps.core.logger import log_logger as logger
+from apps.log.models.log_group import LogGroup
 
 
 class LogGroupQueryBuilder:
     """日志分组查询构建器 - 专门处理日志分组与查询的组合逻辑"""
 
     DENY_ALL_QUERY = '(__bk_lite_log_scope__:"deny-1") AND (__bk_lite_log_scope__:"deny-2")'
+    VALID_RULE_MODES = frozenset({"AND", "OR"})
+    MODE_VALID = "valid"
+    MODE_LEGACY_OR = "legacy_or"
+    MODE_LEGACY_EMPTY_RULE = "legacy_empty_rule"
+    MODE_INVALID = "invalid"
+    SUPPORTED_OPERATIONS = frozenset({"==", "!=", "contains", "!contains", "startswith", "endswith"})
+
+    @classmethod
+    def classify_rule_mode(cls, rule_json):
+        """按历史运行语义分类规则模式，不回显不可信的原始值。"""
+        if not isinstance(rule_json, dict):
+            return cls.MODE_INVALID, None
+
+        mode = rule_json.get("mode", "AND")
+        if not isinstance(mode, str):
+            return cls.MODE_INVALID, None
+
+        normalized_mode = mode.upper()
+        if normalized_mode in cls.VALID_RULE_MODES:
+            return cls.MODE_VALID, normalized_mode
+
+        # 旧实现把所有未知字符串解释为 OR；该分类只供显式迁移兼容使用。
+        return cls.MODE_LEGACY_OR, None
+
+    @classmethod
+    def validate_rule_mode(cls, rule_json):
+        classification, normalized_mode = cls.classify_rule_mode(rule_json)
+        if classification != cls.MODE_VALID:
+            raise ValueError("Rule mode must be AND or OR")
+        return normalized_mode
+
+    @classmethod
+    def validate_rule(cls, rule_json, *, allow_legacy_or=False):
+        mode, used_legacy_or = cls._resolve_rule_mode(rule_json, allow_legacy_or=allow_legacy_or)
+        conditions = rule_json.get("conditions", [])
+        if not isinstance(conditions, list):
+            raise ValueError("Rule conditions must be a list")
+
+        for condition in conditions:
+            if not isinstance(condition, dict):
+                raise ValueError("Each rule condition must be an object")
+            if set(("field", "op", "value")) - condition.keys():
+                raise ValueError("Each rule condition must include field, op and value")
+            if not isinstance(condition["field"], str) or not condition["field"].strip():
+                raise ValueError("Rule condition field must be a non-empty string")
+            if not isinstance(condition["op"], str) or condition["op"] not in cls.SUPPORTED_OPERATIONS:
+                raise ValueError("Rule condition op is unsupported")
+            if condition["value"] is None or isinstance(condition["value"], (dict, list)):
+                raise ValueError("Rule condition value must be a scalar")
+
+        return mode, used_legacy_or
+
+    @classmethod
+    def classify_rule(cls, rule_json):
+        classification, normalized_mode = cls.classify_rule_mode(rule_json)
+        try:
+            cls.validate_rule(rule_json, allow_legacy_or=classification == cls.MODE_LEGACY_OR)
+        except (TypeError, ValueError):
+            return cls.MODE_INVALID, None
+        return classification, normalized_mode
+
+    @classmethod
+    def _resolve_rule_mode(cls, rule_json, *, allow_legacy_or=False):
+        classification, normalized_mode = cls.classify_rule_mode(rule_json)
+        if classification == cls.MODE_VALID:
+            return normalized_mode, False
+        if classification == cls.MODE_LEGACY_OR and allow_legacy_or:
+            return "OR", True
+        raise ValueError("Rule mode must be AND or OR")
 
     @staticmethod
-    def json_to_logsql_expression(rule_json):
+    def _configured_legacy_or_group_ids():
+        configured_ids = getattr(settings, "LOG_GROUP_LEGACY_OR_GROUP_IDS", frozenset())
+        if isinstance(configured_ids, str):
+            configured_ids = configured_ids.split(",")
+        try:
+            return frozenset(str(group_id).strip() for group_id in configured_ids if str(group_id).strip())
+        except TypeError:
+            return frozenset()
+
+    @staticmethod
+    def _legacy_migration_mode_enabled():
+        return getattr(settings, "LOG_GROUP_RULE_MODE_ENFORCEMENT", "strict") == "legacy"
+
+    @staticmethod
+    def _is_legacy_falsey_non_object(rule_json):
+        if rule_json is None:
+            return True
+        if isinstance(rule_json, (str, list)):
+            return not rule_json
+        if type(rule_json) in (bool, int, float):
+            return not rule_json
+        return False
+
+    @classmethod
+    def json_to_logsql_expression(cls, rule_json, *, allow_legacy_or=False, preserve_legacy_structure=False):
         """将规则JSON转换为VictoriaLogs LogsQL表达式"""
 
         def escape_regex_value(value):
@@ -40,10 +135,13 @@ class LogGroupQueryBuilder:
         }
 
         # 如果不存在规则，返回空字符串
-        if not rule_json:
+        if rule_json == {}:
             return ""
 
-        mode = rule_json.get("mode", "AND").upper()
+        if preserve_legacy_structure:
+            mode, _ = cls._resolve_rule_mode(rule_json, allow_legacy_or=allow_legacy_or)
+        else:
+            mode, _ = cls.validate_rule(rule_json, allow_legacy_or=allow_legacy_or)
         connector = " AND " if mode == "AND" else " OR "
 
         expressions = []
@@ -112,7 +210,10 @@ class LogGroupQueryBuilder:
             return user_query.strip() if user_query else "*", group_info
 
         if not group_conditions:
-            if valid_groups and all(item.get("status") == "empty_rule" for item in group_info):
+            empty_rule_statuses = {"empty_rule"}
+            if LogGroupQueryBuilder._legacy_migration_mode_enabled():
+                empty_rule_statuses.add(LogGroupQueryBuilder.MODE_LEGACY_EMPTY_RULE)
+            if valid_groups and all(item.get("status") in empty_rule_statuses for item in group_info):
                 return user_query.strip() if user_query else "*", group_info
             return LogGroupQueryBuilder.DENY_ALL_QUERY, group_info
 
@@ -129,21 +230,34 @@ class LogGroupQueryBuilder:
         except Exception:
             return []
 
-    @staticmethod
-    def _build_group_conditions(groups):
+    @classmethod
+    def _build_group_conditions(cls, groups):
         """构建日志分组的查询条件"""
         conditions = []
         invalid_group_status = {}
+        legacy_or_group_ids = cls._configured_legacy_or_group_ids()
+        legacy_migration_mode = cls._legacy_migration_mode_enabled()
 
         for group in groups:
             try:
-                if not group.rule:
+                if group.rule == {}:
                     invalid_group_status[group.id] = "empty_rule"
                     continue
+                if legacy_migration_mode and cls._is_legacy_falsey_non_object(group.rule):
+                    invalid_group_status[group.id] = cls.MODE_LEGACY_EMPTY_RULE
+                    continue
 
-                condition = LogGroupQueryBuilder.json_to_logsql_expression(group.rule)
+                allow_legacy_or = legacy_migration_mode or str(group.id) in legacy_or_group_ids
+                classification, _ = cls.classify_rule_mode(group.rule)
+                condition = cls.json_to_logsql_expression(
+                    group.rule,
+                    allow_legacy_or=allow_legacy_or,
+                    preserve_legacy_structure=legacy_migration_mode,
+                )
                 if condition and condition.strip():
                     conditions.append(condition)
+                    if classification == cls.MODE_LEGACY_OR:
+                        invalid_group_status[group.id] = cls.MODE_LEGACY_OR
                 else:
                     invalid_group_status[group.id] = "empty_rule"
             except Exception:
