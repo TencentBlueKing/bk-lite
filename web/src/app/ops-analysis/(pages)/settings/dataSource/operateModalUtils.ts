@@ -17,7 +17,16 @@ export const SOURCE_TYPE_REST_API: DataSourceSourceType = "rest_api";
 export const SOURCE_TYPE_EXCEL: DataSourceSourceType = "excel";
 export const SOURCE_TYPE_PROMETHEUS: DataSourceSourceType = "prometheus";
 
-export const PROMETHEUS_DEFAULT_CHART_TYPES = ["line", "bar", "single"] as const;
+export const PROMETHEUS_DEFAULT_CHART_TYPES = [
+  "line",
+  "bar",
+  "single",
+  "pie",
+  "multiValue",
+  "gauge",
+  "table",
+  "topN",
+] as const;
 
 export function createPrometheusDefaultParams(): ParamItem[] {
   return [
