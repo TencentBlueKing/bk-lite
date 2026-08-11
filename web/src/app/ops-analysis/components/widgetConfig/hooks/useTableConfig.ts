@@ -338,7 +338,7 @@ export function useTableConfig({
     ): Promise<DisplayColumnRow[]> => {
       try {
         const payload = buildProbeParams(targetDataSource, formParams);
-        const sourceData = await getSourceDataByApiId(targetDataSource.id, payload);
+        const { data: sourceData } = await getSourceDataByApiId(targetDataSource.id, payload);
         const firstRecord = extractFirstRecordFromSourceData(sourceData);
         if (!firstRecord) return [];
 

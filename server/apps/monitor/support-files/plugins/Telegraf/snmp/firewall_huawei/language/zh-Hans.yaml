@@ -1,0 +1,69 @@
+Firewall Huawei SNMP:
+  name: 华为 USG（Telegraf）
+  desc: 面向华为 Secospace USG 防火墙的 SNMP 监控模板，可采集 CPU、内存、温度、实体电压及接口流量等指标（基于 HUAWEI-ENTITY-EXTENT-MIB）。USG6390 MIB 无风扇运行状态/电源状态 OID，故不建模；光衰仅 USG9500 支持，本模板不做。
+monitor_object:
+  Firewall: 防火墙
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Firewall:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标按实体报告华为 USG 防火墙 CPU 使用率（hwEntityCpuUsage，0～100），维度 descr 为 entPhysicalName。持续偏高可能意味着流量检测负载过重或攻击活动。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标按实体报告华为 USG 防火墙内存使用率（hwEntityMemUsage；USG6000 为整机百分比 0～100），维度 descr 为 entPhysicalName。内存压力过高时可能影响会话处理性能。
+    device_temperature_celsius:
+      name: 设备温度
+      desc: 该指标按实体报告华为 USG 防火墙温度（hwEntityTemperature，单位摄氏度），维度 descr 为 entPhysicalName。温度异常升高可能由散热不良或环境过热导致。
+    device_voltage_volts:
+      name: 实体电压
+      desc: 该指标按实体报告华为 USG 防火墙电压（hwEntityVoltage；设备原始为 mV，查询侧 /1000 为伏特），维度 descr 为 entPhysicalName。电压异常可能意味着供电轨或单板供电问题。
+    interface_ifAdminStatus:
+      name: 接口管理状态
+      desc: 此指标表示网络接口的管理状态。
+    interface_ifOperStatus:
+      name: 接口操作状态
+      desc: 此指标反映网络接口的实际运行状态。
+    interface_ifSpeed:
+      name: 接口带宽
+      desc: 该指标表示网络接口支持的最高数据传输速度。
+    interface_ifInErrors:
+      name: 接收错误数据包速率
+      desc: 过去 5 分钟接收错误包的平均速率。
+    interface_ifOutErrors:
+      name: 发送错误数据包速率
+      desc: 过去 5 分钟发送错误包的平均速率。
+    interface_ifInDiscards:
+      name: 接收丢包速率
+      desc: 过去 5 分钟接收丢弃包的平均速率。
+    interface_ifOutDiscards:
+      name: 发送丢包速率
+      desc: 过去 5 分钟发送丢弃包的平均速率。
+    interface_ifInUcastPkts:
+      name: 接收单播数据包速率
+      desc: 过去 5 分钟接收单播包的平均速率。
+    interface_ifOutUcastPkts:
+      name: 发送单播数据包速率
+      desc: 过去 5 分钟发送单播包的平均速率。
+    interface_ifInOctets:
+      name: 接口接收流量速率
+      desc: 过去 5 分钟接收字节的平均速率。
+    interface_ifOutOctets:
+      name: 接口发送流量速率
+      desc: 过去 5 分钟发送字节的平均速率。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 过去 5 分钟接收字节的平均速率（64 位计数器）。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 过去 5 分钟发送字节的平均速率（64 位计数器）。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 整机入向流量平均速率。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 整机出向流量平均速率。

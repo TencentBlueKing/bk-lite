@@ -51,8 +51,10 @@
 | 表格列生成 | 首次查询按返回字段自动成列；存在数据源默认列定义时优先采用其展示名与列顺序 | 列配置仅作用于当前组件，不反写数据源默认列定义 | GA |
 | 列显隐与排序 | 配置列显隐与列顺序，随组件保存并在再次打开时回显 | — | GA |
 | 多命名空间表格 | 数据源选多个命名空间时，表格首列展示命名空间名，并提供命名空间下拉筛选 | 命名空间筛选默认全选 | GA |
-| 网络状态拓扑组件 | networkStatusTopology 组件按模型、实例与深度参数请求并展示网络状态拓扑 | 通过专用场景组件接口 `/operation_analysis/api/scene_widgets/network_status_topology/` 取数，不复用普通数据源 REST API 配置 | GA |
+| 网络状态拓扑组件 | networkStatusTopology 组件按模型、实例与深度参数请求并展示网络状态拓扑 | 通过专用场景组件接口取数，不复用普通数据源 REST API 配置；编辑态支持层级、力导向、环形布局，节点/边编辑结果按布局独立保存与重置，查看/分享不回写 | GA |
 | 组件状态反馈 | 组件支持加载中、无数据、接口失败、无权限等状态反馈 | 单组件异常不影响整页 | GA |
+
+> 证据来源：web/src/app/ops-analysis/utils/networkStatusTopologyLayout.ts:37-55,203-327，web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx:154-164,393-430,491-502　|　同步基线：d2769559　|　【已实现】
 
 ### 4. 仪表盘统一筛选
 
@@ -60,7 +62,7 @@
 |---|---|---|---|
 | 画布级统一筛选 | 在仪表盘画布定义一组画布级筛选项，集中控制画布内组件查询 | 本期仅适用于仪表盘类型画布，不含拓扑/架构 | GA |
 | 筛选项定义 | 筛选项具备稳定标识、显示名称、值类型、展示控件、默认值与显示顺序 | 可启用 / 停用 | GA |
-| 输入形态 | 支持关键字输入与时间范围两种输入形态 | — | GA |
+| 输入形态 | 支持字符串、时间范围、日期范围三种可绑定输入形态 | 仅这三类数据源参数可标记为筛选并进入统一绑定 | GA |
 | 可筛选字段来源 | 可配置为统一筛选项的字段仅来自数据源中标记为"筛选"类型的参数 | — | GA |
 | 组件绑定 | 组件显式声明是否绑定某统一筛选项 | 未绑定组件不受影响 | GA |
 | 同 key 合并 | 多组件数据源参数 key 相同且属筛选字段时，可由同一统一筛选项控制 | — | GA |
@@ -80,16 +82,16 @@
 | 关联命名空间 | 数据源可关联多个命名空间，实现多来源聚合拉数 | — | GA |
 | 关联标签 | 数据源可关联标签便于分类与筛选 | 内置标签：CMDB、告警、监控、日志、业务、其他 | GA |
 | 图表类型配置 | 配置该数据源可用于的展示形态 | 可选类型 8 种：line、bar、pie、single、gauge、table、eventTable、topN（取自 `constants/common.ts` `getChartTypeList()`） | GA |
-| 参数模板 | 参数按固定参数、筛选参数、组件私有参数分类组织 | 固定参数不可在画布或组件中修改；筛选参数可被统一筛选接管；私有参数仅作用于当前组件 | GA |
+| 参数模板 | 参数按固定参数、筛选参数、组件私有参数分类组织 | 固定参数不可在画布或组件中修改；只有字符串、时间范围、日期范围的筛选参数可被统一筛选接管；私有参数仅作用于当前组件 | GA |
 | 接口字段定义 | 数据源级维护默认返回字段结构 | 字段名需非空且唯一，可维护显示名称、数据类型、描述并支持拖拽排序 | GA |
 | 表格默认列定义 | 表格类数据源可复用数据源默认字段定义 | 表格组件优先采用数据源字段定义；不配置时按返回字段自动成列 | GA |
 | 保存前预览 | 在保存前对连接或样例数据做预览 | 数据库仅支持单条 SELECT 或按表限量查询；Excel 仅支持 `.xlsx` 且文件不超过 2MB | GA |
 | 预览字段回填 | 预览成功后可将返回字段一键应用到数据源字段定义 | 仅回填当前预览识别出的字段，不自动改写组件已手工配置列 | GA |
 | 已保存数据源预览 | 对已保存的数据源再次预览并复用现有敏感配置 | 支持传入掩码值并保留既有密码 / Token | GA |
-| 预置数据源模板 | 系统初始化写入预置数据源模板，支持开箱即用 | — | GA |
+| 预置数据源模板 | 系统初始化写入预置数据源模板，支持开箱即用 | 内置项稳定认领且普通接口不可编辑/删除；仅显式强制初始化覆盖已认领内置配置，不会误认领同接口的自定义数据源 | GA |
 
-相关 PRD：[[spec/prd/运营分析/管理.md#3.1 数据源]]；相关架构：[[spec/ARD/modules/operation_analysis.md#3. 接口【已实现/已存在】]]
-> 证据来源：server/apps/operation_analysis/models/datasource_models.py:111-145，server/apps/operation_analysis/serializers/datasource_serializers.py:11-103，web/src/app/ops-analysis/(pages)/settings/dataSource/fieldSchemaTable.tsx:19-262，web/src/app/ops-analysis/(pages)/settings/dataSource/previewPanel.tsx:63-81，web/src/app/ops-analysis/(pages)/settings/dataSource/operateModalUtils.ts:52-138　|　同步基线：8a12d3b　|　【已实现】
+相关 PRD：[[legacy-prd-运营分析-管理#3.1 数据源]]；相关架构：[[legacy-ard-modules-operation-analysis#3. 接口【已实现/已存在】]]
+> 证据来源：server/apps/operation_analysis/common/builtin_datasource_identity.py:19-45，server/apps/operation_analysis/management/commands/init_source_api_data.py:95-160，server/apps/operation_analysis/serializers/datasource_serializers.py:65-83,127-139，server/apps/operation_analysis/views/datasource_view.py:590-604　|　同步基线：d2769559　|　【已实现】
 
 ### 6. 命名空间管理
 
@@ -101,7 +103,7 @@
 | 密码加密存储 | 密码以加密形式持久化存储 | 不明文落库；编辑时未修改密码则保留原配置，不用重复录入 | GA |
 | 默认命名空间 | 系统初始化自动写入默认命名空间 | 连接参数从环境变量 NATS_SERVERS 解析（支持 nats:// / tls:// / 纯域名） | GA |
 
-相关 PRD：[[spec/prd/运营分析/管理.md#3.2 命名空间]]；相关架构：[[spec/ARD/modules/operation_analysis.md#3. 接口【已实现/已存在】]]
+相关 PRD：[[legacy-prd-运营分析-管理#3.2 命名空间]]；相关架构：[[legacy-ard-modules-operation-analysis#3. 接口【已实现/已存在】]]
 > 证据来源：web/src/app/ops-analysis/(pages)/settings/namespace/operateModal.tsx:10-18,30-49,74-83，web/src/app/ops-analysis/api/namespace.ts:22-27　|　同步基线：a9d981aeb　|　【已实现】
 
 ### 7. 数据拉取与聚合
@@ -158,19 +160,13 @@
 
 ### 5.2 内置数据源 API（DataSourceAPIModel）
 
-平台随包预置 7 个数据源 API（`support-files/source_api.json`），按 REST API 接入对应模块：
+平台随包预置 **23** 个数据源 API（以 `support-files/source_api.json` 为单一事实来源）；数据源支持用户自定义新增（REST API + 命名空间 + 标签 + 图表类型）。本轮告警口径校正如下：
 
-| 数据源名称 | REST API | 所属域 | 适用图表类型 |
-|---|---|---|---|
-| 日志命中数 | `log/log_hits` | 日志 | 折线、单值 |
-| 日志搜索 | `log/log_search` | 日志 | 折线、柱状、饼图、单值 |
-| 告警趋势 | `alert/get_alert_trend_data` | 告警 | 单值 |
-| 查询时间范围内的指标数据 | `monitor/mm_query_range` | 监控 | 折线、柱状、饼图、单值 |
-| 查询单个指标数据 | `monitor/mm_query` | 监控 | 单值 |
-| 监控活跃告警 | `monitor/query_latest_active_alerts` | 监控 | 表格 |
-| 监控中心总览统计 | `monitor/get_monitor_statistics` | 监控 | 单值 |
+- 「告警与关联事件趋势」随时间范围返回告警、关联事件及已恢复告警的时间序列。
+- 「今日产生关闭与当前处理中」同时呈现今日产生、今日关闭与当前处理中；前两项按当日口径，处理中为当前快照。
+- 「活跃告警状态分布」呈现未分派、待响应、处理中，且不受时间范围影响；「告警等级趋势」按所选时间范围分组展示。
 
-数据源支持用户自定义新增（REST API + 命名空间 + 标签 + 图表类型）；上表为内置预置项。
+> 证据来源：server/apps/operation_analysis/support-files/source_api.json:51-78,350-412　|　同步基线：d2769559　|　【已实现】
 
 ### 5.3 图表/组件类型（前端 widgetRegistry）
 
@@ -241,7 +237,9 @@
 | 网络状态拓扑 | `networkStatusTopology` | 网络状态拓扑组件 |
 | 3D 机房 | `room3D` | 3D 机房大屏组件（消费 CMDB NATS `get_room3d_layout`，含 `rack_type_name` 字段） |
 
-### 内置数据源API
+### 内置数据源 API（代表性摘录）
+
+完整的 23 项内置数据源定义以 `server/apps/operation_analysis/support-files/source_api.json` 为单一事实来源；下表仅列常用代表项，不作为完整枚举。
 
 | 枚举项 | 取值 | 中文含义 |
 |---|---|---|

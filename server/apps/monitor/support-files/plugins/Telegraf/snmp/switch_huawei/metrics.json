@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_huawei",
   "plugin": "Switch Huawei SNMP",
-  "plugin_desc": "Huawei-specific SNMP collection for switches. In addition to standard IF-MIB interface metrics, it collects Huawei private OIDs (HUAWEI-ENTITY-EXTENT-MIB) for device health: CPU utilization, memory utilization, temperature sensors, fan status, and SFP optical DDM (Rx/Tx power). Optical power is read in µW and normalized to centi-dBm (dBm*100) so shared dashboards can use the same /100 scale as Ruijie/Parks. Huawei reports memory as a utilization percentage directly and does not expose a power-supply state OID in this template. Supported brands/models — Huawei S-series campus switches (S5700/S6700/S7700/S9300, etc.) and CloudEngine CE series.",
+  "plugin_desc": "Huawei-specific SNMP collection for switches. In addition to standard IF-MIB interface metrics, it collects Huawei private OIDs (HUAWEI-ENTITY-EXTENT-MIB) for device health: per-entity CPU/memory (descr=entPhysicalName), temperature sensors, fan status, and per-module SFP optical DDM (Rx/Tx power). Optical power is stored as raw µW; metrics keep module-level series (dimensions=descr) and convert to dBm in the query via 10*log10(µW/1000). Huawei reports memory as a utilization percentage directly and does not expose a power-supply state OID in this template. Supported brands/models — Huawei S-series campus switches (S5700/S6700/S7700/S9300, etc.) and CloudEngine CE series.",
   "status_query": "any({instance_type='switch', collect_type='snmp_huawei'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",
@@ -27,11 +27,16 @@
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the CPU utilization of the Huawei device control plane (HUAWEI-ENTITY-EXTENT-MIB hwEntityCpuUsage), normalized to a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+      "description": "Per-entity CPU utilization of the Huawei device control plane (HUAWEI-ENTITY-EXTENT-MIB hwEntityCpuUsage), normalized to a 0-100 percentage. Dimension descr is entPhysicalName. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
       "metric_group": "Memory",
@@ -40,11 +45,16 @@
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports overall memory utilization of the Huawei device (HUAWEI-ENTITY-EXTENT-MIB hwEntityMemUsage), reported directly as a 0-100 percentage. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+      "description": "Per-entity memory utilization of the Huawei device (HUAWEI-ENTITY-EXTENT-MIB hwEntityMemUsage), reported directly as a 0-100 percentage. Dimension descr is entPhysicalName. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
     },
     {
       "metric_group": "Temperature",
@@ -85,28 +95,38 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_rx_power",
-      "query": "min((device_optical_rx_power{instance_type='switch', __$labels__} != -10000 != -2147483648) / 100) by (instance_id)",
+      "query": "10 * log10(device_optical_rx_power{instance_type='switch', __$labels__} / 1000) and (device_optical_rx_power{instance_type='switch', __$labels__} > 0)",
       "display_name": "SFP RX Power",
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Optical module description"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the weakest SFP/optical receive power across the device's optical modules, in dBm (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalRxPower). The device reports µW; Telegraf normalizes to centi-dBm (dBm*100) and invalid/no-module readings (<=0 µW) are dropped. Taken as the minimum (weakest signal) per device because a dropping RX level is the earliest sign of fiber attenuation, dirty optics, or a failing peer transmitter."
+      "description": "Per-module SFP/optical receive power in dBm (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalRxPower). The device reports µW; Telegraf stores raw µW and this query converts with 10*log10(µW/1000), dropping <=0 (invalid/no-module). Dimension descr is entPhysicalName. A dropping RX level is an early sign of fiber attenuation, dirty optics, or a failing peer transmitter."
     },
     {
       "metric_group": "Hardware Status",
       "name": "device_optical_tx_power",
-      "query": "min((device_optical_tx_power{instance_type='switch', __$labels__} != -10000 != -2147483648) / 100) by (instance_id)",
+      "query": "10 * log10(device_optical_tx_power{instance_type='switch', __$labels__} / 1000) and (device_optical_tx_power{instance_type='switch', __$labels__} > 0)",
       "display_name": "SFP TX Power",
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Optical module description"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the weakest SFP/optical transmit power across the device's optical modules, in dBm (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalTxPower). The device reports µW; Telegraf normalizes to centi-dBm (dBm*100) and invalid/no-module readings (<=0 µW) are dropped. Taken as the minimum per device; an abnormally low TX level indicates a failing laser/optic rather than fiber attenuation alone."
+      "description": "Per-module SFP/optical transmit power in dBm (HUAWEI-ENTITY-EXTENT-MIB hwEntityOpticalTxPower). The device reports µW; Telegraf stores raw µW and this query converts with 10*log10(µW/1000), dropping <=0 (invalid/no-module). Dimension descr is entPhysicalName. An abnormally low TX level indicates a failing laser/optic rather than fiber attenuation alone."
     },
     {
       "metric_group": "Traffic",

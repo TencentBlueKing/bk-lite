@@ -28,7 +28,7 @@
 ## ansible-executor —— playbook 执行【已实现/已存在】
 - 运行时：Python + 内嵌 Ansible（`main.py`）。
 - 通信：NATS（`AnsibleNATSService`，request/response）。
-- 能力：adhoc / playbook 执行，结果经 NATS 回调 job_mgmt。
+- 能力：adhoc / playbook 执行，结果经 NATS 回调 job_mgmt。Server 下发的 callback context（固定 caller、execution、attempt、随机 token）由 Executor 原样附加到完成回调及可恢复重试；JetStream 任务/重试消息、查询态 SQLite 与最终 DLQ 只保留脱敏 token，执行所需明文仅短暂存在于进程内存与本地独立加密的 callback secret，回调成功或进入最终 DLQ 后清除。
 
 ## fusion-collector —— sidecar 统一采集器【已实现/已存在】
 - 形态：配置 + 容器（`agent/sidecar.yml`、`agent/Dockerfile`、`telegraf/telegraf.conf`）。
@@ -40,6 +40,13 @@
 - 通信：NATS JetStream Object Store（大文件传输）+ HTTP 回调。
 - 能力：下载/校验/安装/升级 sidecar 包，事件流上报进度。
 
+### Windows 事务式安装与升级【已实现】
+- GUI 安装器将共享 worker 解压至 NSIS 插件目录后运行，与目标安装目录隔离；该边界允许 worker 在不占用目标目录的前提下完成目录切换与激活。
+- 空的目标目录按首次安装处理；已有安装则按事务方式暂存新包、激活并在中断或新服务启动失败时恢复上一版本。运行时目录（缓存、日志和生成文件）在升级中保留。
+- 升级会保留既有卸载入口与图标；若新包已提供同名文件，则以新包为准。远程 bootstrap 直接运行 worker，首次安装不会生成 NSIS 卸载器；GUI 首次激活完成后再由 NSIS 写入卸载器、图标及系统卸载登记。
+
+> 证据来源：agents/sidecar-installer/setup.nsi:3-5,187-203,224-238；agents/sidecar-installer/setup-worker.go:1297-1303,1568-1572,1712-1766；agents/sidecar-installer/setup-worker_test.go:747-850　|　同步基线：d2769559　|　【已实现】
+
 ## webhookd —— webhook 接入【已实现/已存在】
 - 形态：配置模板（K8s 清单 `bk-lite-{log,metric,resource}-collector.yaml`）。
 - 能力：接收外部 webhook/告警的 HTTP 端点；`bk-lite-resource-collector.yaml` 部署 kube-state-metrics 相关资源采集能力。
@@ -48,6 +55,7 @@
 - `[agents#20260701-031]` 移除 Stargazer `ip_scan` NATS handler 已落地结论：当前 `service/nats_server.py` 注册列表与 `plugins/inputs/ip_discovery/` 目录均不匹配（grep `ip_scan` 无命中），`plugins/inputs/ip/` 下的 IP 发现扫描文件是否经 NATS handler 暴露尚待确认。
 - `[agents#20260701-032]` 配置采集插件矩阵更新为 19 个 `*_info.py`，并修正华为云、VMware 等插件路径为当前 `hwcloud`、`vmware_vc` 目录。
 - `[agents#20260701-033]` 将 webhookd 资源采集 Kubernetes 清单纳入形态说明。
+- `[agents#20260810-034]` ansible-executor 完成回调透传 Server 签发的 execution/attempt/token 身份，并在本地查询态与最终 DLQ 脱敏 token。
 
 ## 风险 / 待确认
 - 各 agent 与后端的 NATS 主题命名约定的完整清单【推断，部分已知】。

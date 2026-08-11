@@ -433,6 +433,19 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     async (msg: string, images?: UploadFile[]) => {
       if (pendingChoice && msg.trim() && token) {
         const answer = msg.trim();
+        // 乐观关闭，避免后台慢时用户重复发送
+        updateMessages(prev => prev.map(message => {
+          if (!message.userChoiceRequests) return message;
+          return {
+            ...message,
+            userChoiceRequests: message.userChoiceRequests.map(request =>
+              request.choice_id === pendingChoice.choice_id
+                ? { ...request, status: 'submitted' as const, selected: [answer] }
+                : request
+            ),
+          };
+        }));
+        const hideLoading = antMessage.loading(t('chat.choiceSubmitting') || '正在提交选择...', 0);
         try {
           await postUserChoice(token, {
             execution_id: pendingChoice.execution_id,
@@ -440,19 +453,21 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             choice_id: pendingChoice.choice_id,
             selected: [answer],
           });
+        } catch {
+          antMessage.error(t('chat.choiceSubmitFailed'));
           updateMessages(prev => prev.map(message => {
             if (!message.userChoiceRequests) return message;
             return {
               ...message,
               userChoiceRequests: message.userChoiceRequests.map(request =>
                 request.choice_id === pendingChoice.choice_id
-                  ? { ...request, status: 'submitted' as const, selected: [answer] }
+                  ? { ...request, status: 'pending' as const, selected: undefined }
                   : request
               ),
             };
           }));
-        } catch {
-          antMessage.error(t('chat.choiceSubmitFailed'));
+        } finally {
+          hideLoading();
         }
         return;
       }
@@ -557,11 +572,13 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     }));
   }, [updateMessages]);
 
-  const handleUserChoiceSubmit = useCallback((choiceId: string, status: 'submitted' | 'timeout', selected: string[]) => {
+  const handleUserChoiceSubmit = useCallback((choiceId: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => {
     updateMessages(prev => prev.map(msg => {
       if (!msg.userChoiceRequests) return msg;
       const updated = msg.userChoiceRequests.map(req =>
-        req.choice_id === choiceId ? { ...req, status, selected } : req
+        req.choice_id === choiceId
+          ? { ...req, status, selected: status === 'pending' ? undefined : selected }
+          : req
       );
       return { ...msg, userChoiceRequests: updated };
     }));
