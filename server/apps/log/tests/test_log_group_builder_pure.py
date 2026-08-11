@@ -87,7 +87,6 @@ def test_json_to_logsql_not_contains():
         {"field": "cluster", "op": "startswith", "value": "-prod"},
         {"field": "cluster", "op": "endswith", "value": "-prod"},
         {"field": "cluster", "op": "startswith", "value": "@prod"},
-        {"field": "@timestamp", "op": "==", "value": "prod"},
     ],
 )
 def test_json_to_logsql_rejects_values_that_can_change_query_structure(condition):
@@ -101,6 +100,15 @@ def test_json_to_logsql_legacy_mode_preserves_previous_unescaped_expression():
     expression = LogGroupQueryBuilder.json_to_logsql_expression(rule, preserve_legacy_structure=True)
 
     assert expression == 'cluster:"prod") OR (*)"'
+
+
+@pytest.mark.parametrize("field", ["@timestamp", "http/request"])
+def test_json_to_logsql_quotes_supported_special_field_names(field):
+    rule = {"conditions": [{"field": field, "op": "==", "value": "prod"}]}
+
+    expression = LogGroupQueryBuilder.json_to_logsql_expression(rule)
+
+    assert expression == f'"{field}":"prod"'
 
 
 def test_json_to_logsql_unsupported_op_raises():

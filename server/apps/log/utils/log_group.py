@@ -17,7 +17,8 @@ class LogGroupQueryBuilder:
     MODE_LEGACY_EMPTY_RULE = "legacy_empty_rule"
     MODE_INVALID = "invalid"
     SUPPORTED_OPERATIONS = frozenset({"==", "!=", "contains", "!contains", "startswith", "endswith"})
-    SAFE_FIELD_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
+    ACCEPTED_FIELD_PATTERN = re.compile(r"^[A-Za-z_@][A-Za-z0-9_.@/-]*$")
+    RAW_FIELD_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
     UNSAFE_QUOTED_VALUE_PATTERN = re.compile(r'["\\\x00-\x1f\x7f]')
     SAFE_WILDCARD_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 
@@ -63,7 +64,7 @@ class LogGroupQueryBuilder:
                 raise ValueError("Rule condition op is unsupported")
             if condition["value"] is None or isinstance(condition["value"], (dict, list)):
                 raise ValueError("Rule condition value must be a scalar")
-            if not cls.SAFE_FIELD_PATTERN.fullmatch(condition["field"]):
+            if not cls.ACCEPTED_FIELD_PATTERN.fullmatch(condition["field"]):
                 raise ValueError("Rule condition field contains unsupported LogsQL syntax")
 
             value_text = str(condition["value"])
@@ -119,7 +120,7 @@ class LogGroupQueryBuilder:
     @classmethod
     def _encode_logsql_field(cls, field):
         """把字段名编码为 LogsQL 字段标识符，防止字段名改变查询结构。"""
-        if cls.SAFE_FIELD_PATTERN.fullmatch(field):
+        if cls.RAW_FIELD_PATTERN.fullmatch(field):
             return field
         return cls._encode_logsql_string(field)
 

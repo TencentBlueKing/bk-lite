@@ -47,7 +47,6 @@ def test_serializer_rejects_non_object_rule():
         [{"field": "cluster", "op": "startswith", "value": "-prod"}],
         [{"field": "cluster", "op": "endswith", "value": "-prod"}],
         [{"field": "cluster", "op": "startswith", "value": "@prod"}],
-        [{"field": "@timestamp", "op": "==", "value": "prod"}],
     ],
 )
 def test_serializer_rejects_malformed_rule_conditions(conditions):
@@ -63,6 +62,8 @@ def test_serializer_rejects_malformed_rule_conditions(conditions):
         {"conditions": []},
         {"mode": "and", "conditions": [{"field": "count", "op": "==", "value": 1}]},
         {"mode": "OR", "conditions": [{"field": "enabled", "op": "!=", "value": False}]},
+        {"mode": "AND", "conditions": [{"field": "@timestamp", "op": "==", "value": "2026-08-11"}]},
+        {"mode": "AND", "conditions": [{"field": "http/request", "op": "==", "value": "ok"}]},
     ],
 )
 def test_serializer_accepts_supported_or_default_rule_mode(rule):
