@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Popup } from 'antd-mobile';
 import { LeftOutline, RightOutline } from 'antd-mobile-icons';
 import { MobileResult, MobileSkeleton } from '@/components/mobile-feedback';
 import { useAuth } from '@/context/auth';
 import { useTranslation } from '@/utils/i18n';
 import { getMonitorUnitList, queryMetricRange } from './adapter';
+import type { GapInterval } from './gap-intervals';
 import MetricSheetEcharts from './metric-sheet-echarts';
 import { buildMetricQuery, metricSeriesPoints, type MonitorMetric } from './model';
 import { resolveMonitorUnitLabel } from './unit-label';
@@ -28,11 +29,13 @@ function MetricSheetPane({
   idValues,
   rangeMinutes,
   interval,
+  onUnitChange,
 }: {
   metric: MonitorMetric;
   idValues: string[];
   rangeMinutes: number;
   interval: number | null;
+  onUnitChange?: (unit: string) => void;
 }) {
   const { t } = useTranslation();
   const { userInfo } = useAuth();
@@ -43,6 +46,8 @@ function MetricSheetPane({
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [unit, setUnit] = useState(metric.unit);
   const [series, setSeries] = useState<ReturnType<typeof metricSeriesPoints>>([]);
+  const [gaps, setGaps] = useState<GapInterval[]>([]);
+  const [windowMs, setWindowMs] = useState<{ startMs: number; endMs: number } | null>(null);
   const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
@@ -52,14 +57,17 @@ function MetricSheetPane({
       .then((result) => {
         if (controller.signal.aborted) return;
         setSeries(metricSeriesPoints(result));
+        setGaps(result.gaps);
+        setWindowMs({ startMs: result.startMs, endMs: result.endMs });
         setUnit(result.unit);
+        onUnitChange?.(result.unit);
         setStatus('ready');
       })
       .catch((error: unknown) => {
         if (error instanceof Error && error.name !== 'AbortError') setStatus('error');
       });
     return () => controller.abort();
-  }, [idValues, interval, metric, rangeMinutes, retryToken]);
+  }, [idValues, interval, metric, onUnitChange, rangeMinutes, retryToken]);
 
   if (status === 'loading') {
     return <MobileSkeleton label={t('common.loading')} variant="metrics" rows={1} compact />;
@@ -77,7 +85,7 @@ function MetricSheetPane({
       </div>
     );
   }
-  if (!series.length) {
+  if (!series.length || !windowMs) {
     return (
       <div className={styles.metricSheetEmptyWrap}>
         <MobileResult kind="empty" title={t('common.noData')} compact />
@@ -90,8 +98,10 @@ function MetricSheetPane({
       <div className={styles.metricSheetChartWrap}>
         <MetricSheetEcharts
           series={series}
+          gaps={gaps}
           unit={unit}
-          rangeMinutes={rangeMinutes}
+          startMs={windowMs.startMs}
+          endMs={windowMs.endMs}
           preferences={preferences}
         />
       </div>
@@ -119,6 +129,13 @@ export default function MetricChartSheet({
   const canPrev = activeIndex > 0;
   const canNext = activeIndex < metrics.length - 1;
   const [unitList, setUnitList] = useState<Awaited<ReturnType<typeof getMonitorUnitList>>>([]);
+  const [displayUnits, setDisplayUnits] = useState<Record<number, string>>({});
+  const handleUnitChange = useCallback((unit: string) => {
+    if (!metric) return;
+    setDisplayUnits((current) => (
+      current[metric.id] === unit ? current : { ...current, [metric.id]: unit }
+    ));
+  }, [metric]);
 
   useEffect(() => {
     if (!open) return;
@@ -128,7 +145,7 @@ export default function MetricChartSheet({
   }, [open]);
 
   const sheetUnitLabel = metric
-    ? resolveMonitorUnitLabel(metric.unit, undefined, unitList)
+    ? resolveMonitorUnitLabel(metric.unit, displayUnits[metric.id], unitList)
     : '';
 
   return (
@@ -189,6 +206,7 @@ export default function MetricChartSheet({
               idValues={idValues}
               rangeMinutes={rangeMinutes}
               interval={interval}
+              onUnitChange={handleUnitChange}
             />
           </div>
         </div>

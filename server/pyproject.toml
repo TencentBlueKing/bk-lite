@@ -151,6 +151,7 @@ opspilot = [
 [dependency-groups]
 dev = [
     "factory-boy>=3.3.3",
+    "opentelemetry-exporter-otlp-proto-http==1.37.0",
     "pytest-bdd>=8.1.0",
 ]
 

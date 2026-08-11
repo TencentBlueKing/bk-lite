@@ -598,7 +598,10 @@ export const getInstallerFailureSuggestionByType = (
 export const getInstallerSummaryGuidance = (
   t: TranslationFunction,
   summary?: InstallerEventSummary | null,
-  options?: { suppressNoInstallerEvents?: boolean }
+  options?: {
+    suppressNoInstallerEvents?: boolean;
+    suppressIncompleteWhenFailedStep?: boolean;
+  }
 ) => {
   const state = normalizeText(summary?.state);
   const guidanceKeyMap: Record<string, string> = {
@@ -619,6 +622,19 @@ export const getInstallerSummaryGuidance = (
     duplicated_events:
       'node-manager.cloudregion.node.installerSummaryDuplicatedEvents'
   };
+
+  // When a concrete installer step already failed, "incomplete events" is just
+  // telemetry incompleteness and should not replace the step-level suggestion.
+  if (
+    options?.suppressIncompleteWhenFailedStep &&
+    (state === 'incomplete_installer_events' ||
+      summary?.anomalies?.includes('incomplete_installer_events')) &&
+    summary?.steps?.some((step) =>
+      ['error', 'timeout'].includes(step.status || '')
+    )
+  ) {
+    return null;
+  }
 
   // Bootstrap/WinRM failures happen before installer events exist. In that case
   // "no installer events" is expected noise and must not override typed guidance.
@@ -695,13 +711,21 @@ export const getInstallerFailureGuidance = (
       ? getInstallerFailureSuggestion(t, rawStep)
       : null;
 
-  const reason = normalizeText(
-    typedReason ||
-      failure?.summary ||
-      failure?.message ||
+  // Prefer concrete runtime/installer messages over the generic "unknown" typed
+  // reason so pages can show install.sh / executor output when available.
+  const concreteReason = normalizeText(
+    failure?.message ||
       failedStep?.details?.error ||
       failedStep?.message ||
+      failure?.raw_error ||
       result?.installer_progress?.current_message ||
+      null
+  );
+  const reason = normalizeText(
+    (failure?.type && failure.type !== 'unknown' ? typedReason : null) ||
+      concreteReason ||
+      typedReason ||
+      failure?.summary ||
       null
   );
 

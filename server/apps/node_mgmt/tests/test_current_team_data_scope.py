@@ -1258,7 +1258,7 @@ def test_deleted_controller_task_snapshot_rejects_other_task_owner():
 
 
 @pytest.mark.django_db
-def test_deleted_legacy_snapshot_without_team_is_visible_only_to_superuser():
+def test_deleted_legacy_snapshot_without_team_is_visible_to_owner_and_superuser():
     region = _region("controller-deleted-legacy-snapshot")
     node = _node(region, "controller-deleted-legacy-node", 1)
     task = ControllerTask.objects.create(
@@ -1290,10 +1290,20 @@ def test_deleted_legacy_snapshot_without_team_is_visible_only_to_superuser():
         "domain": "domain.com",
     }
 
-    ordinary_data = InstallerService.install_controller_nodes(
+    owner_data = InstallerService.install_controller_nodes(
         task.id,
         authorized_nodes=Node.objects.none(),
         scope=SimpleNamespace(**base_scope, is_superuser=False),
+    )
+    outsider_data = InstallerService.install_controller_nodes(
+        task.id,
+        authorized_nodes=Node.objects.none(),
+        scope=SimpleNamespace(
+            data_team_ids=frozenset({1}),
+            username="other",
+            domain="domain.com",
+            is_superuser=False,
+        ),
     )
     superuser_data = InstallerService.install_controller_nodes(
         task.id,
@@ -1301,7 +1311,8 @@ def test_deleted_legacy_snapshot_without_team_is_visible_only_to_superuser():
         scope=SimpleNamespace(**base_scope, is_superuser=True),
     )
 
-    assert ordinary_data == []
+    assert [item["task_node_id"] for item in owner_data] == [task_node.id]
+    assert outsider_data == []
     assert [item["task_node_id"] for item in superuser_data] == [task_node.id]
 
 
@@ -1343,6 +1354,48 @@ def test_legacy_controller_task_snapshot_rejects_any_noncanonical_organization(
     )
 
     assert task_nodes == []
+
+
+@pytest.mark.django_db
+def test_bulk_created_controller_task_snapshot_rejects_noncanonical_organization():
+    region = _region("controller-task-invalid-bulk-snapshot")
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="install",
+        status="running",
+        work_node="worker",
+        package_version_id=1,
+        created_by="admin",
+        updated_by="admin",
+    )
+    ControllerTaskNode.objects.bulk_create(
+        [
+            ControllerTaskNode(
+                task=task,
+                node_id="",
+                ip="10.0.2.2",
+                node_name="legacy-invalid-bulk",
+                os="linux",
+                organizations=[1.0],
+                port=22,
+                username="root",
+                password="",
+                status="waiting",
+            )
+        ]
+    )
+
+    task_node = ControllerTaskNode.objects.get(task=task, ip="10.0.2.2")
+    assert task_node.organizations == []
+
+    ControllerTaskNode.objects.filter(pk=task_node.pk).update(organizations=[1.0])
+    task_node.refresh_from_db()
+    assert task_node.organizations == []
+
+    task_node.organizations = [1.0]
+    ControllerTaskNode.objects.bulk_update([task_node], ["organizations"])
+    task_node.refresh_from_db()
+    assert task_node.organizations == []
 
 
 @pytest.mark.django_db

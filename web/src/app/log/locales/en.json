@@ -523,7 +523,7 @@
       "fileIntegrityRecursiveHint": "Whether to recursively monitor files in subdirectories"
     },
     "search": {
-      "enableScrolling": "Enable Auto-scrolling",
+      "resumeLogs": "Resume logs",
       "histogram": "Query Histogram",
       "selectGroup": "Please select the group",
       "total": "Total Number of Logs",
@@ -532,7 +532,7 @@
       "noMatchValues": "No matching values",
       "clearLogs": "Clear Logs",
       "list": "List",
-      "stopScrolling": "Disable Auto-scrolling",
+      "pauseLogs": "Pause logs",
       "addToQuery": "Add to query statement",
       "loadConditions": "Load Conditions",
       "searchPlaceHolder": "Enter your search query here and press Enter to search",

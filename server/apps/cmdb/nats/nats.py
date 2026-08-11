@@ -10,7 +10,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
-from django.db.models.functions import TruncDate, TruncHour, TruncMonth, TruncWeek
+from django.db.models.functions import TruncDate, TruncHour, TruncMinute, TruncMonth, TruncWeek
 from django.utils import timezone
 
 import nats_client
@@ -51,11 +51,13 @@ from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_utc
+from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 _CHANGE_TREND_MAX_SPAN_SECONDS = {
+    "minute": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MINUTE", str(7 * 24 * 3600))),
     "hour": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_HOUR", str(90 * 24 * 3600))),
     "day": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_DAY", str(730 * 24 * 3600))),
     "week": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_WEEK", str(730 * 24 * 3600))),
@@ -1164,6 +1166,7 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
 
 def _get_trunc_func_and_format(group_by):
     mapping = {
+        "minute": (TruncMinute, "%Y-%m-%d %H:%M"),
         "hour": (TruncHour, "%Y-%m-%d %H:00"),
         "day": (TruncDate, "%Y-%m-%d"),
         "week": (TruncWeek, "%Y-%m-%d"),
@@ -1214,7 +1217,12 @@ def _format_period_value(value, target_tz):
 
 def _generate_time_periods(start_dt, end_dt, group_by, target_tz):
     periods = []
-    if group_by == "hour":
+    if group_by == "minute":
+        current = start_dt.replace(second=0, microsecond=0)
+        while current < end_dt:
+            periods.append(_format_period_value(current, target_tz))
+            current += datetime.timedelta(minutes=1)
+    elif group_by == "hour":
         current = start_dt.replace(minute=0, second=0, microsecond=0)
         while current < end_dt:
             periods.append(_format_period_value(current, target_tz))
@@ -1255,36 +1263,16 @@ def get_room_list(user_info=None, **kwargs):
 
 
 @nats_client.register
-def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, **kwargs):
+def get_change_trend(time=None, model_id=None, user_info=None, **kwargs):
     """
-    获取 CMDB 变更趋势数据
+    获取 CMDB 变更趋势数据。
 
-    Args:
-        time: [start_time, end_time] - 带 Z 或显式 UTC 偏移的 RFC3339 时间范围
-        group_by: "day" | "hour" | "week" | "month" - 分组方式
-        model_id: str | None - 可选，按模型过滤
-        user_info: { team: int, user: str }
-
-    Returns:
-        {
-            "result": True,
-            "data": {
-                "create": [["2026-04-15", 10], ["2026-04-16", 8]],
-                "update": [["2026-04-15", 25], ["2026-04-16", 30]],
-                "delete": [["2026-04-15", 2], ["2026-04-16", 1]]
-            },
-            "message": ""
-        }
+    聚合粒度按时间窗自动推导：
+    ≤6h minute / ≤7d hour / ≤90d day / ≤2y week / 更长 month。
     """
+    kwargs.pop("group_by", None)
     if not time or len(time) != 2:
         return {"result": False, "data": {}, "message": "time parameter is required as [start_time, end_time]"}
-
-    if group_by not in _CHANGE_TREND_MAX_SPAN_SECONDS:
-        return {
-            "result": False,
-            "data": {},
-            "message": "group_by must be one of: hour, day, week, month",
-        }
 
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
     start_time, end_time = time
@@ -1303,6 +1291,7 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
     if aware_start >= aware_end:
         return {"result": False, "data": {}, "message": "start_time must be earlier than end_time"}
 
+    group_by = resolve_trend_group_by_from_range(aware_start, aware_end)
     span_seconds = (aware_end - aware_start).total_seconds()
     max_span = _CHANGE_TREND_MAX_SPAN_SECONDS[group_by]
     if span_seconds > max_span:
@@ -1315,9 +1304,7 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
         return {
             "result": False,
             "data": {},
-            "message": (
-                f"Time range exceeds the maximum limit for {group_by} grouping " f"({max_span} seconds). Use a shorter range or coarser grouping."
-            ),
+            "message": (f"Time range exceeds the maximum limit for {group_by} grouping " f"({max_span} seconds). Use a shorter range."),
         }
 
     trunc_func, _ = _get_trunc_func_and_format(group_by)

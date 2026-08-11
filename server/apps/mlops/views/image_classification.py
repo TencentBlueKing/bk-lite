@@ -1,47 +1,49 @@
 import os
 
-from config.drf.viewsets import ModelViewSet
-
-from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRunStatus
-from apps.core.logger import mlops_logger as logger
-from apps.mlops.models.image_classification import *
-from apps.mlops.models import AlgorithmConfig
-from apps.mlops.serializers.image_classification import *
-from apps.mlops.serializers.algorithm_config import (
-    AlgorithmConfigSerializer,
-    AlgorithmConfigListSerializer,
-)
-from apps.mlops.filters.image_classification import *
-from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
-from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
-from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
-from config.drf.pagination import CustomPageNumberPagination
-from apps.core.decorators.api_permission import HasPermission
-from rest_framework import status
-from rest_framework.response import Response
-from apps.mlops.utils.i18n import mlops_message
-from rest_framework.decorators import action
-from django.db import transaction
-from django.http import FileResponse
-from apps.mlops.utils import mlflow_service
-from apps.mlops.utils.validators import validate_serving_status_change
-from apps.mlops.predict_url_builder import build_predict_url
-from apps.mlops.utils.webhook_client import (
-    WebhookClient,
-    WebhookError,
-    WebhookConnectionError,
-    WebhookTimeoutError,
-)
-from apps.mlops.services import (
-    get_image_by_prefix,
-    get_mlflow_train_config,
-    get_mlflow_tracking_uri,
-    ConfigurationError,
-)
-import os
-import pandas as pd
 import numpy as np
+import pandas as pd
 import requests
+from django.http import FileResponse
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import mlops_logger as logger
+from apps.mlops.constants import DatasetReleaseStatus, TrainJobStatus
+from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+from apps.mlops.filters.image_classification import (
+    ImageClassificationDatasetFilter,
+    ImageClassificationDatasetReleaseFilter,
+    ImageClassificationServingFilter,
+    ImageClassificationTrainDataFilter,
+    ImageClassificationTrainJobFilter,
+)
+from apps.mlops.models import AlgorithmConfig
+from apps.mlops.models.image_classification import (
+    ImageClassificationDataset,
+    ImageClassificationDatasetRelease,
+    ImageClassificationServing,
+    ImageClassificationTrainData,
+    ImageClassificationTrainJob,
+)
+from apps.mlops.predict_url_builder import build_predict_url
+from apps.mlops.serializers.algorithm_config import AlgorithmConfigListSerializer, AlgorithmConfigSerializer
+from apps.mlops.serializers.image_classification import (
+    ImageClassificationDatasetReleaseSerializer,
+    ImageClassificationDatasetSerializer,
+    ImageClassificationServingSerializer,
+    ImageClassificationTrainDataSerializer,
+    ImageClassificationTrainJobSerializer,
+)
+from apps.mlops.services import ConfigurationError, get_image_by_prefix, get_mlflow_tracking_uri, get_mlflow_train_config
+from apps.mlops.utils import mlflow_service
+from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
+from apps.mlops.utils.i18n import mlops_message
+from apps.mlops.utils.webhook_client import WebhookClient, WebhookConnectionError, WebhookError, WebhookTimeoutError
+from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
+from config.drf.pagination import CustomPageNumberPagination
+from config.drf.viewsets import ModelViewSet
 
 
 class ImageClassificationDatasetViewSet(TeamModelViewSet):
@@ -1249,7 +1251,9 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                 return Response({"error": mlops_message(request, "error.predict_input_required", field="images")}, status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(images, list):
-                return Response({"error": mlops_message(request, "error.predict_input_must_be_array", field="images")}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"error": mlops_message(request, "error.predict_input_must_be_array", field="images")}, status=status.HTTP_400_BAD_REQUEST
+                )
 
             max_image_batch_size = int(os.getenv("MLOPS_PREDICT_MAX_IMAGE_BATCH_SIZE", "100"))
             if len(images) > max_image_batch_size:
@@ -1272,7 +1276,7 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                 )
             except ValueError as e:
                 return Response(
-                    {"error": str(e)},
+                    {"error": mlops_message(request, str(e))},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1422,4 +1426,6 @@ class ImageClassificationAlgorithmConfigViewSet(ModelViewSet):
             config = AlgorithmConfig.objects.get(algorithm_type="image_classification", name=name, is_active=True)
             return Response({"image": config.image})
         except AlgorithmConfig.DoesNotExist:
-            return Response({"error": mlops_message(request, "error.algorithm_config_not_found", algorithm=f"image_classification/{name}")}, status=404)
+            return Response(
+                {"error": mlops_message(request, "error.algorithm_config_not_found", algorithm=f"image_classification/{name}")}, status=404
+            )

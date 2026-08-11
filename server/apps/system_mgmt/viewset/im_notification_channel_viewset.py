@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import OuterRef, Prefetch, Subquery
 from django.db.models.deletion import ProtectedError
 from django.http import JsonResponse
 from rest_framework.decorators import action
@@ -13,28 +13,21 @@ from apps.system_mgmt.serializers.im_notification_channel_serializer import (
     IMNotificationSyncRunSerializer,
     IMNotificationUserMappingSerializer,
 )
-from apps.system_mgmt.services.im_channel_access import (
-    can_access_im_channel,
-    filter_accessible_im_channels,
-    get_user_group_ids,
-)
-from apps.system_mgmt.services.im_notification_service import (
-    create_im_notification_sync_run,
-    send_im_notification,
-    send_im_notification_to_users,
-)
+from apps.system_mgmt.services.im_channel_access import can_access_im_channel, filter_accessible_im_channels, get_user_group_ids
+from apps.system_mgmt.services.im_notification_service import create_im_notification_sync_run, send_im_notification, send_im_notification_to_users
 from apps.system_mgmt.tasks import execute_im_notification_sync_run_task
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from config.drf.pagination import CustomPageNumberPagination
 
 
 class IMNotificationChannelViewSet(MaintainerViewSet):
+    latest_sync_run_id = IMNotificationSyncRun.objects.filter(channel_id=OuterRef("channel_id")).order_by("-started_at", "-id").values("id")[:1]
     queryset = (
         IMNotificationChannel.objects.select_related("integration_instance")
         .prefetch_related(
             Prefetch(
                 "sync_runs",
-                queryset=IMNotificationSyncRun.objects.order_by("-started_at", "-id")[:1],
+                queryset=IMNotificationSyncRun.objects.filter(id=Subquery(latest_sync_run_id)),
                 to_attr="_prefetched_latest_run",
             )
         )
@@ -53,11 +46,7 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
 
     def _validate_channel_permission(self, request, channel):
         if not can_access_im_channel(request.user, channel):
-            message = (
-                self.loader.get("error.no_permission_access_team", "无权访问该团队数据")
-                if self.loader
-                else "无权访问该团队数据"
-            )
+            message = self.loader.get("error.no_permission_access_team", "无权访问该团队数据") if self.loader else "无权访问该团队数据"
             return False, JsonResponse({"result": False, "message": message}, status=403)
         return True, None
 
@@ -80,11 +69,7 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
 
         invalid = set(normalized) - user_group_ids
         if invalid:
-            message = (
-                self.loader.get("error.no_permission_for_groups", "您没有以下组织的权限")
-                if self.loader
-                else "您没有以下组织的权限"
-            )
+            message = self.loader.get("error.no_permission_for_groups", "您没有以下组织的权限") if self.loader else "您没有以下组织的权限"
             return False, JsonResponse({"result": False, "message": message}, status=403)
         return True, None
 

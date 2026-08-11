@@ -8,13 +8,8 @@ from django_minio_backend import MinioBackend
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.patch_mgmt.constants import (
-    OSType,
-    PackageManagerType,
-    PackageStatus,
-    PatchSeverity,
-    PatchType,
-)
+from apps.core.utils.conditional_unique import ConditionalUniqueGuardQuerySet
+from apps.patch_mgmt.constants import OSType, PackageManagerType, PackageStatus, PatchSeverity, PatchType
 
 PATCH_PACKAGE_BUCKET = "patch-mgmt-packages"
 
@@ -35,12 +30,8 @@ class Patch(TimeInfo, MaintainerInfo):
     """
 
     title = models.CharField(max_length=512, verbose_name="标题")
-    os_type = models.CharField(
-        max_length=16, choices=OSType.CHOICES, db_index=True, verbose_name="OS类型"
-    )
-    patch_type = models.CharField(
-        max_length=16, choices=PatchType.CHOICES, default=PatchType.SECURITY, verbose_name="补丁类型"
-    )
+    os_type = models.CharField(max_length=16, choices=OSType.CHOICES, db_index=True, verbose_name="OS类型")
+    patch_type = models.CharField(max_length=16, choices=PatchType.CHOICES, default=PatchType.SECURITY, verbose_name="补丁类型")
     severity = models.CharField(
         max_length=16,
         choices=PatchSeverity.CHOICES,
@@ -98,6 +89,10 @@ class Patch(TimeInfo, MaintainerInfo):
         return self.title
 
 
+class WindowsPatchDetailQuerySet(ConditionalUniqueGuardQuerySet):
+    guard_rules = {"kb_number": ("kb_number_guard", lambda value: True if value else None)}
+
+
 class WindowsPatchDetail(models.Model):
     """Windows 补丁扩展 detail 表（与 Patch 1:1）"""
 
@@ -134,6 +129,9 @@ class WindowsPatchDetail(models.Model):
     package_extension = models.CharField(max_length=8, blank=True, default="", verbose_name="文件扩展名")
     package_error = models.TextField(blank=True, default="", verbose_name="文件处理错误")
     package_uploaded_at = models.DateTimeField(null=True, blank=True, verbose_name="文件上传完成时间")
+    kb_number_guard = models.BooleanField(null=True, default=None, editable=False)
+
+    objects = WindowsPatchDetailQuerySet.as_manager()
 
     class Meta:
         verbose_name = "Windows补丁详情"
@@ -144,8 +142,19 @@ class WindowsPatchDetail(models.Model):
                 fields=["kb_number"],
                 condition=~models.Q(kb_number=""),
                 name="patch_windows_unique_nonempty_kb",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["kb_number", "kb_number_guard"],
+                name="patch_windows_unique_nonempty_kb_guard",
+            ),
         ]
+
+    def save(self, *args, **kwargs):
+        self.kb_number_guard = True if self.kb_number else None
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "kb_number" in update_fields:
+            kwargs["update_fields"] = set(update_fields) | {"kb_number_guard"}
+        return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"[Windows] {self.patch.title}"

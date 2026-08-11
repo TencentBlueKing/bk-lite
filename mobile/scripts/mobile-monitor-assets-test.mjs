@@ -27,9 +27,8 @@ test('监控单位标签与 Web findUnitNameById 优先级一致', async () => {
 
   const card = await readProjectFile('src/features/monitor/metric-card.tsx');
   const sheet = await readProjectFile('src/features/monitor/metric-chart-sheet.tsx');
-  assert.match(card, /resolveMonitorUnitLabel\(metric\.unit,\s*undefined,\s*unitList\)/);
-  assert.match(sheet, /resolveMonitorUnitLabel\(metric\.unit,\s*undefined,\s*unitList\)/);
-  assert.doesNotMatch(card, /resolveMonitorUnitLabel\(metric\.unit,\s*unit,/);
+  assert.match(card, /resolveMonitorUnitLabel\(metric\.unit,\s*displayUnit,\s*unitList\)/);
+  assert.match(sheet, /resolveMonitorUnitLabel\(metric\.unit,\s*displayUnits\[metric\.id\],\s*unitList\)/);
 });
 
 test('列表未满一页时不展示「没有更多了」分页条', async () => {
@@ -75,13 +74,143 @@ test('监控指标查询严格转义实例值并只替换 Web labels 占位符',
   const { buildMetricQuery } = await loadModel('src/features/monitor/model.ts');
   const result = buildMetricQuery({ query: 'up{__$labels__}', instanceIdKeys: ['host'], id: 1 }, ['a.b"c']);
   assert.equal(result, 'up{host=~"a\\\\.b\\"c"}');
+
+  const adapter = await readProjectFile('src/features/monitor/adapter.ts');
+  assert.match(adapter, /query:\s*text\(item\.query\)/);
+  assert.doesNotMatch(adapter, /item\.view_query\s*\|\|\s*item\.query/);
 });
 
-test('实例列表按元数据顺序展示前三条摘要，空值保留为 null', async () => {
+test('监控详情兼容 Server 指标目录的分页响应', async () => {
+  const { monitorCatalogItems } = await loadModel('src/features/monitor/model.ts');
+  const items = [{ id: 1 }, { id: 2 }];
+  assert.deepEqual(monitorCatalogItems(items), items);
+  assert.deepEqual(monitorCatalogItems({ count: 2, items }), items);
+  assert.deepEqual(monitorCatalogItems({ count: 0, items: [] }), []);
+  assert.deepEqual(monitorCatalogItems({ count: 2, results: items }), []);
+
+  const adapter = await readProjectFile('src/features/monitor/adapter.ts');
+  assert.match(adapter, /monitorCatalogItems\(unwrap<unknown>\(groupRaw\)\)/);
+  assert.match(adapter, /monitorCatalogItems\(unwrap<unknown>\(metricRaw\)\)/);
+});
+
+test('监控曲线丢弃非有限值，缺口由 gaps 断线并保留连续段', async () => {
   const {
-    INSTANCE_LIST_SUMMARY_LIMIT,
+    chartDataToMetricSeries,
+    metricSeriesPoints,
+    metricSeriesToChartData,
+  } = await loadModel('src/features/monitor/model.ts');
+  const {
+    attachGapIntervals,
+    getChartDataWithGapBreaks,
+    getRenderedGapIntervals,
+  } = await loadModel('src/features/monitor/gap-intervals.ts');
+  const {
+    buildSeriesPath,
+    buildSeriesSinglePoint,
+    metricAxisTimeOptions,
+  } = await loadModel('src/features/monitor/metric-chart-utils.ts');
+
+  // 与 Web renderChart 一致：API null 不进入序列。
+  const series = metricSeriesPoints({
+    unit: 'percent',
+    startMs: 0,
+    endMs: 4_000,
+    gaps: [],
+    series: [{
+      metric: { instance_id: 'host-1' },
+      values: [[1, '1'], [2, null], [3, '3'], [4, '4']],
+    }],
+  });
+  assert.deepEqual(series[0].points, [[1, 1], [3, 3], [4, 4]]);
+
+  const gaps = [{
+    start: 1.5,
+    end: 2.5,
+    duration: 1,
+    series: [{ metric: { instance_id: 'host-1' }, missing_points: 1 }],
+  }];
+  const chartData = attachGapIntervals(metricSeriesToChartData(series), gaps);
+  const broken = getChartDataWithGapBreaks(chartData, gaps, [0, 4]);
+  const prepared = chartDataToMetricSeries(broken, series);
+  assert.ok(prepared[0].points.some((point) => point[1] === null), '缺口中点应注入 null 断线');
+  assert.ok(prepared[0].points.filter((point) => point[1] !== null).length >= 3);
+
+  const rendered = getRenderedGapIntervals(chartData, gaps, [0, 4]);
+  assert.equal(rendered.length, 1);
+  assert.ok(rendered[0].start >= 0 && rendered[0].end <= 4);
+
+  // 卡片 sparkline：只连有效点，单点打圆；详情主图不走孤立点打点。
+  const path = buildSeriesPath(series[0].points);
+  assert.equal((path.match(/M /g) || []).length, 1);
+  assert.equal((path.match(/L /g) || []).length, 2);
+  assert.deepEqual(buildSeriesSinglePoint([[1, 19]]), { cx: 50, cy: 18 });
+  assert.equal(buildSeriesSinglePoint(series[0].points), null);
+
+  // 常量序列应对齐 Web mini-trend：垂直居中，不贴底。
+  const flatPath = buildSeriesPath([[1, 0], [2, 0], [3, 0]]);
+  const flatYs = [...flatPath.matchAll(/[\d.]+ ([\d.]+)/g)].map((match) => Number(match[1]));
+  assert.ok(flatYs.length >= 2);
+  assert.ok(flatYs.every((y) => y > 10 && y < 24), `flat sparkline should be vertically centered, got y=${flatYs.join(',')}`);
+
+  // 完整时间窗下，靠后的数据应落在右侧（与 Web 7 天小图观感一致）。
+  const windowed = buildSeriesPath(
+    [[8, 10], [9, 20], [10, 15]],
+    100,
+    34,
+    6,
+    4,
+    { startMs: 0, endMs: 10_000 },
+  );
+  const windowXs = [...windowed.matchAll(/([\d.]+) [\d.]+/g)].map((match) => Number(match[1]));
+  assert.ok(windowXs[0] >= 70, `late data should sit on the right, got x=${windowXs.join(',')}`);
+
+  // 7 天窗 → MM-DD HH:mm；1 小时窗 → HH:mm:ss
+  assert.deepEqual(metricAxisTimeOptions(7 * 24 * 60 * 60 * 1000), {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+  assert.deepEqual(metricAxisTimeOptions(60 * 60 * 1000), {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+});
+
+test('监控 Y 轴 nice 刻度与 Web lineChart 对齐', async () => {
+  const {
+    buildMetricNiceAxis,
+    buildMetricYAxisDomain,
+    formatMetricAxisNumber,
+    getMetricNiceStep,
+  } = await loadModel('src/features/monitor/metric-chart-utils.ts');
+  assert.equal(getMetricNiceStep(3), 5);
+  assert.equal(getMetricNiceStep(0.7), 1);
+  assert.deepEqual(buildMetricYAxisDomain([0]), [0, 1]);
+  const padded = buildMetricYAxisDomain([20, 30]);
+  assert.ok(padded[0] <= 20);
+  assert.ok(padded[0] >= 0);
+  assert.ok(padded[1] >= 30);
+  const nice = buildMetricNiceAxis(padded, 3);
+  assert.equal(nice.ticks[0], nice.domain[0]);
+  assert.equal(nice.ticks[nice.ticks.length - 1], nice.domain[1]);
+  assert.ok(nice.interval > 0);
+  assert.equal(formatMetricAxisNumber(20), '20');
+  assert.equal(formatMetricAxisNumber(20.5), '20.5');
+});
+
+test('最终单位使用 query_range 响应，而不是指标定义的初始单位', async () => {
+  const [card, sheet] = await Promise.all([
+    readProjectFile('src/features/monitor/metric-card.tsx'),
+    readProjectFile('src/features/monitor/metric-chart-sheet.tsx'),
+  ]);
+  assert.match(card, /setDisplayUnit\(result\.unit\)/);
+  assert.match(card, /resolveMonitorUnitLabel\(metric\.unit,\s*displayUnit,\s*unitList\)/);
+  assert.match(sheet, /onUnitChange\?\.\(result\.unit\)/);
+  assert.match(sheet, /resolveMonitorUnitLabel\(metric\.unit,\s*displayUnits\[metric\.id\],\s*unitList\)/);
+});
+
+test('实例列表按元数据顺序展示全部指标列，空值保留为 null', async () => {
+  const {
     buildDisplayMetricUnitIndex,
     displayFieldKey,
+    formatMonitorTableMetricValue,
     instanceListSummaryEntries,
     instanceSummaryEntries,
     parseMonitorInstanceLookupHints,
@@ -90,13 +219,16 @@ test('实例列表按元数据顺序展示前三条摘要，空值保留为 null
   } = await loadModel('src/features/monitor/model.ts');
   assert.equal(parseMonitorInstanceLookupHints("('mobile-demo-host-01',)").name, 'mobile-demo-host-01');
   assert.deepEqual(parseMonitorInstanceLookupHints("('mobile-demo-host-01',)").idValues, ['mobile-demo-host-01']);
-  assert.equal(INSTANCE_LIST_SUMMARY_LIMIT, 3);
   assert.equal(resolveMonitorReportingStatus('normal'), 'normal');
   assert.equal(resolveMonitorReportingStatus('unavailable'), 'unavailable');
   assert.equal(resolveMonitorReportingStatus('offline'), 'unavailable');
   assert.equal(resolveMonitorReportingStatus(''), '');
   assert.equal(displayFieldKey('Host', 'cpu_usage'), 'Host::cpu_usage');
   assert.equal(displayFieldKey('Host', 'node_info', 'ip'), 'field::Host::node_info::ip');
+  assert.equal(formatMonitorTableMetricValue('32.926286000000005', '%', 'cpu_usage'), '32.93');
+  assert.equal(formatMonitorTableMetricValue('12.0', 'counts', 'request_count'), '12');
+  assert.equal(formatMonitorTableMetricValue('12.5', 'counts', 'cluster_node_count'), '12.5');
+  assert.equal(formatMonitorTableMetricValue('unknown', '%', 'cpu_usage'), 'unknown');
   const object = {
     displayFields: [
       {
@@ -138,13 +270,14 @@ test('实例列表按元数据顺序展示前三条摘要，空值保留为 null
     facts: {},
   };
   assert.deepEqual(instanceListSummaryEntries(object, instance), [
-    { label: 'CPU使用率', value: '12.5%' },
+    { label: 'CPU使用率', value: '12.50%' },
     { label: '内存使用率', value: null },
-    { label: '磁盘使用率', value: '70%' },
+    { label: '磁盘使用率', value: '70.00%' },
+    { label: 'IO等待', value: null },
   ]);
   assert.deepEqual(instanceSummaryEntries(object, instance, 4), [
-    { label: 'CPU使用率', value: '12.5%' },
-    { label: '磁盘使用率', value: '70%' },
+    { label: 'CPU使用率', value: '12.50%' },
+    { label: '磁盘使用率', value: '70.00%' },
   ]);
 
   const enumObject = {
@@ -170,7 +303,7 @@ test('实例列表按元数据顺序展示前三条摘要，空值保留为 null
     { label: '探测结果', value: '成功' },
   ]);
   assert.deepEqual(instanceListSummaryEntries(enumObject, enumInstance, 1), [
-    { label: '探测结果', value: '1' },
+    { label: '探测结果', value: '1.00' },
   ]);
 });
 
@@ -182,7 +315,7 @@ test('实例列表会拉取 display_fields 指标 unit 以映射枚举摘要', a
   assert.match(adapter, /listDisplayFieldMetrics/);
   assert.match(adapter, /name_in:\s*names\.join\(','\)/);
   assert.match(panel, /listDisplayFieldMetrics\(monitorObject\.id/);
-  assert.match(panel, /instanceListSummaryEntries\(monitorObject, instance, INSTANCE_LIST_SUMMARY_LIMIT, metricUnits\)/);
+  assert.match(panel, /instanceListSummaryEntries\(monitorObject, instance, undefined, metricUnits\)/);
 });
 
 test('实例列表面板把摘要指标放进表格列并支持横向滚动', async () => {
@@ -191,19 +324,20 @@ test('实例列表面板把摘要指标放进表格列并支持横向滚动', as
     readProjectFile('src/features/monitor/monitor.module.css'),
     readProjectFile('src/features/monitor/adapter.ts'),
   ]);
-  assert.match(panel, /instanceListSummaryEntries\(monitorObject, instance, INSTANCE_LIST_SUMMARY_LIMIT, metricUnits\)/);
+  assert.match(panel, /instanceListSummaryEntries\(monitorObject, instance, undefined, metricUnits\)/);
   assert.match(panel, /summaryFields\.map/);
   assert.match(panel, /columnReportTime|columnReportingStatus/);
   assert.match(panel, /resolveMonitorReportingStatus/);
   assert.match(panel, /monitor\.reportingStatus\./);
   assert.match(panel, /statusTag/);
   assert.doesNotMatch(panel, /sortMonitorInstances/);
-  // Web 列序：名称 → 上报时间 → 上报状态 → 摘要指标
+  // 运维阅读顺序：名称 → 上报状态 → 上报时间 → 全部 display_fields
   assert.match(
     panel,
-    /columnName[\s\S]*columnReportTime[\s\S]*columnReportingStatus[\s\S]*summaryFields\.map/,
+    /columnName[\s\S]*columnReportingStatus[\s\S]*columnReportTime[\s\S]*summaryFields\.map/,
   );
-  assert.match(panel, /INSTANCE_LIST_SUMMARY_LIMIT/);
+  assert.doesNotMatch(panel, /slice\(0,\s*INSTANCE_LIST_SUMMARY_LIMIT\)|INSTANCE_LIST_SUMMARY_LIMIT/);
+  assert.doesNotMatch(panel, /onTouchStart|onTouchEnd/);
   assert.match(panel, /data-instance-table-scroll/);
   assert.doesNotMatch(panel, /styles\.instanceMetrics/);
   assert.doesNotMatch(panel, /primaryField/);
@@ -215,6 +349,17 @@ test('实例列表面板把摘要指标放进表格列并支持横向滚动', as
   assert.match(panel, /instanceTableEmpty/);
   assert.match(panel, /instances\.length === 0[\s\S]*instanceTableEmpty[\s\S]*MobileResult/);
   assert.match(styles, /\.instanceTableEmpty\s*\{/);
+});
+
+test('最近查看的“昨天”按账号时区计算', async () => {
+  const { formatRecentViewTime } = await loadModel('src/features/monitor/model.ts');
+  const labels = { justNow: '刚刚', minutes: '{count}分钟前', hours: '{count}小时前', yesterday: '昨天' };
+  assert.equal(formatRecentViewTime(
+    '2026-08-10T15:30:00.000Z',
+    { locale: 'zh-CN', timezone: 'America/Los_Angeles' },
+    labels,
+    Date.parse('2026-08-11T16:30:00.000Z'),
+  ), '昨天');
 });
 
 test('最近查看默认 Tab 在前且详情成功后会记录浏览', async () => {
@@ -243,6 +388,8 @@ test('最近查看默认 Tab 在前且详情成功后会记录浏览', async () 
   assert.match(panel, /recentStatusText/);
   assert.match(panel, /recentMetaLine/);
   assert.match(panel, /recentViewedAt/);
+  assert.doesNotMatch(panel, /monitor\.viewedAtLabel/);
+  assert.match(panel, /monitor\.lastReportedLabel/);
   assert.match(panel, /size=\{26\}/);
   assert.match(styles, /\.recentRowIcon[\s\S]*?width:\s*26px/);
   assert.match(styles, /\.recentRow\s*\{[^}]*align-items:\s*start/s);
@@ -362,11 +509,41 @@ test('资产详情字段展示优先 *_display，不把组织/用户原始 ID �
   assert.equal(assetValueText(tag, [{ value: 'app:web' }], 'Yes', 'No', time), 'app:web');
 
   const file = { id: 'doc', name: '附件', type: 'attachment', option: null, order: 6 };
-  assert.equal(assetValueText(file, [{ name: 'report.pdf' }], 'Yes', 'No', time, 'report'), 'report');
-  assert.equal(assetValueText(file, [{ name: 'report.pdf' }], 'Yes', 'No', time), 'report.pdf');
+  assert.equal(assetValueText(file, [{ file_id: 'f1', file_name: 'report.pdf' }], 'Yes', 'No', time, 'wrong display'), 'report.pdf');
 
   assert.equal(assetValueText({ id: 'online', name: '在线', type: 'bool', option: null, order: 7 }, true, 'Yes', 'No', time), 'Yes');
+  assert.equal(assetValueText({ id: 'online', name: '在线', type: 'bool', option: null, order: 7 }, 'false', 'Yes', 'No', time), 'No');
   assert.equal(assetValueText({ id: 'ts', name: '时间', type: 'time', option: null, order: 8 }, '2026-01-01', 'Yes', 'No', time), 'T:2026-01-01');
+});
+
+test('资产表格、附件和图片保留结构化数据并复用 Web 文件直链接口', async () => {
+  const {
+    parseAssetFiles,
+    parseAssetTableColumns,
+    parseAssetTableRows,
+  } = await loadModel('src/features/assets/model.ts');
+  assert.deepEqual(parseAssetTableColumns([
+    { column_id: 'port', column_name: '端口', column_type: 'number', order: 2 },
+    { column_id: 'name', column_name: '名称', column_type: 'str', order: 1 },
+  ]).map((item) => item.id), ['name', 'port']);
+  assert.deepEqual(parseAssetTableRows('[{"name":"ssh","port":22}]'), [{ name: 'ssh', port: 22 }]);
+  assert.deepEqual(parseAssetFiles('[{"file_id":"f1","file_name":"a.png","file_size":12}]'), [
+    { fileId: 'f1', fileName: 'a.png', fileSize: 12, mimeType: '' },
+  ]);
+
+  const [adapter, detail, structured, styles] = await Promise.all([
+    readProjectFile('src/features/assets/adapter.ts'),
+    readProjectFile('src/app/assets/detail/page.tsx'),
+    readProjectFile('src/features/assets/asset-structured-field.tsx'),
+    readProjectFile('src/features/assets/assets.module.css'),
+  ]);
+  assert.match(adapter, /download_file\/\$\{encodeURIComponent\(fileId\)\}/);
+  assert.match(adapter, /download:\s*1/);
+  assert.match(detail, /AssetStructuredField/);
+  assert.match(structured, /parseAssetTableRows|parseAssetFiles/);
+  assert.match(structured, /getAssetFileUrl/);
+  assert.match(styles, /\.structuredTableScroll\s*\{[^}]*overflow-x:\s*auto/s);
+  assert.match(styles, /\.assetImagePreview\s*\{/);
 });
 
 test('资产列表卡片复用真实数据，不以模型首字母伪装图标', async () => {
@@ -457,7 +634,7 @@ test('监控根页「全部实例」直接展示实例面板，旧 instances 路
   assert.doesNotMatch(page, /objectTree|setExpanded|href=\{`\/monitor\/instances/);
   assert.match(panel, /listMonitorObjects/);
   assert.match(panel, /listMonitorInstances/);
-  assert.match(panel, /orderedMonitorObjects|shiftObject|objectChip/);
+  assert.match(panel, /orderedMonitorObjects|objectChip/);
   assert.match(panel, /objectChipCount/);
   assert.match(panel, /<Popup/);
   assert.match(panel, /instanceRow/);
@@ -490,8 +667,16 @@ test('监控根页「全部实例」直接展示实例面板，旧 instances 路
   assert.match(await readProjectFile('src/features/monitor/metric-chart-sheet.tsx'), /MetricSheetEcharts|metricSheetChartWrap/);
   assert.match(await readProjectFile('src/features/monitor/metric-chart-utils.ts'), /formatMetricDisplay|formatMetricValue\(value, unit\)/);
   assert.match(await readProjectFile('src/features/monitor/metric-sheet-echarts.tsx'), /echarts-setup|tooltip|axisPointer/);
-  assert.match(await readProjectFile('src/features/monitor/echarts-setup.ts'), /LineChart|CanvasRenderer|AxisPointerComponent/);
+  assert.match(await readProjectFile('src/features/monitor/metric-sheet-echarts.tsx'), /buildMetricNiceAxis|formatMetricAxisNumber|showSymbol:\s*false/);
+  assert.match(await readProjectFile('src/features/monitor/metric-sheet-echarts.tsx'), /min:\s*startMs|max:\s*endMs|getRenderedGapIntervals|GAP_FILL_COLOR|markArea/);
+  assert.match(await readProjectFile('src/features/monitor/metric-chart-utils.ts'), /export function buildMetricNiceAxis|export function formatMetricAxisNumber|export function metricAxisTimeOptions|export function buildSeriesSinglePoint/);
+  assert.match(await readProjectFile('src/features/monitor/echarts-setup.ts'), /LineChart|CanvasRenderer|AxisPointerComponent|MarkAreaComponent|MarkLineComponent/);
   assert.match(await readProjectFile('src/features/monitor/metric-chart-utils.ts'), /export function pickPointByRatio/);
+  assert.match(await readProjectFile('src/features/monitor/gap-intervals.ts'), /getChartDataWithGapBreaks|getRenderedGapIntervals|attachGapIntervals/);
+  assert.match(await readProjectFile('src/features/monitor/adapter.ts'), /gaps:|startMs:|endMs:|detect_gaps:\s*true/);
+  assert.match(await readProjectFile('src/features/monitor/metric-chart-sheet.tsx'), /setGaps\(result\.gaps\)|startMs=\{windowMs\.startMs\}/);
+  assert.match(await readProjectFile('src/features/monitor/metric-card.tsx'), /buildSeriesSinglePoint|chartPoint/);
+  assert.doesNotMatch(await readProjectFile('src/features/monitor/metric-sheet-echarts.tsx'), /metricPointSymbolSize/);
   assert.match(await readProjectFile('package.json'), /"echarts"/);
   const monitorStyles = await readProjectFile('src/features/monitor/monitor.module.css');
   assert.match(monitorStyles, /\.metricSheetChart\s*\{[^}]*min-height:\s*180px/s);
@@ -505,10 +690,30 @@ test('监控根页「全部实例」直接展示实例面板，旧 instances 路
 
 test('监控详情头部通过现有 list 接口回源状态与上报时间', async () => {
   const adapter = await readProjectFile('src/features/monitor/adapter.ts');
-  assert.match(adapter, /export async function getMonitorInstance/);
-  assert.match(adapter, /monitor_instance\/\$\{objectId\}\/list\//);
-  assert.match(adapter, /add_metrics:\s*hints\.addMetrics\s*\?\?\s*false/);
-  assert.match(adapter, /item\.id === instanceId/);
+  const fn = adapter.slice(
+    adapter.indexOf('export async function getMonitorInstance'),
+    adapter.indexOf('export async function listEffectivePlugins'),
+  );
+  assert.match(fn, /monitor_instance\/\$\{objectId\}\/list\//);
+  assert.match(fn, /instance_id:\s*instanceId/);
+  assert.match(fn, /add_metrics:\s*hints\.addMetrics\s*\?\?\s*false/);
+  assert.match(fn, /item\.id === instanceId/);
+  assert.doesNotMatch(fn, /name:\s*keyword/);
+  assert.doesNotMatch(fn, /parseMonitorInstanceLookupHints/);
+});
+
+test('监控详情只在实例确认存在后记录最近查看，不可用场景统一反馈', async () => {
+  const [detail, zh, en] = await Promise.all([
+    readProjectFile('src/app/monitor/detail/page.tsx'),
+    readProjectFile('src/locales/zh.json'),
+    readProjectFile('src/locales/en.json'),
+  ]);
+  assert.match(detail, /instanceResolved/);
+  assert.match(detail, /!instanceResolved[\s\S]*recordRecentView/);
+  assert.match(detail, /t\('monitor\.detailUnavailable'\)/);
+  assert.doesNotMatch(detail, /status === 'forbidden' \? t\('monitor\.detailForbidden'\)/);
+  assert.match(zh, /"实例不可用、已删除或当前无权查看"/);
+  assert.match(en, /"This instance is unavailable, deleted, or not accessible to you"/);
 });
 
 test('Mobile 搜索框高度走统一变量，业务页不再各自覆盖盒型', async () => {
@@ -582,12 +787,13 @@ test('Mobile 搜索框高度走统一变量，业务页不再各自覆盖盒型'
 });
 
 test('资产全部采用分类落地再进入分类内模型工作台，不用列表区横滑切模型', async () => {
-  const [page, panel, modelPage, styles, detail] = await Promise.all([
+  const [page, panel, modelPage, styles, detail, variables] = await Promise.all([
     readProjectFile('src/app/assets/page.tsx'),
     readProjectFile('src/features/assets/all-assets-panel.tsx'),
     readProjectFile('src/app/assets/model/page.tsx'),
     readProjectFile('src/features/assets/assets.module.css'),
     readProjectFile('src/app/assets/detail/page.tsx'),
+    readProjectFile('src/styles/variables.css'),
   ]);
 
   assert.match(page, /AllAssetsPanel/);
@@ -612,6 +818,10 @@ test('资产全部采用分类落地再进入分类内模型工作台，不用�
   assert.match(panel, /listAssetInstances/);
   assert.match(panel, /browseByCategory|categoryRow/);
   assert.match(panel, /categoryRowCount|categoryModelCount/);
+  assert.match(panel, /resolveAssetModelIconUrl/);
+  assert.match(panel, /group\.models\.slice\(0,\s*3\)/);
+  assert.match(panel, /categoryModelIcons|categoryModelIcon|categoryModelImage/);
+  assert.doesNotMatch(panel, /categoryModelOverflow|remainingModelCount/);
   assert.match(panel, /backToLanding/);
   assert.doesNotMatch(panel, /categoryContext|categorySwitch/);
   assert.match(panel, /selectClassificationTitle|pickClassification/);
@@ -637,18 +847,28 @@ test('资产全部采用分类落地再进入分类内模型工作台，不用�
   assert.match(detail, /classificationId/);
   assert.match(styles, /\.categoryRow\s*\{/);
   assert.match(styles, /\.categoryRowCount\s*\{/);
+  assert.match(styles, /\.categoryList\s*\{[^}]*display:\s*grid[^}]*gap:\s*8px/s);
+  assert.match(styles, /\.categoryRow\s*\{[^}]*min-height:\s*68px[^}]*grid-template-columns:\s*58px minmax\(0, 1fr\) auto 16px[^}]*gap:\s*10px[^}]*padding:\s*10px 12px[^}]*border-radius:\s*12px/s);
+  assert.match(styles, /\.categoryModelIcon\s*\{[^}]*width:\s*34px[^}]*height:\s*34px[^}]*border:\s*2px solid var\(--color-bg\)[^}]*border-radius:\s*9px/s);
+  assert.match(styles, /\.categoryModelIcon:nth-child\(2\)\s*\{\s*left:\s*10px/);
+  assert.match(styles, /\.categoryModelIcon:nth-child\(3\)\s*\{\s*left:\s*20px/);
+  assert.match(styles, /\.categoryModelImage\s*\{[^}]*width:\s*30px[^}]*height:\s*30px/s);
+  assert.match(styles, /\.categoryRowName\s*\{[^}]*font-size:\s*var\(--font-size-compact-title\)/s);
+  assert.match(styles, /\.categoryRowCountEmpty\s*\{/);
+  assert.equal((variables.match(/--font-size-compact-title:\s*14px/g) || []).length, 2);
   assert.match(styles, /\.allTabTitle\s*\{/);
   assert.match(styles, /\.allTabTitleChevron\s*\{/);
   assert.match(styles, /\.landingBody\s*\{/);
-  assert.doesNotMatch(styles, /\.categoryCard\s*\{[^}]*border-radius:\s*12px/s);
   assert.match(styles, /\.modelRail\s*\{/);
-  assert.match(styles, /\.neighborChip\s*\{[^}]*border-radius:\s*999px/s);
+  assert.match(styles, /\.neighborChip\s*\{[^}]*border-bottom:\s*2px\s+solid\s+transparent/s);
+  assert.match(styles, /\.neighborChipActive\s*\{[^}]*border-bottom-color:\s*var\(--color-primary\)/s);
   assert.match(styles, /\.neighborChipCount\s*\{/);
   assert.match(styles, /\.assetRow\s*\{[^}]*min-height:\s*var\(--mobile-table-row-min-height\)/s);
   assert.match(styles, /\.assetName\s*\{[^}]*font-size:\s*var\(--font-size-body\)/s);
-  assert.match(styles, /\.assetLead\s*\{[^}]*width:\s*28px/s);
+  assert.match(styles, /\.assetLead\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/s);
+  assert.match(styles, /\.assetLeadImage\s*\{[^}]*width:\s*30px[^}]*height:\s*30px/s);
   assert.match(styles, /\.assetMetaSwatch\s*\{/);
-  assert.match(styles, /\.assetLead\s*\{[^}]*border:\s*1px solid var\(--color-primary-border\)/s);
+  assert.match(styles, /\.assetLead\s*\{[^}]*background:\s*var\(--color-bg\)[^}]*border:\s*1px solid var\(--color-border-1\)[^}]*box-shadow:\s*var\(--shadow-composer\)/s);
   assert.doesNotMatch(styles, /\.assetTag\s*\{/);
   assert.match(styles, /\.assetMetaIp\s*\{[^}]*font-family:\s*ui-monospace/s);
   // 等宽 IP 与中文混排按基线对齐，色点保持居中
@@ -789,8 +1009,9 @@ test('资产列表卡片支持行内关注操作且不触发整卡跳转', async
   assert.match(component, /StarFill/);
   assert.match(component, /StarOutline/);
   assert.match(component, /aria-label=\{followLabel\}/);
-  assert.match(component, /event\.preventDefault\(\)/);
-  assert.match(component, /event\.stopPropagation\(\)/);
+  assert.match(component, /<div className=\{styles\.assetRow\}>[\s\S]*<Link className=\{styles\.assetRowLink\}/);
+  assert.doesNotMatch(component, /<Link className=\{styles\.assetRow\}[\s\S]*<button/);
+  assert.doesNotMatch(component, /event\.preventDefault\(\)|event\.stopPropagation\(\)/);
   assert.match(component, /disabled=\{followPending \|\| followStatus !== 'ready'\}/);
   // IP 并入名称下方 meta 行（模型 · 组织 · IP），行尾只留星标
   assert.match(component, /styles\.assetMetaIp/);
@@ -816,7 +1037,8 @@ test('资产详情头部使用模型元数据真实图标并按需回退', async
   assert.match(detail, /resolveAssetModelIconUrl\(modelIcon, resolvedModelId\)/);
   assert.match(detail, /heroIconImage/);
   assert.match(detail, /onError=\{\(\) => setIconFailed\(true\)\}/);
-  assert.match(styles, /\.heroIconImage\s*\{[^}]*object-fit:\s*contain/s);
+  assert.match(styles, /\.heroIcon\s*\{[^}]*width:\s*36px[^}]*height:\s*36px[^}]*background:\s*var\(--color-bg\)[^}]*border:\s*1px solid var\(--color-border-1\)[^}]*box-shadow:\s*var\(--shadow-composer\)/s);
+  assert.match(styles, /\.heroIconImage\s*\{[^}]*width:\s*32px[^}]*height:\s*32px[^}]*object-fit:\s*contain/s);
 });
 
 test('详情返回时按账号与团队恢复列表数据与滚动位置；独立搜索页不缓存结果', async () => {

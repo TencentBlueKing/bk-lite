@@ -983,7 +983,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       layout="vertical"
       onValuesChange={(changed, all) => {
         clearCollectDetectState();
-        const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(changed);
+        const defaultIfTypeExclude = currentConfig?.form_fields?.find(
+          (field: { name?: string }) => field.name === 'iftype_exclude'
+        )?.default_value;
+        const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(
+          changed,
+          defaultIfTypeExclude
+        );
         const nextValues = Object.keys(interfaceFilterModePatch).length
           ? { ...all, ...interfaceFilterModePatch }
           : all;

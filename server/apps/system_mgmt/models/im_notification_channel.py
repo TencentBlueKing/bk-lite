@@ -6,6 +6,7 @@ from django.utils.translation import gettext_lazy as _
 from apps.core.mixinx import PeriodicTaskUtils
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.core.utils.conditional_unique import ConditionalUniqueGuardQuerySet
 
 
 class IMNotificationMappingStrategyChoices(models.TextChoices):
@@ -51,8 +52,12 @@ class IMNotificationChannel(MaintainerInfo, TimeInfo, PeriodicTaskUtils):
     integration_instance = models.ForeignKey("system_mgmt.IntegrationInstance", on_delete=models.CASCADE, related_name="im_notification_channels")
     enabled = models.BooleanField(default=True)
     description = models.TextField(blank=True, default="")
-    status = models.CharField(max_length=32, choices=IMNotificationChannelStatusChoices.choices, default=IMNotificationChannelStatusChoices.PENDING_SYNC)
-    platform_match_field = models.CharField(max_length=32, choices=IMNotificationMappingStrategyChoices.choices, default=IMNotificationMappingStrategyChoices.EMAIL)
+    status = models.CharField(
+        max_length=32, choices=IMNotificationChannelStatusChoices.choices, default=IMNotificationChannelStatusChoices.PENDING_SYNC
+    )
+    platform_match_field = models.CharField(
+        max_length=32, choices=IMNotificationMappingStrategyChoices.choices, default=IMNotificationMappingStrategyChoices.EMAIL
+    )
     external_match_field = models.CharField(max_length=64, default=IMNotificationExternalFieldChoices.EMAIL)
     external_receive_field = models.CharField(max_length=64, default=IMNotificationExternalFieldChoices.USER_ID)
     schedule_config = models.JSONField(default=dict, blank=True)
@@ -94,6 +99,15 @@ class IMNotificationUserMapping(TimeInfo):
         )
 
 
+class IMNotificationSyncRunQuerySet(ConditionalUniqueGuardQuerySet):
+    guard_rules = {
+        "status": (
+            "running_guard",
+            lambda status: True if status == IMNotificationSyncRunStatusChoices.RUNNING else None,
+        )
+    }
+
+
 class IMNotificationSyncRun(TimeInfo):
     channel = models.ForeignKey("system_mgmt.IMNotificationChannel", on_delete=models.CASCADE, related_name="sync_runs")
     trigger_mode = models.CharField(
@@ -101,7 +115,9 @@ class IMNotificationSyncRun(TimeInfo):
         choices=IMNotificationTriggerModeChoices.choices,
         default=IMNotificationTriggerModeChoices.MANUAL,
     )
-    status = models.CharField(max_length=32, choices=IMNotificationSyncRunStatusChoices.choices, default=IMNotificationSyncRunStatusChoices.RUNNING, db_index=True)
+    status = models.CharField(
+        max_length=32, choices=IMNotificationSyncRunStatusChoices.choices, default=IMNotificationSyncRunStatusChoices.RUNNING, db_index=True
+    )
     summary = models.CharField(max_length=255, blank=True, default="")
     total_external_user_count = models.PositiveIntegerField(default=0)
     matched_count = models.PositiveIntegerField(default=0)
@@ -111,6 +127,9 @@ class IMNotificationSyncRun(TimeInfo):
     payload = models.JSONField(default=dict, blank=True)
     started_at = models.DateTimeField(default=timezone.now, db_index=True)
     finished_at = models.DateTimeField(null=True, blank=True)
+    running_guard = models.BooleanField(null=True, default=None, editable=False)
+
+    objects = IMNotificationSyncRunQuerySet.as_manager()
 
     class Meta:
         ordering = ("-started_at", "-id")
@@ -119,5 +138,16 @@ class IMNotificationSyncRun(TimeInfo):
                 fields=["channel"],
                 condition=Q(status=IMNotificationSyncRunStatusChoices.RUNNING),
                 name="unique_running_im_notification_sync_run_per_channel",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["channel", "running_guard"],
+                name="uniq_im_sync_run_guard_per_channel",
+            ),
         ]
+
+    def save(self, *args, **kwargs):
+        self.running_guard = True if self.status == IMNotificationSyncRunStatusChoices.RUNNING else None
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "status" in update_fields:
+            kwargs["update_fields"] = set(update_fields) | {"running_guard"}
+        return super().save(*args, **kwargs)

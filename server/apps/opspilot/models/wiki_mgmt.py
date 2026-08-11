@@ -1,9 +1,11 @@
-from django.db import models
+from django.db import IntegrityError, models
+from django.db.models.expressions import BaseExpression
 from django.utils.translation import gettext_lazy as _
 from django_minio_backend.models import MinioBackend, iso_date_prefix
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.core.utils.database_constraints import ConstraintValidatedQuerySet
 
 
 class WikiKnowledgeBase(MaintainerInfo, TimeInfo):
@@ -343,6 +345,10 @@ class WikiGeneration(MaintainerInfo, TimeInfo):
         ]
 
 
+class WikiGenerationPageQuerySet(ConstraintValidatedQuerySet):
+    protected_fields = frozenset({"page_status"})
+
+
 class WikiGenerationPage(TimeInfo):
     """generation 的完整页面成员及其冻结显示快照。"""
 
@@ -375,6 +381,8 @@ class WikiGenerationPage(TimeInfo):
     page_status = models.CharField(max_length=20)
     page_display_snapshot = models.JSONField(default=dict)
 
+    objects = WikiGenerationPageQuerySet.as_manager()
+
     class Meta:
         db_table = "opspilot_wiki_generation_page"
         constraints = [
@@ -393,6 +401,14 @@ class WikiGenerationPage(TimeInfo):
                 name="wiki_gen_page_scope_idx",
             )
         ]
+
+    def _validate_database_constraints(self):
+        if self.page_status != "active":
+            raise IntegrityError("wiki_gen_page_active_only")
+
+    def save(self, *args, **kwargs):
+        self._validate_database_constraints()
+        return super().save(*args, **kwargs)
 
 
 class WikiGenerationIndexEntry(TimeInfo):
@@ -731,7 +747,21 @@ class WikiImportPreflight(MaintainerInfo, TimeInfo):
         ]
 
 
+class CheckItemQuerySet(ConstraintValidatedQuerySet):
+    protected_fields = frozenset({"status", "check_type"})
+
+    def update(self, **kwargs):
+        status = kwargs.get("status")
+        check_type = kwargs.get("check_type")
+        if isinstance(status, BaseExpression) or isinstance(check_type, BaseExpression):
+            return super().update(**kwargs)
+        if (status is not None and status != "open") or check_type in CheckItem.OPEN_DECISION_TYPES:
+            return models.QuerySet.update(self, **kwargs)
+        return super().update(**kwargs)
+
+
 class CheckItem(MaintainerInfo, TimeInfo):
+    OPEN_DECISION_TYPES = {"cannot_merge", "material_update", "duplicate", "conflict"}
     knowledge_base = models.ForeignKey(WikiKnowledgeBase, on_delete=models.CASCADE, related_name="check_items")
     # conflict / duplicate / stale / missing / orphan / broken_relation / no_source /
     # low_confidence / cannot_merge / all_sources_invalid / schema_mismatch
@@ -748,6 +778,8 @@ class CheckItem(MaintainerInfo, TimeInfo):
     # 决策中心 API 用 decision_key 命中 WikiDecisionRule,context 供审计/失败提示
     decision_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
     decision_context = models.JSONField(default=dict)
+
+    objects = CheckItemQuerySet.as_manager()
 
     class Meta:
         db_table = "opspilot_wiki_check_item"
@@ -767,6 +799,14 @@ class CheckItem(MaintainerInfo, TimeInfo):
                 name="wiki_check_open_decision_only",
             )
         ]
+
+    def _validate_database_constraints(self):
+        if self.status == "open" and self.check_type not in self.OPEN_DECISION_TYPES:
+            raise IntegrityError("wiki_check_open_decision_only")
+
+    def save(self, *args, **kwargs):
+        self._validate_database_constraints()
+        return super().save(*args, **kwargs)
 
 
 class WikiDecisionRule(MaintainerInfo, TimeInfo):

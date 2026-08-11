@@ -22,6 +22,8 @@ import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { isJSON } from '@/app/log/utils/common';
 
+const MAX_LOGS_COUNT = 1000;
+
 const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
   ({ query, className = '', fetchData }, ref) => {
     const { isLoading } = useApiClient();
@@ -38,7 +40,6 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
     );
     const containerRef = useRef<HTMLDivElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
-    const MAX_LOGS_COUNT = 1000; //终端最多展示多少条日志
 
     // 自动滚动到底部
     const scrollToBottom = useCallback(() => {
@@ -93,27 +94,32 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
       setLogs([]);
     }, []);
 
-    // 切换暂停状态
-    const togglePause = useCallback(() => {
-      setIsPaused((prev) => !prev);
+    const appendLogs = useCallback((newLogs: string[]) => {
+      setLogs((prevLogs) => {
+        const logList = [...prevLogs, ...newLogs];
+        return logList.slice(-MAX_LOGS_COUNT);
+      });
     }, []);
 
-    const updateLogs = (list: string) => {
-      setLogs((prevLogs) => {
-        const logList = [...prevLogs, list];
-        const length = logList.length;
-        if (length <= MAX_LOGS_COUNT) return logList;
-        return logList.slice(length - MAX_LOGS_COUNT, length);
-      });
-    };
+    const updateLogs = useCallback(
+      (log: string) => {
+        appendLogs([log]);
+      },
+      [appendLogs]
+    );
 
     // 开始日志流
-    const startLogStream = useCallback(async () => {
-      // 先停止当前流和清除日志
+    const startLogStream = useCallback(async (preserveLogs = false) => {
+      // 先停止当前流；普通重启清空日志，暂停后继续则保留冻结画面。
       await stopLogStream();
-      setLogs([]);
+      setIsPaused(false);
+      if (!preserveLogs) {
+        setLogs([]);
+      }
       if (!token) return;
       if (isStreaming.current) return;
+      let streamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+      let streamAbortController: AbortController | null = null;
       try {
         isStreaming.current = true;
         // 构建查询参数
@@ -127,6 +133,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
         }
         // 创建AbortController用于取消请求
         const abortController = new AbortController();
+        streamAbortController = abortController;
         abortControllerRef.current = abortController;
         // 直接使用fetch来处理EventStream，使用GET请求
         fetchData?.(true);
@@ -152,6 +159,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
           return;
         }
         const reader = response.body.getReader();
+        streamReader = reader;
         readerRef.current = reader;
         const decoder = new TextDecoder();
         // 持续读取流数据
@@ -196,18 +204,32 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
         console.log(error);
         fetchData?.(false);
       } finally {
-        isStreaming.current = false;
-        if (readerRef.current) {
+        if (streamReader && readerRef.current === streamReader) {
           try {
-            readerRef.current.releaseLock();
+            streamReader.releaseLock();
           } catch {
             // Reader可能已经被释放
           }
           readerRef.current = null;
         }
-        abortControllerRef.current = null;
+        if (!streamAbortController) {
+          isStreaming.current = false;
+        } else if (abortControllerRef.current === streamAbortController) {
+          abortControllerRef.current = null;
+          isStreaming.current = false;
+        }
       }
-    }, [query, stopLogStream, t, fetchData, token]);
+    }, [query, stopLogStream, t, fetchData, token, updateLogs]);
+
+    // 暂停会真正关闭实时查询；继续时从当前时刻建立新的 tail 连接。
+    const togglePause = useCallback(async () => {
+      if (isPaused) {
+        await startLogStream(true);
+        return;
+      }
+      setIsPaused(true);
+      await stopLogStream();
+    }, [isPaused, startLogStream, stopLogStream]);
 
     // 通过 ref 暴露方法
     useImperativeHandle(
@@ -263,12 +285,18 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
               }
               title={
                 isPaused
-                  ? t('log.search.enableScrolling')
-                  : t('log.search.stopScrolling')
+                  ? t('log.search.resumeLogs')
+                  : t('log.search.pauseLogs')
               }
             >
               <Button
                 size="small"
+                aria-label={
+                  isPaused
+                    ? t('log.search.resumeLogs')
+                    : t('log.search.pauseLogs')
+                }
+                aria-pressed={isPaused}
                 icon={isPaused ? <CaretRightOutlined /> : <PauseOutlined />}
                 onClick={togglePause}
               />
@@ -282,6 +310,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
             >
               <Button
                 size="small"
+                aria-label={t('log.search.clearLogs')}
                 icon={<ClearOutlined />}
                 onClick={clearLogs}
               />
@@ -295,6 +324,9 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
             >
               <Button
                 size="small"
+                aria-label={
+                  isFullscreen ? t('log.search.exit') : t('log.search.full')
+                }
                 icon={
                   isFullscreen ? (
                     <FullscreenExitOutlined />

@@ -446,7 +446,8 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
           {
             suppressNoInstallerEvents: ['command_failed', 'credential_failed'].includes(
               controllerDisplay?.state || ''
-            )
+            ),
+            suppressIncompleteWhenFailedStep: true
           }
         );
         const nextActionGuidance = failureGuidance.suggestion || summaryGuidance;

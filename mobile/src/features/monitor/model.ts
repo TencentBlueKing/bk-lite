@@ -1,5 +1,4 @@
 export const MONITOR_PAGE_SIZE = 20;
-export const INSTANCE_LIST_SUMMARY_LIMIT = 3;
 export const MAX_RECENT_VIEWS = 20;
 export const RECENT_VIEW_SUMMARY_LIMIT = 3;
 
@@ -62,6 +61,14 @@ export interface MonitorPlugin {
   status: string;
 }
 
+/** Server 的指标目录已分页；兼容历史裸数组响应，避免详情误判为未配置指标。 */
+export function monitorCatalogItems(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'object' || value === null) return [];
+  const items = (value as Record<string, unknown>).items;
+  return Array.isArray(items) ? items : [];
+}
+
 export interface MetricGroup {
   id: number;
   name: string;
@@ -83,12 +90,26 @@ export interface MonitorMetric {
 
 export interface MetricSeries {
   metric: Record<string, string>;
-  values: Array<[number, string]>;
+  values: Array<[number, string | null]>;
+}
+
+export interface GapInterval {
+  start: number;
+  end: number;
+  duration?: number;
+  series?: Array<{
+    metric?: Record<string, string>;
+    missing_points?: number;
+  }>;
 }
 
 export interface MetricRangeResult {
   unit: string;
   series: MetricSeries[];
+  gaps: GapInterval[];
+  /** 与本次 query_range 一致的时间窗（毫秒），供 X 轴定域。 */
+  startMs: number;
+  endMs: number;
 }
 
 export interface PageResult<T> {
@@ -143,18 +164,25 @@ export function formatRecentViewTime(
   if (deltaMinutes < 60) return labels.minutes.replace('{count}', String(deltaMinutes));
   const deltaHours = Math.floor(deltaMinutes / 60);
   if (deltaHours < 24) return labels.hours.replace('{count}', String(deltaHours));
-  const viewedDate = new Date(viewedAt);
-  const nowDate = new Date(nowValue);
-  const viewedDay = new Date(viewedDate.getFullYear(), viewedDate.getMonth(), viewedDate.getDate()).getTime();
-  const yesterdayDay = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() - 1).getTime();
-  if (viewedDay === yesterdayDay) return labels.yesterday;
   const locale = preferences.locale.toLowerCase().startsWith('zh') ? 'zh-Hans' : 'en';
+  const timezone = preferences.timezone || 'Asia/Shanghai';
+  const accountDay = (timestamp: number) => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      year: 'numeric', month: '2-digit', day: '2-digit', timeZone: timezone,
+    }).formatToParts(timestamp);
+    const part = (type: Intl.DateTimeFormatPartTypes) => Number(
+      parts.find((item) => item.type === type)?.value,
+    );
+    return Date.UTC(part('year'), part('month') - 1, part('day'));
+  };
+  if (accountDay(viewedAt) === accountDay(nowValue) - 86_400_000) return labels.yesterday;
+  const viewedDate = new Date(viewedAt);
   return new Intl.DateTimeFormat(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: preferences.timezone || 'Asia/Shanghai',
+    timeZone: timezone,
   }).format(viewedDate);
 }
 
@@ -306,24 +334,53 @@ function lookupMetricUnit(
     ?? unitIndex.get(binding.metric);
 }
 
-function formatDisplayValue(raw: unknown, enumUnit?: string): string | null {
+const INTEGER_METRIC_UNITS = new Set(['counts']);
+const HIDDEN_DISPLAY_UNITS = new Set(['counts', 'none', 'short']);
+const RAW_VALUE_METRICS = new Set(['cluster_pod_count', 'cluster_node_count']);
+
+/** 与 Web formatMetricValue/getEnumValue 一致：计数不补零，其余普通数值保留两位。 */
+export function formatMonitorTableMetricValue(
+  value: unknown,
+  unit = '',
+  metricName = '',
+): string {
+  const numericValue = Number(value);
+  if (Number.isNaN(numericValue) || RAW_VALUE_METRICS.has(metricName)) return String(value);
+  return INTEGER_METRIC_UNITS.has(unit) ? String(numericValue) : numericValue.toFixed(2);
+}
+
+function visibleDisplayUnit(unit: string) {
+  return HIDDEN_DISPLAY_UNITS.has(unit) || isEnumMetricUnit(unit) ? '' : unit;
+}
+
+function formatDisplayValue(
+  raw: unknown,
+  metricUnit?: string,
+  metricName = '',
+  formatNumeric = true,
+): string | null {
   if (raw === undefined || raw === null || raw === '') return null;
   if (typeof raw === 'object' && !Array.isArray(raw)) {
     const cell = raw as Record<string, unknown>;
     if (cell.value === undefined || cell.value === null || cell.value === '') return null;
-    if (enumUnit) {
-      const label = resolveEnumMetricLabel(enumUnit, cell.value);
+    if (metricUnit) {
+      const label = resolveEnumMetricLabel(metricUnit, cell.value);
       if (label !== null) return label;
     }
-    const value = String(cell.value);
-    const unit = cell.unit === undefined || cell.unit === null ? '' : String(cell.unit);
+    const displayUnit = cell.unit === undefined || cell.unit === null ? '' : String(cell.unit);
+    const value = formatNumeric
+      ? formatMonitorTableMetricValue(cell.value, displayUnit || metricUnit || '', metricName)
+      : String(cell.value);
+    const unit = visibleDisplayUnit(displayUnit);
     return unit ? `${value}${unit}` : value;
   }
-  if (enumUnit) {
-    const label = resolveEnumMetricLabel(enumUnit, raw);
+  if (metricUnit) {
+    const label = resolveEnumMetricLabel(metricUnit, raw);
     if (label !== null) return label;
   }
-  return String(raw);
+  return formatNumeric
+    ? formatMonitorTableMetricValue(raw, metricUnit || '', metricName)
+    : String(raw);
 }
 
 /** 按 Web resolveCell 规则取列值：绑定顺序首个有值；兼容 column_key / fact 回退。 */
@@ -339,18 +396,23 @@ export function resolveDisplayFieldValue(
       field.type === 'field' ? binding.field : undefined,
     );
     const raw = readInstanceField(instance, key);
-    const enumUnit = lookupMetricUnit(metricUnits, binding);
+    const metricUnit = lookupMetricUnit(metricUnits, binding);
     if (field.type === 'field') {
       if (raw != null && raw !== '') {
-        const formatted = formatDisplayValue(raw, enumUnit);
+        const formatted = formatDisplayValue(raw, metricUnit, binding.metric, false);
         if (formatted !== null) return formatted;
       }
       continue;
     }
-    const formatted = formatDisplayValue(raw, enumUnit);
+    const formatted = formatDisplayValue(raw, metricUnit, binding.metric);
     if (formatted !== null) return formatted;
   }
-  return formatDisplayValue(readInstanceField(instance, field.key));
+  return formatDisplayValue(
+    readInstanceField(instance, field.key),
+    undefined,
+    field.metrics?.[0]?.metric,
+    field.type !== 'field',
+  );
 }
 
 export function instanceSummaryEntries(
@@ -366,14 +428,15 @@ export function instanceSummaryEntries(
     .map((entry) => ({ label: entry.label, value: entry.value as string }));
 }
 
-/** 列表按元数据顺序取前 N 条摘要列；空值保留为 null，由界面显示为 `--`。 */
+/** 列表按元数据顺序输出 display_fields；传入 limit 时仅供紧凑场景使用。 */
 export function instanceListSummaryEntries(
   object: MonitorObject,
   instance: MonitorInstance,
-  limit = INSTANCE_LIST_SUMMARY_LIMIT,
+  limit?: number,
   metricUnits?: Map<string, string>,
 ) {
-  return object.displayFields.slice(0, limit).map((field) => ({
+  const fields = limit === undefined ? object.displayFields : object.displayFields.slice(0, limit);
+  return fields.map((field) => ({
     label: field.name,
     value: resolveDisplayFieldValue(field, instance, metricUnits),
   }));
@@ -398,19 +461,97 @@ export function buildMetricQuery(metric: MonitorMetric, idValues: string[]) {
   return metric.query.replace(/__\$labels__/g, labels);
 }
 
+/** Prometheus 秒级时间戳；兼容已是毫秒的值，统一为秒。 */
+export function metricTimestampSeconds(timestamp: number) {
+  return timestamp >= 1e12 ? timestamp / 1000 : timestamp;
+}
+
 export function metricPoints(result: MetricRangeResult) {
   return result.series.flatMap((series) => series.values)
-    .map(([timestamp, value]) => [Number(timestamp), Number(value)] as const)
-    .filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1]))
+    .flatMap(([timestamp, value]) => {
+      const nextTimestamp = Number(timestamp);
+      const nextValue = value === null || value === '' ? Number.NaN : Number(value);
+      return Number.isFinite(nextTimestamp) && Number.isFinite(nextValue)
+        ? [[nextTimestamp, nextValue] as const]
+        : [];
+    })
     .sort((left, right) => left[0] - right[0]);
 }
 
+/**
+ * 与 Web `renderChart` 对齐：丢弃非有限值，只保留有效采样点。
+ * 缺口断线由 gap-intervals 注入 null，而不是保留 API 里的缺失占位。
+ */
 export function metricSeriesPoints(result: MetricRangeResult) {
   return result.series.map((series) => ({
     labels: series.metric,
     points: series.values
-      .map(([timestamp, value]) => [Number(timestamp), Number(value)] as const)
-      .filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1]))
+      .flatMap(([timestamp, value]) => {
+        const nextTimestamp = Number(timestamp);
+        if (!Number.isFinite(nextTimestamp)) return [];
+        if (value === null || value === '') return [];
+        const nextValue = Number(value);
+        return Number.isFinite(nextValue)
+          ? [[nextTimestamp, nextValue] as const]
+          : [];
+      })
       .sort((left, right) => left[0] - right[0]),
-  })).filter((series) => series.points.length > 0);
+  })).filter((series) => series.points.some((point) => point[1] !== null));
+}
+
+export type MetricSeriesView = ReturnType<typeof metricSeriesPoints>[number];
+
+/** 详情图断线后的序列：points 可含 null 断点。 */
+export interface MetricSeriesChartView {
+  labels: Record<string, string>;
+  points: Array<readonly [number, number | null]>;
+}
+
+/** 将多序列合并为 Web ChartData，供缺口断线/阴影算法复用。 */
+export function metricSeriesToChartData(series: ReadonlyArray<MetricSeriesView>) {
+  const byTime = new Map<number, {
+    time: number;
+    seriesMetrics: Record<string, Record<string, string>>;
+    [key: string]: unknown;
+  }>();
+
+  series.forEach((item, index) => {
+    const valueKey = `value${index + 1}`;
+    item.points.forEach(([timestamp, value]) => {
+      if (!Number.isFinite(value)) return;
+      const time = metricTimestampSeconds(timestamp);
+      if (!Number.isFinite(time)) return;
+      const row = byTime.get(time) || { time, seriesMetrics: {} };
+      row[valueKey] = value;
+      row.seriesMetrics = {
+        ...row.seriesMetrics,
+        [valueKey]: item.labels,
+      };
+      byTime.set(time, row);
+    });
+  });
+
+  return Array.from(byTime.values()).sort((left, right) => left.time - right.time);
+}
+
+/** 将带断点的 ChartData 还原为各序列 points（含 null 断点）。 */
+export function chartDataToMetricSeries(
+  data: ReadonlyArray<{ time: number; seriesMetrics?: Record<string, Record<string, string>>; [key: string]: unknown }>,
+  series: ReadonlyArray<MetricSeriesView>,
+): MetricSeriesChartView[] {
+  return series.map((item, index) => {
+    const valueKey = `value${index + 1}`;
+    return {
+      labels: item.labels,
+      points: data.flatMap((row) => {
+        if (!Object.prototype.hasOwnProperty.call(row, valueKey)) return [];
+        const raw = row[valueKey];
+        const time = Number(row.time);
+        if (!Number.isFinite(time)) return [];
+        if (raw === null || raw === undefined) return [[time, null] as const];
+        const value = Number(raw);
+        return [[time, Number.isFinite(value) ? value : null] as const];
+      }),
+    };
+  });
 }

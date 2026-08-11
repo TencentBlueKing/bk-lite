@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.time_util import format_rfc3339_utc, parse_rfc3339_utc
+from apps.core.utils.trend_granularity import TREND_GROUP_BY_AUTO_REST_APIS
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.common.audit_log import get_response_name, log_ops_analysis_success
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
@@ -241,8 +242,14 @@ def _resolve_request_params(instance, request_data):
         if isinstance(item, dict) and isinstance(item.get("name"), str) and item.get("name").strip()
     }
 
+    # 趋势数据源不再声明 group_by；剥离残留键，避免「未声明参数」400。
+    sanitized_request = dict(request_data)
+    if getattr(instance, "rest_api", None) in TREND_GROUP_BY_AUTO_REST_APIS:
+        sanitized_request.pop("group_by", None)
+        allowed_specs.pop("group_by", None)
+
     allowed_request_keys = set(allowed_specs.keys()) | RUNTIME_ALLOWED_KEYS
-    unknown_keys = sorted(str(key) for key in request_data.keys() if key not in allowed_request_keys)
+    unknown_keys = sorted(str(key) for key in sanitized_request.keys() if key not in allowed_request_keys)
     if unknown_keys:
         raise ValueError(f"存在未声明参数: {', '.join(unknown_keys)}")
 
@@ -254,8 +261,8 @@ def _resolve_request_params(instance, request_data):
 
         if filter_type == "fixed":
             raw_value = default_value
-        elif param_name in request_data:
-            raw_value = request_data[param_name]
+        elif param_name in sanitized_request:
+            raw_value = sanitized_request[param_name]
             # timeRange 空值视为"无过滤"跳过,避免 _normalize_time_range("") 抛 ValueError
             # 导致整个请求 400(空字符串、null、空数组都被视为"未选时段")
             if param_type == "timeRange" and raw_value in (None, "", [], {}):
@@ -267,7 +274,7 @@ def _resolve_request_params(instance, request_data):
 
         resolved[param_name] = _normalize_param_value(param_name, param_type, raw_value)
 
-    resolved.update(_normalize_runtime_params(request_data))
+    resolved.update(_normalize_runtime_params(sanitized_request))
 
     return resolved
 
@@ -391,9 +398,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             )
 
         raw_request = getattr(request, "_request", request)
-        render_scoped = (
-            getattr(raw_request, "dashboard_report_render_scope", None) is not None
-        )
+        render_scoped = getattr(raw_request, "dashboard_report_render_scope", None) is not None
         if render_scoped:
             # Render Session：实时复核创建者组织成员资格与实例级权限，
             # 不能只依赖冻结的 execution_team_id ∈ datasource.groups。
@@ -433,9 +438,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 if instance.source_type == DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS:
                     executor = get_preview_executor(instance.source_type)
                     result = executor.execute(instance.connection_config or {}, params)
-                    if result.warnings:
-                        return Response({"data": result.data, "warnings": result.warnings})
-                    return Response(result.data)
+                    return Response({"data": result.data, "warnings": result.warnings or []})
                 runtime_limit = _normalize_preview_limit(params.get("page_size") or request.data.get("limit"))
                 payload = _execute_inline_preview(
                     instance.source_type,
@@ -458,7 +461,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 )
                 return _build_error_response("数据查询失败", status.HTTP_502_BAD_GATEWAY)
 
-            return Response(payload.get("items", []))
+            return Response({"data": payload.get("items", []), "warnings": []})
 
         namespace_list = instance.namespaces.all()
         if "/" not in instance.rest_api:
@@ -501,7 +504,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 result.get("data"),
             )
 
-        return Response(result.get("data"))
+        return Response({"data": result.get("data"), "warnings": []})
 
     @HasPermission("data_source-Add,data_source-Edit")
     @action(detail=False, methods=["post"], url_path="preview")

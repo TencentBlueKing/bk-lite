@@ -1,11 +1,16 @@
-from django.db import models
+from django.db import IntegrityError, models
 from django.db.models.functions import Cast, Concat
 
+from apps.core.fields.s3_json_field import S3JSONField
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.core.fields.s3_json_field import S3JSONField
+from apps.core.utils.database_constraints import ConstraintValidatedQuerySet
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_object import MonitorObject
+
+
+class PolicyTemplateQuerySet(ConstraintValidatedQuerySet):
+    protected_fields = frozenset({"template_type", "organization", "scope_key"})
 
 
 class PolicyTemplate(TimeInfo, MaintainerInfo):
@@ -27,6 +32,8 @@ class PolicyTemplate(TimeInfo, MaintainerInfo):
     name = models.CharField(max_length=100, verbose_name="模板名称")
     description = models.TextField(blank=True, default="", verbose_name="模板描述")
     config = models.JSONField(default=dict, verbose_name="策略模板配置")
+
+    objects = PolicyTemplateQuerySet.as_manager()
 
     class Meta:
         verbose_name = "监控策略模板"
@@ -59,6 +66,16 @@ class PolicyTemplate(TimeInfo, MaintainerInfo):
                 name="policy_template_type_org_consistent",
             ),
         ]
+
+    def _validate_database_constraints(self):
+        valid_builtin = self.template_type == self.TYPE_BUILTIN and self.organization is None and self.scope_key == "builtin"
+        valid_custom = self.template_type == self.TYPE_CUSTOM and self.organization is not None and self.scope_key == f"custom:{self.organization}"
+        if not (valid_builtin or valid_custom):
+            raise IntegrityError("policy_template_type_org_consistent")
+
+    def save(self, *args, **kwargs):
+        self._validate_database_constraints()
+        return super().save(*args, **kwargs)
 
 
 class MonitorPolicy(TimeInfo, MaintainerInfo):

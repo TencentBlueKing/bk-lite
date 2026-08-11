@@ -8,7 +8,6 @@ from django.db import IntegrityError, transaction
 from apps.monitor.models import Metric, MetricGroup, MonitorObject, MonitorPlugin, PolicyTemplate
 from apps.monitor.services.policy import PolicyService
 
-
 pytestmark = pytest.mark.django_db
 
 
@@ -85,6 +84,20 @@ def test_custom_template_requires_project_but_builtin_must_not_have_one():
                 name="bad",
                 config={},
             )
+    invalid = PolicyTemplate(
+        key="bad-bulk",
+        scope_key="custom:missing",
+        template_type="custom",
+        organization=None,
+        monitor_object=monitor_object,
+        plugin=plugin,
+        name="bad bulk",
+        config={},
+    )
+    with pytest.raises(IntegrityError):
+        PolicyTemplate.objects.bulk_create([invalid])
+    with pytest.raises(ValueError, match="逐条 save"):
+        PolicyTemplate.objects.update(scope_key="custom:missing")
     with pytest.raises(IntegrityError):
         with transaction.atomic():
             PolicyTemplate.objects.create(
@@ -214,7 +227,5 @@ def test_formula_config_is_stored_portably_and_resolved_for_runtime():
         "memory_usage",
     ]
 
-    runtime = PolicyService._runtime_query_condition(
-        portable["query_condition"], monitor_object
-    )
+    runtime = PolicyService._runtime_query_condition(portable["query_condition"], monitor_object)
     assert [item["metric_id"] for item in runtime["queries"]] == [cpu.id, memory.id]

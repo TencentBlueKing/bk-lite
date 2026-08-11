@@ -34,6 +34,14 @@ class LogExtractor(TimeInfo, MaintainerInfo):
                 condition=models.Q(collect_instance__isnull=False),
                 name="log_extractor_instance_order_uniq",
             ),
+            models.UniqueConstraint(
+                fields=("collect_instance", "name"),
+                name="log_extractor_instance_name_portable_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=("collect_instance", "sort_order"),
+                name="log_extractor_instance_order_portable_uniq",
+            ),
         ]
         indexes = [models.Index(fields=("collect_instance", "sort_order", "id"), name="log_extractor_order_idx")]
 

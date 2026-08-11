@@ -1,7 +1,7 @@
 'use client';
 
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Dialog, Popup, Tabs, Toast } from 'antd-mobile';
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
+import { Dialog, InfiniteScroll, Popup, Tabs, Toast } from 'antd-mobile';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import MobilePageHeader from '@/components/mobile-page-header';
@@ -15,12 +15,14 @@ import {
   alertNotifyStatusKey,
   alertRequestErrorKind,
   availableAlertActions,
+  INITIAL_ALERT_EVENT_PAGINATION_STATE,
   isPermissionDenied,
+  mergePage,
   primaryAlertAction,
+  reduceAlertEventPagination,
   type AlertAction,
   type AlertAssignee,
   type AlertChange,
-  type AlertEvent,
   type AlertLevel,
   type TodoAlert,
 } from '@/features/todo/model';
@@ -42,16 +44,25 @@ function TodoAlertDetailContent() {
   const [levels, setLevels] = useState<AlertLevel[]>([]);
   const [status, setStatus] = useState<DetailStatus>('loading');
   const [activeTab, setActiveTab] = useState('summary');
-  const [events, setEvents] = useState<AlertEvent[]>([]);
-  const [eventStatus, setEventStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [eventState, dispatchEvent] = useReducer(
+    reduceAlertEventPagination,
+    INITIAL_ALERT_EVENT_PAGINATION_STATE,
+  );
   const [changes, setChanges] = useState<AlertChange[]>([]);
   const [changeStatus, setChangeStatus] = useState<'idle' | 'loading' | 'ready' | 'error' | 'forbidden'>('idle');
   const [pickerAction, setPickerAction] = useState<'assign' | 'reassign' | null>(null);
   const [assignees, setAssignees] = useState<AlertAssignee[]>([]);
   const [assigneeSearch, setAssigneeSearch] = useState('');
+  const [assigneeKeyword, setAssigneeKeyword] = useState('');
+  const [assigneeCount, setAssigneeCount] = useState(0);
+  const [assigneePage, setAssigneePage] = useState(0);
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
   const [assigneeLoading, setAssigneeLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const eventGenerationRef = useRef(0);
+  const eventControllerRef = useRef<AbortController | null>(null);
+  const assigneeRequestId = useRef(0);
+  const assigneeController = useRef<AbortController | null>(null);
   const preferences = { locale: userInfo?.locale || 'en', timezone: userInfo?.timezone || 'Asia/Shanghai' };
   const levelMap = useMemo(() => new Map(levels.map((level) => [String(level.levelId), level])), [levels]);
 
@@ -59,6 +70,12 @@ function TodoAlertDetailContent() {
     setPickerAction(null);
     setSelectedAssignees([]);
     setAssigneeSearch('');
+    setAssigneeKeyword('');
+    setAssignees([]);
+    setAssigneeCount(0);
+    setAssigneePage(0);
+    assigneeRequestId.current += 1;
+    assigneeController.current?.abort();
   }, []);
 
   const dismissPicker = useCallback(() => {
@@ -89,12 +106,33 @@ function TodoAlertDetailContent() {
 
   useEffect(() => { void loadDetail(); }, [loadDetail]);
 
-  const loadEvents = useCallback(async () => {
+  const loadEvents = useCallback(async (targetPage = 1, append = false) => {
     if (!alert) return;
-    setEventStatus('loading');
-    try { setEvents((await listAlertEvents(alert.id)).items); setEventStatus('ready'); }
-    catch { setEventStatus('error'); }
+    const generation = eventGenerationRef.current;
+    eventControllerRef.current?.abort();
+    const controller = new AbortController();
+    eventControllerRef.current = controller;
+    dispatchEvent({ type: 'load-started', generation, page: targetPage, append });
+    try {
+      const result = await listAlertEvents(alert.id, targetPage, controller.signal);
+      if (controller.signal.aborted || generation !== eventGenerationRef.current) return;
+      dispatchEvent({ type: 'load-succeeded', generation, page: targetPage, append, result });
+    } catch {
+      if (controller.signal.aborted || generation !== eventGenerationRef.current) return;
+      dispatchEvent({ type: 'load-failed', generation, page: targetPage, append });
+    }
   }, [alert]);
+
+  const invalidateEventRequests = useCallback(() => {
+    const generation = eventGenerationRef.current + 1;
+    eventGenerationRef.current = generation;
+    eventControllerRef.current?.abort();
+    return generation;
+  }, []);
+
+  useEffect(() => () => {
+    invalidateEventRequests();
+  }, [invalidateEventRequests]);
 
   const loadChanges = useCallback(async (alertId?: string) => {
     const targetId = alertId || alert?.alertId;
@@ -105,22 +143,56 @@ function TodoAlertDetailContent() {
   }, [alert]);
 
   useEffect(() => {
-    if (activeTab === 'events' && eventStatus === 'idle') void loadEvents();
+    if (activeTab === 'events' && eventState.status === 'idle') void loadEvents();
     if (activeTab === 'changes' && changeStatus === 'idle') void loadChanges();
-  }, [activeTab, changeStatus, eventStatus, loadChanges, loadEvents]);
+  }, [activeTab, changeStatus, eventState.status, loadChanges, loadEvents]);
 
-  const loadAssignees = useCallback(async (search: string) => {
-    setAssigneeLoading(true);
-    try { setAssignees((await listAssignees(search)).items); }
-    catch { setAssignees([]); Toast.show({ icon: 'fail', content: t('todo.assigneeLoadFailed') }); }
-    finally { setAssigneeLoading(false); }
+  const loadAssignees = useCallback(async (search: string, targetPage = 1, append = false) => {
+    const currentId = ++assigneeRequestId.current;
+    assigneeController.current?.abort();
+    const controller = new AbortController();
+    assigneeController.current = controller;
+    if (!append) setAssigneeLoading(true);
+    try {
+      const result = await listAssignees(search, targetPage, controller.signal);
+      if (currentId !== assigneeRequestId.current || controller.signal.aborted) return;
+      setAssignees((current) => append
+        ? mergePage(current, result.items, (item) => item.username)
+        : result.items);
+      setAssigneeCount(result.count);
+      setAssigneePage(targetPage);
+    } catch {
+      if (controller.signal.aborted || currentId !== assigneeRequestId.current) return;
+      if (!append) setAssignees([]);
+      Toast.show({ icon: 'fail', content: t('todo.assigneeLoadFailed') });
+    } finally {
+      if (currentId === assigneeRequestId.current) setAssigneeLoading(false);
+    }
   }, [t]);
 
-  useEffect(() => {
-    if (!pickerAction) return;
-    const timer = window.setTimeout(() => void loadAssignees(assigneeSearch), 250);
-    return () => window.clearTimeout(timer);
-  }, [assigneeSearch, loadAssignees, pickerAction]);
+  useEffect(() => () => {
+    assigneeRequestId.current += 1;
+    assigneeController.current?.abort();
+  }, []);
+
+  const submitAssigneeSearch = (value: string) => {
+    const next = value.trim();
+    setAssigneeSearch(value);
+    setAssigneeKeyword(next);
+    setAssignees([]);
+    setAssigneeCount(0);
+    setAssigneePage(0);
+    void loadAssignees(next, 1);
+  };
+
+  const clearAssigneeSearch = () => {
+    setAssigneeSearch('');
+    setAssigneeKeyword('');
+    setAssignees([]);
+    setAssigneeCount(0);
+    setAssigneePage(0);
+    void loadAssignees('', 1);
+  };
 
   const runAction = async (action: AlertAction, selected: string[] = []) => {
     if (!alert || submitting) return;
@@ -132,8 +204,9 @@ function TodoAlertDetailContent() {
       Toast.show({ icon: 'success', content: message || t('todo.actionSuccess') });
       closePicker();
       // 静默刷新详情，并立刻重拉变更记录（不依赖当前 Tab）
+      const nextEventGeneration = invalidateEventRequests();
       await loadDetail({ quiet: true });
-      setEventStatus('idle');
+      dispatchEvent({ type: 'reset', generation: nextEventGeneration });
       await loadChanges(alertId);
     } catch (error) {
       Toast.show({ icon: 'fail', content: error instanceof Error ? error.message : t('todo.actionFailed') });
@@ -142,7 +215,17 @@ function TodoAlertDetailContent() {
   };
 
   const handleAction = async (action: AlertAction) => {
-    if (action === 'assign' || action === 'reassign') { setAssigneeSearch(''); setSelectedAssignees([]); setPickerAction(action); return; }
+    if (action === 'assign' || action === 'reassign') {
+      setAssigneeSearch('');
+      setAssigneeKeyword('');
+      setSelectedAssignees([]);
+      setAssignees([]);
+      setAssigneeCount(0);
+      setAssigneePage(0);
+      setPickerAction(action);
+      void loadAssignees('', 1);
+      return;
+    }
     if (action === 'acknowledge') {
       const confirmed = await Dialog.confirm({ content: t('todo.acknowledgeConfirm'), confirmText: t('todo.actions.acknowledge'), cancelText: t('common.cancel') });
       if (!confirmed) return;
@@ -261,7 +344,45 @@ function TodoAlertDetailContent() {
           <Tabs.Tab key="changes" title={t('todo.sections.changes')} />
         </Tabs>
         {activeTab === 'summary' && <section className={styles.sectionCard} aria-label={t('todo.sections.alertInfo')}><div className={styles.detailGrid}>{detailFields.map(([label, value]) => <Fragment key={label}><span className={styles.detailLabel}>{label}</span><span className={styles.detailValue}>{value}</span></Fragment>)}</div><div className={styles.contentBlock}><span className={styles.contentLabel}>{t('todo.fields.content')}</span>{alert.content || '--'}</div></section>}
-        {activeTab === 'events' && (eventStatus === 'loading' ? <MobileSkeleton label={t('common.loading')} variant="list" rows={3} compact /> : eventStatus === 'error' ? sectionState(eventStatus, () => void loadEvents()) : events.length === 0 ? <MobileResult kind="empty" title={t('todo.noEvents')} compact /> : <section className={styles.sectionCard}><div className={styles.timeline}>{events.map((event) => <article className={styles.timelineItem} key={event.id}><strong className={styles.timelineTitle}>{event.title || event.eventId}</strong><span className={styles.timelineMeta}>{formatTime(event.receivedAt || event.startTime)} · {event.sourceName || '--'}</span><span className={styles.timelineBody}>{event.description || event.resourceName || '--'}</span></article>)}</div></section>)}
+        {activeTab === 'events' && (
+          eventState.status === 'loading' ? (
+            <MobileSkeleton label={t('common.loading')} variant="list" rows={3} compact />
+          ) : eventState.status === 'error' ? (
+            sectionState(eventState.status, () => void loadEvents(1, false))
+          ) : eventState.items.length === 0 ? (
+            <MobileResult kind="empty" title={t('todo.noEvents')} compact />
+          ) : (
+            <section className={styles.sectionCard}>
+              <div className={styles.timeline}>
+                {eventState.items.map((event) => (
+                  <article className={styles.timelineItem} key={event.id}>
+                    <strong className={styles.timelineTitle}>{event.title || event.eventId}</strong>
+                    <span className={styles.timelineMeta}>{formatTime(event.receivedAt || event.startTime)} · {event.sourceName || '--'}</span>
+                    <span className={styles.timelineBody}>{event.description || event.resourceName || '--'}</span>
+                  </article>
+                ))}
+              </div>
+              {eventState.failedPage !== null ? (
+                <div className={styles.timelineLoadError} role="alert">
+                  <span>{t('todo.sectionLoadFailed')}</span>
+                  <button
+                    type="button"
+                    className={styles.timelineRetry}
+                    disabled={eventState.loadingMore}
+                    onClick={() => void loadEvents(eventState.failedPage!, true)}
+                  >
+                    {t('common.retry')}
+                  </button>
+                </div>
+              ) : (
+                <InfiniteScroll
+                  hasMore={eventState.items.length < eventState.count}
+                  loadMore={() => loadEvents(eventState.page + 1, true)}
+                />
+              )}
+            </section>
+          )
+        )}
         {activeTab === 'changes' && (changeStatus === 'loading' ? <MobileSkeleton label={t('common.loading')} variant="list" rows={3} compact /> : changeStatus === 'forbidden' ? sectionState(changeStatus, () => undefined, true) : changeStatus === 'error' ? sectionState(changeStatus, () => void loadChanges()) : changes.length === 0 ? <MobileResult kind="empty" title={t('todo.noChanges')} compact /> : <section className={styles.sectionCard}><div className={styles.timeline}>{changes.map((change) => <article className={styles.timelineItem} key={change.id}><strong className={styles.timelineTitle}>{change.operatorObject || change.action}</strong><span className={styles.timelineMeta}>{formatTime(change.createdAt)} · {change.operator}</span><span className={styles.timelineBody}>{change.overview || '--'}</span></article>)}</div></section>)}
       </div>
       {actions.length > 0 && primaryAction && (
@@ -301,10 +422,40 @@ function TodoAlertDetailContent() {
               size="page"
               value={assigneeSearch}
               onChange={setAssigneeSearch}
+              onSearch={submitAssigneeSearch}
+              onClear={clearAssigneeSearch}
               placeholder={t('todo.searchAssignee')}
             />
           </div>
-          <div className={styles.assigneeList}>{assigneeLoading ? <MobileSkeleton label={t('common.loading')} variant="list" rows={3} compact /> : assignees.map((person) => <label className={styles.assigneeRow} key={person.username}><input type="checkbox" checked={selectedAssignees.includes(person.username)} onChange={(event) => setSelectedAssignees((current) => event.target.checked ? [...current, person.username] : current.filter((username) => username !== person.username))} /><span className={styles.assigneeCopy}><span className={styles.assigneeName}>{person.displayName}</span><span className={styles.assigneeUsername}>{person.username}</span></span></label>)}</div>
+          <div className={styles.assigneeList}>
+            {assigneeLoading && assignees.length === 0 ? (
+              <MobileSkeleton label={t('common.loading')} variant="list" rows={3} compact />
+            ) : assignees.length === 0 ? (
+              <MobileResult kind="empty" title={t('common.noData')} compact />
+            ) : (
+              <>
+                {assignees.map((person) => (
+                  <label className={styles.assigneeRow} key={person.username}>
+                    <input
+                      type="checkbox"
+                      checked={selectedAssignees.includes(person.username)}
+                      onChange={(event) => setSelectedAssignees((current) => event.target.checked
+                        ? [...current, person.username]
+                        : current.filter((username) => username !== person.username))}
+                    />
+                    <span className={styles.assigneeCopy}>
+                      <span className={styles.assigneeName}>{person.displayName}</span>
+                      <span className={styles.assigneeUsername}>{person.username}</span>
+                    </span>
+                  </label>
+                ))}
+                <InfiniteScroll
+                  hasMore={assignees.length < assigneeCount}
+                  loadMore={() => loadAssignees(assigneeKeyword, assigneePage + 1, true)}
+                />
+              </>
+            )}
+          </div>
           <div className={styles.popupFooter}><button type="button" className={`${styles.actionButton} ${styles.actionButtonPrimary}`} disabled={!selectedAssignees.length || submitting} onClick={() => pickerAction && void runAction(pickerAction, selectedAssignees)}>{submitting ? t('todo.submitting') : t('common.confirm')}</button></div>
         </div>
       </Popup>

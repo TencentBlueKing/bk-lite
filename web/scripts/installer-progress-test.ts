@@ -152,6 +152,79 @@ const fallbackResult = normalizeInstallerResult({
 
 const fallbackGuidance = getInstallerFailureGuidance(t, fallbackResult);
 assert.equal(fallbackGuidance.suggestion, 'localized extract fallback');
+assert.equal(fallbackGuidance.reason, 'Extract failed');
+
+const unknownLinuxInstallResult = normalizeInstallerResult({
+  steps: [
+    {
+      action: 'install',
+      status: 'error',
+      message:
+        'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...',
+      timestamp: '2026-08-11T05:17:56Z',
+      details: {
+        installer_event: true,
+        raw_step: 'run_package_installer',
+        error:
+          'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...',
+        failure: {
+          type: 'unknown',
+          message:
+            'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...',
+          summary: 'The installation step failed with an unexpected error',
+          raw_error:
+            'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...',
+          code: 1,
+          context: { exit_code: 1 }
+        }
+      }
+    }
+  ],
+  installer_summary: {
+    state: 'incomplete_installer_events',
+    expected_count: 6,
+    observed_count: 7,
+    completed_count: 5,
+    missing_steps: ['install_complete'],
+    anomalies: ['incomplete_installer_events'],
+    steps: [
+      {
+        action: 'install',
+        status: 'error',
+        message:
+          'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...',
+        details: {
+          installer_event: true,
+          raw_step: 'run_package_installer',
+          failure: {
+            type: 'unknown',
+            message:
+              'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...'
+          }
+        }
+      }
+    ]
+  }
+});
+
+const unknownLinuxInstallGuidance = getInstallerFailureGuidance(
+  t,
+  unknownLinuxInstallResult
+);
+assert.equal(
+  unknownLinuxInstallGuidance.reason,
+  'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...'
+);
+assert.equal(
+  getInstallerSummaryGuidance(t, unknownLinuxInstallResult?.installer_summary, {
+    suppressIncompleteWhenFailedStep: true
+  }),
+  null
+);
+assert.equal(
+  getInstallerSummaryGuidance(t, unknownLinuxInstallResult?.installer_summary),
+  'node-manager.cloudregion.node.installerSummaryIncomplete'
+);
 
 const summaryResult = normalizeInstallerResult({
   steps: [],

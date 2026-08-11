@@ -1,6 +1,9 @@
-export type SourceDataResult = { data: unknown; warnings: string[] };
+export interface SourceDataResult {
+  data: unknown;
+  warnings: string[];
+}
 
-export function unwrapSourceDataResponse(payload: unknown): SourceDataResult {
+export function parseSourceDataResponse(payload: unknown): SourceDataResult {
   if (
     payload &&
     typeof payload === "object" &&
@@ -10,10 +13,11 @@ export function unwrapSourceDataResponse(payload: unknown): SourceDataResult {
     if (
       "data" in obj &&
       "warnings" in obj &&
-      Array.isArray(obj.warnings)
+      Array.isArray(obj.warnings) &&
+      obj.warnings.every((warning) => typeof warning === "string")
     ) {
       return { data: obj.data, warnings: obj.warnings };
     }
   }
-  return { data: payload, warnings: [] };
+  throw new Error("统一取数响应格式无效");
 }

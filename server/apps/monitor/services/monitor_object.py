@@ -179,6 +179,7 @@ class MonitorObjectService:
         monitor_plugin_id=None,
         visible_organization_ids=None,
         vm_params=None,
+        instance_id=None,
     ):
         """获取监控对象实例"""
         qs = qs.filter(
@@ -186,6 +187,9 @@ class MonitorObjectService:
             is_deleted=False,
             is_active=True,
         )
+        # 可选精确主键过滤（存储键形态，如 "('h1',)"）；与 name 模糊互不干扰。
+        if instance_id:
+            qs = qs.filter(id=instance_id)
         if name:
             qs = qs.filter(name__icontains=name)
 
