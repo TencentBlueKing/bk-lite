@@ -211,6 +211,7 @@ def _generate_pages(
             structure_revision=structure_revision,
             classification_root_id=classification_root_id,
             source_metadata=source_metadata,
+            contact_source_text=text,
         )
         or [],
         None,

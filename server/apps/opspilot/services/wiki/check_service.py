@@ -2,7 +2,7 @@
 
 风险变更不污染当前有效版本:生成候选版本(PageVersion change_type=candidate, is_current=False)+ CheckItem。
 phase 3: 决策中心 API `decide_check` 取代通用 accept/reject,
-按 check_type 路由到知识冲突 3 选 1(keep_current/use_new/edit_accept)或
+按 check_type 路由到知识冲突 4 选 1(keep_current/keep_all/use_new/edit_accept)或
 页面合并 2 选 1(keep_separate/merge),所有动作写入 WikiDecisionRule。
 也提供系统检查扫描:孤立页面、缺来源等(MVP 子集)。
 """
@@ -42,12 +42,12 @@ from apps.opspilot.services.wiki.decision_service import (
 )
 from apps.opspilot.services.wiki.directory_service import archive_pages
 from apps.opspilot.services.wiki.graph_service import analyze_graph
-from apps.opspilot.services.wiki.page_service import edit_page
+from apps.opspilot.services.wiki.page_service import PageServiceError, create_manual_page, edit_page
 from apps.opspilot.services.wiki.relation_service import LINK_RE, normalize_wikilink_key
-from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key
+from apps.opspilot.services.wiki.title_service import WikiTitleConflict, assert_unique_title_locked, canonical_title, compact_title_key
 
 # phase 3.1: 各 decision_type 允许的动作集合
-_KNOWLEDGE_CONFLICT_ACTIONS = {"keep_current", "use_new", "edit_accept"}
+_KNOWLEDGE_CONFLICT_ACTIONS = {"keep_current", "keep_all", "use_new", "edit_accept"}
 _PAGE_IDENTITY_ACTIONS = {"keep_separate", "merge"}
 _DECISION_TYPE_BY_CHECK_TYPE = {
     "cannot_merge": "knowledge_conflict",
@@ -1116,6 +1116,119 @@ def accept_candidate(check, operator=""):
     return result_version
 
 
+def _heading_title_from_body(body: str) -> str:
+    for line in (body or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            return stripped.lstrip("#").strip()
+    return ""
+
+
+def _material_fallback_title(material) -> str:
+    name = (getattr(material, "name", None) or "").strip()
+    if not name:
+        return ""
+    for suffix in (".pptx", ".PPTX", ".pdf", ".PDF", ".docx", ".DOCX", ".xlsx", ".XLSX", ".txt", ".md", ".MD"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)].strip() or name
+    return name
+
+
+def _resolve_keep_all_title(*, knowledge_base_id, body, material=None):
+    base = _heading_title_from_body(body) or _material_fallback_title(material) or "保留知识"
+    try:
+        return assert_unique_title_locked(knowledge_base_id=knowledge_base_id, title=base)
+    except WikiTitleConflict:
+        suffix = getattr(material, "id", None) or "new"
+        return assert_unique_title_locked(
+            knowledge_base_id=knowledge_base_id,
+            title=f"{base} · {suffix}",
+        )
+
+
+def _keep_all_candidate_entries(context, alternatives, fallback_candidate):
+    entries = []
+    seen_versions = set()
+    for alt in alternatives or []:
+        if not isinstance(alt, dict):
+            continue
+        version_id = alt.get("candidate_version_id")
+        if version_id in (None, "") or version_id in seen_versions:
+            continue
+        seen_versions.add(version_id)
+        entries.append(dict(alt))
+    if entries:
+        return entries
+    if fallback_candidate is None:
+        return []
+    incoming = context.get("incoming") if isinstance(context.get("incoming"), dict) else {}
+    return [
+        {
+            "candidate_version_id": fallback_candidate.id,
+            "material_id": incoming.get("material_id"),
+            "material_version_id": incoming.get("material_version_id"),
+            "body_hash": context.get("candidate_body_hash") or _body_hash(fallback_candidate.body),
+        }
+    ]
+
+
+def _spawn_pages_for_keep_all(
+    *,
+    knowledge_base,
+    source_page,
+    context,
+    alternatives,
+    fallback_candidate,
+    operator="",
+):
+    """保留当前页，并为每条候选新建独立页面。"""
+    created = []
+    for alt in _keep_all_candidate_entries(context, alternatives, fallback_candidate):
+        version = PageVersion.objects.select_for_update().filter(pk=alt.get("candidate_version_id")).first()
+        if version is None:
+            continue
+        material = None
+        material_version = None
+        mid = alt.get("material_id")
+        mvid = alt.get("material_version_id")
+        if mid not in (None, ""):
+            material = Material.objects.filter(pk=mid, knowledge_base=knowledge_base).first()
+        if mvid not in (None, ""):
+            material_version = MaterialVersion.objects.filter(pk=mvid).first()
+        if material is not None and material_version is None and getattr(material, "current_version_id", None):
+            material_version = material.current_version
+        title = _resolve_keep_all_title(
+            knowledge_base_id=knowledge_base.pk,
+            body=version.body or "",
+            material=material,
+        )
+        try:
+            new_page = create_manual_page(
+                knowledge_base=knowledge_base,
+                page_type=source_page.page_type or "concept",
+                title=title,
+                body=version.body or "",
+                created_by=operator or "",
+                contribution="ai",
+                update_method="ai_create",
+                change_type="ai_create",
+                meta_snapshot=version.meta_snapshot or {},
+            )
+        except PageServiceError as error:
+            raise ValueError(f"全部保留创建页面失败: {error}") from error
+        if material is not None:
+            _add_evidence_for_decision(
+                new_page,
+                material,
+                material_version,
+                source="decide_check_keep_all",
+            )
+        created.append(new_page)
+    if not created:
+        raise ValueError("全部保留未找到可用候选版本")
+    return created
+
+
 @transaction.atomic
 def decide_check(  # noqa: C901
     check,
@@ -1453,8 +1566,18 @@ def decide_check(  # noqa: C901
             source="decide_check",
         )
 
-    if action == "keep_current":
+    created_pages = []
+    if action in {"keep_current", "keep_all"}:
         result_version = current_version
+        if action == "keep_all":
+            created_pages = _spawn_pages_for_keep_all(
+                knowledge_base=check.knowledge_base,
+                source_page=page,
+                context=context,
+                alternatives=alternatives,
+                fallback_candidate=candidate,
+                operator=operator,
+            )
     else:
         accepted_body = candidate.body if action == "use_new" else body
         contribution = "mixed"
@@ -1512,6 +1635,8 @@ def decide_check(  # noqa: C901
     rejected_material_ids = alternative_material_ids or {mid for mid in [incoming_snapshot.get("material_id")] if mid not in (None, "")}
     if action == "keep_current":
         winner_participants = [dict(item) for item in participants if item.get("material_id") not in rejected_material_ids]
+    elif action == "keep_all":
+        winner_participants = [dict(item) for item in participants]
     elif action == "use_new":
         winner_participants = [dict(incoming_snapshot)] if incoming_snapshot.get("material_id") not in (None, "") else []
     else:
@@ -1525,6 +1650,11 @@ def decide_check(  # noqa: C901
         "result_version_id": getattr(result_version, "id", None),
         "winner_participants": winner_participants,
     }
+    if action == "keep_all":
+        result_snapshot["created_page_ids"] = [item.id for item in created_pages]
+        result_snapshot["created_pages"] = [
+            {"page_id": item.id, "title": item.title, "version_id": item.current_version_id} for item in created_pages
+        ]
     if action == "edit_accept":
         result_snapshot["adopted_participants"] = winner_participants
         result_snapshot["edited_result"] = {

@@ -21,6 +21,8 @@ from apps.opspilot.services.wiki.build_service import (
     _source_locator_for_page,
     generate_material_pages_with_budget,
     material_source_metadata,
+    prepare_page_data_with_contact_facts,
+    published_pages_missing_contact_facts,
 )
 from apps.opspilot.services.wiki.conflict_candidate_routing_service import route_material_conflicts
 from apps.opspilot.services.wiki.directory_assignment_service import resolve_page_directory
@@ -186,9 +188,12 @@ def build_material_with_generation(
         }
         existing = _existing_pages(knowledge_base)
         threshold = float((knowledge_base.generation_rules or {}).get("directory_confidence_threshold", 0.6))
+        publishable_page_payloads = []
 
         for incoming_index, raw_page_data in enumerate(pages_data):
             page_data = _normalize_page_data_title(knowledge_base, raw_page_data)
+            # 写入前按单页再补一次：主题页若进待审批，source 仍必须带上联系方式。
+            page_data = prepare_page_data_with_contact_facts(text, page_data)
             title = page_data.get("title") or ""
             page = existing.get(title_identity_key(title))
             comparison = conflict_routing.comparisons.get(incoming_index)
@@ -202,6 +207,7 @@ def build_material_with_generation(
                     page = comparison_page
                     title = comparison_page.title
                     page_data = {**page_data, "title": title}
+                    page_data = prepare_page_data_with_contact_facts(text, page_data)
                 elif comparison.get("relation") in {"conflict", "unresolved"} and comparison_page is not None and page is None:
                     page = comparison_page
 
@@ -264,6 +270,7 @@ def build_material_with_generation(
                 source_trace["page_actions"].append(action_item)
                 continue
 
+            publishable_page_payloads.append(page_data)
             staged = stage_ai_page(
                 context,
                 page_id=page.pk if page is not None else None,
@@ -322,6 +329,16 @@ def build_material_with_generation(
                     "locator": locator,
                 }
             )
+
+        missing_on_publishable = published_pages_missing_contact_facts(text, publishable_page_payloads)
+        if missing_on_publishable:
+            logger.error(
+                "wiki_build_contact_facts_missing_after_prepare material_id=%s missing=%s publishable_titles=%s",
+                material.pk,
+                [item.get("value") for item in missing_on_publishable],
+                [item.get("title") for item in publishable_page_payloads],
+            )
+            source_trace["contact_facts_missing"] = [{"kind": item.get("kind"), "value": item.get("value")} for item in missing_on_publishable]
 
         enrichment_results = enrich_generation_pages_wikilinks(
             context.candidate_generation_id,

@@ -9,7 +9,7 @@ import {
 import type { MenuItem } from '@/types/index';
 
 /** Target APM directoryized menu tree. */
-const apmMenus: MenuItem[] = [
+const apmMenus = [
   { title: '首页', url: '/apm/home', name: 'home', icon: 'shouye' },
   {
     title: '服务',
@@ -55,9 +55,9 @@ const apmMenus: MenuItem[] = [
       { url: '/apm/integration', name: 'integration_add', isNotMenuItem: true },
     ],
   },
-];
+] as MenuItem[];
 
-const jobExecutionMenus: MenuItem[] = [
+const jobExecutionMenus = [
   {
     title: '作业执行',
     url: '/job/execution',
@@ -69,9 +69,9 @@ const jobExecutionMenus: MenuItem[] = [
       { title: '作业记录', url: '/job/execution/job-record', name: 'job_record' },
     ],
   },
-];
+] as MenuItem[];
 
-const cmdbAutoDiscoveryMenus: MenuItem[] = [
+const cmdbAutoDiscoveryMenus = [
   {
     title: '管理',
     url: '/cmdb/assetManage',
@@ -89,7 +89,7 @@ const cmdbAutoDiscoveryMenus: MenuItem[] = [
       },
     ],
   },
-];
+] as MenuItem[];
 
 describe('isMenuPathMatch', () => {
   it('matches exact and descendant paths on segment boundary', () => {
@@ -195,7 +195,7 @@ describe('getDeepestMatchedMenuItems', () => {
   });
 });
 
-const skillMenus: MenuItem[] = [
+const skillMenus = [
   {
     title: '智能体',
     url: '/opspilot/skill',
@@ -222,7 +222,7 @@ const skillMenus: MenuItem[] = [
       },
     ],
   },
-];
+] as MenuItem[];
 
 describe('getDeepestMatchedMenuItems', () => {
   it('falls back to parent siblings when current page is a leaf (opspilot skill)', () => {

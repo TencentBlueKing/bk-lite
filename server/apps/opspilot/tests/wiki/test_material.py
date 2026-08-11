@@ -470,3 +470,32 @@ def test_material_list_filters_by_status_group(api_client, wiki_factory):
         {"knowledge_base": kb.pk, "status_group": "queued"},
     )
     assert {item["id"] for item in queued_only.json()["data"]["items"]} == {queued.id}
+
+
+@pytest.mark.django_db
+def test_material_list_filters_by_name_search(api_client, wiki_factory):
+    from apps.opspilot.models import Material
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    kb = wiki_factory.knowledge_base(team=[1])
+    bootstrap_knowledge_base(kb, operator="admin")
+    gate = Material.objects.create(knowledge_base=kb, name="门禁开通权限申请.docx", material_type="file", status="built")
+    monitor = Material.objects.create(knowledge_base=kb, name="监控系统主子码流.docx", material_type="file", status="built")
+    other = Material.objects.create(knowledge_base=kb, name="模版 - 副本1.pptx", material_type="file", status="built")
+
+    resp = api_client.get(
+        "/api/v1/opspilot/wiki_mgmt/material/",
+        {"knowledge_base": kb.pk, "search": "门禁", "page_size": 50},
+    )
+    assert resp.status_code == 200, resp.content
+    ids = {item["id"] for item in resp.json()["data"]["items"]}
+    assert ids == {gate.id}
+
+    combined = api_client.get(
+        "/api/v1/opspilot/wiki_mgmt/material/",
+        {"knowledge_base": kb.pk, "search": "docx", "status_group": "built", "page_size": 50},
+    )
+    combined_ids = {item["id"] for item in combined.json()["data"]["items"]}
+    assert gate.id in combined_ids
+    assert monitor.id in combined_ids
+    assert other.id not in combined_ids

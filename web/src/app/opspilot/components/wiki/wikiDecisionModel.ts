@@ -336,7 +336,7 @@ export const filterDecisionItems = (items: CheckItem[]): CheckItem[] =>
 export const getDecisionActions = (item: CheckItem): CheckDecisionAction[] => {
   const kind = getDecisionKind(item);
   if (kind === 'knowledge_conflict')
-    return ['keep_current', 'edit_accept', 'use_new'];
+    return ['keep_current', 'keep_all', 'edit_accept', 'use_new'];
   if (kind === 'page_identity') return ['keep_separate', 'merge'];
   return [];
 };

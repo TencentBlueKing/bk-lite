@@ -16,8 +16,8 @@ assert.match(
 
 assert.match(
   materialTab,
-  /const loadScopeRef = useRef\(\{ kbId, page, pageSize \}\)/,
-  "refreshes must bind to the latest knowledge base and pagination scope",
+  /const loadScopeRef = useRef\(\{\s*kbId,\s*page,\s*pageSize,\s*nameQuery,\s*statusGroups:/,
+  "refreshes must bind to the latest knowledge base, pagination, name, and status scope",
 );
 
 assert.match(
@@ -38,7 +38,7 @@ assert.match(
 );
 assert.match(
   materialTab,
-  /const \{[\s\S]{0,160}kbId: requestedKbId,[\s\S]{0,160}page: requestedPage,[\s\S]{0,160}pageSize: requestedPageSize,[\s\S]{0,80}\} = loadScopeRef\.current/,
+  /const \{[\s\S]{0,200}kbId: requestedKbId,[\s\S]{0,200}page: requestedPage,[\s\S]{0,200}pageSize: requestedPageSize,[\s\S]{0,200}nameQuery: requestedNameQuery,[\s\S]{0,200}statusGroups: requestedStatusGroups,[\s\S]{0,80}\} = loadScopeRef\.current/,
   "even callbacks from an older render must fetch the current list scope",
 );
 assert.match(
@@ -75,7 +75,7 @@ assert.match(
 
 assert.match(
   materialTab,
-  /loadScopeRef\.current = \{ kbId, page: p, pageSize: ps \}[\s\S]{0,120}setPage\(p\)/,
+  /loadScopeRef\.current = \{[\s\S]{0,120}kbId,[\s\S]{0,80}page: p,[\s\S]{0,80}pageSize: ps,[\s\S]{0,80}nameQuery,[\s\S]{0,80}statusGroups,[\s\S]{0,40}\}[\s\S]{0,120}setPage\(p\)/,
   "user pagination changes must update the latest query scope before fetching",
 );
 
@@ -103,7 +103,7 @@ assert.doesNotMatch(
 );
 
 const pollingBlock = materialTab.match(
-  /\/\/ 统一构建为 Celery 异步[\s\S]*?const openCreate/,
+  /\/\/ 排队中 \/ 构建中\(含 parsing\) 均静默轮询刷新列表状态。[\s\S]*?const openCreate/,
 )?.[0];
 assert.ok(pollingBlock, "material polling block must exist");
 assert.match(
