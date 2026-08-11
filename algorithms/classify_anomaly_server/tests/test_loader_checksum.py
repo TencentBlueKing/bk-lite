@@ -91,8 +91,10 @@ def test_checksum_mismatch_blocks_joblib_load(tmp_path, monkeypatch, load_from_l
     f = tmp_path / "model.pkl"
     f.write_bytes(b"tampered-model-data")
     monkeypatch.setenv("MODEL_SHA256", "a" * 64)
+    monkeypatch.setenv("ALLOW_DUMMY_FALLBACK", "false")
 
-    load_from_local(FakeConfig(str(f)))
+    with pytest.raises(RuntimeError, match="local path"):
+        load_from_local(FakeConfig(str(f)))
 
     assert not mock_joblib.load.called, (
         "joblib.load MUST NOT execute when checksum mismatches — "
