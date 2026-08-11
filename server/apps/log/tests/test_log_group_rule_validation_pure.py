@@ -46,6 +46,8 @@ def test_serializer_rejects_non_object_rule():
         [{"field": "cluster", "op": "startswith", "value": "prod* OR (*)"}],
         [{"field": "cluster", "op": "startswith", "value": "-prod"}],
         [{"field": "cluster", "op": "endswith", "value": "-prod"}],
+        [{"field": "cluster", "op": "startswith", "value": "@prod"}],
+        [{"field": "@timestamp", "op": "==", "value": "prod"}],
     ],
 )
 def test_serializer_rejects_malformed_rule_conditions(conditions):

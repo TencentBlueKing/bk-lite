@@ -51,7 +51,7 @@ def test_json_to_logsql_or_mode():
             {"field": "b", "op": "endswith", "value": "y"},
         ],
     }
-    assert LogGroupQueryBuilder.json_to_logsql_expression(rule) == "(a:x* OR b:*y)"
+    assert LogGroupQueryBuilder.json_to_logsql_expression(rule) == '(a:"x"* OR b:re(".*y$"))'
 
 
 def test_json_to_logsql_unknown_mode_raises():
@@ -86,6 +86,8 @@ def test_json_to_logsql_not_contains():
         {"field": "cluster", "op": "startswith", "value": "prod* OR (*)"},
         {"field": "cluster", "op": "startswith", "value": "-prod"},
         {"field": "cluster", "op": "endswith", "value": "-prod"},
+        {"field": "cluster", "op": "startswith", "value": "@prod"},
+        {"field": "@timestamp", "op": "==", "value": "prod"},
     ],
 )
 def test_json_to_logsql_rejects_values_that_can_change_query_structure(condition):

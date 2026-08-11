@@ -17,9 +17,9 @@ class LogGroupQueryBuilder:
     MODE_LEGACY_EMPTY_RULE = "legacy_empty_rule"
     MODE_INVALID = "invalid"
     SUPPORTED_OPERATIONS = frozenset({"==", "!=", "contains", "!contains", "startswith", "endswith"})
-    SAFE_FIELD_PATTERN = re.compile(r"^[A-Za-z_@][A-Za-z0-9_.@/-]*$")
+    SAFE_FIELD_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
     UNSAFE_QUOTED_VALUE_PATTERN = re.compile(r'["\\\x00-\x1f\x7f]')
-    SAFE_WILDCARD_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9_@][A-Za-z0-9_.@/-]*$")
+    SAFE_WILDCARD_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 
     @classmethod
     def classify_rule_mode(cls, rule_json):
@@ -153,9 +153,11 @@ class LogGroupQueryBuilder:
                 field, f".*{cls._escape_regex_value(value)}.*", negate=True
             ),
             "startswith": lambda field, value: (
-                f"{cls._encode_logsql_field(field)}:{value}*"
+                f"{cls._encode_logsql_field(field)}:{cls._encode_logsql_string(value)}*"
             ),
-            "endswith": lambda field, value: f"{cls._encode_logsql_field(field)}:*{value}",
+            "endswith": lambda field, value: regex_filter(
+                field, f".*{cls._escape_regex_value(value)}$"
+            ),
         }
 
     @staticmethod
