@@ -46,17 +46,18 @@ pnpm type-check
 pnpm storybook # :6006
 ```
 
-### APM 数据面（仓库根目录）
-
+### APM 数据面（`deploy/apm/`，契约夹具）
 ```bash
-make apm-up       # 启动参考 Collector/NATS/VictoriaTraces 数据面
-make apm-ps       # 查看状态
-make apm-logs     # 跟随日志
-make apm-down     # 停止数据面
-make apm-test     # Collector 单元测试
-make apm-validate # Compose 与 Collector 配置校验
-make apm-contract # 真实 SDK 全链路容器契约
+cd deploy/apm
+make up        # 启动契约验证用 Collector/NATS/VictoriaTraces（非生产编排）
+make ps        # 查看状态
+make logs      # 跟随日志
+make down      # 停止夹具
+make test      # Collector 单元测试
+make validate  # Compose 与 Collector 配置校验
+make contract  # 真实 SDK 全链路容器契约
 ```
+生产 Stream/VT/系统 Collector 与流水线由运维落地；验收约束见 `deploy/apm/ACCEPTANCE.md`。
 
 ### Mobile（`mobile/`）
 ```bash
@@ -104,6 +105,13 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 ### Stargazer
 - dev `make run`(`sanic ... --port=8083`);test `make lint`(pre-commit);build `make build`
 - 常见失败:Server/Worker Redis 配置不一致;`.env` 缺 NATS/Redis。**先起 Worker 再起 Server**
+
+### APM 数据面（`deploy/apm/`，契约夹具）
+- dev `make up` → 本地契约夹具就绪（非生产编排）
+- test `make test && make validate`；全链路契约 `make contract`（需 Docker）
+- release 运维按 [deploy/apm/ACCEPTANCE.md](deploy/apm/ACCEPTANCE.md) 验收；容量下界见 `CAPACITY.md`；Server 运行期变量模板见 `server/support-files/env/.env.apm.example`
+- 常见失败:镜像 tag 不存在;NATS ACL/Stream 漂移;4318 对非受信网络开放;把本地 Compose 参数直接当生产容量
+- 回滚:只回退本次上线的区域/系统 Collector、Stream/Consumer 与 VT；不恢复 Edge/APM VM/spanmetrics；编排回退由运维流水线执行
 
 ### K8s 采集器（`deploy/dist/bk-lite-kubernetes-collector/`）
 - release:`kubectl apply -f bk-lite-metric-collector.yaml` / `bk-lite-log-collector.yaml`

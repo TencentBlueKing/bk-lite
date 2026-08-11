@@ -15,7 +15,7 @@ OTel SDK / Agent
   ← apps.apm VictoriaTracesTelemetryStore 受控查询
 ```
 
-APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM 只使用 VictoriaTraces，Log 只使用 VictoriaLogs。NATS 是区域到中心的长期遥测传输模块，不是临时转发层。运维负责生产 Stream、系统级 Collector、VictoriaTraces、容量和告警；研发交付区域发布能力、中心消费能力、传输契约、参考部署、本地契约验证以及 Server/Web 查询闭环。
+APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM 只使用 VictoriaTraces，Log 只使用 VictoriaLogs。NATS 是区域到中心的长期遥测传输模块，不是临时转发层。研发交付传输契约、产品自有组件（Collector 发行版与区域代理内嵌）、契约夹具/本地验证以及 Server/Web 查询闭环；运维按自身流水线部署生产 Stream、系统级 Collector、VictoriaTraces、容量和告警，须满足硬约束但编排方式自选。`deploy/apm` 的 Compose 不是生产编排真相源。
 
 ## 非目标
 
@@ -200,7 +200,7 @@ APM 健康模型包含：区域 Collector 接收/清洗、本地发布队列、N
 
 应用模型首次上线时创建内置“未归类应用”并回填开发期空 namespace 数据；数据库降级只移除内置标识字段，保留应用、组织关系和目录数据，避免回滚删除可恢复事实。
 
-详细的生产门禁、顺序、验收和回滚以 `deploy/apm/ROLLOUT.md` 为准。
+详细的生产验收与回滚约束以 `deploy/apm/ACCEPTANCE.md` 为准；容量下界见 `deploy/apm/CAPACITY.md`。二者是约束清单，不是运维流水线设计。
 
 ## 容量模型
 
@@ -231,7 +231,7 @@ TDD 只在以下已确认 interface 上测试，不耦合内部实现：
 - [x] 阶段 3：VT-only Adapter、任务切换、dependencies、35d 保留期和组织一致性。
 - [x] 阶段 4：健康、首次上线/回滚和可靠性故障语义。
 - [x] 阶段 5：单元/接口/容器/故障/数据正确性/Web 与 Storybook 全量验证。
-- [x] 交付补强：根 Makefile 正式管理参考数据面；受管区域代理内置区域 Collector 与 4318 映射；Server 提供 APM 运行期环境变量模板。
+- [x] 交付补强：`deploy/apm` 作为契约夹具（Makefile/Compose）管理本地验证；受管区域代理内置区域 Collector 与 4318 映射；Server 提供 APM 运行期环境变量模板；生产编排交运维。
 - [x] 交付补强：容器契约使用 Server 生成配置和真实 Python OpenTelemetry SDK 验证端到端 Trace。
 - [x] 交付补强：Kubernetes 输出可应用的 Pod patch 与 Downward API Pod UID；Go 明确为手动 SDK 接入并提供完整初始化模板。
 - [x] 交付补强：ADR 0008 固化受信区域网络边界，旧 Token/Gateway PRD 退出事实入口。

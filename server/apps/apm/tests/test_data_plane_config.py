@@ -9,10 +9,9 @@ BUILDER_CONFIG = REPOSITORY_ROOT / "deploy/apm/collector/builder-config.yaml"
 TRACE_GUARD = REPOSITORY_ROOT / "deploy/apm/collector/processor/traceguardprocessor/processor.go"
 NATS_CONFIG = REPOSITORY_ROOT / "deploy/apm/nats/nats-server.conf"
 COMPOSE_CONFIG = REPOSITORY_ROOT / "deploy/apm/compose.yaml"
-ROLLOUT_GUIDE = REPOSITORY_ROOT / "deploy/apm/ROLLOUT.md"
+ACCEPTANCE_GUIDE = REPOSITORY_ROOT / "deploy/apm/ACCEPTANCE.md"
 CAPACITY_GUIDE = REPOSITORY_ROOT / "deploy/apm/CAPACITY.md"
 APM_MAKEFILE = REPOSITORY_ROOT / "deploy/apm/Makefile"
-ROOT_MAKEFILE = REPOSITORY_ROOT / "Makefile"
 PROXY_COMPOSE = REPOSITORY_ROOT / "agents/webhookd/infra/proxy/docker-compose.yaml"
 PROXY_ENV_TEMPLATE = REPOSITORY_ROOT / "agents/webhookd/infra/proxy/env.template"
 PROXY_NATS_TEMPLATE = REPOSITORY_ROOT / "agents/webhookd/infra/proxy/conf/nats/nats.conf.template"
@@ -181,28 +180,29 @@ def test_regional_queue_is_initialized_once_without_elevating_collector():
 def test_runtime_health_metrics_and_first_rollout_are_explicit():
     exporter = (REPOSITORY_ROOT / "deploy/apm/collector/exporter/natsjetstreamexporter/factory.go").read_text()
     receiver = (REPOSITORY_ROOT / "deploy/apm/collector/receiver/natsjetstreamreceiver/factory.go").read_text()
-    rollout = ROLLOUT_GUIDE.read_text()
+    acceptance = ACCEPTANCE_GUIDE.read_text()
     capacity = CAPACITY_GUIDE.read_text()
 
     assert "last_publish_ack_unixtime" in exporter
     assert "last_delivery_ack_unixtime" in receiver
-    assert "APM 从未正式部署" in rollout
-    assert "首次上线没有旧 APM 数据面可恢复" in rollout
-    assert "不得临时引入其他接收代理" in rollout
-    assert "恢复旧 Edge" not in rollout
+    assert "APM 从未正式部署" in acceptance
+    assert "首次上线没有旧 APM 数据面可恢复" in acceptance
+    assert "不得临时引入其他接收代理" in acceptance
+    assert "恢复旧 Edge" not in acceptance
     assert "regional_queue_bytes" in capacity
     assert "victoria_traces_bytes" in capacity
     assert "70%" in capacity and "85%" in capacity
+    assert "不是发布流水线设计文档" in acceptance
+    readme = (REPOSITORY_ROOT / "deploy/apm/README.md").read_text()
+    assert "契约夹具" in readme
+    assert "也不替运维设计流水线" in readme
 
 
 def test_apm_data_plane_has_makefile_lifecycle_and_server_runtime_contract():
-    root_makefile = ROOT_MAKEFILE.read_text()
     apm_makefile = APM_MAKEFILE.read_text()
     server_env = SERVER_ENV_TEMPLATE.read_text()
 
-    for target in ("apm-up", "apm-down", "apm-ps", "apm-logs"):
-        assert f"{target}:" in root_makefile
-    for target in ("up:", "down:", "ps:", "logs:"):
+    for target in ("up:", "down:", "ps:", "logs:", "validate:", "test:", "contract:"):
         assert target in apm_makefile
     for key in (
         "APM_VICTORIATRACES_QUERY_ENDPOINT",

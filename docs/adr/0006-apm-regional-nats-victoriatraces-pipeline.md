@@ -14,6 +14,10 @@ APM 数据面固定为“区域 Collector → NATS JetStream `apm.traces.<cloud_
 
 ## Consequences
 
-- 运维必须部署有界 JetStream Stream、系统级 Collector 和开启 service graph 后台任务的 VictoriaTraces；研发交付双方配置契约、镜像构建和本地真实链路验证。
+- **研发**交付传输契约、产品自有组件（BK-Lite Collector 发行版、受管区域代理内嵌区域
+  Collector）、契约夹具与本地/CI 验证，以及 Server/Web 查询闭环。`deploy/apm` 的 Compose
+  不是生产编排真相源。
+- **运维**按自身流水线部署有界 JetStream Stream、系统级 Collector、开启 service graph
+  的 VictoriaTraces，以及容量与告警；须满足契约夹具与验收清单中的硬约束，编排方式自选。
 - JetStream 提供至少一次投递。发布端用确定性消息 ID 和 duplicate window 抑制重复发布；消费端只在下游接受后确认。崩溃窗口仍可能让同一 Span 重复写入，因此所有 APM 派生查询按 `trace_id + span_id` 去重，目录继续依赖数据库唯一约束，不能把物理重复计入 RED/SLO。
 - 这是首次生产数据面的选择，不是存量架构迁移。首次上线失败时只停止或回退本次发布的正式组件，保留 Stream、区域队列和 VT 数据；不得引入早期未发布方案作为回滚路径，也不得修改 Monitor 的 VictoriaMetrics。
