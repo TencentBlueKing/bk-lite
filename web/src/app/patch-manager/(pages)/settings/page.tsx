@@ -363,7 +363,8 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
     <>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <SearchActionBar
-          spacing="flush"
+          className='mb-[12px]'
+          spacing="default"
           searchClassName="!w-[200px]"
           searchProps={{
             placeholder: t('patchManager.patchSourceName'),

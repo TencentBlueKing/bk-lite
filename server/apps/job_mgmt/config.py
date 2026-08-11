@@ -28,8 +28,19 @@ DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY = max(1, _int_env("JOB_DISTRIBUTION_FI
 # 单批加载与删除的过期分发文件上限，避免大结果集和超长 id__in 参数。
 DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE = max(1, _int_env("JOB_DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE", 500))
 
+# 取消兜底先于真实 Ansible 回调提交时，暂缓终态副作用，允许后到回调纠正占位结果。
+CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS = max(0, _int_env("JOB_CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS", 60))
+
+# 真实执行超时后再等待一个缓冲窗口，仍无回调才将 CANCELLING 收敛到终态。
+CANCEL_CONVERGE_BUFFER_SECONDS = max(0, _int_env("JOB_CANCEL_CONVERGE_BUFFER_SECONDS", 60))
+
 
 CELERY_BEAT_SCHEDULE = {
+    # 恢复 broker 入队失败、worker 崩溃留下的终态副作用
+    "dispatch-pending-job-completion-outbox": {
+        "task": "apps.job_mgmt.tasks.dispatch_pending_job_completion_outbox",
+        "schedule": crontab(minute="*"),
+    },
     # 清理过期分发文件 - 每天 00:00 执行
     "cleanup-expired-distribution-files": {
         "task": "apps.job_mgmt.tasks.cleanup_expired_distribution_files_task",

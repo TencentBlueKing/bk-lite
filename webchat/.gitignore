@@ -8,6 +8,7 @@ packages/webchat-ui/node_modules
 # Testing
 /coverage
 /.test-dist
+packages/webchat-ui/.test-dist/
 
 # Next.js
 /.next/

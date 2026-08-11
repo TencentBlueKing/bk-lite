@@ -273,6 +273,56 @@ def test_send_email_to_user_成功(mocker):
     fake_server.quit.assert_called_once()
 
 
+def test_send_email_to_user_关闭认证时跳过login(mocker):
+    config = {
+        "mail_sender": "from@x.com",
+        "smtp_server": "smtp.x.com",
+        "port": 25,
+        "smtp_auth_enabled": False,
+        "smtp_user": "",
+        "smtp_pwd": "",
+    }
+    fake_server = mocker.Mock()
+    mocker.patch("apps.system_mgmt.utils.channel_utils.smtplib.SMTP", return_value=fake_server)
+
+    result = channel_utils.send_email_to_user(config, "<b>hi</b>", ["a@x.com"], "主题")
+
+    assert result == {"result": True, "message": "Successfully sent email"}
+    fake_server.login.assert_not_called()
+    fake_server.send_message.assert_called_once()
+
+
+def test_send_personalized_email_关闭认证时跳过login(mocker):
+    ch = _make_channel(
+        ChannelChoices.EMAIL,
+        {
+            "mail_sender": "from@x.com",
+            "smtp_server": "smtp.x.com",
+            "port": 25,
+            "smtp_auth_enabled": False,
+            "smtp_user": "",
+            "smtp_pwd": "",
+        },
+    )
+    fake_server = mocker.Mock()
+    mocker.patch("apps.system_mgmt.utils.channel_utils.smtplib.SMTP", return_value=fake_server)
+
+    results = channel_utils.send_personalized_email_messages(
+        ch,
+        [{"key": "u1", "receiver": "a@x.com", "title": "t", "content": "<b>x</b>"}],
+    )
+
+    assert results == {"u1": {"result": True}}
+    fake_server.login.assert_not_called()
+    fake_server.send_message.assert_called_once()
+
+
+def test_is_smtp_auth_enabled_缺省为启用():
+    assert channel_utils.is_smtp_auth_enabled({}) is True
+    assert channel_utils.is_smtp_auth_enabled({"smtp_auth_enabled": True}) is True
+    assert channel_utils.is_smtp_auth_enabled({"smtp_auth_enabled": False}) is False
+
+
 def test_send_email_to_user_ssl与tls与附件(mocker):
     config = {
         "mail_sender": "from@x.com",

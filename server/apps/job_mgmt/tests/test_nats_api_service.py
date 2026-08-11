@@ -9,8 +9,9 @@ from django.utils import timezone
 from apps.job_mgmt import nats_api
 from apps.job_mgmt.constants import DangerousLevel, ExecutionStatus, JobType
 from apps.job_mgmt.models import DangerousRule, DistributionFile, JobExecution, Script
+from apps.job_mgmt.tests.callback_helpers import authorize_execution, with_callback_identity
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 
 class TestModuleData:
@@ -65,33 +66,55 @@ def _exec(**over):
         "team": [1],
     }
     defaults.update(over)
-    return JobExecution.objects.create(**defaults)
+    return authorize_execution(JobExecution.objects.create(**defaults))
 
 
 class TestAnsibleCallback:
+    @pytest.mark.parametrize("data", [None, [], "invalid"])
+    def test_rejects_non_object_payload(self, data):
+        out = nats_api.ansible_task_callback(data)
+        assert out == {"success": False, "message": "回调数据必须为对象"}
+
     def test_missing_task_id(self):
         assert nats_api.ansible_task_callback({})["success"] is False
+
+    @pytest.mark.parametrize("task_id", [True, "invalid", -1, 0])
+    def test_invalid_task_id(self, task_id):
+        assert nats_api.ansible_task_callback({"task_id": task_id})["success"] is False
+
+    def test_numeric_string_task_id_keeps_legacy_executor_compatibility(self):
+        ex = _exec()
+        data = with_callback_identity(
+            ex,
+            {"task_id": str(ex.id), "result": [{"host": "1.1.1.1", "status": "success", "stdout": "ok", "exit_code": 0}]},
+        )
+        with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
+            result = nats_api.ansible_task_callback(data)
+
+        ex.refresh_from_db()
+        assert result["success"] is True
+        assert ex.status == ExecutionStatus.SUCCESS
 
     def test_not_found(self):
         assert nats_api.ansible_task_callback({"task_id": 999999})["success"] is False
 
     def test_already_terminal(self):
         ex = _exec(status=ExecutionStatus.SUCCESS)
-        out = nats_api.ansible_task_callback({"task_id": ex.id})
+        out = nats_api.ansible_task_callback(with_callback_identity(ex, {"task_id": ex.id}))
         assert out["success"] is True and "已处理" in out["message"]
 
     def test_invalid_result_format_fails(self):
         ex = _exec()
-        with patch("apps.job_mgmt.nats_api.publish_done_sentinel"), patch("apps.job_mgmt.nats_api.send_callback"):
-            out = nats_api.ansible_task_callback({"task_id": ex.id, "result": "not-a-list"})
+        with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
+            out = nats_api.ansible_task_callback(with_callback_identity(ex, {"task_id": ex.id, "result": "not-a-list"}))
         assert out["success"] is False
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.FAILED
 
     def test_happy_per_host_success(self):
         ex = _exec()
-        data = {"task_id": ex.id, "result": [{"host": "1.1.1.1", "status": "success", "stdout": "ok", "exit_code": 0}]}
-        with patch("apps.job_mgmt.nats_api.publish_done_sentinel"), patch("apps.job_mgmt.nats_api.send_callback"):
+        data = with_callback_identity(ex, {"task_id": ex.id, "result": [{"host": "1.1.1.1", "status": "success", "stdout": "ok", "exit_code": 0}]})
+        with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
             out = nats_api.ansible_task_callback(data)
         assert out["success"] is True
         ex.refresh_from_db()
@@ -99,8 +122,8 @@ class TestAnsibleCallback:
 
     def test_missing_target_filled_as_failed(self):
         ex = _exec(target_list=[{"target_id": 1, "ip": "1.1.1.1", "name": "h1"}, {"target_id": 2, "ip": "2.2.2.2", "name": "h2"}])
-        data = {"task_id": ex.id, "result": [{"host": "1.1.1.1", "status": "success"}]}
-        with patch("apps.job_mgmt.nats_api.publish_done_sentinel"), patch("apps.job_mgmt.nats_api.send_callback"):
+        data = with_callback_identity(ex, {"task_id": ex.id, "result": [{"host": "1.1.1.1", "status": "success"}]})
+        with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
             out = nats_api.ansible_task_callback(data)
         assert out["success"] is True
         ex.refresh_from_db()

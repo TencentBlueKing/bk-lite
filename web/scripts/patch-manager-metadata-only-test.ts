@@ -8,6 +8,7 @@ const assertAbsent = (content: string, pattern: RegExp, scope: string) => {
 };
 
 const libraryPage = read('src/app/patch-manager/(pages)/library/page.tsx');
+const libraryPresentation = read('src/app/patch-manager/components/library-presentation.ts');
 const api = read('src/app/patch-manager/api/index.ts');
 const types = read('src/app/patch-manager/types/index.ts');
 
@@ -50,6 +51,14 @@ for (const required of [
 
 if (!libraryPage.includes("{activeTab === 'win' && (")) {
   throw new Error('新增补丁入口未限制为 Windows，Linux MVP 入口不应显示');
+}
+
+if (!libraryPage.includes("{ name: 'version', label: t('patchManager.distro'), lookup_expr: 'icontains' }")) {
+  throw new Error('Linux 发行版筛选应为可输入的模糊搜索框');
+}
+
+if (!libraryPresentation.includes("pending: 'processing'")) {
+  throw new Error('Windows 手工补丁 pending 应展示为处理中');
 }
 
 if (existsSync(resolve(root, 'src/app/patch-manager/components/catalog-search-modal.tsx'))) {

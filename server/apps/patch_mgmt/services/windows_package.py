@@ -7,6 +7,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.patch_mgmt.config import (
@@ -169,15 +170,28 @@ def expire_stale_windows_package_uploads(
     timeout_seconds: int = PATCH_MGMT_PACKAGE_UPLOAD_TIMEOUT,
     now=None,
 ) -> int:
-    """将长期未完成上传的手工 Windows 补丁收口为失败。"""
+    """将长期未完成上传的手工 Windows 补丁收口为失败。
+
+    兼容旧版本留下的 pending 元数据记录；已绑定补丁源或有同步时间的
+    pending 记录不属于手工上传，不在此处收口。
+    """
     current = now or timezone.now()
     deadline = current - timedelta(seconds=max(int(timeout_seconds), 1))
     stale_ids = list(
         Patch.objects.filter(
             os_type=OSType.WINDOWS,
-            pkg_status=PackageStatus.DOWNLOADING,
             updated_at__lt=deadline,
-        ).values_list("id", flat=True)
+        )
+        .filter(
+            Q(pkg_status=PackageStatus.DOWNLOADING)
+            | Q(
+                pkg_status=PackageStatus.PENDING,
+                sources__isnull=True,
+                last_synced_at__isnull=True,
+            )
+        )
+        .distinct()
+        .values_list("id", flat=True)
     )
     expired = 0
     for patch_id in stale_ids:
@@ -189,9 +203,17 @@ def expire_stale_windows_package_uploads(
                 )
             except Patch.DoesNotExist:
                 continue
-            if (
-                patch.pkg_status != PackageStatus.DOWNLOADING
-                or patch.updated_at >= deadline
+            is_legacy_pending_upload = (
+                patch.pkg_status == PackageStatus.PENDING
+                and patch.last_synced_at is None
+                and not patch.sources.exists()
+            )
+            if not (
+                patch.updated_at < deadline
+                and (
+                    patch.pkg_status == PackageStatus.DOWNLOADING
+                    or is_legacy_pending_upload
+                )
             ):
                 continue
             try:

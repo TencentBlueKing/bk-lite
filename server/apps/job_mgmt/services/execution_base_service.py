@@ -46,22 +46,33 @@ class ExecutionTaskBaseService(object):
         return data.get("password")
 
     def prepare_execution(self) -> Tuple[Optional[JobExecution], list]:
-        try:
-            execution = JobExecution.objects.get(id=self.execution_id)
-        except JobExecution.DoesNotExist:
-            logger.error(f"[{self.task_name}] 执行记录不存在: execution_id={self.execution_id}")
-            return None, []
+        with transaction.atomic():
+            try:
+                execution = JobExecution.objects.select_for_update().get(id=self.execution_id)
+            except JobExecution.DoesNotExist:
+                logger.error(f"[{self.task_name}] 执行记录不存在: execution_id={self.execution_id}")
+                return None, []
 
-        if execution.status in (ExecutionStatus.CANCELLING, ExecutionStatus.CANCELLED):
-            logger.info(f"[{self.task_name}] 任务已取消，不再进入执行: execution_id={self.execution_id}, status={execution.status}")
-            return None, []
+            if execution.status != ExecutionStatus.PENDING:
+                logger.info(
+                    f"[{self.task_name}] 任务已离开待执行状态，不再进入执行: "
+                    f"execution_id={self.execution_id}, status={execution.status}"
+                )
+                return None, []
 
-        self.update_execution_status(execution, ExecutionStatus.RUNNING, started_at=timezone.now())
-        target_list = execution.target_list or []
-        if not target_list:
-            logger.warning(f"[{self.task_name}] 无待执行目标: execution_id={self.execution_id}")
-            self.update_execution_status(execution, ExecutionStatus.SUCCESS, finished_at=timezone.now())
-            return None, []
+            target_list = execution.target_list or []
+            now = timezone.now()
+            if not target_list:
+                logger.warning(f"[{self.task_name}] 无待执行目标: execution_id={self.execution_id}")
+                execution.status = ExecutionStatus.SUCCESS
+                execution.started_at = now
+                execution.finished_at = now
+                execution.save(update_fields=["status", "started_at", "finished_at", "updated_at"])
+                return None, []
+
+            execution.status = ExecutionStatus.RUNNING
+            execution.started_at = now
+            execution.save(update_fields=["status", "started_at", "updated_at"])
         return execution, target_list
 
     @staticmethod
@@ -235,10 +246,9 @@ class ExecutionTaskBaseService(object):
         host_credentials = cls._build_host_credentials(region_target_list)
 
         # 构建回调配置
-        callback_config = {
-            "subject": f"{NATS_NAMESPACE}.ansible_task_callback",
-            "timeout": 30,
-        }
+        from apps.job_mgmt.services.ansible_callback_service import build_ansible_callback_config
+
+        callback_config = build_ansible_callback_config(execution, f"{NATS_NAMESPACE}.ansible_task_callback")
 
         # 根据脚本类型选择模块
         shell_mapping = {

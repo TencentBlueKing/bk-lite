@@ -44,6 +44,21 @@ def _extract_latest_failure_from_steps(steps):
     return None
 
 
+def _extract_latest_installer_failure_from_steps(steps):
+    """Prefer a terminal installer event over a later transport wrapper error."""
+    if not isinstance(steps, list):
+        return None
+
+    for step in reversed(steps):
+        if not isinstance(step, dict):
+            continue
+        details = step.get("details")
+        if isinstance(details, dict) and details.get("installer_event") is True and details.get("failure"):
+            return details.get("failure")
+
+    return None
+
+
 def _prefer_failure(current, candidate):
     if not isinstance(candidate, dict):
         return current
@@ -69,7 +84,10 @@ def _is_installer_event_step(step):
 
 def _canonical_installer_step(step):
     details = step.get("details") if isinstance(step.get("details"), dict) else {}
-    return normalize_installer_action(details.get("raw_step") or step.get("action"))
+    tracked_action = step.get("action")
+    if tracked_action in EXPECTED_INSTALLER_STEPS or tracked_action in OPTIONAL_INSTALLER_STEPS:
+        return tracked_action
+    return normalize_installer_action(details.get("raw_step") or tracked_action)
 
 
 def _dedupe_installer_events(installer_steps):
@@ -138,6 +156,11 @@ def _build_installer_summary(steps, overall_status=None):
     elif not installer_steps:
         state = "no_installer_events"
         anomalies.append(state)
+    elif overall_status == "success" and missing_steps:
+        state = "installer_success_with_incomplete_detail"
+        anomalies.append("incomplete_installer_events")
+    elif missing_steps and not any(step.get("status") in {"error", "timeout"} for step in deduped_core_steps):
+        state = "installer_events_in_progress"
     elif missing_steps or any(step.get("status") in {"error", "timeout"} for step in deduped_core_steps):
         state = "incomplete_installer_events"
         anomalies.append(state)
@@ -183,7 +206,12 @@ def _latest_step_by_action(steps, action):
     )
 
 
-def _build_controller_install_display(steps, installer_summary, overall_status=None):
+def _build_controller_install_display(
+    steps,
+    installer_summary,
+    overall_status=None,
+    connectivity_observed=False,
+):
     if not isinstance(installer_summary, dict):
         return None
 
@@ -198,6 +226,23 @@ def _build_controller_install_display(steps, installer_summary, overall_status=N
         "severity": "default",
         "installer_steps_received": installer_steps_received,
     }
+
+    # The task outcome is authoritative. Telemetry completeness is diagnostic
+    # metadata and must never project a terminal task back into a running state.
+    if overall_status == "success":
+        if summary_state == "installer_success_without_detail":
+            display.update({"state": "success_without_detail", "phase": "node_connectivity", "severity": "success"})
+        elif summary_state == "installer_success_with_incomplete_detail":
+            display.update(
+                {
+                    "state": "success_with_incomplete_detail",
+                    "phase": "node_connectivity",
+                    "severity": "success",
+                }
+            )
+        else:
+            display.update({"state": "success", "phase": "node_connectivity", "severity": "success"})
+        return display
 
     if credential_step and credential_step.get("status") in {"error", "timeout"}:
         display.update({"state": "credential_failed", "severity": "error"})
@@ -229,13 +274,19 @@ def _build_controller_install_display(steps, installer_summary, overall_status=N
                 "severity": "error" if has_failed_installer_step or overall_status in {"error", "timeout"} else "processing",
             }
         )
+    elif summary_state == "installer_events_in_progress":
+        display.update(
+            {
+                "state": "installer_finalizing" if connectivity_observed else "installer_running",
+                "phase": "installer_execution",
+                "severity": "processing",
+            }
+        )
     elif summary_state == "installer_success_connectivity_pending":
         display.update({"state": "connectivity_waiting", "phase": "node_connectivity", "severity": "processing"})
     elif summary_state == "installer_success_connectivity_timeout":
         display.update({"state": "connectivity_failed", "phase": "node_connectivity", "severity": "error"})
     elif summary_state == "installer_success_connectivity_confirmed":
-        display.update({"state": "success", "phase": "node_connectivity", "severity": "success"})
-    elif overall_status == "success":
         display.update({"state": "success", "phase": "node_connectivity", "severity": "success"})
     elif overall_status in {"error", "timeout", "cancelled"}:
         display.update({"state": "command_failed", "phase": "command_dispatch", "severity": "error"})
@@ -297,6 +348,7 @@ def normalize_task_result_for_read(result=None):
     steps = prepared_result.get("steps", [])
     normalized_steps = []
     latest_failure = None
+    latest_installer_failure = None
 
     for step in steps:
         if not isinstance(step, dict):
@@ -321,6 +373,11 @@ def normalize_task_result_for_read(result=None):
         if step_details:
             normalized_step["details"] = step_details
             latest_failure = _prefer_failure(latest_failure, step_details.get("failure"))
+            if step_details.get("installer_event") is True:
+                latest_installer_failure = _prefer_failure(
+                    latest_installer_failure,
+                    step_details.get("failure"),
+                )
 
         normalized_steps.append(normalized_step)
 
@@ -332,6 +389,7 @@ def normalize_task_result_for_read(result=None):
 
     latest_failure = _prefer_failure(latest_failure, prepared_result.get("failure"))
     latest_failure = latest_failure or _extract_latest_failure_from_steps(prepared_result.get("steps"))
+    latest_failure = _prefer_failure(latest_failure, latest_installer_failure)
 
     if latest_failure and prepared_result.get("overall_status") in {"error", "timeout", "cancelled"}:
         prepared_result["failure"] = latest_failure
@@ -346,6 +404,7 @@ def normalize_task_result_for_read(result=None):
             normalized_steps,
             installer_summary,
             overall_status=prepared_result.get("overall_status"),
+            connectivity_observed=prepared_result.get("connectivity_observed") is True,
         )
     else:
         prepared_result.pop("installer_summary", None)

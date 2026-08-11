@@ -120,13 +120,20 @@
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
 | 条件过滤 | Alert / Event / Incident / OperatorLog 支持条件过滤、时间范围筛选与分页 | — | GA |
-| 趋势统计 | 趋势聚合统计 | 支持分钟/小时/日/周/月多粒度（NATS 接口 `get_alert_trend_data`） | GA |
-| 告警源统计 | 统计可见告警关联的告警源数量、启用率与活跃量 | 非超管仅统计当前组织与对象权限范围内可见告警反推出来的告警源 | GA |
-| 通知效果统计 | 统计通知总量、成功量、失败量与成功率 | 仅统计当前组织与对象权限范围内可见告警关联的通知结果 | GA |
+| 趋势统计 | 按时间窗口输出告警、告警关联原始事件和已恢复告警三条趋势 | 支持分钟/小时/日/周/月；开始时间包含、结束时间不包含；空周期补零（NATS 接口 `get_alert_trend_data`） | GA |
+| 告警源事件 TOP | 按告警源列出原始事件量前 N 名 | 查询必须传入时间窗口，按事件接收时间统计（NATS 接口 `get_alert_source_event_top`） | GA |
+| 活跃告警状态分布 | 按活跃状态汇总告警数量，供运营分析饼图 | 仅统计未分派 / 待响应 / 处理中；同状态下多条告警正确聚合为一条计数（NATS 接口 `get_alert_status_distribution`） | GA |
+| 今日告警状态摘要 | 汇总今日产生、今日关闭与当前处理中数量 | 按用户时区切日（NATS 接口 `get_alert_today_status_summary`） | GA |
+| 告警级别分布 | 按告警级别汇总数量 | 可按状态过滤；供运营分析环形图（NATS 接口 `get_alert_level_distribution`） | GA |
+| 告警级别趋势 | 按时间粒度与级别输出多系列趋势 | 支持分钟/小时/日/周/月（NATS 接口 `get_alert_level_trend`） | GA |
+| 告警源分布 | 按告警源汇总可见告警数量 | 无来源标记归入未知（NATS 接口 `get_alert_source_distribution`） | GA |
+| 告警源统计 | 统计告警源总量、启用量、启用率和活跃量 | 总量、启用量和启用率来自全部配置；活跃量仅从当前权限范围的告警关联事件反推，可按时间窗口过滤 | GA |
+| 通知效果统计 | 统计通知总量、成功量、失败量与成功率 | 仅统计当前权限范围内的通知结果；无通知样本时成功率、失败率为空值 | GA |
 | 通知渠道统计 | 按通知渠道统计成功率 | 仅统计当前组织与对象权限范围内可见告警关联的通知结果 | GA |
+| 数据质量概览 | 分别统计告警和原始事件的字段缺失数量与比例 | 告警按创建时间、原始事件按接收时间筛选；无样本时比例为空值（NATS 接口 `get_alert_data_quality`） | GA |
 
-相关 PRD：[[spec/prd/告警中心/告警.md#3. 关键能力]]；相关架构：[[spec/ARD/modules/alerts.md#5. 任务与 NATS【已实现/已存在】]]
-> 证据来源：server/apps/alerts/nats/nats.py:78-137，server/apps/alerts/nats/nats.py:403-536　|　同步基线：a9d981aeb　|　【已实现】
+相关 PRD：[[legacy-prd-告警中心-告警.md#3. 关键能力]]；相关架构：[[legacy-ard-modules-alerts.md#5. 任务与 NATS【已实现/已存在】]]
+> 证据来源：server/apps/alerts/nats/nats.py:322-714，server/apps/alerts/nats/nats.py:1029-1176，server/apps/alerts/tests/test_nats_handlers.py:797-1223，server/apps/operation_analysis/support-files/builtin_canvases.yaml:1959-1964　|　同步基线：d2769559　|　【已实现】
 
 ## 三、能力边界与约束
 

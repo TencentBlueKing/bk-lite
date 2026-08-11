@@ -88,6 +88,47 @@ def test_builtin_application_is_visible_but_cannot_be_modified(apm_api_client):
     assert application.name == "未归类应用"
 
 
+def test_application_update_ignores_immutable_application_id_from_stale_payload(apm_api_client):
+    created = apm_api_client.post(
+        "/api/v1/apm/applications/",
+        {
+            "application_id": "shop",
+            "name": "电商主站",
+            "organization_ids": [10],
+        },
+        format="json",
+    )
+    assert created.status_code == 201
+
+    with_current_id = apm_api_client.put(
+        f"/api/v1/apm/applications/{created.data['id']}/",
+        {
+            "application_id": "shop",
+            "name": "电商主站-2",
+            "description": "",
+            "organization_ids": [10],
+        },
+        format="json",
+    )
+    with_blank_id = apm_api_client.put(
+        f"/api/v1/apm/applications/{created.data['id']}/",
+        {
+            "application_id": "",
+            "name": "电商主站-3",
+            "description": "",
+            "organization_ids": [10],
+        },
+        format="json",
+    )
+
+    assert with_current_id.status_code == 200
+    assert with_current_id.data["application_id"] == "shop"
+    assert with_current_id.data["name"] == "电商主站-2"
+    assert with_blank_id.status_code == 200
+    assert with_blank_id.data["application_id"] == "shop"
+    assert with_blank_id.data["name"] == "电商主站-3"
+
+
 def test_application_id_validation_and_uniqueness_are_explicit(apm_api_client):
     invalid = apm_api_client.post(
         "/api/v1/apm/applications/",

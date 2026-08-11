@@ -194,17 +194,38 @@
     white-space: nowrap;
 }
 
+.cardMeta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    min-height: 22px;
+
+    :global(.ant-tag) {
+        margin-inline-end: 0;
+    }
+}
+
 .cardTag {
     max-width: 100%;
-    margin-top: 8px;
+    margin: 0;
     border: 0;
     border-radius: 4px;
     color: #005cff;
     background: #e8f1ff;
     font-size: 12px;
     font-weight: 600;
+    line-height: 20px;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.cardTypeTag {
+    margin: 0;
+    flex-shrink: 0;
+    font-size: 12px;
+    line-height: 20px;
 }
 
 .cardDescription {

@@ -33,6 +33,14 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 - 角色继承：`get_user_all_roles` 沿 `parent_id`+`allow_inherit_roles` 递归汇总；权限缓存 TTL 由 `PERMISSION_CACHE_TTL` 配置（默认 600s），token 信息缓存 TTL 由 `TOKEN_INFO_CACHE_TTL` 配置（默认 60s）。
 - 密码策略：`utils/password_validator.py`（失败锁定）。
 
+### 4.1 用户目录远程兼容契约【已实现/限时风险接受】
+
+- 用户目录的四个既有远程调用入口已恢复注册：按组织取用户、按调用方组织范围取用户、取全量用户、按用户名/显示名/邮箱搜索用户。前两者返回基础用户字段；未传组织的非范围入口返回全部基础用户；全量入口返回 `User.display_fields()`；搜索入口按页返回命中总数和用户列表。
+- 范围入口依据消息体中的 `actor_context` 查找用户并计算组织范围；超管身份仍由持久化角色判断，而非请求声明。但 `actor_context` 本身尚不是可信调用方身份，因此该入口不得被描述为完整的鉴权边界。
+- 四个入口仅为已知仓外消费者限时恢复，禁止新增消费者；风险接受与 NATS 身份/ACL 迁移跟踪见 #4533，截止 2026-09-04。产品使用边界见 [[legacy-prd-系统管理-组织#3.1 跨模块用户目录查询兼容]]，交付状态见 [[legacy-fuctionlist-07-系统管理-功能清单#11. 跨模块用户目录兼容]]。
+
+> 证据来源：server/apps/system_mgmt/nats/users.py:20-38、41-119、156-181　|　同步基线：d2769559　|　【已实现】
+
 ## 5. 通知渠道【已实现/已存在】
 `models/channel.py` 的 `ChannelChoices` 定义 7 类渠道：`email`（邮件）、`enterprise_wechat`（企微）、`enterprise_wechat_bot`（企微机器人）、`nats`（NATS 消息）、`feishu_bot`（飞书机器人）、`dingtalk_bot`（钉钉机器人）、`custom_webhook`（自定义 Webhook）。发送实现见 `utils/channel_utils.py`；BK 用户对接 `utils/bk_user_utils.py`。
 
@@ -46,6 +54,9 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 ## 7. 风险 / 待确认
 - domain 多租户隔离在所有 ViewSet 是否强制【待确认】。
 - 外部登录模块（LDAP/WeChat/BK）配置与回退【推断，需确认覆盖范围】。
+- 用户目录远程入口在 2026-09-04 前仍接受消息体中的调用方上下文，缺少可验证的 NATS 调用方身份与 ACL 约束；迁移完成前不应将其作为通用授权服务或扩展给新消费者【待确认：#4533 的迁移验收与退出执行情况】。
+
+> 证据来源：server/apps/system_mgmt/nats/users.py:20-22、82-84、156-171　|　同步基线：d2769559　|　【待确认】
 
 ## 2026-07-01 Code-ARD 校准
 - `[system_mgmt#20260701-022]` 补录 NetworkWhiteList 模型、路由、CIDR 校验、权限动作与缓存失效；Router 路由组从 12 个更新为 13 个。

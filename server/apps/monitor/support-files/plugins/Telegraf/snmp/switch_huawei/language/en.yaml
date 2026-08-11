@@ -15,14 +15,15 @@ monitor_object_metric:
         may indicate unstable power and hardware risk.
     device_optical_rx_power:
       name: SFP RX Power
-      desc: Weakest optical receive power across the device's SFP/SFP+ modules, in dBm.
-        Abnormally low Rx power may indicate link attenuation, dirty fiber, or a
-        faulty peer transmitter, and can lead to packet loss or link failure.
+      desc: Per-module optical receive power in dBm (device reports µW; query converts
+        with 10*log10(µW/1000), drops <=0). Dimension descr is entPhysicalName. Abnormally
+        low Rx power may indicate link attenuation, dirty fiber, or a faulty peer transmitter.
     device_optical_tx_power:
       name: SFP TX Power
-      desc: Weakest optical transmit power across the device's SFP/SFP+ modules, in
-        dBm. Abnormally low Tx power usually indicates an aging or failing local
-        optical module rather than fiber attenuation alone.
+      desc: Per-module optical transmit power in dBm (device reports µW; query converts
+        with 10*log10(µW/1000), drops <=0). Dimension descr is entPhysicalName. Abnormally
+        low Tx power usually indicates an aging or failing local optical module rather
+        than fiber attenuation alone.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart.
@@ -117,17 +118,14 @@ monitor_object_metric:
         more effective traffic management and optimization.
     device_cpu_usage:
       name: CPU Utilization
-      desc: This metric reports the CPU utilization of the device control plane (typically
-        the 5-minute average), as a percentage. Sustained high CPU usage can indicate
-        control-plane overload, routing instability, or attack traffic, and may lead
-        to slow management response or packet processing delays. Sourced from vendor-specific
-        SNMP OIDs and normalized to a 0-100 percentage.
+      desc: Per-entity CPU utilization of the Huawei device control plane (hwEntityCpuUsage,
+        0-100). Dimension descr is entPhysicalName. Sustained high CPU usage can indicate
+        control-plane overload, routing instability, or attack traffic.
     device_memory_usage:
       name: Memory Utilization
-      desc: This metric reports overall memory utilization of the device, computed
-        as used / (used + free) * 100 across all memory pools. High memory usage may
-        indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity,
-        and can cause instability or failed allocations.
+      desc: Per-entity memory utilization of the Huawei device (hwEntityMemUsage, direct
+        0-100 percentage). Dimension descr is entPhysicalName. High memory usage may
+        indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity.
     device_memory_used:
       name: Memory Used
       desc: This metric reports the number of bytes currently in use for each memory

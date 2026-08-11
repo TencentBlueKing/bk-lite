@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportExecutionSnapshot,
-)
-from apps.system_mgmt.models import Channel, User as SystemUser
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportExecutionSnapshot
+from apps.system_mgmt.models import Channel
+from apps.system_mgmt.models import User as SystemUser
 
 
 class DashboardReportChannelError(RuntimeError):
@@ -31,14 +29,10 @@ class DashboardReportDeliveryChannelService:
         snapshot: DashboardReportExecutionSnapshot,
     ) -> ResolvedEmailChannel:
         if snapshot.email_channel_id is None:
-            raise DashboardReportChannelError(
-                "邮件通道未配置", error_code="channel_missing"
-            )
+            raise DashboardReportChannelError("邮件通道未配置", error_code="channel_missing")
         channel = Channel.objects.filter(id=snapshot.email_channel_id).first()
         if channel is None:
-            raise DashboardReportChannelError(
-                "邮件通道不存在", error_code="channel_missing"
-            )
+            raise DashboardReportChannelError("邮件通道不存在", error_code="channel_missing")
         if channel.channel_type != "email":
             raise DashboardReportChannelError(
                 "邮件通道不存在或类型不是 email",
@@ -64,22 +58,21 @@ class DashboardReportDeliveryChannelService:
 
         config = dict(channel.config or {})
         cls._validate_config(config)
-        encrypted_password = config["smtp_pwd"]
-        Channel.decrypt_field("smtp_pwd", config)
-        if (
-            encrypted_password.startswith("gAAAA")
-            and config["smtp_pwd"] == encrypted_password
-        ):
-            raise DashboardReportChannelError(
-                "邮件通道凭据无效",
-                error_code="channel_config_invalid",
-            )
+        auth_enabled = config.get("smtp_auth_enabled", True) is not False
+        if auth_enabled:
+            encrypted_password = config.get("smtp_pwd") or ""
+            Channel.decrypt_field("smtp_pwd", config)
+            if encrypted_password.startswith("gAAAA") and config.get("smtp_pwd") == encrypted_password:
+                raise DashboardReportChannelError(
+                    "邮件通道凭据无效",
+                    error_code="channel_config_invalid",
+                )
         return ResolvedEmailChannel(channel_id=channel.id, config=config)
 
     @staticmethod
     def _team_ids(creator) -> set[int]:
         result = set()
-        for item in (getattr(creator, "group_list", None) or []):
+        for item in getattr(creator, "group_list", None) or []:
             raw_id = item.get("id") if isinstance(item, dict) else item
             try:
                 result.add(int(raw_id))
@@ -89,17 +82,11 @@ class DashboardReportDeliveryChannelService:
 
     @staticmethod
     def _validate_config(config: dict) -> None:
-        string_fields = (
-            "smtp_server",
-            "smtp_user",
-            "smtp_pwd",
-            "mail_sender",
-        )
-        if any(
-            not isinstance(config.get(field), str)
-            or not config[field].strip()
-            for field in string_fields
-        ):
+        auth_enabled = config.get("smtp_auth_enabled", True) is not False
+        string_fields = ["smtp_server", "mail_sender"]
+        if auth_enabled:
+            string_fields.extend(["smtp_user", "smtp_pwd"])
+        if any(not isinstance(config.get(field), str) or not config[field].strip() for field in string_fields):
             raise DashboardReportChannelError(
                 "邮件通道配置不完整",
                 error_code="channel_config_invalid",

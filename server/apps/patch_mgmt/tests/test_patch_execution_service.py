@@ -636,6 +636,86 @@ def test_windows_direct_winrm_is_rejected_outside_debug(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_windows_executor_waits_for_queued_adhoc_result(monkeypatch):
+    """Ansible 只返回受理回执时，必须等到终态后再解析命令输出。"""
+    monkeypatch.setattr(pes.settings, 'PATCH_MGMT_WINDOWS_EXECUTION_MODE', 'executor')
+    cloud_region = CloudRegion.objects.create(name='queued-windows-assess-region')
+    target = _make_manual_windows_target(cloud_region)
+    query_calls = []
+
+    class FakeAnsibleExecutor:
+        def adhoc(self, **kwargs):
+            assert kwargs['task_id'].startswith(f'patch-command-{target.id}-')
+            return {'accepted': True, 'status': 'queued', 'task_id': 'queued-task-1'}
+
+        def task_query(self, task_id, timeout):
+            query_calls.append((task_id, timeout))
+            if len(query_calls) == 1:
+                return {'task_id': task_id, 'status': 'running'}
+            return {
+                'task_id': task_id,
+                'status': 'success',
+                'result': {
+                    'status': 'success',
+                    'success': True,
+                    'result': [
+                        {
+                            'host': target.ip,
+                            'status': 'success',
+                            'stdout': '===HOTFIX===\nKB4577586',
+                            'stderr': '',
+                            'exit_code': 0,
+                        }
+                    ],
+                },
+            }
+
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
+    monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
+    monkeypatch.setattr(pes.time, 'sleep', lambda _seconds: None)
+
+    result = pes._execute_windows_manual(target, 'Get-HotFix')
+
+    assert result == {'stdout': '===HOTFIX===\nKB4577586', 'stderr': '', 'exit_code': 0}
+    assert [call[0] for call in query_calls] == ['queued-task-1', 'queued-task-1']
+
+
+def test_wait_for_ansible_command_rejects_terminal_failure_pure():
+    class FailedExecutor:
+        @staticmethod
+        def task_query(task_id, timeout):  # noqa: ARG004
+            return {'status': 'failed', 'error': 'WinRM connection failed'}
+
+    with pytest.raises(RuntimeError, match='WinRM connection failed'):
+        pes._wait_for_ansible_command(
+            FailedExecutor(),
+            'failed-task-1',
+            target_host='10.0.0.3',
+            timeout=30,
+        )
+
+
+def test_wait_for_ansible_command_times_out_queued_task_pure(monkeypatch):
+    monotonic_values = iter([0, 0, 2])
+
+    class QueuedExecutor:
+        @staticmethod
+        def task_query(task_id, timeout):  # noqa: ARG004
+            return {'status': 'queued'}
+
+    monkeypatch.setattr(pes.time, 'monotonic', lambda: next(monotonic_values))
+    monkeypatch.setattr(pes.time, 'sleep', lambda _seconds: None)
+
+    with pytest.raises(TimeoutError, match='queued-task-forever'):
+        pes._wait_for_ansible_command(
+            QueuedExecutor(),
+            'queued-task-forever',
+            target_host='10.0.0.3',
+            timeout=1,
+        )
+
+
+@pytest.mark.django_db
 def test_async_dispatch_failure_is_explicitly_persisted(monkeypatch):
     from apps.patch_mgmt.services import governance_service
     from apps.patch_mgmt import tasks as patch_tasks
@@ -973,6 +1053,53 @@ def test_run_assess_success_parses_output_and_writes_snapshot(monkeypatch):
     assert binding.missing_count == 0
     assert binding.last_evaluated_at is not None
     assert HostComplianceSnapshot.objects.filter(binding=binding).count() == 1
+
+
+@pytest.mark.django_db
+def test_run_assess_batches_large_multi_package_dnf_advisory(monkeypatch):
+    baseline = PatchBaseline.objects.create(
+        name='large-dnf-advisory', os_type=OSType.LINUX, team=[1]
+    )
+    target = _make_node_mgmt_target()
+    binding = HostBaselineBinding.objects.create(target=target, baseline=baseline)
+    patch = Patch.objects.create(title='large dnf advisory', os_type=OSType.LINUX, team=[1])
+    packages = [
+        {'name': f'pkg-{index}', 'version': '1.0-1.el9', 'arch': 'x86_64'}
+        for index in range(100)
+    ]
+    LinuxPatchDetail.objects.create(
+        patch=patch,
+        pkg_name=packages[0]['name'],
+        pkg_version=packages[0]['version'],
+        packages=packages,
+        distro_name='Rocky Linux',
+        os_version_range='9',
+        architectures=['x86_64'],
+        repo_type='dnf',
+    )
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    task = _make_task(GovernanceTaskType.ASSESS, [target.id])
+    executed_commands = []
+
+    class FakeExecutor:
+        def execute_local_stream(self, command, **kwargs):  # noqa: ARG002
+            executed_commands.append(command)
+            output = ['BKPATCH_HOST|LINUX|rocky|rhel|9.6|x86_64|dnf']
+            for index, package in enumerate(packages):
+                marker = f'BKPATCH_LINUX|{requirement.id}|{index}|{package["name"]}|'
+                if marker in command:
+                    output.append(f'{marker}installed|{package["version"]}|0|')
+            return {'exit_code': 0, 'stdout': '\n'.join(output)}
+
+    monkeypatch.setattr(pes, 'Executor', lambda instance_id: FakeExecutor())
+
+    pes.run_governance_task(task)
+
+    assert len(executed_commands) > 1
+    assert all(len(command.encode('utf-8')) <= 64 * 1024 for command in executed_commands)
+    binding.refresh_from_db()
+    assert binding.compliance_status == ComplianceStatus.COMPLIANT
+    assert binding.missing_count == 0
 
 
 @pytest.mark.django_db

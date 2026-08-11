@@ -128,7 +128,9 @@ class InstallerViewSet(ViewSet):
                     **requested_node,
                     "node_id": str(actual_node.id),
                     "ip": actual_node.ip,
+                    "node_name": actual_node.name,
                     "os": actual_node.operating_system,
+                    "organizations": [relation.organization for relation in actual_node.nodeorganization_set.all()],
                 }
             )
 
@@ -188,6 +190,9 @@ class InstallerViewSet(ViewSet):
             username=data.get("username"),
             private_key=data.get("private_key"),
             passphrase=data.get("passphrase"),
+            winrm_scheme=data.get("winrm_scheme"),
+            winrm_transport=data.get("winrm_transport"),
+            winrm_cert_validation=data.get("winrm_cert_validation"),
         )
         return WebUtils.response_success()
 

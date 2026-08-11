@@ -48,12 +48,14 @@ export default function ApmApplicationsPage() {
 
   const openCreate = () => {
     setEditing(null);
+    form.resetFields();
     form.setFieldsValue({ name: '', application_id: '', description: '', organization_ids: [] });
     setModalOpen(true);
   };
 
   const openEdit = (application: ApmApplication) => {
     setEditing(application);
+    form.resetFields();
     form.setFieldsValue({
       name: application.name,
       description: application.description,

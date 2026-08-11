@@ -77,6 +77,11 @@ def send_email(channel_obj: Channel, title, content, user_list, attachments=None
     return send_email_to_user(channel_config, content, receivers, title, attachments)
 
 
+def is_smtp_auth_enabled(channel_config: dict) -> bool:
+    """是否启用 SMTP 认证。缺省或非显式 false 时视为启用，保持存量行为。"""
+    return channel_config.get("smtp_auth_enabled", True) is not False
+
+
 def send_personalized_email_messages(channel_obj: Channel, messages: list[dict], timeout: int = 30) -> dict:
     """复用 SMTP 连接发送多封不同正文的邮件，仅供内部批任务调用。"""
     channel_config = dict(channel_obj.config or {})
@@ -90,7 +95,8 @@ def send_personalized_email_messages(channel_obj: Channel, messages: list[dict],
             server = smtplib.SMTP(channel_config["smtp_server"], channel_config["port"], timeout=timeout)
         if channel_config.get("smtp_usetls", False):
             server.starttls()
-        server.login(channel_config["smtp_user"], channel_config["smtp_pwd"])
+        if is_smtp_auth_enabled(channel_config):
+            server.login(channel_config["smtp_user"], channel_config["smtp_pwd"])
         for item in messages:
             msg = MIMEMultipart()
             msg["From"] = channel_config["mail_sender"]
@@ -167,7 +173,9 @@ def send_email_to_user(channel_config, content, receivers, title, attachments=No
         if channel_config.get("smtp_usetls", False):
             server.starttls()
 
-        server.login(channel_config["smtp_user"], channel_config["smtp_pwd"])
+        # 仅在显式启用认证时 login；关闭认证不在失败后降级匿名重试
+        if is_smtp_auth_enabled(channel_config):
+            server.login(channel_config["smtp_user"], channel_config["smtp_pwd"])
         server.send_message(msg)
         server.quit()
 

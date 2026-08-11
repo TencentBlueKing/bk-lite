@@ -41,7 +41,7 @@ class InstallNodeSerializer(serializers.Serializer):
         required=False,
         default="ntlm",
     )
-    winrm_cert_validation = serializers.BooleanField(required=False, default=True)
+    winrm_cert_validation = serializers.BooleanField(required=False, default=False)
 
 
 class ControllerInstallRequestSerializer(serializers.Serializer):
@@ -79,14 +79,8 @@ class ControllerInstallRequestSerializer(serializers.Serializer):
             if node_os == NodeConstants.WINDOWS_OS:
                 if not node.get("password"):
                     raise serializers.ValidationError({"nodes": "Windows remote installation requires a password"})
-                if (
-                    node.get("winrm_scheme") != "https"
-                    or node.get("winrm_transport") != "ntlm"
-                    or node.get("winrm_cert_validation") is not True
-                ):
-                    raise serializers.ValidationError(
-                        {"nodes": "Windows remote installation currently requires HTTPS, NTLM, and server certificate validation"}
-                    )
+                if node.get("winrm_scheme") != "https" or node.get("winrm_transport") != "ntlm":
+                    raise serializers.ValidationError({"nodes": "Windows remote installation currently requires HTTPS and NTLM"})
             node["os"] = node_os
             node["cpu_architecture"] = InstallerService.normalize_required_cpu_architecture(
                 node_os,
@@ -108,12 +102,22 @@ class ControllerRetryRequestSerializer(serializers.Serializer):
     password = serializers.CharField(required=False, allow_blank=True, write_only=True)
     private_key = serializers.CharField(required=False, allow_blank=True, write_only=True)
     passphrase = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    winrm_scheme = serializers.ChoiceField(choices=("https",), required=False)
+    winrm_transport = serializers.ChoiceField(choices=("ntlm",), required=False)
+    winrm_cert_validation = serializers.BooleanField(required=False)
 
 
 class ControllerUninstallNodeSerializer(serializers.Serializer):
     node_id = serializers.CharField(allow_blank=False)
     ip = serializers.CharField()
+    node_name = serializers.CharField(required=False, allow_blank=True, default="")
     os = serializers.ChoiceField(choices=(NodeConstants.LINUX_OS, NodeConstants.WINDOWS_OS))
+    organizations = serializers.ListField(
+        child=CanonicalOrganizationIdField(),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
     port = serializers.IntegerField(required=False, min_value=1, max_value=65535)
     username = serializers.CharField(allow_blank=False, max_length=100)
     password = serializers.CharField(required=False, allow_blank=True, write_only=True)
@@ -125,7 +129,7 @@ class ControllerUninstallNodeSerializer(serializers.Serializer):
         required=False,
         default="ntlm",
     )
-    winrm_cert_validation = serializers.BooleanField(required=False, default=True)
+    winrm_cert_validation = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         is_windows = attrs["os"] == NodeConstants.WINDOWS_OS
@@ -133,13 +137,9 @@ class ControllerUninstallNodeSerializer(serializers.Serializer):
         if is_windows:
             if not attrs.get("password"):
                 raise serializers.ValidationError("Windows controller uninstallation requires a password")
-            if (
-                attrs["winrm_scheme"] != "https"
-                or attrs["winrm_transport"] != "ntlm"
-                or attrs["winrm_cert_validation"] is not True
-            ):
+            if attrs["winrm_scheme"] != "https" or attrs["winrm_transport"] != "ntlm":
                 raise serializers.ValidationError(
-                    "Windows controller uninstallation requires HTTPS, NTLM, and server certificate validation"
+                    "Windows controller uninstallation requires HTTPS and NTLM"
                 )
         elif not attrs.get("password") and not attrs.get("private_key"):
             raise serializers.ValidationError("Linux controller uninstallation requires a password or private key")

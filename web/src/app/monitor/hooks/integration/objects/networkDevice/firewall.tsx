@@ -86,6 +86,7 @@ export const useFirewallConfig = () => {
       'Firewall Palo Alto SNMP': 'snmp_paloalto',
       'Firewall SonicWall SNMP': 'snmp_sonicwall',
       'Firewall Sangfor SNMP': 'snmp_sangfor',
+      'Firewall Huawei SNMP': 'snmp_huawei_usg',
       'Firewall Kerio Control SNMP': 'snmp_kerio',
       'Firewall Clavister SNMP': 'snmp_clavister',
       'Firewall Blockbit SNMP': 'snmp_blockbit',
