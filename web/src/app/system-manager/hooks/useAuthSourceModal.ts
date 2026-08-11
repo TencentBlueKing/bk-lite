@@ -5,6 +5,7 @@ import { Form, message, Modal } from 'antd';
 import type { AuthSource } from '@/app/system-manager/types/security';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import { enhanceAuthSourcesList } from '@/app/system-manager/utils/authSourceUtils';
+import { replaceAuthSource } from '@/app/system-manager/hooks/authSourceState';
 import {
   SourceType,
   buildUpdatePayload,
@@ -77,14 +78,11 @@ export function useAuthSourceModal({
           values,
           selectedRoles
         );
-        await updateAuthSource(editingSource.id, updateData);
+        const updatedSource = await updateAuthSource(editingSource.id, updateData) as AuthSource;
 
-        const updatedSource = { ...editingSource, ...updateData };
         const enhancedSource = enhanceAuthSourcesList([updatedSource], t)[0];
 
-        onUpdate(authSources.map(item =>
-          item.id === editingSource.id ? enhancedSource : item
-        ));
+        onUpdate(replaceAuthSource(authSources, enhancedSource));
 
         message.success(t('common.updateSuccess'));
       } else {

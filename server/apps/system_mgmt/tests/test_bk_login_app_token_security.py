@@ -5,7 +5,10 @@ import pytest
 from django.apps import apps as django_apps
 
 from apps.system_mgmt.models import LoginModule
-from apps.system_mgmt.models.login_module import BK_LOGIN_APP_TOKEN_MASK
+from apps.system_mgmt.models.login_module import (
+    BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX,
+    BK_LOGIN_APP_TOKEN_MASK,
+)
 from apps.system_mgmt.nats.settings import verify_bk_token
 from apps.system_mgmt.serializers.login_module_serializer import LoginModuleSerializer
 
@@ -33,6 +36,7 @@ def test_bk_login_app_token_is_encrypted_at_rest_and_decrypted_for_runtime():
     login_module.refresh_from_db()
 
     assert login_module.other_config["app_token"] != "blueking-secret"
+    assert login_module.other_config["app_token"].startswith(BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX)
     assert login_module.decrypted_other_config["app_token"] == "blueking-secret"
 
 
@@ -55,6 +59,30 @@ def test_login_module_serializer_masks_app_token_and_preserves_it_on_update():
     login_module.refresh_from_db()
 
     assert login_module.decrypted_other_config["app_token"] == "blueking-secret"
+
+    replacement = LoginModuleSerializer(
+        login_module,
+        data={"other_config": _bk_config("replacement-secret")},
+        partial=True,
+    )
+    replacement.is_valid(raise_exception=True)
+    replacement.save()
+    login_module.refresh_from_db()
+
+    assert login_module.decrypted_other_config["app_token"] == "replacement-secret"
+
+
+def test_login_module_serializer_rejects_non_object_other_config():
+    login_module = LoginModule.objects.create(
+        name="bk-login-invalid-config",
+        source_type="bk_login",
+        other_config=_bk_config(),
+    )
+
+    serializer = LoginModuleSerializer(login_module, data={"other_config": []}, partial=True)
+
+    assert serializer.is_valid() is False
+    assert "other_config" in serializer.errors
 
 
 def test_verify_bk_token_uses_decrypted_app_token():
@@ -80,6 +108,24 @@ def test_verify_bk_token_uses_decrypted_app_token():
     )
 
 
+def test_verify_bk_token_fails_closed_for_corrupted_versioned_app_token():
+    login_module = LoginModule.objects.create(
+        name="bk-login-corrupted-runtime",
+        source_type="bk_login",
+        other_config=_bk_config(),
+        enabled=True,
+    )
+    corrupted_config = _bk_config(f"{BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX}not-a-fernet-token")
+    LoginModule.objects.filter(pk=login_module.pk).update(other_config=corrupted_config)
+
+    with patch("apps.system_mgmt.nats.settings.get_bk_user_info") as get_bk_user_info, pytest.raises(
+        ValueError, match="Failed to decrypt bk_login app_token"
+    ):
+        verify_bk_token("bk-user-token")
+
+    get_bk_user_info.assert_not_called()
+
+
 def test_data_migration_encrypts_existing_plaintext_app_token():
     login_module = LoginModule.objects.create(
         name="bk-login-migration",
@@ -88,13 +134,16 @@ def test_data_migration_encrypts_existing_plaintext_app_token():
     )
     LoginModule.objects.filter(pk=login_module.pk).update(other_config=_bk_config("legacy-plaintext"))
 
-    migration = importlib.import_module("apps.system_mgmt.migrations.0040_encrypt_bk_login_app_token")
+    migration = importlib.import_module("apps.system_mgmt.migrations.0046_encrypt_bk_login_app_token")
+    migration.encrypt_existing_bk_login_app_tokens(django_apps, None)
     migration.encrypt_existing_bk_login_app_tokens(django_apps, None)
     login_module.refresh_from_db()
 
     assert login_module.other_config["app_token"] != "legacy-plaintext"
+    assert login_module.other_config["app_token"].startswith(BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX)
     assert login_module.decrypted_other_config["app_token"] == "legacy-plaintext"
 
+    migration.decrypt_existing_bk_login_app_tokens(django_apps, None)
     migration.decrypt_existing_bk_login_app_tokens(django_apps, None)
     login_module.refresh_from_db()
 
@@ -108,8 +157,22 @@ def test_data_migration_stops_when_app_token_encryption_fails(monkeypatch):
         other_config=_bk_config(),
     )
     LoginModule.objects.filter(pk=login_module.pk).update(other_config=_bk_config("legacy-plaintext"))
-    migration = importlib.import_module("apps.system_mgmt.migrations.0040_encrypt_bk_login_app_token")
+    migration = importlib.import_module("apps.system_mgmt.migrations.0046_encrypt_bk_login_app_token")
     monkeypatch.setattr(migration.EncryptMixin, "encrypt_field", lambda *args, **kwargs: None)
 
-    with pytest.raises(RuntimeError, match="Failed to encrypt bk_login app_token"):
+    with pytest.raises(RuntimeError, match="Failed to encrypt bk_login app_token during migration"):
+        migration.encrypt_existing_bk_login_app_tokens(django_apps, None)
+
+
+def test_data_migration_fails_closed_for_corrupted_versioned_app_token():
+    login_module = LoginModule.objects.create(
+        name="bk-login-migration-corrupted",
+        source_type="bk_login",
+        other_config=_bk_config(),
+    )
+    corrupted_config = _bk_config(f"{BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX}not-a-fernet-token")
+    LoginModule.objects.filter(pk=login_module.pk).update(other_config=corrupted_config)
+    migration = importlib.import_module("apps.system_mgmt.migrations.0046_encrypt_bk_login_app_token")
+
+    with pytest.raises(RuntimeError, match="Failed to decrypt bk_login app_token during migration"):
         migration.encrypt_existing_bk_login_app_tokens(django_apps, None)

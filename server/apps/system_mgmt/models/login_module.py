@@ -7,6 +7,7 @@ from apps.core.mixinx import EncryptMixin, PeriodicTaskUtils
 
 
 BK_LOGIN_APP_TOKEN_MASK = "******"
+BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX = "bklite:v1:"
 
 
 class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
@@ -35,11 +36,28 @@ class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
 
     @classmethod
     def _encrypt_app_token(cls, config):
-        cls.decrypt_field("app_token", config)
-        plaintext = config.get("app_token")
-        cls.encrypt_field("app_token", config)
-        if plaintext and config.get("app_token") == plaintext:
+        value = config.get("app_token")
+        if not value or not isinstance(value, str):
+            return
+
+        plaintext = cls._decrypt_app_token_value(value)
+        encrypted_config = {"app_token": plaintext}
+        cls.encrypt_field("app_token", encrypted_config)
+        encrypted_value = encrypted_config["app_token"]
+        if encrypted_value == plaintext:
             raise ValueError("Failed to encrypt bk_login app_token")
+        config["app_token"] = f"{BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX}{encrypted_value}"
+
+    @classmethod
+    def _decrypt_app_token_value(cls, value):
+        if not value or not isinstance(value, str) or not value.startswith(BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX):
+            return value
+
+        encrypted_value = value.removeprefix(BK_LOGIN_APP_TOKEN_ENCRYPTION_PREFIX)
+        try:
+            return cls.get_cipher_suite().decrypt(encrypted_value.encode(cls.ENCODING)).decode(cls.ENCODING)
+        except Exception as exc:
+            raise ValueError("Failed to decrypt bk_login app_token") from exc
 
     @cached_property
     def decrypted_app_secret(self):
@@ -51,7 +69,7 @@ class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
     def decrypted_other_config(self):
         config = deepcopy(self.other_config or {})
         if self.source_type == "bk_login":
-            self.decrypt_field("app_token", config)
+            config["app_token"] = self._decrypt_app_token_value(config.get("app_token"))
         return config
 
     def create_sync_periodic_task(self):

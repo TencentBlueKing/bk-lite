@@ -40,6 +40,9 @@ class LoginModuleSerializer(serializers.ModelSerializer):
         return data
 
     def validate_other_config(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("other_config must be an object")
+
         source_type = self.initial_data.get("source_type") or getattr(self.instance, "source_type", "")
         if source_type != "bk_login" or value.get("app_token") != BK_LOGIN_APP_TOKEN_MASK:
             return value
