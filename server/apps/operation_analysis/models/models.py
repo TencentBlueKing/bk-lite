@@ -47,7 +47,7 @@ class Directory(MaintainerInfo, TimeInfo, Groups):
 
     def clean(self):
         # 确保目录层级不超过3层
-        if self.parent and self.parent.get_level() >= 2:
+        if self.get_level() > 2:
             raise ValidationError("Directory hierarchy cannot exceed 3 levels.")
 
     def save(self, *args, **kwargs):
@@ -59,11 +59,21 @@ class Directory(MaintainerInfo, TimeInfo, Groups):
 
     def get_level(self):
         level = 0
+        visited = {self._identity()}
         parent = self.parent
         while parent is not None:
+            identity = parent._identity()
+            if identity in visited:
+                raise ValidationError("Directory hierarchy cannot contain cycles.")
+            visited.add(identity)
             level += 1
             parent = parent.parent
         return level
+
+    def _identity(self):
+        if self.pk is not None:
+            return "pk", self.pk
+        return "object", id(self)
 
     def __str__(self):
         return self.name
