@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.apps import apps as django_apps
 
-from apps.system_mgmt.models import LoginModule
+from apps.system_mgmt.models import Group, LoginModule, User
 from apps.system_mgmt.models.login_module import BK_LOGIN_APP_TOKEN_ENVELOPE_KEY, BK_LOGIN_APP_TOKEN_MASK
 from apps.system_mgmt.nats.settings import verify_bk_token
 from apps.system_mgmt.serializers.login_module_serializer import LoginModuleSerializer
@@ -168,6 +168,44 @@ def test_resaving_envelope_is_idempotent_and_runtime_can_decrypt_it():
         "blueking-secret",
         "https://bk.example.com",
     )
+
+
+def test_verify_bk_token_preserves_successful_sso_response_contract():
+    root_group = Group.objects.create(name="蓝鲸", parent_id=0)
+    LoginModule.objects.create(
+        name="bk-login-success",
+        source_type="bk_login",
+        other_config=_bk_config(),
+        enabled=True,
+    )
+    bk_user = {
+        "username": "bk-user",
+        "domain": "bk.example.com",
+        "email": "bk-user@example.com",
+        "language": "zh-Hans",
+        "time_zone": "Asia/Shanghai",
+    }
+
+    with patch("apps.system_mgmt.nats.settings.get_bk_user_info", return_value=(True, bk_user)):
+        result = verify_bk_token("bk-user-token")
+
+    user = User.objects.get(username="bk-user", domain="bk.example.com")
+    assert user.group_list == [root_group.id]
+    assert result["result"] is True
+    assert result["data"]["bk_login_open"] is True
+    assert result["data"]["url"] == "https://bk.example.com"
+    assert result["data"]["user"] == {
+        "token": result["data"]["user"]["token"],
+        "username": "bk-user",
+        "display_name": user.display_name,
+        "id": user.id,
+        "user_id": user.user_id,
+        "domain": "bk.example.com",
+        "locale": "zh-Hans",
+        "timezone": "Asia/Shanghai",
+        "qrcode": True,
+    }
+    assert result["data"]["user"]["token"]
 
 
 def test_verify_bk_token_fails_closed_for_corrupted_app_token_envelope():
