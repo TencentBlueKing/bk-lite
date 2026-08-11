@@ -756,6 +756,20 @@ class TestHostCollectorExtractStdout:
         }
         assert self.collector._extract_stdout(result) == '{"mem": {}}'
 
+    def test_list_without_expected_host_raises(self):
+        result = {
+            "result": [
+                {
+                    "host": "10.0.0.2",
+                    "status": "success",
+                    "stdout": '{"cpu": {"usage_percent": 91}}',
+                }
+            ]
+        }
+
+        with pytest.raises(RuntimeError, match="missing expected host 10.0.0.1"):
+            self.collector._extract_stdout(result)
+
     def test_empty_result(self):
         result = {"result": {}}
         # 空 dict 应返回 JSON 序列化
