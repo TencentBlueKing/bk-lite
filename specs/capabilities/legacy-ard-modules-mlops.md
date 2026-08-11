@@ -29,7 +29,7 @@
 
 ## 4. 依赖与通信【已实现/已存在】
 - MLflow：`utils/mlflow_service.py`（实验/模型命名、client）。
-- 容器编排（训练/推理）【已实现/已存在】：训练与推理容器经 `utils/webhook_client.py:WebhookClient` 调用 webhookd（`WEBHOOK_SERVER_URL`，缺失则禁用编排）拉起；支持 `docker` 与 `kubernetes` 两种 runtime（由 `MLOPS_RUNTIME` 选择，`webhook_client.py:72,86,164-168`）。训练镜像来自 `AlgorithmConfig.image`（`get_image_by_prefix`）。训练由 `WebhookClient.train`（`views/anomaly_detection.py:163-173`）触发，发布由 `WebhookClient.serve`（`views/anomaly_detection.py:953-959`）触发。Docker 发布同步等待业务健康检查：初次启动禁用自动重启，成功后才切换策略；失败、超时或中断按本次 CID/标签回滚，强制终止由独立 watcher 兜底；Serving GPU 探针缺镜像时在同一启动预算内显式拉取，训练探针维持原有按需拉取。Kubernetes 发布保持既有异步请求契约。
+- 容器编排（训练/推理）【已实现/已存在】：训练与推理容器经 `utils/webhook_client.py:WebhookClient` 调用 webhookd（`WEBHOOK_SERVER_URL`，缺失则禁用编排）拉起；支持 `docker` 与 `kubernetes` 两种 runtime（由 `MLOPS_RUNTIME` 选择，`webhook_client.py:72,86,164-168`）。训练镜像来自 `AlgorithmConfig.image`（`get_image_by_prefix`）。训练由 `WebhookClient.train`（`views/anomaly_detection.py:163-173`）触发，发布由 `WebhookClient.serve`（`views/anomaly_detection.py:953-959`）触发。Docker 发布同步等待业务健康检查：初次启动禁用自动重启，成功后才切换策略；失败、超时或中断按本次 CID/标签回滚，强制终止由独立 watcher 兜底，Docker 瞬态失败在回滚预算内重试，最终失败保留恢复标记和原始错误；Serving GPU 探针缺镜像时在同一启动预算内显式拉取，训练探针维持原有按需拉取。Kubernetes 发布保持既有异步请求契约。
 - Celery 任务【已实现/已存在】：
   - `tasks/base.py:mark_release_as_failed`。
   - `tasks/poll_train_job_status.py:poll_train_job_status`（`shared_task`，函数名无 `mlflow` 前缀，`__init__` 同名导出；轮询 MLflow run 状态同步 TrainJob，`tasks/__init__.py:23,32`）。

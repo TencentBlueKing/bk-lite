@@ -30,7 +30,10 @@ def _read_container_id(cid_file: Path) -> str:
         return ""
 
 
-def _labelled_container_ids(instance_id: str, timeout: float) -> list[str]:
+def _labelled_container_ids(
+    instance_id: str,
+    timeout: float,
+) -> tuple[list[str], str]:
     try:
         result = subprocess.run(
             [
@@ -46,16 +49,25 @@ def _labelled_container_ids(instance_id: str, timeout: float) -> list[str]:
             text=True,
             timeout=timeout,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return []
+    except OSError as exc:
+        return [], f"docker ps failed: {exc}"
+    except subprocess.TimeoutExpired:
+        return [], "docker ps timed out"
     if result.returncode != 0:
-        return []
-    return [value for value in result.stdout.splitlines() if value]
+        detail = result.stderr.strip() or f"exit code {result.returncode}"
+        return [], f"docker ps failed: {detail}"
+    return [value for value in result.stdout.splitlines() if value], ""
 
 
-def _rollback(cid_file: Path, instance_id: str, timeout_seconds: float) -> None:
+def _rollback(
+    cid_file: Path,
+    instance_id: str,
+    timeout_seconds: float,
+) -> tuple[bool, str]:
     deadline = time.monotonic() + timeout_seconds
     container_ids: set[str] = set()
+    last_error = ""
+    successful_label_query = False
 
     # docker run may be killed while dockerd is still committing the container.
     # Retry the label lookup briefly so that the parent-death path does not race
@@ -67,30 +79,49 @@ def _rollback(cid_file: Path, instance_id: str, timeout_seconds: float) -> None:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
-        container_ids.update(
-            _labelled_container_ids(instance_id, min(0.5, remaining))
+        labelled_ids, query_error = _labelled_container_ids(
+            instance_id,
+            min(0.5, remaining),
         )
-        if container_ids:
-            break
-        time.sleep(min(POLL_INTERVAL_SECONDS, max(0.0, remaining)))
+        if query_error:
+            last_error = query_error
+        else:
+            successful_label_query = True
+            last_error = ""
+            container_ids.update(labelled_ids)
 
-    remaining = deadline - time.monotonic()
-    if not container_ids or remaining <= 0:
-        return
-    try:
-        subprocess.run(
-            ["docker", "rm", "-f", *sorted(container_ids)],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=remaining,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        pass
+        if container_ids:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                result = subprocess.run(
+                    ["docker", "rm", "-f", *sorted(container_ids)],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=min(0.5, remaining),
+                )
+                if result.returncode == 0:
+                    return True, ""
+                detail = result.stderr.strip() or f"exit code {result.returncode}"
+                last_error = f"docker rm failed: {detail}"
+            except OSError as exc:
+                last_error = f"docker rm failed: {exc}"
+            except subprocess.TimeoutExpired:
+                last_error = "docker rm timed out"
+
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(POLL_INTERVAL_SECONDS, remaining))
+
+    if not container_ids and successful_label_query and not last_error:
+        return True, ""
+    return False, last_error or "startup container cleanup deadline exhausted"
 
 
 def main() -> int:
-    if len(sys.argv) != 8:
+    if len(sys.argv) != 9:
         return 2
 
     parent_pid = int(sys.argv[1])
@@ -98,14 +129,16 @@ def main() -> int:
     instance_id = sys.argv[3]
     commit_file = Path(sys.argv[4])
     handled_file = Path(sys.argv[5])
-    ready_file = Path(sys.argv[6])
-    timeout_seconds = float(sys.argv[7])
+    failure_file = Path(sys.argv[6])
+    ready_file = Path(sys.argv[7])
+    timeout_seconds = float(sys.argv[8])
 
     # Detach before telling the launcher we are ready. webhookd terminates the
     # launcher process group with SIGKILL at its hard timeout; this watcher must
     # survive that signal long enough to perform the bounded rollback.
     os.setsid()
     ready_file.touch()
+    cleanup_succeeded = True
     try:
         while _parent_exists(parent_pid):
             if commit_file.exists() or handled_file.exists():
@@ -113,10 +146,24 @@ def main() -> int:
             time.sleep(POLL_INTERVAL_SECONDS)
 
         if not commit_file.exists() and not handled_file.exists():
-            _rollback(cid_file, instance_id, timeout_seconds)
+            cleanup_succeeded, error = _rollback(
+                cid_file,
+                instance_id,
+                timeout_seconds,
+            )
+            if not cleanup_succeeded:
+                message = (
+                    f"startup cleanup failed for instance {instance_id}: {error}\n"
+                )
+                failure_file.write_text(message, encoding="utf-8")
+                print(message, file=sys.stderr, end="")
+                return 1
         return 0
     finally:
-        for path in (cid_file, commit_file, handled_file, ready_file):
+        cleanup_paths = [commit_file, handled_file, ready_file]
+        if cleanup_succeeded:
+            cleanup_paths.extend([cid_file, failure_file])
+        for path in cleanup_paths:
             try:
                 path.unlink()
             except FileNotFoundError:

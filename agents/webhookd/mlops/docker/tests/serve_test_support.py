@@ -21,6 +21,8 @@ class DockerServingTestCase(unittest.TestCase):
         self.docker_log = self.temp_path / "docker.log"
         self.curl_log = self.temp_path / "curl.log"
         self.container_state = self.temp_path / "container.state"
+        self.label_query_count = self.temp_path / "label-query.count"
+        self.remove_attempt_count = self.temp_path / "remove-attempt.count"
         self.real_jq_path = shutil.which("jq")
         if self.real_jq_path is None:
             self.fail("jq is required for serving contract tests")
@@ -32,7 +34,18 @@ class DockerServingTestCase(unittest.TestCase):
             echo "$*" >> "$FAKE_DOCKER_LOG"
             case "$1" in
                 ps)
-                    if [ -f "$FAKE_CONTAINER_STATE_FILE" ]; then
+                    if [[ " $* " == *" label=bk-lite.startup-id="* ]]; then
+                        count=0
+                        if [ -f "$FAKE_LABEL_QUERY_COUNT_FILE" ]; then
+                            count=$(cat "$FAKE_LABEL_QUERY_COUNT_FILE")
+                        fi
+                        count=$((count + 1))
+                        echo "$count" > "$FAKE_LABEL_QUERY_COUNT_FILE"
+                        if [ -f "$FAKE_CONTAINER_STATE_FILE" ] \
+                            && [ "$count" -ge "${FAKE_LABEL_VISIBLE_AFTER:-1}" ]; then
+                            echo "fake-container-id"
+                        fi
+                    elif [ -f "$FAKE_CONTAINER_STATE_FILE" ]; then
                         echo "issue-3850-serving"
                     fi
                     exit 0
@@ -70,7 +83,9 @@ class DockerServingTestCase(unittest.TestCase):
                     touch "$FAKE_CONTAINER_STATE_FILE"
                     while [ "$#" -gt 0 ]; do
                         if [ "$1" = "--cidfile" ]; then
-                            echo "fake-container-id" > "$2"
+                            if [ "${FAKE_SKIP_CIDFILE:-0}" != "1" ]; then
+                                echo "fake-container-id" > "$2"
+                            fi
                             break
                         fi
                         shift
@@ -104,10 +119,17 @@ class DockerServingTestCase(unittest.TestCase):
                     exit "${FAKE_DOCKER_UPDATE_STATUS:-0}"
                     ;;
                 rm)
+                    count=0
+                    if [ -f "$FAKE_REMOVE_ATTEMPT_COUNT_FILE" ]; then
+                        count=$(cat "$FAKE_REMOVE_ATTEMPT_COUNT_FILE")
+                    fi
+                    count=$((count + 1))
+                    echo "$count" > "$FAKE_REMOVE_ATTEMPT_COUNT_FILE"
                     if [ -n "${FAKE_DOCKER_REMOVE_DELAY_SECONDS:-}" ]; then
                         /bin/sleep "$FAKE_DOCKER_REMOVE_DELAY_SECONDS"
                     fi
-                    if [ "${FAKE_DOCKER_REMOVE_FAIL:-0}" = "1" ]; then
+                    if [ "${FAKE_DOCKER_REMOVE_FAIL:-0}" = "1" ] \
+                        || [ "$count" -le "${FAKE_DOCKER_REMOVE_FAILS_BEFORE:-0}" ]; then
                         exit 1
                     fi
                     rm -f "$FAKE_CONTAINER_STATE_FILE"
@@ -174,6 +196,8 @@ class DockerServingTestCase(unittest.TestCase):
                 "FAKE_DOCKER_LOG": str(self.docker_log),
                 "FAKE_CURL_LOG": str(self.curl_log),
                 "FAKE_CONTAINER_STATE_FILE": str(self.container_state),
+                "FAKE_LABEL_QUERY_COUNT_FILE": str(self.label_query_count),
+                "FAKE_REMOVE_ATTEMPT_COUNT_FILE": str(self.remove_attempt_count),
                 "REAL_JQ_PATH": self.real_jq_path,
             }
         )

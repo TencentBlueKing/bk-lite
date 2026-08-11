@@ -36,7 +36,7 @@
 - 异常检测服务：`PREDICT_MAX_DATA_POINTS` 限制单次预测数据点数（`classify_anomaly_server/serving/schemas/api_schema.py:8-9`），服务层在预测入口执行上限校验（`service.py:148`）。
 - 时序预测服务：`MAX_PREDICTION_STEPS` 与 `MAX_INPUT_DATA_POINTS` 分别限制预测步长与输入数据点（`classify_timeseries_server/serving/schemas/api_schema.py:9-11`），服务层在预测入口执行上限校验（`service.py:222`）。
 - 时序预测服务预算：`TIMESERIES_PREDICT_TIMEOUT_SECONDS` 取值 1～290 秒、默认 120 秒，由 MLOps 发布链注入新建或重启的算法容器；非法值在 BentoML 装载时快速失败。存量容器升级后需停止并重新启动以采用新预算。
-- Docker 模型发布的 `startup_timeout_seconds` 是从 webhookd 请求进入到业务健康检查成功的总预算；初次启动使用 `restart=no`，六类内置算法的业务 `/health` 均回显本次随机 `SERVING_INSTANCE_ID`，匹配后才切换为 `unless-stopped`。失败、超时或中断按本次启动标签/CID 有界回滚，外层进程被强制终止时由独立清理 watcher 继续完成回滚。Serving 的 GPU 探针缺少本地探针镜像时在同一预算内显式拉取，训练链保持原有按需拉取行为。混合版本升级阶段，bridge 网络可临时兼容尚无实例标识的旧镜像，host 始终强制标识匹配；内置镜像全部升级后以 `SERVING_REQUIRE_INSTANCE_ID=true` 关闭兼容。算法容器设置 `BENTOML_CONTAINERIZED=true`，模型 worker 初始化失败不得被父进程无限拉起并伪装为可用。
+- Docker 模型发布的 `startup_timeout_seconds` 是从 webhookd 请求进入到业务健康检查成功的总预算；初次启动使用 `restart=no`，六类内置算法的业务 `/health` 均回显本次随机 `SERVING_INSTANCE_ID`，匹配后才切换为 `unless-stopped`。失败、超时或中断按本次启动标签/CID 有界回滚，外层进程被强制终止时由独立清理 watcher 继续完成回滚；watcher 在回滚预算内重试瞬态 Docker 失败，最终失败保留 CID 与错误恢复标记。Serving 的 GPU 探针缺少本地探针镜像时在同一预算内显式拉取，训练链保持原有按需拉取行为。混合版本升级阶段，bridge 网络可临时兼容尚无实例标识的旧镜像，host 始终强制标识匹配；内置镜像全部升级后以 `SERVING_REQUIRE_INSTANCE_ID=true` 关闭兼容。算法容器设置 `BENTOML_CONTAINERIZED=true`，模型 worker 初始化失败不得被父进程无限拉起并伪装为可用。
 - 本地模型加载支持 `MODEL_SHA256` 校验：异常检测与日志聚类 loader 在配置该环境变量时校验本地模型文件摘要；未配置时不强制校验（`classify_anomaly_server/serving/models/loader.py:84`、`classify_log_server/serving/models/loader.py:80`）。
 
 ## 5. 集成关系【已实现/已存在 / 推断】

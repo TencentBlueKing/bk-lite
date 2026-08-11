@@ -116,6 +116,7 @@ CID_FILE=$(mktemp)
 rm -f "$CID_FILE"
 WATCHDOG_COMMIT_FILE="${CID_FILE}.committed"
 WATCHDOG_HANDLED_FILE="${CID_FILE}.handled"
+WATCHDOG_FAILURE_FILE="${CID_FILE}.cleanup-failed"
 WATCHDOG_READY_FILE="${CID_FILE}.watchdog-ready"
 CREATED_CONTAINER_ID=""
 GPU_PROBE_CONTAINER_NAME=""
@@ -146,7 +147,7 @@ cleanup_on_exit() {
         if [ -n "$WATCHDOG_PID" ]; then
             wait "$WATCHDOG_PID" 2>/dev/null || true
         fi
-        rm -f "$WATCHDOG_COMMIT_FILE" "$WATCHDOG_HANDLED_FILE" "$WATCHDOG_READY_FILE"
+        rm -f "$WATCHDOG_COMMIT_FILE" "$WATCHDOG_HANDLED_FILE" "$WATCHDOG_FAILURE_FILE" "$WATCHDOG_READY_FILE"
     fi
 }
 
@@ -161,8 +162,9 @@ python3 "$SCRIPT_DIR/startup_cleanup_watchdog.py" \
     "$SERVING_INSTANCE_ID" \
     "$WATCHDOG_COMMIT_FILE" \
     "$WATCHDOG_HANDLED_FILE" \
+    "$WATCHDOG_FAILURE_FILE" \
     "$WATCHDOG_READY_FILE" \
-    "$ROLLBACK_TIMEOUT_SECONDS" >/dev/null 2>&1 &
+    "$ROLLBACK_TIMEOUT_SECONDS" >/dev/null 2>>"$WATCHDOG_FAILURE_FILE" &
 WATCHDOG_PID=$!
 for _ in $(seq 1 50); do
     if [ -f "$WATCHDOG_READY_FILE" ]; then

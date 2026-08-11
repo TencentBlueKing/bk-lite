@@ -230,15 +230,18 @@ class DockerServingStartupContractTest(DockerServingTestCase):
         self.assertIn("--pull never", docker_calls)
 
     def test_slow_gpu_image_pull_is_bounded(self):
+        started_at = time.monotonic()
         result = self._run_serve(
             startup_timeout_seconds=2,
             device="gpu",
             FAKE_GPU_IMAGE_PRESENT="0",
             FAKE_GPU_PULL_DELAY_SECONDS="4",
         )
+        elapsed = time.monotonic() - started_at
 
         self.assertEqual(result.returncode, 1)
         self.assertEqual(json.loads(result.stdout)["code"], "DEVICE_SETUP_FAILED")
+        self.assertLess(elapsed, 4)
         docker_calls = self.docker_log.read_text(encoding="utf-8")
         self.assertIn("pull nvidia/cuda:11.0-base", docker_calls)
         self.assertFalse(self.container_state.exists())
@@ -297,6 +300,8 @@ class DockerServingStartupContractTest(DockerServingTestCase):
                 "FAKE_DOCKER_LOG": str(self.docker_log),
                 "FAKE_CURL_LOG": str(self.curl_log),
                 "FAKE_CONTAINER_STATE_FILE": str(self.container_state),
+                "FAKE_LABEL_QUERY_COUNT_FILE": str(self.label_query_count),
+                "FAKE_REMOVE_ATTEMPT_COUNT_FILE": str(self.remove_attempt_count),
                 "FAKE_DOCKER_RUN_DELAY_SECONDS": "10",
                 "REAL_JQ_PATH": self.real_jq_path,
             }
@@ -338,7 +343,12 @@ class DockerServingStartupContractTest(DockerServingTestCase):
                 "FAKE_DOCKER_LOG": str(self.docker_log),
                 "FAKE_CURL_LOG": str(self.curl_log),
                 "FAKE_CONTAINER_STATE_FILE": str(self.container_state),
+                "FAKE_LABEL_QUERY_COUNT_FILE": str(self.label_query_count),
+                "FAKE_REMOVE_ATTEMPT_COUNT_FILE": str(self.remove_attempt_count),
                 "FAKE_DOCKER_RUN_DELAY_SECONDS": "10",
+                "FAKE_SKIP_CIDFILE": "1",
+                "FAKE_LABEL_VISIBLE_AFTER": "2",
+                "FAKE_DOCKER_REMOVE_FAILS_BEFORE": "1",
                 "REAL_JQ_PATH": self.real_jq_path,
             }
         )
@@ -376,6 +386,14 @@ class DockerServingStartupContractTest(DockerServingTestCase):
         self.assertIn(
             "rm -f fake-container-id",
             self.docker_log.read_text(encoding="utf-8"),
+        )
+        self.assertGreaterEqual(
+            int(self.label_query_count.read_text(encoding="utf-8")),
+            2,
+        )
+        self.assertGreaterEqual(
+            int(self.remove_attempt_count.read_text(encoding="utf-8")),
+            2,
         )
 
     def test_failed_startup_can_be_retried_after_rollback(self):
