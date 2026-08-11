@@ -28,12 +28,12 @@ def test_internal_nats_datetime_keeps_collector_naive_input_contract():
 
 
 def test_get_change_trend_rejects_oversized_range_before_query(monkeypatch):
-    monkeypatch.setitem(N._CHANGE_TREND_MAX_SPAN_SECONDS, "hour", 3600)
+    # 2h 窗会推导为 minute；把 minute 上限压到 1h 以触发跨度拒绝。
+    monkeypatch.setitem(N._CHANGE_TREND_MAX_SPAN_SECONDS, "minute", 3600)
     monkeypatch.setattr(N.ChangeRecord, "objects", QueryMustNotRun())
 
     result = N.get_change_trend(
         time=["2026-01-01T00:00:00Z", "2026-01-01T02:00:00Z"],
-        group_by="hour",
     )
 
     assert result["result"] is False
@@ -42,29 +42,34 @@ def test_get_change_trend_rejects_oversized_range_before_query(monkeypatch):
 
 
 def test_get_change_trend_allows_range_at_maximum_limit(monkeypatch):
-    monkeypatch.setitem(N._CHANGE_TREND_MAX_SPAN_SECONDS, "hour", 3600)
+    monkeypatch.setitem(N._CHANGE_TREND_MAX_SPAN_SECONDS, "minute", 3600)
     monkeypatch.setattr(N.ChangeRecord, "objects", QueryProbe())
 
     with pytest.raises(QueryStarted):
         N.get_change_trend(
             time=["2026-01-01T00:00:00Z", "2026-01-01T01:00:00Z"],
-            group_by="hour",
         )
 
 
-def test_get_change_trend_rejects_invalid_group_by_before_query(monkeypatch):
-    monkeypatch.setattr(N.ChangeRecord, "objects", QueryMustNotRun())
+def test_get_change_trend_short_window_uses_minute(monkeypatch):
+    seen = {}
+    real_resolve = N.resolve_trend_group_by_from_range
 
-    result = N.get_change_trend(
-        time=["2026-01-01 00:00:00", "2026-01-02 00:00:00"],
-        group_by="minute",
-    )
+    def _capture_resolve(start, end):
+        group_by = real_resolve(start, end)
+        seen["group_by"] = group_by
+        return group_by
 
-    assert result == {
-        "result": False,
-        "data": {},
-        "message": "group_by must be one of: hour, day, week, month",
-    }
+    monkeypatch.setattr(N, "resolve_trend_group_by_from_range", _capture_resolve)
+    monkeypatch.setattr(N.ChangeRecord, "objects", QueryProbe())
+
+    with pytest.raises(QueryStarted):
+        N.get_change_trend(
+            time=["2026-01-01T00:00:00Z", "2026-01-01T00:30:00Z"],
+            group_by="day",
+        )
+
+    assert seen["group_by"] == "minute"
 
 
 def test_get_change_trend_rejects_timezone_less_range_before_query(monkeypatch):
