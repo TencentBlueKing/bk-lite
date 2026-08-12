@@ -61,6 +61,40 @@ def test_snmp_probe_ready_on_successful_get(monkeypatch):
     assert result.status == AccessProbeStatus.READY
 
 
+def test_snmp_probe_uses_fixed_timeout_5_retries_1(monkeypatch):
+    facts = SnmpFacts(
+        {
+            "host": "127.0.0.1",
+            "version": "v2",
+            "community": "public",
+            "snmp_port": 161,
+            "timeout": 1,
+            "retries": 0,
+        }
+    )
+    captured = {}
+
+    class FakeCmdGen:
+        def getCmd(self, auth, target, *_args, **_kwargs):
+            captured["transport"] = target
+            return ("No SNMP response received before timeout", 0, 0, [])
+
+    def fake_udp(address, **kwargs):
+        captured["opts"] = kwargs
+        return ("udp", address, kwargs)
+
+    monkeypatch.setattr(
+        "plugins.inputs.network.snmp_facts.cmdgen.CommandGenerator",
+        FakeCmdGen,
+    )
+    monkeypatch.setattr(
+        "plugins.inputs.network.snmp_facts.cmdgen.UdpTransportTarget",
+        fake_udp,
+    )
+    facts._probe_sync()
+    assert captured["opts"] == {"timeout": 5, "retries": 1}
+
+
 @pytest.mark.asyncio
 async def test_snmp_probe_uses_to_thread(monkeypatch):
     facts = SnmpFacts(
