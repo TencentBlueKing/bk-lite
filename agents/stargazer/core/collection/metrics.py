@@ -20,6 +20,7 @@ class CollectionMetrics:
             "plugin_timeout_total": 0,
             "result_publish_failure_total": 0,
             "lease_takeover_total": 0,
+            "credential_state_redis_error_total": 0,
         }
 
     def increment(self, name: str, value: float = 1) -> None:

@@ -93,7 +93,9 @@ class TaskStore:
         return json.loads(plaintext.decode("utf-8"))
 
     def _connect(self):
-        return sqlite3.connect(self.db_path)
+        connection = sqlite3.connect(self.db_path)
+        connection.execute("PRAGMA secure_delete = ON")
+        return connection
 
     def _ensure_schema(self):
         db_parent = Path(self.db_path).parent
@@ -134,7 +136,31 @@ class TaskStore:
             for column, sql in migrations.items():
                 if column not in columns:
                     conn.execute(sql)
+            self._cleanup_terminal_execution_payloads(conn)
         os.chmod(self.db_path, 0o600)
+
+    @staticmethod
+    def _cleanup_terminal_execution_payloads(conn: sqlite3.Connection) -> None:
+        """Run the security-critical legacy cleanup atomically during startup.
+
+        A SQLite error aborts and rolls back initialization. Operators can fix the
+        database lock/filesystem problem and restart; continuing would retain
+        plaintext terminal credentials behind a healthy service.
+        """
+        terminal_statuses = tuple(sorted(TERMINAL_TASK_STATUSES))
+        status_placeholders = ", ".join("?" for _ in terminal_statuses)
+        conn.execute(
+            f"""
+            UPDATE task_state
+            SET execution_payload_json = NULL
+            WHERE execution_payload_json IS NOT NULL
+              AND (
+                  status IN ({status_placeholders})
+                  OR execution_status IN ({status_placeholders})
+              )
+            """,
+            (*terminal_statuses, *terminal_statuses),
+        )
 
     def create_if_absent(
         self,
@@ -188,19 +214,64 @@ class TaskStore:
 
     def claim_task(self, task_id: str, owner_id: str, lease_expires_at: str, now_iso: str) -> dict[str, Any]:
         with self._connect() as conn:
+            terminal_statuses = tuple(sorted(TERMINAL_TASK_STATUSES))
+            status_placeholders = ", ".join("?" for _ in terminal_statuses)
             cursor = conn.execute(
+                f"""
+                UPDATE task_state
+                SET status = 'running',
+                    execution_status = 'running',
+                    lease_owner = ?,
+                    lease_expires_at = ?,
+                    heartbeat_at = ?,
+                    execution_attempt = COALESCE(execution_attempt, 0) + 1,
+                    updated_at = ?
+                WHERE task_id = ?
+                  AND status NOT IN ({status_placeholders})
+                  AND execution_status NOT IN ({status_placeholders})
+                  AND (
+                      execution_status != 'running'
+                      OR lease_owner IS NULL
+                      OR lease_expires_at IS NULL
+                      OR lease_expires_at <= ?
+                      OR lease_owner = ?
+                  )
+                """,
+                (
+                    owner_id,
+                    lease_expires_at,
+                    now_iso,
+                    now_iso,
+                    task_id,
+                    *terminal_statuses,
+                    *terminal_statuses,
+                    now_iso,
+                    owner_id,
+                ),
+            )
+            row = conn.execute(
                 """
                 SELECT status, execution_status, callback_status, lease_owner, lease_expires_at, execution_attempt
                 FROM task_state
                 WHERE task_id = ?
                 """,
                 (task_id,),
-            )
-            row = cursor.fetchone()
+            ).fetchone()
             if not row:
                 return {"claimed": False, "reason": "missing"}
 
             status, execution_status, callback_status, lease_owner, lease_expires_at_db, execution_attempt = row
+            if cursor.rowcount > 0:
+                return {
+                    "claimed": True,
+                    "status": status,
+                    "execution_status": execution_status,
+                    "callback_status": callback_status,
+                    "execution_attempt": int(execution_attempt or 0),
+                    "lease_owner": lease_owner,
+                    "lease_expires_at": lease_expires_at_db,
+                    "claimed_at": now_iso,
+                }
             if status in TERMINAL_TASK_STATUSES or execution_status in TERMINAL_TASK_STATUSES:
                 return {
                     "claimed": False,
@@ -219,41 +290,7 @@ class TaskStore:
                     "lease_owner": lease_owner,
                     "lease_expires_at": lease_expires_at_db,
                 }
-
-            next_attempt = int(execution_attempt or 0) + 1
-            conn.execute(
-                """
-                UPDATE task_state
-                SET status = ?,
-                    execution_status = ?,
-                    lease_owner = ?,
-                    lease_expires_at = ?,
-                    heartbeat_at = ?,
-                    execution_attempt = ?,
-                    updated_at = ?
-                WHERE task_id = ?
-                """,
-                (
-                    "running",
-                    "running",
-                    owner_id,
-                    lease_expires_at,
-                    now_iso,
-                    next_attempt,
-                    now_iso,
-                    task_id,
-                ),
-            )
-            return {
-                "claimed": True,
-                "status": "running",
-                "execution_status": "running",
-                "callback_status": callback_status,
-                "execution_attempt": next_attempt,
-                "lease_owner": owner_id,
-                "lease_expires_at": lease_expires_at,
-                "claimed_at": now_iso,
-            }
+            return {"claimed": False, "reason": "state_changed"}
 
     def renew_lease(self, task_id: str, owner_id: str, lease_expires_at: str, now_iso: str) -> bool:
         with self._connect() as conn:

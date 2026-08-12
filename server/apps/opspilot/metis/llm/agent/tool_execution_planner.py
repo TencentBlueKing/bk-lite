@@ -111,12 +111,16 @@ _ATTACHMENT_CATALOG_HINT = (
     "禁止返回空 steps 后在对话中直接渲染全文；寒暄问候除外。"
 )
 _FILE_GENERATION_INTENT_RE = re.compile(
-    r"月报|报告|\.md\b|markdown|附件|导出|下载|文档|文件|notion|" r"report|document|attachment|generate_attachment_file|附件生成强制规则|" r"放在\.?md|生成一份|产出.*文件",
+    r"月报|报告|\.md\b|markdown|附件|导出|下载|文档|文件|notion|" r"report|document|attachment|" r"放在\.?md|生成一份|产出.*文件",
     re.IGNORECASE,
 )
 _ATTACHMENT_CHITCHAT_RE = re.compile(
     r"^(你好|您好|hello|hi|hey|谢谢|thanks|thank you|在吗|早上好|晚上好)[\s!！.。?？～~]*$",
     re.IGNORECASE,
+)
+# chat_service 注入的强制规则模板含「附件/generate_attachment_file」字样，匹配前需剥离。
+_ATTACHMENT_FORCE_RULE_BLOCK_RE = re.compile(
+    r"【附件生成强制规则[\s\S]*?(?=【|$)",
 )
 
 
@@ -365,10 +369,15 @@ def enforce_k8s_namespace_lookup_first(
 
 
 def looks_like_attachment_file_task(user_message: str = "", agent_system_prompt: str = "") -> bool:
-    """判断是否应强制走附件落盘（结合用户输入与智能体 system prompt）。"""
+    """判断是否应强制走附件落盘（结合用户输入与智能体 system prompt）。
+
+    不把 chat_service 注入的「附件生成强制规则」模板当作意图信号，
+    否则启用附件工具时几乎所有非寒暄轮次都会被硬注入该工具。
+    """
     if _ATTACHMENT_CHITCHAT_RE.match((user_message or "").strip()):
         return False
-    blob = f"{user_message or ''}\n{agent_system_prompt or ''}"
+    system_prompt = _ATTACHMENT_FORCE_RULE_BLOCK_RE.sub("", agent_system_prompt or "")
+    blob = f"{user_message or ''}\n{system_prompt}"
     return bool(_FILE_GENERATION_INTENT_RE.search(blob))
 
 

@@ -125,6 +125,9 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
+  const [nameDraft, setNameDraft] = useState("");
+  const [statusDraft, setStatusDraft] = useState<MaterialDisplayStatus[]>([]);
+  const [nameQuery, setNameQuery] = useState("");
   const [statusGroups, setStatusGroups] = useState<MaterialDisplayStatus[]>([]);
   const loadRequestSequenceRef = useRef(0);
   const loadingRequestSequenceRef = useRef<number | null>(null);
@@ -135,9 +138,10 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     kbId,
     page,
     pageSize,
+    nameQuery,
     statusGroups: statusGroups as MaterialDisplayStatus[],
   });
-  loadScopeRef.current = { kbId, page, pageSize, statusGroups };
+  loadScopeRef.current = { kbId, page, pageSize, nameQuery, statusGroups };
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
@@ -180,6 +184,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         kbId: requestedKbId,
         page: requestedPage,
         pageSize: requestedPageSize,
+        nameQuery: requestedNameQuery,
         statusGroups: requestedStatusGroups,
       } = loadScopeRef.current;
       const requestSequence = ++loadRequestSequenceRef.current;
@@ -191,6 +196,9 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         const res = await fetchMaterials(requestedKbId, {
           page: requestedPage,
           page_size: requestedPageSize,
+          ...(requestedNameQuery.trim()
+            ? { search: requestedNameQuery.trim() }
+            : {}),
           ...(requestedStatusGroups.length
             ? { status_group: requestedStatusGroups.join(",") }
             : {}),
@@ -201,6 +209,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           currentScope.kbId !== requestedKbId ||
           currentScope.page !== requestedPage ||
           currentScope.pageSize !== requestedPageSize ||
+          currentScope.nameQuery !== requestedNameQuery ||
           currentScope.statusGroups.join(",") !==
             requestedStatusGroups.join(",")
         ) {
@@ -214,6 +223,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             kbId: requestedKbId,
             page: lastPage,
             pageSize: requestedPageSize,
+            nameQuery: requestedNameQuery,
             statusGroups: requestedStatusGroups,
           };
           silentPageCorrectionRef.current = silent;
@@ -234,7 +244,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       }
        
     },
-    [kbId, page, pageSize, statusGroups],
+    [kbId, page, pageSize, nameQuery, statusGroups],
   );
   useEffect(() => {
     let active = true;
@@ -257,7 +267,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     silentPageCorrectionRef.current = false;
     void load({ silent }).catch(() => undefined);
      
-  }, [kbId, page, pageSize, statusGroups]);
+  }, [kbId, page, pageSize, nameQuery, statusGroups]);
 
   useEffect(() => {
     fetchKnowledgeBase(kbId)
@@ -699,12 +709,6 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       dataIndex: "status",
       key: "status",
       width: 120,
-      filteredValue: statusGroups.length ? statusGroups : null,
-      filters: MATERIAL_DISPLAY_STATUS_OPTIONS.map((value) => ({
-        text: t(MATERIAL_STATUS_META[value].key),
-        value,
-      })),
-      filterMultiple: true,
       render: (s: string) => {
         const meta = MATERIAL_STATUS_META[materialDisplayStatus(s)];
         return (
@@ -826,6 +830,22 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     },
   ];
 
+  const applyMaterialFilters = () => {
+    const nextName = nameDraft.trim();
+    const nextStatus = [...statusDraft];
+    loadScopeRef.current = {
+      kbId,
+      page: 1,
+      pageSize,
+      nameQuery: nextName,
+      statusGroups: nextStatus,
+    };
+    setSelectedRowKeys([]);
+    setNameQuery(nextName);
+    setStatusGroups(nextStatus);
+    setPage(1);
+  };
+
   if (materialId) {
     return (
       <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
@@ -846,29 +866,34 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   return (
     <div className="h-full flex flex-col">
       <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <Select
-          mode="multiple"
-          allowClear
-          className="min-w-[240px] max-w-full flex-1 sm:max-w-[420px]"
-          placeholder={t("wiki.filterStatusAll")}
-          value={statusGroups}
-          options={MATERIAL_DISPLAY_STATUS_OPTIONS.map((value) => ({
-            value,
-            label: t(MATERIAL_STATUS_META[value].key),
-          }))}
-          maxTagCount="responsive"
-          onChange={(values: MaterialDisplayStatus[]) => {
-            loadScopeRef.current = {
-              kbId,
-              page: 1,
-              pageSize,
-              statusGroups: values,
-            };
-            setSelectedRowKeys([]);
-            setStatusGroups(values);
-            setPage(1);
-          }}
-        />
+        <Space wrap className="min-w-0 flex-1">
+          <Input
+            allowClear
+            className="w-[220px] max-w-full"
+            placeholder={t("wiki.filterNamePlaceholder")}
+            value={nameDraft}
+            onChange={(event) => setNameDraft(event.target.value)}
+            onPressEnter={applyMaterialFilters}
+          />
+          <Select
+            mode="multiple"
+            allowClear
+            className="min-w-[200px] max-w-full sm:min-w-[240px] sm:max-w-[360px]"
+            placeholder={t("wiki.filterStatusAll")}
+            value={statusDraft}
+            options={MATERIAL_DISPLAY_STATUS_OPTIONS.map((value) => ({
+              value,
+              label: t(MATERIAL_STATUS_META[value].key),
+            }))}
+            maxTagCount="responsive"
+            onChange={(values: MaterialDisplayStatus[]) => {
+              setStatusDraft(values);
+            }}
+          />
+          <Button type="primary" onClick={applyMaterialFilters}>
+            {t("wiki.filterQuery")}
+          </Button>
+        </Space>
         <div className="flex gap-2">
           <Button
             disabled={!selectedRowKeys.length}
@@ -907,33 +932,12 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                 kbId,
                 page: p,
                 pageSize: ps,
+                nameQuery,
                 statusGroups,
               };
               setPage(p);
               setPageSize(ps);
             },
-          }}
-          onChange={(_pagination, filters) => {
-            const next = (filters.status || [])
-              .map((value) => String(value))
-              .filter((value): value is MaterialDisplayStatus =>
-                MATERIAL_DISPLAY_STATUS_OPTIONS.includes(
-                  value as MaterialDisplayStatus,
-                ),
-              );
-            const same =
-              next.length === statusGroups.length &&
-              next.every((value) => statusGroups.includes(value));
-            if (same) return;
-            loadScopeRef.current = {
-              kbId,
-              page: 1,
-              pageSize,
-              statusGroups: next,
-            };
-            setSelectedRowKeys([]);
-            setStatusGroups(next);
-            setPage(1);
           }}
           scroll={{ x: undefined }}
         />

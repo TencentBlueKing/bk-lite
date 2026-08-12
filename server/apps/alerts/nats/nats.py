@@ -13,7 +13,7 @@ from typing import Any, Dict
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
-from django.db.models.functions import TruncDate, TruncHour, TruncMinute, TruncMonth, TruncWeek
+from django.db.models.functions import TruncDate, TruncHour, TruncMinute, TruncMonth
 from django.utils import timezone
 
 import nats_client
@@ -26,6 +26,7 @@ from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_range_utc, parse_rfc3339_utc
+from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
@@ -53,15 +54,13 @@ _MAX_SPAN_SECONDS = {
     "minute": _positive_int_env("ALERT_TREND_MAX_SPAN_MINUTE", 7 * 24 * 3600),  # 7 天 → 10,080 点
     "hour": _positive_int_env("ALERT_TREND_MAX_SPAN_HOUR", 90 * 24 * 3600),  # 90 天 → 2,160 点
     "day": _positive_int_env("ALERT_TREND_MAX_SPAN_DAY", 730 * 24 * 3600),  # 2 年 → 730 点
-    "week": _positive_int_env("ALERT_TREND_MAX_SPAN_WEEK", 730 * 24 * 3600),  # 2 年 → ~104 点
-    "month": _positive_int_env("ALERT_TREND_MAX_SPAN_MONTH", 730 * 24 * 3600),  # 2 年 → 24 点
+    "month": _positive_int_env("ALERT_TREND_MAX_SPAN_MONTH", 10 * 365 * 24 * 3600),  # 10 年
 }
 _MAX_SPAN_LABEL = {
     "minute": "7 天",
     "hour": "90 天",
     "day": "2 年",
-    "week": "2 年",
-    "month": "2 年",
+    "month": "10 年",
 }
 
 
@@ -163,9 +162,6 @@ def group_dy_date_format(group_by):
     elif group_by == "day":
         trunc_func = TruncDate
         date_format = "%Y-%m-%d"
-    elif group_by == "week":
-        trunc_func = TruncWeek
-        date_format = "%Y-%m-%d"
     elif group_by == "month":
         trunc_func = TruncMonth
         date_format = "%Y-%m-%d"
@@ -235,12 +231,6 @@ def _generate_time_periods(group_by, start_dt, end_dt):
         while current < end_dt:
             all_periods.append(current.date())
             current += datetime.timedelta(days=1)
-    elif group_by == "week":
-        current = start_dt
-        while current < end_dt:
-            week_start = current - datetime.timedelta(days=current.weekday())
-            all_periods.append(week_start.date())
-            current += datetime.timedelta(weeks=1)
     elif group_by == "month":
         current = start_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         while current < end_dt:
@@ -267,28 +257,23 @@ def _get_trend_span_error(group_by, aware_start, aware_end, handler_name):
         group_by,
         max_span,
     )
-    return f"时间跨度超过 {group_by} 粒度的最大限制（{label}），请缩短查询范围或改用更粗粒度。"
+    return f"时间跨度超过 {group_by} 粒度的最大限制（{label}），请缩短查询范围。"
 
 
-def _validate_trend_request(time_values, target_tz, group_by, handler_name):
-    """校验趋势查询参数，返回解析后的时间范围及错误信息。"""
+def _resolve_alert_trend_group_by(time_values, target_tz, handler_name):
+    """按时间窗推导告警趋势聚合粒度。"""
     if not isinstance(time_values, (list, tuple)) or len(time_values) != 2:
-        return None, None, "start_time and end_time are required."
-    if not isinstance(group_by, str) or group_by not in _MAX_SPAN_SECONDS:
-        supported = ", ".join(_MAX_SPAN_SECONDS)
-        return None, None, f"Unsupported group_by '{group_by}'. Supported values: {supported}."
-
+        return None, None, None, "start_time and end_time are required."
     try:
         aware_start = _parse_client_datetime(time_values[0], target_tz)
         aware_end = _parse_client_datetime(time_values[1], target_tz)
     except (TypeError, ValueError, OverflowError):
-        return None, None, "start_time and end_time must be valid datetime values."
-
+        return None, None, None, "start_time and end_time must be valid datetime values."
     if aware_end <= aware_start:
-        return None, None, "end_time must be later than start_time."
-
+        return None, None, None, "end_time must be later than start_time."
+    group_by = resolve_trend_group_by_from_range(aware_start, aware_end)
     span_error = _get_trend_span_error(group_by, aware_start, aware_end, handler_name)
-    return aware_start, aware_end, span_error
+    return aware_start, aware_end, group_by, span_error
 
 
 def _build_period_series(queryset, time_field, trunc_func, target_tz, aware_start, aware_end, all_periods, extra_filter=None):
@@ -321,21 +306,10 @@ def _build_period_series(queryset, time_field, trunc_func, target_tz, aware_star
 @nats_client.register
 def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
     """
-    获取告警趋势数据 获取指定时间内，告警的数据
-    例如：获取7天内，每天的告警数量
-    根据group_by参数分组统计告警数据
+    获取告警趋势数据。
 
-    :param group_by: 分组方式，支持 "minute", "hour", "day", "week", "month"
-
-    return:
-        {
-            "result": True,
-            "data": {
-                "alert_count": [["2025-02-02T00:00:00+08:00", 5], ...],
-                "event_count": [["2025-02-02T00:00:00+08:00", 12], ...],
-                "recovered_count": [["2025-02-02T00:00:00+08:00", 3], ...]
-            }
-        }
+    聚合粒度按时间窗自动推导：
+    ≤6h minute / ≤7d hour / ≤2y day / 更长 month。
     """
     logger.info("[AlertNatsRPC] === get_alert_trend_data ===, args=%s, kwargs=%s", args, kwargs)
     user_info = kwargs.pop("user_info", {})
@@ -345,8 +319,8 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
         return error
 
     time_values = kwargs.pop("time", [])
-    group_by = kwargs.pop("group_by", "day")
-    aware_start, aware_end, validation_error = _validate_trend_request(time_values, target_tz, group_by, "get_alert_trend_data")
+    kwargs.pop("group_by", None)
+    aware_start, aware_end, group_by, validation_error = _resolve_alert_trend_group_by(time_values, target_tz, "get_alert_trend_data")
     if validation_error:
         return {
             "result": False,
@@ -1072,12 +1046,7 @@ def get_alert_status_distribution(**kwargs):
     status_order = [AlertStatus.UNASSIGNED, AlertStatus.PENDING, AlertStatus.PROCESSING]
     # Alert.Meta.ordering 包含 updated_at；聚合前必须清除默认排序，否则部分
     # 数据库会把排序列加入 GROUP BY，导致同一状态被拆成多条。
-    status_counts = (
-        queryset.filter(status__in=status_order)
-        .order_by()
-        .values("status")
-        .annotate(count=Count("id"))
-    )
+    status_counts = queryset.filter(status__in=status_order).order_by().values("status").annotate(count=Count("id"))
     counts = {item["status"]: item["count"] for item in status_counts}
 
     return {
@@ -1091,6 +1060,7 @@ def get_alert_status_distribution(**kwargs):
 def get_alert_level_trend(**kwargs):
     """
     获取指定时间范围内按告警等级分组的趋势数据。
+    聚合粒度按时间窗自动推导。
     """
     logger.info("[AlertNatsRPC] === get_alert_level_trend ===, kwargs=%s", kwargs)
     user_info = kwargs.get("user_info", {})
@@ -1100,8 +1070,8 @@ def get_alert_level_trend(**kwargs):
         return error
 
     time_values = kwargs.get("time", [])
-    group_by = kwargs.get("group_by", "day")
-    aware_start, aware_end, validation_error = _validate_trend_request(time_values, target_tz, group_by, "get_alert_level_trend")
+    kwargs.pop("group_by", None)
+    aware_start, aware_end, group_by, validation_error = _resolve_alert_trend_group_by(time_values, target_tz, "get_alert_level_trend")
     if validation_error:
         return {"result": False, "data": {}, "message": validation_error}
 

@@ -67,13 +67,6 @@
         "value": 10080,
         "alias_name": "时间范围",
         "filterType": "filter"
-      },
-      {
-        "name": "group_by",
-        "type": "string",
-        "value": "day",
-        "alias_name": "聚合粒度",
-        "filterType": "fixed"
       }
     ]
   },
@@ -396,13 +389,6 @@
     ],
     "params": [
         {
-            "name": "group_by",
-            "type": "string",
-            "value": "day",
-            "alias_name": "聚合粒度",
-            "filterType": "fixed"
-        },
-        {
             "name": "time",
             "type": "timeRange",
             "value": 10080,
@@ -648,13 +634,6 @@
             "value": "",
             "alias_name": "模型 ID",
             "filterType": "params"
-        },
-        {
-            "name": "group_by",
-            "type": "string",
-            "value": "day",
-            "alias_name": "聚合粒度",
-            "filterType": "fixed"
         }
     ],
     "field_schema": []

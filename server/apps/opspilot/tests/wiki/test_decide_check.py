@@ -1688,3 +1688,83 @@ def test_create_candidate_replaces_same_material_alternative_body():
     assert len(alternatives) == 1
     assert alternatives[0]["body_hash"] == _body_hash("candidate-new")
     assert PageVersion.objects.filter(page=page, change_type="candidate").count() == 2
+
+
+@pytest.mark.django_db
+def test_decide_check_keep_all_keeps_current_and_creates_new_page():
+    """keep_all: 当前页不变，候选正文另建独立页面并补证据。"""
+    from apps.opspilot.models import KnowledgePage, PageEvidence
+    from apps.opspilot.services.wiki.check_service import decide_check
+
+    kb, page, current, source, source_version, incoming, incoming_version, check = _create_frozen_conflict()
+    original_page_id = page.id
+    original_body = page.current_version.body
+
+    rule = decide_check(check, action="keep_all", operator="reviewer")
+
+    check.refresh_from_db()
+    page.refresh_from_db()
+    assert check.status == "resolved"
+    assert page.current_version.body == original_body
+    assert page.current_version_id == current.id
+    assert PageEvidence.objects.filter(material=incoming, page=page).count() == 0
+
+    created_ids = (rule.result_snapshot or {}).get("created_page_ids") or []
+    assert len(created_ids) == 1
+    created = KnowledgePage.objects.get(pk=created_ids[0])
+    assert created.id != original_page_id
+    assert created.knowledge_base_id == kb.id
+    assert created.status == "active"
+    assert created.current_version.body == "candidate"
+    assert PageEvidence.objects.filter(material=incoming, page=created).exists()
+    assert rule.action == "keep_all"
+
+
+@pytest.mark.django_db
+def test_decide_check_keep_all_with_multiple_alternatives_creates_each_page():
+    """keep_all: 多候选时为每条候选各建一页，当前页保持不变。"""
+    from apps.opspilot.models import KnowledgePage, PageEvidence
+    from apps.opspilot.services.wiki.check_service import create_candidate, decide_check
+
+    kb = _bootstrap_kb("kb-keep-all-multi")
+    page = _create_page_with_body(kb, title="主机接口", body="current-host")
+    current = page.current_version
+    source, source_version = _create_material_with_version(kb, "source", "hash-source")
+    PageEvidence.objects.create(page=page, material=source, material_version=source_version)
+    m1, v1 = _create_material_with_version(kb, "email-doc", "hash-m1")
+    m2, v2 = _create_material_with_version(kb, "network-doc", "hash-m2")
+
+    check = create_candidate(
+        page,
+        body="# 邮箱命名规范\n\n规范正文",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m1,
+        incoming_material_version=v1,
+    )
+    create_candidate(
+        page,
+        body="# 网络分区说明\n\n分区正文",
+        reason="conflict",
+        check_type="cannot_merge",
+        incoming_material=m2,
+        incoming_material_version=v2,
+    )
+
+    rule = decide_check(check, action="keep_all", operator="reviewer")
+
+    page.refresh_from_db()
+    assert page.current_version_id == current.id
+    assert page.current_version.body == "current-host"
+    created_ids = (rule.result_snapshot or {}).get("created_page_ids") or []
+    assert len(created_ids) == 2
+    created_pages = list(KnowledgePage.objects.filter(id__in=created_ids).order_by("id"))
+    assert {p.current_version.body for p in created_pages} == {
+        "# 邮箱命名规范\n\n规范正文",
+        "# 网络分区说明\n\n分区正文",
+    }
+    titles = {p.title for p in created_pages}
+    assert any("邮箱" in title for title in titles)
+    assert any("网络" in title for title in titles)
+    assert PageEvidence.objects.filter(material=m1, page_id__in=created_ids).exists()
+    assert PageEvidence.objects.filter(material=m2, page_id__in=created_ids).exists()

@@ -63,6 +63,23 @@ _JSON_ONLY_OUTPUT_RULES = (
     '6. 字符串值内的双引号、换行必须按 JSON 转义（\\" 与 \\n），'
     "body 字段尤其容易因未转义导致整段 JSON 非法。\n"
 )
+_FACT_PRESERVATION_RULES = (
+    "可核验事实保留硬性要求（必须全部遵守）：\n"
+    "1. 必须保留资料中已给出的联系人姓名、电话、内线/分机、邮箱、URL、工号、资产编号、明确日期与数值；"
+    "不得当作噪音或临时细节删除。\n"
+    "2. 禁止把资料中已写明的具体事实改写成“信息缺口/未确认/是否仍有效”而不写出原值；"
+    "若需提示时效性，应先完整写出原事实，再另起一句说明时效未在资料中确认。\n"
+    "3. “信息缺口”仅用于资料确实未给出的信息；不得用缺口描述替代已存在的原值。\n"
+)
+_CONTACT_LABEL_RE = re.compile(
+    r"(?P<label>联系人|联系电话|电话|手机|内线|分机|邮箱|E-?mail|Email)\s*[:：]?\s*"
+    r"(?P<value>.+?)"
+    r"(?=(?:\s{1,6}(?:联系人|联系电话|电话|手机|内线|分机|邮箱|E-?mail|Email)\s*[:：])|$)",
+    re.IGNORECASE,
+)
+_PHONE_RE = re.compile(r"(?<!\d)(?:\+?86[-\s]?)?1[3-9]\d{9}(?!\d)|(?<!\d)0\d{2,3}-?\d{7,8}(?!\d)")
+_CONTACT_SECTION_TITLE = "## 联系方式"
+_CONTACT_TARGET_HINTS = ("联系", "指引", "管理", "安全", "通讯", "值班", "热线")
 
 
 class BuildOutputInvalid(ValueError):
@@ -168,7 +185,8 @@ def _llm_extract_facts(text, llm_model_id):
     for idx, chunk in enumerate(chunks, start=1):
         prompt = (
             "你是知识抽取助手。请从下面的资料片段中抽取稳定、可复用、对运维有价值的关键事实/要点,"
-            "去除噪音与临时细节,每行一条,只输出要点列表本身,不要解释。\n"
+            "去除广告、排版噪音与无信息填充语,每行一条,只输出要点列表本身,不要解释。\n"
+            f"{_FACT_PRESERVATION_RULES}"
             "注意:这是同一份资料的分块处理,不得因为只看到当前片段就判断全文结束。\n\n"
             f"# 资料片段 {idx}/{len(chunks)}\n{chunk}\n"
         )
@@ -281,9 +299,9 @@ def material_source_metadata(material):
 
 def _page_type_body_guidance(page_type):
     guidance = {
-        "entity": "首段定义对象；正文覆盖核心职责或能力、关键属性、依赖关系和体系角色，不得把多个独立对象混成一页。",
-        "concept": "首段给出定义；正文覆盖机制或架构、组成与关系、适用边界和资料明确指出的信息缺口。",
-        "source": "正文覆盖资料背景、内容结构、覆盖主题、信息质量与已知缺口，并用 WikiLink 指向本资料形成的主题页。",
+        "entity": ("首段定义对象；正文覆盖核心职责或能力、关键属性、依赖关系和体系角色，" "并保留联系方式、编号等可核验字段；不得把多个独立对象混成一页。"),
+        "concept": ("首段给出定义；正文覆盖机制或架构、组成与关系、适用边界，" "以及资料明确给出的联系人/电话/内线/编号等可核验事实；" "仅当资料确实未给出时才写信息缺口。"),
+        "source": ("正文覆盖资料背景、内容结构、覆盖主题与信息质量；" "资料中的联系方式等可核验事实必须保留或指向含该事实的主题页；" "仅当资料确实未给出时才写已知缺口。"),
         "query": "只记录资料明确留下的未解决问题，说明问题、重要性、现有证据和还需补充的证据；不得凭空发问。",
         "comparison": "只有资料给出共同维度和明确事实时才生成；列出对象、维度、事实对比、结论与限制。",
         "synthesis": "只有资料确实支持跨主题或多来源结论时才生成；说明证据链、综合结论、适用范围和限制。",
@@ -306,6 +324,7 @@ def _generation_page_contract(structure_revision, source_metadata=None):
         "不得生成 index、overview、log 或目录统计页面，这些内容由系统按 Generation 派生。",
         "正文使用清晰 Markdown 标题，并在关系明确时用 [[目标页面标题]] 建立链接。",
         "不同主体的事实、版本、适用范围和限定条件必须分开，不得把相似名称合并成同一事实。",
+        _FACT_PRESERVATION_RULES.strip(),
     ]
     for page_type in page_types:
         lines.append(f"- {page_type}: {_page_type_body_guidance(page_type)}")
@@ -320,6 +339,191 @@ def _normalize_text_list(value, limit):
     if not isinstance(value, list):
         return []
     return list(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))[:limit]
+
+
+def _normalize_contact_token(value):
+    return re.sub(r"\s+", "", str(value or "").strip().casefold())
+
+
+def _extract_contact_facts(source_text):
+    """从原文抽取联系方式类可核验事实（姓名/电话/内线等）。"""
+    text = str(source_text or "")
+    if not text.strip():
+        return []
+    facts = []
+    seen = set()
+
+    def add_fact(kind, value, *, line=""):
+        cleaned = str(value or "").strip().strip("。.;；,，")
+        if not cleaned:
+            return
+        key = (kind, _normalize_contact_token(cleaned))
+        if not key[1] or key in seen:
+            return
+        seen.add(key)
+        facts.append({"kind": kind, "value": cleaned, "line": (line or "").strip()})
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        for match in _CONTACT_LABEL_RE.finditer(line):
+            label = (match.group("label") or "").casefold()
+            value = (match.group("value") or "").strip()
+            if "联系人" in label:
+                # 同行可能还有电话/内线，先取姓名片段
+                name = re.split(r"[；;|,，\s]{2,}|\s{2,}|联系电话|电话|内线|分机", value, maxsplit=1)[0].strip()
+                add_fact("name", name or value, line=line)
+            elif "内线" in label or "分机" in label:
+                add_fact("extension", value, line=line)
+            elif "邮箱" in label or "mail" in label:
+                add_fact("email", value, line=line)
+            else:
+                add_fact("phone", value, line=line)
+        for phone in _PHONE_RE.findall(line):
+            add_fact("phone", phone, line=line)
+        # 形如：联系人：张三  联系电话：0757-xxx   内线：3013
+        if "联系人" in line and ("电话" in line or "内线" in line or "分机" in line):
+            add_fact("line", line, line=line)
+    return facts
+
+
+def _contact_facts_missing(pages, facts):
+    bodies = "\n".join(str((page or {}).get("body") or "") for page in pages or [])
+    normalized_body = _normalize_contact_token(bodies)
+    missing = []
+    for fact in facts or []:
+        token = _normalize_contact_token(fact.get("value"))
+        if token and token not in normalized_body:
+            missing.append(fact)
+    return missing
+
+
+def _pick_contact_target_page(pages):
+    pages = [page for page in (pages or []) if isinstance(page, dict)]
+    if not pages:
+        return None
+    scored = []
+    for index, page in enumerate(pages):
+        title = str(page.get("title") or "")
+        body = str(page.get("body") or "")
+        page_type = str(page.get("page_type") or "")
+        score = 0
+        blob = f"{title}\n{body}"
+        for hint in _CONTACT_TARGET_HINTS:
+            if hint in blob:
+                score += 3
+        if page_type == "source":
+            score += 1
+        if page_type in {"concept", "entity"}:
+            score += 2
+        scored.append((score, index, page))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return scored[0][2]
+
+
+def _format_contact_section(facts):
+    lines_by_key = []
+    seen_lines = set()
+    for fact in facts or []:
+        line = str(fact.get("line") or "").strip()
+        value = str(fact.get("value") or "").strip()
+        content = line or value
+        key = _normalize_contact_token(content)
+        if not content or key in seen_lines:
+            continue
+        seen_lines.add(key)
+        lines_by_key.append(f"- {content}")
+    if not lines_by_key:
+        return ""
+    return "\n".join([_CONTACT_SECTION_TITLE, "", *lines_by_key, ""])
+
+
+def _insert_contact_section(body, section):
+    """把联系方式小节插到正文靠前位置，避免仅出现在页末被检索摘录截断。"""
+    section = (section or "").strip()
+    if not section:
+        return body
+    text = str(body or "").rstrip()
+    if not text:
+        return section + "\n"
+    lines = text.splitlines()
+    if lines and lines[0].lstrip().startswith("#"):
+        rest = "\n".join(lines[1:]).lstrip("\n")
+        if rest:
+            return f"{lines[0]}\n\n{section}\n\n{rest}\n"
+        return f"{lines[0]}\n\n{section}\n"
+    return f"{section}\n\n{text}\n"
+
+
+def _append_contact_facts_to_page(page, missing_facts):
+    """把缺失联系方式幂等追加到单页正文。"""
+    section = _format_contact_section(missing_facts)
+    if not section:
+        return False
+    body = str(page.get("body") or "").rstrip()
+    if _CONTACT_SECTION_TITLE in body and all(
+        _normalize_contact_token(fact.get("value")) in _normalize_contact_token(body) for fact in missing_facts if fact.get("value")
+    ):
+        return False
+    if _CONTACT_SECTION_TITLE in body:
+        existing = _normalize_contact_token(body)
+        extra_lines = []
+        for fact in missing_facts:
+            content = str(fact.get("line") or fact.get("value") or "").strip()
+            token = _normalize_contact_token(content)
+            if content and token and token not in existing:
+                extra_lines.append(f"- {content}")
+        if not extra_lines:
+            return False
+        page["body"] = f"{body}\n" + "\n".join(extra_lines) + "\n"
+        return True
+    page["body"] = _insert_contact_section(body, section)
+    return True
+
+
+def ensure_contact_facts_preserved(source_text, pages):
+    """若生成页缺失原文联系方式，幂等追加到主题页与 source 页。
+
+    主题页可能因冲突进入待审批而不生效；source 页通常会直接入库，
+    因此两边都补，避免检索只能看到无联系方式的生效页。
+    """
+    page_list = [dict(page) for page in (pages or []) if isinstance(page, dict)]
+    facts = _extract_contact_facts(source_text)
+    if not facts or not page_list:
+        return page_list
+
+    targets = []
+    best = _pick_contact_target_page(page_list)
+    if best is not None:
+        targets.append(best)
+    for page in page_list:
+        if page.get("page_type") == "source" and page not in targets:
+            targets.append(page)
+    if not targets:
+        return page_list
+
+    for target in targets:
+        missing = _contact_facts_missing([target], facts)
+        if missing:
+            _append_contact_facts_to_page(target, missing)
+    return page_list
+
+
+def prepare_page_data_with_contact_facts(source_text, page_data):
+    """入库/候选写入前，确保单页正文保留原文联系方式。
+
+    生成定稿阶段已做一次全量补漏；这里再按「即将写入的单页」补一次，
+    防止主题页进待审批后，唯一生效的 source 页仍然缺少联系方式。
+    """
+    page = dict(page_data or {})
+    return ensure_contact_facts_preserved(source_text, [page])[0]
+
+
+def published_pages_missing_contact_facts(source_text, pages):
+    """返回已准备写入的页面集合中，仍缺失的联系方式事实。"""
+    page_list = [dict(page) for page in (pages or []) if isinstance(page, dict)]
+    return _contact_facts_missing(page_list, _extract_contact_facts(source_text))
 
 
 def _source_default_directory_key(structure_revision):
@@ -404,7 +608,7 @@ def _resolve_page_type(page, *, source_metadata=None, allowed_page_types=None, k
     return "concept", True
 
 
-def _finalize_material_pages(pages, *, kb, structure_revision, source_metadata=None):
+def _finalize_material_pages(pages, *, kb, structure_revision, source_metadata=None, source_text=None):
     snapshot = getattr(structure_revision, "structure_snapshot", None) or {}
     allowed_page_types = {str(item).strip().casefold() for item in snapshot.get("page_types") or [] if str(item).strip()}
     normalized = []
@@ -450,7 +654,8 @@ def _finalize_material_pages(pages, *, kb, structure_revision, source_metadata=N
         )
         raise BuildOutputInvalid("build_output_empty_pages: 资料未生成任何有效知识页面")
     if "source" not in allowed_page_types or not source_metadata:
-        return _merge_pages(normalized, kb=kb)
+        finalized = _merge_pages(normalized, kb=kb)
+        return ensure_contact_facts_preserved(source_text, finalized)
 
     source_title = str(source_metadata.get("source_title") or "").strip()
     if not source_title:
@@ -520,7 +725,8 @@ def _finalize_material_pages(pages, *, kb, structure_revision, source_metadata=N
     ]
     if not source_pages:
         source_pages = [_fallback_source_page(other_pages, effective_source_metadata, structure_revision)]
-    return [*other_pages, *_merge_pages(source_pages, kb=kb)]
+    finalized = [*other_pages, *_merge_pages(source_pages, kb=kb)]
+    return ensure_contact_facts_preserved(source_text, finalized)
 
 
 def _llm_generate_pages(
@@ -531,11 +737,13 @@ def _llm_generate_pages(
     structure_revision=None,
     classification_root_id=None,
     source_metadata=None,
+    contact_source_text=None,
 ):
     """Stage2:依据 Purpose 与固定 Structure Schema 从要点生成页面列表。
 
     返回 page 列表(向后兼容签名);解析失败通过 errors_collector 参数旁路收集。
     无模型或 source_text 为空时返回 []。
+    contact_source_text 用于定稿后联系方式补漏；缺省回退到 source_text。
     """
     if not llm_model_id or not (source_text or "").strip():
         if source_metadata is not None:
@@ -577,6 +785,7 @@ def _llm_generate_pages(
             "同一对象的缩写、英文名、中文全称必须使用同一个页面标题;优先使用中文全称,"
             "例如 CMDB 与 配置平台 使用 配置平台,JOB 与 作业平台 使用 作业平台,不要分别建页。\n"
             "页面正文应使用 [[目标页面标题]] 引用相关页面,便于后续关系图谱建边。\n"
+            f"{_FACT_PRESERVATION_RULES}"
             "注意:这是同一份资料的分块处理,如果当前片段补充了已有主题,可以输出同名页面,"
             "系统会合并同名页面内容。\n\n"
             f"# Purpose\n{kb.purpose_md}"
@@ -609,6 +818,7 @@ def _llm_generate_pages(
         kb=kb,
         structure_revision=structure_revision,
         source_metadata=source_metadata,
+        source_text=contact_source_text if contact_source_text is not None else source_text,
     )
     # 把 errors 暂存到函数属性,build_from_material 读取后清空
     _llm_generate_pages.last_errors = list(errors)
@@ -643,7 +853,8 @@ def _bounded_generation_prompt(
         "page_type 必须来自固定 Structure Schema 的 page_types；"
         "directory_key 只能来自同一 Schema 的 directories，不得猜测不存在的 key。"
         "页面正文必须非空；summary、keywords、entities、aliases 只用于导航召回，"
-        "必须来自本资料，不得补造事实。\n\n"
+        "必须来自本资料，不得补造事实。\n"
+        f"{_FACT_PRESERVATION_RULES}\n"
         f"# Purpose\n{kb.purpose_md}\n\n"
         f"# Fixed Structure Schema\n{directory_context}\n\n"
         f"# Current Material\n{source_context or '{}'}\n\n"
@@ -670,8 +881,10 @@ def _source_token_limit(input_limit, prompt_without_source):
 
 def _material_map_prompt(chunk, index, total):
     return (
-        "从资料片段中提取可验证的事实、具名实体候选、可复用概念候选、依赖关系、明确问题、对比维度、限定条件、时间、数值、步骤和页码/幻灯片/标题来源线索。\n"
+        "从资料片段中提取可验证的事实、具名实体候选、可复用概念候选、依赖关系、明确问题、对比维度、限定条件、时间、数值、步骤、"
+        "联系人/电话/内线/邮箱/URL 等可核验线索和页码/幻灯片/标题来源线索。\n"
         f"{_JSON_ONLY_OUTPUT_RULES}"
+        f"{_FACT_PRESERVATION_RULES}"
         "本阶段不要生成 Wiki 页面，不推测缺失信息；"
         "这是同一份资料的一个片段，必须保留可用于后续归并的上下文。\n"
         '推荐格式：{"facts":["..."],"entities":["..."],"concepts":["..."],'
@@ -686,8 +899,10 @@ def _format_reduce_items(items):
 
 def _material_compact_prompt(source, round_index, group_index, group_count):
     return (
-        "合并并去重下面的资料事实批次，保留具名实体、概念、关系、明确问题、对比维度、限定条件、时间、数值、步骤和来源线索。\n"
+        "合并并去重下面的资料事实批次，保留具名实体、概念、关系、明确问题、对比维度、限定条件、时间、数值、步骤、"
+        "联系人/电话/内线/邮箱/URL 等可核验线索和来源线索。\n"
         f"{_JSON_ONLY_OUTPUT_RULES}"
+        f"{_FACT_PRESERVATION_RULES}"
         "本阶段不生成 Wiki 页面，不补造事实。\n\n"
         f"# Reduce round {round_index}, group {group_index}/{group_count}\n{source}"
     )
@@ -808,6 +1023,7 @@ def _generate_and_finalize_pages(
     kb,
     structure_revision,
     source_metadata,
+    source_text=None,
     chunk_index=None,
     total_chunks=None,
 ):
@@ -835,6 +1051,7 @@ def _generate_and_finalize_pages(
                 kb=kb,
                 structure_revision=structure_revision,
                 source_metadata=source_metadata,
+                source_text=source_text,
             )
         except BuildOutputInvalid as exc:
             last_error = exc
@@ -902,6 +1119,7 @@ def generate_material_pages_with_budget(
             kb=kb,
             structure_revision=structure_revision,
             source_metadata=source_metadata,
+            source_text=source,
         )
 
     empty_map_prompt = _material_map_prompt("", 99999, 99999)
@@ -939,6 +1157,7 @@ def generate_material_pages_with_budget(
             kb=kb,
             structure_revision=structure_revision,
             source_metadata=source_metadata,
+            source_text=source,
         )
 
     mapped = _compact_mapped_outputs(
@@ -954,6 +1173,7 @@ def generate_material_pages_with_budget(
             kb=kb,
             structure_revision=structure_revision,
             source_metadata=source_metadata,
+            source_text=source,
         )
 
     prompt = _bounded_generation_prompt(
@@ -973,6 +1193,7 @@ def generate_material_pages_with_budget(
             kb=kb,
             structure_revision=structure_revision,
             source_metadata=source_metadata,
+            source_text=source,
         )
     except WikiBudgetExceeded as error:
         _attach_map_checkpoint(error, mapped, len(chunks))

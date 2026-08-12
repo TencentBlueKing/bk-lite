@@ -320,3 +320,52 @@ async def test_application_runs_multi_target_request_and_allows_next_cycle(
         (request.task_id, "10.10.24.2", 1),
     ]
     await scheduled[1]
+
+
+@pytest.mark.asyncio
+async def test_load_target_state_uses_single_mget(redis_client, monkeypatch):
+    store = RedisCredentialStateStore(redis_client, key_prefix="test:mget")
+    request = CollectionRequest(
+        task_id="collect-mget",
+        plugin_ref="mysql.config",
+        targets=("10.10.24.1",),
+        credentials=(
+            {"credential_id": "credential-1"},
+            {"credential_id": "credential-2"},
+        ),
+        params={"scope_id": "tenant-a", "credential_set_version": "v1"},
+    )
+    policy = CredentialPolicy(store=store)
+    await policy.record_success(request, "10.10.24.1", request.credentials[1])
+    await policy.record_auth_failure(
+        request,
+        "10.10.24.1",
+        request.credentials[0],
+        error_code="unauthorized",
+    )
+
+    calls = {"mget": 0, "get": 0}
+    original_mget = redis_client.mget
+    original_get = redis_client.get
+
+    async def counting_mget(*args, **kwargs):
+        calls["mget"] += 1
+        return await original_mget(*args, **kwargs)
+
+    async def counting_get(*args, **kwargs):
+        calls["get"] += 1
+        return await original_get(*args, **kwargs)
+
+    monkeypatch.setattr(redis_client, "mget", counting_mget)
+    monkeypatch.setattr(redis_client, "get", counting_get)
+
+    scope = policy._scope(request, "10.10.24.1")
+    success_id, failures = await store.load_target_state(
+        scope, ("credential-1", "credential-2")
+    )
+
+    assert success_id == "credential-2"
+    assert failures["credential-1"] is not None
+    assert failures["credential-2"] is None
+    assert calls["mget"] == 1
+    assert calls["get"] == 0

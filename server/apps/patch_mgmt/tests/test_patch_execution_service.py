@@ -38,6 +38,7 @@ from apps.patch_mgmt.models import (
 )
 from apps.patch_mgmt.services import patch_execution_service as pes
 from apps.patch_mgmt.services import target_execution_route as ter
+from config.components.nats import NATS_NAMESPACE
 
 
 APT_SAMPLE = """
@@ -243,6 +244,37 @@ def test_manual_windows_package_uses_staged_file_instead_of_wua():
 
 
 @pytest.mark.django_db
+def test_manual_windows_msi_container_cab_is_extracted_and_installed_with_msiexec():
+    """KB5001716 这类仅包含单个 MSI 的 CAB 不能交给 DISM 直接安装。"""
+    patch = Patch.objects.create(title='KB5001716', os_type=OSType.WINDOWS)
+    detail = WindowsPatchDetail.objects.create(
+        patch=patch,
+        kb_number='KB5001716',
+        package_file='windows/1/hash/windows10.0-kb5001716-x64.cab',
+        package_original_name='windows10.0-kb5001716-x64.cab',
+        package_size=828_541,
+        package_sha256='a' * 64,
+        package_extension='.cab',
+    )
+
+    command = pes._manual_windows_install_command(
+        detail,
+        'C:/Windows/Temp/bk-lite-patches/windows10.0-kb5001716-x64.cab',
+    )
+
+    assert 'expand.exe' in command
+    assert '-F:*.msi' in command
+    assert "$msiPath=Join-Path $extractDir 'payload.msi'" in command
+    assert "-f $path,$msiPath" in command
+    assert '$msiCandidates.Count -eq 1' in command
+    assert 'msiexec.exe' in command
+    assert '/i' in command and '/qn' in command and '/norestart' in command
+    assert 'dism.exe' in command  # 普通 servicing CAB 仍保持原有安装路径
+    assert 'MSI container exceeds expansion limit' in command
+    assert 'Remove-Item -LiteralPath $extractDir -Recurse -Force' in command
+
+
+@pytest.mark.django_db
 def test_manual_windows_package_treats_already_installed_as_idempotent_success():
     """WUSA 已安装成功码需要结合系统待重启标记收口，重试不能假失败。"""
     patch = Patch.objects.create(title='KB6000007', os_type=OSType.WINDOWS)
@@ -336,6 +368,53 @@ def test_run_install_executes_manual_windows_package_as_system(monkeypatch):
 
     host.refresh_from_db()
     assert host.stage == 'pending_reboot'
+
+
+@pytest.mark.django_db
+def test_manual_windows_package_is_relayed_from_minio_to_nats_before_ansible_distribution(monkeypatch):
+    """Ansible Executor 只读 NATS Object Store，手工补丁不能把 MinIO key 直接传给它。"""
+    cloud_region = CloudRegion.objects.create(name='region-win-manual-package-relay')
+    target = _make_manual_windows_target(cloud_region)
+    patch = Patch.objects.create(title='KB6000014', os_type=OSType.WINDOWS)
+    detail = WindowsPatchDetail.objects.create(
+        patch=patch,
+        kb_number='KB6000014',
+        package_file='windows/6000014/hash/update.msu',
+        package_original_name='update.msu',
+        package_sha256='a' * 64,
+        package_extension='.msu',
+    )
+    uploaded_keys = []
+    deleted_keys = []
+
+    async def upload_package(file_field, file_key):
+        assert file_field.name == detail.package_file.name
+        uploaded_keys.append(file_key)
+
+    async def delete_package(file_key):
+        deleted_keys.append(file_key)
+
+    class FakeAnsibleExecutor:
+        def playbook(self, **kwargs):
+            file_key = kwargs['files'][0]['file_key']
+            assert kwargs['file_distribution']['bucket_name'] == NATS_NAMESPACE
+            assert file_key != detail.package_file.name
+            assert uploaded_keys == [file_key]
+            return {'accepted': True, 'status': 'queued', 'task_id': 'relay-task-1'}
+
+        @staticmethod
+        def task_query(task_id, timeout):  # noqa: ARG004
+            return {'task_id': task_id, 'status': 'success', 'result': {'success': True}}
+
+    monkeypatch.setattr(pes, 'upload_file_to_s3', upload_package, raising=False)
+    monkeypatch.setattr(pes, 'delete_s3_file', delete_package, raising=False)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
+    monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
+
+    staged_path = pes._stage_windows_package(target, detail, timeout=300)
+
+    assert staged_path == f'{pes.WINDOWS_PATCH_STAGE_DIR}/{detail.patch_id}-update.msu'
+    assert deleted_keys == uploaded_keys
 
 
 def test_parse_windows_install_result_success_with_reboot():
@@ -678,6 +757,93 @@ def test_windows_executor_waits_for_queued_adhoc_result(monkeypatch):
 
     assert result == {'stdout': '===HOTFIX===\nKB4577586', 'stderr': '', 'exit_code': 0}
     assert [call[0] for call in query_calls] == ['queued-task-1', 'queued-task-1']
+
+
+@pytest.mark.django_db
+def test_windows_executor_caps_adhoc_timeout_at_protocol_limit(monkeypatch):
+    """治理总时限可以超过一小时，但单次 Ansible Ad-hoc 请求不能超过协议上限。"""
+    monkeypatch.setattr(pes.settings, 'PATCH_MGMT_WINDOWS_EXECUTION_MODE', 'executor')
+    cloud_region = CloudRegion.objects.create(name='windows-timeout-limit-region')
+    target = _make_manual_windows_target(cloud_region)
+    submitted_timeouts = []
+
+    class FakeAnsibleExecutor:
+        def adhoc(self, **kwargs):
+            submitted_timeouts.append(kwargs['timeout'])
+            return {'accepted': True, 'status': 'queued', 'task_id': 'timeout-limit-task'}
+
+        @staticmethod
+        def task_query(task_id, timeout):  # noqa: ARG004
+            return {
+                'task_id': task_id,
+                'status': 'success',
+                'result': {
+                    'status': 'success',
+                    'success': True,
+                    'result': [
+                        {
+                            'host': target.ip,
+                            'status': 'success',
+                            'stdout': 'ok',
+                            'stderr': '',
+                            'exit_code': 0,
+                        }
+                    ],
+                },
+            }
+
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
+    monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
+
+    result = pes._execute_windows_manual(target, 'Get-Date', timeout=7200)
+
+    assert result['stdout'] == 'ok'
+    assert submitted_timeouts == [3600]
+
+
+@pytest.mark.django_db
+def test_windows_executor_preserves_install_protocol_from_failed_ansible_envelope(monkeypatch):
+    """外层 Ansible 失败时仍须读取主机结果，Windows 安装协议才是安装成功与否的依据。"""
+    monkeypatch.setattr(pes.settings, 'PATCH_MGMT_WINDOWS_EXECUTION_MODE', 'executor')
+    cloud_region = CloudRegion.objects.create(name='windows-install-protocol-region')
+    target = _make_manual_windows_target(cloud_region)
+
+    class FakeAnsibleExecutor:
+        @staticmethod
+        def adhoc(**kwargs):  # noqa: ARG004
+            return {'accepted': True, 'status': 'queued', 'task_id': 'install-protocol-task'}
+
+        @staticmethod
+        def task_query(task_id, timeout):  # noqa: ARG004
+            return {
+                'task_id': task_id,
+                'status': 'failed',
+                'result': {
+                    'status': 'failed',
+                    'success': False,
+                    'error': 'ansible adhoc failed with exit code 2',
+                    'result': [
+                        {
+                            'host': target.ip,
+                            'status': 'failed',
+                            'stdout': '',
+                            'stderr': 'InstallResult=2 RebootRequired=True\nnon-zero return code',
+                            'exit_code': 1,
+                            'error_message': 'InstallResult=2 RebootRequired=True\nnon-zero return code',
+                        }
+                    ],
+                },
+            }
+
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
+    monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
+
+    result = pes._execute_windows_manual(target, 'install package', timeout=3600)
+    is_success, reason, reboot_required = pes._parse_windows_install_result(result)
+
+    assert is_success is True
+    assert reboot_required is True
+    assert '成功' in reason
 
 
 def test_wait_for_ansible_command_rejects_terminal_failure_pure():

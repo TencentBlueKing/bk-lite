@@ -1258,7 +1258,7 @@ def test_deleted_controller_task_snapshot_rejects_other_task_owner():
 
 
 @pytest.mark.django_db
-def test_deleted_legacy_snapshot_without_team_is_visible_only_to_superuser():
+def test_deleted_legacy_snapshot_without_team_is_visible_to_owner_and_superuser():
     region = _region("controller-deleted-legacy-snapshot")
     node = _node(region, "controller-deleted-legacy-node", 1)
     task = ControllerTask.objects.create(
@@ -1290,10 +1290,20 @@ def test_deleted_legacy_snapshot_without_team_is_visible_only_to_superuser():
         "domain": "domain.com",
     }
 
-    ordinary_data = InstallerService.install_controller_nodes(
+    owner_data = InstallerService.install_controller_nodes(
         task.id,
         authorized_nodes=Node.objects.none(),
         scope=SimpleNamespace(**base_scope, is_superuser=False),
+    )
+    outsider_data = InstallerService.install_controller_nodes(
+        task.id,
+        authorized_nodes=Node.objects.none(),
+        scope=SimpleNamespace(
+            data_team_ids=frozenset({1}),
+            username="other",
+            domain="domain.com",
+            is_superuser=False,
+        ),
     )
     superuser_data = InstallerService.install_controller_nodes(
         task.id,
@@ -1301,7 +1311,8 @@ def test_deleted_legacy_snapshot_without_team_is_visible_only_to_superuser():
         scope=SimpleNamespace(**base_scope, is_superuser=True),
     )
 
-    assert ordinary_data == []
+    assert [item["task_node_id"] for item in owner_data] == [task_node.id]
+    assert outsider_data == []
     assert [item["task_node_id"] for item in superuser_data] == [task_node.id]
 
 

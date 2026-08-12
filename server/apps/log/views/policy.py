@@ -796,10 +796,16 @@ class AlertViewSet(viewsets.ModelViewSet):
         # 按状态过滤
         queryset = queryset.filter(status=status)
 
-        # 默认时间窗口：最近7天
+        # 默认时间窗口：最近7天（仅非活跃态）。
+        # 活跃告警（status=new）与列表一致，不过滤时间，避免「列表有数据、分布图暂无数据」。
+        # 已有 max_buckets 保护，活跃全量统计不会再触发无界 bucket 膨胀。
         start_time_param = request.query_params.get("start_time", "")
         end_time_param = request.query_params.get("end_time", "")
-        if not start_time_param and not end_time_param:
+        if (
+            status != AlertConstants.STATUS_NEW
+            and not start_time_param
+            and not end_time_param
+        ):
             default_end = datetime.now(timezone.utc)
             default_start = default_end - timedelta(days=7)
             queryset = queryset.filter(created_at__gte=default_start)

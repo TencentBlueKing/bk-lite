@@ -35,8 +35,10 @@ Token、community 或私钥。移除持久队列后，Pod 故障丢单依赖下�
 
 ```bash
 MAX_ACTIVE_RUNS=16
-MAX_ACTIVE_TARGETS=200
-TARGET_TASK_WINDOW=200
+MAX_ACTIVE_TARGETS=2000
+TARGET_TASK_WINDOW=2000
+REDIS_MAX_CONNECTIONS=2560
+REDIS_POOL_TIMEOUT=2
 CONNECT_TIMEOUT=5
 PLUGIN_TIMEOUT=60
 RUN_LEASE_TTL=600
@@ -47,8 +49,17 @@ OUTBOUND_ALLOWED_CIDRS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 OUTBOUND_ALLOWED_DOMAINS=
 ```
 
-这些值都是部署参数；`200` 不是固定容量。`MAX_ACTIVE_TARGETS` 是单 Pod、跨所有运行共享的
-目标并发上限。协议预检默认 5 秒：TCP 协议先连接实际端口，SNMP/UDP 返回“不确定”并进入
+这些值都是部署参数；`2000` 不是固定容量。`MAX_ACTIVE_TARGETS` /
+`TARGET_TASK_WINDOW` 是单 Pod、跨所有运行共享的配置采集目标并发窗口，默认偏大是为了
+不把压力藏在软上限后面，便于通过 CPU / 事件循环 lag / 错误率判断扩容。`MAX_ACTIVE_RUNS`
+仍保留 run 级准入；满了返回 busy/429。
+
+`REDIS_MAX_CONNECTIONS` 应不小于目标并发并留租约余量（推荐
+`≳ MAX_ACTIVE_TARGETS`）。多 Pod 时还要保证
+`单池峰值 × Pod 数 < Redis maxclients`。池满时会有限等待
+`REDIS_POOL_TIMEOUT` 秒，而不是立刻 `MaxConnectionsError` 打崩整轮 run。
+
+协议预检默认 5 秒：TCP 协议先连接实际端口，SNMP/UDP 返回“不确定”并进入
 凭据感知采集，云账号检查逻辑端点；ICMP 不作为硬过滤条件。
 直接 IP 与域名解析后的每个可用地址都必须落在 `OUTBOUND_ALLOWED_CIDRS`；配置
 `OUTBOUND_ALLOWED_DOMAINS` 后，域名还必须同时命中该名单，域名名单不能绕过 CIDR 边界。
@@ -66,7 +77,7 @@ OUTBOUND_ALLOWED_DOMAINS=
 - `/api/health/metrics`：Prometheus 格式的运行时指标。
 
 重点观察 `active_runs`、`active_targets`、接纳拒绝、事件循环 lag、预检失败、插件超时、结果
-发布失败和租约接管。日志和指标只允许任务、目标、插件、凭据 ID 与稳定错误码，不得记录凭据
+发布失败、Redis 连接池等待/超时，以及凭据状态 Redis 错误。日志和指标只允许任务、目标、插件、凭据 ID 与稳定错误码，不得记录凭据
 正文。
 
 ## Host Remote

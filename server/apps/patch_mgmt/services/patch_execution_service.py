@@ -19,6 +19,7 @@ import uuid
 from datetime import timedelta
 from typing import Any, Optional
 
+from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.db import transaction
@@ -26,6 +27,7 @@ from django.utils import timezone
 
 from apps.core.logger import patch_mgmt_logger as logger
 from apps.core.mixinx import EncryptMixin
+from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
 from apps.patch_mgmt.constants import (
     ComplianceStatus,
     GovernanceTaskStatus,
@@ -52,11 +54,16 @@ from apps.patch_mgmt.services.target_execution_route import (
 )
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
+from config.components.nats import NATS_NAMESPACE
 
 DEFAULT_TIMEOUT = 3600
 WINDOWS_PATCH_STAGE_DIR = 'C:/Windows/Temp/bk-lite-patches'
 ANSIBLE_TASK_POLL_INTERVAL_SECONDS = 1
 ANSIBLE_TASK_QUERY_TIMEOUT_SECONDS = 30
+ANSIBLE_ADHOC_MAX_TIMEOUT_SECONDS = 3600
+WINDOWS_MSI_CONTAINER_MIN_EXPANSION_LIMIT_BYTES = 16 * 1024 * 1024
+WINDOWS_MSI_CONTAINER_MAX_EXPANSION_LIMIT_BYTES = 1024 * 1024 * 1024
+WINDOWS_MSI_CONTAINER_MAX_EXPANSION_RATIO = 8
 # Linux 常见的单参数上限为 128 KiB；保留一半余量给执行器和系统环境差异。
 LINUX_ASSESS_COMMAND_MAX_BYTES = 64 * 1024
 
@@ -146,6 +153,13 @@ def _wait_for_ansible_command(
         if status == 'success':
             return _extract_ansible_command_result(query, target_host)
         if status in {'failed', 'callback_failed'}:
+            # win_shell 可能因外层 PowerShell rc 非零把任务包成 failed，
+            # 但主机结果仍可能携带 Windows 安装协议。先返回可解析
+            # 的单主机结果，由上层按 InstallResult 判定安装结果。
+            try:
+                return _extract_ansible_command_result(query, target_host)
+            except RuntimeError:
+                pass
             result_payload = query.get('result')
             nested_error = result_payload.get('error') if isinstance(result_payload, dict) else None
             detail = query.get('error') or nested_error or status
@@ -188,12 +202,13 @@ def _execute_windows_manual(
         }
     ]
     task_id = f'patch-command-{target.id}-{uuid.uuid4().hex[:8]}'
+    adhoc_timeout = min(max(int(timeout), 1), ANSIBLE_ADHOC_MAX_TIMEOUT_SECONDS)
     accepted = executor.adhoc(
         host_credentials=host_credentials,
         module='win_shell',
         module_args=command,
         task_id=task_id,
-        timeout=timeout,
+        timeout=adhoc_timeout,
         execution_id=execution_id,
         stream_log_topic=stream_log_topic,
     ) or {}
@@ -311,28 +326,48 @@ def _stage_windows_package(target: PatchTarget, detail, *, timeout: int) -> str:
         raise RuntimeError(f'Windows 手动目标路由异常: {route.transport}')
     executor = AnsibleExecutor(route.instance_id)
     task_id = f'patch-file-{target.id}-{uuid.uuid4().hex[:8]}'
-    accepted = executor.playbook(
-        host_credentials=_windows_host_credentials(target),
-        files=[{'file_key': detail.package_file.name, 'name': f'{detail.patch_id}-{filename}'}],
-        file_distribution={
-            'bucket_name': PATCH_PACKAGE_BUCKET,
-            'target_path': WINDOWS_PATCH_STAGE_DIR,
-            'overwrite': True,
-        },
-        task_id=task_id,
-        timeout=timeout,
-    )
-    accepted_task_id = (accepted.get('task_id') if isinstance(accepted, dict) else None) or task_id
-    deadline = time.monotonic() + timeout
-    while True:
-        query = executor.task_query(accepted_task_id, timeout=min(timeout, 60))
-        if isinstance(query, dict) and query.get('status') in {'success', 'failed', 'callback_failed'}:
-            if query.get('status') != 'success':
-                raise RuntimeError(f"补丁文件分发失败: {query.get('status')}")
-            return staged_path
-        if time.monotonic() >= deadline:
-            raise TimeoutError('补丁文件分发超时')
-        time.sleep(1)
+    # 补丁包长期保存在 MinIO，而 Ansible Executor 的文件分发协议只读取
+    # NATS JetStream Object Store。使用任务级唯一 key 做有界中转，并在
+    # Executor 已下载完成后立即清理，避免把 MinIO key 误当成 NATS key。
+    nats_file_key = f'patch-packages/{detail.patch_id}/{task_id}/{filename}'
+    relay_attempted = False
+    try:
+        relay_attempted = True
+        try:
+            async_to_sync(upload_file_to_s3)(detail.package_file, nats_file_key)
+        finally:
+            detail.package_file.close()
+        accepted = executor.playbook(
+            host_credentials=_windows_host_credentials(target),
+            files=[{'file_key': nats_file_key, 'name': f'{detail.patch_id}-{filename}'}],
+            file_distribution={
+                'bucket_name': NATS_NAMESPACE,
+                'target_path': WINDOWS_PATCH_STAGE_DIR,
+                'overwrite': True,
+            },
+            task_id=task_id,
+            timeout=timeout,
+        )
+        accepted_task_id = (accepted.get('task_id') if isinstance(accepted, dict) else None) or task_id
+        deadline = time.monotonic() + timeout
+        while True:
+            query = executor.task_query(accepted_task_id, timeout=min(timeout, 60))
+            if isinstance(query, dict) and query.get('status') in {'success', 'failed', 'callback_failed'}:
+                if query.get('status') != 'success':
+                    result_payload = query.get('result')
+                    nested_error = result_payload.get('error') if isinstance(result_payload, dict) else None
+                    detail_error = query.get('error') or nested_error or query.get('status')
+                    raise RuntimeError(f'补丁文件分发失败: {detail_error}')
+                return staged_path
+            if time.monotonic() >= deadline:
+                raise TimeoutError('补丁文件分发超时')
+            time.sleep(1)
+    finally:
+        if relay_attempted:
+            try:
+                async_to_sync(delete_s3_file)(nats_file_key)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning('清理补丁中转文件失败 key=%s: %s', nats_file_key, exc)
 
 
 def _normalize_result(result: Any) -> dict[str, Any]:
@@ -412,14 +447,42 @@ def _manual_windows_install_command(detail, staged_path: str) -> str:
     """生成手工 MSU/CAB 的 SYSTEM 静默安装与临时文件清理命令。"""
     path = staged_path.replace("'", "''")
     expected_sha256 = (detail.package_sha256 or '').lower()
-    if detail.package_extension == '.cab':
-        executable = 'dism.exe'
-        arguments = f'/Online /Add-Package /PackagePath:"{staged_path}" /Quiet /NoRestart'
-    else:
-        executable = 'wusa.exe'
-        arguments = f'"{staged_path}" /quiet /norestart'
-    arguments = arguments.replace("'", "''")
     job_id = uuid.uuid4().hex[:12]
+    extract_dir = f'C:\\Windows\\Temp\\manual_patch_{job_id}_cab'
+    if detail.package_extension == '.cab':
+        package_size = max(int(detail.package_size or 0), 1)
+        expansion_limit = min(
+            max(
+                package_size * WINDOWS_MSI_CONTAINER_MAX_EXPANSION_RATIO,
+                WINDOWS_MSI_CONTAINER_MIN_EXPANSION_LIMIT_BYTES,
+            ),
+            WINDOWS_MSI_CONTAINER_MAX_EXPANSION_LIMIT_BYTES,
+        )
+        dism_arguments = f'/Online /Add-Package /PackagePath:"{staged_path}" /Quiet /NoRestart'.replace("'", "''")
+        # 部分微软更新（如 KB5001716）的 CAB 仅是单个 MSI 的传输容器，
+        # 不是 DISM servicing package。只允许单 MSI 容器走 msiexec，
+        # 普通 CAB 保持 DISM 路径，多 MSI 容器 fail-closed。
+        launch_installer = (
+            f"$extractDir='{extract_dir}';"
+            "New-Item -ItemType Directory -Path $extractDir -Force | Out-Null;"
+            "$msiPath=Join-Path $extractDir 'payload.msi';"
+            "$expand=Start-Process -FilePath 'expand.exe' "
+            "-ArgumentList ('\"{0}\" -F:*.msi \"{1}\"' -f $path,$msiPath) -Wait -PassThru;"
+            "$msiCandidates=@(Get-ChildItem -LiteralPath $extractDir -Filter '*.msi' -File -ErrorAction SilentlyContinue);"
+            "if($msiCandidates.Count -eq 1){"
+            "$msi=$msiCandidates[0];"
+            f"if($msi.Length -gt {expansion_limit}){{throw 'MSI container exceeds expansion limit'}};"
+            "$proc=Start-Process -FilePath 'msiexec.exe' "
+            "-ArgumentList ('/i \"{0}\" /qn /norestart' -f $msi.FullName) -Wait -PassThru"
+            "}elseif($msiCandidates.Count -eq 0){"
+            f"$proc=Start-Process -FilePath 'dism.exe' -ArgumentList '{dism_arguments}' -Wait -PassThru"
+            "}else{throw 'CAB contains multiple MSI payloads'};"
+        )
+        cleanup_extract_dir = "Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue;"
+    else:
+        arguments = f'"{staged_path}" /quiet /norestart'.replace("'", "''")
+        launch_installer = f"$proc=Start-Process -FilePath 'wusa.exe' -ArgumentList '{arguments}' -Wait -PassThru;"
+        cleanup_extract_dir = ''
     script_path = f'C:\\Windows\\Temp\\manual_patch_{job_id}.ps1'
     result_path = f'C:\\Windows\\Temp\\manual_patch_{job_id}.txt'
     task_name = f'Manual_Patch_{job_id}'
@@ -429,7 +492,7 @@ def _manual_windows_install_command(detail, staged_path: str) -> str:
         "try{"
         f"$actual=(Get-FileHash -Algorithm SHA256 -Path $path).Hash.ToLower();"
         f"if($actual -ne '{expected_sha256}'){{throw 'SHA256 mismatch'}};"
-        f"$proc=Start-Process -FilePath '{executable}' -ArgumentList '{arguments}' -Wait -PassThru;"
+        f"{launch_installer}"
         "$code=$proc.ExitCode;"
         "$pending=(Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending') -or "
         "(Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired');"
@@ -438,7 +501,7 @@ def _manual_windows_install_command(detail, staged_path: str) -> str:
         '("InstallResult=2 RebootRequired={0}" -f $rr) | Out-File -FilePath \'__RP__\' -Encoding ascii -Force'
         "}else{(\"InstallError=installer exit code {0}\" -f $code) | Out-File -FilePath '__RP__' -Encoding ascii -Force}"
         "}catch{(\"InstallError={0}\" -f $_.Exception.Message) | Out-File -FilePath '__RP__' -Encoding ascii -Force}"
-        "finally{Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue}"
+        f"finally{{{cleanup_extract_dir}Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue}}"
     )
     return (
         "$ProgressPreference='SilentlyContinue';"
@@ -1406,20 +1469,22 @@ def _parse_windows_install_result(result: dict[str, Any]) -> tuple[bool, str, Op
 
     stdout = str(result.get('stdout') or '')
     stderr = str(result.get('stderr') or '')
+    combined_output = '\n'.join(part for part in (stdout, stderr) if part)
 
-    if 'No matching updates found' in stdout:
+    if 'No matching updates found' in combined_output:
         return False, '未找到匹配的更新，KB 号可能不存在于 Windows Update', False
 
-    install_error_match = re.search(r'InstallError=(.+)', stdout)
+    install_error_match = re.search(r'InstallError=(.+)', combined_output)
     if install_error_match:
         return False, f'WUA 安装异常：{install_error_match.group(1)[:256]}', False
 
-    # stdout 有明确 InstallResult 码值时以 stdout 为准（schtasks 的 WARNING 不影响判断）
-    match = _INSTALL_RESULT_RE.search(stdout)
+    # Ansible 可能在外层 rc 非零时把 PowerShell 输出放入 stderr；
+    # 只要有明确的 InstallResult 协议，就以该协议为准。
+    match = _INSTALL_RESULT_RE.search(combined_output)
     if match:
         code = match.group(1)
         if code in ('2', '3'):
-            reboot_match = _REBOOT_REQUIRED_RE.search(stdout)
+            reboot_match = _REBOOT_REQUIRED_RE.search(combined_output)
             reboot_required = None if reboot_match is None else reboot_match.group(1) == 'True'
             reason = '安装成功完成' if code == '2' else '安装完成（含非关键错误）'
             return True, reason, reboot_required

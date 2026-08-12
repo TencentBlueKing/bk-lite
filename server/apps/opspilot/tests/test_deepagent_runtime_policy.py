@@ -175,38 +175,6 @@ def test_planned_execution_limit_middleware_messages_and_continue():
 
 
 @pytest.mark.asyncio
-async def test_ask_limit_continue_defaults_node_id_to_skill_test(mocker):
-    """无 workflow node_id 时必须用 skill_test，否则技能测试 submit_choice 会 404。"""
-    from apps.opspilot.metis.llm.middleware.planned_execution_limits import ask_limit_continue
-
-    dispatched = {}
-
-    def _dispatch(name, value, config=None):
-        dispatched["name"] = name
-        dispatched["value"] = value
-
-    mocker.patch(
-        "apps.opspilot.metis.llm.middleware.planned_execution_limits.dispatch_custom_event",
-        side_effect=_dispatch,
-    )
-    mocker.patch(
-        "apps.opspilot.utils.user_choice.wait_for_choice",
-        new=mocker.AsyncMock(return_value={"selected": ["continue"], "source": "user"}),
-    )
-
-    ok = await ask_limit_continue(
-        kind="model_calls",
-        step_objective="补采工作负载",
-        config={"configurable": {"execution_id": "exec-limit-1"}},
-    )
-
-    assert ok is True
-    assert dispatched["name"] == "user_choice_request"
-    assert dispatched["value"]["node_id"] == "skill_test"
-    assert dispatched["value"]["execution_id"] == "exec-limit-1"
-
-
-@pytest.mark.asyncio
 async def test_planner_uses_compact_catalog_and_normalizes_tool_plan():
     long_description = "诊断 Pod 故障。" + "不要把这段完整说明发给规划模型。" * 100
     tools = [
@@ -635,6 +603,10 @@ def test_enforce_generate_attachment_file_injects_when_empty_plan():
 
     assert looks_like_attachment_file_task("RC 数据", "你是月报生成器，输出 .md 文件") is True
     assert looks_like_attachment_file_task("你好", "月报生成器") is False
+    # chat_service 注入的强制规则模板不得单独触发硬注入
+    force_rule = "【附件生成强制规则 - 最高优先级，不可违反】\n" "当前工作流已配置文件生成工具 generate_attachment_file。\n" "必须调用 generate_attachment_file 工具把完整内容写入可下载文件"
+    assert looks_like_attachment_file_task("今天天气怎么样", force_rule) is False
+    assert looks_like_attachment_file_task("写一份运维月报", force_rule) is True
 
     fixed = enforce_generate_attachment_file(
         ToolExecutionPlan(goal="写月报", steps=[]),

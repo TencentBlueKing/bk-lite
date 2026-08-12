@@ -345,8 +345,15 @@ class InstallerService:
             if item.node_id and str(item.node_id) in existing_node_ids:
                 continue
             snapshot_organizations = normalize_orgs(item.organizations)
-            is_legacy_superuser_snapshot = item.organizations in (None, []) and getattr(scope, "is_superuser", False)
-            if snapshot_organizations & data_team_ids or is_legacy_superuser_snapshot:
+            is_legacy_empty_snapshot = item.organizations in (None, [])
+            # Empty-org historical rows stay visible to task owners (via
+            # get_authorized_controller_task_node_queryset) and superusers so
+            # uninstall progress does not blank out after Node.delete().
+            if snapshot_organizations & data_team_ids:
+                historical_nodes.append(item)
+            elif is_legacy_empty_snapshot and getattr(scope, "is_superuser", False):
+                historical_nodes.append(item)
+            elif is_legacy_empty_snapshot and getattr(scope, "username", None):
                 historical_nodes.append(item)
         return sorted([*linked_nodes, *historical_nodes], key=lambda item: item.id)
 

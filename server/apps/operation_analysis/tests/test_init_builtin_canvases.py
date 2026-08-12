@@ -155,7 +155,9 @@ def test_builtin_alert_cmdb_datasource_contracts_are_complete():
     collect_stats = by_api["cmdb/get_cmdb_collect_statistics"]
     assert "partial_success_count" in {field["key"] for field in collect_stats["field_schema"]}
     change_trend = by_api["cmdb/get_change_trend"]
-    assert {param["name"] for param in change_trend["params"]} == {"time", "model_id", "group_by"}
+    assert {param["name"] for param in change_trend["params"]} == {"time", "model_id"}
+    for rest_api in ("alert/get_alert_trend_data", "alert/get_alert_level_trend", "cmdb/get_change_trend"):
+        assert all(param.get("name") != "group_by" for param in by_api[rest_api]["params"])
     assert all(
         item.get("desc")
         for item in datasources
