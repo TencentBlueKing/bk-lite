@@ -380,6 +380,12 @@ def _skipped_step_reason(
             return "skipped", "安装已取消，未执行重启"
         if root_host and root_host.error_code == "reboot_requirement_unknown":
             return "skipped", "无法判断是否需要重启，未执行自动重启"
+        if root_host and root_host.error_code == "container_reboot_skipped":
+            return (
+                "skipped",
+                "当前节点为容器节点，不支持执行主机重启命令；"
+                "如需重新加载运行进程，请通过容器平台重启或重新部署",
+            )
         if root_host and _host_stage(root_host) == "pending_reboot" and not root.auto_reboot:
             return "skipped", "未设置安装后自动重启"
         if root_host and _host_stage(root_host) == "completed":
