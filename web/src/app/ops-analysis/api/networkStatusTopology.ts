@@ -16,6 +16,7 @@ export const useNetworkStatusTopologyApi = () => {
       post<NetworkStatusTopologyResponse>(
         '/operation_analysis/api/scene_widgets/network_status_topology/',
         params,
+        { suppressErrorNotification: true },
       ),
     [post],
   );

@@ -34,7 +34,7 @@ import {
 } from "@/app/ops-analysis/utils/componentParamSwitch";
 import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOptions";
 import { fetchCompareData } from "@/app/ops-analysis/utils/compareQuery";
-import { useDataSourceApi } from "@/app/ops-analysis/api/dataSource";
+import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from "@/app/ops-analysis/api/dataSource";
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
 import { getRequestErrorMessage, classifyWidgetQueryError } from "@/app/ops-analysis/utils/requestError";
 import { getValueByPath } from "@/app/ops-analysis/utils/objectPath";
@@ -297,6 +297,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
   const { canvasDataSourceLookupStatus } = useOpsAnalysis();
   const { getSourceDataByApiId } = useDataSourceApi();
+  const getRuntimeSourceDataByApiId = useMemo(
+    () => withRuntimeSourceDataErrorSuppression(getSourceDataByApiId),
+    [getSourceDataByApiId],
+  );
   const isSceneWidget = config?.sceneWidgetType === "networkStatusTopology";
   const effectiveComponentParams = useMemo(() => {
     const overrides = config?.dataSourceParams || [];
@@ -706,7 +710,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       const data = await getOrCreateInflightWidgetRequest(requestKey, () =>
         fetchCompareData({
           dataSourceId: normalizedDataSourceId,
-          getSourceDataByApiId,
+          getSourceDataByApiId: getRuntimeSourceDataByApiId,
           config,
           dataSource,
           extraParams: requestExtraParams,

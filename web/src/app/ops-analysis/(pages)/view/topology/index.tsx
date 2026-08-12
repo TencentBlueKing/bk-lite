@@ -30,6 +30,8 @@ import {
 import type { FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import TopologyToolbar from './components/toolbar';
 import TopologyCanvasShell from './components/canvasShell';
+import SingleValueFetchErrorTooltip from './components/singleValueFetchErrorTooltip';
+import type { SingleValueFetchErrorTooltipState } from './components/singleValueFetchErrorTooltip';
 import ViewWorkspace from '../components/viewWorkspace';
 import ContextMenu from './components/contextMenu';
 import EdgeConfigPanel from './components/edgeConfPanel';
@@ -77,6 +79,8 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       Record<string, FilterValue>
     >({});
     const [nodeChangeKey, setNodeChangeKey] = useState(0);
+    const [singleValueFetchErrorTooltip, setSingleValueFetchErrorTooltip] =
+      useState<SingleValueFetchErrorTooltipState | null>(null);
     const rebuildFiltersRef = useRef<(() => void) | null>(null);
     const { isFullscreen, enterFullscreen, exitFullscreen } =
       useAppViewFullscreen();
@@ -141,6 +145,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       minimapContainerRef,
       handleNodeRemovedCallback,
       isFullscreen,
+      setSingleValueFetchErrorTooltip,
     );
 
     const { handleEdgeConfigConfirm, closeEdgeConfig, handleMenuClick } =
@@ -454,6 +459,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           t={t}
           setMinimapVisible={setMinimapVisible}
         />
+        <SingleValueFetchErrorTooltip tooltip={singleValueFetchErrorTooltip} />
       </div>
     );
 

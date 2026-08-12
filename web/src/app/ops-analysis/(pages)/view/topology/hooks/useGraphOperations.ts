@@ -13,6 +13,9 @@ export const useGraphOperations = (
   minimapContainerRef?: React.RefObject<HTMLDivElement | null>,
   onNodeRemoved?: () => void,
   isZoomLocked = false,
+  setSingleValueFetchErrorTooltip?: (
+    tooltip: import('../components/singleValueFetchErrorTooltip').SingleValueFetchErrorTooltipState | null,
+  ) => void,
 ) => {
   const isZoomLockedRef = useRef(isZoomLocked);
 
@@ -76,6 +79,7 @@ export const useGraphOperations = (
     selectedCells,
     onNodeRemoved,
     isZoomLockedRef,
+    setSingleValueFetchErrorTooltip,
   });
 
   const zoomIn = useCallback(() => {
