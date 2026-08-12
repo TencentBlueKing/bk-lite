@@ -13,6 +13,24 @@ test('buffers incomplete SSE data lines across chunks', () => {
   ]);
 });
 
+test('preserves split AG-UI text, tool, and run-finished events', () => {
+  const parser = new SSEStreamParser();
+
+  assert.deepEqual(parser.push('data: {"type":"TEXT_MESSAGE_CONTENT","delta":"hel'), []);
+  assert.deepEqual(
+    parser.push(
+      'lo"}\ndata: {"type":"TOOL_CALL_START","toolCallId":"tool-1"}\ndata: {"type":"RUN_FIN'
+    ),
+    [
+      { type: 'TEXT_MESSAGE_CONTENT', delta: 'hello' },
+      { type: 'TOOL_CALL_START', toolCallId: 'tool-1' },
+    ]
+  );
+  assert.deepEqual(parser.push('ISHED","threadId":"thread-1"}\n'), [
+    { type: 'RUN_FINISHED', threadId: 'thread-1' },
+  ]);
+});
+
 test('reset clears the incomplete-line buffer', () => {
   const parser = new SSEStreamParser();
   parser.push('data: {"partial":');

@@ -46,7 +46,6 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 
-# Package manager lock files (for monorepo)
+# Other package manager lock files (webchat uses npm)
 yarn.lock
 pnpm-lock.yaml
-package-lock.json
