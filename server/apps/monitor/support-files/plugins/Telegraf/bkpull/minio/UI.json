@@ -9,6 +9,99 @@
   "instance_id": "{{cloud_region}}_{{host}}_{{port}}",
   "form_fields": [
     {
+      "name": "metrics_api_version",
+      "label": "指标 API 版本",
+      "type": "select",
+      "required": true,
+      "default_value": "v3",
+      "description": "选择 MinIO Prometheus 指标接口版本",
+      "guide_short": "RELEASE.2024-05-28 及之后推荐 v3；更早版本选择 v2。",
+      "guide_short_en": "Use v3 for RELEASE.2024-05-28 and later; select v2 for older releases.",
+      "options": [
+        {"label": "v3（2024-05-28 及之后）", "label_en": "v3 (2024-05-28 and later)", "value": "v3"},
+        {"label": "v2（兼容模式）", "label_en": "v2 (compatibility)", "value": "v2"}
+      ],
+      "label_en": "Metrics API Version"
+    },
+    {
+      "name": "scheme",
+      "label": "协议",
+      "type": "select",
+      "required": true,
+      "default_value": "https",
+      "description": "MinIO API 使用的 HTTP 协议",
+      "guide_short": "生产环境使用 HTTPS；HTTP 仅适用于隔离可信网络。",
+      "guide_short_en": "Use HTTPS in production. HTTP is only appropriate for isolated trusted networks.",
+      "options": [{"label": "HTTPS", "value": "https"}, {"label": "HTTP", "value": "http"}],
+      "transform_on_edit": {
+        "origin_path": "child.content.config.urls[0]",
+        "to_form": {"regex": "^(https?)://"},
+        "to_api": {}
+      },
+      "label_en": "Protocol"
+    },
+    {
+      "name": "auth_type",
+      "label": "认证方式",
+      "type": "select",
+      "required": true,
+      "default_value": "bearer",
+      "description": "MinIO Prometheus 指标端点认证方式",
+      "guide_short": "默认使用 Bearer Token；仅服务端显式配置 public 时选择公开访问。",
+      "guide_short_en": "Use a bearer token by default. Select Public only when the server explicitly enables it.",
+      "options": [
+        {"label": "Bearer Token", "value": "bearer"},
+        {"label": "公开访问", "label_en": "Public", "value": "public"}
+      ],
+      "label_en": "Authentication"
+    },
+    {
+      "name": "ENV_BEARER_TOKEN",
+      "label": "Bearer Token",
+      "type": "password",
+      "required": true,
+      "encrypted": true,
+      "dependency": {"field": "auth_type", "value": "bearer"},
+      "description": "由 mc admin prometheus generate 生成的指标抓取令牌；v3 使用 --api-version v3",
+      "guide_short": "v3 使用 mc admin prometheus generate ALIAS --api-version v3；仅填写 Token，不添加 Bearer 前缀。",
+      "guide_short_en": "For v3, run mc admin prometheus generate ALIAS --api-version v3. Enter only the token without the Bearer prefix.",
+      "widget_props": {"placeholder": "Bearer Token"},
+      "transform_on_edit": {"origin_path": "child.env_config.BEARER_TOKEN__{{config_id}}", "to_api": {}},
+      "label_en": "Bearer Token"
+    },
+    {
+      "name": "metric_extensions",
+      "label": "扩展指标",
+      "type": "select",
+      "required": false,
+      "default_value": [],
+      "description": "支持多选；选择后将在核心指标之外额外采集对应功能指标",
+      "guide_short": "扩展指标支持多选。默认不采集扩展指标；只有选中的分组才会在核心指标之外额外采集。请仅选择实际使用的功能，以控制采集开销和时序基数。",
+      "guide_short_en": "You can select multiple extensions. No extension metrics are collected by default; only selected groups are collected in addition to core metrics. Select only features in use to control scrape cost and cardinality.",
+      "options": [
+        {"label": "Bucket 使用量", "label_en": "Bucket Usage", "value": "bucket"},
+        {"label": "复制", "label_en": "Replication", "value": "replication"},
+        {"label": "生命周期与扫描", "label_en": "Lifecycle and Scanner", "value": "lifecycle"},
+        {"label": "审计与通知", "label_en": "Audit and Notification", "value": "integrations"},
+        {"label": "IAM 与 KMS", "label_en": "IAM and KMS", "value": "security"}
+      ],
+      "widget_props": {"mode": "multiple", "placeholder": "请选择额外指标（可多选）", "placeholder_en": "Select additional metrics (multiple)"},
+      "label_en": "Metric Extensions"
+    },
+    {
+      "name": "insecure_skip_verify",
+      "label": "跳过证书校验",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "是否跳过 HTTPS 证书链和主机名校验",
+      "guide_short": "仅临时排障时开启；生产环境保持关闭。",
+      "guide_short_en": "Enable only for temporary troubleshooting. Keep it disabled in production.",
+      "widget_props": {},
+      "transform_on_edit": {"origin_path": "child.content.config.insecure_skip_verify", "to_api": {}},
+      "label_en": "Skip Certificate Verification"
+    },
+    {
       "name": "host",
       "label": "主机",
       "type": "input",
@@ -16,8 +109,8 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的主机",
-      "guide_short": "填写 MinIO API 的 IP 地址或域名，不包含协议、端口或路径；当前模板固定使用 HTTP 访问三个 v2 指标端点。",
-      "guide_short_en": "Enter the MinIO API IP address or hostname without a scheme, port, or path. The current template uses HTTP for three fixed v2 metrics endpoints.",
+      "guide_short": "填写 MinIO API 的 IP 地址或域名，不包含协议、端口或路径。",
+      "guide_short_en": "Enter the MinIO API IP address or hostname without a scheme, port, or path.",
       "widget_props": {
         "placeholder": "主机地址"
       },
@@ -37,8 +130,8 @@
       "visible_in": "edit",
       "editable": false,
       "description": "与设备进行通信的端口",
-      "guide_short": "填写 MinIO API 的实际服务端口；采集节点必须能通过该端口访问固定的 cluster、bucket 和 resource 指标端点。",
-      "guide_short_en": "Enter the actual MinIO API service port. The collector node must reach the fixed cluster, bucket, and resource metrics endpoints through this port.",
+      "guide_short": "填写 MinIO API 实际服务端口，不要填写 Console 管理端口。",
+      "guide_short_en": "Enter the MinIO API service port, not the Console administration port.",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -60,8 +153,8 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
-      "guide_short": "Telegraf 拉取 MinIO 三个固定指标端点的周期，单位秒，默认 60。",
-      "guide_short_en": "Telegraf interval for pulling the three fixed MinIO metrics endpoints, in seconds; the default is 60.",
+      "guide_short": "Telegraf 拉取 MinIO 指标端点的周期，单位秒，默认 60。",
+      "guide_short_en": "Telegraf interval for pulling MinIO metrics endpoints, in seconds; the default is 60.",
       "widget_props": {
         "min": 1,
         "precision": 0,

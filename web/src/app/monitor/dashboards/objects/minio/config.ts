@@ -12,7 +12,7 @@ const ERASURE_STATUS_ENUM = {
 
 /**
  * MinIO 专业盘：对象存储集群健康 + 可用容量 + 纠删组冗余 + S3 服务。
- * 当前 metrics.json 无站点复制指标；纠删组健康作为冗余代理，不虚构 replication 卡片。
+ * Metrics v3 查询在前，Metrics v2 通过 PromQL `or` 回退；两侧均使用真实指标名。
  */
 export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'minio',
@@ -28,7 +28,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '集群健康状态',
       description: '集群整体健康：1 健康、0 不健康。',
       unit: 'none',
-      query: 'max by (instance_id) (minio_cluster_health_status_gauge{__$labels__})',
+      query:
+        'max by (instance_id) (minio_cluster_erasure_set_overall_health_gauge{__$labels__}) or max by (instance_id) (minio_cluster_health_status_gauge{__$labels__})',
       color: '#27c274'
     },
     {
@@ -36,7 +37,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '纠删组状态',
       description: '纠删组（Erasure Set）健康状态。',
       unit: 'none',
-      query: 'min(minio_cluster_health_erasure_set_status_gauge{__$labels__}) by (instance_id)',
+      query:
+        'min by (instance_id) (minio_cluster_erasure_set_overall_health_gauge{__$labels__}) or min by (instance_id) (minio_cluster_health_erasure_set_status_gauge{__$labels__})',
       color: '#2f6bff'
     },
     {
@@ -44,7 +46,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '可用空闲容量',
       description: '集群可用逻辑空闲容量。',
       unit: 'bytes',
-      query: 'max by (instance_id) (minio_cluster_capacity_usable_free_bytes_gauge{__$labels__})',
+      query:
+        'max by (instance_id) (minio_cluster_health_capacity_usable_free_bytes_gauge{__$labels__}) or max by (instance_id) (minio_cluster_capacity_usable_free_bytes_gauge{__$labels__})',
       color: '#13c2c2'
     },
     {
@@ -52,7 +55,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '可用总容量',
       description: '纠删编码后的可用逻辑总容量。',
       unit: 'bytes',
-      query: 'max by (instance_id) (minio_cluster_capacity_usable_total_bytes_gauge{__$labels__})',
+      query:
+        'max by (instance_id) (minio_cluster_health_capacity_usable_total_bytes_gauge{__$labels__}) or max by (instance_id) (minio_cluster_capacity_usable_total_bytes_gauge{__$labels__})',
       color: '#2f6bff'
     },
     {
@@ -61,7 +65,7 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '已用可用容量占总可用容量的比例。',
       unit: 'percent',
       query:
-        'clamp_min(100 * (1 - minio_cluster_capacity_usable_free_bytes_gauge{__$labels__} / clamp_min(minio_cluster_capacity_usable_total_bytes_gauge{__$labels__}, 1)), 0)',
+        'clamp_min(100 * (1 - minio_cluster_health_capacity_usable_free_bytes_gauge{__$labels__} / clamp_min(minio_cluster_health_capacity_usable_total_bytes_gauge{__$labels__}, 1)), 0) or clamp_min(100 * (1 - minio_cluster_capacity_usable_free_bytes_gauge{__$labels__} / clamp_min(minio_cluster_capacity_usable_total_bytes_gauge{__$labels__}, 1)), 0)',
       color: '#ff8a1f'
     },
     {
@@ -69,7 +73,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '在线驱动器数',
       description: '当前在线可用存储驱动器数量。',
       unit: 'counts',
-      query: 'max by (instance_id) (minio_cluster_drive_online_total_gauge{__$labels__})',
+      query:
+        'max by (instance_id) (minio_cluster_health_drives_online_count_gauge{__$labels__}) or max by (instance_id) (minio_cluster_drive_online_total_gauge{__$labels__})',
       color: '#27c274'
     },
     {
@@ -77,7 +82,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '在线节点数',
       description: '当前在线服务器节点数。',
       unit: 'counts',
-      query: 'max by (instance_id) (minio_cluster_nodes_online_total_gauge{__$labels__})',
+      query:
+        'max by (instance_id) (minio_cluster_health_nodes_online_count_gauge{__$labels__}) or max by (instance_id) (minio_cluster_nodes_online_total_gauge{__$labels__})',
       color: '#597ef7'
     },
     {
@@ -85,7 +91,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '纠删组在线盘',
       description: '纠删组内在线驱动器数。',
       unit: 'counts',
-      query: 'min by (instance_id) (minio_cluster_health_erasure_set_online_drives_gauge{__$labels__})',
+      query:
+        'min by (instance_id) (minio_cluster_erasure_set_online_drives_count_gauge{__$labels__}) or min by (instance_id) (minio_cluster_health_erasure_set_online_drives_gauge{__$labels__})',
       color: '#8a5cff'
     },
     {
@@ -93,7 +100,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'S3 接收流量',
       description: 'S3 接收字节速率。',
       unit: 'byteps',
-      query: 'sum by (instance_id) (rate(minio_s3_traffic_received_bytes_counter{__$labels__}[__$window__]))',
+      query:
+        'sum by (instance_id) (rate(minio_api_requests_traffic_received_bytes_counter{__$labels__}[__$window__])) or sum by (instance_id) (rate(minio_s3_traffic_received_bytes_counter{__$labels__}[__$window__]))',
       color: '#2f6bff'
     },
     {
@@ -101,7 +109,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'S3 发送流量',
       description: 'S3 发送字节速率。',
       unit: 'byteps',
-      query: 'sum by (instance_id) (rate(minio_s3_traffic_sent_bytes_counter{__$labels__}[__$window__]))',
+      query:
+        'sum by (instance_id) (rate(minio_api_requests_traffic_sent_bytes_counter{__$labels__}[__$window__])) or sum by (instance_id) (rate(minio_s3_traffic_sent_bytes_counter{__$labels__}[__$window__]))',
       color: '#13c2c2'
     },
     {
@@ -109,7 +118,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '进行中的 S3 请求',
       description: '当前正在处理的入向 S3 请求数。',
       unit: 'counts',
-      query: 'sum by (instance_id) (minio_s3_requests_incoming_total_gauge{__$labels__})',
+      query:
+        'sum by (instance_id) (minio_api_requests_incoming_total_gauge{__$labels__}) or sum by (instance_id) (minio_s3_requests_incoming_total_gauge{__$labels__})',
       color: '#27c274'
     },
     {
@@ -117,7 +127,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '等待中的 S3 请求',
       description: '当前等待处理的 S3 请求数。',
       unit: 'counts',
-      query: 'sum by (instance_id) (minio_s3_requests_waiting_total_gauge{__$labels__})',
+      query:
+        'sum by (instance_id) (minio_api_requests_waiting_total_gauge{__$labels__}) or sum by (instance_id) (minio_s3_requests_waiting_total_gauge{__$labels__})',
       color: '#ff8a1f'
     },
     {
@@ -126,7 +137,16 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '因认证失败被拒绝的 S3 请求速率。',
       unit: 'cps',
       query:
-        'sum by (instance_id) (rate(minio_s3_requests_rejected_auth_total_counter{__$labels__}[__$window__]))',
+        'sum by (instance_id) (rate(minio_api_requests_rejected_auth_total_counter{__$labels__}[__$window__])) or sum by (instance_id) (rate(minio_s3_requests_rejected_auth_total_counter{__$labels__}[__$window__]))',
+      color: '#ff4d4f'
+    },
+    {
+      name: 'minio_5xx_error_rate',
+      display_name: '5xx 错误速率',
+      description: '服务端错误请求速率，v3 优先并回退到 v2。',
+      unit: 'cps',
+      query:
+        'sum by (instance_id) (rate(minio_api_requests_5xx_errors_total_counter{__$labels__}[__$window__])) or sum by (instance_id) (rate(minio_s3_requests_5xx_errors_total_counter{__$labels__}[__$window__]))',
       color: '#ff4d4f'
     },
     {
@@ -134,7 +154,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '节点内存使用率',
       description: '节点内存使用率（取最大值以覆盖压力最高节点）。',
       unit: 'percent',
-      query: 'max by (instance_id) (minio_node_mem_used_perc_gauge{__$labels__})',
+      query:
+        'max by (instance_id) (minio_system_memory_used_perc_gauge{__$labels__}) or max by (instance_id) (minio_node_mem_used_perc_gauge{__$labels__})',
       color: '#8a5cff'
     },
     {
@@ -142,7 +163,8 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '驱动器使用率峰值',
       description: '单盘使用率峰值。',
       unit: 'percent',
-      query: 'max by (instance_id) (minio_node_drive_perc_util_gauge{__$labels__})',
+      query:
+        'max by (instance_id) (minio_system_drive_perc_util_gauge{__$labels__}) or max by (instance_id) (minio_node_drive_perc_util_gauge{__$labels__})',
       color: '#ff8a1f'
     }
   ],
@@ -238,7 +260,7 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: '冗余',
-          detail: '当前插件无站点复制指标；用在线盘/节点与纠删组在线盘观察冗余与成员健康。'
+          detail: '用在线盘、节点与纠删组在线盘观察集群冗余和成员健康。'
         }
       ],
       series: [
@@ -277,6 +299,13 @@ export const MINIO_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       series: [
         { metric: 'minio_s3_auth_reject_rate', label: '鉴权拒绝', color: '#ff4d4f', unit: 'cps' }
       ]
+    },
+    {
+      title: '服务端错误',
+      subtitle: 'S3/API 5xx 错误速率',
+      metric: 'minio_5xx_error_rate',
+      guide: [{ label: '5xx 错误', detail: '服务端内部错误速率，持续大于零需检查 MinIO 日志与节点健康。' }],
+      series: [{ metric: 'minio_5xx_error_rate', label: '5xx 错误', color: '#ff4d4f', unit: 'cps' }]
     }
   ],
   statusPanels: [],

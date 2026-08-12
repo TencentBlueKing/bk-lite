@@ -3,119 +3,112 @@
   "plugin": "Minio",
   "templates": [
     {
-      "name": "MinIO 集群健康状态异常",
-      "alert_name": "MinIO ${resource_name} 集群不健康",
-      "description": "检测集群健康状态（health_status），非1表示集群异常，需立即检查节点和网络状态。",
+      "name": "MinIO v2 集群健康异常",
+      "alert_name": "MinIO ${resource_name} v2 集群不健康",
+      "description": "Metrics v2 集群健康状态非 1，请检查节点、磁盘和网络。",
       "metric_name": "minio_cluster_health_status_gauge",
       "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 1,
-          "method": "!="
-        }
-      ],
-      "group_algorithm": "avg"
+      "threshold": [{"level": "critical", "value": 1, "method": "!="}],
+      "group_algorithm": "min"
     },
     {
-      "name": "MinIO 节点离线率过高",
-      "alert_name": "MinIO ${resource_name} 节点大量离线",
-      "description": "检测离线节点占比（nodes_offline_rate），过高可能影响数据可用性和写入quorum。",
-      "metric_name": "minio_cluster_nodes_offline_rate",
+      "name": "MinIO v3 纠删集整体健康异常",
+      "alert_name": "MinIO ${resource_name} v3 纠删集不健康",
+      "description": "Metrics v3 纠删集整体健康状态非 1，集群冗余或可写能力可能受损。",
+      "metric_name": "minio_cluster_erasure_set_overall_health_gauge",
       "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 50,
-          "method": ">="
-        },
-        {
-          "level": "error",
-          "value": 30,
-          "method": ">="
-        },
-        {
-          "level": "warning",
-          "value": 10,
-          "method": ">="
-        }
-      ],
-      "group_algorithm": "avg"
+      "threshold": [{"level": "critical", "value": 1, "method": "!="}],
+      "group_algorithm": "min"
     },
     {
-      "name": "MinIO 磁盘离线率过高",
-      "alert_name": "MinIO ${resource_name} 磁盘大量离线",
-      "description": "监控离线磁盘占比（drive_offline_rate），过高可能导致数据丢失风险。",
-      "metric_name": "minio_cluster_drive_offline_rate",
+      "name": "MinIO v2 节点离线",
+      "alert_name": "MinIO ${resource_name} 存在离线节点",
+      "description": "Metrics v2 报告至少一个 MinIO 节点离线。",
+      "metric_name": "minio_cluster_nodes_offline_total_gauge",
       "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 30,
-          "method": ">="
-        },
-        {
-          "level": "error",
-          "value": 20,
-          "method": ">="
-        },
-        {
-          "level": "warning",
-          "value": 10,
-          "method": ">="
-        }
-      ],
-      "group_algorithm": "avg"
+      "threshold": [{"level": "critical", "value": 1, "method": ">="}],
+      "group_algorithm": "max"
     },
     {
-      "name": "MinIO 磁盘利用率过高",
-      "alert_name": "MinIO ${resource_name} 磁盘过载",
-      "description": "监控磁盘使用率（drive_perc_util），持续过高可能导致IO性能下降。",
-      "metric_name": "minio_node_drive_perc_util_gauge",
-      "algorithm": "avg_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 90,
-          "method": ">="
-        },
-        {
-          "level": "error",
-          "value": 80,
-          "method": ">="
-        },
-        {
-          "level": "warning",
-          "value": 70,
-          "method": ">="
-        }
-      ],
-      "group_algorithm": "avg"
+      "name": "MinIO v3 节点离线",
+      "alert_name": "MinIO ${resource_name} 存在离线节点",
+      "description": "Metrics v3 报告至少一个 MinIO 节点离线。",
+      "metric_name": "minio_cluster_health_nodes_offline_count_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [{"level": "critical", "value": 1, "method": ">="}],
+      "group_algorithm": "max"
     },
     {
-      "name": "MinIO 请求排队数过多",
-      "alert_name": "MinIO ${resource_name} 请求积压严重",
-      "description": "检测等待处理的S3请求数（requests_waiting_total），积压过多表明服务过载。",
+      "name": "MinIO v2 磁盘离线",
+      "alert_name": "MinIO ${resource_name} 存在离线磁盘",
+      "description": "Metrics v2 报告至少一个集群磁盘离线。",
+      "metric_name": "minio_cluster_drive_offline_total_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [{"level": "critical", "value": 1, "method": ">="}],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "MinIO v3 磁盘离线",
+      "alert_name": "MinIO ${resource_name} 存在离线磁盘",
+      "description": "Metrics v3 报告至少一个集群磁盘离线。",
+      "metric_name": "minio_cluster_health_drives_offline_count_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [{"level": "critical", "value": 1, "method": ">="}],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "MinIO v2 可用容量不足",
+      "alert_name": "MinIO ${resource_name} 可用容量不足",
+      "description": "Metrics v2 集群可用空闲容量低于 10 GiB，请及时扩容或清理。",
+      "metric_name": "minio_cluster_capacity_usable_free_bytes_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [{"level": "critical", "value": 10737418240, "method": "<="}],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "MinIO v3 可用容量不足",
+      "alert_name": "MinIO ${resource_name} 可用容量不足",
+      "description": "Metrics v3 集群可用空闲容量低于 10 GiB，请及时扩容或清理。",
+      "metric_name": "minio_cluster_health_capacity_usable_free_bytes_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [{"level": "critical", "value": 10737418240, "method": "<="}],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "MinIO v2 请求积压",
+      "alert_name": "MinIO ${resource_name} S3 请求积压",
+      "description": "Metrics v2 等待处理的 S3 请求持续增加，服务可能过载。",
       "metric_name": "minio_s3_requests_waiting_total_gauge",
       "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 100,
-          "method": ">="
-        },
-        {
-          "level": "error",
-          "value": 50,
-          "method": ">="
-        },
-        {
-          "level": "warning",
-          "value": 20,
-          "method": ">="
-        }
-      ],
-      "group_algorithm": "avg"
+      "threshold": [{"level": "critical", "value": 100, "method": ">="}, {"level": "warning", "value": 20, "method": ">="}],
+      "group_algorithm": "sum"
+    },
+    {
+      "name": "MinIO v3 请求积压",
+      "alert_name": "MinIO ${resource_name} API 请求积压",
+      "description": "Metrics v3 等待处理的 API 请求持续增加，服务可能过载。",
+      "metric_name": "minio_api_requests_waiting_total_gauge",
+      "algorithm": "last_over_time",
+      "threshold": [{"level": "critical", "value": 100, "method": ">="}, {"level": "warning", "value": 20, "method": ">="}],
+      "group_algorithm": "sum"
+    },
+    {
+      "name": "MinIO v2 S3 5xx 错误",
+      "alert_name": "MinIO ${resource_name} S3 服务端错误",
+      "description": "Metrics v2 S3 5xx 错误速率大于零。",
+      "metric_name": "minio_s3_requests_5xx_errors_total_counter_rate",
+      "algorithm": "avg_over_time",
+      "threshold": [{"level": "critical", "value": 1, "method": ">="}, {"level": "warning", "value": 0, "method": ">"}],
+      "group_algorithm": "sum"
+    },
+    {
+      "name": "MinIO v3 API 5xx 错误",
+      "alert_name": "MinIO ${resource_name} API 服务端错误",
+      "description": "Metrics v3 API 5xx 错误速率大于零。",
+      "metric_name": "minio_api_requests_5xx_errors_total_counter_rate",
+      "algorithm": "avg_over_time",
+      "threshold": [{"level": "critical", "value": 1, "method": ">="}, {"level": "warning", "value": 0, "method": ">"}],
+      "group_algorithm": "sum"
     }
   ]
 }

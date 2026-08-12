@@ -1,15 +1,112 @@
+{% set _minio_metrics_version = metrics_api_version | default("v2", true) %}
+{% set _minio_scheme = scheme | default("http", true) %}
+{% set _minio_auth_type = auth_type | default("public", true) %}
+{% set _minio_extensions = metric_extensions | default(["bucket"]) %}
 [[inputs.prometheus]]
     startup_error_behavior = "retry"
     urls = [
-        "http://{{ host }}:{{ port }}/minio/v2/metrics/cluster",
-        "http://{{ host }}:{{ port }}/minio/v2/metrics/bucket",
-        "http://{{ host }}:{{ port }}/minio/v2/metrics/resource",
+{% if _minio_metrics_version == "v3" %}
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/api/requests",
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/cluster/health",
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/cluster/erasure-set",
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/cluster/usage/objects",
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/system/cpu",
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/system/memory",
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/system/drive",
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/system/process",
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/system/network/internode",
+{% if "bucket" in _minio_extensions %}
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/cluster/usage/buckets",
+{% endif %}
+{% if "replication" in _minio_extensions %}
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/replication",
+{% endif %}
+{% if "lifecycle" in _minio_extensions %}
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/ilm",
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/scanner",
+{% endif %}
+{% if "integrations" in _minio_extensions %}
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/audit",
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/notification",
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/logger/webhook",
+{% endif %}
+{% if "security" in _minio_extensions %}
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/cluster/iam",
+{% endif %}
+{% else %}
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/v2/metrics/cluster",
+{% if "bucket" in _minio_extensions or "replication" in _minio_extensions %}
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/v2/metrics/bucket",
+{% endif %}
+        "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/v2/metrics/resource",
+{% endif %}
     ]
     interval = "{{ interval }}s"
     timeout = "{{ interval }}s"
     response_timeout = "{{ interval }}s"
+    insecure_skip_verify = {{ insecure_skip_verify | default(false, true) | lower }}
+{% if _minio_auth_type == "bearer" %}
+    bearer_token_string = "${BEARER_TOKEN__{{ config_id }}}"
+{% endif %}
+    namepass = [
+{% if _minio_metrics_version == "v3" %}
+        "minio_cluster_health_*",
+        "minio_cluster_erasure_set_*",
+        "minio_cluster_usage_objects_*",
+        "minio_api_requests_*",
+        "minio_system_cpu_*",
+        "minio_system_memory_*",
+        "minio_system_drive_*",
+        "minio_system_process_*",
+        "minio_system_network_internode_*",
+{% else %}
+        "minio_cluster_capacity_*",
+        "minio_cluster_drive_*",
+        "minio_cluster_nodes_*",
+        "minio_cluster_health_*",
+        "minio_s3_requests_*",
+        "minio_s3_traffic_*",
+        "minio_node_cpu_*",
+        "minio_node_mem_*",
+        "minio_node_drive_*",
+        "minio_node_process_*",
+        "minio_node_file_descriptor_*",
+        "minio_inter_node_traffic_*",
+{% endif %}
+{% if "bucket" in _minio_extensions %}
+        "minio_bucket_*",
+        "minio_cluster_usage_buckets_*",
+{% endif %}
+{% if "replication" in _minio_extensions %}
+        "minio_*replication*",
+{% endif %}
+{% if "lifecycle" in _minio_extensions %}
+        "minio_*ilm*",
+        "minio_*scanner*",
+        "minio_*heal*",
+{% endif %}
+{% if "integrations" in _minio_extensions %}
+        "minio_audit_*",
+        "minio_cluster_audit_*",
+        "minio_cluster_notify_*",
+        "minio_cluster_webhook_*",
+        "minio_notify_*",
+        "minio_notification_*",
+        "minio_logger_webhook_*",
+{% endif %}
+{% if "security" in _minio_extensions %}
+        "minio_cluster_iam_*",
+        "minio_cluster_kms_*",
+{% endif %}
+    ]
+    namedrop = ["*_ttfb_seconds_distribution*"]
     [inputs.prometheus.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"
         collect_type = "bkpull"
         config_type = "minio"
+        minio_metrics_version = "{{ _minio_metrics_version }}"
+        minio_auth_type = "{{ _minio_auth_type }}"
+{% if _minio_extensions %}
+        minio_metric_extensions = "{{ _minio_extensions | join(',') }}"
+{% endif %}

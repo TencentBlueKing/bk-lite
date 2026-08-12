@@ -381,7 +381,9 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
               </Descriptions.Item>
               <Descriptions.Item label={t('common.description')}>
                 <div className="whitespace-pre-wrap break-words">
-                  {groupForm.description || '--'}
+                  {groupForm.display_description ||
+                    groupForm.description ||
+                    '--'}
                 </div>
               </Descriptions.Item>
             </Descriptions>

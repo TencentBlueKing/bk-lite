@@ -11,106 +11,177 @@ monitor_object_metric:
   Minio:
     minio_cluster_capacity_usable_total_bytes_gauge:
       name: Cluster Usable Total Capacity
-      desc: Total usable logical storage capacity after erasure coding, reflecting
-        storage resource scale after redundancy
+      desc: Total usable logical storage capacity after erasure coding, reflecting storage resource scale after redundancy Available from MinIO RELEASE.2021-01-30T00-20-58Z onward (Metrics v2).
     minio_cluster_capacity_usable_free_bytes_gauge:
       name: Cluster Usable Free Capacity
-      desc: Available logical storage capacity of the cluster, used for monitoring
-        usage and predicting storage needs
+      desc: Available logical storage capacity of the cluster, used for monitoring usage and predicting storage needs Available from MinIO RELEASE.2021-01-30T00-20-58Z onward (Metrics v2).
     minio_cluster_drive_online_total_gauge:
       name: Online Drives Count
-      desc: Number of currently online and available storage drives, indicating storage
-        hardware availability
+      desc: Number of currently online and available storage drives, indicating storage hardware availability Available from MinIO RELEASE.2021-01-30T00-20-58Z onward (Metrics v2).
     minio_cluster_nodes_online_total_gauge:
       name: Online Nodes Count
-      desc: Number of currently online server nodes, affecting cluster processing
-        capacity and fault tolerance
+      desc: Number of currently online server nodes, affecting cluster processing capacity and fault tolerance Available from MinIO RELEASE.2021-01-30T00-20-58Z onward (Metrics v2).
     minio_cluster_health_status_gauge:
       name: Cluster Health Status
-      desc: Overall cluster health status, 1 indicates healthy, 0 indicates unhealthy,
-        providing quick overview of cluster status
+      desc: Overall cluster health status, 1 indicates healthy, 0 indicates unhealthy, providing quick overview of cluster status Available from MinIO RELEASE.2023-08-04T17-40-21Z onward (Metrics v2).
     minio_cluster_health_erasure_set_status_gauge:
       name: Erasure Set Status
-      desc: Erasure set status (1=healthy), indicating data redundancy set health
-        and directly affecting data security
+      desc: Erasure set status (1=healthy), indicating data redundancy set health and directly affecting data security Available from MinIO RELEASE.2024-01-28T22-35-53Z onward (Metrics v2).
     minio_cluster_health_erasure_set_online_drives_gauge:
       name: Erasure Set Online Drives
-      desc: Number of online drives in erasure set, affecting data availability and
-        redundancy, ensuring redundancy strategy effectiveness
+      desc: Number of online drives in erasure set, affecting data availability and redundancy, ensuring redundancy strategy effectiveness Available from MinIO RELEASE.2023-12-23T07-19-11Z onward (Metrics v2).
     minio_node_cpu_avg_load1_gauge:
       name: Node 1-minute Average Load
-      desc: Average system load over last 1 minute, indicating short-term CPU pressure
-        and performance stress
+      desc: Average system load over last 1 minute, indicating short-term CPU pressure and performance stress Available from MinIO RELEASE.2023-10-07T15-07-38Z onward (Metrics v2).
     minio_node_cpu_avg_idle_gauge:
       name: Node CPU Idle Rate
-      desc: Percentage of CPU idle time, indicating CPU utilization, low idle rate
-        may indicate CPU bottleneck
+      desc: Percentage of CPU idle time, indicating CPU utilization, low idle rate may indicate CPU bottleneck Available from MinIO RELEASE.2023-10-07T15-07-38Z onward (Metrics v2).
     minio_node_mem_used_perc_gauge:
       name: Node Memory Usage Rate
-      desc: Percentage of memory used, indicating memory pressure, high usage may
-        cause performance degradation
+      desc: Percentage of memory used, indicating memory pressure, high usage may cause performance degradation Available from MinIO RELEASE.2023-12-07T04-16-00Z onward (Metrics v2).
     minio_node_drive_perc_util_gauge:
       name: Drive Utilization Rate
-      desc: Utilization percentage of single drive, reflecting storage space usage,
-        important for capacity planning
+      desc: Utilization percentage of single drive, reflecting storage space usage, important for capacity planning Available from MinIO RELEASE.2023-10-07T15-07-38Z onward (Metrics v2).
     minio_node_drive_reads_per_sec_gauge:
       name: Drive Reads Per Second
-      desc: Number of read operations per second on single drive, reflecting read
-        performance and workload
+      desc: Number of read operations per second on single drive, reflecting read performance and workload Available from MinIO RELEASE.2023-10-07T15-07-38Z onward (Metrics v2).
     minio_node_drive_writes_per_sec_gauge:
       name: Drive Writes Per Second
-      desc: Number of write operations per second on single drive, reflecting write
-        performance and workload
-    minio_node_if_rx_bytes_gauge:
-      name: Network Interface Receive Bytes
-      desc: Received data bytes on network interface, reflecting network inflow, monitoring
-        bandwidth usage
-    minio_node_if_tx_bytes_gauge:
-      name: Network Interface Transmit Bytes
-      desc: Transmitted data bytes on network interface, reflecting network outflow,
-        monitoring bandwidth usage
+      desc: Number of write operations per second on single drive, reflecting write performance and workload Available from MinIO RELEASE.2023-10-07T15-07-38Z onward (Metrics v2).
     minio_node_process_uptime_seconds_gauge:
       name: Process Uptime
-      desc: Seconds MinIO process has been running, indicating stability, long uptime
-        indicates stability, frequent restarts may indicate issues
+      desc: Seconds MinIO process has been running, indicating stability, long uptime indicates stability, frequent restarts may indicate issues Available from MinIO RELEASE.2021-03-26T00-00-41Z onward (Metrics v2).
     minio_node_process_cpu_total_seconds_counter_rate:
       name: Process CPU Usage Rate
-      desc: CPU time consumed per second by MinIO process, reflecting real-time CPU
-        resource consumption
+      desc: CPU time consumed per second by MinIO process, reflecting real-time CPU resource consumption Available from MinIO RELEASE.2021-05-11T23-27-41Z onward (Metrics v2).
     minio_node_process_resident_memory_bytes_gauge:
       name: Process Resident Memory
-      desc: Resident memory size occupied by MinIO process, reflecting memory usage,
-        monitoring memory leaks
-    minio_node_go_routine_total_gauge:
-      name: Go Routines Total
-      desc: Current number of Go routines in MinIO process, reflecting concurrency
-        capacity, abnormal increase may indicate issues
+      desc: Resident memory size occupied by MinIO process, reflecting memory usage, monitoring memory leaks Available from MinIO RELEASE.2021-05-11T23-27-41Z onward (Metrics v2).
     minio_s3_requests_incoming_total_gauge:
       name: Current Incoming S3 Requests
-      desc: Number of incoming S3 API requests currently being processed, reflecting
-        current S3 service load
+      desc: Number of incoming S3 API requests currently being processed, reflecting current S3 service load Available from MinIO RELEASE.2022-02-12T00-51-25Z onward (Metrics v2).
     minio_s3_requests_waiting_total_gauge:
       name: Waiting S3 Requests
-      desc: Number of S3 API requests currently waiting for processing, reflecting
-        S3 service queue backlog
+      desc: Number of S3 API requests currently waiting for processing, reflecting S3 service queue backlog Available from MinIO RELEASE.2021-02-23T20-05-01Z onward (Metrics v2).
     minio_s3_traffic_received_bytes_counter_rate:
       name: S3 Received Traffic Rate
-      desc: Data traffic received per second by S3 service, reflecting upload rate
-        and network inflow bandwidth usage
+      desc: Data traffic received per second by S3 service, reflecting upload rate and network inflow bandwidth usage Available from MinIO RELEASE.2021-01-30T00-20-58Z onward (Metrics v2).
     minio_s3_traffic_sent_bytes_counter_rate:
       name: S3 Sent Traffic Rate
-      desc: Data traffic sent per second by S3 service, reflecting download rate and
-        network outflow bandwidth usage
+      desc: Data traffic sent per second by S3 service, reflecting download rate and network outflow bandwidth usage Available from MinIO RELEASE.2021-01-30T00-20-58Z onward (Metrics v2).
     minio_s3_requests_rejected_auth_total_counter_rate:
       name: Auth Rejected S3 Requests Rate
-      desc: Number of S3 requests rejected per second due to authentication failure,
-        reflecting authentication failure frequency and security status
+      desc: Number of S3 requests rejected per second due to authentication failure, reflecting authentication failure frequency and security status Available from MinIO RELEASE.2021-04-18T19-26-29Z onward (Metrics v2).
     minio_node_scanner_objects_scanned_counter_rate:
       name: Objects Scan Rate
-      desc: Number of objects scanned per second by scanner, reflecting efficiency
-        of storage system internal maintenance activities
+      desc: Number of objects scanned per second by scanner, reflecting efficiency of storage system internal maintenance activities Available from MinIO RELEASE.2021-12-18T04-42-33Z onward (Metrics v2).
+    minio_cluster_drive_offline_total_gauge:
+      name: V2 Offline Drives
+      desc: Offline drives reported by the Metrics v2 cluster endpoint. Available from MinIO RELEASE.2021-01-30T00-20-58Z onward (Metrics v2).
+    minio_cluster_nodes_offline_total_gauge:
+      name: V2 Offline Nodes
+      desc: Offline nodes reported by the Metrics v2 cluster endpoint. Available from MinIO RELEASE.2021-01-30T00-20-58Z onward (Metrics v2).
+    minio_s3_requests_5xx_errors_total_counter_rate:
+      name: V2 S3 5xx Error Rate
+      desc: Per-second rate of S3 server errors reported by Metrics v2. Available from MinIO RELEASE.2022-06-10T16-59-15Z onward (Metrics v2).
+    minio_cluster_erasure_set_overall_health_gauge:
+      name: V3 Overall Erasure Health
+      desc: Overall erasure-set health where 1 is healthy and 0 is unhealthy. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_cluster_erasure_set_online_drives_count_gauge:
+      name: V3 Erasure Set Online Drives
+      desc: Online drives in each Metrics v3 erasure set. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_cluster_health_capacity_usable_total_bytes_gauge:
+      name: V3 Usable Total Capacity
+      desc: Total usable cluster capacity reported by Metrics v3. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_cluster_health_capacity_usable_free_bytes_gauge:
+      name: V3 Usable Free Capacity
+      desc: Free usable cluster capacity reported by Metrics v3. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_cluster_health_drives_online_count_gauge:
+      name: V3 Online Drives
+      desc: Online cluster drives reported by Metrics v3. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_cluster_health_drives_offline_count_gauge:
+      name: V3 Offline Drives
+      desc: Offline cluster drives reported by Metrics v3. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_cluster_health_nodes_online_count_gauge:
+      name: V3 Online Nodes
+      desc: Online cluster nodes reported by Metrics v3. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_cluster_health_nodes_offline_count_gauge:
+      name: V3 Offline Nodes
+      desc: Offline cluster nodes reported by Metrics v3. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_cluster_usage_objects_total_bytes_gauge:
+      name: V3 Stored Object Bytes
+      desc: Total bytes consumed by objects according to Metrics v3 usage data. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_cluster_usage_objects_count_gauge:
+      name: V3 Object Count
+      desc: Total objects according to Metrics v3 usage data. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_api_requests_incoming_total_gauge:
+      name: V3 Incoming API Requests
+      desc: Current incoming S3 API requests reported by Metrics v3. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_api_requests_waiting_total_gauge:
+      name: V3 Waiting API Requests
+      desc: Current S3 API requests waiting in the server queue. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_api_requests_5xx_errors_total_counter_rate:
+      name: V3 API 5xx Error Rate
+      desc: Per-second rate of API requests returning server errors. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_api_requests_rejected_auth_total_counter_rate:
+      name: V3 API Authentication Rejection Rate
+      desc: Per-second rate of API requests rejected because authentication failed. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_api_requests_traffic_received_bytes_counter_rate:
+      name: V3 API Received Traffic Rate
+      desc: Per-second API request bytes received through Metrics v3. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_api_requests_traffic_sent_bytes_counter_rate:
+      name: V3 API Sent Traffic Rate
+      desc: Per-second API response bytes sent through Metrics v3. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_system_cpu_avg_idle_gauge:
+      name: V3 System CPU Idle Percentage
+      desc: Average CPU idle percentage reported by Metrics v3. Available from MinIO RELEASE.2024-04-28T17-53-50Z onward (Metrics v3).
+    minio_system_memory_used_perc_gauge:
+      name: V3 Memory Usage Percentage
+      desc: Node memory usage percentage reported by Metrics v3. Available from MinIO RELEASE.2024-04-18T19-09-19Z onward (Metrics v3).
+    minio_system_drive_perc_util_gauge:
+      name: V3 Drive Utilization Percentage
+      desc: Per-drive utilization percentage reported by Metrics v3. Available from MinIO RELEASE.2024-04-18T19-09-19Z onward (Metrics v3).
+    minio_system_process_uptime_seconds_gauge:
+      name: V3 Process Uptime
+      desc: MinIO server process uptime reported by Metrics v3. Available from MinIO RELEASE.2024-04-28T17-53-50Z onward (Metrics v3).
+    minio_system_process_cpu_total_seconds_counter_rate:
+      name: V3 Process CPU Usage Rate
+      desc: Per-second process CPU time consumed according to Metrics v3. Available from MinIO RELEASE.2024-04-28T17-53-50Z onward (Metrics v3).
+    minio_system_network_internode_errors_total_counter_rate:
+      name: V3 Internode Error Rate
+      desc: Per-second rate of failed internode calls. Available from MinIO RELEASE.2024-03-15T01-07-19Z onward (Metrics v3).
+    minio_cluster_usage_buckets_total_bytes_gauge:
+      name: V3 Bucket Used Bytes
+      desc: Bytes consumed by each bucket from the high-level bucket usage endpoint. Available from MinIO RELEASE.2024-07-15T19-02-30Z onward (Metrics v3).
+    minio_replication_recent_backlog_count_gauge:
+      name: V3 Recent Replication Backlog
+      desc: Objects observed in the cluster replication backlog during the last five minutes. Available from MinIO RELEASE.2024-08-03T04-33-23Z onward (Metrics v3).
+    minio_ilm_expiry_pending_tasks_gauge:
+      name: V3 Pending ILM Expiry Tasks
+      desc: Pending lifecycle expiry tasks in the MinIO ILM queue. Available from MinIO RELEASE.2024-06-06T09-36-42Z onward (Metrics v3).
+    minio_scanner_objects_scanned_counter_rate:
+      name: V3 Scanner Object Rate
+      desc: Per-second rate of objects scanned by the Metrics v3 scanner. Available from MinIO RELEASE.2024-05-27T19-17-46Z onward (Metrics v3).
+    minio_audit_failed_messages_counter_rate:
+      name: V3 Audit Delivery Failure Rate
+      desc: Per-second rate of audit messages that failed delivery. Available from MinIO RELEASE.2024-05-27T19-17-46Z onward (Metrics v3).
+    minio_notification_events_errors_total_counter_rate:
+      name: V3 Notification Delivery Error Rate
+      desc: Per-second rate of notification events that failed delivery. Available from MinIO RELEASE.2024-04-28T17-53-50Z onward (Metrics v3).
+    minio_cluster_iam_sync_failures_counter_rate:
+      name: V3 IAM Sync Failure Rate
+      desc: Per-second rate of failed IAM synchronization operations. Available from MinIO RELEASE.2024-05-07T06-41-25Z onward (Metrics v3).
+    minio_cluster_kms_request_failure_counter_rate:
+      name: V2 KMS Internal Failure Rate
+      desc: Per-second rate of KMS requests that failed with an internal server error. Available from MinIO RELEASE.2022-07-13T23-29-44Z onward (Metrics v2).
 monitor_object_metric_group:
   Minio:
     Cluster Monitoring: Cluster Monitoring
     Resource Monitoring: Resource Monitoring
     S3 Service Monitoring: S3 Service Monitoring
+    Cluster Health and Erasure: Cluster Health and Erasure
+    Capacity and Object Usage: Capacity and Object Usage
+    Node Drive and Process Resources: Node Drive and Process Resources
+    S3 API Requests: S3 API Requests
+    Bucket Replication and Lifecycle: Bucket Replication and Lifecycle
+    External Integrations and Security: External Integrations and Security
