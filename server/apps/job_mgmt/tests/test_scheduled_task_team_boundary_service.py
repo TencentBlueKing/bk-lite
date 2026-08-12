@@ -63,7 +63,7 @@ class TestScheduledTaskCeleryBoundary:
             nonlocal scheduled_task_get_count
             if queryset.model is ScheduledTask:
                 scheduled_task_get_count += 1
-                if scheduled_task_get_count == 2:
+                if scheduled_task_get_count == 1:
                     Script.objects.filter(id=script.id).update(team=[2])
             return original_get(queryset, *args, **kwargs)
 
@@ -85,16 +85,15 @@ class TestScheduledTaskCeleryBoundary:
         original_get = QuerySet.get
         scheduled_task_get_count = 0
 
-        def enable_task_after_unlocked_get(queryset, *args, **kwargs):
+        def enable_task_before_locked_get(queryset, *args, **kwargs):
             nonlocal scheduled_task_get_count
-            result = original_get(queryset, *args, **kwargs)
             if queryset.model is ScheduledTask:
                 scheduled_task_get_count += 1
                 if scheduled_task_get_count == 1:
                     ScheduledTask.objects.filter(id=task.id).update(is_enabled=True)
-            return result
+            return original_get(queryset, *args, **kwargs)
 
-        with patch.object(QuerySet, "get", new=enable_task_after_unlocked_get), patch(
+        with patch.object(QuerySet, "get", new=enable_task_before_locked_get), patch(
             "apps.job_mgmt.tasks._dispatch_execution_job",
             return_value=True,
         ), patch(
@@ -119,7 +118,7 @@ class TestScheduledTaskCeleryBoundary:
             nonlocal scheduled_task_get_count
             if queryset.model is ScheduledTask:
                 scheduled_task_get_count += 1
-                if scheduled_task_get_count == 2:
+                if scheduled_task_get_count == 1:
                     ScheduledTask.objects.filter(id=task.id).update(script=new_script, team=[2])
             return original_get(queryset, *args, **kwargs)
 
@@ -140,16 +139,15 @@ class TestScheduledTaskCeleryBoundary:
         original_get = QuerySet.get
         script_get_count = 0
 
-        def update_script_after_unlocked_get(queryset, *args, **kwargs):
+        def update_script_before_locked_get(queryset, *args, **kwargs):
             nonlocal script_get_count
-            result = original_get(queryset, *args, **kwargs)
             if queryset.model is Script:
                 script_get_count += 1
                 if script_get_count == 1:
                     Script.objects.filter(id=script.id).update(content="echo locked")
-            return result
+            return original_get(queryset, *args, **kwargs)
 
-        with patch.object(QuerySet, "get", new=update_script_after_unlocked_get), patch(
+        with patch.object(QuerySet, "get", new=update_script_before_locked_get), patch(
             "apps.job_mgmt.tasks._dispatch_execution_job",
             return_value=True,
         ):

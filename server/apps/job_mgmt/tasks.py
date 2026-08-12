@@ -147,17 +147,7 @@ def dispatch_pending_job_completion_outbox():
 def execute_scheduled_task(scheduled_task_id: int):
     logger.info(f"[execute_scheduled_task] 开始执行定时任务: scheduled_task_id={scheduled_task_id}")
 
-    # ---- 阶段 1: 锁前预读 + 快速失败 ----
-    # 仅做无锁的纯查询/纯计算,缩短后续临界区持有时间;危险检查、参数解析、目标列表
-    # 解析与"并发策略检查 + run_count 自增 + 创建 PENDING execution"无竞争关系,放锁内只会
-    # 拉长锁等待并放大 broker / cache 抖动对数据库锁的影响。
-    try:
-        st_snapshot = ScheduledTask.objects.select_related("script", "playbook").get(id=scheduled_task_id)
-    except ScheduledTask.DoesNotExist:
-        logger.error(f"[execute_scheduled_task] 定时任务不存在: scheduled_task_id={scheduled_task_id}")
-        return
-
-    # ---- 阶段 2: 临界区(行锁 + 事务)----
+    # ---- 阶段 1: 临界区(行锁 + 事务)----
     # 授权复核后一直持有任务与稳定资源行锁，直到创建 PENDING execution，
     # 防止并发更新让校验结论与执行快照不一致。
     queue_retry_needed = False
@@ -165,8 +155,12 @@ def execute_scheduled_task(scheduled_task_id: int):
     job_type = None
 
     with transaction.atomic():
-        scheduled_task = ScheduledTask.objects.select_for_update().get(id=scheduled_task_id)
-        # 二次确认 is_enabled:锁前检查后到拿到锁之间可能被关闭
+        try:
+            scheduled_task = ScheduledTask.objects.select_for_update().get(id=scheduled_task_id)
+        except ScheduledTask.DoesNotExist:
+            logger.error(f"[execute_scheduled_task] 定时任务不存在: scheduled_task_id={scheduled_task_id}")
+            return
+
         if not scheduled_task.is_enabled:
             if not disable_scheduled_task_and_schedule(scheduled_task_id):
                 logger.error(
@@ -291,7 +285,7 @@ def execute_scheduled_task(scheduled_task_id: int):
             execution_id = execution.id
             logger.info(f"[execute_scheduled_task] 创建执行记录: execution_id={execution.id}, targets={len(target_list)}")
 
-    # ---- 阶段 3: 事务外副作用(QUEUE 重试 / broker 派发)----
+    # ---- 阶段 2: 事务外副作用(QUEUE 重试 / broker 派发)----
     if queue_retry_needed:
         execute_scheduled_task.apply_async(
             args=[scheduled_task_id],
