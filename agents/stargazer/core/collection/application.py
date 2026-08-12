@@ -38,8 +38,8 @@ from core.collection.executor import (
 @dataclass(frozen=True)
 class CollectionApplicationSettings:
     max_active_runs: int = 16
-    max_active_targets: int = 200
-    target_task_window: int = 200
+    max_active_targets: int = 2000
+    target_task_window: int = 2000
     connect_timeout_seconds: float = 5.0
     plugin_timeout_seconds: float = 60.0
     lease_ttl_seconds: float = 600.0
@@ -53,8 +53,8 @@ class CollectionApplicationSettings:
     def from_env(cls) -> "CollectionApplicationSettings":
         return cls(
             max_active_runs=int(os.getenv("MAX_ACTIVE_RUNS", "16")),
-            max_active_targets=int(os.getenv("MAX_ACTIVE_TARGETS", "200")),
-            target_task_window=int(os.getenv("TARGET_TASK_WINDOW", "200")),
+            max_active_targets=int(os.getenv("MAX_ACTIVE_TARGETS", "2000")),
+            target_task_window=int(os.getenv("TARGET_TASK_WINDOW", "2000")),
             connect_timeout_seconds=float(os.getenv("CONNECT_TIMEOUT", "5")),
             plugin_timeout_seconds=float(os.getenv("PLUGIN_TIMEOUT", "60")),
             lease_ttl_seconds=float(os.getenv("RUN_LEASE_TTL", "600")),
@@ -205,6 +205,15 @@ class CollectionApplication:
             "event_loop_lag_seconds": self._loop_lag.latest_seconds,
             "event_loop_lag_p99_seconds": self._loop_lag.p99_seconds,
             "submissions": dict(self._submission_counts),
+            "redis_pool_wait_seconds_total": float(
+                getattr(self._redis, "pool_wait_seconds_total", 0.0) or 0.0
+            ),
+            "redis_pool_timeout_total": float(
+                getattr(self._redis, "pool_timeout_total", 0) or 0
+            ),
+            "redis_pool_exhaustion_total": float(
+                getattr(self._redis, "pool_exhaustion_total", 0) or 0
+            ),
             **self._metrics.snapshot(),
         }
 
