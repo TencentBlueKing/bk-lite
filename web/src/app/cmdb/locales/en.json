@@ -1551,6 +1551,18 @@
         "columns": { "name": "Name", "workload_count": "Workloads", "pod_count": "Pods", "namespace": "Namespace", "workload": "Workload", "workload_type": "Type", "replicas": "Replicas", "node": "Node", "ip_addr": "Pod IP", "request_cpu": "CPU request", "request_memory": "Memory request", "limit_cpu": "CPU limit", "limit_memory": "Memory limit", "role": "Role", "cpu": "CPU", "memory": "Memory", "disk": "Disk" },
         "accessibility": { "topology": "Kubernetes resource topology. Click to focus, right-click for read-only actions.", "legend": "Legend" }
     },
+    "ViewsHub": {
+        "selectInstance": "Select instance",
+        "emptyHint": "Select an instance",
+        "recent": "Recent",
+        "viewDetail": "View details",
+        "setAsCurrent": "Set as current",
+        "modeRoom": "Room",
+        "modeRack": "Rack",
+        "selectModel": "Select model",
+        "workspacePlaceholder": "Canvas area (coming in later tasks)",
+        "unknownView": "Unknown view"
+    },
     "table": "Table",
     "tag": "Tag"
 }
