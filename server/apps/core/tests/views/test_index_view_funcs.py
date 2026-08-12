@@ -62,6 +62,23 @@ class TestCheckFirstLogin:
         assert index_view._check_first_login(user, "A") is False
 
 
+class TestGetClientIp:
+    def test_uses_first_ip_from_x_forwarded_for(self):
+        req = MagicMock()
+        req.META = {"HTTP_X_FORWARDED_FOR": "1.1.1.1, 2.2.2.2", "REMOTE_ADDR": "9.9.9.9"}
+        assert index_view._get_client_ip(req) == "1.1.1.1"
+
+    def test_falls_back_to_remote_addr(self):
+        req = MagicMock()
+        req.META = {"REMOTE_ADDR": "9.9.9.9"}
+        assert index_view._get_client_ip(req) == "9.9.9.9"
+
+    def test_empty_when_no_headers(self):
+        req = MagicMock()
+        req.META = {}
+        assert index_view._get_client_ip(req) == ""
+
+
 class TestParseRequestData:
     def test_parses_json_body(self):
         req = _post({"a": 1, "b": "x"})

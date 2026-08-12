@@ -24,7 +24,6 @@ from apps.core.services.login_auth_request_service import (
     validate_poll_token,
     validate_redirect_origin,
 )
-from apps.core.services.otp_client_ip_service import get_otp_client_ip
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.rpc.base import RpcClient
@@ -106,7 +105,18 @@ def _set_login_auth_browser_cookie_on_response(response, auth_request_id, browse
 
 
 def _get_client_ip(request):
-    return get_otp_client_ip(request)
+    """
+    Get client IP address from request.
+
+    Handles X-Forwarded-For header for proxied requests.
+    """
+    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    if x_forwarded_for:
+        # Take the first IP in the chain (original client)
+        ip = x_forwarded_for.split(",")[0].strip()
+    else:
+        ip = request.META.get("REMOTE_ADDR", "")
+    return ip
 
 
 def _is_safe_relative_callback_url(callback_url: str) -> bool:
