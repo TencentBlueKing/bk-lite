@@ -224,6 +224,37 @@ class TestServiceTimeoutBudget:
         with pytest.raises(ValueError, match="integer between 1 and 290"):
             self._reload_service()
 
+    def test_recursive_feature_work_budget_defaults_to_benchmark_limit(
+        self, monkeypatch
+    ):
+        monkeypatch.delenv(
+            "MAX_RECURSIVE_FEATURE_ENGINEERING_WORK", raising=False
+        )
+
+        service_module = self._reload_service()
+
+        assert service_module.MAX_RECURSIVE_FEATURE_ENGINEERING_WORK == 2_000_000
+
+    def test_recursive_feature_work_budget_can_be_configured(self, monkeypatch):
+        monkeypatch.setenv(
+            "MAX_RECURSIVE_FEATURE_ENGINEERING_WORK", "123456"
+        )
+
+        service_module = self._reload_service()
+
+        assert service_module.MAX_RECURSIVE_FEATURE_ENGINEERING_WORK == 123456
+
+    @pytest.mark.parametrize("invalid_limit", ["0", "-1", "not-a-number"])
+    def test_recursive_feature_work_budget_rejects_invalid_values(
+        self, monkeypatch, invalid_limit
+    ):
+        monkeypatch.setenv(
+            "MAX_RECURSIVE_FEATURE_ENGINEERING_WORK", invalid_limit
+        )
+
+        with pytest.raises(ValueError, match="must be a positive integer"):
+            self._reload_service()
+
 
 class TestMLServicePredict:
     def _make_service(self, steps=3):
@@ -322,3 +353,46 @@ class TestMLServicePredict:
         config = {"steps": 2}
         response = await svc.predict(data, config)
         assert response.metadata.input_data_points == 6
+
+    @pytest.mark.asyncio
+    async def test_recursive_feature_work_budget_rejects_before_model_predict(
+        self, monkeypatch
+    ):
+        service_module = importlib.import_module(
+            "classify_timeseries_server.serving.service"
+        )
+        wrapper_type = type(
+            "GradientBoostingWrapper",
+            (),
+            {
+                "__module__": (
+                    "classify_timeseries_server.training.models.test_wrapper"
+                )
+            },
+        )
+        wrapper = wrapper_type()
+        wrapper.use_feature_engineering = True
+        wrapper.feature_engineer = object()
+
+        svc = self._make_service(steps=3)
+        svc.model.unwrap_python_model.return_value = wrapper
+        monkeypatch.setattr(
+            service_module, "MAX_RECURSIVE_FEATURE_ENGINEERING_WORK", 17
+        )
+        data = [
+            {"timestamp": 1700000000 + i * 60, "value": float(i)}
+            for i in range(5)
+        ]
+
+        response = await svc.predict(data, {"steps": 3})
+
+        assert response.success is False
+        assert response.error.code == "E1002"
+        assert response.error.details == {
+            "error_type": "RecursiveFeatureEngineeringBudgetExceeded",
+            "history_points": 5,
+            "steps": 3,
+            "estimated_work": 18,
+            "limit": 17,
+        }
+        svc.model.predict.assert_not_called()
