@@ -63,14 +63,14 @@ class TestChatServiceFutureTimeout:
 
     def test_future_result_has_timeout(self, chat_service_src):
         """
-        future.result() 必须携带 timeout 参数。
+        整轮 agent 执行必须有超时预算（worker_done.wait(timeout=...)）。
 
-        revert 修复（还原为 `future.result()`）后，此测试应失败。
+        revert 修复（去掉 timeout）后，此测试应失败。
         """
-        match = re.search(r"future\.result\s*\(([^)]*)\)", chat_service_src)
-        assert match, "chat_service.py 中未找到 future.result() 调用"
+        match = re.search(r"worker_done\.wait\s*\(([^)]*)\)", chat_service_src)
+        assert match, "chat_service.py 中未找到 worker_done.wait() 调用"
         args = match.group(1).strip()
-        assert "timeout" in args, f"future.result() 缺少 timeout 参数，当前参数为：({args})。" "没有 timeout 参数时，LLM 卡死会导致 worker 线程永久阻塞（Issue #3718）。"
+        assert "timeout" in args, f"worker_done.wait() 缺少 timeout 参数，当前参数为：({args})。" "没有 timeout 参数时，LLM 卡死会导致调用方永久阻塞（Issue #3718）。"
 
     def test_llm_invoke_timeout_env_var_referenced(self, chat_service_src):
         """
@@ -112,7 +112,9 @@ class TestChatServiceFutureTimeout:
 
         class BlockingGraph:
             async def execute(self, _request):
-                time.sleep(2)
+                # 略长于 AGENT_EXECUTE_TIMEOUT=1，确保触发超时；
+                # 不宜过长，避免后台 daemon 线程拖慢测试进程收尾。
+                time.sleep(1.2)
                 return SimpleNamespace(
                     message="late response",
                     total_tokens=0,
@@ -146,6 +148,12 @@ class TestChatServiceFutureTimeout:
         assert result["success"] is False
         assert result["error_type"] == "TimeoutError"
         assert elapsed < 1.5, f"超时返回仍等待了后台线程: {elapsed:.3f}s"
+
+    def test_timeout_path_cleans_db_connections_in_worker(self, chat_service_src):
+        """worker finally 必须 close_old_connections；超时使用 daemon 线程避免阻塞退出。"""
+        assert "close_old_connections" in chat_service_src
+        assert "timed_out_holder" in chat_service_src
+        assert "daemon=True" in chat_service_src
 
 
 class TestLLMClientFactoryTimeout:

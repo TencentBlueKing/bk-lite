@@ -33,23 +33,32 @@ def _check_interrupt_in_database(execution_id: str) -> bool:
 
     仅在缓存未命中时调用，避免频繁数据库访问。
     使用 exists() 优化查询性能。
-    """
-    # 延迟导入避免循环依赖
-    from apps.opspilot.enum import WorkFlowTaskStatus
-    from apps.opspilot.models import WorkFlowTaskResult
 
-    try:
-        return WorkFlowTaskResult.objects.filter(
-            execution_id=execution_id,
-            status=WorkFlowTaskStatus.INTERRUPTED,
-        ).exists()
-    except Exception as e:
-        logger.warning(
-            "Failed to check interrupt status in database: execution_id=%s, error=%s",
-            execution_id,
-            str(e),
-        )
-        return False
+    本函数可能经 ``sync_to_async(thread_sensitive=False)`` 跑在 asyncio 默认
+    executor 线程上，必须在本线程清理连接，外层 SensitiveThread 的
+    ``close_old_connections`` 清不到这里。
+    """
+    from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
+
+    def _query() -> bool:
+        # 延迟导入避免循环依赖
+        from apps.opspilot.enum import WorkFlowTaskStatus
+        from apps.opspilot.models import WorkFlowTaskResult
+
+        try:
+            return WorkFlowTaskResult.objects.filter(
+                execution_id=execution_id,
+                status=WorkFlowTaskStatus.INTERRUPTED,
+            ).exists()
+        except Exception as e:
+            logger.warning(
+                "Failed to check interrupt status in database: execution_id=%s, error=%s",
+                execution_id,
+                str(e),
+            )
+            return False
+
+    return run_with_db_cleanup(_query)
 
 
 async def _check_interrupt_in_database_async(execution_id: str) -> bool:
@@ -59,6 +68,7 @@ async def _check_interrupt_in_database_async(execution_id: str) -> bool:
     使用 sync_to_async 包装同步 ORM 调用，安全地在异步上下文中执行。
     注意：使用 thread_sensitive=False 避免在 LangGraph 异步节点中触发
     "You cannot submit onto CurrentThreadExecutor from its own thread" 错误。
+    ORM 清理由 ``_check_interrupt_in_database`` 内部的 ``run_with_db_cleanup`` 负责。
     """
     return await sync_to_async(_check_interrupt_in_database, thread_sensitive=False)(execution_id)
 

@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import os
 import re
+import threading
 import uuid
 from typing import Any, Dict, Tuple
 
@@ -225,37 +226,64 @@ class ChatService:
                 raise RuntimeError("当前 Celery worker 使用 eventlet 池，不支持异步执行，请改用 --pool threads 或 solo")
 
             # 调用 agent 的 execute 方法（非流式同步执行）
-            # 在独立线程中创建全新事件循环来执行异步代码，避免与 ASGI 主事件循环交互导致死锁
+            # 在独立 daemon 线程中创建全新事件循环来执行异步代码，避免与 ASGI
+            # 主事件循环交互导致死锁；超时后调用方立即返回，后台线程结束时
+            # 仍会清理本线程 Django 连接（CONN_MAX_AGE=0 下避免 idle 驻留）。
+            from django.db import close_old_connections
+
+            timed_out_holder = {"value": False}
+            worker_result: Dict[str, Any] = {}
+            worker_done = threading.Event()
+
             def _run_in_new_loop():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
+                close_old_connections()
                 try:
                     return loop.run_until_complete(graph.execute(request))
                 finally:
-                    # 清理所有待处理的异步资源（如 httpx 连接池）
                     try:
-                        _cancel_all_tasks(loop)
-                        loop.run_until_complete(loop.shutdown_asyncgens())
-                        loop.run_until_complete(loop.shutdown_default_executor())
+                        if not loop.is_closed() and not timed_out_holder["value"]:
+                            _cancel_all_tasks(loop)
+                            loop.run_until_complete(loop.shutdown_asyncgens())
+                            loop.run_until_complete(loop.shutdown_default_executor())
+                        elif not loop.is_closed():
+                            # 超时路径：不 wait 默认 executor；旁路 ORM 连接由
+                            # run_with_db_cleanup / 工具包装负责。
+                            executor = getattr(loop, "_default_executor", None)
+                            if executor is not None:
+                                executor.shutdown(wait=False, cancel_futures=True)
+                                loop._default_executor = None
                     except Exception:
                         pass
-                    loop.close()
+                    try:
+                        if not loop.is_closed():
+                            loop.close()
+                    except Exception:
+                        pass
+                    close_old_connections()
+
+            def _worker():
+                try:
+                    worker_result["response"] = _run_in_new_loop()
+                except BaseException as exc:  # noqa: BLE001 — 原样传回调用方
+                    worker_result["error"] = exc
+                finally:
+                    worker_done.set()
 
             # 整轮 agent 执行预算（含多轮 LLM + 工具调用），独立于单次 LLM 调用超时
             _agent_timeout = _resolve_agent_execute_timeout()
-            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            timed_out = False
-            try:
-                future = pool.submit(_run_in_new_loop)
-                response = future.result(timeout=_agent_timeout)
-            except concurrent.futures.TimeoutError:
-                timed_out = True
-                # Python 无法强制终止已运行的线程；先尽力取消尚未启动的任务，
-                # 再让工作流立即收敛到失败，不能在 shutdown(wait=True) 中继续阻塞。
-                future.cancel()
-                raise
-            finally:
-                pool.shutdown(wait=not timed_out, cancel_futures=timed_out)
+            worker = threading.Thread(target=_worker, name="opspilot-invoke-chat", daemon=True)
+            worker.start()
+            if not worker_done.wait(timeout=_agent_timeout):
+                timed_out_holder["value"] = True
+                # Python 无法强制终止已运行的线程；调用方立即返回。
+                # daemon 线程在进程退出时不阻塞；若进程仍存活，线程结束时会
+                # 走 _run_in_new_loop.finally 清理本线程 DB 连接。
+                raise concurrent.futures.TimeoutError()
+            if "error" in worker_result:
+                raise worker_result["error"]
+            response = worker_result["response"]
 
             # 构建返回结果
             result = {
