@@ -3,8 +3,10 @@ from contextlib import contextmanager
 
 import pytest
 from django.core.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from apps.operation_analysis.models.models import Directory
+from apps.operation_analysis.serializers.directory_serializers import DirectoryModelSerializer
 
 
 class _ParentWalkTimedOut(Exception):
@@ -64,3 +66,13 @@ def test_directory_allows_valid_reparenting():
 
     assert child.parent == second_root
     assert child.get_level() == 1
+
+
+def test_directory_serializer_returns_validation_error_for_cycle_parent():
+    persisted_root = _directory(1, "root")
+    child = _directory(2, "child", parent=persisted_root)
+    serializer = object.__new__(DirectoryModelSerializer)
+    serializer.instance = _directory(1, "root")
+
+    with pytest.raises(DRFValidationError, match="cannot contain cycles"):
+        serializer.validate_parent(child)

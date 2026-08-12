@@ -2,6 +2,7 @@
 # @File: directory_serializers.py
 # @Time: 2025/7/18 10:59
 # @Author: windyzhao
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
@@ -13,6 +14,14 @@ from apps.operation_analysis.services.import_export.view_sets import normalize_c
 
 class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
     permission_key = "directory"
+
+    def validate_parent(self, parent):
+        candidate = Directory(pk=getattr(self.instance, "pk", None), parent=parent)
+        try:
+            candidate.clean()
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages) from error
+        return parent
 
     class Meta:
         model = Directory
