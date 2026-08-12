@@ -104,39 +104,56 @@ export const getRecordEntries = (record: Record<string, unknown>) =>
     value: toDisplayFieldValue(value),
   }));
 
-interface ResolveTableLikeColumnsInput<RecordType extends Record<string, any>> {
-  configuredColumns?: TableColumnConfigItem[];
+interface TableLikeColumnConfigItem {
+  key: string;
+  title: string;
+  visible: boolean;
+  order: number;
+}
+
+interface ResolveTableLikeColumnsInput<
+  RecordType extends Record<string, any>,
+  ColumnType extends TableLikeColumnConfigItem,
+> {
+  configuredColumns?: ColumnType[];
   schemaFields?: ResponseFieldDefinition[];
   rows: RecordType[];
 }
 
 export function resolveTableLikeColumns<
   RecordType extends Record<string, any>,
+  ColumnType extends TableLikeColumnConfigItem = TableColumnConfigItem,
 >({
   configuredColumns = [],
   schemaFields = [],
   rows,
-}: ResolveTableLikeColumnsInput<RecordType>): TableColumnConfigItem[] {
+}: ResolveTableLikeColumnsInput<RecordType, ColumnType>): ColumnType[] {
   if (configuredColumns.length > 0) {
     return [...configuredColumns].sort((a, b) => a.order - b.order);
   }
 
   if (schemaFields.length > 0) {
-    return schemaFields.map((field, index) => ({
-      key: field.key,
-      title: field.title || field.key,
-      visible: true,
-      order: index,
-    }));
+    return schemaFields.map(
+      (field, index) =>
+        ({
+          key: field.key,
+          title: field.title || field.key,
+          visible: true,
+          order: index,
+        }) as ColumnType,
+    );
   }
 
   if (rows.length > 0) {
-    return Object.keys(rows[0]).map((key, index) => ({
-      key,
-      title: key,
-      visible: true,
-      order: index,
-    }));
+    return Object.keys(rows[0]).map(
+      (key, index) =>
+        ({
+          key,
+          title: key,
+          visible: true,
+          order: index,
+        }) as ColumnType,
+    );
   }
 
   return [];
