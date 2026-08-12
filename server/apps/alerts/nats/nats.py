@@ -8,6 +8,7 @@
 
 import datetime
 import os
+import secrets
 from types import SimpleNamespace
 from typing import Any, Dict
 from zoneinfo import ZoneInfo
@@ -31,6 +32,27 @@ from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
 TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log", "lite-apm"}
+PER_EVENT_ACK_MODE = "per_event_v1"
+PER_EVENT_ACK_MAX_EVENTS = 200
+PER_EVENT_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
+
+
+def _event_ack(delivery_id, ingestion):
+    if ingestion.get("accepted", 0):
+        status = "accepted"
+    elif ingestion.get("duplicates", 0):
+        status = "duplicate"
+    elif ingestion.get("rejected", 0):
+        status = "rejected"
+    else:
+        status = "errored"
+    return {
+        "delivery_id": delivery_id,
+        "status": status,
+        # duplicate 是幂等终态；rejected 可能由缺字段、校验或滚动混部
+        # 引起，生产者需要保留投递意图并在修复后重试。
+        "retryable": status in {"rejected", "errored"},
+    }
 
 
 def _positive_int_env(name, default):
@@ -760,6 +782,8 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         source_id = kwargs.pop("source_id", "")
         events = kwargs.pop("events", [])
         pusher = kwargs.pop("pusher", None)
+        ack_mode = kwargs.pop("ack_mode", "")
+        ack_token = kwargs.pop("ack_token", "")
 
         # 参数校验
         if not source_id:
@@ -777,6 +801,24 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 "data": {},
                 "message": "Missing pusher identifier.",
             }
+
+        per_event_ack_authorized = False
+        if ack_mode == PER_EVENT_ACK_MODE:
+            if (
+                pusher not in TRUSTED_INTERNAL_PUSHERS
+                or not PER_EVENT_ACK_TOKEN
+                or not secrets.compare_digest(str(ack_token), PER_EVENT_ACK_TOKEN)
+            ):
+                logger.warning("[AlertEvent] 非可信 pusher 不允许逐事件 ACK: pusher=%s", pusher)
+                return {"result": False, "data": {}, "message": "Per-event acknowledgement is restricted."}
+            if len(events) > PER_EVENT_ACK_MAX_EVENTS:
+                logger.warning("[AlertEvent] 逐事件 ACK 批次超限: pusher=%s event_count=%s", pusher, len(events))
+                return {
+                    "result": False,
+                    "data": {"max_events": PER_EVENT_ACK_MAX_EVENTS},
+                    "message": "Too many events for per-event acknowledgement.",
+                }
+            per_event_ack_authorized = True
 
         event_source = AlertSource.objects.filter(
             source_id=source_id,
@@ -796,12 +838,17 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         for event in events:
             normalized_event = dict(event or {})
             normalized_event.setdefault("push_source_id", pusher)
+            if not per_event_ack_authorized:
+                # lifecycle_* 会改变接收幂等身份，只允许带共享凭据的逐事件
+                # ACK 协议使用。旧批量协议继续兼容组织与普通事件字段，但
+                # 不能仅凭消息体中的 pusher 提升新的可信身份字段。
+                normalized_event.pop("lifecycle_action", None)
+                normalized_event.pop("lifecycle_generation", None)
             normalized_events.append(normalized_event)
 
         # 内部约定：NATS 生效源（event_source 已校验）+ 明确允许的内部推送方，双重判断为可信内部推送。
         # 此时采信每个 event 自带的 organizations 作为归属组织，无需走组织级 secret。
         trusted_internal = pusher in TRUSTED_INTERNAL_PUSHERS
-
         # 创建适配器（内部调用无需密钥验证）
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)
         # 传递空密钥，因为不需要认证
@@ -811,25 +858,62 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         logger.info("[AlertEvent] 开始处理 %s 条事件 source_id=%s pusher=%s", len(events), source_id, pusher)
 
         # 处理告警事件
-        ingestion = adapter.main() or {
-            "received": len(events),
-            "accepted": len(events),
-            "skipped": 0,
-            "errored": 0,
-        }
+        event_results = None
+        if ack_mode == PER_EVENT_ACK_MODE:
+            # receiver-first 兼容扩展：只有新生产者显式 opt-in 才逐条处理并返回身份化 ACK；
+            # 旧生产者仍走原批量路径和原 result/data 契约。
+            ingestions = []
+            event_results = []
+            for index, normalized_event in enumerate(normalized_events):
+                delivery_id = normalized_event.get("delivery_id", str(index))
+                normalized_event = dict(normalized_event)
+                normalized_event.pop("delivery_id", None)
+                single_adapter = adapter_class(
+                    alert_source=event_source,
+                    secret="",
+                    events=[normalized_event],
+                    trusted_internal=trusted_internal,
+                )
+                single_ingestion = single_adapter.main() or {
+                    "received": 1,
+                    "accepted": 0,
+                    "skipped": 0,
+                    "errored": 1,
+                    "duplicates": 0,
+                    "rejected": 0,
+                }
+                ingestions.append(single_ingestion)
+                event_results.append(_event_ack(delivery_id, single_ingestion))
+            ingestion = {
+                key: sum(item.get(key, 0) for item in ingestions)
+                for key in ("received", "accepted", "skipped", "errored", "duplicates", "rejected")
+            }
+        else:
+            ingestion = adapter.main() or {
+                "received": len(events),
+                "accepted": len(events),
+                "skipped": 0,
+                "errored": 0,
+            }
 
         logger.info("[AlertEvent] 成功处理 %s 条事件 pusher=%s source_id=%s", len(events), pusher, source_id)
 
         fully_accepted = ingestion.get("skipped", 0) == 0 and ingestion.get("errored", 0) == 0
+        if event_results is not None:
+            # duplicate 是幂等终态；rejected/errored 仍失败。旧模式 result 语义完全不变。
+            fully_accepted = all(item["status"] in {"accepted", "duplicate"} for item in event_results)
+        data = {
+            "processed_events": ingestion.get("accepted", 0),
+            "ingestion": ingestion,
+            "source_id": source_id,
+            "pusher": pusher,
+            "timestamp": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        if event_results is not None:
+            data["event_results"] = event_results
         return {
             "result": fully_accepted,
-            "data": {
-                "processed_events": ingestion.get("accepted", 0),
-                "ingestion": ingestion,
-                "source_id": source_id,
-                "pusher": pusher,
-                "timestamp": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
-            },
+            "data": data,
             "message": ("Events received and processed successfully." if fully_accepted else "Alert events were only partially accepted."),
         }
 

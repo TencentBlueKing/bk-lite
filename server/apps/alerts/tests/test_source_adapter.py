@@ -183,6 +183,26 @@ def test_add_start_time_defaults():
     assert "start_time" in data
 
 
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_trusted_lifecycle_generation_is_the_ingress_identity(event_levels, restful_source):
+    adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
+    first = Event(title="第一次升级", level="1", start_time=timezone.now(), external_id="alert-1")
+    second = Event(title="第二次升级", level="0", start_time=first.start_time, external_id="alert-1")
+
+    adapter.add_base_fields(
+        first,
+        {"lifecycle_action": "upgraded", "lifecycle_generation": "generation-1", "organizations": [1]},
+    )
+    adapter.add_base_fields(
+        second,
+        {"lifecycle_action": "upgraded", "lifecycle_generation": "generation-2", "organizations": [1]},
+    )
+
+    assert first.ingest_key != second.ingest_key
+    assert AlertSourceAdapter.build_ingress_dedup_key(first) == first.ingest_key
+
+
 def test_normalize_payload_valid():
     src = AlertSource(source_type="restful", config={})
     adapter = RestFulAdapter.__new__(RestFulAdapter)
@@ -292,6 +312,63 @@ def test_create_events_persists(event_levels, restful_source):
     assert Event.objects.filter(title="事件A").exists()
     # bulk_save_events 返回分批列表
     assert bulk
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_create_events_reports_duplicate_and_rejected_details(event_levels, restful_source):
+    adapter = RestFulAdapter(alert_source=restful_source)
+    valid = {
+        "title": "事件A",
+        "level": "0",
+        "item": "cpu",
+        "external_id": "detail-ext",
+        "action": "created",
+        "start_time": "1700000000",
+    }
+
+    adapter.create_events([valid])
+    assert adapter.last_ingestion_result == {
+        "received": 1,
+        "accepted": 1,
+        "skipped": 0,
+        "errored": 0,
+        "duplicates": 0,
+        "rejected": 0,
+    }
+
+    adapter.create_events([valid, {"level": "0"}])
+    assert adapter.last_ingestion_result == {
+        "received": 2,
+        "accepted": 0,
+        "skipped": 2,
+        "errored": 0,
+        "duplicates": 1,
+        "rejected": 1,
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_trusted_lifecycle_action_separates_created_and_upgraded_identity(event_levels, restful_source):
+    adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
+    base = {
+        "title": "CPU",
+        "level": "0",
+        "item": "cpu",
+        "external_id": "alert-1",
+        "action": "created",
+        "start_time": "1700000000",
+        "push_source_id": "lite-monitor",
+    }
+    created = adapter.create_events(
+        [{**base, "lifecycle_action": "created", "lifecycle_generation": "created-1"}]
+    )
+    upgraded = adapter.create_events(
+        [{**base, "lifecycle_action": "upgraded", "lifecycle_generation": "upgraded-1"}]
+    )
+    assert sum(len(batch) for batch in created) == 1
+    assert sum(len(batch) for batch in upgraded) == 1
 
 
 # --------------------------------------------------------------------------

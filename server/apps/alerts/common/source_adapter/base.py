@@ -255,11 +255,16 @@ class AlertSourceAdapter(ABC):
             )
         bulk_events = self.bulk_save_events(events)
         accepted = sum(len(batch or []) for batch in (bulk_events or []))
+        rejected = skipped_missing
+        duplicates = max(0, len(add_events) - accepted - rejected - errored)
         self.last_ingestion_result = {
             "received": len(add_events),
             "accepted": accepted,
-            "skipped": max(0, len(add_events) - accepted - errored),
+            # 保留既有 skipped 汇总语义；细分字段供显式 opt-in 的逐事件 ACK 使用。
+            "skipped": rejected + duplicates,
             "errored": errored,
+            "duplicates": duplicates,
+            "rejected": rejected,
         }
         return bulk_events
 
@@ -385,6 +390,27 @@ class AlertSourceAdapter(ABC):
                 self.alert_source.source_id,
             )
             logger.debug("[AlertSource] 已生成 external_id for event: %s", event.event_id)
+
+        # 逐事件 ACK 的 delivery_id 只用于响应关联，不参与接收幂等身份。
+        # 必须在 external_id 回填后计算，否则缺少上游 ID 的 created/upgraded
+        # 会回退到相同业务 action，丢失生命周期代次隔离。
+        lifecycle_action = alert.get("lifecycle_action")
+        if lifecycle_action not in {"created", "upgraded", "recovered", "closed"}:
+            lifecycle_action = None
+        if self.trusted_internal and lifecycle_action:
+            lifecycle_generation = str(alert.get("lifecycle_generation") or "").strip()
+            lifecycle_identity = (
+                f"{lifecycle_action}:{lifecycle_generation}"
+                if lifecycle_generation
+                else lifecycle_action
+            )
+            event.ingest_key = Event.build_ingest_key(
+                getattr(event.source, "id", None),
+                event.push_source_id,
+                event.external_id,
+                lifecycle_identity,
+                event.start_time,
+            )
 
     @staticmethod
     def build_ingress_dedup_key(event: Event) -> Optional[str]:
