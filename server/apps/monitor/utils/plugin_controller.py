@@ -20,6 +20,7 @@ from apps.rpc.node_mgmt import NodeMgmt
 
 _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "default",
+    "join",
     "lower",
     "urlencode",
     "replace",
@@ -64,6 +65,8 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "ip_version",
     "jmx_url",
     "logical_instance_value",
+    "metric_extensions",
+    "metrics_api_version",
     "metrics_modules",
     "monitor_plugin_id",
     "namespace",
@@ -93,6 +96,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "send",
     "server",
     "server_url",
+    "scheme",
     "sslmode",
     "storage_instance_key",
     "timeout",

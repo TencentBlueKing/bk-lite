@@ -46,6 +46,7 @@ export interface MetricInfo {
   data_type?: string;
   unit?: string;
   description?: string;
+  display_description?: string;
   dimensions?: string[];
   is_ifmib?: boolean;
 }
