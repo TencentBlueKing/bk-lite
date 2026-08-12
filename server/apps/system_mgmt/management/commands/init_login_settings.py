@@ -60,6 +60,12 @@ def init_builtin_platform_login_auth():
 
 
 class Command(BaseCommand):
+    """初始化登录设置及遗留微信 LoginModule 配置。
+
+    认证源管理入口已关闭。遗留微信记录只用于旧扫码入口兼容，目标是集成中心
+    WeChat Provider 的 ``login_auth`` capability；禁止扩展该 LoginModule 配置。
+    """
+
     help = "初始登陆化设置"
 
     def handle(self, *args, **options):

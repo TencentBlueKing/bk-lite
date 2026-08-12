@@ -13,6 +13,12 @@ BK_LOGIN_APP_TOKEN_MASK = "******"
 
 
 class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
+    """遗留认证源配置模型。
+
+    管理入口已关闭，不再扩展此模型或基于它新增认证能力。认证与用户同步
+    应迁移至集成中心 Provider，分别通过 ``login_auth``、``user_sync``
+    capability 接入；存量记录仅为旧登录和同步链路兼容保留。
+    """
     name = models.CharField(max_length=100)
     source_type = models.CharField(max_length=50, default="wechat")
     app_id = models.CharField(max_length=100, null=True, blank=True)
@@ -101,6 +107,7 @@ class LoginModule(models.Model, EncryptMixin, PeriodicTaskUtils):
         return config
 
     def create_sync_periodic_task(self):
+        # 遗留 bk_lite 同步任务：迁移到集成中心 user_sync Provider 后移除。
         sync_time = self.other_config.get("sync_time", "00:00")
         task_name = f"sync_user_group_{self.id}"
         task_args = f"[{self.id}]"

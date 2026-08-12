@@ -1,5 +1,8 @@
 'use client';
 
+// 遗留页面：菜单入口已关闭，后续认证源配置迁移至集成中心 Provider。
+// 保留此文件仅用于清理过渡期兼容代码，禁止新增入口或业务逻辑。
+
 import React, { useEffect, useRef, useState } from 'react';
 import { message, Tag } from 'antd';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';

@@ -68,28 +68,19 @@ export const useSecurityApi = () => {
   }
 
   /**
-   * Get auth sources
-   * @returns Promise with auth sources data
+   * @deprecated 认证源菜单与后端 LoginModule 路由已关闭。
+   * 后续认证源配置迁移至集成中心 Provider；保留该封装仅供遗留页面代码清理期间参考。
    */
   async function getAuthSources(): Promise<any> {
     return await get('/system_mgmt/login_module/');
   }
 
-  /**
-   * Update auth source
-   * @param id - Auth source ID
-   * @param data - Updated auth source data
-   * @returns Promise with updated auth source
-   */
+  /** @deprecated 同 getAuthSources。 */
   async function updateAuthSource(id: number, data: any): Promise<any> {
     return await patch(`/system_mgmt/login_module/${id}/`, data);
   }
 
-  /**
-   * Create auth source
-   * @param data - New auth source data
-   * @returns Promise with created auth source
-   */
+  /** @deprecated 同 getAuthSources。 */
   async function createAuthSource(data: {
     name: string;
     source_type: string;
@@ -106,20 +97,12 @@ export const useSecurityApi = () => {
     return await post('/system_mgmt/login_module/', data);
   }
 
-  /**
-   * Sync auth source data
-   * @param id - Auth source ID
-   * @returns Promise with sync result
-   */
+  /** @deprecated 同 getAuthSources；用户同步应使用集成中心 user_sync Provider。 */
   async function syncAuthSource(id: number): Promise<any> {
     return await patch(`/system_mgmt/login_module/${id}/sync_data/`);
   }
 
-  /**
-   * Delete auth source
-   * @param id - Auth source ID
-   * @returns Promise with delete result
-   */
+  /** @deprecated 同 getAuthSources。 */
   async function deleteAuthSource(id: number): Promise<any> {
     return await del(`/system_mgmt/login_module/${id}/`);
   }
