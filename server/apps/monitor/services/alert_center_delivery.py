@@ -41,14 +41,10 @@ def enqueue_alert_center_deliveries(alerts, action, *, notifier, operator="", re
     if not ALERT_CENTER_OUTBOX_ENABLED or not alerts:
         return []
 
-    try:
-        alert_channels = {
-            alert.id: notifier._resolve_alert_center_channel_ids(alert)
-            for alert in alerts
-        }
-    except Exception:
-        logger.exception("查询告警中心通道失败，保留 legacy pending 等待周期对账")
-        return []
+    alert_channels = {
+        alert.id: [int(value) for value in notifier._resolve_notice_type_ids(alert) if str(value).isdigit()]
+        for alert in alerts
+    }
     target_alerts = [alert for alert in alerts if alert_channels[alert.id]]
     if not target_alerts:
         return []
@@ -85,6 +81,7 @@ def enqueue_alert_center_deliveries(alerts, action, *, notifier, operator="", re
         if created_ids:
             MonitorAlert.objects.filter(id__in=alert_ids).update(alert_center_notified=False)
             transaction.on_commit(lambda ids=tuple(created_ids): _schedule_deliveries(ids))
+        MonitorAlert.objects.filter(id__in=alert_ids).update(alert_center_delivery_backfilled=True)
     return created_ids
 
 
@@ -109,7 +106,11 @@ def _ack_result(send_result, delivery_id):
             return False, bool(item.get("retryable", status == "errored")), status or "invalid acknowledgement"
     if send_result.get("result") is True:
         return True, False, ""
-    return False, True, send_result.get("message") or "delivery failed"
+    return (
+        False,
+        bool(send_result.get("retryable", True)),
+        send_result.get("code") or send_result.get("message") or "delivery failed",
+    )
 
 
 def deliver_alert_center_delivery(record_id):
@@ -149,7 +150,18 @@ def deliver_alert_center_delivery(record_id):
         "events": [payload],
     }
     try:
-        send_result = SystemMgmtUtils.send_msg_with_channel(record.channel_id, "", content, [])
+        send_result = SystemMgmtUtils.dispatch_notification(
+            delivery_key=delivery_id,
+            channel_id=record.channel_id,
+            organization_ids=payload.get("organizations") or [],
+            recipients=[],
+            title="",
+            body=payload.get("description") or payload.get("title") or "alert event",
+            event_payload=payload,
+            required_delivery_mode="alert_event_copy",
+            producer="lite-monitor",
+            ack_mode="per_event_v1",
+        )
         success, retryable, error = _ack_result(send_result, delivery_id)
     except Exception as exc:
         success, retryable, error = False, True, str(exc)
@@ -197,7 +209,7 @@ def backfill_legacy_alerts():
     """有界对账存量告警；成功旧投递会由接收端幂等去重。"""
     alerts = list(
         MonitorAlert.objects.filter(
-            Q(alert_center_delivery_backfilled=False) | Q(alert_center_delivery_backfilled__isnull=True)
+            alert_center_delivery_backfilled=False
         )
         .filter(Q(alert_center_notified=False) | Q(status="new"))
         .order_by("id")[:OUTBOX_BATCH_SIZE]
@@ -207,12 +219,10 @@ def backfill_legacy_alerts():
     policies = MonitorPolicy.objects.in_bulk({alert.policy_id for alert in alerts if alert.policy_id})
     from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 
-    with transaction.atomic():
-        for alert in alerts:
-            action = "created" if alert.status == "new" else alert.status
-            notifier = AlertLifecycleNotifier(policies.get(alert.policy_id), policies_by_id=policies)
-            enqueue_alert_center_deliveries([alert], action, notifier=notifier)
-        MonitorAlert.objects.filter(id__in=[alert.id for alert in alerts]).update(alert_center_delivery_backfilled=True)
+    for alert in alerts:
+        action = "created" if alert.status == "new" else alert.status
+        notifier = AlertLifecycleNotifier(policies.get(alert.policy_id), policies_by_id=policies)
+        enqueue_alert_center_deliveries([alert], action, notifier=notifier)
     return len(alerts)
 
 

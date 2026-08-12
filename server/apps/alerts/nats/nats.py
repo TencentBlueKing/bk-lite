@@ -798,6 +798,9 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             }
 
         if ack_mode == PER_EVENT_ACK_MODE:
+            if pusher not in TRUSTED_INTERNAL_PUSHERS:
+                logger.warning("[AlertEvent] 非可信 pusher 不允许逐事件 ACK: pusher=%s", pusher)
+                return {"result": False, "data": {}, "message": "Per-event acknowledgement is restricted."}
             if len(events) > PER_EVENT_ACK_MAX_EVENTS:
                 logger.warning("[AlertEvent] 逐事件 ACK 批次超限: pusher=%s event_count=%s", pusher, len(events))
                 return {
@@ -829,12 +832,6 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         # 内部约定：NATS 生效源（event_source 已校验）+ 明确允许的内部推送方，双重判断为可信内部推送。
         # 此时采信每个 event 自带的 organizations 作为归属组织，无需走组织级 secret。
         trusted_internal = pusher in TRUSTED_INTERNAL_PUSHERS
-        if ack_mode == PER_EVENT_ACK_MODE and not trusted_internal:
-            # Per-event ACK changes only response granularity. It must not be
-            # used as an authorization signal; untrusted producers retain the
-            # same organization resolution and payload trust boundary.
-            logger.info("[AlertEvent] 非内置 pusher 使用逐事件 ACK（保持非可信数据边界）: pusher=%s", pusher)
-
         # 创建适配器（内部调用无需密钥验证）
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)
         # 传递空密钥，因为不需要认证

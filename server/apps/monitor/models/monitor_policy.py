@@ -232,10 +232,9 @@ class MonitorAlert(TimeInfo):
     notice_logs = models.JSONField(default=list, verbose_name="通知记录")
     alert_center_notified = models.BooleanField(default=True, verbose_name="告警中心已同步")
     alert_center_retry_count = models.IntegerField(default=0, verbose_name="告警中心通知重试次数")
-    # Keep nullable during the receiver-first rolling migration. Older writers
-    # do not know this column and therefore insert NULL until every instance is
-    # upgraded; the bounded reconciler treats NULL exactly like False.
-    alert_center_delivery_backfilled = models.BooleanField(null=True, default=True, verbose_name="告警中心投递意图已对账")
+    # Receiver-first rollout 中保持 False，直到 outbox 明确完成渠道解析与意图落库。
+    # 这样 producer 关闭期和进程在生命周期提交后退出的窗口都会由有界对账收敛。
+    alert_center_delivery_backfilled = models.BooleanField(default=False, verbose_name="告警中心投递意图已对账")
 
     class Meta:
         verbose_name = "监控告警"

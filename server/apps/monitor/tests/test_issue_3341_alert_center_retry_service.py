@@ -68,14 +68,10 @@ def test_outbox_rollback_keeps_legacy_created_retry_enabled(monkeypatch):
 def test_backfill_reconciles_legacy_created_rows_that_still_look_notified(alert_center_channel, monkeypatch):
     alert = _alert(
         alert_center_channel,
-        alert_center_delivery_backfilled=None,
+        alert_center_delivery_backfilled=False,
         alert_center_notified=True,
     )
     monkeypatch.setattr("apps.monitor.services.alert_center_delivery._schedule_deliveries", lambda ids: None)
-    monkeypatch.setattr(
-        "apps.monitor.utils.system_mgmt_api.SystemMgmtUtils.list_notification_channels",
-        lambda ids: [{"id": alert_center_channel.id, "delivery_mode": "alert_event_copy"}],
-    )
 
     assert backfill_legacy_alerts() == 1
 
@@ -89,10 +85,6 @@ def test_backfill_reconciles_legacy_created_rows_that_still_look_notified(alert_
 
 def test_created_and_recovered_keep_independent_ordered_immutable_payloads(alert_center_channel, monkeypatch):
     monkeypatch.setattr("apps.monitor.services.alert_center_delivery._schedule_deliveries", lambda ids: None)
-    monkeypatch.setattr(
-        "apps.monitor.utils.system_mgmt_api.SystemMgmtUtils.list_notification_channels",
-        lambda ids: [{"id": alert_center_channel.id, "delivery_mode": "alert_event_copy"}],
-    )
     alert = _alert(alert_center_channel)
     notifier = AlertLifecycleNotifier(SimpleNamespace(id=7, name="CPU 策略", organizations=[1], notice=True))
 
@@ -123,7 +115,7 @@ def test_later_generation_cannot_overtake_pending_created(alert_center_channel, 
     second = MonitorAlertCenterDelivery.objects.create(
         alert=alert, action="recovered", generation=2, delivery_id="recovered-2", channel_id=alert_center_channel.id, payload={"title": "second"}
     )
-    send = mocker.patch("apps.monitor.services.alert_center_delivery.SystemMgmtUtils.send_msg_with_channel")
+    send = mocker.patch("apps.monitor.services.alert_center_delivery.SystemMgmtUtils.dispatch_notification")
 
     assert deliver_alert_center_delivery(second.id) is False
     send.assert_not_called()
@@ -133,15 +125,18 @@ def test_later_generation_cannot_overtake_pending_created(alert_center_channel, 
     assert second.status == MonitorAlertCenterDelivery.Status.PENDING
 
 
-def test_outbox_enabled_skips_legacy_nats_but_keeps_pending(alert_center_channel, mocker, monkeypatch):
+def test_outbox_rollout_keeps_legacy_delivery_and_pending_until_ack(alert_center_channel, mocker, monkeypatch):
     alert = _alert(alert_center_channel, alert_center_notified=False)
     notifier = AlertLifecycleNotifier(SimpleNamespace(id=7, name="CPU 策略", organizations=[1], notice=True))
     monkeypatch.setattr(notifier, "enqueue_alert_center_deliveries", lambda *args, **kwargs: [])
-    send = mocker.patch("apps.monitor.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel")
+    send = mocker.patch(
+        "apps.monitor.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel",
+        return_value={"result": False, "message": "temporary"},
+    )
 
     notifier.notify_alerts([alert], "created")
 
-    send.assert_not_called()
+    send.assert_called_once()
     alert.refresh_from_db()
     assert alert.alert_center_notified is False
 
@@ -156,7 +151,7 @@ def test_stale_delivery_finalize_is_fenced_by_attempt_generation(alert_center_ch
         MonitorAlertCenterDelivery.objects.filter(id=delivery.id).update(attempts=2)
         return {"result": True, "data": {}}
 
-    monkeypatch.setattr("apps.monitor.services.alert_center_delivery.SystemMgmtUtils.send_msg_with_channel", race)
+    monkeypatch.setattr("apps.monitor.services.alert_center_delivery.SystemMgmtUtils.dispatch_notification", race)
 
     assert deliver_alert_center_delivery(delivery.id) is False
     delivery.refresh_from_db()
@@ -177,3 +172,34 @@ def test_stale_delivery_finalize_is_fenced_by_attempt_generation(alert_center_ch
 )
 def test_ack_contract_supports_new_and_legacy_receivers(response, expected):
     assert _ack_result(response, "d") == expected
+
+
+def test_new_alert_stays_unreconciled_until_outbox_intent_is_persisted(alert_center_channel):
+    alert = _alert(alert_center_channel)
+    assert alert.alert_center_delivery_backfilled is False
+
+
+def test_terminal_channel_boundary_failure_is_not_retried(alert_center_channel, monkeypatch):
+    alert = _alert(alert_center_channel, alert_center_notified=False)
+    delivery = MonitorAlertCenterDelivery.objects.create(
+        alert=alert,
+        action="created",
+        generation=1,
+        delivery_id="forbidden",
+        channel_id=alert_center_channel.id,
+        payload={"title": "first", "organizations": [1]},
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.SystemMgmtUtils.dispatch_notification",
+        lambda **kwargs: {
+            "result": False,
+            "code": "channel_forbidden",
+            "retryable": False,
+            "message": "forbidden",
+        },
+    )
+
+    assert deliver_alert_center_delivery(delivery.id) is False
+    delivery.refresh_from_db()
+    assert delivery.status == MonitorAlertCenterDelivery.Status.FAILED
+    assert delivery.next_retry_at is None

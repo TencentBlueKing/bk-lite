@@ -271,9 +271,6 @@ class SystemMgmt(object):
             include_children=include_children,
         )
 
-    def list_notification_channels(self, channel_ids):
-        return self.client.run("list_notification_channels", channel_ids=channel_ids)
-
     def search_notification_recipients_scoped(
         self,
         actor_context,
@@ -301,6 +298,9 @@ class SystemMgmt(object):
         title,
         body,
         event_payload,
+        required_delivery_mode="",
+        producer="lite-apm",
+        ack_mode="",
     ):
         return self.client.run(
             "dispatch_notification",
@@ -311,6 +311,9 @@ class SystemMgmt(object):
             title=title,
             body=body,
             event_payload=event_payload,
+            required_delivery_mode=required_delivery_mode,
+            producer=producer,
+            ack_mode=ack_mode,
         )
 
     def probe_notification_channel(self, channel_id):

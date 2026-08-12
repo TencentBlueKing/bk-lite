@@ -766,7 +766,7 @@ def test_send_msg_with_channel_channel_not_found():
     assert result["result"] is False
 
 
-def test_list_notification_channels_exposes_capability_without_private_config():
+def test_monitor_alert_copy_dispatch_is_capability_scoped_and_returns_ack(monkeypatch):
     channel = Channel.objects.create(
         name="告警中心",
         channel_type=ChannelChoices.NATS,
@@ -775,21 +775,47 @@ def test_list_notification_channels_exposes_capability_without_private_config():
         team=[1],
     )
 
-    result = nats_api.list_notification_channels([channel.id, "invalid"])
+    monkeypatch.setattr(
+        "apps.system_mgmt.nats.channels.send_msg_with_channel",
+        lambda *args, **kwargs: {
+            "result": True,
+            "data": {
+                "event_results": [
+                    {"delivery_id": "delivery-1", "status": "accepted", "retryable": False}
+                ]
+            },
+        },
+    )
+    result = nats_api.dispatch_notification(
+        delivery_key="delivery-1",
+        channel_id=channel.id,
+        organization_ids=[1],
+        recipients=[],
+        title="",
+        body="alert",
+        event_payload={"delivery_id": "delivery-1", "organizations": [1]},
+        required_delivery_mode="alert_event_copy",
+        producer="lite-monitor",
+        ack_mode="per_event_v1",
+    )
 
     assert result["result"] is True
-    assert result["data"] == [
-        {
-            "id": channel.id,
-            "name": "告警中心",
-            "channel_type": "nats",
-            "description": "alert copy",
-            "delivery_mode": "alert_event_copy",
-            "recipient_mode": "none",
-            "availability": "available",
-        }
-    ]
-    assert "config" not in result["data"][0]
+    assert result["data"]["event_results"][0]["delivery_id"] == "delivery-1"
+
+    forbidden = nats_api.dispatch_notification(
+        delivery_key="delivery-2",
+        channel_id=channel.id,
+        organization_ids=[999],
+        recipients=[],
+        title="",
+        body="alert",
+        event_payload={},
+        required_delivery_mode="alert_event_copy",
+        producer="lite-monitor",
+        ack_mode="per_event_v1",
+    )
+    assert forbidden["code"] == "channel_forbidden"
+    assert forbidden["retryable"] is False
 
 
 def test_get_wechat_settings():

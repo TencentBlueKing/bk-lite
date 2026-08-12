@@ -71,12 +71,8 @@ class AlertLifecycleNotifier:
         for (channel_id, notice_users_tuple), group_alerts in groups.items():
             notice_users = list(notice_users_tuple)
             try:
-                channel = Channel.objects.filter(id=channel_id).first()
-                if self._is_alert_center_channel(channel) and self._alert_center_outbox_enabled():
-                    # outbox 已在同一事务保存不可变意图；即时层只继续发送普通通知，
-                    # 避免 legacy NATS 与 outbox 各投一次产生双写。
-                    alert_center_target_ids.update(alert.id for alert in group_alerts)
-                    continue
+                # 灰度期间保留 legacy 即时投递；outbox 使用稳定 payload 身份，
+                # receiver 会把响应丢失后的双投收敛为 duplicate。关闭开关即可回滚。
                 results = self._send_to_channel(channel_id, notice_users, group_alerts, action, operator, reason, notify_scope)
                 for alert, log_entry in results:
                     alert_log_entries[alert.id].append(log_entry)
@@ -167,13 +163,6 @@ class AlertLifecycleNotifier:
             operator=operator,
             reason=reason,
         )
-
-    def _resolve_alert_center_channel_ids(self, alert):
-        configured_ids = [int(value) for value in self._resolve_notice_type_ids(alert) if str(value).isdigit()]
-        if not configured_ids:
-            return []
-        result = SystemMgmtUtils.list_notification_channels(configured_ids)
-        return [item["id"] for item in result if item.get("delivery_mode") == "alert_event_copy"]
 
     @staticmethod
     def _alert_center_outbox_enabled():

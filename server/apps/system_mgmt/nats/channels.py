@@ -218,22 +218,6 @@ def _notification_channel_capabilities(channel):
     }
 
 
-@nats_client.register
-def list_notification_channels(channel_ids):
-    """Internal capability lookup; channel configuration stays private."""
-    normalized_ids = []
-    for value in channel_ids or []:
-        try:
-            normalized_ids.append(int(value))
-        except (TypeError, ValueError):
-            continue
-    channels = Channel.objects.filter(id__in=normalized_ids).order_by("id")
-    return {
-        "result": True,
-        "data": [_notification_channel_capabilities(channel) for channel in channels],
-    }
-
-
 def _channel_has_organization(channel, organization_ids):
     return _channel_delivery_organization(channel, organization_ids) is not None
 
@@ -375,6 +359,9 @@ def dispatch_notification(
     title,
     body,
     event_payload,
+    required_delivery_mode="",
+    producer="lite-apm",
+    ack_mode="",
 ):
     """按公开渠道能力投递一次通知，并返回稳定、可判定重试的结果。"""
     if not isinstance(delivery_key, str) or not delivery_key.strip() or len(delivery_key) > 384:
@@ -386,6 +373,13 @@ def dispatch_notification(
     if delivery_organization is None:
         return _notification_failure("channel_forbidden", "通知渠道不属于事件组织范围。")
     capability = _notification_channel_capabilities(channel)
+    if required_delivery_mode and capability["delivery_mode"] != required_delivery_mode:
+        return {
+            "result": True,
+            "code": "not_applicable",
+            "retryable": False,
+            "message": "channel delivery mode does not match",
+        }
     normalized_recipients = _validate_notification_recipients(capability["recipient_mode"], recipients)
     if normalized_recipients is None:
         return _notification_failure("invalid_recipients", "通知接收人不符合渠道能力。")
@@ -404,11 +398,14 @@ def dispatch_notification(
         return _notification_failure("invalid_payload", "通知内容无效。")
 
     if capability["delivery_mode"] == "alert_event_copy":
+        producer = producer if producer in {"lite-apm", "lite-monitor", "lite-log"} else "lite-apm"
         content = {
             "source_id": "nats",
-            "pusher": "lite-apm",
+            "pusher": producer,
             "events": [event_payload],
         }
+        if ack_mode == "per_event_v1":
+            content["ack_mode"] = ack_mode
         send_title = ""
         send_recipients = []
     elif channel.channel_type == ChannelChoices.NATS:
@@ -453,7 +450,12 @@ def dispatch_notification(
             or int(ingestion.get("accepted", 0) or 0) + int(ingestion.get("skipped", 0) or 0) < 1
         ):
             return _notification_failure("alert_copy_rejected", "告警中心未接受事件副本。", retryable=True)
-    return {"result": True, "code": "delivered", "retryable": False, "message": "success"}
+    result = {"result": True, "code": "delivered", "retryable": False, "message": "success"}
+    if capability["delivery_mode"] == "alert_event_copy":
+        event_results = (response.get("data") or {}).get("event_results") or []
+        if event_results:
+            result["data"] = {"event_results": event_results}
+    return result
 
 
 @nats_client.register

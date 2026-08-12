@@ -287,6 +287,9 @@ def test_dispatch_notification_转发稳定投递契约(client):
             "title": "标题",
             "body": "正文",
             "event_payload": {"event_key": "event"},
+            "required_delivery_mode": "",
+            "producer": "lite-apm",
+            "ack_mode": "",
         },
     )
 

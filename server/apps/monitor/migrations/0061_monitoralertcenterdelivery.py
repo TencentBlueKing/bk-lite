@@ -9,13 +9,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="monitoralert",
             name="alert_center_delivery_backfilled",
-            field=models.BooleanField(default=False, null=True, verbose_name="告警中心投递意图已对账"),
+            field=models.BooleanField(default=False, verbose_name="告警中心投递意图已对账"),
             preserve_default=False,
-        ),
-        migrations.AlterField(
-            model_name="monitoralert",
-            name="alert_center_delivery_backfilled",
-            field=models.BooleanField(default=True, null=True, verbose_name="告警中心投递意图已对账"),
         ),
         migrations.CreateModel(
             name="MonitorAlertCenterDelivery",

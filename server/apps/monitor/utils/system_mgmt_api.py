@@ -29,9 +29,8 @@ class SystemMgmtUtils:
         return result
 
     @staticmethod
-    def list_notification_channels(channel_ids):
-        result = SystemMgmt().list_notification_channels(channel_ids=channel_ids)
-        return result["data"]
+    def dispatch_notification(**kwargs):
+        return SystemMgmt().dispatch_notification(**kwargs)
 
     @staticmethod
     def format_rules(module, child_module, rules):
