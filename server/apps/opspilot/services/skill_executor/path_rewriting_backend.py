@@ -26,7 +26,6 @@ Phase 0 引入,Phase 1 NATS worker / 容器沙箱上线后可废弃。
 """
 from __future__ import annotations
 
-import logging
 import re
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -34,7 +33,7 @@ from typing import Any
 
 from deepagents.backends.protocol import SandboxBackendProtocol
 
-logger = logging.getLogger("apps.opspilot.skill_executor.path_rewriting_backend")
+from apps.core.logger import opspilot_logger as logger
 
 # 匹配 ``/skills/`` 开头、连续路径字符(不含 shell 特殊字符)的子串
 _SKILLS_PATH_PATTERN = re.compile(r"/skills/[^\s'\"\|;&<>(){}\\`$?!*]*")

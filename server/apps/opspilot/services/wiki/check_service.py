@@ -8,13 +8,13 @@ phase 3: 决策中心 API `decide_check` 取代通用 accept/reject,
 """
 
 import hashlib
-import logging
 from collections import Counter, defaultdict
 from itertools import combinations
 
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import (
     BuildRecord,
     CheckItem,
@@ -590,9 +590,6 @@ def _recount_pending_review(check):
         counts["pending_review"] = open_count
         build.counts = counts
         build.save(update_fields=["counts", "updated_at"])
-
-
-logger = logging.getLogger("opspilot")
 
 
 def _log_maintenance_callback_exception(message, *args):
