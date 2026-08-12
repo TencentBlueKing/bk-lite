@@ -7,7 +7,6 @@ from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.operation_analysis.models.share_models import DashboardShareLink, DashboardShareSession
 from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
@@ -78,10 +77,9 @@ class SharePrincipal:
 
 
 def can_view_canvas(*, user, resource, resource_type, space_id):
-    """与 AuthViewSet 详情一致：先校验空间成员，再校验实例/团队规则。"""
+    """画布可见性：空间成员 + 资源归属当前组织；不依赖实例数据权限或创建人。"""
     if resource_type not in CANVAS_TYPE_REGISTRY:
         return False
-    meta = CANVAS_TYPE_REGISTRY[resource_type]
     if getattr(user, "disabled", False):
         return False
     if getattr(user, "is_superuser", False):
@@ -90,25 +88,7 @@ def can_view_canvas(*, user, resource, resource_type, space_id):
     user_group_ids = set(normalize_user_group_ids(getattr(user, "group_list", [])))
     if space_id not in user_group_ids:
         return False
-    if space_id not in (resource.groups or []):
-        return False
-    if getattr(resource, "is_build_in", False):
-        return True
-
-    permission_data = get_permission_rules(
-        user,
-        space_id,
-        "ops-analysis",
-        meta.permission_key,
-        False,
-    )
-    instance_ids = {
-        int(item["id"])
-        for item in permission_data.get("instance", [])
-        if "id" in item and "View" in (item.get("permission") or [])
-    }
-    team_ids = {int(item) for item in permission_data.get("team", [])}
-    return resource.id in instance_ids or space_id in team_ids
+    return space_id in (resource.groups or [])
 
 
 def can_view_dashboard(*, user, dashboard, space_id):
