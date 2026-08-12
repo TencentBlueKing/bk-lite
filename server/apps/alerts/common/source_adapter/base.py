@@ -381,6 +381,15 @@ class AlertSourceAdapter(ABC):
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
         event.team = self._resolve_event_team(alert)
 
+        # receiver-first 兼容扩展：可信内部生产者可提供逐次投递身份。
+        # 业务 external_id 仍用于 created/recovery 关联，ingest_key 单独用于幂等，
+        # 因而同一告警的升级代次不会再被首次 created 误判为重复。
+        delivery_id = alert.get("delivery_id")
+        if self.trusted_internal and delivery_id:
+            event.ingest_key = hashlib.sha256(
+                f"{self.alert_source.id}:{event.push_source_id}:{delivery_id}".encode("utf-8")
+            ).hexdigest()
+
         if not event.external_id or not str(event.external_id).strip():
             event.external_id = self.resolve_recovery_external_id(event) or self.generate_external_id(
                 event.item,

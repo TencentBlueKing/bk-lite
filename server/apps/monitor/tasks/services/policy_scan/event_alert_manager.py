@@ -179,14 +179,17 @@ class EventAlertManager:
         """
         if not self.policy.notice:
             return
+        notifier = AlertLifecycleNotifier(self.policy)
+        notifier.enqueue_alert_center_deliveries(new_alerts, "created")
+        notifier.enqueue_alert_center_deliveries(upgraded_alerts, "upgraded")
         if ALERT_CENTER_CREATED_RETRY_ENABLED:
             pending_alert_ids = [alert.id for alert in [*new_alerts, *upgraded_alerts]]
             if pending_alert_ids:
                 MonitorAlert.objects.filter(id__in=pending_alert_ids).update(alert_center_notified=False)
         if new_alerts:
-            transaction.on_commit(lambda: AlertLifecycleNotifier(self.policy).notify_alerts(new_alerts, action="created"))
+            transaction.on_commit(lambda: notifier.notify_alerts(new_alerts, action="created"))
         if upgraded_alerts:
-            transaction.on_commit(lambda: AlertLifecycleNotifier(self.policy).notify_alerts(upgraded_alerts, action="upgraded"))
+            transaction.on_commit(lambda: notifier.notify_alerts(upgraded_alerts, action="upgraded"))
 
     def _get_alert_metric_instance_id(self, alert) -> str:
         if alert.metric_instance_id:

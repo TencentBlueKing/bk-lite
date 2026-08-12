@@ -1,6 +1,6 @@
 from collections import defaultdict
-from datetime import datetime, timezone
 import os
+from datetime import datetime, timezone
 
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
@@ -46,6 +46,10 @@ class AlertLifecycleNotifier:
             self._reset_alert_center_flags(alerts)
             return
 
+        # created 在扫描事务内先落 outbox；其余生命周期调用方仍保留 legacy pending
+        # 标志，由这里幂等补齐不可变意图。回滚可关闭 outbox 并继续使用旧链路。
+        self.enqueue_alert_center_deliveries(alerts, action, operator=operator, reason=reason)
+
         alert_log_entries = defaultdict(list)
 
         groups = defaultdict(list)
@@ -67,6 +71,12 @@ class AlertLifecycleNotifier:
         for (channel_id, notice_users_tuple), group_alerts in groups.items():
             notice_users = list(notice_users_tuple)
             try:
+                channel = Channel.objects.filter(id=channel_id).first()
+                if self._is_alert_center_channel(channel) and self._alert_center_outbox_enabled():
+                    # outbox 已在同一事务保存不可变意图；即时层只继续发送普通通知，
+                    # 避免 legacy NATS 与 outbox 各投一次产生双写。
+                    alert_center_target_ids.update(alert.id for alert in group_alerts)
+                    continue
                 results = self._send_to_channel(channel_id, notice_users, group_alerts, action, operator, reason, notify_scope)
                 for alert, log_entry in results:
                     alert_log_entries[alert.id].append(log_entry)
@@ -146,6 +156,23 @@ class AlertLifecycleNotifier:
             alert_log_entries[alert.id].append(log_entry)
         self._persist_notice_logs(alerts, alert_log_entries)
         return [(alert, log_entry.get("success", False)) for alert, log_entry in push_results]
+
+    def enqueue_alert_center_deliveries(self, alerts, action, operator="", reason=""):
+        from apps.monitor.services.alert_center_delivery import enqueue_alert_center_deliveries
+
+        return enqueue_alert_center_deliveries(
+            alerts,
+            action,
+            notifier=self,
+            operator=operator,
+            reason=reason,
+        )
+
+    @staticmethod
+    def _alert_center_outbox_enabled():
+        from apps.monitor.services.alert_center_delivery import ALERT_CENTER_OUTBOX_ENABLED
+
+        return ALERT_CENTER_OUTBOX_ENABLED
 
     def _persist_notice_logs(self, alerts, alert_log_entries):
         if not alert_log_entries:
@@ -334,6 +361,8 @@ class AlertLifecycleNotifier:
                 alert_success = ack.get("status") in {"accepted", "duplicate"}
                 if not alert_success:
                     alert_error = ack.get("status") or "missing per-event acknowledgement"
+                    if ack:
+                        alert_error = f"{alert_error} (retryable={bool(ack.get('retryable'))})"
             log_entry = {
                 "time": now,
                 "action": action,

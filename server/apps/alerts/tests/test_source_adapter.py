@@ -183,6 +183,21 @@ def test_add_start_time_defaults():
     assert "start_time" in data
 
 
+@pytest.mark.django_db
+def test_trusted_delivery_id_is_the_ingress_identity(event_levels, restful_source):
+    adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
+    first = Event(title="第一次", level="0", start_time=timezone.now())
+    second = Event(title="升级", level="1", start_time=first.start_time)
+
+    adapter.add_base_fields(first, {"delivery_id": "generation-1", "organizations": [1]})
+    adapter.add_base_fields(second, {"delivery_id": "generation-2", "organizations": [1]})
+
+    assert first.external_id
+    assert second.external_id
+    assert first.ingest_key != second.ingest_key
+    assert AlertSourceAdapter.build_ingress_dedup_key(first) == first.ingest_key
+
+
 def test_normalize_payload_valid():
     src = AlertSource(source_type="restful", config={})
     adapter = RestFulAdapter.__new__(RestFulAdapter)

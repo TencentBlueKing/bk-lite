@@ -1,406 +1,135 @@
-"""Issue #3341：首次告警通知失败必须进入告警中心补偿队列。"""
+"""Issue #3341：告警中心生命周期投递的真实 ORM/协议回归。"""
 
-import ast
-import sys
-import types
-from collections import defaultdict
-from pathlib import Path
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
-pytestmark = pytest.mark.unit
-
-MONITOR_ROOT = Path(__file__).resolve().parents[1]
-
-
-def _load_methods(path, class_name, method_names, globals_dict):
-    tree = ast.parse(path.read_text())
-    source_class = next(
-        node for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == class_name
-    )
-    methods = [
-        node for node in source_class.body
-        if isinstance(node, ast.FunctionDef) and node.name in method_names
-    ]
-    probe_class = ast.ClassDef(
-        name="Subject",
-        bases=[],
-        keywords=[],
-        body=methods,
-        decorator_list=[],
-    )
-    ast.fix_missing_locations(probe_class)
-    exec(
-        compile(ast.Module(body=[probe_class], type_ignores=[]), str(path), "exec"),
-        globals_dict,
-    )
-    return globals_dict["Subject"]
+from apps.monitor.models import MonitorAlert, MonitorAlertCenterDelivery
+from apps.monitor.services.alert_center_delivery import (
+    _ack_result,
+    deliver_alert_center_delivery,
+    enqueue_alert_center_deliveries,
+)
+from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
+from apps.system_mgmt.models import Channel
 
 
-def _load_method(path, class_name, method_name, globals_dict):
-    return _load_methods(path, class_name, {method_name}, globals_dict)
+pytestmark = [pytest.mark.integration, pytest.mark.django_db(transaction=True)]
 
 
-def _load_function(path, function_name, globals_dict):
-    tree = ast.parse(path.read_text())
-    function = next(
-        node for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == function_name
-    )
-    function.decorator_list = []
-    ast.fix_missing_locations(function)
-    exec(
-        compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"),
-        globals_dict,
-    )
-    return globals_dict[function_name]
-
-
-class _PendingObjects:
-    def __init__(self, notified_by_id, events):
-        self.notified_by_id = notified_by_id
-        self.events = events
-        self.ids = []
-
-    def filter(self, **kwargs):
-        self.ids = list(kwargs["id__in"])
-        return self
-
-    def update(self, **kwargs):
-        for alert_id in self.ids:
-            self.notified_by_id[alert_id] = kwargs["alert_center_notified"]
-        self.events.append(("update", dict(self.notified_by_id)))
-
-
-def test_schedule_notifications_persists_pending_state_before_on_commit():
-    notified_by_id = {101: True, 102: True}
-    events = []
-    callbacks = []
-    notify_calls = []
-
-    def on_commit(callback):
-        events.append(("on_commit", dict(notified_by_id)))
-        callbacks.append(callback)
-
-    subject = _load_method(
-        MONITOR_ROOT / "tasks/services/policy_scan/event_alert_manager.py",
-        "EventAlertManager",
-        "_schedule_notifications",
-        {
-            "ALERT_CENTER_CREATED_RETRY_ENABLED": True,
-            "transaction": types.SimpleNamespace(on_commit=on_commit),
-            "MonitorAlert": types.SimpleNamespace(
-                objects=_PendingObjects(notified_by_id, events)
-            ),
-            "AlertLifecycleNotifier": lambda policy: types.SimpleNamespace(
-                notify_alerts=lambda alerts, action: notify_calls.append(
-                    (action, [alert.id for alert in alerts])
-                )
-            ),
-        },
-    )()
-    subject.policy = types.SimpleNamespace(notice=True)
-
-    subject._schedule_notifications(
-        [types.SimpleNamespace(id=101)],
-        [types.SimpleNamespace(id=102)],
+@pytest.fixture
+def alert_center_channel():
+    return Channel.objects.create(
+        name="告警中心",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
     )
 
-    assert notified_by_id == {101: False, 102: False}
-    assert events == [
-        ("update", {101: False, 102: False}),
-        ("on_commit", {101: False, 102: False}),
-        ("on_commit", {101: False, 102: False}),
-    ]
-    for callback in callbacks:
-        callback()
-    assert notify_calls == [("created", [101]), ("upgraded", [102])]
 
-
-def test_schedule_notifications_disabled_keeps_notified_state():
-    notified_by_id = {101: True}
-    events = []
-    subject = _load_method(
-        MONITOR_ROOT / "tasks/services/policy_scan/event_alert_manager.py",
-        "EventAlertManager",
-        "_schedule_notifications",
-        {
-            "ALERT_CENTER_CREATED_RETRY_ENABLED": True,
-            "transaction": types.SimpleNamespace(
-                on_commit=lambda callback: events.append(("on_commit", callback))
-            ),
-            "MonitorAlert": types.SimpleNamespace(
-                objects=_PendingObjects(notified_by_id, events)
-            ),
-            "AlertLifecycleNotifier": object,
-        },
-    )()
-    subject.policy = types.SimpleNamespace(notice=False)
-
-    subject._schedule_notifications([types.SimpleNamespace(id=101)], [])
-
-    assert notified_by_id == {101: True}
-    assert events == []
-
-
-def test_schedule_notifications_default_compatibility_keeps_legacy_pending_state():
-    notified_by_id = {101: True}
-    events = []
-    callbacks = []
-    subject = _load_method(
-        MONITOR_ROOT / "tasks/services/policy_scan/event_alert_manager.py",
-        "EventAlertManager",
-        "_schedule_notifications",
-        {
-            "ALERT_CENTER_CREATED_RETRY_ENABLED": False,
-            "transaction": types.SimpleNamespace(on_commit=callbacks.append),
-            "MonitorAlert": types.SimpleNamespace(
-                objects=_PendingObjects(notified_by_id, events)
-            ),
-            "AlertLifecycleNotifier": lambda policy: types.SimpleNamespace(
-                notify_alerts=lambda alerts, action: None
-            ),
-        },
-    )()
-    subject.policy = types.SimpleNamespace(notice=True)
-
-    subject._schedule_notifications([types.SimpleNamespace(id=101)], [])
-
-    assert notified_by_id == {101: True}
-    assert events == []
-    assert len(callbacks) == 1
-
-
-class _RetryQuery:
-    def __init__(self, alerts):
-        self.alerts = alerts
-
-    def order_by(self, *fields):
-        return self
-
-    def __getitem__(self, item):
-        return _RetryQuery(self.alerts[item])
-
-    def __iter__(self):
-        return iter(self.alerts)
-
-
-class _RetryObjects:
-    def __init__(self, alerts):
-        self.alerts = alerts
-        self.filters = []
-
-    def filter(self, **kwargs):
-        self.filters.append(kwargs)
-        selected = list(self.alerts)
-        if "status__in" in kwargs:
-            selected = [a for a in selected if a.status in kwargs["status__in"]]
-        if "alert_center_notified" in kwargs:
-            selected = [
-                a for a in selected
-                if a.alert_center_notified == kwargs["alert_center_notified"]
-            ]
-        if "alert_center_retry_count__lt" in kwargs:
-            selected = [
-                a for a in selected
-                if a.alert_center_retry_count < kwargs["alert_center_retry_count__lt"]
-            ]
-        return _RetryQuery(selected)
-
-
-def test_retry_task_selects_pending_lifecycle_actions(monkeypatch):
-    policy_a = types.SimpleNamespace(id=301, name="策略 A", organizations=[7])
-    policy_b = types.SimpleNamespace(id=303, name="策略 B", organizations=[8])
-    alerts = [
-        types.SimpleNamespace(
-            id=201, status="new",
-            policy_id=policy_a.id,
-            alert_center_notified=False, alert_center_retry_count=0,
-        ),
-        types.SimpleNamespace(
-            id=206, status="new",
-            policy_id=policy_b.id,
-            alert_center_notified=False, alert_center_retry_count=0,
-        ),
-        types.SimpleNamespace(
-            id=202, status="recovered",
-            policy_id=302,
-            alert_center_notified=False, alert_center_retry_count=0,
-        ),
-        types.SimpleNamespace(
-            id=203, status="closed",
-            policy_id=302,
-            alert_center_notified=False, alert_center_retry_count=9,
-        ),
-        types.SimpleNamespace(
-            id=204, status="new",
-            policy_id=policy_a.id,
-            alert_center_notified=True, alert_center_retry_count=0,
-        ),
-        types.SimpleNamespace(
-            id=205, status="new",
-            policy_id=policy_a.id,
-            alert_center_notified=False, alert_center_retry_count=10,
-        ),
-    ]
-    objects = _RetryObjects(alerts)
-    loaded_policy_ids = []
-    pushes = []
-    marked = []
-    notifier_policies = []
-    notifier = types.SimpleNamespace(
-        push_to_alert_center_only=lambda grouped, action: (
-            pushes.append((action, [alert.id for alert in grouped]))
-            or [(alert, True) for alert in grouped]
-        ),
-        _mark_alert_center_notified=lambda alert_ids: marked.append(alert_ids),
-    )
-    models = types.ModuleType("apps.monitor.models")
-    models.MonitorAlert = types.SimpleNamespace(objects=objects)
-    models.MonitorPolicy = types.SimpleNamespace(
-        objects=types.SimpleNamespace(
-            in_bulk=lambda policy_ids: (
-                loaded_policy_ids.append(set(policy_ids))
-                or {policy_a.id: policy_a, policy_b.id: policy_b}
-            )
-        )
-    )
-    notify_module = types.ModuleType(
-        "apps.monitor.services.alert_lifecycle_notify"
-    )
-    notify_module.ALERT_CENTER_CREATED_RETRY_ENABLED = True
-
-    def build_notifier(notifier_policy=None, policies_by_id=None):
-        notifier_policies.append((notifier_policy, policies_by_id))
-        return notifier
-
-    notify_module.AlertLifecycleNotifier = build_notifier
-    monkeypatch.setitem(sys.modules, "apps.monitor.models", models)
-    monkeypatch.setitem(
-        sys.modules,
-        "apps.monitor.services.alert_lifecycle_notify",
-        notify_module,
-    )
-    retry_task = _load_function(
-        MONITOR_ROOT / "tasks/monitor_policy.py",
-        "retry_alert_center_lifecycle_notify_task",
-        {
-            "defaultdict": defaultdict,
-            "F": lambda field: field,
-            "logger": types.SimpleNamespace(
-                info=lambda *args, **kwargs: None,
-                exception=lambda *args, **kwargs: None,
-                error=lambda *args, **kwargs: None,
-            ),
-        },
-    )
-
-    result = retry_task()
-
-    assert objects.filters == [{
-        "status__in": ["new", "recovered", "closed"],
-        "alert_center_notified": False,
-        "alert_center_retry_count__lt": 10,
-    }]
-    assert pushes == [
-        ("created", [201, 206]),
-        ("recovered", [202]),
-        ("closed", [203]),
-    ]
-    assert loaded_policy_ids == [{policy_a.id, policy_b.id}]
-    assert notifier_policies == [
-        (None, {policy_a.id: policy_a, policy_b.id: policy_b})
-    ]
-    assert marked == [[201, 206, 202, 203]]
-    assert result == {
-        "success": True,
-        "total": 4,
-        "succeeded": 4,
-        "failed": 0,
+def _alert(channel, **overrides):
+    values = {
+        "policy_id": 7,
+        "monitor_instance_id": "host-1",
+        "monitor_instance_name": "主机 1",
+        "metric_instance_id": "cpu",
+        "content": "CPU 高",
+        "level": "warning",
+        "value": 80,
+        "status": "new",
+        "start_event_time": datetime(2026, 8, 12, 1, tzinfo=timezone.utc),
+        "notice_type_ids": [channel.id],
+        "alert_center_notified": True,
     }
+    values.update(overrides)
+    return MonitorAlert.objects.create(**values)
 
 
-def test_retry_payload_uses_new_alert_policy_without_changing_terminal_actions():
-    policy = types.SimpleNamespace(id=301, name="策略 A", organizations=[7])
-    alert = types.SimpleNamespace(
-        id=201,
-        policy_id=policy.id,
-        content="CPU 告警",
-        level="critical",
-        value=95,
-        start_event_time=None,
-        end_event_time=None,
-        monitor_instance_id="host-1",
-        monitor_instance_name="主机 1",
-        dimensions={"ip": "127.0.0.1"},
-        metric_instance_id="cpu",
-        status="new",
+def test_created_and_recovered_keep_independent_ordered_immutable_payloads(alert_center_channel, monkeypatch):
+    monkeypatch.setattr("apps.monitor.services.alert_center_delivery._schedule_deliveries", lambda ids: None)
+    alert = _alert(alert_center_channel)
+    notifier = AlertLifecycleNotifier(SimpleNamespace(id=7, name="CPU 策略", organizations=[1], notice=True))
+
+    enqueue_alert_center_deliveries([alert], "created", notifier=notifier)
+    created_payload = MonitorAlertCenterDelivery.objects.get(alert=alert, generation=1).payload
+
+    alert.status = "recovered"
+    alert.content = "CPU 已恢复"
+    alert.end_event_time = datetime(2026, 8, 12, 2, tzinfo=timezone.utc)
+    alert.alert_center_notified = False
+    alert.save(update_fields=["status", "content", "end_event_time", "alert_center_notified", "updated_at"])
+    enqueue_alert_center_deliveries([alert], "recovered", notifier=notifier)
+
+    deliveries = list(MonitorAlertCenterDelivery.objects.filter(alert=alert).order_by("generation"))
+    assert [(item.action, item.generation) for item in deliveries] == [("created", 1), ("recovered", 2)]
+    assert deliveries[0].payload == created_payload
+    assert deliveries[0].payload["title"] == "CPU 高"
+    assert deliveries[1].payload["title"] == "CPU 已恢复"
+    alert.refresh_from_db()
+    assert alert.alert_center_notified is False
+
+
+def test_later_generation_cannot_overtake_pending_created(alert_center_channel, mocker):
+    alert = _alert(alert_center_channel)
+    first = MonitorAlertCenterDelivery.objects.create(
+        alert=alert, action="created", generation=1, delivery_id="created-1", payload={"title": "first"}
     )
-    subject = _load_methods(
-        MONITOR_ROOT / "services/alert_lifecycle_notify.py",
-        "AlertLifecycleNotifier",
-        {"_resolve_alert_organizations", "_build_alert_center_payload"},
-        {
-            "ACTION_TO_ALERT_CENTER": {
-                "created": "created",
-                "recovered": "recovery",
-            },
-            "LEVEL_TO_ALERT_CENTER": {"critical": "0"},
-        },
-    )()
-    subject.policy = None
-    subject.policies_by_id = {policy.id: policy}
-
-    created_payload = subject._build_alert_center_payload(
-        alert, "created", "", "", {}
+    second = MonitorAlertCenterDelivery.objects.create(
+        alert=alert, action="recovered", generation=2, delivery_id="recovered-2", payload={"title": "second"}
     )
-    recovered_payload = subject._build_alert_center_payload(
-        alert, "recovered", "", "", {}
-    )
+    send = mocker.patch("apps.monitor.services.alert_center_delivery.SystemMgmtUtils.send_msg_with_channel")
 
-    assert created_payload["organizations"] == [7]
-    assert created_payload["labels"]["policy_name"] == "策略 A"
-    assert recovered_payload["organizations"] == []
-    assert recovered_payload["labels"]["policy_name"] == ""
+    assert deliver_alert_center_delivery(second.id) is False
+    send.assert_not_called()
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert first.status == MonitorAlertCenterDelivery.Status.PENDING
+    assert second.status == MonitorAlertCenterDelivery.Status.PENDING
 
 
-def test_sender_per_event_ack_marks_only_accepted_or_duplicate(monkeypatch):
-    from apps.monitor.services import alert_lifecycle_notify as notify_module
+def test_outbox_enabled_skips_legacy_nats_but_keeps_pending(alert_center_channel, mocker, monkeypatch):
+    alert = _alert(alert_center_channel, alert_center_notified=False)
+    notifier = AlertLifecycleNotifier(SimpleNamespace(id=7, name="CPU 策略", organizations=[1], notice=True))
+    monkeypatch.setattr(notifier, "enqueue_alert_center_deliveries", lambda *args, **kwargs: [])
+    send = mocker.patch("apps.monitor.services.alert_lifecycle_notify.SystemMgmtUtils.send_msg_with_channel")
 
-    alerts = [
-        types.SimpleNamespace(
-            id=201, start_event_time=None, end_event_time=None, level="critical", value=1
-        ),
-        types.SimpleNamespace(
-            id=202, start_event_time=None, end_event_time=None, level="critical", value=2
-        ),
-    ]
-    notifier = notify_module.AlertLifecycleNotifier()
-    monkeypatch.setattr(notify_module, "ALERT_CENTER_PER_EVENT_ACK_ENABLED", True)
-    monkeypatch.setattr(notifier, "_build_instance_org_map", lambda values: {})
-    monkeypatch.setattr(
-        notifier,
-        "_build_alert_center_payload",
-        lambda alert, action, operator, reason, instance_org_map: {"external_id": str(alert.id)},
-    )
-    delivery_ids = [notifier._build_delivery_id(alert, "created") for alert in alerts]
-    monkeypatch.setattr(
-        notify_module.SystemMgmtUtils,
-        "send_msg_with_channel",
-        lambda *args: {
-            "result": False,
-            "data": {
-                "event_results": [
-                    {"delivery_id": delivery_ids[0], "status": "duplicate", "retryable": False},
-                    {"delivery_id": delivery_ids[1], "status": "rejected", "retryable": False},
-                ]
-            },
-            "message": "partial",
-        },
+    notifier.notify_alerts([alert], "created")
+
+    send.assert_not_called()
+    alert.refresh_from_db()
+    assert alert.alert_center_notified is False
+
+
+def test_stale_delivery_finalize_is_fenced_by_attempt_generation(alert_center_channel, monkeypatch):
+    alert = _alert(alert_center_channel, alert_center_notified=False)
+    delivery = MonitorAlertCenterDelivery.objects.create(
+        alert=alert, action="created", generation=1, delivery_id="created-fenced", payload={"title": "first"}
     )
 
-    results = notifier._push_to_alert_center(7, "告警中心", alerts, "created", "", "")
+    def race(*args, **kwargs):
+        MonitorAlertCenterDelivery.objects.filter(id=delivery.id).update(attempts=2)
+        return {"result": True, "data": {}}
 
-    assert [entry["success"] for _, entry in results] == [True, False]
-    assert results[1][1]["error"] == "rejected"
+    monkeypatch.setattr("apps.monitor.services.alert_center_delivery.SystemMgmtUtils.send_msg_with_channel", race)
+
+    assert deliver_alert_center_delivery(delivery.id) is False
+    delivery.refresh_from_db()
+    alert.refresh_from_db()
+    assert delivery.status == MonitorAlertCenterDelivery.Status.DELIVERING
+    assert delivery.attempts == 2
+    assert alert.alert_center_notified is False
+
+
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        ({"result": False, "data": {"event_results": [{"delivery_id": "d", "status": "duplicate", "retryable": False}]}}, (True, False, "")),
+        ({"result": False, "data": {"event_results": [{"delivery_id": "d", "status": "rejected", "retryable": False}]}}, (False, False, "rejected")),
+        ({"result": False, "data": {"event_results": [{"delivery_id": "d", "status": "errored", "retryable": True}]}}, (False, True, "errored")),
+        ({"result": True, "data": {}}, (True, False, "")),
+    ],
+)
+def test_ack_contract_supports_new_and_legacy_receivers(response, expected):
+    assert _ack_result(response, "d") == expected

@@ -32,6 +32,7 @@ from apps.core.utils.viewset_utils import GenericViewSetFun
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
 TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log", "lite-apm"}
 PER_EVENT_ACK_MODE = "per_event_v1"
+PER_EVENT_ACK_MAX_EVENTS = 200
 
 
 def _event_ack(delivery_id, ingestion):
@@ -795,6 +796,18 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 "data": {},
                 "message": "Missing pusher identifier.",
             }
+
+        if ack_mode == PER_EVENT_ACK_MODE:
+            if pusher not in TRUSTED_INTERNAL_PUSHERS:
+                logger.warning("[AlertEvent] 非可信 pusher 不允许逐事件 ACK: pusher=%s", pusher)
+                return {"result": False, "data": {}, "message": "Per-event acknowledgement is restricted."}
+            if len(events) > PER_EVENT_ACK_MAX_EVENTS:
+                logger.warning("[AlertEvent] 逐事件 ACK 批次超限: pusher=%s event_count=%s", pusher, len(events))
+                return {
+                    "result": False,
+                    "data": {"max_events": PER_EVENT_ACK_MAX_EVENTS},
+                    "message": "Too many events for per-event acknowledgement.",
+                }
 
         event_source = AlertSource.objects.filter(
             source_id=source_id,

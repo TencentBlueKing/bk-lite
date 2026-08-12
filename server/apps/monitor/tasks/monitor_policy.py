@@ -99,6 +99,23 @@ def scan_policy_task(policy_id):
 @shared_task(base=Singleton, raise_on_duplicate=False)
 def retry_alert_center_lifecycle_notify_task():
     """补偿任务：重试推送到告警中心失败的告警通知（每5分钟执行，每次最多处理200条）"""
+    from apps.monitor.services.alert_center_delivery import (
+        ALERT_CENTER_OUTBOX_ENABLED,
+        backfill_legacy_alerts,
+        due_delivery_ids,
+    )
+
+    if ALERT_CENTER_OUTBOX_ENABLED:
+        backfilled = backfill_legacy_alerts()
+        delivery_ids = due_delivery_ids()
+        for delivery_id in delivery_ids:
+            deliver_alert_center_lifecycle_delivery.delay(delivery_id)
+        return {
+            "success": True,
+            "backfilled": backfilled,
+            "scheduled": len(delivery_ids),
+        }
+
     from apps.monitor.models import MonitorAlert, MonitorPolicy
     from apps.monitor.services.alert_lifecycle_notify import (
         ALERT_CENTER_CREATED_RETRY_ENABLED,
@@ -169,3 +186,10 @@ def retry_alert_center_lifecycle_notify_task():
 
     logger.info(f"告警中心补偿任务完成：成功 {len(success_ids)} 条，失败 {len(fail_ids)} 条")
     return {"success": True, "total": len(alerts), "succeeded": len(success_ids), "failed": len(fail_ids)}
+
+
+@shared_task(autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={"max_retries": 5})
+def deliver_alert_center_lifecycle_delivery(delivery_id):
+    from apps.monitor.services.alert_center_delivery import deliver_alert_center_delivery
+
+    return deliver_alert_center_delivery(delivery_id)

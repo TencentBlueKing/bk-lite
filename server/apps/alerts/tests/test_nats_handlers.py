@@ -1415,6 +1415,43 @@ def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(mo
 
 
 @pytest.mark.django_db
+def test_receive_alert_events_per_event_ack_rejects_untrusted_or_oversized_batches(monkeypatch):
+    from apps.alerts.models.alert_source import AlertSource
+
+    AlertSource.objects.create(
+        name="nats逐事件ACK上界",
+        source_id="nats-ack-bound",
+        source_type="nats",
+        secret="x",
+        is_active=True,
+        is_effective=True,
+    )
+    monkeypatch.setattr(
+        N.AlertSourceAdapterFactory,
+        "get_adapter",
+        staticmethod(lambda source: (_ for _ in ()).throw(AssertionError("adapter must not run"))),
+    )
+
+    untrusted = N.receive_alert_events(
+        source_id="nats-ack-bound",
+        events=[{"delivery_id": "d"}],
+        pusher="unknown",
+        ack_mode=N.PER_EVENT_ACK_MODE,
+    )
+    oversized = N.receive_alert_events(
+        source_id="nats-ack-bound",
+        events=[{"delivery_id": str(index)} for index in range(N.PER_EVENT_ACK_MAX_EVENTS + 1)],
+        pusher="lite-monitor",
+        ack_mode=N.PER_EVENT_ACK_MODE,
+    )
+
+    assert untrusted["result"] is False
+    assert "restricted" in untrusted["message"]
+    assert oversized["result"] is False
+    assert oversized["data"]["max_events"] == N.PER_EVENT_ACK_MAX_EVENTS
+
+
+@pytest.mark.django_db
 def test_receive_alert_events_marks_lite_log_as_trusted_internal(mocker):
     from apps.alerts.models.alert_source import AlertSource
 
