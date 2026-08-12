@@ -40,6 +40,7 @@ class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             "desc",
             "is_build_in",
             "build_in_key",
+            "permissions",
         ]
         extra_kwargs = {
             "is_build_in": {"read_only": True},
