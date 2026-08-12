@@ -120,8 +120,9 @@ def build_skill_package_prompt(
         "事实数据必须来自工具或上下文。"
         "\n运行规则：当用户要求你实际获取、访问、转换、读取、生成或处理外部内容时，"
         "不要只输出安装步骤或示例代码；必须优先调用当前可用工具完成任务。"
-        "DeepAgent 沙箱提供 `execute`、`read_file`、`write_file` 等工具时，"
-        "应使用这些工具运行技能包中的 CLI 或脚本，并基于工具返回的真实结果回答。"
+        "技能包若声明了 reports.source_tool，用该业务工具取数；不要用 `execute` 去探 "
+        "`~/.kube` 代替已声明的业务工具。其他无业务工具覆盖的技能脚本，仍可用沙箱 "
+        "`execute`/`read_file`/`write_file`。"
         "只有工具不可用或执行失败时，才说明失败原因并给出人工执行步骤。"
     )
     return (base_prompt or "") + "\n".join(blocks), matched_packages

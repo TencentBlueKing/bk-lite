@@ -60,11 +60,16 @@ export const useSSEStream = ({
   const latestExecutionIdRef = useRef<string>('');
   const interruptRequestRef = useRef<InterruptRequestConfig | null>(null);
   const isStreamActiveRef = useRef(false);
+  const tokenRef = useRef(token);
+  const onCancelCleanupRef = useRef(onCancelCleanup);
+  tokenRef.current = token;
+  onCancelCleanupRef.current = onCancelCleanup;
 
   const stopSSEConnection = useCallback(() => {
     const currentExecutionId = latestExecutionIdRef.current;
     const currentInterruptRequest = interruptRequestRef.current;
-    const shouldInterrupt = isStreamActiveRef.current && currentInterruptRequest?.enabled && currentExecutionId;
+    const wasActive = isStreamActiveRef.current || Boolean(abortControllerRef.current);
+    const shouldInterrupt = wasActive && currentInterruptRequest?.enabled && currentExecutionId;
 
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -72,14 +77,18 @@ export const useSSEStream = ({
     }
     isStreamActiveRef.current = false;
     setLoading(false);
-    onCancelCleanup?.();
+    // 仅在真实中断活跃流时清理；effect 依赖抖动不得清空已流出内容
+    if (wasActive) {
+      onCancelCleanupRef.current?.();
+    }
 
-    if (shouldInterrupt && token) {
+    const authToken = tokenRef.current;
+    if (shouldInterrupt && authToken) {
       void fetch(currentInterruptRequest.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${authToken}`,
         },
         credentials: 'include',
         body: JSON.stringify({
@@ -90,7 +99,7 @@ export const useSSEStream = ({
         console.warn('Failed to interrupt execution:', error);
       });
     }
-  }, [onCancelCleanup, setLoading, token]);
+  }, [setLoading]);
 
   const handleSSEStream = useCallback(
     async (url: string, payload: any, botMessage: CustomChatMessage, interruptRequest?: InterruptRequestConfig) => {

@@ -8,88 +8,95 @@ import {
 } from '../menuHelpers';
 import type { MenuItem } from '@/types/index';
 
+const menu = (item: Partial<MenuItem> & Pick<MenuItem, 'name' | 'url'>): MenuItem => ({
+  title: '',
+  icon: '',
+  operation: [],
+  ...item,
+});
+
 /** Target APM directoryized menu tree. */
-const apmMenus = [
-  { title: '首页', url: '/apm/home', name: 'home', icon: 'shouye' },
-  {
+const apmMenus: MenuItem[] = [
+  menu({ title: '首页', url: '/apm/home', name: 'home', icon: 'shouye' }),
+  menu({
     title: '服务',
     url: '/apm/services',
     name: 'services',
     icon: 'daohang-yunyingfenxishi',
     children: [
-      { title: '服务', url: '/apm/services', name: 'services', icon: 'daohang-yunyingfenxishi' },
-      { title: '服务拓扑', url: '/apm/services/topology', name: 'services', icon: 'guanlian' },
-      { title: 'SLO', url: '/apm/services/slo', name: 'services', icon: 'mulu' },
+      menu({ title: '服务', url: '/apm/services', name: 'services', icon: 'daohang-yunyingfenxishi' }),
+      menu({ title: '服务拓扑', url: '/apm/services/topology', name: 'services', icon: 'guanlian' }),
+      menu({ title: 'SLO', url: '/apm/services/slo', name: 'services', icon: 'mulu' }),
     ],
-  },
-  {
+  }),
+  menu({
     title: '探索',
     url: '/apm/explore/traces',
     name: 'traces',
     icon: 'search-f',
     children: [
-      { title: '调用链', url: '/apm/explore/traces', name: 'traces', icon: 'search-f' },
-      { title: '端点', url: '/apm/explore/endpoints', name: 'endpoints', icon: 'rizhi' },
-      { title: '错误', url: '/apm/explore/errors', name: 'errors', icon: 'weiwangguanicon-defuben-' },
+      menu({ title: '调用链', url: '/apm/explore/traces', name: 'traces', icon: 'search-f' }),
+      menu({ title: '端点', url: '/apm/explore/endpoints', name: 'endpoints', icon: 'rizhi' }),
+      menu({ title: '错误', url: '/apm/explore/errors', name: 'errors', icon: 'weiwangguanicon-defuben-' }),
     ],
-  },
-  {
+  }),
+  menu({
     title: '事件',
     url: '/apm/events/alerts',
     name: 'Alert',
     icon: 'weiwangguanicon-defuben-',
     children: [
-      { title: '告警', url: '/apm/events/alerts', name: 'events', icon: 'weiwangguanicon-defuben-' },
-      { title: '策略', url: '/apm/events/policies', name: 'policies', icon: 'shezhi' },
+      menu({ title: '告警', url: '/apm/events/alerts', name: 'events', icon: 'weiwangguanicon-defuben-' }),
+      menu({ title: '策略', url: '/apm/events/policies', name: 'policies', icon: 'shezhi' }),
     ],
-  },
-  {
+  }),
+  menu({
     title: '集成',
     url: '/apm/integration/add',
     name: 'Integration',
     icon: 'zichan-quanbushebei',
     children: [
-      { title: '添加接入', url: '/apm/integration/add', name: 'integration_add', icon: 'settings-fill' },
-      { title: '接入实例', url: '/apm/integration/instances', name: 'integration_instances', icon: 'caijiqi' },
-      { title: '应用管理', url: '/apm/integration/applications', name: 'applications', icon: 'mulu' },
-      { url: '/apm/integration', name: 'integration_add', isNotMenuItem: true },
+      menu({ title: '添加接入', url: '/apm/integration/add', name: 'integration_add', icon: 'settings-fill' }),
+      menu({ title: '接入实例', url: '/apm/integration/instances', name: 'integration_instances', icon: 'caijiqi' }),
+      menu({ title: '应用管理', url: '/apm/integration/applications', name: 'applications', icon: 'mulu' }),
+      menu({ url: '/apm/integration', name: 'integration_add', isNotMenuItem: true }),
     ],
-  },
-] as MenuItem[];
+  }),
+];
 
-const jobExecutionMenus = [
-  {
+const jobExecutionMenus: MenuItem[] = [
+  menu({
     title: '作业执行',
     url: '/job/execution',
     name: 'execution',
     children: [
-      { title: '快速执行', url: '/job/execution/quick-exec', name: 'quick_exec' },
-      { title: '文件分发', url: '/job/execution/file-dist', name: 'file_dist' },
-      { title: '定时任务', url: '/job/execution/cron-task', name: 'cron_task' },
-      { title: '作业记录', url: '/job/execution/job-record', name: 'job_record' },
+      menu({ title: '快速执行', url: '/job/execution/quick-exec', name: 'quick_exec' }),
+      menu({ title: '文件分发', url: '/job/execution/file-dist', name: 'file_dist' }),
+      menu({ title: '定时任务', url: '/job/execution/cron-task', name: 'cron_task' }),
+      menu({ title: '作业记录', url: '/job/execution/job-record', name: 'job_record' }),
     ],
-  },
-] as MenuItem[];
+  }),
+];
 
-const cmdbAutoDiscoveryMenus = [
-  {
+const cmdbAutoDiscoveryMenus: MenuItem[] = [
+  menu({
     title: '管理',
     url: '/cmdb/assetManage',
     name: 'manage',
     children: [
-      {
+      menu({
         title: '自动发现',
         url: '/cmdb/assetManage/autoDiscovery',
         name: 'autoDiscovery',
         children: [
-          { title: '采集', url: '/cmdb/assetManage/autoDiscovery/collection', name: 'collection' },
-          { title: 'SOID特征库', url: '/cmdb/assetManage/autoDiscovery/featureLibrary/soid', name: 'soid' },
-          { title: '采集工具', url: '/cmdb/assetManage/autoDiscovery/featureLibrary/collectionTool', name: 'tool' },
+          menu({ title: '采集', url: '/cmdb/assetManage/autoDiscovery/collection', name: 'collection' }),
+          menu({ title: 'SOID特征库', url: '/cmdb/assetManage/autoDiscovery/featureLibrary/soid', name: 'soid' }),
+          menu({ title: '采集工具', url: '/cmdb/assetManage/autoDiscovery/featureLibrary/collectionTool', name: 'tool' }),
         ],
-      },
+      }),
     ],
-  },
-] as MenuItem[];
+  }),
+];
 
 describe('isMenuPathMatch', () => {
   it('matches exact and descendant paths on segment boundary', () => {
@@ -195,34 +202,34 @@ describe('getDeepestMatchedMenuItems', () => {
   });
 });
 
-const skillMenus = [
-  {
+const skillMenus: MenuItem[] = [
+  menu({
     title: '智能体',
     url: '/opspilot/skill',
     name: 'skill_list',
     hasDetail: true,
     children: [
-      {
+      menu({
         title: '设置',
         url: '/opspilot/skill/detail/settings',
         icon: 'shezhi',
         name: 'skill_setting',
-      },
-      {
+      }),
+      menu({
         title: '调用日志',
         url: '/opspilot/skill/detail/invocationLogs',
         icon: 'talk-line',
         name: 'skill_invocation_logs',
-      },
-      {
+      }),
+      menu({
         title: '对话',
         url: '/opspilot/skill/chat',
         name: 'skill_chat',
         isNotMenuItem: true,
-      },
+      }),
     ],
-  },
-] as MenuItem[];
+  }),
+];
 
 describe('getDeepestMatchedMenuItems', () => {
   it('falls back to parent siblings when current page is a leaf (opspilot skill)', () => {

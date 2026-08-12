@@ -271,10 +271,10 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                   t,
                   isInstallerPhase
                     ? {
-                        steps: installerDetailSteps.length
-                          ? installerDetailSteps
-                          : logs
-                      }
+                      steps: installerDetailSteps.length
+                        ? installerDetailSteps
+                        : logs
+                    }
                     : { steps: log ? [log] : [] }
                 );
                 const isFailureLog =

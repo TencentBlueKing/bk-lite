@@ -471,6 +471,9 @@ class ChatService:
                         "- 用户明确说了集群名 → 直接操作该集群\n"
                         "- 用户说 '所有工作负载/全部工作负载' 只是工作负载范围，不是全部集群范围；多集群时仍然必须先选择目标集群\n"
                         "【禁止】用户说'所有工作负载'时，不要调用 search_workload_across_namespaces，那是用于搜索特定名称的。\n"
+                        "【禁止】用户说全部/所有工作负载做配置检查时，调用 analyze_deployment_configurations 不得传 name，"
+                        "也不得擅自传用户未提及的 namespace（例如 kube-system）；应分析约定范围内全部 Deployment，"
+                        "确保 config_analysis_report 扫描对象数与范围一致。\n"
                         "【禁止】用户已经指定了工作负载名称时，不允许跳过搜索直接问用户选集群。必须先搜索。"
                     )
                     tool_params["extra_tools_prompt"] = tool_params.get("extra_tools_prompt", "") + k8s_prompt
