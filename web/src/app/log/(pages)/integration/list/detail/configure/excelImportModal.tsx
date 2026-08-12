@@ -114,10 +114,9 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
       setConfirmLoading(true);
       try {
         onSuccess(parsedData);
-        const successMsg = t('monitor.integrations.importSuccessCount').replace(
-          '{{count}}',
-          parsedData.length.toString()
-        );
+        const successMsg = t('monitor.integrations.importSuccessCount', '', {
+          count: parsedData.length
+        });
         message.success(successMsg);
         handleCancel();
       } finally {
@@ -403,8 +402,10 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
                 showErrorMessage: true,
                 errorTitle: t('monitor.integrations.inputError'),
                 error: t(
-                  'monitor.integrations.multipleValidationError'
-                ).replace('{{options}}', validation.options.join(', ')),
+                  'monitor.integrations.multipleValidationError',
+                  '',
+                  { options: validation.options.join(', ') }
+                ),
                 promptTitle: column.label,
                 showInputMessage: true
               };
@@ -422,14 +423,16 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
               formulae: [min, max],
               showErrorMessage: true,
               errorTitle: t('monitor.integrations.inputError'),
-              error: t('monitor.integrations.numberRangeError')
-                .replace('{{min}}', min.toString())
-                .replace('{{max}}', max.toString()),
+              error: t('monitor.integrations.numberRangeError', '', {
+                min,
+                max
+              }),
               promptTitle: column.label,
               showInputMessage: true,
-              prompt: t('monitor.integrations.numberRangeError')
-                .replace('{{min}}', min.toString())
-                .replace('{{max}}', max.toString())
+              prompt: t('monitor.integrations.numberRangeError', '', {
+                min,
+                max
+              })
             };
             continue;
           }

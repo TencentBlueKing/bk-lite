@@ -127,9 +127,10 @@ const IntegrationExcelImportModal = forwardRef<
 
     const uniqueCheckResult = validateUniqueness(parsedData);
     if (!uniqueCheckResult.isValid) {
-      const errorMsg = t('monitor.integrations.duplicateFieldError')
-        .replace('{{field}}', uniqueCheckResult.field || '')
-        .replace('{{value}}', uniqueCheckResult.value || '');
+      const errorMsg = t('monitor.integrations.duplicateFieldError', '', {
+        field: uniqueCheckResult.field || '',
+        value: uniqueCheckResult.value || '',
+      });
       message.error(errorMsg);
       return;
     }
@@ -148,10 +149,9 @@ const IntegrationExcelImportModal = forwardRef<
         return row;
       });
       onSuccess(normalizedData);
-      const successMsg = t('monitor.integrations.importSuccessCount').replace(
-        '{{count}}',
-        parsedData.length.toString(),
-      );
+      const successMsg = t('monitor.integrations.importSuccessCount', '', {
+        count: parsedData.length,
+      });
       message.success(successMsg);
       handleCancel();
     } finally {
