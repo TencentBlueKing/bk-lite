@@ -154,9 +154,9 @@ export class ChartDataTransformer {
     }
 
     if (dateValue && dateValue.isValid()) {
-      // 如果时分秒都为0，说明是按天/周/月分组，只显示 MM-DD
+      // 午夜：日/月桶统一带年，避免跨年刻度撞名（如多个 01-01）
       if (dateValue.hour() === 0 && dateValue.minute() === 0 && dateValue.second() === 0) {
-        return formatOpsDisplayTime(value, 'MM-DD');
+        return formatOpsDisplayTime(value, 'YYYY-MM-DD');
       }
       return formatOpsDisplayTime(value, 'MM-DD HH:mm');
     }
