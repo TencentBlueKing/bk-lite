@@ -1,3 +1,5 @@
+import json
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -440,6 +442,45 @@ def test_task_store_concurrently_publishes_one_stable_local_key(tmp_path):
         secrets = list(executor.map(lambda _: load_secret(), range(16)))
 
     assert len(set(secrets)) == 1
+
+
+def test_init_clears_legacy_terminal_payloads_without_touching_active_tasks(tmp_path):
+    db_path = tmp_path / "task.db"
+    store = TaskStore(str(db_path))
+    stored_statuses = {
+        "status-terminal": ("success", "queued"),
+        "execution-terminal": ("running", "failed"),
+        "callback-terminal": ("callback_failed", "success"),
+        "queued": ("queued", "queued"),
+        "running": ("running", "running"),
+    }
+    for task_id_suffix, (status, execution_status) in stored_statuses.items():
+        task_id = f"legacy-{task_id_suffix}"
+        payload_with_creds = {
+            "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": f"legacy-secret-{task_id_suffix}"}],
+        }
+        store.create_if_absent(task_id, "queued", payload_with_creds, {}, "2026-04-23T00:00:00+00:00")
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                UPDATE task_state
+                SET status = ?, execution_status = ?, execution_payload_json = ?
+                WHERE task_id = ?
+                """,
+                (status, execution_status, json.dumps(payload_with_creds), task_id),
+            )
+
+    reloaded_store = TaskStore(str(db_path))
+    database_bytes = db_path.read_bytes()
+
+    for task_id_suffix in ("status-terminal", "execution-terminal", "callback-terminal"):
+        assert reloaded_store.get_execution_payload(f"legacy-{task_id_suffix}") is None
+        assert f"legacy-secret-{task_id_suffix}".encode() not in database_bytes
+    for task_id_suffix in ("queued", "running"):
+        assert f"legacy-secret-{task_id_suffix}".encode() in database_bytes
+        assert reloaded_store.get_execution_payload(f"legacy-{task_id_suffix}") == {
+            "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": f"legacy-secret-{task_id_suffix}"}],
+        }
 
 
 def test_sensitive_credential_keys_is_comprehensive():

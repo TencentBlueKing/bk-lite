@@ -93,7 +93,9 @@ class TaskStore:
         return json.loads(plaintext.decode("utf-8"))
 
     def _connect(self):
-        return sqlite3.connect(self.db_path)
+        connection = sqlite3.connect(self.db_path)
+        connection.execute("PRAGMA secure_delete = ON")
+        return connection
 
     def _ensure_schema(self):
         db_parent = Path(self.db_path).parent
@@ -134,6 +136,21 @@ class TaskStore:
             for column, sql in migrations.items():
                 if column not in columns:
                     conn.execute(sql)
+
+            terminal_statuses = tuple(sorted(TERMINAL_TASK_STATUSES))
+            status_placeholders = ", ".join("?" for _ in terminal_statuses)
+            conn.execute(
+                f"""
+                UPDATE task_state
+                SET execution_payload_json = NULL
+                WHERE execution_payload_json IS NOT NULL
+                  AND (
+                      status IN ({status_placeholders})
+                      OR execution_status IN ({status_placeholders})
+                  )
+                """,
+                (*terminal_statuses, *terminal_statuses),
+            )
         os.chmod(self.db_path, 0o600)
 
     def create_if_absent(
