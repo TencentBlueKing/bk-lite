@@ -46,7 +46,7 @@ const CORE_NAMEPASS = {
     'minio_cluster_health_*', 'minio_s3_requests_*', 'minio_s3_traffic_*',
     'minio_node_cpu_*', 'minio_node_mem_*', 'minio_node_drive_*',
     'minio_node_process_*', 'minio_node_file_descriptor_*',
-    'minio_inter_node_traffic_*'
+    'minio_inter_node_traffic_*', 'minio_node_scanner_*'
   ],
   v3: [
     'minio_cluster_health_*', 'minio_cluster_erasure_set_*',

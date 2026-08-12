@@ -32,10 +32,11 @@ The token is injected through a collector environment variable and is not writte
 ## Core and Extension Metrics
 
 - v2 core endpoints: `/minio/v2/metrics/cluster` and `/minio/v2/metrics/resource`.
+- v2 `minio_node_scanner_*` is part of the resource core `namepass` and does not require the Lifecycle and Scanner extension; v3 scanner/ILM endpoints still require that extension.
 - Earlier than `RELEASE.2023-10-07T15-07-38Z`, v2 does not yet expose `/minio/v2/metrics/resource`. Telegraf reports 404 for that URL while continuing to collect the metrics available from the cluster endpoint. If persistent 404 logs are unacceptable, upgrade MinIO before enabling this integration. BK-Lite does not remove endpoints or fall back at runtime.
 - v3 core endpoints: `/api/requests`, `/cluster/health`, `/cluster/erasure-set`, `/cluster/usage/objects`, `/system/cpu`, `/system/memory`, `/system/drive`, `/system/process`, and `/system/network/internode`, all under `/minio/metrics/v3`.
 - Bucket extension: the v2 bucket endpoint or v3 `/cluster/usage/buckets`. The first release does not page through every `/bucket/.../<bucket>` detail endpoint.
-- Replication, lifecycle, audit/notification, and IAM/KMS are opt-in. KMS metrics come from the v2 cluster endpoint; the current official v3 groups expose IAM without a separate KMS endpoint.
+- Replication, lifecycle, audit/notification, and IAM/KMS are opt-in. The registered KMS metric comes from the v2 cluster endpoint; the v3 security extension currently scrapes `/cluster/iam` only. Official MinIO also exposes `/minio/metrics/v3/kms` (`minio_kms_*`), which this capability does not collect in the first release.
 
 The template uses `namepass` to write only selected core and extension families and excludes the TTFB histogram to control cardinality. Every series includes `minio_metrics_version=v2|v3`.
 

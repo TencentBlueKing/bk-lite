@@ -32,10 +32,11 @@ Token 通过采集器环境变量注入，不写入 Telegraf TOML 正文。只�
 ## 核心与扩展指标
 
 - v2 核心端点：`/minio/v2/metrics/cluster`、`/minio/v2/metrics/resource`。
+- v2 的 `minio_node_scanner_*` 属于 resource 核心 `namepass`，不依赖「生命周期与扫描」扩展；v3 的 scanner/ILM 端点仍需显式开启该扩展。
 - 早于 `RELEASE.2023-10-07T15-07-38Z` 的 v2 版本尚未提供 `/minio/v2/metrics/resource`；Telegraf 会对该 URL 报 404，但仍可从 cluster 端点采集当时已有的指标。若不能接受持续的 404 日志，请先升级 MinIO 再启用本接入。BK-Lite 不会在运行期自动删除端点或回退版本。
 - v3 核心端点：`/api/requests`、`/cluster/health`、`/cluster/erasure-set`、`/cluster/usage/objects`、`/system/cpu`、`/system/memory`、`/system/drive`、`/system/process`、`/system/network/internode`，均位于 `/minio/metrics/v3` 下。
 - Bucket 扩展：v2 bucket 端点或 v3 `/cluster/usage/buckets`。首版不自动分页枚举每个 Bucket 的 `/bucket/.../<bucket>` 明细。
-- 复制、生命周期、审计通知、IAM/KMS 为按需扩展。KMS 指标来自 v2 cluster 端点；当前 v3 官方分组提供 IAM 而没有独立 KMS 端点。
+- 复制、生命周期、审计通知、IAM/KMS 为按需扩展。KMS 登记指标来自 v2 cluster 端点；v3 扩展当前只采集 `/cluster/iam`。官方另有 `/minio/metrics/v3/kms`（`minio_kms_*`），本能力首版不采集。
 
 模板用 `namepass` 只写入所选核心及扩展指标族，并排除 TTFB histogram，以控制时序基数。每条时序都带有 `minio_metrics_version=v2|v3` 标签。
 
