@@ -22,6 +22,7 @@ from apps.monitor.utils.snmp_interface_template import (
     PUBLIC_IFMIB_TABLE_OIDS,
     get_common_ifmib_table,
     has_managed_ifmib_section,
+    is_ambiguous_ifmib_table,
     is_public_ifmib_table,
 )
 from apps.rpc.node_mgmt import NodeMgmt
@@ -335,13 +336,7 @@ def patch_child_content_dict(content: dict, overwrite_default: bool = False) -> 
     for config in snmp_configs:
         _validate_snmp_filter_structure(config)
         tables = _snmp_tables(config)
-        public_tables = [table for table in tables if is_public_ifmib_table(table)]
-        if any(
-            table.get("name") == common_table.get("name")
-            and table.get("oid") in (None, "")
-            and table not in public_tables
-            for table in tables
-        ):
+        if any(is_ambiguous_ifmib_table(table) and table.get("name") == common_table.get("name") for table in tables):
             raise ValueError("ambiguous interface table: public IF-MIB identity cannot be proven")
 
     public_owners = [config for config in snmp_configs if _public_tables_in_config(config)]
