@@ -135,6 +135,24 @@ export interface ResolvedMonitorRecentView {
   metricUnits?: Map<string, string>;
 }
 
+export interface MonitorRecentViewsResolution {
+  entries: ResolvedMonitorRecentView[];
+  requestedCount: number;
+  unresolvedCount: number;
+  failedCount: number;
+}
+
+export type MonitorRecentViewsResolutionStatus = 'empty' | 'ready' | 'partial' | 'unavailable';
+
+export function monitorRecentViewsResolutionStatus(
+  resolution: MonitorRecentViewsResolution,
+): MonitorRecentViewsResolutionStatus {
+  if (resolution.requestedCount === 0) return 'empty';
+  if (resolution.entries.length === 0) return 'unavailable';
+  if (resolution.unresolvedCount > 0 || resolution.failedCount > 0) return 'partial';
+  return 'ready';
+}
+
 export function normalizeRecentViews(value: unknown): MonitorRecentViewsConfig {
   const source = typeof value === 'object' && value !== null ? value as { items?: unknown } : {};
   const items = (Array.isArray(source.items) ? source.items : []).flatMap((raw) => {

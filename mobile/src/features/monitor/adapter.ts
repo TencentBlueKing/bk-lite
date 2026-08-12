@@ -1,5 +1,5 @@
 import { apiGet } from '@/api/request';
-import type { MetricGroup, MetricRangeResult, MonitorInstance, MonitorMetric, MonitorObject, MonitorPlugin, MonitorRecentViewsConfig, PageResult, ResolvedMonitorRecentView } from './model';
+import type { MetricGroup, MetricRangeResult, MonitorInstance, MonitorMetric, MonitorObject, MonitorPlugin, MonitorRecentViewsConfig, MonitorRecentViewsResolution, PageResult } from './model';
 import type { MonitorUnitListItem } from './unit-label';
 import {
   buildDisplayMetricUnitIndex,
@@ -127,8 +127,9 @@ export async function getMonitorInstance(
       raw: item,
     };
   });
-  return mapped.find((item) => item.id === instanceId)
-    || (mapped.length === 1 ? mapped[0] : null);
+  // 混合版本部署时，旧 Server 可能忽略 instance_id 并返回分页第一条。
+  // 只能接受 ID 精确一致的结果，避免把最近访问串成其他实例。
+  return mapped.find((item) => item.id === instanceId) || null;
 }
 
 export async function listEffectivePlugins(objectId: number, instanceId: string, signal?: AbortSignal): Promise<MonitorPlugin[]> {
@@ -258,7 +259,7 @@ export async function resolveRecentViews(
   config: MonitorRecentViewsConfig,
   objects: readonly MonitorObject[],
   signal?: AbortSignal,
-): Promise<ResolvedMonitorRecentView[]> {
+): Promise<MonitorRecentViewsResolution> {
   const objectMap = new Map(objects.map((object) => [object.id, object]));
   const unitCache = new Map<number, Map<string, string>>();
   const loadUnits = async (object: MonitorObject) => {
@@ -285,5 +286,17 @@ export async function resolveRecentViews(
     if (!instance) return null;
     return { item, object, instance, metricUnits };
   }));
-  return settled.flatMap((result) => (result.status === 'fulfilled' && result.value ? [result.value] : []));
+  const entries = settled.flatMap((result) => (
+    result.status === 'fulfilled' && result.value ? [result.value] : []
+  ));
+  const unresolvedCount = settled.filter((result) => (
+    result.status === 'fulfilled' && result.value === null
+  )).length;
+  const failedCount = settled.filter((result) => result.status === 'rejected').length;
+  return {
+    entries,
+    requestedCount: config.items.length,
+    unresolvedCount,
+    failedCount,
+  };
 }

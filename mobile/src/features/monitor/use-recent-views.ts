@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/auth';
 import { listMonitorObjects, resolveRecentViews } from '@/features/monitor/adapter';
 import type { ResolvedMonitorRecentView } from '@/features/monitor/model';
+import { monitorRecentViewsResolutionStatus } from '@/features/monitor/model';
 import { readRecentViews } from '@/features/monitor/recent-views-storage';
 import { getCurrentTeamCookie } from '@/utils/teamCookie';
 
-export type RecentViewsStatus = 'loading' | 'ready' | 'error';
+export type RecentViewsStatus = 'loading' | 'ready' | 'empty' | 'partial' | 'unavailable' | 'error';
 
 export function useRecentViews() {
   const { userInfo } = useAuth();
@@ -23,10 +24,10 @@ export function useRecentViews() {
     try {
       const config = readRecentViews(userId, teamId);
       const objects = await listMonitorObjects(signal);
-      const resolved = await resolveRecentViews(config, objects, signal);
+      const resolution = await resolveRecentViews(config, objects, signal);
       if (current !== requestId.current || signal?.aborted) return;
-      setEntries(resolved);
-      setStatus('ready');
+      setEntries(resolution.entries);
+      setStatus(monitorRecentViewsResolutionStatus(resolution));
     } catch (error) {
       if (current !== requestId.current || signal?.aborted) return;
       if (!preserveContent) setStatus('error');

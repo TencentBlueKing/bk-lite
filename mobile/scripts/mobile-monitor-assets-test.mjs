@@ -11,6 +11,27 @@ async function loadModel(path) {
   return import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}#${Math.random()}`);
 }
 
+async function loadMonitorAdapter(apiGet) {
+  const source = await readProjectFile('src/features/monitor/adapter.ts');
+  const sourceFile = ts.createSourceFile('adapter.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const declarations = sourceFile.statements.filter((statement) => {
+    if (ts.isFunctionDeclaration(statement)) {
+      return ['record', 'text', 'number', 'texts', 'unwrap', 'getMonitorInstance'].includes(statement.name?.text);
+    }
+    return false;
+  });
+  const moduleSource = `
+    const apiGet = (...args) => globalThis.__monitorAdapterApiGet(...args);
+    ${declarations.map((statement) => statement.getText(sourceFile)).join('\n')}
+    export { getMonitorInstance };
+  `;
+  globalThis.__monitorAdapterApiGet = apiGet;
+  const compiled = ts.transpileModule(moduleSource, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  return import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}#${Math.random()}`);
+}
+
 test('监控单位标签与 Web findUnitNameById 优先级一致', async () => {
   const { resolveMonitorUnitLabel } = await loadModel('src/features/monitor/unit-label.ts');
   const unitList = [
@@ -698,8 +719,85 @@ test('监控详情头部通过现有 list 接口回源状态与上报时间', as
   assert.match(fn, /instance_id:\s*instanceId/);
   assert.match(fn, /add_metrics:\s*hints\.addMetrics\s*\?\?\s*false/);
   assert.match(fn, /item\.id === instanceId/);
+  assert.doesNotMatch(fn, /mapped\.length === 1/);
   assert.doesNotMatch(fn, /name:\s*keyword/);
   assert.doesNotMatch(fn, /parseMonitorInstanceLookupHints/);
+});
+
+test('旧 Server 忽略 instance_id 时不会把分页第一条误认成最近访问实例', async () => {
+  const calls = [];
+  const { getMonitorInstance } = await loadMonitorAdapter(async (url, params) => {
+    calls.push({ url, params });
+    return {
+      count: 2,
+      results: [{
+        instance_id: "('other',)",
+        instance_name: '其他实例',
+        instance_id_values: ['other'],
+      }],
+    };
+  });
+
+  try {
+    const result = await getMonitorInstance(7, "('target',)", { addMetrics: true });
+    assert.equal(result, null);
+    assert.deepEqual(calls[0].params, {
+      page: 1,
+      page_size: 1,
+      instance_id: "('target',)",
+      add_metrics: true,
+    });
+  } finally {
+    delete globalThis.__monitorAdapterApiGet;
+  }
+});
+
+test('最近访问能区分真实空、完整恢复、部分失败与全部不可用', async () => {
+  const {
+    monitorRecentViewsResolutionStatus,
+  } = await loadModel('src/features/monitor/model.ts');
+  const entry = { item: {}, object: {}, instance: {} };
+
+  assert.equal(monitorRecentViewsResolutionStatus({
+    entries: [], requestedCount: 0, unresolvedCount: 0, failedCount: 0,
+  }), 'empty');
+  assert.equal(monitorRecentViewsResolutionStatus({
+    entries: [entry], requestedCount: 1, unresolvedCount: 0, failedCount: 0,
+  }), 'ready');
+  assert.equal(monitorRecentViewsResolutionStatus({
+    entries: [entry], requestedCount: 3, unresolvedCount: 1, failedCount: 1,
+  }), 'partial');
+  assert.equal(monitorRecentViewsResolutionStatus({
+    entries: [], requestedCount: 2, unresolvedCount: 1, failedCount: 1,
+  }), 'unavailable');
+
+  const panel = await readProjectFile('src/features/monitor/recent-views-panel.tsx');
+  const hook = await readProjectFile('src/features/monitor/use-recent-views.ts');
+  assert.match(hook, /setStatus\(monitorRecentViewsResolutionStatus\(resolution\)\)/);
+  assert.match(panel, /status === 'unavailable'[\s\S]*recentRestoreFailed/);
+  assert.match(panel, /status === 'partial'[\s\S]*recentPartialRestore/);
+});
+
+test('精确实例查询兼容重命名和复合 ID，删除或越权时安全为空', async () => {
+  const responses = new Map([
+    ["('renamed',)", [{ instance_id: "('renamed',)", instance_name: '重命名后的名称' }]],
+    ["('vc-a', 'host-1')", [{ instance_id: "('vc-a', 'host-1')", instance_name: '复合实例' }]],
+    ["('deleted',)", []],
+    ["('forbidden',)", []],
+  ]);
+  const { getMonitorInstance } = await loadMonitorAdapter(async (_url, params) => ({
+    count: responses.get(params.instance_id)?.length || 0,
+    results: responses.get(params.instance_id) || [],
+  }));
+
+  try {
+    assert.equal((await getMonitorInstance(7, "('renamed',)"))?.name, '重命名后的名称');
+    assert.equal((await getMonitorInstance(7, "('vc-a', 'host-1')"))?.id, "('vc-a', 'host-1')");
+    assert.equal(await getMonitorInstance(7, "('deleted',)"), null);
+    assert.equal(await getMonitorInstance(7, "('forbidden',)"), null);
+  } finally {
+    delete globalThis.__monitorAdapterApiGet;
+  }
 });
 
 test('监控详情只在实例确认存在后记录最近查看，不可用场景统一反馈', async () => {

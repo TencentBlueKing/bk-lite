@@ -51,7 +51,7 @@ export default function MonitorRecentViewsPanel() {
   }, []);
 
   useEffect(() => {
-    if (status !== 'ready') return;
+    if (status !== 'ready' && status !== 'partial') return;
     writeMobileViewSnapshot<MonitorRecentViewsViewState>(
       cacheScope,
       'monitor-recent',
@@ -66,7 +66,7 @@ export default function MonitorRecentViewsPanel() {
         className={styles.scroll}
         ref={scrollRef}
         onScroll={(event) => {
-          if (status !== 'ready') return;
+          if (status !== 'ready' && status !== 'partial') return;
           writeMobileViewSnapshot<MonitorRecentViewsViewState>(
             cacheScope,
             'monitor-recent',
@@ -90,7 +90,15 @@ export default function MonitorRecentViewsPanel() {
                 actionLabel={t('common.retry')}
                 onAction={() => void reload().catch(() => undefined)}
               />
-            ) : entries.length === 0 ? (
+            ) : status === 'unavailable' ? (
+              <MobileResult
+                kind="error"
+                title={t('monitor.recentRestoreFailed')}
+                description={t('monitor.retryHint')}
+                actionLabel={t('common.retry')}
+                onAction={() => void reload().catch(() => undefined)}
+              />
+            ) : status === 'empty' ? (
               <MobileResult
                 kind="empty"
                 title={t('monitor.noRecentViews')}
@@ -98,6 +106,11 @@ export default function MonitorRecentViewsPanel() {
               />
             ) : (
               <div className={styles.recentList}>
+                {status === 'partial' ? (
+                  <div role="status" className={styles.recentPartialNotice}>
+                    {t('monitor.recentPartialRestore')}
+                  </div>
+                ) : null}
                 {entries.map(({ item, object, instance, metricUnits }) => {
                   const reportingStatus = resolveMonitorReportingStatus(instance.status);
                   const summaryEntries = instanceSummaryEntries(
