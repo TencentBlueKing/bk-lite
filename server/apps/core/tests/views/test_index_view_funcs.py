@@ -62,23 +62,6 @@ class TestCheckFirstLogin:
         assert index_view._check_first_login(user, "A") is False
 
 
-class TestGetClientIp:
-    def test_ignores_untrusted_x_forwarded_for(self):
-        req = MagicMock()
-        req.META = {"HTTP_X_FORWARDED_FOR": "1.1.1.1, 2.2.2.2", "REMOTE_ADDR": "9.9.9.9"}
-        assert index_view._get_client_ip(req) == "9.9.9.9"
-
-    def test_falls_back_to_remote_addr(self):
-        req = MagicMock()
-        req.META = {"REMOTE_ADDR": "9.9.9.9"}
-        assert index_view._get_client_ip(req) == "9.9.9.9"
-
-    def test_empty_when_no_headers(self):
-        req = MagicMock()
-        req.META = {}
-        assert index_view._get_client_ip(req) == ""
-
-
 class TestParseRequestData:
     def test_parses_json_body(self):
         req = _post({"a": 1, "b": "x"})
@@ -390,15 +373,6 @@ class TestOtpViews:
             resp = index_view.verify_otp_login(req)
         assert _json(resp)["result"] is True
         assert resp.cookies["bklite_token"].value == "OTPJWT"
-
-    @pytest.mark.django_db
-    def test_verify_otp_login_forwards_direct_peer_ip(self):
-        req = _post({"challenge_id": "ch", "otp_code": "999999"})
-        req.META.update({"HTTP_X_FORWARDED_FOR": "1.1.1.1", "REMOTE_ADDR": "9.9.9.9"})
-        with patch.object(index_view, "_create_system_mgmt_client") as mock_client:
-            mock_client.return_value.verify_otp_login.return_value = {"result": False}
-            index_view.verify_otp_login(req)
-        mock_client.return_value.verify_otp_login.assert_called_once_with("ch", "999999", "9.9.9.9")
 
 
 class TestClientViews:

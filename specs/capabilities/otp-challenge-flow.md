@@ -76,10 +76,49 @@ The system SHALL store challenges in a distributed cache with automatic expirati
 ### Requirement: OTP verification rate limiting
 The system SHALL limit OTP verification attempts to prevent brute-force attacks.
 
+The Core HTTP boundary SHALL derive the IP from one of these explicit modes:
+
+- `direct` (default): use the direct peer address and ignore forwarding headers.
+- `trusted_proxy`: accept `X-Forwarded-For` only when the direct peer is in
+  `OTP_TRUSTED_PROXY_CIDRS`; require the inventoried proxy count in
+  `OTP_TRUSTED_PROXY_HOPS`, then walk the chain from the nearest hop and use
+  the first untrusted address.
+- `legacy`: temporarily preserve the former first-`X-Forwarded-For` behavior as
+  an operational rollback while trusted proxy ranges are being inventoried.
+
+Before enabling `trusted_proxy`, operators SHALL inventory every proxy hop and
+configure its CIDR. Invalid or incomplete configuration SHALL fail safe to the
+direct peer. A deployment can roll back without data migration by selecting
+`legacy`; rate-limit counters are reconstructable cache entries with a
+five-minute TTL.
+
+The bundled Next proxy removes inbound `X-Forwarded-For` by default
+(`OTP_WEB_XFF_MODE=strip`). `trusted_upstream` may be selected only when its
+upstream overwrites client-supplied forwarding headers and appends the observed
+client address; `legacy` preserves the former transparent forwarding behavior
+only as a bounded rollback. Rollout order is: inventory the fixed proxy chain,
+configure the server CIDRs and hop count, verify upstream header sanitation,
+then enable both trusted modes. Roll back the Web proxy and server to `legacy`
+without a data migration; cached counters expire within five minutes.
+
 #### Scenario: Rate limit exceeded
 - **WHEN** user exceeds 5 failed OTP attempts within 5 minutes (per IP + username)
 - **THEN** system blocks further OTP verification attempts
 - **AND** returns rate limit error with retry-after time
+
+#### Scenario: Untrusted forwarding header
+- **WHEN** a direct client supplies `X-Forwarded-For`
+- **AND** the direct peer is not configured as trusted
+- **THEN** the forwarding header does not affect the rate-limit key
+
+#### Scenario: Trusted multi-hop proxy
+- **WHEN** the direct peer and intermediate proxy hops are configured as trusted
+- **THEN** the nearest untrusted address in the forwarding chain is used
+- **AND** attacker-prepended forwarding values do not affect the rate-limit key
+
+#### Scenario: Proxy configuration rollback
+- **WHEN** an existing deployment cannot yet provide its complete trusted proxy ranges
+- **THEN** operators can select `legacy` temporarily without an application or data rollback
 
 #### Scenario: Rate limit reset
 - **WHEN** user successfully verifies OTP

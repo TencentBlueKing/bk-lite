@@ -2,6 +2,7 @@ import {NextRequest, NextResponse} from 'next/server';
 import {consumeProxyTimeoutMs, DEFAULT_TIMEOUT_MS, scheduleProxyAbort} from '@/utils/proxyTimeout';
 
 import {buildProxyTargets} from './proxyTarget';
+import {buildProxyRequestHeaders} from './proxyForwarding';
 
 const TARGET_SERVER = process.env.NEXTAPI_URL + '/api/v1' || 'http://localhost:3000';
 
@@ -71,11 +72,12 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
 
   console.log(`[PROXY] Forwarding Request: ${req.method} ${logTarget}`);
 
-  // 复制原始请求头，追加 X-Forwarded-* 自定义请求头
-  const headers = new Headers(req.headers);
-  headers.set('X-Forwarded-Host', req.nextUrl.host || '');
-  headers.set('X-Forwarded-For', req.headers.get('x-forwarded-for') || '');
-  headers.set('X-Forwarded-Proto', req.nextUrl.protocol || 'http');
+  // 默认移除访客可控的 XFF；仅在上游已清洗或紧急回滚时显式保留。
+  const headers = buildProxyRequestHeaders(
+    req.headers,
+    req.nextUrl.host || '',
+    req.nextUrl.protocol || 'http',
+  );
 
   // 创建 AbortController 用于超时控制
   const controller = new AbortController();
