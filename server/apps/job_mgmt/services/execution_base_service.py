@@ -210,7 +210,7 @@ class ExecutionTaskBaseService(object):
             targets = list(Target.objects.select_for_update().filter(id__in=unique_target_ids))
             if len(targets) != len(unique_target_ids):
                 raise ValueError("部分手动目标不存在")
-            if locked_execution.enforce_scheduled_team_boundary or locked_execution.scheduled_task_id:
+            if locked_execution.enforce_scheduled_team_boundary:
                 task_teams = normalize_team(locked_execution.team)
                 if len(task_teams) != 1 or any(not is_team_authorized(target.team, task_teams) for target in targets):
                     raise ValueError("部分手动目标未授权给定时任务所属团队")

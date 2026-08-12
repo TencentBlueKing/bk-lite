@@ -35,6 +35,7 @@ def _task(**overrides):
     return ScheduledTask.objects.create(**defaults)
 
 
+@patch("apps.job_mgmt.tasks.SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED", True)
 class TestScheduledTaskCeleryBoundary:
     def test_celery_disables_manual_task_without_targets(self):
         task = _task(target_source="manual", target_list=[], is_enabled=True)
@@ -119,6 +120,7 @@ class TestScheduledTaskCeleryBoundary:
 
         task.refresh_from_db()
         assert task.is_enabled is True
+        assert JobExecution.objects.filter(scheduled_task=task).count() == 0
         assert JobExecution.objects.filter(scheduled_task=task).count() == 1
         toggle.assert_not_called()
 
@@ -181,7 +183,20 @@ class TestScheduledTaskCeleryBoundary:
 
         task.refresh_from_db()
         assert task.is_enabled is True
-        assert JobExecution.objects.filter(scheduled_task=task).count() == 0
+
+
+class TestScheduledTaskCeleryRollout:
+    def test_default_disabled_rollout_preserves_legacy_worker_behavior(self):
+        script = Script.objects.create(name="foreign", content="echo foreign", script_type="shell", team=[2])
+        task = _task(script=script, script_content="", team=[1], is_enabled=True)
+
+        with patch("apps.job_mgmt.tasks._dispatch_execution_job", return_value=True):
+            tasks.execute_scheduled_task(task.id)
+
+        task.refresh_from_db()
+        execution = JobExecution.objects.get(scheduled_task=task)
+        assert task.is_enabled is True
+        assert execution.enforce_scheduled_team_boundary is False
 
 
 class TestScheduledTaskTeamBoundaryAudit:

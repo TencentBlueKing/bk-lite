@@ -17,6 +17,7 @@ from apps.job_mgmt.config import (
     DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE,
     DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY,
     SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN,
+    SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED,
 )
 from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
@@ -170,16 +171,17 @@ def execute_scheduled_task(scheduled_task_id: int):
             logger.info(f"[execute_scheduled_task] 定时任务已禁用: scheduled_task_id={scheduled_task_id}")
             return
 
-        try:
-            validate_scheduled_task_resource_boundary({}, instance=scheduled_task, lock_resources=True)
-        except ScheduledTaskTeamBoundaryError as exc:
-            disabled = disable_scheduled_task_and_schedule(scheduled_task_id)
-            outcome = "任务与调度已禁用" if disabled else "调度同步失败，任务保持启用以便下次重试"
-            logger.error(
-                f"[execute_scheduled_task] 锁内团队资源边界复核失败，{outcome}: "
-                f"scheduled_task_id={scheduled_task_id}, field={exc.field}, reason={exc.message}"
-            )
-            return
+        if SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED:
+            try:
+                validate_scheduled_task_resource_boundary({}, instance=scheduled_task, lock_resources=True)
+            except ScheduledTaskTeamBoundaryError as exc:
+                disabled = disable_scheduled_task_and_schedule(scheduled_task_id)
+                outcome = "任务与调度已禁用" if disabled else "调度同步失败，任务保持启用以便下次重试"
+                logger.error(
+                    f"[execute_scheduled_task] 锁内团队资源边界复核失败，{outcome}: "
+                    f"scheduled_task_id={scheduled_task_id}, field={exc.field}, reason={exc.message}"
+                )
+                return
 
         team = scheduled_task.team or []
         script_content = scheduled_task.script_content or ""
@@ -268,7 +270,7 @@ def execute_scheduled_task(scheduled_task_id: int):
                 playbook=scheduled_task.playbook,
                 playbook_version=playbook_version,
                 scheduled_task=scheduled_task,
-                enforce_scheduled_team_boundary=True,
+                enforce_scheduled_team_boundary=SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED,
                 params=params_str,
                 script_type=script_type,
                 script_content=script_content,

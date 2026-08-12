@@ -182,6 +182,35 @@ class TestScheduledTaskActions:
         toggle.assert_not_called()
         dispatch.assert_not_called()
 
+    @pytest.mark.parametrize("action,payload", [("toggle", {"is_enabled": False}), ("run_now", {})])
+    def test_task_team_change_after_initial_read_is_rejected(self, api_client, authenticated_user, action, payload):
+        """首次权限读取后团队发生变化时，锁内新快照必须再次拒绝旧团队用户。"""
+        from apps.job_mgmt.views.scheduled_task import ScheduledTaskViewSet
+
+        task = _make_task(team=[1], is_enabled=True)
+        authenticated_user.is_superuser = False
+        authenticated_user.group_list = [{"id": 1}]
+        authenticated_user.permission = {"job": {"cron_task-Edit"}}
+        api_client.cookies["current_team"] = "1"
+        original_get_object = ScheduledTaskViewSet.get_object
+
+        def get_object_then_change_team(view):
+            stale_task = original_get_object(view)
+            ScheduledTask.objects.filter(pk=stale_task.pk).update(team=[2])
+            return stale_task
+
+        with patch.object(ScheduledTaskViewSet, "get_object", new=get_object_then_change_team), patch(
+            VIEW_SVC + ".toggle_periodic_task_or_raise"
+        ) as toggle, patch("apps.job_mgmt.views.scheduled_task.dispatch_celery_task") as dispatch:
+            resp = api_client.post(f"{URL}{task.id}/{action}/", payload, format="json")
+
+        assert resp.status_code == 403
+        task.refresh_from_db()
+        assert task.team == [2]
+        assert task.is_enabled is True
+        toggle.assert_not_called()
+        dispatch.assert_not_called()
+
     def test_toggle(self, su_client):
         task = _make_task(is_enabled=True)
         with patch(VIEW_SVC + ".toggle_periodic_task_or_raise"):

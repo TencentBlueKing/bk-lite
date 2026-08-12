@@ -84,7 +84,7 @@ class TestExecuteScheduledTask:
 
     def test_no_manual_target_disables_task_without_execution(self):
         st = _task(target_source="manual", target_list=[])
-        with patch(
+        with patch("apps.job_mgmt.tasks.SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED", True), patch(
             "apps.job_mgmt.services.scheduled_task_authz.ScheduledTaskService.toggle_periodic_task_or_raise",
             return_value=True,
         ) as toggle:

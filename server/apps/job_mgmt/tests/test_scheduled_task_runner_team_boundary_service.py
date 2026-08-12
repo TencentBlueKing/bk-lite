@@ -118,6 +118,31 @@ def test_script_runner_keeps_same_team_scheduled_execution_compatible():
     executor.return_value.execute_ssh_stream.assert_called_once()
 
 
+def test_false_boundary_marker_preserves_linked_legacy_execution():
+    target = Target.objects.create(
+        name="legacy",
+        ip="127.0.0.23",
+        node_id="node-23",
+        ssh_user="root",
+        ssh_password="secret",
+        team=[1],
+    )
+    execution = _scheduled_execution(JobType.SCRIPT, target, move_target=False)
+    JobExecution.objects.filter(id=execution.id).update(enforce_scheduled_team_boundary=False)
+    Target.objects.filter(id=target.id).update(team=[2])
+
+    with patch("apps.job_mgmt.services.script_execution_runner.ensure_stream_sync"), patch(
+        "apps.job_mgmt.services.script_execution_runner.Executor"
+    ) as executor:
+        executor.return_value.execute_ssh_stream.return_value = "success"
+        ScriptExecutionRunner(execution.id).run()
+
+    execution.refresh_from_db()
+    assert execution.scheduled_task_id is not None
+    assert execution.status == ExecutionStatus.SUCCESS
+    executor.return_value.execute_ssh_stream.assert_called_once()
+
+
 def test_playbook_runner_keeps_same_team_scheduled_execution_compatible():
     target = Target.objects.create(
         name="owned",
