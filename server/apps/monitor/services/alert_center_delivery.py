@@ -59,19 +59,24 @@ def enqueue_alert_center_deliveries(
         for value in notifier._resolve_notice_type_ids(alert)
         if str(value).isdigit()
     }
-    alert_center_channel_ids = {
-        channel_id
-        for channel_id in configured_channel_ids
-        if (
-            SystemMgmtUtils.probe_notification_channel(
+    alert_center_channel_ids = set()
+    unresolved_channel_ids = set()
+    for channel_id in configured_channel_ids:
+        try:
+            capability = SystemMgmtUtils.probe_notification_channel(
                 channel_id, capability_only=True
+            ) or {}
+        except Exception:
+            # 能力目录是外部可降级依赖。生命周期事务不能因为瞬时 RPC
+            # 失败而回滚；保留 backfilled=False，由周期对账有界重试。
+            logger.exception(
+                "告警中心渠道能力查询失败，等待周期对账: channel_id=%s",
+                channel_id,
             )
-            or {}
-        ).get(
-            "delivery_mode"
-        )
-        == "alert_event_copy"
-    }
+            unresolved_channel_ids.add(channel_id)
+            continue
+        if capability.get("delivery_mode") == "alert_event_copy":
+            alert_center_channel_ids.add(channel_id)
     alert_channels = {
         alert.id: [
             int(value)
@@ -82,9 +87,10 @@ def enqueue_alert_center_deliveries(
     }
     target_alerts = [alert for alert in alerts if alert_channels[alert.id]]
     if not target_alerts:
-        MonitorAlert.objects.filter(id__in=[alert.id for alert in alerts]).update(
-            alert_center_delivery_backfilled=True
-        )
+        if not unresolved_channel_ids:
+            MonitorAlert.objects.filter(id__in=[alert.id for alert in alerts]).update(
+                alert_center_delivery_backfilled=True
+            )
         return []
 
     alert_ids = sorted({alert.id for alert in target_alerts})
@@ -155,7 +161,19 @@ def enqueue_alert_center_deliveries(
             MonitorAlert.objects.filter(id__in=alert_ids).update(alert_center_notified=False)
             if ALERT_CENTER_OUTBOX_DELIVERY_ENABLED:
                 transaction.on_commit(lambda ids=tuple(created_ids): _schedule_deliveries(ids))
-        MonitorAlert.objects.filter(id__in=alert_ids).update(alert_center_delivery_backfilled=True)
+        resolved_alert_ids = [
+            alert.id
+            for alert in target_alerts
+            if not unresolved_channel_ids.intersection(
+                int(value)
+                for value in notifier._resolve_notice_type_ids(alert)
+                if str(value).isdigit()
+            )
+        ]
+        if resolved_alert_ids:
+            MonitorAlert.objects.filter(id__in=resolved_alert_ids).update(
+                alert_center_delivery_backfilled=True
+            )
     return created_ids
 
 

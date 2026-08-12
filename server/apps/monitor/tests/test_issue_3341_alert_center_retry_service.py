@@ -5,7 +5,7 @@ from threading import Event, Thread
 from types import SimpleNamespace
 
 import pytest
-from django.db import close_old_connections
+from django.db import close_old_connections, transaction
 from django.utils import timezone as django_timezone
 
 # 该集成测试会加载 monitor 的节点管理服务；显式声明跨 app 依赖，
@@ -316,6 +316,42 @@ def test_outbox_ignores_non_alert_center_channels(alert_center_channel, monkeypa
             "channel_id", flat=True
         )
     ) == [alert_center_channel.id]
+
+
+def test_capability_rpc_failure_does_not_rollback_domain_state(
+    alert_center_channel, monkeypatch
+):
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.ALERT_CENTER_OUTBOX_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.SystemMgmtUtils.probe_notification_channel",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("rpc unavailable")),
+    )
+    alert = _alert(alert_center_channel, alert_center_notified=True)
+    notifier = AlertLifecycleNotifier(
+        SimpleNamespace(
+            notice=True,
+            notice_type_ids=[alert_center_channel.id],
+            notice_users=[],
+        )
+    )
+
+    with transaction.atomic():
+        MonitorAlert.objects.filter(id=alert.id).update(
+            status="recovered",
+            alert_center_notified=False,
+        )
+        assert enqueue_alert_center_deliveries(
+            [alert], "recovered", notifier=notifier
+        ) == []
+
+    alert.refresh_from_db()
+    assert alert.status == "recovered"
+    assert alert.alert_center_notified is False
+    assert alert.alert_center_delivery_backfilled is False
+    assert not MonitorAlertCenterDelivery.objects.filter(alert=alert).exists()
 
 
 def test_backfill_notice_disabled_keeps_valid_terminal_lifecycle(
