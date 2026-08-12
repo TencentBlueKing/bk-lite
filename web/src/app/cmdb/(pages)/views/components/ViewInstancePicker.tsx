@@ -52,6 +52,8 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   // fetch effects do not re-fire into an instance/search request storm.
   const searchInstancesRef = useRef(searchInstances);
   searchInstancesRef.current = searchInstances;
+  /** Avoid duplicate empty-keyword reloads for the same model. */
+  const loadedModelRef = useRef<string | null>(null);
 
   const modelOptions = useMemo(
     () =>
@@ -104,6 +106,7 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   const fetchInstances = useCallback(async (modelId: string, keyword: string) => {
     if (!modelId) {
       setInstanceOptions([]);
+      loadedModelRef.current = null;
       return;
     }
     const seq = ++searchSeqRef.current;
@@ -129,9 +132,15 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
           inst_name: item.inst_name || String(item._id),
         }))
       );
+      if (!keyword) {
+        loadedModelRef.current = modelId;
+      }
     } catch {
       if (seq !== searchSeqRef.current) return;
       setInstanceOptions([]);
+      if (!keyword) {
+        loadedModelRef.current = null;
+      }
     } finally {
       if (seq === searchSeqRef.current) {
         setLoading(false);
@@ -142,6 +151,10 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   useEffect(() => {
     if (!selectedModelId) {
       setInstanceOptions([]);
+      loadedModelRef.current = null;
+      return;
+    }
+    if (loadedModelRef.current === selectedModelId) {
       return;
     }
     void fetchInstances(selectedModelId, '');
@@ -171,6 +184,7 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   };
 
   const handleModelChange = (modelId: string) => {
+    loadedModelRef.current = null;
     setSelectedModelId(modelId);
     setInstanceOptions([]);
     onFocusChange(null);
@@ -178,9 +192,14 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
 
   const handleInstanceSearch = (value: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const keyword = value.trim();
+    // Ant Select may emit empty onSearch on open/re-render; skip if already loaded.
+    if (!keyword && selectedModelId && loadedModelRef.current === selectedModelId) {
+      return;
+    }
     debounceRef.current = setTimeout(() => {
       if (selectedModelId) {
-        void fetchInstances(selectedModelId, value);
+        void fetchInstances(selectedModelId, keyword);
       }
     }, SEARCH_DEBOUNCE_MS);
   };

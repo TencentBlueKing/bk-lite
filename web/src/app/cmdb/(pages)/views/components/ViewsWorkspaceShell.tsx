@@ -299,11 +299,23 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
     }
     setFocus((prev) => {
       if (focusKey(prev) === focusKey(enriched)) {
+        // Same identity — avoid a new object so persist/URL effects do not re-fire.
+        const mergedName = enriched.inst_name || prev?.inst_name;
+        const mergedModelName = enriched.model_name || prev?.model_name;
+        const mergedIcn = enriched.icn || prev?.icn;
+        if (
+          prev
+          && prev.inst_name === mergedName
+          && prev.model_name === mergedModelName
+          && prev.icn === mergedIcn
+        ) {
+          return prev;
+        }
         return {
           ...enriched,
-          inst_name: enriched.inst_name || prev?.inst_name,
-          model_name: enriched.model_name || prev?.model_name,
-          icn: enriched.icn || prev?.icn,
+          inst_name: mergedName,
+          model_name: mergedModelName,
+          icn: mergedIcn,
         };
       }
       return enriched;

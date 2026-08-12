@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { RelationshipsProvider } from '@/app/cmdb/context/relationships';
 import NetworkTopo from '@/app/cmdb/(pages)/assetData/detail/relationships/networkTopo';
@@ -44,6 +44,44 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
     setDevOpen(false);
   }, [viewType, focus.model_id, focus.inst_id, focus.mode]);
 
+  const handleNetworkRequestFocus = useCallback(
+    (payload: { modelId: string; instId: string; instName?: string }) => {
+      onFocusChange?.({
+        model_id: payload.modelId,
+        inst_id: payload.instId,
+        inst_name: payload.instName,
+      });
+    },
+    [onFocusChange]
+  );
+
+  const handleNetworkViewDetail = useCallback(
+    (payload: { modelId: string; instId: string; instName?: string }) => {
+      window.open(
+        buildBaseInfoPath({
+          model_id: payload.modelId,
+          inst_id: payload.instId,
+          inst_name: payload.instName,
+        }),
+        '_blank',
+        'noopener,noreferrer'
+      );
+    },
+    []
+  );
+
+  const handleRackSelect = useCallback(
+    (rack: { inst_id: string; inst_name?: string }) => {
+      onFocusChange?.({
+        model_id: 'rack',
+        inst_id: rack.inst_id,
+        inst_name: rack.inst_name,
+        mode: 'rack',
+      });
+    },
+    [onFocusChange]
+  );
+
   if (children) {
     return <div className="h-full min-h-0 overflow-hidden">{children}</div>;
   }
@@ -56,24 +94,8 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
             modelId={focus.model_id}
             instId={focus.inst_id}
             fillContainer
-            onRequestFocus={(payload) => {
-              onFocusChange?.({
-                model_id: payload.modelId,
-                inst_id: payload.instId,
-                inst_name: payload.instName,
-              });
-            }}
-            onViewDetail={(payload) => {
-              window.open(
-                buildBaseInfoPath({
-                  model_id: payload.modelId,
-                  inst_id: payload.instId,
-                  inst_name: payload.instName,
-                }),
-                '_blank',
-                'noopener,noreferrer'
-              );
-            }}
+            onRequestFocus={handleNetworkRequestFocus}
+            onViewDetail={handleNetworkViewDetail}
           />
         </RelationshipsProvider>
       </div>
@@ -136,14 +158,7 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
         <RoomFloorPlan
           modelId={focus.model_id}
           instId={focus.inst_id}
-          onRackSelect={(rack) => {
-            onFocusChange?.({
-              model_id: 'rack',
-              inst_id: rack.inst_id,
-              inst_name: rack.inst_name,
-              mode: 'rack',
-            });
-          }}
+          onRackSelect={handleRackSelect}
         />
       </div>
     );
