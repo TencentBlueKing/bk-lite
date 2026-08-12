@@ -215,7 +215,9 @@ class TestResourceBoundaryConcurrency:
 
         updater = threading.Thread(target=update_script)
         updater.start()
-        with patch.object(scheduled_task_authz, "_reload_resource", new=pause_after_resource_lock), patch(
+        with patch("apps.job_mgmt.tasks.SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED", True), patch.object(
+            scheduled_task_authz, "_reload_resource", new=pause_after_resource_lock
+        ), patch(
             "apps.job_mgmt.tasks._dispatch_execution_job",
             return_value=True,
         ), patch.object(
