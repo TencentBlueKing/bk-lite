@@ -136,22 +136,31 @@ class TaskStore:
             for column, sql in migrations.items():
                 if column not in columns:
                     conn.execute(sql)
-
-            terminal_statuses = tuple(sorted(TERMINAL_TASK_STATUSES))
-            status_placeholders = ", ".join("?" for _ in terminal_statuses)
-            conn.execute(
-                f"""
-                UPDATE task_state
-                SET execution_payload_json = NULL
-                WHERE execution_payload_json IS NOT NULL
-                  AND (
-                      status IN ({status_placeholders})
-                      OR execution_status IN ({status_placeholders})
-                  )
-                """,
-                (*terminal_statuses, *terminal_statuses),
-            )
+            self._cleanup_terminal_execution_payloads(conn)
         os.chmod(self.db_path, 0o600)
+
+    @staticmethod
+    def _cleanup_terminal_execution_payloads(conn: sqlite3.Connection) -> None:
+        """Run the security-critical legacy cleanup atomically during startup.
+
+        A SQLite error aborts and rolls back initialization. Operators can fix the
+        database lock/filesystem problem and restart; continuing would retain
+        plaintext terminal credentials behind a healthy service.
+        """
+        terminal_statuses = tuple(sorted(TERMINAL_TASK_STATUSES))
+        status_placeholders = ", ".join("?" for _ in terminal_statuses)
+        conn.execute(
+            f"""
+            UPDATE task_state
+            SET execution_payload_json = NULL
+            WHERE execution_payload_json IS NOT NULL
+              AND (
+                  status IN ({status_placeholders})
+                  OR execution_status IN ({status_placeholders})
+              )
+            """,
+            (*terminal_statuses, *terminal_statuses),
+        )
 
     def create_if_absent(
         self,
