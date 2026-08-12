@@ -217,12 +217,22 @@ class MonitorAlertViewSet(
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
-        instance = self.get_object()
-        old_status = instance.status
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
+        authorized_instance = self.get_object()
 
         with transaction.atomic():
+            # 权限范围先由 get_object 校验；状态转换必须锁内重读，避免扫描任务与
+            # 两个手工关闭请求都基于同一个旧 new 状态重复落 lifecycle intent。
+            instance = MonitorAlert.objects.select_for_update().get(
+                pk=authorized_instance.pk
+            )
+            # 锁等待期间组织关系、角色或策略归属都可能变化；始终以锁内时刻
+            # 重新走权限过滤，禁止复用过期授权依据。
+            instance = self.get_queryset().get(pk=instance.pk)
+            old_status = instance.status
+            serializer = self.get_serializer(
+                instance, data=request.data, partial=partial
+            )
+            serializer.is_valid(raise_exception=True)
             updated_data = serializer.validated_data
             if updated_data.get("status") == "closed":
                 now = datetime.now(timezone.utc)

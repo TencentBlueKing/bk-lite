@@ -329,8 +329,12 @@ class SystemMgmt(object):
                 raise
             return self.client.run("dispatch_notification", **payload)
 
-    def probe_notification_channel(self, channel_id):
-        return self.client.run("probe_notification_channel", channel_id=channel_id)
+    def probe_notification_channel(self, channel_id, capability_only=False):
+        return self.client.run(
+            "probe_notification_channel",
+            channel_id=channel_id,
+            capability_only=capability_only,
+        )
 
     def search_groups(self, query_params):
         """

@@ -224,13 +224,18 @@ def _channel_has_organization(channel, organization_ids):
 
 def _channel_delivery_organization(channel, organization_ids):
     """返回渠道与事件共同归属的确定性组织，避免多组织事件投递到错误 team。"""
+    shared = _channel_delivery_organizations(channel, organization_ids)
+    return shared[0] if shared else None
+
+
+def _channel_delivery_organizations(channel, organization_ids):
+    """返回消息声明范围与渠道授权范围的有序交集。"""
     try:
         allowed = {int(value) for value in channel.team or []}
         requested = {int(value) for value in organization_ids or []}
     except (TypeError, ValueError):
-        return None
-    shared = allowed.intersection(requested)
-    return min(shared) if shared else None
+        return []
+    return sorted(allowed.intersection(requested))
 
 
 @nats_client.register
@@ -307,18 +312,38 @@ def _notification_failure(code, message, *, retryable=False):
 
 
 @nats_client.register
-def probe_notification_channel(channel_id):
+def probe_notification_channel(channel_id, capability_only=False):
     """探测内部通知 responder；普通外部渠道只校验公开能力是否仍存在。"""
     channel = Channel.objects.filter(id=channel_id).first()
     if channel is None:
         return _notification_failure("channel_not_found", "通知渠道不存在。")
     capability = _notification_channel_capabilities(channel)
+    if capability_only:
+        return {
+            "result": True,
+            "code": "available",
+            "retryable": False,
+            "message": "success",
+            "delivery_mode": capability["delivery_mode"],
+        }
     if capability["delivery_mode"] != "alert_event_copy":
-        return {"result": True, "code": "available", "retryable": False, "message": "success"}
+        return {
+            "result": True,
+            "code": "available",
+            "retryable": False,
+            "message": "success",
+            "delivery_mode": capability["delivery_mode"],
+        }
 
     response = send_nats_message(channel, {"health_probe": True}, timeout_override=2)
     if isinstance(response, dict) and response.get("result") is True:
-        return {"result": True, "code": "available", "retryable": False, "message": "success"}
+        return {
+            "result": True,
+            "code": "available",
+            "retryable": False,
+            "message": "success",
+            "delivery_mode": capability["delivery_mode"],
+        }
     return _notification_failure(
         "responder_unavailable",
         "通知 responder 暂不可用。",
@@ -400,10 +425,16 @@ def dispatch_notification(
 
     if capability["delivery_mode"] == "alert_event_copy":
         producer = producer if producer in {"lite-apm", "lite-monitor", "lite-log"} else "lite-apm"
+        bounded_event_payload = dict(event_payload)
+        # 不能把调用方消息体中的 organizations 原样提升为 receiver 的可信归属；
+        # 仅透传渠道自身授权范围内的交集，兼容合法多组织渠道。
+        bounded_event_payload["organizations"] = _channel_delivery_organizations(
+            channel, organization_ids
+        )
         content = {
             "source_id": "nats",
             "pusher": producer,
-            "events": [event_payload],
+            "events": [bounded_event_payload],
         }
         if ack_mode == "per_event_v1":
             content["ack_mode"] = ack_mode

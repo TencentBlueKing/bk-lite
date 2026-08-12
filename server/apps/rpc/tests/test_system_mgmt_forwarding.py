@@ -334,7 +334,20 @@ def test_dispatch_notification_新生产者兼容旧receiver(client):
 
 def test_probe_notification_channel_转发渠道探针(client):
     client.probe_notification_channel(7)
-    assert _last(client) == ("probe_notification_channel", (), {"channel_id": 7})
+    assert _last(client) == (
+        "probe_notification_channel",
+        (),
+        {"channel_id": 7, "capability_only": False},
+    )
+
+
+def test_probe_notification_channel_转发纯能力探针(client):
+    client.probe_notification_channel(7, capability_only=True)
+    assert _last(client) == (
+        "probe_notification_channel",
+        (),
+        {"channel_id": 7, "capability_only": True},
+    )
 
 
 def test_search_groups_转发query_params(client):

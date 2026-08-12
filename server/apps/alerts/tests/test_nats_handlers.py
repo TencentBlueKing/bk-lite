@@ -1361,6 +1361,7 @@ def test_receive_alert_events_reports_partial_ingestion(monkeypatch):
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(monkeypatch):
     from apps.alerts.models.alert_source import AlertSource
 
@@ -1417,6 +1418,7 @@ def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(mo
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_receive_alert_events_per_event_ack_rejects_untrusted_and_bounds_batches(monkeypatch):
     from apps.alerts.models.alert_source import AlertSource
 

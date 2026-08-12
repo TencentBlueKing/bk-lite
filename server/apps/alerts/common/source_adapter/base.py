@@ -381,9 +381,19 @@ class AlertSourceAdapter(ABC):
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
         event.team = self._resolve_event_team(alert)
 
+        if not event.external_id or not str(event.external_id).strip():
+            event.external_id = self.resolve_recovery_external_id(event) or self.generate_external_id(
+                event.item,
+                event.resource_id,
+                event.resource_name,
+                event.resource_type,
+                self.alert_source.source_id,
+            )
+            logger.debug("[AlertSource] 已生成 external_id for event: %s", event.event_id)
+
         # 逐事件 ACK 的 delivery_id 只用于响应关联，不参与接收幂等身份。
-        # 可选 lifecycle_action 由可信内部生产者提供，用来区分 created/upgraded
-        # 等映射到同一业务 action 的独立生命周期代次。
+        # 必须在 external_id 回填后计算，否则缺少上游 ID 的 created/upgraded
+        # 会回退到相同业务 action，丢失生命周期代次隔离。
         lifecycle_action = alert.get("lifecycle_action")
         if lifecycle_action not in {"created", "upgraded", "recovered", "closed"}:
             lifecycle_action = None
@@ -401,16 +411,6 @@ class AlertSourceAdapter(ABC):
                 lifecycle_identity,
                 event.start_time,
             )
-
-        if not event.external_id or not str(event.external_id).strip():
-            event.external_id = self.resolve_recovery_external_id(event) or self.generate_external_id(
-                event.item,
-                event.resource_id,
-                event.resource_name,
-                event.resource_type,
-                self.alert_source.source_id,
-            )
-            logger.debug("[AlertSource] 已生成 external_id for event: %s", event.event_id)
 
     @staticmethod
     def build_ingress_dedup_key(event: Event) -> Optional[str]:

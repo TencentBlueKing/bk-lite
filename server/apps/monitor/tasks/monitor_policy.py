@@ -107,6 +107,7 @@ def scan_policy_task(policy_id):
 def retry_alert_center_lifecycle_notify_task():
     """补偿任务：重试推送到告警中心失败的告警通知（每5分钟执行，每次最多处理200条）"""
     from apps.monitor.services.alert_center_delivery import (
+        ALERT_CENTER_OUTBOX_DELIVERY_ENABLED,
         ALERT_CENTER_OUTBOX_ENABLED,
         backfill_legacy_alerts,
         due_delivery_ids,
@@ -114,14 +115,15 @@ def retry_alert_center_lifecycle_notify_task():
 
     if ALERT_CENTER_OUTBOX_ENABLED:
         backfilled = backfill_legacy_alerts()
-        delivery_ids = due_delivery_ids()
-        for delivery_id in delivery_ids:
-            deliver_alert_center_lifecycle_delivery.delay(delivery_id)
-        return {
-            "success": True,
-            "backfilled": backfilled,
-            "scheduled": len(delivery_ids),
-        }
+        if ALERT_CENTER_OUTBOX_DELIVERY_ENABLED:
+            delivery_ids = due_delivery_ids()
+            for delivery_id in delivery_ids:
+                deliver_alert_center_lifecycle_delivery.delay(delivery_id)
+            return {
+                "success": True,
+                "backfilled": backfilled,
+                "scheduled": len(delivery_ids),
+            }
 
     from apps.monitor.models import MonitorAlert, MonitorPolicy
     from apps.monitor.services.alert_lifecycle_notify import (
@@ -133,13 +135,18 @@ def retry_alert_center_lifecycle_notify_task():
         outbox_enabled=ALERT_CENTER_OUTBOX_ENABLED,
         created_retry_enabled=ALERT_CENTER_CREATED_RETRY_ENABLED,
     )
-    alerts = list(
-        MonitorAlert.objects.filter(
-            status__in=retry_statuses,
-            alert_center_notified=False,
-            alert_center_retry_count__lt=10,
-        ).order_by("id")[:200]
+    retry_alerts = MonitorAlert.objects.filter(
+        status__in=retry_statuses,
+        alert_center_notified=False,
+        alert_center_retry_count__lt=10,
     )
+    if ALERT_CENTER_OUTBOX_DELIVERY_ENABLED:
+        # active 阶段不得按当前状态越过 outbox 中尚未完成的 created 代次；
+        # shadow/rollback 阶段仍由 legacy 补偿负责实际送达。
+        retry_alerts = retry_alerts.exclude(
+            alert_center_deliveries__status__in=["pending", "delivering"]
+        )
+    alerts = list(retry_alerts.order_by("id")[:200])
     if not alerts:
         return {"success": True, "message": "no alerts to retry"}
 

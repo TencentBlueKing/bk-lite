@@ -547,8 +547,37 @@ def test_probe_notification_channel_checks_alert_copy_responder(monkeypatch):
 
     response = nats_api.probe_notification_channel(channel.id)
 
-    assert response == {"result": True, "code": "available", "retryable": False, "message": "success"}
+    assert response == {
+        "result": True,
+        "code": "available",
+        "retryable": False,
+        "message": "success",
+        "delivery_mode": "alert_event_copy",
+    }
     assert captured == {"channel": channel.id, "content": {"health_probe": True}, "timeout": 2}
+
+
+def test_probe_notification_channel_capability_only_does_not_touch_responder(
+    monkeypatch,
+):
+    group = Group.objects.create(name="capability-team", parent_id=0)
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        team=[group.id],
+    )
+    send = monkeypatch.setattr(
+        "apps.system_mgmt.nats.channels.send_nats_message",
+        lambda *args, **kwargs: pytest.fail("capability-only probe must not call responder"),
+    )
+
+    response = nats_api.probe_notification_channel(
+        channel.id, capability_only=True
+    )
+
+    assert response["result"] is True
+    assert response["delivery_mode"] == "alert_event_copy"
 
 
 def test_public_notification_recipient_search_is_scoped_and_bounded():
@@ -806,6 +835,20 @@ def test_monitor_alert_copy_dispatch_is_capability_scoped_and_returns_ack(monkey
     assert result["result"] is True
     assert result["data"]["event_results"][0]["delivery_id"] == "delivery-1"
     assert sent["content"]["ack_token"] == "receiver-secret"
+
+    bounded = nats_api.dispatch_notification(
+        delivery_key="delivery-bounded",
+        channel_id=channel.id,
+        organization_ids=[1, 999],
+        recipients=[],
+        title="",
+        body="alert",
+        event_payload={"delivery_id": "delivery-bounded", "organizations": [1, 999]},
+        required_delivery_mode="alert_event_copy",
+        producer="lite-monitor",
+    )
+    assert bounded["result"] is True
+    assert sent["content"]["events"][0]["organizations"] == [1]
 
     forbidden = nats_api.dispatch_notification(
         delivery_key="delivery-2",

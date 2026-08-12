@@ -22,6 +22,9 @@ def _env_flag(name, *, default=False):
 # writing outbox records.  Keep the producer disabled through mixed-version
 # rollouts; operators enable it only after the receiver-first deployment.
 ALERT_CENTER_OUTBOX_ENABLED = _env_flag("MONITOR_ALERT_CENTER_OUTBOX_ENABLED")
+ALERT_CENTER_OUTBOX_DELIVERY_ENABLED = _env_flag(
+    "MONITOR_ALERT_CENTER_OUTBOX_DELIVERY_ENABLED"
+)
 ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 OUTBOX_BATCH_SIZE = 200
 OUTBOX_LEASE_TIMEOUT = timedelta(minutes=5)
@@ -50,12 +53,38 @@ def enqueue_alert_center_deliveries(
     if not ALERT_CENTER_OUTBOX_ENABLED or not alerts:
         return []
 
+    configured_channel_ids = {
+        int(value)
+        for alert in alerts
+        for value in notifier._resolve_notice_type_ids(alert)
+        if str(value).isdigit()
+    }
+    alert_center_channel_ids = {
+        channel_id
+        for channel_id in configured_channel_ids
+        if (
+            SystemMgmtUtils.probe_notification_channel(
+                channel_id, capability_only=True
+            )
+            or {}
+        ).get(
+            "delivery_mode"
+        )
+        == "alert_event_copy"
+    }
     alert_channels = {
-        alert.id: [int(value) for value in notifier._resolve_notice_type_ids(alert) if str(value).isdigit()]
+        alert.id: [
+            int(value)
+            for value in notifier._resolve_notice_type_ids(alert)
+            if str(value).isdigit() and int(value) in alert_center_channel_ids
+        ]
         for alert in alerts
     }
     target_alerts = [alert for alert in alerts if alert_channels[alert.id]]
     if not target_alerts:
+        MonitorAlert.objects.filter(id__in=[alert.id for alert in alerts]).update(
+            alert_center_delivery_backfilled=True
+        )
         return []
 
     alert_ids = sorted({alert.id for alert in target_alerts})
@@ -68,15 +97,6 @@ def enqueue_alert_center_deliveries(
         instance_org_map = notifier._build_instance_org_map(target_alerts)
         for original in target_alerts:
             alert = locked_by_id.get(original.id, original)
-            blocking_generation = (
-                MonitorAlertCenterDelivery.objects.filter(
-                    alert_id=alert.id,
-                    status=MonitorAlertCenterDelivery.Status.FAILED,
-                )
-                .order_by("generation")
-                .values_list("generation", flat=True)
-                .first()
-            )
             base_payload = notifier._build_alert_center_payload(
                 alert, action, operator, reason, instance_org_map
             )
@@ -86,6 +106,16 @@ def enqueue_alert_center_deliveries(
                 # 才能让 receiver 对前者去重、对后者正常接收。
                 base_payload.pop("lifecycle_action", None)
             for channel_id in alert_channels[alert.id]:
+                blocking_generation = (
+                    MonitorAlertCenterDelivery.objects.filter(
+                        alert_id=alert.id,
+                        channel_id=channel_id,
+                        status=MonitorAlertCenterDelivery.Status.FAILED,
+                    )
+                    .order_by("generation")
+                    .values_list("generation", flat=True)
+                    .first()
+                )
                 delivery_id = _delivery_fingerprint(
                     alert.id,
                     action,
@@ -123,7 +153,8 @@ def enqueue_alert_center_deliveries(
 
         if created_ids:
             MonitorAlert.objects.filter(id__in=alert_ids).update(alert_center_notified=False)
-            transaction.on_commit(lambda ids=tuple(created_ids): _schedule_deliveries(ids))
+            if ALERT_CENTER_OUTBOX_DELIVERY_ENABLED:
+                transaction.on_commit(lambda ids=tuple(created_ids): _schedule_deliveries(ids))
         MonitorAlert.objects.filter(id__in=alert_ids).update(alert_center_delivery_backfilled=True)
     return created_ids
 
@@ -175,6 +206,7 @@ def deliver_alert_center_delivery(record_id):
             return False
         earlier_unfinished = MonitorAlertCenterDelivery.objects.filter(
             alert_id=record.alert_id,
+            channel_id=record.channel_id,
             generation__lt=record.generation,
         ).exclude(status=record.Status.DELIVERED).exists()
         if earlier_unfinished:
@@ -266,6 +298,7 @@ def _fail_blocked_successors(record):
     """A terminal predecessor makes later lifecycle copies unsafe to deliver."""
     MonitorAlertCenterDelivery.objects.filter(
         alert_id=record.alert_id,
+        channel_id=record.channel_id,
         generation__gt=record.generation,
         status__in=[
             MonitorAlertCenterDelivery.Status.PENDING,
@@ -295,7 +328,16 @@ def backfill_legacy_alerts():
 
     for alert in alerts:
         policy = policies.get(alert.policy_id)
-        if policy is not None and not policy.notice:
+        has_successful_created_notice = any(
+            isinstance(entry, dict)
+            and entry.get("action") in {"created", "upgraded"}
+            and entry.get("success") is True
+            for entry in alert.notice_logs or []
+        )
+        if policy is not None and not policy.notice and not (
+            alert.status in {"recovered", "closed"}
+            and has_successful_created_notice
+        ):
             MonitorAlert.objects.filter(id=alert.id).update(alert_center_delivery_backfilled=True)
             continue
         configured_ids = [int(value) for value in alert.notice_type_ids or [] if str(value).isdigit()]
@@ -304,11 +346,19 @@ def backfill_legacy_alerts():
         if not configured_ids:
             MonitorAlert.objects.filter(id=alert.id).update(alert_center_delivery_backfilled=True)
             continue
-        action = "created" if alert.status == "new" else alert.status
         notifier = AlertLifecycleNotifier(policy, policies_by_id=policies)
+        if alert.status != "new" and not has_successful_created_notice:
+            # 存量只有当前态，没有首次告警的不可变快照；先建立兼容 created
+            # 前驱，保证 recovery/closed 不会越过尚未确认的首次投递。
+            enqueue_alert_center_deliveries(
+                [alert],
+                "created",
+                notifier=notifier,
+                legacy_ingest_identity=True,
+            )
         enqueue_alert_center_deliveries(
             [alert],
-            action,
+            "created" if alert.status == "new" else alert.status,
             notifier=notifier,
             legacy_ingest_identity=(
                 alert.status == "new" and alert.alert_center_notified

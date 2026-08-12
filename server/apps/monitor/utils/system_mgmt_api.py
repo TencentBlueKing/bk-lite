@@ -33,6 +33,12 @@ class SystemMgmtUtils:
         return SystemMgmt().dispatch_notification(**kwargs)
 
     @staticmethod
+    def probe_notification_channel(channel_id, capability_only=False):
+        return SystemMgmt().probe_notification_channel(
+            channel_id, capability_only=capability_only
+        )
+
+    @staticmethod
     def format_rules(module, child_module, rules):
         rule = rules.get("monitor", {})
         combined_map = {}
