@@ -342,7 +342,7 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
         {currentStep === 1 && (
           <div className={templateStyle.stepPanel}>
             <div className={templateStyle.stepHint}>
-              选择这些模版要覆盖的监控资产。最终按所选模版 x 所选资产批量创建策略。
+              选择这些模版要覆盖的监控资产。每个模版将创建一条策略，实例范围包含所选全部资产。
             </div>
             <Table
               className={templateStyle.assetTable}
@@ -537,6 +537,7 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
                         <div className={templateStyle.previewName}>{item.name}</div>
                         <div className={templateStyle.previewMeta}>
                           <span>策略指标：{item.metricLabel}</span>
+                          <span>实例范围：{item.assetScopeLabel}</span>
                           <Tag color={item.statusLabel === '启用' ? 'success' : 'default'}>
                             {item.statusLabel}
                           </Tag>

@@ -16,7 +16,7 @@ def _load_module(module_name, file_path):
     return module
 
 
-def test_build_bulk_policy_payloads_expands_templates_for_each_asset():
+def test_build_bulk_policy_payloads_creates_one_policy_per_template_with_all_assets():
     module_path = Path(__file__).resolve().parents[1] / "services" / "policy_bulk.py"
     assert module_path.exists(), "bulk policy payload service should exist"
     module = _load_module("monitor_policy_bulk_payload_test_module", module_path)
@@ -63,14 +63,12 @@ def test_build_bulk_policy_payloads_expands_templates_for_each_asset():
         },
     )
 
-    assert len(payloads) == 4
+    assert len(payloads) == 2
     assert [item["name"] for item in payloads] == [
-        "批量策略-CPU 使用率过高-host-a",
-        "批量策略-CPU 使用率过高-host-b",
-        "批量策略-内存使用率过高-host-a",
-        "批量策略-内存使用率过高-host-b",
+        "批量策略-CPU 使用率过高",
+        "批量策略-内存使用率过高",
     ]
-    assert {item["source"]["values"][0] for item in payloads} == {"('host-a',)", "('host-b',)"}
+    assert all(item["source"]["values"] == ["('host-a',)", "('host-b',)"] for item in payloads)
     assert {item["query_condition"]["metric_id"] for item in payloads} == {101, 102}
     assert all(item["monitor_object"] == 3 for item in payloads)
     assert all(item["source"]["type"] == "instance" for item in payloads)
@@ -81,15 +79,13 @@ def test_build_bulk_policy_payloads_expands_templates_for_each_asset():
     assert all(item["notice_type_ids"] == [11, 12] for item in payloads)
     assert all(item["notice_users"] == ["alice", "bob"] for item in payloads)
     assert all(item["enable"] is False for item in payloads)
-    assert all(item["organizations"] in ([7], [8]) for item in payloads)
+    assert all(item["organizations"] == [7, 8] for item in payloads)
     assert all(item["trigger_count"] == 1 for item in payloads)
     assert all(item["threshold_unit"] == "percent" for item in payloads)
     assert all("no_data_level" not in item for item in payloads)
     assert all("no_data_alert_name" not in item for item in payloads)
     assert [(item["group_algorithm"], item["algorithm"]) for item in payloads] == [
         ("max", "max_over_time"),
-        ("max", "max_over_time"),
-        ("avg", "avg_over_time"),
         ("avg", "avg_over_time"),
     ]
 
