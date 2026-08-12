@@ -324,6 +324,67 @@ class TestExecutionRecordListApi:
         assert "未设置" in detail["steps"][1]["reason"]
         assert "未执行重启" in detail["steps"][2]["reason"]
 
+    def test_container_install_keeps_three_steps_with_reboot_skipped_reason(self):
+        """容器节点仍展示三步，重启为有原因的已跳过，验证结果正常展示。"""
+        risk_id = "10:20:30"
+        remediation = GovernanceTask.objects.create(
+            name="治理 · container-a · 1项",
+            task_type=GovernanceTaskType.INSTALL,
+            status=GovernanceTaskStatus.COMPLETED,
+            auto_reboot=True,
+            target_list=[10],
+            patch_list=[20],
+            risk_snapshot=[{
+                "id": risk_id,
+                "host_id": 10,
+                "host_name": "container-a",
+                "host_ip": "172.19.0.20",
+                "patch_id": 20,
+                "patch_name": "aide",
+            }],
+            team=[1],
+        )
+        GovernanceTaskHost.objects.create(
+            task=remediation,
+            target_id=10,
+            target_name="container-a",
+            target_ip="172.19.0.20",
+            stage="completed",
+            error_code="container_reboot_skipped",
+            reason="安装完成；容器节点已跳过主机重启",
+        )
+        verify = GovernanceTask.objects.create(
+            name="安装后自动验证",
+            task_type=GovernanceTaskType.VERIFY,
+            status=GovernanceTaskStatus.COMPLETED,
+            parent_task=remediation,
+            target_list=[10],
+            patch_list=[20],
+            result_snapshot=[{
+                "risk_item_id": risk_id,
+                "host_id": 10,
+                "patch_id": 20,
+                "status": "completed",
+                "satisfied": True,
+            }],
+            team=[1],
+        )
+        GovernanceTaskHost.objects.create(
+            task=verify,
+            target_id=10,
+            target_name="container-a",
+            stage="completed",
+            reason="已确认目标补丁版本符合要求",
+        )
+
+        detail = build_risk_item_detail(remediation, risk_id)
+
+        assert build_record_status(remediation) == ("completed", "已完成", "success")
+        assert [step["key"] for step in detail["steps"]] == ["install", "reboot", "verify"]
+        assert [step["status"] for step in detail["steps"]] == ["completed", "skipped", "completed"]
+        assert "容器节点" in detail["steps"][1]["reason"]
+        assert "容器平台" in detail["steps"][1]["reason"]
+
     def test_install_item_waits_for_verification_while_batch_peer_is_running(self):
         """单机安装完成不代表治理完成；自动验证创建前摘要应与详情同为等待中。"""
         completed_risk_id = "10:20:30"
