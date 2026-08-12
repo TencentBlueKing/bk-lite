@@ -78,6 +78,8 @@ def test_backfill_reconciles_legacy_created_rows_that_still_look_notified(alert_
     delivery = MonitorAlertCenterDelivery.objects.get(alert=alert)
     assert delivery.action == "created"
     assert delivery.channel_id == alert_center_channel.id
+    assert "lifecycle_action" not in delivery.payload
+    assert "lifecycle_generation" in delivery.payload
     alert.refresh_from_db()
     assert alert.alert_center_delivery_backfilled is True
     assert alert.alert_center_notified is False
@@ -105,6 +107,35 @@ def test_created_and_recovered_keep_independent_ordered_immutable_payloads(alert
     assert deliveries[1].payload["title"] == "CPU 已恢复"
     alert.refresh_from_db()
     assert alert.alert_center_notified is False
+
+
+def test_multi_channel_enqueue_is_idempotent_across_retries(alert_center_channel, monkeypatch):
+    second_channel = Channel.objects.create(
+        name="备用告警中心",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
+    )
+    monkeypatch.setattr("apps.monitor.services.alert_center_delivery._schedule_deliveries", lambda ids: None)
+    alert = _alert(
+        alert_center_channel,
+        notice_type_ids=[alert_center_channel.id, second_channel.id],
+    )
+    notifier = AlertLifecycleNotifier(
+        SimpleNamespace(id=7, name="CPU 策略", organizations=[1], notice=True)
+    )
+
+    first_ids = enqueue_alert_center_deliveries(
+        [alert], "created", notifier=notifier
+    )
+    second_ids = enqueue_alert_center_deliveries(
+        [alert], "created", notifier=notifier
+    )
+
+    assert len(first_ids) == 2
+    assert second_ids == []
+    assert MonitorAlertCenterDelivery.objects.filter(alert=alert).count() == 2
 
 
 def test_later_generation_cannot_overtake_pending_created(alert_center_channel, mocker):
@@ -165,7 +196,7 @@ def test_stale_delivery_finalize_is_fenced_by_attempt_generation(alert_center_ch
     ("response", "expected"),
     [
         ({"result": False, "data": {"event_results": [{"delivery_id": "d", "status": "duplicate", "retryable": False}]}}, (True, False, "")),
-        ({"result": False, "data": {"event_results": [{"delivery_id": "d", "status": "rejected", "retryable": False}]}}, (False, False, "rejected")),
+        ({"result": False, "data": {"event_results": [{"delivery_id": "d", "status": "rejected", "retryable": True}]}}, (False, True, "rejected")),
         ({"result": False, "data": {"event_results": [{"delivery_id": "d", "status": "errored", "retryable": True}]}}, (False, True, "errored")),
         ({"result": True, "data": {}}, (True, False, "")),
     ],
@@ -213,6 +244,41 @@ def test_terminal_channel_boundary_failure_is_not_retried(alert_center_channel, 
     assert delivery.next_retry_at is None
 
 
+def test_rejected_event_ack_keeps_delivery_retryable(alert_center_channel, monkeypatch):
+    alert = _alert(alert_center_channel, alert_center_notified=False)
+    delivery = MonitorAlertCenterDelivery.objects.create(
+        alert=alert,
+        action="created",
+        generation=1,
+        delivery_id="retryable-rejected",
+        channel_id=alert_center_channel.id,
+        payload={"title": "first", "organizations": [1]},
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.SystemMgmtUtils.dispatch_notification",
+        lambda **kwargs: {
+            "result": False,
+            "data": {
+                "event_results": [
+                    {
+                        "delivery_id": "retryable-rejected",
+                        "status": "rejected",
+                        "retryable": True,
+                    }
+                ]
+            },
+        },
+    )
+
+    assert deliver_alert_center_delivery(delivery.id) is False
+
+    delivery.refresh_from_db()
+    assert delivery.status == MonitorAlertCenterDelivery.Status.PENDING
+    assert delivery.attempts == 1
+    assert delivery.next_retry_at is not None
+    assert delivery.last_error == "rejected"
+
+
 def test_terminal_predecessor_closes_later_generations(alert_center_channel, monkeypatch):
     alert = _alert(alert_center_channel, alert_center_notified=False)
     first = MonitorAlertCenterDelivery.objects.create(
@@ -241,5 +307,41 @@ def test_terminal_predecessor_closes_later_generations(alert_center_channel, mon
     first.refresh_from_db()
     second.refresh_from_db()
     assert first.status == MonitorAlertCenterDelivery.Status.FAILED
+    assert second.status == MonitorAlertCenterDelivery.Status.FAILED
+    assert second.last_error == "blocked by terminal generation 1"
+
+
+def test_successor_enqueued_after_terminal_failure_is_closed(
+    alert_center_channel, monkeypatch
+):
+    alert = _alert(alert_center_channel, alert_center_notified=False)
+    first = MonitorAlertCenterDelivery.objects.create(
+        alert=alert,
+        action="created",
+        generation=1,
+        delivery_id="terminal-lock-created",
+        channel_id=alert_center_channel.id,
+        payload={"title": "first", "organizations": [1]},
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.SystemMgmtUtils.dispatch_notification",
+        lambda **kwargs: {"result": False, "retryable": False, "code": "forbidden"},
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery._schedule_deliveries",
+        lambda ids: None,
+    )
+
+    assert deliver_alert_center_delivery(first.id) is False
+    notifier = AlertLifecycleNotifier(
+        SimpleNamespace(id=7, name="CPU 策略", organizations=[1], notice=True)
+    )
+    enqueue_alert_center_deliveries(
+        [alert], "recovered", notifier=notifier
+    )
+
+    second = MonitorAlertCenterDelivery.objects.get(
+        alert=alert, generation=2
+    )
     assert second.status == MonitorAlertCenterDelivery.Status.FAILED
     assert second.last_error == "blocked by terminal generation 1"

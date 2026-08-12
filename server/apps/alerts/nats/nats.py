@@ -49,7 +49,9 @@ def _event_ack(delivery_id, ingestion):
     return {
         "delivery_id": delivery_id,
         "status": status,
-        "retryable": status == "errored",
+        # duplicate 是幂等终态；rejected 可能由缺字段、校验或滚动混部
+        # 引起，生产者需要保留投递意图并在修复后重试。
+        "retryable": status in {"rejected", "errored"},
     }
 
 

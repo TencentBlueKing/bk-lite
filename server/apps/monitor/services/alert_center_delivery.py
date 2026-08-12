@@ -37,7 +37,15 @@ def _delivery_fingerprint(alert_id, action, payload):
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
-def enqueue_alert_center_deliveries(alerts, action, *, notifier, operator="", reason=""):
+def enqueue_alert_center_deliveries(
+    alerts,
+    action,
+    *,
+    notifier,
+    operator="",
+    reason="",
+    legacy_ingest_identity=False,
+):
     """在调用方事务内保存按 alert/action 代次排序的不可变载荷。"""
     if not ALERT_CENTER_OUTBOX_ENABLED or not alerts:
         return []
@@ -60,16 +68,39 @@ def enqueue_alert_center_deliveries(alerts, action, *, notifier, operator="", re
         instance_org_map = notifier._build_instance_org_map(target_alerts)
         for original in target_alerts:
             alert = locked_by_id.get(original.id, original)
-            payload = notifier._build_alert_center_payload(alert, action, operator, reason, instance_org_map)
+            blocking_generation = (
+                MonitorAlertCenterDelivery.objects.filter(
+                    alert_id=alert.id,
+                    status=MonitorAlertCenterDelivery.Status.FAILED,
+                )
+                .order_by("generation")
+                .values_list("generation", flat=True)
+                .first()
+            )
+            base_payload = notifier._build_alert_center_payload(
+                alert, action, operator, reason, instance_org_map
+            )
+            if legacy_ingest_identity:
+                # 旧 producer 没有 lifecycle identity。存量 new 的 notified=True
+                # 无法区分“已经成功”与“默认值掩盖失败”，沿用旧 ingest key
+                # 才能让 receiver 对前者去重、对后者正常接收。
+                base_payload.pop("lifecycle_action", None)
             for channel_id in alert_channels[alert.id]:
-                delivery_id = _delivery_fingerprint(alert.id, action, {"channel_id": channel_id, **payload})
+                delivery_id = _delivery_fingerprint(
+                    alert.id,
+                    action,
+                    {"channel_id": channel_id, **base_payload},
+                )
                 existing = MonitorAlertCenterDelivery.objects.filter(delivery_id=delivery_id).first()
                 if existing:
                     continue
                 generation = (
                     MonitorAlertCenterDelivery.objects.filter(alert_id=alert.id).aggregate(value=Max("generation"))["value"] or 0
                 ) + 1
-                payload = {**payload, "lifecycle_generation": delivery_id}
+                payload = {
+                    **base_payload,
+                    "lifecycle_generation": delivery_id,
+                }
                 delivery = MonitorAlertCenterDelivery.objects.create(
                     alert_id=alert.id,
                     action=action,
@@ -77,6 +108,16 @@ def enqueue_alert_center_deliveries(alerts, action, *, notifier, operator="", re
                     delivery_id=delivery_id,
                     channel_id=channel_id,
                     payload=payload,
+                    status=(
+                        MonitorAlertCenterDelivery.Status.FAILED
+                        if blocking_generation is not None
+                        else MonitorAlertCenterDelivery.Status.PENDING
+                    ),
+                    last_error=(
+                        f"blocked by terminal generation {blocking_generation}"
+                        if blocking_generation is not None
+                        else ""
+                    ),
                 )
                 created_ids.append(delivery.id)
 
@@ -118,7 +159,17 @@ def _ack_result(send_result, delivery_id):
 def deliver_alert_center_delivery(record_id):
     """按代次 claim/finalize；旧执行不能覆盖新 claim，后继动作不得越过前驱。"""
     now = timezone.now()
+    alert_id = (
+        MonitorAlertCenterDelivery.objects.filter(id=record_id)
+        .values_list("alert_id", flat=True)
+        .first()
+    )
+    if alert_id is None:
+        return False
     with transaction.atomic():
+        # 与 enqueue 保持 alert → delivery 的统一锁顺序；终态传播期间
+        # 禁止并发 enqueue 在扫描后插入一个永远被 FAILED 前驱阻塞的后继。
+        MonitorAlert.objects.select_for_update().get(id=alert_id)
         record = MonitorAlertCenterDelivery.objects.select_for_update().filter(id=record_id).first()
         if not record or record.status in {record.Status.DELIVERED, record.Status.FAILED}:
             return False
@@ -251,7 +302,14 @@ def backfill_legacy_alerts():
             continue
         action = "created" if alert.status == "new" else alert.status
         notifier = AlertLifecycleNotifier(policy, policies_by_id=policies)
-        enqueue_alert_center_deliveries([alert], action, notifier=notifier)
+        enqueue_alert_center_deliveries(
+            [alert],
+            action,
+            notifier=notifier,
+            legacy_ingest_identity=(
+                alert.status == "new" and alert.alert_center_notified
+            ),
+        )
     return len(alerts)
 
 

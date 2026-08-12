@@ -823,7 +823,7 @@ def test_monitor_alert_copy_dispatch_is_capability_scoped_and_returns_ack(monkey
     assert forbidden["retryable"] is False
 
 
-def test_monitor_alert_copy_dispatch_preserves_terminal_per_event_rejection(monkeypatch):
+def test_monitor_alert_copy_dispatch_preserves_retryable_per_event_rejection(monkeypatch):
     channel = Channel.objects.create(
         name="告警中心",
         channel_type=ChannelChoices.NATS,
@@ -838,7 +838,7 @@ def test_monitor_alert_copy_dispatch_preserves_terminal_per_event_rejection(monk
             "message": "Alert events were only partially accepted.",
             "data": {
                 "event_results": [
-                    {"delivery_id": "delivery-rejected", "status": "rejected", "retryable": False}
+                    {"delivery_id": "delivery-rejected", "status": "rejected", "retryable": True}
                 ]
             },
         },
@@ -859,9 +859,9 @@ def test_monitor_alert_copy_dispatch_preserves_terminal_per_event_rejection(monk
     )
 
     assert result["result"] is False
-    assert result["retryable"] is False
+    assert result["retryable"] is True
     assert result["data"]["event_results"] == [
-        {"delivery_id": "delivery-rejected", "status": "rejected", "retryable": False}
+        {"delivery_id": "delivery-rejected", "status": "rejected", "retryable": True}
     ]
 
 

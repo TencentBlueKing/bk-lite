@@ -1412,7 +1412,7 @@ def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(mo
     assert result["data"]["event_results"] == [
         {"delivery_id": "d1", "status": "accepted", "retryable": False},
         {"delivery_id": "d2", "status": "duplicate", "retryable": False},
-        {"delivery_id": "d3", "status": "rejected", "retryable": False},
+        {"delivery_id": "d3", "status": "rejected", "retryable": True},
     ]
 
 
