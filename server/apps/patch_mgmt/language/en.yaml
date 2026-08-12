@@ -15,6 +15,7 @@ error:
   patches_not_in_baseline: "Selected patches are not in the targets' current baselines: {pairs}"
   patches_not_remediable: "Selected patches are not missing in the latest assessment: {pairs}"
   targets_not_pending_reboot: "The following targets are not pending reboot: {ids}"
+  container_targets_reboot_unsupported: "The following targets are container nodes and do not support host reboot: {ids}"
   reboot_scope_changed: "The pending-reboot scope changed; refresh and confirm it again"
   risk_item_not_retryable: "The risk item does not exist or cannot be retried"
   risk_item_already_retried: "A new retry record already exists for this risk item"

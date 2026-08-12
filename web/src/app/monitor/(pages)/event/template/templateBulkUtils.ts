@@ -51,6 +51,7 @@ export interface PolicyPreviewItem {
   key: string;
   name: string;
   metricLabel: string;
+  assetScopeLabel: string;
   statusLabel: string;
 }
 
@@ -126,24 +127,32 @@ export const canDeleteTemplates = (
   templates: PolicyTemplateItem[]
 ): boolean => templates.length > 0 && !containsBuiltinTemplate(templates);
 
+export const buildAssetScopeLabel = (assets: BulkAssetItem[]): string => {
+  if (!assets.length) return '--';
+  const assetNames = assets.map(displayAssetName);
+  if (assetNames.length <= 3) {
+    return `覆盖 ${assetNames.length} 台主机：${assetNames.join('、')}`;
+  }
+  return `覆盖 ${assetNames.length} 台主机：${assetNames.slice(0, 3).join('、')} 等`;
+};
+
 export const buildPolicyPreview = (
   templates: PolicyTemplateItem[],
   assets: BulkAssetItem[],
   config: BulkConfig
 ): PolicyPreviewItem[] => {
   const prefix = (config.name_prefix || '').trim();
-  return templates.flatMap((template) =>
-    assets.map((asset) => {
-      const assetName = displayAssetName(asset);
-      const policyName = [prefix, template.name, assetName].filter(Boolean).join('-');
-      return {
-        key: `${getTemplateKey(template)}:${asset.instance_id}`,
-        name: policyName,
-        metricLabel: getMetricLabel(template),
-        statusLabel: config.enable === false ? '停用' : '启用',
-      };
-    })
-  );
+  const assetScopeLabel = buildAssetScopeLabel(assets);
+  return templates.map((template) => {
+    const policyName = [prefix, template.name].filter(Boolean).join('-');
+    return {
+      key: getTemplateKey(template),
+      name: policyName,
+      metricLabel: getMetricLabel(template),
+      assetScopeLabel,
+      statusLabel: config.enable === false ? '停用' : '启用',
+    };
+  });
 };
 
 export const getPrimaryNoticeType = (

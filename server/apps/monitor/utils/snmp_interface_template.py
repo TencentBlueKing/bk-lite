@@ -448,6 +448,10 @@ FILTER_TABLE_BLOCK_RE = re.compile(
     r"^[ \t]*\[inputs\.snmp\.(?:tagpass|tagdrop)\][^\n]*\n.*?(?=^[ \t]*\[|\Z)",
     re.MULTILINE | re.DOTALL,
 )
+FILTER_ARRAY_TABLE_HEADER_RE = re.compile(
+    r"^[ \t]*\[\[inputs\.snmp\.(?:tagpass|tagdrop)\]\]",
+    re.MULTILINE,
+)
 TAGEXCLUDE_IFTYPE_RE = re.compile(r'^\s*tagexclude\s*=\s*\["ifType"\]\s*\n', re.MULTILINE)
 INPUT_TAGEXCLUDE_KEY_RE = re.compile(r"^[ \t]*tagexclude\s*=", re.MULTILINE)
 SNMP_INPUT_RE = re.compile(r"^[ \t]*\[\[inputs\.snmp\]\]", re.MULTILINE)
@@ -974,6 +978,186 @@ def _restore_managed_filter_markers_after_roundtrip(
     return f"{text[:start]}{FILTER_MARKER_BEGIN}\n{chunk}\n{FILTER_MARKER_END}\n{text[end:]}"
 
 
+_INTERFACE_FILTER_TAG_KEYS = frozenset({"ifType", "ifDescr"})
+
+
+def _owned_interface_filter_provenance(
+    snmp_input: dict[str, Any],
+) -> dict[str, dict[str, list[str]]] | None:
+    """仅当 tagpass/tagdrop 全部是接口键时，才能宣称受管归属。"""
+    provenance: dict[str, dict[str, list[str]]] = {}
+    for kind in ("tagpass", "tagdrop"):
+        table = snmp_input.get(kind)
+        if not isinstance(table, dict) or not table:
+            continue
+        if not set(table).issubset(_INTERFACE_FILTER_TAG_KEYS):
+            continue
+        if any(
+            not isinstance(values, list) or not all(isinstance(value, str) for value in values)
+            for values in table.values()
+        ):
+            continue
+        provenance[kind] = deepcopy(table)
+    return provenance or None
+
+
+def _assert_owner_filter_table_mergeable(
+    owner: dict[str, Any],
+    table_name: str,
+    *,
+    page_updates: list[tuple[str, str, list[str]]],
+) -> None:
+    """拒绝无法安全就地合并的 tagpass/tagdrop 形态。"""
+    relevant = [(key, values) for name, key, values in page_updates if name == table_name]
+    if not relevant:
+        return
+    table = owner.get(table_name)
+    if table is None:
+        return
+    if not isinstance(table, dict):
+        raise ValidationAppException(
+            f"SNMP IF-MIB 配置冲突：公共接口 input 上的 {table_name} 不是可合并的表结构，"
+            "无法安全写入页面过滤"
+        )
+    if table_name != "tagpass":
+        return
+    non_interface_keys = set(table) - _INTERFACE_FILTER_TAG_KEYS
+    if non_interface_keys and any(values for _key, values in relevant):
+        raise ValidationAppException(
+            "SNMP IF-MIB 配置冲突：公共接口 input 上已有非接口 tagpass，"
+            "无法与页面提交的接口白名单安全合并；请先清理原有 tagpass 或改为排除规则"
+        )
+
+
+def merge_page_snmp_interface_filters(
+    template_content: str,
+    context: dict[str, Any] | None = None,
+) -> str:
+    """把页面提交的接口过滤精确合并进公共 IF-MIB owner 的既有 tagpass/tagdrop。
+
+    #4715 为避免与无 marker 用户段重复，会跳过同 kind 的 managed Jinja；此时若不再
+    合并，页面值会被静默丢弃。只在 context 显式出现的字段上替换/清空接口键，保留
+    brand 等非接口键；tagpass 已有非接口键且页面提交了非空 include 时 fail-closed。
+    """
+    from apps.monitor.constants.snmp_interface import (
+        FIELD_IFDESCR_EXCLUDE,
+        FIELD_IFDESCR_INCLUDE,
+        FIELD_IFTYPE_EXCLUDE,
+        FIELD_IFTYPE_INCLUDE,
+    )
+    from apps.monitor.utils.snmp_interface_filters import (
+        assert_snmp_interface_filter_mutex,
+        normalize_filter_list,
+        normalize_iftype_list,
+    )
+
+    page_filter_bindings = (
+        (FIELD_IFTYPE_INCLUDE, "tagpass", "ifType", True),
+        (FIELD_IFDESCR_INCLUDE, "tagpass", "ifDescr", False),
+        (FIELD_IFTYPE_EXCLUDE, "tagdrop", "ifType", True),
+        (FIELD_IFDESCR_EXCLUDE, "tagdrop", "ifDescr", False),
+    )
+
+    context = context or {}
+    if not should_manage_core_network_ifmib(context) or context.get("enable_ifmib", True) is False:
+        return template_content
+    if not any(field in context for field, *_ in page_filter_bindings):
+        return template_content
+
+    page_updates: list[tuple[str, str, list[str]]] = []
+    for field, table_name, key, is_iftype in page_filter_bindings:
+        if field not in context:
+            continue
+        normalizer = normalize_iftype_list if is_iftype else normalize_filter_list
+        page_updates.append((table_name, key, normalizer(context.get(field))))
+    if not page_updates:
+        return template_content
+
+    assert_snmp_interface_filter_mutex(
+        iftype_include=normalize_iftype_list(context.get(FIELD_IFTYPE_INCLUDE))
+        if FIELD_IFTYPE_INCLUDE in context
+        else None,
+        iftype_exclude=normalize_iftype_list(context.get(FIELD_IFTYPE_EXCLUDE))
+        if FIELD_IFTYPE_EXCLUDE in context
+        else None,
+        ifdescr_include=normalize_filter_list(context.get(FIELD_IFDESCR_INCLUDE))
+        if FIELD_IFDESCR_INCLUDE in context
+        else None,
+        ifdescr_exclude=normalize_filter_list(context.get(FIELD_IFDESCR_EXCLUDE))
+        if FIELD_IFDESCR_EXCLUDE in context
+        else None,
+    )
+
+    managed_filter_source = _canonical_managed_filter_provenance(template_content)
+    try:
+        document = toml.loads(template_content)
+    except Exception as exc:
+        raise ValidationAppException(
+            f"SNMP IF-MIB 配置冲突：最终 TOML 无法解析，请检查重复的接口表或 tagpass/tagdrop 段：{exc}"
+        ) from exc
+
+    snmp_inputs = document.get("inputs", {}).get("snmp", [])
+    if isinstance(snmp_inputs, dict):
+        snmp_inputs = [snmp_inputs]
+        document.setdefault("inputs", {})["snmp"] = snmp_inputs
+    if not isinstance(snmp_inputs, list):
+        return template_content
+
+    owners = [
+        snmp_input
+        for snmp_input in snmp_inputs
+        if isinstance(snmp_input, dict)
+        and isinstance(snmp_input.get("table"), list)
+        and any(isinstance(table, dict) and is_public_ifmib_table(table) for table in snmp_input["table"])
+    ]
+    if not owners:
+        return template_content
+    owner = max(
+        owners,
+        key=lambda snmp_input: (
+            any(key in snmp_input for key in ("tagpass", "tagdrop")),
+            "tagexclude" in snmp_input,
+        ),
+    )
+
+    _assert_owner_filter_table_mergeable(owner, "tagpass", page_updates=page_updates)
+    _assert_owner_filter_table_mergeable(owner, "tagdrop", page_updates=page_updates)
+
+    changed = False
+    for table_name, key, values in page_updates:
+        table = owner.get(table_name)
+        if values:
+            if not isinstance(table, dict):
+                table = {}
+                owner[table_name] = table
+            if table.get(key) != values:
+                table[key] = values
+                changed = True
+            continue
+        if not isinstance(table, dict) or key not in table:
+            continue
+        table.pop(key, None)
+        if not table:
+            owner.pop(table_name, None)
+        changed = True
+
+    if not changed:
+        return template_content
+
+    owner_index = snmp_inputs.index(owner)
+    rendered = toml.dumps(document).replace("[inputs]\n", "")
+    rendered = restore_managed_ifmib_markers(rendered)
+    managed_filter_provenance = None
+    if managed_filter_source is not None and managed_filter_source[0] == owner_index:
+        # 合并后接口键值已变，必须用新负载恢复 marker，不能沿用往返前旧 provenance。
+        managed_filter_provenance = _owned_interface_filter_provenance(owner)
+    return _restore_managed_filter_markers_after_roundtrip(
+        rendered,
+        managed_filter_provenance=managed_filter_provenance,
+        owner_index=owner_index,
+    )
+
+
 def isolate_snmp_interface_tagpass(
     template_content: str,
     context: dict[str, Any] | None = None,
@@ -1235,6 +1419,12 @@ def ensure_snmp_interface_filter_jinja(template_content: str) -> str:
         if header == "[inputs.snmp.tagpass]":
             existing_filter_kinds.add("tagpass")
         elif header == "[inputs.snmp.tagdrop]":
+            existing_filter_kinds.add("tagdrop")
+    for start, end in _structural_spans(FILTER_ARRAY_TABLE_HEADER_RE, owner_segment):
+        header = owner_segment[start:end].strip()
+        if header.startswith("[[inputs.snmp.tagpass]]"):
+            existing_filter_kinds.add("tagpass")
+        elif header.startswith("[[inputs.snmp.tagdrop]]"):
             existing_filter_kinds.add("tagdrop")
 
     before = text[:insert_at].rstrip("\n")

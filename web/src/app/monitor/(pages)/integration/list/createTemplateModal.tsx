@@ -196,6 +196,14 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
               className="mb-[16px]"
             />
           )}
+          {templateType === 'snmp' && (
+            <Alert
+              message={t('monitor.integrations.snmpTemplateHint')}
+              type="info"
+              showIcon
+              className="mb-[16px]"
+            />
+          )}
           <Form.Item
             label={t('monitor.integrations.templateDescription')}
             name="description"

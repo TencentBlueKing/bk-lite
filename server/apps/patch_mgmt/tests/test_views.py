@@ -1141,6 +1141,54 @@ class TestRiskViewApi:
         assert str(target.id) in resp.data["detail"]
         assert not GovernanceTask.objects.filter(task_type="reboot").exists()
 
+    def test_risk_reboot_preview_rejects_container_node(self, su_client):
+        from apps.node_mgmt.constants.controller import ControllerConstants
+        from apps.node_mgmt.models import CloudRegion, Node
+        from apps.patch_mgmt.constants import PatchTargetSource
+
+        target, patch, _baseline = self._setup()
+        cloud_region = CloudRegion.objects.create(name="container-reboot-region")
+        target.source_type = PatchTargetSource.NODE_MGMT
+        target.node_id = "container-reboot-node"
+        target.cloud_region_id = cloud_region.id
+        target.save(update_fields=["source_type", "node_id", "cloud_region_id", "updated_at"])
+        Node.objects.create(
+            id=target.node_id,
+            name=target.name,
+            ip=target.ip,
+            operating_system=target.os_type,
+            collector_configuration_directory="/opt/fusion-collectors",
+            cloud_region=cloud_region,
+            node_type=ControllerConstants.NODE_TYPE_CONTAINER,
+        )
+        self._mark_pending_reboot(target, patch)
+
+        response = su_client.post(
+            f"{RISK_URL}reboot_preview/",
+            {"target_ids": [target.id]},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["code"] == "container_targets_reboot_unsupported"
+        assert str(target.id) in response.data["detail"]
+        assert not GovernanceTask.objects.filter(task_type="reboot").exists()
+
+        direct_response = su_client.post(
+            f"{RISK_URL}reboot/",
+            {
+                "target_ids": [target.id],
+                "name": "容器节点重启",
+                "scope_token": "cannot-bypass-container-check",
+                **self._valid_reboot_window(),
+            },
+            format="json",
+        )
+
+        assert direct_response.status_code == status.HTTP_400_BAD_REQUEST
+        assert direct_response.data["code"] == "container_targets_reboot_unsupported"
+        assert not GovernanceTask.objects.filter(task_type="reboot").exists()
+
     def test_risk_reboot_accepts_pending_reboot_host(self, su_client, mocker):
         from apps.patch_mgmt.models import GovernanceTask
 

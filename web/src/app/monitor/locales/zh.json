@@ -555,6 +555,7 @@
       "templateId": "模板ID",
       "templateType": "模版类型",
       "pullTemplateHint": "PULL 模板不支持父子对象联合采集，如有此类需求，请使用 PUSH 模式。",
+      "snmpTemplateHint": "所有监控对象均可创建自定义 SNMP 模板；没有可复用内置模板时，将使用通用 SNMP 接入配置和示例 OID。",
       "templateDescription": "模版介绍",
       "noConfigData": "暂无配置数据，请检查插件配置",
       "reportedOnlyConfigTip": "已检测到该插件上报数据，但当前实例没有可编辑的采集配置。",

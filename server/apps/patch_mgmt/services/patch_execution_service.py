@@ -52,6 +52,7 @@ from apps.patch_mgmt.services.target_execution_route import (
     TargetTransport,
     resolve_target_execution_route,
 )
+from apps.patch_mgmt.services.target_node_context import is_container_target
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
 from config.components.nats import NATS_NAMESPACE
@@ -1456,6 +1457,11 @@ _INSTALL_RESULT_MESSAGES = {
     '5': 'WUA 安装已中止',
 }
 
+CONTAINER_REBOOT_SKIPPED_REASON = (
+    '安装完成；当前目标为容器节点，已跳过主机重启。'
+    '如需重新加载运行进程，请通过容器平台重启或重新部署'
+)
+
 
 def _parse_windows_install_result(result: dict[str, Any]) -> tuple[bool, str, Optional[bool]]:
     '''解析 Windows WUA 安装命令输出。
@@ -1639,6 +1645,17 @@ def _parse_linux_reboot_check_result(result: dict[str, Any]) -> tuple[Optional[b
 
 
 def _execute_reboot(target: PatchTarget, host: GovernanceTaskHost, execution_id: str, timeout: int) -> None:
+    if is_container_target(target):
+        _record_host_result(
+            host,
+            stage='failed',
+            stage_color='error',
+            reason='当前目标为容器节点，不支持执行主机重启；请通过容器平台重启或重新部署',
+            failed_stage='reboot',
+            error_code='container_reboot_unsupported',
+            can_retry=False,
+        )
+        return
     if not _record_host_start(host, 'rebooting'):
         return
     host.boot_marker_before = _read_boot_marker(target, execution_id)
@@ -1889,6 +1906,16 @@ def _execute_install(
             return
         reboot_values = [item[2] for item in windows_results]
         reboot_required = True if True in reboot_values else (None if None in reboot_values else False)
+        if is_container_target(target):
+            _record_host_result(
+                host,
+                stage='completed',
+                stage_color='success',
+                exit_code=0,
+                reason=CONTAINER_REBOOT_SKIPPED_REASON,
+                error_code='container_reboot_skipped',
+            )
+            return
         _record_install_reboot_result(
             host,
             reboot_required,
@@ -1899,6 +1926,16 @@ def _execute_install(
 
     if _is_success(last_result):
         if target.os_type != OSType.WINDOWS:
+            if is_container_target(target):
+                _record_host_result(
+                    host,
+                    stage='completed',
+                    stage_color='success',
+                    exit_code=last_result.get('exit_code') or 0,
+                    reason=CONTAINER_REBOOT_SKIPPED_REASON,
+                    error_code='container_reboot_skipped',
+                )
+                return
             check_command = _linux_reboot_check_command(linux_manager)
             try:
                 check_result = _execute_command(

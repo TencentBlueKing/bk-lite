@@ -555,6 +555,7 @@
       "templateId": "Template ID",
       "templateType": "Template Type",
       "pullTemplateHint": "PULL templates do not support joint collection of parent-child objects. If you need this, please use PUSH mode.",
+      "snmpTemplateHint": "Custom SNMP templates are available for every monitor object. When no reusable built-in template exists, a generic SNMP configuration with sample OIDs is used.",
       "templateDescription": "Template Description",
       "noConfigData": "No configuration data available, please check plugin settings",
       "reportedOnlyConfigTip": "This plugin is reporting data, but this instance has no editable collection configuration.",

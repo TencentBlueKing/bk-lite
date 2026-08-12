@@ -7,6 +7,7 @@ import {
   splitWebsiteRequestUrl,
   validateWebsiteRequestHeaders
 } from './http-request-config';
+import { applyMinioEditConfig, getMinioEditCompatibilityValues } from './minio-config';
 import { resolveSnmpInterfaceFilterMode } from './snmpInterfaceFilterMode';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import useApiClient from '@/utils/request';
@@ -416,6 +417,9 @@ export const usePluginFromJson = () => {
             if (formFields?.some((field: any) => field?.name === 'interface_filter_mode')) {
               formValues.interface_filter_mode = resolveSnmpInterfaceFilterMode(formValues);
             }
+            if (config.instance_type === 'minio') {
+              Object.assign(formValues, getMinioEditCompatibilityValues(apiData));
+            }
             if (config.instance_type === 'web') {
               const requestUrl = apiData?.child?.content?.config?.urls?.[0];
               if (requestUrl) {
@@ -696,6 +700,9 @@ export const usePluginFromJson = () => {
                 delete childEnvConfig[passwordEnvKey];
                 delete childEnvConfig[bearerEnvKey];
               }
+            }
+            if (config.instance_type === 'minio') {
+              applyMinioEditConfig(result, configForm, filledFormData);
             }
             // 如果有 base，统一同步 child.env_config 到 base.env_config
             if (result.base && result.child?.env_config) {
