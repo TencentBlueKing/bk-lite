@@ -13,6 +13,7 @@ from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.execution_stream_service import build_stream_topic
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.shell_utils import ANSIBLE_SHELL_EXECUTABLES, build_heredoc_command, parse_shebang
+from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.sensitive import sanitize_sensitive_data
@@ -190,6 +191,32 @@ class ExecutionTaskBaseService(object):
         return list(Target.objects.filter(id__in=target_ids))
 
     @classmethod
+    def _load_manual_targets_for_execution(cls, execution: JobExecution, target_ids: list[int]) -> list[Target]:
+        """锁定并返回 runner 将要使用的手动目标快照。
+
+        仅定时任务执行收紧到执行快照中的单一团队；快速执行、重跑和开放接口
+        等没有 ``scheduled_task`` 的既有调用继续保持原授权契约。
+        """
+
+        unique_target_ids = set(target_ids)
+        if not unique_target_ids:
+            return []
+        with transaction.atomic():
+            locked_execution = (
+                JobExecution.objects.select_for_update()
+                .only("id", "scheduled_task_id", "team")
+                .get(id=execution.id)
+            )
+            targets = list(Target.objects.select_for_update().filter(id__in=unique_target_ids))
+            if len(targets) != len(unique_target_ids):
+                raise ValueError("部分手动目标不存在")
+            if locked_execution.scheduled_task_id:
+                task_teams = normalize_team(locked_execution.team)
+                if len(task_teams) != 1 or any(not is_team_authorized(target.team, task_teams) for target in targets):
+                    raise ValueError("部分手动目标未授权给定时任务所属团队")
+        return targets
+
+    @classmethod
     def _contains_windows_manual_target(cls, target_list: list) -> bool:
         return any(target.os_type == OSType.WINDOWS for target in cls._get_manual_targets(target_list))
 
@@ -217,7 +244,7 @@ class ExecutionTaskBaseService(object):
         if not target_ids:
             raise ValueError("未找到有效的目标ID")
 
-        targets = list(Target.objects.filter(id__in=target_ids))
+        targets = cls._load_manual_targets_for_execution(execution, target_ids)
         if not targets:
             raise ValueError("未找到有效的目标记录")
 
@@ -374,20 +401,27 @@ class ExecutionTaskBaseService(object):
         return content.decode("utf-8") if isinstance(content, bytes) else content
 
     @classmethod
-    def get_ssh_credentials(cls, target_id: int) -> dict:
-        """从 Target 获取 SSH 凭据信息"""
-        try:
-            target = Target.objects.get(id=target_id)
-        except Target.DoesNotExist:
-            return {}
+    def _build_ssh_credentials(cls, target: Target) -> dict:
         return {
             "host": target.ip,
             "username": target.ssh_user,
             "password": cls.decrypt_password(target.ssh_password),
             "private_key": cls._read_ssh_key_file(target),
             "port": target.ssh_port,
-            "node_id": target.node_id,  # 云区域 ID
+            "node_id": target.node_id,
         }
+
+    @classmethod
+    def get_ssh_credentials(cls, target_id: int, *, execution: JobExecution | None = None) -> dict:
+        """从 Target 获取 SSH 凭据信息"""
+        if execution is not None:
+            targets = cls._load_manual_targets_for_execution(execution, [target_id])
+            return cls._build_ssh_credentials(targets[0])
+        try:
+            target = Target.objects.get(id=target_id)
+        except Target.DoesNotExist:
+            return {}
+        return cls._build_ssh_credentials(target)
 
     @staticmethod
     def format_error_message(e: Exception) -> str:

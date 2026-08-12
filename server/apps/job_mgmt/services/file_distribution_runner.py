@@ -57,7 +57,15 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             with ThreadPoolExecutor(max_workers=len(batch)) as pool:
                 futures = {
                     pool.submit(
-                        self.distribute_file_to_target, t, execution.target_source, files, target_path, execution.timeout, overwrite, execution.id
+                        self.distribute_file_to_target,
+                        t,
+                        execution.target_source,
+                        files,
+                        target_path,
+                        execution.timeout,
+                        overwrite,
+                        execution.id,
+                        execution,
                     ): t
                     for t in batch
                 }
@@ -99,6 +107,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         timeout: int,
         overwrite: bool = True,
         execution_id: int = 0,
+        execution: JobExecution | None = None,
     ) -> dict:
         result = self._build_distribution_target_result(target_info)
         target_name = result["name"]
@@ -132,7 +141,14 @@ class FileDistributionRunner(ExecutionTaskBaseService):
                         target_id = target_info.get("target_id")
                         if not target_id:
                             raise ValueError("手动目标缺少 target_id")
-                        exec_result = self.download_to_manual_target(file_item, target_id, target_path, timeout, overwrite)
+                        exec_result = self.download_to_manual_target(
+                            file_item,
+                            target_id,
+                            target_path,
+                            timeout,
+                            overwrite,
+                            execution=execution,
+                        )
 
                     file_ok, file_error = self.parse_distribution_exec_result(exec_result)
                     file_result["success"] = file_ok
@@ -189,8 +205,20 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             return target_path
         return str(target_path).replace("\\", "/")
 
-    def download_to_manual_target(self, file_item: dict, target_id: int, target_path: str, timeout: int, overwrite: bool):
-        target_obj = Target.objects.filter(id=target_id).first()
+    def download_to_manual_target(
+        self,
+        file_item: dict,
+        target_id: int,
+        target_path: str,
+        timeout: int,
+        overwrite: bool,
+        *,
+        execution: JobExecution | None = None,
+    ):
+        if execution is not None:
+            target_obj = self._load_manual_targets_for_execution(execution, [target_id])[0]
+        else:
+            target_obj = Target.objects.filter(id=target_id).first()
         if target_obj and target_obj.os_type == OSType.WINDOWS and target_obj.driver == ExecutorDriver.ANSIBLE:
             normalized_target_path = self._normalize_target_path(target_path, target_obj.os_type)
             return self._download_to_windows_via_ansible(target_obj, [file_item], normalized_target_path, timeout, overwrite)
@@ -205,7 +233,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
                 "node_id": target_obj.node_id,
             }
         else:
-            ssh_creds = self.get_ssh_credentials(target_id)
+            ssh_creds = self._build_ssh_credentials(target_obj) if target_obj else {}
         if not ssh_creds:
             raise ValueError(f"无法获取目标凭据: target_id={target_id}")
 
