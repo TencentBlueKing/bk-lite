@@ -9,6 +9,7 @@ export type ChartType =
   | 'table'
   | 'eventTable'
   | 'eventTimeline'
+  | 'cardList'
   | 'topN'
   | 'gauge'
   | 'radar'

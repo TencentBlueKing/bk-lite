@@ -54,6 +54,7 @@ import ComponentParamSwitchControl from "@/app/ops-analysis/components/component
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
 import { validateEventTimelinePayload } from "@/app/ops-analysis/utils/eventTimeline";
+import { validateCardListPayload } from "@/app/ops-analysis/utils/cardList";
 import { resolveRadarSeriesData } from "@/app/ops-analysis/utils/radarData";
 import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
 import type { DashboardWidgetRenderResult } from "@/app/ops-analysis/renderContract";
@@ -645,6 +646,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       if (type === "topologyMap") {
         return validateTopologyMapWidgetData(data, errorMessage);
       }
+      if (type === "cardList") {
+        return validateCardListPayload(data, {
+          titleField: config?.cardList?.titleField || "",
+        });
+      }
+
       const isDataEmpty = () =>
         !data || (Array.isArray(data) && data.length === 0);
 

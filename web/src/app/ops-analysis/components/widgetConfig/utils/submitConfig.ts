@@ -1,4 +1,5 @@
 import type {
+  CardListConfig,
   DashboardActionConfig,
   FilterBindings,
   TableColumnConfigItem,
@@ -41,6 +42,18 @@ export interface WidgetConfigFormValues {
   gaugeShape?: 'semicircle' | 'circle';
   eventTimeline?: ValueConfig['eventTimeline'];
   radar?: ValueConfig['radar'];
+  cardList?: {
+    titleField?: string;
+    descriptionField?: string;
+    leading?: {
+      type?: 'none' | 'index' | 'field';
+      field?: string;
+    };
+    badgeField?: string;
+    trailingPrimaryField?: string;
+    trailingSecondaryField?: string;
+    layout?: 'list' | 'grid';
+  };
   actions?: DashboardActionConfig[];
   appearance?: ValueConfig['appearance'];
 }
@@ -57,7 +70,9 @@ type SubmitFilterField = TableFilterFieldConfig & {
 export type WidgetSubmitError =
   | 'duplicateFieldKey'
   | 'atLeastOneVisibleColumn'
-  | 'multipleComponentSwitchParams';
+  | 'multipleComponentSwitchParams'
+  | 'cardListTitleRequired'
+  | 'cardListLeadingFieldRequired';
 
 export interface BuildWidgetSubmitConfigInput {
   values: WidgetConfigFormValues;
@@ -216,6 +231,109 @@ const applySingleValueConfig = (
   }
 };
 
+const trimOptionalField = (value?: string) => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const CARD_LIST_FOREIGN_KEYS = [
+  'tableConfig',
+  'actions',
+  'eventTimeline',
+  'radar',
+  'selectedFields',
+  'descriptionField',
+  'topNLabelField',
+  'topNValueField',
+] as const;
+
+export const omitForeignChartTypeFields = <T extends object>(
+  valueConfig: T,
+  chartType: string,
+): T => {
+  const next = { ...valueConfig } as T & Record<string, unknown>;
+  if (chartType === 'cardList') {
+    for (const key of CARD_LIST_FOREIGN_KEYS) {
+      delete next[key];
+    }
+    return next;
+  }
+  delete next.cardList;
+  return next;
+};
+
+/**
+ * Dashboard 编辑保存边界：先合并旧 valueConfig 与本次提交字段，
+ * 再按最终 chartType 去掉其它图表专属配置。
+ * 与 Screen 侧 omitForeignChartTypeFields(...) 语义一致，固定走 ValueConfig。
+ */
+export const mergeSanitizedWidgetValueConfig = (
+  existingValueConfig: ValueConfig | undefined,
+  nextFields: ValueConfig,
+  chartType: string,
+): ValueConfig =>
+  omitForeignChartTypeFields(
+    {
+      ...(existingValueConfig || {}),
+      ...nextFields,
+    },
+    chartType,
+  );
+
+const applyCardListConfig = (
+  result: WidgetConfig,
+  values: WidgetConfigFormValues,
+): WidgetSubmitError | undefined => {
+  const titleField = values.cardList?.titleField?.trim() || '';
+  if (!titleField) {
+    return 'cardListTitleRequired';
+  }
+
+  const leadingType = values.cardList?.leading?.type;
+  let leading: CardListConfig['leading'];
+  if (leadingType === 'field') {
+    const field = values.cardList?.leading?.field?.trim() || '';
+    if (!field) {
+      return 'cardListLeadingFieldRequired';
+    }
+    leading = { type: 'field', field };
+  } else if (leadingType === 'index') {
+    leading = { type: 'index' };
+  }
+
+  const cardList: CardListConfig = { titleField };
+  if (leading) {
+    cardList.leading = leading;
+  }
+
+  const descriptionField = trimOptionalField(values.cardList?.descriptionField);
+  if (descriptionField) {
+    cardList.descriptionField = descriptionField;
+  }
+  const badgeField = trimOptionalField(values.cardList?.badgeField);
+  if (badgeField) {
+    cardList.badgeField = badgeField;
+  }
+  const trailingPrimaryField = trimOptionalField(
+    values.cardList?.trailingPrimaryField,
+  );
+  if (trailingPrimaryField) {
+    cardList.trailingPrimaryField = trailingPrimaryField;
+  }
+  const trailingSecondaryField = trimOptionalField(
+    values.cardList?.trailingSecondaryField,
+  );
+  if (trailingSecondaryField) {
+    cardList.trailingSecondaryField = trailingSecondaryField;
+  }
+  if (values.cardList?.layout === 'grid') {
+    cardList.layout = 'grid';
+  }
+
+  result.cardList = cardList;
+  return undefined;
+};
+
 const applyGaugeConfig = (
   result: WidgetConfig,
   values: WidgetConfigFormValues,
@@ -326,6 +444,13 @@ export const buildWidgetSubmitConfig = ({
       max: values.radar?.max,
       indicators,
     };
+  }
+
+  if (chartType === 'cardList') {
+    const cardListError = applyCardListConfig(result, values);
+    if (cardListError) {
+      return { error: cardListError };
+    }
   }
 
   if (filterBindings && Object.keys(filterBindings).length > 0) {

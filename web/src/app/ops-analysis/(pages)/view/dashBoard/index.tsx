@@ -10,6 +10,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import ViewSelector from '@/app/ops-analysis/components/widgetSelector';
 import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
+import { mergeSanitizedWidgetValueConfig } from '@/app/ops-analysis/components/widgetConfig/utils/submitConfig';
 import DashboardCanvas from './components/dashboardCanvas';
 import DashboardToolbar from './components/dashboardToolbar';
 import DashboardSubscriptionModal from '@/app/ops-analysis/components/dashboardSubscriptionModal';
@@ -706,6 +707,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           gaugeMin: config.gaugeMin,
           gaugeMax: config.gaugeMax,
           gaugeShape: config.gaugeShape,
+          cardList: config.cardList,
           compare: config.compare,
           actions: config.actions,
         },
@@ -1050,38 +1052,44 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         const editedWidgetId = currentConfigItem?.i;
         const nextLayout = layout.map((item) => {
           if (item.i === editedWidgetId && isDashboardWidgetItem(item)) {
+            const nextChartType =
+              values.chartType || item.valueConfig?.chartType || '';
             return {
               ...item,
               name: values.name,
               description: values.description,
-              valueConfig: {
-                ...item.valueConfig,
-                dataSource: values.dataSource,
-                chartType: values.chartType,
-                sceneWidgetType: values.sceneWidgetType,
-                networkStatusTopology: values.networkStatusTopology,
-                dataSourceParams: values.dataSourceParams,
-                tableConfig: values.tableConfig,
-                filterBindings: values.filterBindings,
-                selectedFields: values.selectedFields,
-                descriptionField: values.descriptionField,
-                topNLabelField: values.topNLabelField,
-                topNValueField: values.topNValueField,
-                unit: values.unit,
-                unitId: values.unitId,
-                valueMappings: values.valueMappings,
-                chartThemeMode: values.chartThemeMode,
-                appearance: values.appearance,
-                conversionFactor: values.conversionFactor,
-                decimalPlaces: values.decimalPlaces,
-                thresholdColors: values.thresholdColors,
-                gaugeMin: values.gaugeMin,
-                gaugeMax: values.gaugeMax,
-                gaugeShape: values.gaugeShape,
-                compare: values.compare,
-                compareMode: values.compareMode,
-                actions: values.actions,
-              },
+              valueConfig: mergeSanitizedWidgetValueConfig(
+                item.valueConfig,
+                {
+                  dataSource: values.dataSource,
+                  chartType: values.chartType,
+                  sceneWidgetType: values.sceneWidgetType,
+                  networkStatusTopology: values.networkStatusTopology,
+                  dataSourceParams: values.dataSourceParams,
+                  tableConfig: values.tableConfig,
+                  filterBindings: values.filterBindings,
+                  selectedFields: values.selectedFields,
+                  descriptionField: values.descriptionField,
+                  topNLabelField: values.topNLabelField,
+                  topNValueField: values.topNValueField,
+                  unit: values.unit,
+                  unitId: values.unitId,
+                  valueMappings: values.valueMappings,
+                  chartThemeMode: values.chartThemeMode,
+                  appearance: values.appearance,
+                  conversionFactor: values.conversionFactor,
+                  decimalPlaces: values.decimalPlaces,
+                  thresholdColors: values.thresholdColors,
+                  gaugeMin: values.gaugeMin,
+                  gaugeMax: values.gaugeMax,
+                  gaugeShape: values.gaugeShape,
+                  cardList: values.cardList,
+                  compare: values.compare,
+                  compareMode: values.compareMode,
+                  actions: values.actions,
+                },
+                nextChartType,
+              ),
             };
           }
           return item;
@@ -1325,7 +1333,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         />
         <ViewConfig
           open={configDrawerVisible}
-          item={currentConfigItem as LayoutItem}
+          item={currentConfigItem}
           onConfirm={handleConfigConfirm}
           onClose={handleConfigClose}
           builtinNamespaceId={namespaceDraftId}
