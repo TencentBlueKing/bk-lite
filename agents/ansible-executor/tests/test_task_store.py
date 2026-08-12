@@ -1,3 +1,5 @@
+import json
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -56,6 +58,27 @@ def test_claim_task_can_take_over_stale_lease(tmp_path):
     assert takeover["execution_attempt"] == 2
     assert task["lease_owner"] == "worker-b"
     assert task["execution_attempt"] == 2
+
+
+def test_claim_task_concurrently_allows_only_one_worker(tmp_path):
+    store = TaskStore(str(tmp_path / "task.db"))
+    store.create_if_absent("task-race", "queued", {"task_id": "task-race"}, {}, "2026-04-23T00:00:00+00:00")
+
+    def claim(owner_id):
+        return store.claim_task(
+            "task-race",
+            owner_id,
+            "2026-04-23T00:00:10+00:00",
+            "2026-04-23T00:00:01+00:00",
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        claims = list(executor.map(claim, ("worker-a", "worker-b")))
+
+    assert sum(result["claimed"] for result in claims) == 1
+    rejected = next(result for result in claims if not result["claimed"])
+    assert rejected["reason"] == "leased"
+    assert store.get_task("task-race")["execution_attempt"] == 1
 
 
 def test_callback_status_preserves_execution_result(tmp_path):
@@ -440,6 +463,205 @@ def test_task_store_concurrently_publishes_one_stable_local_key(tmp_path):
         secrets = list(executor.map(lambda _: load_secret(), range(16)))
 
     assert len(set(secrets)) == 1
+
+
+def test_update_execution_result_clears_terminal_execution_payload(tmp_path):
+    payload_with_creds = {
+        "task_id": "terminal-payload-test",
+        "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": "secret"}],
+    }
+
+    for final_status in ("success", "failed"):
+        store = TaskStore(str(tmp_path / f"{final_status}.db"))
+        task_id = f"terminal-payload-{final_status}"
+        store.create_if_absent(task_id, "queued", payload_with_creds, {}, "2026-04-23T00:00:00+00:00")
+        store.claim_task(
+            task_id,
+            "worker-a",
+            "2026-04-23T00:00:10+00:00",
+            "2026-04-23T00:00:01+00:00",
+        )
+
+        updated = store.update_execution_result(
+            task_id,
+            final_status,
+            {"task_id": task_id, "success": final_status == "success"},
+            "2026-04-23T00:00:02+00:00",
+            owner_id="worker-a",
+        )
+
+        assert updated is True
+        assert store.get_execution_payload(task_id) is None
+
+
+def test_init_erases_legacy_terminal_credentials_from_database_pages(tmp_path):
+    db_path = tmp_path / "task.db"
+    secret = "terminal-credential-physical-erase-9f7d2b4c-" + "x" * 128
+    store = TaskStore(str(db_path))
+    store.create_if_absent(
+        "terminal-physical-erase",
+        "queued",
+        {
+            "task_id": "terminal-physical-erase",
+            "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": secret}],
+        },
+        {},
+        "2026-04-23T00:00:00+00:00",
+    )
+    legacy_payload = json.dumps(
+        {
+            "task_id": "terminal-physical-erase",
+            "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": secret}],
+        },
+        ensure_ascii=False,
+    )
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("PRAGMA secure_delete = OFF")
+        connection.execute("ALTER TABLE task_state DROP COLUMN execution_status")
+        connection.execute(
+            """
+            UPDATE task_state
+            SET status = 'success', execution_payload_json = ?
+            WHERE task_id = 'terminal-physical-erase'
+            """,
+            (legacy_payload,),
+        )
+    assert secret.encode() in db_path.read_bytes()
+
+    reloaded_store = TaskStore(str(db_path))
+
+    assert reloaded_store.get_execution_payload("terminal-physical-erase") is None
+    assert secret.encode() not in db_path.read_bytes()
+
+
+def test_update_execution_result_keeps_payload_when_lease_owner_mismatches(tmp_path):
+    store = TaskStore(str(tmp_path / "task.db"))
+    payload_with_creds = {
+        "task_id": "lease-lost-payload-test",
+        "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": "secret"}],
+    }
+    store.create_if_absent(
+        "lease-lost-payload-test",
+        "queued",
+        payload_with_creds,
+        {},
+        "2026-04-23T00:00:00+00:00",
+    )
+    store.claim_task(
+        "lease-lost-payload-test",
+        "worker-a",
+        "2026-04-23T00:00:10+00:00",
+        "2026-04-23T00:00:01+00:00",
+    )
+
+    updated = store.update_execution_result(
+        "lease-lost-payload-test",
+        "success",
+        {"task_id": "lease-lost-payload-test", "success": True},
+        "2026-04-23T00:00:02+00:00",
+        owner_id="worker-b",
+    )
+
+    assert updated is False
+    assert store.get_execution_payload("lease-lost-payload-test") == payload_with_creds
+
+
+def test_init_clears_legacy_terminal_payloads_without_touching_active_tasks(tmp_path):
+    db_path = tmp_path / "task.db"
+    store = TaskStore(str(db_path))
+    payload_with_creds = {
+        "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": "secret"}],
+    }
+    stored_statuses = {
+        "status-terminal": ("success", "queued"),
+        "execution-terminal": ("running", "failed"),
+        "callback-terminal": ("callback_failed", "success"),
+        "queued": ("queued", "queued"),
+        "running": ("running", "running"),
+    }
+    for task_id_suffix, (status, execution_status) in stored_statuses.items():
+        task_id = f"legacy-{task_id_suffix}"
+        callback = (
+            {"subject": "job.callback", "context": {"token": "callback-secret"}}
+            if task_id_suffix == "callback-terminal"
+            else {}
+        )
+        store.create_if_absent(task_id, "queued", payload_with_creds, callback, "2026-04-23T00:00:00+00:00")
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                UPDATE task_state
+                SET status = ?, execution_status = ?, execution_payload_json = ?
+                WHERE task_id = ?
+                """,
+                (status, execution_status, json.dumps(payload_with_creds), task_id),
+            )
+
+    reloaded_store = TaskStore(str(db_path))
+    for task_id_suffix in ("status-terminal", "execution-terminal", "callback-terminal"):
+        assert reloaded_store.get_execution_payload(f"legacy-{task_id_suffix}") is None
+    for task_id_suffix in ("queued", "running"):
+        assert reloaded_store.get_execution_payload(f"legacy-{task_id_suffix}") == payload_with_creds
+    callback = reloaded_store.get_callback_config("legacy-callback-terminal")
+    assert callback["context"]["token"] == "callback-secret"
+    assert b"fernet:v1:" in db_path.read_bytes()
+
+
+def test_init_rolls_back_failed_terminal_cleanup_and_recovers_after_restart(tmp_path):
+    db_path = tmp_path / "task.db"
+    store = TaskStore(str(db_path))
+    store.create_if_absent(
+        "terminal",
+        "queued",
+        {"password": "legacy-secret"},
+        {},
+        "2026-04-23T00:00:00+00:00",
+    )
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            "UPDATE task_state SET status = 'success', execution_payload_json = ? WHERE task_id = 'terminal'",
+            (json.dumps({"password": "legacy-secret"}),),
+        )
+        connection.execute(
+            """
+            CREATE TRIGGER reject_terminal_cleanup
+            BEFORE UPDATE OF execution_payload_json ON task_state
+            BEGIN SELECT RAISE(ABORT, 'blocked cleanup'); END
+            """
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="blocked cleanup"):
+        TaskStore(str(db_path))
+    with sqlite3.connect(db_path) as connection:
+        assert "legacy-secret" in connection.execute(
+            "SELECT execution_payload_json FROM task_state WHERE task_id = 'terminal'"
+        ).fetchone()[0]
+        connection.execute("DROP TRIGGER reject_terminal_cleanup")
+
+    recovered_store = TaskStore(str(db_path))
+    assert recovered_store.get_execution_payload("terminal") is None
+
+
+def test_init_clears_terminal_fernet_payload_without_the_original_key(tmp_path):
+    db_path = tmp_path / "task.db"
+    old_store = TaskStore(str(db_path), "old-key")
+    old_store.create_if_absent(
+        "terminal",
+        "queued",
+        {"password": "encrypted-secret"},
+        {},
+        "2026-04-23T00:00:00+00:00",
+    )
+    with old_store._connect() as connection:
+        ciphertext = connection.execute(
+            "SELECT execution_payload_json FROM task_state WHERE task_id = 'terminal'"
+        ).fetchone()[0]
+        connection.execute("UPDATE task_state SET status = 'success' WHERE task_id = 'terminal'")
+
+    new_store = TaskStore(str(db_path), "replacement-key")
+
+    assert new_store.get_execution_payload("terminal") is None
+    assert ciphertext.encode() not in db_path.read_bytes()
 
 
 def test_sensitive_credential_keys_is_comprehensive():
