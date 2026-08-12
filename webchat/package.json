@@ -17,7 +17,7 @@
     "sync:web": "node scripts/sync-web-public.mjs",
     "check:web-public": "node scripts/sync-web-public.mjs --check",
     "build:demo": "npm run build --workspace @webchat/demo",
-    "test": "node tests/state-machine.issue-3882.mjs && node --test tests/stream-lifecycle.issue-3556.test.mjs && node --test tests/content-chunks.test.mjs tests/sync-web-public.test.mjs tests/workspace-install.test.mjs && npm run test:core && npm run test:config",
+    "test": "node tests/state-machine.issue-3882.mjs && node --test tests/stream-lifecycle.issue-3556.test.mjs && node --test tests/content-chunks.test.mjs tests/sync-web-public.test.mjs tests/workspace-install.test.mjs tests/workflow-registration.test.mjs && npm run test:core && npm run test:config",
     "pretest:core": "node -e \"require('node:fs').rmSync('.test-dist', { recursive: true, force: true })\"",
     "test:core": "tsc -p tests/tsconfig.json && node --test .test-dist/tests/core/core.test.js",
     "pretest:config": "node -e \"require('node:fs').rmSync('packages/webchat-ui/.test-dist/issue-4037', { recursive: true, force: true })\"",
