@@ -184,6 +184,50 @@ FILTER_JINJA_BLOCK = f"""\
 {{% endif %}}
 """
 
+
+def _build_filter_jinja_block(*, include_tagpass: bool = True, include_tagdrop: bool = True) -> str:
+    """按现有 TOML 过滤段裁剪生成块，避免与无 marker 的用户 tagpass/tagdrop 重复。"""
+    setup_lines = [
+        "{% if enable_ifmib | default(true) %}",
+        FILTER_MARKER_BEGIN,
+        "{# ifType/ifDescr 黑白名单：空规则不输出对应键；默认排除由页面/创建注入，模板不做静默 fallback #}",
+        "{# 使用 |default 而非 is defined：采集沙箱 Environment 清空了 Jinja tests #}",
+    ]
+    if include_tagpass:
+        setup_lines.extend(
+            [
+                "{% set _iftype_include = iftype_include | default('', true) %}",
+                "{% set _ifdescr_include = ifdescr_include | default('', true) %}",
+                "{% if _iftype_include or _ifdescr_include %}",
+                "    [inputs.snmp.tagpass]",
+                "{% if _iftype_include %}",
+                "        ifType = {{ _iftype_include | to_toml_str_array }}",
+                "{% endif %}",
+                "{% if _ifdescr_include %}",
+                "        ifDescr = {{ _ifdescr_include | to_toml_str_array }}",
+                "{% endif %}",
+                "{% endif %}",
+            ]
+        )
+    if include_tagdrop:
+        setup_lines.extend(
+            [
+                "{% set _iftype_exclude = iftype_exclude | default('', true) %}",
+                "{% set _ifdescr_exclude = ifdescr_exclude | default('', true) %}",
+                "{% if _iftype_exclude or _ifdescr_exclude %}",
+                "    [inputs.snmp.tagdrop]",
+                "{% if _iftype_exclude %}",
+                "        ifType = {{ _iftype_exclude | to_toml_str_array }}",
+                "{% endif %}",
+                "{% if _ifdescr_exclude %}",
+                "        ifDescr = {{ _ifdescr_exclude | to_toml_str_array }}",
+                "{% endif %}",
+                "{% endif %}",
+            ]
+        )
+    setup_lines.extend([FILTER_MARKER_END, "{% endif %}"])
+    return "\n".join(setup_lines)
+
 UI_ADVANCED_PANEL = {
     "title": "接口采集与过滤",
     "title_en": "Interface Collection and Filters",
@@ -1051,19 +1095,50 @@ def _parse_owned_filter_payload(payload: str) -> dict[str, dict[str, list[str]]]
     return deepcopy(snmp)
 
 
+def _is_generated_filter_jinja_payload(payload: str) -> bool:
+    """仅识别本模块生成的完整过滤 Jinja 负载。"""
+    normalized = payload.replace("\r\n", "\n").strip()
+    generated_payloads: list[str] = []
+    for include_tagpass, include_tagdrop in ((True, True), (True, False), (False, True), (False, False)):
+        generated = _build_filter_jinja_block(include_tagpass=include_tagpass, include_tagdrop=include_tagdrop)
+        generated_tokens = _marker_tokens(
+            generated,
+            FILTER_MARKER_BEGIN_LINE_RE,
+            FILTER_MARKER_END_LINE_RE,
+        )
+        generated_payloads.append(generated[generated_tokens[0][2] : generated_tokens[1][1]].replace("\r\n", "\n").strip())
+    return normalized in generated_payloads
+
+
 def _is_owned_filter_payload(payload: str) -> bool:
     """只删除本模块生成的过滤 Jinja 或只含接口 tagpass/tagdrop 的渲染结果。"""
-    normalized = payload.replace("\r\n", "\n").strip()
+    return _is_generated_filter_jinja_payload(payload) or _parse_owned_filter_payload(payload) is not None
 
-    generated_tokens = _marker_tokens(
-        FILTER_JINJA_BLOCK,
-        FILTER_MARKER_BEGIN_LINE_RE,
-        FILTER_MARKER_END_LINE_RE,
-    )
-    generated_payload = FILTER_JINJA_BLOCK[generated_tokens[0][2] : generated_tokens[1][1]]
-    if normalized == generated_payload.replace("\r\n", "\n").strip():
-        return True
-    return _parse_owned_filter_payload(payload) is not None
+
+def _strip_owned_filter_sections(text: str) -> str:
+    """删除受管 FILTER 区间；完整生成态同时删除紧邻的外层开关 Jinja。"""
+    tokens = _marker_tokens(text, FILTER_MARKER_BEGIN_LINE_RE, FILTER_MARKER_END_LINE_RE)
+    owned_spans: list[tuple[int, int]] = []
+    for left, right in zip(tokens, tokens[1:]):
+        if left[0] != "begin" or right[0] != "end":
+            continue
+        payload = text[left[2] : right[1]]
+        if not _is_owned_filter_payload(payload):
+            continue
+
+        start, end = left[1], right[2]
+        if _is_generated_filter_jinja_payload(payload):
+            for newline in ("\n", "\r\n"):
+                opening = f"{{% if enable_ifmib | default(true) %}}{newline}"
+                closing = f"{{% endif %}}{newline}"
+                if text[:start].endswith(opening) and text.startswith(closing, end):
+                    start -= len(opening)
+                    end += len(closing)
+                    break
+        owned_spans.append((start, end))
+
+    marker_spans = [(start, end) for _, start, end in tokens]
+    return _replace_spans(text, _merge_spans([*owned_spans, *marker_spans]), lambda _: "")
 
 
 def _canonical_managed_filter_provenance(
@@ -1140,19 +1215,34 @@ def ensure_snmp_interface_filter_jinja(template_content: str) -> str:
     # 核心网络模板的公共 IF-MIB 条件块已在同一块内声明 ifType；再次用
     # 正则插入会跨越 Jinja endif，把字段遗留在关闭块之外。
     text = template_content if has_managed_ifmib_section(template_content) else ensure_iftype_tag_fields(template_content)
-    text = _strip_owned_marker_sections(
-        text,
-        FILTER_MARKER_BEGIN_LINE_RE,
-        FILTER_MARKER_END_LINE_RE,
-        _is_owned_filter_payload,
-    )
+    text = _strip_owned_filter_sections(text)
     text = _replace_structural_blocks(TAGEXCLUDE_IFTYPE_RE, text, lambda _: "")
 
     processors = _structural_spans(PROCESSORS_RE, text)
     insert_at = processors[0][0] if processors else len(text)
+    headers = _structural_spans(SNMP_INPUT_RE, text)
+    owner_segment = ""
+    owner_indexes = [index for index, (start, _) in enumerate(headers) if start < insert_at]
+    if owner_indexes:
+        owner_index = owner_indexes[-1]
+        owner_start = headers[owner_index][0]
+        owner_end = headers[owner_index + 1][0] if owner_index + 1 < len(headers) else insert_at
+        owner_segment = text[owner_start:min(owner_end, insert_at)]
+
+    existing_filter_kinds = set()
+    for start, end in _structural_spans(FILTER_TABLE_BLOCK_RE, owner_segment):
+        header = owner_segment[start:end].splitlines()[0].strip()
+        if header == "[inputs.snmp.tagpass]":
+            existing_filter_kinds.add("tagpass")
+        elif header == "[inputs.snmp.tagdrop]":
+            existing_filter_kinds.add("tagdrop")
+
     before = text[:insert_at].rstrip("\n")
     after = text[insert_at:].lstrip("\n")
-    block = FILTER_JINJA_BLOCK.strip("\n")
+    block = _build_filter_jinja_block(
+        include_tagpass="tagpass" not in existing_filter_kinds,
+        include_tagdrop="tagdrop" not in existing_filter_kinds,
+    )
     if after:
         return f"{before}\n\n{block}\n\n{after}"
     return f"{before}\n\n{block}\n"
