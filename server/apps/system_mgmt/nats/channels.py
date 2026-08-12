@@ -5,6 +5,11 @@ import re
 from .common import *  # noqa: F401,F403
 from .users import _get_actor_user_scope
 
+try:
+    from apps.system_mgmt.enterprise import nats_notifications
+except (ImportError, ModuleNotFoundError):
+    nats_notifications = None
+
 
 @nats_client.register
 def get_channel_detail(channel_id):
@@ -478,6 +483,8 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
     elif channel_obj.channel_type == ChannelChoices.CUSTOM_WEBHOOK:
         return send_by_custom_webhook(channel_obj, content, receivers)
     elif channel_obj.channel_type == ChannelChoices.NATS:
+        if nats_notifications is not None and nats_notifications.handles_config(channel_obj.config or {}):
+            return send_nats_message(channel_obj, content, title=title)
         # NATS 通道：content 作为 kwargs 传递给目标服务
         method_name = (channel_obj.config or {}).get("method_name")
         if method_name in RAW_PASSTHROUGH_NATS_METHODS:

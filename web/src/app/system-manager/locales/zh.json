@@ -909,7 +909,11 @@
         "notInWhitelist": "webhook 域名或 IP 不在白名单",
         "builtinEntryProtected": "内置条目不可修改或删除",
         "name": "名称",
-        "team": "组织"
+        "team": "组织",
+        "nats_mode": "通知投递目标",
+        "subject_key": "通知主题标识",
+        "natsModeRequestReply": "发送到内部服务",
+        "natsModeEventPublish": "发布给外部订阅方"
       },
       "table": {
         "description": "描述",

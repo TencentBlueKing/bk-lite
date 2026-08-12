@@ -6,6 +6,7 @@ import { useTranslation } from '@/utils/i18n';
 import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal'
 import { useChannelApi } from '@/app/system-manager/api/channel';
+import { useNatsChannelExtension } from '@/app/system-manager/hooks/useNatsChannelExtension';
 import { ChannelType } from '@/app/system-manager/types/channel';
 
 interface ChannelModalProps {
@@ -63,6 +64,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const searchParams = useSearchParams();
   const channelType = (searchParams?.get('id') || 'email') as ChannelType;
   const { addChannel, updateChannel, getChannelDetail, testChannel } = useChannelApi();
+  const natsExtension = useNatsChannelExtension();
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [testLoading, setTestLoading] = useState<boolean>(false);
@@ -77,6 +79,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   const isWebhookChannel = channelType === 'enterprise_wechat_bot';
 
   const watchedSubType = Form.useWatch('sub_type', form);
+  const watchedNatsMode = Form.useWatch('nats_mode', form);
   const watchedSmtpAuthEnabled = Form.useWatch('smtp_auth_enabled', form);
   useEffect(() => {
     if (!isWebhookChannel || !watchedSubType || isFillingForm.current) return;
@@ -110,9 +113,11 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       }
       const mergedConfig = isWebhookChannel
         ? getMergedConfig(resolvedSubType, data.config || {})
-        : (actualType === 'email' || channelType === 'email')
-          ? ensureEmailConfig(data.config || {})
-          : data.config;
+        : actualType === 'nats'
+          ? natsExtension?.mergeConfig(data.config || {}) || data.config
+          : (actualType === 'email' || channelType === 'email')
+            ? ensureEmailConfig(data.config || {})
+            : data.config;
       const enrichedData = { ...data, config: mergedConfig };
       setChannelData(enrichedData);
       const formValues: Record<string, unknown> = {
@@ -165,9 +170,11 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         channel_type: isWebhookChannel ? defaultSubType : channelType,
         description: '',
         config: channelType === 'email' ? ensureEmailConfig() : channelType === 'nats' ? {
-          namespace: '',
-          method_name: '',
-          timeout: 60,
+          ...(natsExtension?.buildInitialConfig() || {
+            namespace: '',
+            method_name: '',
+            timeout: 60,
+          }),
         } : getDefaultConfig(defaultSubType),
       });
     }
@@ -208,8 +215,9 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
     } = values;
 
     delete config.sub_type;
-
-    const finalConfig: Record<string, unknown> = { ...config };
+    const finalConfig: Record<string, unknown> = channelType === 'nats' && natsExtension
+      ? natsExtension.normalizeConfig(config)
+      : { ...config };
 
     const preserveEncryptedFields = options?.preserveEncryptedFields ?? false;
 
@@ -246,7 +254,14 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       setTestLoading(true);
       const values = await form.validateFields();
       const payload = buildChannelPayload(values, { preserveEncryptedFields: true });
-      await testChannel(payload);
+      if (
+        channelType === 'nats'
+        && natsExtension?.usesEnterpriseTestEndpoint(payload.config as Record<string, unknown>)
+      ) {
+        await natsExtension.testChannel(payload);
+      } else {
+        await testChannel(payload);
+      }
       message.success(t('system.channel.settings.testSuccess'));
     } catch {
       // Form validation renders next to fields; request failures are shown by the global interceptor.
@@ -327,7 +342,13 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       ? ensureEmailConfig(channelData.config)
       : channelData.config;
     const configFields = Object.keys(configSource)
-      .filter((key) => smtpAuthEnabled || !['smtp_user', 'smtp_pwd'].includes(key))
+      .filter((key) => {
+        if (channelType === 'nats') {
+          const visibleKeys = natsExtension?.getVisibleConfigKeys(watchedNatsMode);
+          return visibleKeys ? visibleKeys.includes(key) : !['nats_mode', 'subject_key'].includes(key);
+        }
+        return smtpAuthEnabled || !['smtp_user', 'smtp_pwd'].includes(key);
+      })
       .map((key) => {
         const nonRequiredKeys = ['smtp_usessl', 'smtp_usetls', 'smtp_auth_enabled', 'sign_secret', 'headers'];
         const fieldDef: Record<string, unknown> = {
@@ -350,6 +371,10 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
           ];
         }
 
+        if (channelType === 'nats') {
+          Object.assign(fieldDef, natsExtension?.getFieldDefinition(key));
+        }
+
         if (key === 'body_template') {
           fieldDef.rows = 4;
           fieldDef.placeholder = t('system.channel.settings.bodyTemplateHint');
@@ -363,7 +388,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       });
 
     return [...basicFields, ...configFields];
-  }, [channelData.config, t, isWebhookChannel, watchedSmtpAuthEnabled, channelType]);
+  }, [channelData.config, t, isWebhookChannel, watchedSmtpAuthEnabled, channelType, watchedNatsMode, natsExtension]);
 
   return (
     <OperateModal

@@ -2,7 +2,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
-from rest_framework import viewsets
+from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -264,8 +264,10 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             obj.encrypt_field("webhook_url", config)
             config.setdefault("webhook_url", obj.config["webhook_url"])
         elif obj.channel_type == "nats":
-            # NATS 配置无需加密处理
-            pass
+            try:
+                ChannelSerializer.validate_nats_config(config)
+            except serializers.ValidationError as exc:
+                return Response({"result": False, "message": exc.detail}, status=400)
         obj.config = config
         obj.save()
 

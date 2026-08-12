@@ -4,6 +4,11 @@ from apps.core.utils.serializers import UsernameSerializer
 from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import Channel, ChannelChoices
 
+try:
+    from apps.system_mgmt.enterprise import nats_notifications
+except (ImportError, ModuleNotFoundError):
+    nats_notifications = None
+
 
 class ChannelSerializer(UsernameSerializer):
     # 各 channel_type 需要加密的字段列表
@@ -33,6 +38,23 @@ class ChannelSerializer(UsernameSerializer):
             except (TypeError, ValueError) as exc:
                 raise serializers.ValidationError(self._loader().get("error.channel_team_required")) from exc
         return team_ids
+
+    @classmethod
+    def validate_nats_config(cls, config):
+        if not isinstance(config, dict):
+            raise serializers.ValidationError({"config": "NATS config must be an object"})
+        if nats_notifications is not None and nats_notifications.handles_config(config):
+            return nats_notifications.validate_config(config)
+        if config.get("nats_mode") not in (None, "request_reply"):
+            raise serializers.ValidationError({"config": {"nats_mode": "unsupported NATS extension mode"}})
+        return config
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        channel_type = attrs.get("channel_type", getattr(self.instance, "channel_type", None))
+        if channel_type == ChannelChoices.NATS:
+            self.validate_nats_config(attrs.get("config", getattr(self.instance, "config", {}) or {}))
+        return attrs
 
     def create(self, validated_data):
         if validated_data.get("config"):
