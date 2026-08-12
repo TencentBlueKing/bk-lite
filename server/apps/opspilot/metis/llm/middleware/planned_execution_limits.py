@@ -159,6 +159,8 @@ class PlannedExecutionLimitMiddleware(AgentMiddleware):
 
     def reset_step_continues(self) -> None:
         self.continue_count = 0
+        self._extra_run_allowance = 0
+        self._extra_token_allowance = 0
 
     def _used_tokens(self) -> int:
         if not isinstance(self._accumulator, TokenUsageAccumulator):

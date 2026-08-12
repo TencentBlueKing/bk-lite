@@ -275,7 +275,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
         material = self.get_object()
         operator = getattr(request.user, "username", "")
         source_status = material.status
-        if source_status in {"parsing", "building"}:
+        if source_status in {"parsing", "building", "queued"}:
             return JsonResponse(
                 {
                     "result": False,
@@ -332,7 +332,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
 
         with transaction.atomic():
             material = Material.objects.select_for_update().get(pk=material.pk)
-            if material.status in {"parsing", "building"}:
+            if material.status in {"parsing", "building", "queued"}:
                 return JsonResponse(
                     {
                         "result": False,
