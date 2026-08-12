@@ -45,6 +45,9 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
 }));
 vi.mock('@/app/apm/components/organization-assignment-modal', () => ({ default: () => null }));
+vi.mock('@/components/more-actions-dropdown', () => ({
+  default: () => <button type="button" aria-label="更多操作">更多</button>,
+}));
 
 const serviceWithEnv = {
   id: 'service-bklite',
@@ -187,7 +190,7 @@ describe('APM 服务目录应用视角', () => {
     render(<ApmServicesPage />);
 
     const builtinCard = await screen.findByRole('button', { name: '查看应用 未归类应用 下的服务' });
-    expect(within(builtinCard).getByText(/0 个服务/)).not.toBeNull();
+    expect(within(builtinCard).getByLabelText('0 个服务')).not.toBeNull();
   });
 
   it('将内置未归类应用稳定排在普通应用之后', async () => {
@@ -208,6 +211,11 @@ describe('APM 服务目录应用视角', () => {
     await waitFor(() => expect(within(card).getByText('12.5')).not.toBeNull());
     expect(within(card).getByText('2.00%')).not.toBeNull();
     expect(within(card).getByLabelText('警告')).not.toBeNull();
+    expect(within(card).getByLabelText('1 个服务')).not.toBeNull();
+    expect(within(card).queryByText(/个服务/)).toBeNull();
+    expect(within(card).getByText(/应用 · 1h/)).not.toBeNull();
+    expect(within(card).getByTitle('吞吐量趋势')).not.toBeNull();
+    expect(within(card).getByTitle('错误率趋势')).not.toBeNull();
     const alertLink = within(card).getByRole('link', { name: /应用内 1 个活跃告警/ });
     expect(alertLink.getAttribute('href')).toBe('/apm/events/alerts?service=bklite-server');
   });
