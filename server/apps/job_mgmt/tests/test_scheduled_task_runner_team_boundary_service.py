@@ -1,16 +1,20 @@
 """定时执行在 runner 最终读取 Target 时保持团队凭据边界。"""
 
+import threading
 from unittest.mock import patch
 
 import pytest
+from django.db import close_old_connections
 
 from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, JobType, TargetSource
 from apps.job_mgmt.models import JobExecution, Playbook, ScheduledTask, Target
 from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunner
+from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
+from apps.job_mgmt.utils.team_authz import is_team_authorized as real_is_team_authorized
 
-pytestmark = [pytest.mark.integration, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db(transaction=True)]
 
 
 def _scheduled_execution(job_type, target, *, move_target=True, **overrides):
@@ -162,3 +166,81 @@ def test_file_runner_keeps_same_team_scheduled_execution_compatible():
     execution.refresh_from_db()
     assert execution.status == ExecutionStatus.SUCCESS
     executor.return_value.download_to_remote.assert_called_once()
+
+
+def test_runner_linearizes_target_snapshot_before_concurrent_team_update():
+    target = Target.objects.create(
+        name="owned",
+        ip="127.0.0.30",
+        node_id="node-30",
+        driver=ExecutorDriver.SIDECAR,
+        ssh_user="old-user",
+        ssh_password="old-secret",
+        team=[1],
+    )
+    execution = _scheduled_execution(JobType.SCRIPT, target, move_target=False)
+    lock_checked = threading.Event()
+    release_check = threading.Event()
+    update_done = threading.Event()
+    errors = []
+
+    def blocking_authorization(resource_team, authorized_team_ids):
+        lock_checked.set()
+        assert release_check.wait(timeout=5)
+        return real_is_team_authorized(resource_team, authorized_team_ids)
+
+    original_build = ExecutionTaskBaseService._build_ssh_credentials
+
+    def build_after_update(cls, locked_target):
+        assert update_done.wait(timeout=5)
+        return original_build(locked_target)
+
+    def run_execution():
+        close_old_connections()
+        try:
+            ScriptExecutionRunner(execution.id).run()
+        except Exception as exc:  # pragma: no cover - 线程异常转回主断言
+            errors.append(exc)
+        finally:
+            close_old_connections()
+
+    def move_target():
+        close_old_connections()
+        try:
+            Target.objects.filter(id=target.id).update(team=[2], ssh_user="new-user")
+            update_done.set()
+        except Exception as exc:  # pragma: no cover - 线程异常转回主断言
+            errors.append(exc)
+        finally:
+            close_old_connections()
+
+    with patch("apps.job_mgmt.services.script_execution_runner.ensure_stream_sync"), patch(
+        "apps.job_mgmt.services.script_execution_runner.Executor"
+    ) as executor, patch(
+        "apps.job_mgmt.services.execution_base_service.is_team_authorized",
+        side_effect=blocking_authorization,
+    ), patch.object(
+        ExecutionTaskBaseService,
+        "_build_ssh_credentials",
+        new=classmethod(build_after_update),
+    ):
+        executor.return_value.execute_ssh_stream.return_value = "success"
+        runner_thread = threading.Thread(target=run_execution)
+        runner_thread.start()
+        assert lock_checked.wait(timeout=5)
+        update_thread = threading.Thread(target=move_target)
+        update_thread.start()
+        assert update_done.wait(timeout=0.2) is False
+        release_check.set()
+        runner_thread.join(timeout=10)
+        update_thread.join(timeout=10)
+
+    assert not runner_thread.is_alive()
+    assert not update_thread.is_alive()
+    assert errors == []
+    target.refresh_from_db()
+    execution.refresh_from_db()
+    assert target.team == [2]
+    assert target.ssh_user == "new-user"
+    assert execution.status == ExecutionStatus.SUCCESS
+    assert executor.return_value.execute_ssh_stream.call_args.kwargs["username"] == "old-user"
