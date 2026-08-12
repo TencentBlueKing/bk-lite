@@ -523,6 +523,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                 <div className="flex flex-none items-center">
                   <TimeSelector
+                    appearance="toolbar"
                     className="flex-none"
                     ref={timeSelectorRef}
                     key="time-selector"

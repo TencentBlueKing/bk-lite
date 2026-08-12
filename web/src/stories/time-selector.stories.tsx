@@ -25,6 +25,22 @@ export const Default: Story = {
   },
 };
 
+export const Toolbar: Story = {
+  args: {
+    appearance: 'toolbar',
+    defaultValue: {
+      selectValue: 15,
+      rangePickerVaule: null,
+    },
+    onFrequenceChange: (frequency: number) => {
+      console.log('Frequency changed:', frequency);
+    },
+    onRefresh: () => {
+      console.log('Refresh clicked');
+    },
+  },
+};
+
 export const OnlyTimeSelect: Story = {
   args: {
     defaultValue: {

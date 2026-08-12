@@ -21,6 +21,8 @@ interface TimeSelectorProps {
   format?: string; //rangePicker组件属性，格式化
   onlyRefresh?: boolean; // 仅显示刷新按钮
   onlyTimeSelect?: boolean; // 仅显示时间组合组件
+  /** 仪表盘工具栏外观：时间选择器更紧凑，刷新与自动刷新合并为单组边框 */
+  appearance?: 'default' | 'toolbar';
   customFrequencyList?: ListItem[];
   customTimeRangeList?: ListItem[];
   clearable?: boolean; // 组件的值是否能为空
@@ -37,6 +39,7 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
     format = 'YYYY-MM-DD HH:mm:ss',
     onlyRefresh = false,
     onlyTimeSelect = false,
+    appearance = 'default',
     clearable = false,
     className,
     defaultValue = {
@@ -267,17 +270,22 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
     onChange?.(rangeTime, numericValue);
   };
 
+  const isToolbar = appearance === 'toolbar';
+  const timeFieldWidthClass = isToolbar ? 'w-full' : 'w-[350px]';
+
   return (
     <div
       className={`${timeSelectorStyle.timeSelector} ${
-        selectValue === 0 ? timeSelectorStyle.customActive : ''
-      } ${pickerVisible ? timeSelectorStyle.pickerVisible : ''} ${className || ''}`}
+        isToolbar ? timeSelectorStyle.toolbar : ''
+      } ${selectValue === 0 ? timeSelectorStyle.customActive : ''} ${
+        pickerVisible ? timeSelectorStyle.pickerVisible : ''
+      } ${className || ''}`}
     >
       {!onlyRefresh && (
         <div className={timeSelectorStyle.customSlect} ref={selectRef}>
           <Select
             allowClear={clearable}
-            className={`w-[350px] ${timeSelectorStyle.frequence} ${className || ''}`}
+            className={`${timeFieldWidthClass} ${timeSelectorStyle.frequence}`}
             value={selectValue}
             options={customTimeRangeList || TIME_RANGE_LIST}
             open={dropdownOpen}
@@ -285,7 +293,7 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
             onOpenChange={handleDropdownVisibleChange}
           />
           <RangePicker
-            className={`w-[350px] ${timeSelectorStyle.rangePicker} ${className || ''}`}
+            className={`${timeFieldWidthClass} ${timeSelectorStyle.rangePicker}`}
             popupClassName={timeSelectorStyle.rangePickerDropdown}
             open={rangePickerOpen}
             showTime={showTime}
