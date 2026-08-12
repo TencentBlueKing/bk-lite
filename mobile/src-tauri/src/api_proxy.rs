@@ -182,7 +182,7 @@ pub struct ApiRequest {
     pub method: String,
     pub headers: Option<HashMap<String, String>>,
     pub body: Option<String>,
-    #[serde(default)]
+    #[serde(default, rename = "requestId", alias = "request_id")]
     pub request_id: Option<String>,
 }
 
@@ -806,6 +806,20 @@ mod tests {
     };
     use tokio::sync::oneshot;
 
+    fn spawn_one_shot_http_server(response: &'static str) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind one-shot test server");
+        let address = listener.local_addr().expect("read one-shot test address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept one-shot test request");
+            let mut buffer = [0_u8; 1024];
+            let _ = stream.read(&mut buffer);
+            stream
+                .write_all(response.as_bytes())
+                .expect("write one-shot test response");
+        });
+        (format!("http://{address}/test"), server)
+    }
+
     #[test]
     fn test_utf8_chunk_decoder_preserves_code_points_split_across_network_chunks() {
         let bytes = "data: {\"text\":\"你好\"}\n".as_bytes();
@@ -917,6 +931,77 @@ mod tests {
 
         assert_eq!(error.message, "Invalid request ID");
         assert!(registry.0.lock().expect("lock request registry").is_empty());
+    }
+
+    #[test]
+    fn test_api_request_accepts_camel_case_and_legacy_snake_case_request_ids() {
+        for (field, request_id) in [
+            ("requestId", "request-camel"),
+            ("request_id", "request-snake"),
+        ] {
+            let mut value = serde_json::json!({
+                "url": "http://127.0.0.1:1/unused",
+                "method": "GET"
+            });
+            value[field] = serde_json::json!(request_id);
+
+            let request: ApiRequest = serde_json::from_value(value).expect("deserialize request");
+
+            assert_eq!(request.request_id.as_deref(), Some(request_id));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_registered_api_request_completion_cleans_before_late_cancel() {
+        let (url, server) = spawn_one_shot_http_server(
+            "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+        );
+        let registry = RequestRegistry::default();
+        let request_id = "request-completed";
+        let response = execute_registered_api_proxy(
+            &registry,
+            ApiRequest {
+                url,
+                method: "GET".to_string(),
+                headers: None,
+                body: None,
+                request_id: Some(request_id.to_string()),
+            },
+            None,
+        )
+        .await
+        .expect("complete registered request");
+
+        assert_eq!(response.status, 200);
+        assert_eq!(response.body, "ok");
+        assert!(!cancel_registered_request(&registry, request_id));
+        server.join().expect("join one-shot test server");
+    }
+
+    #[tokio::test]
+    async fn test_registered_api_request_preserves_unauthorized_response_and_cleans_up() {
+        let (url, server) = spawn_one_shot_http_server(
+            "HTTP/1.1 401 Unauthorized\r\nContent-Length: 12\r\nConnection: close\r\n\r\nunauthorized",
+        );
+        let registry = RequestRegistry::default();
+        let response = execute_registered_api_proxy(
+            &registry,
+            ApiRequest {
+                url,
+                method: "GET".to_string(),
+                headers: None,
+                body: None,
+                request_id: Some("request-401".to_string()),
+            },
+            None,
+        )
+        .await
+        .expect("return unauthorized response");
+
+        assert_eq!(response.status, 401);
+        assert_eq!(response.body, "unauthorized");
+        assert!(registry.0.lock().expect("lock request registry").is_empty());
+        server.join().expect("join one-shot test server");
     }
 
     #[tokio::test]

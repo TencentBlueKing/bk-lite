@@ -76,12 +76,7 @@ async function getTauriCore() {
 
 async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await getTauriCore();
-  try {
-    return await invoke<T>(cmd, args);
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    throw new Error(`Tauri invoke failed: ${errorMessage}`);
-  }
+  return normalizeInvokeError(invoke<T>(cmd, args));
 }
 
 async function normalizeInvokeError<T>(operation: Promise<T>): Promise<T> {
@@ -118,9 +113,9 @@ async function invokeCancellableApiProxy(
       nativeRequest,
       new Promise<never>((_, reject) => {
         abort = () => {
-          void registered.then(() => invoke('cancel_request', { requestId })).catch((error: unknown) => {
-              console.warn('[TauriAPI] Failed to cancel native request:', error);
-            });
+          void registered
+            .then(() => invoke('cancel_request', { requestId }))
+            .catch(() => undefined);
           reject(new DOMException('The operation was aborted', 'AbortError'));
         };
         signal.addEventListener('abort', abort, { once: true });
@@ -129,11 +124,6 @@ async function invokeCancellableApiProxy(
         }
       }),
     ]);
-  } catch (error) {
-    if (!(error instanceof DOMException && error.name === 'AbortError')) {
-      console.error('[TauriAPI] Request failed:', error);
-    }
-    throw error;
   } finally {
     if (abort) {
       signal.removeEventListener('abort', abort);

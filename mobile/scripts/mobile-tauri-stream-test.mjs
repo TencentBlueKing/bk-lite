@@ -161,13 +161,45 @@ test('Tauri fetch with an AbortSignal preserves a normally completed response', 
   });
 
   const { tauriApiFetch } = await loadTauriApiProxy();
+  const controller = new AbortController();
   const response = await tauriApiFetch('https://bklite.example.com/api/profile', {
-    signal: new AbortController().signal,
+    signal: controller.signal,
   });
 
   assert.equal(response.status, 200);
   assert.equal(await response.text(), '{"ok":true}');
+  controller.abort();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(commands, ['api_proxy_cancellable']);
+});
+
+test('Tauri fetch with an AbortSignal preserves a 401 response contract', async () => {
+  class MockChannel {
+    onmessage = () => {};
+  }
+
+  globalThis.window = { __TAURI_INTERNALS__: {} };
+  globalThis.__loadTauriCore = async () => ({
+    Channel: MockChannel,
+    invoke: async (command, args) => {
+      assert.equal(command, 'api_proxy_cancellable');
+      args.onRegistered.onmessage(true);
+      return {
+        status: 401,
+        headers: { 'x-tauri-proxied': 'true' },
+        body: '{"detail":"unauthorized"}',
+      };
+    },
+  });
+
+  const { tauriApiFetch } = await loadTauriApiProxy();
+  const response = await tauriApiFetch('https://bklite.example.com/api/profile', {
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get('x-tauri-proxied'), 'true');
+  assert.equal(await response.text(), '{"detail":"unauthorized"}');
 });
 
 test('Tauri fetch keeps the legacy native proxy error shape for signalled requests', async () => {
