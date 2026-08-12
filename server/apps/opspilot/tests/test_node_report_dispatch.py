@@ -268,6 +268,81 @@ async def test_pending_analysis_deterministically_runs_choice_then_repair_report
     assert repair_args["items"] == []
 
 
+def test_find_pending_analysis_ignores_dangling_choice_tool_call():
+    """调用上限留下未完成的 request_user_choice AI tool_call 时，仍应进入确定性修复闭环。"""
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from apps.opspilot.metis.llm.chain.report_renderers.k8s import find_pending_k8s_analysis_choice
+
+    messages = [
+        ToolMessage(
+            name="analyze_deployment_configurations",
+            tool_call_id="analysis-dangling",
+            content=(
+                '{"cluster_name":"Kubernetes - 2","problematic":60,' '"issues_detail":[{"severity":"high","issue":"缺探针","count":59,"workloads":[]}]}'
+            ),
+        ),
+        AIMessage(
+            content="issues_detail 被截断了",
+            tool_calls=[
+                {
+                    "name": "request_user_choice",
+                    "args": {"question": "请选择命名空间"},
+                    "id": "choice-dangling",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+    ]
+    pending = find_pending_k8s_analysis_choice(messages)
+    assert pending is not None
+    assert pending["problematic"] == 60
+
+
+@pytest.mark.asyncio
+async def test_pending_repair_writes_markers_so_second_pass_is_noop():
+    from langchain_core.messages import ToolMessage
+
+    node = _make_node(skill_capabilities=["config_analysis_report", "repair_diff_report"])
+    choice_tool = MagicMock()
+    choice_tool.ainvoke = AsyncMock(return_value="用户回答: 全部一次性展示。请继续。")
+    choice_tool._request_choice_func = MagicMock()
+    repair_tool = MagicMock()
+    repair_tool.ainvoke = AsyncMock(return_value='{"message":"ok","items":[]}')
+    messages = [
+        ToolMessage(
+            name="analyze_deployment_configurations",
+            tool_call_id="analysis-markers",
+            content=(
+                '{"cluster_name":"Kubernetes - 2","problematic":1,'
+                '"issues_detail":[{"severity":"high","issue":"缺探针","count":1,"workloads":["api"]}],'
+                '"_deployments_full":[{"name":"api","namespace":"default","issues":["缺探针"]}]}'
+            ),
+        )
+    ]
+    output = []
+
+    with (
+        patch.object(node, "_build_choice_tool", return_value=choice_tool),
+        patch.object(node, "_build_bulk_repair_tool", return_value=repair_tool),
+    ):
+        first = await node._run_pending_k8s_repair_workflow(
+            messages,
+            {"configurable": {"execution_id": "exec-markers"}},
+            output_messages=output,
+        )
+        second = await node._run_pending_k8s_repair_workflow(
+            messages + output,
+            {"configurable": {"execution_id": "exec-markers"}},
+            output_messages=output,
+        )
+
+    assert first is True
+    assert second is False
+    assert {message.name for message in output} == {"request_user_choice", "generate_repair_report"}
+    choice_tool.ainvoke.assert_awaited_once()
+
+
 @pytest.mark.asyncio
 async def test_pending_analysis_uses_full_details_from_runnable_config_cache():
     from langchain_core.messages import ToolMessage
@@ -759,7 +834,7 @@ async def test_choice_custom_events_use_explicit_runnable_config():
 
     with (
         patch("apps.opspilot.metis.llm.chain.node.wait_for_choice", new=AsyncMock(return_value={"selected": ["按问题类别聚合"], "source": "user"})),
-        patch("apps.opspilot.metis.llm.chain.node.dispatch_custom_event") as dispatch,
+        patch("apps.opspilot.metis.llm.chain.node.adispatch_custom_event", new=AsyncMock()) as adispatch,
     ):
         await choice_func(
             question="请选择修复展示方式",
@@ -768,8 +843,8 @@ async def test_choice_custom_events_use_explicit_runnable_config():
             config=runnable_config,
         )
 
-    assert dispatch.call_count == 2
-    assert all(call.kwargs["config"] is runnable_config for call in dispatch.call_args_list)
+    assert adispatch.await_count == 2
+    assert all(call.kwargs["config"] is runnable_config for call in adispatch.await_args_list)
 
 
 @pytest.mark.asyncio

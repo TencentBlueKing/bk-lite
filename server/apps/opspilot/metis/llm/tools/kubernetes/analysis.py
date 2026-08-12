@@ -1,18 +1,105 @@
 """Kubernetes配置分析和策略检查工具"""
-from collections import OrderedDict
 import json
+from collections import OrderedDict
 from threading import Lock
+
+from kubernetes import client
 from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from kubernetes import client
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context, parse_resource_quantity, get_current_cluster_name
-from apps.core.logger import opspilot_logger as logger
 
+from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.tools.kubernetes.utils import get_current_cluster_name, parse_resource_quantity, prepare_context
 
 _K8S_ANALYSIS_DETAIL_CACHE = OrderedDict()
 _K8S_ANALYSIS_DETAIL_CACHE_LOCK = Lock()
 _K8S_ANALYSIS_DETAIL_CACHE_MAX_ENTRIES = 128
+
+# 用户要求「范围内全部工作负载」时，禁止用 name 抽样；禁止擅自收到系统命名空间。
+_ALL_WORKLOAD_MARKERS = (
+    "所有工作负载",
+    "全部工作负载",
+    "所有的工作负载",
+    "全部的工作负载",
+    "全部 Deployment",
+    "全部Deployment",
+    "所有 Deployment",
+    "所有Deployment",
+    "all workloads",
+    "all the workloads",
+    "all deployments",
+)
+# 仅拦截常见系统 ns：业务 ns（如 bk-lite-scan-fixtures）即使未写进原话也保留，
+# 否则会误扩成全集群 → scope_too_large，配置检查后修复报告闭环直接中断。
+_SYSTEM_NAMESPACES_TO_REJECT_WHEN_UNMENTIONED = frozenset(
+    {
+        "kube-system",
+        "kube-public",
+        "kube-node-lease",
+    }
+)
+
+
+def _extract_user_message_from_config(config: RunnableConfig | None) -> str:
+    configurable = {}
+    if isinstance(config, dict):
+        configurable = config.get("configurable") or {}
+    graph_request = configurable.get("graph_request")
+    messages = [
+        getattr(graph_request, "graph_user_message", "") if graph_request is not None else "",
+        getattr(graph_request, "user_message", "") if graph_request is not None else "",
+        configurable.get("graph_user_message") or "",
+        configurable.get("user_message") or "",
+    ]
+    return " ".join(message for message in messages if isinstance(message, str) and message.strip())
+
+
+def user_requests_all_workloads(user_message: str) -> bool:
+    text = (user_message or "").strip()
+    if not text:
+        return False
+    lowered = text.casefold()
+    for marker in _ALL_WORKLOAD_MARKERS:
+        if marker.isascii():
+            if marker.casefold() in lowered:
+                return True
+        elif marker in text:
+            return True
+    return False
+
+
+def resolve_deployment_analysis_scope(
+    namespace: str | None,
+    name: str | None,
+    config: RunnableConfig | None,
+) -> tuple[str | None, str | None]:
+    """校正配置分析范围，避免报告卡扫描数与用户「全部」意图不符。
+
+    - 全部意图下忽略 name（禁止抽样单个对象）
+    - 全部意图下仅忽略「用户未提及的系统命名空间」（如 kube-system）
+    - 不清理业务 namespace：模型常从 list 结果带入正确 ns，清掉会扩成全集群并打断修复报告
+    """
+    if not user_requests_all_workloads(_extract_user_message_from_config(config)):
+        return namespace, name
+
+    user_message = _extract_user_message_from_config(config)
+    resolved_name = name
+    if name:
+        logger.info(
+            "analyze_deployment_configurations: ignore name=%s because user asked for all workloads",
+            name,
+        )
+        resolved_name = None
+
+    resolved_namespace = namespace
+    if namespace and namespace in _SYSTEM_NAMESPACES_TO_REJECT_WHEN_UNMENTIONED and namespace not in user_message:
+        logger.info(
+            "analyze_deployment_configurations: ignore system namespace=%s under all-workloads intent",
+            namespace,
+        )
+        resolved_namespace = None
+
+    return resolved_namespace, resolved_name
 
 
 def _cache_k8s_analysis_details(execution_id: str, deployments: list) -> None:
@@ -60,7 +147,7 @@ def check_kubernetes_resource_quotas(namespace=None, config: RunnableConfig = No
                 "namespace": quota.metadata.namespace,
                 "hard": dict(quota.status.hard) if quota.status.hard else {},
                 "used": dict(quota.status.used) if quota.status.used else {},
-                "usage_percentage": {}
+                "usage_percentage": {},
             }
 
             # Calculate usage percentages
@@ -71,20 +158,16 @@ def check_kubernetes_resource_quotas(namespace=None, config: RunnableConfig = No
                         hard_value = parse_resource_quantity(hard_limit)
                         used_value = parse_resource_quantity(used_amount)
                         if hard_value > 0:
-                            quota_info["usage_percentage"][resource] = round(
-                                (used_value / hard_value) * 100, 2)
+                            quota_info["usage_percentage"][resource] = round((used_value / hard_value) * 100, 2)
                     except (ValueError, TypeError):
                         # For non-numeric resources like count/integer
                         try:
                             hard_int = int(hard_limit)
                             used_int = int(used_amount)
                             if hard_int > 0:
-                                quota_info["usage_percentage"][resource] = round(
-                                    (used_int / hard_int) * 100, 2)
+                                quota_info["usage_percentage"][resource] = round((used_int / hard_int) * 100, 2)
                         except (ValueError, TypeError):
-                            logger.debug(
-                                f"[k8s-analysis] 无法计算配额使用率 resource={resource} "
-                                f"hard={hard_limit} used={used_amount}")
+                            logger.debug(f"[k8s-analysis] 无法计算配额使用率 resource={resource} " f"hard={hard_limit} used={used_amount}")
                             quota_info["usage_percentage"][resource] = "无法计算"
 
             result.append(quota_info)
@@ -117,14 +200,18 @@ def check_kubernetes_network_policies(namespace=None, config: RunnableConfig = N
 
         result = []
         for policy in policies.items:
-            result.append({
-                "name": policy.metadata.name,
-                "namespace": policy.metadata.namespace,
-                "pod_selector": policy.spec.pod_selector.match_labels if policy.spec.pod_selector and policy.spec.pod_selector.match_labels else {},
-                "policy_types": policy.spec.policy_types if policy.spec.policy_types else [],
-                "ingress_rules": len(policy.spec.ingress) if policy.spec.ingress else 0,
-                "egress_rules": len(policy.spec.egress) if policy.spec.egress else 0
-            })
+            result.append(
+                {
+                    "name": policy.metadata.name,
+                    "namespace": policy.metadata.namespace,
+                    "pod_selector": policy.spec.pod_selector.match_labels
+                    if policy.spec.pod_selector and policy.spec.pod_selector.match_labels
+                    else {},
+                    "policy_types": policy.spec.policy_types if policy.spec.policy_types else [],
+                    "ingress_rules": len(policy.spec.ingress) if policy.spec.ingress else 0,
+                    "egress_rules": len(policy.spec.egress) if policy.spec.egress else 0,
+                }
+            )
 
         return json.dumps(result)
     except ApiException as e:
@@ -149,11 +236,7 @@ def check_kubernetes_persistent_volumes(config: RunnableConfig = None):
         pvc_map = {}
         for pvc in pvcs.items:
             if pvc.spec.volume_name:
-                pvc_map[pvc.spec.volume_name] = {
-                    "name": pvc.metadata.name,
-                    "namespace": pvc.metadata.namespace,
-                    "status": pvc.status.phase
-                }
+                pvc_map[pvc.spec.volume_name] = {"name": pvc.metadata.name, "namespace": pvc.metadata.namespace, "status": pvc.status.phase}
 
         result = []
         for pv in pvs.items:
@@ -164,7 +247,7 @@ def check_kubernetes_persistent_volumes(config: RunnableConfig = None):
                 "reclaim_policy": pv.spec.persistent_volume_reclaim_policy,
                 "status": pv.status.phase,
                 "storage_class": pv.spec.storage_class_name,
-                "claim": pvc_map.get(pv.metadata.name, None)
+                "claim": pvc_map.get(pv.metadata.name, None),
             }
             result.append(pv_info)
 
@@ -206,8 +289,7 @@ def check_kubernetes_ingress(namespace=None, config: RunnableConfig = None):
                     if lb.ip:
                         load_balancers.append({"type": "ip", "value": lb.ip})
                     elif lb.hostname:
-                        load_balancers.append(
-                            {"type": "hostname", "value": lb.hostname})
+                        load_balancers.append({"type": "hostname", "value": lb.hostname})
 
             # Extract backend services
             backends = []
@@ -216,22 +298,26 @@ def check_kubernetes_ingress(namespace=None, config: RunnableConfig = None):
                     if rule.http and rule.http.paths:
                         for path in rule.http.paths:
                             if path.backend and path.backend.service:
-                                backends.append({
-                                    "service_name": path.backend.service.name,
-                                    "service_port": path.backend.service.port.number if path.backend.service.port else None,
-                                    "path": path.path,
-                                    "path_type": path.path_type
-                                })
+                                backends.append(
+                                    {
+                                        "service_name": path.backend.service.name,
+                                        "service_port": path.backend.service.port.number if path.backend.service.port else None,
+                                        "path": path.path,
+                                        "path_type": path.path_type,
+                                    }
+                                )
 
-            result.append({
-                "name": ingress.metadata.name,
-                "namespace": ingress.metadata.namespace,
-                "hosts": hosts,
-                "load_balancers": load_balancers,
-                "backends": backends,
-                "ingress_class": ingress.spec.ingress_class_name,
-                "tls": len(ingress.spec.tls) if ingress.spec.tls else 0
-            })
+            result.append(
+                {
+                    "name": ingress.metadata.name,
+                    "namespace": ingress.metadata.namespace,
+                    "hosts": hosts,
+                    "load_balancers": load_balancers,
+                    "backends": backends,
+                    "ingress_class": ingress.spec.ingress_class_name,
+                    "tls": len(ingress.spec.tls) if ingress.spec.tls else 0,
+                }
+            )
 
         return json.dumps(result)
     except ApiException as e:
@@ -264,16 +350,18 @@ def check_kubernetes_daemonsets(namespace=None, instance_name=None, config: Runn
         cluster_name = get_current_cluster_name()
         items = []
         for ds in daemonsets.items:
-            items.append({
-                "name": ds.metadata.name,
-                "namespace": ds.metadata.namespace,
-                "desired": ds.status.desired_number_scheduled or 0,
-                "current": ds.status.current_number_scheduled or 0,
-                "ready": ds.status.number_ready or 0,
-                "up_to_date": ds.status.updated_number_scheduled or 0,
-                "available": ds.status.number_available or 0,
-                "node_selector": ds.spec.template.spec.node_selector if ds.spec.template.spec.node_selector else {}
-            })
+            items.append(
+                {
+                    "name": ds.metadata.name,
+                    "namespace": ds.metadata.namespace,
+                    "desired": ds.status.desired_number_scheduled or 0,
+                    "current": ds.status.current_number_scheduled or 0,
+                    "ready": ds.status.number_ready or 0,
+                    "up_to_date": ds.status.updated_number_scheduled or 0,
+                    "available": ds.status.number_available or 0,
+                    "node_selector": ds.spec.template.spec.node_selector if ds.spec.template.spec.node_selector else {},
+                }
+            )
 
         result = {"cluster_name": cluster_name, "daemonsets": items}
         return json.dumps(result)
@@ -307,16 +395,18 @@ def check_kubernetes_statefulsets(namespace=None, instance_name=None, config: Ru
         cluster_name = get_current_cluster_name()
         items = []
         for sts in statefulsets.items:
-            items.append({
-                "name": sts.metadata.name,
-                "namespace": sts.metadata.namespace,
-                "replicas": sts.spec.replicas,
-                "ready_replicas": sts.status.ready_replicas or 0,
-                "current_replicas": sts.status.current_replicas or 0,
-                "updated_replicas": sts.status.updated_replicas or 0,
-                "service_name": sts.spec.service_name,
-                "volume_claim_templates": len(sts.spec.volume_claim_templates) if sts.spec.volume_claim_templates else 0
-            })
+            items.append(
+                {
+                    "name": sts.metadata.name,
+                    "namespace": sts.metadata.namespace,
+                    "replicas": sts.spec.replicas,
+                    "ready_replicas": sts.status.ready_replicas or 0,
+                    "current_replicas": sts.status.current_replicas or 0,
+                    "updated_replicas": sts.status.updated_replicas or 0,
+                    "service_name": sts.spec.service_name,
+                    "volume_claim_templates": len(sts.spec.volume_claim_templates) if sts.spec.volume_claim_templates else 0,
+                }
+            )
 
         result = {"cluster_name": cluster_name, "statefulsets": items}
         return json.dumps(result)
@@ -346,17 +436,19 @@ def check_kubernetes_jobs(namespace=None, config: RunnableConfig = None):
             jobs = batch_v1.list_job_for_all_namespaces()
 
         for job in jobs.items:
-            result["jobs"].append({
-                "name": job.metadata.name,
-                "namespace": job.metadata.namespace,
-                "completions": job.spec.completions,
-                "parallelism": job.spec.parallelism,
-                "succeeded": job.status.succeeded or 0,
-                "failed": job.status.failed or 0,
-                "active": job.status.active or 0,
-                "start_time": job.status.start_time.isoformat() if job.status.start_time else None,
-                "completion_time": job.status.completion_time.isoformat() if job.status.completion_time else None
-            })
+            result["jobs"].append(
+                {
+                    "name": job.metadata.name,
+                    "namespace": job.metadata.namespace,
+                    "completions": job.spec.completions,
+                    "parallelism": job.spec.parallelism,
+                    "succeeded": job.status.succeeded or 0,
+                    "failed": job.status.failed or 0,
+                    "active": job.status.active or 0,
+                    "start_time": job.status.start_time.isoformat() if job.status.start_time else None,
+                    "completion_time": job.status.completion_time.isoformat() if job.status.completion_time else None,
+                }
+            )
 
         # 检查CronJobs - 尝试多个API版本以兼容不同的Kubernetes版本
         try:
@@ -367,36 +459,40 @@ def check_kubernetes_jobs(namespace=None, config: RunnableConfig = None):
                 cronjobs = batch_v1.list_cron_job_for_all_namespaces()
 
             for cronjob in cronjobs.items:
-                result["cronjobs"].append({
-                    "name": cronjob.metadata.name,
-                    "namespace": cronjob.metadata.namespace,
-                    "schedule": cronjob.spec.schedule,
-                    "suspend": cronjob.spec.suspend or False,
-                    "active_jobs": len(cronjob.status.active) if cronjob.status.active else 0,
-                    "last_schedule_time": cronjob.status.last_schedule_time.isoformat() if cronjob.status.last_schedule_time else None
-                })
-        except AttributeError:
-            # 如果v1 API不支持CronJob，尝试使用v1beta1 API
-            try:
-                # 动态导入以避免在不支持的版本中出错
-                from kubernetes.client.apis import batch_v1beta1_api
-                batch_v1beta1 = batch_v1beta1_api.BatchV1beta1Api()
-
-                if namespace:
-                    cronjobs = batch_v1beta1.list_namespaced_cron_job(
-                        namespace)
-                else:
-                    cronjobs = batch_v1beta1.list_cron_job_for_all_namespaces()
-
-                for cronjob in cronjobs.items:
-                    result["cronjobs"].append({
+                result["cronjobs"].append(
+                    {
                         "name": cronjob.metadata.name,
                         "namespace": cronjob.metadata.namespace,
                         "schedule": cronjob.spec.schedule,
                         "suspend": cronjob.spec.suspend or False,
                         "active_jobs": len(cronjob.status.active) if cronjob.status.active else 0,
-                        "last_schedule_time": cronjob.status.last_schedule_time.isoformat() if cronjob.status.last_schedule_time else None
-                    })
+                        "last_schedule_time": cronjob.status.last_schedule_time.isoformat() if cronjob.status.last_schedule_time else None,
+                    }
+                )
+        except AttributeError:
+            # 如果v1 API不支持CronJob，尝试使用v1beta1 API
+            try:
+                # 动态导入以避免在不支持的版本中出错
+                from kubernetes.client.apis import batch_v1beta1_api
+
+                batch_v1beta1 = batch_v1beta1_api.BatchV1beta1Api()
+
+                if namespace:
+                    cronjobs = batch_v1beta1.list_namespaced_cron_job(namespace)
+                else:
+                    cronjobs = batch_v1beta1.list_cron_job_for_all_namespaces()
+
+                for cronjob in cronjobs.items:
+                    result["cronjobs"].append(
+                        {
+                            "name": cronjob.metadata.name,
+                            "namespace": cronjob.metadata.namespace,
+                            "schedule": cronjob.spec.schedule,
+                            "suspend": cronjob.spec.suspend or False,
+                            "active_jobs": len(cronjob.status.active) if cronjob.status.active else 0,
+                            "last_schedule_time": cronjob.status.last_schedule_time.isoformat() if cronjob.status.last_schedule_time else None,
+                        }
+                    )
             except (ImportError, AttributeError, ApiException):
                 # 如果都不支持，添加说明信息
                 result["cronjobs_note"] = "CronJob API不可用于当前Kubernetes版本"
@@ -437,35 +533,37 @@ def check_kubernetes_endpoints(namespace=None, config: RunnableConfig = None):
                             port_info = []
                             if subset.ports:
                                 for port in subset.ports:
-                                    port_info.append({
-                                        "name": port.name,
-                                        "port": port.port,
-                                        "protocol": port.protocol
-                                    })
-                            addresses.append({
-                                "ip": addr.ip,
-                                "hostname": addr.hostname,
-                                "target_ref": f"{addr.target_ref.kind}/{addr.target_ref.name}" if addr.target_ref else None,
-                                "ports": port_info
-                            })
+                                    port_info.append({"name": port.name, "port": port.port, "protocol": port.protocol})
+                            addresses.append(
+                                {
+                                    "ip": addr.ip,
+                                    "hostname": addr.hostname,
+                                    "target_ref": f"{addr.target_ref.kind}/{addr.target_ref.name}" if addr.target_ref else None,
+                                    "ports": port_info,
+                                }
+                            )
 
                     # Not ready addresses
                     if subset.not_ready_addresses:
                         for addr in subset.not_ready_addresses:
-                            not_ready_addresses.append({
-                                "ip": addr.ip,
-                                "hostname": addr.hostname,
-                                "target_ref": f"{addr.target_ref.kind}/{addr.target_ref.name}" if addr.target_ref else None
-                            })
+                            not_ready_addresses.append(
+                                {
+                                    "ip": addr.ip,
+                                    "hostname": addr.hostname,
+                                    "target_ref": f"{addr.target_ref.kind}/{addr.target_ref.name}" if addr.target_ref else None,
+                                }
+                            )
 
-            result.append({
-                "name": endpoint.metadata.name,
-                "namespace": endpoint.metadata.namespace,
-                "ready_addresses": addresses,
-                "not_ready_addresses": not_ready_addresses,
-                "ready_count": len(addresses),
-                "not_ready_count": len(not_ready_addresses)
-            })
+            result.append(
+                {
+                    "name": endpoint.metadata.name,
+                    "namespace": endpoint.metadata.namespace,
+                    "ready_addresses": addresses,
+                    "not_ready_addresses": not_ready_addresses,
+                    "ready_count": len(addresses),
+                    "not_ready_count": len(not_ready_addresses),
+                }
+            )
 
         return json.dumps(result)
     except ApiException as e:
@@ -481,21 +579,14 @@ def build_config_analysis_next_step_hint(
         hint_parts = ["分析完成，本次扫描未发现明显配置问题。"]
         if target_name:
             hint_parts.append(f"当前结果已经覆盖用户指定的工作负载 {target_name}。")
-        hint_parts.append(
-            "本轮直接输出完整检查结果并结束。"
-            "不要调用 request_user_choice，也不要调用 generate_repair_report。"
-        )
+        hint_parts.append("本轮直接输出完整检查结果并结束。" "不要调用 request_user_choice，也不要调用 generate_repair_report。")
         return "".join(hint_parts)
 
     hint_parts = [f"分析完成，共 {problematic_count} 个工作负载存在问题。"]
     if problematic_count > 30:
-        hint_parts.append(
-            "目标数量较多，建议优先聚焦 high/critical 问题，或限定特定命名空间查看。"
-        )
+        hint_parts.append("目标数量较多，建议优先聚焦 high/critical 问题，或限定特定命名空间查看。")
     if target_name:
-        hint_parts.append(
-            f"当前结果已经覆盖用户指定的工作负载 {target_name}。"
-        )
+        hint_parts.append(f"当前结果已经覆盖用户指定的工作负载 {target_name}。")
     if structured_report_emitted:
         hint_parts.append(
             "结构化配置检查报告已通过界面卡片展示。"
@@ -504,11 +595,7 @@ def build_config_analysis_next_step_hint(
             "后端会自动展示可用的修复展示方式，并在用户选择后生成修复对比。"
         )
         return "".join(hint_parts)
-    hint_parts.append(
-        "本轮先输出一次完整检查结果。"
-        "不要调用 request_user_choice，也不要调用 generate_repair_report。"
-        "后端会根据报告中实际存在的聚合维度展示修复展示方式，并在用户选择后生成修复对比。"
-    )
+    hint_parts.append("本轮先输出一次完整检查结果。" "不要调用 request_user_choice，也不要调用 generate_repair_report。" "后端会根据报告中实际存在的聚合维度展示修复展示方式，并在用户选择后生成修复对比。")
     return "".join(hint_parts)
 
 
@@ -542,7 +629,7 @@ def _collect_issue_workloads(analysis_results):
 
 
 @tool()
-def analyze_deployment_configurations(
+def analyze_deployment_configurations(  # noqa: C901
     namespace=None,
     instance_name=None,
     name=None,
@@ -559,11 +646,15 @@ def analyze_deployment_configurations(
     **批处理说明：**
     - 安全范围内最多分析 100 个 Deployment
     - 内部按每批最多 50 个处理并聚合为一份完整结果，不依赖模型翻页
+    - 用户说「所有/全部工作负载」或「全部 Deployment」时：不要传 name；也不要擅自传用户未提及的 namespace
+    - name 仅在用户明确点名某个 Deployment 时使用
 
     Args:
-        namespace (str, optional): 要分析的命名空间，不传则扫描全部命名空间
+        namespace (str, optional): 要分析的命名空间，不传则扫描全部命名空间。
+            用户要求全部工作负载且未点名命名空间时不要传此参数。
         instance_name (str, optional): 要操作的 Kubernetes 实例名称，多集群时必传
-        name (str, optional): 要分析的特定 Deployment 名称。指定后只分析该 Deployment，忽略 limit/offset
+        name (str, optional): 仅当用户明确指定某个 Deployment 时传入；指定后只分析该对象。
+            用户要求检查全部/所有工作负载时禁止传此参数。
         limit (int, optional): 内部批处理大小，默认 50，硬上限 50
         offset (int, optional): 从第 N 个 Deployment 开始分析，默认 0
         config (RunnableConfig): 工具配置
@@ -575,6 +666,9 @@ def analyze_deployment_configurations(
         configurable = config.get("configurable", {})
         configurable["instance_name"] = instance_name
         config["configurable"] = configurable
+
+    # 校正范围：全部意图下避免 name 抽样 / 未提及的 namespace 收窄，保证报告卡数字正确
+    namespace, name = resolve_deployment_analysis_scope(namespace, name, config)
 
     # 硬上限保护
     limit = max(1, min(int(limit or 50), 50))
@@ -602,17 +696,19 @@ def analyze_deployment_configurations(
                 ns_counts[ns] = ns_counts.get(ns, 0) + 1
             ns_list = sorted(ns_counts.items(), key=lambda x: -x[1])[:15]
 
-            return json.dumps({
-                "error": "scope_too_large",
-                "total": total_count,
-                "namespace_distribution": [{"namespace": ns, "count": c} for ns, c in ns_list],
-                "_next_step_hint": (
-                    f"集群中有 {total_count} 个 Deployment，超过分析上限（100）。"
-                    "【必须】调用 request_user_choice 工具让用户选择要检查的命名空间，"
-                    "然后用 namespace 参数重新调用 analyze_deployment_configurations。"
-                    "禁止在不指定 namespace 的情况下继续分析。"
-                ),
-            })
+            return json.dumps(
+                {
+                    "error": "scope_too_large",
+                    "total": total_count,
+                    "namespace_distribution": [{"namespace": ns, "count": c} for ns, c in ns_list],
+                    "_next_step_hint": (
+                        f"集群中有 {total_count} 个 Deployment，超过分析上限（100）。"
+                        "【必须】调用 request_user_choice 工具让用户选择要检查的命名空间，"
+                        "然后用 namespace 参数重新调用 analyze_deployment_configurations。"
+                        "禁止在不指定 namespace 的情况下继续分析。"
+                    ),
+                }
+            )
 
         # 如果指定了 name，只分析该 deployment
         if name:
@@ -620,38 +716,29 @@ def analyze_deployment_configurations(
             total_count = len(all_items)
             if total_count == 0:
                 scoped_name = f"{namespace}/{name}" if namespace else name
-                return json.dumps({
-                    "success": False,
-                    "error": "deployment_not_found",
-                    "code": "deployment_not_found",
-                    "message": f"未找到名为 {scoped_name} 的 Deployment",
-                    "target_name": name,
-                    "namespace": namespace,
-                    "_next_step_hint": (
-                        f"未找到名为 {scoped_name} 的 Deployment。"
-                        "请先确认名称是否正确，必要时先调用 list_kubernetes_deployments 重新查看可用 Deployment。"
-                    ),
-                })
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "deployment_not_found",
+                        "code": "deployment_not_found",
+                        "message": f"未找到名为 {scoped_name} 的 Deployment",
+                        "target_name": name,
+                        "namespace": namespace,
+                        "_next_step_hint": (f"未找到名为 {scoped_name} 的 Deployment。" "请先确认名称是否正确，必要时先调用 list_kubernetes_deployments 重新查看可用 Deployment。"),
+                    }
+                )
             scan_items = all_items
         else:
             remaining_items = all_items[offset:]
-            scan_items = [
-                deployment
-                for start in range(0, len(remaining_items), limit)
-                for deployment in remaining_items[start:start + limit]
-            ]
+            scan_items = [deployment for start in range(0, len(remaining_items), limit) for deployment in remaining_items[start : start + limit]]
 
         cluster_name = get_current_cluster_name()
         analysis_results = []
 
         pdbs_by_namespace = {}
-        for namespace_name in dict.fromkeys(
-            deployment.metadata.namespace for deployment in scan_items
-        ):
+        for namespace_name in dict.fromkeys(deployment.metadata.namespace for deployment in scan_items):
             try:
-                pdbs_by_namespace[namespace_name] = core_v1.list_namespaced_pod_disruption_budget(
-                    namespace_name
-                ).items
+                pdbs_by_namespace[namespace_name] = core_v1.list_namespaced_pod_disruption_budget(namespace_name).items
             except Exception as e:
                 pdbs_by_namespace[namespace_name] = []
                 logger.warning(f"[k8s-analysis] PDB 检查跳过（PodDisruptionBudget API 不可用）: {e}")
@@ -665,8 +752,8 @@ def analyze_deployment_configurations(
                 "config_analysis": {
                     "replicas": deployment.spec.replicas,
                     "strategy": deployment.spec.strategy.type if deployment.spec.strategy else "RollingUpdate",
-                    "containers": []
-                }
+                    "containers": [],
+                },
             }
 
             # 分析副本数
@@ -677,12 +764,7 @@ def analyze_deployment_configurations(
             # 分析容器配置
             if deployment.spec.template.spec.containers:
                 for container in deployment.spec.template.spec.containers:
-                    container_analysis = {
-                        "name": container.name,
-                        "image": container.image,
-                        "issues": [],
-                        "recommendations": []
-                    }
+                    container_analysis = {"name": container.name, "image": container.image, "issues": [], "recommendations": []}
 
                     # 检查资源限制
                     has_requests = False
@@ -695,39 +777,32 @@ def analyze_deployment_configurations(
 
                     if not has_requests:
                         container_analysis["issues"].append("未设置资源请求")
-                        container_analysis["recommendations"].append(
-                            "设置CPU和内存请求以确保调度")
+                        container_analysis["recommendations"].append("设置CPU和内存请求以确保调度")
 
                     if not has_limits:
                         container_analysis["issues"].append("未设置资源限制")
-                        container_analysis["recommendations"].append(
-                            "设置CPU和内存限制以防止资源耗尽")
+                        container_analysis["recommendations"].append("设置CPU和内存限制以防止资源耗尽")
 
                     # 检查健康检查
                     if not container.liveness_probe:
                         container_analysis["issues"].append("未配置存活探针")
-                        container_analysis["recommendations"].append(
-                            "配置存活探针以自动重启失败的容器")
+                        container_analysis["recommendations"].append("配置存活探针以自动重启失败的容器")
 
                     if not container.readiness_probe:
                         container_analysis["issues"].append("未配置就绪探针")
-                        container_analysis["recommendations"].append(
-                            "配置就绪探针以确保流量只路由到就绪的Pod")
+                        container_analysis["recommendations"].append("配置就绪探针以确保流量只路由到就绪的Pod")
 
                     # 检查镜像标签
                     if container.image.endswith(":latest"):
                         container_analysis["issues"].append("使用latest标签")
-                        container_analysis["recommendations"].append(
-                            "使用具体的版本标签以确保部署的一致性")
+                        container_analysis["recommendations"].append("使用具体的版本标签以确保部署的一致性")
 
                     # 检查安全上下文
                     if not container.security_context or not container.security_context.run_as_non_root:
                         container_analysis["issues"].append("可能以root用户运行")
-                        container_analysis["recommendations"].append(
-                            "配置非root用户运行以提高安全性")
+                        container_analysis["recommendations"].append("配置非root用户运行以提高安全性")
 
-                    analysis["config_analysis"]["containers"].append(
-                        container_analysis)
+                    analysis["config_analysis"]["containers"].append(container_analysis)
 
             # 检查Pod反亲和性
             if not deployment.spec.template.spec.affinity:
@@ -735,14 +810,14 @@ def analyze_deployment_configurations(
 
             # 检查中断预算
             pdbs = pdbs_by_namespace.get(deployment.metadata.namespace, [])
-            has_pdb = any(pdb.spec.selector
-                          and pdb.spec.selector.match_labels
-                          and all(deployment.spec.selector.match_labels.get(k) == v
-                                  for k, v in pdb.spec.selector.match_labels.items())
-                          for pdb in pdbs)
+            has_pdb = any(
+                pdb.spec.selector
+                and pdb.spec.selector.match_labels
+                and all(deployment.spec.selector.match_labels.get(k) == v for k, v in pdb.spec.selector.match_labels.items())
+                for pdb in pdbs
+            )
             if not has_pdb:
-                analysis["recommendations"].append(
-                    "考虑配置PodDisruptionBudget以控制自愿中断")
+                analysis["recommendations"].append("考虑配置PodDisruptionBudget以控制自愿中断")
 
             analysis_results.append(analysis)
 
@@ -805,10 +880,7 @@ def analyze_deployment_configurations(
                 "count": len(workloads),
                 "workloads": workloads,
             }
-            for issue, workloads in sorted(
-                _issue_to_workloads.items(),
-                key=lambda x: (_sev_order.get(_get_severity(x[0]), 3), -len(x[1]))
-            )
+            for issue, workloads in sorted(_issue_to_workloads.items(), key=lambda x: (_sev_order.get(_get_severity(x[0]), 3), -len(x[1])))
         ]
 
         result = {
@@ -854,9 +926,7 @@ def analyze_deployment_configurations(
                 ]
                 serialized = json.dumps(result, ensure_ascii=False)
         try:
-            from apps.opspilot.metis.llm.chain.report_renderers import (
-                dispatch_tool_result_report,
-            )
+            from apps.opspilot.metis.llm.chain.report_renderers import dispatch_tool_result_report
 
             emitted_capability = dispatch_tool_result_report(
                 "analyze_deployment_configurations",
@@ -880,17 +950,20 @@ def analyze_deployment_configurations(
         return json.dumps({"error": f"分析Deployment配置失败: {str(e)}"})
     except Exception as e:
         logger.warning("[k8s-analysis] Deployment 配置分析前连接 Kubernetes 失败: %s", e)
-        return json.dumps({
-            "success": False,
-            "error": "connection_failed",
-            "message": f"无法连接 Kubernetes 集群，已停止配置分析: {str(e)}",
-            "suggestion": "请先修复 kubeconfig、网络或 API Server 地址后再重新执行配置检查。",
-            "_next_step_hint": (
-                "Kubernetes 连接失败，必须停止后续配置分析和报告生成。"
-                "请向用户说明连接失败原因，并提示先修复 kubeconfig 或网络配置。"
-                "不要输出配置检查报告，不要调用 request_user_choice，也不要调用 generate_repair_report。"
-            ),
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "success": False,
+                "error": "connection_failed",
+                "message": f"无法连接 Kubernetes 集群，已停止配置分析: {str(e)}",
+                "suggestion": "请先修复 kubeconfig、网络或 API Server 地址后再重新执行配置检查。",
+                "_next_step_hint": (
+                    "Kubernetes 连接失败，必须停止后续配置分析和报告生成。"
+                    "请向用户说明连接失败原因，并提示先修复 kubeconfig 或网络配置。"
+                    "不要输出配置检查报告，不要调用 request_user_choice，也不要调用 generate_repair_report。"
+                ),
+            },
+            ensure_ascii=False,
+        )
 
 
 @tool()
@@ -910,8 +983,7 @@ def check_kubernetes_hpa_status(namespace=None, config: RunnableConfig = None):
         autoscaling_v2 = client.AutoscalingV2Api()
 
         if namespace:
-            hpas = autoscaling_v2.list_namespaced_horizontal_pod_autoscaler(
-                namespace)
+            hpas = autoscaling_v2.list_namespaced_horizontal_pod_autoscaler(namespace)
         else:
             hpas = autoscaling_v2.list_horizontal_pod_autoscaler_for_all_namespaces()
 
@@ -937,25 +1009,23 @@ def check_kubernetes_hpa_status(namespace=None, config: RunnableConfig = None):
                         metric_info["target_value"] = metric.resource.target.average_value or metric.resource.target.average_utilization
                     target_metrics.append(metric_info)
 
-            result.append({
-                "name": hpa.metadata.name,
-                "namespace": hpa.metadata.namespace,
-                "target_ref": f"{hpa.spec.scale_target_ref.kind}/{hpa.spec.scale_target_ref.name}",
-                "min_replicas": hpa.spec.min_replicas,
-                "max_replicas": hpa.spec.max_replicas,
-                "current_replicas": hpa.status.current_replicas,
-                "desired_replicas": hpa.status.desired_replicas,
-                "target_metrics": target_metrics,
-                "current_metrics": current_metrics,
-                "conditions": [
-                    {
-                        "type": condition.type,
-                        "status": condition.status,
-                        "reason": condition.reason,
-                        "message": condition.message
-                    } for condition in (hpa.status.conditions or [])
-                ]
-            })
+            result.append(
+                {
+                    "name": hpa.metadata.name,
+                    "namespace": hpa.metadata.namespace,
+                    "target_ref": f"{hpa.spec.scale_target_ref.kind}/{hpa.spec.scale_target_ref.name}",
+                    "min_replicas": hpa.spec.min_replicas,
+                    "max_replicas": hpa.spec.max_replicas,
+                    "current_replicas": hpa.status.current_replicas,
+                    "desired_replicas": hpa.status.desired_replicas,
+                    "target_metrics": target_metrics,
+                    "current_metrics": current_metrics,
+                    "conditions": [
+                        {"type": condition.type, "status": condition.status, "reason": condition.reason, "message": condition.message}
+                        for condition in (hpa.status.conditions or [])
+                    ],
+                }
+            )
 
         return json.dumps(result)
     except ApiException as e:

@@ -1306,10 +1306,15 @@ class ToolsNodes(BasicNode):
                 "display_hint": "text" if question_type == "text" else "auto",
             }
 
+            # 深 agent 包装节点里 sync dispatch 可能因缺 parent run id 静默失败；
+            # 优先 adispatch，保证修复闭环的选择卡一定能推到前端。
             try:
-                dispatch_custom_event("user_choice_request", choice_request_data, config=config)
+                await adispatch_custom_event("user_choice_request", choice_request_data, config=config)
             except Exception:
-                pass
+                try:
+                    dispatch_custom_event("user_choice_request", choice_request_data, config=config)
+                except Exception:
+                    pass
 
             logger.info(f"[choice_tool] 提问已发射: question={question[:50]}, " f"type={question_type}, id={choice_id}")
 
@@ -1328,20 +1333,20 @@ class ToolsNodes(BasicNode):
             source = result["source"]
 
             # Dispatch result event to notify frontend
+            result_payload = {
+                "execution_id": execution_id,
+                "node_id": node_id,
+                "choice_id": choice_id,
+                "selected": selected,
+                "source": source,
+            }
             try:
-                dispatch_custom_event(
-                    "user_choice_result",
-                    {
-                        "execution_id": execution_id,
-                        "node_id": node_id,
-                        "choice_id": choice_id,
-                        "selected": selected,
-                        "source": source,
-                    },
-                    config=config,
-                )
+                await adispatch_custom_event("user_choice_result", result_payload, config=config)
             except Exception:
-                pass
+                try:
+                    dispatch_custom_event("user_choice_result", result_payload, config=config)
+                except Exception:
+                    pass
 
             # Build response text for LLM
             if question_type == "text":
@@ -2254,8 +2259,17 @@ class ToolsNodes(BasicNode):
         # _run_pending_k8s_repair_workflow 执行，避免模型改写选项或打乱顺序。
         return tools
 
-    async def _run_pending_k8s_repair_workflow(self, messages: list, config: RunnableConfig) -> bool:
-        """模型漏调选择工具时，确定性完成“选择 → 修复对比”闭环。"""
+    async def _run_pending_k8s_repair_workflow(
+        self,
+        messages: list,
+        config: RunnableConfig,
+        *,
+        output_messages: list | None = None,
+    ) -> bool:
+        """模型漏调选择工具时，确定性完成“选择 → 修复对比”闭环。
+
+        output_messages: 若提供，写入合成 ToolMessage，避免同轮分步循环重复提问。
+        """
         if not (self._enable_config_analysis_report() and self._enable_repair_diff_report()):
             return False
 
@@ -2276,6 +2290,14 @@ class ToolsNodes(BasicNode):
             choice_result = completed_choice[1]
         else:
             choice_result = await choice_tool.ainvoke(build_repair_mode_choice_args(analysis), config=config)
+            if output_messages is not None:
+                output_messages.append(
+                    ToolMessage(
+                        name="request_user_choice",
+                        tool_call_id=f"deterministic-choice-{uuid.uuid4().hex[:8]}",
+                        content=str(choice_result or ""),
+                    )
+                )
         group_by = self._normalize_repair_group_by(str(choice_result or ""))
 
         from apps.opspilot.metis.llm.tools.kubernetes.analysis import _take_cached_k8s_analysis_details
@@ -2298,15 +2320,19 @@ class ToolsNodes(BasicNode):
             },
             config=config,
         )
+        if output_messages is not None:
+            output_messages.append(
+                ToolMessage(
+                    name="generate_repair_report",
+                    tool_call_id=f"deterministic-repair-{uuid.uuid4().hex[:8]}",
+                    content=str(repair_result or ""),
+                )
+            )
         try:
             parsed_repair = json.loads(repair_result) if isinstance(repair_result, str) else repair_result
         except (json.JSONDecodeError, TypeError):
             parsed_repair = None
-        if (
-            isinstance(parsed_repair, dict)
-            and parsed_repair.get("items")
-            and parsed_repair.get("_report_emitted_capability") != "repair_diff_report"
-        ):
+        if isinstance(parsed_repair, dict) and parsed_repair.get("items") and parsed_repair.get("_report_emitted_capability") != "repair_diff_report":
             await self._aemit_report_event("repair_diff_report", parsed_repair, config=config)
         return True
 
@@ -3080,7 +3106,11 @@ class ToolsNodes(BasicNode):
                         event_dispatcher=_emit_via_async_config_legacy,
                     )
                     await self._aflush_pending_report_emits()
-                    await self._run_pending_k8s_repair_workflow(final_messages, config)
+                    await self._run_pending_k8s_repair_workflow(
+                        final_messages,
+                        config,
+                        output_messages=new_messages,
+                    )
                 except Exception:
                     raise
                 return {"messages": new_messages}
@@ -3197,7 +3227,6 @@ class ToolsNodes(BasicNode):
                 "需要向用户提问时可使用交互工具；"
                 "但可用工具查到的定位信息（例如缺 namespace 时先反查 Pod/Events）禁止直接问用户。"
             )
-
             if isinstance(token_usage_accumulator, TokenUsageAccumulator):
                 runtime_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))
 
@@ -3324,6 +3353,15 @@ class ToolsNodes(BasicNode):
                     if isinstance(message, HumanMessage) and message.additional_kwargs.get("opspilot_planned_execution"):
                         continue
                     collected_output_messages.append(message)
+
+            async def _maybe_run_repair_workflow() -> None:
+                """分析步结束后立刻推进选择/修复，避免等最终总结时用户已以为流程中断。"""
+                repair_history = list(original_messages) + list(collected_output_messages)
+                await self._run_pending_k8s_repair_workflow(
+                    repair_history,
+                    config,
+                    output_messages=collected_output_messages,
+                )
 
             try:
                 completed_steps: List[CompletedExecutionStep] = []
@@ -3522,6 +3560,9 @@ class ToolsNodes(BasicNode):
                             break
 
                         _collect_output_messages(step_messages)
+                        # 仅在本步实际跑过配置分析时提前推进修复闭环，避免列表/诊断步后抢弹选择卡。
+                        if "analyze_deployment_configurations" in (step.tools or []):
+                            await _maybe_run_repair_workflow()
                         completed_steps.append(
                             CompletedExecutionStep(
                                 objective=step.objective,
@@ -3548,13 +3589,28 @@ class ToolsNodes(BasicNode):
                 active_tools.clear()
                 visibility_middleware.include_always_visible = False
                 limit_middleware.enforce_limits = False
+                # 若分析步因上限提前结束，仍要在最终总结前补上修复闭环。
+                await _maybe_run_repair_workflow()
                 completed_text = "\n".join(f"- {step.objective}: {step.result}" for step in completed_steps) or "没有需要执行工具的步骤"
-                final_message = _internal_message(
-                    f"工具执行计划目标：{plan.goal or planning_question}\n"
-                    f"已完成步骤及结果：\n{completed_text}\n\n"
-                    "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具；"
-                    "请基于已有证据直接总结结论、依据和下一步建议。"
+                repair_already_done = any(
+                    getattr(message, "type", "") == "tool" and getattr(message, "name", "") == "generate_repair_report"
+                    for message in collected_output_messages
                 )
+                if repair_already_done:
+                    final_message = _internal_message(
+                        f"工具执行计划目标：{plan.goal or planning_question}\n"
+                        f"已完成步骤及结果：\n{completed_text}\n\n"
+                        "配置检查报告与修复对比已通过界面卡片展示。"
+                        "当前没有可用工具，不要继续调用工具；"
+                        "请用一两句告知用户查看上方报告与修复建议，不要重复 Markdown 表格或声称数据被截断。"
+                    )
+                else:
+                    final_message = _internal_message(
+                        f"工具执行计划目标：{plan.goal or planning_question}\n"
+                        f"已完成步骤及结果：\n{completed_text}\n\n"
+                        "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具；"
+                        "请基于已有证据直接总结结论、依据和下一步建议。"
+                    )
                 final_payload = {
                     **agent_state,
                     "messages": list(agent_state.get("messages") or []) + [final_message],
@@ -3645,7 +3701,11 @@ class ToolsNodes(BasicNode):
                 # 此时应使用 original + collected_output（含各步工具结果）。
                 # 非分步路径 collected 为空，仍回退到 final_messages（含完整历史）。
                 repair_history = list(original_messages) + list(collected_output_messages) if collected_output_messages else final_messages
-                await self._run_pending_k8s_repair_workflow(repair_history, config)
+                await self._run_pending_k8s_repair_workflow(
+                    repair_history,
+                    config,
+                    output_messages=collected_output_messages if collected_output_messages else new_messages,
+                )
             except Exception:
                 # PPR 失败时 re-raise,让上层 langgraph 走正常 ERROR 处理路径
                 raise

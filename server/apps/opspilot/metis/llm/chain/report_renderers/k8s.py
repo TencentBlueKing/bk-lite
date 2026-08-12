@@ -15,26 +15,23 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from langchain_core.messages import BaseMessage, SystemMessage
 
 # 用相对导入拿 registry / register_*,不依赖 k8s_report_tools shim
-from . import (
-    register_renderer,
-    register_tool_result_capability,
-)
+from . import register_renderer, register_tool_result_capability
 
 
 # ---------------------------------------------------------------------------
 # 工具结果 → 报告卡片 引导 system message
 # ---------------------------------------------------------------------------
 def build_post_tool_directives(
-    result_messages: List[BaseMessage],
+    result_messages: list[BaseMessage],
     enable_config_analysis_report: bool = True,
     enable_repair_diff_report: bool = True,
-) -> List[SystemMessage]:
-    directives: List[SystemMessage] = []
+) -> list[SystemMessage]:
+    directives: list[SystemMessage] = []
 
     for message in result_messages:
         message_name = getattr(message, "name", "")
@@ -50,9 +47,7 @@ def build_post_tool_directives(
                 repair_choice_rule = ""
                 if enable_repair_diff_report:
                     repair_choice_rule = (
-                        "如果检查结果存在问题项，不要调用 request_user_choice 或任何修复报告生成工具。"
-                        "后端会根据报告可用维度自动展示修复方式选择，并在用户提交后推送修复对比。"
-                        "如果检查结果没有问题，则直接用一句话结束，不要追加修复交互。"
+                        "如果检查结果存在问题项，不要调用 request_user_choice 或任何修复报告生成工具。" "后端会根据报告可用维度自动展示修复方式选择，并在用户提交后推送修复对比。" "如果检查结果没有问题，则直接用一句话结束，不要追加修复交互。"
                     )
                 directives.append(
                     SystemMessage(
@@ -86,7 +81,7 @@ def _should_emit_parsed(parsed: Any) -> bool:
     return should_emit_config_analysis_report(parsed) if isinstance(parsed, dict) else False
 
 
-def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
+def build_config_analysis_report_markdown(parsed: dict[str, Any]) -> str:
     cluster_name = parsed.get("cluster_name") or "Kubernetes"
     problematic = parsed.get("problematic", 0)
     healthy = parsed.get("healthy")
@@ -115,7 +110,7 @@ def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
         "warning": "Warning",
         "info": "Info",
     }
-    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    grouped: dict[str, list[dict[str, Any]]] = {}
     for item in issues_detail:
         grouped.setdefault(item.get("severity", "info"), []).append(item)
 
@@ -139,7 +134,7 @@ def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
     return "\n\n".join(lines)
 
 
-def downgrade_config_analysis_next_step_hint(parsed: Dict[str, Any]) -> Dict[str, Any]:
+def downgrade_config_analysis_next_step_hint(parsed: dict[str, Any]) -> dict[str, Any]:
     """Remove expert repair workflow hints when no skill package enables them."""
     if not isinstance(parsed, dict):
         return parsed
@@ -150,16 +145,9 @@ def downgrade_config_analysis_next_step_hint(parsed: Dict[str, Any]) -> Dict[str
     result = dict(parsed)
     problematic = result.get("problematic")
     if isinstance(problematic, int) and problematic > 0:
-        result["_next_step_hint"] = (
-            f"分析完成，共 {problematic} 个工作负载存在问题。"
-            "本轮输出基础检查结果和关键风险摘要即可。"
-            "不要调用 request_user_choice，也不要调用 generate_repair_report。"
-        )
+        result["_next_step_hint"] = f"分析完成，共 {problematic} 个工作负载存在问题。" "本轮输出基础检查结果和关键风险摘要即可。" "不要调用 request_user_choice，也不要调用 generate_repair_report。"
     else:
-        result["_next_step_hint"] = (
-            "分析完成。请输出基础检查结果即可。"
-            "不要调用 request_user_choice，也不要调用 generate_repair_report。"
-        )
+        result["_next_step_hint"] = "分析完成。请输出基础检查结果即可。" "不要调用 request_user_choice，也不要调用 generate_repair_report。"
     return result
 
 
@@ -299,7 +287,7 @@ def _config_analysis_benefit_description(issue_type: str) -> str:
     return _lookup_config_analysis_description(issue_type, "benefit")
 
 
-def should_emit_config_analysis_report(parsed: Dict[str, Any]) -> bool:
+def should_emit_config_analysis_report(parsed: dict[str, Any]) -> bool:
     if not isinstance(parsed, dict) or parsed.get("error"):
         return False
     if parsed.get("issues_detail"):
@@ -307,7 +295,7 @@ def should_emit_config_analysis_report(parsed: Dict[str, Any]) -> bool:
     return any(parsed.get(key) is not None for key in ("total", "problematic", "healthy"))
 
 
-def _build_config_analysis_scope(parsed: Dict[str, Any]) -> Dict[str, Any]:
+def _build_config_analysis_scope(parsed: dict[str, Any]) -> dict[str, Any]:
     scope = parsed.get("scope") if isinstance(parsed.get("scope"), dict) else {}
     result = {}
 
@@ -328,7 +316,7 @@ def _build_config_analysis_scope(parsed: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def _build_config_analysis_scan_range(parsed: Dict[str, Any]) -> Dict[str, Any]:
+def _build_config_analysis_scan_range(parsed: dict[str, Any]) -> dict[str, Any]:
     scan_range = {}
     for key in ("offset", "limit", "has_more"):
         if key in parsed:
@@ -336,7 +324,7 @@ def _build_config_analysis_scan_range(parsed: Dict[str, Any]) -> Dict[str, Any]:
     return scan_range
 
 
-def _build_config_analysis_report_total(parsed: Dict[str, Any]) -> Optional[int]:
+def _build_config_analysis_report_total(parsed: dict[str, Any]) -> int | None:
     healthy = parsed.get("healthy")
     problematic = parsed.get("problematic")
     if isinstance(healthy, int) and isinstance(problematic, int):
@@ -350,7 +338,7 @@ def _build_config_analysis_report_total(parsed: Dict[str, Any]) -> Optional[int]
     return total if isinstance(total, int) else None
 
 
-def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, Any]:
+def build_config_analysis_report_payload(parsed: dict[str, Any]) -> dict[str, Any]:
     cluster_name = parsed.get("cluster_name") or "Kubernetes"
     issues_detail = parsed.get("issues_detail") or []
     report_total = _build_config_analysis_report_total(parsed)
@@ -372,7 +360,7 @@ def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, An
         "info": "P3",
     }
     severity_order = ["critical", "high", "medium", "low", "warning", "info"]
-    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    grouped: dict[str, list[dict[str, Any]]] = {}
     for item in issues_detail:
         grouped.setdefault(item.get("severity", "info"), []).append(item)
 
@@ -439,7 +427,7 @@ def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, An
     }
 
 
-def build_a2ui_report_contract(component: str, event_name: str, actions: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+def build_a2ui_report_contract(component: str, event_name: str, actions: list[dict[str, str]] | None = None) -> dict[str, Any]:
     return {
         "version": "1.0",
         "component": component,
@@ -452,9 +440,9 @@ def build_a2ui_report_contract(component: str, event_name: str, actions: Optiona
 def build_config_diff_report_payload(
     title: str,
     cluster_name: str,
-    items: List[Dict[str, Any]],
+    items: list[dict[str, Any]],
     event_name: str = "repair_diff_report",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     normalized_items = []
     for item in items:
         normalized_items.append(
@@ -485,32 +473,25 @@ def build_config_diff_report_payload(
     }
 
 
-def build_repair_mode_choice_args(parsed: Dict[str, Any]) -> Dict[str, Any]:
+def build_repair_mode_choice_args(parsed: dict[str, Any]) -> dict[str, Any]:
     parsed = parsed if isinstance(parsed, dict) else {}
     issues_detail = parsed.get("issues_detail")
     issues = [item for item in issues_detail if isinstance(item, dict)] if isinstance(issues_detail, list) else []
     problematic = parsed.get("problematic")
     problematic_count = problematic if isinstance(problematic, int) else 0
 
-    risk_levels = {
-        str(item.get("severity", "")).strip().lower()
-        for item in issues
-        if str(item.get("severity", "")).strip()
-    }
+    risk_levels = {str(item.get("severity", "")).strip().lower() for item in issues if str(item.get("severity", "")).strip()}
     high_impact_count = sum(
         int(item.get("count", 0))
         for item in issues
-        if str(item.get("severity", "")).strip().lower() in {"critical", "high"}
-        and isinstance(item.get("count", 0), int)
+        if str(item.get("severity", "")).strip().lower() in {"critical", "high"} and isinstance(item.get("count", 0), int)
     )
 
     spaces = set()
     deployments = parsed.get("_deployments_full")
     if isinstance(deployments, list):
         spaces.update(
-            str(item.get("namespace", "")).strip()
-            for item in deployments
-            if isinstance(item, dict) and str(item.get("namespace", "")).strip()
+            str(item.get("namespace", "")).strip() for item in deployments if isinstance(item, dict) and str(item.get("namespace", "")).strip()
         )
     scope = parsed.get("scope")
     if isinstance(scope, dict):
@@ -536,7 +517,7 @@ def build_repair_mode_choice_args(parsed: Dict[str, Any]) -> Dict[str, Any]:
         if risk_levels:
             available_modes.add("severity")
 
-    options: List[str] = []
+    options: list[str] = []
     if "severity" in available_modes and len(risk_levels) >= 2 and problematic_count >= 8:
         if high_impact_count >= 10 or len(risk_levels) >= 3:
             options.append("按风险等级聚合（推荐：高风险问题优先）")
@@ -579,9 +560,9 @@ def build_repair_mode_choice_args(parsed: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def find_pending_k8s_analysis_choice(messages: List[BaseMessage]) -> Optional[Dict[str, Any]]:
+def find_pending_k8s_analysis_choice(messages: list[BaseMessage]) -> dict[str, Any] | None:
     latest_index = -1
-    latest_payload: Optional[Dict[str, Any]] = None
+    latest_payload: dict[str, Any] | None = None
 
     for index, message in enumerate(messages):
         if getattr(message, "type", "") != "tool" or getattr(message, "name", "") != "analyze_deployment_configurations":
@@ -598,22 +579,21 @@ def find_pending_k8s_analysis_choice(messages: List[BaseMessage]) -> Optional[Di
     if latest_index < 0 or latest_payload is None:
         return None
 
+    # 仅以已落地的 ToolMessage 判定闭环进度。分步执行触达调用上限时，
+    # 可能留下未完成的 request_user_choice AI tool_call；若因此直接跳过，
+    # 确定性修复工作流永远不会补发选择卡与 repair_diff_report。
     for message in messages[latest_index + 1 :]:
         if getattr(message, "type", "") == "tool" and getattr(message, "name", "") in {"request_user_choice", "generate_repair_report"}:
             return None
-        if getattr(message, "type", "") == "ai":
-            tool_calls = getattr(message, "tool_calls", []) or []
-            if any(tool_call.get("name") == "request_user_choice" for tool_call in tool_calls):
-                return None
 
     return latest_payload
 
 
 def find_completed_k8s_analysis_choice(
-    messages: List[BaseMessage],
-) -> Optional[tuple[Dict[str, Any], str]]:
+    messages: list[BaseMessage],
+) -> tuple[dict[str, Any], str] | None:
     """查找“分析和用户选择已完成，但修复报告尚未生成”的状态。"""
-    latest_analysis: Optional[Dict[str, Any]] = None
+    latest_analysis: dict[str, Any] | None = None
     completed_choice = ""
 
     for message in messages:
@@ -649,8 +629,8 @@ def find_completed_k8s_analysis_choice(
 
 def render_config_analysis_report(
     parsed: Any,
-    package: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
+    package: dict[str, Any],
+) -> dict[str, Any] | None:
     """把 analyze_deployment_configurations 的结果包装成 config_analysis_report 卡片。
 
     parsed: 工具直接返回的 dict(由 LangChain ToolMessage.content 解出)
@@ -663,8 +643,8 @@ def render_config_analysis_report(
 
 def render_repair_diff_report(
     parsed: Any,
-    package: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
+    package: dict[str, Any],
+) -> dict[str, Any] | None:
     """把 generate_repair_report 的结果包装成 repair_diff_report 卡片(before/after 对比)。
 
     接受两种入参 shape,调用方按场景选:
@@ -692,7 +672,7 @@ def render_repair_diff_report(
     )
 
 
-def _config_analysis_yaml_diff(issue_type: str, workload_name: str = "app") -> Dict[str, str]:
+def _config_analysis_yaml_diff(issue_type: str, workload_name: str = "app") -> dict[str, str]:
     """根据 issue 类型生成 spec 的 before/after YAML 片段(只列问题字段,便于前端行 diff 高亮)。
 
     返回 dict 含 before / after 两个字符串,前端的 DiffReportCard 拿来并排渲染并
@@ -701,13 +681,7 @@ def _config_analysis_yaml_diff(issue_type: str, workload_name: str = "app") -> D
     name = (workload_name or "app").strip() or "app"
 
     if _has("资源限制", "资源请求")(issue_type):
-        before = (
-            "spec:\n"
-            "  containers:\n"
-            f"  - name: {name}\n"
-            "    # 缺少资源 requests/limits\n"
-            "    resources: {}\n"
-        )
+        before = "spec:\n" "  containers:\n" f"  - name: {name}\n" "    # 缺少资源 requests/limits\n" "    resources: {}\n"
         after = (
             "spec:\n"
             "  containers:\n"
@@ -721,12 +695,7 @@ def _config_analysis_yaml_diff(issue_type: str, workload_name: str = "app") -> D
             "        memory: 256Mi\n"
         )
     elif _has("存活探针", "liveness@lower")(issue_type):
-        before = (
-            "spec:\n"
-            "  containers:\n"
-            f"  - name: {name}\n"
-            "    # 缺少 livenessProbe,故障容器无法被自动重启\n"
-        )
+        before = "spec:\n" "  containers:\n" f"  - name: {name}\n" "    # 缺少 livenessProbe,故障容器无法被自动重启\n"
         after = (
             "spec:\n"
             "  containers:\n"
@@ -739,12 +708,7 @@ def _config_analysis_yaml_diff(issue_type: str, workload_name: str = "app") -> D
             "      periodSeconds: 10\n"
         )
     elif _has("就绪探针", "readiness@lower")(issue_type):
-        before = (
-            "spec:\n"
-            "  containers:\n"
-            f"  - name: {name}\n"
-            "    # 缺少 readinessProbe,未就绪 Pod 可能接收流量\n"
-        )
+        before = "spec:\n" "  containers:\n" f"  - name: {name}\n" "    # 缺少 readinessProbe,未就绪 Pod 可能接收流量\n"
         after = (
             "spec:\n"
             "  containers:\n"
@@ -757,12 +721,7 @@ def _config_analysis_yaml_diff(issue_type: str, workload_name: str = "app") -> D
             "      periodSeconds: 5\n"
         )
     elif _has("探针")(issue_type):
-        before = (
-            "spec:\n"
-            "  containers:\n"
-            f"  - name: {name}\n"
-            "    # 同时缺少 livenessProbe / readinessProbe\n"
-        )
+        before = "spec:\n" "  containers:\n" f"  - name: {name}\n" "    # 同时缺少 livenessProbe / readinessProbe\n"
         after = (
             "spec:\n"
             "  containers:\n"
@@ -777,14 +736,7 @@ def _config_analysis_yaml_diff(issue_type: str, workload_name: str = "app") -> D
             "      periodSeconds: 5\n"
         )
     elif _has("root", "安全上下文", "非 root@lower")(issue_type):
-        before = (
-            "spec:\n"
-            "  template:\n"
-            "    spec:\n"
-            "      containers:\n"
-            f"      - name: {name}\n"
-            "        # 容器以 root 运行\n"
-        )
+        before = "spec:\n" "  template:\n" "    spec:\n" "      containers:\n" f"      - name: {name}\n" "        # 容器以 root 运行\n"
         after = (
             "spec:\n"
             "  template:\n"
@@ -797,31 +749,11 @@ def _config_analysis_yaml_diff(issue_type: str, workload_name: str = "app") -> D
             "          allowPrivilegeEscalation: false\n"
         )
     elif _has("latest", "镜像标签")(issue_type):
-        before = (
-            "spec:\n"
-            "  template:\n"
-            "    spec:\n"
-            "      containers:\n"
-            f"      - name: {name}\n"
-            "        image: nginx:latest\n"
-        )
-        after = (
-            "spec:\n"
-            "  template:\n"
-            "    spec:\n"
-            "      containers:\n"
-            f"      - name: {name}\n"
-            "        image: nginx:1.27.3\n"
-        )
+        before = "spec:\n" "  template:\n" "    spec:\n" "      containers:\n" f"      - name: {name}\n" "        image: nginx:latest\n"
+        after = "spec:\n" "  template:\n" "    spec:\n" "      containers:\n" f"      - name: {name}\n" "        image: nginx:1.27.3\n"
     elif _has("单副本", "副本")(issue_type):
-        before = (
-            "spec:\n"
-            "  replicas: 1\n"
-        )
-        after = (
-            "spec:\n"
-            "  replicas: 3\n"
-        )
+        before = "spec:\n" "  replicas: 1\n"
+        after = "spec:\n" "  replicas: 3\n"
     elif _has("特权", "privileged@lower")(issue_type):
         before = (
             "spec:\n"
@@ -841,24 +773,11 @@ def _config_analysis_yaml_diff(issue_type: str, workload_name: str = "app") -> D
             "        securityContext:\n"
             "          privileged: false\n"
             "          capabilities:\n"
-            "            drop: [\"ALL\"]\n"
+            '            drop: ["ALL"]\n'
         )
     elif _has("hostNetwork", "主机命名空间", "hostPID")(issue_type):
-        before = (
-            "spec:\n"
-            "  template:\n"
-            "    spec:\n"
-            "      hostNetwork: true\n"
-            "      hostPID: true\n"
-        )
-        after = (
-            "spec:\n"
-            "  template:\n"
-            "    spec:\n"
-            "      # 保持默认隔离边界\n"
-            "      hostNetwork: false\n"
-            "      hostPID: false\n"
-        )
+        before = "spec:\n" "  template:\n" "    spec:\n" "      hostNetwork: true\n" "      hostPID: true\n"
+        after = "spec:\n" "  template:\n" "    spec:\n" "      # 保持默认隔离边界\n" "      hostNetwork: false\n" "      hostPID: false\n"
     else:
         # 兜底:走原来的文字描述,前端能正常显示但没有行 diff
         return {
@@ -870,9 +789,9 @@ def _config_analysis_yaml_diff(issue_type: str, workload_name: str = "app") -> D
 
 
 def build_summary_diff_from_analysis(
-    analysis: Dict[str, Any],
+    analysis: dict[str, Any],
     skill_id: int = None,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """从 analyze_deployment_configurations 的 issues 构造"summary diff"payload。
 
     后端按 issue 类型生成 spec 的 before/after YAML 片段,前端 DiffReportCard
@@ -883,7 +802,7 @@ def build_summary_diff_from_analysis(
     if not isinstance(issues, list) or not issues:
         return None
     cluster_name = analysis.get("cluster_name") or "Kubernetes"
-    items: List[Dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
     for issue in issues:
         if not isinstance(issue, dict):
             continue
@@ -899,17 +818,19 @@ def build_summary_diff_from_analysis(
         # YAML 片段里的容器名取第一个 workload(其他同类,模板一致)
         first_workload = str(workloads[0]) if workloads else "app"
         yaml_diff = _config_analysis_yaml_diff(issue_text, first_workload)
-        items.append({
-            "workload_name": workload_label or f"({len(workloads)} 个工作负载)",
-            "workload_type": "Deployment",
-            "namespace": str(analysis.get("scope", {}).get("namespace") or "all"),
-            "severity": severity,
-            "summary": issue_text,
-            # before_yaml / after_yaml 现在是真正的 YAML 片段,前端行 diff 高亮
-            "before_yaml": yaml_diff["before"],
-            "after_yaml": yaml_diff["after"],
-            "fix_description": _config_analysis_fix_description(issue_text),
-        })
+        items.append(
+            {
+                "workload_name": workload_label or f"({len(workloads)} 个工作负载)",
+                "workload_type": "Deployment",
+                "namespace": str(analysis.get("scope", {}).get("namespace") or "all"),
+                "severity": severity,
+                "summary": issue_text,
+                # before_yaml / after_yaml 现在是真正的 YAML 片段,前端行 diff 高亮
+                "before_yaml": yaml_diff["before"],
+                "after_yaml": yaml_diff["after"],
+                "fix_description": _config_analysis_fix_description(issue_text),
+            }
+        )
     if not items:
         return None
     payload = build_config_diff_report_payload(
