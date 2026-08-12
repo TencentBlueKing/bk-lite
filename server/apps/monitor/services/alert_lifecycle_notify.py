@@ -142,11 +142,44 @@ class AlertLifecycleNotifier:
 
     def push_to_alert_center_only(self, alerts, action, operator="", reason=""):
         """专用于告警中心补偿通知，跳过 IM 通知直接推送到 NATS 告警中心"""
-        channel = Channel.objects.filter(channel_type="nats", config__method_name="receive_alert_events").first()
-        if not channel:
-            logger.warning("告警中心 NATS channel 未配置，跳过补偿推送")
-            return [(alert, False) for alert in alerts]
-        push_results = self._push_to_alert_center(channel.id, channel.name or str(channel.id), alerts, action, operator, reason)
+        channel_ids = {
+            int(value)
+            for alert in alerts
+            for value in self._resolve_notice_type_ids(alert)
+            if str(value).isdigit()
+        }
+        channels = {
+            channel.id: channel
+            for channel in Channel.objects.filter(
+                id__in=channel_ids,
+                channel_type="nats",
+                config__method_name="receive_alert_events",
+            )
+        }
+        groups = defaultdict(list)
+        for alert in alerts:
+            for value in self._resolve_notice_type_ids(alert):
+                if str(value).isdigit() and int(value) in channels:
+                    groups[int(value)].append(alert)
+        push_results = []
+        delivered_alert_ids = set()
+        for channel_id, group_alerts in groups.items():
+            channel = channels[channel_id]
+            results = self._push_to_alert_center(
+                channel.id,
+                channel.name or str(channel.id),
+                group_alerts,
+                action,
+                operator,
+                reason,
+            )
+            push_results.extend(results)
+            delivered_alert_ids.update(alert.id for alert, _ in results)
+        push_results.extend(
+            (alert, {"success": False, "error": "alert_center_channel_not_configured"})
+            for alert in alerts
+            if alert.id not in delivered_alert_ids
+        )
         # 写入 notice_logs，与即时层保持一致
         alert_log_entries = defaultdict(list)
         for alert, log_entry in push_results:

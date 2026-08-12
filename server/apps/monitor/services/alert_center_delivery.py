@@ -263,6 +263,11 @@ def deliver_alert_center_delivery(record_id):
         )
         success, retryable, error = _ack_result(send_result, delivery_id)
     except Exception as exc:
+        logger.exception(
+            "告警中心 outbox 投递异常: delivery_id=%s channel_id=%s",
+            delivery_id,
+            record.channel_id,
+        )
         success, retryable, error = False, True, str(exc)
 
     finished_at = timezone.now()

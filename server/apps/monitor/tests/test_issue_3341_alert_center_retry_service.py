@@ -79,6 +79,41 @@ def test_outbox_rollback_keeps_legacy_created_retry_enabled(monkeypatch):
         outbox_enabled=False,
         created_retry_enabled=False,
     ) == ["new", "recovered", "closed"]
+    assert monitor_policy_tasks._legacy_alert_center_retry_statuses(
+        outbox_enabled=True,
+        created_retry_enabled=False,
+    ) == ["new", "recovered", "closed"]
+
+
+def test_legacy_retry_uses_each_alert_selected_alert_center_channel(
+    alert_center_channel, mocker
+):
+    second_channel = Channel.objects.create(
+        name="告警中心二",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
+    )
+    first = _alert(alert_center_channel)
+    second = _alert(second_channel)
+    push = mocker.patch.object(
+        AlertLifecycleNotifier,
+        "_push_to_alert_center",
+        side_effect=lambda channel_id, channel_name, alerts, *args: [
+            (alert, {"success": True, "channel_id": channel_id}) for alert in alerts
+        ],
+    )
+
+    results = AlertLifecycleNotifier().push_to_alert_center_only(
+        [first, second], "created"
+    )
+
+    assert {(call.args[0], call.args[2][0].id) for call in push.call_args_list} == {
+        (alert_center_channel.id, first.id),
+        (second_channel.id, second.id),
+    }
+    assert all(success for _, success in results)
 
 
 def test_shadow_legacy_and_outbox_share_lifecycle_identity(

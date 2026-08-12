@@ -21,10 +21,9 @@ def _run_scan_and_record_success(policy_obj, scan_time):
 
 
 def _legacy_alert_center_retry_statuses(*, outbox_enabled, created_retry_enabled):
-    statuses = ["recovered", "closed"]
-    if created_retry_enabled or not outbox_enabled:
-        statuses.insert(0, "new")
-    return statuses
+    # active outbox 在进入 legacy 查询前已返回；其余 disabled/shadow/rollback
+    # 阶段都必须继续补偿首次告警，不能因只开启 outbox 双写而退化。
+    return ["new", "recovered", "closed"]
 
 
 @shared_task(base=Singleton, raise_on_duplicate=False)
