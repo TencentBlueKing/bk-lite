@@ -18,14 +18,22 @@ def _env_flag(name, *, default=False):
     return os.getenv(name, "true" if default else "false").lower() in {"1", "true", "yes"}
 
 
+def _outbox_enabled():
+    return _env_flag("MONITOR_ALERT_CENTER_OUTBOX_ENABLED") and bool(
+        os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
+    )
+
+
 # The receiver must understand per-event acknowledgements before producers start
 # writing outbox records.  Keep the producer disabled through mixed-version
 # rollouts; operators enable it only after the receiver-first deployment.
-ALERT_CENTER_OUTBOX_ENABLED = _env_flag("MONITOR_ALERT_CENTER_OUTBOX_ENABLED")
+ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
+# outbox 的 shadow/active 两阶段都依赖 receiver-first 的认证生命周期身份；
+# 缺少共享凭据时保持旧链路，避免先写入无法与即时投递收敛的代次。
+ALERT_CENTER_OUTBOX_ENABLED = _outbox_enabled()
 ALERT_CENTER_OUTBOX_DELIVERY_ENABLED = _env_flag(
     "MONITOR_ALERT_CENTER_OUTBOX_DELIVERY_ENABLED"
 )
-ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 OUTBOX_BATCH_SIZE = 200
 OUTBOX_LEASE_TIMEOUT = timedelta(minutes=5)
 

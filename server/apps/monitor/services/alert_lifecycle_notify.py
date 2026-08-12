@@ -391,8 +391,11 @@ class AlertLifecycleNotifier:
         from apps.monitor.models import MonitorAlertCenterDelivery
         from apps.monitor.services.alert_center_delivery import ALERT_CENTER_OUTBOX_ENABLED
 
+        use_per_event_ack = (
+            ALERT_CENTER_PER_EVENT_ACK_ENABLED or ALERT_CENTER_OUTBOX_ENABLED
+        )
         delivery_ids = {}
-        if not ALERT_CENTER_OUTBOX_ENABLED and not ALERT_CENTER_PER_EVENT_ACK_ENABLED:
+        if not ALERT_CENTER_OUTBOX_ENABLED and not use_per_event_ack:
             # 两个扩展开关均关闭时严格保留历史 NATS payload；旧接收端无需
             # 理解 lifecycle 字段即可继续工作。
             for payload in payloads:
@@ -412,7 +415,7 @@ class AlertLifecycleNotifier:
             for alert, payload in zip(alerts, payloads):
                 if alert.id in delivery_ids:
                     payload["lifecycle_generation"] = delivery_ids[alert.id]
-        if ALERT_CENTER_PER_EVENT_ACK_ENABLED:
+        if use_per_event_ack:
             for alert, payload in zip(alerts, payloads):
                 payload["delivery_id"] = delivery_ids.get(
                     alert.id, self._build_delivery_id(alert, action)
@@ -423,7 +426,7 @@ class AlertLifecycleNotifier:
             "pusher": "lite-monitor",
             "events": payloads,
         }
-        if ALERT_CENTER_PER_EVENT_ACK_ENABLED:
+        if use_per_event_ack:
             content["ack_mode"] = "per_event_v1"
             content["ack_token"] = ALERT_CENTER_ACK_TOKEN
         success = False
@@ -432,7 +435,7 @@ class AlertLifecycleNotifier:
         try:
             send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, "", content, [])
             success, error_msg = self._parse_channel_result(send_result)
-            if ALERT_CENTER_PER_EVENT_ACK_ENABLED and isinstance(send_result, dict):
+            if use_per_event_ack and isinstance(send_result, dict):
                 details = send_result.get("data") or {}
                 event_results = {
                     item.get("delivery_id"): item

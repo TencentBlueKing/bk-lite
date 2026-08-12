@@ -802,6 +802,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 "message": "Missing pusher identifier.",
             }
 
+        per_event_ack_authorized = False
         if ack_mode == PER_EVENT_ACK_MODE:
             if (
                 pusher not in TRUSTED_INTERNAL_PUSHERS
@@ -817,6 +818,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                     "data": {"max_events": PER_EVENT_ACK_MAX_EVENTS},
                     "message": "Too many events for per-event acknowledgement.",
                 }
+            per_event_ack_authorized = True
 
         event_source = AlertSource.objects.filter(
             source_id=source_id,
@@ -836,6 +838,12 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         for event in events:
             normalized_event = dict(event or {})
             normalized_event.setdefault("push_source_id", pusher)
+            if not per_event_ack_authorized:
+                # lifecycle_* 会改变接收幂等身份，只允许带共享凭据的逐事件
+                # ACK 协议使用。旧批量协议继续兼容组织与普通事件字段，但
+                # 不能仅凭消息体中的 pusher 提升新的可信身份字段。
+                normalized_event.pop("lifecycle_action", None)
+                normalized_event.pop("lifecycle_generation", None)
             normalized_events.append(normalized_event)
 
         # 内部约定：NATS 生效源（event_source 已校验）+ 明确允许的内部推送方，双重判断为可信内部推送。

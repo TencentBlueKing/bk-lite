@@ -1374,9 +1374,12 @@ def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(mo
         is_effective=True,
     )
 
+    adapter_events = []
+
     class FakeAdapter:
         def __init__(self, events, **kwargs):
             self.events = events
+            adapter_events.extend(events)
 
         def main(self):
             status = self.events[0]["test_status"]
@@ -1396,7 +1399,12 @@ def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(mo
     )
     monkeypatch.setattr(N, "PER_EVENT_ACK_TOKEN", "receiver-secret")
     events = [
-        {"delivery_id": "d1", "test_status": "accepted"},
+        {
+            "delivery_id": "d1",
+            "test_status": "accepted",
+            "lifecycle_action": "created",
+            "lifecycle_generation": "generation-1",
+        },
         {"delivery_id": "d2", "test_status": "duplicate"},
         {"delivery_id": "d3", "test_status": "rejected"},
     ]
@@ -1414,6 +1422,57 @@ def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(mo
         {"delivery_id": "d1", "status": "accepted", "retryable": False},
         {"delivery_id": "d2", "status": "duplicate", "retryable": False},
         {"delivery_id": "d3", "status": "rejected", "retryable": True},
+    ]
+    assert adapter_events[0]["lifecycle_action"] == "created"
+    assert adapter_events[0]["lifecycle_generation"] == "generation-1"
+
+
+@pytest.mark.django_db
+def test_receive_alert_events_legacy_pusher_cannot_set_lifecycle_identity(monkeypatch):
+    """旧批量协议保留普通字段兼容，但不能仅凭 pusher 提升生命周期身份。"""
+    from apps.alerts.models.alert_source import AlertSource
+
+    AlertSource.objects.create(
+        name="nats旧协议",
+        source_id="nats-legacy",
+        source_type="nats",
+        secret="x",
+        is_active=True,
+        is_effective=True,
+    )
+    captured = {}
+
+    class FakeAdapter:
+        def __init__(self, events, trusted_internal, **kwargs):
+            captured["events"] = events
+            captured["trusted_internal"] = trusted_internal
+
+        def main(self):
+            return {"received": 1, "accepted": 1, "skipped": 0, "errored": 0}
+
+    monkeypatch.setattr(N.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda source: FakeAdapter))
+
+    result = N.receive_alert_events(
+        source_id="nats-legacy",
+        events=[
+            {
+                "title": "legacy-event",
+                "organizations": [3],
+                "lifecycle_action": "closed",
+                "lifecycle_generation": "forged-generation",
+            }
+        ],
+        pusher="lite-monitor",
+    )
+
+    assert result["result"] is True
+    assert captured["trusted_internal"] is True
+    assert captured["events"] == [
+        {
+            "title": "legacy-event",
+            "organizations": [3],
+            "push_source_id": "lite-monitor",
+        }
     ]
 
 

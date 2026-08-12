@@ -14,6 +14,7 @@ import apps.node_mgmt.models  # noqa: F401
 from apps.monitor.models import MonitorAlert, MonitorAlertCenterDelivery
 from apps.monitor.services.alert_center_delivery import (
     _env_flag,
+    _outbox_enabled,
     _ack_result,
     backfill_legacy_alerts,
     deliver_alert_center_delivery,
@@ -68,10 +69,15 @@ def _alert(channel, **overrides):
 
 def test_outbox_requires_explicit_receiver_first_enablement(monkeypatch):
     monkeypatch.delenv("MONITOR_ALERT_CENTER_OUTBOX_ENABLED", raising=False)
+    monkeypatch.delenv("ALERTS_PER_EVENT_ACK_TOKEN", raising=False)
     assert _env_flag("MONITOR_ALERT_CENTER_OUTBOX_ENABLED") is False
 
     monkeypatch.setenv("MONITOR_ALERT_CENTER_OUTBOX_ENABLED", "true")
     assert _env_flag("MONITOR_ALERT_CENTER_OUTBOX_ENABLED") is True
+    assert _outbox_enabled() is False
+
+    monkeypatch.setenv("ALERTS_PER_EVENT_ACK_TOKEN", "receiver-secret")
+    assert _outbox_enabled() is True
 
 
 def test_outbox_rollback_keeps_legacy_created_retry_enabled(monkeypatch):
@@ -213,6 +219,10 @@ def test_shadow_legacy_and_outbox_share_lifecycle_identity(
         "apps.monitor.services.alert_center_delivery.ALERT_CENTER_OUTBOX_DELIVERY_ENABLED",
         False,
     )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_lifecycle_notify.ALERT_CENTER_ACK_TOKEN",
+        "receiver-secret",
+    )
     schedule = mocker.patch(
         "apps.monitor.services.alert_center_delivery._schedule_deliveries"
     )
@@ -237,6 +247,8 @@ def test_shadow_legacy_and_outbox_share_lifecycle_identity(
     delivery = MonitorAlertCenterDelivery.objects.get(alert=alert)
     content = send.call_args.args[2]
     assert content["events"][0]["lifecycle_generation"] == delivery.delivery_id
+    assert content["ack_mode"] == "per_event_v1"
+    assert content["ack_token"] == "receiver-secret"
     schedule.assert_not_called()
 
 
