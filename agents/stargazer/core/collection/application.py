@@ -57,7 +57,7 @@ class CollectionApplicationSettings:
     # 0 = 不限制；默认见 DEFAULT_*，运行时由 from_env() 读环境变量
     max_active_targets: int = DEFAULT_MAX_ACTIVE_TARGETS
     target_task_window: int = DEFAULT_TARGET_TASK_WINDOW
-    connect_timeout_seconds: float = 5.0
+    connect_timeout_seconds: float = 7.0
     plugin_timeout_seconds: float = 60.0
     lease_ttl_seconds: float = 600.0
     lease_heartbeat_seconds: float = 30.0
@@ -88,7 +88,7 @@ class CollectionApplicationSettings:
             target_task_window=concurrency_limit_from_env(
                 "TARGET_TASK_WINDOW", DEFAULT_TARGET_TASK_WINDOW
             ),
-            connect_timeout_seconds=float(os.getenv("CONNECT_TIMEOUT", "5")),
+            connect_timeout_seconds=float(os.getenv("CONNECT_TIMEOUT", "7")),
             plugin_timeout_seconds=float(os.getenv("PLUGIN_TIMEOUT", "60")),
             lease_ttl_seconds=float(os.getenv("RUN_LEASE_TTL", "600")),
             lease_heartbeat_seconds=float(

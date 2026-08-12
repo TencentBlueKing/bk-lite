@@ -42,7 +42,7 @@ MAX_ACTIVE_TARGETS=2000
 TARGET_TASK_WINDOW=2000
 REDIS_MAX_CONNECTIONS=2560
 REDIS_POOL_TIMEOUT=2
-CONNECT_TIMEOUT=5
+CONNECT_TIMEOUT=7
 PLUGIN_TIMEOUT=60
 RUN_LEASE_TTL=600
 RUN_LEASE_HEARTBEAT=30
@@ -68,8 +68,8 @@ TARGET_TASK_WINDOW=0
 `单池峰值 × Pod 数 < Redis maxclients`。池满时会有限等待
 `REDIS_POOL_TIMEOUT` 秒，而不是立刻 `MaxConnectionsError` 打崩整轮 run。
 
-协议预检默认 5 秒：TCP 协议先连接实际端口，SNMP/UDP 返回“不确定”并进入
-凭据感知采集，云账号检查逻辑端点；ICMP 不作为硬过滤条件。
+协议预检 / access_probe 外层默认 7 秒（`CONNECT_TIMEOUT`）：TCP 协议先连接实际端口，SNMP/UDP
+在 CIDR 通过后进入凭据感知 probe（SNMP GET 固定 timeout=5、retries=1），云账号检查逻辑端点；ICMP 不作为硬过滤条件。
 直接 IP 与域名解析后的每个可用地址都必须落在 `OUTBOUND_ALLOWED_CIDRS`；配置
 `OUTBOUND_ALLOWED_DOMAINS` 后，域名还必须同时命中该名单，域名名单不能绕过 CIDR 边界。
 生产环境应按实际采集边界收窄这两项。
