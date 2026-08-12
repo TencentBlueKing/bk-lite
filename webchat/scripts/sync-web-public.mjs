@@ -14,20 +14,44 @@ const targetDir = path.resolve(rootDir, '../web/public/webchat');
 
 const files = ['webchat.js', 'style.css'];
 
-for (const file of files) {
-  const source = path.join(sourceDir, file);
-  if (!fs.existsSync(source)) {
-    console.error(`[sync-web-public] missing build artifact: ${source}`);
-    console.error('Run `npm run build:browser` first.');
-    process.exit(1);
+export function syncWebPublic({ check = false, source = sourceDir, target = targetDir } = {}) {
+  for (const file of files) {
+    const sourceFile = path.join(source, file);
+    if (!fs.existsSync(sourceFile)) {
+      throw new Error(`missing build artifact: ${sourceFile}\nRun \`npm run build:browser\` first.`);
+    }
+  }
+
+  if (!check) {
+    fs.mkdirSync(target, { recursive: true });
+  }
+
+  for (const file of files) {
+    const sourceFile = path.join(source, file);
+    const targetFile = path.join(target, file);
+    if (check) {
+      if (!fs.existsSync(targetFile) || !fs.readFileSync(sourceFile).equals(fs.readFileSync(targetFile))) {
+        throw new Error(
+          `stale public asset: ${path.relative(path.dirname(rootDir), targetFile)}\n` +
+            'Run `npm run build:browser && npm run sync:web`, then commit both browser outputs.'
+        );
+      }
+      console.log(`[sync-web-public] verified ${path.relative(path.dirname(rootDir), targetFile)}`);
+      continue;
+    }
+
+    fs.copyFileSync(sourceFile, targetFile);
+    console.log(
+      `[sync-web-public] ${path.relative(rootDir, sourceFile)} -> ${path.relative(rootDir, targetFile)}`
+    );
   }
 }
 
-fs.mkdirSync(targetDir, { recursive: true });
-
-for (const file of files) {
-  const source = path.join(sourceDir, file);
-  const target = path.join(targetDir, file);
-  fs.copyFileSync(source, target);
-  console.log(`[sync-web-public] ${path.relative(rootDir, source)} -> ${path.relative(rootDir, target)}`);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    syncWebPublic({ check: process.argv.slice(2).includes('--check') });
+  } catch (error) {
+    console.error(`[sync-web-public] ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  }
 }

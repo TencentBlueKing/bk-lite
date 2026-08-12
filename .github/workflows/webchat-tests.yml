@@ -1,0 +1,62 @@
+name: WebChat Tests
+
+on:
+  pull_request:
+    paths:
+      - 'webchat/**'
+      - 'web/public/webchat/**'
+      - '.github/workflows/webchat-tests.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'webchat/**'
+      - 'web/public/webchat/**'
+      - '.github/workflows/webchat-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: webchat
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix packages/webchat-core
+          npm ci --prefix packages/webchat-ui
+          npm ci --prefix packages/webchat-demo
+
+      - name: Run tests and lint
+        run: npm test && npm run lint
+
+      - name: Build browser bundle
+        run: npm run build:core && npm run build:ui && npm run build:browser
+
+      - name: Verify committed public assets
+        run: npm run check:web-public
+
+      - name: Verify generated assets are committed
+        run: >-
+          git diff --exit-code --
+          packages/webchat-ui/dist/browser/webchat.js
+          packages/webchat-ui/dist/browser/style.css
+          ../web/public/webchat/webchat.js
+          ../web/public/webchat/style.css
+
+      - name: Build demo
+        run: npm run build:demo
