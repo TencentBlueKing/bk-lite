@@ -6,6 +6,7 @@ from typing import Any, Iterable
 import yaml
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 
 # SKILL.md frontmatter 提取正则(与 importer._split_frontmatter 保持一致)
 _SKILL_MD_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
@@ -172,8 +173,6 @@ def hydrate_skill_packages(skill_packages: Any) -> list[dict[str, Any]]:
     try:
         # 同步 ORM 查询,调用方须在 sync 上下文(用 ThreadPoolExecutor 包一层)。
         # 该线程可能是 asyncio/LangGraph 旁路线程，必须在本线程清理连接。
-        from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
-
         def _load_packages():
             return list(SkillPackage.objects.filter(id__in=ids, is_enabled=True))
 

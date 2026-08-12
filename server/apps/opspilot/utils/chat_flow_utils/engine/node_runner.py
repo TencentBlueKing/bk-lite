@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Set
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 
 from .core.base_executor import BaseNodeExecutor
 from .core.enums import NodeStatus
@@ -279,8 +280,6 @@ class NodeRunnerMixin:
         """
         results = {}
         timeout_per_node = remaining_timeout / len(node_ids)
-
-        from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 
         def _run_parallel_branch(node_id: str):
             # 并行分支在独立线程访问 ORM；必须在该线程清理连接，

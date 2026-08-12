@@ -22,6 +22,7 @@ from asgiref.sync import sync_to_async
 from django.core.cache import cache
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 
 INTERRUPT_CACHE_TTL = int(os.getenv("WORKFLOW_INTERRUPT_CACHE_TTL", "3600"))
 INTERRUPT_CACHE_PREFIX = "workflow_interrupt"
@@ -38,7 +39,6 @@ def _check_interrupt_in_database(execution_id: str) -> bool:
     executor 线程上，必须在本线程清理连接，外层 SensitiveThread 的
     ``close_old_connections`` 清不到这里。
     """
-    from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 
     def _query() -> bool:
         # 延迟导入避免循环依赖

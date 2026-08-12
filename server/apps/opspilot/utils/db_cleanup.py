@@ -13,6 +13,8 @@ from typing import Any, Callable, TypeVar
 
 from django.db import close_old_connections
 
+from apps.core.logger import opspilot_logger as logger
+
 F = TypeVar("F", bound=Callable[..., Any])
 
 
@@ -48,5 +50,9 @@ def wrap_langchain_tool(tool: Any) -> Any:
         tool.func = wrapped
     except Exception:
         # 部分 StructuredTool 实现可能禁止直接赋值，退化为不影响调用方
-        pass
+        logger.warning(
+            "wrap_langchain_tool: 无法替换 tool.func，跳过连接清理包装: tool=%r",
+            getattr(tool, "name", type(tool).__name__),
+            exc_info=True,
+        )
     return tool
