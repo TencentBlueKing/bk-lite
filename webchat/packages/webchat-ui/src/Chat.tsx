@@ -1,6 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from 'react';
 import { Bubble, Sender } from '@ant-design/x';
 import {
   SessionManager,
@@ -143,6 +150,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     }
 
     return () => {
+      handleAGUIEvent.cancelPendingText();
       void streamLifecycle?.dispose();
       aguiSubscription?.unsubscribe();
       aguiHandlerRef.current?.destroy();
@@ -173,17 +181,21 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     onMessageReceivedRef.current?.(message);
   }, []);
 
-  const handleAGUIEvent = createAGUIEventHandler({
-    currentMessageIdRef,
-    streamingContentRef,
-    sessionManagerRef,
-    stateMachineRef,
-    onMessageReceivedRef,
-    setMessages,
-    setIsLoading,
-    setIsThinking,
-    addMessage,
-  });
+  const handleAGUIEvent = useMemo(
+    () =>
+      createAGUIEventHandler({
+        currentMessageIdRef,
+        streamingContentRef,
+        sessionManagerRef,
+        stateMachineRef,
+        onMessageReceivedRef,
+        setMessages,
+        setIsLoading,
+        setIsThinking,
+        addMessage,
+      }),
+    [addMessage]
+  );
 
   // Handle legacy message format (fallback)
   const handleLegacyMessage = (data: unknown) => {
@@ -376,10 +388,12 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
             }
           },
           onError: (error) => {
+            handleAGUIEvent.flushPendingText();
             console.error('Error reading stream:', error);
             onError?.(error);
           },
           onComplete: () => {
+            handleAGUIEvent.flushPendingText();
             setIsLoading(false);
             setIsThinking(false);
           },
@@ -399,6 +413,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
         }, 1000);
       }
     } catch (error) {
+      handleAGUIEvent.flushPendingText();
       if (isAbortError(error)) {
         return;
       }
@@ -406,16 +421,26 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
       onError?.(toError(error));
       setIsLoading(false);
     }
-  }, [isLoading, sseUrl, customData, addMessage, onError, uploadedImages]);
+  }, [
+    isLoading,
+    sseUrl,
+    customData,
+    addMessage,
+    onError,
+    uploadedImages,
+    handleAGUIEvent,
+  ]);
 
   const handleStopStreaming = useCallback(() => {
+    handleAGUIEvent.flushPendingText();
     void streamLifecycleRef.current?.cancel('user-stopped');
     setIsLoading(false);
     setIsThinking(false);
-  }, []);
+  }, [handleAGUIEvent]);
 
   // Clear messages
   const handleClear = useCallback(() => {
+    handleAGUIEvent.cancelPendingText();
     void streamLifecycleRef.current?.cancel('session-cleared');
     setMessages([]);
     // Clear and reinitialize session
@@ -430,7 +455,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     stateMachineRef.current?.transition('idle');
     // Close the confirmation dialog
     setShowClearConfirm(false);
-  }, []);
+  }, [handleAGUIEvent]);
 
   // Use message handlers hook
   const { handleRegenerate, handleCopy, handleDelete } = useMessageHandlers({
@@ -499,17 +524,15 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
           <div className="flex items-center justify-center h-full text-gray-400">
             <p className="text-sm">No messages yet. Start a conversation!</p>
           </div>
-        ) : (
-          messages.map((msg, index) => {
-            // Find the last bot message in the conversation
-            let lastBotMessageIndex = -1;
-            for (let i = messages.length - 1; i >= 0; i--) {
-              if (messages[i].sender === 'bot') {
-                lastBotMessageIndex = i;
-                break;
-              }
+        ) : (() => {
+          let lastBotMessageIndex = -1;
+          for (let index = messages.length - 1; index >= 0; index -= 1) {
+            if (messages[index].sender === 'bot') {
+              lastBotMessageIndex = index;
+              break;
             }
-            
+          }
+          return messages.map((msg, index) => {
             // Check if this message is part of the last Q&A pair
             // A message is part of last Q&A if:
             // - It's the last bot message, OR
@@ -532,8 +555,8 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
                 onDelete={handleDelete}
               />
             );
-          })
-        )}
+          });
+        })()}
         
         {/* Show loading/thinking state */}
         {(isLoading || isThinking) && (
