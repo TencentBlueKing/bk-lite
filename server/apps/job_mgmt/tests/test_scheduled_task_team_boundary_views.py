@@ -192,6 +192,8 @@ class TestScheduledTaskExecutionBoundary:
         Target.objects.filter(id=target.id).update(team=[2])
 
         with patch("apps.job_mgmt.services.script_execution_runner.ensure_stream_sync"), patch(
+            "apps.job_mgmt.services.script_execution_runner.publish_done_sentinel"
+        ), patch(
             "apps.job_mgmt.services.script_execution_runner.Executor"
         ) as executor:
             tasks.execute_script_task(execution.id)

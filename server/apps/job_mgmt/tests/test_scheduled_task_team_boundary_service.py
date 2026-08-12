@@ -182,6 +182,7 @@ class TestScheduledTaskCeleryBoundary:
 
         task.refresh_from_db()
         assert task.is_enabled is True
+        assert JobExecution.objects.filter(scheduled_task=task).count() == 0
 
 
 class TestScheduledTaskCeleryRollout:
