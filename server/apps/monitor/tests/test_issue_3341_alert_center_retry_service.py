@@ -179,6 +179,14 @@ def test_new_alert_stays_unreconciled_until_outbox_intent_is_persisted(alert_cen
     assert alert.alert_center_delivery_backfilled is False
 
 
+def test_backfill_marks_no_target_rows_reconciled_without_outbox(alert_center_channel):
+    alert = _alert(alert_center_channel, policy_id=0, notice_type_ids=[])
+    assert backfill_legacy_alerts() == 1
+    alert.refresh_from_db()
+    assert alert.alert_center_delivery_backfilled is True
+    assert not MonitorAlertCenterDelivery.objects.filter(alert=alert).exists()
+
+
 def test_terminal_channel_boundary_failure_is_not_retried(alert_center_channel, monkeypatch):
     alert = _alert(alert_center_channel, alert_center_notified=False)
     delivery = MonitorAlertCenterDelivery.objects.create(

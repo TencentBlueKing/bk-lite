@@ -848,6 +848,9 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             ingestions = []
             event_results = []
             for index, normalized_event in enumerate(normalized_events):
+                delivery_id = normalized_event.get("delivery_id", str(index))
+                normalized_event = dict(normalized_event)
+                normalized_event.pop("delivery_id", None)
                 single_adapter = adapter_class(
                     alert_source=event_source,
                     secret="",
@@ -863,9 +866,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                     "rejected": 0,
                 }
                 ingestions.append(single_ingestion)
-                event_results.append(
-                    _event_ack(normalized_event.get("delivery_id", str(index)), single_ingestion)
-                )
+                event_results.append(_event_ack(delivery_id, single_ingestion))
             ingestion = {
                 key: sum(item.get(key, 0) for item in ingestions)
                 for key in ("received", "accepted", "skipped", "errored", "duplicates", "rejected")

@@ -381,6 +381,19 @@ class AlertSourceAdapter(ABC):
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
         event.team = self._resolve_event_team(alert)
 
+        # 逐事件 ACK 的 delivery_id 只用于响应关联，不参与接收幂等身份。
+        # 可选 lifecycle_action 由可信内部生产者提供，用来区分 created/upgraded
+        # 等映射到同一业务 action 的独立生命周期代次。
+        lifecycle_action = alert.get("lifecycle_action")
+        if self.trusted_internal and lifecycle_action:
+            event.ingest_key = Event.build_ingest_key(
+                getattr(event.source, "id", None),
+                event.push_source_id,
+                event.external_id,
+                lifecycle_action,
+                event.start_time,
+            )
+
         if not event.external_id or not str(event.external_id).strip():
             event.external_id = self.resolve_recovery_external_id(event) or self.generate_external_id(
                 event.item,

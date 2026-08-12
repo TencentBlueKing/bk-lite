@@ -214,8 +214,18 @@ def backfill_legacy_alerts():
     from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 
     for alert in alerts:
+        policy = policies.get(alert.policy_id)
+        if policy is not None and not policy.notice:
+            MonitorAlert.objects.filter(id=alert.id).update(alert_center_delivery_backfilled=True)
+            continue
+        configured_ids = [int(value) for value in alert.notice_type_ids or [] if str(value).isdigit()]
+        if not configured_ids and policy is not None:
+            configured_ids = [int(value) for value in policy.notice_type_ids or [] if str(value).isdigit()]
+        if not configured_ids:
+            MonitorAlert.objects.filter(id=alert.id).update(alert_center_delivery_backfilled=True)
+            continue
         action = "created" if alert.status == "new" else alert.status
-        notifier = AlertLifecycleNotifier(policies.get(alert.policy_id), policies_by_id=policies)
+        notifier = AlertLifecycleNotifier(policy, policies_by_id=policies)
         enqueue_alert_center_deliveries([alert], action, notifier=notifier)
     return len(alerts)
 

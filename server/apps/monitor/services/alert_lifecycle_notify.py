@@ -422,6 +422,8 @@ class AlertLifecycleNotifier:
             "level": LEVEL_TO_ALERT_CENTER.get(alert.level, "3"),
             "value": float(alert.value) if alert.value is not None else None,
             "action": alert_center_action,
+            # 接收端用该字段区分同一业务 action 的生命周期代次；旧接收端忽略未知字段。
+            "lifecycle_action": action,
             "start_time": start_time,
             "end_time": end_time,
             "resource_id": alert.monitor_instance_id,

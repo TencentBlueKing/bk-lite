@@ -342,6 +342,24 @@ def test_create_events_reports_duplicate_and_rejected_details(event_levels, rest
     }
 
 
+@pytest.mark.django_db
+def test_trusted_lifecycle_action_separates_created_and_upgraded_identity(event_levels, restful_source):
+    adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
+    base = {
+        "title": "CPU",
+        "level": "0",
+        "item": "cpu",
+        "external_id": "alert-1",
+        "action": "created",
+        "start_time": "1700000000",
+        "push_source_id": "lite-monitor",
+    }
+    created = adapter.create_events([{**base, "lifecycle_action": "created"}])
+    upgraded = adapter.create_events([{**base, "lifecycle_action": "upgraded"}])
+    assert sum(len(batch) for batch in created) == 1
+    assert sum(len(batch) for batch in upgraded) == 1
+
+
 # --------------------------------------------------------------------------
 # bulk_save_events 去重
 # --------------------------------------------------------------------------
