@@ -78,7 +78,7 @@ test('Tauri fetch cancels an active native request and rejects without waiting f
       if (command === 'cancel_request') {
         return undefined;
       }
-      assert.equal(command, 'api_proxy');
+      assert.equal(command, 'api_proxy_cancellable');
       assert.ok(args.onRegistered instanceof MockChannel);
       acknowledgeRegistration = () => args.onRegistered.onmessage(true);
       return invokePending;
@@ -104,7 +104,7 @@ test('Tauri fetch cancels an active native request and rejects without waiting f
 
   assert.deepEqual(
     invokeCalls.map(({ command }) => command),
-    ['api_proxy'],
+    ['api_proxy_cancellable'],
   );
   acknowledgeRegistration();
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -112,7 +112,7 @@ test('Tauri fetch cancels an active native request and rejects without waiting f
   await rejection;
   assert.deepEqual(
     invokeCalls.map(({ command }) => command),
-    ['api_proxy', 'cancel_request'],
+    ['api_proxy_cancellable', 'cancel_request'],
   );
   assert.equal(typeof invokeCalls[0].args.request.requestId, 'string');
   assert.equal(invokeCalls[1].args.requestId, invokeCalls[0].args.request.requestId);
@@ -154,7 +154,7 @@ test('Tauri fetch with an AbortSignal preserves a normally completed response', 
     Channel: MockChannel,
     invoke: async (command, args) => {
       commands.push(command);
-      assert.equal(command, 'api_proxy');
+      assert.equal(command, 'api_proxy_cancellable');
       args.onRegistered.onmessage(true);
       return { status: 200, headers: { 'content-type': 'application/json' }, body: '{"ok":true}' };
     },
@@ -167,7 +167,7 @@ test('Tauri fetch with an AbortSignal preserves a normally completed response', 
 
   assert.equal(response.status, 200);
   assert.equal(await response.text(), '{"ok":true}');
-  assert.deepEqual(commands, ['api_proxy']);
+  assert.deepEqual(commands, ['api_proxy_cancellable']);
 });
 
 test('Tauri fetch keeps the legacy native proxy error shape for signalled requests', async () => {
@@ -175,11 +175,12 @@ test('Tauri fetch keeps the legacy native proxy error shape for signalled reques
     onmessage = () => {};
   }
 
+  const commands = [];
   globalThis.window = { __TAURI_INTERNALS__: {} };
   globalThis.__loadTauriCore = async () => ({
     Channel: MockChannel,
     invoke: async (command, args) => {
-      assert.equal(command, 'api_proxy');
+      commands.push(command);
       args.onRegistered?.onmessage(true);
       throw { message: 'HTTP request failed: connection reset', status: 502 };
     },
@@ -197,6 +198,7 @@ test('Tauri fetch keeps the legacy native proxy error shape for signalled reques
 
   assert.equal(signalError.name, legacyError.name);
   assert.equal(signalError.message, legacyError.message);
+  assert.deepEqual(commands, ['api_proxy', 'api_proxy_cancellable']);
 });
 
 test('Tauri stream receives events emitted before the start command returns', async () => {

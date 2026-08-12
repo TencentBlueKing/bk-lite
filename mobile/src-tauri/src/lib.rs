@@ -2,8 +2,8 @@ mod api_proxy;
 mod secure_credentials;
 
 use api_proxy::{
-    api_proxy, api_stream_proxy, cancel_request, cancel_stream, simple_api_proxy, RequestRegistry,
-    StreamRegistry,
+    api_proxy, api_proxy_cancellable, api_stream_proxy, cancel_request, cancel_stream,
+    simple_api_proxy, RequestRegistry, StreamRegistry,
 };
 #[cfg(target_os = "android")]
 use secure_credentials::init_android_secure_credentials;
@@ -96,6 +96,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             api_proxy,
+            api_proxy_cancellable,
             simple_api_proxy,
             api_stream_proxy,
             cancel_stream,

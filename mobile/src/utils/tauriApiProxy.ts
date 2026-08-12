@@ -110,7 +110,7 @@ async function invokeCancellableApiProxy(
   const onRegistered = new Channel<boolean>();
   onRegistered.onmessage = () => markRegistered?.();
   const nativeRequest = normalizeInvokeError(
-    invoke<ApiResponse>('api_proxy', { request, onRegistered })
+    invoke<ApiResponse>('api_proxy_cancellable', { request, onRegistered })
   );
   let abort: (() => void) | undefined;
   try {

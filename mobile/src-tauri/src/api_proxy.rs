@@ -353,9 +353,17 @@ async fn execute_api_proxy(request: ApiRequest) -> Result<ApiResponse, ApiError>
 pub async fn api_proxy(
     registry: State<'_, RequestRegistry>,
     request: ApiRequest,
-    on_registered: Option<Channel<bool>>,
 ) -> Result<ApiResponse, ApiError> {
-    execute_registered_api_proxy(&registry, request, on_registered).await
+    execute_registered_api_proxy(&registry, request, None).await
+}
+
+#[command]
+pub async fn api_proxy_cancellable(
+    registry: State<'_, RequestRegistry>,
+    request: ApiRequest,
+    on_registered: Channel<bool>,
+) -> Result<ApiResponse, ApiError> {
+    execute_registered_api_proxy(&registry, request, Some(on_registered)).await
 }
 
 async fn execute_registered_api_proxy(
@@ -785,8 +793,8 @@ mod tests {
     use super::{
         build_http_client, cancel_registered_request, cancel_registered_stream,
         execute_registered_api_proxy, is_allowed_host_with_allowlist,
-        remove_registered_request_if_owned, ApiRequest, RequestCancellation, RequestRegistry,
-        StreamEvent, StreamRegistry, Utf8ChunkDecoder,
+        redact_headers_for_log, remove_registered_request_if_owned, ApiRequest,
+        RequestCancellation, RequestRegistry, StreamEvent, StreamRegistry, Utf8ChunkDecoder,
     };
     use std::{
         collections::HashMap,
