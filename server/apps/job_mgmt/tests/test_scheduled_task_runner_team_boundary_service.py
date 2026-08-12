@@ -112,7 +112,15 @@ def test_file_runner_rejects_target_moved_after_execution_snapshot():
 
 
 def test_script_runner_keeps_same_team_scheduled_execution_compatible():
-    target = Target.objects.create(name="owned", ip="127.0.0.20", node_id="node-20", ssh_user="root", ssh_password="secret", team=[1])
+    target = Target.objects.create(
+        name="owned",
+        ip="127.0.0.20",
+        node_id="node-20",
+        driver=ExecutorDriver.SIDECAR,
+        ssh_user="root",
+        ssh_password="secret",
+        team=[1],
+    )
     execution = _scheduled_execution(JobType.SCRIPT, target, move_target=False)
 
     with patch("apps.job_mgmt.services.script_execution_runner.ensure_stream_sync"), patch(
@@ -131,6 +139,7 @@ def test_false_boundary_marker_preserves_linked_legacy_execution():
         name="legacy",
         ip="127.0.0.23",
         node_id="node-23",
+        driver=ExecutorDriver.SIDECAR,
         ssh_user="root",
         ssh_password="secret",
         team=[1],
