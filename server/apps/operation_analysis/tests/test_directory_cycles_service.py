@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import pytest
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -15,12 +16,14 @@ pytestmark = pytest.mark.integration
 def test_concurrent_cross_reparenting_cannot_persist_cycle():
     first = Directory.objects.create(name="first", groups=[1])
     second = Directory.objects.create(name="second", groups=[1])
+    loaded = Barrier(2)
 
     def reparent(directory_id, parent_id):
         close_old_connections()
         try:
             directory = Directory.objects.get(pk=directory_id)
             parent = Directory.objects.get(pk=parent_id)
+            loaded.wait(timeout=5)
             serializer = object.__new__(DirectoryModelSerializer)
             return DirectoryModelSerializer.update(serializer, directory, {"parent": parent})
         except (DjangoValidationError, DRFValidationError) as error:
