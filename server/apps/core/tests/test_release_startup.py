@@ -7,9 +7,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 STARTUP_SCRIPT = REPOSITORY_ROOT / "server/support-files/release/startup.sh"
 
 
-def _run_startup(tmp_path, migrate_returncode):
+def _run_startup(tmp_path, migrate_returncode, install_apps="opspilot", strict_mode=False):
     fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
+    fake_bin.mkdir(parents=True, exist_ok=True)
     command_log = tmp_path / "commands.log"
 
     python_stub = fake_bin / "python3"
@@ -17,6 +17,9 @@ def _run_startup(tmp_path, migrate_returncode):
         """#!/bin/bash
 printf 'python3:%s\\n' "$*" >> "$COMMAND_LOG"
 if [ "$*" = "manage.py migrate" ]; then
+    if [ "$MIGRATE_RETURNCODE" -ne 0 ]; then
+        echo "migration failed: schema conflict" >&2
+    fi
     exit "$MIGRATE_RETURNCODE"
 fi
 exit 0
@@ -37,13 +40,16 @@ exit 0
     env.update(
         {
             "COMMAND_LOG": str(command_log),
-            "INSTALL_APPS": "opspilot",
+            "INSTALL_APPS": install_apps,
             "MIGRATE_RETURNCODE": str(migrate_returncode),
             "PATH": f"{fake_bin}:{env['PATH']}",
         }
     )
+    bash_command = ["bash"]
+    if strict_mode:
+        bash_command.append("-e")
     result = subprocess.run(
-        ["bash", str(STARTUP_SCRIPT)],
+        [*bash_command, str(STARTUP_SCRIPT)],
         cwd=REPOSITORY_ROOT / "server",
         env=env,
         capture_output=True,
@@ -55,10 +61,11 @@ exit 0
 
 
 def test_release_startup_stops_when_migration_fails(tmp_path):
-    result, commands = _run_startup(tmp_path, migrate_returncode=42)
+    result, commands = _run_startup(tmp_path, migrate_returncode=42, strict_mode=True)
 
-    assert result.returncode != 0
-    assert "数据库迁移失败，停止启动" in result.stdout
+    assert result.returncode == 42
+    assert "migration failed: schema conflict" in result.stderr
+    assert "数据库迁移失败，停止启动" in result.stderr
     assert commands == ["python3:manage.py migrate"]
 
 
@@ -73,3 +80,13 @@ def test_release_startup_keeps_existing_success_path(tmp_path):
         "python3:manage.py batch_init --apps=opspilot",
         "supervisord:-n",
     ]
+
+
+def test_release_startup_recovers_after_migration_is_fixed(tmp_path):
+    failed, commands = _run_startup(tmp_path, migrate_returncode=42)
+    recovered, commands_after_recovery = _run_startup(tmp_path, migrate_returncode=0)
+
+    assert failed.returncode == 42
+    assert recovered.returncode == 0
+    assert commands_after_recovery[: len(commands)] == commands
+    assert commands_after_recovery[-1] == "supervisord:-n"

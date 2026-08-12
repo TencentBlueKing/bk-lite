@@ -1,6 +1,9 @@
-if ! python3 manage.py migrate; then
-    echo "数据库迁移失败，停止启动"
-    exit 1
+if python3 manage.py migrate; then
+    :
+else
+    migrate_status=$?
+    echo "数据库迁移失败，停止启动；请修复迁移问题后重新启动容器" >&2
+    exit "$migrate_status"
 fi
 python3 manage.py createcachetable django_cache
 python3 manage.py collectstatic --noinput
