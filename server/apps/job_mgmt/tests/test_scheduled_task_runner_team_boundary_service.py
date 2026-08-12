@@ -189,6 +189,7 @@ def test_file_runner_keeps_same_team_scheduled_execution_compatible():
         name="owned",
         ip="127.0.0.22",
         node_id="node-22",
+        driver=ExecutorDriver.SIDECAR,
         ssh_user="root",
         ssh_password="secret",
         team=[1],
