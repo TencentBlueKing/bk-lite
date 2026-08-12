@@ -233,7 +233,8 @@ export class AGUIMessageHandler {
         msgItem.id === this.botMessage.id
           ? {
             ...msgItem,
-            content,
+            // 流式过程中禁止用空串覆盖已有正文，避免中途「回答变空」
+            content: content || msgItem.content || '',
             thinking: thinking !== undefined ? thinking : msgItem.thinking,
             isThinking: isThinking !== undefined ? isThinking : msgItem.isThinking,
             browserStepProgress: browserStepProgress !== undefined ? browserStepProgress : msgItem.browserStepProgress,
@@ -869,6 +870,8 @@ export class AGUIMessageHandler {
         return false;
 
       case 'TEXT_MESSAGE_START':
+        // 新文本消息开始前先落盘上一段，避免后续工具/自定义事件打空 currentTextBlock 时丢字
+        this.flushCurrentTextBlock();
         return false;
 
       case 'TEXT_MESSAGE_CONTENT':
@@ -878,6 +881,8 @@ export class AGUIMessageHandler {
         return false;
 
       case 'TEXT_MESSAGE_END':
+        this.flushCurrentTextBlock();
+        this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
         return false;
 
       case 'TOOL_CALL_START':

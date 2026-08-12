@@ -155,9 +155,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const chatContentRef = useRef<HTMLDivElement>(null);
   const scrollAnimationFrameRef = useRef<number | null>(null);
 
-  // 监听 initialMessages 变化
+  // 仅在父级提供历史消息时同步；空数组不得把正在流式的会话清空
   useEffect(() => {
-    setMessages(initialMessages.length ? initialMessages : []);
+    if (initialMessages.length) {
+      setMessages(initialMessages);
+    }
   }, [initialMessages]);
 
   // 初始化工具调用事件处理
@@ -219,7 +221,31 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       return;
     }
 
-    updateMessages(prevMessages => prevMessages.filter(msg => msg.id !== currentBotMessage.id));
+    // 只删尚未产出可见内容的占位气泡；已有正文/工具/卡片时保留，避免「问着问着内容没了」
+    updateMessages(prevMessages => {
+      const target = prevMessages.find(msg => msg.id === currentBotMessage.id);
+      if (!target) {
+        return prevMessages;
+      }
+      const hasVisibleContent = Boolean(
+        target.content ||
+        target.thinking ||
+        target.isThinking ||
+        (target.toolCalls && target.toolCalls.length > 0) ||
+        (target.userChoiceRequests && target.userChoiceRequests.length > 0) ||
+        (target.approvalRequests && target.approvalRequests.length > 0) ||
+        (target.configDiffReports && target.configDiffReports.length > 0) ||
+        (target.configAnalysisReports && target.configAnalysisReports.length > 0) ||
+        (target.reportFileDownloads && target.reportFileDownloads.length > 0) ||
+        (target.repairCommands && target.repairCommands.length > 0) ||
+        (target.plannedExecutionSteps && target.plannedExecutionSteps.length > 0) ||
+        (target.browserStepsHistory && target.browserStepsHistory.steps.length > 0)
+      );
+      if (hasVisibleContent) {
+        return prevMessages;
+      }
+      return prevMessages.filter(msg => msg.id !== currentBotMessage.id);
+    });
     currentBotMessageRef.current = null;
   }, [updateMessages]);
 
@@ -992,11 +1018,15 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     ) : senderComponent;
   };
 
+  const stopSSEConnectionRef = useRef(stopSSEConnection);
+  stopSSEConnectionRef.current = stopSSEConnection;
+
+  // 仅在真正卸载时中断；勿把 stopSSEConnection 放进依赖，避免 identity 变化误清会话
   useEffect(() => {
     return () => {
-      stopSSEConnection();
+      stopSSEConnectionRef.current();
     };
-  }, [stopSSEConnection]);
+  }, []);
 
   const guideData = parseGuideItems(guide || '');
 
