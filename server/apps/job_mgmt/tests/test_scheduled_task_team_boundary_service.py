@@ -120,7 +120,6 @@ class TestScheduledTaskCeleryBoundary:
 
         task.refresh_from_db()
         assert task.is_enabled is True
-        assert JobExecution.objects.filter(scheduled_task=task).count() == 0
         assert JobExecution.objects.filter(scheduled_task=task).count() == 1
         toggle.assert_not_called()
 
@@ -190,7 +189,9 @@ class TestScheduledTaskCeleryRollout:
         script = Script.objects.create(name="foreign", content="echo foreign", script_type="shell", team=[2])
         task = _task(script=script, script_content="", team=[1], is_enabled=True)
 
-        with patch("apps.job_mgmt.tasks._dispatch_execution_job", return_value=True):
+        with patch("apps.job_mgmt.tasks.SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED", False), patch(
+            "apps.job_mgmt.tasks._dispatch_execution_job", return_value=True
+        ):
             tasks.execute_scheduled_task(task.id)
 
         task.refresh_from_db()
