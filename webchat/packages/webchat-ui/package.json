@@ -41,7 +41,7 @@
   "dependencies": {
     "@ag-ui/core": "^0.0.41",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "@webchat/core": "file:../webchat-core",
+    "@webchat/core": "1.0.0",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.0",
     "rehype-sanitize": "^6.0.0",
