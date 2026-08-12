@@ -7,6 +7,7 @@ from .common import _build_jwt_payload
 
 @nats_client.register
 def get_namespace_by_domain(domain):
+    # 遗留 bk_lite 域名解析；用户同步迁移至集成中心 user_sync Provider 后移除。
     login_module = LoginModule.objects.filter(source_type="bk_lite", other_config__contains={"domain": domain}).first()
     if not login_module:
         return {"result": False, "message": "Login module not found"}
@@ -16,6 +17,7 @@ def get_namespace_by_domain(domain):
 
 @nats_client.register
 def get_login_module_domain_list():
+    # 遗留 bk_lite 域名列表；不再新增基于 LoginModule 的调用方。
     login_module_list = list(LoginModule.objects.filter(source_type="bk_lite").values_list("other_config__domain", flat=True))
     login_module_list.insert(0, "domain.com")
     return {"result": True, "data": login_module_list}
@@ -23,6 +25,8 @@ def get_login_module_domain_list():
 
 @nats_client.register
 def verify_bk_token(bk_token):
+    # 遗留蓝鲸平台认证实现。管理入口已关闭，后续应迁移为集成中心 Provider
+    # 的 login_auth capability；在替代链路交付前仅保留存量兼容，不新增调用方。
     login_module = LoginModule.objects.filter(source_type="bk_login", enabled=True).first()
     if not login_module:
         return {"result": True, "data": {"bk_login_open": False}}
