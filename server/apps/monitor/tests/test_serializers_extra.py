@@ -104,6 +104,16 @@ class TestMonitorPolicyValidators:
         out = s.validate_group_by(["device", "instance_id"])
         assert out[0] == "instance_id"
 
+    def test_validate_group_by_appends_missing_derivative_identity_keys(self):
+        obj = MonitorObject.objects.create(
+            name="Docker Container",
+            level="derivative",
+            instance_id_keys=["instance_id", "container_name"],
+        )
+        s = self._s(initial={"monitor_object": obj.id})
+        out = s.validate_group_by(["instance_id"])
+        assert out == ["instance_id", "container_name"]
+
     def test_validate_group_by_no_object_passthrough(self):
         s = self._s(initial={})
         assert s.validate_group_by(["x"]) == ["x"]

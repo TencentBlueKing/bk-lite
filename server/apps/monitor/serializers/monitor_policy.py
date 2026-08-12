@@ -261,6 +261,16 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             )
             value = [primary_key] + [k for k in value if k != primary_key]
 
+        # 多键对象（如 Docker Container、Process）若缺少子身份维度，扫描侧无法唯一归属实例。
+        for key in instance_id_keys[1:]:
+            if key not in value:
+                logger.warning(
+                    "group_by missing identity key %s for monitor object %s, auto-appending",
+                    key,
+                    getattr(monitor_object, "name", monitor_object),
+                )
+                value.append(key)
+
         return value
 
     def _get_monitor_object(self):
