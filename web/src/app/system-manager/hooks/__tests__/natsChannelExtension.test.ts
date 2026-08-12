@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeNatsChannelConfig } from '../../../../../../enterprise/web/src/app/system-manager/hooks/useNatsNotificationExtension';
+import {
+  normalizeNatsChannelConfig,
+  usesEnterpriseNatsTestEndpoint,
+} from '../../../../../../enterprise/web/src/app/system-manager/hooks/useNatsNotificationExtension';
 
 
 describe('normalizeNatsChannelConfig', () => {
@@ -30,5 +33,11 @@ describe('normalizeNatsChannelConfig', () => {
       method_name: 'receive_alert_events',
       timeout: 60,
     });
+  });
+
+  it('uses the Enterprise test endpoint only for Event Publish', () => {
+    expect(usesEnterpriseNatsTestEndpoint({ nats_mode: 'event_publish' })).toBe(true);
+    expect(usesEnterpriseNatsTestEndpoint({ nats_mode: 'request_reply' })).toBe(false);
+    expect(usesEnterpriseNatsTestEndpoint({})).toBe(false);
   });
 });

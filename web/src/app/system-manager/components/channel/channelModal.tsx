@@ -254,7 +254,10 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       setTestLoading(true);
       const values = await form.validateFields();
       const payload = buildChannelPayload(values, { preserveEncryptedFields: true });
-      if (channelType === 'nats' && natsExtension) {
+      if (
+        channelType === 'nats'
+        && natsExtension?.usesEnterpriseTestEndpoint(payload.config as Record<string, unknown>)
+      ) {
         await natsExtension.testChannel(payload);
       } else {
         await testChannel(payload);

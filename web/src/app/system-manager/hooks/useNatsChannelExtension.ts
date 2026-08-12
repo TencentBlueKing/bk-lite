@@ -6,6 +6,7 @@ export interface NatsChannelExtension {
   normalizeConfig: (config: Record<string, unknown>) => Record<string, unknown>;
   getVisibleConfigKeys: (mode: unknown) => string[];
   getFieldDefinition: (key: string) => Record<string, unknown> | undefined;
+  usesEnterpriseTestEndpoint: (config: Record<string, unknown>) => boolean;
   testChannel: (payload: Record<string, unknown>) => Promise<void>;
 }
 
