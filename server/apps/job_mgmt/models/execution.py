@@ -68,6 +68,10 @@ class JobExecution(TimeInfo, MaintainerInfo):
 
     # 关联的定时任务（定时触发时设置，用于并发策略判断）
     scheduled_task = models.ForeignKey("job_mgmt.ScheduledTask", on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联定时任务")
+    enforce_scheduled_team_boundary = models.BooleanField(
+        default=False,
+        verbose_name="执行时强制定时任务团队边界",
+    )
 
     # 目标来源
     target_source = models.CharField(max_length=32, choices=TargetSource.CHOICES, default=TargetSource.MANUAL, verbose_name="目标来源")

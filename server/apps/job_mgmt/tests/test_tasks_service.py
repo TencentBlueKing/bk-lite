@@ -94,6 +94,21 @@ class TestExecuteScheduledTask:
         # 仍只有那条 running，未新建
         assert JobExecution.objects.filter(scheduled_task=st).count() == 1
 
+    def test_concurrency_skip_does_not_treat_run_now_as_scheduled_overlap(self):
+        st = _task(concurrency_policy=ConcurrencyPolicy.SKIP)
+        JobExecution.objects.create(
+            name="[手动触发] st",
+            job_type=JobType.SCRIPT,
+            status=ExecutionStatus.RUNNING,
+            scheduled_task=st,
+            team=[1],
+        )
+
+        with patch("apps.job_mgmt.tasks._dispatch_execution_job", return_value=True):
+            tasks.execute_scheduled_task(st.id)
+
+        assert JobExecution.objects.filter(scheduled_task=st).count() == 2
+
     def test_concurrency_queue_retries(self):
         st = _task(concurrency_policy=ConcurrencyPolicy.QUEUE)
         JobExecution.objects.create(name="r", job_type=JobType.SCRIPT, status=ExecutionStatus.PENDING, scheduled_task=st, team=[1])

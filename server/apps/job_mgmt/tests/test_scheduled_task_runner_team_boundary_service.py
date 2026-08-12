@@ -31,6 +31,7 @@ def _scheduled_execution(job_type, target, *, move_target=True, **overrides):
         name=task.name,
         job_type=job_type,
         scheduled_task=task,
+        enforce_scheduled_team_boundary=True,
         playbook=task.playbook,
         script_content=task.script_content,
         script_type=task.script_type,

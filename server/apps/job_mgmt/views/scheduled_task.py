@@ -234,6 +234,8 @@ class ScheduledTaskViewSet(AuthViewSet):
                 name=f"[手动触发] {instance.name}",
                 job_type=instance.job_type,
                 status=ExecutionStatus.PENDING,
+                scheduled_task=instance,
+                enforce_scheduled_team_boundary=True,
                 script=instance.script,
                 playbook=instance.playbook,
                 playbook_version=instance.playbook.version if instance.playbook else "",

@@ -230,6 +230,7 @@ def execute_scheduled_task(scheduled_task_id: int):
         if policy in (ConcurrencyPolicy.SKIP, ConcurrencyPolicy.QUEUE):
             running_executions = JobExecution.objects.filter(
                 scheduled_task_id=scheduled_task_id,
+                trigger_source=TriggerSource.SCHEDULED,
                 status__in=[ExecutionStatus.PENDING, ExecutionStatus.RUNNING],
             )
             running_count = running_executions.count()
@@ -273,6 +274,7 @@ def execute_scheduled_task(scheduled_task_id: int):
                 playbook=scheduled_task.playbook,
                 playbook_version=playbook_version,
                 scheduled_task=scheduled_task,
+                enforce_scheduled_team_boundary=True,
                 params=params_str,
                 script_type=script_type,
                 script_content=script_content,

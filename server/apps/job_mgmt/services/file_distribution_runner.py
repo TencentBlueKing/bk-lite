@@ -122,6 +122,12 @@ class FileDistributionRunner(ExecutionTaskBaseService):
 
         success = True
         try:
+            manual_target = None
+            if target_source == TargetSource.MANUAL and execution is not None:
+                target_id = target_info.get("target_id")
+                if not target_id:
+                    raise ValueError("手动目标缺少 target_id")
+                manual_target = self._load_manual_targets_for_execution(execution, [target_id])[0]
             for file_item in files:
                 # 每个文件分发前检查是否已取消
                 if execution_id and self.is_cancelled(execution_id):
@@ -141,14 +147,18 @@ class FileDistributionRunner(ExecutionTaskBaseService):
                         target_id = target_info.get("target_id")
                         if not target_id:
                             raise ValueError("手动目标缺少 target_id")
-                        exec_result = self.download_to_manual_target(
-                            file_item,
-                            target_id,
-                            target_path,
-                            timeout,
-                            overwrite,
-                            execution=execution,
-                        )
+                        if execution is None:
+                            exec_result = self.download_to_manual_target(file_item, target_id, target_path, timeout, overwrite)
+                        else:
+                            exec_result = self.download_to_manual_target(
+                                file_item,
+                                target_id,
+                                target_path,
+                                timeout,
+                                overwrite,
+                                execution=execution,
+                                target_obj=manual_target,
+                            )
 
                     file_ok, file_error = self.parse_distribution_exec_result(exec_result)
                     file_result["success"] = file_ok
@@ -214,11 +224,13 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         overwrite: bool,
         *,
         execution: JobExecution | None = None,
+        target_obj: Target | None = None,
     ):
-        if execution is not None:
-            target_obj = self._load_manual_targets_for_execution(execution, [target_id])[0]
-        else:
-            target_obj = Target.objects.filter(id=target_id).first()
+        if target_obj is None:
+            if execution is not None:
+                target_obj = self._load_manual_targets_for_execution(execution, [target_id])[0]
+            else:
+                target_obj = Target.objects.filter(id=target_id).first()
         if target_obj and target_obj.os_type == OSType.WINDOWS and target_obj.driver == ExecutorDriver.ANSIBLE:
             normalized_target_path = self._normalize_target_path(target_path, target_obj.os_type)
             return self._download_to_windows_via_ansible(target_obj, [file_item], normalized_target_path, timeout, overwrite)
