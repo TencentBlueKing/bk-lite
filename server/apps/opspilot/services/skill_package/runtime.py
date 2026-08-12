@@ -171,7 +171,13 @@ def hydrate_skill_packages(skill_packages: Any) -> list[dict[str, Any]]:
 
     try:
         # 同步 ORM 查询,调用方须在 sync 上下文(用 ThreadPoolExecutor 包一层)。
-        stored_list = list(SkillPackage.objects.filter(id__in=ids, is_enabled=True))
+        # 该线程可能是 asyncio/LangGraph 旁路线程，必须在本线程清理连接。
+        from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
+
+        def _load_packages():
+            return list(SkillPackage.objects.filter(id__in=ids, is_enabled=True))
+
+        stored_list = run_with_db_cleanup(_load_packages)
         # key 统一转 str:LangGraph configurable 跨节点序列化会把 int id 转 str,
         # 后续 stored_packages.get(item.get("id")) 也用 str 查,保持一致。
         stored_packages = {str(item.id): item for item in stored_list}
