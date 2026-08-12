@@ -6,6 +6,7 @@ from django.urls import include, path
 from rest_framework import routers
 
 from apps.alerts.extensions.routes import alert_extension_routes
+from apps.alerts.open_api import views as open_api_views
 from apps.alerts.views import (
     AlarmStrategyModelViewSet,
     AlertAssignmentModelViewSet,
@@ -45,6 +46,14 @@ router.register(r"open_api/k8s", K8sOpenAPIViewSet, basename="alerts_k8s_open_ap
 router.register(r"api/action_rule", ActionRuleViewSet, basename="action_rule")
 router.register(r"api/action_execution", ActionExecutionViewSet, basename="action_execution")
 
+open_api_patterns = [
+    path("api/open/alerts/actions/<str:action>", open_api_views.OpenAlertBatchActionView.as_view()),
+    path("api/open/alerts/<str:alert_id>/events", open_api_views.OpenAlertEventsView.as_view()),
+    path("api/open/alerts/<str:alert_id>/<str:action>", open_api_views.OpenAlertActionView.as_view()),
+    path("api/open/alerts/<str:alert_id>", open_api_views.OpenAlertDetailView.as_view()),
+    path("api/open/alerts", open_api_views.OpenAlertListView.as_view()),
+]
+
 urlpatterns = [
     path("", include(alert_extension_routes.urlpatterns)),
     path("api/test/", request_test),
@@ -55,4 +64,4 @@ urlpatterns = [
     path("api/action_job/scripts/<int:script_id>/", ActionJobScriptDetailView.as_view()),
 ]
 
-urlpatterns += router.urls
+urlpatterns += open_api_patterns + router.urls
