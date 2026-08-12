@@ -1552,5 +1552,17 @@
         "list": { "search": "搜索名称", "namespaceFilter": "命名空间", "workloadFilter": "工作负载", "nodeFilter": "Node", "total": "共 {total} 条" },
         "columns": { "name": "名称", "workload_count": "工作负载", "pod_count": "Pod", "namespace": "命名空间", "workload": "工作负载", "workload_type": "类型", "replicas": "副本数", "node": "Node", "ip_addr": "Pod IP", "request_cpu": "CPU 请求", "request_memory": "内存请求", "limit_cpu": "CPU 限制", "limit_memory": "内存限制", "role": "角色", "cpu": "CPU", "memory": "内存", "disk": "磁盘" },
         "accessibility": { "topology": "Kubernetes 资源拓扑，单击聚焦，右键打开只读菜单", "legend": "图例" }
+    },
+    "ViewsHub": {
+        "selectInstance": "选择实例",
+        "emptyHint": "请选择一条实例",
+        "recent": "最近访问",
+        "viewDetail": "查看详情",
+        "setAsCurrent": "设为当前",
+        "modeRoom": "机房",
+        "modeRack": "机柜",
+        "selectModel": "选择模型",
+        "workspacePlaceholder": "画布区域（后续接入）",
+        "unknownView": "未知视图"
     }
 }

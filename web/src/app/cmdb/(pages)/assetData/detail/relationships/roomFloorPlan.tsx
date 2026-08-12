@@ -16,9 +16,11 @@ import DeviceDetailDrawer from './deviceDetailDrawer';
 interface Props {
   modelId: string;
   instId: string;
+  /** When set, rack click navigates via callback instead of opening the elevation Drawer. */
+  onRackSelect?: (rack: RoomRack) => void;
 }
 
-const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
+const RoomFloorPlan: React.FC<Props> = ({ modelId, instId, onRackSelect }) => {
   const { t } = useTranslation();
   const { mode } = useThemeMode();
   const { getRoomLayout } = useInstanceApi();
@@ -130,7 +132,13 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
                     : '0 1px 2px rgba(24, 39, 63, 0.035), 0 6px 14px rgba(31, 51, 82, 0.025)',
                   ['--rack-tone' as string]: c,
                 }}
-                onClick={() => setRack(r)}>
+                onClick={() => {
+                  if (onRackSelect) {
+                    onRackSelect(r);
+                    return;
+                  }
+                  setRack(r);
+                }}>
                 <span className="rf-rack-led" style={{ background: c, boxShadow: `0 0 0 3px ${c}1f` }} />
                 <div className="rf-rack-name-slot">
                   <EllipsisWithTooltip text={r.inst_name} className="rf-rack-name" />

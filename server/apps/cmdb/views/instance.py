@@ -43,10 +43,11 @@ from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import cmdb_logger as logger
+from apps.core.utils.current_team_scope import resolve_assignable_organization_ids
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.utils.group_utils import GroupUtils
-from apps.core.utils.team_utils import get_current_team
 
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
@@ -86,14 +87,13 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
     @staticmethod
     def _get_allowed_org_ids(request) -> list[int]:
+        # 超级管理员：不按当前组织裁剪，通过 system_mgmt NATS 取该用户可分配的组织。
+        if getattr(request.user, "is_superuser", False):
+            return list(resolve_assignable_organization_ids(request))
+
         current_team = get_current_team_from_request(request)
         include_children = request.COOKIES.get("include_children") == "1"
         user_group_ids = [i["id"] for i in request.user.group_list]
-
-        if getattr(request.user, "is_superuser", False):
-            return GroupUtils.get_all_child_groups(current_team, include_self=True, group_list=None) if include_children else [
-                current_team
-            ]
 
         allowed_org_ids = GroupUtils.get_user_authorized_child_groups(
             user_group_list=user_group_ids,
@@ -849,7 +849,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 )
 
             try:
-                current_team = int(current_team_raw)
+                int(current_team_raw)
             except (TypeError, ValueError):
                 return JsonResponse(
                     {
@@ -859,26 +859,14 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     }
                 )
 
-            include_children = request.COOKIES.get("include_children") == "1"
-            user_group_ids = [i["id"] for i in request.user.group_list]
-
-            if getattr(request.user, "is_superuser", False):
-                allowed_org_ids = (
-                    GroupUtils.get_all_child_groups(current_team, include_self=True, group_list=None) if include_children else [current_team]
-                )
-            else:
-                allowed_org_ids = GroupUtils.get_user_authorized_child_groups(
-                    user_group_list=user_group_ids,
-                    target_group_id=current_team,
-                    include_children=include_children,
-                )
-
-            if not allowed_org_ids:
+            try:
+                allowed_org_ids = self._get_allowed_org_ids(request)
+            except BaseAppException as exc:
                 return JsonResponse(
                     {
                         "data": [],
                         "result": False,
-                        "message": "抱歉！您没有该组织的权限或组织选择无效",
+                        "message": str(exc),
                     }
                 )
 

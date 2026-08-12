@@ -274,6 +274,26 @@ def test_tree_endpoint_builds_nested_structure(authenticated_user):
 
 
 @pytest.mark.django_db
+def test_tree_shows_peer_org_dashboard_without_instance_permission(authenticated_user):
+    """同组织非创建者时，目录树仍应展示画布（不依赖实例数据权限）。"""
+    authenticated_user.is_superuser = False
+    authenticated_user.group_list = [{"id": 1, "name": "Default"}]
+    authenticated_user.username = "peer-user"
+    authenticated_user.permission = {"ops-analysis": {"view-View"}}
+
+    root = Directory.objects.create(name="组织目录", groups=[1], created_by="owner")
+    Dashboard.objects.create(name="他人仪表盘", groups=[1], directory=root, created_by="owner")
+
+    request = _request("get", "/directory/tree/", authenticated_user)
+    response = view_module.DirectoryModelViewSet.as_view({"get": "tree"})(request)
+    payload = _render(response)
+
+    assert response.status_code == status.HTTP_200_OK
+    root_node = next(n for n in payload["data"] if n["data_id"] == root.id)
+    assert any(child["type"] == "dashboard" and child["name"] == "他人仪表盘" for child in root_node["children"])
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("team", [None, "not-a-number"])
 def test_tree_endpoint_rejects_missing_or_invalid_current_team(authenticated_user, team):
     user = _superuser(authenticated_user)
