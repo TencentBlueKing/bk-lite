@@ -1,9 +1,12 @@
 """Issue #3341：告警中心生命周期投递的真实 ORM/协议回归。"""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from threading import Event, Thread
 from types import SimpleNamespace
 
 import pytest
+from django.db import close_old_connections
+from django.utils import timezone as django_timezone
 
 from apps.monitor.models import MonitorAlert, MonitorAlertCenterDelivery
 from apps.monitor.services.alert_center_delivery import (
@@ -192,6 +195,34 @@ def test_stale_delivery_finalize_is_fenced_by_attempt_generation(alert_center_ch
     assert alert.alert_center_notified is False
 
 
+def test_stale_delivering_lease_is_reclaimed(alert_center_channel, monkeypatch):
+    alert = _alert(alert_center_channel, alert_center_notified=False)
+    delivery = MonitorAlertCenterDelivery.objects.create(
+        alert=alert,
+        action="created",
+        generation=1,
+        delivery_id="stale-lease",
+        channel_id=alert_center_channel.id,
+        payload={"title": "first", "organizations": [1]},
+        status=MonitorAlertCenterDelivery.Status.DELIVERING,
+        attempts=1,
+    )
+    stale_at = django_timezone.now() - timedelta(minutes=6)
+    MonitorAlertCenterDelivery.objects.filter(id=delivery.id).update(
+        updated_at=stale_at
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.SystemMgmtUtils.dispatch_notification",
+        lambda **kwargs: {"result": True, "data": {}},
+    )
+
+    assert deliver_alert_center_delivery(delivery.id) is True
+
+    delivery.refresh_from_db()
+    assert delivery.status == MonitorAlertCenterDelivery.Status.DELIVERED
+    assert delivery.attempts == 2
+
+
 @pytest.mark.parametrize(
     ("response", "expected"),
     [
@@ -343,5 +374,92 @@ def test_successor_enqueued_after_terminal_failure_is_closed(
     second = MonitorAlertCenterDelivery.objects.get(
         alert=alert, generation=2
     )
+    assert second.status == MonitorAlertCenterDelivery.Status.FAILED
+    assert second.last_error == "blocked by terminal generation 1"
+
+
+def test_terminal_finalize_serializes_with_concurrent_successor_enqueue(
+    alert_center_channel, monkeypatch
+):
+    alert = _alert(alert_center_channel, alert_center_notified=False)
+    first = MonitorAlertCenterDelivery.objects.create(
+        alert=alert,
+        action="created",
+        generation=1,
+        delivery_id="terminal-race-created",
+        channel_id=alert_center_channel.id,
+        payload={"title": "first", "organizations": [1]},
+    )
+    notifier = AlertLifecycleNotifier(
+        SimpleNamespace(id=7, name="CPU 策略", organizations=[1], notice=True)
+    )
+    finalize_started = Event()
+    allow_finalize = Event()
+    enqueue_started = Event()
+    enqueue_finished = Event()
+    errors = []
+    original_fail_successors = (
+        __import__(
+            "apps.monitor.services.alert_center_delivery",
+            fromlist=["_fail_blocked_successors"],
+        )._fail_blocked_successors
+    )
+
+    def hold_terminal_transaction(record):
+        original_fail_successors(record)
+        finalize_started.set()
+        assert allow_finalize.wait(timeout=5)
+
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery._fail_blocked_successors",
+        hold_terminal_transaction,
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.SystemMgmtUtils.dispatch_notification",
+        lambda **kwargs: {"result": False, "retryable": False, "code": "forbidden"},
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery._schedule_deliveries",
+        lambda ids: None,
+    )
+
+    def finalize():
+        close_old_connections()
+        try:
+            deliver_alert_center_delivery(first.id)
+        except Exception as exc:  # pragma: no cover - assertion reports below
+            errors.append(exc)
+        finally:
+            close_old_connections()
+
+    def enqueue():
+        close_old_connections()
+        enqueue_started.set()
+        try:
+            fresh_alert = MonitorAlert.objects.get(id=alert.id)
+            enqueue_alert_center_deliveries(
+                [fresh_alert], "recovered", notifier=notifier
+            )
+        except Exception as exc:  # pragma: no cover - assertion reports below
+            errors.append(exc)
+        finally:
+            enqueue_finished.set()
+            close_old_connections()
+
+    finalize_thread = Thread(target=finalize)
+    enqueue_thread = Thread(target=enqueue)
+    finalize_thread.start()
+    assert finalize_started.wait(timeout=5)
+    enqueue_thread.start()
+    assert enqueue_started.wait(timeout=5)
+    assert enqueue_finished.wait(timeout=0.2) is False
+    allow_finalize.set()
+    finalize_thread.join(timeout=5)
+    enqueue_thread.join(timeout=5)
+
+    assert errors == []
+    assert finalize_thread.is_alive() is False
+    assert enqueue_thread.is_alive() is False
+    second = MonitorAlertCenterDelivery.objects.get(alert=alert, generation=2)
     assert second.status == MonitorAlertCenterDelivery.Status.FAILED
     assert second.last_error == "blocked by terminal generation 1"

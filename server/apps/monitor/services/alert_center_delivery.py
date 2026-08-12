@@ -242,6 +242,10 @@ def deliver_alert_center_delivery(record_id):
     next_status = MonitorAlertCenterDelivery.Status.FAILED if terminal else MonitorAlertCenterDelivery.Status.PENDING
     next_retry_at = None if terminal else finished_at + timedelta(seconds=min(3600, 15 * (2 ** min(claim_generation, 8))))
     with transaction.atomic():
+        if terminal:
+            # 与 enqueue 共用 alert 行锁；终态传播扫描和提交之间不允许
+            # 并发插入一个看不到 FAILED 前驱的 PENDING 后继。
+            MonitorAlert.objects.select_for_update().get(id=record.alert_id)
         finalized = MonitorAlertCenterDelivery.objects.filter(
             id=record_id,
             status=MonitorAlertCenterDelivery.Status.DELIVERING,
