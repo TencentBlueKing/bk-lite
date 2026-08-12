@@ -106,6 +106,8 @@ def validate_scheduled_task_resource_boundary(attrs: dict, *, instance=None, loc
 
     if _resolve(attrs, instance, "target_source") == TargetSource.MANUAL:
         target_list = _resolve(attrs, instance, "target_list") or []
+        if not target_list:
+            raise ScheduledTaskTeamBoundaryError("target_list", "定时任务缺少手动执行目标")
         target_ids = [item.get("target_id") for item in target_list if isinstance(item, dict) and item.get("target_id")]
         if len(target_ids) != len(target_list):
             raise ScheduledTaskTeamBoundaryError("target_list", "手动目标必须提供有效的 target_id")
@@ -154,6 +156,8 @@ def plan_scheduled_task_team_migration(task, *, lock_resources: bool = False) ->
 
     if task.target_source == TargetSource.MANUAL:
         target_list = task.target_list or []
+        if not target_list:
+            return ScheduledTaskTeamMigrationPlan("disable", None, "任务缺少手动执行目标")
         target_ids = [item.get("target_id") for item in target_list if isinstance(item, dict) and item.get("target_id")]
         if len(target_ids) != len(target_list):
             return ScheduledTaskTeamMigrationPlan("disable", None, "手动目标引用不完整")

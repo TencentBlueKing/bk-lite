@@ -13,7 +13,7 @@ from apps.job_mgmt import tasks
 from apps.job_mgmt.constants import ConcurrencyPolicy, DangerousLevel, ExecutionStatus, JobType
 from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, ScheduledTask, Script
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 
 def _task(**over):
@@ -82,10 +82,18 @@ class TestExecuteScheduledTask:
         ex = JobExecution.objects.get(scheduled_task=st)
         assert ex.status == ExecutionStatus.FAILED
 
-    def test_no_target_returns_without_execution(self):
-        st = _task(target_list=[])
-        tasks.execute_scheduled_task(st.id)
+    def test_no_manual_target_disables_task_without_execution(self):
+        st = _task(target_source="manual", target_list=[])
+        with patch(
+            "apps.job_mgmt.services.scheduled_task_authz.ScheduledTaskService.toggle_periodic_task_or_raise",
+            return_value=True,
+        ) as toggle:
+            tasks.execute_scheduled_task(st.id)
+
+        st.refresh_from_db()
+        assert st.is_enabled is False
         assert JobExecution.objects.filter(scheduled_task=st).count() == 0
+        toggle.assert_called_once_with(st.id, False)
 
     def test_concurrency_skip_when_running_exists(self):
         st = _task(concurrency_policy=ConcurrencyPolicy.SKIP)

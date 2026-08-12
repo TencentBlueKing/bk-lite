@@ -57,6 +57,18 @@ class ScheduledTaskViewSet(AuthViewSet):
         except ScheduledTaskTeamBoundaryError as exc:
             raise serializers.ValidationError({exc.field: exc.message}) from exc
 
+    @staticmethod
+    def _validate_locked_task_permission(request, instance):
+        """基于锁内任务快照复核操作者仍属于任务团队。"""
+
+        if request.user.is_superuser:
+            return
+        if not is_team_authorized(
+            instance.team,
+            normalize_authorized_team_ids(getattr(request.user, "group_list", [])),
+        ):
+            raise PermissionDenied("无权操作其他团队的定时任务")
+
     def get_serializer_class(self):
         if self.action == "retrieve":
             return ScheduledTaskDetailSerializer
@@ -150,6 +162,7 @@ class ScheduledTaskViewSet(AuthViewSet):
         schedule_sync_pending = False
         with transaction.atomic():
             instance = ScheduledTask.objects.select_for_update().get(pk=instance.pk)
+            self._validate_locked_task_permission(request, instance)
             is_enabled = serializer.validated_data["is_enabled"]
             if is_enabled:
                 self._validate_resource_boundary({}, instance=instance, lock_resources=True)
@@ -191,6 +204,7 @@ class ScheduledTaskViewSet(AuthViewSet):
         instance = self.get_object()
         with transaction.atomic():
             instance = ScheduledTask.objects.select_for_update().get(pk=instance.pk)
+            self._validate_locked_task_permission(request, instance)
             self._validate_resource_boundary({}, instance=instance, lock_resources=True)
 
             # 获取执行目标

@@ -13,7 +13,7 @@ from apps.job_mgmt.constants import JobType
 from apps.job_mgmt.models import ScheduledTask
 from apps.job_mgmt.services.dangerous_checker import DangerousCheckResult
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 URL = "/api/v1/job_mgmt/api/scheduled_task/"
 SVC = "apps.job_mgmt.serializers.scheduled_task.ScheduledTaskService"
@@ -163,6 +163,25 @@ class TestScheduledTaskCrud:
 
 
 class TestScheduledTaskActions:
+    @pytest.mark.parametrize("action,payload", [("toggle", {"is_enabled": False}), ("run_now", {})])
+    def test_cross_team_user_cannot_operate_task(self, api_client, authenticated_user, action, payload):
+        task = _make_task(team=[2], is_enabled=True)
+        authenticated_user.is_superuser = False
+        authenticated_user.group_list = [{"id": 1}]
+        authenticated_user.permission = {"job": {"cron_task-Edit"}}
+        api_client.cookies["current_team"] = "1"
+
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise") as toggle, patch(
+            "apps.job_mgmt.views.scheduled_task.dispatch_celery_task"
+        ) as dispatch:
+            resp = api_client.post(f"{URL}{task.id}/{action}/", payload, format="json")
+
+        assert resp.status_code == 403
+        task.refresh_from_db()
+        assert task.is_enabled is True
+        toggle.assert_not_called()
+        dispatch.assert_not_called()
+
     def test_toggle(self, su_client):
         task = _make_task(is_enabled=True)
         with patch(VIEW_SVC + ".toggle_periodic_task_or_raise"):

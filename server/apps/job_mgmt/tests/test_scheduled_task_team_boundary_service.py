@@ -36,6 +36,21 @@ def _task(**overrides):
 
 
 class TestScheduledTaskCeleryBoundary:
+    def test_celery_disables_manual_task_without_targets(self):
+        task = _task(target_source="manual", target_list=[], is_enabled=True)
+
+        with patch("apps.job_mgmt.tasks._dispatch_execution_job") as dispatch, patch(
+            AUTHZ_SERVICE + ".toggle_periodic_task_or_raise",
+            return_value=True,
+        ) as toggle:
+            tasks.execute_scheduled_task(task.id)
+
+        task.refresh_from_db()
+        assert task.is_enabled is False
+        assert JobExecution.objects.filter(scheduled_task=task).count() == 0
+        toggle.assert_called_once_with(task.id, False)
+        dispatch.assert_not_called()
+
     def test_celery_defense_disables_stale_cross_team_task(self):
         script = Script.objects.create(name="foreign", content="echo foreign", script_type="shell", team=[2])
         task = _task(script=script, script_content="", team=[1], is_enabled=True)
@@ -186,6 +201,32 @@ class TestScheduledTaskTeamBoundaryAudit:
         assert task.is_enabled is True
         assert f"task={task.id} action=normalize team=1" in stdout.getvalue()
         assert "DRY-RUN keep=0 normalize=1 disable=0" in stdout.getvalue()
+
+    def test_dry_run_reports_manual_task_without_targets_as_disable(self):
+        task = _task(target_source="manual", target_list=[])
+        stdout = StringIO()
+
+        call_command("audit_scheduled_task_team_boundary", stdout=stdout)
+
+        task.refresh_from_db()
+        assert task.is_enabled is True
+        assert f"task={task.id} action=disable" in stdout.getvalue()
+        assert "缺少手动执行目标" in stdout.getvalue()
+
+    def test_apply_disables_manual_task_without_targets(self):
+        task = _task(target_source="manual", target_list=[])
+
+        with patch(VIEW_SERVICE + ".toggle_periodic_task_or_raise", return_value=True):
+            call_command(
+                "audit_scheduled_task_team_boundary",
+                "--apply",
+                "--backup-confirmed",
+                "--limit=100",
+                stdout=StringIO(),
+            )
+
+        task.refresh_from_db()
+        assert task.is_enabled is False
 
     def test_apply_normalizes_only_unique_team(self):
         script = Script.objects.create(name="team-one", content="echo one", script_type="shell", team=[1])

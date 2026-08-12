@@ -29,7 +29,7 @@ from apps.job_mgmt.services import scheduled_task_authz
 
 # 多线程必须 transaction=True,否则 pytest-django 默认一个事务包测试,
 # 跨线程互相看不到对方写入,无法真实复现竞态
-pytestmark = [pytest.mark.unit, pytest.mark.django_db(transaction=True)]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db(transaction=True)]
 
 
 def _task(**over):
