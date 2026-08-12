@@ -22,6 +22,11 @@ from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.system_mgmt.models import Channel
 from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
 
+try:
+    from apps.system_mgmt.enterprise import nats_notifications
+except (ImportError, ModuleNotFoundError):
+    nats_notifications = None
+
 
 def is_valid_webhook_url(url: str) -> bool:
     """验证 Webhook URL 是否允许出站。
@@ -296,7 +301,7 @@ def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers):
         return {"result": False, "message": "failed to send dingtalk bot message"}
 
 
-def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=None):
+def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=None, title="", test=False):
     """
     发送 NATS 消息（Request 模式）
     :param channel_obj: NATS Channel 对象
@@ -304,6 +309,11 @@ def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=N
     :return: 目标服务的响应
     """
     config = channel_obj.config
+    if nats_notifications is not None and nats_notifications.handles_config(config):
+        return nats_notifications.send(channel_obj, content, title=title, test=test)
+    if config.get("nats_mode") not in (None, "request_reply"):
+        return {"result": False, "code": "unsupported_nats_extension_mode", "retryable": False}
+
     namespace = config.get("namespace")
     method_name = config.get("method_name")
     bot_id = config.get("bot_id")
