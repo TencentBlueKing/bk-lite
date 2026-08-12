@@ -2,9 +2,12 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 STARTUP_SCRIPT = REPOSITORY_ROOT / "server/support-files/release/startup.sh"
+pytestmark = pytest.mark.integration
 
 
 def _run_startup(tmp_path, migrate_returncode, install_apps="opspilot", strict_mode=False):
@@ -82,6 +85,14 @@ def test_release_startup_keeps_existing_success_path(tmp_path):
     ]
 
 
+def test_release_startup_supports_empty_install_apps_on_first_start(tmp_path):
+    result, commands = _run_startup(tmp_path, migrate_returncode=0, install_apps="")
+
+    assert result.returncode == 0
+    assert "python3:manage.py batch_init --apps=" in commands
+    assert commands[-1] == "supervisord:-n"
+
+
 def test_release_startup_recovers_after_migration_is_fixed(tmp_path):
     failed, commands = _run_startup(tmp_path, migrate_returncode=42)
     recovered, commands_after_recovery = _run_startup(tmp_path, migrate_returncode=0)
@@ -90,3 +101,21 @@ def test_release_startup_recovers_after_migration_is_fixed(tmp_path):
     assert recovered.returncode == 0
     assert commands_after_recovery[: len(commands)] == commands
     assert commands_after_recovery[-1] == "supervisord:-n"
+
+
+def test_release_startup_is_repeatable_with_existing_state(tmp_path):
+    first, first_commands = _run_startup(tmp_path, migrate_returncode=0)
+    second, all_commands = _run_startup(tmp_path, migrate_returncode=0)
+
+    assert first.returncode == 0
+    assert second.returncode == 0
+    assert all_commands == first_commands * 2
+
+
+def test_release_startup_does_not_continue_after_existing_state_migration_conflict(tmp_path):
+    succeeded, existing_commands = _run_startup(tmp_path, migrate_returncode=0)
+    failed, all_commands = _run_startup(tmp_path, migrate_returncode=42)
+
+    assert succeeded.returncode == 0
+    assert failed.returncode == 42
+    assert all_commands == [*existing_commands, "python3:manage.py migrate"]
