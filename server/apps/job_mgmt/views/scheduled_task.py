@@ -116,6 +116,7 @@ class ScheduledTaskViewSet(AuthViewSet):
 
         with transaction.atomic():
             instance = ScheduledTask.objects.select_for_update().get(pk=instance.pk)
+            self._validate_locked_task_permission(request, instance)
             serializer.instance = instance
             disable_only = serializer.validated_data.get("is_enabled") is False and set(serializer.validated_data) == {
                 "is_enabled"

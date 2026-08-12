@@ -141,6 +141,37 @@ class TestScheduledTaskCrud:
         task.refresh_from_db()
         assert task.name == "task1-edit"
 
+    def test_update_rejects_task_team_change_after_initial_read(self, api_client, authenticated_user):
+        """首次权限读取后团队发生变化时，锁内新快照必须拒绝旧团队用户。"""
+        from apps.job_mgmt.views.scheduled_task import ScheduledTaskViewSet
+
+        task = _make_task(team=[1])
+        authenticated_user.is_superuser = False
+        authenticated_user.group_list = [{"id": 1}]
+        authenticated_user.permission = {"job": {"cron_task-Edit"}}
+        api_client.cookies["current_team"] = "1"
+        original_get_object = ScheduledTaskViewSet.get_object
+
+        def get_object_then_change_team(view):
+            stale_task = original_get_object(view)
+            ScheduledTask.objects.filter(pk=stale_task.pk).update(team=[2])
+            return stale_task
+
+        with patch.object(ScheduledTaskViewSet, "get_object", new=get_object_then_change_team), patch(
+            SVC + ".update_periodic_task"
+        ) as update_periodic_task:
+            resp = api_client.patch(
+                f"{URL}{task.id}/",
+                {"name": "must-not-overwrite", "team": [1]},
+                format="json",
+            )
+
+        assert resp.status_code == 403
+        task.refresh_from_db()
+        assert task.team == [2]
+        assert task.name == "t"
+        update_periodic_task.assert_not_called()
+
     def test_list_and_retrieve(self, su_client):
         task = _make_task()
         assert su_client.get(URL).status_code == 200
