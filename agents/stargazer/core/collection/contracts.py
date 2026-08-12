@@ -90,8 +90,8 @@ class RunSummary:
 
 @dataclass(frozen=True)
 class TargetExecutorSettings:
-    max_active_targets: int = 200
-    target_task_window: int = 200
+    max_active_targets: int = 2000
+    target_task_window: int = 2000
     connect_timeout_seconds: float = 5.0
     plugin_timeout_seconds: float = 60.0
     publish_guard_seconds: float = 30.0

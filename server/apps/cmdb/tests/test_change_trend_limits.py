@@ -72,6 +72,36 @@ def test_get_change_trend_short_window_uses_minute(monkeypatch):
     assert seen["group_by"] == "minute"
 
 
+def test_get_change_trend_long_window_uses_month(monkeypatch):
+    seen = {}
+    real_resolve = N.resolve_trend_group_by_from_range
+
+    def _capture_resolve(start, end):
+        group_by = real_resolve(start, end)
+        seen["group_by"] = group_by
+        return group_by
+
+    monkeypatch.setattr(N, "resolve_trend_group_by_from_range", _capture_resolve)
+    monkeypatch.setattr(N.ChangeRecord, "objects", QueryProbe())
+
+    with pytest.raises(QueryStarted):
+        N.get_change_trend(
+            time=["2023-08-01T00:00:00Z", "2025-08-30T00:00:00Z"],
+        )
+
+    assert seen["group_by"] == "month"
+
+
+def test_generate_time_periods_day_excludes_end_midnight():
+    tz = datetime.timezone.utc
+    start = datetime.datetime(2026, 7, 29, tzinfo=tz)
+    end = datetime.datetime(2026, 8, 5, tzinfo=tz)
+    periods = N._generate_time_periods(start, end, "day", tz)
+    assert periods[0] == "2026-07-29T00:00:00+00:00"
+    assert periods[-1] == "2026-08-04T00:00:00+00:00"
+    assert "2026-08-05T00:00:00+00:00" not in periods
+
+
 def test_get_change_trend_rejects_timezone_less_range_before_query(monkeypatch):
     monkeypatch.setattr(N.ChangeRecord, "objects", QueryMustNotRun())
 

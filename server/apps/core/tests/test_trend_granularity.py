@@ -9,9 +9,7 @@ def test_resolve_trend_group_by_thresholds():
     assert resolve_trend_group_by(6 * 3600 + 1) == "hour"
     assert resolve_trend_group_by(7 * 24 * 3600) == "hour"
     assert resolve_trend_group_by(7 * 24 * 3600 + 1) == "day"
-    assert resolve_trend_group_by(90 * 24 * 3600) == "day"
-    assert resolve_trend_group_by(90 * 24 * 3600 + 1) == "week"
-    assert resolve_trend_group_by(730 * 24 * 3600) == "week"
+    assert resolve_trend_group_by(730 * 24 * 3600) == "day"
     assert resolve_trend_group_by(730 * 24 * 3600 + 1) == "month"
 
 

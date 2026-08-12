@@ -44,21 +44,17 @@ def test_group_dy_date_format_variants():
 
 
 def test_group_dy_date_format_all_branches():
-    from django.db.models.functions import TruncMinute, TruncMonth, TruncWeek
+    from django.db.models.functions import TruncMinute, TruncMonth
 
     assert N.group_dy_date_format("minute")[0] is TruncMinute
-    assert N.group_dy_date_format("week")[0] is TruncWeek
     assert N.group_dy_date_format("month")[0] is TruncMonth
 
 
-def test_generate_time_periods_minute_week_month():
+def test_generate_time_periods_minute_and_month():
     tz = timezone.get_current_timezone()
     start = timezone.make_aware(datetime.datetime(2026, 1, 1, 0, 0), tz)
     end = timezone.make_aware(datetime.datetime(2026, 1, 1, 0, 3), tz)
     assert len(N._generate_time_periods("minute", start, end)) == 3
-
-    wk_end = timezone.make_aware(datetime.datetime(2026, 1, 20), tz)
-    assert len(N._generate_time_periods("week", start, wk_end)) >= 2
 
     mo_end = timezone.make_aware(datetime.datetime(2026, 4, 1), tz)
     assert len(N._generate_time_periods("month", start, mo_end)) >= 3

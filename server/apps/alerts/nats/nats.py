@@ -13,7 +13,7 @@ from typing import Any, Dict
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
-from django.db.models.functions import TruncDate, TruncHour, TruncMinute, TruncMonth, TruncWeek
+from django.db.models.functions import TruncDate, TruncHour, TruncMinute, TruncMonth
 from django.utils import timezone
 
 import nats_client
@@ -54,15 +54,13 @@ _MAX_SPAN_SECONDS = {
     "minute": _positive_int_env("ALERT_TREND_MAX_SPAN_MINUTE", 7 * 24 * 3600),  # 7 天 → 10,080 点
     "hour": _positive_int_env("ALERT_TREND_MAX_SPAN_HOUR", 90 * 24 * 3600),  # 90 天 → 2,160 点
     "day": _positive_int_env("ALERT_TREND_MAX_SPAN_DAY", 730 * 24 * 3600),  # 2 年 → 730 点
-    "week": _positive_int_env("ALERT_TREND_MAX_SPAN_WEEK", 730 * 24 * 3600),  # 2 年 → ~104 点
-    "month": _positive_int_env("ALERT_TREND_MAX_SPAN_MONTH", 730 * 24 * 3600),  # 2 年 → 24 点
+    "month": _positive_int_env("ALERT_TREND_MAX_SPAN_MONTH", 10 * 365 * 24 * 3600),  # 10 年
 }
 _MAX_SPAN_LABEL = {
     "minute": "7 天",
     "hour": "90 天",
     "day": "2 年",
-    "week": "2 年",
-    "month": "2 年",
+    "month": "10 年",
 }
 
 
@@ -164,9 +162,6 @@ def group_dy_date_format(group_by):
     elif group_by == "day":
         trunc_func = TruncDate
         date_format = "%Y-%m-%d"
-    elif group_by == "week":
-        trunc_func = TruncWeek
-        date_format = "%Y-%m-%d"
     elif group_by == "month":
         trunc_func = TruncMonth
         date_format = "%Y-%m-%d"
@@ -236,12 +231,6 @@ def _generate_time_periods(group_by, start_dt, end_dt):
         while current < end_dt:
             all_periods.append(current.date())
             current += datetime.timedelta(days=1)
-    elif group_by == "week":
-        current = start_dt
-        while current < end_dt:
-            week_start = current - datetime.timedelta(days=current.weekday())
-            all_periods.append(week_start.date())
-            current += datetime.timedelta(weeks=1)
     elif group_by == "month":
         current = start_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         while current < end_dt:
@@ -320,7 +309,7 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
     获取告警趋势数据。
 
     聚合粒度按时间窗自动推导：
-    ≤6h minute / ≤7d hour / ≤90d day / ≤2y week / 更长 month。
+    ≤6h minute / ≤7d hour / ≤2y day / 更长 month。
     """
     logger.info("[AlertNatsRPC] === get_alert_trend_data ===, args=%s, kwargs=%s", args, kwargs)
     user_info = kwargs.pop("user_info", {})

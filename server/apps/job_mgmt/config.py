@@ -16,11 +16,21 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 # 多目标执行时的并发上限（ExecutionTaskBaseService.MAX_WORKERS）
 EXECUTION_MAX_WORKERS = _int_env("JOB_EXECUTION_MAX_WORKERS", 10)
 
 # 并发策略 = queue 时，上次未完成的延迟重试间隔（秒）
 SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN = _int_env("JOB_SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN", 30)
+
+# 存量任务完成只读审计与治理后再显式开启，避免部署即中断历史调度。
+SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED = _bool_env("JOB_SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED", False)
 
 # 过期分发文件清理的对象存储并发上限；至少保留一个 worker。
 DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY = max(1, _int_env("JOB_DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY", 10))

@@ -25,6 +25,7 @@ from core.collection.contracts import (
 from core.collection.metrics import CollectionMetrics
 from core.collection.runtime import CollectionRequest, RunLease
 from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
+from core.infra.redis_client import is_credential_state_redis_error
 from core.logger import logger
 
 # 兼容旧 import：执行器专属符号仍由此导出；领域类型请优先 from core.collection.contracts
@@ -229,9 +230,14 @@ class TargetCollectionExecutor:
                 error_code=error_code,
             )
 
-        credentials = await self._credential_policy.eligible_credentials(
-            request, target
-        )
+        credentials = await self._load_eligible_credentials(request, target)
+        if credentials is None:
+            return TargetCollectionResult(
+                target=target,
+                status="failed",
+                attempts=0,
+                error_code="credential_state_unavailable",
+            )
         if not credentials:
             return await self._no_credential_result(request, target)
 
@@ -245,6 +251,76 @@ class TargetCollectionExecutor:
         return await self._run_credential_attempts(
             request, target, credentials, context
         )
+
+    async def _load_eligible_credentials(
+        self, request: CollectionRequest, target: str
+    ):
+        try:
+            return await self._credential_policy.eligible_credentials(
+                request, target
+            )
+        except Exception as exc:  # noqa: BLE001 - 凭据状态失败隔离为单目标
+            if not is_credential_state_redis_error(exc):
+                raise
+            self._metrics.increment("credential_state_redis_error_total")
+            logger.warning(
+                "event=credential_state_unavailable task_id=%s target=%s "
+                "error_type=%s detail=%s",
+                request.task_id,
+                target,
+                type(exc).__name__,
+                str(exc)[:200] or "-",
+            )
+            return None
+
+    async def _safe_record_success(
+        self,
+        request: CollectionRequest,
+        target: str,
+        credential,
+    ) -> None:
+        try:
+            await self._credential_policy.record_success(
+                request, target, credential
+            )
+        except Exception as exc:  # noqa: BLE001 - 写亲和失败不阻断成功结果
+            if not is_credential_state_redis_error(exc):
+                raise
+            self._metrics.increment("credential_state_redis_error_total")
+            logger.warning(
+                "event=credential_success_persist_failed task_id=%s target=%s "
+                "error_type=%s",
+                request.task_id,
+                target,
+                type(exc).__name__,
+            )
+
+    async def _safe_record_auth_failure(
+        self,
+        request: CollectionRequest,
+        target: str,
+        credential,
+        *,
+        error_code: str,
+    ) -> None:
+        try:
+            await self._credential_policy.record_auth_failure(
+                request,
+                target,
+                credential,
+                error_code=error_code,
+            )
+        except Exception as exc:  # noqa: BLE001 - 写冷冻失败不阻断轮换
+            if not is_credential_state_redis_error(exc):
+                raise
+            self._metrics.increment("credential_state_redis_error_total")
+            logger.warning(
+                "event=credential_failure_persist_failed task_id=%s target=%s "
+                "error_type=%s",
+                request.task_id,
+                target,
+                type(exc).__name__,
+            )
 
     async def _run_preflight(
         self, request: CollectionRequest, target: str
@@ -275,9 +351,15 @@ class TargetCollectionExecutor:
         self, request: CollectionRequest, target: str
     ) -> TargetCollectionResult:
         self._metrics.increment("credential_cooldown_total")
-        next_retry_at = await self._credential_policy.next_retry_at(
-            request, target
-        )
+        next_retry_at = None
+        try:
+            next_retry_at = await self._credential_policy.next_retry_at(
+                request, target
+            )
+        except Exception as exc:  # noqa: BLE001 - 读冷冻时间失败不影响结果
+            if not is_credential_state_redis_error(exc):
+                raise
+            self._metrics.increment("credential_state_redis_error_total")
         has_matching_credential = bool(
             self._credential_policy.matching_credentials(request, target)
         )
@@ -439,7 +521,7 @@ class TargetCollectionExecutor:
             AccessProbeStatus.AUTH_FAILED,
             AccessProbeStatus.CAPABILITY_DENIED,
         }:
-            await self._credential_policy.record_auth_failure(
+            await self._safe_record_auth_failure(
                 request,
                 target,
                 credential,
@@ -624,7 +706,7 @@ class TargetCollectionExecutor:
         credential_id: str,
     ):
         if outcome.status == CollectOutcomeStatus.SUCCESS:
-            await self._credential_policy.record_success(
+            await self._safe_record_success(
                 request, target, credential
             )
             return _AttemptDecision(
@@ -649,7 +731,7 @@ class TargetCollectionExecutor:
                 ),
             )
         if outcome.status == CollectOutcomeStatus.AUTH_FAILED:
-            await self._credential_policy.record_auth_failure(
+            await self._safe_record_auth_failure(
                 request,
                 target,
                 credential,
