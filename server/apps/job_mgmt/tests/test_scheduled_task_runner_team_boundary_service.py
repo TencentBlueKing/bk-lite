@@ -17,6 +17,14 @@ from apps.job_mgmt.utils.team_authz import is_team_authorized as real_is_team_au
 pytestmark = [pytest.mark.integration, pytest.mark.django_db(transaction=True)]
 
 
+@pytest.fixture(autouse=True)
+def _isolate_script_stream_side_effects():
+    with patch("apps.job_mgmt.services.script_execution_runner.ensure_stream_sync"), patch(
+        "apps.job_mgmt.services.script_execution_runner.publish_done_sentinel"
+    ):
+        yield
+
+
 def _scheduled_execution(job_type, target, *, move_target=True, **overrides):
     task_values = {
         "name": "runner-team-boundary",
