@@ -10,7 +10,7 @@ import pytest
 from django.utils import timezone
 
 from apps.job_mgmt import tasks
-from apps.job_mgmt.constants import ConcurrencyPolicy, DangerousLevel, ExecutionStatus, JobType
+from apps.job_mgmt.constants import ConcurrencyPolicy, DangerousLevel, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, ScheduledTask, Script
 
 pytestmark = [pytest.mark.integration, pytest.mark.django_db]
@@ -97,7 +97,14 @@ class TestExecuteScheduledTask:
 
     def test_concurrency_skip_when_running_exists(self):
         st = _task(concurrency_policy=ConcurrencyPolicy.SKIP)
-        JobExecution.objects.create(name="r", job_type=JobType.SCRIPT, status=ExecutionStatus.RUNNING, scheduled_task=st, team=[1])
+        JobExecution.objects.create(
+            name="r",
+            job_type=JobType.SCRIPT,
+            trigger_source=TriggerSource.SCHEDULED,
+            status=ExecutionStatus.RUNNING,
+            scheduled_task=st,
+            team=[1],
+        )
         tasks.execute_scheduled_task(st.id)
         # 仍只有那条 running，未新建
         assert JobExecution.objects.filter(scheduled_task=st).count() == 1
@@ -119,7 +126,14 @@ class TestExecuteScheduledTask:
 
     def test_concurrency_queue_retries(self):
         st = _task(concurrency_policy=ConcurrencyPolicy.QUEUE)
-        JobExecution.objects.create(name="r", job_type=JobType.SCRIPT, status=ExecutionStatus.PENDING, scheduled_task=st, team=[1])
+        JobExecution.objects.create(
+            name="r",
+            job_type=JobType.SCRIPT,
+            trigger_source=TriggerSource.SCHEDULED,
+            status=ExecutionStatus.PENDING,
+            scheduled_task=st,
+            team=[1],
+        )
         with patch.object(tasks.execute_scheduled_task, "apply_async") as retry:
             tasks.execute_scheduled_task(st.id)
         retry.assert_called_once()
