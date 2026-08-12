@@ -10,7 +10,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
-from django.db.models.functions import TruncDate, TruncHour, TruncMinute, TruncMonth, TruncWeek
+from django.db.models.functions import TruncDate, TruncHour, TruncMinute, TruncMonth
 from django.utils import timezone
 
 import nats_client
@@ -60,8 +60,7 @@ _CHANGE_TREND_MAX_SPAN_SECONDS = {
     "minute": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MINUTE", str(7 * 24 * 3600))),
     "hour": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_HOUR", str(90 * 24 * 3600))),
     "day": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_DAY", str(730 * 24 * 3600))),
-    "week": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_WEEK", str(730 * 24 * 3600))),
-    "month": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MONTH", str(730 * 24 * 3600))),
+    "month": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MONTH", str(10 * 365 * 24 * 3600))),
 }
 
 
@@ -1169,7 +1168,6 @@ def _get_trunc_func_and_format(group_by):
         "minute": (TruncMinute, "%Y-%m-%d %H:%M"),
         "hour": (TruncHour, "%Y-%m-%d %H:00"),
         "day": (TruncDate, "%Y-%m-%d"),
-        "week": (TruncWeek, "%Y-%m-%d"),
         "month": (TruncMonth, "%Y-%m"),
     }
     return mapping.get(group_by, (TruncDate, "%Y-%m-%d"))
@@ -1228,16 +1226,10 @@ def _generate_time_periods(start_dt, end_dt, group_by, target_tz):
             periods.append(_format_period_value(current, target_tz))
             current += datetime.timedelta(hours=1)
     elif group_by == "day":
-        current = start_dt.date()
-        end_date = end_dt.date()
-        while current <= end_date:
-            periods.append(_format_period_value(current, target_tz))
-            current += datetime.timedelta(days=1)
-    elif group_by == "week":
-        current = start_dt - datetime.timedelta(days=start_dt.weekday())
+        current = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
         while current < end_dt:
             periods.append(_format_period_value(current, target_tz))
-            current += datetime.timedelta(weeks=1)
+            current += datetime.timedelta(days=1)
     elif group_by == "month":
         current = start_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         while current < end_dt:
@@ -1268,7 +1260,7 @@ def get_change_trend(time=None, model_id=None, user_info=None, **kwargs):
     获取 CMDB 变更趋势数据。
 
     聚合粒度按时间窗自动推导：
-    ≤6h minute / ≤7d hour / ≤90d day / ≤2y week / 更长 month。
+    ≤6h minute / ≤7d hour / ≤2y day / 更长 month。
     """
     kwargs.pop("group_by", None)
     if not time or len(time) != 2:
