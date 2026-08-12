@@ -9,12 +9,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+from django.contrib.auth.hashers import check_password, make_password
 from django.core.cache.backends.locmem import LocMemCache
 from django.core.cache.backends.redis import RedisCache
 from django.core.management import CommandError, call_command
 
 from apps.core.utils.permission_cache import get_user_permission_version
 from apps.system_mgmt.models import App, CustomMenuGroup, Group, LoginModule, Menu, Role, SystemSettings, User
+from apps.system_mgmt.nats.login import get_user_login_token
 from apps.system_mgmt.services.role_manage import RoleManage
 
 pytestmark = pytest.mark.django_db
@@ -37,6 +39,29 @@ def test_create_user_basic():
     assert "成功创建用户" in out.getvalue()
 
 
+def test_create_user_storage_failure_is_reported_as_command_error(monkeypatch):
+    monkeypatch.setattr(User.objects, "create", MagicMock(side_effect=RuntimeError("database unavailable")))
+
+    with pytest.raises(CommandError, match="创建用户失败: RuntimeError"):
+        call_command("create_user", "failed-user", "Managed-Secret-1!", "--email", "failed@x.com")
+
+
+def test_create_user_partial_initialization_failure_rolls_back(monkeypatch):
+    monkeypatch.setattr(Role.objects, "get_or_create", MagicMock(side_effect=RuntimeError("role unavailable")))
+
+    with pytest.raises(CommandError, match="创建用户失败: RuntimeError"):
+        call_command(
+            "create_user",
+            "partial-admin",
+            "Managed-Secret-1!",
+            "--email",
+            "partial-admin@x.com",
+            "--is_superuser",
+        )
+
+    assert not User.objects.filter(username="partial-admin", domain="domain.com").exists()
+
+
 def test_create_user_superuser_assigns_admin_role():
     out = StringIO()
     call_command("create_user", "boss", "pw", "--email", "boss@x.com", "--display_name", "Boss", "--is_superuser", stdout=out)
@@ -57,6 +82,139 @@ def test_create_user_already_exists():
     # 不应创建第二个
     assert User.objects.filter(username="dup").count() == 1
     assert existing_user.password == original_password
+
+
+def test_create_user_explicit_migration_updates_existing_password():
+    existing_user = User.objects.create(username="migrate-admin", password=make_password("password"), display_name="admin", email="admin@x.com")
+
+    call_command("create_user", "migrate-admin", "Managed-Secret-1!", "--temporary_password", "--update_existing_password")
+
+    existing_user.refresh_from_db()
+    assert check_password("Managed-Secret-1!", existing_user.password)
+    assert existing_user.temporary_pwd is True
+
+
+def test_create_user_explicit_migration_is_idempotent():
+    existing_user = User.objects.create(
+        username="migrate-admin-idempotent",
+        password=make_password("password"),
+        display_name="admin",
+        email="admin-idempotent@x.com",
+    )
+    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--temporary_password", "--update_existing_password")
+    existing_user.refresh_from_db()
+    migrated_password = existing_user.password
+
+    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--temporary_password", "--update_existing_password")
+
+    existing_user.refresh_from_db()
+    assert existing_user.password == migrated_password
+
+
+def test_create_user_migration_survives_rollback_to_legacy_invocation():
+    existing_user = User.objects.create(
+        username="migrate-admin-rollback",
+        password=make_password("password"),
+        display_name="admin",
+        email="admin-rollback@x.com",
+    )
+    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--temporary_password", "--update_existing_password")
+
+    call_command("create_user", existing_user.username, "password")
+
+    existing_user.refresh_from_db()
+    assert check_password("Managed-Secret-1!", existing_user.password)
+    assert existing_user.temporary_pwd is True
+
+
+def test_create_user_migration_preserves_password_after_first_rotation():
+    existing_user = User.objects.create(
+        username="rotated-admin",
+        password=make_password("User-Rotated-1!"),
+        display_name="admin",
+        email="rotated-admin@x.com",
+    )
+
+    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--temporary_password", "--update_existing_password")
+
+    existing_user.refresh_from_db()
+    assert check_password("User-Rotated-1!", existing_user.password)
+    assert existing_user.temporary_pwd is False
+
+
+def test_create_user_preserves_cross_domain_same_name_noop():
+    non_default_user = User.objects.create(
+        username="domain-admin",
+        domain="other.example",
+        password=make_password("password"),
+        display_name="admin",
+        email="other-admin@x.com",
+    )
+
+    call_command(
+        "create_user",
+        non_default_user.username,
+        "Managed-Secret-1!",
+        "--email",
+        "default-admin@x.com",
+        "--temporary_password",
+        "--update_existing_password",
+    )
+
+    non_default_user.refresh_from_db()
+    assert check_password("password", non_default_user.password)
+    assert not User.objects.filter(username="domain-admin", domain="domain.com").exists()
+
+
+def test_create_user_migration_targets_default_domain_only():
+    default_user = User.objects.create(
+        username="shared-admin",
+        domain="domain.com",
+        password=make_password("password"),
+        display_name="admin",
+        email="default-admin@x.com",
+    )
+    non_default_user = User.objects.create(
+        username="shared-admin",
+        domain="other.example",
+        password=make_password("password"),
+        display_name="admin",
+        email="other-admin@x.com",
+    )
+
+    call_command(
+        "create_user",
+        "shared-admin",
+        "Managed-Secret-1!",
+        "--temporary_password",
+        "--update_existing_password",
+    )
+
+    default_user.refresh_from_db()
+    non_default_user.refresh_from_db()
+    assert check_password("Managed-Secret-1!", default_user.password)
+    assert default_user.temporary_pwd is True
+    assert check_password("password", non_default_user.password)
+    assert non_default_user.temporary_pwd is False
+
+
+def test_temporary_admin_password_still_issues_normal_jwt(monkeypatch):
+    """记录当前服务端契约：temporary_pwd 只是响应提示，不阻止普通 JWT 签发。"""
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key")
+    user = User.objects.create(
+        username="temporary-admin",
+        domain="domain.com",
+        password=make_password("Managed-Secret-1!"),
+        display_name="admin",
+        email="temporary-admin@x.com",
+        temporary_pwd=True,
+    )
+
+    result = get_user_login_token(user, user.username)
+
+    assert result["result"] is True
+    assert result["data"]["temporary_pwd"] is True
+    assert result["data"]["token"]
 
 
 # ---------------------------------------------------------------------------

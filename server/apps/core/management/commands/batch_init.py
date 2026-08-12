@@ -5,7 +5,7 @@
 
 import logging
 import os
-import secrets
+from pathlib import Path
 
 from django.apps import apps as django_apps
 from django.core.management import call_command
@@ -109,19 +109,66 @@ class Command(BaseCommand):
     def _init_system_mgmt(self):
         """系统管理资源初始化"""
         self.stdout.write("系统管理资源初始化...")
-        admin_password = self._get_admin_password()
+        migrate_existing_password = self._should_migrate_admin_password()
+        managed_password_configured = self._has_managed_admin_password()
+        if self._admin_exists() and not migrate_existing_password:
+            # create_user 对存量用户是 no-op；不读取可选 Secret，避免坏挂载扩大启动失败面。
+            admin_password = "password"
+        else:
+            admin_password = self._get_admin_password()
         call_command("cleanup_opspilot_legacy_knowledge_menus")
         call_command("init_realm_resource")
         call_command("init_login_settings")
-        call_command("create_user", "admin", admin_password, email="admin@bklite.net", is_superuser=True)
+        call_command(
+            "create_user",
+            "admin",
+            admin_password,
+            email="admin@bklite.net",
+            is_superuser=True,
+            temporary_password=managed_password_configured,
+            update_existing_password=migrate_existing_password,
+        )
         call_command("init_custom_menu")
         call_command("init_bk_login_settings")
         call_command("clean_group_data")
 
     @staticmethod
+    def _admin_exists() -> bool:
+        user_model = django_apps.get_model("system_mgmt", "User")
+        return user_model.objects.filter(username="admin", domain="domain.com").exists()
+
+    @staticmethod
+    def _has_managed_admin_password() -> bool:
+        return bool(os.getenv("BK_INIT_ADMIN_PASSWORD", "").strip() or os.getenv("BK_INIT_ADMIN_PASSWORD_FILE", "").strip())
+
+    @staticmethod
     def _get_admin_password() -> str:
         admin_password = os.getenv("BK_INIT_ADMIN_PASSWORD", "").strip()
-        return admin_password or secrets.token_urlsafe(32)
+        if admin_password:
+            return admin_password
+
+        password_file = os.getenv("BK_INIT_ADMIN_PASSWORD_FILE", "").strip()
+        if not password_file:
+            # 保留未迁移部署的既有行为；生产部署应先挂载 Secret 文件，再显式启用迁移。
+            return "password"
+        try:
+            password = Path(password_file).read_text(encoding="utf-8").strip()
+        except OSError as error:
+            raise CommandError(f"无法读取管理员密码 Secret 文件: {type(error).__name__}") from error
+        if not password:
+            raise CommandError("管理员密码 Secret 文件不能为空")
+        return password
+
+    @staticmethod
+    def _should_migrate_admin_password() -> bool:
+        value = os.getenv("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING", "").strip().lower()
+        if value in {"", "false", "0", "no"}:
+            return False
+        if value in {"true", "1", "yes"}:
+            if not Command._has_managed_admin_password():
+                raise CommandError("迁移既有管理员密码必须配置 BK_INIT_ADMIN_PASSWORD 或 BK_INIT_ADMIN_PASSWORD_FILE")
+            return True
+        raise CommandError("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING 仅支持 true/false")
 
     def _init_cmdb(self):
         """CMDB资源初始化"""
