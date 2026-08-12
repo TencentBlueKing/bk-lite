@@ -60,6 +60,27 @@ def test_claim_task_can_take_over_stale_lease(tmp_path):
     assert task["execution_attempt"] == 2
 
 
+def test_claim_task_concurrently_allows_only_one_worker(tmp_path):
+    store = TaskStore(str(tmp_path / "task.db"))
+    store.create_if_absent("task-race", "queued", {"task_id": "task-race"}, {}, "2026-04-23T00:00:00+00:00")
+
+    def claim(owner_id):
+        return store.claim_task(
+            "task-race",
+            owner_id,
+            "2026-04-23T00:00:10+00:00",
+            "2026-04-23T00:00:01+00:00",
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        claims = list(executor.map(claim, ("worker-a", "worker-b")))
+
+    assert sum(result["claimed"] for result in claims) == 1
+    rejected = next(result for result in claims if not result["claimed"])
+    assert rejected["reason"] == "leased"
+    assert store.get_task("task-race")["execution_attempt"] == 1
+
+
 def test_callback_status_preserves_execution_result(tmp_path):
     store = TaskStore(str(tmp_path / "task.db"))
     store.create_if_absent("task-3", "queued", {"task_id": "task-3"}, {"subject": "x"}, "2026-04-23T00:00:00+00:00")

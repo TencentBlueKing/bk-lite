@@ -214,19 +214,64 @@ class TaskStore:
 
     def claim_task(self, task_id: str, owner_id: str, lease_expires_at: str, now_iso: str) -> dict[str, Any]:
         with self._connect() as conn:
+            terminal_statuses = tuple(sorted(TERMINAL_TASK_STATUSES))
+            status_placeholders = ", ".join("?" for _ in terminal_statuses)
             cursor = conn.execute(
+                f"""
+                UPDATE task_state
+                SET status = 'running',
+                    execution_status = 'running',
+                    lease_owner = ?,
+                    lease_expires_at = ?,
+                    heartbeat_at = ?,
+                    execution_attempt = COALESCE(execution_attempt, 0) + 1,
+                    updated_at = ?
+                WHERE task_id = ?
+                  AND status NOT IN ({status_placeholders})
+                  AND execution_status NOT IN ({status_placeholders})
+                  AND (
+                      execution_status != 'running'
+                      OR lease_owner IS NULL
+                      OR lease_expires_at IS NULL
+                      OR lease_expires_at <= ?
+                      OR lease_owner = ?
+                  )
+                """,
+                (
+                    owner_id,
+                    lease_expires_at,
+                    now_iso,
+                    now_iso,
+                    task_id,
+                    *terminal_statuses,
+                    *terminal_statuses,
+                    now_iso,
+                    owner_id,
+                ),
+            )
+            row = conn.execute(
                 """
                 SELECT status, execution_status, callback_status, lease_owner, lease_expires_at, execution_attempt
                 FROM task_state
                 WHERE task_id = ?
                 """,
                 (task_id,),
-            )
-            row = cursor.fetchone()
+            ).fetchone()
             if not row:
                 return {"claimed": False, "reason": "missing"}
 
             status, execution_status, callback_status, lease_owner, lease_expires_at_db, execution_attempt = row
+            if cursor.rowcount > 0:
+                return {
+                    "claimed": True,
+                    "status": status,
+                    "execution_status": execution_status,
+                    "callback_status": callback_status,
+                    "execution_attempt": int(execution_attempt or 0),
+                    "lease_owner": lease_owner,
+                    "lease_expires_at": lease_expires_at_db,
+                    "claimed_at": now_iso,
+                }
             if status in TERMINAL_TASK_STATUSES or execution_status in TERMINAL_TASK_STATUSES:
                 return {
                     "claimed": False,
@@ -245,41 +290,7 @@ class TaskStore:
                     "lease_owner": lease_owner,
                     "lease_expires_at": lease_expires_at_db,
                 }
-
-            next_attempt = int(execution_attempt or 0) + 1
-            conn.execute(
-                """
-                UPDATE task_state
-                SET status = ?,
-                    execution_status = ?,
-                    lease_owner = ?,
-                    lease_expires_at = ?,
-                    heartbeat_at = ?,
-                    execution_attempt = ?,
-                    updated_at = ?
-                WHERE task_id = ?
-                """,
-                (
-                    "running",
-                    "running",
-                    owner_id,
-                    lease_expires_at,
-                    now_iso,
-                    next_attempt,
-                    now_iso,
-                    task_id,
-                ),
-            )
-            return {
-                "claimed": True,
-                "status": "running",
-                "execution_status": "running",
-                "callback_status": callback_status,
-                "execution_attempt": next_attempt,
-                "lease_owner": owner_id,
-                "lease_expires_at": lease_expires_at,
-                "claimed_at": now_iso,
-            }
+            return {"claimed": False, "reason": "state_changed"}
 
     def renew_lease(self, task_id: str, owner_id: str, lease_expires_at: str, now_iso: str) -> bool:
         with self._connect() as conn:
