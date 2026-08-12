@@ -41,9 +41,6 @@ jobs:
           npm ci --prefix packages/webchat-ui
           npm ci --prefix packages/webchat-demo
 
-      - name: Run tests and lint
-        run: npm test && npm run lint
-
       - name: Build browser bundle
         run: npm run build:core && npm run build:ui && npm run build:browser
 
@@ -57,6 +54,9 @@ jobs:
           packages/webchat-ui/dist/browser/style.css
           ../web/public/webchat/webchat.js
           ../web/public/webchat/style.css
+
+      - name: Run tests and lint
+        run: npm test && npm run lint
 
       - name: Build demo
         run: npm run build:demo
