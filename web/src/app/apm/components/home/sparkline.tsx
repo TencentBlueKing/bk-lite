@@ -6,13 +6,18 @@ type SparklineKind = 'line' | 'area';
 
 interface SparklineProps {
   data: number[];
-  /** Logical viewBox width; SVG stretches to container width. */
+  /** Logical viewBox width; SVG stretches to container width unless `fit="fixed"`. */
   width?: number;
   height?: number;
   color?: string;
   kind?: SparklineKind;
   fillOpacity?: number;
   className?: string;
+  /**
+   * `fill`（默认）：横向铺满容器，高度用 `height`。
+   * `fixed`：按 `width`/`height` 像素旁挂，不拉伸占满。
+   */
+  fit?: 'fill' | 'fixed';
 }
 
 /**
@@ -27,6 +32,7 @@ export default function Sparkline({
   kind = 'line',
   fillOpacity = 0.18,
   className = '',
+  fit = 'fill',
 }: SparklineProps) {
   const reactId = useId().replace(/:/g, '');
   if (data.length === 0) return null;
@@ -50,11 +56,17 @@ export default function Sparkline({
     .join(' ');
   const areaPath = `${linePath} L ${points[points.length - 1][0]} ${height - pad} L ${points[0][0]} ${height - pad} Z`;
   const gradId = `spark-area-${reactId}`;
+  const fixed = fit === 'fixed';
 
   return (
-    <div className={`w-full min-w-0 ${className}`} style={{ color }} aria-hidden="true">
+    <div
+      className={`${fixed ? 'shrink-0' : 'w-full min-w-0'} ${className}`}
+      style={{ color, width: fixed ? width : undefined }}
+      aria-hidden="true"
+    >
       <svg
-        className="block h-[28px] w-full"
+        className="block w-full"
+        style={{ height }}
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="none"
       >

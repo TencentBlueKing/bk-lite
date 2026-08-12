@@ -9,6 +9,7 @@ import {
   BellOutlined,
   EditOutlined,
   InboxOutlined,
+  LoadingOutlined,
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
@@ -48,10 +49,12 @@ import {
   formatRelativeTime,
   formatThroughput,
   isErrorRateDanger,
+  aggregateApplicationRedTrends,
 } from '@/app/apm/components/metric-format';
 import MetricValue from '@/app/apm/components/metric-value';
 import MiniTrend from '@/app/apm/components/mini-trend';
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
+import ApplicationCard from '@/app/apm/components/application-card';
 import type {
   ApmApplication,
   ApmEnvironmentView,
@@ -89,6 +92,8 @@ interface ApplicationSummary {
   environmentCount: number;
   requestRate: number | null;
   errorRate: number | null;
+  requestRateTrend: number[];
+  errorRateTrend: number[];
   metricUnavailable: boolean;
   alertCount: number;
   lastSeenAt: string | null;
@@ -458,6 +463,7 @@ export default function ApmServicesPage() {
       const errorRate = requestRate && weightedErrors.length
         ? weightedErrors.reduce((total, metric) => total + (metric.request_rate ?? 0) * (metric.error_rate ?? 0), 0) / requestRate
         : null;
+      const { requestRateTrend, errorRateTrend } = aggregateApplicationRedTrends(summary.metrics);
       const statusValue: CatalogStatus = summary.statuses.length === 0
         ? 'silent'
         : summary.statuses.every((value) => value === 'archived')
@@ -475,6 +481,8 @@ export default function ApmServicesPage() {
         environmentCount: summary.environments.size,
         requestRate,
         errorRate,
+        requestRateTrend,
+        errorRateTrend,
         metricUnavailable: summary.metricUnavailable,
         alertCount: summary.alertCount,
         lastSeenAt: summary.lastSeenAt,
@@ -825,6 +833,16 @@ export default function ApmServicesPage() {
                 value={timeWindow}
                 onChange={setTimeWindow}
               />
+              {metricsLoading ? (
+                <span
+                  role="status"
+                  aria-live="polite"
+                  className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-3)]"
+                >
+                  <LoadingOutlined spin className="text-[12px] text-[var(--color-primary)]" aria-hidden="true" />
+                  更新 {timeWindow} 指标
+                </span>
+              ) : null}
               <Button
                 icon={<InboxOutlined aria-hidden="true" />}
                 onClick={() => setArchivedOpen(true)}
@@ -842,120 +860,31 @@ export default function ApmServicesPage() {
             applicationSummaries.length ? (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {applicationSummaries.map((application) => {
-                  const health = deriveHealth(application.status, application.errorRate);
-                  const errDanger = isErrorRateDanger(application.errorRate);
                   const alertServiceHint = application.services[0]?.name;
                   const eventsHref = alertServiceHint
                     ? `/apm/events/alerts?service=${encodeURIComponent(alertServiceHint)}`
                     : '/apm/events/alerts';
                   return (
-                    <button
-                      aria-label={`查看应用 ${application.label} 下的服务`}
-                      className="group min-w-0 cursor-pointer rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+                    <ApplicationCard
                       key={application.key || 'uncategorized'}
-                      type="button"
-                      onClick={() => {
+                      label={application.label}
+                      isBuiltin={application.isBuiltin}
+                      status={application.status}
+                      services={application.services}
+                      requestRate={application.requestRate}
+                      errorRate={application.errorRate}
+                      requestRateTrend={application.requestRateTrend}
+                      errorRateTrend={application.errorRateTrend}
+                      metricUnavailable={application.metricUnavailable}
+                      alertCount={application.alertCount}
+                      timeWindow={timeWindow}
+                      eventsHref={eventsHref}
+                      onOpen={() => {
                         setNamespace(application.key);
                         setPerspective('service');
                       }}
-                    >
-                      <div
-                        className={`flex h-full flex-col border border-[var(--color-border)] bg-[var(--color-bg)] p-4 transition-colors duration-150 group-hover:border-[var(--color-primary)] ${
-                          application.isBuiltin ? 'border-t-[3px] border-t-dashed border-t-[var(--theme-color-status-warning)]' : ''
-                        }`}
-                      >
-                        <div className="mb-3.5 flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <HealthDot level={health} showLabel />
-                              <Typography.Text strong ellipsis={{ tooltip: application.label }} className="!text-[15px]">
-                                {application.label}
-                              </Typography.Text>
-                              {application.isBuiltin ? (
-                                <Tooltip title="这些服务未设置 service.namespace，平台归入内置未归类应用。">
-                                  <Tag color="warning" className="!m-0 !text-[11px]">未归类</Tag>
-                                </Tooltip>
-                              ) : null}
-                            </div>
-                            <Typography.Text type="secondary" className="mt-1 ml-4 block !text-xs tabular-nums">
-                              {application.services.length} 个服务
-                            </Typography.Text>
-                          </div>
-                          <Link
-                            href={eventsHref}
-                            aria-label={`应用内 ${application.alertCount} 个活跃告警，查看告警`}
-                            title={`应用内 ${application.alertCount} 个活跃告警`}
-                            className={`inline-flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs no-underline transition-colors duration-150 ${
-                              application.alertCount > 0
-                                ? 'border border-[var(--color-fail)] bg-[color-mix(in_srgb,var(--color-fail)_8%,var(--color-bg))] font-semibold text-[var(--color-fail)]'
-                                : 'border border-[var(--color-border)] bg-[var(--color-fill-1)] text-[var(--color-text-3)] hover:border-[var(--color-primary)]'
-                            }`}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <BellOutlined className="text-[11px]" aria-hidden="true" />
-                            <span className="tabular-nums">{application.alertCount}</span>
-                          </Link>
-                        </div>
-                        <div className="mb-3.5 grid grid-cols-2 gap-4">
-                          <div>
-                            <Typography.Text type="secondary" className="block !text-[11px]">吞吐量</Typography.Text>
-                            <div className="mt-0.5 flex items-baseline gap-0.5">
-                              <MetricValue
-                                size="lg"
-                                text={formatThroughput(application.requestRate, application.metricUnavailable)}
-                                unavailable={application.metricUnavailable}
-                                onRetry={application.metricUnavailable ? retryMetrics : undefined}
-                              />
-                              {application.requestRate !== null ? (
-                                <span className="text-xs text-[var(--color-text-3)]">/s</span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div>
-                            <Typography.Text type="secondary" className="block !text-[11px]">错误率</Typography.Text>
-                            <div className="mt-0.5">
-                              <MetricValue
-                                size="lg"
-                                text={formatErrorRate(application.errorRate, application.metricUnavailable)}
-                                unavailable={application.metricUnavailable}
-                                danger={errDanger}
-                                onRetry={application.metricUnavailable ? retryMetrics : undefined}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-auto border-t border-dashed border-[var(--color-border)] pt-3">
-                          <Tooltip
-                            title={application.services.map((service) => (
-                              service.silent ? `${service.name}(静默)` : service.name
-                            )).join('、') || '尚无服务'}
-                          >
-                            <div className="flex flex-nowrap gap-1.5 overflow-hidden">
-                              {application.services.slice(0, 4).map((service) => (
-                                <span
-                                  key={service.name}
-                                  className={`inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-xs whitespace-nowrap ${
-                                    service.silent
-                                      ? 'border-[var(--color-border)] bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
-                                      : 'border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-1)]'
-                                  }`}
-                                >
-                                  {service.name}
-                                </span>
-                              ))}
-                              {application.services.length > 4 ? (
-                                <span className="inline-flex shrink-0 items-center rounded bg-[var(--color-primary-bg-active)] px-2 py-0.5 text-xs font-medium text-[var(--color-primary)]">
-                                  +{application.services.length - 4}
-                                </span>
-                              ) : null}
-                              {!application.services.length ? (
-                                <Typography.Text type="secondary" className="!text-xs">尚无服务上报</Typography.Text>
-                              ) : null}
-                            </div>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    </button>
+                      onRetryMetrics={retryMetrics}
+                    />
                   );
                 })}
               </div>
@@ -980,7 +909,6 @@ export default function ApmServicesPage() {
               </div>
               <Typography.Text type="secondary" className="!text-xs tabular-nums">
                 {filteredRows.length} 个环境视图 · {filteredServiceCount} 个逻辑服务
-                {metricsLoading ? ' · 更新指标中…' : ''}
               </Typography.Text>
             </div>
             {state === 'ready' ? (
@@ -1001,9 +929,6 @@ export default function ApmServicesPage() {
             )}
           </ApmSurface>
         )}
-        {metricsLoading && perspective === 'application' ? (
-          <Typography.Text type="secondary" className="self-end !text-xs">正在更新 {timeWindow} RED 指标…</Typography.Text>
-        ) : null}
       </div>
       <Drawer
         title={(
