@@ -3,6 +3,7 @@
 # @Time: 2025/7/18 10:59
 # @Author: windyzhao
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
@@ -22,6 +23,22 @@ class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         except DjangoValidationError as error:
             raise serializers.ValidationError(error.messages) from error
         return parent
+
+    def update(self, instance, validated_data):
+        if "parent" not in validated_data:
+            return super().update(instance, validated_data)
+
+        parent_id = getattr(validated_data["parent"], "pk", None)
+        with transaction.atomic():
+            list(Directory.objects.select_for_update().order_by("pk").values_list("pk", flat=True))
+            locked_instance = Directory.objects.get(pk=instance.pk)
+            validated_data["parent"] = Directory.objects.get(pk=parent_id) if parent_id is not None else None
+            candidate = Directory(pk=locked_instance.pk, parent=validated_data["parent"])
+            try:
+                candidate.clean()
+            except DjangoValidationError as error:
+                raise serializers.ValidationError(error.messages) from error
+            return super().update(locked_instance, validated_data)
 
     class Meta:
         model = Directory
