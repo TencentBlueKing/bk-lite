@@ -41,8 +41,12 @@ class TestAppClientDispatch:
 
     def test_函数不存在抛_valueerror(self):
         client = AppClient("math")
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(ValueError) as exc_info:
             client.run("no_such_function")
+
+        assert str(exc_info.value) == "rpc.method_not_found"
+        assert exc_info.value.code == "rpc.method_not_found"
+        assert exc_info.value.params == {}
 
 
 class TestRpcClientRequestTimeout:
