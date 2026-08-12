@@ -16,7 +16,6 @@ import {
   Select,
   Space,
   Switch,
-  Table,
   Tag,
   Typography,
   type TableColumnsType,
@@ -37,6 +36,8 @@ import type {
   ApmNotificationRecipient,
   ApmPolicyNotificationTarget,
 } from '@/app/apm/types';
+import CustomTable from '@/components/custom-table';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 type PageState = CatalogStateKind | 'ready';
 type ChannelState = 'loading' | 'ready' | 'empty' | 'error';
@@ -93,6 +94,7 @@ export default function ApmPoliciesPage() {
   const [notificationChannels, setNotificationChannels] = useState<ApmNotificationChannel[]>([]);
   const [notificationRecipients, setNotificationRecipients] = useState<ApmNotificationRecipient[]>([]);
   const [channelState, setChannelState] = useState<ChannelState>('loading');
+  const [channelRetrying, setChannelRetrying] = useState(false);
   const [recipientState, setRecipientState] = useState<ChannelState>('loading');
   const [state, setState] = useState<PageState>('loading');
   const [editing, setEditing] = useState<ApmPolicy | null>(null);
@@ -100,6 +102,9 @@ export default function ApmPoliciesPage() {
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
+  const [mutatingId, setMutatingId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const load = useCallback(() => {
     if (authLoading) return;
@@ -134,6 +139,20 @@ export default function ApmPoliciesPage() {
   }, [authLoading, getNotificationChannels, getNotificationRecipients, getPolicies, getServices]);
 
   useEffect(() => load(), [load]);
+
+  const retryChannels = async () => {
+    if (channelRetrying) return;
+    setChannelRetrying(true);
+    try {
+      const items = await getNotificationChannels();
+      setNotificationChannels(items);
+      setChannelState(items.length ? 'ready' : 'empty');
+    } catch {
+      setChannelState('error');
+    } finally {
+      setChannelRetrying(false);
+    }
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -188,18 +207,22 @@ export default function ApmPoliciesPage() {
       || policy.service_namespace.toLocaleLowerCase().includes(normalized)
     ));
   }, [keyword, policies]);
+  const pagePolicies = useMemo(
+    () => filteredPolicies.slice((page - 1) * pageSize, page * pageSize),
+    [filteredPolicies, page, pageSize],
+  );
 
   const columns: TableColumnsType<ApmPolicy> = [
     {
       title: '策略名称',
       dataIndex: 'name',
-      render: (value) => <Typography.Text strong>{value}</Typography.Text>,
+      render: (value) => <EllipsisWithTooltip className="truncate font-medium" text={value} />,
     },
     {
       title: '监控对象',
       render: (_, policy) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text>{policy.service_namespace || '未归类应用'} / {policy.service_name}</Typography.Text>
+        <Space direction="vertical" size={0} className="min-w-0">
+          <EllipsisWithTooltip className="truncate" text={`${policy.service_namespace || '未归类应用'} / ${policy.service_name}`} />
           <Typography.Text type="secondary" className="text-xs">{policy.environment || '未设置环境'}</Typography.Text>
         </Space>
       ),
@@ -233,12 +256,19 @@ export default function ApmPoliciesPage() {
         <Switch
           checked={policy.is_enabled}
           aria-label={`${policy.name}启用状态`}
+          loading={mutatingId === policy.id}
+          disabled={mutatingId !== null && mutatingId !== policy.id}
           onChange={async (checked) => {
-            await setPolicyEnabled(policy.id, checked);
-            setPolicies((items) => items.map((item) => (
-              item.id === policy.id ? { ...item, is_enabled: checked } : item
-            )));
-            message.success(checked ? '策略已启用' : '策略已停用');
+            setMutatingId(policy.id);
+            try {
+              await setPolicyEnabled(policy.id, checked);
+              setPolicies((items) => items.map((item) => (
+                item.id === policy.id ? { ...item, is_enabled: checked } : item
+              )));
+              message.success(checked ? '策略已启用' : '策略已停用');
+            } finally {
+              setMutatingId(null);
+            }
           }}
         />
       ),
@@ -247,6 +277,7 @@ export default function ApmPoliciesPage() {
       title: '操作',
       width: 210,
       align: 'right',
+      fixed: 'right',
       render: (_, policy) => (
         <Space wrap>
           <Button type="link" onClick={() => openEdit(policy)}>编辑</Button>
@@ -274,11 +305,16 @@ export default function ApmPoliciesPage() {
             description="删除后不再评估该策略，确认继续？"
             okText="删除"
             cancelText="取消"
-            okButtonProps={{ danger: true }}
+            okButtonProps={{ danger: true, loading: mutatingId === policy.id }}
             onConfirm={async () => {
-              await deletePolicy(policy.id);
-              message.success('策略已删除');
-              load();
+              setMutatingId(policy.id);
+              try {
+                await deletePolicy(policy.id);
+                message.success('策略已删除');
+                load();
+              } finally {
+                setMutatingId(null);
+              }
             }}
           >
             <Button type="link" danger>删除</Button>
@@ -315,38 +351,49 @@ export default function ApmPoliciesPage() {
                 'aria-label': '搜索策略',
                 placeholder: '搜索策略名称或监控对象',
                 value: keyword,
-                onChange: (event) => setKeyword(event.target.value),
+                onChange: (event) => { setKeyword(event.target.value); setPage(1); },
               }}
               actions={(
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined aria-hidden="true" />}
-                  onClick={openCreate}
-                  disabled={!services.length}
-                >
-                  新建策略
-                </Button>
+                <Space>
+                  <Button icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load}>刷新</Button>
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined aria-hidden="true" />}
+                    onClick={openCreate}
+                    disabled={!services.length}
+                  >
+                    新建策略
+                  </Button>
+                </Space>
               )}
             />
           </div>
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">
           {state === 'ready' ? (
-            <Table
+            <CustomTable
+              autoScrollX={false}
               rowKey="id"
               columns={columns}
-              dataSource={filteredPolicies}
+              dataSource={pagePolicies}
               pagination={{
-                defaultPageSize: 20,
+                current: page,
+                pageSize,
+                total: filteredPolicies.length,
                 pageSizeOptions: [10, 20, 50, 100],
                 showSizeChanger: true,
-                showTotal: (total) => `共 ${total} 条`,
+                onChange: (nextPage, nextPageSize) => {
+                  setPage(nextPageSize === pageSize ? nextPage : 1);
+                  setPageSize(nextPageSize);
+                },
               }}
             />
           ) : (
             <CatalogState
               kind={state}
               description={state === 'empty' ? (services.length ? '当前组织暂无 APM 策略。' : '请先接入并发现服务，再创建策略。') : undefined}
+              action={state === 'empty' && services.length ? <Button type="primary" onClick={openCreate}>新建策略</Button> : undefined}
+              onRetry={state === 'forbidden' ? undefined : load}
             />
           )}
         </ApmSurface>
@@ -363,7 +410,7 @@ export default function ApmPoliciesPage() {
           form.resetFields();
         }}
         destroyOnHidden
-        width={760}
+        width="min(760px, calc(100vw - 32px))"
         styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }}
       >
         <Form form={form} layout="vertical" requiredMark>
@@ -412,7 +459,7 @@ export default function ApmPoliciesPage() {
                 description={(
                   <Space wrap>
                     <span>可以稍后重试，或前往系统管理检查渠道配置。</span>
-                    <Button type="link" size="small" icon={<ReloadOutlined />} onClick={load}>重试</Button>
+                    <Button type="link" size="small" icon={<ReloadOutlined aria-hidden="true" />} loading={channelRetrying} onClick={retryChannels}>重试</Button>
                     <Link href="/system-manager/channel">系统管理</Link>
                   </Space>
                 )}
@@ -455,7 +502,7 @@ export default function ApmPoliciesPage() {
                             {channelMissing ? <Tag bordered={false} color="error">已失效，保存前请移除</Tag> : null}
                           </div>
                         </div>
-                        <Button type="text" danger icon={<DeleteOutlined />} aria-label="移除通知渠道" onClick={() => remove(field.name)} />
+                        <Button type="text" danger icon={<DeleteOutlined aria-hidden="true" />} aria-label="移除通知渠道" onClick={() => remove(field.name)} />
                       </div>
                       <Form.Item name={[field.name, 'channel_id']} hidden><InputNumber /></Form.Item>
                       <Form.Item

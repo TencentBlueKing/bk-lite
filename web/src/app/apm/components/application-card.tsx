@@ -64,27 +64,28 @@ export default function ApplicationCard({
   const showErrorSpark = errorRateTrend.length > 1;
 
   return (
-    <button
-      aria-label={`查看应用 ${label} 下的服务`}
-      className="group min-w-0 cursor-pointer rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
-      type="button"
-      onClick={onOpen}
+    <article
+      className={`group relative min-w-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-left transition-colors duration-150 hover:border-[var(--color-primary)] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--color-primary)] ${
+        isBuiltin ? 'border-t-[3px] border-t-dashed border-t-[var(--theme-color-status-warning)]' : ''
+      }`}
     >
-      <div
-        className={`flex h-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg)] transition-colors duration-150 group-hover:border-[var(--color-primary)] ${
-          isBuiltin ? 'border-t-[3px] border-t-dashed border-t-[var(--theme-color-status-warning)]' : ''
-        }`}
-      >
+      <button
+        aria-label={`查看应用 ${label} 下的服务`}
+        className="absolute inset-0 z-10 cursor-pointer rounded-lg"
+        type="button"
+        onClick={onOpen}
+      />
+      <div className="pointer-events-none flex h-full overflow-hidden">
         <div className={`w-1 shrink-0 ${RAIL_CLASS[health]}`} aria-hidden="true" />
         <div className="flex min-w-0 flex-1 flex-col gap-2.5 p-3.5">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
-                <Typography.Text strong ellipsis={{ tooltip: label }} className="!text-[13px]">
+                <Typography.Text strong ellipsis={{ tooltip: label }} className="!text-sm">
                   {label}
                 </Typography.Text>
                 <span
-                  className={`inline-flex shrink-0 items-center rounded border px-1.5 py-px text-[11px] font-semibold leading-none ${
+                  className={`inline-flex shrink-0 items-center rounded border px-1.5 py-px text-xs font-semibold leading-none ${
                     health <= 2
                       ? 'border-[color-mix(in_srgb,var(--color-fail)_28%,var(--color-border))] text-[var(--color-fail)]'
                       : 'border-[var(--color-border)] text-[var(--color-text-3)]'
@@ -96,7 +97,7 @@ export default function ApplicationCard({
                 </span>
                 {isBuiltin ? (
                   <Tooltip title="这些服务未设置 service.namespace，平台归入内置未归类应用。">
-                    <Tag color="warning" className="!m-0 !text-[11px]">未归类</Tag>
+                    <Tag color="warning" className="!m-0 !text-xs">未归类</Tag>
                   </Tooltip>
                 ) : null}
               </div>
@@ -105,27 +106,26 @@ export default function ApplicationCard({
               </Typography.Text>
             </div>
 
-            <div className="flex shrink-0 items-center gap-1.5">
+            <div className="relative z-20 flex shrink-0 items-center gap-1.5 pointer-events-auto">
               <span
                 aria-label={`${services.length} 个服务`}
                 title={`${services.length} 个服务`}
-                className="inline-flex items-center gap-1 rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-[var(--color-text-2)]"
+                className="inline-flex items-center gap-1 rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[var(--color-text-2)]"
               >
-                <AppstoreOutlined className="text-[11px]" aria-hidden="true" />
+                <AppstoreOutlined className="text-xs" aria-hidden="true" />
                 {services.length}
               </span>
               <Link
                 href={eventsHref}
                 aria-label={`应用内 ${alertCount} 个活跃告警，查看告警`}
                 title={`应用内 ${alertCount} 个活跃告警`}
-                className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold tabular-nums no-underline transition-colors duration-150 ${
+                className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-semibold tabular-nums no-underline transition-colors duration-150 ${
                   alertCount > 0
                     ? 'border-[var(--color-fail)] text-[var(--color-fail)]'
                     : 'border-[var(--color-border)] text-[var(--color-text-3)] hover:border-[var(--color-primary)]'
                 }`}
-                onClick={(event) => event.stopPropagation()}
               >
-                <BellOutlined className="text-[11px]" aria-hidden="true" />
+                <BellOutlined className="text-xs" aria-hidden="true" />
                 {alertCount}
               </Link>
             </div>
@@ -135,11 +135,11 @@ export default function ApplicationCard({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="min-w-0">
-              <Typography.Text type="secondary" className="block !text-[10px] !tracking-wide">
+              <Typography.Text type="secondary" className="block !text-xs">
                 吞吐量
               </Typography.Text>
               <div className="mt-0.5 flex items-end gap-2">
-                <div className="flex min-w-0 items-baseline gap-0.5">
+                <div className={`flex min-w-0 items-baseline gap-0.5 ${metricUnavailable ? 'relative z-20 pointer-events-auto' : ''}`}>
                   <MetricValue
                     size="lg"
                     text={formatThroughput(requestRate, metricUnavailable)}
@@ -165,17 +165,19 @@ export default function ApplicationCard({
               </div>
             </div>
             <div className="min-w-0">
-              <Typography.Text type="secondary" className="block !text-[10px] !tracking-wide">
+              <Typography.Text type="secondary" className="block !text-xs">
                 错误率
               </Typography.Text>
               <div className="mt-0.5 flex items-end gap-2">
-                <MetricValue
-                  size="lg"
-                  text={formatErrorRate(errorRate, metricUnavailable)}
-                  unavailable={metricUnavailable}
-                  danger={errDanger}
-                  onRetry={metricUnavailable ? onRetryMetrics : undefined}
-                />
+                <div className={metricUnavailable ? 'relative z-20 pointer-events-auto' : ''}>
+                  <MetricValue
+                    size="lg"
+                    text={formatErrorRate(errorRate, metricUnavailable)}
+                    unavailable={metricUnavailable}
+                    danger={errDanger}
+                    onRetry={metricUnavailable ? onRetryMetrics : undefined}
+                  />
+                </div>
                 {showErrorSpark ? (
                   <div title="错误率趋势" className="mb-0.5">
                     <Sparkline
@@ -192,11 +194,11 @@ export default function ApplicationCard({
             </div>
           </div>
 
-          <div className="mt-auto border-t border-dashed border-[var(--color-border)] pt-3">
+          <div className="relative z-20 mt-auto border-t border-dashed border-[var(--color-border)] pt-3 pointer-events-auto">
             <ServiceTagOverflow services={services} />
           </div>
         </div>
       </div>
-    </button>
+    </article>
   );
 }

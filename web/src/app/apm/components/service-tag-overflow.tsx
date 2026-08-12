@@ -148,7 +148,7 @@ export default function ServiceTagOverflow({
           <div onClick={stopCardNavigation} onMouseDown={stopCardNavigation}>
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <Typography.Text strong className="!text-xs">服务列表</Typography.Text>
-              <Typography.Text type="secondary" className="!text-[11px] tabular-nums">
+              <Typography.Text type="secondary" className="!text-xs tabular-nums">
                 共 {services.length} 个
               </Typography.Text>
             </div>

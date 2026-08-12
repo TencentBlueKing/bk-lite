@@ -13,7 +13,6 @@ import {
   Radio,
   Select,
   Space,
-  Table,
   Tabs,
   Tag,
   Timeline,
@@ -26,6 +25,8 @@ import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell'
 import FilterToolbar from '@/components/filter-toolbar';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmEvent, ApmEventQuery, ApmNotificationDelivery, ApmPolicyMetric, ApmPolicySeverity } from '@/app/apm/types';
+import CustomTable from '@/components/custom-table';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 type PageState = CatalogStateKind | 'ready';
 type AlertTab = 'active' | 'history';
@@ -93,6 +94,8 @@ export default function ApmEventsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('alert');
   const [selectedAlert, setSelectedAlert] = useState<ApmEvent | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const load = useCallback(() => {
     if (authLoading) return;
@@ -153,6 +156,10 @@ export default function ApmEventsPage() {
     });
   }, [activeAlerts, activeTab, environmentFilter, historicalAlerts, keyword]);
   const visibleState: PageState = state === 'ready' && !visibleAlerts.length ? 'empty' : state;
+  const pageAlerts = useMemo(
+    () => visibleAlerts.slice((page - 1) * pageSize, page * pageSize),
+    [page, pageSize, visibleAlerts],
+  );
 
   const distribution = useMemo(() => {
     const bucketCount = timeRange === '1h' ? 12 : timeRange === '24h' ? 24 : 28;
@@ -263,11 +270,9 @@ export default function ApmEventsPage() {
       dataIndex: 'title',
       fixed: 'left',
       render: (title, event) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{title}</Typography.Text>
-          <Typography.Text type="secondary">
-            {event.resource_name || event.service} · {event.environment || '未设置环境'}
-          </Typography.Text>
+        <Space direction="vertical" size={0} className="min-w-0">
+          <EllipsisWithTooltip className="truncate font-medium" text={title} />
+          <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={`${event.resource_name || event.service} · ${event.environment || '未设置环境'}`} />
         </Space>
       ),
     },
@@ -360,7 +365,7 @@ export default function ApmEventsPage() {
               className="w-80"
               placeholder="搜索告警标题 / 服务 / 规则"
               value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
+              onChange={(event) => { setKeyword(event.target.value); setPage(1); }}
             />
             <Select
               allowClear
@@ -371,7 +376,7 @@ export default function ApmEventsPage() {
               options={Array.from(new Set(events.map((event) => event.environment).filter(Boolean)))
                 .sort()
                 .map((value) => ({ value, label: value }))}
-              onChange={(value) => setEnvironmentFilter(value ?? '')}
+              onChange={(value) => { setEnvironmentFilter(value ?? ''); setPage(1); }}
             />
             <div className="flex-1" />
             <Typography.Text type="secondary" className="text-xs">时间范围</Typography.Text>
@@ -380,13 +385,13 @@ export default function ApmEventsPage() {
               buttonStyle="solid"
               size="small"
               value={timeRange}
-              onChange={(event) => setTimeRange(event.target.value)}
+              onChange={(event) => { setTimeRange(event.target.value); setPage(1); }}
             >
               {(Object.keys(RANGE_MS) as TimeRange[]).map((value) => (
                 <Radio.Button key={value} value={value}>{value}</Radio.Button>
               ))}
             </Radio.Group>
-            <Button icon={<ReloadOutlined aria-hidden="true" />} onClick={load}>刷新</Button>
+            <Button icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load}>刷新</Button>
           </FilterToolbar>
           <div className="mb-3 rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -420,7 +425,7 @@ export default function ApmEventsPage() {
                 label: <Space size={6}>历史告警<Badge count={historicalAlerts.length} showZero /></Space>,
               },
             ]}
-            onChange={(key) => setActiveTab(key as AlertTab)}
+            onChange={(key) => { setActiveTab(key as AlertTab); setPage(1); }}
           />
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border-2)] pt-3">
             <Space wrap size="middle">
@@ -433,7 +438,7 @@ export default function ApmEventsPage() {
                 options={(Object.entries(SEVERITY) as [ApmEvent['severity'], typeof SEVERITY[keyof typeof SEVERITY]][])
                   .filter(([value]) => value !== 'info')
                   .map(([value, config]) => ({ value: value as ApmPolicySeverity, label: config.label }))}
-                onChange={(severity) => setQuery((current) => ({ ...current, severity }))}
+                onChange={(severity) => { setQuery((current) => ({ ...current, severity })); setPage(1); }}
               />
               <Badge
                 count={visibleAlerts.length}
@@ -448,16 +453,24 @@ export default function ApmEventsPage() {
           </div>
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">
-          {visibleState === 'ready' ? (
-            <Table
+          {visibleState === 'ready' || (state === 'loading' && events.length > 0) ? (
+            <CustomTable
+              autoScrollX={false}
               rowKey="event_id"
               columns={columns}
-              dataSource={visibleAlerts}
-              pagination={false}
-              onRow={(event) => ({
-                onClick: () => openDrawer(event),
-                className: 'cursor-pointer',
-              })}
+              dataSource={pageAlerts}
+              loading={state === 'loading'}
+              pagination={{
+                current: page,
+                pageSize,
+                total: visibleAlerts.length,
+                pageSizeOptions: [10, 20, 50, 100],
+                showSizeChanger: true,
+                onChange: (nextPage, nextPageSize) => {
+                  setPage(nextPageSize === pageSize ? nextPage : 1);
+                  setPageSize(nextPageSize);
+                },
+              }}
             />
           ) : (
             <CatalogState
@@ -467,6 +480,7 @@ export default function ApmEventsPage() {
                   ? '当前组织没有活跃 APM 告警。'
                   : '最近 7 天当前组织没有历史 APM 告警。'
                 : undefined}
+              onRetry={visibleState === 'forbidden' ? undefined : load}
             />
           )}
         </ApmSurface>
@@ -475,7 +489,7 @@ export default function ApmEventsPage() {
       <Drawer
         open={drawerOpen}
         onClose={closeDrawer}
-        width={880}
+        width="min(880px, 100vw)"
         title={selectedAlert ? (
           <Space size={8} wrap align="center">
             <Tag bordered={false} color={ALERT_STATUS[selectedAlert.status].color}>

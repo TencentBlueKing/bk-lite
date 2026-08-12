@@ -522,7 +522,7 @@ export default function ApmServicesPage() {
         <Space size={6}>
           <span>服务</span>
           {selectedApplication ? (
-            <Tag bordered={false} color="blue" className="!m-0 !text-[11px]">
+            <Tag bordered={false} color="blue" className="!m-0 !text-xs">
               {selectedApplication.is_builtin ? '未归类应用' : selectedApplication.name}
             </Tag>
           ) : null}
@@ -552,7 +552,7 @@ export default function ApmServicesPage() {
             ) : (
               <Typography.Text strong className="!text-sm">{item.serviceName}</Typography.Text>
             )}
-            {silent ? <Tag bordered={false} className="!m-0 !text-[11px] text-[var(--color-text-3)]">静默</Tag> : null}
+            {silent ? <Tag bordered={false} className="!m-0 !text-xs text-[var(--color-text-3)]">静默</Tag> : null}
           </Space>
         );
       },
@@ -572,7 +572,7 @@ export default function ApmServicesPage() {
           <Link
             href={eventsHref}
             aria-label={`${item.serviceName} 有 ${count} 个活跃告警，查看告警`}
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] no-underline transition-colors duration-150 ${
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs no-underline transition-colors duration-150 ${
               dangerous
                 ? 'border-[var(--color-fail)] bg-[color-mix(in_srgb,var(--color-fail)_10%,var(--color-bg))] font-semibold text-[var(--color-fail)]'
                 : 'border-[var(--color-border)] bg-[var(--color-fill-1)] text-[var(--color-text-3)] hover:border-[var(--color-primary)]'
@@ -680,7 +680,7 @@ export default function ApmServicesPage() {
         return (
           <Tag
             bordered={false}
-            className={`!m-0 !text-[11px] ${
+            className={`!m-0 !text-xs ${
               met
                 ? '!bg-[color-mix(in_srgb,var(--color-success)_12%,var(--color-bg))] !text-[var(--color-success)]'
                 : '!bg-[color-mix(in_srgb,var(--color-fail)_12%,var(--color-bg))] !text-[var(--color-fail)]'
@@ -889,10 +889,26 @@ export default function ApmServicesPage() {
                 })}
               </div>
             ) : (
-              <ApmSurface><Empty description="没有匹配的应用，请调整筛选条件。" /></ApmSurface>
+              <ApmSurface>
+                <Empty description="没有匹配的应用，请调整筛选条件。">
+                  <Button onClick={() => {
+                    setKeyword('');
+                    setEnvironment(undefined);
+                    setNamespace(undefined);
+                    setHealthFilter(undefined);
+                  }}>
+                    清除筛选
+                  </Button>
+                </Empty>
+              </ApmSurface>
             )
           ) : (
-            <ApmSurface padding="none"><CatalogState kind={state} /></ApmSurface>
+            <ApmSurface padding="none">
+              <CatalogState
+                kind={state}
+                onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
+              />
+            </ApmSurface>
           )
         ) : (
           <ApmSurface padding="none" className="overflow-hidden">
@@ -916,7 +932,7 @@ export default function ApmServicesPage() {
                 size="middle"
                 columns={columns}
                 dataSource={filteredRows}
-                scroll={{ x: 1100 }}
+                rowKey="key"
                 pagination={{
                   defaultPageSize: 20,
                   pageSizeOptions: [10, 20, 50, 100],
@@ -925,7 +941,10 @@ export default function ApmServicesPage() {
                 }}
               />
             ) : (
-              <CatalogState kind={state} />
+              <CatalogState
+                kind={state}
+                onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
+              />
             )}
           </ApmSurface>
         )}
@@ -933,7 +952,7 @@ export default function ApmServicesPage() {
       <Drawer
         title={(
           <div>
-            <div className="text-[15px] font-semibold">已归档服务</div>
+            <div className="text-base font-semibold">已归档服务</div>
             <Typography.Text type="secondary" className="!text-xs">
               {archivedRows.length} 个归档服务 · 归档不会删除 Trace 或指标数据
             </Typography.Text>
@@ -992,7 +1011,7 @@ export default function ApmServicesPage() {
                 title={(
                   <Space size={8}>
                     <span>{service.name}</span>
-                    <Tag bordered={false} className="!m-0 !text-[11px]">
+                    <Tag bordered={false} className="!m-0 !text-xs">
                       {service.archive_reason === 'manual' ? '手动归档' : '自动归档'}
                     </Tag>
                   </Space>
