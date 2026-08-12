@@ -9,6 +9,15 @@ use tokio::sync::oneshot;
 /// 每个活跃 SSE 流的取消发送端，keyed by stream_id
 pub struct StreamRegistry(pub Mutex<HashMap<String, oneshot::Sender<()>>>);
 
+/// 每个活跃非流式请求的取消发送端，keyed by request_id。
+#[derive(Default)]
+pub struct RequestRegistry(Mutex<HashMap<String, RequestCancellation>>);
+
+struct RequestCancellation {
+    owner_id: uuid::Uuid,
+    sender: oneshot::Sender<()>,
+}
+
 #[derive(Default)]
 struct Utf8ChunkDecoder {
     pending: Vec<u8>,
@@ -173,6 +182,8 @@ pub struct ApiRequest {
     pub method: String,
     pub headers: Option<HashMap<String, String>>,
     pub body: Option<String>,
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -196,8 +207,7 @@ pub struct ApiError {
     pub status: Option<u16>,
 }
 
-#[command]
-pub async fn api_proxy(request: ApiRequest) -> Result<ApiResponse, ApiError> {
+async fn execute_api_proxy(request: ApiRequest) -> Result<ApiResponse, ApiError> {
     // URL 白名单校验：防止注入脚本通过 IPC 发起任意域的 SSRF 请求
     if !is_allowed_host(&request.url) {
         log::warn!("[Tauri-API] 拒绝非白名单 URL: {}", request.url);
@@ -340,6 +350,74 @@ pub async fn api_proxy(request: ApiRequest) -> Result<ApiResponse, ApiError> {
 }
 
 #[command]
+pub async fn api_proxy(
+    registry: State<'_, RequestRegistry>,
+    request: ApiRequest,
+    on_registered: Option<Channel<bool>>,
+) -> Result<ApiResponse, ApiError> {
+    execute_registered_api_proxy(&registry, request, on_registered).await
+}
+
+async fn execute_registered_api_proxy(
+    registry: &RequestRegistry,
+    request: ApiRequest,
+    on_registered: Option<Channel<bool>>,
+) -> Result<ApiResponse, ApiError> {
+    let Some(request_id) = request.request_id.clone() else {
+        return execute_api_proxy(request).await;
+    };
+    if request_id.is_empty()
+        || request_id.len() > 128
+        || !request_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(ApiError {
+            message: "Invalid request ID".to_string(),
+            status: None,
+        });
+    }
+
+    let owner_id = uuid::Uuid::new_v4();
+    let (cancel_tx, cancel_rx) = oneshot::channel();
+    {
+        let mut active_requests = registry.0.lock().unwrap_or_else(|error| error.into_inner());
+        if active_requests.contains_key(&request_id) {
+            return Err(ApiError {
+                message: "Duplicate active request ID".to_string(),
+                status: None,
+            });
+        }
+        active_requests.insert(
+            request_id.clone(),
+            RequestCancellation {
+                owner_id,
+                sender: cancel_tx,
+            },
+        );
+    }
+    if let Some(on_registered) = on_registered {
+        if let Err(error) = on_registered.send(true) {
+            remove_registered_request_if_owned(registry, &request_id, owner_id);
+            return Err(ApiError {
+                message: format!("Failed to acknowledge request registration: {error}"),
+                status: None,
+            });
+        }
+    }
+
+    let result = tokio::select! {
+        result = execute_api_proxy(request) => result,
+        _ = cancel_rx => Err(ApiError {
+            message: "Request cancelled".to_string(),
+            status: None,
+        }),
+    };
+    remove_registered_request_if_owned(registry, &request_id, owner_id);
+    result
+}
+
+#[command]
 pub async fn simple_api_proxy(
     url: String,
     method: String,
@@ -351,9 +429,10 @@ pub async fn simple_api_proxy(
         method,
         headers,
         body,
+        request_id: None,
     };
 
-    match api_proxy(request).await {
+    match execute_api_proxy(request).await {
         Ok(response) => Ok(response.body),
         Err(error) => Err(error.message),
     }
@@ -642,6 +721,50 @@ pub async fn cancel_stream(
     Ok(())
 }
 
+/// 幂等取消一个正在进行的非流式请求。
+#[command]
+pub async fn cancel_request(
+    registry: State<'_, RequestRegistry>,
+    request_id: String,
+) -> Result<(), String> {
+    if cancel_registered_request(&registry, &request_id) {
+        log::info!(
+            "🛑 [cancel_request] Cancelled request: {}",
+            &request_id[..8.min(request_id.len())]
+        );
+    }
+    Ok(())
+}
+
+fn cancel_registered_request(registry: &RequestRegistry, request_id: &str) -> bool {
+    let cancellation = registry
+        .0
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .remove(request_id);
+    match cancellation {
+        Some(cancellation) => {
+            let _ = cancellation.sender.send(());
+            true
+        }
+        None => false,
+    }
+}
+
+fn remove_registered_request_if_owned(
+    registry: &RequestRegistry,
+    request_id: &str,
+    owner_id: uuid::Uuid,
+) {
+    let mut active_requests = registry.0.lock().unwrap_or_else(|error| error.into_inner());
+    if active_requests
+        .get(request_id)
+        .is_some_and(|cancellation| cancellation.owner_id == owner_id)
+    {
+        active_requests.remove(request_id);
+    }
+}
+
 fn cancel_registered_stream(registry: &StreamRegistry, stream_id: &str) -> bool {
     let sender = registry
         .0
@@ -660,15 +783,18 @@ fn cancel_registered_stream(registry: &StreamRegistry, stream_id: &str) -> bool 
 #[cfg(test)]
 mod tests {
     use super::{
-        build_http_client, cancel_registered_stream, is_allowed_host_with_allowlist,
-        redact_headers_for_log, StreamEvent, StreamRegistry, Utf8ChunkDecoder,
+        build_http_client, cancel_registered_request, cancel_registered_stream,
+        execute_registered_api_proxy, is_allowed_host_with_allowlist,
+        remove_registered_request_if_owned, ApiRequest, RequestCancellation, RequestRegistry,
+        StreamEvent, StreamRegistry, Utf8ChunkDecoder,
     };
     use std::{
         collections::HashMap,
         io::{Read, Write},
         net::TcpListener,
-        sync::Mutex,
+        sync::{mpsc, Mutex},
         thread,
+        time::Duration,
     };
     use tokio::sync::oneshot;
 
@@ -737,6 +863,157 @@ mod tests {
         assert!(!cancel_registered_stream(&registry, "stream-finished"));
         assert!(!cancel_registered_stream(&registry, "stream-finished"));
         assert!(registry.0.lock().expect("lock stream registry").is_empty());
+    }
+
+    #[test]
+    fn test_request_cleanup_only_removes_the_registration_owned_by_that_execution() {
+        let registry = RequestRegistry::default();
+        let owner_id = uuid::Uuid::new_v4();
+        let replacement_owner_id = uuid::Uuid::new_v4();
+        let (cancel_tx, mut cancel_rx) = oneshot::channel();
+        registry
+            .0
+            .lock()
+            .expect("lock request registry")
+            .insert(
+                "request-reused".to_string(),
+                RequestCancellation {
+                    owner_id: replacement_owner_id,
+                    sender: cancel_tx,
+                },
+            );
+
+        remove_registered_request_if_owned(&registry, "request-reused", owner_id);
+
+        assert!(cancel_registered_request(&registry, "request-reused"));
+        cancel_rx
+            .try_recv()
+            .expect("replacement registration remains cancellable");
+        assert!(!cancel_registered_request(&registry, "request-reused"));
+    }
+
+    #[tokio::test]
+    async fn test_registered_api_request_rejects_unsafe_request_ids_without_registering() {
+        let registry = RequestRegistry::default();
+        let request = ApiRequest {
+            url: "http://127.0.0.1:1/unused".to_string(),
+            method: "GET".to_string(),
+            headers: None,
+            body: None,
+            request_id: Some("你你你".to_string()),
+        };
+
+        let error = execute_registered_api_proxy(&registry, request, None)
+            .await
+            .expect_err("unsafe request ID is rejected");
+
+        assert_eq!(error.message, "Invalid request ID");
+        assert!(registry.0.lock().expect("lock request registry").is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_registered_api_request_cancellation_stops_waiting_for_the_response() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind cancellation test server");
+        let address = listener.local_addr().expect("read cancellation test address");
+        let (request_received_tx, request_received_rx) = mpsc::channel();
+        let (release_server_tx, release_server_rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept cancellation test request");
+            let mut buffer = [0_u8; 1024];
+            let _ = stream.read(&mut buffer);
+            request_received_tx
+                .send(())
+                .expect("signal request received by server");
+            release_server_rx.recv().expect("release cancellation test server");
+        });
+        let registry = RequestRegistry::default();
+        let request_id = "request-cancellable".to_string();
+        let request = ApiRequest {
+            url: format!("http://{address}/slow"),
+            method: "GET".to_string(),
+            headers: None,
+            body: None,
+            request_id: Some(request_id.clone()),
+        };
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            async {
+                let (result, ()) = tokio::join!(
+                    execute_registered_api_proxy(&registry, request, None),
+                    async {
+                tokio::task::spawn_blocking(move || {
+                    request_received_rx
+                        .recv_timeout(Duration::from_secs(5))
+                        .expect("request reaches server before cancellation")
+                })
+                .await
+                .expect("join request receipt waiter");
+                assert!(cancel_registered_request(&registry, &request_id));
+                    }
+                );
+                result
+            },
+        )
+        .await
+        .expect("cancellation completes without waiting for the server");
+
+        assert_eq!(result.expect_err("request is cancelled").message, "Request cancelled");
+        assert!(registry.0.lock().expect("lock request registry").is_empty());
+        release_server_tx.send(()).expect("release cancellation test server");
+        server.join().expect("join cancellation test server");
+    }
+
+    #[tokio::test]
+    async fn test_registered_api_request_cancellation_stops_reading_the_response_body() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind body cancellation server");
+        let address = listener.local_addr().expect("read body cancellation server address");
+        let (headers_sent_tx, headers_sent_rx) = mpsc::channel();
+        let (release_body_tx, release_body_rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept body cancellation request");
+            let mut buffer = [0_u8; 1024];
+            let _ = stream.read(&mut buffer);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\n")
+                .expect("write response headers");
+            headers_sent_tx.send(()).expect("signal response headers sent");
+            release_body_rx.recv().expect("release body cancellation server");
+        });
+        let registry = RequestRegistry::default();
+        let request_id = "request-body-cancellable".to_string();
+        let request = ApiRequest {
+            url: format!("http://{address}/slow-body"),
+            method: "GET".to_string(),
+            headers: None,
+            body: None,
+            request_id: Some(request_id.clone()),
+        };
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            async {
+                let (result, ()) = tokio::join!(
+                    execute_registered_api_proxy(&registry, request, None),
+                    async {
+                tokio::task::spawn_blocking(move || {
+                    headers_sent_rx
+                        .recv_timeout(Duration::from_secs(5))
+                        .expect("response headers arrive before body cancellation")
+                })
+                .await
+                .expect("join response header waiter");
+                assert!(cancel_registered_request(&registry, &request_id));
+                    }
+                );
+                result
+            },
+        )
+        .await
+        .expect("body cancellation completes without waiting for the server");
+
+        assert_eq!(result.expect_err("body read is cancelled").message, "Request cancelled");
+        assert!(registry.0.lock().expect("lock request registry").is_empty());
+        release_body_tx.send(()).expect("release body cancellation server");
+        server.join().expect("join body cancellation server");
     }
 
     // --- 未配置白名单（默认只放行 localhost/127.0.0.1）---
