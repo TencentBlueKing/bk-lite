@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.common.audit_log import get_response_name, log_ops_analysis_success
+from apps.operation_analysis.common.visibility_update import partial_update_groups_with_auth
 from apps.operation_analysis.filters.filters import (
     ArchitectureModelFilter,
     DashboardModelFilter,
@@ -40,6 +41,12 @@ def _raise_if_builtin(instance, action_name="修改"):
         from rest_framework.exceptions import PermissionDenied
 
         raise PermissionDenied(f"内置对象不允许{action_name}")
+
+
+def _raise_if_builtin_content_update(instance, request):
+    """内置对象仅开放组织可见性配置，内容字段仍保持只读。"""
+    if getattr(instance, "is_build_in", False) and set(request.data.keys()) != {"groups"}:
+        _raise_if_builtin(instance, "编辑")
 
 
 def _create_canvas_share_response(viewset, request, *, resource_type, resource_label):
@@ -89,9 +96,12 @@ def _create_canvas_share_response(viewset, request, *, resource_type, resource_l
 
 def _partial_update_with_auth(viewset, request, *args, **kwargs):
     """在 ops-analysis 本地保留 PATCH 语义，避免修改公共 AuthViewSet。"""
+    instance = viewset.get_object()
+    if getattr(instance, "is_build_in", False):
+        return partial_update_groups_with_auth(viewset, request, instance)
+
     user = getattr(request, "user", None)
     data = request.data
-    instance = viewset.get_object()
     org_field = viewset.ORGANIZATION_FIELD
     instance_org_value = getattr(instance, org_field, [])
     if not isinstance(instance_org_value, list):
@@ -217,7 +227,7 @@ class DirectoryModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     @HasPermission("view-EditCatalogue")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
-        _raise_if_builtin(instance, "编辑")
+        _raise_if_builtin_content_update(instance, request)
         response = _partial_update_with_auth(self, request, *args, **kwargs)
         name = get_response_name(response, request.data.get("name", instance.name))
         log_ops_analysis_success(request, response, "update", f"编辑目录: {name}")
@@ -280,7 +290,7 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     @HasPermission("view-EditChart")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
-        _raise_if_builtin(instance, "编辑")
+        _raise_if_builtin_content_update(instance, request)
         response = _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
         name = get_response_name(response, request.data.get("name", instance.name))
         log_ops_analysis_success(request, response, "update", f"编辑仪表盘: {name}")
@@ -364,7 +374,7 @@ class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     @HasPermission("view-EditChart")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
-        _raise_if_builtin(instance, "编辑")
+        _raise_if_builtin_content_update(instance, request)
         response = _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
         name = get_response_name(response, request.data.get("name", instance.name))
         log_ops_analysis_success(request, response, "update", f"编辑拓扑图: {name}")
@@ -431,7 +441,7 @@ class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     @HasPermission("view-EditChart")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
-        _raise_if_builtin(instance, "编辑")
+        _raise_if_builtin_content_update(instance, request)
         response = _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
         name = get_response_name(response, request.data.get("name", instance.name))
         log_ops_analysis_success(request, response, "update", f"编辑架构图: {name}")
@@ -496,7 +506,7 @@ class CanvasModelViewSet(BuiltinVisibleMixin, AuthViewSet):
     @HasPermission("view-EditChart")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
-        _raise_if_builtin(instance, "编辑")
+        _raise_if_builtin_content_update(instance, request)
         response = _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
         name = get_response_name(response, request.data.get("name", instance.name))
         log_ops_analysis_success(request, response, "update", f"编辑{self.canvas_label}: {name}")
