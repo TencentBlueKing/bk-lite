@@ -1028,3 +1028,48 @@ async def test_worker_failure_cancels_siblings_before_releasing_budget():
 
     assert cancelled.is_set()
     assert budget.active == 0
+
+
+class BrokenCredentialStore(InMemoryCredentialStateStore):
+    async def load_target_state(self, scope, credential_ids):
+        raise ConnectionError("Too many connections")
+
+
+@pytest.mark.asyncio
+async def test_credential_state_redis_error_fails_only_that_target():
+    plugin = RecordingPlugin()
+    publisher = RecordingPublisher()
+    metrics = CollectionMetrics()
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=plugin,
+        publisher=publisher,
+        credential_policy=CredentialPolicy(store=BrokenCredentialStore()),
+        metrics=metrics,
+        settings=TargetExecutorSettings(max_active_targets=2, target_task_window=2),
+    )
+    request = CollectionRequest(
+        task_id="credential-state-unavailable",
+        plugin_ref="mysql.config",
+        targets=("10.10.24.1", "10.10.24.2"),
+        credentials=({"credential_id": "credential-1"},),
+    )
+    lease = RunLease(
+        task_id=request.task_id,
+        request_digest=request.digest,
+        owner_id="pod-a",
+        fence=1,
+        expires_at=999999,
+    )
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.total == 2
+    assert summary.failed == 2
+    assert summary.succeeded == 0
+    assert plugin.calls == []
+    assert [result[1].error_code for result in publisher.results] == [
+        "credential_state_unavailable",
+        "credential_state_unavailable",
+    ]
+    assert metrics.snapshot()["credential_state_redis_error_total"] == 2

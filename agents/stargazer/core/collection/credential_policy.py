@@ -31,6 +31,12 @@ class CredentialFailure:
 class CredentialStateStore(Protocol):
     async def get_success(self, scope: CredentialScope) -> str: ...
 
+    async def load_target_state(
+        self,
+        scope: CredentialScope,
+        credential_ids: tuple[str, ...] | list[str],
+    ) -> tuple[str, dict[str, CredentialFailure | None]]: ...
+
     async def set_success(
         self, scope: CredentialScope, credential_id: str
     ) -> None: ...
@@ -78,12 +84,17 @@ class CredentialPolicy:
     ) -> tuple[Mapping[str, Any], ...]:
         credentials = self.matching_credentials(request, target)
         scope = self._scope(request, target)
-        success_id = await self._store.get_success(scope)
+        credential_ids = tuple(
+            str(credential.get("credential_id") or "")
+            for credential in credentials
+        )
+        success_id, failures = await self._store.load_target_state(
+            scope, credential_ids
+        )
         eligible = []
         now = self._now()
-        for credential in credentials:
-            credential_id = str(credential.get("credential_id") or "")
-            failure = await self._store.get_failure(scope, credential_id)
+        for credential, credential_id in zip(credentials, credential_ids):
+            failure = failures.get(credential_id)
             if failure and failure.next_retry_at > now:
                 logger.info(
                     "⏸️ event=credential_cooldown_skipped task_id=%s target=%s "
@@ -119,12 +130,19 @@ class CredentialPolicy:
         self, request: CollectionRequest, target: str
     ) -> float | None:
         scope = self._scope(request, target)
-        retry_times = []
-        for credential in self.matching_credentials(request, target):
-            credential_id = str(credential.get("credential_id") or "")
-            failure = await self._store.get_failure(scope, credential_id)
-            if failure and failure.next_retry_at > self._now():
-                retry_times.append(failure.next_retry_at)
+        credentials = self.matching_credentials(request, target)
+        credential_ids = tuple(
+            str(credential.get("credential_id") or "")
+            for credential in credentials
+        )
+        _success_id, failures = await self._store.load_target_state(
+            scope, credential_ids
+        )
+        retry_times = [
+            failure.next_retry_at
+            for failure in failures.values()
+            if failure and failure.next_retry_at > self._now()
+        ]
         return min(retry_times) if retry_times else None
 
     async def record_success(
@@ -211,6 +229,21 @@ class InMemoryCredentialStateStore:
     async def get_success(self, scope: CredentialScope) -> str:
         async with self._lock:
             return self._success.get(scope, "")
+
+    async def load_target_state(
+        self,
+        scope: CredentialScope,
+        credential_ids: tuple[str, ...] | list[str],
+    ) -> tuple[str, dict[str, CredentialFailure | None]]:
+        async with self._lock:
+            success_id = self._success.get(scope, "")
+            failures = {
+                str(credential_id or ""): self._failures.get(
+                    (scope, str(credential_id or ""))
+                )
+                for credential_id in credential_ids
+            }
+            return success_id, failures
 
     async def set_success(
         self, scope: CredentialScope, credential_id: str

@@ -206,6 +206,26 @@ class RedisCredentialStateStore:
         value = await self._redis.get(self._success_key(scope))
         return self._text(value)
 
+    async def load_target_state(
+        self,
+        scope: CredentialScope,
+        credential_ids: tuple[str, ...] | list[str],
+    ) -> tuple[str, dict[str, CredentialFailure | None]]:
+        """一次 MGET 拉取 success + 各凭据 failure，降低并发占连接时间。"""
+        keys = [self._success_key(scope)]
+        normalized_ids = [str(item or "") for item in credential_ids]
+        keys.extend(
+            self._failure_key(scope, credential_id)
+            for credential_id in normalized_ids
+        )
+        values = await self._redis.mget(keys)
+        success_id = self._text(values[0] if values else None)
+        failures: dict[str, CredentialFailure | None] = {}
+        for index, credential_id in enumerate(normalized_ids, start=1):
+            raw = values[index] if values and index < len(values) else None
+            failures[credential_id] = self._parse_failure(raw)
+        return success_id, failures
+
     async def set_success(
         self, scope: CredentialScope, credential_id: str
     ) -> None:
@@ -219,6 +239,9 @@ class RedisCredentialStateStore:
         self, scope: CredentialScope, credential_id: str
     ) -> CredentialFailure | None:
         value = await self._redis.get(self._failure_key(scope, credential_id))
+        return self._parse_failure(value)
+
+    def _parse_failure(self, value) -> CredentialFailure | None:
         if not value:
             return None
         payload = json.loads(self._text(value))
