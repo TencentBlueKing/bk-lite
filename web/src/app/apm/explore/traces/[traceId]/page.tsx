@@ -15,6 +15,7 @@ import {
   Button,
   Col,
   Descriptions,
+  Grid,
   Input,
   Progress,
   Row,
@@ -36,13 +37,13 @@ type PageState = CatalogStateKind | 'ready' | 'not-found';
 type ViewMode = 'waterfall' | 'list';
 
 const SERVICE_PALETTE = [
-  'var(--color-primary)',
-  'var(--color-success)',
-  'var(--theme-color-status-warning)',
-  'var(--color-fail)',
-  'color-mix(in srgb, var(--color-primary) 65%, white)',
-  'color-mix(in srgb, var(--color-success) 55%, black)',
-  'color-mix(in srgb, var(--theme-color-status-warning) 70%, black)',
+  'var(--theme-color-chart-primary)',
+  'var(--theme-color-chart-success)',
+  'var(--theme-color-chart-warning)',
+  'var(--theme-color-chart-error)',
+  'color-mix(in srgb, var(--theme-color-chart-primary) 65%, var(--theme-color-chart-success))',
+  'color-mix(in srgb, var(--theme-color-chart-success) 65%, var(--theme-color-chart-warning))',
+  'color-mix(in srgb, var(--theme-color-chart-warning) 65%, var(--theme-color-chart-error))',
   'color-mix(in srgb, var(--color-primary) 40%, var(--color-fail))',
 ] as const;
 
@@ -70,7 +71,7 @@ function KpiStat({
 }) {
   return (
     <div className="min-w-[96px]">
-      <Typography.Text type="secondary" className="!text-[11px]">{label}</Typography.Text>
+      <Typography.Text type="secondary" className="!text-xs">{label}</Typography.Text>
       <div
         className={`mt-1 text-xl font-semibold tabular-nums leading-none ${
           danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'
@@ -85,6 +86,7 @@ function KpiStat({
 export default function ApmTraceDetailPage() {
   const params = useParams<{ traceId: string }>();
   const searchParams = useSearchParams();
+  const screens = Grid.useBreakpoint();
   const preferredSpanId = searchParams.get('span_id') ?? undefined;
   const { getTrace, isLoading: authLoading } = useApmApi();
   const [trace, setTrace] = useState<ApmTraceDetail>();
@@ -92,9 +94,11 @@ export default function ApmTraceDetailPage() {
   const [state, setState] = useState<PageState>('loading');
   const [viewMode, setViewMode] = useState<ViewMode>('waterfall');
   const [spanQuery, setSpanQuery] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (authLoading || !params.traceId) return;
+    setState('loading');
     getTrace(params.traceId)
       .then((value) => {
         setTrace(value);
@@ -112,7 +116,11 @@ export default function ApmTraceDetailPage() {
         if (error instanceof HandledRequestError && error.status === 404) setState('not-found');
         else setState(catalogErrorKind(error));
       });
-  }, [authLoading, getTrace, params.traceId, preferredSpanId]);
+  }, [authLoading, getTrace, params.traceId, preferredSpanId, refreshKey]);
+
+  useEffect(() => {
+    if (screens.md === false) setViewMode('list');
+  }, [screens.md]);
 
   const services = useMemo(
     () => (trace ? Array.from(new Set(trace.spans.map((span) => span.service_name))) : []),
@@ -186,7 +194,12 @@ export default function ApmTraceDetailPage() {
       {state === 'not-found' ? (
         <ApmSurface padding="none"><CatalogState kind="empty" description="Trace 不存在、已超过保留期或当前组织无权访问。" /></ApmSurface>
       ) : state !== 'ready' ? (
-        <ApmSurface padding="none"><CatalogState kind={state} /></ApmSurface>
+        <ApmSurface padding="none">
+          <CatalogState
+            kind={state}
+            onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
+          />
+        </ApmSurface>
       ) : trace ? (
         <div className="flex w-full flex-col gap-4">
           {trace.truncated ? <Alert type="warning" showIcon message="Trace 响应已达到安全上限，当前展示部分 Span 或属性。" /> : null}
@@ -208,7 +221,7 @@ export default function ApmTraceDetailPage() {
                     <Tag
                       bordered={false}
                       color={hasError ? 'error' : 'success'}
-                      icon={hasError ? <CloseCircleOutlined /> : <CheckCircleOutlined />}
+                      icon={hasError ? <CloseCircleOutlined aria-hidden="true" /> : <CheckCircleOutlined aria-hidden="true" />}
                     >
                       {hasError ? '含错误' : '正常'}
                     </Tag>
@@ -247,7 +260,7 @@ export default function ApmTraceDetailPage() {
                   value={viewMode}
                   onChange={setViewMode}
                   options={[
-                    { value: 'waterfall', label: '瀑布' },
+                    { value: 'waterfall', label: '瀑布', disabled: screens.md === false },
                     { value: 'list', label: '跨度列表' },
                   ]}
                 />
@@ -402,7 +415,7 @@ export default function ApmTraceDetailPage() {
                         <span className="w-11 shrink-0 text-right text-xs font-medium tabular-nums">
                           {row.percent.toFixed(1)}%
                         </span>
-                        <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-[var(--color-text-3)]">
+                        <span className="w-12 shrink-0 text-right text-xs tabular-nums text-[var(--color-text-3)]">
                           {formatLatency(row.duration)}
                         </span>
                       </div>

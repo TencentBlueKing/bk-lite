@@ -1,9 +1,34 @@
 import React from 'react';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { IntlProvider } from 'react-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ApmEventsPage from '../page';
+
+const tableMessages = {
+  'common.total': '共',
+  'common.items': '条',
+  'common.checked': '已选',
+  'common.confirm': '确认',
+  'common.cancel': '取消',
+  'common.searchPlaceHolder': '搜索字段',
+  'common.selectAll': '全选',
+  'common.selected': '已选',
+  'common.clear': '清空',
+  'common.pin': '固定',
+  'common.unpin': '取消固定',
+  'cutomTable.fieldSetting': '字段设置',
+  'cutomTable.pinHint': '固定字段会显示在表格左侧',
+};
+
+function renderPage() {
+  return render(
+    <IntlProvider locale="zh" messages={tableMessages}>
+      <ApmEventsPage />
+    </IntlProvider>,
+  );
+}
 
 const api = {
   getEvents: vi.fn(),
@@ -81,7 +106,7 @@ afterEach(() => {
 describe('APM 告警详情抽屉', () => {
   it('点击详情打开告警抽屉并展示投递信息', async () => {
     const user = userEvent.setup();
-    render(<ApmEventsPage />);
+    renderPage();
 
     expect(await screen.findByText('checkout 错误率升高')).not.toBeNull();
     await user.click(screen.getByRole('button', { name: '详情' }));
@@ -93,7 +118,7 @@ describe('APM 告警详情抽屉', () => {
 
   it('可在详情抽屉中人工重投失败通知', async () => {
     const user = userEvent.setup();
-    render(<ApmEventsPage />);
+    renderPage();
     await screen.findByText('checkout 错误率升高');
     await user.click(screen.getByRole('button', { name: '详情' }));
     await screen.findByText('运维群');

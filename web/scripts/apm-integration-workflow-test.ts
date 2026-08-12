@@ -7,6 +7,7 @@ const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(webRoot, path), 'utf8');
 
 const catalog = read('src/app/apm/integration/add/page.tsx');
+const catalogState = read('src/app/apm/components/catalog-state.tsx');
 const apmApi = read('src/app/apm/api/index.ts');
 const request = read('src/utils/request.ts');
 const applications = read('src/app/apm/integration/applications/page.tsx');
@@ -35,7 +36,7 @@ assert.match(apmApi, /getIngestSnippet[\s\S]*?suppressErrorNotification: true/, 
 assert.match(request, /error\.config\?\.suppressErrorNotification/, '请求拦截器必须尊重调用方的局部错误呈现策略');
 assert.match(catalog, /云区域暂不可用/, '云区域目录失败必须显示与失败来源一致的页面内标题');
 assert.match(catalog, /重新加载/, '目录失败必须提供明确的恢复操作');
-assert.match(catalog, /role="alert"/, '页面内目录错误必须可被辅助技术感知');
+assert.match(catalogState, /role="alert"/, '页面内目录错误必须可被辅助技术感知');
 assert.match(catalog, /上报端点/, 'SDK 接入向导应先展示平台分配的上报端点');
 assert.match(catalog, /接入配置/, 'SDK 接入向导应明确分组接入配置');
 assert.match(catalog, /Docker 运行/, 'SDK 接入向导应支持 Docker 环境变量注入模式');

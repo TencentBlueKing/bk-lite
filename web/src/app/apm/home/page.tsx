@@ -15,7 +15,7 @@ import {
   ThunderboltOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { Button, Col, Row, Segmented, Space, Spin, Typography } from 'antd';
+import { Button, Col, Row, Segmented, Skeleton, Space, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import DonutChart, { HEALTH_DONUT_COLORS } from '@/app/apm/components/home/donut-chart';
 import SectionCard, {
@@ -46,6 +46,7 @@ import type {
   ApmTimeWindow,
   ApmTopologyHealth,
 } from '@/app/apm/types';
+import SummaryMetricCard from '@/components/summary-metric-card';
 
 const { Text, Title, Paragraph } = Typography;
 
@@ -96,7 +97,7 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
     {
       key: 'apps',
       label: '应用数量',
-      icon: <ApartmentOutlined />,
+      icon: <ApartmentOutlined aria-hidden="true" />,
       iconBg: 'var(--color-primary-bg-active)',
       iconColor: 'var(--color-primary)',
       value: data.application_count,
@@ -106,7 +107,7 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
     {
       key: 'services',
       label: '服务数量',
-      icon: <AppstoreOutlined />,
+      icon: <AppstoreOutlined aria-hidden="true" />,
       iconBg: 'var(--color-primary-bg-active)',
       iconColor: 'var(--color-primary)',
       value: data.service_count,
@@ -116,7 +117,7 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
     {
       key: 'alerts',
       label: '活跃告警数',
-      icon: <BellOutlined />,
+      icon: <BellOutlined aria-hidden="true" />,
       iconBg: softBg('var(--color-fail)', 10),
       iconColor: 'var(--color-fail)',
       value: data.active_alert_count,
@@ -126,7 +127,7 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
     {
       key: 'requests',
       label: '请求量',
-      icon: <ApiOutlined />,
+      icon: <ApiOutlined aria-hidden="true" />,
       iconBg: 'var(--color-primary-bg-active)',
       iconColor: 'var(--color-primary)',
       value: data.request_rate === null ? formatMetricEmpty() : formatThroughput(data.request_rate),
@@ -137,7 +138,7 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
     {
       key: 'errors',
       label: '错误请求数',
-      icon: <WarningOutlined />,
+      icon: <WarningOutlined aria-hidden="true" />,
       iconBg: softBg('var(--color-fail)', 10),
       iconColor: 'var(--color-fail)',
       value: data.error_request_rate === null ? formatMetricEmpty() : data.error_request_rate.toFixed(1),
@@ -148,7 +149,7 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
     {
       key: 'p95',
       label: 'P95 延迟',
-      icon: <FieldTimeOutlined />,
+      icon: <FieldTimeOutlined aria-hidden="true" />,
       iconBg: softBg('var(--theme-color-status-warning)', 12),
       iconColor: 'var(--theme-color-status-warning)',
       value: data.p95_ms === null ? formatMetricEmpty() : formatLatency(data.p95_ms),
@@ -158,27 +159,27 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
   ];
 }
 
-function KpiCard({ kpi }: { kpi: KpiCardConfig }) {
+function HomeSkeleton() {
   return (
-    <div className="flex h-full min-h-[132px] flex-col gap-1 rounded-[6px] border border-[var(--color-border)] bg-[var(--color-bg)] px-5 pb-3.5 pt-[18px]">
-      <div className="flex items-center gap-2">
-        <span
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-sm"
-          style={{ background: kpi.iconBg, color: kpi.iconColor }}
-        >
-          {kpi.icon}
-        </span>
-        <span className="text-xs font-medium text-[var(--color-text-3)]">{kpi.label}</span>
-      </div>
-      <div className="mt-1 flex items-baseline gap-2">
-        <span className="text-[28px] font-semibold leading-[1.1] tracking-tight tabular-nums text-[var(--color-text-1)]">
-          {kpi.value}
-        </span>
-        {kpi.unit ? <span className="text-xs text-[var(--color-text-3)]">{kpi.unit}</span> : null}
-      </div>
-      <div className="mt-auto min-w-0 pt-1">
-        <Sparkline data={kpi.trend} height={28} color={kpi.sparkColor} kind="area" />
-      </div>
+    <div aria-label="加载 APM 首页数据" aria-busy="true">
+      <Row gutter={[12, 12]} className="!mb-4">
+        {Array.from({ length: 6 }, (_, index) => (
+          <Col key={index} xs={24} sm={12} md={8} lg={4}>
+            <div className="min-h-[132px] rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+              <Skeleton active paragraph={{ rows: 2 }} title={{ width: '45%' }} />
+            </div>
+          </Col>
+        ))}
+      </Row>
+      <Row gutter={[16, 16]}>
+        {Array.from({ length: 3 }, (_, index) => (
+          <Col key={index} xs={24} lg={8}>
+            <div className="min-h-72 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+              <Skeleton active paragraph={{ rows: 6 }} title={{ width: '35%' }} />
+            </div>
+          </Col>
+        ))}
+      </Row>
     </div>
   );
 }
@@ -187,12 +188,12 @@ function HomeEmptyState() {
   return (
     <div className="mt-1 rounded-[6px] border border-[var(--color-border)] bg-[var(--color-bg)] px-8 py-20 text-center">
       <div className="mx-auto mb-5 inline-flex h-14 w-14 items-center justify-center rounded-xl bg-[var(--color-primary-bg-active)]">
-        <RocketOutlined className="text-2xl text-[var(--color-primary)]" />
+        <RocketOutlined aria-hidden="true" className="text-2xl text-[var(--color-primary)]" />
       </div>
       <Title level={4} className="!mb-2 !font-semibold">
         还没有接入任何应用
       </Title>
-      <Paragraph type="secondary" className="!mb-6 text-[13px]">
+      <Paragraph type="secondary" className="!mb-6 text-sm">
         前往集成菜单完成首次接入，数分钟内即可在首页看到 6 个 KPI 与 7 段汇总。
       </Paragraph>
       <Button type="primary" href="/apm/integration/add">
@@ -217,7 +218,7 @@ function HealthLegendRow({ bucket, total }: { bucket: ApmDashboardHealthBucket; 
   return (
     <Link
       href={HEALTH_LINK[bucket.key]}
-      className="flex items-center gap-2 text-[13px] hover:opacity-80"
+      className="flex items-center gap-2 text-sm hover:opacity-80"
     >
       <span
         className="h-2 w-2 shrink-0 rounded-sm"
@@ -248,16 +249,16 @@ function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
         >
           <Link
             href={`/apm/services/${row.service_id}`}
-            className="truncate text-[13px] font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+            className="truncate text-sm font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
             title={row.service_name}
           >
             {row.service_name}
           </Link>
-          <span className="text-right text-[13px] tabular-nums text-[var(--color-text-3)]">
+          <span className="text-right text-sm tabular-nums text-[var(--color-text-3)]">
             {row.objective.toFixed(row.objective % 1 === 0 ? 1 : 2)}%
           </span>
           <span
-            className="text-right text-[13px] font-semibold tabular-nums"
+            className="text-right text-sm font-semibold tabular-nums"
             style={{ color: row.met ? 'var(--color-success)' : 'var(--color-fail)' }}
           >
             {row.current_rate.toFixed(2)}%
@@ -342,9 +343,7 @@ export default function ApmHomePage() {
       </div>
 
       {loading && !dashboard ? (
-        <div className="flex justify-center py-24">
-          <Spin />
-        </div>
+        <HomeSkeleton />
       ) : loadFailed ? (
         <FailedSection onRetry={load} />
       ) : dashboard?.empty ? (
@@ -356,8 +355,31 @@ export default function ApmHomePage() {
           ) : (
             <Row gutter={[12, 12]} className="!mb-4">
               {kpiCards.map((kpi) => (
-                <Col key={kpi.key} xs={12} sm={8} md={8} lg={4} xl={4}>
-                  <KpiCard kpi={kpi} />
+                <Col key={kpi.key} xs={24} sm={12} md={8} lg={4} xl={4}>
+                  <SummaryMetricCard
+                    className="h-full min-h-[132px] rounded-lg px-4 pb-3 pt-4"
+                    contentClassName="flex flex-1 flex-col"
+                    footer={(
+                      <div className="mt-auto min-w-0 pt-2">
+                        <Sparkline data={kpi.trend} height={28} color={kpi.sparkColor} kind="area" />
+                      </div>
+                    )}
+                    footerClassName="mt-auto"
+                    framed
+                    headerSpacing="compact"
+                    icon={kpi.icon}
+                    iconBackground={kpi.iconBg}
+                    iconClassName="h-7 w-7 !rounded text-sm"
+                    iconColor={kpi.iconColor}
+                    label={kpi.label}
+                    labelClassName="!text-xs !font-medium"
+                    layout="vertical"
+                    maxFontSize={28}
+                    minFontSize={22}
+                    unit={kpi.unit}
+                    value={kpi.value}
+                    valueClassName="!font-semibold !tracking-tight"
+                  />
                 </Col>
               ))}
             </Row>
@@ -366,7 +388,7 @@ export default function ApmHomePage() {
           <Row gutter={[16, 16]}>
             <Col xs={24} lg={8}>
               <SectionCard
-                icon={<DashboardOutlined className="text-[var(--color-primary)]" />}
+                icon={<DashboardOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
                 title="服务健康度分布"
                 subtitle={WINDOW_LABEL[timeWindow]}
                 viewAllHref="/apm/services"
@@ -390,7 +412,7 @@ export default function ApmHomePage() {
                         <span className="text-[32px] font-semibold leading-tight tracking-tight tabular-nums text-[var(--color-text-1)]">
                           {healthData.total}
                         </span>
-                        <span className="mt-0.5 text-[11px] text-[var(--color-text-4)]">总服务数</span>
+                        <span className="mt-0.5 text-xs text-[var(--color-text-4)]">总服务数</span>
                       </div>
                     </div>
                     <div className="flex flex-col gap-2.5">
@@ -407,7 +429,7 @@ export default function ApmHomePage() {
 
             <Col xs={24} lg={8}>
               <SectionCard
-                icon={<DashboardOutlined className="text-[var(--color-primary)]" />}
+                icon={<DashboardOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
                 title="SLO 概览"
                 subtitle="已配置 SLO"
                 viewAllHref="/apm/services/slo"
@@ -433,7 +455,7 @@ export default function ApmHomePage() {
 
             <Col xs={24} lg={8}>
               <SectionCard
-                icon={<BellOutlined className="text-[var(--color-fail)]" />}
+                icon={<BellOutlined aria-hidden="true" className="text-[var(--color-fail)]" />}
                 title="实时告警"
                 subtitle="未恢复"
                 viewAllHref="/apm/events/alerts"
@@ -465,15 +487,15 @@ export default function ApmHomePage() {
                           <div className="min-w-0 flex-1">
                             <Link
                               href={`/apm/events/alerts?service=${encodeURIComponent(alert.service)}`}
-                              className="block truncate text-[13px] font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+                              className="block truncate text-sm font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
                               title={`${alert.service} · ${alert.name}`}
                             >
                               {alert.service}
                             </Link>
-                            <div className="mt-0.5 text-[11px] text-[var(--color-text-4)]">{alert.name}</div>
+                            <div className="mt-0.5 text-xs text-[var(--color-text-4)]">{alert.name}</div>
                           </div>
                           <StatusPill label={severity.label} tone={severity.tone} />
-                          <span className="min-w-[60px] text-right text-[11px] tabular-nums text-[var(--color-text-4)]">
+                          <span className="min-w-[60px] text-right text-xs tabular-nums text-[var(--color-text-4)]">
                             {formatRelativeTime(alert.started_at)}
                           </span>
                         </div>
@@ -488,7 +510,7 @@ export default function ApmHomePage() {
           <Row gutter={[16, 16]} className="!mt-4">
             <Col xs={24} lg={8}>
               <SectionCard
-                icon={<FireOutlined className="text-[var(--color-fail)]" />}
+                icon={<FireOutlined aria-hidden="true" className="text-[var(--color-fail)]" />}
                 title="服务 TOP5 (按错误率)"
                 viewAllHref="/apm/services"
                 failed={sectionFailed(dashboard?.top_error_rate)}
@@ -516,7 +538,7 @@ export default function ApmHomePage() {
 
             <Col xs={24} lg={8}>
               <SectionCard
-                icon={<ThunderboltOutlined className="text-[var(--theme-color-status-warning)]" />}
+                icon={<ThunderboltOutlined aria-hidden="true" className="text-[var(--theme-color-status-warning)]" />}
                 title="P95 响应时间 TOP5"
                 viewAllHref="/apm/services"
                 failed={sectionFailed(dashboard?.top_p95)}
@@ -544,7 +566,7 @@ export default function ApmHomePage() {
 
             <Col xs={24} lg={8}>
               <SectionCard
-                icon={<TagsOutlined className="text-[var(--color-primary)]" />}
+                icon={<TagsOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
                 title="版本发布变更"
                 subtitle="近 7 天"
                 viewAllHref="/apm/services"
