@@ -143,12 +143,6 @@ def deliver_alert_center_delivery(record_id):
         payload = dict(record.payload)
 
     payload["delivery_id"] = delivery_id
-    content = {
-        "source_id": "nats",
-        "pusher": "lite-monitor",
-        "ack_mode": "per_event_v1",
-        "events": [payload],
-    }
     try:
         send_result = SystemMgmtUtils.dispatch_notification(
             delivery_key=delivery_id,

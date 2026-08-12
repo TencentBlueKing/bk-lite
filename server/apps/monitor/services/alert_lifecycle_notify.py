@@ -164,12 +164,6 @@ class AlertLifecycleNotifier:
             reason=reason,
         )
 
-    @staticmethod
-    def _alert_center_outbox_enabled():
-        from apps.monitor.services.alert_center_delivery import ALERT_CENTER_OUTBOX_ENABLED
-
-        return ALERT_CENTER_OUTBOX_ENABLED
-
     def _persist_notice_logs(self, alerts, alert_log_entries):
         if not alert_log_entries:
             return
