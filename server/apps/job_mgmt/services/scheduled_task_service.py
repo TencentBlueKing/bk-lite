@@ -184,20 +184,29 @@ class ScheduledTaskService:
         Returns:
             是否操作成功
         """
-        task_name = cls.get_periodic_task_name(scheduled_task_id)
-
         try:
-            updated_count = PeriodicTask.objects.filter(name=task_name).update(enabled=enabled)
-            if updated_count > 0:
-                action = "启用" if enabled else "禁用"
-                logger.info(f"{action}周期任务: {task_name}")
-                return True
-            else:
-                logger.warning(f"未找到要操作的周期任务: {task_name}")
-                return False
+            return cls.toggle_periodic_task_or_raise(scheduled_task_id, enabled)
         except Exception as e:
+            task_name = cls.get_periodic_task_name(scheduled_task_id)
             logger.exception(f"切换周期任务状态失败: {task_name}, 错误: {e}")
             return False
+
+    @classmethod
+    def toggle_periodic_task_or_raise(cls, scheduled_task_id: int, enabled: bool) -> bool:
+        """切换 PeriodicTask 状态，并保留数据库异常供事务调用方处理。"""
+
+        task_name = cls.get_periodic_task_name(scheduled_task_id)
+        updated_count = PeriodicTask.objects.filter(name=task_name).update(enabled=enabled)
+        if updated_count > 0:
+            action = "启用" if enabled else "禁用"
+            logger.info(f"{action}周期任务: {task_name}")
+            return True
+        if not enabled:
+            # 禁用不存在的调度等价于目标状态已经满足，保证重复治理可幂等重试。
+            logger.info(f"周期任务不存在，视为已禁用: {task_name}")
+            return True
+        logger.warning(f"未找到要操作的周期任务: {task_name}")
+        return False
 
     @classmethod
     def sync_periodic_task(cls, scheduled_task) -> Optional[int]:

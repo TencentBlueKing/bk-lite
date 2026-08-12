@@ -6,7 +6,6 @@ from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus
-from apps.job_mgmt.models import Target
 from apps.job_mgmt.services import ExecutionTaskBaseService
 from apps.job_mgmt.utils.playbook_archive import enforce_archive_limits
 from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
@@ -99,7 +98,7 @@ class PlaybookExecution(ExecutionTaskBaseService):
         if not target_ids:
             raise ValueError("未找到有效的目标ID")
 
-        targets = list(Target.objects.filter(id__in=target_ids))
+        targets = cls._load_manual_targets_for_execution(execution, target_ids)
         if not targets:
             raise ValueError("未找到有效的目标记录")
 
