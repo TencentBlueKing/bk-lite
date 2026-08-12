@@ -287,11 +287,49 @@ def test_dispatch_notification_转发稳定投递契约(client):
             "title": "标题",
             "body": "正文",
             "event_payload": {"event_key": "event"},
-            "required_delivery_mode": "",
-            "producer": "lite-apm",
-            "ack_mode": "",
         },
     )
+
+
+def test_dispatch_notification_新生产者兼容旧receiver(client):
+    class LegacyReceiver:
+        def __init__(self):
+            self.calls = []
+
+        def run(self, method_name, **kwargs):
+            self.calls.append((method_name, kwargs))
+            if len(self.calls) == 1:
+                raise TypeError("unexpected keyword argument 'ack_mode'")
+            return {"result": True}
+
+    receiver = LegacyReceiver()
+    client.client = receiver
+
+    result = client.dispatch_notification(
+        delivery_key="event:1",
+        channel_id=7,
+        organization_ids=[1],
+        recipients=[],
+        title="",
+        body="正文",
+        event_payload={"event_key": "event"},
+        required_delivery_mode="alert_event_copy",
+        producer="lite-monitor",
+        ack_mode="per_event_v1",
+        ack_token="secret",
+    )
+
+    assert result == {"result": True}
+    assert len(receiver.calls) == 2
+    assert receiver.calls[-1] == ("dispatch_notification", {
+        "delivery_key": "event:1",
+        "channel_id": 7,
+        "organization_ids": [1],
+        "recipients": [],
+        "title": "",
+        "body": "正文",
+        "event_payload": {"event_key": "event"},
+    })
 
 
 def test_probe_notification_channel_转发渠道探针(client):

@@ -222,29 +222,29 @@ class MonitorAlertViewSet(
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
 
-        updated_data = serializer.validated_data
-        if updated_data.get("status") == "closed":
-            now = datetime.now(timezone.utc)
-            updated_data["end_event_time"] = now
-            updated_data["operator"] = request.user.username
-            updated_data["operation_logs"] = (instance.operation_logs or []) + [
-                {
-                    "action": "closed",
-                    "reason": "manual",
-                    "operator": request.user.username,
-                    "time": now.isoformat(),
-                }
-            ]
-            # 只有 new → closed 的转换才需要补偿推送，避免重复关闭触发多余的告警中心推送
-            if old_status == "new":
-                updated_data["alert_center_notified"] = False
+        with transaction.atomic():
+            updated_data = serializer.validated_data
+            if updated_data.get("status") == "closed":
+                now = datetime.now(timezone.utc)
+                updated_data["end_event_time"] = now
+                updated_data["operator"] = request.user.username
+                updated_data["operation_logs"] = (instance.operation_logs or []) + [
+                    {
+                        "action": "closed",
+                        "reason": "manual",
+                        "operator": request.user.username,
+                        "time": now.isoformat(),
+                    }
+                ]
+                # 只有 new → closed 的转换才需要补偿推送，避免重复关闭触发多余的告警中心推送
+                if old_status == "new":
+                    updated_data["alert_center_notified"] = False
 
-            # 基线清理/刷新 与 告警 status 写库 必须在同一事务中。
-            # 否则 perform_update 失败时 baseline 已删/已刷,下次扫描会再次 new 一条
-            # 一模一样的 no_data 告警，相当于「用户手动关了又自动重开」(issue #4041)。
-            # 注意:refresh() 内部含 VM scan,事务不宜过长——失败 → 整段回滚即满足需求。
-            if instance.alert_type == "no_data" and instance.metric_instance_id:
-                with transaction.atomic():
+                # 基线清理/刷新 与 告警 status 写库 必须在同一事务中。
+                # 否则 perform_update 失败时 baseline 已删/已刷,下次扫描会再次 new 一条
+                # 一模一样的 no_data 告警，相当于「用户手动关了又自动重开」(issue #4041)。
+                # 注意:refresh() 内部含 VM scan,事务不宜过长——失败 → 整段回滚即满足需求。
+                if instance.alert_type == "no_data" and instance.metric_instance_id:
                     update_baseline = request.data.get("update_baseline", False)
                     if update_baseline:
                         policy = MonitorPolicy.objects.filter(id=instance.policy_id).first()
@@ -256,21 +256,30 @@ class MonitorAlertViewSet(
                             metric_instance_id=instance.metric_instance_id,
                         ).delete()
                     self.perform_update(serializer)
+                else:
+                    self.perform_update(serializer)
             else:
                 self.perform_update(serializer)
-        else:
-            self.perform_update(serializer)
-        instance.refresh_from_db()
+            instance.refresh_from_db()
 
-        if old_status == "new" and instance.status == "closed":
-            policy = MonitorPolicy.objects.filter(id=instance.policy_id).first()
-            if policy:
-                AlertLifecycleNotifier(policy).notify_alerts(
-                    [instance],
-                    action="closed",
-                    operator=request.user.username,
-                    reason="manual",
-                )
+            if old_status == "new" and instance.status == "closed":
+                policy = MonitorPolicy.objects.filter(id=instance.policy_id).first()
+                if policy:
+                    notifier = AlertLifecycleNotifier(policy)
+                    notifier.enqueue_alert_center_deliveries(
+                        [instance],
+                        "closed",
+                        operator=request.user.username,
+                        reason="manual",
+                    )
+                    transaction.on_commit(
+                        lambda: notifier.notify_alerts(
+                            [instance],
+                            action="closed",
+                            operator=request.user.username,
+                            reason="manual",
+                        )
+                    )
 
         if getattr(instance, "_prefetched_objects_cache", None):
             instance._prefetched_objects_cache = {}

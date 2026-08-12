@@ -775,17 +775,20 @@ def test_monitor_alert_copy_dispatch_is_capability_scoped_and_returns_ack(monkey
         team=[1],
     )
 
-    monkeypatch.setattr(
-        "apps.system_mgmt.nats.channels.send_msg_with_channel",
-        lambda *args, **kwargs: {
+    sent = {}
+
+    def fake_send(channel_id, title, content, receivers, attachments=None):
+        sent["content"] = content
+        return {
             "result": True,
             "data": {
                 "event_results": [
                     {"delivery_id": "delivery-1", "status": "accepted", "retryable": False}
                 ]
             },
-        },
-    )
+        }
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", fake_send)
     result = nats_api.dispatch_notification(
         delivery_key="delivery-1",
         channel_id=channel.id,
@@ -797,10 +800,12 @@ def test_monitor_alert_copy_dispatch_is_capability_scoped_and_returns_ack(monkey
         required_delivery_mode="alert_event_copy",
         producer="lite-monitor",
         ack_mode="per_event_v1",
+        ack_token="receiver-secret",
     )
 
     assert result["result"] is True
     assert result["data"]["event_results"][0]["delivery_id"] == "delivery-1"
+    assert sent["content"]["ack_token"] == "receiver-secret"
 
     forbidden = nats_api.dispatch_notification(
         delivery_key="delivery-2",
@@ -816,6 +821,48 @@ def test_monitor_alert_copy_dispatch_is_capability_scoped_and_returns_ack(monkey
     )
     assert forbidden["code"] == "channel_forbidden"
     assert forbidden["retryable"] is False
+
+
+def test_monitor_alert_copy_dispatch_preserves_terminal_per_event_rejection(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events"},
+        description="alert copy",
+        team=[1],
+    )
+    monkeypatch.setattr(
+        "apps.system_mgmt.nats.channels.send_msg_with_channel",
+        lambda *args, **kwargs: {
+            "result": False,
+            "message": "Alert events were only partially accepted.",
+            "data": {
+                "event_results": [
+                    {"delivery_id": "delivery-rejected", "status": "rejected", "retryable": False}
+                ]
+            },
+        },
+    )
+
+    result = nats_api.dispatch_notification(
+        delivery_key="delivery-rejected",
+        channel_id=channel.id,
+        organization_ids=[1],
+        recipients=[],
+        title="",
+        body="alert",
+        event_payload={"delivery_id": "delivery-rejected", "organizations": [1]},
+        required_delivery_mode="alert_event_copy",
+        producer="lite-monitor",
+        ack_mode="per_event_v1",
+        ack_token="receiver-secret",
+    )
+
+    assert result["result"] is False
+    assert result["retryable"] is False
+    assert result["data"]["event_results"] == [
+        {"delivery_id": "delivery-rejected", "status": "rejected", "retryable": False}
+    ]
 
 
 def test_get_wechat_settings():

@@ -184,16 +184,21 @@ def test_add_start_time_defaults():
 
 
 @pytest.mark.django_db
-def test_trusted_delivery_id_is_the_ingress_identity(event_levels, restful_source):
+@pytest.mark.integration
+def test_trusted_lifecycle_generation_is_the_ingress_identity(event_levels, restful_source):
     adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
-    first = Event(title="第一次", level="0", start_time=timezone.now())
-    second = Event(title="升级", level="1", start_time=first.start_time)
+    first = Event(title="第一次升级", level="1", start_time=timezone.now(), external_id="alert-1")
+    second = Event(title="第二次升级", level="0", start_time=first.start_time, external_id="alert-1")
 
-    adapter.add_base_fields(first, {"delivery_id": "generation-1", "organizations": [1]})
-    adapter.add_base_fields(second, {"delivery_id": "generation-2", "organizations": [1]})
+    adapter.add_base_fields(
+        first,
+        {"lifecycle_action": "upgraded", "lifecycle_generation": "generation-1", "organizations": [1]},
+    )
+    adapter.add_base_fields(
+        second,
+        {"lifecycle_action": "upgraded", "lifecycle_generation": "generation-2", "organizations": [1]},
+    )
 
-    assert first.external_id
-    assert second.external_id
     assert first.ingest_key != second.ingest_key
     assert AlertSourceAdapter.build_ingress_dedup_key(first) == first.ingest_key
 
@@ -310,6 +315,7 @@ def test_create_events_persists(event_levels, restful_source):
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_create_events_reports_duplicate_and_rejected_details(event_levels, restful_source):
     adapter = RestFulAdapter(alert_source=restful_source)
     valid = {
@@ -343,6 +349,7 @@ def test_create_events_reports_duplicate_and_rejected_details(event_levels, rest
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_trusted_lifecycle_action_separates_created_and_upgraded_identity(event_levels, restful_source):
     adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
     base = {
@@ -354,8 +361,12 @@ def test_trusted_lifecycle_action_separates_created_and_upgraded_identity(event_
         "start_time": "1700000000",
         "push_source_id": "lite-monitor",
     }
-    created = adapter.create_events([{**base, "lifecycle_action": "created"}])
-    upgraded = adapter.create_events([{**base, "lifecycle_action": "upgraded"}])
+    created = adapter.create_events(
+        [{**base, "lifecycle_action": "created", "lifecycle_generation": "created-1"}]
+    )
+    upgraded = adapter.create_events(
+        [{**base, "lifecycle_action": "upgraded", "lifecycle_generation": "upgraded-1"}]
+    )
     assert sum(len(batch) for batch in created) == 1
     assert sum(len(batch) for batch in upgraded) == 1
 

@@ -22,6 +22,7 @@ def _env_flag(name, *, default=False):
 # writing outbox records.  Keep the producer disabled through mixed-version
 # rollouts; operators enable it only after the receiver-first deployment.
 ALERT_CENTER_OUTBOX_ENABLED = _env_flag("MONITOR_ALERT_CENTER_OUTBOX_ENABLED")
+ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 OUTBOX_BATCH_SIZE = 200
 OUTBOX_LEASE_TIMEOUT = timedelta(minutes=5)
 
@@ -68,6 +69,7 @@ def enqueue_alert_center_deliveries(alerts, action, *, notifier, operator="", re
                 generation = (
                     MonitorAlertCenterDelivery.objects.filter(alert_id=alert.id).aggregate(value=Max("generation"))["value"] or 0
                 ) + 1
+                payload = {**payload, "lifecycle_generation": delivery_id}
                 delivery = MonitorAlertCenterDelivery.objects.create(
                     alert_id=alert.id,
                     action=action,
@@ -133,6 +135,7 @@ def deliver_alert_center_delivery(record_id):
             record.next_retry_at = None
             record.last_error = record.last_error or "retries exhausted"
             record.save(update_fields=["status", "next_retry_at", "last_error", "updated_at"])
+            _fail_blocked_successors(record)
             return False
         record.status = record.Status.DELIVERING
         record.attempts += 1
@@ -155,6 +158,7 @@ def deliver_alert_center_delivery(record_id):
             required_delivery_mode="alert_event_copy",
             producer="lite-monitor",
             ack_mode="per_event_v1",
+            ack_token=ALERT_CENTER_ACK_TOKEN,
         )
         success, retryable, error = _ack_result(send_result, delivery_id)
     except Exception as exc:
@@ -186,17 +190,38 @@ def deliver_alert_center_delivery(record_id):
     terminal = not retryable or claim_generation >= record.max_attempts
     next_status = MonitorAlertCenterDelivery.Status.FAILED if terminal else MonitorAlertCenterDelivery.Status.PENDING
     next_retry_at = None if terminal else finished_at + timedelta(seconds=min(3600, 15 * (2 ** min(claim_generation, 8))))
-    MonitorAlertCenterDelivery.objects.filter(
-        id=record_id,
-        status=MonitorAlertCenterDelivery.Status.DELIVERING,
-        attempts=claim_generation,
-    ).update(
-        status=next_status,
-        next_retry_at=next_retry_at,
-        last_error=error[:2000],
-        updated_at=finished_at,
-    )
+    with transaction.atomic():
+        finalized = MonitorAlertCenterDelivery.objects.filter(
+            id=record_id,
+            status=MonitorAlertCenterDelivery.Status.DELIVERING,
+            attempts=claim_generation,
+        ).update(
+            status=next_status,
+            next_retry_at=next_retry_at,
+            last_error=error[:2000],
+            updated_at=finished_at,
+        )
+        if finalized and terminal:
+            record.status = MonitorAlertCenterDelivery.Status.FAILED
+            _fail_blocked_successors(record)
     return False
+
+
+def _fail_blocked_successors(record):
+    """A terminal predecessor makes later lifecycle copies unsafe to deliver."""
+    MonitorAlertCenterDelivery.objects.filter(
+        alert_id=record.alert_id,
+        generation__gt=record.generation,
+        status__in=[
+            MonitorAlertCenterDelivery.Status.PENDING,
+            MonitorAlertCenterDelivery.Status.DELIVERING,
+        ],
+    ).update(
+        status=MonitorAlertCenterDelivery.Status.FAILED,
+        next_retry_at=None,
+        last_error=f"blocked by terminal generation {record.generation}",
+        updated_at=timezone.now(),
+    )
 
 
 def backfill_legacy_alerts():

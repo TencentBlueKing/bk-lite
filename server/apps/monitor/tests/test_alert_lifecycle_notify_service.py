@@ -5,13 +5,13 @@
 告警生命周期通知映射直接影响外部告警中心数据，必须准确。
 """
 
-import pydantic.root_model  # noqa
-
 from datetime import datetime
 from types import SimpleNamespace
 
+import pydantic.root_model  # noqa
 import pytest
 
+from apps.monitor.services import alert_lifecycle_notify as lifecycle_notify
 from apps.monitor.services.alert_lifecycle_notify import (
     ACTION_TO_ALERT_CENTER,
     LEVEL_TO_ALERT_CENTER,
@@ -155,6 +155,39 @@ class TestBuildAlertCenterPayload:
             alert, "created", "", "", instance_org_map={"inst-1": [5, 6]}
         )
         assert payload["organizations"] == [5, 6]
+
+
+def test_per_event_ack_legacy_path_forwards_shared_token(monkeypatch):
+    notifier = AlertLifecycleNotifier(policy=SimpleNamespace(name="P", organizations=[1]))
+    alert = _alert()
+    sent = {}
+
+    monkeypatch.setattr(lifecycle_notify, "ALERT_CENTER_PER_EVENT_ACK_ENABLED", True)
+    monkeypatch.setattr(lifecycle_notify, "ALERT_CENTER_ACK_TOKEN", "receiver-secret")
+    monkeypatch.setattr(notifier, "_build_instance_org_map", lambda alerts: {})
+    monkeypatch.setattr(
+        lifecycle_notify.SystemMgmtUtils,
+        "send_msg_with_channel",
+        lambda channel_id, title, content, receivers: sent.update(content=content)
+        or {
+            "result": True,
+            "data": {
+                "event_results": [
+                    {
+                        "delivery_id": notifier._build_delivery_id(alert, "created"),
+                        "status": "accepted",
+                        "retryable": False,
+                    }
+                ]
+            },
+        },
+    )
+
+    results = notifier._push_to_alert_center(1, "告警中心", [alert], "created", "", "")
+
+    assert sent["content"]["ack_mode"] == "per_event_v1"
+    assert sent["content"]["ack_token"] == "receiver-secret"
+    assert results[0][1]["success"] is True
 
 
 class TestResolveNotice:

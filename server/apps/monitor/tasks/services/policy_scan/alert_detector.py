@@ -2,6 +2,7 @@
 
 from string import Template
 
+from django.db import transaction
 from django.db.models import F
 
 from apps.monitor.models import MonitorAlert
@@ -374,16 +375,26 @@ class AlertDetector:
             alert.operator = "system"
             alert.operation_logs = (alert.operation_logs or []) + [operation_log]
             alert.alert_center_notified = False
-        MonitorAlert.objects.bulk_update(
-            alerts_to_recover,
-            fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
-        )
-        AlertLifecycleNotifier(self.policy).notify_alerts(
-            alerts_to_recover,
-            action="recovered",
-            operator="system",
-            reason="auto_recovered",
-        )
+        notifier = AlertLifecycleNotifier(self.policy)
+        with transaction.atomic():
+            MonitorAlert.objects.bulk_update(
+                alerts_to_recover,
+                fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
+            )
+            notifier.enqueue_alert_center_deliveries(
+                alerts_to_recover,
+                "recovered",
+                operator="system",
+                reason="auto_recovered",
+            )
+            transaction.on_commit(
+                lambda alerts=tuple(alerts_to_recover): notifier.notify_alerts(
+                    alerts,
+                    action="recovered",
+                    operator="system",
+                    reason="auto_recovered",
+                )
+            )
 
     def recover_no_data_alerts(self):
         if not self.policy.no_data_recovery_period:
@@ -438,16 +449,26 @@ class AlertDetector:
                 alert.operator = "system"
                 alert.operation_logs = (alert.operation_logs or []) + [operation_log]
                 alert.alert_center_notified = False
-            MonitorAlert.objects.bulk_update(
-                alerts_to_recover,
-                fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
-            )
-            AlertLifecycleNotifier(self.policy).notify_alerts(
-                alerts_to_recover,
-                action="recovered",
-                operator="system",
-                reason="auto_recovered",
-            )
+            notifier = AlertLifecycleNotifier(self.policy)
+            with transaction.atomic():
+                MonitorAlert.objects.bulk_update(
+                    alerts_to_recover,
+                    fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
+                )
+                notifier.enqueue_alert_center_deliveries(
+                    alerts_to_recover,
+                    "recovered",
+                    operator="system",
+                    reason="auto_recovered",
+                )
+                transaction.on_commit(
+                    lambda alerts=tuple(alerts_to_recover): notifier.notify_alerts(
+                        alerts,
+                        action="recovered",
+                        operator="system",
+                        reason="auto_recovered",
+                    )
+                )
             logger.info(f"Policy {self.policy.id}: recovered {len(alerts_to_recover)} no_data alerts")
         else:
             logger.debug(f"Policy {self.policy.id}: no no_data alerts to recover")

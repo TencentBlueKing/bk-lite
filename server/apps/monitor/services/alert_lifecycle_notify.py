@@ -1,5 +1,5 @@
-from collections import defaultdict
 import os
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from apps.core.logger import monitor_logger as logger
@@ -28,6 +28,7 @@ NOTIFY_SCOPE_ALL_CONFIGURED = "all_configured"
 ALERT_CENTER_PER_EVENT_ACK_ENABLED = os.getenv(
     "MONITOR_ALERT_CENTER_PER_EVENT_ACK_ENABLED", "false"
 ).lower() in {"1", "true", "yes"}
+ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 ALERT_CENTER_CREATED_RETRY_ENABLED = os.getenv(
     "MONITOR_ALERT_CENTER_CREATED_RETRY_ENABLED", "false"
 ).lower() in {"1", "true", "yes"}
@@ -314,6 +315,7 @@ class AlertLifecycleNotifier:
         if ALERT_CENTER_PER_EVENT_ACK_ENABLED:
             for alert, payload in zip(alerts, payloads):
                 payload["delivery_id"] = self._build_delivery_id(alert, action)
+                payload["lifecycle_generation"] = payload["delivery_id"]
         content = {
             "source_id": "nats",
             "pusher": "lite-monitor",
@@ -321,6 +323,7 @@ class AlertLifecycleNotifier:
         }
         if ALERT_CENTER_PER_EVENT_ACK_ENABLED:
             content["ack_mode"] = "per_event_v1"
+            content["ack_token"] = ALERT_CENTER_ACK_TOKEN
         success = False
         error_msg = ""
         event_results = {}

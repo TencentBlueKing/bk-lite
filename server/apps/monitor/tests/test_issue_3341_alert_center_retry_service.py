@@ -211,3 +211,35 @@ def test_terminal_channel_boundary_failure_is_not_retried(alert_center_channel, 
     delivery.refresh_from_db()
     assert delivery.status == MonitorAlertCenterDelivery.Status.FAILED
     assert delivery.next_retry_at is None
+
+
+def test_terminal_predecessor_closes_later_generations(alert_center_channel, monkeypatch):
+    alert = _alert(alert_center_channel, alert_center_notified=False)
+    first = MonitorAlertCenterDelivery.objects.create(
+        alert=alert,
+        action="created",
+        generation=1,
+        delivery_id="terminal-created",
+        channel_id=alert_center_channel.id,
+        payload={"title": "first", "organizations": [1]},
+    )
+    second = MonitorAlertCenterDelivery.objects.create(
+        alert=alert,
+        action="recovered",
+        generation=2,
+        delivery_id="blocked-recovered",
+        channel_id=alert_center_channel.id,
+        payload={"title": "second", "organizations": [1]},
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.SystemMgmtUtils.dispatch_notification",
+        lambda **kwargs: {"result": False, "retryable": False, "code": "rejected"},
+    )
+
+    assert deliver_alert_center_delivery(first.id) is False
+
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert first.status == MonitorAlertCenterDelivery.Status.FAILED
+    assert second.status == MonitorAlertCenterDelivery.Status.FAILED
+    assert second.last_error == "blocked by terminal generation 1"

@@ -1393,6 +1393,7 @@ def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(mo
         "get_adapter",
         staticmethod(lambda source: FakeAdapter),
     )
+    monkeypatch.setattr(N, "PER_EVENT_ACK_TOKEN", "receiver-secret")
     events = [
         {"delivery_id": "d1", "test_status": "accepted"},
         {"delivery_id": "d2", "test_status": "duplicate"},
@@ -1404,6 +1405,7 @@ def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(mo
         events=events,
         pusher="lite-monitor",
         ack_mode=N.PER_EVENT_ACK_MODE,
+        ack_token="receiver-secret",
     )
 
     assert result["result"] is False
@@ -1434,22 +1436,33 @@ def test_receive_alert_events_per_event_ack_rejects_untrusted_and_bounds_batches
             return {"received": 1, "accepted": 1, "skipped": 0, "errored": 0, "duplicates": 0, "rejected": 0}
 
     monkeypatch.setattr(N.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda source: FakeAdapter))
+    monkeypatch.setattr(N, "PER_EVENT_ACK_TOKEN", "receiver-secret")
 
     untrusted = N.receive_alert_events(
         source_id="nats-ack-bound",
         events=[{"delivery_id": "d"}],
         pusher="unknown",
         ack_mode=N.PER_EVENT_ACK_MODE,
+        ack_token="receiver-secret",
+    )
+    wrong_token = N.receive_alert_events(
+        source_id="nats-ack-bound",
+        events=[{"delivery_id": "d"}],
+        pusher="lite-monitor",
+        ack_mode=N.PER_EVENT_ACK_MODE,
+        ack_token="wrong",
     )
     oversized = N.receive_alert_events(
         source_id="nats-ack-bound",
         events=[{"delivery_id": str(index)} for index in range(N.PER_EVENT_ACK_MAX_EVENTS + 1)],
         pusher="lite-monitor",
         ack_mode=N.PER_EVENT_ACK_MODE,
+        ack_token="receiver-secret",
     )
 
     assert untrusted["result"] is False
     assert "restricted" in untrusted["message"]
+    assert wrong_token["result"] is False
     assert oversized["result"] is False
     assert oversized["data"]["max_events"] == N.PER_EVENT_ACK_MAX_EVENTS
 

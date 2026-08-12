@@ -8,6 +8,7 @@
 
 import datetime
 import os
+import secrets
 from types import SimpleNamespace
 from typing import Any, Dict
 from zoneinfo import ZoneInfo
@@ -33,6 +34,7 @@ ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
 TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log", "lite-apm"}
 PER_EVENT_ACK_MODE = "per_event_v1"
 PER_EVENT_ACK_MAX_EVENTS = 200
+PER_EVENT_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 
 
 def _event_ack(delivery_id, ingestion):
@@ -779,6 +781,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         events = kwargs.pop("events", [])
         pusher = kwargs.pop("pusher", None)
         ack_mode = kwargs.pop("ack_mode", "")
+        ack_token = kwargs.pop("ack_token", "")
 
         # 参数校验
         if not source_id:
@@ -798,7 +801,11 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             }
 
         if ack_mode == PER_EVENT_ACK_MODE:
-            if pusher not in TRUSTED_INTERNAL_PUSHERS:
+            if (
+                pusher not in TRUSTED_INTERNAL_PUSHERS
+                or not PER_EVENT_ACK_TOKEN
+                or not secrets.compare_digest(str(ack_token), PER_EVENT_ACK_TOKEN)
+            ):
                 logger.warning("[AlertEvent] 非可信 pusher 不允许逐事件 ACK: pusher=%s", pusher)
                 return {"result": False, "data": {}, "message": "Per-event acknowledgement is restricted."}
             if len(events) > PER_EVENT_ACK_MAX_EVENTS:

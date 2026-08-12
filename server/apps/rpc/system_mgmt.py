@@ -301,20 +301,33 @@ class SystemMgmt(object):
         required_delivery_mode="",
         producer="lite-apm",
         ack_mode="",
+        ack_token="",
     ):
-        return self.client.run(
-            "dispatch_notification",
-            delivery_key=delivery_key,
-            channel_id=channel_id,
-            organization_ids=organization_ids,
-            recipients=recipients,
-            title=title,
-            body=body,
-            event_payload=event_payload,
-            required_delivery_mode=required_delivery_mode,
-            producer=producer,
-            ack_mode=ack_mode,
-        )
+        payload = {
+            "delivery_key": delivery_key,
+            "channel_id": channel_id,
+            "organization_ids": organization_ids,
+            "recipients": recipients,
+            "title": title,
+            "body": body,
+            "event_payload": event_payload,
+        }
+        extensions = {
+            "required_delivery_mode": required_delivery_mode,
+            "producer": producer,
+            "ack_mode": ack_mode,
+            "ack_token": ack_token,
+        }
+        if not any((required_delivery_mode, ack_mode, ack_token)) and producer == "lite-apm":
+            return self.client.run("dispatch_notification", **payload)
+        try:
+            return self.client.run("dispatch_notification", **payload, **extensions)
+        except TypeError as exc:
+            # An old receiver rejects unknown kwargs before any side effect. Retry
+            # once with the historical contract during receiver-first rollouts.
+            if "unexpected keyword argument" not in str(exc):
+                raise
+            return self.client.run("dispatch_notification", **payload)
 
     def probe_notification_channel(self, channel_id):
         return self.client.run("probe_notification_channel", channel_id=channel_id)

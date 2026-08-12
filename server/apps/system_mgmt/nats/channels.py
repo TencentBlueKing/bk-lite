@@ -362,6 +362,7 @@ def dispatch_notification(
     required_delivery_mode="",
     producer="lite-apm",
     ack_mode="",
+    ack_token="",
 ):
     """按公开渠道能力投递一次通知，并返回稳定、可判定重试的结果。"""
     if not isinstance(delivery_key, str) or not delivery_key.strip() or len(delivery_key) > 384:
@@ -406,6 +407,7 @@ def dispatch_notification(
         }
         if ack_mode == "per_event_v1":
             content["ack_mode"] = ack_mode
+            content["ack_token"] = ack_token
         send_title = ""
         send_recipients = []
     elif channel.channel_type == ChannelChoices.NATS:
@@ -438,6 +440,16 @@ def dispatch_notification(
     if not isinstance(response, dict):
         return _notification_failure("invalid_provider_response", "通知渠道返回格式无效。", retryable=True)
     if response.get("result") is False:
+        if capability["delivery_mode"] == "alert_event_copy" and ack_mode == "per_event_v1":
+            event_results = (response.get("data") or {}).get("event_results") or []
+            if event_results:
+                return {
+                    "result": False,
+                    "code": str(response.get("code") or "alert_copy_partial"),
+                    "retryable": any(bool(item.get("retryable", True)) for item in event_results if isinstance(item, dict)),
+                    "message": str(response.get("message") or "告警中心仅接受了部分事件副本。")[:512],
+                    "data": {"event_results": event_results},
+                }
         return _notification_failure(
             str(response.get("code") or "delivery_failed"),
             str(response.get("message") or "通知渠道投递失败。")[:512],

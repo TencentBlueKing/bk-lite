@@ -385,12 +385,20 @@ class AlertSourceAdapter(ABC):
         # 可选 lifecycle_action 由可信内部生产者提供，用来区分 created/upgraded
         # 等映射到同一业务 action 的独立生命周期代次。
         lifecycle_action = alert.get("lifecycle_action")
+        if lifecycle_action not in {"created", "upgraded", "recovered", "closed"}:
+            lifecycle_action = None
         if self.trusted_internal and lifecycle_action:
+            lifecycle_generation = str(alert.get("lifecycle_generation") or "").strip()
+            lifecycle_identity = (
+                f"{lifecycle_action}:{lifecycle_generation}"
+                if lifecycle_generation
+                else lifecycle_action
+            )
             event.ingest_key = Event.build_ingest_key(
                 getattr(event.source, "id", None),
                 event.push_source_id,
                 event.external_id,
-                lifecycle_action,
+                lifecycle_identity,
                 event.start_time,
             )
 

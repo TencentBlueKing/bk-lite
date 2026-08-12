@@ -212,6 +212,17 @@ class MonitorInstanceRemovalService:
                 ],
                 batch_size=cls.ALERT_BATCH_SIZE,
             )
+            policies = MonitorPolicy.objects.in_bulk({alert.policy_id for alert in alerts if alert.policy_id})
+            alerts_by_policy = defaultdict(list)
+            for alert in alerts:
+                alerts_by_policy[alert.policy_id].append(alert)
+            for policy_id, policy_alerts in alerts_by_policy.items():
+                AlertLifecycleNotifier(policies.get(policy_id)).enqueue_alert_center_deliveries(
+                    policy_alerts,
+                    "closed",
+                    operator=operator,
+                    reason=reason,
+                )
             closed_count += len(alerts)
             last_id = alerts[-1].id
 

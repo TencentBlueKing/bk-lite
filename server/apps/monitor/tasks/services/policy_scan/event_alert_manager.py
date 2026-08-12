@@ -7,10 +7,7 @@ from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorEventRawData
-from apps.monitor.services.alert_lifecycle_notify import (
-    ALERT_CENTER_CREATED_RETRY_ENABLED,
-    AlertLifecycleNotifier,
-)
+from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.utils.dimension import format_dimension_str
 
 
@@ -182,10 +179,11 @@ class EventAlertManager:
         notifier = AlertLifecycleNotifier(self.policy)
         notifier.enqueue_alert_center_deliveries(new_alerts, "created")
         notifier.enqueue_alert_center_deliveries(upgraded_alerts, "upgraded")
-        if ALERT_CENTER_CREATED_RETRY_ENABLED:
-            pending_alert_ids = [alert.id for alert in [*new_alerts, *upgraded_alerts]]
-            if pending_alert_ids:
-                MonitorAlert.objects.filter(id__in=pending_alert_ids).update(alert_center_notified=False)
+        # Legacy rollback path must remain reliable while the outbox switch is off.
+        # Persist pending before commit so a process exit before on_commit is recoverable.
+        pending_alert_ids = [alert.id for alert in [*new_alerts, *upgraded_alerts]]
+        if pending_alert_ids:
+            MonitorAlert.objects.filter(id__in=pending_alert_ids).update(alert_center_notified=False)
         if new_alerts:
             transaction.on_commit(lambda: notifier.notify_alerts(new_alerts, action="created"))
         if upgraded_alerts:
