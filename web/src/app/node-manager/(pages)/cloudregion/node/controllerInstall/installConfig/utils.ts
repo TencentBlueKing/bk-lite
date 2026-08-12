@@ -1,6 +1,6 @@
 export const DEFAULT_WINRM_CERTIFICATE_VALIDATION = false;
 
-interface NodeIdentityDraft {
+interface NodeIdentityDraft extends Record<string, unknown> {
   ip?: string | null;
   node_name?: string | null;
 }
