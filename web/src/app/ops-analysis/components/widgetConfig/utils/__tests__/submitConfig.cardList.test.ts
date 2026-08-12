@@ -107,6 +107,75 @@ test('cardList submit keeps field leading when field is present', () => {
   });
 });
 
+test('cardList submit persists leading and badge accent styles', () => {
+  const mappings = [
+    {
+      type: 'value' as const,
+      value: 'P1',
+      result: { text: '紧急', color: '#ff0000' },
+    },
+  ];
+  const result = buildWidgetSubmitConfig({
+    ...baseInput,
+    values: {
+      name: '卡片列表',
+      chartType: 'cardList',
+      cardList: {
+        titleField: 'title',
+        leading: {
+          type: 'index',
+          style: {
+            displayType: 'text',
+            valueMappings: mappings,
+          },
+        },
+        badgeField: 'severity',
+        badgeStyle: {
+          displayType: 'colorBackground',
+          valueMappings: mappings,
+        },
+      },
+    },
+  });
+
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.config?.cardList?.leading, {
+    type: 'index',
+    style: { valueMappings: mappings },
+  });
+  assert.deepEqual(result.config?.cardList?.badgeStyle, {
+    displayType: 'colorBackground',
+    valueMappings: mappings,
+  });
+});
+
+test('cardList submit drops badgeStyle when badge field is empty', () => {
+  const result = buildWidgetSubmitConfig({
+    ...baseInput,
+    values: {
+      name: '卡片列表',
+      chartType: 'cardList',
+      cardList: {
+        titleField: 'title',
+        badgeField: '  ',
+        badgeStyle: {
+          displayType: 'colorBackground',
+          valueMappings: [
+            {
+              type: 'value',
+              value: 'P1',
+              result: { color: '#f00' },
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.config?.cardList, { titleField: 'title' });
+});
+
 test('cardList submit fails when title is missing', () => {
   const result = buildWidgetSubmitConfig({
     ...baseInput,

@@ -1,7 +1,13 @@
-import React, { useState } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Form } from 'antd';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import React, { useState } from 'react';
+
+vi.mock('@/utils/i18n', () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+  }),
+}));
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -77,6 +83,23 @@ const Harness = ({
       </button>
       <button
         type="button"
+        onClick={() =>
+          form.setFieldValue(['cardList', 'leading', 'style'], {
+            displayType: 'colorBackground',
+            valueMappings: [
+              {
+                type: 'value',
+                value: '01',
+                result: { color: '#ff0000' },
+              },
+            ],
+          })
+        }
+      >
+        seed-leading-style
+      </button>
+      <button
+        type="button"
         onClick={() => setDump(JSON.stringify(form.getFieldsValue().cardList))}
       >
         dump-form
@@ -145,10 +168,193 @@ describe('CardListSettingsSection', () => {
     expect(screen.getByTestId('card-list-preview').textContent).toContain('名称');
     expect(screen.getByTestId('card-list-preview').textContent).toContain('级别');
     expect(screen.getByTestId('card-list-preview').textContent).toContain('负责人');
+    expect(screen.getByTestId('card-list-leading-style-btn')).toBeTruthy();
+    expect(screen.getByTestId('card-list-badge-style-btn')).toBeTruthy();
+    expect(screen.queryByText('dashboard.cardListAccentDisplayType')).toBeNull();
     expect(
       screen.getByText('dashboard.cardListLayoutGrid').closest('button')
         ?.getAttribute('aria-pressed'),
     ).toBe('true');
+  });
+
+  it('opens accent style in a modal instead of the main form', () => {
+    render(
+      <Harness
+        initial={{
+          titleField: 'name',
+          leading: { type: 'index' },
+          badgeField: 'severity',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('card-list-leading-style-btn'));
+    expect(screen.getByText('dashboard.cardListAccentDisplayType')).toBeTruthy();
+    expect(screen.getByText('dashboard.cardListAccentDisplayTypeText')).toBeTruthy();
+    expect(screen.getByText('dashboard.cardListAccentValueMappings')).toBeTruthy();
+    expect(screen.queryByTestId('card-list-leading-style')).toBeNull();
+  });
+
+  it('keeps modal style in getFieldsValue so widget submit can persist it', () => {
+    render(
+      <Harness
+        initial={{
+          titleField: 'name',
+          leading: { type: 'index' },
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('seed-leading-style'));
+    fireEvent.click(screen.getByText('dump-form'));
+    const dumped = JSON.parse(screen.getByTestId('form-dump').textContent || '{}');
+    expect(dumped.leading?.style).toEqual({
+      displayType: 'colorBackground',
+      valueMappings: [
+        {
+          type: 'value',
+          value: '01',
+          result: { color: '#ff0000' },
+        },
+      ],
+    });
+  });
+
+  it('keeps style through validateFields used by widget save', async () => {
+    const HarnessValidate = () => {
+      const [form] = Form.useForm();
+      const [dump, setDump] = useState('');
+      return (
+        <Form
+          form={form}
+          initialValues={{
+            cardList: {
+              titleField: 'name',
+              leading: { type: 'index' },
+              layout: 'list',
+            },
+          }}
+        >
+          <CardListSettingsSection
+            t={(key) => key}
+            availableFields={fields}
+          />
+          <button
+            type="button"
+            onClick={() =>
+              form.setFieldValue(['cardList', 'leading', 'style'], {
+                displayType: 'textWithBackground',
+                valueMappings: [
+                  {
+                    type: 'value',
+                    value: 'warn',
+                    result: { text: '警告', color: '#f0a000' },
+                  },
+                ],
+              })
+            }
+          >
+            set-style
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const values = await form.validateFields();
+              setDump(JSON.stringify(values.cardList));
+            }}
+          >
+            validate-dump
+          </button>
+          <pre data-testid="validate-dump">{dump}</pre>
+        </Form>
+      );
+    };
+
+    render(<HarnessValidate />);
+    fireEvent.click(screen.getByText('set-style'));
+    fireEvent.click(screen.getByText('validate-dump'));
+    await waitFor(() => {
+      const dumped = JSON.parse(
+        screen.getByTestId('validate-dump').textContent || '{}',
+      );
+      expect(dumped.leading?.style).toEqual({
+        displayType: 'textWithBackground',
+        valueMappings: [
+          {
+            type: 'value',
+            value: 'warn',
+            result: { text: '警告', color: '#f0a000' },
+          },
+        ],
+      });
+    });
+  });
+
+  it('does not wipe leading style when reopening and confirming the style modal', async () => {
+    const style = {
+      displayType: 'textWithBackground' as const,
+      valueMappings: [
+        {
+          type: 'value' as const,
+          value: 'warn',
+          result: { text: '警告', color: '#f0a000' },
+        },
+      ],
+    };
+    const HarnessModal = () => {
+      const [form] = Form.useForm();
+      const [dump, setDump] = useState('');
+      return (
+        <Form
+          form={form}
+          initialValues={{
+            cardList: {
+              titleField: 'name',
+              leading: { type: 'index' },
+              layout: 'list',
+            },
+          }}
+        >
+          <CardListSettingsSection t={(key) => key} availableFields={fields} />
+          <button
+            type="button"
+            onClick={() => {
+              form.setFieldValue(['cardList', 'leading', 'style'], style);
+              // Touch a sibling field so useWatch('cardList') re-emits a leading
+              // object that may omit style — the regression trigger.
+              form.setFieldValue(['cardList', 'layout'], 'grid');
+            }}
+          >
+            set-style-and-touch-layout
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const values = await form.validateFields();
+              setDump(JSON.stringify(values.cardList?.leading?.style ?? null));
+            }}
+          >
+            validate-style
+          </button>
+          <pre data-testid="style-dump">{dump}</pre>
+        </Form>
+      );
+    };
+
+    render(<HarnessModal />);
+    fireEvent.click(screen.getByText('set-style-and-touch-layout'));
+    expect(
+      screen.getByTestId('card-list-leading-style-btn').getAttribute('style'),
+    ).toContain('--color-primary');
+
+    fireEvent.click(screen.getByTestId('card-list-leading-style-btn'));
+    fireEvent.click(screen.getByText('OK'));
+    fireEvent.click(screen.getByText('validate-style'));
+    await waitFor(() => {
+      expect(JSON.parse(screen.getByTestId('style-dump').textContent || 'null')).toEqual(
+        style,
+      );
+    });
   });
 
   it('collapses optional groups without clearing form values or preview', () => {

@@ -1,7 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { DownOutlined, EyeOutlined, QuestionCircleOutlined } from '@ant-design/icons';
-import { Form, Radio, Select, Tooltip } from 'antd';
+import {
+  DownOutlined,
+  EyeOutlined,
+  QuestionCircleOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
+import { Button, Form, Radio, Select, Tooltip } from 'antd';
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
+import { CardListAccent } from '@/app/ops-analysis/components/widgets/cardListAccent';
+import {
+  normalizeCardListAccentStyle,
+  type CardListAccentStyle,
+} from '@/app/ops-analysis/utils/cardList';
+import { CardListAccentStyleModal } from './cardListAccentStyleModal';
 import {
   buildCardListFieldOptions,
   getCardListDuplicateHintSlots,
@@ -174,6 +185,7 @@ const LeadingTypeSegmented = ({
   indexLabel,
   fieldLabel,
   onClearField,
+  onClearStyle,
 }: {
   value?: 'none' | 'index' | 'field';
   onChange?: (value: 'none' | 'index' | 'field') => void;
@@ -181,6 +193,7 @@ const LeadingTypeSegmented = ({
   indexLabel: string;
   fieldLabel: string;
   onClearField: () => void;
+  onClearStyle: () => void;
 }) => (
   <Radio.Group
     optionType="button"
@@ -191,12 +204,51 @@ const LeadingTypeSegmented = ({
       if (typed !== 'field') {
         onClearField();
       }
+      if (typed === 'none') {
+        onClearStyle();
+      }
     }}
   >
     <Radio.Button value="none">{noneLabel}</Radio.Button>
     <Radio.Button value="index">{indexLabel}</Radio.Button>
     <Radio.Button value="field">{fieldLabel}</Radio.Button>
   </Radio.Group>
+);
+
+const hasAccentStyle = (style?: CardListAccentStyle) =>
+  Boolean(normalizeCardListAccentStyle(style));
+
+/** 注册弹窗写入的样式字段，否则 validateFields 不会带上未挂 Form.Item 的值。 */
+const StoredAccentStyle = () => (
+  <span hidden data-testid="stored-accent-style" />
+);
+
+const AccentStyleButton = ({
+  t,
+  configured,
+  testId,
+  onClick,
+}: {
+  t: (key: string) => string;
+  configured: boolean;
+  testId: string;
+  onClick: () => void;
+}) => (
+  <Tooltip title={t('dashboard.cardListAccentStyleConfig')}>
+    <Button
+      type="text"
+      size="small"
+      data-testid={testId}
+      icon={<SettingOutlined aria-hidden />}
+      aria-label={t('dashboard.cardListAccentStyleConfig')}
+      onClick={onClick}
+      style={{
+        border: 'none',
+        padding: '4px',
+        color: configured ? 'var(--color-primary)' : 'var(--color-text-2)',
+      }}
+    />
+  </Tooltip>
 );
 
 const CardListPreview = ({
@@ -216,11 +268,13 @@ const CardListPreview = ({
       <span>{label}</span>
     </div>
     <article className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg)] px-3 py-2.5">
-      <div className="flex min-w-0 items-start gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         {slots.leading ? (
-          <div className="shrink-0 text-xs font-medium tabular-nums text-(--color-text-3)">
-            {slots.leading}
-          </div>
+          <CardListAccent
+            text={slots.leading}
+            style={slots.leadingStyle}
+            kind="leading"
+          />
         ) : null}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-(--color-text-1)">
@@ -235,9 +289,11 @@ const CardListPreview = ({
         {slots.badge || slots.trailingPrimary || slots.trailingSecondary ? (
           <div className="flex min-w-0 shrink-0 flex-col items-end gap-1">
             {slots.badge ? (
-              <span className="inline-flex max-w-full truncate rounded-sm bg-(--color-primary-bg-active) px-1.5 py-0.5 text-xs font-medium text-(--color-text-1)">
-                {slots.badge}
-              </span>
+              <CardListAccent
+                text={slots.badge}
+                style={slots.badgeStyle}
+                kind="badge"
+              />
             ) : null}
             {slots.trailingPrimary ? (
               <span className="max-w-full truncate text-xs font-medium text-(--color-text-1)">
@@ -261,21 +317,36 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
   availableFields,
 }) => {
   const form = Form.useFormInstance();
+  // 必须分别 watch nested style：useWatch('cardList') 组装出的 leading
+  // 可能只有 type/field，浅合并会盖掉 sibling 的 style，导致弹窗回读丢失并在确认时清空。
   const watchedCardList = Form.useWatch('cardList') as CardListFormState | undefined;
-  const cardList = {
+  Form.useWatch(['cardList', 'leading']);
+  Form.useWatch(['cardList', 'badgeStyle']);
+  const cardList: CardListFormState = {
     ...(form.getFieldValue('cardList') || {}),
-    ...watchedCardList,
-  } as CardListFormState;
+    ...(watchedCardList || {}),
+    leading: form.getFieldValue(['cardList', 'leading']),
+    badgeStyle: form.getFieldValue(['cardList', 'badgeStyle']),
+  };
   const restored = resolveCardListOptionalOpenState(cardList);
   const [leadingOpen, setLeadingOpen] = useState(restored.leading);
   const [badgeOpen, setBadgeOpen] = useState(restored.badge);
   const [trailingOpen, setTrailingOpen] = useState(restored.trailing);
+  const [styleTarget, setStyleTarget] = useState<'leading' | 'badge' | null>(
+    null,
+  );
 
   useEffect(() => {
     setLeadingOpen(restored.leading);
     setBadgeOpen(restored.badge);
     setTrailingOpen(restored.trailing);
   }, [restored.leading, restored.badge, restored.trailing]);
+
+  useEffect(() => {
+    if (!cardList?.badgeField?.trim() && cardList?.badgeStyle) {
+      form.setFieldValue(['cardList', 'badgeStyle'], undefined);
+    }
+  }, [cardList?.badgeField, cardList?.badgeStyle, form]);
 
   const fieldOptions = useMemo(
     () => buildCardListFieldOptions(availableFields),
@@ -300,8 +371,18 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
     );
   };
 
+  const leadingEnabled =
+    cardList?.leading?.type === 'index' || cardList?.leading?.type === 'field';
+  const badgeEnabled = Boolean(cardList?.badgeField?.trim());
+
   return (
     <div className="mb-6">
+      <Form.Item name={['cardList', 'leading', 'style']} noStyle>
+        <StoredAccentStyle />
+      </Form.Item>
+      <Form.Item name={['cardList', 'badgeStyle']} noStyle>
+        <StoredAccentStyle />
+      </Form.Item>
       <div className="mb-4 font-medium">{t('dashboard.cardListSettings')}</div>
       {availableFields.length === 0 ? (
         <div className="mb-4 text-center text-sm text-(--color-text-3)">
@@ -347,19 +428,34 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
           required={cardList?.leading?.type === 'field'}
           onToggle={() => setLeadingOpen((open) => !open)}
         >
-          <Form.Item
-            name={['cardList', 'leading', 'type']}
-            className={cardList?.leading?.type === 'field' ? 'mb-3' : undefined}
-          >
-            <LeadingTypeSegmented
-              noneLabel={t('dashboard.cardListLeadingNone')}
-              indexLabel={t('dashboard.cardListLeadingIndex')}
-              fieldLabel={t('dashboard.cardListLeadingField')}
-              onClearField={() =>
-                form.setFieldValue(['cardList', 'leading', 'field'], undefined)
-              }
-            />
-          </Form.Item>
+          <div className="flex items-start gap-1">
+            <div className="min-w-0 flex-1">
+              <Form.Item
+                name={['cardList', 'leading', 'type']}
+                className={cardList?.leading?.type === 'field' ? 'mb-3' : 'mb-0'}
+              >
+                <LeadingTypeSegmented
+                  noneLabel={t('dashboard.cardListLeadingNone')}
+                  indexLabel={t('dashboard.cardListLeadingIndex')}
+                  fieldLabel={t('dashboard.cardListLeadingField')}
+                  onClearField={() =>
+                    form.setFieldValue(['cardList', 'leading', 'field'], undefined)
+                  }
+                  onClearStyle={() =>
+                    form.setFieldValue(['cardList', 'leading', 'style'], undefined)
+                  }
+                />
+              </Form.Item>
+            </div>
+            {leadingEnabled ? (
+              <AccentStyleButton
+                t={t}
+                configured={hasAccentStyle(cardList?.leading?.style)}
+                testId="card-list-leading-style-btn"
+                onClick={() => setStyleTarget('leading')}
+              />
+            ) : null}
+          </div>
           {cardList?.leading?.type === 'field' ? (
             <Form.Item
               name={['cardList', 'leading', 'field']}
@@ -390,13 +486,25 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
           tooltip={t('dashboard.cardListBadgeHint')}
           onToggle={() => setBadgeOpen((open) => !open)}
         >
-          <Form.Item name={['cardList', 'badgeField']}>
-            <CardListFieldSelect
-              options={fieldOptions}
-              placeholder={t('dashboard.cardListSelectField')}
-              hint={duplicateHint(cardList?.badgeField, 'badge')}
-            />
-          </Form.Item>
+          <div className="flex items-start gap-1">
+            <div className="min-w-0 flex-1">
+              <Form.Item name={['cardList', 'badgeField']} className="mb-0">
+                <CardListFieldSelect
+                  options={fieldOptions}
+                  placeholder={t('dashboard.cardListSelectField')}
+                  hint={duplicateHint(cardList?.badgeField, 'badge')}
+                />
+              </Form.Item>
+            </div>
+            {badgeEnabled ? (
+              <AccentStyleButton
+                t={t}
+                configured={hasAccentStyle(cardList?.badgeStyle)}
+                testId="card-list-badge-style-btn"
+                onClick={() => setStyleTarget('badge')}
+              />
+            ) : null}
+          </div>
         </OptionalGroup>
 
         <OptionalGroup
@@ -436,6 +544,32 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
           gridLabel={t('dashboard.cardListLayoutGrid')}
         />
       </Form.Item>
+
+      {styleTarget ? (
+        <CardListAccentStyleModal
+          open
+          title={`${t('dashboard.cardListAccentStyleConfig')} ${
+            styleTarget === 'badge'
+              ? t('dashboard.cardListAddBadge')
+              : t('dashboard.cardListAddLeading')
+          }`}
+          value={
+            styleTarget === 'badge'
+              ? form.getFieldValue(['cardList', 'badgeStyle'])
+              : form.getFieldValue(['cardList', 'leading', 'style'])
+          }
+          t={t}
+          onCancel={() => setStyleTarget(null)}
+          onConfirm={(nextStyle) => {
+            if (styleTarget === 'badge') {
+              form.setFieldValue(['cardList', 'badgeStyle'], nextStyle);
+            } else {
+              form.setFieldValue(['cardList', 'leading', 'style'], nextStyle);
+            }
+            setStyleTarget(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 };

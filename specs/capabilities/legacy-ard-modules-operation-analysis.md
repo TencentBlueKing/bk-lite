@@ -140,7 +140,7 @@
 
 ## 2026-08-11 Card List MVP 校准
 
-- `[operation_analysis#20260811-001]` 新增普通 DataSource `chartType=cardList`：Dashboard 与 Screen 共用 parser / validator / renderer / `valueConfig.cardList`。只消费 `array<object>` 或 `{items: object[]}`，六个固定槽位，渲染保护阈值 100，不进入 `isTableLikeChart`，不开放 Screen frame 配置。变更契约与证据见 `specs/changes/ops-analysis-card-list-mvp/spec.md`。
+- `[operation_analysis#20260811-001]` 新增普通 DataSource `chartType=cardList`：Dashboard 与 Screen 共用 parser / validator / renderer / `valueConfig.cardList`。只消费 `array<object>` 或 `{items: object[]}`，六个固定槽位，渲染保护阈值 100，不进入 `isTableLikeChart`，不开放 Screen frame 配置。Leading / Badge 可配置展示形态（文字着色 / 文字+浅底 / 色点）与值映射，样式在弹窗中编辑。变更契约与证据见 `specs/changes/ops-analysis-card-list-mvp/spec.md`。
 
 ## 2026-08-10 单值说明字段与表格单元格样式
 

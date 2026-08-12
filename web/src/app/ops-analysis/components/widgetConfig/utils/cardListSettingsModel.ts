@@ -1,13 +1,16 @@
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
+import type { CardListAccentStyle } from '@/app/ops-analysis/utils/cardList';
 import type { WidgetConfigFormValues } from './submitConfig';
 
 export type CardListFormState = NonNullable<WidgetConfigFormValues['cardList']>;
 
 export interface CardListPreviewSlots {
   leading?: string;
+  leadingStyle?: CardListAccentStyle;
   primary: string;
   secondary?: string;
   badge?: string;
+  badgeStyle?: CardListAccentStyle;
   trailingPrimary?: string;
   trailingSecondary?: string;
 }
@@ -92,12 +95,18 @@ export const resolveCardListPreviewSlots = (
 
   if (cardList?.leading?.type === 'index') {
     slots.leading = placeholders.index;
+    if (cardList.leading.style) {
+      slots.leadingStyle = cardList.leading.style;
+    }
   } else if (cardList?.leading?.type === 'field' && trimField(cardList.leading.field)) {
     slots.leading = resolveCardListFieldLabel(
       cardList.leading.field,
       options,
       placeholders.index,
     );
+    if (cardList.leading.style) {
+      slots.leadingStyle = cardList.leading.style;
+    }
   }
 
   if (trimField(cardList?.badgeField)) {
@@ -106,6 +115,9 @@ export const resolveCardListPreviewSlots = (
       options,
       placeholders.badge,
     );
+    if (cardList?.badgeStyle) {
+      slots.badgeStyle = cardList.badgeStyle;
+    }
   }
 
   if (trimField(cardList?.trailingPrimaryField)) {

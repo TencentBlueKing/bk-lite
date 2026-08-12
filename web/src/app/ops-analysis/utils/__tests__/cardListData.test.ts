@@ -3,7 +3,10 @@ import test from 'node:test';
 import {
   DEFAULT_CARD_LIST_MAX_ITEMS,
   formatCardListIndex,
+  normalizeCardListAccentStyle,
   parseCardListItems,
+  resolveCardListAccentPresentation,
+  softAccentBackground,
   validateCardListPayload,
 } from '../cardList';
 
@@ -168,4 +171,119 @@ test('index leading numbers rendered cards after skip and cap', () => {
   assert.equal(parsed.items[1]?.primary, 'B');
   assert.equal(parsed.items[1]?.leading, '02');
   assert.equal(parsed.items[99]?.leading, '100');
+});
+
+test('normalizeCardListAccentStyle drops text display and empty mappings', () => {
+  assert.equal(normalizeCardListAccentStyle(undefined), undefined);
+  assert.equal(normalizeCardListAccentStyle({}), undefined);
+  assert.equal(
+    normalizeCardListAccentStyle({ displayType: 'text', valueMappings: [] }),
+    undefined,
+  );
+  assert.deepEqual(
+    normalizeCardListAccentStyle({
+      displayType: 'textWithBackground',
+      valueMappings: [
+        {
+          type: 'value',
+          value: 'warn',
+          result: { text: '警告', color: '#f0a000' },
+        },
+      ],
+    }),
+    {
+      displayType: 'textWithBackground',
+      valueMappings: [
+        {
+          type: 'value',
+          value: 'warn',
+          result: { text: '警告', color: '#f0a000' },
+        },
+      ],
+    },
+  );
+  assert.deepEqual(
+    normalizeCardListAccentStyle({
+      displayType: 'colorBackground',
+      valueMappings: [
+        {
+          type: 'value',
+          value: 'P1',
+          result: { text: '紧急', color: '#f00' },
+        },
+      ],
+    }),
+    {
+      displayType: 'colorBackground',
+      valueMappings: [
+        {
+          type: 'value',
+          value: 'P1',
+          result: { text: '紧急', color: '#f00' },
+        },
+      ],
+    },
+  );
+});
+
+test('softAccentBackground lightens hex into translucent rgba', () => {
+  assert.equal(softAccentBackground('#f0a000'), 'rgba(240, 160, 0, 0.16)');
+  assert.equal(softAccentBackground('#f00'), 'rgba(255, 0, 0, 0.16)');
+});
+
+test('resolveCardListAccentPresentation maps text, soft background and color dot', () => {
+  const mappings = [
+    {
+      type: 'value' as const,
+      value: 'P1',
+      result: { text: '紧急', color: '#ff0000' },
+    },
+  ];
+
+  assert.deepEqual(
+    resolveCardListAccentPresentation('P1', { valueMappings: mappings }),
+    {
+      mode: 'text',
+      displayText: '紧急',
+      color: '#ff0000',
+    },
+  );
+
+  assert.deepEqual(
+    resolveCardListAccentPresentation('P1', {
+      displayType: 'textWithBackground',
+      valueMappings: mappings,
+    }),
+    {
+      mode: 'textWithBackground',
+      displayText: '紧急',
+      color: '#ff0000',
+      backgroundColor: 'rgba(255, 0, 0, 0.16)',
+    },
+  );
+
+  assert.deepEqual(
+    resolveCardListAccentPresentation('P1', {
+      displayType: 'colorBackground',
+      valueMappings: mappings,
+    }),
+    {
+      mode: 'colorDot',
+      color: '#ff0000',
+      tooltipText: '紧急',
+    },
+  );
+
+  assert.deepEqual(resolveCardListAccentPresentation('01', undefined), {
+    mode: 'plain',
+    displayText: '01',
+  });
+
+  assert.deepEqual(
+    resolveCardListAccentPresentation('P2', {
+      displayType: 'colorBackground',
+      valueMappings: mappings,
+    }),
+    { mode: 'plain', displayText: 'P2' },
+  );
 });

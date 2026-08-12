@@ -12,6 +12,10 @@ import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import type { NetworkStatusTopologyConfig } from '@/app/ops-analysis/types/sceneWidget';
+import {
+  normalizeCardListAccentStyle,
+  type CardListAccentStyle,
+} from '@/app/ops-analysis/utils/cardList';
 import { buildPersistedNetworkStatusTopologyConfig } from '@/app/ops-analysis/utils/networkStatusTopologyLayout';
 import { validateComponentSwitchParams } from '@/app/ops-analysis/utils/componentParamSwitch';
 
@@ -48,8 +52,10 @@ export interface WidgetConfigFormValues {
     leading?: {
       type?: 'none' | 'index' | 'field';
       field?: string;
+      style?: CardListAccentStyle;
     };
     badgeField?: string;
+    badgeStyle?: CardListAccentStyle;
     trailingPrimaryField?: string;
     trailingSecondaryField?: string;
     layout?: 'list' | 'grid';
@@ -289,6 +295,9 @@ const applyCardListConfig = (
     return 'cardListTitleRequired';
   }
 
+  const leadingStyle = normalizeCardListAccentStyle(
+    values.cardList?.leading?.style,
+  );
   const leadingType = values.cardList?.leading?.type;
   let leading: CardListConfig['leading'];
   if (leadingType === 'field') {
@@ -296,9 +305,16 @@ const applyCardListConfig = (
     if (!field) {
       return 'cardListLeadingFieldRequired';
     }
-    leading = { type: 'field', field };
+    leading = {
+      type: 'field',
+      field,
+      ...(leadingStyle ? { style: leadingStyle } : {}),
+    };
   } else if (leadingType === 'index') {
-    leading = { type: 'index' };
+    leading = {
+      type: 'index',
+      ...(leadingStyle ? { style: leadingStyle } : {}),
+    };
   }
 
   const cardList: CardListConfig = { titleField };
@@ -313,6 +329,10 @@ const applyCardListConfig = (
   const badgeField = trimOptionalField(values.cardList?.badgeField);
   if (badgeField) {
     cardList.badgeField = badgeField;
+    const badgeStyle = normalizeCardListAccentStyle(values.cardList?.badgeStyle);
+    if (badgeStyle) {
+      cardList.badgeStyle = badgeStyle;
+    }
   }
   const trailingPrimaryField = trimOptionalField(
     values.cardList?.trailingPrimaryField,

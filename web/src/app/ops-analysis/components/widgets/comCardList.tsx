@@ -7,6 +7,7 @@ import {
   parseCardListItems,
 } from '@/app/ops-analysis/utils/cardList';
 import { useTranslation } from '@/utils/i18n';
+import { CardListAccent } from './cardListAccent';
 
 interface ComCardListProps {
   rawData: unknown;
@@ -29,6 +30,8 @@ const ComCardList: React.FC<ComCardListProps> = ({
   });
   const layout = cardListConfig?.layout === 'grid' ? 'grid' : 'list';
   const hasData = parsed.status === 'ready' && parsed.items.length > 0;
+  const leadingStyle = cardListConfig?.leading?.style;
+  const badgeStyle = cardListConfig?.badgeStyle;
 
   useEffect(() => {
     if (!loading) {
@@ -64,12 +67,14 @@ const ComCardList: React.FC<ComCardListProps> = ({
           {parsed.items.map((item, index) => (
             <article
               key={`${item.primary}-${index}`}
-              className="flex min-w-0 items-start gap-3 rounded-md border border-(--color-border-2) bg-(--color-bg) px-3 py-2"
+              className="flex min-w-0 items-center gap-3 rounded-md border border-(--color-border-2) bg-(--color-bg) px-3 py-2"
             >
               {item.leading ? (
-                <div className="shrink-0 text-xs font-medium tabular-nums text-(--color-text-3)">
-                  {item.leading}
-                </div>
+                <CardListAccent
+                  text={item.leading}
+                  style={leadingStyle}
+                  kind="leading"
+                />
               ) : null}
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium text-(--color-text-1)">
@@ -84,9 +89,11 @@ const ComCardList: React.FC<ComCardListProps> = ({
               {item.badge || item.trailingPrimary || item.trailingSecondary ? (
                 <div className="flex min-w-0 shrink-0 flex-col items-end gap-1">
                   {item.badge ? (
-                    <span className="inline-flex max-w-full truncate rounded-sm bg-(--color-primary-bg-active) px-1.5 py-0.5 text-xs font-medium text-(--color-text-1)">
-                      {item.badge}
-                    </span>
+                    <CardListAccent
+                      text={item.badge}
+                      style={badgeStyle}
+                      kind="badge"
+                    />
                   ) : null}
                   {item.trailingPrimary ? (
                     <span className="max-w-full truncate text-xs font-medium text-(--color-text-1)">

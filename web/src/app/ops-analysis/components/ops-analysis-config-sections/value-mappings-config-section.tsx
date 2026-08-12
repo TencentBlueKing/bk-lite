@@ -6,6 +6,7 @@ import type {
   ValueMapping,
   ValueMappingType,
 } from '@/app/ops-analysis/components/ops-analysis-config-sections/types';
+import { DEFAULT_VALUE_MAPPING_COLOR } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 
 interface ValueMappingsConfigSectionProps {
   t: (key: string, defaultMessage?: string) => string;
@@ -54,7 +55,14 @@ export const ValueMappingsConfigSection: React.FC<
   };
 
   const addRule = () => {
-    emit([...mappings, { type: 'value', value: '', result: { text: '' } }]);
+    emit([
+      ...mappings,
+      {
+        type: 'value',
+        value: '',
+        result: { text: '', color: DEFAULT_VALUE_MAPPING_COLOR },
+      },
+    ]);
   };
 
   const removeAt = (index: number) => {
@@ -150,7 +158,7 @@ export const ValueMappingsConfigSection: React.FC<
             disabled={readonly}
           />
           <ColorPicker
-            value={m.result?.color || '#366ce4'}
+            value={m.result?.color || DEFAULT_VALUE_MAPPING_COLOR}
             onChange={(c) => updateResult(index, { color: c.toHexString() })}
             size="small"
             showText

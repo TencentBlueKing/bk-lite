@@ -38,15 +38,23 @@ Card List 不是第二张表，也不是自由卡片构建器。它不理解告�
 配置只存在 `valueConfig.cardList`。该类型形状是唯一持久化契约：
 
 ```ts
+type CardListAccentDisplayType = 'text' | 'textWithBackground' | 'colorBackground';
+
+interface CardListAccentStyle {
+  displayType?: CardListAccentDisplayType; // 缺省 / text 不落盘；textWithBackground / colorBackground 落盘
+  valueMappings?: ValueMapping[];
+}
+
 type CardListLeadingConfig =
-  | { type: 'index' }
-  | { type: 'field'; field: string };
+  | { type: 'index'; style?: CardListAccentStyle }
+  | { type: 'field'; field: string; style?: CardListAccentStyle };
 
 interface CardListConfig {
   titleField: string;
   descriptionField?: string;
   leading?: CardListLeadingConfig;
   badgeField?: string;
+  badgeStyle?: CardListAccentStyle;
   trailingPrimaryField?: string;
   trailingSecondaryField?: string;
   layout?: 'list' | 'grid';
@@ -67,6 +75,8 @@ interface CardListConfig {
 | Trailing Secondary | 是 | `trailingSecondaryField` | 可选 |
 
 六个槽位都是 MVP 必须实现的展示能力。只有 `titleField` 是配置必填项。未配置的可选字段表示该槽位在本次 Widget 中不启用，不表示该能力被移出 MVP。
+
+Leading / Badge 可额外配置 `style` / `badgeStyle`（展示形态 + 值映射）；无样式配置时保持默认外观。
 
 ### Card anatomy
 
@@ -101,7 +111,9 @@ Primary 不满足上述有效规则时，视为缺失 Primary。
 - `submitConfig` 为 `chartType=cardList` 使用专属白名单，只写出 `cardList` 以及既有通用字段（`name`、`description`、`chartType`、`dataSource`、`dataSourceParams`、`filterBindings`）。Screen 上继续写入既有公共 `appearance.frame=panel`，但不为 Card List 开放 frame 配置项。
 - `titleField` 经 trim 后为空则提交失败。
 - 可选字段（`descriptionField` / `badgeField` / `trailingPrimaryField` / `trailingSecondaryField`）trim 后为空则省略，不写空字符串。
-- 合法持久化 `leading` 仅三种：`undefined`、`{ type: 'index' }`、`{ type: 'field'; field: string }`。`field` 必须是 trim 后非空的字符串。
+- 合法持久化 `leading` 仅三种：`undefined`、`{ type: 'index'; style? }`、`{ type: 'field'; field: string; style? }`。`field` 必须是 trim 后非空的字符串。
+- `style` / `badgeStyle`：仅在有 `displayType: 'textWithBackground' | 'colorBackground'` 和/或非空 `valueMappings` 时落盘；`displayType: 'text'` 与空映射不持久化。
+- `badgeStyle` 仅在存在非空 `badgeField` 时允许落盘；清除 Badge 字段时必须一并省略 `badgeStyle`。
 - 配置 UI 可选 `none`；提交时 `none` / 未选 → `leading` 省略为 `undefined`，不得写出 `{ type: 'none' }`。
 - `leading.type='field'` 且 `field` 缺省或 trim 后为空：配置校验失败，不允许提交，不得静默省略 `leading` 后保存成功。
 - `type='index'` 不得持久化 `field`。
@@ -115,13 +127,21 @@ Primary 不满足上述有效规则时，视为缺失 Primary。
 - 配置 UI 的 `none` 等价于运行时 `undefined`，不是落盘类型。
 - `index`：renderer 按**已渲染卡片**生成序号，不读取 DataSource 字段。先跳过无效记录并应用 render safety cap，再对展示中的卡片编号。显示格式固定为 `01`、`02`、…、`99`、`100`：1–99 左侧补零到两位，`100` 显示为 `100`。
 - `field`：`field` 必填；用现有路径取值读取该字段，再套用 Displayable scalar contract。值为 missing 时仅隐藏该卡片的 Leading，不影响 Primary 或其他槽位。
-- 不支持 text / badge / icon / avatar 等 display subtype。
+- Leading 垂直居中对齐卡片主内容区。
+- 可选 `style`：复用表格同源的值映射规则（`valueMappings`）。展示形态：
+  - `text`（缺省）：文字着色；命中映射颜色时改文字颜色。
+  - `textWithBackground`：文字着色 + 同色浅透明底（约 16% 透明度）。
+  - `colorBackground`：色点；需命中映射颜色，否则回退为文字形态。
+- 样式配置在弹窗中编辑，不内嵌在卡片列表主表单里。
+- 不支持 icon / avatar 等额外 display subtype。
 
 ### Badge contract
 
-- Badge 是 Trailing 区内的短文本强调标签，展示值仍来自 `badgeField` 的 displayable scalar。
-- 样式固定，与字段值无关；使用现有 Design Token，不因 `P1` / `异常` / `健康` 等业务值换色。
-- 不增加 value → color mapping，不复用 Table / Single 的 `valueMappings`。
+- Badge 是 Trailing 区内的短强调标签，展示值仍来自 `badgeField` 的 displayable scalar。
+- 缺省样式使用现有 Design Token 背景 pill；不因业务值自动换色。
+- 可选 `badgeStyle`：与 Leading 相同的展示形态与值映射合同。命中颜色时，`text` 为文字着色，`textWithBackground` 为文字+浅底，`colorBackground` 为色点。
+- 样式配置在弹窗中编辑，不内嵌在卡片列表主表单里。
+- 值映射复用既有 `ValueMapping` 模型，不引入 Card List 专用映射 DSL。
 
 ### Layout contract
 
@@ -259,7 +279,8 @@ MVP 正式包含 Screen，且只做登记，不写新行为：
 - 卡片解剖与展示：
   - 未启用或不满足 scalar 合同的槽位不占位；用户不能改变槽位顺序。
   - Leading `index` 对已渲染卡片显示 `01`…`99`、`100`。
-  - Badge 使用固定强调标签样式，不随字段值换色。
+  - Leading / Badge 可选 accent style（`text` / `textWithBackground` / `colorBackground`）与 `valueMappings`；无样式时保持默认外观；`colorBackground` 未命中映射颜色时回退文字形态。
+  - `style` / `badgeStyle`：默认 `text` 与空映射不落盘；清除 Leading / Badge 时样式一并省略。
 - 报告：
   - 合法空列表结束为 `empty`，可 `report-ready`。
   - 非法 payload 结束为 `failed`。
@@ -272,7 +293,6 @@ MVP 正式包含 Screen，且只做登记，不写新行为：
 
 Deferred：
 
-- semantic / value color mapping
 - density
 - formatter
 - prefix / suffix
@@ -282,7 +302,6 @@ Deferred：
 - Tooltip 作为验收项
 - image / icon / avatar
 - Screen-specific scaling logic
-- leading 的 text / badge display subtype
 
 Rejected：
 

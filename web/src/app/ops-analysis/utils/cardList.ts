@@ -1,20 +1,166 @@
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
+import {
+  applyValueMapping,
+  type ValueMapping,
+} from '@/app/ops-analysis/utils/valueMapping';
 
 export const DEFAULT_CARD_LIST_MAX_ITEMS = 100;
 
+/** Card List 专属展示形态：text=文字着色；textWithBackground=文字+浅底；colorBackground=色点 */
+export type CardListAccentDisplayType =
+  | 'text'
+  | 'textWithBackground'
+  | 'colorBackground';
+
+export interface CardListAccentStyle {
+  displayType?: CardListAccentDisplayType;
+  valueMappings?: ValueMapping[];
+}
+
 export type CardListLeadingConfig =
-  | { type: 'index' }
-  | { type: 'field'; field: string };
+  | { type: 'index'; style?: CardListAccentStyle }
+  | { type: 'field'; field: string; style?: CardListAccentStyle };
 
 export interface CardListConfig {
   titleField: string;
   descriptionField?: string;
   leading?: CardListLeadingConfig;
   badgeField?: string;
+  badgeStyle?: CardListAccentStyle;
   trailingPrimaryField?: string;
   trailingSecondaryField?: string;
   layout?: 'list' | 'grid';
 }
+
+export type CardListAccentPresentation =
+  | {
+      mode: 'plain';
+      displayText: string;
+    }
+  | {
+      mode: 'text';
+      displayText: string;
+      color?: string;
+    }
+  | {
+      mode: 'textWithBackground';
+      displayText: string;
+      color: string;
+      backgroundColor: string;
+    }
+  | {
+      mode: 'colorDot';
+      color: string;
+      tooltipText: string;
+    };
+
+const PERSISTED_ACCENT_DISPLAY_TYPES = new Set<CardListAccentDisplayType>([
+  'textWithBackground',
+  'colorBackground',
+]);
+
+/** 将映射色转成更浅、更透明的背景色（对齐标签浅底样式）。 */
+export const softAccentBackground = (
+  color: string,
+  alpha = 0.16,
+): string | undefined => {
+  const hex = color.trim().replace(/^#/, '');
+  let r: number | undefined;
+  let g: number | undefined;
+  let b: number | undefined;
+  if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+    r = parseInt(hex[0] + hex[0], 16);
+    g = parseInt(hex[1] + hex[1], 16);
+    b = parseInt(hex[2] + hex[2], 16);
+  } else if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+    r = parseInt(hex.slice(0, 2), 16);
+    g = parseInt(hex.slice(2, 4), 16);
+    b = parseInt(hex.slice(4, 6), 16);
+  } else {
+    const rgb = color.match(
+      /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*[\d.]+\s*)?\)$/i,
+    );
+    if (!rgb) {
+      return undefined;
+    }
+    r = Number(rgb[1]);
+    g = Number(rgb[2]);
+    b = Number(rgb[3]);
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+export const normalizeCardListAccentStyle = (
+  style?: CardListAccentStyle,
+): CardListAccentStyle | undefined => {
+  if (!style) {
+    return undefined;
+  }
+  const displayType =
+    style.displayType && PERSISTED_ACCENT_DISPLAY_TYPES.has(style.displayType)
+      ? style.displayType
+      : undefined;
+  const valueMappings =
+    style.valueMappings && style.valueMappings.length > 0
+      ? style.valueMappings
+      : undefined;
+  if (!displayType && !valueMappings) {
+    return undefined;
+  }
+  return {
+    ...(displayType ? { displayType } : {}),
+    ...(valueMappings ? { valueMappings } : {}),
+  };
+};
+
+/**
+ * Leading / Badge 展示解析：复用表格值映射规则。
+ * - text：文字着色
+ * - textWithBackground：文字着色 + 同色浅底
+ * - colorBackground：色点（需命中颜色；否则回退为文字形态）
+ */
+export const resolveCardListAccentPresentation = (
+  rawText: string,
+  style: CardListAccentStyle | undefined,
+): CardListAccentPresentation => {
+  const mapping = applyValueMapping(rawText, style?.valueMappings);
+  const mappedText = mapping?.text?.trim();
+  const displayText = mappedText || rawText;
+  const color = mapping?.color;
+
+  if (style?.displayType === 'colorBackground' && color) {
+    return {
+      mode: 'colorDot',
+      color,
+      tooltipText: displayText,
+    };
+  }
+
+  if (style?.displayType === 'textWithBackground' && color) {
+    const backgroundColor = softAccentBackground(color);
+    if (backgroundColor) {
+      return {
+        mode: 'textWithBackground',
+        displayText,
+        color,
+        backgroundColor,
+      };
+    }
+  }
+
+  if (color) {
+    return {
+      mode: 'text',
+      displayText,
+      color,
+    };
+  }
+
+  return {
+    mode: 'plain',
+    displayText,
+  };
+};
 
 export interface CardListCard {
   primary: string;
