@@ -27,17 +27,6 @@ make server-init      # batch_init 初始化
 make collect-static   # 收集静态文件
 make init-buckets     # 初始化 MinIO bucket
 ```
-
-运营分析目录父链发布前检查：
-
-```bash
-cd server
-python manage.py audit_directory_cycles
-```
-
-该命令只读列出循环节点，不自动修改存量数据。若发现循环，先备份数据库，再人工把
-循环中的一个目录 `parent` 置空并复跑检查。代码回滚使用 `git revert`；该修复不含
-数据库迁移，回滚代码不会恢复已经拒绝的非法写入。
 单测运行:
 ```bash
 cd server
@@ -110,8 +99,9 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 - 常见失败:缺 `keystore.properties`/keystore;Android SDK/NDK/Java 异常;3001 端口冲突
 
 ### WebChat
-- release:手工触发`.github/workflows/webchat-tests.yml`并显式启用publish输入;需 `NPM_TOKEN`/`NODE_AUTH_TOKEN`
-- 常见失败:token 缺失/权限不足;Node matrix 18/20 不满足
+- test/build:根目录 `.github/workflows/webchat-tests.yml` 对 `master` 的 PR/push 自动执行 WebChat 构建、测试、lint 与 browser 静态产物一致性检查
+- release:当前没有自动 npm publish；发布前先更新 core/UI 版本，在受控环境执行构建、测试与 `npm publish`，不得向 PR workflow 注入 npm token
+- 常见失败:根 `npm ci` 失败;Node 版本不满足;browser 产物未同步或未提交;发布版本已存在/权限不足
 
 ### Stargazer
 - dev `make run`(`sanic ... --port=8083`);test `make lint`(pre-commit);build `make build`
@@ -157,7 +147,7 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 5. `web build` 内存不足 → 参考 `web/Dockerfile` 的 `NODE_OPTIONS`,降并发。
 6. `mobile dev:tauri` 连不上后端 → 确认 `tauri.conf.json` `devUrl=3001` 且后端可达。
 7. `mobile build:android` 签名报错 → 补 `src-tauri/gen/android/keystore.properties` 与 keystore。
-8. `webchat publish` 失败 → 检查 `NPM_TOKEN`、npm 权限与版本冲突。
+8. `webchat publish` 失败 → 确认已显式更新 core/UI 版本，再检查受控发布环境的 npm 权限；PR 自动门禁不负责发布。
 9. `stargazer` 不接纳采集 → 检查 Redis/NATS 与 `/api/health/ready`；Stargazer 已无独立 ARQ Worker。
 10. K8s 采集器无数据 → 检查 `secret.env` 的 `CLUSTER_NAME/NATS_*` 与 `ca.crt`。
 
