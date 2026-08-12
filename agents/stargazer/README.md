@@ -33,8 +33,11 @@ Token、community 或私钥。移除持久队列后，Pod 故障丢单依赖下�
 
 ## 并发与超时
 
+目标并发**只从环境变量读取**（代码默认值仅作缺省），改配置重启即可，不必改代码：
+
 ```bash
 MAX_ACTIVE_RUNS=16
+# 配置采集目标并发；设为 0 表示不限制（尽快打满机器、靠监控扩容）
 MAX_ACTIVE_TARGETS=2000
 TARGET_TASK_WINDOW=2000
 REDIS_MAX_CONNECTIONS=2560
@@ -49,13 +52,19 @@ OUTBOUND_ALLOWED_CIDRS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 OUTBOUND_ALLOWED_DOMAINS=
 ```
 
-这些值都是部署参数；`2000` 不是固定容量。`MAX_ACTIVE_TARGETS` /
-`TARGET_TASK_WINDOW` 是单 Pod、跨所有运行共享的配置采集目标并发窗口，默认偏大是为了
-不把压力藏在软上限后面，便于通过 CPU / 事件循环 lag / 错误率判断扩容。`MAX_ACTIVE_RUNS`
-仍保留 run 级准入；满了返回 busy/429。
+这些值都是部署参数。未设置时默认 `MAX_ACTIVE_TARGETS=2000`、
+`TARGET_TASK_WINDOW=2000`。二者是单 Pod、跨所有运行共享的配置采集目标并发窗口；
+默认偏大是为了不把压力藏在软上限后面。需要临时去掉目标并发上限时：
+
+```bash
+MAX_ACTIVE_TARGETS=0
+TARGET_TASK_WINDOW=0
+```
+
+`MAX_ACTIVE_RUNS` 仍保留 run 级准入；满了返回 busy/429。
 
 `REDIS_MAX_CONNECTIONS` 应不小于目标并发并留租约余量（推荐
-`≳ MAX_ACTIVE_TARGETS`）。多 Pod 时还要保证
+`≳ MAX_ACTIVE_TARGETS`；目标不限制时按机器与 Redis `maxclients` 自行抬高）。多 Pod 时还要保证
 `单池峰值 × Pod 数 < Redis maxclients`。池满时会有限等待
 `REDIS_POOL_TIMEOUT` 秒，而不是立刻 `MaxConnectionsError` 打崩整轮 run。
 

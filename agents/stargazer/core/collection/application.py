@@ -24,7 +24,11 @@ from core.collection.redis_state import (
     RedisCredentialStateStore,
     RedisRunStateStore,
 )
-from core.collection.constants import DEFAULT_COLLECTION_REDIS_PREFIX
+from core.collection.constants import (
+    DEFAULT_COLLECTION_REDIS_PREFIX,
+    DEFAULT_MAX_ACTIVE_TARGETS,
+    DEFAULT_TARGET_TASK_WINDOW,
+)
 from core.collection.contracts import TargetExecutorSettings
 from core.collection.result_publisher import NatsResultPublisher
 from core.collection.yaml_target_policy import apply_yaml_target_policy
@@ -32,14 +36,27 @@ from core.collection.executor import (
     TargetActivityTracker,
     TargetCollectionExecutor,
     TargetWorkerBudget,
+    unlimited_target_gate,
 )
+
+
+def concurrency_limit_from_env(name: str, default: int) -> int:
+    """从环境变量读取并发上限；缺省用 default；0 表示不限制。"""
+    raw = os.getenv(name)
+    if raw is None or str(raw).strip() == "":
+        return int(default)
+    value = int(str(raw).strip())
+    if value < 0:
+        raise ValueError(f"{name} must be >= 0 (0 means unlimited)")
+    return value
 
 
 @dataclass(frozen=True)
 class CollectionApplicationSettings:
     max_active_runs: int = 16
-    max_active_targets: int = 2000
-    target_task_window: int = 2000
+    # 0 = 不限制；默认见 DEFAULT_*，运行时由 from_env() 读环境变量
+    max_active_targets: int = DEFAULT_MAX_ACTIVE_TARGETS
+    target_task_window: int = DEFAULT_TARGET_TASK_WINDOW
     connect_timeout_seconds: float = 5.0
     plugin_timeout_seconds: float = 60.0
     lease_ttl_seconds: float = 600.0
@@ -49,12 +66,28 @@ class CollectionApplicationSettings:
     max_no_response_attempts: int = 3
     publish_max_attempts: int = 2
 
+    def __post_init__(self) -> None:
+        if self.max_active_runs <= 0:
+            raise ValueError("max_active_runs must be greater than zero")
+        if self.max_active_targets < 0:
+            raise ValueError(
+                "max_active_targets must be >= 0 (0 means unlimited)"
+            )
+        if self.target_task_window < 0:
+            raise ValueError(
+                "target_task_window must be >= 0 (0 means unlimited)"
+            )
+
     @classmethod
     def from_env(cls) -> "CollectionApplicationSettings":
         return cls(
             max_active_runs=int(os.getenv("MAX_ACTIVE_RUNS", "16")),
-            max_active_targets=int(os.getenv("MAX_ACTIVE_TARGETS", "2000")),
-            target_task_window=int(os.getenv("TARGET_TASK_WINDOW", "2000")),
+            max_active_targets=concurrency_limit_from_env(
+                "MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS
+            ),
+            target_task_window=concurrency_limit_from_env(
+                "TARGET_TASK_WINDOW", DEFAULT_TARGET_TASK_WINDOW
+            ),
             connect_timeout_seconds=float(os.getenv("CONNECT_TIMEOUT", "5")),
             plugin_timeout_seconds=float(os.getenv("PLUGIN_TIMEOUT", "60")),
             lease_ttl_seconds=float(os.getenv("RUN_LEASE_TTL", "600")),
@@ -101,8 +134,10 @@ class CollectionApplication:
                 result_event_sink=CredentialStateCache.append_result_event
             )
         self._publisher = publisher
-        self._target_semaphore = asyncio.Semaphore(
-            self.settings.max_active_targets
+        self._target_semaphore = (
+            unlimited_target_gate()
+            if self.settings.max_active_targets <= 0
+            else asyncio.Semaphore(self.settings.max_active_targets)
         )
         self._target_activity = TargetActivityTracker()
         self._worker_budget = TargetWorkerBudget(

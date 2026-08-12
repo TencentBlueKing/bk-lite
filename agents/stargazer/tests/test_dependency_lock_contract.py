@@ -68,6 +68,7 @@ def test_runbook_documents_stateless_runtime_limits() -> None:
     assert "REDIS_MAX_CONNECTIONS" in readme
     assert "REDIS_POOL_TIMEOUT" in readme
     assert "CONNECT_TIMEOUT" in readme
+    assert "MAX_ACTIVE_TARGETS=0" in readme
 
 
 def test_sanic_imports_with_the_approved_tracerite_api() -> None:
