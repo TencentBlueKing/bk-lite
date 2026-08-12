@@ -14,6 +14,10 @@ import {
   syncSessionChunks,
   upsertTextChunk,
 } from './contentChunks';
+import {
+  createStreamingFrameBatcher,
+  type FrameScheduler,
+} from './streamingFrameBatcher';
 
 export interface AGUIEventHandlerDeps {
   currentMessageIdRef: MutableRefObject<string | null>;
@@ -25,10 +29,17 @@ export interface AGUIEventHandlerDeps {
   setIsLoading: Dispatch<SetStateAction<boolean>>;
   setIsThinking: Dispatch<SetStateAction<boolean>>;
   addMessage: (message: Message) => void;
+  frameScheduler?: FrameScheduler;
 }
 
 /** Create the AG-UI protocol event dispatcher used by Chat. */
-export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
+export interface AGUIEventDispatcher {
+  (event: AGUIEvent): void;
+  flushPendingText(): void;
+  cancelPendingText(): void;
+}
+
+export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDispatcher {
   const {
     currentMessageIdRef,
     streamingContentRef,
@@ -39,7 +50,9 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
     setIsLoading,
     setIsThinking,
     addMessage,
+    frameScheduler,
   } = deps;
+  let streamingSegmentContent = '';
 
   const ensureCurrentMessage = () => {
     if (currentMessageIdRef.current) return;
@@ -57,20 +70,28 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
     onMessageReceivedRef.current?.(newAssistantMsg);
   };
 
-  const applyStreamingText = (text: string) => {
+  const applyStreamingText = (segmentText: string) => {
     const messageId = currentMessageIdRef.current;
     setMessages((prev) =>
-      mapMessageChunks(prev, messageId, (chunks) => upsertTextChunk(chunks, text), text)
+      mapMessageChunks(
+        prev,
+        messageId,
+        (chunks) => upsertTextChunk(chunks, segmentText),
+        streamingContentRef.current
+      )
     );
     syncSessionChunks(
       sessionManagerRef.current?.getSession(),
       messageId,
-      (chunks) => upsertTextChunk(chunks, text),
-      text
+      (chunks) => upsertTextChunk(chunks, segmentText),
+      streamingContentRef.current
     );
   };
 
+  const textBatcher = createStreamingFrameBatcher(applyStreamingText, frameScheduler);
+
   const applyToolPatch = (toolCallId: string, patch: Partial<ToolCall>) => {
+    textBatcher.flush();
     const messageId = currentMessageIdRef.current;
     setMessages((prev) =>
       mapMessageChunks(prev, messageId, (chunks) => patchToolCall(chunks, toolCallId, patch))
@@ -80,12 +101,14 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
     );
   };
 
-  return (event: AGUIEvent) => {
+  const dispatch = (event: AGUIEvent) => {
     switch (event.type) {
       case 'RUN_STARTED':
+        textBatcher.cancel();
         setIsThinking(true);
         stateMachineRef.current?.transitionToChatting();
         streamingContentRef.current = '';
+        streamingSegmentContent = '';
         currentMessageIdRef.current = null;
         setIsLoading(true);
         break;
@@ -99,13 +122,16 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
         break;
 
       case 'RUN_ERROR': {
+        textBatcher.flush();
         setIsThinking(false);
         const error = event.message || 'Unknown error';
         const errorContent = `\n\n❌ **错误**: ${error}`;
 
         if (currentMessageIdRef.current) {
           streamingContentRef.current += errorContent;
-          applyStreamingText(streamingContentRef.current);
+          streamingSegmentContent += errorContent;
+          textBatcher.schedule(streamingSegmentContent);
+          textBatcher.flush();
           sessionManagerRef.current?.saveSession();
         } else {
           addMessage({
@@ -125,6 +151,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
         }
         ensureCurrentMessage();
         streamingContentRef.current = '';
+        streamingSegmentContent = '';
         setIsThinking(false);
         setIsLoading(true);
         break;
@@ -136,7 +163,8 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
           break;
         }
         streamingContentRef.current += event.delta;
-        applyStreamingText(streamingContentRef.current);
+        streamingSegmentContent += event.delta;
+        textBatcher.schedule(streamingSegmentContent);
         break;
       }
 
@@ -146,19 +174,23 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
         }
         ensureCurrentMessage();
         streamingContentRef.current += event.delta || '';
-        applyStreamingText(streamingContentRef.current);
+        streamingSegmentContent += event.delta || '';
+        textBatcher.schedule(streamingSegmentContent);
         setIsThinking(false);
         setIsLoading(true);
         break;
       }
 
       case 'TEXT_MESSAGE_END':
+        textBatcher.flush();
         if (currentMessageIdRef.current && sessionManagerRef.current) {
           sessionManagerRef.current.saveSession();
         }
         break;
 
       case 'TOOL_CALL_START': {
+        textBatcher.flush();
+        streamingSegmentContent = '';
         const newToolCall: ToolCall = {
           id: event.toolCallId || generateId(),
           name: event.toolCallName || 'Unknown Tool',
@@ -199,6 +231,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
         break;
 
       case 'RUN_FINISHED':
+        textBatcher.flush();
         if (currentMessageIdRef.current && sessionManagerRef.current) {
           sessionManagerRef.current.saveSession();
         }
@@ -210,4 +243,8 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
         break;
     }
   };
+
+  dispatch.flushPendingText = () => textBatcher.flush();
+  dispatch.cancelPendingText = () => textBatcher.cancel();
+  return dispatch;
 }
