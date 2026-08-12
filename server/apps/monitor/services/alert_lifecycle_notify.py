@@ -168,6 +168,13 @@ class AlertLifecycleNotifier:
             reason=reason,
         )
 
+    def _resolve_alert_center_channel_ids(self, alert):
+        configured_ids = [int(value) for value in self._resolve_notice_type_ids(alert) if str(value).isdigit()]
+        if not configured_ids:
+            return []
+        result = SystemMgmtUtils.list_notification_channels(configured_ids)
+        return [item["id"] for item in result if item.get("delivery_mode") == "alert_event_copy"]
+
     @staticmethod
     def _alert_center_outbox_enabled():
         from apps.monitor.services.alert_center_delivery import ALERT_CENTER_OUTBOX_ENABLED

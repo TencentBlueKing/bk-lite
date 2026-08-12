@@ -9,13 +9,13 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="monitoralert",
             name="alert_center_delivery_backfilled",
-            field=models.BooleanField(default=False, verbose_name="告警中心投递意图已对账"),
+            field=models.BooleanField(default=False, null=True, verbose_name="告警中心投递意图已对账"),
             preserve_default=False,
         ),
         migrations.AlterField(
             model_name="monitoralert",
             name="alert_center_delivery_backfilled",
-            field=models.BooleanField(default=True, verbose_name="告警中心投递意图已对账"),
+            field=models.BooleanField(default=True, null=True, verbose_name="告警中心投递意图已对账"),
         ),
         migrations.CreateModel(
             name="MonitorAlertCenterDelivery",
@@ -26,6 +26,7 @@ class Migration(migrations.Migration):
                 ("action", models.CharField(max_length=20, verbose_name="生命周期动作")),
                 ("generation", models.PositiveIntegerField(verbose_name="告警内投递代次")),
                 ("delivery_id", models.CharField(max_length=64, unique=True, verbose_name="投递幂等标识")),
+                ("channel_id", models.PositiveBigIntegerField(verbose_name="通知通道 ID")),
                 ("payload", models.JSONField(default=dict, verbose_name="不可变投递载荷")),
                 ("status", models.CharField(choices=[("pending", "待投递"), ("delivering", "投递中"), ("delivered", "已投递"), ("failed", "投递失败")], db_index=True, default="pending", max_length=16)),
                 ("attempts", models.PositiveIntegerField(default=0, verbose_name="投递次数")),

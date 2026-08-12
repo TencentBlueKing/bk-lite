@@ -218,6 +218,22 @@ def _notification_channel_capabilities(channel):
     }
 
 
+@nats_client.register
+def list_notification_channels(channel_ids):
+    """Internal capability lookup; channel configuration stays private."""
+    normalized_ids = []
+    for value in channel_ids or []:
+        try:
+            normalized_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    channels = Channel.objects.filter(id__in=normalized_ids).order_by("id")
+    return {
+        "result": True,
+        "data": [_notification_channel_capabilities(channel) for channel in channels],
+    }
+
+
 def _channel_has_organization(channel, organization_ids):
     return _channel_delivery_organization(channel, organization_ids) is not None
 

@@ -766,6 +766,32 @@ def test_send_msg_with_channel_channel_not_found():
     assert result["result"] is False
 
 
+def test_list_notification_channels_exposes_capability_without_private_config():
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events", "secret": "hidden"},
+        description="alert copy",
+        team=[1],
+    )
+
+    result = nats_api.list_notification_channels([channel.id, "invalid"])
+
+    assert result["result"] is True
+    assert result["data"] == [
+        {
+            "id": channel.id,
+            "name": "告警中心",
+            "channel_type": "nats",
+            "description": "alert copy",
+            "delivery_mode": "alert_event_copy",
+            "recipient_mode": "none",
+            "availability": "available",
+        }
+    ]
+    assert "config" not in result["data"][0]
+
+
 def test_get_wechat_settings():
     # 没有 wechat 配置时仍返回标准结构
     result = nats_api.get_wechat_settings()

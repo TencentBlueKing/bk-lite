@@ -232,7 +232,10 @@ class MonitorAlert(TimeInfo):
     notice_logs = models.JSONField(default=list, verbose_name="通知记录")
     alert_center_notified = models.BooleanField(default=True, verbose_name="告警中心已同步")
     alert_center_retry_count = models.IntegerField(default=0, verbose_name="告警中心通知重试次数")
-    alert_center_delivery_backfilled = models.BooleanField(default=True, verbose_name="告警中心投递意图已对账")
+    # Keep nullable during the receiver-first rolling migration. Older writers
+    # do not know this column and therefore insert NULL until every instance is
+    # upgraded; the bounded reconciler treats NULL exactly like False.
+    alert_center_delivery_backfilled = models.BooleanField(null=True, default=True, verbose_name="告警中心投递意图已对账")
 
     class Meta:
         verbose_name = "监控告警"
@@ -262,6 +265,7 @@ class MonitorAlertCenterDelivery(TimeInfo):
     action = models.CharField(max_length=20, verbose_name="生命周期动作")
     generation = models.PositiveIntegerField(verbose_name="告警内投递代次")
     delivery_id = models.CharField(max_length=64, unique=True, verbose_name="投递幂等标识")
+    channel_id = models.PositiveBigIntegerField(verbose_name="通知通道 ID")
     payload = models.JSONField(default=dict, verbose_name="不可变投递载荷")
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
     attempts = models.PositiveIntegerField(default=0, verbose_name="投递次数")

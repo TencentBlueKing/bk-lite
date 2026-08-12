@@ -12,10 +12,16 @@ from django.utils import timezone
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import MonitorAlert, MonitorAlertCenterDelivery, MonitorPolicy
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
-from apps.system_mgmt.models import Channel
 
 
-ALERT_CENTER_OUTBOX_ENABLED = os.getenv("MONITOR_ALERT_CENTER_OUTBOX_ENABLED", "true").lower() in {"1", "true", "yes"}
+def _env_flag(name, *, default=False):
+    return os.getenv(name, "true" if default else "false").lower() in {"1", "true", "yes"}
+
+
+# The receiver must understand per-event acknowledgements before producers start
+# writing outbox records.  Keep the producer disabled through mixed-version
+# rollouts; operators enable it only after the receiver-first deployment.
+ALERT_CENTER_OUTBOX_ENABLED = _env_flag("MONITOR_ALERT_CENTER_OUTBOX_ENABLED")
 OUTBOX_BATCH_SIZE = 200
 OUTBOX_LEASE_TIMEOUT = timedelta(minutes=5)
 
@@ -30,57 +36,55 @@ def _delivery_fingerprint(alert_id, action, payload):
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
-def _alert_center_channel():
-    return Channel.objects.filter(channel_type="nats", config__method_name="receive_alert_events").first()
-
-
-@transaction.atomic
 def enqueue_alert_center_deliveries(alerts, action, *, notifier, operator="", reason=""):
     """在调用方事务内保存按 alert/action 代次排序的不可变载荷。"""
     if not ALERT_CENTER_OUTBOX_ENABLED or not alerts:
         return []
 
-    channel = _alert_center_channel()
-    if not channel:
+    try:
+        alert_channels = {
+            alert.id: notifier._resolve_alert_center_channel_ids(alert)
+            for alert in alerts
+        }
+    except Exception:
+        logger.exception("查询告警中心通道失败，保留 legacy pending 等待周期对账")
         return []
-
-    target_alerts = [
-        alert
-        for alert in alerts
-        if channel.id in {int(value) for value in notifier._resolve_notice_type_ids(alert) if str(value).isdigit()}
-    ]
+    target_alerts = [alert for alert in alerts if alert_channels[alert.id]]
     if not target_alerts:
         return []
 
     alert_ids = sorted({alert.id for alert in target_alerts})
-    locked_by_id = {
-        alert.id: alert
-        for alert in MonitorAlert.objects.select_for_update().filter(id__in=alert_ids).order_by("id")
-    }
-    instance_org_map = notifier._build_instance_org_map(target_alerts)
     created_ids = []
-    for original in target_alerts:
-        alert = locked_by_id.get(original.id, original)
-        payload = notifier._build_alert_center_payload(alert, action, operator, reason, instance_org_map)
-        delivery_id = _delivery_fingerprint(alert.id, action, payload)
-        existing = MonitorAlertCenterDelivery.objects.filter(delivery_id=delivery_id).first()
-        if existing:
-            continue
-        generation = (
-            MonitorAlertCenterDelivery.objects.filter(alert_id=alert.id).aggregate(value=Max("generation"))["value"] or 0
-        ) + 1
-        delivery = MonitorAlertCenterDelivery.objects.create(
-            alert_id=alert.id,
-            action=action,
-            generation=generation,
-            delivery_id=delivery_id,
-            payload=payload,
-        )
-        created_ids.append(delivery.id)
+    with transaction.atomic():
+        locked_by_id = {
+            alert.id: alert
+            for alert in MonitorAlert.objects.select_for_update().filter(id__in=alert_ids).order_by("id")
+        }
+        instance_org_map = notifier._build_instance_org_map(target_alerts)
+        for original in target_alerts:
+            alert = locked_by_id.get(original.id, original)
+            payload = notifier._build_alert_center_payload(alert, action, operator, reason, instance_org_map)
+            for channel_id in alert_channels[alert.id]:
+                delivery_id = _delivery_fingerprint(alert.id, action, {"channel_id": channel_id, **payload})
+                existing = MonitorAlertCenterDelivery.objects.filter(delivery_id=delivery_id).first()
+                if existing:
+                    continue
+                generation = (
+                    MonitorAlertCenterDelivery.objects.filter(alert_id=alert.id).aggregate(value=Max("generation"))["value"] or 0
+                ) + 1
+                delivery = MonitorAlertCenterDelivery.objects.create(
+                    alert_id=alert.id,
+                    action=action,
+                    generation=generation,
+                    delivery_id=delivery_id,
+                    channel_id=channel_id,
+                    payload=payload,
+                )
+                created_ids.append(delivery.id)
 
-    if created_ids:
-        MonitorAlert.objects.filter(id__in=alert_ids).update(alert_center_notified=False)
-        transaction.on_commit(lambda ids=tuple(created_ids): _schedule_deliveries(ids))
+        if created_ids:
+            MonitorAlert.objects.filter(id__in=alert_ids).update(alert_center_notified=False)
+            transaction.on_commit(lambda ids=tuple(created_ids): _schedule_deliveries(ids))
     return created_ids
 
 
@@ -137,40 +141,40 @@ def deliver_alert_center_delivery(record_id):
         delivery_id = record.delivery_id
         payload = dict(record.payload)
 
-    channel = _alert_center_channel()
-    if not channel:
-        success, retryable, error = False, True, "alert center channel not configured"
-    else:
-        payload["delivery_id"] = delivery_id
-        content = {
-            "source_id": "nats",
-            "pusher": "lite-monitor",
-            "ack_mode": "per_event_v1",
-            "events": [payload],
-        }
-        try:
-            send_result = SystemMgmtUtils.send_msg_with_channel(channel.id, "", content, [])
-            success, retryable, error = _ack_result(send_result, delivery_id)
-        except Exception as exc:
-            success, retryable, error = False, True, str(exc)
+    payload["delivery_id"] = delivery_id
+    content = {
+        "source_id": "nats",
+        "pusher": "lite-monitor",
+        "ack_mode": "per_event_v1",
+        "events": [payload],
+    }
+    try:
+        send_result = SystemMgmtUtils.send_msg_with_channel(record.channel_id, "", content, [])
+        success, retryable, error = _ack_result(send_result, delivery_id)
+    except Exception as exc:
+        success, retryable, error = False, True, str(exc)
 
     finished_at = timezone.now()
     if success:
-        finalized = MonitorAlertCenterDelivery.objects.filter(
-            id=record_id,
-            status=MonitorAlertCenterDelivery.Status.DELIVERING,
-            attempts=claim_generation,
-        ).update(
-            status=MonitorAlertCenterDelivery.Status.DELIVERED,
-            delivered_at=finished_at,
-            next_retry_at=None,
-            last_error="",
-            updated_at=finished_at,
-        )
-        if finalized and not MonitorAlertCenterDelivery.objects.filter(alert_id=record.alert_id).exclude(
-            status=MonitorAlertCenterDelivery.Status.DELIVERED
-        ).exists():
-            MonitorAlert.objects.filter(id=record.alert_id).update(alert_center_notified=True, alert_center_retry_count=0)
+        with transaction.atomic():
+            # Enqueue takes the same alert-row lock. This makes finalization and
+            # the "all generations delivered" decision one ordered state change.
+            MonitorAlert.objects.select_for_update().get(id=record.alert_id)
+            finalized = MonitorAlertCenterDelivery.objects.filter(
+                id=record_id,
+                status=MonitorAlertCenterDelivery.Status.DELIVERING,
+                attempts=claim_generation,
+            ).update(
+                status=MonitorAlertCenterDelivery.Status.DELIVERED,
+                delivered_at=finished_at,
+                next_retry_at=None,
+                last_error="",
+                updated_at=finished_at,
+            )
+            if finalized and not MonitorAlertCenterDelivery.objects.filter(alert_id=record.alert_id).exclude(
+                status=MonitorAlertCenterDelivery.Status.DELIVERED
+            ).exists():
+                MonitorAlert.objects.filter(id=record.alert_id).update(alert_center_notified=True, alert_center_retry_count=0)
         return bool(finalized)
 
     terminal = not retryable or claim_generation >= record.max_attempts
@@ -193,9 +197,9 @@ def backfill_legacy_alerts():
     """有界对账存量告警；成功旧投递会由接收端幂等去重。"""
     alerts = list(
         MonitorAlert.objects.filter(
-            alert_center_delivery_backfilled=False,
-            alert_center_notified=False,
+            Q(alert_center_delivery_backfilled=False) | Q(alert_center_delivery_backfilled__isnull=True)
         )
+        .filter(Q(alert_center_notified=False) | Q(status="new"))
         .order_by("id")[:OUTBOX_BATCH_SIZE]
     )
     if not alerts:

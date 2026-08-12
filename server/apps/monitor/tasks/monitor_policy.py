@@ -20,6 +20,13 @@ def _run_scan_and_record_success(policy_obj, scan_time):
     MonitorPolicy.objects.filter(id=policy_obj.id).update(last_run_time=scan_time)
 
 
+def _legacy_alert_center_retry_statuses(*, outbox_enabled, created_retry_enabled):
+    statuses = ["recovered", "closed"]
+    if created_retry_enabled or not outbox_enabled:
+        statuses.insert(0, "new")
+    return statuses
+
+
 @shared_task(base=Singleton, raise_on_duplicate=False)
 def scan_policy_task(policy_id):
     """扫描监控策略
@@ -122,9 +129,10 @@ def retry_alert_center_lifecycle_notify_task():
         AlertLifecycleNotifier,
     )
 
-    retry_statuses = ["recovered", "closed"]
-    if ALERT_CENTER_CREATED_RETRY_ENABLED:
-        retry_statuses.insert(0, "new")
+    retry_statuses = _legacy_alert_center_retry_statuses(
+        outbox_enabled=ALERT_CENTER_OUTBOX_ENABLED,
+        created_retry_enabled=ALERT_CENTER_CREATED_RETRY_ENABLED,
+    )
     alerts = list(
         MonitorAlert.objects.filter(
             status__in=retry_statuses,

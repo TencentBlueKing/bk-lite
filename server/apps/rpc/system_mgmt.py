@@ -271,6 +271,9 @@ class SystemMgmt(object):
             include_children=include_children,
         )
 
+    def list_notification_channels(self, channel_ids):
+        return self.client.run("list_notification_channels", channel_ids=channel_ids)
+
     def search_notification_recipients_scoped(
         self,
         actor_context,

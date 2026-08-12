@@ -1415,7 +1415,7 @@ def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(mo
 
 
 @pytest.mark.django_db
-def test_receive_alert_events_per_event_ack_rejects_untrusted_or_oversized_batches(monkeypatch):
+def test_receive_alert_events_per_event_ack_keeps_untrusted_boundary_and_bounds_batches(monkeypatch):
     from apps.alerts.models.alert_source import AlertSource
 
     AlertSource.objects.create(
@@ -1426,11 +1426,16 @@ def test_receive_alert_events_per_event_ack_rejects_untrusted_or_oversized_batch
         is_active=True,
         is_effective=True,
     )
-    monkeypatch.setattr(
-        N.AlertSourceAdapterFactory,
-        "get_adapter",
-        staticmethod(lambda source: (_ for _ in ()).throw(AssertionError("adapter must not run"))),
-    )
+    observed = {}
+
+    class FakeAdapter:
+        def __init__(self, events, trusted_internal, **kwargs):
+            observed["trusted_internal"] = trusted_internal
+
+        def main(self):
+            return {"received": 1, "accepted": 1, "skipped": 0, "errored": 0, "duplicates": 0, "rejected": 0}
+
+    monkeypatch.setattr(N.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda source: FakeAdapter))
 
     untrusted = N.receive_alert_events(
         source_id="nats-ack-bound",
@@ -1445,8 +1450,8 @@ def test_receive_alert_events_per_event_ack_rejects_untrusted_or_oversized_batch
         ack_mode=N.PER_EVENT_ACK_MODE,
     )
 
-    assert untrusted["result"] is False
-    assert "restricted" in untrusted["message"]
+    assert untrusted["result"] is True
+    assert observed["trusted_internal"] is False
     assert oversized["result"] is False
     assert oversized["data"]["max_events"] == N.PER_EVENT_ACK_MAX_EVENTS
 

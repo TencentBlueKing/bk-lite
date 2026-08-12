@@ -7,10 +7,13 @@ import pytest
 
 from apps.monitor.models import MonitorAlert, MonitorAlertCenterDelivery
 from apps.monitor.services.alert_center_delivery import (
+    _env_flag,
     _ack_result,
+    backfill_legacy_alerts,
     deliver_alert_center_delivery,
     enqueue_alert_center_deliveries,
 )
+from apps.monitor.tasks import monitor_policy as monitor_policy_tasks
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.system_mgmt.models import Channel
 
@@ -47,8 +50,49 @@ def _alert(channel, **overrides):
     return MonitorAlert.objects.create(**values)
 
 
+def test_outbox_requires_explicit_receiver_first_enablement(monkeypatch):
+    monkeypatch.delenv("MONITOR_ALERT_CENTER_OUTBOX_ENABLED", raising=False)
+    assert _env_flag("MONITOR_ALERT_CENTER_OUTBOX_ENABLED") is False
+
+    monkeypatch.setenv("MONITOR_ALERT_CENTER_OUTBOX_ENABLED", "true")
+    assert _env_flag("MONITOR_ALERT_CENTER_OUTBOX_ENABLED") is True
+
+
+def test_outbox_rollback_keeps_legacy_created_retry_enabled(monkeypatch):
+    assert monitor_policy_tasks._legacy_alert_center_retry_statuses(
+        outbox_enabled=False,
+        created_retry_enabled=False,
+    ) == ["new", "recovered", "closed"]
+
+
+def test_backfill_reconciles_legacy_created_rows_that_still_look_notified(alert_center_channel, monkeypatch):
+    alert = _alert(
+        alert_center_channel,
+        alert_center_delivery_backfilled=None,
+        alert_center_notified=True,
+    )
+    monkeypatch.setattr("apps.monitor.services.alert_center_delivery._schedule_deliveries", lambda ids: None)
+    monkeypatch.setattr(
+        "apps.monitor.utils.system_mgmt_api.SystemMgmtUtils.list_notification_channels",
+        lambda ids: [{"id": alert_center_channel.id, "delivery_mode": "alert_event_copy"}],
+    )
+
+    assert backfill_legacy_alerts() == 1
+
+    delivery = MonitorAlertCenterDelivery.objects.get(alert=alert)
+    assert delivery.action == "created"
+    assert delivery.channel_id == alert_center_channel.id
+    alert.refresh_from_db()
+    assert alert.alert_center_delivery_backfilled is True
+    assert alert.alert_center_notified is False
+
+
 def test_created_and_recovered_keep_independent_ordered_immutable_payloads(alert_center_channel, monkeypatch):
     monkeypatch.setattr("apps.monitor.services.alert_center_delivery._schedule_deliveries", lambda ids: None)
+    monkeypatch.setattr(
+        "apps.monitor.utils.system_mgmt_api.SystemMgmtUtils.list_notification_channels",
+        lambda ids: [{"id": alert_center_channel.id, "delivery_mode": "alert_event_copy"}],
+    )
     alert = _alert(alert_center_channel)
     notifier = AlertLifecycleNotifier(SimpleNamespace(id=7, name="CPU 策略", organizations=[1], notice=True))
 
@@ -74,10 +118,10 @@ def test_created_and_recovered_keep_independent_ordered_immutable_payloads(alert
 def test_later_generation_cannot_overtake_pending_created(alert_center_channel, mocker):
     alert = _alert(alert_center_channel)
     first = MonitorAlertCenterDelivery.objects.create(
-        alert=alert, action="created", generation=1, delivery_id="created-1", payload={"title": "first"}
+        alert=alert, action="created", generation=1, delivery_id="created-1", channel_id=alert_center_channel.id, payload={"title": "first"}
     )
     second = MonitorAlertCenterDelivery.objects.create(
-        alert=alert, action="recovered", generation=2, delivery_id="recovered-2", payload={"title": "second"}
+        alert=alert, action="recovered", generation=2, delivery_id="recovered-2", channel_id=alert_center_channel.id, payload={"title": "second"}
     )
     send = mocker.patch("apps.monitor.services.alert_center_delivery.SystemMgmtUtils.send_msg_with_channel")
 
@@ -105,7 +149,7 @@ def test_outbox_enabled_skips_legacy_nats_but_keeps_pending(alert_center_channel
 def test_stale_delivery_finalize_is_fenced_by_attempt_generation(alert_center_channel, monkeypatch):
     alert = _alert(alert_center_channel, alert_center_notified=False)
     delivery = MonitorAlertCenterDelivery.objects.create(
-        alert=alert, action="created", generation=1, delivery_id="created-fenced", payload={"title": "first"}
+        alert=alert, action="created", generation=1, delivery_id="created-fenced", channel_id=alert_center_channel.id, payload={"title": "first"}
     )
 
     def race(*args, **kwargs):
