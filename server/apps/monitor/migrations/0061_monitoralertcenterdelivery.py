@@ -10,14 +10,13 @@ class Migration(migrations.Migration):
             model_name="monitoralert",
             name="alert_center_delivery_backfilled",
             field=models.BooleanField(default=False, verbose_name="告警中心投递意图已对账"),
-            preserve_default=False,
         ),
         migrations.CreateModel(
             name="MonitorAlertCenterDelivery",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="创建时间")),
-                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="更新时间")),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="Created Time")),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Updated Time")),
                 ("action", models.CharField(max_length=20, verbose_name="生命周期动作")),
                 ("generation", models.PositiveIntegerField(verbose_name="告警内投递代次")),
                 ("delivery_id", models.CharField(max_length=64, unique=True, verbose_name="投递幂等标识")),
