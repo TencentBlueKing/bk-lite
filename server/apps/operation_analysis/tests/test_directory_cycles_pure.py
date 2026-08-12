@@ -6,7 +6,9 @@ from django.core.exceptions import ValidationError
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from apps.operation_analysis.models.models import Directory
-from apps.operation_analysis.serializers.directory_serializers import DirectoryModelSerializer
+from apps.operation_analysis.serializers.directory_serializers import DashboardModelSerializer, DirectoryModelSerializer
+
+pytestmark = pytest.mark.unit
 
 
 class _ParentWalkTimedOut(Exception):
@@ -76,3 +78,14 @@ def test_directory_serializer_returns_validation_error_for_cycle_parent():
 
     with pytest.raises(DRFValidationError, match="cannot contain cycles"):
         serializer.validate_parent(child)
+
+
+def test_canvas_serializer_rejects_historical_directory_cycle():
+    first = _directory(1, "first")
+    second = _directory(2, "second", parent=first)
+    first.parent = second
+    serializer = object.__new__(DashboardModelSerializer)
+    serializer.instance = None
+
+    with pytest.raises(DRFValidationError, match="cannot contain cycles"):
+        serializer._validate_directory_chain_visibility({"directory": first, "groups": [1]})

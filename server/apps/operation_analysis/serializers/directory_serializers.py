@@ -25,7 +25,22 @@ class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
 
     class Meta:
         model = Directory
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "groups",
+            "name",
+            "parent",
+            "is_active",
+            "desc",
+            "is_build_in",
+            "build_in_key",
+        ]
         extra_kwargs = {
             "is_build_in": {"read_only": True},
             "build_in_key": {"read_only": True},
@@ -47,9 +62,12 @@ class DirectoryChainVisibilityMixin:
 
         target_groups = {int(group_id) for group_id in groups if group_id is not None}
         conflicts = []
-        current = directory
+        try:
+            directory_chain = [directory, *directory.get_parent_chain()]
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages) from error
 
-        while current is not None:
+        for current in directory_chain:
             directory_groups = {int(group_id) for group_id in (current.groups or []) if group_id is not None}
             missing_groups = sorted(target_groups - directory_groups)
             if missing_groups:
@@ -63,7 +81,6 @@ class DirectoryChainVisibilityMixin:
                         "missing_groups": missing_groups,
                     }
                 )
-            current = current.parent
 
         if conflicts:
             raise serializers.ValidationError(

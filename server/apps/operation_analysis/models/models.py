@@ -58,7 +58,10 @@ class Directory(MaintainerInfo, TimeInfo, Groups):
         return self.sub_directories.exists()
 
     def get_level(self):
-        level = 0
+        return len(self.get_parent_chain())
+
+    def get_parent_chain(self):
+        parents = []
         visited = {self._identity()}
         parent = self.parent
         while parent is not None:
@@ -66,9 +69,9 @@ class Directory(MaintainerInfo, TimeInfo, Groups):
             if identity in visited:
                 raise ValidationError("Directory hierarchy cannot contain cycles.")
             visited.add(identity)
-            level += 1
+            parents.append(parent)
             parent = parent.parent
-        return level
+        return parents
 
     def _identity(self):
         if self.pk is not None:
