@@ -116,6 +116,92 @@ def test_legacy_retry_uses_each_alert_selected_alert_center_channel(
     assert all(success for _, success in results)
 
 
+def test_legacy_retry_requires_all_selected_alert_center_channels_to_succeed(
+    alert_center_channel, mocker
+):
+    second_channel = Channel.objects.create(
+        name="告警中心二",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
+    )
+    alert = _alert(
+        alert_center_channel,
+        notice_type_ids=[alert_center_channel.id, second_channel.id],
+    )
+    mocker.patch.object(
+        AlertLifecycleNotifier,
+        "_push_to_alert_center",
+        side_effect=lambda channel_id, channel_name, alerts, *args: [
+            (
+                item,
+                {
+                    "success": channel_id == alert_center_channel.id,
+                    "channel_id": channel_id,
+                },
+            )
+            for item in alerts
+        ],
+    )
+
+    assert AlertLifecycleNotifier().push_to_alert_center_only(
+        [alert], "created"
+    ) == [(alert, False)]
+
+
+def test_legacy_retry_channel_capability_failure_stays_retryable(
+    alert_center_channel, monkeypatch
+):
+    alert = _alert(alert_center_channel)
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_lifecycle_notify.SystemMgmtUtils.probe_notification_channel",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("rpc unavailable")),
+    )
+
+    assert AlertLifecycleNotifier().push_to_alert_center_only(
+        [alert], "created"
+    ) == [(alert, False)]
+
+
+def test_immediate_delivery_requires_all_alert_center_channels_to_succeed(
+    alert_center_channel, mocker
+):
+    second_channel = Channel.objects.create(
+        name="告警中心二",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
+    )
+    alert = _alert(
+        alert_center_channel,
+        notice_type_ids=[alert_center_channel.id, second_channel.id],
+        alert_center_notified=False,
+    )
+    notifier = AlertLifecycleNotifier()
+    mocker.patch.object(
+        notifier,
+        "_send_to_channel",
+        side_effect=lambda channel_id, users, alerts, *args: [
+            (
+                item,
+                {
+                    "is_alert_center": True,
+                    "success": channel_id == alert_center_channel.id,
+                    "channel_id": channel_id,
+                },
+            )
+            for item in alerts
+        ],
+    )
+
+    notifier.notify_alerts([alert], "created")
+
+    alert.refresh_from_db()
+    assert alert.alert_center_notified is False
+
+
 def test_shadow_legacy_and_outbox_share_lifecycle_identity(
     alert_center_channel, monkeypatch, mocker
 ):
@@ -312,6 +398,52 @@ def test_backfill_restores_missing_created_before_recovered(alert_center_channel
         MonitorAlertCenterDelivery.objects.filter(alert=alert).order_by("generation")
     )
     assert [item.action for item in deliveries] == ["created", "recovered"]
+
+
+def test_backfill_restores_created_predecessor_only_for_missing_channel(
+    alert_center_channel, monkeypatch
+):
+    second_channel = Channel.objects.create(
+        name="告警中心二",
+        channel_type="nats",
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.ALERT_CENTER_OUTBOX_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.alert_center_delivery.ALERT_CENTER_OUTBOX_DELIVERY_ENABLED",
+        False,
+    )
+    alert = _alert(
+        alert_center_channel,
+        status="recovered",
+        alert_center_delivery_backfilled=False,
+        alert_center_notified=False,
+        notice_type_ids=[alert_center_channel.id, second_channel.id],
+        notice_logs=[
+            {
+                "action": "created",
+                "channel_id": alert_center_channel.id,
+                "success": True,
+            }
+        ],
+    )
+
+    assert backfill_legacy_alerts() == 1
+
+    assert list(
+        MonitorAlertCenterDelivery.objects.filter(alert=alert)
+        .order_by("generation")
+        .values_list("action", "channel_id")
+    ) == [
+        ("created", second_channel.id),
+        ("recovered", alert_center_channel.id),
+        ("recovered", second_channel.id),
+    ]
 
 
 def test_outbox_ignores_non_alert_center_channels(alert_center_channel, monkeypatch):

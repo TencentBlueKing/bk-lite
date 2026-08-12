@@ -48,6 +48,7 @@ def enqueue_alert_center_deliveries(
     operator="",
     reason="",
     legacy_ingest_identity=False,
+    channel_ids_by_alert=None,
 ):
     """在调用方事务内保存按 alert/action 代次排序的不可变载荷。"""
     if not ALERT_CENTER_OUTBOX_ENABLED or not alerts:
@@ -56,7 +57,10 @@ def enqueue_alert_center_deliveries(
     configured_channel_ids = {
         int(value)
         for alert in alerts
-        for value in notifier._resolve_notice_type_ids(alert)
+        for value in (
+            (channel_ids_by_alert or {}).get(alert.id)
+            or notifier._resolve_notice_type_ids(alert)
+        )
         if str(value).isdigit()
     }
     alert_center_channel_ids = set()
@@ -80,7 +84,10 @@ def enqueue_alert_center_deliveries(
     alert_channels = {
         alert.id: [
             int(value)
-            for value in notifier._resolve_notice_type_ids(alert)
+            for value in (
+                (channel_ids_by_alert or {}).get(alert.id)
+                or notifier._resolve_notice_type_ids(alert)
+            )
             if str(value).isdigit() and int(value) in alert_center_channel_ids
         ]
         for alert in alerts
@@ -166,7 +173,10 @@ def enqueue_alert_center_deliveries(
             for alert in target_alerts
             if not unresolved_channel_ids.intersection(
                 int(value)
-                for value in notifier._resolve_notice_type_ids(alert)
+                for value in (
+                    (channel_ids_by_alert or {}).get(alert.id)
+                    or notifier._resolve_notice_type_ids(alert)
+                )
                 if str(value).isdigit()
             )
         ]
@@ -351,26 +361,32 @@ def backfill_legacy_alerts():
 
     for alert in alerts:
         policy = policies.get(alert.policy_id)
-        has_successful_created_notice = any(
-            isinstance(entry, dict)
-            and entry.get("action") in {"created", "upgraded"}
-            and entry.get("success") is True
-            for entry in alert.notice_logs or []
-        )
-        if policy is not None and not policy.notice and not (
-            alert.status in {"recovered", "closed"}
-            and has_successful_created_notice
-        ):
-            MonitorAlert.objects.filter(id=alert.id).update(alert_center_delivery_backfilled=True)
-            continue
         configured_ids = [int(value) for value in alert.notice_type_ids or [] if str(value).isdigit()]
         if not configured_ids and policy is not None:
             configured_ids = [int(value) for value in policy.notice_type_ids or [] if str(value).isdigit()]
+        successful_created_channel_ids = {
+            int(entry.get("channel_id"))
+            for entry in alert.notice_logs or []
+            if isinstance(entry, dict)
+            and entry.get("action") in {"created", "upgraded"}
+            and entry.get("success") is True
+            and str(entry.get("channel_id")).isdigit()
+        }
+        if policy is not None and not policy.notice:
+            configured_ids = [
+                channel_id
+                for channel_id in configured_ids
+                if alert.status in {"recovered", "closed"}
+                and channel_id in successful_created_channel_ids
+            ]
         if not configured_ids:
             MonitorAlert.objects.filter(id=alert.id).update(alert_center_delivery_backfilled=True)
             continue
         notifier = AlertLifecycleNotifier(policy, policies_by_id=policies)
-        if alert.status != "new" and not has_successful_created_notice:
+        missing_created_channel_ids = sorted(
+            set(configured_ids) - successful_created_channel_ids
+        )
+        if alert.status != "new" and missing_created_channel_ids:
             # 存量只有当前态，没有首次告警的不可变快照；先建立兼容 created
             # 前驱，保证 recovery/closed 不会越过尚未确认的首次投递。
             enqueue_alert_center_deliveries(
@@ -378,6 +394,7 @@ def backfill_legacy_alerts():
                 "created",
                 notifier=notifier,
                 legacy_ingest_identity=True,
+                channel_ids_by_alert={alert.id: missing_created_channel_ids},
             )
         enqueue_alert_center_deliveries(
             [alert],
@@ -386,6 +403,7 @@ def backfill_legacy_alerts():
             legacy_ingest_identity=(
                 alert.status == "new" and alert.alert_center_notified
             ),
+            channel_ids_by_alert={alert.id: configured_ids},
         )
     return len(alerts)
 

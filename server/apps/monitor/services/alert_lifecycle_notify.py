@@ -66,8 +66,7 @@ class AlertLifecycleNotifier:
                     continue
                 groups[(channel_id, tuple(notice_users) if notice_users else ())].append(alert)
 
-        alert_center_success_ids = set()
-        alert_center_target_ids = set()  # 实际走到了 NATS 推送路径的告警
+        alert_center_results = defaultdict(list)
 
         for (channel_id, notice_users_tuple), group_alerts in groups.items():
             notice_users = list(notice_users_tuple)
@@ -78,9 +77,9 @@ class AlertLifecycleNotifier:
                 for alert, log_entry in results:
                     alert_log_entries[alert.id].append(log_entry)
                     if log_entry.get("is_alert_center"):
-                        alert_center_target_ids.add(alert.id)
-                        if log_entry.get("success"):
-                            alert_center_success_ids.add(alert.id)
+                        alert_center_results[alert.id].append(
+                            bool(log_entry.get("success"))
+                        )
             except Exception as e:
                 logger.error(
                     f"Lifecycle notify exception: action={action}, channel_id={channel_id}, error={e}",
@@ -102,17 +101,22 @@ class AlertLifecycleNotifier:
                     exc_channel = Channel.objects.filter(id=channel_id).first()
                     if exc_channel and exc_channel.channel_type == "nats" and exc_channel.config.get("method_name") == "receive_alert_events":
                         for alert in group_alerts:
-                            alert_center_target_ids.add(alert.id)
+                            alert_center_results[alert.id].append(False)
                 except Exception:
                     for alert in group_alerts:
-                        alert_center_target_ids.add(alert.id)
+                        alert_center_results[alert.id].append(False)
 
         self._persist_notice_logs(alerts, alert_log_entries)
+        alert_center_success_ids = {
+            alert_id
+            for alert_id, results in alert_center_results.items()
+            if results and all(results)
+        }
         if alert_center_success_ids:
             self._mark_alert_center_notified(alert_center_success_ids)
 
         # 未经过 NATS 推送路径的告警（无告警中心渠道）：归还 notified=True，避免补偿任务空转
-        not_targeted_ids = {a.id for a in alerts} - alert_center_target_ids
+        not_targeted_ids = {a.id for a in alerts} - set(alert_center_results)
         if not_targeted_ids:
             self._reset_alert_center_flags_by_ids(not_targeted_ids)
 
@@ -148,14 +152,19 @@ class AlertLifecycleNotifier:
             for value in self._resolve_notice_type_ids(alert)
             if str(value).isdigit()
         }
-        channels = {
-            channel.id: channel
-            for channel in Channel.objects.filter(
-                id__in=channel_ids,
-                channel_type="nats",
-                config__method_name="receive_alert_events",
-            )
-        }
+        channels = set()
+        for channel_id in channel_ids:
+            try:
+                capability = SystemMgmtUtils.probe_notification_channel(
+                    channel_id, capability_only=True
+                ) or {}
+            except Exception:
+                logger.exception(
+                    "告警中心补偿渠道能力查询失败: channel_id=%s", channel_id
+                )
+                continue
+            if capability.get("delivery_mode") == "alert_event_copy":
+                channels.add(channel_id)
         groups = defaultdict(list)
         for alert in alerts:
             for value in self._resolve_notice_type_ids(alert):
@@ -164,10 +173,9 @@ class AlertLifecycleNotifier:
         push_results = []
         delivered_alert_ids = set()
         for channel_id, group_alerts in groups.items():
-            channel = channels[channel_id]
             results = self._push_to_alert_center(
-                channel.id,
-                channel.name or str(channel.id),
+                channel_id,
+                str(channel_id),
                 group_alerts,
                 action,
                 operator,
@@ -185,7 +193,13 @@ class AlertLifecycleNotifier:
         for alert, log_entry in push_results:
             alert_log_entries[alert.id].append(log_entry)
         self._persist_notice_logs(alerts, alert_log_entries)
-        return [(alert, log_entry.get("success", False)) for alert, log_entry in push_results]
+        results_by_alert = defaultdict(list)
+        for alert, log_entry in push_results:
+            results_by_alert[alert.id].append(bool(log_entry.get("success")))
+        return [
+            (alert, bool(results_by_alert[alert.id]) and all(results_by_alert[alert.id]))
+            for alert in alerts
+        ]
 
     def enqueue_alert_center_deliveries(self, alerts, action, operator="", reason=""):
         from apps.monitor.services.alert_center_delivery import enqueue_alert_center_deliveries
