@@ -33,6 +33,16 @@ const RACK_USABLE_BOTTOM = 0.12;
 const RACK_USABLE_TOP_PADDING = 0.1;
 const RACK_USABLE_HEIGHT =
   ROOM3D_RACK_HEIGHT - RACK_USABLE_BOTTOM - RACK_USABLE_TOP_PADDING;
+const ROOM3D_ANIMATION_EPSILON = 0.001;
+
+const interpolateRoom3DValue = (
+  current: number,
+  target: number,
+  factor: number,
+) => {
+  const next = current + (target - current) * factor;
+  return Math.abs(target - next) <= ROOM3D_ANIMATION_EPSILON ? target : next;
+};
 
 const createCanvasTexture = (
   width: number,
@@ -1302,15 +1312,24 @@ export const setRackVisualState = (
 };
 
 export const animateRackVisual = (visual: RackVisual) => {
-  visual.doorGroup.rotation.y +=
-    (visual.targetDoorRotation - visual.doorGroup.rotation.y) * 0.16;
+  let isAnimating = false;
+  visual.doorGroup.rotation.y = interpolateRoom3DValue(
+    visual.doorGroup.rotation.y,
+    visual.targetDoorRotation,
+    0.16,
+  );
+  isAnimating = visual.doorGroup.rotation.y !== visual.targetDoorRotation;
+
   visual.deviceMeshes.forEach((mesh) => {
     const targetZ =
       typeof mesh.userData.targetZ === "number"
         ? mesh.userData.targetZ
         : mesh.position.z;
-    mesh.position.z += (targetZ - mesh.position.z) * 0.22;
+    mesh.position.z = interpolateRoom3DValue(mesh.position.z, targetZ, 0.22);
+    isAnimating = mesh.position.z !== targetZ || isAnimating;
   });
+
+  return isAnimating;
 };
 
 export const disposeObject3D = (object: THREE.Object3D) => {

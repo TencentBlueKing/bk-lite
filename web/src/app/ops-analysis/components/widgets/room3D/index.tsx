@@ -20,6 +20,7 @@ import {
   getRoom3DRackDevices,
   type Room3DRenderableDevice,
   type Room3DRack,
+  type Room3DResponse,
   validateRoom3DData,
 } from "./room3DData";
 import { createRoom3DScene } from "./room3DScene";
@@ -46,6 +47,11 @@ interface SizeState {
   height: number;
 }
 
+interface SceneReadiness {
+  roomData: Room3DResponse;
+  rendered: boolean;
+}
+
 const Room3D: React.FC<Room3DProps> = ({
   rawData,
   loading = false,
@@ -60,6 +66,8 @@ const Room3D: React.FC<Room3DProps> = ({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const resetViewRef = useRef<() => void>(() => undefined);
+  const resizeSceneRef = useRef<() => void>(() => undefined);
+  const sceneReadinessRef = useRef<SceneReadiness | null>(null);
   const validation = useMemo(
     () => validateRoom3DData(rawData, t),
     [rawData, t],
@@ -82,6 +90,7 @@ const Room3D: React.FC<Room3DProps> = ({
     width: 0,
     height: 0,
   });
+  const [sceneRenderVersion, setSceneRenderVersion] = useState(0);
 
   const isCompact = (screenRenderContext?.widgetDensity || 0) > 0.5;
   const readableOverlayScale = useMemo(() => {
@@ -103,12 +112,6 @@ const Room3D: React.FC<Room3DProps> = ({
   }, [screenRenderContext]);
 
   useEffect(() => {
-    if (!loading) {
-      onReady?.(Boolean(roomData?.racks.length || notice));
-    }
-  }, [loading, notice, onReady, roomData?.racks.length]);
-
-  useEffect(() => {
     setHoverState(null);
     setSelectedRack(null);
     setSelectedDevice(null);
@@ -116,16 +119,30 @@ const Room3D: React.FC<Room3DProps> = ({
 
   useEffect(() => {
     const mountNode = mountRef.current;
-    if (!mountNode || !roomData?.racks.length) {
+    if (loading || errorMessage || !mountNode || !roomData?.racks.length) {
+      sceneReadinessRef.current = null;
       resetViewRef.current = () => undefined;
+      resizeSceneRef.current = () => undefined;
       return undefined;
     }
 
+    const readiness: SceneReadiness = { roomData, rendered: false };
+    sceneReadinessRef.current = readiness;
     const controller = createRoom3DScene(
       mountNode,
       roomData,
       {
         onHover: setHoverState,
+        onFirstRender: () => {
+          if (
+            sceneReadinessRef.current !== readiness ||
+            readiness.rendered
+          ) {
+            return;
+          }
+          readiness.rendered = true;
+          setSceneRenderVersion((version) => version + 1);
+        },
         onSelect: (rack) => {
           setSelectedRack(rack);
           if (!rack) {
@@ -136,12 +153,40 @@ const Room3D: React.FC<Room3DProps> = ({
       },
     );
     resetViewRef.current = controller.resetView;
+    resizeSceneRef.current = controller.resize;
 
     return () => {
       controller.dispose();
+      if (sceneReadinessRef.current === readiness) {
+        sceneReadinessRef.current = null;
+      }
       resetViewRef.current = () => undefined;
+      resizeSceneRef.current = () => undefined;
     };
-  }, [roomData]);
+  }, [errorMessage, loading, roomData]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+    const hasScene = Boolean(roomData?.racks.length);
+    if (errorMessage) {
+      onReady?.(Boolean(hasScene || notice));
+      return;
+    }
+    if (
+      hasScene &&
+      (sceneReadinessRef.current?.roomData !== roomData ||
+        !sceneReadinessRef.current.rendered)
+    ) {
+      return;
+    }
+    onReady?.(Boolean(hasScene || notice));
+  }, [errorMessage, loading, notice, onReady, roomData, sceneRenderVersion]);
+
+  useLayoutEffect(() => {
+    resizeSceneRef.current();
+  }, [screenRenderContext?.fitScale]);
 
   const legendItems = useMemo(() => {
     if (!roomData?.racks.length) {
