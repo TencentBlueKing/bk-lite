@@ -18,7 +18,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const RouteAndSurfaceHierarchy: Story = {
-  name: '页面壳与承载面',
+  name: '紧凑页面壳与承载面',
   render: () => (
     <ApmRouteShell
       title="服务"
@@ -27,7 +27,7 @@ export const RouteAndSurfaceHierarchy: Story = {
     >
       <ApmSurface>
         <div className="text-sm text-[var(--color-text-2)]">
-          APM 子布局不覆盖全局画布；筛选、表格和业务卡片在这一层内组合。
+          二级导航已表达当前页面，页面壳不再重复渲染介绍卡；筛选、表格和业务卡片直接进入内容工作面。
         </div>
       </ApmSurface>
     </ApmRouteShell>
