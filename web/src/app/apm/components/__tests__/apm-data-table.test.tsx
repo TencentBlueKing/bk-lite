@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ApmDataTable from '../apm-data-table';
 
 interface Row {
+  count?: number;
   id: number;
   name: string;
 }
@@ -56,5 +57,22 @@ describe('ApmDataTable', () => {
     expect(screen.getByText('共 21 条')).toBeTruthy();
     expect(screen.getAllByLabelText('Page Size').length).toBeGreaterThan(0);
     expect(document.querySelector('.ant-select-selection-item')?.textContent).toContain('20');
+  });
+
+  it('表头统一左对齐，同时保留数值正文右对齐', () => {
+    render(
+      <ApmDataTable<Row>
+        columns={[
+          { title: '名称', dataIndex: 'name' },
+          { title: '服务数', dataIndex: 'count', align: 'right' },
+        ]}
+        dataSource={[{ id: 1, name: 'checkout', count: 3 }]}
+        pagination={false}
+        rowKey="id"
+      />,
+    );
+
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '服务数' })).textAlign).toBe('left');
+    expect(getComputedStyle(screen.getByText('3').closest('td')! as HTMLElement).textAlign).toBe('right');
   });
 });
