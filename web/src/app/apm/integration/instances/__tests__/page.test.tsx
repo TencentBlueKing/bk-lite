@@ -106,6 +106,31 @@ describe('APM 接入实例目录', () => {
     expect(screen.getByRole('combobox', { name: '按实例状态筛选' }).getAttribute('aria-expanded')).toBe('false');
   });
 
+  it('用自适应列宽和语义对齐统一右侧状态与操作列', async () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('min-width'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    renderPage();
+
+    await screen.findByText('pod-a');
+    const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
+      .map((column) => (column as HTMLElement).style.width);
+
+    expect(columnWidths).toEqual(['14%', '20%', '7%', '6%', '12%', '11%', '9%', '7%', '7%', '7%']);
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '最近上报' })).textAlign).toBe('right');
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '实例状态' })).textAlign).toBe('center');
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '操作' })).textAlign).toBe('right');
+    expect(screen.getByRole('columnheader', { name: '所属组织' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '调整组织' })).not.toBeNull();
+  });
+
   it('可显式切换到归档实例并交由服务端过滤', async () => {
     const user = userEvent.setup();
     renderPage();

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { EditOutlined, SearchOutlined } from '@ant-design/icons';
-import { Alert, Button, Input, message, Radio, Select, Tag, Typography, type TableColumnsType } from 'antd';
+import { Alert, Button, Input, message, Radio, Select, Tag, Tooltip, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable from '@/app/apm/components/apm-data-table';
@@ -139,56 +139,64 @@ export default function ApmIntegrationInstancesPage() {
     {
       title: '实例 ID',
       dataIndex: 'instance_id',
+      width: '14%',
       render: (value) => <EllipsisWithTooltip className="max-w-52 truncate font-mono text-xs" text={value} />,
     },
     {
       title: '服务',
       key: 'service',
+      width: '20%',
       responsive: ['sm'],
       render: (_, item) => (
         <ServiceIdentity namespace={item.service_namespace} name={item.service_name} />
       ),
     },
-    { title: '环境', dataIndex: 'environment', width: 120, responsive: ['md'], render: (value) => <Tag bordered={false}>{value || '未设置'}</Tag> },
-    { title: '版本', dataIndex: 'version', width: 100, responsive: ['lg'], render: (value) => value || '—' },
-    { title: '应用', dataIndex: 'application_name', width: 140, responsive: ['xl'], render: (value, item) => <EllipsisWithTooltip className="truncate" text={value || item.application_id || '—'} /> },
+    { title: '环境', dataIndex: 'environment', width: '7%', responsive: ['md'], render: (value) => <Tag bordered={false}>{value || '未设置'}</Tag> },
+    { title: '版本', dataIndex: 'version', width: '6%', responsive: ['lg'], render: (value) => value || '—' },
+    { title: '所属应用', dataIndex: 'application_name', width: '12%', responsive: ['xl'], render: (value, item) => <EllipsisWithTooltip className="truncate" text={value || item.application_id || '—'} /> },
     {
-      title: '接入时间',
+      title: '首次接入',
       dataIndex: 'first_seen_at',
-      width: 170,
+      width: '11%',
       responsive: ['xxl'],
       render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm')}</span>,
     },
     {
       title: '最近上报',
       dataIndex: 'last_seen_at',
-      width: 120,
+      width: '9%',
+      align: 'right',
       responsive: ['md'],
       render: (value) => (
-        <Typography.Text type="secondary" className="text-xs" title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}>
-          {formatRelativeTime(value)}
-        </Typography.Text>
+        <Tooltip title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}>
+          <Typography.Text type="secondary" className="text-xs tabular-nums">
+            {formatRelativeTime(value)}
+          </Typography.Text>
+        </Tooltip>
       ),
     },
-    { title: '状态', dataIndex: 'status', width: 100, render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
+    { title: '实例状态', dataIndex: 'status', width: '7%', align: 'center', render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
     {
-      title: '组织',
+      title: '所属组织',
       dataIndex: 'organization_ids',
-      width: 120,
+      width: '7%',
       responsive: ['xxl'],
-      render: (value: number[]) => value.map((id) => (
-        <Tag bordered={false} key={id}>{groupNames.get(id) ?? `#${id}`}</Tag>
-      )),
+      render: (value: number[]) => (
+        <EllipsisWithTooltip
+          className="truncate text-xs"
+          text={value.length ? value.map((id) => groupNames.get(id) ?? `#${id}`).join('、') : '未分配'}
+        />
+      ),
     },
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: '7%',
       align: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/instances">
           {!item.archived_at ? (
-            <Button type="link" size="small" icon={<EditOutlined aria-hidden="true" />} onClick={() => setOrganizationInstance(item)}>组织</Button>
+            <Button type="link" size="small" icon={<EditOutlined aria-hidden="true" />} onClick={() => setOrganizationInstance(item)}>调整组织</Button>
           ) : <Typography.Text type="secondary" className="!text-xs">只读</Typography.Text>}
         </Permission>
       ),
@@ -294,6 +302,7 @@ export default function ApmIntegrationInstancesPage() {
               rowKey="id"
               columns={columns}
               dataSource={instances}
+              headerAlignment="column"
               pagination={{
                 current: page,
                 pageSize,
