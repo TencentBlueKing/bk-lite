@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { AppstoreOutlined, BellOutlined } from '@ant-design/icons';
-import { Typography } from 'antd';
+import { Tag, Typography } from 'antd';
 import {
   formatErrorRate,
   formatThroughput,
@@ -13,12 +13,12 @@ import ServiceTagOverflow, { type ServiceTagItem } from '@/app/apm/components/se
 import Sparkline from '@/app/apm/components/home/sparkline';
 export type ActiveAlertStatus = 'normal' | 'info' | 'warning' | 'error' | 'critical';
 
-const RAIL_CLASS: Record<ActiveAlertStatus, string> = {
-  critical: 'bg-[var(--color-fail)]',
-  error: 'bg-[var(--color-fail)]',
-  warning: 'bg-[var(--theme-color-status-warning)]',
-  info: 'bg-[var(--color-primary)]',
-  normal: 'bg-[var(--color-success)]',
+const STATUS_COLOR: Record<ActiveAlertStatus, string> = {
+  critical: 'error',
+  error: 'error',
+  warning: 'warning',
+  info: 'processing',
+  normal: 'success',
 };
 
 const STATUS_LABEL: Record<ActiveAlertStatus, string> = {
@@ -69,7 +69,7 @@ export default function ApplicationCard({
 
   return (
     <article
-      className="group relative min-w-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-left transition-colors duration-150 hover:border-[var(--color-primary)] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--color-primary)]"
+      className="group relative h-full min-w-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-left transition-colors duration-150 hover:border-[var(--color-primary)] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--color-primary)]"
     >
       <Link
         href={href}
@@ -78,124 +78,117 @@ export default function ApplicationCard({
       >
         <span className="sr-only">查看应用详情</span>
       </Link>
-      <div className="pointer-events-none flex h-full overflow-hidden">
-        <div className={`w-1 shrink-0 ${RAIL_CLASS[status]}`} aria-hidden="true" />
-        <div className="flex min-w-0 flex-1 flex-col gap-2.5 p-3.5">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <Typography.Text strong ellipsis={{ tooltip: label }} className="!text-sm">
-                  {label}
-                </Typography.Text>
-                <span
-                  className={`inline-flex shrink-0 items-center rounded border px-1.5 py-px text-xs font-semibold leading-none ${
-                    status === 'critical' || status === 'error'
-                      ? 'border-[color-mix(in_srgb,var(--color-fail)_28%,var(--color-border))] text-[var(--color-fail)]'
-                      : 'border-[var(--color-border)] text-[var(--color-text-3)]'
-                  }`}
-                  aria-label={`最高活跃告警：${statusLabel}`}
-                  title={`最高活跃告警：${statusLabel}`}
-                >
-                  {statusLabel}
-                </span>
-              </div>
-              <Typography.Text type="secondary" className="mt-1 block !text-xs">
-                应用 · {timeWindow}
+      <div className="pointer-events-none flex h-full min-w-0 flex-col gap-3 p-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <Typography.Text strong ellipsis={{ tooltip: label }} className="!text-sm">
+                {label}
               </Typography.Text>
-            </div>
-
-            <div className="relative z-20 flex shrink-0 items-center gap-1.5 pointer-events-auto">
-              <Link
-                href={servicesHref}
-                aria-label={`应用内 ${services.length} 个服务，查看服务`}
-                title={`应用内 ${services.length} 个服务`}
-                className="inline-flex items-center gap-1 rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[var(--color-text-2)] no-underline transition-colors duration-150 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+              <Tag
+                bordered={false}
+                color={STATUS_COLOR[status]}
+                className="!m-0 shrink-0 !px-1.5 !text-xs !font-medium !leading-5"
+                aria-label={`最高活跃告警：${statusLabel}`}
+                title={`最高活跃告警：${statusLabel}`}
               >
-                <AppstoreOutlined className="text-xs" aria-hidden="true" />
-                {services.length}
-              </Link>
-              <Link
-                href={eventsHref}
-                aria-label={`应用内 ${alertCount} 个活跃告警，查看告警`}
-                title={`应用内 ${alertCount} 个活跃告警`}
-                className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-semibold tabular-nums no-underline transition-colors duration-150 ${
-                  alertCount > 0
-                    ? 'border-[var(--color-fail)] text-[var(--color-fail)]'
-                    : 'border-[var(--color-border)] text-[var(--color-text-3)] hover:border-[var(--color-primary)]'
-                }`}
-              >
-                <BellOutlined className="text-xs" aria-hidden="true" />
-                {alertCount}
-              </Link>
+                {statusLabel}
+              </Tag>
             </div>
+            <Typography.Text type="secondary" className="mt-1 block !text-xs">
+              应用 · {timeWindow}
+            </Typography.Text>
           </div>
 
-          <div className="h-px bg-[var(--color-border)]" />
+          <div className="relative z-20 flex shrink-0 items-center gap-1.5 pointer-events-auto">
+            <Link
+              href={servicesHref}
+              aria-label={`应用内 ${services.length} 个服务，查看服务`}
+              title={`应用内 ${services.length} 个服务`}
+              className="inline-flex min-h-6 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium tabular-nums text-[var(--color-text-2)] no-underline transition-colors duration-150 hover:bg-[var(--color-fill-1)] hover:text-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+            >
+              <AppstoreOutlined className="text-xs" aria-hidden="true" />
+              {services.length}
+            </Link>
+            <Link
+              href={eventsHref}
+              aria-label={`应用内 ${alertCount} 个活跃告警，查看告警`}
+              title={`应用内 ${alertCount} 个活跃告警`}
+              className={`inline-flex min-h-6 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium tabular-nums no-underline transition-colors duration-150 hover:bg-[var(--color-fill-1)] ${
+                alertCount > 0
+                  ? 'text-[var(--color-fail)]'
+                  : 'text-[var(--color-text-3)] hover:text-[var(--color-primary)]'
+              }`}
+            >
+              <BellOutlined className="text-xs" aria-hidden="true" />
+              {alertCount}
+            </Link>
+          </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="min-w-0">
-              <Typography.Text type="secondary" className="block !text-xs">
-                吞吐量
-              </Typography.Text>
-              <div className="mt-0.5 flex items-end gap-2">
-                <div className={`flex min-w-0 items-baseline gap-0.5 ${metricUnavailable ? 'relative z-20 pointer-events-auto' : ''}`}>
-                  <MetricValue
-                    size="lg"
-                    text={formatThroughput(requestRate, metricUnavailable)}
-                    unavailable={metricUnavailable}
-                    onRetry={metricUnavailable ? onRetryMetrics : undefined}
-                  />
-                  {requestRate !== null ? (
-                    <span className="text-xs text-[var(--color-text-3)]">/s</span>
-                  ) : null}
-                </div>
-                {showThroughputSpark ? (
-                  <div title="吞吐量趋势" className="mb-0.5">
-                    <Sparkline
-                      data={requestRateTrend}
-                      width={88}
-                      height={22}
-                      fit="fixed"
-                      color="var(--color-primary)"
-                      kind="area"
-                    />
-                  </div>
+        <div className="grid grid-cols-2 gap-4 border-t border-[var(--color-border)] pt-3">
+          <div className="min-w-0">
+            <Typography.Text type="secondary" className="block !text-xs">
+              吞吐量
+            </Typography.Text>
+            <div className="mt-0.5 flex items-end gap-2">
+              <div className={`flex min-w-0 items-baseline gap-0.5 ${metricUnavailable ? 'relative z-20 pointer-events-auto' : ''}`}>
+                <MetricValue
+                  size="lg"
+                  text={formatThroughput(requestRate, metricUnavailable)}
+                  unavailable={metricUnavailable}
+                  onRetry={metricUnavailable ? onRetryMetrics : undefined}
+                />
+                {requestRate !== null ? (
+                  <span className="text-xs text-[var(--color-text-3)]">/s</span>
                 ) : null}
               </div>
-            </div>
-            <div className="min-w-0">
-              <Typography.Text type="secondary" className="block !text-xs">
-                错误率
-              </Typography.Text>
-              <div className="mt-0.5 flex items-end gap-2">
-                <div className={metricUnavailable ? 'relative z-20 pointer-events-auto' : ''}>
-                  <MetricValue
-                    size="lg"
-                    text={formatErrorRate(errorRate, metricUnavailable)}
-                    unavailable={metricUnavailable}
-                    danger={errDanger}
-                    onRetry={metricUnavailable ? onRetryMetrics : undefined}
+              {showThroughputSpark ? (
+                <div title="吞吐量趋势" className="mb-0.5">
+                  <Sparkline
+                    data={requestRateTrend}
+                    width={88}
+                    height={22}
+                    fit="fixed"
+                    color="var(--color-primary)"
+                    kind="area"
                   />
                 </div>
-                {showErrorSpark ? (
-                  <div title="错误率趋势" className="mb-0.5">
-                    <Sparkline
-                      data={errorRateTrend}
-                      width={88}
-                      height={22}
-                      fit="fixed"
-                      color={errDanger ? 'var(--color-fail)' : 'var(--color-primary)'}
-                      kind="area"
-                    />
-                  </div>
-                ) : null}
-              </div>
+              ) : null}
             </div>
           </div>
-
-          <div className="relative z-20 mt-auto border-t border-dashed border-[var(--color-border)] pt-3 pointer-events-auto">
-            <ServiceTagOverflow services={services} />
+          <div className="min-w-0">
+            <Typography.Text type="secondary" className="block !text-xs">
+              错误率
+            </Typography.Text>
+            <div className="mt-0.5 flex items-end gap-2">
+              <div className={metricUnavailable ? 'relative z-20 pointer-events-auto' : ''}>
+                <MetricValue
+                  size="lg"
+                  text={formatErrorRate(errorRate, metricUnavailable)}
+                  unavailable={metricUnavailable}
+                  danger={errDanger}
+                  onRetry={metricUnavailable ? onRetryMetrics : undefined}
+                />
+              </div>
+              {showErrorSpark ? (
+                <div title="错误率趋势" className="mb-0.5">
+                  <Sparkline
+                    data={errorRateTrend}
+                    width={88}
+                    height={22}
+                    fit="fixed"
+                    color={errDanger ? 'var(--color-fail)' : 'var(--color-primary)'}
+                    kind="area"
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
+        </div>
+
+        <div className="relative z-20 mt-auto border-t border-[var(--color-border)] pt-3 pointer-events-auto">
+          <ServiceTagOverflow services={services} />
         </div>
       </div>
     </article>

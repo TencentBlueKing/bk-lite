@@ -203,7 +203,8 @@ describe('APM 服务目录应用视角', () => {
     expect(cardArticle).not.toBeNull();
     await waitFor(() => expect(within(cardArticle!).getByText('12.5')).not.toBeNull());
     expect(within(cardArticle!).getByText('2.00%')).not.toBeNull();
-    expect(within(cardArticle!).getByLabelText('最高活跃告警：严重')).not.toBeNull();
+    const statusTag = within(cardArticle!).getByLabelText('最高活跃告警：严重');
+    expect(statusTag.classList.contains('ant-tag')).toBe(true);
     const servicesLink = within(cardArticle!).getByRole('link', { name: '应用内 1 个服务，查看服务' });
     expect(card.contains(servicesLink)).toBe(false);
     expect(servicesLink.getAttribute('href')).toBe(
