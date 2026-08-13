@@ -42,7 +42,6 @@ interface SloFormValues {
   objective: number;
   latency_threshold_ms?: number;
   evaluation_window: ApmSloEvaluationWindow;
-  is_enabled: boolean;
 }
 
 const sliLabels: Record<ApmSliType, string> = {
@@ -141,7 +140,6 @@ export default function ApmSloPage() {
       objective: 99.9,
       latency_threshold_ms: undefined,
       evaluation_window: 'rolling30d',
-      is_enabled: true,
     });
     setDrawerOpen(true);
   };
@@ -157,14 +155,15 @@ export default function ApmSloPage() {
       objective: Number(row.objective),
       latency_threshold_ms: row.latency_threshold_ms ?? undefined,
       evaluation_window: row.evaluation_window,
-      is_enabled: row.is_enabled,
     });
     setDrawerOpen(true);
   };
 
   const submit = async (values: SloFormValues) => {
+    const editingRow = editingId ? rows.find((row) => row.id === editingId) : undefined;
     const payload: ApmSloInput = {
       ...values,
+      is_enabled: editingRow?.is_enabled ?? true,
       endpoint: values.endpoint?.trim() ?? '',
       latency_threshold_ms: values.sli_type === 'availability' ? null : values.latency_threshold_ms,
     };
@@ -267,19 +266,26 @@ export default function ApmSloPage() {
       render: (value: number | null) => <BudgetProgress value={value} />,
     },
     {
+      title: '启用状态',
+      dataIndex: 'is_enabled',
+      width: 110,
+      render: (_, row) => (
+        <Switch
+          aria-label={`${row.is_enabled ? '停用' : '启用'} ${row.name}`}
+          checked={row.is_enabled}
+          loading={mutatingId === row.id}
+          size="small"
+          onChange={(enabled) => void toggleEnabled(row, enabled)}
+        />
+      ),
+    },
+    {
       title: '操作',
       key: 'actions',
       width: 160,
       fixed: 'right',
       render: (_, row) => (
         <Space size={0}>
-          <Switch
-            aria-label={`${row.is_enabled ? '停用' : '启用'} ${row.name}`}
-            checked={row.is_enabled}
-            loading={mutatingId === row.id}
-            size="small"
-            onChange={(enabled) => void toggleEnabled(row, enabled)}
-          />
           <Button aria-label={`编辑 ${row.name}`} icon={<EditOutlined aria-hidden="true" />} size="small" type="link" onClick={() => openEditDrawer(row)} />
           <Popconfirm
             cancelText="取消"
@@ -361,7 +367,7 @@ export default function ApmSloPage() {
           <Form.Item label="环境" name="environment" extra="SLO 在单个部署环境内评估。" rules={[{ required: true, message: '请选择环境' }]}>
             <Select showSearch optionFilterProp="label" placeholder="选择环境" options={environmentOptions} />
           </Form.Item>
-          <Form.Item label="端点（可选）" name="endpoint" extra="留空时按整个服务计算。">
+          <Form.Item label="端点" name="endpoint" extra="留空时按整个服务计算。">
             <Input maxLength={512} placeholder="例如：POST /api/checkout" />
           </Form.Item>
           <Form.Item label="SLI 类型" name="sli_type" rules={[{ required: true, message: '请选择 SLI 类型' }]}>
@@ -379,9 +385,6 @@ export default function ApmSloPage() {
           </Form.Item>
           <Form.Item label="评估窗口" name="evaluation_window" rules={[{ required: true, message: '请选择评估窗口' }]}>
             <Select options={Object.entries(windowLabels).map(([value, label]) => ({ value, label }))} />
-          </Form.Item>
-          <Form.Item label="启用" name="is_enabled" valuePropName="checked" extra="启用后开始评估目标并计算错误预算。">
-            <Switch />
           </Form.Item>
         </Form>
       </Drawer>

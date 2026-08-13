@@ -63,21 +63,8 @@ const SEVERITY_LABELS: Record<ApmPolicySeverity, string> = {
   warning: '警告',
 };
 
-const DEFAULT_POLICY: Partial<ApmPolicyInput> = {
-  environment: 'production',
-  metric_type: 'error_rate',
-  comparator: 'gt',
-  threshold: 0.05,
-  duration_window: 3,
-  recovery_window: 3,
-  severity: 'warning',
-  notification_targets: [],
-  is_enabled: true,
-};
-
 export default function ApmPoliciesPage() {
   const {
-    createPolicy,
     deletePolicy,
     getPolicies,
     getNotificationChannels,
@@ -85,7 +72,6 @@ export default function ApmPoliciesPage() {
     getServices,
     isLoading: authLoading,
     setPolicyEnabled,
-    testPolicy,
     updatePolicy,
   } = useApmApi();
   const [form] = Form.useForm<ApmPolicyInput>();
@@ -100,7 +86,6 @@ export default function ApmPoliciesPage() {
   const [editing, setEditing] = useState<ApmPolicy | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [testingId, setTestingId] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
   const [mutatingId, setMutatingId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -154,12 +139,6 @@ export default function ApmPoliciesPage() {
     }
   };
 
-  const openCreate = () => {
-    setEditing(null);
-    form.setFieldsValue(DEFAULT_POLICY as ApmPolicyInput);
-    setModalOpen(true);
-  };
-
   const openEdit = (policy: ApmPolicy) => {
     setEditing(policy);
     form.setFieldsValue({ ...policy, threshold: policy.threshold });
@@ -170,13 +149,9 @@ export default function ApmPoliciesPage() {
     const values = await form.validateFields();
     setSaving(true);
     try {
-      if (editing) {
-        await updatePolicy(editing.id, values);
-        message.success('策略已更新');
-      } else {
-        await createPolicy(values);
-        message.success('策略已创建');
-      }
+      if (!editing) return;
+      await updatePolicy(editing.id, values);
+      message.success('策略已更新');
       setModalOpen(false);
       form.resetFields();
       load();
@@ -188,7 +163,7 @@ export default function ApmPoliciesPage() {
   const serviceOptions = useMemo(
     () => services.map((service) => ({
       value: service.id,
-      label: `${service.namespace || '未归类应用'} / ${service.name}`,
+      label: `${service.namespace || '未设置 namespace'} / ${service.name}`,
     })),
     [services]
   );
@@ -217,15 +192,6 @@ export default function ApmPoliciesPage() {
       title: '策略名称',
       dataIndex: 'name',
       render: (value) => <EllipsisWithTooltip className="truncate font-medium" text={value} />,
-    },
-    {
-      title: '监控对象',
-      render: (_, policy) => (
-        <Space direction="vertical" size={0} className="min-w-0">
-          <EllipsisWithTooltip className="truncate" text={`${policy.service_namespace || '未归类应用'} / ${policy.service_name}`} />
-          <Typography.Text type="secondary" className="text-xs">{policy.environment || '未设置环境'}</Typography.Text>
-        </Space>
-      ),
     },
     {
       title: '创建人',
@@ -275,31 +241,12 @@ export default function ApmPoliciesPage() {
     },
     {
       title: '操作',
-      width: 210,
+      width: 140,
       align: 'right',
       fixed: 'right',
       render: (_, policy) => (
         <Space wrap>
           <Button type="link" onClick={() => openEdit(policy)}>编辑</Button>
-          <Button
-            type="link"
-            loading={testingId === policy.id}
-            onClick={async () => {
-              setTestingId(policy.id);
-              try {
-                const result = await testPolicy(policy.id);
-                if (result.data_state === 'no_data') {
-                  message.info('当前时间窗无数据，策略状态不会变化');
-                } else {
-                  message.info(`当前值 ${result.value}，${result.breached ? '已命中阈值' : '未命中阈值'}`);
-                }
-              } finally {
-                setTestingId(null);
-              }
-            }}
-          >
-            测试查询
-          </Button>
           <Popconfirm
             title="删除策略"
             description="删除后不再评估该策略，确认继续？"
@@ -349,21 +296,16 @@ export default function ApmPoliciesPage() {
               searchProps={{
                 allowClear: true,
                 'aria-label': '搜索策略',
-                placeholder: '搜索策略名称或监控对象',
+                placeholder: '搜索策略名称',
                 value: keyword,
                 onChange: (event) => { setKeyword(event.target.value); setPage(1); },
               }}
               actions={(
                 <Space>
                   <Button icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load}>刷新</Button>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined aria-hidden="true" />}
-                    onClick={openCreate}
-                    disabled={!services.length}
-                  >
-                    新建策略
-                  </Button>
+                  <Link href="/apm/events/policies/new">
+                    <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} disabled={!services.length}>新建策略</Button>
+                  </Link>
                 </Space>
               )}
             />
@@ -392,17 +334,17 @@ export default function ApmPoliciesPage() {
             <CatalogState
               kind={state}
               description={state === 'empty' ? (services.length ? '当前组织暂无 APM 策略。' : '请先接入并发现服务，再创建策略。') : undefined}
-              action={state === 'empty' && services.length ? <Button type="primary" onClick={openCreate}>新建策略</Button> : undefined}
+              action={state === 'empty' && services.length ? <Link href="/apm/events/policies/new"><Button type="primary">新建策略</Button></Link> : undefined}
               onRetry={state === 'forbidden' ? undefined : load}
             />
           )}
         </ApmSurface>
       </div>
       <Modal
-        title={editing ? '编辑 APM 策略' : '新建 APM 策略'}
+        title="编辑 APM 策略"
         open={modalOpen}
         confirmLoading={saving}
-        okText={editing ? '保存' : '创建'}
+        okText="保存"
         cancelText="取消"
         onOk={submit}
         onCancel={() => {

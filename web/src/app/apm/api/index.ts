@@ -80,14 +80,6 @@ const useApmApi = () => {
     [put]
   );
 
-  const setInstanceArchived = useCallback(
-    (instanceId: string, archived: boolean) =>
-      post<ApmServiceInstance>(`/apm/instances/${instanceId}/${archived ? 'archive' : 'restore'}/`, {
-        reason: 'manual',
-      }),
-    [post]
-  );
-
   const setServiceOrganizations = useCallback(
     (serviceId: string, organizationIds: number[]) =>
       put<ApmService>(`/apm/services/${serviceId}/organizations/`, {
@@ -106,6 +98,11 @@ const useApmApi = () => {
 
   const getApplications = useCallback(
     (config: RequestConfig = {}) => get<ApmApplication[]>('/apm/applications/', config),
+    [get]
+  );
+
+  const getApplication = useCallback(
+    (applicationId: string) => get<ApmApplication>(`/apm/applications/${applicationId}/`),
     [get]
   );
 
@@ -142,9 +139,9 @@ const useApmApi = () => {
   );
 
   const getServiceRed = useCallback(
-    (serviceId: string, environment: string, startedAt?: string, endedAt?: string) =>
+    (serviceId: string, environment: string, startedAt?: string, endedAt?: string, endpoint?: string) =>
       get<ApmServiceRed>(`/apm/services/${serviceId}/metrics/`, {
-        params: { environment, started_at: startedAt, ended_at: endedAt },
+        params: { environment, started_at: startedAt, ended_at: endedAt, endpoint },
       }),
     [get]
   );
@@ -253,10 +250,10 @@ const useApmApi = () => {
     getInstances,
     getInstancePage,
     setInstanceOrganizations,
-    setInstanceArchived,
     setServiceOrganizations,
     setServiceArchived,
     getApplications,
+    getApplication,
     getCloudRegions,
     createApplication,
     updateApplication,

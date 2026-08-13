@@ -63,6 +63,7 @@ class ApmService(AuditedModel):
     normalized_namespace = models.CharField(max_length=256, blank=True, default="")
     name = models.CharField(max_length=256)
     normalized_name = models.CharField(max_length=256)
+    language = models.CharField(max_length=64, blank=True, default="")
     first_seen_at = models.DateTimeField(db_index=True)
     last_seen_at = models.DateTimeField(db_index=True)
     archived_at = models.DateTimeField(null=True, blank=True, db_index=True)

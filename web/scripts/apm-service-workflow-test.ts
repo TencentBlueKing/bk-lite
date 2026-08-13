@@ -26,7 +26,9 @@ assert.match(servicesPage, /getSlos/, '服务目录 SLO 列必须来自真实 SL
 assert.match(servicesPage, /metricFailureKeys/, '服务目录必须单独记录 RED 查询失败，不能把故障伪装成无数据');
 assert.match(servicesPage, /RED 指标查询失败/, '服务目录必须明确提示 RED 指标降级');
 assert.match(servicesPage, /setMetricRefreshKey/, 'RED 指标降级状态必须提供可操作的重试入口');
-assert.match(servicesPage, /showLabel/, '健康状态必须同时展示色点与文案，不能仅靠颜色');
+assert.match(servicesPage, /ServiceLanguage/, '服务名称前必须展示遥测 SDK 语言标识');
+assert.match(servicesPage, /title: '状态'/, '服务表必须单独展示最高活跃告警状态');
+assert.match(servicesPage, /最高活跃告警/, '状态必须以最高活跃告警级别解释，不能继续使用健康度口径');
 assert.match(servicesPage, /MetricValue/, 'RED 空态必须区分无数据与查询失败');
 assert.match(servicesPage, /router\.replace/, '服务目录筛选与视角必须写入 URL 以便深链');
 assert.match(servicesPage, /\/apm\/events\/alerts\?service=/, '活跃告警必须下钻到告警页并携带服务筛选');
@@ -38,6 +40,7 @@ assert.match(serviceDetail, /key: 'errors'/, '服务详情必须内嵌错误 Tab
 assert.match(serviceDetail, /getTraces/, '服务详情调用链 Tab 必须读取真实 Trace');
 assert.match(serviceDetail, /getTopology/, '服务详情依赖关系必须读取真实拓扑');
 assert.match(serviceDetail, /跳到首个错误|依赖关系/, '服务详情概览必须提供依赖或错误下钻能力');
+assert.doesNotMatch(serviceDetail, /color:\s*'var\(--/, 'Canvas 图表不得直接使用 CSS 变量颜色');
 
 assert.match(topologyPage, /title="服务拓扑"/, '服务拓扑页面标题缺失');
 assert.match(topologyPage, /options=\{\['15m', '1h', '4h', '1d', '7d'\]\}/, '拓扑必须提供时间窗切换');
@@ -63,6 +66,7 @@ assert.match(sloPage, /createSlo/, 'SLO 新建必须写入服务端');
 assert.match(sloPage, /updateSlo/, 'SLO 编辑必须写入服务端');
 assert.match(sloPage, /setSloEnabled/, 'SLO 启停必须写入服务端');
 assert.match(sloPage, /deleteSlo/, 'SLO 删除必须写入服务端');
+assert.doesNotMatch(sloPage, /name="is_enabled"/, 'SLO 启用状态不得出现在新建或编辑表单');
 assert.doesNotMatch(sloPage, /本地预览|设计预览/, '服务端已支持的 SLO 不得再标成静态预览');
 
 for (const page of [servicesPage, serviceDetail, topologyPage, sloPage]) {

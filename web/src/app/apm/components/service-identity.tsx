@@ -20,7 +20,7 @@ export default function ServiceIdentity({ namespace, name, secondary }: ServiceI
           {name}
         </Text>
         <Text type="secondary" className="block truncate text-xs">
-          {namespace || '未归类应用'}{secondary ? ` · ${secondary}` : ''}
+          {namespace || '未设置 namespace'}{secondary ? ` · ${secondary}` : ''}
         </Text>
       </div>
     </div>

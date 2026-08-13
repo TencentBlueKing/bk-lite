@@ -195,6 +195,27 @@ def test_red_uses_deduplicated_trace_span_aggregation_and_escapes_filters():
     assert session.get.call_args.kwargs["stream"] is True
 
 
+def test_red_scopes_every_aggregate_to_the_selected_endpoint():
+    now = timezone.now()
+    session = Mock()
+    session.get.return_value = _response(_vector(requests=6, errors=2, p95=100_000_000, p99=250_000_000))
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    store.service_red(
+        ServiceMetricQuery(
+            service_namespace="shop",
+            service_name="checkout",
+            environment="prod",
+            started_at=now - timedelta(seconds=60),
+            ended_at=now,
+            endpoint='POST /checkout" | stats count() as forged',
+        )
+    )
+
+    query = session.get.call_args.kwargs["params"]["query"]
+    assert 'name:="POST /checkout\\" | stats count() as forged"' in query
+
+
 def test_slo_uses_deduplicated_counts_and_preserves_no_data_semantics():
     now = timezone.now()
     session = Mock()

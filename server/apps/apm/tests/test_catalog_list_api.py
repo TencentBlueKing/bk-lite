@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.apm.models import ApmServiceInstance
+from apps.apm.models import ApmService, ApmServiceInstance
 from apps.apm.services import DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery
 from apps.apm.tests.helpers import create_application
@@ -114,6 +114,18 @@ def test_service_list_pagination_and_filters_are_optional_and_compatible(apm_api
     assert paged.data["count"] == 1
     assert paged.data["items"][0]["application_id"] == "shop"
     assert paged.data["items"][0]["name"] == "checkout-api"
+
+
+def test_detached_legacy_uncategorized_catalog_rows_are_not_exposed(apm_api_client):
+    create_application("legacy", (10,))
+    discovered = _discover("legacy", "orphan", "pod-orphan", "prod", seen_at=timezone.now())
+    ApmService.objects.filter(id=discovered.service.id).update(application=None)
+
+    services = apm_api_client.get("/api/v1/apm/services/")
+    instances = apm_api_client.get("/api/v1/apm/instances/")
+
+    assert services.data == []
+    assert instances.data == []
 
 
 def test_catalog_page_size_is_capped_for_public_list_queries(apm_api_client, catalog_rows):

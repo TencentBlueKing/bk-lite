@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { AppstoreAddOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Form, Input, message, Modal, Tag, Typography, type TableColumnsType } from 'antd';
+import { Button, Form, Input, message, Modal, Space, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -41,8 +42,9 @@ export default function ApmApplicationsPage() {
     setState('loading');
     try {
       const items = await getApplications();
-      setApplications(items);
-      setState(items.length ? 'ready' : 'empty');
+      const visible = items.filter((item) => !item.is_builtin);
+      setApplications(visible);
+      setState(visible.length ? 'ready' : 'empty');
     } catch (error) {
       setState(catalogErrorKind(error));
     }
@@ -107,8 +109,10 @@ export default function ApmApplicationsPage() {
             <AppstoreAddOutlined aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <EllipsisWithTooltip className="truncate font-medium" text={item.name} />
-            <EllipsisWithTooltip className="truncate font-mono text-xs text-[var(--color-text-3)]" text={item.is_builtin ? '空 namespace' : item.application_id} />
+            <Link href={`/apm/integration/applications/${item.id}`} className="font-medium text-[var(--color-primary)] hover:underline">
+              {item.name}
+            </Link>
+            <EllipsisWithTooltip className="truncate font-mono text-xs text-[var(--color-text-3)]" text={item.application_id} />
           </div>
         </div>
       ),
@@ -124,25 +128,27 @@ export default function ApmApplicationsPage() {
         />
       ),
     },
-    {
-      title: '类型', key: 'type', width: 100,
-      render: (_, item) => <Tag color={item.is_builtin ? 'blue' : undefined}>{item.is_builtin ? '内置' : '自定义'}</Tag>,
-    },
     { title: '更新时间', dataIndex: 'updated_at', width: 170, responsive: ['xl'], className: 'tabular-nums', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
     {
-      title: '操作', key: 'action', width: 90, align: 'right', fixed: 'right',
-      render: (_, item) => item.is_builtin
-        ? <Typography.Text type="secondary">系统维护</Typography.Text>
-        : (
+      title: '操作', key: 'action', width: 210, align: 'right', fixed: 'right',
+      render: (_, item) => (
           <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
-            <Button type="link" size="small" icon={<EditOutlined aria-hidden="true" />} onClick={() => openEdit(item)}>编辑</Button>
+            <Space size={0}>
+              <Link href={`/apm/integration/add?application_id=${encodeURIComponent(item.application_id)}`}>
+                <Button type="link" size="small">添加接入</Button>
+              </Link>
+              <Link href={`/apm/integration/applications/${item.id}`}>
+                <Button type="link" size="small">详情</Button>
+              </Link>
+              <Button type="link" size="small" icon={<EditOutlined aria-hidden="true" />} onClick={() => openEdit(item)}>编辑</Button>
+            </Space>
           </Permission>
-        ),
+      ),
     },
   ];
 
   return (
-    <ApmRouteShell title="应用管理" description="维护 APM 应用边界；空 namespace 的服务自动归入内置未归类应用。">
+    <ApmRouteShell title="应用管理" description="维护 APM 应用边界，并从对应应用发起遥测接入。">
       {messageContextHolder}
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">

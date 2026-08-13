@@ -32,6 +32,7 @@ function renderPage() {
 
 const api = {
   getEvents: vi.fn(),
+  getServiceRed: vi.fn(),
   retryNotificationDelivery: vi.fn(),
   isLoading: false,
 };
@@ -91,6 +92,7 @@ beforeEach(() => {
     dispatchEvent: vi.fn(),
   }));
   api.getEvents.mockResolvedValue([firingEvent]);
+  api.getServiceRed.mockResolvedValue({ timeseries: [] });
   api.retryNotificationDelivery.mockResolvedValue({
     ...firingEvent.notification_deliveries[0],
     status: 'pending',

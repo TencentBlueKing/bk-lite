@@ -2,32 +2,36 @@
 
 import Link from 'next/link';
 import { AppstoreOutlined, BellOutlined } from '@ant-design/icons';
-import { Tag, Tooltip, Typography } from 'antd';
+import { Typography } from 'antd';
 import {
-  deriveHealth,
   formatErrorRate,
   formatThroughput,
-  HEALTH_LABEL,
   isErrorRateDanger,
-  type HealthLevel,
 } from '@/app/apm/components/metric-format';
 import MetricValue from '@/app/apm/components/metric-value';
 import ServiceTagOverflow, { type ServiceTagItem } from '@/app/apm/components/service-tag-overflow';
 import Sparkline from '@/app/apm/components/home/sparkline';
-import type { CatalogStatus } from '@/app/apm/types';
+export type ActiveAlertStatus = 'normal' | 'info' | 'warning' | 'error' | 'critical';
 
-const RAIL_CLASS: Record<HealthLevel, string> = {
-  1: 'bg-[var(--color-fail)]',
-  2: 'bg-[var(--theme-color-status-warning)]',
-  3: 'bg-[var(--color-text-4)]',
-  4: 'bg-[var(--color-text-3)]',
-  5: 'bg-[var(--color-success)]',
+const RAIL_CLASS: Record<ActiveAlertStatus, string> = {
+  critical: 'bg-[var(--color-fail)]',
+  error: 'bg-[var(--color-fail)]',
+  warning: 'bg-[var(--theme-color-status-warning)]',
+  info: 'bg-[var(--color-primary)]',
+  normal: 'bg-[var(--color-success)]',
+};
+
+const STATUS_LABEL: Record<ActiveAlertStatus, string> = {
+  critical: '严重',
+  error: '错误',
+  warning: '警告',
+  info: '提示',
+  normal: '正常',
 };
 
 export interface ApplicationCardProps {
   label: string;
-  isBuiltin: boolean;
-  status: CatalogStatus;
+  status: ActiveAlertStatus;
   services: ServiceTagItem[];
   requestRate: number | null;
   errorRate: number | null;
@@ -37,13 +41,12 @@ export interface ApplicationCardProps {
   alertCount: number;
   timeWindow: string;
   eventsHref: string;
-  onOpen: () => void;
+  href: string;
   onRetryMetrics?: () => void;
 }
 
 export default function ApplicationCard({
   label,
-  isBuiltin,
   status,
   services,
   requestRate,
@@ -54,29 +57,27 @@ export default function ApplicationCard({
   alertCount,
   timeWindow,
   eventsHref,
-  onOpen,
+  href,
   onRetryMetrics,
 }: ApplicationCardProps) {
-  const health = deriveHealth(status, errorRate);
   const errDanger = isErrorRateDanger(errorRate);
-  const healthLabel = HEALTH_LABEL[health];
+  const statusLabel = STATUS_LABEL[status];
   const showThroughputSpark = requestRateTrend.length > 1;
   const showErrorSpark = errorRateTrend.length > 1;
 
   return (
     <article
-      className={`group relative min-w-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-left transition-colors duration-150 hover:border-[var(--color-primary)] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--color-primary)] ${
-        isBuiltin ? 'border-t-[3px] border-t-dashed border-t-[var(--theme-color-status-warning)]' : ''
-      }`}
+      className="group relative min-w-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-left transition-colors duration-150 hover:border-[var(--color-primary)] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--color-primary)]"
     >
-      <button
-        aria-label={`查看应用 ${label} 下的服务`}
+      <Link
+        href={href}
+        aria-label={`查看应用 ${label} 详情`}
         className="absolute inset-0 z-10 cursor-pointer rounded-lg"
-        type="button"
-        onClick={onOpen}
-      />
+      >
+        <span className="sr-only">查看应用详情</span>
+      </Link>
       <div className="pointer-events-none flex h-full overflow-hidden">
-        <div className={`w-1 shrink-0 ${RAIL_CLASS[health]}`} aria-hidden="true" />
+        <div className={`w-1 shrink-0 ${RAIL_CLASS[status]}`} aria-hidden="true" />
         <div className="flex min-w-0 flex-1 flex-col gap-2.5 p-3.5">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
             <div className="min-w-0">
@@ -86,20 +87,15 @@ export default function ApplicationCard({
                 </Typography.Text>
                 <span
                   className={`inline-flex shrink-0 items-center rounded border px-1.5 py-px text-xs font-semibold leading-none ${
-                    health <= 2
+                    status === 'critical' || status === 'error'
                       ? 'border-[color-mix(in_srgb,var(--color-fail)_28%,var(--color-border))] text-[var(--color-fail)]'
                       : 'border-[var(--color-border)] text-[var(--color-text-3)]'
                   }`}
-                  aria-label={healthLabel}
-                  title={healthLabel}
+                  aria-label={`最高活跃告警：${statusLabel}`}
+                  title={`最高活跃告警：${statusLabel}`}
                 >
-                  {healthLabel}
+                  {statusLabel}
                 </span>
-                {isBuiltin ? (
-                  <Tooltip title="这些服务未设置 service.namespace，平台归入内置未归类应用。">
-                    <Tag color="warning" className="!m-0 !text-xs">未归类</Tag>
-                  </Tooltip>
-                ) : null}
               </div>
               <Typography.Text type="secondary" className="mt-1 block !text-xs">
                 应用 · {timeWindow}

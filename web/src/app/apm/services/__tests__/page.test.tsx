@@ -55,6 +55,7 @@ const serviceWithEnv = {
   application_name: 'bklite',
   namespace: 'bklite',
   name: 'bklite-server',
+  language: 'java',
   first_seen_at: '2026-07-31T06:25:01Z',
   last_seen_at: '2026-07-31T06:25:01Z',
   archived_at: null,
@@ -102,7 +103,7 @@ beforeEach(() => {
     {
       id: 'bklite',
       application_id: 'bklite',
-      name: '未归类应用测试',
+      name: '电商应用',
       description: '',
       is_builtin: false,
       service_count: 1,
@@ -185,36 +186,24 @@ afterEach(() => {
 });
 
 describe('APM 服务目录应用视角', () => {
-  it('即使尚未发现服务也显示内置未归类应用', async () => {
+  it('不展示已移除的内置未归类应用', async () => {
     api.getServices.mockResolvedValue([]);
     render(<ApmServicesPage />);
 
-    const builtinCard = await screen.findByRole('button', { name: '查看应用 未归类应用 下的服务' });
-    const cardArticle = builtinCard.closest('article');
-    expect(cardArticle).not.toBeNull();
-    expect(within(cardArticle!).getByLabelText('0 个服务')).not.toBeNull();
+    await waitFor(() => expect(api.getApplications).toHaveBeenCalled());
+    expect(screen.queryByText('未归类应用')).toBeNull();
   });
 
-  it('将内置未归类应用稳定排在普通应用之后', async () => {
-    api.getServices.mockResolvedValue([]);
+  it('应用卡展示吞吐、最高活跃告警与应用详情入口', async () => {
     render(<ApmServicesPage />);
 
-    const applicationCards = await screen.findAllByRole('button', { name: /查看应用 .* 下的服务/ });
-    expect(applicationCards.map((card) => card.getAttribute('aria-label'))).toEqual([
-      '查看应用 未归类应用测试 下的服务',
-      '查看应用 未归类应用 下的服务',
-    ]);
-  });
-
-  it('应用卡展示吞吐、健康文案与告警下钻', async () => {
-    render(<ApmServicesPage />);
-
-    const card = await screen.findByRole('button', { name: '查看应用 未归类应用测试 下的服务' });
+    const card = await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
+    expect(card.getAttribute('href')).toBe('/apm/integration/applications/bklite');
     const cardArticle = card.closest('article');
     expect(cardArticle).not.toBeNull();
     await waitFor(() => expect(within(cardArticle!).getByText('12.5')).not.toBeNull());
     expect(within(cardArticle!).getByText('2.00%')).not.toBeNull();
-    expect(within(cardArticle!).getByLabelText('警告')).not.toBeNull();
+    expect(within(cardArticle!).getByLabelText('最高活跃告警：严重')).not.toBeNull();
     expect(within(cardArticle!).getByLabelText('1 个服务')).not.toBeNull();
     expect(within(cardArticle!).queryByText(/个服务/)).toBeNull();
     expect(within(cardArticle!).getByText(/应用 · 1h/)).not.toBeNull();
@@ -227,15 +216,17 @@ describe('APM 服务目录应用视角', () => {
 });
 
 describe('APM 服务目录服务视角与归档', () => {
-  it('切换到服务视角后展示 RED 列、健康文案与服务链接', async () => {
+  it('切换到服务视角后展示 RED、语言与最高活跃告警', async () => {
     const user = userEvent.setup();
     render(<ApmServicesPage />);
 
-    await user.click(await screen.findByRole('button', { name: '查看应用 未归类应用测试 下的服务' }));
+    const servicePerspective = await screen.findByRole('radio', { name: '服务' });
+    await user.click(servicePerspective.closest('label')!);
 
     expect((await screen.findAllByText('吞吐量(/s)')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('错误率').length).toBeGreaterThan(0);
-    expect(screen.getByLabelText('警告')).not.toBeNull();
+    expect(screen.getByText('Java')).not.toBeNull();
+    expect(screen.getByLabelText('最高活跃告警：严重')).not.toBeNull();
     expect(screen.getByRole('link', { name: 'bklite-server' }).getAttribute('href')).toBe(
       '/apm/services/service-bklite?environment=production&window=1h'
     );
@@ -250,7 +241,7 @@ describe('APM 服务目录服务视角与归档', () => {
     const user = userEvent.setup();
     render(<ApmServicesPage />);
 
-    await screen.findByRole('button', { name: '查看应用 未归类应用测试 下的服务' });
+    await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
     await user.click(screen.getByRole('button', { name: /已归档/ }));
 
     expect(await screen.findByText('已归档服务')).not.toBeNull();

@@ -72,8 +72,8 @@ function TopologyCanvas({
     <svg aria-label="APM 服务调用拓扑" className="block h-[520px] w-full" role="img" viewBox="0 0 1030 520">
       <defs>
         {(['healthy', 'warning', 'critical'] as ApmTopologyHealth[]).map((health) => (
-          <marker id={`apm-arrow-${health}`} key={health} markerHeight="6" markerWidth="6" orient="auto" refX="9" refY="5" viewBox="0 0 10 10">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
+          <marker id={`apm-arrow-${health}`} key={health} markerHeight="8" markerUnits="userSpaceOnUse" markerWidth="8" orient="auto" refX="7" refY="4" viewBox="0 0 8 8">
+            <path d="M 0 0 L 8 4 L 0 8 Z" fill="context-stroke" />
           </marker>
         ))}
       </defs>
@@ -86,8 +86,11 @@ function TopologyCanvas({
           const dy = target.y - source.y;
           const length = Math.sqrt(dx * dx + dy * dy) || 1;
           const targetRadius = 18 + (target.sampled_spans / maxSpans) * 14;
-          const endX = target.x - (dx * (targetRadius + 4)) / length;
-          const endY = target.y - (dy * (targetRadius + 4)) / length;
+          const sourceRadius = 18 + (source.sampled_spans / maxSpans) * 14;
+          const startX = source.x + (dx * (sourceRadius + 4)) / length;
+          const startY = source.y + (dy * (sourceRadius + 4)) / length;
+          const endX = target.x - (dx * (targetRadius + 9)) / length;
+          const endY = target.y - (dy * (targetRadius + 9)) / length;
           const color = edge.health === 'healthy' || edge.health === 'unknown'
             ? 'var(--color-border-4)'
             : healthColors[edge.health];
@@ -96,8 +99,8 @@ function TopologyCanvas({
           return (
             <g key={`${edge.source}-${edge.target}`}>
               <line
-                x1={source.x}
-                y1={source.y}
+                x1={startX}
+                y1={startY}
                 x2={endX}
                 y2={endY}
                 markerEnd={`url(#apm-arrow-${marker})`}
@@ -117,7 +120,7 @@ function TopologyCanvas({
           return (
             <g
               key={node.id}
-              aria-label={`${node.service_name}，${healthLabels[node.health]}，采样 ${node.sampled_spans} 个 Span`}
+              aria-label={`${node.service_name}，${healthLabels[node.health]}，时间窗内观测 ${node.sampled_spans} 个 Span`}
               opacity={matched ? 1 : 0.18}
               role={onNodeClick ? 'link' : undefined}
               tabIndex={onNodeClick ? 0 : undefined}
@@ -131,7 +134,7 @@ function TopologyCanvas({
                 }
               }}
             >
-              <title>{`${node.service_name}\n吞吐采样 ${node.sampled_spans} · 错误 ${node.error_spans}`}</title>
+              <title>{`${node.service_name}\n观测 Span ${node.sampled_spans} · 错误 ${node.error_spans}`}</title>
               <circle
                 fill={node.health === 'critical'
                   ? 'color-mix(in srgb, var(--color-fail) 12%, var(--color-bg))'
@@ -142,7 +145,7 @@ function TopologyCanvas({
                 stroke={healthColors[node.health]}
                 strokeWidth={node.health === 'critical' ? 3 : 2}
               />
-              <text fill="var(--color-text-3)" fontSize="9" fontWeight="600" textAnchor="middle" y="3">SVC</text>
+              <text fill="var(--color-text-3)" fontSize="9" fontWeight="600" textAnchor="middle" y="3">服务</text>
               <text
                 fill={node.health === 'critical' ? 'var(--color-fail)' : 'var(--color-text-1)'}
                 fontSize="11"
@@ -153,7 +156,7 @@ function TopologyCanvas({
                 {node.service_name}
               </text>
               <text fill="var(--color-text-3)" fontSize="9" textAnchor="middle" y={radius + 29}>
-                {node.service_namespace || '未归类'} · {node.environment}
+                {node.service_namespace || '未设置 namespace'} · {node.environment}
               </text>
             </g>
           );
@@ -264,7 +267,7 @@ export default function ApmTopologyPage() {
       ),
     },
     {
-      title: '采样调用',
+      title: '观测调用',
       dataIndex: 'sampled_calls',
       align: 'right',
       width: 110,
@@ -282,9 +285,9 @@ export default function ApmTopologyPage() {
   ];
 
   return (
-    <ApmRouteShell dependency="telemetry" description="按近窗 Trace 样本聚合服务依赖；节点大小表示采样吞吐，颜色表示健康。" title="服务拓扑">
+    <ApmRouteShell dependency="telemetry" description="按时间窗内观测到的 Trace 聚合服务依赖；节点大小表示观测调用量，颜色表示状态。" title="服务拓扑">
       <div className="flex flex-col gap-3">
-        {graph.truncated ? <Alert showIcon type="warning" message="当前拓扑按有界 Trace 样本聚合；服务或调用链过多时仅展示最近样本。" /> : null}
+        {graph.truncated ? <Alert showIcon type="warning" message="当前拓扑仅聚合查询上限内的最近 Trace，调用量不代表全量流量。" /> : null}
         <ApmSurface padding="compact">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-1.5 text-xs">
@@ -294,7 +297,7 @@ export default function ApmTopologyPage() {
               <span className="text-[var(--color-border)]">·</span>
               <strong className="tabular-nums text-sm text-[var(--color-fail)]">{anomalyCount}</strong><span className="text-[var(--color-text-3)]">异常</span>
               <span className="text-[var(--color-border)]">·</span>
-              <strong className="tabular-nums text-sm">{graph.sampled_traces}</strong><span className="text-[var(--color-text-3)]">样本</span>
+              <strong className="tabular-nums text-sm">{graph.sampled_traces}</strong><span className="text-[var(--color-text-3)]">观测 Trace</span>
             </div>
             <Segmented<TimeWindow> aria-label="拓扑时间窗口" options={['15m', '1h', '4h', '1d', '7d']} value={timeWindow} onChange={setTimeWindow} />
             <Select allowClear aria-label="按环境筛选拓扑" className="w-36" placeholder="全部环境" options={environmentOptions} value={environment} onChange={setEnvironment} />
@@ -342,7 +345,7 @@ export default function ApmTopologyPage() {
           ) : state === 'empty' ? (
             <CatalogState
               kind="empty"
-              description="当前范围内没有可用于构建拓扑的调用链样本。"
+              description="当前范围内没有观测到可用于构建拓扑的调用链。"
               onRetry={() => void load()}
             />
           ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />}
@@ -352,7 +355,7 @@ export default function ApmTopologyPage() {
             <LegendDot color={healthColors.healthy} label="正常" />
             <LegendDot color={healthColors.warning} label="警告" />
             <LegendDot color={healthColors.critical} label="严重" />
-            <Typography.Text type="secondary" className="!text-xs">节点大小按采样吞吐缩放；点击节点进入服务详情。</Typography.Text>
+            <Typography.Text type="secondary" className="!text-xs">观测数据是时间窗内有界查询结果；点击节点进入服务详情。</Typography.Text>
           </div>
         </ApmSurface>
       </div>

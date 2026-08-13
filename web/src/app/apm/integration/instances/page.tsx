@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { EditOutlined, InboxOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons';
-import { Alert, Button, Input, message, Popconfirm, Radio, Select, Space, Tag, Typography, type TableColumnsType } from 'antd';
+import { EditOutlined, SearchOutlined } from '@ant-design/icons';
+import { Alert, Button, Input, message, Radio, Select, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -40,7 +40,6 @@ export default function ApmIntegrationInstancesPage() {
     getApplications,
     getHealth,
     getInstancePage,
-    setInstanceArchived,
     setInstanceOrganizations,
     isLoading: authLoading,
   } = useApmApi();
@@ -61,7 +60,6 @@ export default function ApmIntegrationInstancesPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [organizationInstance, setOrganizationInstance] = useState<ApmServiceInstance | null>(null);
   const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
-  const [mutatingId, setMutatingId] = useState<string | null>(null);
 
   const groupNames = useMemo(
     () => new Map(flatGroups.map((group) => [Number(group.id), group.name])),
@@ -132,23 +130,18 @@ export default function ApmIntegrationInstancesPage() {
     }
   };
 
-  const setArchived = async (instance: ApmServiceInstance, archived: boolean) => {
-    setMutatingId(instance.id);
-    try {
-      await setInstanceArchived(instance.id, archived);
-      message.success(archived ? '实例已归档' : '实例已解档');
-      setRefreshKey((value) => value + 1);
-    } finally {
-      setMutatingId(null);
-    }
-  };
-
   const applicationOptions = useMemo(() => applications.map((application) => ({
     value: application.application_id,
-    label: `${application.name}（${application.application_id || '未归类'}）`,
+    label: `${application.name}（${application.application_id || '未设置 ID'}）`,
   })), [applications]);
 
   const columns: TableColumnsType<ApmServiceInstance> = [
+    {
+      title: '实例 ID',
+      dataIndex: 'instance_id',
+      width: 220,
+      render: (value) => <EllipsisWithTooltip className="max-w-52 truncate font-mono text-xs" text={value} />,
+    },
     {
       title: '服务',
       key: 'service',
@@ -157,11 +150,6 @@ export default function ApmIntegrationInstancesPage() {
       ),
     },
     { title: '环境', dataIndex: 'environment', width: 120, responsive: ['sm'], render: (value) => <Tag bordered={false}>{value || '未设置'}</Tag> },
-    {
-      title: '实例 ID',
-      dataIndex: 'instance_id',
-      render: (value) => <EllipsisWithTooltip className="max-w-56 truncate font-mono text-xs" text={value} />,
-    },
     { title: '版本', dataIndex: 'version', width: 100, responsive: ['lg'], render: (value) => value || '—' },
     { title: '应用', dataIndex: 'application_name', width: 140, responsive: ['xl'], render: (value, item) => <EllipsisWithTooltip className="truncate" text={value || item.application_id || '—'} /> },
     {
@@ -195,41 +183,14 @@ export default function ApmIntegrationInstancesPage() {
     {
       title: '操作',
       key: 'action',
-      width: 190,
+      width: 80,
       align: 'right',
       fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/instances">
-          <Space size={0}>
-            {!item.archived_at ? (
-              <Button
-                type="link"
-                size="small"
-                icon={<EditOutlined aria-hidden="true" />}
-                onClick={() => setOrganizationInstance(item)}
-              >
-                组织
-              </Button>
-            ) : null}
-            <Popconfirm
-              title={item.archived_at ? '确认解档实例？' : '确认归档实例？'}
-              description={item.archived_at ? '解档后实例将重新出现在默认列表。' : '归档不会删除已经存储的遥测数据。'}
-              okText={item.archived_at ? '解档' : '归档'}
-              okButtonProps={{ danger: !item.archived_at, loading: mutatingId === item.id }}
-              cancelText="取消"
-              onConfirm={() => setArchived(item, !item.archived_at)}
-            >
-              <Button
-                type="link"
-                size="small"
-                danger={!item.archived_at}
-                disabled={mutatingId !== null}
-                icon={item.archived_at ? <UndoOutlined aria-hidden="true" /> : <InboxOutlined aria-hidden="true" />}
-              >
-                {item.archived_at ? '解档' : '归档'}
-              </Button>
-            </Popconfirm>
-          </Space>
+          {!item.archived_at ? (
+            <Button type="link" size="small" icon={<EditOutlined aria-hidden="true" />} onClick={() => setOrganizationInstance(item)}>组织</Button>
+          ) : <Typography.Text type="secondary" className="!text-xs">只读</Typography.Text>}
         </Permission>
       ),
     },
