@@ -60,6 +60,9 @@ window.WebChat.default(
     subtitle: "我们随时为您服务",             // 副标题
     placeholder: "请输入消息...",            // 输入框占位符
     theme: "light",                           // 主题：light 或 dark
+    maxImageCount: 4,                          // 单条消息图片数量上限
+    maxTotalImageBytes: 16 * 1024 * 1024,      // 原始图片总字节上限
+    imageReadConcurrency: 2,                   // 图片读取并发数
     customData: {                             // 自定义数据
       userId: "user123",
       sessionId: "session456"
@@ -68,6 +71,9 @@ window.WebChat.default(
   null  // 元素 ID：null 为浮动按钮，或传入容器 ID 嵌入指定位置
 );
 ```
+
+三个图片预算选项都接受正整数。默认值为 4 张、16 MiB 和 2 个并发读取；旧集成无需增加配置。
+如需兼容更大的合法批量，可显式提高数量与总字节上限，回滚时也只需恢复原配置，无需改变消息或接口格式。
 
 ## 两种使用模式
 

@@ -1,0 +1,25 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false,
+    "baseUrl": "..",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "outDir": "../packages/webchat-ui/.test-dist/issue-4637",
+    "rootDir": "..",
+    "sourceMap": false,
+    "paths": {
+      "@webchat/core": ["packages/webchat-core/src/types.ts"]
+    },
+    "types": ["node"]
+  },
+  "include": [
+    "image-budget.issue-4637.test.ts",
+    "../packages/webchat-core/src/types.ts",
+    "../packages/webchat-ui/src/imageBudget.ts"
+  ]
+}

@@ -67,6 +67,12 @@ export interface WebChatConfig {
   storageKey?: string;
   /** Coalesce streaming text per animation frame; set false for immediate rollback. */
   streamingTextBatching?: boolean;
+  /** Maximum images accepted for one unsent message. Defaults to 4. */
+  maxImageCount?: number;
+  /** Maximum original image bytes accepted for one unsent message. Defaults to 16 MiB. */
+  maxTotalImageBytes?: number;
+  /** Maximum simultaneous FileReader operations. Defaults to 2. */
+  imageReadConcurrency?: number;
   /**
    * Opaque integration metadata. WebChat preserves this namespace but does not
    * include it in chat requests; request metadata belongs in `customData`.

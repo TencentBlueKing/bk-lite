@@ -192,6 +192,11 @@ interface WebChatConfig {
 
   // 流式性能与回滚
   streamingTextBatching?: boolean;  // 每动画帧合并文本提交，默认：true；设为 false 即时回滚
+
+  // 单条消息的图片资源预算
+  maxImageCount?: number;           // 图片数量上限，默认：4
+  maxTotalImageBytes?: number;      // 原始图片总字节上限，默认：16 MiB
+  imageReadConcurrency?: number;    // FileReader 并发数，默认：2
   
   // 回调函数
   onStateChange?: (state: ChatState) => void;
@@ -205,6 +210,10 @@ interface WebChatConfig {
 
 `socketUrl` 仅为 `sseUrl` 的兼容别名；两者同时提供时以 `sseUrl` 为准。`socketPath`、`enableSSE`、`reconnectAttempts`
 和 `reconnectDelay` 不再控制当前基于单次 fetch 流的 UI，类型中只为旧调用保留并标记为 deprecated。
+
+旧调用方无需改动即可继续发送 4 张以内、原始总大小不超过 16 MiB 的图片。确有更大批量需求时，可以显式提高
+`maxImageCount` 和 `maxTotalImageBytes`；需要回滚到接近旧行为时可临时配置较大的有限值，同时保留
+`imageReadConcurrency` 的有界读取保护。超出任一预算时，整批新增图片会在读取前拒绝，已有待发送图片保持不变。
 
 自定义集成配置请放到 `extensions`，需要随聊天请求发送的数据仍放到 `customData`：
 
