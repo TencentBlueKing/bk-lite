@@ -1,9 +1,18 @@
-"""MonitorModuleIngestService：按 node_id / cmdb_id 归并。"""
+"""MonitorModuleIngestService：按 node_id / cmdb_id / ip+cloud 归并。"""
 
 import pytest
 
-from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
-from apps.monitor.services.module_ingest import MonitorModuleIngestService
+from apps.monitor.models import (
+    MonitorInstance,
+    MonitorInstanceOrganization,
+    MonitorObject,
+    MonitorPlugin,
+    MonitorPluginConfigTemplate,
+)
+from apps.monitor.services.module_ingest import (
+    DEFAULT_HOST_COLLECT_MODULES,
+    MonitorModuleIngestService,
+)
 from apps.node_mgmt.services.module_push_contract import LINK_CONFLICT
 
 
@@ -13,11 +22,53 @@ def host_object(db):
 
 
 @pytest.fixture(autouse=True)
+def host_plugin(host_object):
+    plugin = MonitorPlugin.objects.create(
+        name="Host",
+        collector="Telegraf",
+        collect_type="host",
+    )
+    plugin.monitor_object.add(host_object)
+    for module in DEFAULT_HOST_COLLECT_MODULES:
+        MonitorPluginConfigTemplate.objects.create(
+            plugin=plugin,
+            type=module,
+            config_type="child",
+            file_type="toml",
+            content="# test",
+        )
+    return plugin
+
+
+@pytest.fixture(autouse=True)
 def mock_collect_apply(mocker):
     """隔离采集模板套用：ingest 单测不触达 Controller / node_mgmt RPC。"""
     return mocker.patch(
         "apps.monitor.services.node_mgmt.InstanceConfigService.create_monitor_instance_by_node_mgmt",
         return_value=None,
+    )
+
+
+@pytest.fixture(autouse=True)
+def mock_peer_notify(mocker):
+    """隔离创建后的 CMDB 回写；本地仍按 IP+云区域补 node_id。"""
+
+    def _notify(instance, *, operator, allowed_org_ids):
+        if instance.node_id:
+            return
+        linked = MonitorModuleIngestService._best_effort_auto_link_node(
+            monitor_id=instance.id,
+            ip=str(instance.ip) if instance.ip else None,
+            cloud=instance.cloud_region_id,
+        )
+        if not linked:
+            return
+        instance.node_id = linked
+        instance.save(update_fields=["node_id", "updated_at"])
+
+    return mocker.patch(
+        "apps.monitor.services.module_ingest.MonitorModuleIngestService._best_effort_notify_peers_on_create",
+        side_effect=_notify,
     )
 
 
@@ -37,14 +88,14 @@ def _params(**overrides):
         "allowed_org_ids": [1],
         "operator": "alice",
     }
+    default_raw = dict(base["raw"])
     base.update(overrides)
-    if "raw" in overrides and isinstance(overrides["raw"], dict):
-        raw = dict(base["raw"])
+    if isinstance(overrides.get("raw"), dict):
+        raw = dict(default_raw)
         raw.update(overrides["raw"])
         base["raw"] = raw
-    if "link_ids" in overrides and isinstance(overrides["link_ids"], dict):
-        link_ids = dict(overrides["link_ids"])
-        base["link_ids"] = link_ids
+    if isinstance(overrides.get("link_ids"), dict):
+        base["link_ids"] = dict(overrides["link_ids"])
     return base
 
 
@@ -195,6 +246,50 @@ def test_node_then_same_node_id_single_instance(host_object):
 
 
 @pytest.mark.django_db
+def test_monitor_ingest_claims_by_ip_cloud_when_ids_miss(host_object):
+    existing = MonitorInstance.objects.create(
+        id="('1_os_10.0.0.1',)",
+        name="stock-host",
+        monitor_object=host_object,
+        ip="10.0.0.1",
+        cloud_region_id=1,
+    )
+
+    result = MonitorModuleIngestService.ingest(
+        _params(link_ids={"node_id": "n-new"}, raw={"name": "from-node", "ip": "10.0.0.1"})
+    )
+
+    assert result["updated"] is True
+    assert result["id"] == existing.id
+    assert MonitorInstance.objects.filter(is_deleted=False).count() == 1
+    existing.refresh_from_db()
+    assert existing.node_id == "n-new"
+    assert existing.name == "from-node"
+
+
+@pytest.mark.django_db
+def test_monitor_ingest_ip_cloud_conflict_when_bound_to_other_node(host_object):
+    MonitorInstance.objects.create(
+        id="('1_os_10.0.0.1',)",
+        name="owned",
+        monitor_object=host_object,
+        ip="10.0.0.1",
+        cloud_region_id=1,
+        node_id="other-node",
+    )
+
+    result = MonitorModuleIngestService.ingest(
+        _params(link_ids={"node_id": "n-new"}, raw={"ip": "10.0.0.1"})
+    )
+
+    assert result["conflict"] == LINK_CONFLICT
+    assert result["created"] is False
+    assert result["updated"] is False
+    assert MonitorInstance.objects.filter(is_deleted=False).count() == 1
+    assert not MonitorInstance.objects.filter(node_id="n-new").exists()
+
+
+@pytest.mark.django_db
 def test_link_conflict_when_ids_disagree(host_object):
     by_node = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-a"}))
     by_cmdb = MonitorInstance.objects.create(
@@ -295,7 +390,9 @@ def test_lifecycle_idempotent_when_already_retired(host_object):
 
 
 @pytest.mark.django_db
-def test_node_push_create_applies_default_host_collect(host_object, mock_collect_apply):
+def test_node_push_create_applies_default_host_collect(
+    host_object, host_plugin, mock_collect_apply
+):
     result = MonitorModuleIngestService.ingest(_params())
 
     assert result["created"] is True
@@ -310,9 +407,10 @@ def test_node_push_create_applies_default_host_collect(host_object, mock_collect
     ]
     assert all(c["interval"] == 60 for c in payload["configs"])
     instance_payload = payload["instances"][0]
-    assert instance_payload["instance_id"] == "n1"
+    assert instance_payload["instance_id"] == "1_os_10.0.0.1"
     assert instance_payload["node_ids"] == ["n1"]
     assert instance_payload["group_ids"] == [1]
+    assert payload["monitor_plugin_id"] == host_plugin.id
 
 
 @pytest.mark.django_db
@@ -339,14 +437,68 @@ def test_node_push_existing_does_not_apply_collect(host_object, mock_collect_app
 
 
 @pytest.mark.django_db
-def test_node_push_collect_failure_keeps_instance(host_object, mock_collect_apply):
+def test_node_push_collect_failure_does_not_keep_instance(host_object, mock_collect_apply):
     mock_collect_apply.side_effect = RuntimeError("controller boom")
 
-    result = MonitorModuleIngestService.ingest(_params())
+    with pytest.raises(RuntimeError, match="controller boom"):
+        MonitorModuleIngestService.ingest(_params())
 
-    assert result["created"] is True
-    assert "controller boom" in result["collect_error"]
-    assert MonitorInstance.objects.filter(id=result["id"]).exists()
+    assert MonitorInstance.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_node_push_selects_host_plugin_by_name_not_smallest_id(
+    host_object, host_plugin, mock_collect_apply
+):
+    host_plugin.delete()
+    decoy = MonitorPlugin.objects.create(
+        name="Process",
+        collector="Telegraf",
+        collect_type="host",
+    )
+    decoy.monitor_object.add(host_object)
+    real = MonitorPlugin.objects.create(
+        name="Host",
+        collector="Telegraf",
+        collect_type="host",
+    )
+    real.monitor_object.add(host_object)
+    for module in DEFAULT_HOST_COLLECT_MODULES:
+        MonitorPluginConfigTemplate.objects.create(
+            plugin=real,
+            type=module,
+            config_type="child",
+            file_type="toml",
+            content="# test",
+        )
+    assert decoy.id < real.id
+
+    MonitorModuleIngestService.ingest(_params())
+
+    payload = mock_collect_apply.call_args.args[0]
+    assert payload["monitor_plugin_id"] == real.id
+
+
+@pytest.mark.django_db
+def test_node_push_fails_when_host_plugin_missing(host_object, host_plugin):
+    host_plugin.delete()
+
+    with pytest.raises(ValueError, match="Host"):
+        MonitorModuleIngestService.ingest(_params())
+
+    assert MonitorInstance.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_node_push_fails_when_host_templates_incomplete(host_object, host_plugin):
+    MonitorPluginConfigTemplate.objects.filter(
+        plugin=host_plugin, type="cpu"
+    ).delete()
+
+    with pytest.raises(ValueError, match="missing templates"):
+        MonitorModuleIngestService.ingest(_params())
+
+    assert MonitorInstance.objects.count() == 0
 
 
 @pytest.mark.django_db
