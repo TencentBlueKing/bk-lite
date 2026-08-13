@@ -75,6 +75,7 @@ export const ApplicationCardStates: Story = {
         metricUnavailable={false}
         alertCount={3}
         timeWindow="1h"
+        servicesHref="/apm/services?perspective=service&namespace=checkout"
         eventsHref="/apm/events/alerts"
         href="/apm/integration/applications/checkout"
       />
@@ -89,6 +90,7 @@ export const ApplicationCardStates: Story = {
         metricUnavailable
         alertCount={0}
         timeWindow="1h"
+        servicesHref="/apm/services?perspective=service&namespace=payment"
         eventsHref="/apm/events/alerts"
         href="/apm/integration/applications/payment"
         onRetryMetrics={() => undefined}
@@ -115,6 +117,7 @@ export const NarrowApplicationCard: Story = {
         metricUnavailable={false}
         alertCount={0}
         timeWindow="15m"
+        servicesHref="/apm/services?perspective=service&namespace=checkout"
         eventsHref="/apm/events/alerts"
         href="/apm/integration/applications/long-name"
       />
