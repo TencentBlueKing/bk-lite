@@ -13,6 +13,9 @@ export class SSEHandler {
   private maxReconnectAttempts: number;
   private reconnectDelay: number;
   private url: string = '';
+  private connectionGeneration: number = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectWaitResolve: (() => void) | null = null;
 
   constructor(maxReconnectAttempts: number = 5, reconnectDelay: number = 1000) {
     this.maxReconnectAttempts = maxReconnectAttempts;
@@ -24,33 +27,53 @@ export class SSEHandler {
    */
   public connect(url: string, headers?: Record<string, string>): Promise<void> {
     this.url = url;
+    this.clearReconnectTimer();
+    this.closeActiveConnection();
+    this.reconnectAttempts = 0;
+    const generation = ++this.connectionGeneration;
+    return this.connectForGeneration(url, headers, generation);
+  }
+
+  private connectForGeneration(
+    url: string,
+    headers: Record<string, string> | undefined,
+    generation: number
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         // Note: EventSource doesn't support custom headers directly
         // For custom headers, use fetch with ReadableStream
         if (headers) {
-          this.connectWithFetch(url, headers).then(resolve).catch(reject);
+          this.connectWithFetch(url, headers, generation).then(resolve).catch(reject);
           return;
         }
 
-        this.eventSource = new EventSource(url);
+        const eventSource = new EventSource(url);
+        this.eventSource = eventSource;
 
-        this.eventSource.onopen = () => {
+        eventSource.onopen = () => {
+          if (!this.isCurrentEventSource(eventSource, generation)) return;
           console.log('SSE connection opened');
           this.reconnectAttempts = 0;
           this.emit('open', { timestamp: Date.now() });
           resolve();
         };
 
-        this.eventSource.onmessage = (event) => {
+        eventSource.onmessage = (event) => {
+          if (!this.isCurrentEventSource(eventSource, generation)) return;
           this.emitParsedPayload(event.data);
         };
 
-        this.eventSource.onerror = (error) => {
+        eventSource.onerror = (error) => {
+          if (!this.isCurrentEventSource(eventSource, generation)) return;
           console.error('SSE error:', error);
           this.handleError(error);
+          eventSource.close();
+          if (this.eventSource === eventSource) {
+            this.eventSource = null;
+          }
           if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnect(url, headers);
+            this.reconnect(url, headers, generation);
           } else {
             reject(new Error('Max reconnection attempts reached'));
           }
@@ -66,20 +89,22 @@ export class SSEHandler {
    */
   private async connectWithFetch(
     url: string,
-    headers: Record<string, string>
+    headers: Record<string, string>,
+    generation: number
   ): Promise<void> {
+    const abortController = new AbortController();
+    this.abortController = abortController;
     try {
-      this.abortController = new AbortController();
-
       const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'text/event-stream',
           ...headers,
         },
-        signal: this.abortController.signal,
+        signal: abortController.signal,
       });
 
+      if (!this.isCurrentFetch(abortController, generation)) return;
       if (!response.ok || !response.body) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -92,19 +117,24 @@ export class SSEHandler {
 
       for (;;) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done || !this.isCurrentFetch(abortController, generation)) break;
 
         const chunk = decoder.decode(value, { stream: true });
         this.processChunk(chunk);
       }
     } catch (error) {
-      if ((error as Error).name !== 'AbortError') {
+      if (
+        (error as Error).name !== 'AbortError' &&
+        this.isCurrentFetch(abortController, generation)
+      ) {
         console.error('Fetch SSE error:', error);
         this.handleError(error);
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
-          await this.sleep(this.reconnectDelay);
-          await this.connectWithFetch(url, headers);
+          await this.waitForReconnect(this.reconnectDelay);
+          if (generation === this.connectionGeneration) {
+            await this.connectWithFetch(url, headers, generation);
+          }
         }
       }
     }
@@ -177,15 +207,63 @@ export class SSEHandler {
   /**
    * Reconnect to SSE
    */
-  private async reconnect(url: string, headers?: Record<string, string>): Promise<void> {
+  private reconnect(
+    url: string,
+    headers: Record<string, string> | undefined,
+    generation: number
+  ): void {
     this.reconnectAttempts++;
     console.log(
       `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`
     );
 
-    await this.sleep(this.reconnectDelay * this.reconnectAttempts);
-    this.connect(url, headers).catch((error) => {
-      console.error('Reconnection failed:', error);
+    this.clearReconnectTimer();
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (generation !== this.connectionGeneration) return;
+      this.connectForGeneration(url, headers, generation).catch((error) => {
+        console.error('Reconnection failed:', error);
+      });
+    }, this.reconnectDelay * this.reconnectAttempts);
+  }
+
+  private isCurrentEventSource(eventSource: EventSource, generation: number): boolean {
+    return generation === this.connectionGeneration && this.eventSource === eventSource;
+  }
+
+  private isCurrentFetch(abortController: AbortController, generation: number): boolean {
+    return generation === this.connectionGeneration && this.abortController === abortController;
+  }
+
+  private closeActiveConnection(): void {
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectWaitResolve?.();
+    this.reconnectWaitResolve = null;
+  }
+
+  private waitForReconnect(delay: number): Promise<void> {
+    this.clearReconnectTimer();
+    return new Promise((resolve) => {
+      this.reconnectWaitResolve = resolve;
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        this.reconnectWaitResolve = null;
+        resolve();
+      }, delay);
     });
   }
 
@@ -224,23 +302,11 @@ export class SSEHandler {
    * Disconnect from SSE
    */
   public disconnect(): void {
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
+    this.connectionGeneration++;
+    this.clearReconnectTimer();
+    this.closeActiveConnection();
     this.parser.reset();
     this.reconnectAttempts = 0;
-  }
-
-  /**
-   * Sleep utility
-   */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

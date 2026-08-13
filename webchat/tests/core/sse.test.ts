@@ -26,6 +26,40 @@ function streamResponse(chunks: string[]): Response {
   } as Response;
 }
 
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+
+  public onopen: (() => void) | null = null;
+  public onmessage: ((event: { data: string }) => void) | null = null;
+  public onerror: ((error: unknown) => void) | null = null;
+  public closed = false;
+
+  constructor(public readonly url: string) {
+    FakeEventSource.instances.push(this);
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  static reset(): void {
+    FakeEventSource.instances = [];
+  }
+}
+
+function installFakeEventSource(): () => void {
+  const originalEventSource = globalThis.EventSource;
+  FakeEventSource.reset();
+  globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+  return () => {
+    globalThis.EventSource = originalEventSource;
+  };
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 test('parses split SSE data lines and ignores keep-alive comments', async () => {
   const originalFetch = globalThis.fetch;
   const messages: Message[] = [];
@@ -89,5 +123,111 @@ test('retries a failed fetch connection once before succeeding', async () => {
     handler.destroy();
     console.error = originalError;
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('disconnect cancels a queued EventSource reconnect', async () => {
+  const restoreEventSource = installFakeEventSource();
+  const originalError = console.error;
+  const originalLog = console.log;
+  const originalClearTimeout = globalThis.clearTimeout;
+  let clearedReconnectTimers = 0;
+  console.error = () => undefined;
+  console.log = () => undefined;
+  globalThis.clearTimeout = ((timer: ReturnType<typeof setTimeout>) => {
+    clearedReconnectTimers += 1;
+    originalClearTimeout(timer);
+  }) as typeof clearTimeout;
+  const handler = new SSEHandler(1, 10);
+
+  try {
+    void handler.connect('https://example.test/stream');
+    assert.equal(FakeEventSource.instances.length, 1);
+
+    FakeEventSource.instances[0].onerror?.(new Error('temporary connection failure'));
+    handler.disconnect();
+    await wait(30);
+
+    assert.equal(FakeEventSource.instances.length, 1);
+    assert.equal(clearedReconnectTimers, 1);
+  } finally {
+    handler.destroy();
+    restoreEventSource();
+    console.error = originalError;
+    console.log = originalLog;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+});
+
+test('disconnect cancels a queued fetch reconnect', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalError = console.error;
+  const originalClearTimeout = globalThis.clearTimeout;
+  let attempts = 0;
+  let clearedReconnectTimers = 0;
+  console.error = () => undefined;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    throw new Error('temporary connection failure');
+  };
+  globalThis.clearTimeout = ((timer: ReturnType<typeof setTimeout>) => {
+    clearedReconnectTimers += 1;
+    originalClearTimeout(timer);
+  }) as typeof clearTimeout;
+  const handler = new SSEHandler(1, 10);
+
+  try {
+    const connecting = handler.connect('https://example.test/stream', {
+      Authorization: 'Bearer placeholder',
+    });
+    await wait(0);
+    handler.disconnect();
+    await connecting;
+    await wait(20);
+
+    assert.equal(attempts, 1);
+    assert.equal(clearedReconnectTimers, 1);
+  } finally {
+    handler.destroy();
+    globalThis.fetch = originalFetch;
+    console.error = originalError;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+});
+
+test('EventSource reconnect closes and isolates the superseded connection', async () => {
+  const restoreEventSource = installFakeEventSource();
+  const originalError = console.error;
+  const originalLog = console.log;
+  console.error = () => undefined;
+  console.log = () => undefined;
+  const handler = new SSEHandler(1, 0);
+  const messages: Message[] = [];
+  handler.on('message', (event: WebChatMessageEvent) => {
+    messages.push(event.message);
+  });
+
+  try {
+    void handler.connect('https://example.test/stream');
+    const firstSource = FakeEventSource.instances[0];
+
+    firstSource.onerror?.(new Error('temporary connection failure'));
+    await wait(0);
+
+    assert.equal(firstSource.closed, true);
+    assert.equal(FakeEventSource.instances.length, 2);
+
+    firstSource.onmessage?.({ data: 'stale message' });
+    FakeEventSource.instances[1].onmessage?.({ data: 'current message' });
+
+    assert.deepEqual(
+      messages.map((message) => message.content),
+      ['current message']
+    );
+  } finally {
+    handler.destroy();
+    restoreEventSource();
+    console.error = originalError;
+    console.log = originalLog;
   }
 });
