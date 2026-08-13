@@ -57,6 +57,8 @@ def wechat_user_register(user_id, nick_name):
 
 @nats_client.register
 def get_wechat_settings():
+    # 遗留微信 LoginModule 配置读取；应迁移至集成中心 WeChat Provider 的
+    # login_auth capability。新链路稳定后移除此兼容入口。
     login_module = LoginModule.objects.filter(source_type="wechat", enabled=True).first()
     if not login_module:
         return {"result": True, "data": {"enabled": False}}

@@ -224,13 +224,18 @@ def _channel_has_organization(channel, organization_ids):
 
 def _channel_delivery_organization(channel, organization_ids):
     """返回渠道与事件共同归属的确定性组织，避免多组织事件投递到错误 team。"""
+    shared = _channel_delivery_organizations(channel, organization_ids)
+    return shared[0] if shared else None
+
+
+def _channel_delivery_organizations(channel, organization_ids):
+    """返回消息声明范围与渠道授权范围的有序交集。"""
     try:
         allowed = {int(value) for value in channel.team or []}
         requested = {int(value) for value in organization_ids or []}
     except (TypeError, ValueError):
-        return None
-    shared = allowed.intersection(requested)
-    return min(shared) if shared else None
+        return []
+    return sorted(allowed.intersection(requested))
 
 
 @nats_client.register
@@ -307,18 +312,38 @@ def _notification_failure(code, message, *, retryable=False):
 
 
 @nats_client.register
-def probe_notification_channel(channel_id):
+def probe_notification_channel(channel_id, capability_only=False):
     """探测内部通知 responder；普通外部渠道只校验公开能力是否仍存在。"""
     channel = Channel.objects.filter(id=channel_id).first()
     if channel is None:
         return _notification_failure("channel_not_found", "通知渠道不存在。")
     capability = _notification_channel_capabilities(channel)
+    if capability_only:
+        return {
+            "result": True,
+            "code": "available",
+            "retryable": False,
+            "message": "success",
+            "delivery_mode": capability["delivery_mode"],
+        }
     if capability["delivery_mode"] != "alert_event_copy":
-        return {"result": True, "code": "available", "retryable": False, "message": "success"}
+        return {
+            "result": True,
+            "code": "available",
+            "retryable": False,
+            "message": "success",
+            "delivery_mode": capability["delivery_mode"],
+        }
 
     response = send_nats_message(channel, {"health_probe": True}, timeout_override=2)
     if isinstance(response, dict) and response.get("result") is True:
-        return {"result": True, "code": "available", "retryable": False, "message": "success"}
+        return {
+            "result": True,
+            "code": "available",
+            "retryable": False,
+            "message": "success",
+            "delivery_mode": capability["delivery_mode"],
+        }
     return _notification_failure(
         "responder_unavailable",
         "通知 responder 暂不可用。",
@@ -359,6 +384,10 @@ def dispatch_notification(
     title,
     body,
     event_payload,
+    required_delivery_mode="",
+    producer="lite-apm",
+    ack_mode="",
+    ack_token="",
 ):
     """按公开渠道能力投递一次通知，并返回稳定、可判定重试的结果。"""
     if not isinstance(delivery_key, str) or not delivery_key.strip() or len(delivery_key) > 384:
@@ -370,6 +399,13 @@ def dispatch_notification(
     if delivery_organization is None:
         return _notification_failure("channel_forbidden", "通知渠道不属于事件组织范围。")
     capability = _notification_channel_capabilities(channel)
+    if required_delivery_mode and capability["delivery_mode"] != required_delivery_mode:
+        return {
+            "result": True,
+            "code": "not_applicable",
+            "retryable": False,
+            "message": "channel delivery mode does not match",
+        }
     normalized_recipients = _validate_notification_recipients(capability["recipient_mode"], recipients)
     if normalized_recipients is None:
         return _notification_failure("invalid_recipients", "通知接收人不符合渠道能力。")
@@ -388,11 +424,21 @@ def dispatch_notification(
         return _notification_failure("invalid_payload", "通知内容无效。")
 
     if capability["delivery_mode"] == "alert_event_copy":
+        producer = producer if producer in {"lite-apm", "lite-monitor", "lite-log"} else "lite-apm"
+        bounded_event_payload = dict(event_payload)
+        # 不能把调用方消息体中的 organizations 原样提升为 receiver 的可信归属；
+        # 仅透传渠道自身授权范围内的交集，兼容合法多组织渠道。
+        bounded_event_payload["organizations"] = _channel_delivery_organizations(
+            channel, organization_ids
+        )
         content = {
             "source_id": "nats",
-            "pusher": "lite-apm",
-            "events": [event_payload],
+            "pusher": producer,
+            "events": [bounded_event_payload],
         }
+        if ack_mode == "per_event_v1":
+            content["ack_mode"] = ack_mode
+            content["ack_token"] = ack_token
         send_title = ""
         send_recipients = []
     elif channel.channel_type == ChannelChoices.NATS:
@@ -425,6 +471,16 @@ def dispatch_notification(
     if not isinstance(response, dict):
         return _notification_failure("invalid_provider_response", "通知渠道返回格式无效。", retryable=True)
     if response.get("result") is False:
+        if capability["delivery_mode"] == "alert_event_copy" and ack_mode == "per_event_v1":
+            event_results = (response.get("data") or {}).get("event_results") or []
+            if event_results:
+                return {
+                    "result": False,
+                    "code": str(response.get("code") or "alert_copy_partial"),
+                    "retryable": any(bool(item.get("retryable", True)) for item in event_results if isinstance(item, dict)),
+                    "message": str(response.get("message") or "告警中心仅接受了部分事件副本。")[:512],
+                    "data": {"event_results": event_results},
+                }
         return _notification_failure(
             str(response.get("code") or "delivery_failed"),
             str(response.get("message") or "通知渠道投递失败。")[:512],
@@ -437,7 +493,12 @@ def dispatch_notification(
             or int(ingestion.get("accepted", 0) or 0) + int(ingestion.get("skipped", 0) or 0) < 1
         ):
             return _notification_failure("alert_copy_rejected", "告警中心未接受事件副本。", retryable=True)
-    return {"result": True, "code": "delivered", "retryable": False, "message": "success"}
+    result = {"result": True, "code": "delivered", "retryable": False, "message": "success"}
+    if capability["delivery_mode"] == "alert_event_copy":
+        event_results = (response.get("data") or {}).get("event_results") or []
+        if event_results:
+            result["data"] = {"event_results": event_results}
+    return result
 
 
 @nats_client.register

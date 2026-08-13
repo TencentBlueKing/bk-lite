@@ -44,10 +44,14 @@ from apps.system_mgmt.models import (
 )
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.otp_challenge import (
+    RATE_LIMIT_MAX_ATTEMPTS,
+    check_otp_login_account_rate_limit,
     check_rate_limit,
     create_challenge,
     invalidate_challenge,
     record_failed_attempt,
+    reserve_otp_login_account_attempt,
+    reset_otp_login_account_rate_limit,
     reset_rate_limit,
     verify_challenge,
 )

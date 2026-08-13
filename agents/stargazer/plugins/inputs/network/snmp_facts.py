@@ -278,9 +278,10 @@ class SnmpFacts:
 
         cmd_gen = cmdgen.CommandGenerator()
         oid = DefineOid(dotprefix=True)
+        # access_probe：固定 5 秒超时、重试 1 次（与正式采集 timeout 解耦）
         transport_opts = {
-            "timeout": max(1, min(self.timeout, 5)),
-            "retries": max(0, min(self.retries, 2)),
+            "timeout": 5,
+            "retries": 1,
         }
         try:
             error_indication, error_status, _error_index, var_binds = cmd_gen.getCmd(

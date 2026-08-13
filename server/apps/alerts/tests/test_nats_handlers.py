@@ -1361,6 +1361,174 @@ def test_receive_alert_events_reports_partial_ingestion(monkeypatch):
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
+def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(monkeypatch):
+    from apps.alerts.models.alert_source import AlertSource
+
+    AlertSource.objects.create(
+        name="nats逐事件ACK",
+        source_id="nats-ack",
+        source_type="nats",
+        secret="x",
+        is_active=True,
+        is_effective=True,
+    )
+
+    adapter_events = []
+
+    class FakeAdapter:
+        def __init__(self, events, **kwargs):
+            self.events = events
+            adapter_events.extend(events)
+
+        def main(self):
+            status = self.events[0]["test_status"]
+            return {
+                "received": 1,
+                "accepted": int(status == "accepted"),
+                "skipped": int(status in {"duplicate", "rejected"}),
+                "errored": int(status == "errored"),
+                "duplicates": int(status == "duplicate"),
+                "rejected": int(status == "rejected"),
+            }
+
+    monkeypatch.setattr(
+        N.AlertSourceAdapterFactory,
+        "get_adapter",
+        staticmethod(lambda source: FakeAdapter),
+    )
+    monkeypatch.setattr(N, "PER_EVENT_ACK_TOKEN", "receiver-secret")
+    events = [
+        {
+            "delivery_id": "d1",
+            "test_status": "accepted",
+            "lifecycle_action": "created",
+            "lifecycle_generation": "generation-1",
+        },
+        {"delivery_id": "d2", "test_status": "duplicate"},
+        {"delivery_id": "d3", "test_status": "rejected"},
+    ]
+
+    result = N.receive_alert_events(
+        source_id="nats-ack",
+        events=events,
+        pusher="lite-monitor",
+        ack_mode=N.PER_EVENT_ACK_MODE,
+        ack_token="receiver-secret",
+    )
+
+    assert result["result"] is False
+    assert result["data"]["event_results"] == [
+        {"delivery_id": "d1", "status": "accepted", "retryable": False},
+        {"delivery_id": "d2", "status": "duplicate", "retryable": False},
+        {"delivery_id": "d3", "status": "rejected", "retryable": True},
+    ]
+    assert adapter_events[0]["lifecycle_action"] == "created"
+    assert adapter_events[0]["lifecycle_generation"] == "generation-1"
+
+
+@pytest.mark.django_db
+def test_receive_alert_events_legacy_pusher_cannot_set_lifecycle_identity(monkeypatch):
+    """旧批量协议保留普通字段兼容，但不能仅凭 pusher 提升生命周期身份。"""
+    from apps.alerts.models.alert_source import AlertSource
+
+    AlertSource.objects.create(
+        name="nats旧协议",
+        source_id="nats-legacy",
+        source_type="nats",
+        secret="x",
+        is_active=True,
+        is_effective=True,
+    )
+    captured = {}
+
+    class FakeAdapter:
+        def __init__(self, events, trusted_internal, **kwargs):
+            captured["events"] = events
+            captured["trusted_internal"] = trusted_internal
+
+        def main(self):
+            return {"received": 1, "accepted": 1, "skipped": 0, "errored": 0}
+
+    monkeypatch.setattr(N.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda source: FakeAdapter))
+
+    result = N.receive_alert_events(
+        source_id="nats-legacy",
+        events=[
+            {
+                "title": "legacy-event",
+                "organizations": [3],
+                "lifecycle_action": "closed",
+                "lifecycle_generation": "forged-generation",
+            }
+        ],
+        pusher="lite-monitor",
+    )
+
+    assert result["result"] is True
+    assert captured["trusted_internal"] is True
+    assert captured["events"] == [
+        {
+            "title": "legacy-event",
+            "organizations": [3],
+            "push_source_id": "lite-monitor",
+        }
+    ]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_receive_alert_events_per_event_ack_rejects_untrusted_and_bounds_batches(monkeypatch):
+    from apps.alerts.models.alert_source import AlertSource
+
+    AlertSource.objects.create(
+        name="nats逐事件ACK上界",
+        source_id="nats-ack-bound",
+        source_type="nats",
+        secret="x",
+        is_active=True,
+        is_effective=True,
+    )
+    class FakeAdapter:
+        def __init__(self, events, trusted_internal, **kwargs):
+            pass
+
+        def main(self):
+            return {"received": 1, "accepted": 1, "skipped": 0, "errored": 0, "duplicates": 0, "rejected": 0}
+
+    monkeypatch.setattr(N.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda source: FakeAdapter))
+    monkeypatch.setattr(N, "PER_EVENT_ACK_TOKEN", "receiver-secret")
+
+    untrusted = N.receive_alert_events(
+        source_id="nats-ack-bound",
+        events=[{"delivery_id": "d"}],
+        pusher="unknown",
+        ack_mode=N.PER_EVENT_ACK_MODE,
+        ack_token="receiver-secret",
+    )
+    wrong_token = N.receive_alert_events(
+        source_id="nats-ack-bound",
+        events=[{"delivery_id": "d"}],
+        pusher="lite-monitor",
+        ack_mode=N.PER_EVENT_ACK_MODE,
+        ack_token="wrong",
+    )
+    oversized = N.receive_alert_events(
+        source_id="nats-ack-bound",
+        events=[{"delivery_id": str(index)} for index in range(N.PER_EVENT_ACK_MAX_EVENTS + 1)],
+        pusher="lite-monitor",
+        ack_mode=N.PER_EVENT_ACK_MODE,
+        ack_token="receiver-secret",
+    )
+
+    assert untrusted["result"] is False
+    assert "restricted" in untrusted["message"]
+    assert wrong_token["result"] is False
+    assert oversized["result"] is False
+    assert oversized["data"]["max_events"] == N.PER_EVENT_ACK_MAX_EVENTS
+
+
+@pytest.mark.django_db
 def test_receive_alert_events_marks_lite_log_as_trusted_internal(mocker):
     from apps.alerts.models.alert_source import AlertSource
 

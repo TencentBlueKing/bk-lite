@@ -1118,10 +1118,11 @@ class FalkorDBClient:
             f"MATCH (n:{validated_label}) WHERE ID(n) = row.id "
             f"SET n.{validated_field} = row.value RETURN n"
         )
-        return self._execute_query(
+        result = self._execute_query(
             query,
             params={"property_values": validated_property_values},
         )
+        return self.entity_to_list(result)
 
     def format_properties_remove(self, attrs: list):
         """格式化properties的remove数据，验证字段名防止注入"""

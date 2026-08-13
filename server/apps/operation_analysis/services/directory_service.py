@@ -13,22 +13,10 @@ from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTR
 from apps.operation_analysis.services.node_tree import TreeNodeBuilder
 
 
-def _get_visible_canvas_queryset(meta, directories, current_team, request, group_ids):
+def _get_visible_canvas_queryset(meta, directories, current_team, group_ids):
+    """画布可见性与目录一致：仅按组织归属过滤。"""
     base = meta.model.objects.filter(directory__in=directories)
-    return (
-        (
-            GroupPermissionMixin.apply_group_filter(
-                base.filter(is_build_in=False),
-                current_team,
-                request.user,
-                meta.permission_key,
-                group_ids=group_ids,
-            )
-            | GroupPermissionMixin.apply_group_filter(base.filter(is_build_in=True), current_team, group_ids=group_ids)
-        )
-        .distinct()
-        .order_by("id")
-    )
+    return GroupPermissionMixin.apply_group_filter(base, current_team, group_ids=group_ids).order_by("id")
 
 
 class DictDirectoryService:
@@ -57,10 +45,9 @@ class DictDirectoryService:
         base_queryset = Directory.objects.filter(is_active=True)
         directories = GroupPermissionMixin.apply_group_filter(base_queryset, current_team, group_ids=group_ids).order_by("id")
 
-        # 构建各类画布的查询集
-        # 内置画布只需通过组织过滤（第一层），跳过实例级权限过滤（第二层）
+        # 构建各类画布的查询集（与目录相同，仅组织过滤）
         canvas_queryset_map = {
-            object_type: _get_visible_canvas_queryset(meta, directories, current_team, request, group_ids)
+            object_type: _get_visible_canvas_queryset(meta, directories, current_team, group_ids)
             for object_type, meta in CANVAS_TYPE_REGISTRY.items()
         }
 

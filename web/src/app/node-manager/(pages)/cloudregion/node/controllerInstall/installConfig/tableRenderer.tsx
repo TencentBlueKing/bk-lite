@@ -8,6 +8,7 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import GroupSelect from '@/components/group-tree-select';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import { applyIpAsDefaultNodeName } from './utils';
 
 /**
  * 表格渲染器 - 用于渲染控制器安装表格的列
@@ -38,10 +39,16 @@ export const useTableRenderer = () => {
 
     const handleChange = (value: any, record: any, index: number) => {
       const newData = [...dataSource];
-      newData[index] = {
-        ...newData[index],
-        [name]: value
-      };
+      const currentRow = newData[index];
+      newData[index] =
+        name === 'ip'
+          ? applyIpAsDefaultNodeName(currentRow, value)
+          : {
+            ...currentRow,
+            [name]: value
+          };
+      const nodeNameWasSynced =
+        name === 'ip' && newData[index].node_name !== currentRow.node_name;
       // onChange时触发验证
       let errorMsg: string | null = null;
       let valueToValidate = value;
@@ -85,7 +92,13 @@ export const useTableRenderer = () => {
       // 更新错误状态
       newData[index] = {
         ...newData[index],
-        [`${name}_error`]: errorMsg
+        [`${name}_error`]: errorMsg,
+        ...(nodeNameWasSynced
+          ? {
+            node_name_error:
+                value === '' ? t('common.required') : null
+          }
+          : {})
       };
 
       onTableDataChange(newData);

@@ -311,12 +311,30 @@ const buildGraphData = (
   return { nodes, edges };
 };
 
+export type NetworkTopoFocusPayload = {
+  modelId: string;
+  instId: string;
+  instName?: string;
+};
+
 interface NetworkTopoProps {
   modelId: string;
   instId: string;
+  /** Hub flex layout: fill parent instead of viewport calc. Default false keeps detail page height. */
+  fillContainer?: boolean;
+  /** When provided (hub), enable 「设为当前」 via dblclick / context menu. Detail omits → expand-on-click unchanged. */
+  onRequestFocus?: (payload: NetworkTopoFocusPayload) => void;
+  /** When provided (hub), enable 「查看详情」 via context menu. */
+  onViewDetail?: (payload: NetworkTopoFocusPayload) => void;
 }
 
-const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
+const NetworkTopo: React.FC<NetworkTopoProps> = ({
+  modelId,
+  instId,
+  fillContainer = false,
+  onRequestFocus,
+  onViewDetail,
+}) => {
   const { t } = useTranslation();
   const {
     getNetworkTopo,
@@ -538,6 +556,44 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     setMenu(info);
   }, []);
 
+  const resolveFocusPayload = useCallback(
+    (nodeId: string): NetworkTopoFocusPayload | null => {
+      const n =
+        mergedRef.current.nodes.get(nodeId) ||
+        floatingRef.current.get(nodeId)?.node;
+      if (!n?.model_id) return null;
+      return {
+        modelId: n.model_id,
+        instId: n.id,
+        instName: n.name,
+      };
+    },
+    []
+  );
+
+  // Hub：非编辑态右键节点 → 「设为当前」/「查看详情」
+  const handleHubNodeContextMenu = useCallback(
+    (nodeId: string, e: MouseEvent) => {
+      if (editing) return;
+      if (!onRequestFocus && !onViewDetail) return;
+      setMenu({ kind: 'node', id: nodeId, x: e.clientX, y: e.clientY });
+    },
+    [editing, onRequestFocus, onViewDetail]
+  );
+
+  // Hub：双击节点 → 设为当前（详情页未传 onRequestFocus，不注册）
+  useEffect(() => {
+    if (!graphInstance || !onRequestFocus) return;
+    const onDbl = ({ node }: { node: { id: string } }) => {
+      const payload = resolveFocusPayload(String(node.id));
+      if (payload) onRequestFocus(payload);
+    };
+    graphInstance.on('node:dblclick', onDbl);
+    return () => {
+      graphInstance.off('node:dblclick', onDbl);
+    };
+  }, [graphInstance, onRequestFocus, resolveFocusPayload]);
+
   // 连线进行中点击目标设备：校验后弹端口小窗
   const handlePickTarget = useCallback(
     (targetId: string) => {
@@ -573,9 +629,10 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     onCancel: () => setLinkingSourceId(null),
   });
 
-  // Esc 取消连线 / 关闭菜单
+  // Esc 取消连线 / 关闭菜单（编辑态或 hub 焦点菜单）
   useEffect(() => {
-    if (!editing) return;
+    const hubMenu = !!(onRequestFocus || onViewDetail);
+    if (!editing && !hubMenu) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setLinkingSourceId(null);
@@ -584,7 +641,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editing]);
+  }, [editing, onRequestFocus, onViewDetail]);
 
   // 退出编辑态时清理连线/菜单状态
   useEffect(() => {
@@ -678,14 +735,23 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     [centerId, editing, handleExpand]
   );
 
+  const showHubNodeActions = !!(onRequestFocus || onViewDetail);
+
   return (
-    <div>
-      <Spin spinning={loading}>
+    <div className={fillContainer ? 'h-full min-h-0' : undefined}>
+      <Spin
+        spinning={loading}
+        wrapperClassName={
+          fillContainer
+            ? 'h-full [&_.ant-spin-container]:h-full'
+            : undefined
+        }
+      >
         <div
           className={topoStyle.topo}
           style={{
-            height: 'calc(100vh - 128px)',
-            minHeight: 560,
+            height: fillContainer ? '100%' : 'calc(100vh - 128px)',
+            minHeight: fillContainer ? 0 : 560,
             position: 'relative',
             ...NETWORK_TOPO_VISUAL.canvas,
           }}
@@ -727,6 +793,9 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
               ].join('|')}
               onGraphReady={setGraphInstance}
               onNodeClick={handleCanvasNodeClick}
+              onNodeContextMenu={
+                showHubNodeActions ? handleHubNodeContextMenu : undefined
+              }
               toolbar={{
                 align: 'split',
                 prefix: (
@@ -806,15 +875,43 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
             }}
           >
             {menu.kind === 'node' ? (
-              <div
-                className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
-                onClick={() => {
-                  setLinkingSourceId(menu.id);
-                  setMenu(null);
-                }}
-              >
-                {t('Model.networkTopoAddLink')}
-              </div>
+              <>
+                {editing && (
+                  <div
+                    className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                    onClick={() => {
+                      setLinkingSourceId(menu.id);
+                      setMenu(null);
+                    }}
+                  >
+                    {t('Model.networkTopoAddLink')}
+                  </div>
+                )}
+                {onRequestFocus && (
+                  <div
+                    className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                    onClick={() => {
+                      const payload = resolveFocusPayload(menu.id);
+                      if (payload) onRequestFocus(payload);
+                      setMenu(null);
+                    }}
+                  >
+                    {t('ViewsHub.setAsCurrent')}
+                  </div>
+                )}
+                {onViewDetail && (
+                  <div
+                    className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                    onClick={() => {
+                      const payload = resolveFocusPayload(menu.id);
+                      if (payload) onViewDetail(payload);
+                      setMenu(null);
+                    }}
+                  >
+                    {t('ViewsHub.viewDetail')}
+                  </div>
+                )}
+              </>
             ) : (
               <div
                 className="px-3 py-1.5 text-[13px] cursor-pointer text-[var(--color-error,#f53f3f)] hover:bg-[var(--color-fill-1,#f2f3f5)]"

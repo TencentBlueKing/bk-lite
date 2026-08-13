@@ -64,8 +64,18 @@ export const PROFESSIONAL_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = 
 /** @deprecated 使用 PROFESSIONAL_DASHBOARD_METADATA；保留别名兼容旧引用。 */
 export const PROFESSIONAL_DASHBOARDS = PROFESSIONAL_DASHBOARD_METADATA;
 
-const getDashboardCandidates = (item: ProfessionalDashboardMetaItem) =>
-  [item.key, ...(item.aliases || []), item.objectName, item.objectDisplayName]
+/** URL / 路由查找：含 dashboard key。 */
+const getDashboardRouteCandidates = (item: ProfessionalDashboardMetaItem) =>
+  [item.key, ...(item.aliases || []), item.objectName]
+    .filter(Boolean)
+    .map((value) => normalizeDashboardKey(value));
+
+/**
+ * 监控对象查找：只用 objectName + aliases。
+ * 不含 dashboard key 与泛化展示名，避免腾讯云 slug `TCP` 误绑 TCP 端口盘。
+ */
+export const getDashboardObjectMatchKeys = (item: ProfessionalDashboardMetaItem) =>
+  [item.objectName, ...(item.aliases || [])]
     .filter(Boolean)
     .map((value) => normalizeDashboardKey(value));
 
@@ -75,7 +85,7 @@ export const findProfessionalDashboardMeta = (
 ) => {
   const objectCandidates = [objectName, objectDisplayName].map((value) => normalizeDashboardKey(value));
   return PROFESSIONAL_DASHBOARD_METADATA.find((item) => {
-    const candidates = getDashboardCandidates(item);
+    const candidates = getDashboardObjectMatchKeys(item);
     return objectCandidates.some((candidate) => candidate && candidates.includes(candidate));
   });
 };
@@ -84,7 +94,7 @@ export const findProfessionalDashboardMetaByKey = (objectKey?: string | null) =>
   const normalizedKey = normalizeDashboardKey(objectKey);
   if (!normalizedKey) return undefined;
   return PROFESSIONAL_DASHBOARD_METADATA.find((item) =>
-    getDashboardCandidates(item).includes(normalizedKey)
+    getDashboardRouteCandidates(item).includes(normalizedKey)
   );
 };
 
@@ -120,7 +130,7 @@ export const getProfessionalDashboardUrl = (
 export const getProfessionalDashboardPermissionPath = (url?: string | null) => {
   const normalizedUrl = String(url || '').replace(/\/$/, '').toLowerCase();
   const matched = PROFESSIONAL_DASHBOARD_METADATA.find((item) => {
-    return getDashboardCandidates(item).some((candidate) => {
+    return getDashboardRouteCandidates(item).some((candidate) => {
       const dashboardPath = `/monitor/view/dashboard/${candidate}`;
       return normalizedUrl === dashboardPath || normalizedUrl.startsWith(`${dashboardPath}/`);
     });

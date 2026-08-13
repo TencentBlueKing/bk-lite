@@ -380,7 +380,7 @@ def test_batch_update_node_property_values_uses_one_parameterized_query():
         {"id": 2, "value": "photo"},
     ]
 
-    c.batch_update_node_property_values(
+    updated = c.batch_update_node_property_values(
         "instance",
         "doc_display",
         property_values,
@@ -391,6 +391,7 @@ def test_batch_update_node_property_values_uses_one_parameterized_query():
     assert "ID(n) = row.id" in c._graph.last_query
     assert "SET n.doc_display = row.value" in c._graph.last_query
     assert c._graph.last_params == {"property_values": property_values}
+    assert updated == []
 
 
 def test_batch_update_node_property_values_empty_list_skips_query():
