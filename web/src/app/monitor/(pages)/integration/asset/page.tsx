@@ -235,9 +235,9 @@ const Asset = () => {
             overflow: 'hidden',
           },
         }),
-        render: (_, record: any) => {
-          const cmdbId = record.cmdb_id || '--';
-          const nodeId = record.node_id || '--';
+        render: (_, record: TableDataItem) => {
+          const cmdbId = record.cmdb_id ? String(record.cmdb_id) : '--';
+          const nodeId = record.node_id ? String(record.node_id) : '--';
           return (
             <Tooltip
               title={

@@ -7,7 +7,7 @@ Status: implemented
 - 共用身份：`server/apps/cmdb/services/host_sync_identity.py`（`node_id` → `cmdb_id` → ip+cloud；实例名 `{ip}[{云区域}]`）。
 - 节点→CMDB ingest 与拉同步 `_persist_hosts` 走同一套认领；节点来源忽略节点名；拉同步创建写 `node_id`、不写 `monitor_id`、`schedule_post_actions=False`，写入后回填 `Node.cmdb_id`。
 - `PUSH_LINKAGE_REPLACES_PULL_SYNC = False`；`NodeMgmtSyncConfig.auto_sync_enabled` 字段默认 `True`（迁移 `0047` 只改默认，不刷现网已有行）。节点管理「推送到 CMDB」勾选不变。
-- 验证（2026-08-13）：`uv run pytest apps/cmdb/tests/test_node_mgmt_sync_*.py apps/cmdb/tests/test_module_ingest_*.py apps/cmdb/tests/test_host_sync_identity.py apps/node_mgmt/tests/test_module_link.py apps/node_mgmt/tests/test_node_module_ingest.py apps/node_mgmt/tests/test_module_push*.py -q --no-cov` → 413 passed, 2 skipped。
+- 验证（2026-08-13）：`uv run pytest apps/cmdb/tests/test_node_mgmt_sync_*.py apps/cmdb/tests/test_module_ingest_*.py apps/cmdb/tests/test_host_sync_identity_pure.py apps/node_mgmt/tests/test_module_link.py apps/node_mgmt/tests/test_node_module_ingest.py apps/node_mgmt/tests/test_module_push*.py -q --no-cov` → 413 passed, 2 skipped。
 
 ## Problem Statement
 
