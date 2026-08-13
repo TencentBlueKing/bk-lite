@@ -18,13 +18,14 @@ export interface KafkaLagRiskRow {
 }
 
 const latestValue = (series: RawSeries): number | null => {
-  if (series.value) {
-    const value = Number(series.value[1]);
-    return Number.isFinite(value) ? value : null;
-  }
-  const values = series.values || [];
-  for (let index = values.length - 1; index >= 0; index -= 1) {
-    const value = Number(values[index][1]);
+  const points: Array<[number, string | number | null | undefined]> = series.value
+    ? [series.value]
+    : (series.values || []);
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const raw = points[index][1];
+    // fill_missing_points 补的 null：Number(null)===0，必须跳过占位点。
+    if (raw === null || raw === undefined || raw === '') continue;
+    const value = Number(raw);
     if (Number.isFinite(value)) return value;
   }
   return null;
