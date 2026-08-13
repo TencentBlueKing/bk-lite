@@ -12,6 +12,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.cmdb.services.host_sync_identity import (
+    build_host_inst_name,
+    is_unique_conflict,
+    normalize_link_id,
+    resolve_host_identity,
+)
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -134,6 +140,38 @@ def strip_system_link_fields(payload: dict[str, Any] | None) -> dict[str, Any]:
     for key in SYSTEM_LINK_ATTR_IDS:
         data.pop(key, None)
     return data
+
+
+def write_system_link_fields(inst_id: int, update_attr: dict[str, Any] | None) -> dict[str, Any]:
+    """写入或清空系统联动字段，不受模型 editable=False 拦截。"""
+    from apps.cmdb.constants.constants import INSTANCE
+    from apps.cmdb.graph.drivers.graph_client import GraphClient
+
+    payload = {
+        key: value
+        for key, value in dict(update_attr or {}).items()
+        if key in SYSTEM_LINK_ATTR_IDS
+    }
+    if not payload:
+        raise ValueError("no system link fields to write")
+    check_attr_map = {
+        "editable": {key: key for key in payload},
+        "is_only": {},
+        "is_required": {},
+        "unique_rules": [],
+        "attrs_by_id": {},
+    }
+    with GraphClient() as ag:
+        result = ag.set_entity_properties(
+            INSTANCE,
+            [int(inst_id)],
+            payload,
+            check_attr_map,
+            [],
+        )
+    if not result:
+        raise BaseAppException("properties is empty")
+    return result[0]
 
 
 def resolve_ingest_model_id(raw: dict[str, Any]) -> str:
@@ -320,59 +358,106 @@ class CmdbModuleIngestService:
             raw=raw,
             node_id=node_id,
             monitor_id=monitor_id,
+            source_module=source_module,
         )
 
-        # 1) 有 node_id → 只按 node_id upsert（未命中则走认领/新建，不回落到 cmdb_id）
-        if node_id:
-            existing = cls._find_by_node_id(model_id, node_id)
-            if existing:
-                updated = cls._update_instance(
-                    existing,
-                    desired,
-                    update_fields=update_fields,
-                    operator=operator,
-                    allowed_org_ids=list(allowed_org_ids),
-                )
-                return IngestResult(id=updated.get("_id"), updated=True).as_dict()
-        # 2) 无 node_id 但有 cmdb_id → 按实例 ID 更新
-        elif cmdb_id:
-            existing = cls._find_by_cmdb_id(cmdb_id)
-            if existing:
-                updated = cls._update_instance(
-                    existing,
-                    desired,
-                    update_fields=update_fields,
-                    operator=operator,
-                    allowed_org_ids=list(allowed_org_ids),
-                )
-                return IngestResult(id=updated.get("_id"), updated=True).as_dict()
-
-        # 3) 未按 ID 命中：存量认领
-        existing = cls._find_for_claim(model_id, desired)
-        if existing:
-            existing_node_id = str(existing.get("node_id") or "").strip()
-            incoming_node_id = str(desired.get("node_id") or "").strip()
-            # 存量已绑定其他 node_id：禁止劫持覆盖
-            if (
-                incoming_node_id
-                and existing_node_id
-                and existing_node_id != incoming_node_id
-            ):
+        if model_id == "host":
+            match = resolve_host_identity(
+                node_id=node_id,
+                cmdb_id=None if node_id else cmdb_id,
+                ip=desired.get("ip_addr"),
+                cloud=desired.get("cloud"),
+                find_by_node_id=lambda nid: cls._find_by_node_id(model_id, nid),
+                find_by_cmdb_id=cls._find_by_cmdb_id,
+                find_by_ip_cloud=lambda ip, cloud: cls._find_host_by_ip_cloud(ip, cloud),
+            )
+            if match.conflict:
                 logger.warning(
                     "[ModuleIngest] claim link_conflict model=%s existing_id=%s "
                     "existing_node_id=%s incoming_node_id=%s",
                     model_id,
-                    existing.get("_id"),
-                    existing_node_id,
-                    incoming_node_id,
+                    (match.instance or {}).get("_id"),
+                    (match.instance or {}).get("node_id"),
+                    node_id,
                 )
                 return IngestResult(
-                    id=existing.get("_id"),
+                    id=(match.instance or {}).get("_id"),
                     conflict=LINK_CONFLICT,
                     claimed=False,
                     updated=False,
                     created=False,
                 ).as_dict()
+            if match.instance and match.via in ("node_id", "cmdb_id"):
+                updated = cls._update_instance(
+                    match.instance,
+                    desired,
+                    update_fields=update_fields,
+                    operator=operator,
+                    allowed_org_ids=list(allowed_org_ids),
+                )
+                return IngestResult(id=updated.get("_id"), updated=True).as_dict()
+            if match.skipped:
+                logger.info(
+                    "[ModuleIngest] skip host missing ip/cloud node_id=%s",
+                    node_id,
+                )
+                if source_module == "node_mgmt":
+                    raise ValueError("host ingest from node_mgmt requires ip and cloud")
+            existing = match.instance
+        else:
+            # 1) 有 node_id → 只按 node_id upsert（未命中则走认领/新建，不回落到 cmdb_id）
+            existing = None
+            if node_id:
+                existing = cls._find_by_node_id(model_id, node_id)
+                if existing:
+                    updated = cls._update_instance(
+                        existing,
+                        desired,
+                        update_fields=update_fields,
+                        operator=operator,
+                        allowed_org_ids=list(allowed_org_ids),
+                    )
+                    return IngestResult(id=updated.get("_id"), updated=True).as_dict()
+            # 2) 无 node_id 但有 cmdb_id → 按实例 ID 更新
+            elif cmdb_id:
+                existing = cls._find_by_cmdb_id(cmdb_id)
+                if existing:
+                    updated = cls._update_instance(
+                        existing,
+                        desired,
+                        update_fields=update_fields,
+                        operator=operator,
+                        allowed_org_ids=list(allowed_org_ids),
+                    )
+                    return IngestResult(id=updated.get("_id"), updated=True).as_dict()
+
+            # 3) 未按 ID 命中：存量认领
+            existing = cls._find_for_claim(model_id, desired)
+            if existing:
+                existing_node_id = str(existing.get("node_id") or "").strip()
+                incoming_node_id = str(desired.get("node_id") or "").strip()
+                if (
+                    incoming_node_id
+                    and existing_node_id
+                    and existing_node_id != incoming_node_id
+                ):
+                    logger.warning(
+                        "[ModuleIngest] claim link_conflict model=%s existing_id=%s "
+                        "existing_node_id=%s incoming_node_id=%s",
+                        model_id,
+                        existing.get("_id"),
+                        existing_node_id,
+                        incoming_node_id,
+                    )
+                    return IngestResult(
+                        id=existing.get("_id"),
+                        conflict=LINK_CONFLICT,
+                        claimed=False,
+                        updated=False,
+                        created=False,
+                    ).as_dict()
+
+        if existing:
             claimed = cls._claim_instance(
                 existing,
                 desired,
@@ -382,13 +467,30 @@ class CmdbModuleIngestService:
             )
             return IngestResult(id=claimed.get("_id"), claimed=True).as_dict()
 
-        created = cls._create_instance(
-            model_id,
-            desired,
-            update_fields=update_fields,
-            operator=operator,
-            allowed_org_ids=list(allowed_org_ids),
-        )
+        try:
+            created = cls._create_instance(
+                model_id,
+                desired,
+                update_fields=update_fields,
+                operator=operator,
+                allowed_org_ids=list(allowed_org_ids),
+            )
+        except Exception as exc:
+            recovered = (
+                cls._recover_host_after_unique_conflict(desired, exc)
+                if model_id == "host"
+                else None
+            )
+            if recovered is None:
+                raise
+            claimed = cls._claim_instance(
+                recovered,
+                desired,
+                update_fields=update_fields,
+                operator=operator,
+                allowed_org_ids=list(allowed_org_ids),
+            )
+            return IngestResult(id=claimed.get("_id"), claimed=True).as_dict()
         return IngestResult(id=created.get("_id"), created=True).as_dict()
 
     @classmethod
@@ -473,15 +575,7 @@ class CmdbModuleIngestService:
         if "monitor_id" in clear_fields:
             ensure_model_monitor_id_attr(model_id, username=operator or "admin")
 
-        updated = InstanceManage.instance_update(
-            user_groups=[],
-            roles=[],
-            inst_id=int(inst_id),
-            update_attr=clear_fields,
-            operator=operator,
-            allowed_org_ids=list(allowed_org_ids or []),
-            skip_permission_check=True,
-        )
+        updated = write_system_link_fields(int(inst_id), clear_fields)
         logger.info(
             "[ModuleIngest] lifecycle unlink cleared %s on inst_id=%s source=%s",
             sorted(clear_fields.keys()),
@@ -543,10 +637,14 @@ class CmdbModuleIngestService:
         raw: dict[str, Any],
         node_id: str | None,
         monitor_id: str | None = None,
+        source_module: str = "",
     ) -> dict[str, Any]:
         if model_id == "host":
             return cls._build_host_desired(
-                raw=raw, node_id=node_id, monitor_id=monitor_id
+                raw=raw,
+                node_id=node_id,
+                monitor_id=monitor_id,
+                source_module=source_module,
             )
         return cls._build_ip_only_desired(
             model_id=model_id, raw=raw, node_id=node_id, monitor_id=monitor_id
@@ -559,6 +657,7 @@ class CmdbModuleIngestService:
         raw: dict[str, Any],
         node_id: str | None,
         monitor_id: str | None = None,
+        source_module: str = "",
     ) -> dict[str, Any]:
         ip = cls._extract_ip(raw)
         cloud_raw = raw.get("cloud_region_id") if "cloud_region_id" in raw else raw.get("cloud")
@@ -570,10 +669,17 @@ class CmdbModuleIngestService:
         organization = NodeMgmtSyncService._normalize_org_ids(
             raw.get("organization_ids") if "organization_ids" in raw else raw.get("organization")
         )
-        inst_name = str(raw.get("name") or raw.get("inst_name") or "").strip()
-        if not inst_name and ip:
-            cloud_label = raw.get("cloud_region_name") or (cloud if cloud is not None else "")
-            inst_name = f"{ip}[{cloud_label}]"
+        ip_cloud_name = build_host_inst_name(
+            ip=ip,
+            cloud_name=raw.get("cloud_region_name"),
+            cloud_id=cloud,
+        )
+        if source_module == "node_mgmt":
+            inst_name = ip_cloud_name
+        else:
+            inst_name = str(raw.get("name") or raw.get("inst_name") or "").strip()
+            if not inst_name:
+                inst_name = ip_cloud_name
 
         os_type = NodeMgmtSyncService._map_host_os_type(
             raw.get("operating_system") or raw.get("os_type")
@@ -764,6 +870,27 @@ class CmdbModuleIngestService:
             skip_permission_check=False,
         )
         return updated if isinstance(updated, dict) else {**existing, **changes}
+
+    @classmethod
+    def _recover_host_after_unique_conflict(
+        cls,
+        desired: dict[str, Any],
+        exc: BaseException,
+    ) -> dict[str, Any] | None:
+        if not is_unique_conflict(exc):
+            return None
+        node_id = normalize_link_id(desired.get("node_id"))
+        found = cls._find_by_node_id("host", node_id) if node_id else None
+        if not found:
+            found = cls._find_host_by_ip_cloud(
+                desired.get("ip_addr"), desired.get("cloud")
+            )
+        if not found:
+            return None
+        existing_node_id = normalize_link_id(found.get("node_id"))
+        if node_id and existing_node_id and existing_node_id != node_id:
+            return None
+        return found
 
     @classmethod
     def _create_instance(

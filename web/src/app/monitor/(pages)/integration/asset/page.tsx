@@ -133,22 +133,6 @@ const Asset = () => {
   const columns = useMemo(() => {
     const columnItems: ColumnItem[] = [
       {
-        title: t('monitor.views.nodeId'),
-        dataIndex: 'node_id',
-        key: 'node_id',
-        width: 180,
-        ellipsis: true,
-        render: (_, record: any) => <>{record.node_id || '--'}</>,
-      },
-      {
-        title: t('monitor.views.cmdbId'),
-        dataIndex: 'cmdb_id',
-        key: 'cmdb_id',
-        width: 120,
-        ellipsis: true,
-        render: (_, record: any) => <>{record.cmdb_id || '--'}</>,
-      },
-      {
         title: t('monitor.integrations.collectionTemplate'),
         dataIndex: 'plugins',
         key: 'plugins',
@@ -233,6 +217,54 @@ const Asset = () => {
             text={showGroupName(organization, organizationList)}
           />
         )
+      },
+      {
+        title: t('monitor.views.externalId'),
+        dataIndex: 'external_id',
+        key: 'external_id',
+        width: 80,
+        ellipsis: true,
+        onHeaderCell: () => ({
+          style: { width: 80, minWidth: 80, maxWidth: 80 },
+        }),
+        onCell: () => ({
+          style: {
+            width: 80,
+            minWidth: 80,
+            maxWidth: 80,
+            overflow: 'hidden',
+          },
+        }),
+        render: (_, record: any) => {
+          const cmdbId = record.cmdb_id || '--';
+          const nodeId = record.node_id || '--';
+          return (
+            <Tooltip
+              title={
+                <div className="text-xs leading-5">
+                  <div>
+                    {t('monitor.views.cmdbId')}: {cmdbId}
+                  </div>
+                  <div>
+                    {t('monitor.views.nodeId')}: {nodeId}
+                  </div>
+                </div>
+              }
+            >
+              <div
+                className="block overflow-hidden cursor-default"
+                style={{ width: 64, maxWidth: 64 }}
+              >
+                <div className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[12px] leading-[18px]">
+                  {cmdbId}
+                </div>
+                <div className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[12px] leading-[18px] text-[var(--color-text-3)]">
+                  {nodeId}
+                </div>
+              </div>
+            </Tooltip>
+          );
+        },
       },
       {
         title: t('common.action'),
