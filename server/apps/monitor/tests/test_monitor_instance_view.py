@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 import types
 
 import pytest
@@ -316,6 +318,68 @@ def test_effective_plugins_service_deduplicates_configured_reported_plugin(db, m
     assert by_name["HostRemote"]["id"] == configured_plugin.id
     assert by_name["HostRemote"]["status"] == "normal"
     assert by_name["HostRemote"]["collect_mode"] == "auto"
+
+
+def test_effective_plugins_service_deduplicates_status_queries_with_bounded_concurrency(db, monkeypatch):
+    from apps.monitor.services import effective_plugins
+
+    monitor_object = MonitorObject.objects.create(
+        name="EffectivePluginBatch",
+        display_name="Effective Plugin Batch",
+        instance_id_keys=["instance_id"],
+    )
+    for index in range(10):
+        plugin = MonitorPlugin.objects.create(
+            name=f"BatchPlugin{index}",
+            status_query=f'any({{kind="{index % 5}"}}) by (instance_id)',
+        )
+        plugin.monitor_object.add(monitor_object)
+
+    lock = threading.Lock()
+    active = 0
+    peak_active = 0
+    calls = []
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, **kwargs):
+            nonlocal active, peak_active
+            with lock:
+                calls.append(query)
+                active += 1
+                peak_active = max(peak_active, active)
+            time.sleep(0.03)
+            with lock:
+                active -= 1
+            if 'kind="4"' in query:
+                raise RuntimeError("one plugin status unavailable")
+            return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [100, "1"]}]}}
+
+    monkeypatch.setattr(effective_plugins, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = effective_plugins.MonitorEffectivePluginService.get_effective_plugins(
+        monitor_object.id,
+        "('host-a',)",
+    )
+
+    assert len(result) == 8
+    assert len(calls) == 5
+    assert len(set(calls)) == 5
+    assert 1 < peak_active <= 8
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [(None, 8), ("invalid", 8), ("0", 1), ("-1", 1), ("1000", 32)],
+)
+def test_vm_query_worker_config_is_safe_and_bounded(monkeypatch, raw_value, expected):
+    from apps.monitor.utils import vm_query_batch
+
+    if raw_value is None:
+        monkeypatch.delenv("MONITOR_VM_QUERY_MAX_WORKERS", raising=False)
+    else:
+        monkeypatch.setenv("MONITOR_VM_QUERY_MAX_WORKERS", raw_value)
+
+    assert vm_query_batch._resolve_vm_query_max_workers() == expected
 
 
 def test_effective_plugins_service_resolves_derived_instance_without_row(db, monkeypatch):

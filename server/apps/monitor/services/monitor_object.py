@@ -18,6 +18,7 @@ from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import display_field_key, extract_field_bindings, extract_metric_bindings
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
 # 实例 status 映射短 TTL 缓存，缓解列表/轮询重复打 VM。
 _INSTANCE_STATUS_CACHE_TTL_SECONDS = 15.0
@@ -401,15 +402,28 @@ class MonitorObjectService:
         plugin_status_qs = (
             MonitorPlugin.objects.filter(monitor_object=monitor_object_id).exclude(status_query="").values_list("name", "status_query").distinct()
         )
+        plugin_queries = []
         for plugin_name, status_query in plugin_status_qs:
             query = (status_query or "").strip()
             if not query:
                 continue
-            try:
-                resp = VictoriaMetricsAPI().query(query)
-            except Exception:
-                logger.warning("回填展示列时查询插件上报状态失败: plugin=%s", plugin_name, exc_info=True)
+            plugin_queries.append((plugin_name, query))
+
+        vm_api = VictoriaMetricsAPI()
+        responses, errors = run_unique_vm_queries(
+            (query for _, query in plugin_queries),
+            vm_api.query,
+        )
+        for plugin_name, query in plugin_queries:
+            if query in errors:
+                error = errors[query]
+                logger.warning(
+                    "回填展示列时查询插件上报状态失败: plugin=%s",
+                    plugin_name,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
                 continue
+            resp = responses[query]
             reported_primary_ids = {metric["metric"].get("instance_id") for metric in resp.get("data", {}).get("result", [])}
             reported_primary_ids.discard(None)
             if not reported_primary_ids:
