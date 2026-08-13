@@ -104,6 +104,25 @@ def test_filter_and_strip_system_link_helpers():
     assert stripped == {"ip_addr": "1.1.1.1", "name": "x"}
 
 
+def test_write_system_link_fields_clears_non_editable_node_id(fake_graph):
+    from apps.cmdb.services.module_ingest import write_system_link_fields
+
+    graph = fake_graph(
+        "apps.cmdb.graph.drivers.graph_client",
+        set_entity_properties=[{"_id": 1140, "node_id": ""}],
+    )
+
+    out = write_system_link_fields(1140, {"node_id": "", "inst_name": "should-drop"})
+
+    assert out["_id"] == 1140
+    call = next(item for item in graph.calls if item[0] == "set_entity_properties")
+    properties = call[1][2]
+    check_attr_map = call[1][3]
+    assert properties == {"node_id": ""}
+    assert "node_id" in check_attr_map["editable"]
+    assert "inst_name" not in properties
+
+
 def test_ensure_host_node_id_attr_treats_duplicate_as_ready(mocker):
     mocker.patch(
         "apps.cmdb.services.model.ModelManage.search_model_info",
@@ -363,6 +382,43 @@ def test_ingest_host_creates_when_no_match(mocker):
     create.assert_called_once()
 
 
+def test_ingest_host_unique_conflict_claims_existing(mocker):
+    recovered = {
+        "_id": 44,
+        "node_id": "",
+        "ip_addr": "1.1.1.3",
+        "cloud": 1,
+        "inst_name": "old-name",
+    }
+    mocker.patch(
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
+        return_value=True,
+    )
+    mocker.patch.object(CmdbModuleIngestService, "_find_by_node_id", return_value=None)
+    mocker.patch.object(
+        CmdbModuleIngestService,
+        "_find_host_by_ip_cloud",
+        side_effect=[None, recovered],
+    )
+    mocker.patch.object(
+        CmdbModuleIngestService,
+        "_create_instance",
+        side_effect=BaseAppException("ip_addr exist；"),
+    )
+    claim = mocker.patch.object(
+        CmdbModuleIngestService,
+        "_claim_instance",
+        return_value={**recovered, "node_id": "n3"},
+    )
+
+    result = CmdbModuleIngestService.ingest(_ingest_params(node_id="n3", ip="1.1.1.3"))
+
+    assert result["id"] == 44
+    assert result["claimed"] is True
+    assert result.get("created") is not True
+    claim.assert_called_once()
+
+
 def test_ingest_requires_auth_scope():
     with pytest.raises(ValueError, match="authorization"):
         CmdbModuleIngestService.ingest(
@@ -383,8 +439,12 @@ def test_lifecycle_retire_clears_node_id_without_hard_delete(mocker):
         "_find_by_cmdb_id",
         return_value={"_id": 42, "node_id": "n-lifecycle", "ip_addr": "1.1.1.1"},
     )
+    mocker.patch(
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
+        return_value=True,
+    )
     update = mocker.patch(
-        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        "apps.cmdb.services.module_ingest.write_system_link_fields",
         return_value={"_id": 42, "node_id": ""},
     )
     delete = mocker.patch.object(CmdbModuleIngestService, "_create_instance")
@@ -405,9 +465,7 @@ def test_lifecycle_retire_clears_node_id_without_hard_delete(mocker):
     assert result["updated"] is True
     assert result["id"] == 42
     assert result.get("created") is False
-    update.assert_called_once()
-    assert update.call_args.kwargs["update_attr"] == {"node_id": ""}
-    assert update.call_args.kwargs["skip_permission_check"] is True
+    assert update.call_args.args == (42, {"node_id": ""})
     delete.assert_not_called()
 
 
@@ -427,7 +485,7 @@ def test_lifecycle_from_monitor_clears_monitor_id_only(mocker):
         return_value=True,
     )
     update = mocker.patch(
-        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        "apps.cmdb.services.module_ingest.write_system_link_fields",
         return_value={"_id": 42, "monitor_id": ""},
     )
 
@@ -445,13 +503,13 @@ def test_lifecycle_from_monitor_clears_monitor_id_only(mocker):
     )
 
     assert result["updated"] is True
-    assert update.call_args.kwargs["update_attr"] == {"monitor_id": ""}
+    assert update.call_args.args == (42, {"monitor_id": ""})
 
 
 def test_lifecycle_ignored_when_instance_missing(mocker):
     mocker.patch.object(CmdbModuleIngestService, "_find_by_cmdb_id", return_value=None)
     mocker.patch.object(CmdbModuleIngestService, "_find_by_node_id", return_value=None)
-    update = mocker.patch("apps.cmdb.services.module_ingest.InstanceManage.instance_update")
+    update = mocker.patch("apps.cmdb.services.module_ingest.write_system_link_fields")
 
     result = CmdbModuleIngestService.ingest(
         {
@@ -510,3 +568,58 @@ def test_ingest_host_persists_monitor_id(mocker):
     desired = update.call_args.args[1]
     assert desired["monitor_id"] == "mon-1"
     assert desired["node_id"] == "n1"
+    assert desired["inst_name"] == "1.1.1.1[1]"
+
+
+def test_ingest_host_from_node_ignores_node_name_for_inst_name(mocker):
+    mocker.patch(
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
+        return_value=True,
+    )
+    mocker.patch.object(
+        CmdbModuleIngestService,
+        "_find_by_node_id",
+        return_value={"_id": 10, "node_id": "n1", "ip_addr": "10.0.0.7", "cloud": 2},
+    )
+    update = mocker.patch.object(
+        CmdbModuleIngestService,
+        "_update_instance",
+        return_value={"_id": 10, "node_id": "n1"},
+    )
+
+    CmdbModuleIngestService.ingest(
+        _ingest_params(
+            node_id="n1",
+            ip="10.0.0.7",
+            raw={
+                "ip": "10.0.0.7",
+                "cloud_region_id": 2,
+                "cloud_region_name": "华东",
+                "organization_ids": [1],
+                "name": "my-node",
+            },
+        )
+    )
+
+    desired = update.call_args.args[1]
+    assert desired["inst_name"] == "10.0.0.7[华东]"
+
+
+def test_ingest_host_from_node_requires_ip_and_cloud_when_ids_miss(mocker):
+    mocker.patch(
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
+        return_value=True,
+    )
+    mocker.patch.object(CmdbModuleIngestService, "_find_by_node_id", return_value=None)
+    create = mocker.patch.object(CmdbModuleIngestService, "_create_instance")
+
+    with pytest.raises(ValueError, match="requires ip and cloud"):
+        CmdbModuleIngestService.ingest(
+            _ingest_params(
+                node_id="n-missing",
+                raw={"name": "orphan", "organization_ids": [1]},
+                link_ids={"node_id": "n-missing"},
+            )
+        )
+
+    create.assert_not_called()

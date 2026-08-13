@@ -377,11 +377,6 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
         </div>
       ) : (
         <>
-          <Alert
-            type="info"
-            showIcon
-            message={t('Collection.nodeMgmtSync.pullReplacedNotice')}
-          />
           <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
             <div className="text-sm text-[var(--color-text-2)]">
               <div>
@@ -395,9 +390,10 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
               <Space>
                 <span>{t('Collection.nodeMgmtSync.autoSync')}</span>
                 <Switch
-                  checked={false}
-                  disabled
-                  title={t('Collection.nodeMgmtSync.autoSyncDisabledHint')}
+                  checked={task?.auto_sync_enabled}
+                  disabled={saving}
+                  loading={saving}
+                  onChange={(checked) => void handleConfigChange({ auto_sync_enabled: checked })}
                 />
               </Space>
               <Space>

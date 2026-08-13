@@ -1586,7 +1586,7 @@ def _resolve_monitor_ingest_allowed_org_ids(params):
 
 @nats_client.register
 def monitor_ingest_from_source(params):
-    """跨模块推送写入监控（node_id 优先，其次 cmdb_id）。
+    """跨模块推送写入监控（node_id → cmdb_id → ip+cloud）。
 
     params 为 IngestEnvelope 扩展字段，另需授权上下文之一：
       allowed_org_ids / service_scope.allowed_org_ids / user_info.team

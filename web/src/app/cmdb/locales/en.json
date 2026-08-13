@@ -743,8 +743,8 @@
         "nodeMgmtSync": {
             "entry": "Node Management Sync",
             "title": "Node Management Sync",
-            "pullReplacedNotice": "Pull sync from Node Management has been replaced by node-side push to CMDB. Use install/detail push in Node Manager; this page keeps historical status only and auto-sync is disabled.",
-            "autoSyncDisabledHint": "Pull sync is retired",
+            "pullReplacedNotice": "Node management sync mirrors nodes into CMDB host inventory. Node-side push to CMDB still controls immediate push. Both pipelines claim the same host by the shared identity.",
+            "autoSyncDisabledHint": "Auto sync is off",
             "lastSyncTime": "Latest Sync Time",
             "lastCollectTime": "Latest Collect Time",
             "autoSync": "Auto Sync",

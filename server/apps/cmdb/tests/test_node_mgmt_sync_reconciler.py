@@ -46,7 +46,7 @@ def _get_task_from_view():
 
 
 def test_product_get_reconciles_first_open_disabled_refresh_and_deleted_drift():
-    # 新配置默认关闭拉取同步；先显式开启以覆盖「对账/删除漂移」路径。
+    # 新配置默认开启拉取同步；先显式开启以覆盖「对账/删除漂移」路径。
     NodeMgmtSyncService.update_task({"auto_sync_enabled": True, "auto_collect_enabled": True})
     payload = _get_task_from_view()
     assert payload["schedule_status"] == "healthy"
@@ -70,9 +70,9 @@ def test_product_get_reconciles_first_open_disabled_refresh_and_deleted_drift():
 def test_first_open_reconciles_default_enabled_switches_to_beat():
     payload = NodeMgmtSyncService.get_task_payload(reconcile=True)
 
-    assert payload["auto_sync_enabled"] is False
+    assert payload["auto_sync_enabled"] is True
     assert payload["auto_collect_enabled"] is True
-    assert NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME not in _task_names()
+    assert NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME in _task_names()
     assert NodeMgmtSyncService.COLLECT_PERIODIC_TASK_NAME in _task_names()
     assert payload["schedule_status"] == "healthy"
 
@@ -399,6 +399,6 @@ def test_disabled_schedule_delete_failure_does_not_log_raw_exception(caplog):
 def test_get_task_is_pure_and_does_not_reconcile_schedules():
     config = NodeMgmtSyncService.get_task()
 
-    assert config.auto_sync_enabled is False
+    assert config.auto_sync_enabled is True
     assert config.auto_collect_enabled is True
     assert _task_names() == set()
