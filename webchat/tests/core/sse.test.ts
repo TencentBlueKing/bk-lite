@@ -26,6 +26,23 @@ function streamResponse(chunks: string[]): Response {
   } as Response;
 }
 
+function streamThenFailResponse(chunk: string): Response {
+  const value = new TextEncoder().encode(chunk);
+  let reads = 0;
+  return {
+    body: {
+      getReader: () => ({
+        read: async () => {
+          if (reads++ === 0) return { done: false, value };
+          throw new Error('stream disconnected after a partial event');
+        },
+      }),
+    },
+    ok: true,
+    status: 200,
+  } as unknown as Response;
+}
+
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
 
@@ -98,6 +115,8 @@ test('fetch reconnect respects its retry budget and resets it only after opening
   const originalError = console.error;
   let attempts = 0;
   let opens = 0;
+  const events: string[] = [];
+  const messages: Message[] = [];
 
   console.error = () => undefined;
   globalThis.fetch = async () => {
@@ -106,20 +125,18 @@ test('fetch reconnect respects its retry budget and resets it only after opening
       throw new Error('temporary connection failure');
     }
     if (attempts === 2) {
-      const body = new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.error(new Error('stream disconnected after opening'));
-        },
-      });
-      return { body, ok: true, status: 200 } as Response;
+      return streamThenFailResponse('data: stale partial');
     }
-    return streamResponse([]);
+    return streamResponse(['data: current message\n']);
   };
 
   const handler = new SSEHandler(1, 0);
   handler.on('open', () => {
     opens += 1;
+    events.push('open');
   });
+  handler.on('error', () => events.push('error'));
+  handler.on('message', (event: WebChatMessageEvent) => messages.push(event.message));
 
   try {
     await handler.connect('https://example.test/stream', {
@@ -127,6 +144,8 @@ test('fetch reconnect respects its retry budget and resets it only after opening
     });
     assert.equal(attempts, 3);
     assert.equal(opens, 2);
+    assert.deepEqual(events, ['error', 'open', 'error', 'open']);
+    assert.deepEqual(messages.map((message) => message.content), ['current message']);
 
     let terminalAttempts = 0;
     globalThis.fetch = async () => {
@@ -137,6 +156,36 @@ test('fetch reconnect respects its retry budget and resets it only after opening
       Authorization: 'Bearer placeholder',
     });
     assert.equal(terminalAttempts, 2);
+    assert.deepEqual(events.slice(-2), ['error', 'error']);
+  } finally {
+    handler.destroy();
+    console.error = originalError;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('a fetch error listener can replace the connection without losing its retry budget', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalError = console.error;
+  let attempts = 0;
+  let replaceOnError = true;
+  console.error = () => undefined;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts < 3) throw new Error('temporary connection failure');
+    return streamResponse([]);
+  };
+  const handler = new SSEHandler(1, 0);
+  handler.on('error', () => {
+    if (!replaceOnError) return;
+    replaceOnError = false;
+    void handler.connect('https://example.test/replacement', { Authorization: 'replacement' });
+  });
+
+  try {
+    await handler.connect('https://example.test/stream', { Authorization: 'first' });
+    await wait(10);
+    assert.equal(attempts, 3);
   } finally {
     handler.destroy();
     console.error = originalError;
@@ -174,6 +223,37 @@ test('disconnect cancels a queued EventSource reconnect', async () => {
     console.error = originalError;
     console.log = originalLog;
     globalThis.clearTimeout = originalClearTimeout;
+  }
+});
+
+test('an EventSource error listener can replace the connection without losing its retry budget', async () => {
+  const restoreEventSource = installFakeEventSource();
+  const originalError = console.error;
+  const originalLog = console.log;
+  let replaceOnError = true;
+  console.error = () => undefined;
+  console.log = () => undefined;
+  const handler = new SSEHandler(1, 0);
+  handler.on('error', () => {
+    if (!replaceOnError) return;
+    replaceOnError = false;
+    void handler.connect('https://example.test/replacement');
+  });
+
+  try {
+    void handler.connect('https://example.test/stream');
+    FakeEventSource.instances[0].onerror?.(new Error('replace from error callback'));
+    await wait(0);
+    assert.equal(FakeEventSource.instances.length, 2);
+
+    FakeEventSource.instances[1].onerror?.(new Error('replacement should retry'));
+    await wait(0);
+    assert.equal(FakeEventSource.instances.length, 3);
+  } finally {
+    handler.destroy();
+    restoreEventSource();
+    console.error = originalError;
+    console.log = originalLog;
   }
 });
 

@@ -68,6 +68,7 @@ export class SSEHandler {
           if (!this.isCurrentEventSource(eventSource, generation)) return;
           console.error('SSE error:', error);
           this.handleError(error);
+          if (!this.isCurrentEventSource(eventSource, generation)) return;
           this.closeEventSource(eventSource);
           if (this.eventSource === eventSource) {
             this.eventSource = null;
@@ -94,6 +95,7 @@ export class SSEHandler {
   ): Promise<void> {
     const abortController = new AbortController();
     this.abortController = abortController;
+    this.parser.reset();
     try {
       const response = await fetch(url, {
         method: 'GET',
@@ -129,6 +131,7 @@ export class SSEHandler {
       ) {
         console.error('Fetch SSE error:', error);
         this.handleError(error);
+        if (!this.isCurrentFetch(abortController, generation)) return;
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           await this.waitForReconnect(this.reconnectDelay);
