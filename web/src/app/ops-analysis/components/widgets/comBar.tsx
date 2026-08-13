@@ -21,6 +21,11 @@ import {
   scaleScreenMetric,
   scaleScreenMetricFloat,
 } from './shared/screenMetrics';
+import {
+  formatLineBarAxisTick,
+  formatVisibleChartValue,
+  getLineBarYAxisName,
+} from '@/app/ops-analysis/utils/chartValueFormat';
 
 interface BarChartProps {
   rawData: any;
@@ -46,6 +51,7 @@ const BarChart: React.FC<BarChartProps> = ({
     ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
     : randomColorForLegend(themeName);
   const widgetScale = getScreenWidgetScale(screenRenderContext);
+  const yAxisName = getLineBarYAxisName(config);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
@@ -103,7 +109,7 @@ const BarChart: React.FC<BarChartProps> = ({
           content += `
             <div style="display: flex; align-items: center; margin-bottom: ${scaleScreenMetric(2, screenRenderContext)}px;">
               <span style="display: inline-block; width: ${markerSize}px; height: ${markerSize}px; background-color: ${param.color}; border-radius: ${scaleScreenMetric(2, screenRenderContext)}px; margin-right: ${markerGap}px;"></span>
-              <span>${param.seriesName}: ${param.value}</span>
+              <span>${param.seriesName}: ${formatVisibleChartValue(param.value, config)}</span>
             </div>`;
         });
 
@@ -112,7 +118,7 @@ const BarChart: React.FC<BarChartProps> = ({
       },
     },
     grid: {
-      top: scaleScreenMetric(8, screenRenderContext),
+      top: scaleScreenMetric(yAxisName ? 24 : 8, screenRenderContext),
       left: scaleScreenMetric(16, screenRenderContext),
       right: scaleScreenMetric(16, screenRenderContext),
       bottom: scaleScreenMetric(8, screenRenderContext),
@@ -151,6 +157,12 @@ const BarChart: React.FC<BarChartProps> = ({
     },
     yAxis: {
       type: 'value',
+      name: yAxisName,
+      nameGap: 6,
+      nameTextStyle: {
+        color: chartTheme.axisLabelColor,
+        fontSize: scaleScreenMetric(11, screenRenderContext),
+      },
       minInterval: 1,
       axisTick: {
         show: false,
@@ -159,12 +171,7 @@ const BarChart: React.FC<BarChartProps> = ({
         show: false,
       },
       axisLabel: {
-        formatter: function (value: number) {
-          if (value >= 1000) {
-            return (value / 1000).toFixed(1) + 'k';
-          }
-          return value.toString();
-        },
+        formatter: (value: number) => formatLineBarAxisTick(value, config),
         textStyle: {
           color: chartTheme.axisLabelColor,
           fontSize: scaleScreenMetric(11, screenRenderContext),

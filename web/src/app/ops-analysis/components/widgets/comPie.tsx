@@ -19,6 +19,7 @@ import {
   getScreenWidgetScale,
   scaleScreenMetric,
 } from './shared/screenMetrics';
+import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 
 interface OsPieProps {
   rawData: any;
@@ -95,7 +96,7 @@ const OsPie: React.FC<OsPieProps> = ({
             <div style="margin-bottom: ${tooltipGap}px; font-weight: bold;">${params.seriesName}</div>
             <div style="display: flex; align-items: center;">
               <span style="display: inline-block; width: ${markerSize}px; height: ${markerSize}px; background-color: ${params.color}; border-radius: 50%; margin-right: ${markerGap}px;"></span>
-              <span>${params.name}: ${params.value} (${percent.toFixed(1)}%)</span>
+              <span>${params.name}: ${formatVisibleChartValue(params.value, config)} (${percent.toFixed(1)}%)</span>
             </div>
           </div>
         `;
@@ -121,7 +122,7 @@ const OsPie: React.FC<OsPieProps> = ({
               (sum: number, item: any) => sum + item.value,
               0,
             );
-            return `{title|总数}\n{value|${total}}`;
+            return `{title|总数}\n{value|${formatVisibleChartValue(total, config)}}`;
           },
           rich: {
             title: {

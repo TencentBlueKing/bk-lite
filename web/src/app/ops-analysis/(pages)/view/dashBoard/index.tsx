@@ -10,7 +10,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import ViewSelector from '@/app/ops-analysis/components/widgetSelector';
 import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
-import { mergeSanitizedWidgetValueConfig } from '@/app/ops-analysis/components/widgetConfig/utils/submitConfig';
+import { mergeSanitizedWidgetValueConfig, omitForeignChartTypeFields } from '@/app/ops-analysis/components/widgetConfig/utils/submitConfig';
 import DashboardCanvas from './components/dashboardCanvas';
 import DashboardToolbar from './components/dashboardToolbar';
 import DashboardSubscriptionModal from '@/app/ops-analysis/components/dashboardSubscriptionModal';
@@ -684,33 +684,36 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         groupId: null,
         name: config.name,
         description: config.description,
-        valueConfig: {
-          dataSource: config.dataSource,
-          chartType: config.chartType,
-          sceneWidgetType: config.sceneWidgetType,
-          networkStatusTopology: config.networkStatusTopology,
-          dataSourceParams: config.dataSourceParams || [],
-          tableConfig: config.tableConfig,
-          filterBindings: config.filterBindings,
-          selectedFields: config.selectedFields,
-          descriptionField: config.descriptionField,
-          topNLabelField: config.topNLabelField,
-          topNValueField: config.topNValueField,
-          unit: config.unit,
-          unitId: config.unitId,
-          valueMappings: config.valueMappings,
-          chartThemeMode: config.chartThemeMode,
-          appearance: config.appearance,
-          conversionFactor: config.conversionFactor,
-          decimalPlaces: config.decimalPlaces,
-          thresholdColors: config.thresholdColors,
-          gaugeMin: config.gaugeMin,
-          gaugeMax: config.gaugeMax,
-          gaugeShape: config.gaugeShape,
-          cardList: config.cardList,
-          compare: config.compare,
-          actions: config.actions,
-        },
+        valueConfig: omitForeignChartTypeFields(
+          {
+            dataSource: config.dataSource,
+            chartType: config.chartType,
+            sceneWidgetType: config.sceneWidgetType,
+            networkStatusTopology: config.networkStatusTopology,
+            dataSourceParams: config.dataSourceParams || [],
+            tableConfig: config.tableConfig,
+            filterBindings: config.filterBindings,
+            selectedFields: config.selectedFields,
+            descriptionField: config.descriptionField,
+            topNLabelField: config.topNLabelField,
+            topNValueField: config.topNValueField,
+            unit: config.unit,
+            unitId: config.unitId,
+            valueMappings: config.valueMappings,
+            chartThemeMode: config.chartThemeMode,
+            appearance: config.appearance,
+            conversionFactor: config.conversionFactor,
+            decimalPlaces: config.decimalPlaces,
+            thresholdColors: config.thresholdColors,
+            gaugeMin: config.gaugeMin,
+            gaugeMax: config.gaugeMax,
+            gaugeShape: config.gaugeShape,
+            cardList: config.cardList,
+            compare: config.compare,
+            actions: config.actions,
+          },
+          config.chartType || '',
+        ),
       };
       const nextLayout = pendingNewWidgetGroupId
         ? insertDashboardWidgetIntoGroup(

@@ -336,6 +336,7 @@ export interface ViewConfigFormValues {
   topNLabelField?: string;
   topNValueField?: string;
   unit?: string;
+  unitId?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
   gaugeMin?: number;
@@ -345,6 +346,7 @@ export interface ViewConfigFormValues {
     value: string;
     color: string;
   }>;
+  valueMappings?: import('@/app/ops-analysis/utils/valueMapping').ValueMapping[];
   tableConfig?: TableConfig;
 }
 
