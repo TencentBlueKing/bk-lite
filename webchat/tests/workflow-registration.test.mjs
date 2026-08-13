@@ -26,7 +26,7 @@ test('WebChat quality gate is registered at repository root for master', () => {
 
 test('pull request quality gate cannot publish packages or receive npm credentials', () => {
   const workflow = fs.readFileSync(workflowPath, 'utf8');
-  const publishJob = workflow.match(/  publish:\n(?<body>[\s\S]*)/)?.groups?.body;
+  const publishJob = workflow.match(/ {2}publish:\n(?<body>[\s\S]*)/)?.groups?.body;
 
   assert.ok(publishJob);
   assert.match(
