@@ -15,6 +15,7 @@ import type {
   CustomReportingTask,
   CustomReportingTaskDetail,
 } from '@/app/cmdb/types/customReporting';
+import { buildCustomReportingCurlPayload } from '@/app/cmdb/utils/customReportingDocument';
 
 interface TaskDetailProps {
   open: boolean;
@@ -70,7 +71,7 @@ export default function TaskDetail({
 
   // 把接入文档拼成一条可直接复制运行的 curl：
   // - 客户脚本应直连 CMDB 后端（非前端代理），host 用 <CMDB_HOST> 占位，交付时替换为真实后端/网关地址；
-  // - 载荷只放最小可跑的 instances（单条、身份键占位）做首次上报，关系/批次元数据见下方「示例载荷」；
+  // - 载荷复用后端接入文档的首条实例；标准模型会包含身份键和必填字段，关系见下方「示例载荷」；
   // - JSON 多行美化后用单引号包裹，bash 下仍是一次性可粘贴执行；
   // - 有明文 token 时填入，否则保留 <token> 占位由交付人员替换。
   const curlCommand = useMemo(() => {
@@ -83,14 +84,7 @@ export default function TaskDetail({
     const authValue = token
       ? documentData.auth_header.format.replace('<token>', token)
       : documentData.auth_header.format;
-    const identityKeys = documentData.identity_keys?.length
-      ? documentData.identity_keys
-      : ['inst_name'];
-    const sampleInstance = identityKeys.reduce<Record<string, string>>((acc, key) => {
-      acc[key] = `<${key}>`;
-      return acc;
-    }, {});
-    const payload = JSON.stringify({ instances: [sampleInstance] }, null, 2);
+    const payload = JSON.stringify(buildCustomReportingCurlPayload(documentData), null, 2);
     return [
       `curl -X POST "${url}" \\`,
       `  -H "${documentData.auth_header.name}: ${authValue}" \\`,
