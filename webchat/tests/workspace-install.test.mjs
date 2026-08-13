@@ -31,6 +31,8 @@ test('root package owns the complete WebChat workspace install graph', () => {
   assert.equal(packageJson.scripts['build:browser'], 'npm run build:browser --workspace @webchat/ui');
   assert.equal(packageJson.scripts['build:demo'], 'npm run build --workspace @webchat/demo');
   assert.equal(packageJson.engines.node, '>=18.18.0');
+  assert.equal(corePackage.engines.node, packageJson.engines.node);
+  assert.equal(uiPackage.engines.node, packageJson.engines.node);
   assert.equal(uiPackage.dependencies['@webchat/core'], corePackage.version);
   assert.equal(demoPackage.dependencies['@webchat/ui'], uiPackage.version);
   assert.doesNotMatch(JSON.stringify(uiPackage.dependencies), /file:/);
