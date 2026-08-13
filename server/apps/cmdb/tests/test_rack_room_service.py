@@ -31,7 +31,7 @@ class TestGetRackLayout:
         q_assoc.return_value = [_assoc("rack", "switch", "contains", [10])]
         q_map.return_value = {10: {"_id": 10, "inst_name": "sw", "model_id": "switch", "rack_u_start": 41, "u_size": 2}}
         out = rack_room.get_rack_layout(5, permission_map={"x": 1}, user=None)
-        assert out["rack"] == {"inst_id": "5", "inst_name": "A03", "u_count": 42}
+        assert out["rack"] == {"inst_id": "5", "inst_uuid": None, "inst_name": "A03", "u_count": 42}
         assert [d["inst_id"] for d in out["placed"]] == ["10"]
 
 
@@ -347,33 +347,39 @@ class TestLayoutViews:
     def test_rack_layout_route(self, superuser, monkeypatch):
         from apps.cmdb.views.instance import InstanceViewSet
 
+        sample_uuid = "550e8400-e29b-41d4-a716-446655440005"
         monkeypatch.setattr(
-            f"{VIEWS}.InstanceManage.query_entity_by_id",
-            lambda pk: {"_id": 5, "model_id": "rack", "inst_name": "A03"},
+            f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+            lambda uid: {"_id": 5, "model_id": "rack", "inst_name": "A03", "inst_uuid": uid},
         )
         monkeypatch.setattr(f"{VIEWS}.get_rack_layout", lambda *a, **k: {"ok": 1})
-        response = InstanceViewSet.as_view({"get": "rack_layout"})(_get_req(superuser), model_id="rack", inst_id="5")
+        response = InstanceViewSet.as_view({"get": "rack_layout"})(_get_req(superuser), model_id="rack", inst_uuid=sample_uuid)
         assert response.status_code == status.HTTP_200_OK
         assert _body(response)["data"] == {"ok": 1}
 
     def test_room_layout_route(self, superuser, monkeypatch):
         from apps.cmdb.views.instance import InstanceViewSet
 
+        sample_uuid = "550e8400-e29b-41d4-a716-446655440007"
         monkeypatch.setattr(
-            f"{VIEWS}.InstanceManage.query_entity_by_id",
-            lambda pk: {"_id": 7, "model_id": "server_room", "inst_name": "R1"},
+            f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+            lambda uid: {"_id": 7, "model_id": "server_room", "inst_name": "R1", "inst_uuid": uid},
         )
         monkeypatch.setattr(f"{VIEWS}.get_room_layout", lambda *a, **k: {"racks": []})
-        response = InstanceViewSet.as_view({"get": "room_layout"})(_get_req(superuser), model_id="server_room", inst_id="7")
+        response = InstanceViewSet.as_view({"get": "room_layout"})(_get_req(superuser), model_id="server_room", inst_uuid=sample_uuid)
         assert response.status_code == status.HTTP_200_OK
         assert _body(response)["data"] == {"racks": []}
 
     def test_rack_layout_404_when_missing(self, superuser, monkeypatch):
         from apps.cmdb.views.instance import InstanceViewSet
 
-        monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", lambda pk: None)
+        monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda uid: None)
         monkeypatch.setattr(f"{VIEWS}.get_rack_layout", lambda *a, **k: {"ok": 1})
-        response = InstanceViewSet.as_view({"get": "rack_layout"})(_get_req(superuser), model_id="rack", inst_id="999")
+        response = InstanceViewSet.as_view({"get": "rack_layout"})(
+            _get_req(superuser),
+            model_id="rack",
+            inst_uuid="550e8400-e29b-41d4-a716-446655440099",
+        )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
 

@@ -124,7 +124,7 @@ const buildSceneWidgetConfig = (
     sceneWidgetType: 'networkStatusTopology',
     networkStatusTopology: buildPersistedNetworkStatusTopologyConfig({
       modelId: topologyConfig?.modelId || '',
-      instId: topologyConfig?.instId || '',
+      instUuid: topologyConfig?.instUuid || '',
       depth: topologyConfig?.depth || 2,
       layoutMode: topologyConfig?.layoutMode,
       layoutByMode: topologyConfig?.layoutByMode,

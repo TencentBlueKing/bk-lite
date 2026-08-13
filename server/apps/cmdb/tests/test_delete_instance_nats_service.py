@@ -9,8 +9,8 @@ from django.conf import settings
 
 django.setup()
 
-from apps.cmdb.nats import nats as cmdb_nats
-from nats_client.handlers import nats_handler
+from apps.cmdb.nats import nats as cmdb_nats  # noqa: E402
+from nats_client.handlers import nats_handler  # noqa: E402
 
 
 @pytest.mark.django_db
@@ -18,12 +18,17 @@ def test_delete_instance_nats_dispatch_applies_scope_before_delete():
     """NATS 分发后的授权范围必须进入实例查询，再执行审计和图删除。"""
     instance = {
         "_id": 9,
+        "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
         "model_id": "host",
         "inst_name": "host-09",
         "organization": [4],
     }
 
     with (
+        patch(
+            "apps.cmdb.services.instance.InstanceManage.query_entity_by_uuids",
+            return_value=[instance],
+        ),
         patch(
             "apps.cmdb.services.instance.InstanceManage.query_entity_by_ids",
             return_value=[instance],
@@ -35,9 +40,7 @@ def test_delete_instance_nats_dispatch_applies_scope_before_delete():
         patch("apps.cmdb.services.instance.GraphClient") as mock_graph_client,
         patch("apps.cmdb.services.instance.batch_create_change_record") as mock_audit,
         patch("apps.cmdb.services.instance.get_instance_enterprise_extension") as mock_extension,
-        patch(
-            "apps.cmdb.services.auto_relation_reconcile.schedule_incoming_rule_full_sync_by_model_ids"
-        ) as mock_schedule_sync,
+        patch("apps.cmdb.services.auto_relation_reconcile.schedule_incoming_rule_full_sync_by_model_ids") as mock_schedule_sync,
     ):
         graph = mock_graph_client.return_value.__enter__.return_value
         graph.query_entity.return_value = ([instance], 1)
@@ -47,7 +50,8 @@ def test_delete_instance_nats_dispatch_applies_scope_before_delete():
             {
                 "args": [
                     {
-                        "inst_id": 9,
+                        "protocol_version": "2",
+                        "inst_uuid": instance["inst_uuid"],
                         "service_scope": {"allowed_org_ids": [4]},
                     }
                 ],
@@ -55,7 +59,7 @@ def test_delete_instance_nats_dispatch_applies_scope_before_delete():
             },
         )
 
-    assert result == {"result": True, "deleted": [9]}
+    assert result == {"result": True, "deleted": [instance["inst_uuid"]]}
     _, permission_kwargs = graph.query_entity.call_args
     assert {
         "field": "organization",

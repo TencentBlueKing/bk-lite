@@ -40,38 +40,43 @@ export const isNetworkModel = (
 export const extractDevicePorts = (
   assocList: Array<{
     model_asst_id?: string;
-    inst_list?: Array<{ _id: string | number; inst_name: string }>;
+    inst_list?: Array<{ inst_uuid?: string; _id?: string | number; inst_name: string }>;
   }>,
   deviceModel: string
 ): PortOption[] => {
   const belongKey = `interface_belong_${deviceModel}`;
   const group = (assocList || []).find((g) => g.model_asst_id === belongKey);
   if (!group?.inst_list) return [];
-  return group.inst_list.map((i) => ({ id: String(i._id), name: i.inst_name }));
+  return group.inst_list
+    .map((i) => {
+      const id = i.inst_uuid != null ? String(i.inst_uuid) : '';
+      return id ? { id, name: i.inst_name } : null;
+    })
+    .filter((item): item is PortOption => item !== null);
 };
 
 // 建 connect 关联的请求体
-export const buildConnectPayload = (srcPortId: string, dstPortId: string) => ({
+export const buildConnectPayload = (srcPortUuid: string, dstPortUuid: string) => ({
   model_asst_id: CONNECT_MODEL_ASST_ID,
   src_model_id: INTERFACE_MODEL,
   dst_model_id: INTERFACE_MODEL,
   asst_id: CONNECT_ASST_ID,
-  src_inst_id: Number(srcPortId),
-  dst_inst_id: Number(dstPortId),
+  src_inst_uuid: String(srcPortUuid),
+  dst_inst_uuid: String(dstPortUuid),
 });
 
 // 建 belong 关联（端口 -> 设备）的请求体
 export const buildBelongPayload = (
-  portId: string,
-  deviceId: string,
+  portUuid: string,
+  deviceUuid: string,
   deviceModel: string
 ) => ({
   model_asst_id: `interface_belong_${deviceModel}`,
   src_model_id: INTERFACE_MODEL,
   dst_model_id: deviceModel,
   asst_id: BELONG_ASST_ID,
-  src_inst_id: Number(portId),
-  dst_inst_id: Number(deviceId),
+  src_inst_uuid: String(portUuid),
+  dst_inst_uuid: String(deviceUuid),
 });
 
 export interface ConnValidationCtx {
@@ -101,13 +106,17 @@ export const validateConnection = (
 
 // 把确认后的连线构造成 NetworkTopoLink，供合并进图
 export const buildLinkFromConnection = (args: {
-  relationshipId: string;
+  srcInstUuid: string;
+  dstInstUuid: string;
   sourceDevice: string;
   targetDevice: string;
   sourcePortName: string;
   targetPortName: string;
 }): NetworkTopoLink => ({
-  relationship_id: String(args.relationshipId),
+  relationship_id: `${args.srcInstUuid}:${args.dstInstUuid}:${CONNECT_MODEL_ASST_ID}`,
+  src_inst_uuid: args.srcInstUuid,
+  dst_inst_uuid: args.dstInstUuid,
+  model_asst_id: CONNECT_MODEL_ASST_ID,
   source_device: args.sourceDevice,
   source_inst_name: args.sourcePortName,
   target_device: args.targetDevice,

@@ -34,7 +34,7 @@ export const mapNetworkInstanceOptions = (
   instances: any[],
 ): NetworkSelectOption[] =>
   (instances || []).map((instance: any) => {
-    const instanceId = instance._id || instance.id;
+    const instanceId = instance.inst_uuid || instance._id || instance.id;
     return {
       label: String(instance.inst_name || instance.name || instanceId),
       value: String(instanceId),
@@ -103,7 +103,7 @@ export const useNetworkStatusTopologyConfig = ({
       cancelled = true;
     };
     // API hooks return fresh function references; this load is driven by panel/component state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [enabled, modelOptions.length, open]);
 
   const fetchNetworkInstances = async ({
@@ -165,7 +165,7 @@ export const useNetworkStatusTopologyConfig = ({
     resetInstanceOptions();
     void fetchNetworkInstances({ page: 1, keyword: '', append: false });
     // API hooks return fresh function references; this load is driven by model/panel state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [
     enabled,
     open,
@@ -210,7 +210,7 @@ export const useNetworkStatusTopologyConfig = ({
   };
 
   const handleModelChange = () => {
-    form.setFieldValue(['networkStatusTopology', 'instId'], undefined);
+    form.setFieldValue(['networkStatusTopology', 'instUuid'], undefined);
     resetInstanceOptions();
   };
 

@@ -3,8 +3,17 @@ import json
 from rest_framework import serializers
 
 FILTER_TYPES = {"str=", "str*", "str[]", "int=", "int[]", "list[]"}
-FORBIDDEN_FIELDS = {"_id", "model_id", "organization", "_creator", "_created_at", "_updated_at"}
-ORDER_ALIASES = {"created_at": "_created_at", "updated_at": "_updated_at", "inst_id": "_id"}
+FORBIDDEN_FIELDS = {
+    "_id",
+    "inst_id",
+    "inst_uuid",
+    "model_id",
+    "organization",
+    "_creator",
+    "_created_at",
+    "_updated_at",
+}
+ORDER_ALIASES = {"created_at": "_created_at", "updated_at": "_updated_at", "inst_uuid": "inst_uuid"}
 
 
 class InstanceListQuerySerializer(serializers.Serializer):
@@ -56,9 +65,7 @@ def validate_instance_payload(data, attrs, *, team_id, for_update):
     allowed = {
         item["attr_id"]
         for item in attrs
-        if item.get("attr_id")
-        and (not for_update or item.get("editable", False))
-        and not item.get("is_display_field", False)
+        if item.get("attr_id") and (not for_update or item.get("editable", False)) and not item.get("is_display_field", False)
     }
     invalid = set(data) - allowed
     if invalid or set(data) & FORBIDDEN_FIELDS:
@@ -74,15 +81,15 @@ class BatchCreateSerializer(serializers.Serializer):
 
 
 class BatchUpdateSerializer(serializers.Serializer):
-    inst_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), min_length=1, max_length=100)
+    inst_uuids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=100)
     update_data = serializers.DictField()
 
 
 class BatchDeleteSerializer(serializers.Serializer):
-    inst_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), min_length=1, max_length=100)
+    inst_uuids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=100)
 
 
 class AssociationCreateSerializer(serializers.Serializer):
     model_asst_id = serializers.CharField(max_length=255)
     target_model_id = serializers.CharField(max_length=255)
-    target_inst_id = serializers.IntegerField(min_value=1)
+    target_inst_uuid = serializers.UUIDField()

@@ -44,16 +44,16 @@ export const buildAlertListUrl = ({
 
 export const buildInstanceDetailUrl = ({
   modelId,
-  instId,
+  instUuid,
   instName,
 }: {
   modelId: string;
-  instId: string;
+  instUuid: string;
   instName?: string;
 }) => {
   const params = new URLSearchParams({
     model_id: modelId,
-    inst_id: instId,
+    inst_uuid: instUuid,
   });
   if (instName) {
     params.set('inst_name', instName);

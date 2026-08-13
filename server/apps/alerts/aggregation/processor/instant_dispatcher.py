@@ -6,8 +6,9 @@
 INSTANT 策略，两条路径完全互斥。
 
 性能取舍：1-event-per-call 主场景下 Celery 中转是纯开销，因此命中数
-``<= INSTANT_SYNC_THRESHOLD`` 时同步 ``bulk_create``；超阈值才退化到 Celery
-``build_instant_alerts`` 任务，以应对单次调用塞入大批事件的边界场景。
+``<= INSTANT_SYNC_THRESHOLD`` 时同步 ``bulk_create``；超阈值或触顶分片时走
+Celery ``build_instant_alerts``。``INSTANT_HIT_CEILING`` 只约束单块大小，
+触顶后继续分块投递，不再截断丢弃命中。
 """
 
 import hashlib
@@ -20,12 +21,7 @@ from celery import current_app
 from django.core.cache import cache
 from django.db import transaction
 
-from apps.alerts.constants import (
-    EventAction,
-    INSTANT_HIT_CEILING,
-    INSTANT_STRATEGY_CACHE_TTL,
-    INSTANT_SYNC_THRESHOLD,
-)
+from apps.alerts.constants import INSTANT_HIT_CEILING, INSTANT_STRATEGY_CACHE_TTL, INSTANT_SYNC_THRESHOLD, EventAction
 from apps.alerts.constants.constants import AlarmStrategyType, AlertStatus, EventStatus
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert, Event
@@ -73,8 +69,7 @@ class InstantStrategyCache:
                 AlarmStrategy.objects.filter(
                     is_active=True,
                     strategy_type=AlarmStrategyType.INSTANT,
-                )
-                .values("id", "match_rules")
+                ).values("id", "match_rules")
             )
         ]
         cache.set(cls.CACHE_KEY, value, INSTANT_STRATEGY_CACHE_TTL)
@@ -192,17 +187,12 @@ def _bulk_build_instant_alerts(hits: List[InstantHit]) -> List[str]:
         strategy = strategies[sid]
         try:
             with transaction.atomic():
-                from apps.alerts.service.active_fingerprint import (
-                    bind_active_fingerprint,
-                    claim_active_fingerprint,
-                )
+                from apps.alerts.service.active_fingerprint import bind_active_fingerprint, claim_active_fingerprint
 
                 alerts_to_create: List[Alert] = []
                 fp_to_event: dict = {}
                 fp_to_lease: dict = {}
-                unique_events = {
-                    _build_fingerprint(sid, evt.event_id): evt for evt in evt_list
-                }
+                unique_events = {_build_fingerprint(sid, evt.event_id): evt for evt in evt_list}
                 for fp, evt in unique_events.items():
                     lease, active_alert = claim_active_fingerprint(fp)
                     if active_alert:
@@ -216,20 +206,14 @@ def _bulk_build_instant_alerts(hits: List[InstantHit]) -> List[str]:
                 Alert.objects.bulk_create(alerts_to_create)
                 # 回查实际入库的 Alert（兼容 MySQL bulk_create 不回填 pk 的情况）
                 wanted_alert_ids = {a.alert_id for a in alerts_to_create}
-                created = list(
-                    Alert.objects.filter(alert_id__in=wanted_alert_ids).values_list(
-                        "id", "alert_id", "fingerprint"
-                    )
-                )
+                created = list(Alert.objects.filter(alert_id__in=wanted_alert_ids).values_list("id", "alert_id", "fingerprint"))
                 m2m_rows = []
                 for alert_pk, alert_id, fp in created:
                     evt = fp_to_event.get(fp)
                     if evt is None:
                         continue
                     bind_active_fingerprint(fp_to_lease[fp], Alert(pk=alert_pk))
-                    m2m_rows.append(
-                        Alert.events.through(alert_id=alert_pk, event_id=evt.id)
-                    )
+                    m2m_rows.append(Alert.events.through(alert_id=alert_pk, event_id=evt.id))
                     created_alert_ids.append(alert_id)
                 if m2m_rows:
                     Alert.events.through.objects.bulk_create(m2m_rows, ignore_conflicts=True)
@@ -285,65 +269,85 @@ class InstantAlertDispatcher:
             if not strategies:
                 return
 
-            hits = InstantAlertDispatcher._collect_hits(events, strategies)
-            if not hits:
+            hit_chunks = InstantAlertDispatcher._collect_hit_chunks(events, strategies)
+            if not hit_chunks:
                 return
 
+            total_hits = sum(len(chunk) for chunk in hit_chunks)
             logger.info(
-                "instant dispatch: events=%s strategies=%s hits=%s",
+                "instant dispatch: events=%s strategies=%s hits=%s chunks=%s",
                 len(events),
                 len(strategies),
-                len(hits),
+                total_hits,
+                len(hit_chunks),
             )
 
-            if len(hits) <= INSTANT_SYNC_THRESHOLD:
-                alert_ids = _bulk_build_instant_alerts(hits)
+            # 单块且未超同步阈值：同步建警，保证即时性。
+            # 多块（触顶分片）或单块过大：全部走异步，避免截断丢命中，也避免拖死接入。
+            if len(hit_chunks) == 1 and len(hit_chunks[0]) <= INSTANT_SYNC_THRESHOLD:
+                alert_ids = _bulk_build_instant_alerts(hit_chunks[0])
                 if alert_ids:
                     logger.info("instant sync created alerts=%s", len(alert_ids))
                     _trigger_dispatch_async(alert_ids)
-            else:
-                payload = [
-                    {"strategy_id": h.strategy_id, "event_id": h.event_id} for h in hits
-                ]
-                try:
-                    from apps.alerts.tasks import build_instant_alerts
+                return
 
-                    current_app.send_task(build_instant_alerts.name, args=[payload])
-                    logger.info("instant async enqueued hits=%s", len(payload))
-                except Exception:
-                    logger.exception("instant async send_task failed; fallback to sync")
-                    alert_ids = _bulk_build_instant_alerts(hits)
-                    _trigger_dispatch_async(alert_ids)
+            for chunk in hit_chunks:
+                InstantAlertDispatcher._enqueue_instant_chunk(chunk)
         except Exception:
             logger.exception("instant dispatch failed; main pipeline unaffected")
+
+    @staticmethod
+    def _enqueue_instant_chunk(hits: List[InstantHit]) -> None:
+        """将命中块投递到 Celery；投递失败时同步兜底，保证不丢警。"""
+        if not hits:
+            return
+        payload = [{"strategy_id": h.strategy_id, "event_id": h.event_id} for h in hits]
+        try:
+            from apps.alerts.tasks import build_instant_alerts
+
+            current_app.send_task(build_instant_alerts.name, args=[payload])
+            logger.info("instant async enqueued hits=%s", len(payload))
+        except Exception:
+            logger.exception("instant async send_task failed; fallback to sync")
+            alert_ids = _bulk_build_instant_alerts(hits)
+            _trigger_dispatch_async(alert_ids)
 
     @staticmethod
     def _exclude_shielded(events: List[Event]) -> List[Event]:
         """剔除当前已处于屏蔽状态的事件。仅在存在 INSTANT 策略且有 created 事件时调用。"""
         event_ids = [e.event_id for e in events]
-        shielded = set(
-            Event.objects.filter(
-                event_id__in=event_ids, status=EventStatus.SHIELD
-            ).values_list("event_id", flat=True)
-        )
+        shielded = set(Event.objects.filter(event_id__in=event_ids, status=EventStatus.SHIELD).values_list("event_id", flat=True))
         if not shielded:
             return events
         return [e for e in events if e.event_id not in shielded]
 
     @staticmethod
-    def _collect_hits(
-        events: List[Event], strategies: List[InstantStrategySnapshot]
-    ) -> List[InstantHit]:
+    def _collect_hit_chunks(events: List[Event], strategies: List[InstantStrategySnapshot]) -> List[List[InstantHit]]:
+        """收集全部命中，并按 ``INSTANT_HIT_CEILING`` 分块。
+
+        触顶时开启新块继续匹配，而不是截断丢弃后续命中。
+        """
         from apps.alerts.aggregation.strategy.instant_matcher import InstantMatcher
 
-        hits: List[InstantHit] = []
+        chunks: List[List[InstantHit]] = []
+        current: List[InstantHit] = []
         for event in events:
             for strategy in strategies:
                 if InstantMatcher.match_in_memory(event, strategy.match_rules or []):
-                    hits.append(InstantHit(strategy.id, event.event_id))
-                    if len(hits) >= INSTANT_HIT_CEILING:
-                        logger.error(
-                            "instant hits truncated at ceiling=%s", INSTANT_HIT_CEILING
+                    current.append(InstantHit(strategy.id, event.event_id))
+                    if len(current) >= INSTANT_HIT_CEILING:
+                        logger.warning(
+                            "instant hits chunk full at ceiling=%s; continue in next chunk",
+                            INSTANT_HIT_CEILING,
                         )
-                        return hits
-        return hits
+                        chunks.append(current)
+                        current = []
+        if current:
+            chunks.append(current)
+        return chunks
+
+    @staticmethod
+    def _collect_hits(events: List[Event], strategies: List[InstantStrategySnapshot]) -> List[InstantHit]:
+        """兼容旧调用：返回展平后的全部命中。"""
+        chunks = InstantAlertDispatcher._collect_hit_chunks(events, strategies)
+        return [hit for chunk in chunks for hit in chunk]

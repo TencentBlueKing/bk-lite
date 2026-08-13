@@ -78,8 +78,9 @@ export const K8sOverviewContent: React.FC<{
 };
 
 export interface K8sResourceDetailsContentProps {
-  /** Cluster instance id — injected by detail page or views hub. */
-  instId: string;
+  /** Cluster instance UUID — injected by detail page or views hub. */
+  instId?: string;
+  instUuid?: string;
 }
 
 /**
@@ -89,12 +90,13 @@ export interface K8sResourceDetailsContentProps {
  */
 export const K8sResourceDetailsContent: React.FC<K8sResourceDetailsContentProps> = ({
   instId,
+  instUuid,
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const api = useK8sResourceApi();
-  const clusterId = instId || '';
+  const clusterId = instUuid || instId || '';
   const requestedSub = searchParams.get('sub') as K8sResourceSubView | null;
   const sub = K8S_RESOURCE_NAV_ITEMS.some((item) => item.key === requestedSub) ? requestedSub! : 'overview';
   const [overview, setOverview] = useState<K8sOverviewData | null>(null);

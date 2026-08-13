@@ -75,11 +75,7 @@ def build_room_layout(racks: list) -> dict:
             unplaced.append(
                 {
                     **r,
-                    "unplaced_reason": (
-                        "missing_location"
-                        if not isinstance(location, str) or not location.strip()
-                        else "invalid_location"
-                    ),
+                    "unplaced_reason": ("missing_location" if not isinstance(location, str) or not location.strip() else "invalid_location"),
                 }
             )
 
@@ -263,6 +259,7 @@ def get_rack_layout(rack_id, permission_map=None, user=None) -> dict:
     devices = [
         {
             "inst_id": str(d["_id"]),
+            "inst_uuid": d.get("inst_uuid"),
             "inst_name": d.get("inst_name"),
             "model_id": d.get("model_id"),
             "rack_u_start": _safe_int(d.get("rack_u_start")),
@@ -272,7 +269,12 @@ def get_rack_layout(rack_id, permission_map=None, user=None) -> dict:
         for d in _rack_device_instances(rack_id, permission_map, user)
     ]
     layout = build_rack_layout(u_count, devices)
-    layout["rack"] = {"inst_id": str(rack_id), "inst_name": rack.get("inst_name"), "u_count": u_count}
+    layout["rack"] = {
+        "inst_id": str(rack_id),
+        "inst_uuid": rack.get("inst_uuid"),
+        "inst_name": rack.get("inst_name"),
+        "u_count": u_count,
+    }
     return layout
 
 
@@ -304,6 +306,7 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
             racks.append(
                 {
                     "inst_id": str(rid),
+                    "inst_uuid": r.get("inst_uuid"),
                     "inst_name": r.get("inst_name"),
                     "row": row,
                     "col": col,

@@ -4,7 +4,7 @@ import type { NetworkStatusTopologyResponse } from '@/app/ops-analysis/types/sce
 
 interface NetworkStatusTopologyRequest {
   model_id: string;
-  inst_id: string;
+  inst_uuid: string;
   depth?: number;
 }
 

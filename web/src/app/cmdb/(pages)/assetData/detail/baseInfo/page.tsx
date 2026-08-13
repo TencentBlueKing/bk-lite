@@ -38,7 +38,7 @@ const BaseInfo = () => {
   const { submitting: quickSubscribeSubmitting, createRule: quickSubscribeCreateRule } = useSubscriptionMutation();
 
   const modelId: string = searchParams.get('model_id') || '';
-  const instId: string = searchParams.get('inst_id') || '';
+  const instUuid: string = searchParams.get('inst_uuid') || '';
   const modelName: string = searchParams.get('model_name') || '';
   const instName: string = searchParams.get('inst_name') || searchParams.get('ip_addr') || '--';
   const [instDetail, setInstDetail] = useState<InstDetail>({});
@@ -47,7 +47,7 @@ const BaseInfo = () => {
   const quickDefaults = useQuickSubscribeDefaults('detail', {
     model_id: modelId,
     model_name: modelName,
-    currentInstanceId: Number(instId || 0),
+    currentInstanceUuid: instUuid || undefined,
     currentInstanceName: instName,
     currentUser: Number(userId || userList[0]?.id || 0),
     currentOrganization: Number(selectedGroup?.id || 0),
@@ -75,7 +75,7 @@ const BaseInfo = () => {
       const [propertData, instDetailData] = await Promise.all([
         // getModelAttrList(modelId),
         getModelAttrGroupsFullInfo(modelId),
-        getInstanceDetail(instId),
+        getInstanceDetail(instUuid),
       ]);
 
       // 模型属性列表+值：propertData.groups
@@ -93,7 +93,7 @@ const BaseInfo = () => {
   const onsuccessEdit = async () => {
     setPageLoading(true);
     try {
-      const data = await getInstanceDetail(instId);
+      const data = await getInstanceDetail(instUuid);
       setInstDetail(data);
     } finally {
       setPageLoading(false);

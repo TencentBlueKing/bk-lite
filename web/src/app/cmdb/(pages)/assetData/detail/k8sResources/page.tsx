@@ -8,13 +8,13 @@ import K8sResourceDetailsContent, {
 export { K8sOverviewContent };
 
 /**
- * Detail-route entry: read cluster id from searchParams and render shared content.
- * Views hub embeds `K8sResourceDetailsContent` directly with focus.inst_id.
+ * Detail-route entry: read cluster UUID from searchParams and render shared content.
+ * Views hub embeds `K8sResourceDetailsContent` directly with focus.inst_uuid.
  */
 const K8sResourceDetails = () => {
   const searchParams = useSearchParams();
-  const instId = searchParams.get('inst_id') || '';
-  return <K8sResourceDetailsContent instId={instId} />;
+  const instUuid = searchParams.get('inst_uuid') || '';
+  return <K8sResourceDetailsContent instUuid={instUuid} />;
 };
 
 export default K8sResourceDetails;

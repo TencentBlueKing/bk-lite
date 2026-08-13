@@ -11,7 +11,7 @@ import { RACK_TOP, deviceColor, deviceTypeName, TECH } from '@/app/cmdb/utils/ra
 
 interface Props {
   modelId: string;
-  instId: string;
+  instUuid: string;
   embedded?: boolean;
   onDeviceClick?: (d: RackDevice) => void;
 }
@@ -26,7 +26,7 @@ const SVG_W = FRAME_X + FRAME_W + 44;
 const MIN_U = 9;   // 每 U 最小像素（再小就出滚动条）
 const MAX_U = 26;  // 每 U 最大像素（避免太空旷）
 
-const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceClick }) => {
+const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceClick }) => {
   const { t } = useTranslation();
   const { mode } = useThemeMode();
   const router = useRouter();
@@ -38,16 +38,16 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
   const isDark = mode === 'dark';
 
   useEffect(() => {
-    if (!modelId || !instId) return;
+    if (!modelId || !instUuid) return;
     let cancelled = false;
     setLoading(true);
-    getRackLayout(modelId, instId)
+    getRackLayout(modelId, instUuid)
       .then((res: RackLayoutData) => !cancelled && setData(res))
       .catch(() => !cancelled && setData(null))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, instId]);
+     
+  }, [modelId, instUuid]);
 
   // 顶天立地：按从组件顶到视口底的可用高度，动态计算每 U 像素，让机柜撑满
   useEffect(() => {
@@ -69,7 +69,7 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
     if (onDeviceClick) { onDeviceClick(d); return; }
     const params = new URLSearchParams({
       icn: '', model_name: d.model_id, model_id: d.model_id,
-      classification_id: '', inst_id: d.inst_id, inst_name: d.inst_name,
+      classification_id: '', inst_uuid: d.inst_uuid || d.inst_id, inst_name: d.inst_name,
     }).toString();
     router.push(`/cmdb/assetData/detail/baseInfo?${params}`);
   };

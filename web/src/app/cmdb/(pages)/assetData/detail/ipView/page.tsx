@@ -5,8 +5,8 @@ import IpamMatrix from './ipamMatrix';
 
 const IpViewPage = () => {
   const searchParams = useSearchParams();
-  const instId = searchParams.get('inst_id') || '';
-  return <IpamMatrix instId={instId} />;
+  const instUuid = searchParams.get('inst_uuid') || '';
+  return <IpamMatrix instUuid={instUuid} />;
 };
 
 export default IpViewPage;

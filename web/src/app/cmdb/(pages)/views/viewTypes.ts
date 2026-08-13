@@ -3,7 +3,7 @@ export type RackRoomMode = 'room' | 'rack';
 
 export interface ViewFocus {
   model_id: string;
-  inst_id: string;
+  inst_uuid: string;
   inst_name?: string;
   model_name?: string;
   icn?: string;

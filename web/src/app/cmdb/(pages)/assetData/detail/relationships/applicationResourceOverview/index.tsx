@@ -39,7 +39,7 @@ import styles from './index.module.scss';
 
 interface Props {
   modelId: string;
-  instId: string;
+  instUuid: string;
 }
 
 type ViewMode = 'topology' | 'resources';
@@ -733,7 +733,7 @@ function withLocalRelationshipScenarios(
   };
 }
 
-export default function ApplicationResourceOverview({ modelId, instId }: Props) {
+export default function ApplicationResourceOverview({ modelId, instUuid }: Props) {
   const { t } = useTranslation();
   const {
     getApplicationResourceTopology,
@@ -768,7 +768,7 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
       setLoading(true);
       try {
         if (!cancelled) {
-          setSelectedTarget({ id: instId, name: instId, model_id: modelId });
+          setSelectedTarget({ id: instUuid, name: instUuid, model_id: modelId });
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -778,8 +778,8 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instId, modelId]);
+     
+  }, [instUuid, modelId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -811,7 +811,7 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [initialDepth, selectedTarget?.id, selectedTarget?.model_id]);
 
   const topologyNodeMap = useMemo(() => {
@@ -1033,7 +1033,7 @@ export default function ApplicationResourceOverview({ modelId, instId }: Props) 
       setTopology(mergedTopology);
       const resourceRes = await getApplicationResourceInstances(
         selectedTarget?.model_id || modelId,
-        selectedTarget?.id || instId,
+        selectedTarget?.id || instUuid,
         (mergedTopology?.nodes || []).map((item: ApplicationResourceNode) => item.id)
       );
       setResources(resourceRes);

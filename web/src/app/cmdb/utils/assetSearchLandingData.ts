@@ -15,6 +15,7 @@ export interface ChangeRecordSummary {
   id?: string | number;
   created_at?: string;
   inst_id?: string | number;
+  inst_uuid?: string;
   inst_name?: string;
   message?: string;
   model_id?: string;
@@ -80,6 +81,7 @@ export const getRecentChangeTarget = (record: ChangeRecordSummary) =>
     record.model_object ||
     record.message ||
     record.inst_name ||
+    record.inst_uuid ||
     record.inst_id ||
     '--'
   );
