@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'react-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import dayjs from 'dayjs';
 
 import ApmIntegrationInstancesPage from '../page';
 
@@ -10,7 +11,6 @@ const api = {
   getApplications: vi.fn(),
   getHealth: vi.fn(),
   getInstancePage: vi.fn(),
-  setInstanceArchived: vi.fn(),
   setInstanceOrganizations: vi.fn(),
   isLoading: false,
 };
@@ -46,7 +46,6 @@ function renderPage() {
     <IntlProvider
       locale="zh"
       messages={{
-        'apm.instances.defaultActiveHelp': '默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。',
         'common.total': '共',
         'common.items': '条',
         'common.checked': '已选',
@@ -95,7 +94,10 @@ describe('APM 接入实例目录', () => {
     renderPage();
 
     await screen.findByText('pod-a');
-    expect(screen.getByText('默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。')).not.toBeNull();
+    expect(screen.queryByText('默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。')).toBeNull();
+    expect(screen.getByText('已接入 1 个实例').nextElementSibling).toBe(
+      document.querySelector('[aria-label="接入上报时间范围"]')
+    );
     await waitFor(() => expect(api.getInstancePage).toHaveBeenCalledWith(expect.objectContaining({
       page: 1,
       page_size: 20,
@@ -105,6 +107,50 @@ describe('APM 接入实例目录', () => {
       ended_at: expect.any(String),
     })));
     expect(screen.getByRole('combobox', { name: '按实例状态筛选' }).getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('按身份、归属、运行上下文、生命周期和治理操作组织表格列', async () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('min-width'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    renderPage();
+
+    await screen.findByText('pod-a');
+    const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
+      .map((column) => (column as HTMLElement).style.width);
+
+    expect(columnWidths).toEqual(['13%', '18%', '12%', '7%', '6%', '11%', '12%', '8%', '7%', '112px']);
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      '实例 ID',
+      '服务',
+      '所属应用',
+      '环境',
+      '版本',
+      '首次接入',
+      '最近上报',
+      '实例状态',
+      '所属组织',
+      '操作',
+    ]);
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '首次接入' })).textAlign).toBe('left');
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '最近上报' })).textAlign).toBe('left');
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '实例状态' })).textAlign).toBe('left');
+    const actionHeader = screen.getByRole('columnheader', { name: '操作' });
+    expect(getComputedStyle(actionHeader).textAlign).toBe('left');
+    expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
+    const lastSeenText = dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm');
+    const lastSeen = screen.getByText(lastSeenText);
+    expect(lastSeen.closest('td')?.textContent).toBe(lastSeenText);
+    expect(lastSeen.getAttribute('title')).toBe(dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm:ss'));
+    expect(screen.getByRole('columnheader', { name: '所属组织' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '调整组织' })).not.toBeNull();
   });
 
   it('可显式切换到归档实例并交由服务端过滤', async () => {
@@ -120,5 +166,6 @@ describe('APM 接入实例目录', () => {
       status: 'archived',
       include_archived: true,
     })));
+    expect(screen.queryByRole('button', { name: /归档|恢复/ })).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BugOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { Button, Collapse, Input, Radio, Select, Space, Tag, Typography } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -57,19 +57,25 @@ function clusterErrors(items: ApmTraceSummary[]): ErrorCluster[] {
 export default function ApmErrorsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const requestedServiceId = searchParams.get('service_id') ?? '';
+  const requestedServiceName = searchParams.get('service_name') ?? '';
+  const requestedEnvironment = searchParams.get('environment') ?? '';
   const { getServices, getTraces, isLoading: authLoading } = useApmApi();
   const [services, setServices] = useState<ApmService[]>([]);
-  const [serviceId, setServiceId] = useState(searchParams.get('service_id') ?? '');
-  const [environment, setEnvironment] = useState(searchParams.get('environment') ?? '');
+  const [serviceId, setServiceId] = useState(requestedServiceId);
+  const [environment, setEnvironment] = useState(requestedEnvironment);
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
   const [keyword, setKeyword] = useState('');
   const [items, setItems] = useState<ApmTraceSummary[]>([]);
   const [state, setState] = useState<PageState>('loading');
+  const shouldDiscoverErrors = useRef(
+    !requestedServiceId && !requestedServiceName,
+  );
 
   const selectedService = useMemo(
     () => services.find((service) => service.id === serviceId)
-      || services.find((service) => service.name === searchParams.get('service_name')),
-    [searchParams, serviceId, services],
+      || services.find((service) => service.name === requestedServiceName),
+    [requestedServiceName, serviceId, services],
   );
 
   const loadServices = useCallback(async () => {
@@ -78,17 +84,20 @@ export default function ApmErrorsPage() {
     try {
       const serviceItems = await getServices();
       setServices(serviceItems);
-      const preferred = serviceItems.find((service) => service.id === serviceId)
-        || serviceItems.find((service) => service.name === searchParams.get('service_name'));
+      const preferred = serviceItems.find((service) => service.id === requestedServiceId)
+        || serviceItems.find((service) => service.name === requestedServiceName)
+        || serviceItems.find((service) => service.environment_views.length > 0)
+        || serviceItems[0];
       if (preferred) {
         setServiceId(preferred.id);
-        if (!environment) setEnvironment(preferred.environment_views[0]?.environment ?? '');
+        setEnvironment(requestedEnvironment || preferred.environment_views[0]?.environment || '');
+      } else {
+        setState('idle');
       }
-      setState('idle');
     } catch (error) {
       setState(catalogErrorKind(error));
     }
-  }, [authLoading, environment, getServices, searchParams, serviceId]);
+  }, [authLoading, getServices, requestedEnvironment, requestedServiceId, requestedServiceName]);
 
   useEffect(() => {
     loadServices();
@@ -104,17 +113,44 @@ export default function ApmErrorsPage() {
     const endedAt = new Date();
     const startedAt = new Date(endedAt.getTime() - RANGE_MS[timeRange]);
     try {
+      if (shouldDiscoverErrors.current) {
+        shouldDiscoverErrors.current = false;
+        const candidates = services
+          .map((service) => ({ service, environment: service.environment_views[0]?.environment ?? '' }))
+          .filter((candidate) => candidate.environment);
+        for (const candidate of candidates) {
+          const page = await getTraces({
+            service_namespace: candidate.service.namespace,
+            service_name: candidate.service.name,
+            environment: candidate.environment,
+            started_at: startedAt.toISOString(),
+            ended_at: endedAt.toISOString(),
+            status: 'error',
+            limit: 100,
+          });
+          if (page.items.length) {
+            setServiceId(candidate.service.id);
+            setEnvironment(candidate.environment);
+            setItems(page.items);
+            setState('ready');
+            return;
+          }
+        }
+        setItems([]);
+        setState('empty');
+        return;
+      }
       const page = await getTraces({
         service_namespace: selectedService.namespace,
         service_name: selectedService.name,
         environment,
         started_at: startedAt.toISOString(),
         ended_at: endedAt.toISOString(),
+        status: 'error',
         limit: 100,
       });
-      const errors = page.items.filter((item) => item.status === 'error');
-      setItems(errors);
-      setState(errors.length ? 'ready' : 'empty');
+      setItems(page.items);
+      setState(page.items.length ? 'ready' : 'empty');
     } catch (error) {
       setItems([]);
       setState(catalogErrorKind(error));
@@ -140,7 +176,7 @@ export default function ApmErrorsPage() {
 
   const serviceOptions = services.map((service) => ({
     value: service.id,
-    label: `${service.namespace || '未归类应用'} / ${service.name}`,
+    label: service.namespace ? `${service.namespace} / ${service.name}` : service.name,
   }));
   const environmentOptions = selectedService?.environment_views.map((view) => ({
     value: view.environment,
@@ -152,7 +188,6 @@ export default function ApmErrorsPage() {
       title="错误"
       description="按服务与环境查看错误调用链，定位故障入口与样本 Trace。"
       dependency="telemetry"
-      showDependencyNote={false}
     >
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
@@ -168,7 +203,6 @@ export default function ApmErrorsPage() {
                 <Radio.Button key={value} value={value}>{value}</Radio.Button>
               ))}
             </Radio.Group>
-            <div className="flex-1" />
             <Select
               showSearch
               aria-label="服务"
@@ -178,6 +212,7 @@ export default function ApmErrorsPage() {
               value={selectedService?.id || undefined}
               options={serviceOptions}
               onChange={(value) => {
+                shouldDiscoverErrors.current = false;
                 const service = services.find((item) => item.id === value);
                 setServiceId(value);
                 setEnvironment(service?.environment_views[0]?.environment ?? '');
@@ -216,12 +251,12 @@ export default function ApmErrorsPage() {
           </ApmSurface>
         ) : null}
 
-        <ApmSurface padding="none" className="overflow-hidden">
+        <ApmSurface>
           {state === 'idle' ? (
             <CatalogState kind="empty" description="选择服务与环境后查看错误调用链。" />
           ) : state === 'ready' ? (
             <>
-              <div className="border-b border-[var(--color-border-2)] p-3">
+              <div className="mb-4">
                 <Input
                   allowClear
                   aria-label="搜索错误调用链"
@@ -233,7 +268,7 @@ export default function ApmErrorsPage() {
                 />
               </div>
               {clusters.length ? (
-                <div className="flex flex-col gap-3 bg-[var(--color-fill-1)] p-3">
+                <div className="flex flex-col gap-3">
                   {clusters.map((cluster) => (
                   <article key={cluster.key} className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
                     <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-start lg:justify-between">
@@ -274,7 +309,7 @@ export default function ApmErrorsPage() {
                           </Button>
                         </div>
                       </div>
-                      <div className="grid shrink-0 grid-cols-3 gap-8 text-right">
+                      <div className="grid shrink-0 grid-cols-3 gap-3 text-center sm:gap-6 lg:text-right">
                         <div>
                           <div className="font-semibold tabular-nums text-[var(--color-fail)]">{cluster.samples.length}</div>
                           <Typography.Text type="secondary" className="text-xs">受影响 Trace</Typography.Text>
@@ -301,11 +336,11 @@ export default function ApmErrorsPage() {
                               <button
                                 key={item.trace_id}
                                 type="button"
-                                className="flex items-center justify-between gap-3 rounded-md bg-[var(--color-fill-1)] px-3 py-2 text-left hover:bg-[var(--color-primary-bg-active)]"
+                                className="flex flex-col items-start justify-between gap-1 rounded-md bg-[var(--color-fill-1)] px-3 py-2 text-left transition-colors duration-150 hover:bg-[var(--color-primary-bg-active)] sm:flex-row sm:items-center sm:gap-3"
                                 onClick={() => router.push(`/apm/explore/traces/${item.trace_id}`)}
                               >
                                 <span className="min-w-0 truncate font-mono text-xs">{item.trace_id}</span>
-                                <span className="shrink-0 text-xs tabular-nums text-[var(--color-text-3)]">
+                                <span className="text-xs tabular-nums text-[var(--color-text-3)] sm:shrink-0">
                                   {formatLatency(item.duration_ms)} · {formatRelativeTime(item.started_at)}
                                 </span>
                               </button>

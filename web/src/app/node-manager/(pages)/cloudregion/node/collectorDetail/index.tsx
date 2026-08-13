@@ -53,6 +53,7 @@ import {
   type ModulePushStatusMap,
   type ModulePushTarget
 } from '@/app/node-manager/utils/modulePush';
+import { resolveMainConfig } from '@/app/node-manager/utils/collectorConfig';
 
 interface CollectorDetailDrawerProps extends ModalSuccess {
   nodeStateEnum?: any;
@@ -81,6 +82,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const configRequestIdRef = useRef<number>(0);
     const subConfigAbortControllerRef = useRef<AbortController | null>(null);
     const subConfigRequestIdRef = useRef<number>(0);
+    const selectedCollectorRef = useRef<TableDataItem | null>(null);
     const [visible, setVisible] = useState<boolean>(false);
     const [selectedCollector, setSelectedCollector] =
       useState<TableDataItem | null>(null);
@@ -127,6 +129,9 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         ].filter((c: any) => c.collector_id !== 'ansibleexecutor_linux'); // 过滤掉 Ansible-Executor
         setCollectors(filteredCollectors);
         setForm(row);
+        selectedCollectorRef.current = null;
+        setSelectedCollector(null);
+        setMainConfig(null);
         if (filteredCollectors.length > 0) {
           const sortedCollectors = [...filteredCollectors].sort((a, b) => {
             const priorityA = STATUS_CODE_PRIORITY[a.status] || 999;
@@ -142,29 +147,38 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
             firstCollector.message =
               firstCollector.message?.final_message || '';
           }
+          selectedCollectorRef.current = firstCollector;
           setSelectedCollector(firstCollector);
-          setMainConfig({
-            key: '',
-            collector_id: firstCollector.collector_id,
-            name: '',
-            operatingSystem: '',
-            configInfo: '',
-            nodeCount: 0,
-            collector_name: firstCollector.collector_name
-          } as ConfigData);
-          if (firstCollector.collector_id && row.id) {
-            // 加载所有配置数据
-            loadAllConfigs(
-              row.id as string,
-              firstCollector.collector_id as string
-            );
+          setMainConfig(null);
+          if (row.id) {
+            loadAllConfigs(row.id as string);
           }
         }
       }
     }));
 
+    const applyMainConfig = (
+      configs: ConfigData[],
+      collector: TableDataItem | null,
+      options?: { page?: number; configType?: string }
+    ) => {
+      const targetConfig = collector ? resolveMainConfig(configs, collector) : null;
+      if (targetConfig) {
+        setMainConfig(targetConfig);
+        loadSubConfigs({
+          configId: targetConfig.key,
+          page: options?.page,
+          configType: options?.configType
+        });
+        return;
+      }
+      setMainConfig(null);
+      setSubConfigs([]);
+      setSubConfigPagination({ current: 1, total: 0, pageSize: 10 });
+    };
+
     // 加载所有配置数据（只调用一次 config_node_asso 接口）
-    const loadAllConfigs = async (nodeId: string, firstCollectorId: string) => {
+    const loadAllConfigs = async (nodeId: string) => {
       configAbortControllerRef.current?.abort();
       const abortController = new AbortController();
       configAbortControllerRef.current = abortController;
@@ -190,36 +204,13 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
           })
         );
         setAllConfigs(configData);
-        const targetConfig = configData.find(
-          (config) => config.collector_id === firstCollectorId
-        );
-        if (targetConfig) {
-          setMainConfig(targetConfig);
-          loadSubConfigs({ configId: targetConfig.key });
-        } else {
-          setMainConfig(null);
-        }
+        applyMainConfig(configData, selectedCollectorRef.current);
       } catch (error) {
         console.error('Failed to load configs:', error);
       } finally {
         if (currentRequestId === configRequestIdRef.current) {
           setMainConfigLoading(false);
         }
-      }
-    };
-
-    // 前端过滤主配置（根据 collector_id）
-    const filterMainConfigByCollectorId = (collectorId: string) => {
-      const targetConfig = allConfigs.find(
-        (config) => config.collector_id === collectorId
-      );
-      if (targetConfig) {
-        setMainConfig(targetConfig);
-        loadSubConfigs({ configId: targetConfig.key, page: 1, configType: '' });
-      } else {
-        setMainConfig(null);
-        setSubConfigs([]);
-        setSubConfigPagination({ current: 1, total: 0, pageSize: 10 });
       }
     };
 
@@ -293,10 +284,12 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
     const handleCancel = () => {
       configAbortControllerRef.current?.abort();
       subConfigAbortControllerRef.current?.abort();
+      selectedCollectorRef.current = null;
       setVisible(false);
       setCollectors([]);
       setSelectedCollector(null);
       setForm({});
+      setAllConfigs([]);
       setMainConfig(null);
       setSubConfigs([]);
       setSubConfigPagination({ current: 1, total: 0, pageSize: 10 });
@@ -319,10 +312,9 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       if (collector.message && typeof collector.message === 'object') {
         collector.message = collector.message?.final_message || '';
       }
+      selectedCollectorRef.current = collector;
       setSelectedCollector(collector);
-      if (collector.collector_id) {
-        filterMainConfigByCollectorId(collector.collector_id as string);
-      }
+      applyMainConfig(allConfigs, collector, { page: 1, configType: '' });
     };
 
     // 处理主配置编辑
@@ -351,11 +343,8 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
         }
         return;
       }
-      if (form.id && selectedCollector?.collector_id) {
-        await loadAllConfigs(
-          form.id as string,
-          selectedCollector.collector_id as string
-        );
+      if (form.id) {
+        await loadAllConfigs(form.id as string);
       }
       onSuccess?.();
     };

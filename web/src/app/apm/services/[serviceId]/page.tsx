@@ -19,17 +19,18 @@ import {
   Segmented,
   Select,
   Space,
-  Table,
   Tabs,
   Tag,
   Typography,
   message,
+  theme,
   type TableColumnsType,
 } from 'antd';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, {
   catalogErrorKind,
@@ -103,6 +104,7 @@ function ServiceMetricCard({
 }
 
 export default function ApmServiceDetailPage() {
+  const { token } = theme.useToken();
   const params = useParams<{ serviceId: string }>();
   const searchParams = useSearchParams();
   const {
@@ -319,13 +321,16 @@ export default function ApmServiceDetailPage() {
     {
       title: '资源',
       dataIndex: 'root_span_name',
+      responsive: ['md'],
       render: (value) => <span className="font-mono text-xs">{value}</span>,
     },
     {
       title: '总耗时',
       dataIndex: 'duration_ms',
       width: 100,
+      align: 'right',
       className: 'tabular-nums',
+      responsive: ['sm'],
       render: (value: number) => formatLatency(value),
     },
     {
@@ -334,11 +339,13 @@ export default function ApmServiceDetailPage() {
       width: 90,
       align: 'right',
       className: 'tabular-nums',
+      responsive: ['lg'],
     },
     {
       title: '状态',
       dataIndex: 'status',
       width: 90,
+      align: 'center',
       render: (status: ApmTraceSummary['status']) => (
         status === 'error'
           ? <Tag bordered={false} color="error">错误</Tag>
@@ -349,6 +356,7 @@ export default function ApmServiceDetailPage() {
       title: '时间',
       dataIndex: 'started_at',
       width: 100,
+      responsive: ['xl'],
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
       ),
@@ -410,7 +418,7 @@ export default function ApmServiceDetailPage() {
                       href={`/apm/services?namespace=${encodeURIComponent(service.namespace)}`}
                       className="text-[var(--color-primary)]"
                     >
-                      {service.application_name || service.namespace || '未归类应用'}
+                      {service.application_name || service.namespace || '未设置 namespace'}
                     </Link>
                   </Typography.Text>
                 </div>
@@ -500,8 +508,8 @@ export default function ApmServiceDetailPage() {
                                 { formatter: (value) => `${value.toFixed(1)}%`, splitLine: false },
                               ]}
                               series={[
-                                { name: '请求速率 req/s', type: 'line', dataKey: 'request_rate', color: 'var(--color-primary)', showArea: true },
-                                { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: 'var(--color-fail)', yAxisIndex: 1 },
+                                { name: '请求速率 req/s', type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
+                                { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1 },
                               ]}
                               surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无 RED 趋势点' } }}
                             />
@@ -519,8 +527,8 @@ export default function ApmServiceDetailPage() {
                               xAxisBoundaryGap={false}
                               yAxes={[{ formatter: (value) => `${value.toFixed(0)} ms` }]}
                               series={[
-                                { name: 'P95', type: 'line', dataKey: 'p95_ms', color: 'var(--theme-color-chart-primary)', showArea: true },
-                                { name: 'P99', type: 'line', dataKey: 'p99_ms', color: 'var(--theme-color-chart-warning)' },
+                                { name: 'P95', type: 'line', dataKey: 'p95_ms', color: token.colorPrimary, showArea: true },
+                                { name: 'P99', type: 'line', dataKey: 'p99_ms', color: token.colorWarning },
                               ]}
                               surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无延迟趋势点' } }}
                             />
@@ -607,16 +615,15 @@ export default function ApmServiceDetailPage() {
                 key: 'traces',
                 label: '调用链',
                 children: (
-                  <ApmSurface padding="none" className="overflow-hidden">
-                    <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
+                  <ApmSurface>
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                       <Typography.Text strong>近窗调用链样本</Typography.Text>
                       <Link href={exploreHref}>
                         <Button type="link" size="small">在探索中打开</Button>
                       </Link>
                     </div>
                     {tracesState === 'ready' ? (
-                      <Table
-                        size="middle"
+                      <ApmDataTable
                         rowKey="trace_id"
                         columns={traceColumns}
                         dataSource={traces}
@@ -707,9 +714,8 @@ export default function ApmServiceDetailPage() {
                 key: 'slo',
                 label: 'SLO',
                 children: serviceSlos.length ? (
-                  <ApmSurface padding="none" className="overflow-hidden">
-                    <Table
-                      size="middle"
+                  <ApmSurface>
+                    <ApmDataTable
                       rowKey="id"
                       pagination={false}
                       dataSource={serviceSlos}
@@ -719,12 +725,16 @@ export default function ApmServiceDetailPage() {
                           title: '目标',
                           dataIndex: 'objective',
                           width: 100,
+                          align: 'right',
+                          responsive: ['sm'],
                           render: (value) => <span className="tabular-nums">{(Number(value) * 100).toFixed(2)}%</span>,
                         },
                         {
                           title: '当前',
                           dataIndex: 'current_rate',
                           width: 100,
+                          align: 'right',
+                          responsive: ['md'],
                           render: (value) => value == null
                             ? '—'
                             : <span className="tabular-nums">{(Number(value) * 100).toFixed(2)}%</span>,
@@ -733,6 +743,7 @@ export default function ApmServiceDetailPage() {
                           title: '错误预算',
                           dataIndex: 'budget_remaining',
                           width: 140,
+                          responsive: ['lg'],
                           render: (value) => value == null
                             ? '—'
                             : <Progress percent={Math.max(0, Math.min(100, Number(value) * 100))} size="small" />,
@@ -740,9 +751,12 @@ export default function ApmServiceDetailPage() {
                         {
                           title: '操作',
                           width: 100,
-                          render: () => <Link href="/apm/services/slo"><Button type="link" size="small">管理</Button></Link>,
+                          align: 'right',
+                          fixed: 'right',
+                          render: () => <Link href="/apm/services/slo"><Button className="!px-0" type="link" size="small">管理</Button></Link>,
                         },
                       ]}
+                      headerAlignment="column"
                     />
                   </ApmSurface>
                 ) : (

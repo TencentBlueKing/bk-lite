@@ -43,7 +43,6 @@ class DjangoApmApplicationService:
             updated_by=actor,
         )
         self._replace_organizations(application, organizations, actor=actor)
-        self._sync_builtin_application(actor=actor)
         return application
 
     @transaction.atomic
@@ -58,28 +57,12 @@ class DjangoApmApplicationService:
     ) -> ApmApplication:
         organizations = _organization_ids(organization_ids)
         application = ApmApplication.objects.select_for_update().get(id=application_id)
-        if application.is_builtin:
-            raise PermissionError("内置应用不可修改。")
         application.name = normalize_identity(name)
         application.description = description.strip()
         application.updated_by = actor
         application.save(update_fields=("name", "description", "updated_by", "updated_at"))
         self._replace_organizations(application, organizations, actor=actor)
-        self._sync_builtin_application(actor=actor)
         return application
-
-    @classmethod
-    def _sync_builtin_application(cls, *, actor: str) -> None:
-        builtin = ApmApplication.objects.select_for_update().filter(is_builtin=True).first()
-        if builtin is None:
-            return
-        organizations = tuple(
-            ApmApplicationOrganization.objects.filter(application__is_builtin=False)
-            .order_by("organization")
-            .values_list("organization", flat=True)
-            .distinct()
-        )
-        cls._replace_organizations(builtin, organizations, actor=actor)
 
     @staticmethod
     def _replace_organizations(
