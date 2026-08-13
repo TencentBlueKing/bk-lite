@@ -5,7 +5,6 @@ import { DeleteOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import Link from 'next/link';
 import {
   Alert,
-  Badge,
   Button,
   Form,
   Input,
@@ -63,8 +62,23 @@ const SEVERITY_LABELS: Record<ApmPolicySeverity, string> = {
   warning: '警告',
 };
 
+const DEFAULT_POLICY_VALUES: ApmPolicyInput = {
+  name: '',
+  service_id: '',
+  environment: 'production',
+  metric_type: 'error_rate',
+  comparator: 'gt',
+  threshold: 0.05,
+  duration_window: 3,
+  recovery_window: 3,
+  severity: 'warning',
+  notification_targets: [],
+  is_enabled: true,
+};
+
 export default function ApmPoliciesPage() {
   const {
+    createPolicy,
     deletePolicy,
     getPolicies,
     getNotificationChannels,
@@ -141,7 +155,15 @@ export default function ApmPoliciesPage() {
 
   const openEdit = (policy: ApmPolicy) => {
     setEditing(policy);
+    form.resetFields();
     form.setFieldsValue({ ...policy, threshold: policy.threshold });
+    setModalOpen(true);
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    form.resetFields();
+    form.setFieldsValue(DEFAULT_POLICY_VALUES);
     setModalOpen(true);
   };
 
@@ -149,9 +171,13 @@ export default function ApmPoliciesPage() {
     const values = await form.validateFields();
     setSaving(true);
     try {
-      if (!editing) return;
-      await updatePolicy(editing.id, values);
-      message.success('策略已更新');
+      if (editing) {
+        await updatePolicy(editing.id, values);
+        message.success('策略已更新');
+      } else {
+        await createPolicy(values);
+        message.success('策略已创建');
+      }
       setModalOpen(false);
       form.resetFields();
       load();
@@ -186,11 +212,6 @@ export default function ApmPoliciesPage() {
     () => filteredPolicies.slice((page - 1) * pageSize, page * pageSize),
     [filteredPolicies, page, pageSize],
   );
-  const firingPolicyCount = useMemo(
-    () => policies.filter((policy) => policy.state?.status === 'firing').length,
-    [policies],
-  );
-
   const columns: TableColumnsType<ApmPolicy> = [
     {
       title: '策略名称',
@@ -282,20 +303,10 @@ export default function ApmPoliciesPage() {
       description="配置服务指标阈值与通知渠道，列表内可直接启停。"
       dependency="control"
     >
-      <ApmSurface>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Space size={12} wrap>
-              <Typography.Text strong>策略列表</Typography.Text>
-              <Badge
-                status={firingPolicyCount > 0 ? 'error' : 'default'}
-                text={(
-                  <Typography.Text type="secondary" className="text-xs">
-                    {firingPolicyCount} 条告警中
-                  </Typography.Text>
-                )}
-              />
-            </Space>
+      <ApmSurface padding="none" className="overflow-hidden">
+        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--color-border-2)] px-3 py-2">
+          <Typography.Text strong>策略列表</Typography.Text>
+          <div className="ml-auto">
             <SearchActionBar
               spacing="flush"
               searchClassName="!w-64"
@@ -309,46 +320,44 @@ export default function ApmPoliciesPage() {
               actions={(
                 <Space>
                   <Button icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load}>刷新</Button>
-                  <Link href="/apm/events/policies/new">
-                    <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} disabled={!services.length}>新建策略</Button>
-                  </Link>
+                  <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} disabled={!services.length} onClick={openCreate}>新建策略</Button>
                 </Space>
               )}
             />
           </div>
-          {state === 'ready' ? (
-            <ApmDataTable
-              rowKey="id"
-              columns={columns}
-              dataSource={pagePolicies}
-              headerAlignment="column"
-              pagination={{
-                current: page,
-                pageSize,
-                total: filteredPolicies.length,
-                pageSizeOptions: [10, 20, 50, 100],
-                showSizeChanger: true,
-                onChange: (nextPage, nextPageSize) => {
-                  setPage(nextPageSize === pageSize ? nextPage : 1);
-                  setPageSize(nextPageSize);
-                },
-              }}
-            />
-          ) : (
-            <CatalogState
-              kind={state}
-              description={state === 'empty' ? (services.length ? '当前组织暂无 APM 策略。' : '请先接入并发现服务，再创建策略。') : undefined}
-              action={state === 'empty' && services.length ? <Link href="/apm/events/policies/new"><Button type="primary">新建策略</Button></Link> : undefined}
-              onRetry={state === 'forbidden' ? undefined : load}
-            />
-          )}
         </div>
+        {state === 'ready' ? (
+          <ApmDataTable
+            rowKey="id"
+            columns={columns}
+            dataSource={pagePolicies}
+            headerAlignment="column"
+            pagination={{
+              current: page,
+              pageSize,
+              total: filteredPolicies.length,
+              pageSizeOptions: [10, 20, 50, 100],
+              showSizeChanger: true,
+              onChange: (nextPage, nextPageSize) => {
+                setPage(nextPageSize === pageSize ? nextPage : 1);
+                setPageSize(nextPageSize);
+              },
+            }}
+          />
+        ) : (
+          <CatalogState
+            kind={state}
+            description={state === 'empty' ? (services.length ? '当前组织暂无 APM 策略。' : '请先接入并发现服务，再创建策略。') : undefined}
+            action={state === 'empty' && services.length ? <Button type="primary" onClick={openCreate}>新建策略</Button> : undefined}
+            onRetry={state === 'forbidden' ? undefined : load}
+          />
+        )}
       </ApmSurface>
       <Modal
-        title="编辑 APM 策略"
+        title={editing ? '编辑 APM 策略' : '新建 APM 策略'}
         open={modalOpen}
         confirmLoading={saving}
-        okText="保存"
+        okText={editing ? '保存' : '创建'}
         cancelText="取消"
         onOk={submit}
         onCancel={() => {

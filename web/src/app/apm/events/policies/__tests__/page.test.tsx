@@ -1,5 +1,6 @@
 import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'react-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,6 +23,7 @@ const tableMessages = {
 };
 
 const api = {
+  createPolicy: vi.fn(),
   deletePolicy: vi.fn(),
   getNotificationChannels: vi.fn(),
   getNotificationRecipients: vi.fn(),
@@ -38,7 +40,9 @@ vi.mock('next/link', () => ({
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
 vi.mock('@/app/apm/components/apm-route-shell', () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
-  ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
+  ApmSurface: ({ children, className, padding }: { children: React.ReactNode; className?: string; padding?: string }) => (
+    <section className={className} data-padding={padding}>{children}</section>
+  ),
 }));
 
 beforeEach(() => {
@@ -103,7 +107,7 @@ afterEach(() => {
 });
 
 describe('APM 告警策略列表', () => {
-  it('用清晰摘要和语义对齐的自适应列取代拼凑式表头', async () => {
+  it('用紧凑工具栏和语义对齐的自适应列取代拼凑式表头', async () => {
     render(
       <IntlProvider locale="zh" messages={tableMessages}>
         <ApmPoliciesPage />
@@ -111,14 +115,33 @@ describe('APM 告警策略列表', () => {
     );
 
     expect(await screen.findByText('结账接口 P95 过慢')).not.toBeNull();
-    expect(screen.getByText('策略列表')).not.toBeNull();
-    expect(screen.getByText('1 条告警中')).not.toBeNull();
+    const listTitle = screen.getByText('策略列表');
+    expect(screen.queryByText('1 条告警中')).toBeNull();
     expect(screen.queryByText(/每分钟评估/)).toBeNull();
+    expect(listTitle.closest('div')?.className).toContain('py-2');
+    expect(listTitle.closest('section')?.getAttribute('data-padding')).toBe('none');
 
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
     expect(columnWidths).toEqual(['38%', '12%', '16%', '16%', '8%', '10%']);
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '启用状态' })).textAlign).toBe('center');
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '操作' })).textAlign).toBe('right');
+  });
+
+  it('通过弹窗新建策略而不是跳转独立页面', async () => {
+    const user = userEvent.setup();
+    render(
+      <IntlProvider locale="zh" messages={tableMessages}>
+        <ApmPoliciesPage />
+      </IntlProvider>,
+    );
+    await screen.findByText('结账接口 P95 过慢');
+
+    const createButton = screen.getByRole('button', { name: '新建策略' });
+    expect(createButton.closest('a')).toBeNull();
+    await user.click(createButton);
+
+    expect(await screen.findByRole('dialog', { name: '新建 APM 策略' })).not.toBeNull();
+    expect(screen.getByLabelText('策略名称')).not.toBeNull();
   });
 });
