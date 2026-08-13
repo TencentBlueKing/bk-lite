@@ -198,13 +198,16 @@ test('mounted Chat wires stop to flush and persist pending text', async () => {
 test('mounted Chat clear and unmount cancel pending writes', async () => {
   const scheduled = new Map();
   let nextFrameId = 0;
-  const frameScheduler = {
-    schedule(callback) { const id = ++nextFrameId; scheduled.set(id, callback); return id; },
-    cancel(id) { scheduled.delete(id); },
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+  const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = (callback) => {
+    const id = ++nextFrameId;
+    scheduled.set(id, callback);
+    return id;
   };
+  globalThis.cancelAnimationFrame = (id) => scheduled.delete(id);
   const { container, root } = await mountChat({
     showClearButton: true,
-    streamingFrameScheduler: frameScheduler,
   });
   await emit({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
   await emit({ type: 'TEXT_MESSAGE_CONTENT', delta: 'stale' });
@@ -232,6 +235,8 @@ test('mounted Chat clear and unmount cancel pending writes', async () => {
   assert.equal(container.childNodes.length, 0);
   assert.equal(unmountedSession.messages[0].content, '');
   assert.equal(globalThis.__chatTest.sessionManager.saveCount || 0, unmountSaveCount);
+  globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+  globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
 });
 
 test('mounted Chat honors the rollback prop and auto-scrolls every immediate delta', async () => {
