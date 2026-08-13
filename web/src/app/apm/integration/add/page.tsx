@@ -2,7 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { ApiOutlined, CodeOutlined, CopyOutlined, ExperimentOutlined, GlobalOutlined, RocketOutlined } from '@ant-design/icons';
+import {
+  ApiOutlined,
+  CodeOutlined,
+  CoffeeOutlined,
+  CopyOutlined,
+  DeploymentUnitOutlined,
+  DotNetOutlined,
+  ExperimentOutlined,
+  JavaScriptOutlined,
+  KubernetesOutlined,
+  PythonOutlined,
+  RocketOutlined,
+} from '@ant-design/icons';
 import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tag, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -15,6 +27,7 @@ interface IntegrationMethod {
   key: string;
   title: string;
   description: string;
+  icon: ReactNode;
   badge?: string;
   language?: ApmIngestSnippetInput['language'];
   available: boolean;
@@ -23,16 +36,16 @@ interface IntegrationMethod {
 const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods: IntegrationMethod[] }[] = [
   {
     key: 'sdk', title: 'SDK', icon: <CodeOutlined aria-hidden="true" />, methods: [
-      { key: 'nodejs', title: 'Node.js', description: '零代码自动探针，支持 Express / Nest / Koa / Fastify', badge: '推荐', language: 'nodejs', available: true },
-      { key: 'java', title: 'Java', description: 'Java Agent 字节码注入，支持 Spring / Dubbo / gRPC', badge: '推荐', language: 'java', available: true },
-      { key: 'python', title: 'Python', description: '自动探针接入，支持 Django / Flask / FastAPI', language: 'python', available: true },
-      { key: 'dotnet', title: '.NET', description: '基于 OpenTelemetry .NET 自动探针', available: false },
-      { key: 'go', title: 'Go', description: '手动初始化 OpenTelemetry Go SDK，生成完整 Provider 示例', badge: '手动 SDK', language: 'go', available: true },
+      { key: 'nodejs', title: 'Node.js', description: '零代码自动探针，支持 Express / Nest / Koa / Fastify', icon: <JavaScriptOutlined aria-hidden="true" />, badge: '推荐', language: 'nodejs', available: true },
+      { key: 'java', title: 'Java', description: 'Java Agent 字节码注入，支持 Spring / Dubbo / gRPC', icon: <CoffeeOutlined aria-hidden="true" />, badge: '推荐', language: 'java', available: true },
+      { key: 'python', title: 'Python', description: '自动探针接入，支持 Django / Flask / FastAPI', icon: <PythonOutlined aria-hidden="true" />, language: 'python', available: true },
+      { key: 'dotnet', title: '.NET', description: '基于 OpenTelemetry .NET 自动探针', icon: <DotNetOutlined aria-hidden="true" />, available: false },
+      { key: 'go', title: 'Go', description: '手动初始化 OpenTelemetry Go SDK，生成完整 Provider 示例', icon: <CodeOutlined aria-hidden="true" />, badge: '手动 SDK', language: 'go', available: true },
     ],
   },
-  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', description: '复用自建 Collector，将链路转发到平台 OTLP 端点', available: false }] },
-  { key: 'ebpf', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, methods: [{ key: 'ebpf-obi', title: 'eBPF 自动注入（OBI）', description: '无需修改业务代码，通过内核态捕获服务链路', badge: '低侵入', available: false }] },
-  { key: 'kubernetes', title: 'Kubernetes', icon: <GlobalOutlined aria-hidden="true" />, methods: [{ key: 'otel-operator', title: 'Kubernetes 自动注入', description: '通过 OTel Operator 和 Pod 注解自动注入探针', available: false }] },
+  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', description: '复用自建 Collector，将链路转发到平台 OTLP 端点', icon: <DeploymentUnitOutlined aria-hidden="true" />, available: false }] },
+  { key: 'ebpf', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, methods: [{ key: 'ebpf-obi', title: 'eBPF 自动注入（OBI）', description: '无需修改业务代码，通过内核态捕获服务链路', icon: <ExperimentOutlined aria-hidden="true" />, badge: '低侵入', available: false }] },
+  { key: 'kubernetes', title: 'Kubernetes', icon: <KubernetesOutlined aria-hidden="true" />, methods: [{ key: 'otel-operator', title: 'Kubernetes 自动注入', description: '通过 OTel Operator 和 Pod 注解自动注入探针', icon: <KubernetesOutlined aria-hidden="true" />, available: false }] },
 ];
 
 type PageState = 'loading' | 'empty' | 'ready' | 'error';
@@ -261,14 +274,19 @@ export default function ApmIntegrationAddPage() {
                     onClick={() => openMethod(method)}
                   >
                     <div className="flex min-h-24 items-start justify-between gap-3">
-                      <div>
-                        <Typography.Title level={5} className="!mb-2 !text-sm">{method.title}</Typography.Title>
-                        <Typography.Text type="secondary" className="text-xs leading-5">{method.description}</Typography.Text>
-                        {!method.available ? (
-                          <Typography.Text type="secondary" className="!mt-2 !block !text-xs">
-                            当前 MVP 尚未开放此接入方式。
-                          </Typography.Text>
-                        ) : null}
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--color-primary-bg-active)] text-base text-[var(--color-primary)]">
+                          {method.icon}
+                        </span>
+                        <div className="min-w-0">
+                          <Typography.Title level={5} className="!mb-2 !text-sm">{method.title}</Typography.Title>
+                          <Typography.Text type="secondary" className="text-xs leading-5">{method.description}</Typography.Text>
+                          {!method.available ? (
+                            <Typography.Text type="secondary" className="!mt-2 !block !text-xs">
+                              当前 MVP 尚未开放此接入方式。
+                            </Typography.Text>
+                          ) : null}
+                        </div>
                       </div>
                       <Space direction="vertical" align="end" size={4}>{method.badge ? <Tag color="blue">{method.badge}</Tag> : null}{!method.available ? <Tag>规划中</Tag> : null}</Space>
                     </div>
