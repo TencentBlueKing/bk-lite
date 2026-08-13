@@ -15,8 +15,8 @@ Storybook 是组件行为与变体的契约中心，但 Storybook 引用本身�
 
 | 分类 | 数量 | 判定 |
 | --- | ---: | --- |
-| `shared-cross-app` | 64 | 至少两个真实 app 直接或传递消费 |
-| `shared-primitive` | 48 | 当前消费者不足两个，但具有明确 primitive 理由和 contract story |
+| `shared-cross-app` | 68 | 至少两个真实 app 直接或传递消费 |
+| `shared-primitive` | 44 | 当前消费者不足两个，但具有明确 primitive 理由和 contract story |
 | `app-local` | 0 | 不允许留在 `src/components` |
 | `story-only-review` | 0 | 不允许仅因 Storybook 引用留在 `src/components` |
 | `invalid-reverse-dependency` | 0 | shared 禁止依赖 app |
@@ -148,6 +148,14 @@ Storybook 是组件行为与变体的契约中心，但 Storybook 引用本身�
 - SecretValueDisplay：Alarm `integration/detail/page.tsx` 两处 secret 行收敛(仍属 alarm 单 app；CURL/Python 示例区保留本地 Copy)。
 - 显式不迁：Patch `risk-execution` 状态 Tag——API 驱动 `status_color` + 域状态(`pending_reboot`/`partial_success` 等)，与 `ExecutionStatusBadge` 语义不匹配。
 - 门禁：`node scripts/component-ownership-audit.mjs --check` 通过(112 records)。
+
+### 合并最新 master 后跨 app 补强(2026-08 Cycle 7)
+
+- 同步 `origin/master` + `upstream/master` 到治理分支。
+- ExecutionStatusBadge：MLOps `TrainTaskHistory` 接入(RUNNING/FINISHED/FAILED/KILLED + i18n label)，获得第二真实 app。
+- SecretValueDisplay：system-manager API Key 创建成功弹窗明文展示 + 复制收敛(`masked={false}`)，获得第二真实 app。
+- SearchActionBar + FilterToolbar：OpsPilot `tool/page.tsx` 技能包搜索/导入工具栏。
+- 门禁：`node scripts/component-ownership-audit.mjs --check` 通过(112 records；68 cross-app / 44 primitive)。
 
 ### 已知 Storybook 构建阻塞
 

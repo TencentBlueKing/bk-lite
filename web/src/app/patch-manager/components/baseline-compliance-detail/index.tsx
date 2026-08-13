@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
-  Empty,
   Input,
   message,
   Pagination,
@@ -20,6 +19,7 @@ import { ReloadOutlined } from '@ant-design/icons';
 
 import OperateDrawer from '@/components/operate-drawer';
 import CustomTable from '@/components/custom-table';
+import CompactEmptyState from '@/components/compact-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
 import ComplianceTag from '@/app/patch-manager/components/compliance-tag';
@@ -519,8 +519,7 @@ export default function BaselineComplianceDetail({
                     </button>
                   );
                 }) : (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  <CompactEmptyState
                     description={objectsLoading
                       ? t('patchManager.baseline.complianceDetail.loading')
                       : normalizedObjectSearch
@@ -596,7 +595,7 @@ export default function BaselineComplianceDetail({
                   columns={perspective === 'host' ? hostColumns : patchColumns}
                   scroll={{ x: perspective === 'host' ? 1330 : 965, y: 'calc(100vh - 430px)' }}
                   pagination={false}
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('patchManager.baseline.complianceDetail.noDetails')} /> }}
+                  locale={{ emptyText: <CompactEmptyState description={t('patchManager.baseline.complianceDetail.noDetails')} /> }}
                 />
               </div>
               <div className={styles.detailPagination}>
@@ -615,7 +614,7 @@ export default function BaselineComplianceDetail({
             </>
             ) : (
               <Spin spinning={objectsLoading || detailsLoading} style={{ margin: 'auto' }}>
-                <Empty description={t('patchManager.baseline.complianceDetail.noSelection')} />
+                <CompactEmptyState description={t('patchManager.baseline.complianceDetail.noSelection')} />
               </Spin>
             )}
           </section>

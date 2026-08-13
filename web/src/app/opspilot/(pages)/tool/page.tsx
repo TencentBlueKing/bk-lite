@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented, Input, Empty, Upload, Space, Skeleton } from 'antd';
+import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented, Empty, Upload, Skeleton } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { Store } from 'antd/lib/form/interface';
 import { useTranslation } from '@/utils/i18n';
@@ -8,6 +8,8 @@ import EntityList from '@/components/entity-list';
 import DynamicForm from '@/components/dynamic-form';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelect from '@/components/group-tree-select';
+import SearchActionBar from '@/components/search-action-bar';
+import FilterToolbar from '@/components/filter-toolbar';
 import { useUserInfoContext } from '@/context/userInfo';
 import { Tool, TagOption, ToolPayload } from '@/app/opspilot/types/tool';
 import PermissionWrapper from "@/components/permission";
@@ -487,30 +489,29 @@ const ToolListPage: React.FC = () => {
   );
 
   const renderSkillAssetControls = () => (
-    <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-      <Space.Compact>
-        <Input.Search
-          value={skillSearchKeyword}
-          onChange={(event) => setSkillSearchKeyword(event.target.value)}
-          onSearch={setSkillSearchKeyword}
-          placeholder="搜索技能名称或说明"
-          allowClear
-          enterButton
-          size="middle"
-          className="w-60"
-        />
-      </Space.Compact>
-      <Button onClick={() => setIsImportSkillModalVisible(true)}>导入技能包</Button>
-    </div>
+    <SearchActionBar
+      spacing="flush"
+      searchClassName="!w-60"
+      searchProps={{
+        value: skillSearchKeyword,
+        onChange: (event) => setSkillSearchKeyword(event.target.value),
+        onSearch: setSkillSearchKeyword,
+        placeholder: '搜索技能名称或说明',
+        allowClear: true,
+        enterButton: true,
+        size: 'middle',
+      }}
+      actions={<Button onClick={() => setIsImportSkillModalVisible(true)}>导入技能包</Button>}
+    />
   );
 
   const renderSkillAssetToolbar = () => (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <FilterToolbar align="between" spacing="default" className="w-full" contentClassName="w-full">
       <div className="flex min-w-0 items-center gap-2">
         {renderAssetSwitcher()}
       </div>
       {renderSkillAssetControls()}
-    </div>
+    </FilterToolbar>
   );
 
   const renderSkillAssetSkeleton = () => (
