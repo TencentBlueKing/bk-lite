@@ -194,7 +194,7 @@ describe('APM 服务目录应用视角', () => {
     expect(screen.queryByText('未归类应用')).toBeNull();
   });
 
-  it('应用卡展示吞吐、最高活跃告警与应用详情入口', async () => {
+  it('应用卡展示吞吐、最高活跃告警、应用详情与服务下钻入口', async () => {
     render(<ApmServicesPage />);
 
     const card = await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
@@ -204,7 +204,11 @@ describe('APM 服务目录应用视角', () => {
     await waitFor(() => expect(within(cardArticle!).getByText('12.5')).not.toBeNull());
     expect(within(cardArticle!).getByText('2.00%')).not.toBeNull();
     expect(within(cardArticle!).getByLabelText('最高活跃告警：严重')).not.toBeNull();
-    expect(within(cardArticle!).getByLabelText('1 个服务')).not.toBeNull();
+    const servicesLink = within(cardArticle!).getByRole('link', { name: '应用内 1 个服务，查看服务' });
+    expect(card.contains(servicesLink)).toBe(false);
+    expect(servicesLink.getAttribute('href')).toBe(
+      '/apm/services?perspective=service&namespace=bklite'
+    );
     expect(within(cardArticle!).queryByText(/个服务/)).toBeNull();
     expect(within(cardArticle!).getByText(/应用 · 1h/)).not.toBeNull();
     expect(within(cardArticle!).getByTitle('吞吐量趋势')).not.toBeNull();

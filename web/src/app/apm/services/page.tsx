@@ -889,6 +889,7 @@ export default function ApmServicesPage() {
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {applicationSummaries.map((application) => {
                   const alertServiceHint = application.services[0]?.name;
+                  const servicesHref = `/apm/services?perspective=service&namespace=${encodeURIComponent(application.key)}`;
                   const eventsHref = alertServiceHint
                     ? `/apm/events/alerts?service=${encodeURIComponent(alertServiceHint)}`
                     : '/apm/events/alerts';
@@ -905,6 +906,7 @@ export default function ApmServicesPage() {
                       metricUnavailable={application.metricUnavailable}
                       alertCount={application.alertCount}
                       timeWindow={timeWindow}
+                      servicesHref={servicesHref}
                       eventsHref={eventsHref}
                       href={`/apm/integration/applications/${application.id}`}
                       onRetryMetrics={retryMetrics}

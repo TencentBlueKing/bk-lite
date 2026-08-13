@@ -40,6 +40,7 @@ export interface ApplicationCardProps {
   metricUnavailable: boolean;
   alertCount: number;
   timeWindow: string;
+  servicesHref: string;
   eventsHref: string;
   href: string;
   onRetryMetrics?: () => void;
@@ -56,6 +57,7 @@ export default function ApplicationCard({
   metricUnavailable,
   alertCount,
   timeWindow,
+  servicesHref,
   eventsHref,
   href,
   onRetryMetrics,
@@ -103,14 +105,15 @@ export default function ApplicationCard({
             </div>
 
             <div className="relative z-20 flex shrink-0 items-center gap-1.5 pointer-events-auto">
-              <span
-                aria-label={`${services.length} 个服务`}
-                title={`${services.length} 个服务`}
-                className="inline-flex items-center gap-1 rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[var(--color-text-2)]"
+              <Link
+                href={servicesHref}
+                aria-label={`应用内 ${services.length} 个服务，查看服务`}
+                title={`应用内 ${services.length} 个服务`}
+                className="inline-flex items-center gap-1 rounded border border-[var(--color-border)] bg-[var(--color-fill-1)] px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[var(--color-text-2)] no-underline transition-colors duration-150 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
               >
                 <AppstoreOutlined className="text-xs" aria-hidden="true" />
                 {services.length}
-              </span>
+              </Link>
               <Link
                 href={eventsHref}
                 aria-label={`应用内 ${alertCount} 个活跃告警，查看告警`}
