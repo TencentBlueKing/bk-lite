@@ -68,7 +68,7 @@ export class SSEHandler {
           if (!this.isCurrentEventSource(eventSource, generation)) return;
           console.error('SSE error:', error);
           this.handleError(error);
-          eventSource.close();
+          this.closeEventSource(eventSource);
           if (this.eventSource === eventSource) {
             this.eventSource = null;
           }
@@ -237,13 +237,20 @@ export class SSEHandler {
 
   private closeActiveConnection(): void {
     if (this.eventSource) {
-      this.eventSource.close();
+      this.closeEventSource(this.eventSource);
       this.eventSource = null;
     }
     if (this.abortController) {
       this.abortController.abort();
       this.abortController = null;
     }
+  }
+
+  private closeEventSource(eventSource: EventSource): void {
+    eventSource.onopen = null;
+    eventSource.onmessage = null;
+    eventSource.onerror = null;
+    eventSource.close();
   }
 
   private clearReconnectTimer(): void {

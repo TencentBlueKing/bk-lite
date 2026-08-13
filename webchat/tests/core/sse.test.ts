@@ -93,7 +93,7 @@ test('parses split SSE data lines and ignores keep-alive comments', async () => 
   }
 });
 
-test('retries a failed fetch connection once before succeeding', async () => {
+test('fetch reconnect respects its retry budget and resets it only after opening', async () => {
   const originalFetch = globalThis.fetch;
   const originalError = console.error;
   let attempts = 0;
@@ -104,6 +104,14 @@ test('retries a failed fetch connection once before succeeding', async () => {
     attempts += 1;
     if (attempts === 1) {
       throw new Error('temporary connection failure');
+    }
+    if (attempts === 2) {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(new Error('stream disconnected after opening'));
+        },
+      });
+      return { body, ok: true, status: 200 } as Response;
     }
     return streamResponse([]);
   };
@@ -117,8 +125,18 @@ test('retries a failed fetch connection once before succeeding', async () => {
     await handler.connect('https://example.test/stream', {
       Authorization: 'Bearer placeholder',
     });
-    assert.equal(attempts, 2);
-    assert.equal(opens, 1);
+    assert.equal(attempts, 3);
+    assert.equal(opens, 2);
+
+    let terminalAttempts = 0;
+    globalThis.fetch = async () => {
+      terminalAttempts += 1;
+      throw new Error('persistent connection failure');
+    };
+    await handler.connect('https://example.test/stream', {
+      Authorization: 'Bearer placeholder',
+    });
+    assert.equal(terminalAttempts, 2);
   } finally {
     handler.destroy();
     console.error = originalError;
@@ -187,6 +205,22 @@ test('disconnect cancels a queued fetch reconnect', async () => {
 
     assert.equal(attempts, 1);
     assert.equal(clearedReconnectTimers, 1);
+
+    const signals: AbortSignal[] = [];
+    const resolveResponses: Array<(response: Response) => void> = [];
+    const messages: Message[] = [];
+    handler.on('message', (event: WebChatMessageEvent) => messages.push(event.message));
+    globalThis.fetch = async (_input, init) => {
+      signals.push(init?.signal as AbortSignal);
+      return new Promise<Response>((resolve) => resolveResponses.push(resolve));
+    };
+    void handler.connect('https://example.test/first', { Authorization: 'first' });
+    void handler.connect('https://example.test/second', { Authorization: 'second' });
+    assert.equal(signals[0].aborted, true);
+    assert.equal(signals[1].aborted, false);
+    resolveResponses[0](streamResponse(['data: stale response\n']));
+    await wait(0);
+    assert.equal(messages.length, 0);
   } finally {
     handler.destroy();
     globalThis.fetch = originalFetch;
@@ -203,27 +237,51 @@ test('EventSource reconnect closes and isolates the superseded connection', asyn
   console.log = () => undefined;
   const handler = new SSEHandler(1, 0);
   const messages: Message[] = [];
+  let opens = 0;
   handler.on('message', (event: WebChatMessageEvent) => {
     messages.push(event.message);
+  });
+  handler.on('open', () => {
+    opens += 1;
   });
 
   try {
     void handler.connect('https://example.test/stream');
     const firstSource = FakeEventSource.instances[0];
-
-    firstSource.onerror?.(new Error('temporary connection failure'));
-    await wait(0);
+    void handler.connect('https://example.test/replacement');
+    const secondSource = FakeEventSource.instances[1];
 
     assert.equal(firstSource.closed, true);
     assert.equal(FakeEventSource.instances.length, 2);
 
+    firstSource.onopen?.();
     firstSource.onmessage?.({ data: 'stale message' });
-    FakeEventSource.instances[1].onmessage?.({ data: 'current message' });
+    secondSource.onmessage?.({ data: 'current message' });
 
+    assert.equal(opens, 0);
     assert.deepEqual(
       messages.map((message) => message.content),
       ['current message']
     );
+
+    secondSource.onerror?.(new Error('temporary connection failure'));
+    await wait(0);
+    assert.equal(FakeEventSource.instances.length, 3);
+
+    secondSource.onopen?.();
+    FakeEventSource.instances[2].onerror?.(new Error('retry budget exhausted'));
+    await wait(0);
+    assert.equal(FakeEventSource.instances.length, 3);
+
+    void handler.connect('https://example.test/stream');
+    FakeEventSource.instances[3].onerror?.(new Error('temporary connection failure'));
+    await wait(0);
+    FakeEventSource.instances[4].onopen?.();
+    FakeEventSource.instances[4].onerror?.(new Error('failure after successful reconnect'));
+    await wait(0);
+
+    assert.equal(opens, 1);
+    assert.equal(FakeEventSource.instances.length, 6);
   } finally {
     handler.destroy();
     restoreEventSource();
