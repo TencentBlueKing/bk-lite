@@ -223,7 +223,11 @@ const failingLoader = createParamInputOptionsLoader({
   getDataSourceList: async () => [],
   getSourceDataByApiId: async () => { throw new Error('load failed'); },
 });
-assert.deepEqual(await failingLoader.load(dynamicConfig).promise, { status: 'error', options: [] });
+assert.deepEqual(await failingLoader.load(dynamicConfig).promise, {
+  status: 'error',
+  options: [],
+  errorMessage: 'load failed',
+});
 };
 
 const hookSource = readFileSync(new URL('../src/app/ops-analysis/hooks/useParamInputOptions.ts', import.meta.url), 'utf8');
@@ -249,7 +253,10 @@ assert.match(editorSource, /componentSwitchOccupied/);
 assert.match(widgetConfigSource, /resolvedParamOptionsRef/);
 assert.match(widgetConfigSource, /clearComponentParamSwitch/);
 assert.doesNotMatch(widgetConfigSource, /runtimeParamControl/);
-assert.match(rendererSource, /useParamInputOptions\(componentSwitchParam\?\.inputConfig\)/);
+assert.match(rendererSource, /useParamInputOptions\(\s*componentSwitchParam\?\.inputConfig/);
+assert.match(rendererSource, /suppressErrorNotification:\s*true/);
+assert.match(rendererSource, /optionState\.status === "error"/);
+assert.match(rendererSource, /optionState\.errorMessage/);
 assert.match(rendererSource, /getTypedValueKey\(savedComponentSwitchValue\)/);
 assert.match(rendererSource, /resolveComponentSwitchRuntime/);
 assert.match(rendererSource, /resolveComponentSwitchRequestGate/);
@@ -265,6 +272,8 @@ assert.match(controlSource, /inputConfig/);
 assert.match(controlSource, /<Segmented/);
 assert.match(controlSource, /<Select/);
 assert.match(controlSource, /block=\{block\}/);
+assert.match(paramInputControlSource, /useParamInputOptions\(inputConfig\)/);
+assert.doesNotMatch(paramInputControlSource, /suppressErrorNotification/);
 assert.match(paramInputControlSource, /createParamInputOptionsNotifier/);
 assert.doesNotMatch(paramInputControlSource, /\[[^\]]*onOptionsResolved[^\]]*\]/);
 assert.doesNotMatch(dashboardSource, /runtimeParamControl/);

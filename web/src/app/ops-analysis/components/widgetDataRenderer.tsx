@@ -314,7 +314,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     () => supportsComponentSwitch(chartType) ? findComponentSwitchParams(effectiveComponentParams)[0] : undefined,
     [chartType, effectiveComponentParams],
   );
-  const optionState = useParamInputOptions(componentSwitchParam?.inputConfig);
+  const componentSwitchOptionsLoaderOptions = useMemo(
+    () => ({
+      suppressErrorNotification: true as const,
+      fallbackErrorMessage: t("dashboard.dataFetchFailed"),
+    }),
+    [t],
+  );
+  const optionState = useParamInputOptions(
+    componentSwitchParam?.inputConfig,
+    componentSwitchOptionsLoaderOptions,
+  );
   const rawSavedComponentSwitchValue = componentSwitchParam
     ? config?.params?.[componentSwitchParam.name] ?? componentSwitchParam.value
     : undefined;
@@ -351,7 +361,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         ? reconciled
         : undefined;
     },
-    [optionState, savedComponentSwitchValue],
+    [optionState.status, optionState.options, savedComponentSwitchValue],
   );
   const [runtimeParamState, setRuntimeParamState] = useState<{
     scopeKey: string;
@@ -393,7 +403,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         ? previous
         : { ...previous, value: reconciled };
     });
-  }, [optionState, runtimeParamInitialValue, runtimeParamScopeKey]);
+  }, [optionState.status, optionState.options, runtimeParamInitialValue, runtimeParamScopeKey]);
 
   const handleRuntimeParamChange = useCallback(
     (value: string | number) => {
@@ -462,7 +472,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     [
       chartType,
       componentSwitchParam,
-      optionState,
+      optionState.status,
+      optionState.options,
       runtimeParamValue,
     ],
   );
@@ -785,10 +796,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       if (widgetDataSourceState === "loading") {
         setDataValidation(null);
       } else {
-        setDataValidation({
-          isValid: false,
-          message: t("dashboard.dataFetchFailed"),
-          errorCode: "datasource_missing",
+        setDataValidation((previous) => {
+          const next = {
+            isValid: false as const,
+            message: t("dashboard.dataFetchFailed"),
+            errorCode: "datasource_missing" as const,
+          };
+          return previous?.isValid === next.isValid
+            && previous.message === next.message
+            && previous.errorCode === next.errorCode
+            ? previous
+            : next;
         });
       }
       return;
@@ -798,10 +816,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setRawData(null);
       setLoading(false);
       setTableLoading(false);
-      setDataValidation({
-        isValid: false,
-        message: t("common.noAuth"),
-        errorCode: "widget_data_forbidden",
+      setDataValidation((previous) => {
+        const next = {
+          isValid: false as const,
+          message: t("common.noAuth"),
+          errorCode: "widget_data_forbidden" as const,
+        };
+        return previous?.isValid === next.isValid
+          && previous.message === next.message
+          && previous.errorCode === next.errorCode
+          ? previous
+          : next;
       });
       return;
     }
@@ -813,9 +838,19 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setTableLoading(false);
       hasSettledRequestRef.current = true;
       setHasSettledRequest(true);
-      setDataValidation({
-        isValid: false,
-        message: t("dashboard.noData"),
+      const optionsLoadErrorMessage =
+        optionState.status === "error" ? optionState.errorMessage : undefined;
+      const blockedMessage = optionsLoadErrorMessage || t("dashboard.noData");
+      setDataValidation((previous) => {
+        if (
+          previous
+          && previous.isValid === false
+          && previous.message === blockedMessage
+          && previous.errorCode === undefined
+        ) {
+          return previous;
+        }
+        return { isValid: false, message: blockedMessage };
       });
     }
   }, [
@@ -825,6 +860,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     dataSource?.hasAuth,
     widgetDataSourceState,
     componentSwitchRequestGate,
+    optionState.status,
+    optionState.status === "error" ? optionState.errorMessage : undefined,
     t,
   ]);
 
