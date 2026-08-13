@@ -1,0 +1,273 @@
+"""Issue #4648：对象存储异常路径必须释放连接与临时文件。"""
+
+import asyncio
+import io
+import os
+import tempfile
+from types import SimpleNamespace
+
+import pytest
+from django.http import StreamingHttpResponse
+
+from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.utils import s3
+
+pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["upload", "download", "delete", "list"],
+)
+@pytest.mark.asyncio
+async def test_single_object_helpers_close_connection_when_operation_fails(
+    monkeypatch,
+    operation,
+):
+    instances = []
+
+    class FailingJetStreamService:
+        def __init__(self):
+            self.nc = None
+            self.close_count = 0
+            instances.append(self)
+
+        async def connect(self):
+            self.nc = object()
+
+        async def close(self):
+            self.close_count += 1
+
+        async def put(self, *args, **kwargs):
+            raise RuntimeError("operation failed")
+
+        async def get(self, *args, **kwargs):
+            raise RuntimeError("operation failed")
+
+        async def delete(self, *args, **kwargs):
+            raise RuntimeError("operation failed")
+
+        async def list_objects(self, *args, **kwargs):
+            raise RuntimeError("operation failed")
+
+    monkeypatch.setattr(s3, "JetStreamService", FailingJetStreamService)
+
+    with pytest.raises(RuntimeError, match="operation failed"):
+        if operation == "upload":
+            await s3.upload_file_to_s3(
+                SimpleNamespace(name="agent.tar.gz", file=io.BytesIO(b"payload")),
+                "packages/agent.tar.gz",
+            )
+        elif operation == "download":
+            await s3.download_file_by_s3("packages/agent.tar.gz")
+        elif operation == "delete":
+            await s3.delete_s3_file("packages/agent.tar.gz")
+        else:
+            await s3.list_s3_files()
+
+    assert instances[0].close_count == 1
+
+
+@pytest.mark.asyncio
+async def test_single_object_helper_closes_partially_initialized_connection(
+    monkeypatch,
+):
+    instances = []
+
+    class FailingJetStreamService:
+        def __init__(self):
+            self.nc = None
+            self.close_count = 0
+            instances.append(self)
+
+        async def connect(self):
+            self.nc = object()
+            raise RuntimeError("object store initialization failed")
+
+        async def close(self):
+            self.close_count += 1
+
+    monkeypatch.setattr(s3, "JetStreamService", FailingJetStreamService)
+
+    with pytest.raises(RuntimeError, match="object store initialization failed"):
+        await s3.download_file_by_s3("packages/agent.tar.gz")
+
+    assert instances[0].close_count == 1
+
+
+@pytest.mark.asyncio
+async def test_close_failure_does_not_replace_object_operation_failure(
+    monkeypatch,
+):
+    class FailingJetStreamService:
+        nc = object()
+
+        async def connect(self):
+            return None
+
+        async def get(self, *args, **kwargs):
+            raise RuntimeError("operation failed")
+
+        async def close(self):
+            raise RuntimeError("close failed")
+
+    monkeypatch.setattr(s3, "JetStreamService", FailingJetStreamService)
+
+    with pytest.raises(RuntimeError, match="operation failed"):
+        await s3.download_file_by_s3("packages/agent.tar.gz")
+
+
+@pytest.mark.asyncio
+async def test_cancellation_during_close_is_not_swallowed(monkeypatch):
+    close_started = asyncio.Event()
+
+    class SlowClosingJetStreamService:
+        async def connect(self):
+            return None
+
+        async def get(self, *args, **kwargs):
+            return b"payload", "agent.tar.gz"
+
+        async def close(self):
+            close_started.set()
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(s3, "JetStreamService", SlowClosingJetStreamService)
+
+    download = asyncio.create_task(s3.download_file_by_s3("packages/agent.tar.gz"))
+    await close_started.wait()
+    download.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await download
+
+
+@pytest.mark.asyncio
+async def test_close_timeout_is_bounded_and_does_not_replace_success(
+    monkeypatch,
+):
+    close_started = asyncio.Event()
+
+    class HangingCloseJetStreamService:
+        async def connect(self):
+            return None
+
+        async def get(self, *args, **kwargs):
+            return b"payload", "agent.tar.gz"
+
+        async def close(self):
+            close_started.set()
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(s3, "JetStreamService", HangingCloseJetStreamService)
+    monkeypatch.setattr(s3, "JETSTREAM_CLOSE_TIMEOUT_SECONDS", 0.01)
+
+    result = await asyncio.wait_for(
+        s3.download_file_by_s3("packages/agent.tar.gz"),
+        timeout=0.1,
+    )
+
+    assert close_started.is_set()
+    assert result == (b"payload", "agent.tar.gz")
+
+
+def _package():
+    return SimpleNamespace(
+        os="linux",
+        cpu_architecture="x86_64",
+        object="sidecar",
+        version="1.0.0",
+        name="sidecar.tar.gz",
+    )
+
+
+def _capture_named_tempfiles(monkeypatch, tmp_path):
+    created_paths = []
+    original = tempfile.NamedTemporaryFile
+
+    def recording_named_temporary_file(*args, **kwargs):
+        kwargs["dir"] = tmp_path
+        value = original(*args, **kwargs)
+        created_paths.append(value.name)
+        return value
+
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", recording_named_temporary_file)
+    return created_paths
+
+
+def test_streaming_download_removes_tempfile_when_object_read_fails(
+    monkeypatch,
+    tmp_path,
+):
+    created_paths = _capture_named_tempfiles(monkeypatch, tmp_path)
+
+    class ObjectStore:
+        async def get_info(self, key):
+            return SimpleNamespace(description="sidecar.tar.gz")
+
+        async def get(self, key, writeinto):
+            raise RuntimeError("object read interrupted")
+
+    class FailingJetStreamService:
+        def __init__(self):
+            self.object_store = ObjectStore()
+
+        async def connect(self):
+            return None
+
+        async def close(self):
+            raise RuntimeError("close failed")
+
+    monkeypatch.setattr(
+        "apps.rpc.jetstream.JetStreamService",
+        FailingJetStreamService,
+    )
+
+    with pytest.raises(RuntimeError, match="object read interrupted"):
+        PackageService.download_file_streaming(_package())
+
+    assert len(created_paths) == 1
+    assert not os.path.exists(created_paths[0])
+
+
+@pytest.mark.parametrize("consume_first_chunk", [False, True])
+@pytest.mark.django_db
+def test_response_close_removes_tempfile_before_stream_is_exhausted(
+    monkeypatch,
+    tmp_path,
+    consume_first_chunk,
+):
+    created_paths = _capture_named_tempfiles(monkeypatch, tmp_path)
+
+    class ObjectStore:
+        async def get_info(self, key):
+            return SimpleNamespace(description="sidecar.tar.gz")
+
+        async def get(self, key, writeinto):
+            writeinto.write(b"payload")
+
+    class JetStreamService:
+        def __init__(self):
+            self.object_store = ObjectStore()
+
+        async def connect(self):
+            return None
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(
+        "apps.rpc.jetstream.JetStreamService",
+        JetStreamService,
+    )
+
+    stream, filename = PackageService.download_file_streaming(_package())
+    assert filename == "sidecar.tar.gz"
+    assert os.path.exists(created_paths[0])
+
+    response = StreamingHttpResponse(stream)
+    if consume_first_chunk:
+        assert next(iter(response.streaming_content)) == b"payload"
+    response.close()
+
+    assert not os.path.exists(created_paths[0])
