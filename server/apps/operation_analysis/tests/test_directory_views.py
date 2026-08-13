@@ -158,6 +158,27 @@ def test_directory_partial_update_builtin_allows_visibility_only(authenticated_u
 
 @pytest.mark.django_db
 @pytest.mark.integration
+@pytest.mark.parametrize("invalid_groups", [[1, 2.0], [1, True], [1, "2"], [1, {"id": 2}]])
+def test_directory_partial_update_builtin_rejects_non_integer_group_ids(authenticated_user, invalid_groups):
+    user = _superuser(authenticated_user)
+    builtin = Directory.objects.create(
+        name="内置目录非法组织类型",
+        groups=[1],
+        is_build_in=True,
+        build_in_key="visibility-directory-invalid-groups",
+    )
+    request = _request("patch", f"/directory/{builtin.id}/", user, data={"groups": invalid_groups})
+
+    response = view_module.DirectoryModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(builtin.id))
+    _render(response)
+
+    builtin.refresh_from_db()
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert builtin.groups == [1]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
 def test_directory_partial_update_builtin_visibility_requires_edit_permission(authenticated_user):
     builtin = Directory.objects.create(
         name="内置目录权限边界",
