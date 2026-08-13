@@ -22,9 +22,12 @@ export const buildSearchParams = (
   const recentTimeRange = getRecentTimeRange(timeValues);
   const startTime = recentTimeRange.at(0);
   const endTime = recentTimeRange.at(1);
+  // 仪表盘按声明单位由前端 formatMetricValue。省略 autoConvertUnit 且未传 rawValueMetrics 时默认 false，
+  // 避免服务端先缩成 hour/GiB 再按原单位展示。显式 true 仍可用于会读响应 data.unit 的调用方。
+  // 传入 rawValueMetrics 时：命中白名单的 query 关闭自动换算，其余仍为 true。
   const resolvedAutoConvert = autoConvertUnit !== undefined
     ? autoConvertUnit
-    : rawValueMetrics ? !Array.from(rawValueMetrics).some((m) => query.includes(m)) : true;
+    : rawValueMetrics ? !Array.from(rawValueMetrics).some((m) => query.includes(m)) : false;
   const params: SearchParams = {
     query: query
       .replace(/__\$labels__/g, labels)
