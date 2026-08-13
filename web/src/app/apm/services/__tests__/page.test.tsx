@@ -46,10 +46,6 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
 }));
 vi.mock('@/app/apm/components/organization-assignment-modal', () => ({ default: () => null }));
-vi.mock('@/components/more-actions-dropdown', () => ({
-  default: () => <button type="button" aria-label="更多操作">更多</button>,
-}));
-
 const serviceWithEnv = {
   id: 'service-bklite',
   application_id: 'bklite',
@@ -245,8 +241,11 @@ describe('APM 服务目录服务视角与归档', () => {
     const serviceHeader = screen.getByRole('columnheader', { name: '服务' });
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });
     expect(searchInput.closest('section')).toBe(serviceHeader.closest('section'));
-    expect(actionHeader.firstElementChild?.classList.contains('text-right')).toBe(true);
-    expect(screen.getByRole('button', { name: '更多操作' })).not.toBeNull();
+    expect(getComputedStyle(actionHeader).textAlign).toBe('right');
+    expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
+    expect(screen.getByRole('button', { name: '调整组织' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '归档' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /更多操作/ })).toBeNull();
     expect(screen.queryByText('全部服务')).toBeNull();
     expect(screen.queryByText(/个环境视图/)).toBeNull();
     const lastSeenText = dayjs(serviceWithEnv.environment_views[0].last_seen_at).format('YYYY-MM-DD HH:mm');

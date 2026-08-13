@@ -37,7 +37,8 @@ assert.doesNotMatch(policies, /测试查询|title: '监控对象'/, '策略列�
 assert.match(policies, /openCreate/, '新建策略必须打开创建表单');
 assert.doesNotMatch(policies, /events\/policies\/new/, '新建策略不得再跳转旧的独立页面');
 assert.match(policies, /FilterToolbar/, '策略列表工具栏必须复用统一筛选布局');
-assert.match(policies, /MoreActionsDropdown/, '策略行操作必须收敛到统一更多操作菜单');
+assert.doesNotMatch(policies, /MoreActionsDropdown/, '策略的编辑与删除必须直接可见，不应收进更多菜单');
+assert.match(policies, /fixed: 'right'/, '策略操作列必须固定在表格右侧');
 assert.match(legacyEvents, /\/apm\/events\/alerts/, '旧 /apm/events 必须兼容跳转到告警列表');
 assert.match(legacyPolicies, /\/apm\/events\/policies/, '旧 /apm/policies 必须兼容跳转到事件策略');
 

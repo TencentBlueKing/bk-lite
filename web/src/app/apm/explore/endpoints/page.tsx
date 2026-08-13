@@ -315,9 +315,10 @@ export default function ApmEndpointsPage() {
     {
       title: '操作',
       key: 'actions',
-      width: '5%',
+      width: 88,
       align: 'right',
-      render: (_, row) => <Button size="small" type="link" onClick={() => setSelected(row)}>查看</Button>,
+      fixed: 'right',
+      render: (_, row) => <Button className="!px-0" size="small" type="link" onClick={() => setSelected(row)}>查看</Button>,
     },
   ];
 

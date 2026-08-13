@@ -7,7 +7,6 @@ import {
   AppstoreOutlined,
   BarsOutlined,
   BellOutlined,
-  EditOutlined,
   InboxOutlined,
   LoadingOutlined,
   ReloadOutlined,
@@ -30,8 +29,6 @@ import {
   type TableColumnsType,
 } from 'antd';
 import FilterToolbar from '@/components/filter-toolbar';
-import MoreActionsDropdown from '@/components/more-actions-dropdown';
-import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -503,22 +500,6 @@ export default function ApmServicesPage() {
 
   const selectedApplication = applications.find((item) => item.application_id === namespace);
 
-  const actionMenuItems = (item: ServiceEnvironmentRow): MoreActionsDropdownItem[] => [
-    {
-      key: 'org',
-      icon: <EditOutlined aria-hidden="true" />,
-      label: '调整组织',
-      onClick: () => setOrganizationService(services.find((service) => service.id === item.serviceId) ?? null),
-    },
-    {
-      key: 'archive',
-      icon: <InboxOutlined aria-hidden="true" />,
-      danger: true,
-      label: '归档',
-      onClick: () => confirmArchive(item.serviceId, true),
-    },
-  ];
-
   const columns: TableColumnsType<ServiceEnvironmentRow> = [
     {
       title: (
@@ -741,17 +722,38 @@ export default function ApmServicesPage() {
         : <Typography.Text type="secondary">—</Typography.Text>,
     },
     {
-      title: <span className="block w-full text-right">操作</span>,
+      title: '操作',
       key: 'action',
-      width: 56,
+      width: 152,
       align: 'right',
+      fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
-          <MoreActionsDropdown
-            items={actionMenuItems(item)}
-            ariaLabel="更多操作"
-            stopPropagation
-          />
+          <Space className="w-full justify-end whitespace-nowrap" size={8}>
+            <Button
+              className="!px-0"
+              size="small"
+              type="link"
+              onClick={(event) => {
+                event.stopPropagation();
+                setOrganizationService(services.find((service) => service.id === item.serviceId) ?? null);
+              }}
+            >
+              调整组织
+            </Button>
+            <Button
+              className="!px-0"
+              danger
+              size="small"
+              type="link"
+              onClick={(event) => {
+                event.stopPropagation();
+                confirmArchive(item.serviceId, true);
+              }}
+            >
+              归档
+            </Button>
+          </Space>
         </Permission>
       ),
     },
@@ -946,6 +948,7 @@ export default function ApmServicesPage() {
                 <ApmDataTable
                   columns={columns}
                   dataSource={filteredRows}
+                  headerAlignment="column"
                   rowKey="key"
                   pagination={{
                     defaultPageSize: 20,

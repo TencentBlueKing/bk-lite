@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AppstoreAddOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { AppstoreAddOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { Button, Drawer, Form, Input, message, Space, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
@@ -16,8 +16,6 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import MoreActionsDropdown from '@/components/more-actions-dropdown';
-import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 
 type PageState = CatalogStateKind | 'ready';
 
@@ -102,27 +100,6 @@ export default function ApmApplicationsPage() {
     [filtered, page, pageSize],
   );
 
-  const actionMenuItems = (item: ApmApplication): MoreActionsDropdownItem[] => [
-    {
-      key: 'access',
-      icon: <PlusOutlined aria-hidden="true" />,
-      label: '添加接入',
-      onClick: () => router.push(`/apm/integration/add?application_id=${encodeURIComponent(item.application_id)}`),
-    },
-    {
-      key: 'detail',
-      icon: <AppstoreAddOutlined aria-hidden="true" />,
-      label: '查看详情',
-      onClick: () => router.push(`/apm/integration/applications/${item.id}`),
-    },
-    {
-      key: 'edit',
-      icon: <EditOutlined aria-hidden="true" />,
-      label: '编辑',
-      onClick: () => openEdit(item),
-    },
-  ];
-
   const columns: TableColumnsType<ApmApplication> = [
     {
       title: '应用',
@@ -154,10 +131,30 @@ export default function ApmApplicationsPage() {
     },
     { title: '更新时间', dataIndex: 'updated_at', width: 170, responsive: ['xxl'], className: 'tabular-nums', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
     {
-      title: '操作', key: 'action', width: 72, align: 'right',
+      title: '操作', key: 'action', width: 200, align: 'right', fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
-          <MoreActionsDropdown ariaLabel={`${item.name}更多操作`} items={actionMenuItems(item)} />
+          <Space className="w-full justify-end whitespace-nowrap" size={8}>
+            <Button
+              className="!px-0"
+              size="small"
+              type="link"
+              onClick={() => router.push(`/apm/integration/add?application_id=${encodeURIComponent(item.application_id)}`)}
+            >
+              添加接入
+            </Button>
+            <Button
+              className="!px-0"
+              size="small"
+              type="link"
+              onClick={() => router.push(`/apm/integration/applications/${item.id}`)}
+            >
+              查看详情
+            </Button>
+            <Button className="!px-0" size="small" type="link" onClick={() => openEdit(item)}>
+              编辑
+            </Button>
+          </Space>
         </Permission>
       ),
     },
@@ -179,6 +176,7 @@ export default function ApmApplicationsPage() {
               rowKey="id"
               columns={columns}
               dataSource={pageRows}
+              headerAlignment="column"
               pagination={{
                 current: page,
                 pageSize,

@@ -752,9 +752,11 @@ export default function ApmServiceDetailPage() {
                           title: '操作',
                           width: 100,
                           align: 'right',
-                          render: () => <Link href="/apm/services/slo"><Button type="link" size="small">管理</Button></Link>,
+                          fixed: 'right',
+                          render: () => <Link href="/apm/services/slo"><Button className="!px-0" type="link" size="small">管理</Button></Link>,
                         },
                       ]}
+                      headerAlignment="column"
                     />
                   </ApmSurface>
                 ) : (
