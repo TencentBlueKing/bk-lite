@@ -1,5 +1,11 @@
+import os
+import subprocess
+import sys
+import threading
+
 import pytest
 
+from apps.log.services.log_extractor import semantics
 from apps.log.services.log_extractor.semantics import RuleValidationError, execute_rules, normalize_rule
 
 
@@ -150,6 +156,65 @@ def test_regex_rejects_python_constructs_unsupported_by_vector_048(pattern):
                 "delete_source": False,
             }
         )
+
+
+@pytest.mark.integration
+def test_regex_preview_terminates_catastrophic_backtracking():
+    probe = """
+from apps.log.services.log_extractor.semantics import execute_rules, normalize_rule
+
+rule = normalize_rule(
+    {
+        "extractor_type": "regex_replace",
+        "source_field": "message",
+        "target_field": "result",
+        "condition": {},
+        "config": {"pattern": "(a+)+$", "replacement": "masked"},
+        "delete_source": False,
+    }
+)
+try:
+    execute_rules({"message": "a" * 27 + "!"}, [rule])
+except ValueError as exc:
+    print(f"{type(exc).__name__}:{exc}")
+"""
+    env = {**os.environ, "LOG_EXTRACTOR_PREVIEW_TIMEOUT_SECONDS": "0.1"}
+
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", probe],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=3,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("灾难性回溯未被预览超时终止")
+
+    assert completed.stdout.strip() == "RuleExecutionTimeoutError:正则预览执行超时"
+
+
+@pytest.mark.unit
+def test_regex_preview_rejects_work_when_local_capacity_is_exhausted(monkeypatch):
+    slots = threading.BoundedSemaphore(1)
+    slots.acquire()
+    monkeypatch.setattr(semantics, "_REGEX_PREVIEW_SLOTS", slots)
+    rule = normalize_rule(
+        {
+            "extractor_type": "regex_replace",
+            "source_field": "message",
+            "target_field": "result",
+            "condition": {},
+            "config": {"pattern": "a+$", "replacement": "masked"},
+            "delete_source": False,
+        }
+    )
+
+    with pytest.raises(semantics.RuleExecutionBusyError, match="并发已达上限"):
+        execute_rules({"message": "aaaa"}, [rule])
+
+    slots.release()
 
 
 @pytest.mark.unit

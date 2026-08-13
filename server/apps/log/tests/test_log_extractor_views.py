@@ -1,7 +1,10 @@
+import threading
+
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, LogExtractor, SystemVectorConfigState
+from apps.log.services.log_extractor import semantics
 from apps.log.views.extractor import LogExtractorViewSet
 from apps.system_mgmt.models.operation_log import OperationLog
 
@@ -135,3 +138,98 @@ def test_instance_outside_current_team_is_hidden(authenticated_user, collect_ins
     response = LogExtractorViewSet.as_view({"get": "list"})(request)
 
     assert response.status_code == 404
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_view_user_gets_bounded_error_for_catastrophic_regex_preview(authenticated_user, collect_instance, mocker, monkeypatch):
+    _allow_current_team(mocker)
+    LogExtractor.objects.create(
+        name="stored catastrophic rule",
+        collect_instance=collect_instance,
+        extractor_type="regex_replace",
+        source_field="message",
+        target_field="result",
+        condition={},
+        config={"pattern": "(a+)+$", "replacement": "masked"},
+        delete_source=False,
+        sort_order=0,
+    )
+    mocker.patch(
+        "apps.log.views.extractor.get_permissions_rules",
+        return_value={
+            "data": {
+                str(collect_instance.collect_type_id): {
+                    "instance": [{"id": collect_instance.id, "permission": ["View"]}],
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(semantics, "REGEX_PREVIEW_TIMEOUT_SECONDS", 0.1)
+    request = APIRequestFactory().post(
+        "/api/v1/log/log_extractors/preview/",
+        {
+            "collect_instance": collect_instance.id,
+            "event": {"message": "a" * 27 + "!"},
+            "draft": {
+                "extractor_type": "copy",
+                "source_field": "message",
+                "target_field": "copy",
+                "condition": {},
+                "config": {},
+                "delete_source": False,
+            },
+        },
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = LogExtractorViewSet.as_view({"post": "preview"})(request)
+
+    assert response.status_code == 400
+    assert str(response.data["rule"]) == "正则预览执行超时"
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_regex_preview_capacity_exhaustion_returns_retryable_status(authenticated_user, collect_instance, mocker, monkeypatch):
+    _allow_current_team(mocker)
+    mocker.patch(
+        "apps.log.views.extractor.get_permissions_rules",
+        return_value={
+            "data": {
+                str(collect_instance.collect_type_id): {
+                    "instance": [{"id": collect_instance.id, "permission": ["View"]}],
+                }
+            }
+        },
+    )
+    slots = threading.BoundedSemaphore(1)
+    slots.acquire()
+    monkeypatch.setattr(semantics, "_REGEX_PREVIEW_SLOTS", slots)
+    request = APIRequestFactory().post(
+        "/api/v1/log/log_extractors/preview/",
+        {
+            "collect_instance": collect_instance.id,
+            "event": {"message": "aaaa"},
+            "draft": {
+                "extractor_type": "regex_replace",
+                "source_field": "message",
+                "target_field": "result",
+                "condition": {},
+                "config": {"pattern": "a+$", "replacement": "masked"},
+                "delete_source": False,
+            },
+        },
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = LogExtractorViewSet.as_view({"post": "preview"})(request)
+
+    assert response.status_code == 429
+    assert response["Retry-After"] == "1"
+    assert response.data == {"detail": "正则预览并发已达上限，请稍后重试"}
+    slots.release()

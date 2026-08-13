@@ -11,6 +11,7 @@ from apps.log.serializers.extractor import LogExtractorSerializer
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.services.log_extractor.publication import get_publication_status, retry_publication
 from apps.log.services.log_extractor.rules import create_rule, delete_rule, load_samples, preview_rule, reorder_rules, update_rule
+from apps.log.services.log_extractor.semantics import RuleExecutionBusyError
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -140,6 +141,8 @@ class LogExtractorViewSet(ViewSet):
         instance = self._authorize_instance(request, request.data.get("collect_instance"), "View")
         try:
             result = preview_rule(instance, request.data.get("event"), request.data.get("draft"), request.data.get("rule_id"))
+        except RuleExecutionBusyError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS, headers={"Retry-After": "1"})
         except ValueError as exc:
             raise ValidationError({"rule": str(exc)}) from exc
         return Response(result)
