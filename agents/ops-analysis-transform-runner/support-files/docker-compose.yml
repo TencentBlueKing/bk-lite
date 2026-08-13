@@ -1,0 +1,33 @@
+# V1: single replica + single uvicorn worker. Do not scale horizontally until
+# shared org-concurrency is implemented.
+services:
+  transform-runner:
+    build:
+      context: ..
+      dockerfile: support-files/Dockerfile
+    # Local: bind loopback only (not 0.0.0.0). Production: remove ports and
+    # attach an internal network shared with Server; do not publish host ports.
+    ports:
+      - "127.0.0.1:8099:8099"
+    environment:
+      TRANSFORM_ORG_CONCURRENCY: "3"
+      TRANSFORM_TIMEOUT_SECONDS: "5"
+      TRANSFORM_MAX_PAYLOAD_BYTES: "8388608"
+      # Must match Server TRANSFORM_RUNNER_TOKEN. Fail-closed when empty.
+      TRANSFORM_RUNNER_TOKEN: "${TRANSFORM_RUNNER_TOKEN:?set TRANSFORM_RUNNER_TOKEN}"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Prefer no egress. Docker Desktop may still allow host DNS; production
+    # should use an internal network with no default route / network_mode that
+    # blocks business and public outbound.
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    deploy:
+      replicas: 1
+    restart: unless-stopped

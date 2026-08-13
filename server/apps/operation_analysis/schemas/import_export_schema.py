@@ -149,6 +149,7 @@ class DatasourceItem(BaseModel):
     source_type: str = Field(default="nats")
     connection_config: dict = Field(default_factory=dict)
     query_config: dict = Field(default_factory=dict)
+    transform_config: dict = Field(default_factory=dict)
     desc: str = Field(default="")
     is_active: bool = Field(default=True)
     params: dict | list | None = Field(default_factory=list)

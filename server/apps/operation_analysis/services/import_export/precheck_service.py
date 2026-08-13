@@ -279,6 +279,27 @@ class PrecheckService:
         return warnings
 
     @staticmethod
+    def check_excel_needs_upload(doc: YAMLDocument) -> list[dict]:
+        """新格式 Excel（无 imported_items）导入后需重新上传原文件。"""
+        warnings = []
+        for datasource in doc.datasources:
+            if datasource.source_type != "excel":
+                continue
+            query_config = datasource.query_config if isinstance(datasource.query_config, dict) else {}
+            imported_items = query_config.get("imported_items")
+            if isinstance(imported_items, list) and imported_items:
+                continue
+            warnings.append(
+                {
+                    "code": ImportExportWarningCode.EXCEL_NEEDS_UPLOAD,
+                    "message": f"Excel 数据源 '{datasource.name}' 需重新上传原文件后方可运行",
+                    "object_key": datasource.key,
+                    "field": "query_config.imported_items",
+                }
+            )
+        return warnings
+
+    @staticmethod
     def check_dependencies(doc: YAMLDocument) -> list[dict]:
         """检查依赖完整性：画布引用的数据源和命名空间是否在YAML中声明"""
         errors = []
@@ -499,6 +520,7 @@ class PrecheckService:
 
         # Step 8: 敏感字段警告
         all_warnings.extend(cls.check_sensitive_placeholders(doc))
+        all_warnings.extend(cls.check_excel_needs_upload(doc))
 
         # Step 9: 冲突识别
         conflicts = cls.identify_conflicts(doc, current_team)

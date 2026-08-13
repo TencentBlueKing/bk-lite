@@ -67,8 +67,8 @@ export const useDataSourceApi = () => {
     return put(`/operation_analysis/api/data_source/${id}/`, data);
   }, [put]);
 
-  const deleteDataSource = useCallback(async (id: number) => {
-    return del(`/operation_analysis/api/data_source/${id}/`);
+  const deleteDataSource = useCallback(async (id: number, config?: any) => {
+    return del(`/operation_analysis/api/data_source/${id}/`, config);
   }, [del]);
 
   const getDataSourceDetail = useCallback(async (id: number) => {
@@ -101,6 +101,10 @@ export const useDataSourceApi = () => {
     return post(`/operation_analysis/api/data_source/${id}/test_connection/`, data || {});
   }, [post]);
 
+  const extractDataSourceConnection = useCallback(async (id: number, data?: any) => {
+    return post(`/operation_analysis/api/data_source/${id}/extract_connection/`, data || {});
+  }, [post]);
+
   const previewDataSourceConfig = useCallback(async (data: any) => {
     const isFormData =
       typeof FormData !== 'undefined' && data instanceof FormData;
@@ -115,6 +119,18 @@ export const useDataSourceApi = () => {
     return post(`/operation_analysis/api/data_source/${id}/preview/`, data);
   }, [post]);
 
+  const submitExcelMaterialization = useCallback(async (id: number, data: FormData) => {
+    return post(
+      `/operation_analysis/api/data_source/${id}/submit_excel/`,
+      data,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+  }, [post]);
+
+  const retryExcelMaterialization = useCallback(async (id: number, data?: any) => {
+    return post(`/operation_analysis/api/data_source/${id}/retry_excel_materialization/`, data || {});
+  }, [post]);
+
   return {
     getDataSourceList,
     getDataSourceBriefList,
@@ -126,7 +142,10 @@ export const useDataSourceApi = () => {
     getSourceDataByApiId,
     previewDataSourceConfig,
     previewDataSource,
+    submitExcelMaterialization,
+    retryExcelMaterialization,
     testDataSourceConnectionConfig,
     testDataSourceConnection,
+    extractDataSourceConnection,
   };
 };
