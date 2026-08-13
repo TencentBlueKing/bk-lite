@@ -15,9 +15,19 @@ const api = {
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
 vi.mock('@/app/apm/components/apm-data-table', () => ({
-  default: ({ dataSource }: { dataSource: Array<{ id: string; name: string }> }) => (
+  default: ({ columns, dataSource }: {
+    columns: Array<{ key?: string; fixed?: string; render?: (_: unknown, item: { id: string; name: string; application_id: string }) => React.ReactNode }>;
+    dataSource: Array<{ id: string; name: string; application_id: string }>;
+  }) => (
     <div data-testid="application-table">
-      {dataSource.map((item) => <span key={item.id}>{item.name}</span>)}
+      {dataSource.map((item) => (
+        <div key={item.id}>
+          <span>{item.name}</span>
+          <div data-fixed={columns.find((column) => column.key === 'action')?.fixed}>
+            {columns.find((column) => column.key === 'action')?.render?.(undefined, item)}
+          </div>
+        </div>
+      ))}
     </div>
   ),
 }));
@@ -27,9 +37,6 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
 }));
 vi.mock('@/components/group-tree-select', () => ({
   default: () => <div data-testid="group-tree-select" />,
-}));
-vi.mock('@/components/more-actions-dropdown', () => ({
-  default: () => <button type="button">更多操作</button>,
 }));
 vi.mock('@/components/permission', () => ({
   default: ({ children, className }: { children: React.ReactNode; className?: string }) => (
@@ -82,6 +89,17 @@ describe('APM 应用管理', () => {
 
     const createButton = screen.getByRole('button', { name: '创建应用' });
     expect(createButton.parentElement?.classList.contains('ml-auto')).toBe(true);
+  });
+
+  it('直接展示高频行操作并固定在表格右侧', async () => {
+    render(<ApmApplicationsPage />);
+
+    await screen.findByText('演示应用');
+    expect(screen.getByRole('button', { name: '添加接入' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '查看详情' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '编辑' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /更多操作/ })).toBeNull();
+    expect(document.querySelector('[data-fixed="right"]')).not.toBeNull();
   });
 
   it('使用抽屉承载创建应用表单', async () => {

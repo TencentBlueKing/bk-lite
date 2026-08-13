@@ -154,10 +154,11 @@ describe('APM 端点详情抽屉', () => {
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['29%', '22%', '14%', '11%', '10%', '9%', '5%']);
-    expect(columnWidths.every((width) => width.endsWith('%'))).toBe(true);
+    expect(columnWidths).toEqual(['29%', '22%', '14%', '11%', '10%', '9%', '88px']);
     expect(screen.queryByRole('columnheader', { name: '方法' })).toBeNull();
     expect(getComputedStyle(screen.getByRole('columnheader', { name: /吞吐量/ })).textAlign).toBe('right');
-    expect(getComputedStyle(screen.getByRole('columnheader', { name: '操作' })).textAlign).toBe('right');
+    const actionHeader = screen.getByRole('columnheader', { name: '操作' });
+    expect(getComputedStyle(actionHeader).textAlign).toBe('right');
+    expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
   });
 });

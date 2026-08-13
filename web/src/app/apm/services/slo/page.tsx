@@ -1,6 +1,6 @@
 'use client';
 
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   Button,
   Drawer,
@@ -305,14 +305,14 @@ export default function ApmSloPage() {
       ),
     },
     {
-      title: <SloColumnHeading align="right" hint="编辑 · 删除" label="操作" />,
+      title: '操作',
       key: 'actions',
-      width: 88,
+      width: 120,
       align: 'right',
       fixed: 'right',
       render: (_, row) => (
-        <Space className="w-full justify-end" size={4}>
-          <Button aria-label={`编辑 ${row.name}`} icon={<EditOutlined aria-hidden="true" />} size="small" type="link" onClick={() => openEditDrawer(row)} />
+        <Space className="w-full justify-end whitespace-nowrap" size={8}>
+          <Button className="!px-0" size="small" type="link" onClick={() => openEditDrawer(row)}>编辑</Button>
           <Popconfirm
             cancelText="取消"
             okButtonProps={{ danger: true, loading: mutatingId === row.id }}
@@ -321,7 +321,7 @@ export default function ApmSloPage() {
             description="删除后将停止目标评估，且无法恢复。"
             onConfirm={() => remove(row)}
           >
-            <Button aria-label={`删除 ${row.name}`} danger icon={<DeleteOutlined aria-hidden="true" />} size="small" type="link" />
+            <Button className="!px-0" danger disabled={mutatingId !== null && mutatingId !== row.id} size="small" type="link">删除</Button>
           </Popconfirm>
         </Space>
       ),

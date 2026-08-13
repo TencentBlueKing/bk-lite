@@ -126,7 +126,7 @@ describe('APM 接入实例目录', () => {
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['13%', '18%', '12%', '7%', '6%', '11%', '12%', '8%', '7%', '6%']);
+    expect(columnWidths).toEqual(['13%', '18%', '12%', '7%', '6%', '11%', '12%', '8%', '7%', '112px']);
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       '实例 ID',
       '服务',
@@ -142,7 +142,9 @@ describe('APM 接入实例目录', () => {
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '首次接入' })).textAlign).toBe('left');
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '最近上报' })).textAlign).toBe('left');
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '实例状态' })).textAlign).toBe('center');
-    expect(getComputedStyle(screen.getByRole('columnheader', { name: '操作' })).textAlign).toBe('right');
+    const actionHeader = screen.getByRole('columnheader', { name: '操作' });
+    expect(getComputedStyle(actionHeader).textAlign).toBe('right');
+    expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
     const lastSeenText = dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm');
     const lastSeen = screen.getByText(lastSeenText);
     expect(lastSeen.closest('td')?.textContent).toBe(lastSeenText);

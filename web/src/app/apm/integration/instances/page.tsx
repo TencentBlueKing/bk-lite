@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { EditOutlined, SearchOutlined } from '@ant-design/icons';
+import { SearchOutlined } from '@ant-design/icons';
 import { Alert, Button, Input, message, Radio, Select, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
@@ -193,12 +193,13 @@ export default function ApmIntegrationInstancesPage() {
     {
       title: '操作',
       key: 'action',
-      width: '6%',
+      width: 112,
       align: 'right',
+      fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/instances">
           {!item.archived_at ? (
-            <Button type="link" size="small" icon={<EditOutlined aria-hidden="true" />} onClick={() => setOrganizationInstance(item)}>调整组织</Button>
+            <Button className="!px-0" type="link" size="small" onClick={() => setOrganizationInstance(item)}>调整组织</Button>
           ) : <Typography.Text type="secondary" className="!text-xs">只读</Typography.Text>}
         </Permission>
       ),

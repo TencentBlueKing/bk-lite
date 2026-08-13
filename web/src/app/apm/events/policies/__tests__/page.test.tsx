@@ -107,8 +107,7 @@ afterEach(() => {
 });
 
 describe('APM 告警策略列表', () => {
-  it('与应用管理统一工具栏、分页和操作入口', async () => {
-    const user = userEvent.setup();
+  it('与应用管理统一工具栏、分页和可见操作入口', async () => {
     render(
       <IntlProvider locale="zh" messages={tableMessages}>
         <ApmPoliciesPage />
@@ -131,18 +130,15 @@ describe('APM 告警策略列表', () => {
 
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
-    expect(columnWidths).toEqual(['38%', '12%', '16%', '16%', '8%', '72px']);
+    expect(columnWidths).toEqual(['38%', '12%', '16%', '16%', '8%', '120px']);
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '启用状态' })).textAlign).toBe('center');
-    expect(getComputedStyle(screen.getByRole('columnheader', { name: '操作' })).textAlign).toBe('right');
-    const moreActionsButton = screen.getByRole('button', { name: '结账接口 P95 过慢更多操作' });
-    expect(moreActionsButton).not.toBeNull();
-    expect(screen.queryByRole('button', { name: '编辑' })).toBeNull();
-    expect(screen.queryByRole('button', { name: '删除' })).toBeNull();
+    const actionHeader = screen.getByRole('columnheader', { name: '操作' });
+    expect(getComputedStyle(actionHeader).textAlign).toBe('right');
+    expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
+    expect(screen.getByRole('button', { name: '编辑' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '删除' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /更多操作/ })).toBeNull();
     expect(screen.getByText('共 1 条')).not.toBeNull();
-
-    await user.click(moreActionsButton);
-    expect(await screen.findByRole('menuitem', { name: '编辑' })).not.toBeNull();
-    expect(screen.getByRole('menuitem', { name: '删除' })).not.toBeNull();
   });
 
   it('通过弹窗新建策略而不是跳转独立页面', async () => {

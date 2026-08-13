@@ -347,6 +347,7 @@ export default function ApmEventsPage() {
       key: 'action',
       width: 90,
       align: 'right',
+      fixed: 'right',
       render: (_, event) => (
         <Button
           type="link"
@@ -463,6 +464,7 @@ export default function ApmEventsPage() {
               rowKey="event_id"
               columns={columns}
               dataSource={pageAlerts}
+              headerAlignment="column"
               loading={state === 'loading'}
               pagination={{
                 current: page,

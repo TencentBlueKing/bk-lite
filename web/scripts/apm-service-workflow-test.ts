@@ -60,7 +60,7 @@ assert.doesNotMatch(topologyPage, /设计预览|Storybook 示例数据/, '已有
 assert.match(sloPage, /title=\{editingId \? '编辑 SLO' : '新建 SLO'\}/, 'SLO 必须支持新建和编辑');
 assert.match(sloPage, /onFinish=\{submit\}/, 'SLO 保存必须通过 Ant Design Form 校验后提交');
 assert.match(sloPage, /Popconfirm/, 'SLO 删除必须二次确认');
-assert.match(sloPage, /错误预算剩余/, 'SLO 列表必须展示错误预算');
+assert.match(sloPage, /hint="剩余" label="错误预算"/, 'SLO 列表必须展示错误预算');
 assert.match(sloPage, /getSlos/, 'SLO 列表必须来自服务端');
 assert.match(sloPage, /createSlo/, 'SLO 新建必须写入服务端');
 assert.match(sloPage, /updateSlo/, 'SLO 编辑必须写入服务端');

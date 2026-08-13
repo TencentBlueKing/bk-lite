@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import {
   Alert,
@@ -11,6 +11,7 @@ import {
   InputNumber,
   message,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Switch,
@@ -36,8 +37,6 @@ import type {
 } from '@/app/apm/types';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import FilterToolbar from '@/components/filter-toolbar';
-import MoreActionsDropdown from '@/components/more-actions-dropdown';
-import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 
 type PageState = CatalogStateKind | 'ready';
 type ChannelState = 'loading' | 'ready' | 'empty' | 'error';
@@ -225,30 +224,6 @@ export default function ApmPoliciesPage() {
     }
   };
 
-  const actionMenuItems = (policy: ApmPolicy): MoreActionsDropdownItem[] => [
-    {
-      key: 'edit',
-      icon: <EditOutlined aria-hidden="true" />,
-      label: '编辑',
-      disabled: mutatingId !== null,
-      onClick: () => openEdit(policy),
-    },
-    {
-      key: 'delete',
-      icon: <DeleteOutlined aria-hidden="true" />,
-      label: '删除',
-      danger: true,
-      disabled: mutatingId !== null,
-      confirm: {
-        title: '删除策略',
-        content: '删除后不再评估该策略，确认继续？',
-        okText: '删除',
-        cancelText: '取消',
-      },
-      onClick: () => removePolicy(policy),
-    },
-  ];
-
   const columns: TableColumnsType<ApmPolicy> = [
     {
       title: '策略名称',
@@ -306,13 +281,33 @@ export default function ApmPoliciesPage() {
     {
       title: '操作',
       key: 'action',
-      width: 72,
+      width: 120,
       align: 'right',
+      fixed: 'right',
       render: (_, policy) => (
-        <MoreActionsDropdown
-          ariaLabel={`${policy.name}更多操作`}
-          items={actionMenuItems(policy)}
-        />
+        <Space className="w-full justify-end whitespace-nowrap" size={8}>
+          <Button
+            className="!px-0"
+            disabled={mutatingId !== null}
+            size="small"
+            type="link"
+            onClick={() => openEdit(policy)}
+          >
+            编辑
+          </Button>
+          <Popconfirm
+            cancelText="取消"
+            description="删除后不再评估该策略，且无法恢复。"
+            okButtonProps={{ danger: true, loading: mutatingId === policy.id }}
+            okText="删除"
+            title="确认删除这个策略？"
+            onConfirm={() => removePolicy(policy)}
+          >
+            <Button className="!px-0" danger disabled={mutatingId !== null} size="small" type="link">
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];

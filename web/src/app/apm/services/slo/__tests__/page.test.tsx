@@ -74,10 +74,13 @@ describe('APM SLO 列表布局', () => {
 
     const currentHeader = screen.getByRole('columnheader', { name: /当前表现.*达标率/ });
     const enabledHeader = screen.getByRole('columnheader', { name: /启用.*状态/ });
-    const actionHeader = screen.getByRole('columnheader', { name: /操作.*编辑 · 删除/ });
+    const actionHeader = screen.getByRole('columnheader', { name: '操作' });
     expect(getComputedStyle(currentHeader).textAlign).toBe('right');
     expect(getComputedStyle(enabledHeader).textAlign).toBe('center');
     expect(getComputedStyle(actionHeader).textAlign).toBe('right');
+    expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
+    expect(screen.getByRole('button', { name: '编辑' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '删除' })).not.toBeNull();
     expect(getComputedStyle(screen.getByText('78.74%').closest('td')!)).toMatchObject({
       textAlign: 'right',
     });
