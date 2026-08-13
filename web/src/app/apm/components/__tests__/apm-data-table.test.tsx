@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { Space } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -59,12 +60,13 @@ describe('ApmDataTable', () => {
     expect(document.querySelector('.ant-select-selection-item')?.textContent).toContain('20');
   });
 
-  it('表头统一左对齐，同时保留数值正文右对齐', () => {
+  it('统一覆盖存量数值列和状态列的对齐配置', () => {
     render(
       <ApmDataTable<Row>
         columns={[
           { title: '名称', dataIndex: 'name' },
           { title: '服务数', dataIndex: 'count', align: 'right' },
+          { title: '状态', key: 'status', align: 'center', render: () => '正常' },
         ]}
         dataSource={[{ id: 1, name: 'checkout', count: 3 }]}
         pagination={false}
@@ -73,16 +75,22 @@ describe('ApmDataTable', () => {
     );
 
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '服务数' })).textAlign).toBe('left');
-    expect(getComputedStyle(screen.getByText('3').closest('td')! as HTMLElement).textAlign).toBe('right');
+    expect(getComputedStyle(screen.getByText('3').closest('td')! as HTMLElement).textAlign).toBe('left');
+    expect(getComputedStyle(screen.getByText('正常').closest('td')! as HTMLElement).textAlign).toBe('left');
   });
 
-  it('指标表可让表头跟随列语义对齐', () => {
+  it('兼容存量表头参数并递归统一分组列左对齐', () => {
     render(
       <ApmDataTable<Row>
         columns={[
           { title: '名称', dataIndex: 'name' },
-          { title: '当前达标率', dataIndex: 'count', align: 'right' },
-          { title: '启用状态', key: 'enabled', align: 'center', render: () => '启用' },
+          {
+            title: '指标',
+            children: [
+              { title: '当前达标率', dataIndex: 'count', align: 'right' },
+              { title: '启用状态', key: 'enabled', align: 'center', render: () => '启用' },
+            ],
+          },
         ]}
         dataSource={[{ id: 1, name: 'checkout', count: 99.9 }]}
         headerAlignment="column"
@@ -93,9 +101,37 @@ describe('ApmDataTable', () => {
 
     expect(
       getComputedStyle(screen.getByRole('columnheader', { name: '当前达标率' })).textAlign,
-    ).toBe('right');
+    ).toBe('left');
     expect(
       getComputedStyle(screen.getByRole('columnheader', { name: '启用状态' })).textAlign,
-    ).toBe('center');
+    ).toBe('left');
+    expect(getComputedStyle(screen.getByText('99.9').closest('td')! as HTMLElement).textAlign).toBe('left');
+  });
+
+  it('将操作列和纵向复合内容所在单元格一并归左', () => {
+    render(
+      <ApmDataTable<Row>
+        columns={[
+          {
+            title: <span className="flex items-end text-right">名称</span>,
+            dataIndex: 'name',
+            render: (value) => <Space direction="vertical" className="!items-end"><span>{value}</span></Space>,
+          },
+          {
+            title: '操作',
+            key: 'action',
+            align: 'right',
+            render: () => <Space className="w-full justify-end"><span>编辑</span></Space>,
+          },
+        ]}
+        dataSource={[{ id: 1, name: 'checkout' }]}
+        pagination={false}
+        rowKey="id"
+      />,
+    );
+
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '名称' })).textAlign).toBe('left');
+    expect(getComputedStyle(screen.getByText('checkout').closest('td')! as HTMLElement).textAlign).toBe('left');
+    expect(getComputedStyle(screen.getByText('编辑').closest('td')! as HTMLElement).textAlign).toBe('left');
   });
 });

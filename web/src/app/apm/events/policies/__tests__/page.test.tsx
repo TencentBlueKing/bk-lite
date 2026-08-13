@@ -131,9 +131,9 @@ describe('APM 告警策略列表', () => {
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
     expect(columnWidths).toEqual(['38%', '12%', '16%', '16%', '8%', '120px']);
-    expect(getComputedStyle(screen.getByRole('columnheader', { name: '启用状态' })).textAlign).toBe('center');
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '启用状态' })).textAlign).toBe('left');
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });
-    expect(getComputedStyle(actionHeader).textAlign).toBe('right');
+    expect(getComputedStyle(actionHeader).textAlign).toBe('left');
     expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
     expect(screen.getByRole('button', { name: '编辑' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '删除' })).not.toBeNull();

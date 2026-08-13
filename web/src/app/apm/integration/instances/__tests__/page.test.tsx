@@ -141,9 +141,9 @@ describe('APM 接入实例目录', () => {
     ]);
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '首次接入' })).textAlign).toBe('left');
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '最近上报' })).textAlign).toBe('left');
-    expect(getComputedStyle(screen.getByRole('columnheader', { name: '实例状态' })).textAlign).toBe('center');
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '实例状态' })).textAlign).toBe('left');
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });
-    expect(getComputedStyle(actionHeader).textAlign).toBe('right');
+    expect(getComputedStyle(actionHeader).textAlign).toBe('left');
     expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
     const lastSeenText = dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm');
     const lastSeen = screen.getByText(lastSeenText);

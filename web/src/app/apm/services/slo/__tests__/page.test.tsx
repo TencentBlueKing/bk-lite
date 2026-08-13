@@ -66,7 +66,7 @@ afterEach(() => {
 });
 
 describe('APM SLO 列表布局', () => {
-  it('按列语义对齐表头与正文，并保留自适应主信息列', async () => {
+  it('统一左对齐表头与正文，并保留自适应主信息列', async () => {
     const { container } = render(<ApmSloPage />);
 
     expect(await screen.findByText('结算接口 500ms 时延目标')).not.toBeNull();
@@ -75,14 +75,14 @@ describe('APM SLO 列表布局', () => {
     const currentHeader = screen.getByRole('columnheader', { name: /当前表现.*达标率/ });
     const enabledHeader = screen.getByRole('columnheader', { name: /启用.*状态/ });
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });
-    expect(getComputedStyle(currentHeader).textAlign).toBe('right');
-    expect(getComputedStyle(enabledHeader).textAlign).toBe('center');
-    expect(getComputedStyle(actionHeader).textAlign).toBe('right');
+    expect(getComputedStyle(currentHeader).textAlign).toBe('left');
+    expect(getComputedStyle(enabledHeader).textAlign).toBe('left');
+    expect(getComputedStyle(actionHeader).textAlign).toBe('left');
     expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
     expect(screen.getByRole('button', { name: '编辑' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '删除' })).not.toBeNull();
     expect(getComputedStyle(screen.getByText('78.74%').closest('td')!)).toMatchObject({
-      textAlign: 'right',
+      textAlign: 'left',
     });
 
     const explicitColumnWidths = Array.from(container.querySelectorAll('col'))

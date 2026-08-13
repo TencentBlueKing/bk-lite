@@ -29,7 +29,23 @@
 .table :global(.ant-table-tbody > tr > td) {
   padding: 14px 16px;
   line-height: 1.5;
+  text-align: left;
   vertical-align: middle;
+}
+
+.table :global(.ant-table-tbody > tr > td > .ant-space) {
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+
+.table :global(.ant-table-tbody > tr > td > .ant-space-vertical) {
+  align-items: flex-start !important;
+}
+
+.table :global(.ant-table-thead > tr > th > .flex),
+.table :global(.ant-table-thead .ant-table-column-title > .flex) {
+  align-items: flex-start !important;
+  text-align: left !important;
 }
 
 .table :global(.ant-table-tbody > tr.ant-table-row:hover > td),
