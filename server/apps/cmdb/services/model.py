@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 from dataclasses import asdict
+from hashlib import sha256
 from typing import Any, Callable
 
 from django.core.cache import cache
@@ -73,9 +74,80 @@ PROTECTED_MODEL_ATTR_IDS = frozenset({ORGANIZATION})
 MODEL_ATTR_OPTION_CACHE_TTL = int(os.getenv("CMDB_MODEL_ATTR_OPTION_CACHE_TTL", "300"))
 MODEL_ATTR_ORGANIZATION_OPTION_CACHE_KEY = "cmdb:model_attr_options:organization"
 MODEL_ATTR_USER_OPTION_CACHE_KEY = "cmdb:model_attr_options:user"
+ENUM_DISPLAY_BACKFILL_CHECKPOINT_TTL = 24 * 60 * 60
 
 
 class ModelManage(object):
+    @staticmethod
+    def _enum_display_backfill_checkpoint(model_id: str, attr_id: str, new_options: list) -> tuple[str, str]:
+        options_digest = sha256(
+            json.dumps(new_options, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return f"cmdb:enum-display-backfill:{model_id}:{attr_id}", options_digest
+
+    @staticmethod
+    def _get_enum_display_backfill_checkpoint(checkpoint_key: str, options_digest: str) -> tuple[int | None, bool]:
+        try:
+            checkpoint = cache.get(checkpoint_key)
+            if not isinstance(checkpoint, dict):
+                return None, True
+            if checkpoint.get("options_digest") != options_digest:
+                cache.delete(checkpoint_key)
+                return None, True
+            return int(checkpoint["cursor"]), True
+        except Exception as e:
+            logger.warning(
+                "[update_enum_instances_display] 读取回填断点失败，将从头幂等执行: error_type=%s, error=%s",
+                type(e).__name__,
+                e,
+            )
+            return None, False
+
+    @staticmethod
+    def _save_enum_display_backfill_checkpoint(checkpoint_key: str, options_digest: str, cursor: int) -> bool:
+        try:
+            cache.set(
+                checkpoint_key,
+                {"options_digest": options_digest, "cursor": cursor},
+                timeout=ENUM_DISPLAY_BACKFILL_CHECKPOINT_TTL,
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "[update_enum_instances_display] 保存回填断点失败，后续重试将从头幂等执行: cursor=%s, error_type=%s, error=%s",
+                cursor,
+                type(e).__name__,
+                e,
+            )
+            return False
+
+    @staticmethod
+    def _clear_enum_display_backfill_checkpoint(checkpoint_key: str) -> None:
+        try:
+            cache.delete(checkpoint_key)
+        except Exception as e:
+            logger.warning(
+                "[update_enum_instances_display] 清理回填断点失败，后续会幂等续扫: error_type=%s, error=%s",
+                type(e).__name__,
+                e,
+            )
+
+    @staticmethod
+    def _write_enum_display_batch(ag, display_field_id: str, property_values: list[dict]) -> int:
+        for attempt in range(2):
+            try:
+                written = ag.batch_update_node_property_values(INSTANCE, display_field_id, property_values)
+                return len(written)
+            except Exception as e:
+                if attempt:
+                    raise
+                logger.warning(
+                    "[update_enum_instances_display] 图写失败，将从当前成功游标重试一次: error_type=%s, error=%s",
+                    type(e).__name__,
+                    e,
+                )
+        return 0
+
     @staticmethod
     def _clone_options(option: list[dict]) -> list[dict]:
         return [dict(item) for item in option]
@@ -1123,19 +1195,25 @@ class ModelManage(object):
 
         updated_count = 0
         display_field_id = f"{attr_id}_display"
+        checkpoint_key, options_digest = ModelManage._enum_display_backfill_checkpoint(model_id, attr_id, new_options)
 
         try:
             with GraphClient() as ag:
-                last_instance_id = None
+                scan_cursor, checkpoint_available = ModelManage._get_enum_display_backfill_checkpoint(
+                    checkpoint_key,
+                    options_digest,
+                )
+                if not checkpoint_available:
+                    raise RuntimeError("枚举显示字段回填断点不可用，已安全跳过本轮图写")
                 property_values = []
                 while True:
                     query_params = [{"field": "model_id", "type": "str=", "value": model_id}]
-                    if last_instance_id is not None:
+                    if scan_cursor is not None:
                         query_params.append(
                             {
                                 "field": "id",
                                 "type": "id>",
-                                "value": last_instance_id,
+                                "value": scan_cursor,
                             }
                         )
                     instances, _ = ag.query_entity(
@@ -1145,7 +1223,25 @@ class ModelManage(object):
                         include_count=False,
                     )
                     if not instances:
+                        if property_values:
+                            updated_count += ModelManage._write_enum_display_batch(
+                                ag,
+                                display_field_id,
+                                property_values,
+                            )
+                            checkpoint_available = ModelManage._save_enum_display_backfill_checkpoint(
+                                checkpoint_key,
+                                options_digest,
+                                property_values[-1]["id"],
+                            ) and checkpoint_available
+                        ModelManage._clear_enum_display_backfill_checkpoint(checkpoint_key)
                         break
+
+                    next_instance_id = int(instances[-1]["_id"])
+                    if scan_cursor is not None and next_instance_id <= scan_cursor:
+                        raise RuntimeError(
+                            f"枚举显示字段回填游标未推进: cursor={scan_cursor}, next_cursor={next_instance_id}"
+                        )
 
                     for instance in instances:
                         if attr_id not in instance or not instance[attr_id]:
@@ -1157,21 +1253,32 @@ class ModelManage(object):
                             }
                         )
                         if len(property_values) == MAX_BATCH_UPDATE_PROPERTY_VALUES:
-                            ag.batch_update_node_property_values(
-                                INSTANCE,
+                            updated_count += ModelManage._write_enum_display_batch(
+                                ag,
                                 display_field_id,
                                 property_values,
                             )
-                            updated_count += len(property_values)
+                            checkpoint_available = ModelManage._save_enum_display_backfill_checkpoint(
+                                checkpoint_key,
+                                options_digest,
+                                property_values[-1]["id"],
+                            ) and checkpoint_available
                             property_values = []
 
-                    if len(instances) < MAX_BATCH_UPDATE_PROPERTY_VALUES:
-                        break
-                    last_instance_id = instances[-1]["_id"]
+                    scan_cursor = next_instance_id
+                    if not property_values:
+                        checkpoint_available = ModelManage._save_enum_display_backfill_checkpoint(
+                            checkpoint_key,
+                            options_digest,
+                            scan_cursor,
+                        ) and checkpoint_available
 
-                if property_values:
-                    ag.batch_update_node_property_values(INSTANCE, display_field_id, property_values)
-                    updated_count += len(property_values)
+                if not checkpoint_available:
+                    logger.warning(
+                        "[update_enum_instances_display] 断点写入不可用，本轮写入保持幂等，后续请求将从头执行: 模型=%s, 字段=%s",
+                        model_id,
+                        attr_id,
+                    )
 
                 if updated_count > 0:
                     logger.info(
