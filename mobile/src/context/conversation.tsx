@@ -40,6 +40,8 @@ type RenderMarkdownFn = (text: string) => React.ReactNode;
  */
 class ConversationManager {
     private readonly STREAM_TEXT_FLUSH_INTERVAL_MS = 16;
+    private messageIdSequence = 0;
+    private scopeGeneration = 0;
     private sessions: Map<string, SessionState> = new Map();
     private streamControllers: Map<string, StreamController> = new Map();
     private listeners: Set<() => void> = new Set();
@@ -320,6 +322,7 @@ class ConversationManager {
      * 清理当前账号的全部会话状态，用于登出、401 与账号切换。
      */
     clearAll(): void {
+        this.scopeGeneration++;
         this.streamControllers.forEach((controller) => controller.abort());
         this.streamControllers.clear();
         this.sessions.clear();
@@ -387,13 +390,15 @@ class ConversationManager {
     ): Promise<void> {
         // 初始化会话
         this.initSession(sessionId);
+        const responseScopeGeneration = this.scopeGeneration;
 
         // 先结束旧流，再标记新流运行，避免旧流取消状态覆盖同会话的新请求。
         this.abortStream(sessionId);
 
         const userMessageTimestamp = Date.now();
-        const userMsgId = `user-${userMessageTimestamp}`;
-        const aiMsgId = `ai-${userMessageTimestamp}`;
+        const messageIdSuffix = `${userMessageTimestamp}-${this.messageIdSequence++}`;
+        const userMsgId = `user-${messageIdSuffix}`;
+        const aiMsgId = `ai-${messageIdSuffix}`;
 
         // 添加用户消息和 AI loading 消息
         this.setAIRunning(sessionId, true);
@@ -451,6 +456,7 @@ class ConversationManager {
                 renderMarkdown,
                 errorMessage,
                 abortController.signal,
+                responseScopeGeneration,
             );
         } finally {
             // 仅允许当前流收尾，避免旧流结束时覆盖同一会话的新请求状态。
@@ -473,6 +479,7 @@ class ConversationManager {
         renderMarkdown: RenderMarkdownFn,
         errorMessage: string,
         signal: AbortSignal,
+        responseScopeGeneration: number,
     ): Promise<void> {
         let thinkingAccumulated = '';
         let currentTextSegmentIndex = 0;
@@ -554,6 +561,10 @@ class ConversationManager {
         };
 
         const preserveCancelledText = (): void => {
+            // 登出、401 或账号切换已清空原作用域时，旧流不得写回同 ID 的新会话。
+            if (responseScopeGeneration !== this.scopeGeneration) {
+                return;
+            }
             preservePartialText();
             this.updateMessages(sessionId, (prev) =>
                 prev.map((msg) =>
