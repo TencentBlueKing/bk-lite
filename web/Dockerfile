@@ -22,10 +22,13 @@ RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
 RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
 RUN pnpm config set store-dir /pnpm/store
 
-# 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 pnpm 源
+# 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 pnpm 源。
+# pnpm 11 会校验 lockfile tarball 主机与当前 registry 是否一致；CI 用 Nexus、
+# 本地常用 npmmirror，必须信任已提交 lockfile，integrity 仍会校验。
 RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
   echo "Setting pnpm registry to: $NEXUS_NODEJS_REPOSITY"; \
   pnpm config set registry "$NEXUS_NODEJS_REPOSITY"; \
+  pnpm config set trust-lockfile true; \
   else \
   echo "Using default pnpm registry"; \
   fi
