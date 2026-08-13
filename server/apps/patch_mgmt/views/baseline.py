@@ -22,6 +22,8 @@ from apps.patch_mgmt.models import (
     PatchTarget,
 )
 from apps.patch_mgmt.serializers.baseline import (
+    BaselineComplianceDetailsQuerySerializer,
+    BaselineComplianceObjectsQuerySerializer,
     BaselineRequirementSerializer,
     HostBaselineBindingSerializer,
     PatchBaselineDetailSerializer,
@@ -243,6 +245,46 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
             context=self.get_serializer_context(),
         )
         return Response(serializer.data)
+
+    @action(detail=True, methods=["get"])
+    @HasPermission("patch_baseline-View")
+    def compliance_matrix_objects(self, request, pk=None):
+        """返回当前视角的合规矩阵对象全集。"""
+        from apps.patch_mgmt.services.baseline_compliance_detail import (
+            build_baseline_compliance_objects,
+        )
+
+        query_serializer = BaselineComplianceObjectsQuerySerializer(
+            data=request.query_params
+        )
+        query_serializer.is_valid(raise_exception=True)
+        return Response(
+            build_baseline_compliance_objects(
+                request,
+                self.get_object(),
+                query_serializer.validated_data,
+            )
+        )
+
+    @action(detail=True, methods=["get"], filter_backends=[])
+    @HasPermission("patch_baseline-View")
+    def compliance_matrix_details(self, request, pk=None):
+        """返回当前视角下一个选中对象的分页合规明细。"""
+        from apps.patch_mgmt.services.baseline_compliance_detail import (
+            build_baseline_compliance_details,
+        )
+
+        query_serializer = BaselineComplianceDetailsQuerySerializer(
+            data=request.query_params
+        )
+        query_serializer.is_valid(raise_exception=True)
+        return Response(
+            build_baseline_compliance_details(
+                request,
+                self.get_object(),
+                query_serializer.validated_data,
+            )
+        )
 
     @action(detail=True, methods=["post"])
     @HasPermission("patch_governance-Add")
