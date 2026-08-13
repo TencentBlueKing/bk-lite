@@ -47,9 +47,22 @@ const DASHBOARD_GRID_COLS = 12;
 const DASHBOARD_GRID_ROW_HEIGHT = 60;
 const DASHBOARD_GRID_MARGIN: [number, number] = [4, 4];
 const DASHBOARD_GRID_CONTAINER_PADDING: [number, number] = [6, 2];
+const DASHBOARD_WIDGET_RESIZE_HANDLES = 'se,sw,ne,nw';
 
 const acceptOnlyWidgetNodes = (element: Element) =>
   element instanceof HTMLElement && element.dataset.nodeKind === 'widget';
+
+const getDashboardGridInteractionOptions = (editable: boolean) => ({
+  acceptWidgets: editable ? acceptOnlyWidgetNodes : false,
+  disableDrag: !editable,
+  disableResize: !editable,
+  draggable: {
+    cancel: '.no-drag, .widget-body',
+  },
+  resizable: {
+    handles: DASHBOARD_WIDGET_RESIZE_HANDLES,
+  },
+});
 
 interface DashboardCanvasProps {
   loading: boolean;
@@ -652,12 +665,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           margin: DASHBOARD_GRID_MARGIN[0],
           float: false,
           animate: false,
-          acceptWidgets: isEditMode ? acceptOnlyWidgetNodes : false,
-          disableDrag: !isEditMode,
-          disableResize: !isEditMode,
-          draggable: {
-            cancel: '.no-drag, .widget-body',
-          },
+          ...getDashboardGridInteractionOptions(isEditMode),
         },
         gridRootRef.current,
       );
@@ -727,12 +735,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
             margin: DASHBOARD_GRID_MARGIN[0],
             float: false,
             animate: false,
-            acceptWidgets: isEditMode ? acceptOnlyWidgetNodes : false,
-            disableDrag: !isEditMode,
-            disableResize: !isEditMode,
-            draggable: {
-              cancel: '.no-drag, .widget-body',
-            },
+            ...getDashboardGridInteractionOptions(isEditMode),
           },
           subGridRoot,
         );
@@ -812,20 +815,12 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       return;
     }
 
-    rootGrid.updateOptions({
-      acceptWidgets: isEditMode ? acceptOnlyWidgetNodes : false,
-      disableDrag: !isEditMode,
-      disableResize: !isEditMode,
-    });
+    rootGrid.updateOptions(getDashboardGridInteractionOptions(isEditMode));
     rootGrid.enableMove(isEditMode);
     rootGrid.enableResize(isEditMode);
 
     subGridRefs.current.forEach((subGrid) => {
-      subGrid.updateOptions({
-        acceptWidgets: isEditMode ? acceptOnlyWidgetNodes : false,
-        disableDrag: !isEditMode,
-        disableResize: !isEditMode,
-      });
+      subGrid.updateOptions(getDashboardGridInteractionOptions(isEditMode));
       subGrid.enableMove(isEditMode);
       subGrid.enableResize(isEditMode);
     });
@@ -989,13 +984,31 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           box-sizing: border-box;
           background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiMwMDAwMDAiLz48L2c+PC9zdmc+');
           background-position: bottom right;
-          transform: rotate(0);
-          padding: 0 3px 3px 0;
+          padding: 3px;
         }
 
         .grid-stack-item > .ui-resizable-se {
           right: calc(var(--gs-item-margin-right) + 2px);
           bottom: calc(var(--gs-item-margin-bottom));
+          transform: rotate(0deg);
+        }
+
+        .grid-stack-item > .ui-resizable-sw {
+          left: calc(var(--gs-item-margin-left) + 2px);
+          bottom: calc(var(--gs-item-margin-bottom));
+          transform: rotate(90deg);
+        }
+
+        .grid-stack-item > .ui-resizable-nw {
+          left: calc(var(--gs-item-margin-left) + 2px);
+          top: calc(var(--gs-item-margin-top));
+          transform: rotate(180deg);
+        }
+
+        .grid-stack-item > .ui-resizable-ne {
+          right: calc(var(--gs-item-margin-right) + 2px);
+          top: calc(var(--gs-item-margin-top));
+          transform: rotate(270deg);
         }
 
         .grid-stack-item[data-node-kind='group'] > .ui-resizable-handle {
@@ -1008,12 +1021,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         }
 
         .grid-stack-item > .ui-resizable-n,
-        .grid-stack-item > .ui-resizable-ne,
         .grid-stack-item > .ui-resizable-e,
         .grid-stack-item > .ui-resizable-s,
-        .grid-stack-item > .ui-resizable-sw,
-        .grid-stack-item > .ui-resizable-w,
-        .grid-stack-item > .ui-resizable-nw {
+        .grid-stack-item > .ui-resizable-w {
           display: none !important;
         }
       `}</style>

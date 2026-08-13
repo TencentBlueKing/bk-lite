@@ -1,8 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { Node, Graph as X6Graph } from '@antv/x6';
 import { v4 as uuidv4 } from 'uuid';
 import { buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
-import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
+import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from '@/app/ops-analysis/api/dataSource';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   FilterValue,
@@ -30,6 +30,13 @@ import {
   adjustSingleValueNodeSize,
   formatDisplayValue,
 } from '../utils/topologyUtils';
+import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
+import {
+  clearSingleValueFetchError,
+  resetSingleValueFetchErrorVisual,
+  showSingleValueFetchError,
+  SINGLE_VALUE_ERROR_PLACEHOLDER,
+} from '../utils/singleValueNodeError';
 import { useGraphData } from './useGraphData';
 import type { useTopologyState } from './useTopologyState';
 
@@ -99,6 +106,10 @@ export const useGraphNodeOperations = ({
 }: UseGraphNodeOperationsParams) => {
   const { t } = useTranslation();
   const { getSourceDataByApiId } = useDataSourceApi();
+  const getRuntimeSourceDataByApiId = useMemo(
+    () => withRuntimeSourceDataErrorSuppression(getSourceDataByApiId),
+    [getSourceDataByApiId],
+  );
 
   const startLoadingAnimation = useCallback((node: Node) => {
     const loadingStates = ['○ ○ ○', '● ○ ○', '○ ● ○', '○ ○ ●', '○ ○ ○'];
@@ -145,9 +156,16 @@ export const useGraphNodeOperations = ({
       }
 
       node.setData(
-        { ...node.getData(), isLoading: true, hasError: false },
+        {
+          ...node.getData(),
+          isLoading: true,
+          hasError: false,
+          errorMessage: undefined,
+          fetchError: false,
+        },
         { overwrite: true },
       );
+      resetSingleValueFetchErrorVisual(node as Node);
       if (node.isNode()) {
         startLoadingAnimation(node as Node);
       }
@@ -163,7 +181,7 @@ export const useGraphNodeOperations = ({
 
         const compareResult = await fetchCompareData({
           dataSourceId: Number(valueConfig.dataSource),
-          getSourceDataByApiId,
+          getSourceDataByApiId: getRuntimeSourceDataByApiId,
           config: valueConfig,
           dataSource: { params: valueConfig.dataSourceParams || [] },
           extraParams:
@@ -262,29 +280,57 @@ export const useGraphNodeOperations = ({
           textColor = valueMapping.color;
         }
 
+        clearSingleValueFetchError(node as Node);
         node.setData(
-          { ...node.getData(), isLoading: false, hasError: false },
+          {
+            ...node.getData(),
+            isLoading: false,
+            hasError: false,
+            fetchError: false,
+            errorMessage: undefined,
+          },
           { overwrite: true },
         );
         node.setAttrByPath('label/text', nodeText);
         node.setAttrByPath('label/fill', textColor);
 
         if (node.isNode()) {
-          adjustSingleValueNodeSize(node, nodeText);
+          adjustSingleValueNodeSize(node as Node, nodeText);
         }
       } catch (error) {
         console.error('更新单值节点数据失败:', error);
-        node.setData(
-          { ...node.getData(), isLoading: false, hasError: true },
-          { overwrite: true },
+        const noDataLabel = t('topology.noData');
+        if (error instanceof Error && error.message === noDataLabel) {
+          node.setData(
+            {
+              ...node.getData(),
+              isLoading: false,
+              hasError: true,
+              fetchError: false,
+              errorMessage: undefined,
+            },
+            { overwrite: true },
+          );
+          node.setAttrByPath('label/text', SINGLE_VALUE_ERROR_PLACEHOLDER);
+          node.setAttrByPath('label/display', 'block');
+          node.setAttrByPath('errorIcon/display', 'none');
+          if (node.isNode()) {
+            adjustSingleValueNodeSize(node as Node, SINGLE_VALUE_ERROR_PLACEHOLDER);
+          }
+          return;
+        }
+
+        const errorMessage = getRequestErrorMessage(
+          error,
+          t('dashboard.dataFetchFailed'),
         );
-        node.setAttrByPath('label/text', '--');
+        showSingleValueFetchError(node as Node, errorMessage);
         if (node.isNode()) {
-          adjustSingleValueNodeSize(node, '--');
+          adjustSingleValueNodeSize(node as Node, SINGLE_VALUE_ERROR_PLACEHOLDER);
         }
       }
     },
-    [graphInstance, getSourceDataByApiId, startLoadingAnimation, t],
+    [graphInstance, getRuntimeSourceDataByApiId, startLoadingAnimation, t],
   );
 
   const dataOperations = useGraphData(

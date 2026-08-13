@@ -786,6 +786,32 @@ def test_share_query_allows_query_list_only_for_table_widgets(settings, dashboar
 
 
 @pytest.mark.django_db
+def test_share_query_denies_query_list_for_card_list_widgets(settings, dashboard):
+    from apps.operation_analysis.services.share_service import (
+        ShareQueryParamsDenied,
+        filter_share_query_params,
+    )
+
+    dashboard.view_sets = [
+        {
+            "valueConfig": {
+                "dataSource": 7,
+                "chartType": "cardList",
+                "cardList": {"titleField": "title"},
+            }
+        }
+    ]
+    dashboard.save(update_fields=["view_sets"])
+
+    with pytest.raises(ShareQueryParamsDenied):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=7,
+            request_data={"query_list": []},
+        )
+
+
+@pytest.mark.django_db
 def test_share_query_widget_empty_only_allows_fixed_and_runtime_keys(settings, dashboard):
     """widget 无 dataSourceParams 时，不可提交 schema 非 fixed；未知键仍拒绝。"""
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel

@@ -12,6 +12,7 @@ export type ScreenWidgetChartType =
   | 'topN'
   | 'eventTable'
   | 'eventTimeline'
+  | 'cardList'
   | 'radar'
   | 'topologyMap'
   | 'room3D'

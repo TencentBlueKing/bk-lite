@@ -11,6 +11,7 @@ import NetworkStatusTopology from '@/app/ops-analysis/components/widgets/network
 import Room3D from '@/app/ops-analysis/components/widgets/room3D';
 import ComMultiValue from '@/app/ops-analysis/components/widgets/comMultiValue';
 import ComEventTimeline from '@/app/ops-analysis/components/widgets/comEventTimeline';
+import ComCardList from '@/app/ops-analysis/components/widgets/comCardList';
 import ComRadar from '@/app/ops-analysis/components/widgets/comRadar';
 import OpsAnalysisTextPanel from '@/app/ops-analysis/components/ops-analysis-widgets/text-panel';
 import TopologyMap from '@/app/ops-analysis/components/widgets/topologyMap';
@@ -25,6 +26,7 @@ export const widgetRegistry: Record<string, ComponentType<any>> = {
   gauge: ComGauge,
   eventTable: EventTable,
   eventTimeline: ComEventTimeline,
+  cardList: ComCardList,
   radar: ComRadar,
   room3D: Room3D,
   networkStatusTopology: NetworkStatusTopology,

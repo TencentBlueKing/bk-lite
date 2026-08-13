@@ -871,14 +871,6 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             ...prev,
             [node.id]: mergeNetworkTopologyRuntimeMetrics(prev[node.id] ?? [], runtimeMetrics),
           }));
-          const failedMetric = runtimeMetrics.find((metric) => metric.status === 'error');
-          if (failedMetric) {
-            message.warning(
-              failedMetric.error_message ||
-                failedMetric.error_code ||
-                t('opsAnalysis.networkTopology.node.valueNoData'),
-            );
-          }
         } catch (err) {
           const errorMetrics = metrics.map((metric, index) =>
             toRuntimeMetric(

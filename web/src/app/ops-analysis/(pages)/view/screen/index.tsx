@@ -68,6 +68,7 @@ import {
 } from "./utils/viewport";
 import ViewConfig from "@/app/ops-analysis/components/widgetConfig";
 import ViewSelector from "@/app/ops-analysis/components/widgetSelector";
+import { omitForeignChartTypeFields } from "@/app/ops-analysis/components/widgetConfig/utils/submitConfig";
 
 export interface ScreenRef {
   hasUnsavedChanges: () => boolean;
@@ -527,15 +528,18 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         ...currentConfigItem,
         chartType: nextChartType,
         title: values.name || currentConfigItem.title,
-        valueConfig: {
-          ...currentConfigItem.valueConfig,
-          ...values,
-          chartType: nextChartType,
-          appearance: resolveScreenWidgetAppearance(
-            nextChartType,
-            values.appearance,
-          ),
-        },
+        valueConfig: omitForeignChartTypeFields(
+          {
+            ...currentConfigItem.valueConfig,
+            ...values,
+            chartType: nextChartType,
+            appearance: resolveScreenWidgetAppearance(
+              nextChartType,
+              values.appearance,
+            ),
+          },
+          nextChartType,
+        ),
       };
       setDraftViewSets((current) =>
         rebuildDraftFilters(
