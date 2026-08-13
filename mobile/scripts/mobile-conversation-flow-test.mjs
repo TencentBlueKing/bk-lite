@@ -863,6 +863,11 @@ test('AI 长流只在文本段结束时渲染完整 Markdown，流式中间态�
     assert.ok(notifications <= 6, `expected batched stream updates, received ${notifications}`);
     assert.match(messageList, /part\.isStreamingText[\s\S]*whitespace-pre-wrap[\s\S]*\{part\.content\}/);
     assert.doesNotMatch(messageList, /dangerouslySetInnerHTML/);
+    const React = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const streamingHtml = renderToStaticMarkup(React.createElement('span', null, streamingPart.content));
+    assert.match(streamingHtml, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.doesNotMatch(streamingHtml, /<img/);
 
     releaseStream();
     await responsePromise;
@@ -989,9 +994,122 @@ test('主动取消 AI 流后保留已接收的部分原文供复制', { timeout:
     await responsePromise;
 
     const response = manager.getSessionState('session-copy-after-cancel')?.messages[0];
+    assert.equal(response?.status, 'interrupted');
+    assert.equal(response?.streamError, undefined);
     assert.equal(response?.contentParts?.[0]?.content, 'partial **copy**');
     assert.equal(manager.getMessageMarkdown('session-copy-after-cancel', response?.id), 'partial **copy**');
+    assert.equal(manager.isSessionRunning('session-copy-after-cancel'), false);
   } finally {
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('文本、工具和自定义组件按流事件顺序渲染', async () => {
+  const { ConversationManager } = await loadConversationManager(async function* () {
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'before' };
+    yield { type: 'TOOL_CALL_START', toolCallId: 'tool-1', toolCallName: 'inspect' };
+    yield { type: 'TOOL_CALL_ARGS', toolCallId: 'tool-1', delta: '{"id":1}' };
+    yield { type: 'TOOL_CALL_RESULT', toolCallId: 'tool-1', content: 'done' };
+    yield { type: 'CUSTOM', name: 'render_component', value: { component: 'Card', props: { id: 1 } } };
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'after' };
+    yield { type: 'TEXT_MESSAGE_END' };
+    yield { type: 'RUN_FINISHED' };
+  });
+  const manager = new ConversationManager();
+
+  try {
+    await manager.startAIResponse(
+      'session-event-order',
+      9,
+      'mobile-node',
+      'question',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+      false,
+    );
+
+    const parts = manager.getSessionState('session-event-order')?.messages[0]?.contentParts;
+    assert.deepEqual(parts?.map((part) => part.type), ['text', 'tool_call', 'component', 'text']);
+    assert.equal(parts?.[0]?.content, 'rendered:before');
+    assert.deepEqual(parts?.[1]?.toolCall, {
+      id: 'tool-1',
+      name: 'inspect',
+      args: '{"id":1}',
+      result: 'done',
+      status: 'completed',
+    });
+    assert.deepEqual(parts?.[2]?.component, { name: 'Card', props: { id: 1 } });
+    assert.equal(parts?.[3]?.content, 'rendered:after');
+  } finally {
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('同会话重连后旧 timer 和回调不会覆盖新回答', { timeout: 5000 }, async () => {
+  let markOldContentReady;
+  const oldContentReady = new Promise((resolve) => {
+    markOldContentReady = resolve;
+  });
+  const { ConversationManager } = await loadConversationManager(async function* (
+    _bot,
+    _nodeId,
+    message,
+    _sessionId,
+    options,
+  ) {
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: message };
+    if (message === 'old') {
+      markOldContentReady();
+      await new Promise((resolve) => options.signal.addEventListener('abort', resolve, { once: true }));
+      return;
+    }
+    yield { type: 'TEXT_MESSAGE_END' };
+    yield { type: 'RUN_FINISHED' };
+  });
+  const manager = new ConversationManager();
+  let notifications = 0;
+  const unsubscribe = manager.subscribe(() => {
+    notifications += 1;
+  });
+
+  try {
+    const oldResponse = manager.startAIResponse(
+      'session-reconnect',
+      9,
+      'mobile-node',
+      'old',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+      false,
+    );
+    await oldContentReady;
+    const newResponse = manager.startAIResponse(
+      'session-reconnect',
+      9,
+      'mobile-node',
+      'new',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+      false,
+    );
+    await Promise.all([oldResponse, newResponse]);
+
+    const messages = manager.getSessionState('session-reconnect')?.messages;
+    assert.equal(messages?.length, 2);
+    assert.equal(messages?.[0]?.status, 'interrupted');
+    assert.equal(messages?.[0]?.contentParts?.[0]?.content, 'old');
+    assert.equal(messages?.[1]?.status, 'ended');
+    assert.equal(messages?.[1]?.contentParts?.[0]?.content, 'rendered:new');
+    assert.equal(manager.isSessionRunning('session-reconnect'), false);
+
+    const notificationsAfterCompletion = notifications;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(notifications, notificationsAfterCompletion);
+  } finally {
+    unsubscribe();
     delete globalThis.__conversationAiChatStream;
   }
 });
