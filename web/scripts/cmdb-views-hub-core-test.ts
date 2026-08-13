@@ -9,6 +9,10 @@ import {
   resolveRackRoomMode,
 } from '../src/app/cmdb/(pages)/views/viewEligibility';
 import {
+  filterNetworkModelIdsByCatalog,
+  networkModelIdsFromInterfaceAssociations,
+} from '../src/app/cmdb/(pages)/views/networkModelDiscovery';
+import {
   buildViewsPath,
   buildViewsPathPreserving,
   buildBaseInfoPath,
@@ -17,6 +21,7 @@ import {
 import {
   getViewMemoryStorageKey,
   readViewFocus,
+  readViewFocusForMode,
   writeViewFocus,
   clearViewFocus,
   pushViewRecent,
@@ -46,6 +51,23 @@ assert.deepEqual(eligibleModelIdsForView('k8s'), ['k8s_cluster']);
 assert.deepEqual(eligibleModelIdsForView('rack-room', 'room'), ['server_room']);
 assert.equal(resolveRackRoomMode('server_room', undefined), 'room');
 assert.equal(resolveRackRoomMode('rack', 'room'), 'rack'); // model wins when inconsistent
+
+assert.deepEqual(
+  networkModelIdsFromInterfaceAssociations([
+    { asst_id: 'belong', src_model_id: 'interface', dst_model_id: 'router' },
+    { asst_id: 'belong', src_model_id: 'interface', dst_model_id: 'switch' },
+    { asst_id: 'connect', src_model_id: 'interface', dst_model_id: 'host' },
+    { asst_id: 'belong', src_model_id: 'host', dst_model_id: 'rack' },
+  ]),
+  ['router', 'switch']
+);
+assert.deepEqual(
+  filterNetworkModelIdsByCatalog(
+    ['host', 'router', 'switch', 'subnet'],
+    ['router', 'firewall', 'switch']
+  ),
+  ['router', 'switch']
+);
 
 assert.equal(
   buildViewsPath('network', { model_id: 'router', inst_id: '1' }),
@@ -94,6 +116,20 @@ assert.equal(readViewFocus(storage, 7, 'network')?.inst_id, '1'); // isolation
 clearViewFocus(storage, 7, 'network');
 assert.equal(readViewFocus(storage, 7, 'network'), null);
 assert.equal(readViewFocus(storage, 7, 'application')?.inst_id, '2');
+
+// rack-room: mode slots are independent; clearing one mode keeps the other.
+writeViewFocus(storage, 7, 'rack-room', {
+  model_id: 'server_room', inst_id: 'room-1', mode: 'room',
+});
+writeViewFocus(storage, 7, 'rack-room', {
+  model_id: 'rack', inst_id: 'rack-1', mode: 'rack',
+});
+assert.equal(readViewFocusForMode(storage, 7, 'rack-room', 'room')?.inst_id, 'room-1');
+assert.equal(readViewFocusForMode(storage, 7, 'rack-room', 'rack')?.inst_id, 'rack-1');
+assert.equal(readViewFocus(storage, 7, 'rack-room')?.inst_id, 'rack-1'); // last write
+clearViewFocus(storage, 7, 'rack-room', 'rack');
+assert.equal(readViewFocusForMode(storage, 7, 'rack-room', 'rack'), null);
+assert.equal(readViewFocusForMode(storage, 7, 'rack-room', 'room')?.inst_id, 'room-1');
 
 pushViewRecent(storage, 7, 'network', { model_id: 'router', inst_id: '1', inst_name: 'r1' });
 pushViewRecent(storage, 7, 'network', { model_id: 'router', inst_id: '2', inst_name: 'r2' });

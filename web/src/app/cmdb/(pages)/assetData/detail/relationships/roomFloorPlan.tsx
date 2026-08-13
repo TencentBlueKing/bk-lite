@@ -18,9 +18,16 @@ interface Props {
   instId: string;
   /** When set, rack click navigates via callback instead of opening the elevation Drawer. */
   onRackSelect?: (rack: RoomRack) => void;
+  /** After returning from a rack drill-down, scroll this rack into view and pulse it. */
+  highlightRackId?: string;
 }
 
-const RoomFloorPlan: React.FC<Props> = ({ modelId, instId, onRackSelect }) => {
+const RoomFloorPlan: React.FC<Props> = ({
+  modelId,
+  instId,
+  onRackSelect,
+  highlightRackId,
+}) => {
   const { t } = useTranslation();
   const { mode } = useThemeMode();
   const { getRoomLayout } = useInstanceApi();
@@ -29,6 +36,7 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId, onRackSelect }) => {
   const [rack, setRack] = useState<RoomRack | null>(null);
   const [device, setDevice] = useState<RackDevice | null>(null);
   const [devOpen, setDevOpen] = useState(false);
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const isDark = mode === 'dark';
 
   useEffect(() => {
@@ -42,6 +50,22 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId, onRackSelect }) => {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId, instId]);
+
+  useEffect(() => {
+    if (!highlightRackId || !data || loading) return;
+    const el = document.querySelector(
+      `[data-room-rack-id="${CSS.escape(highlightRackId)}"]`
+    ) as HTMLElement | null;
+    if (!el) return;
+    setActiveHighlightId(highlightRackId);
+    el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+    const timer = window.setTimeout(() => {
+      setActiveHighlightId((current) =>
+        (current === highlightRackId ? null : current)
+      );
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [highlightRackId, data, loading]);
 
   if (loading) return <div style={{ padding: 60, textAlign: 'center' }}><Spin spinning /></div>;
   if (!data) return <Empty description={t('Model.noRoomLayout')} />;
@@ -121,7 +145,10 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId, onRackSelect }) => {
             const { x, y } = cellXY(r.row, r.col);
             const c = rackTypeColor(r.datacenter_type);
             return (
-              <div key={r.inst_id} className="rf-rack"
+              <div
+                key={r.inst_id}
+                className={`rf-rack${activeHighlightId === r.inst_id ? ' rf-rack--highlight' : ''}`}
+                data-room-rack-id={r.inst_id}
                 style={{
                   left: x + GAP / 2, top: y + GAP / 2, width: box, height: box,
                   borderColor: isDark
@@ -317,6 +344,16 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId, onRackSelect }) => {
           transform: translateY(-2px);
           border-color: var(--rack-tone);
           box-shadow: ${rackHoverShadow} !important;
+        }
+        .rf-rack--highlight {
+          border-color: var(--rack-tone) !important;
+          box-shadow: ${rackHoverShadow} !important;
+          animation: rf-rack-pulse 1.6s ease-out 1;
+        }
+        @keyframes rf-rack-pulse {
+          0% { transform: scale(1); }
+          35% { transform: scale(1.04); }
+          100% { transform: scale(1); }
         }
         .rf-rack-led {
           position: absolute; top: 7px; right: 6px;

@@ -1,4 +1,4 @@
-import type { ViewFocus, ViewRecentItem, ViewType } from './viewTypes';
+import type { RackRoomMode, ViewFocus, ViewRecentItem, ViewType } from './viewTypes';
 
 const STORAGE_KEY_PREFIX = 'bk-lite:cmdb:views:v1:';
 const MAX_RECENT_ITEMS = 10;
@@ -10,6 +10,8 @@ interface StorageLike {
 
 interface StoredViewMemory {
   focus?: ViewFocus;
+  /** rack-room: last instance per mode (independent of current Segmented tab). */
+  focusByMode?: Partial<Record<RackRoomMode, ViewFocus>>;
   recent?: ViewRecentItem[];
 }
 
@@ -68,6 +70,11 @@ const normalizeRecent = (value: unknown): ViewRecentItem[] => {
 const recentItemKey = (item: ViewFocus): string =>
   `${item.model_id}:${item.inst_id}`;
 
+const normalizeModeFocus = (
+  focus: ViewFocus,
+  mode: RackRoomMode
+): ViewFocus => ({ ...focus, mode });
+
 export const readViewFocus = (
   storage: Pick<StorageLike, 'getItem'> | null,
   userId: string | number,
@@ -77,6 +84,30 @@ export const readViewFocus = (
   return focus && isValidFocus(focus) ? focus : null;
 };
 
+/**
+ * Read the last remembered focus for a rack-room mode.
+ * Falls back to top-level `focus` when it matches the requested mode.
+ */
+export const readViewFocusForMode = (
+  storage: Pick<StorageLike, 'getItem'> | null,
+  userId: string | number,
+  viewType: ViewType,
+  mode: RackRoomMode
+): ViewFocus | null => {
+  if (viewType !== 'rack-room') {
+    return readViewFocus(storage, userId, viewType);
+  }
+  const memory = readStoredMemory(storage, userId, viewType);
+  const byMode = memory.focusByMode?.[mode];
+  if (byMode && isValidFocus(byMode)) {
+    return normalizeModeFocus(byMode, mode);
+  }
+  if (memory.focus && isValidFocus(memory.focus) && memory.focus.mode === mode) {
+    return normalizeModeFocus(memory.focus, mode);
+  }
+  return null;
+};
+
 export const writeViewFocus = (
   storage: Pick<StorageLike, 'setItem' | 'getItem'> | null,
   userId: string | number,
@@ -84,17 +115,48 @@ export const writeViewFocus = (
   focus: ViewFocus
 ): boolean => {
   const memory = readStoredMemory(storage, userId, viewType);
-  return writeStoredMemory(storage, userId, viewType, { ...memory, focus });
+  const next: StoredViewMemory = { ...memory, focus };
+  if (viewType === 'rack-room' && focus.mode) {
+    next.focusByMode = {
+      ...memory.focusByMode,
+      [focus.mode]: normalizeModeFocus(focus, focus.mode),
+    };
+  }
+  return writeStoredMemory(storage, userId, viewType, next);
 };
 
+/**
+ * Clear the active focus. For rack-room:
+ * - with `mode`: clear only that mode's slot (keep the other mode)
+ * - without `mode`: clear top-level focus only, keep per-mode slots
+ */
 export const clearViewFocus = (
   storage: Pick<StorageLike, 'setItem' | 'getItem'> | null,
   userId: string | number,
-  viewType: ViewType
+  viewType: ViewType,
+  mode?: RackRoomMode
 ): boolean => {
   const memory = readStoredMemory(storage, userId, viewType);
+  if (viewType !== 'rack-room') {
+    return writeStoredMemory(storage, userId, viewType, {
+      recent: memory.recent,
+    });
+  }
+
+  if (!mode) {
+    return writeStoredMemory(storage, userId, viewType, {
+      recent: memory.recent,
+      focusByMode: memory.focusByMode,
+    });
+  }
+
+  const focusByMode = { ...memory.focusByMode };
+  delete focusByMode[mode];
+  const topMatchesMode = memory.focus?.mode === mode;
   return writeStoredMemory(storage, userId, viewType, {
     recent: memory.recent,
+    focusByMode,
+    ...(topMatchesMode || !memory.focus ? {} : { focus: memory.focus }),
   });
 };
 

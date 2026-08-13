@@ -10,8 +10,9 @@ import type { ModelItem } from '@/app/cmdb/types/assetManage';
 import type { RackRoomMode, ViewFocus, ViewType } from '../viewTypes';
 import { readViewRecent } from '../viewMemory';
 
-const SEARCH_PAGE_SIZE = 50;
+const SEARCH_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
+const SELECT_SCROLL_LOAD_OFFSET = 24;
 
 export interface ViewInstancePickerProps {
   viewType: ViewType;
@@ -46,14 +47,19 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   );
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const [instancePage, setInstancePage] = useState(1);
+  const [instanceTotal, setInstanceTotal] = useState(0);
+  const [instanceKeyword, setInstanceKeyword] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchSeqRef = useRef(0);
   // useInstanceApi() returns a new searchInstances each render — keep a ref so
   // fetch effects do not re-fire into an instance/search request storm.
   const searchInstancesRef = useRef(searchInstances);
   searchInstancesRef.current = searchInstances;
-  /** Avoid duplicate empty-keyword reloads for the same model. */
-  const loadedModelRef = useRef<string | null>(null);
+  /** Last model+keyword pair that completed a non-append page-1 load. */
+  const loadedQueryRef = useRef<string | null>(null);
 
   const modelOptions = useMemo(
     () =>
@@ -103,62 +109,105 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
     [modelList]
   );
 
-  const fetchInstances = useCallback(async (modelId: string, keyword: string) => {
-    if (!modelId) {
-      setInstanceOptions([]);
-      loadedModelRef.current = null;
-      return;
-    }
-    const seq = ++searchSeqRef.current;
-    setLoading(true);
-    try {
-      const data = await searchInstancesRef.current({
-        model_id: modelId,
-        query_list: keyword
-          ? [{ field: 'inst_name', type: 'str*', value: keyword }]
-          : [],
-        page: 1,
-        page_size: SEARCH_PAGE_SIZE,
-        order: '',
-        role: '',
-      });
-      if (seq !== searchSeqRef.current) return;
-      const insts = Array.isArray(data?.insts) ? data.insts : [];
-      setInstanceOptions(
-        insts.map((item: { _id?: string | number; inst_name?: string }) => ({
-          value: String(item._id),
-          label: item.inst_name || String(item._id),
+  const queryKey = (modelId: string, keyword: string) =>
+    `${modelId}::${keyword}`;
+
+  const fetchInstances = useCallback(
+    async ({
+      modelId,
+      keyword,
+      page,
+      append,
+    }: {
+      modelId: string;
+      keyword: string;
+      page: number;
+      append: boolean;
+    }) => {
+      if (!modelId) {
+        setInstanceOptions([]);
+        setInstancePage(1);
+        setInstanceTotal(0);
+        loadedQueryRef.current = null;
+        return;
+      }
+      const seq = ++searchSeqRef.current;
+      setLoading(true);
+      try {
+        const data = await searchInstancesRef.current({
           model_id: modelId,
-          inst_name: item.inst_name || String(item._id),
-        }))
-      );
-      if (!keyword) {
-        loadedModelRef.current = modelId;
+          query_list: keyword
+            ? [{ field: 'inst_name', type: 'str*', value: keyword }]
+            : [],
+          page,
+          page_size: SEARCH_PAGE_SIZE,
+          order: '',
+          role: '',
+          case_sensitive: false,
+        });
+        if (seq !== searchSeqRef.current) return;
+        const insts = Array.isArray(data?.insts) ? data.insts : [];
+        const nextOptions: InstanceOption[] = insts.map(
+          (item: { _id?: string | number; inst_name?: string }) => ({
+            value: String(item._id),
+            label: item.inst_name || String(item._id),
+            model_id: modelId,
+            inst_name: item.inst_name || String(item._id),
+          })
+        );
+        setInstanceOptions((prev) => {
+          if (!append) return nextOptions;
+          const seen = new Set(prev.map((item) => item.value));
+          return [
+            ...prev,
+            ...nextOptions.filter((item) => !seen.has(item.value)),
+          ];
+        });
+        setInstancePage(page);
+        setInstanceTotal((prev) =>
+          Number(data?.count)
+          || (append ? prev : nextOptions.length)
+        );
+        if (!append) {
+          loadedQueryRef.current = queryKey(modelId, keyword);
+        }
+      } catch {
+        if (seq !== searchSeqRef.current) return;
+        if (!append) {
+          setInstanceOptions([]);
+          setInstanceTotal(0);
+          loadedQueryRef.current = null;
+        }
+      } finally {
+        if (seq === searchSeqRef.current) {
+          setLoading(false);
+        }
       }
-    } catch {
-      if (seq !== searchSeqRef.current) return;
-      setInstanceOptions([]);
-      if (!keyword) {
-        loadedModelRef.current = null;
-      }
-    } finally {
-      if (seq === searchSeqRef.current) {
-        setLoading(false);
-      }
-    }
+    },
+    []
+  );
+
+  const resetInstanceList = useCallback(() => {
+    setInstanceOptions([]);
+    setInstancePage(1);
+    setInstanceTotal(0);
+    setInstanceKeyword('');
+    loadedQueryRef.current = null;
   }, []);
 
+  // Only fetch when the instance dropdown is open — avoid loading large lists
+  // just because the model changed while the user is looking at the canvas.
   useEffect(() => {
-    if (!selectedModelId) {
-      setInstanceOptions([]);
-      loadedModelRef.current = null;
-      return;
-    }
-    if (loadedModelRef.current === selectedModelId) {
-      return;
-    }
-    void fetchInstances(selectedModelId, '');
-  }, [selectedModelId, fetchInstances]);
+    if (!dropdownOpen || !selectedModelId) return;
+    const key = queryKey(selectedModelId, instanceKeyword);
+    if (loadedQueryRef.current === key) return;
+    void fetchInstances({
+      modelId: selectedModelId,
+      keyword: instanceKeyword,
+      page: 1,
+      append: false,
+    });
+  }, [dropdownOpen, selectedModelId, instanceKeyword, fetchInstances]);
 
   useEffect(
     () => () => {
@@ -184,24 +233,55 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   };
 
   const handleModelChange = (modelId: string) => {
-    loadedModelRef.current = null;
+    resetInstanceList();
     setSelectedModelId(modelId);
-    setInstanceOptions([]);
     onFocusChange(null);
   };
 
   const handleInstanceSearch = (value: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const keyword = value.trim();
-    // Ant Select may emit empty onSearch on open/re-render; skip if already loaded.
-    if (!keyword && selectedModelId && loadedModelRef.current === selectedModelId) {
-      return;
-    }
     debounceRef.current = setTimeout(() => {
-      if (selectedModelId) {
-        void fetchInstances(selectedModelId, keyword);
-      }
+      setInstanceKeyword(keyword);
+      // Force a fresh page-1 fetch for the new keyword even if options linger.
+      loadedQueryRef.current = null;
+      setInstanceOptions([]);
+      setInstancePage(1);
+      setInstanceTotal(0);
     }, SEARCH_DEBOUNCE_MS);
+  };
+
+  const handleInstancePopupScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    if (!selectedModelId || loading) return;
+    const hasMore = instanceOptions.length < instanceTotal;
+    if (!hasMore) return;
+    const target = event.currentTarget;
+    const isNearBottom =
+      target.scrollTop + target.offsetHeight
+      >= target.scrollHeight - SELECT_SCROLL_LOAD_OFFSET;
+    if (!isNearBottom) return;
+    void fetchInstances({
+      modelId: selectedModelId,
+      keyword: instanceKeyword,
+      page: instancePage + 1,
+      append: true,
+    });
+  };
+
+  const handleDropdownVisibleChange = (open: boolean) => {
+    setDropdownOpen(open);
+    if (!open) {
+      // Drop search filter when closing so the next open starts from page 1
+      // of the full list (recent + first page), not a stale keyword filter.
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (instanceKeyword) {
+        setInstanceKeyword('');
+        loadedQueryRef.current = null;
+        setInstanceOptions([]);
+        setInstancePage(1);
+        setInstanceTotal(0);
+      }
+    }
   };
 
   const handleInstanceChange = (instId: string | undefined) => {
@@ -228,7 +308,7 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
       options: { label: string; value: string }[];
     }[] = [];
 
-    if (recentItems.length > 0) {
+    if (recentItems.length > 0 && !instanceKeyword) {
       groups.push({
         label: t('ViewsHub.recent'),
         options: recentItems.map((item) => ({
@@ -238,7 +318,9 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
       });
     }
 
-    const recentIds = new Set(recentItems.map((item) => item.inst_id));
+    const recentIds = new Set(
+      instanceKeyword ? [] : recentItems.map((item) => item.inst_id)
+    );
     const searchOpts = instanceOptions
       .filter((item) => !recentIds.has(item.value))
       .map((item) => ({
@@ -264,7 +346,14 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
     });
 
     return groups;
-  }, [recentItems, instanceOptions, focus, selectedModelId, t]);
+  }, [
+    recentItems,
+    instanceOptions,
+    focus,
+    selectedModelId,
+    instanceKeyword,
+    t,
+  ]);
 
   const selectValue =
     focus && focus.model_id === selectedModelId ? focus.inst_id : undefined;
@@ -290,6 +379,8 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
         showSearch
         filterOption={false}
         onSearch={handleInstanceSearch}
+        onPopupScroll={handleInstancePopupScroll}
+        onOpenChange={handleDropdownVisibleChange}
         allowClear
         disabled={!selectedModelId}
         onChange={(value) => handleInstanceChange(value)}
