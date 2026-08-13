@@ -176,6 +176,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
 
     return () => {
       handleAGUIEvent.cancelPendingText();
+      imageSelectionGenerationRef.current += 1;
       void streamLifecycle?.dispose();
       aguiSubscription?.unsubscribe();
       aguiHandlerRef.current?.destroy();
@@ -278,6 +279,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
         }
         updateUploadedImages({ images, type: 'append' });
       } catch (error) {
+        if (generation !== imageSelectionGenerationRef.current) return;
         onError?.(toError(error));
       }
     });

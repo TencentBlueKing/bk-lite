@@ -123,6 +123,31 @@ test('读取失败向上传递且不会返回部分批次', async () => {
   );
 });
 
+test('失败批次等待已启动读取收敛后才允许下一批，跨批并发不超限', async () => {
+  const firstBatch = [imageFile('broken.png', 1), imageFile('slow.png', 1)];
+  const nextBatch = [imageFile('next-a.png', 1), imageFile('next-b.png', 1)];
+  let active = 0;
+  let peak = 0;
+
+  const read = async (file: ImageFile) => {
+    active += 1;
+    peak = Math.max(peak, active);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, file.name === 'broken.png' ? 1 : 20));
+      if (file.name === 'broken.png') throw new Error('read failed');
+      return `data:${file.name}`;
+    } finally {
+      active -= 1;
+    }
+  };
+
+  await assert.rejects(readImageBatch(firstBatch, 2, read), /read failed/);
+  await readImageBatch(nextBatch, 2, read);
+
+  assert.equal(peak, 2);
+  assert.equal(active, 0);
+});
+
 test('移除和发送清理同步释放图片数量与字节账本', () => {
   const selected = [pendingImage('a.png', 3), pendingImage('b.png', 5)];
   const afterRemove = pendingImagesReducer(selected, { index: 0, type: 'remove' });

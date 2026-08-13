@@ -91,19 +91,25 @@ export const readImageBatch = async <T extends ImageFile>(
 
   const results = new Array<PendingImage>(files.length);
   let nextIndex = 0;
+  let firstError: unknown;
   const workerCount = Math.min(positiveIntegerOr(concurrency, 1), files.length);
 
   const worker = async () => {
-    while (nextIndex < files.length) {
+    while (firstError === undefined && nextIndex < files.length) {
       const index = nextIndex;
       nextIndex += 1;
       const file = files[index];
-      const dataUrl = await readFile(file);
-      results[index] = { dataUrl, name: file.name, size: file.size };
+      try {
+        const dataUrl = await readFile(file);
+        results[index] = { dataUrl, name: file.name, size: file.size };
+      } catch (error) {
+        firstError ??= error;
+      }
     }
   };
 
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  if (firstError !== undefined) throw firstError;
   return results;
 };
 

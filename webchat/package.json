@@ -23,7 +23,7 @@
     "pretest:issue-4636": "node -e \"require('node:fs').rmSync('.test-dist/issue-4636', { recursive: true, force: true })\"",
     "test:issue-4636": "npm run test:issue-4636 --workspace @webchat/ui && node --test .test-dist/issue-4636/chat-state-callback.issue-4636.test.mjs",
     "pretest:image-budget": "node -e \"require('node:fs').rmSync('packages/webchat-ui/.test-dist/issue-4637', { recursive: true, force: true })\"",
-    "test:image-budget": "tsc -p tests/tsconfig.issue-4637.json && node --test packages/webchat-ui/.test-dist/issue-4637/tests/image-budget.issue-4637.test.js",
+    "test:image-budget": "tsc -p tests/tsconfig.issue-4637.json && tsc -p tests/tsconfig.issue-4637.runtime.json && node --test packages/webchat-ui/.test-dist/issue-4637/tests/image-budget.issue-4637.test.js && cd packages/webchat-ui && ./node_modules/.bin/esbuild ../../tests/chat-image-budget.issue-4637.test.tsx --bundle --platform=node --format=cjs --loader:.css=empty --alias:@ant-design/x=../../tests/ant-design-x.issue-4637.stub.tsx --alias:react-dom/client=../../tests/react-dom-client.issue-4637.stub.ts --external:react --external:react/jsx-runtime --external:react-test-renderer --outfile=.test-dist/issue-4637/chat-image-budget.issue-4637.test.cjs && node --test .test-dist/issue-4637/chat-image-budget.issue-4637.test.cjs",
     "lint": "eslint \"packages/webchat-core/src/**/*.{ts,tsx}\" \"packages/webchat-ui/src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx,mjs}\"",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist packages/*/.next"
