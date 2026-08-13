@@ -110,7 +110,7 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 - 常见失败:缺 `keystore.properties`/keystore;Android SDK/NDK/Java 异常;3001 端口冲突
 
 ### WebChat
-- release:`webchat/.github/workflows/build.yml` 的 publish job(main push);需 `NPM_TOKEN`/`NODE_AUTH_TOKEN`
+- release:手工触发`.github/workflows/webchat-tests.yml`并显式启用publish输入;需 `NPM_TOKEN`/`NODE_AUTH_TOKEN`
 - 常见失败:token 缺失/权限不足;Node matrix 18/20 不满足
 
 ### Stargazer
