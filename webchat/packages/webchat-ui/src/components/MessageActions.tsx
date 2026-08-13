@@ -1,5 +1,6 @@
 import React from 'react';
-import { MessageContent } from '@webchat/core';
+import { type MessageContent } from '@webchat/core';
+import { getMessageCopyText } from '../messageContentActions';
 
 interface MessageActionsProps {
   messageId: string;
@@ -52,12 +53,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       )}
       <button
         onClick={() => {
-          const text = Array.isArray(messageContent)
-            ? messageContent
-                .filter((item) => item.type === 'text' && item.text)
-                .map((item) => item.text)
-                .join('\n')
-            : messageContent;
+          const text = getMessageCopyText(messageContent);
           navigator.clipboard.writeText(text);
           onCopy?.(text);
         }}
