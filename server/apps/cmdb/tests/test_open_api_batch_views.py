@@ -7,8 +7,9 @@ from django.urls import path
 from apps.cmdb.open_api import views as open_views
 from apps.cmdb.services import instance as instance_service
 
-
 pytestmark = pytest.mark.django_db
+UUID_1 = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+UUID_2 = "7de0c6de-f841-44b1-846d-2d75a7c59c50"
 
 urlpatterns = [
     path(
@@ -35,9 +36,7 @@ def open_api_test_urlconf(settings, monkeypatch):
         lambda model_id: {"model_id": model_id, "group": [7], "is_visible": True},
     )
     settings.MIDDLEWARE = tuple(
-        middleware
-        for middleware in settings.MIDDLEWARE
-        if middleware != "django.contrib.messages.middleware.MessageMiddleware"
+        middleware for middleware in settings.MIDDLEWARE if middleware != "django.contrib.messages.middleware.MessageMiddleware"
     )
 
 
@@ -104,8 +103,8 @@ def test_batch_create_forces_bound_team_for_every_item(
     _context(mock_context)
     _model_and_attrs(mock_model, mock_attrs)
     mock_create.return_value = [
-        {"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [7]},
-        {"_id": 2, "model_id": "host", "inst_name": "h2", "organization": [7]},
+        {"_id": 1, "inst_uuid": UUID_1, "model_id": "host", "inst_name": "h1", "organization": [7]},
+        {"_id": 2, "inst_uuid": UUID_2, "model_id": "host", "inst_name": "h2", "organization": [7]},
     ]
 
     response = api_client.post(
@@ -116,7 +115,8 @@ def test_batch_create_forces_bound_team_for_every_item(
     )
 
     assert response.status_code == 201
-    assert [item["inst_id"] for item in response.json()["data"]["created"]] == [1, 2]
+    assert [item["inst_uuid"] for item in response.json()["data"]["created"]] == [UUID_1, UUID_2]
+    assert all("_id" not in item for item in response.json()["data"]["created"])
     mock_create.assert_called_once_with(
         "host",
         [
@@ -190,8 +190,8 @@ def test_batch_create_maps_domain_preprocessing_index_to_stable_error(
 
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
-@patch("apps.cmdb.open_api.services.InstanceManage.batch_instance_update")
-@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_id")
+@patch("apps.cmdb.open_api.services.InstanceManage.batch_instance_update_by_uuids")
+@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_uuid")
 def test_batch_update_rejects_cross_team_member_before_write(
     mock_query,
     mock_update,
@@ -201,26 +201,26 @@ def test_batch_update_rejects_cross_team_member_before_write(
 ):
     _context(mock_context)
     mock_query.side_effect = [
-        {"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [7], "_creator": "api-user"},
-        {"_id": 2, "model_id": "host", "inst_name": "h2", "organization": [8], "_creator": "api-user"},
+        {"_id": 1, "inst_uuid": UUID_1, "model_id": "host", "inst_name": "h1", "organization": [7], "_creator": "api-user"},
+        {"_id": 2, "inst_uuid": UUID_2, "model_id": "host", "inst_name": "h2", "organization": [8], "_creator": "api-user"},
     ]
 
     response = api_client.post(
         "/api/v1/cmdb/api/open/models/host/instances/batch_update",
-        {"inst_ids": [1, 2], "update_data": {"status": "active"}},
+        {"inst_uuids": [UUID_1, UUID_2], "update_data": {"status": "active"}},
         format="json",
         HTTP_API_AUTHORIZATION="secret",
     )
 
     assert response.status_code == 404
-    assert response.json()["data"] == {"inst_id": 2}
+    assert response.json()["data"] == {"inst_uuid": UUID_2}
     mock_update.assert_not_called()
 
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
 @patch("apps.cmdb.open_api.services.CmdbRulesFormatUtil.has_object_permission", return_value=True)
-@patch("apps.cmdb.open_api.services.InstanceManage.batch_instance_update")
-@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_id")
+@patch("apps.cmdb.open_api.services.InstanceManage.batch_instance_update_by_uuids")
+@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_uuid")
 @patch("apps.cmdb.open_api.services.ModelManage.search_model_attr")
 @patch("apps.cmdb.open_api.services.ModelManage.search_model_info")
 def test_batch_update_calls_domain_once_after_all_members_are_authorized(
@@ -236,27 +236,27 @@ def test_batch_update_calls_domain_once_after_all_members_are_authorized(
     context = _context(mock_context)
     _model_and_attrs(mock_model, mock_attrs)
     mock_query.side_effect = [
-        {"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [7], "_creator": "api-user"},
-        {"_id": 2, "model_id": "host", "inst_name": "h2", "organization": [7], "_creator": "api-user"},
+        {"_id": 1, "inst_uuid": UUID_1, "model_id": "host", "inst_name": "h1", "organization": [7], "_creator": "api-user"},
+        {"_id": 2, "inst_uuid": UUID_2, "model_id": "host", "inst_name": "h2", "organization": [7], "_creator": "api-user"},
     ]
     mock_update.return_value = [
-        {"_id": 1, "model_id": "host", "inst_name": "h1", "status": "active"},
-        {"_id": 2, "model_id": "host", "inst_name": "h2", "status": "active"},
+        {"_id": 1, "inst_uuid": UUID_1, "model_id": "host", "inst_name": "h1", "status": "active"},
+        {"_id": 2, "inst_uuid": UUID_2, "model_id": "host", "inst_name": "h2", "status": "active"},
     ]
 
     response = api_client.post(
         "/api/v1/cmdb/api/open/models/host/instances/batch_update",
-        {"inst_ids": [1, 2], "update_data": {"status": "active"}},
+        {"inst_uuids": [UUID_1, UUID_2], "update_data": {"status": "active"}},
         format="json",
         HTTP_API_AUTHORIZATION="secret",
     )
 
     assert response.status_code == 200
-    assert [item["inst_id"] for item in response.json()["data"]["updated"]] == [1, 2]
+    assert [item["inst_uuid"] for item in response.json()["data"]["updated"]] == [UUID_1, UUID_2]
     mock_update.assert_called_once_with(
         context.user_groups,
         context.user.roles,
-        [1, 2],
+        [UUID_1, UUID_2],
         {"status": "active"},
         "api-user",
         [7],
@@ -265,8 +265,8 @@ def test_batch_update_calls_domain_once_after_all_members_are_authorized(
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
 @patch("apps.cmdb.open_api.services.CmdbRulesFormatUtil.has_object_permission", return_value=True)
-@patch("apps.cmdb.open_api.services.InstanceManage.batch_instance_update")
-@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_id")
+@patch("apps.cmdb.open_api.services.InstanceManage.batch_instance_update_by_uuids")
+@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_uuid")
 @patch("apps.cmdb.open_api.services.ModelManage.search_model_attr")
 @patch("apps.cmdb.open_api.services.ModelManage.search_model_info")
 def test_batch_update_maps_domain_unique_conflict_to_409(
@@ -282,31 +282,31 @@ def test_batch_update_maps_domain_unique_conflict_to_409(
     _context(mock_context)
     _model_and_attrs(mock_model, mock_attrs)
     mock_query.side_effect = [
-        {"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [7]},
-        {"_id": 2, "model_id": "host", "inst_name": "h2", "organization": [7]},
+        {"_id": 1, "inst_uuid": UUID_1, "model_id": "host", "inst_name": "h1", "organization": [7]},
+        {"_id": 2, "inst_uuid": UUID_2, "model_id": "host", "inst_name": "h2", "organization": [7]},
     ]
     mock_update.side_effect = instance_service.InstanceBatchError(
         "字段值违反唯一性约束",
         reason="unique_conflict",
-        inst_id=2,
+        inst_uuid=UUID_2,
         field="status",
     )
 
     response = api_client.post(
         "/api/v1/cmdb/api/open/models/host/instances/batch_update",
-        {"inst_ids": [1, 2], "update_data": {"status": "active"}},
+        {"inst_uuids": [UUID_1, UUID_2], "update_data": {"status": "active"}},
         format="json",
         HTTP_API_AUTHORIZATION="secret",
     )
 
     assert response.status_code == 409
     assert response.json()["code"] == "cmdb.instance.unique_conflict"
-    assert response.json()["data"] == {"inst_id": 2, "field": "status"}
+    assert response.json()["data"] == {"inst_uuid": UUID_2, "field": "status"}
 
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
-@patch("apps.cmdb.open_api.services.InstanceManage.instance_batch_delete")
-@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_id")
+@patch("apps.cmdb.open_api.services.InstanceManage.instance_batch_delete_by_uuids")
+@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_uuid")
 def test_batch_delete_does_not_report_success_when_domain_requery_is_incomplete(
     mock_query,
     mock_delete,
@@ -316,30 +316,30 @@ def test_batch_delete_does_not_report_success_when_domain_requery_is_incomplete(
 ):
     _context(mock_context)
     mock_query.side_effect = [
-        {"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [7]},
-        {"_id": 2, "model_id": "host", "inst_name": "h2", "organization": [7]},
+        {"_id": 1, "inst_uuid": UUID_1, "model_id": "host", "inst_name": "h1", "organization": [7]},
+        {"_id": 2, "inst_uuid": UUID_2, "model_id": "host", "inst_name": "h2", "organization": [7]},
     ]
     mock_delete.side_effect = instance_service.InstanceBatchError(
         "实例不存在",
         reason="not_found",
-        inst_id=2,
+        inst_uuid=UUID_2,
     )
 
     response = api_client.post(
         "/api/v1/cmdb/api/open/models/host/instances/batch_delete",
-        {"inst_ids": [1, 2]},
+        {"inst_uuids": [UUID_1, UUID_2]},
         format="json",
         HTTP_API_AUTHORIZATION="secret",
     )
 
     assert response.status_code == 404
     assert response.json()["code"] == "cmdb.instance.not_found"
-    assert response.json()["data"] == {"inst_id": 2}
+    assert response.json()["data"] == {"inst_uuid": UUID_2}
 
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
-@patch("apps.cmdb.open_api.services.InstanceManage.instance_batch_delete")
-@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_id")
+@patch("apps.cmdb.open_api.services.InstanceManage.instance_batch_delete_by_uuids")
+@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_uuid")
 def test_batch_delete_rejects_cross_team_member_before_write(
     mock_query,
     mock_delete,
@@ -349,25 +349,25 @@ def test_batch_delete_rejects_cross_team_member_before_write(
 ):
     _context(mock_context)
     mock_query.side_effect = [
-        {"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [7], "_creator": "api-user"},
-        {"_id": 2, "model_id": "host", "inst_name": "h2", "organization": [8], "_creator": "api-user"},
+        {"_id": 1, "inst_uuid": UUID_1, "model_id": "host", "inst_name": "h1", "organization": [7], "_creator": "api-user"},
+        {"_id": 2, "inst_uuid": UUID_2, "model_id": "host", "inst_name": "h2", "organization": [8], "_creator": "api-user"},
     ]
 
     response = api_client.post(
         "/api/v1/cmdb/api/open/models/host/instances/batch_delete",
-        {"inst_ids": [1, 2]},
+        {"inst_uuids": [UUID_1, UUID_2]},
         format="json",
         HTTP_API_AUTHORIZATION="secret",
     )
 
     assert response.status_code == 404
-    assert response.json()["data"] == {"inst_id": 2}
+    assert response.json()["data"] == {"inst_uuid": UUID_2}
     mock_delete.assert_not_called()
 
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
-@patch("apps.cmdb.open_api.services.InstanceManage.instance_batch_delete")
-@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_id")
+@patch("apps.cmdb.open_api.services.InstanceManage.instance_batch_delete_by_uuids")
+@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_uuid")
 def test_batch_delete_calls_domain_once_after_all_members_are_authorized(
     mock_query,
     mock_delete,
@@ -377,22 +377,22 @@ def test_batch_delete_calls_domain_once_after_all_members_are_authorized(
 ):
     context = _context(mock_context)
     mock_query.side_effect = [
-        {"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [7], "_creator": "api-user"},
-        {"_id": 2, "model_id": "host", "inst_name": "h2", "organization": [7], "_creator": "api-user"},
+        {"_id": 1, "inst_uuid": UUID_1, "model_id": "host", "inst_name": "h1", "organization": [7], "_creator": "api-user"},
+        {"_id": 2, "inst_uuid": UUID_2, "model_id": "host", "inst_name": "h2", "organization": [7], "_creator": "api-user"},
     ]
 
     response = api_client.post(
         "/api/v1/cmdb/api/open/models/host/instances/batch_delete",
-        {"inst_ids": [1, 2]},
+        {"inst_uuids": [UUID_1, UUID_2]},
         format="json",
         HTTP_API_AUTHORIZATION="secret",
     )
 
     assert response.status_code == 200
-    assert response.json()["data"] == {"deleted": [1, 2]}
+    assert response.json()["data"] == {"deleted": [UUID_1, UUID_2]}
     mock_delete.assert_called_once_with(
         context.user_groups,
         context.user.roles,
-        [1, 2],
+        [UUID_1, UUID_2],
         "api-user",
     )

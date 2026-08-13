@@ -35,7 +35,7 @@ export interface ViewsWorkspaceShellProps {
 }
 
 const focusKey = (focus: ViewFocus | null): string =>
-  focus ? `${focus.model_id}:${focus.inst_id}:${focus.mode ?? ''}` : '';
+  focus ? `${focus.model_id}:${focus.inst_uuid}:${focus.mode ?? ''}` : '';
 
 const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
   viewType,
@@ -102,10 +102,10 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
 
   const focusFromParsed = useCallback(
     (parsed: ReturnType<typeof parseViewsSearch>): ViewFocus | null => {
-      if (!parsed.model_id || !parsed.inst_id) return null;
+      if (!parsed.model_id || !parsed.inst_uuid) return null;
       let next = enrichFocus({
         model_id: parsed.model_id,
-        inst_id: parsed.inst_id,
+        inst_uuid: parsed.inst_uuid,
         inst_name: parsed.inst_name,
         model_name: parsed.model_name,
         icn: parsed.icn,
@@ -130,7 +130,7 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
     const parsed = parseViewsSearch(searchParams);
     let next: ViewFocus | null = null;
 
-    if (parsed.model_id && parsed.inst_id) {
+    if (parsed.model_id && parsed.inst_uuid) {
       next = focusFromParsed(parsed);
     } else {
       const remembered = readViewFocus(window.localStorage, userId, viewType);
@@ -362,7 +362,7 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
 
   const handleRoomRackDrill = useCallback(
     (payload: {
-      inst_id: string;
+      inst_uuid: string;
       inst_name?: string;
       fromRoom: ViewFocus;
     }) => {
@@ -374,7 +374,7 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
       }
       setRoomReturn({
         focus: roomFocus,
-        rackId: payload.inst_id,
+        rackId: payload.inst_uuid,
       });
     },
     [enrichFocus, userId]

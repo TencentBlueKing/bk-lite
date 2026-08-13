@@ -62,6 +62,13 @@ describeNats('normalizeNatsChannelConfig', () => {
     });
   });
 
+  it('rejects Event Publish settings without a notification topic identifier', () => {
+    expect(() => normalizeNatsChannelConfig({
+      nats_mode: 'event_publish',
+      subject_key: '',
+    })).toThrow('subject_key is required');
+  });
+
   it('uses the Enterprise test endpoint only for Event Publish', () => {
     expect(usesEnterpriseNatsTestEndpoint({ nats_mode: 'event_publish' })).toBe(true);
     expect(usesEnterpriseNatsTestEndpoint({ nats_mode: 'request_reply' })).toBe(false);

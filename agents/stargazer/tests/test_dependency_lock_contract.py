@@ -69,6 +69,7 @@ def test_runbook_documents_stateless_runtime_limits() -> None:
     assert "REDIS_POOL_TIMEOUT" in readme
     assert "REDIS_PROTOCOL" in readme
     assert "CONNECT_TIMEOUT" in readme
+    assert "PREFLIGHT_REACHABILITY" in readme
     assert "MAX_ACTIVE_TARGETS=0" in readme
 
 

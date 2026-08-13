@@ -266,6 +266,7 @@ class MLService:
                 "images": valid_images,
                 "conf": request.config.conf_threshold,
                 "iou": request.config.iou_threshold,
+                "max_det": request.config.max_detections,
             }
 
             # 调用模型预测（返回格式见 YOLOWrapper）

@@ -96,6 +96,7 @@ class PrometheusConnectorExecutor(BaseConnectorExecutor):
         connection_config: dict[str, Any],
         query_config: dict[str, Any],
         limit: int = 100,
+        **kwargs,
     ) -> PreviewResult:
         result = self.execute(connection_config, query_config)
         items = _flatten_execute_data(result.data)

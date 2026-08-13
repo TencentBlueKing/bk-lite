@@ -21,7 +21,7 @@
 - **实例移除**：用户明确删除或自动清理超时后终止监控实例纳管关系的生命周期动作；关联活动告警随之关闭，历史告警仍作为审计事实保留。_Avoid_：实例恢复、告警恢复。
 - **APM**：面向应用请求调用链、性能与错误诊断的独立产品域；与基础设施监控（Monitor）和日志（Log）同级。APM 中的受观测服务不等同于 CMDB 服务或监控实例。
 - **APM 应用**：由用户维护的 APM 业务边界；应用 ID 是遥测属性 `service.namespace` 的稳定值，并决定新发现服务和实例的默认组织范围。_Avoid_：接入源、数据源。
-- **未归类应用**：平台内置且受保护的 APM 应用，用于归属未设置 `service.namespace` 的服务；非空但未知的 namespace 不属于未归类应用。_Avoid_：虚拟应用、默认 namespace。
+- **APM 应用**：由用户显式创建、以 `service.namespace` 关联的业务边界；未设置或未知 namespace 的遥测不会自动生成应用或服务目录记录。_Avoid_：未归类应用、默认应用。
 - **APM 接入配置**：根据应用、服务名称、服务版本和运行环境即时生成的 SDK/探针配置；仅用于复制执行，不持久化。_Avoid_：接入源、接入实例。
 - **APM 遥测入口**：区域代理上只向受信区域内网开放的 OTLP/HTTP 4318 接收边界；`service.namespace` 只表达应用归属，不是认证或授权凭据。_Avoid_：公网 OTLP 端点、APM Token 入口。
 - **APM 接入实例**：由遥测数据中的 `service.instance.id` 自动发现的一个服务运行实例；不能通过接入页面手工创建。_Avoid_：接入服务、服务。
@@ -40,6 +40,7 @@
 - **报告订阅**：绑定一个分析画布、筛选语义、执行周期、邮件渠道和收件地址的持续报告分发规则。_Avoid_：定时任务、邮件规则。
 - **订阅执行**：报告订阅在一个计划时点或一次手工测试请求下产生的独立生成与投递尝试，是状态、失败和输入快照的审计边界。_Avoid_：发送记录、调度任务。
 - **Stargazer**：`agents/stargazer/` 中的云资源与外部资源采集代理。
+- **CMDB 实例 UUID（`inst_uuid`）**：CMDB 资产实例的不可变业务身份（UUIDv4）；跨模块与前后端定位实例只用它。图节点内部 `_id` 仅同进程工作集。_Avoid_：把 Telegraf 标签 `cmdb_{task_id}`（采集任务身份）当成实例 UUID。详见 `docs/adr/0005-use-uuid-as-cmdb-instance-identity.md`。
 - **Capability contract**：`specs/capabilities/<capability>.md` 中长期有效的业务、验收、架构和运行约束。
 - **Change spec**：`specs/changes/<feature>/spec.md` 中跨会话的变更意图、实现决定和测试接缝。
 - **Ticket**：仅在 change 超出一个上下文窗口时创建的可独立验证纵向切片。

@@ -73,6 +73,11 @@ class DjangoTelemetryCatalogService:
             field="service.version",
             max_length=256,
         )
+        normalized_language = _validate_identity(
+            discovery.language,
+            field="telemetry.sdk.language",
+            max_length=64,
+        )
         seen_at = discovery.seen_at or timezone.now()
         application = ApmApplication.objects.select_for_update().get(
             application_id=normalized_namespace,
@@ -89,6 +94,7 @@ class DjangoTelemetryCatalogService:
                 "namespace": discovery.service_namespace or "",
                 "application": application,
                 "name": discovery.service_name,
+                "language": normalized_language,
                 "first_seen_at": seen_at,
                 "last_seen_at": seen_at,
             },
@@ -100,17 +106,16 @@ class DjangoTelemetryCatalogService:
         elif service.application_id is None:
             service.application = application
             service.save(update_fields=("application", "updated_at"))
-        if not service_created and (
-            seen_at > service.last_seen_at
-            or (service.archived_at is not None and service.archive_reason == "silent_timeout" and seen_at >= service.last_seen_at)
-        ):
-            service.last_seen_at = max(seen_at, service.last_seen_at)
-            update_fields = ["last_seen_at"]
-            if service.archived_at is not None and service.archive_reason == "silent_timeout":
-                service.archived_at = None
-                service.archive_reason = ""
-                update_fields.extend(("archived_at", "archive_reason"))
-            service.save(update_fields=(*update_fields, "updated_at"))
+        if not service_created and seen_at >= service.last_seen_at:
+            update_fields: list[str] = []
+            if seen_at > service.last_seen_at:
+                service.last_seen_at = seen_at
+                update_fields.append("last_seen_at")
+            if normalized_language and service.language != normalized_language:
+                service.language = normalized_language
+                update_fields.append("language")
+            if update_fields:
+                service.save(update_fields=(*update_fields, "updated_at"))
 
         if missing_instance_identity:
             return CatalogDiscoveryResult(
@@ -226,15 +231,6 @@ class DjangoTelemetryCatalogService:
         return service
 
     @transaction.atomic
-    def archive_instance(self, instance_id: UUID, *, reason: str, actor: str) -> ApmServiceInstance:
-        instance = ApmServiceInstance.objects.select_for_update().get(id=instance_id)
-        instance.archived_at = timezone.now()
-        instance.archive_reason = reason
-        instance.updated_by = actor
-        instance.save(update_fields=("archived_at", "archive_reason", "updated_by", "updated_at"))
-        return instance
-
-    @transaction.atomic
     def restore_service(self, service_id: UUID, *, actor: str) -> ApmService:
         service = ApmService.objects.select_for_update().get(id=service_id)
         service.archived_at = None
@@ -244,23 +240,10 @@ class DjangoTelemetryCatalogService:
         return service
 
     @transaction.atomic
-    def restore_instance(self, instance_id: UUID, *, actor: str) -> ApmServiceInstance:
-        instance = ApmServiceInstance.objects.select_for_update().get(id=instance_id)
-        instance.archived_at = None
-        instance.archive_reason = ""
-        instance.updated_by = actor
-        instance.save(update_fields=("archived_at", "archive_reason", "updated_by", "updated_at"))
-        return instance
-
-    @transaction.atomic
-    def archive_stale(self, *, observed_at) -> tuple[int, int]:
+    def archive_stale_instances(self, *, observed_at) -> int:
         cutoff = observed_at - ARCHIVE_WINDOW
         instance_count = ApmServiceInstance.objects.filter(
             archived_at__isnull=True,
             last_seen_at__lte=cutoff,
         ).update(archived_at=observed_at, archive_reason="silent_timeout", updated_at=observed_at)
-        service_count = ApmService.objects.filter(
-            archived_at__isnull=True,
-            last_seen_at__lte=cutoff,
-        ).update(archived_at=observed_at, archive_reason="silent_timeout", updated_at=observed_at)
-        return service_count, instance_count
+        return instance_count

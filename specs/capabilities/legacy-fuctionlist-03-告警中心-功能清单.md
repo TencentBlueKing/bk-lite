@@ -39,8 +39,8 @@
 
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
-| 指纹聚合 | 基于相关性策略计算分组键（fingerprint），对活跃告警按 fingerprint 更新而非重复创建；聚合事件查询显式排除状态为 `SHIELD` 的事件，已屏蔽事件不参与指纹聚合 | 策略参数含 `match_rules`、`group_by`、窗口配置；`.exclude(status=EventStatus.SHIELD)`（`aggregation_processor.py:136`） | GA |
-| 窗口策略 | 支持会话窗口与滑动窗口聚合行为 | 会话窗口告警有独立会话状态：`observing` 观察中 / `confirmed` 已确认 / `recovered` 已恢复；观察期超时由定时检查转 `confirmed` | GA |
+| 指纹聚合 | 基于相关性策略计算分组键（fingerprint），对活跃告警按 fingerprint 更新而非重复创建；聚合事件查询显式排除状态为 `SHIELD` 的事件，已屏蔽事件不参与指纹聚合 | 策略参数含 `match_rules`、`group_by`、窗口配置；`.exclude(status=EventStatus.SHIELD)`（`aggregation_processor.py:136`）；全部 `group_by` 维度为空时降级按 `external_id` 分组（仅运维日志可观测，不改变降级规则） | GA |
+| 窗口策略 | 支持会话窗口与滑动窗口聚合行为 | **会话窗口口径**：在滑动聚合建警基础上增加观察期，用于延时自动分派/通知（过滤短时抖动），**不是**按事件静默间隔切出多段独立会话。会话状态：`observing` / `confirmed` / `recovered`；观察期超时由定时检查转 `confirmed` 后再分派。`fixed` 固定窗口枚举存在但运行时未落地，视为未支持 | GA |
 | 智能降噪规则 | 相关性规则类型之一，配置聚合匹配与分组 | 策略类型 `smart_denoise`；含关联组织（可见范围）与分派组织（聚合后归属） | GA |
 
 ### 4. 缺失检查（心跳哨兵）
@@ -63,8 +63,8 @@
 | 告警状态机 | 告警状态枚举与迁移 | 状态：`unassigned` 未分派 / `pending` 待处理 / `processing` 处理中 / `resolved` 人工恢复 / `closed` 人工关闭 / `auto_close` 自动关闭 / `auto_recovery` 自动恢复；默认 `unassigned` | GA |
 | 状态操作 | 分派、认领、转派、关闭、恢复 | assign：`unassigned→pending`；acknowledge：`pending→processing`；reassign：`processing→pending`；close：`processing→closed`；resolve：`processing→resolved`；非法前置状态操作被拒绝 | GA |
 | 批量操作 | 批量分派、认领、关闭、恢复 | 按后端支持动作执行 | GA |
-| 自动恢复 | 恢复事件经 `external_id` 关联历史创建事件，创建事件均被更晚恢复事件覆盖时转 `auto_recovery` | — | GA |
-| 自动关闭 | 按策略 `close_minutes` 自动关闭，并有定时兜底自动关闭 | `close_minutes` 默认 120 分钟；`auto_close` 默认开启 | GA |
+| 自动恢复 | 恢复事件经 `external_id` 关联历史创建事件，创建事件均被更晚恢复事件覆盖时转 `auto_recovery` | **依赖 `external_id`**：CREATED 或 RECOVERY 缺少 `external_id` 时不自动恢复（保持跳过）；因此产生的悬挂活跃告警依赖自动关闭（`close_minutes` / `beat_close_alert`）兜底，不放宽匹配键 | GA |
+| 自动关闭 | 按策略 `close_minutes` 自动关闭，并有定时兜底自动关闭 | `close_minutes` 默认 120 分钟；`auto_close` 默认开启；亦作为缺 `external_id` 无法自动恢复时的活跃告警兜底 | GA |
 | 操作留痕 | 处置过程写入操作日志 | — | GA |
 
 ### 6. 事件列表
@@ -185,7 +185,7 @@
 
 | 维度 | 取值 |
 |---|---|
-| 窗口类型（`WindowType`，定义 3 类） | sliding 滑动窗口 / fixed 固定窗口 / session 会话窗口 |
+| 窗口类型（`WindowType`，定义 3 类） | sliding 滑动窗口 / session 会话窗口（延时确认语义）/ fixed 固定窗口（**枚举存在，运行时未支持**） |
 | 窗口对齐（`Alignment`） | day 天对齐 / hour 小时对齐 / minute 分钟对齐 |
 | 策略类型（`AlarmStrategyType`） | smart_denoise 智能降噪 / missing_detection 缺失检测 |
 | 心跳激活方式（`HeartbeatActivationMode`） | first_heartbeat 首条心跳激活 / immediate 立即激活 |

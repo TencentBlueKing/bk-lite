@@ -11,7 +11,7 @@ const types = read('src/app/apm/types.ts');
 const serviceList = read('src/app/apm/services/page.tsx');
 const organizationModal = read('src/app/apm/components/organization-assignment-modal.tsx');
 const serviceDetail = read('src/app/apm/services/[serviceId]/page.tsx');
-const policies = read('src/app/apm/events/policies/page.tsx');
+const endpoints = read('src/app/apm/explore/endpoints/page.tsx');
 const traceSearch = read('src/app/apm/explore/traces/page.tsx');
 const traceDetail = read('src/app/apm/explore/traces/[traceId]/page.tsx');
 
@@ -23,8 +23,8 @@ assert.match(serviceDetail, /timeseries/, '服务详情必须读取真实 RED �
 assert.match(serviceDetail, /TimeSeriesComposedChart/, '服务详情必须呈现真实 RED 时序图');
 assert.match(serviceDetail, /top_endpoints/, '服务详情必须呈现真实 Top endpoint');
 assert.match(serviceDetail, /started_at:[\s\S]*ended_at:/, '服务到 Trace 跳转必须保留同一时间窗');
-assert.match(types, /data_state:\s*'available'\s*\|\s*'no_data'/, '策略测试查询必须公开无数据状态');
-assert.match(policies, /result\.data_state\s*===\s*'no_data'/, '策略测试查询必须向用户解释无数据不会改变状态');
+assert.match(types, /data_state:\s*'available'\s*\|\s*'no_data'/, '后端查询契约仍必须公开无数据状态');
+assert.match(endpoints, /getServiceRed\([\s\S]*selected\.endpoint/, '端点详情趋势必须按所选端点查询真实 RED 数据');
 assert.match(serviceDetail, /value\s*==\s*null\s*\?\s*'—'/, 'RED 卡片必须把缺失样本显示为无数据');
 assert.doesNotMatch(serviceDetail, /red\.(?:request_rate|error_rate|p95_ms|p99_ms)\.toFixed/, 'RED 卡片不得把可空指标直接格式化为数值');
 assert.match(traceSearch, /getTraces\(query\)/, 'Trace 搜索必须使用受控筛选查询');

@@ -69,15 +69,15 @@ open_api_patterns = [
         open_views.OpenBatchDeleteView.as_view(),
     ),
     path(
-        "api/open/models/<str:model_id>/instances/<int:inst_id>",
+        "api/open/models/<str:model_id>/instances/<str:inst_uuid>",
         open_views.OpenInstanceDetailView.as_view(),
     ),
     path(
-        "api/open/models/<str:model_id>/instances/<int:inst_id>/associations",
+        "api/open/models/<str:model_id>/instances/<str:inst_uuid>/associations",
         open_views.OpenInstanceAssociationsView.as_view(),
     ),
     path(
-        "api/open/models/<str:model_id>/instances/<int:inst_id>/associations/<int:association_id>",
+        "api/open/models/<str:model_id>/instances/<str:inst_uuid>/associations/<str:dst_inst_uuid>/<str:model_asst_id>",
         open_views.OpenInstanceAssociationDetailView.as_view(),
     ),
 ]

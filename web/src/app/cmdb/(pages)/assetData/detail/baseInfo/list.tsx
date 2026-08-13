@@ -54,7 +54,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
 
   const searchParams = useSearchParams();
   const modelId: string = searchParams.get('model_id') || '';
-  const instId: string = searchParams.get('inst_id') || '';
+  const instUuid: string = searchParams.get('inst_uuid') || '';
 
   const cloudOptions = (useAssetDataStore.getState().cloud_list || []).map((item: any) => ({
     proxy_id: String(item.proxy_id),
@@ -108,7 +108,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
 
     const params: any = { _scenario: editScenario };
     params[fieldKey] = fieldValue;
-    await updateInstance(instId, params);
+    await updateInstance(instUuid, params);
     message.success(t('successfullyModified'));
     const list = deepClone(attrList);
 
@@ -206,7 +206,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       });
 
       params._scenario = editScenario;
-      await updateInstance(instId, params);
+      await updateInstance(instUuid, params);
       message.success(t('successfullyModified'));
 
       const list = deepClone(attrList);
@@ -519,25 +519,25 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     instDetail?.monitor_id;
   const systemLinkageItems = showSystemLinkage
     ? [
-        {
-          key: 'node_id',
-          label: t('Model.systemLinkageNodeId'),
-          children: (
+      {
+        key: 'node_id',
+        label: t('Model.systemLinkageNodeId'),
+        children: (
             <span className="font-mono text-[13px] break-all">
               {instDetail?.node_id || t('Model.systemLinkageEmpty')}
             </span>
-          ),
-        },
-        {
-          key: 'monitor_id',
-          label: t('Model.systemLinkageMonitorId'),
-          children: (
+        ),
+      },
+      {
+        key: 'monitor_id',
+        label: t('Model.systemLinkageMonitorId'),
+        children: (
             <span className="font-mono text-[13px] break-all">
               {instDetail?.monitor_id || t('Model.systemLinkageEmpty')}
             </span>
-          ),
-        },
-      ]
+        ),
+      },
+    ]
     : [];
 
   return (

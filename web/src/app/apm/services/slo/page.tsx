@@ -1,6 +1,6 @@
 'use client';
 
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   Button,
   Drawer,
@@ -19,6 +19,7 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type {
@@ -28,7 +29,6 @@ import type {
   ApmSloEvaluationWindow,
   ApmSloInput,
 } from '@/app/apm/types';
-import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 type PageState = CatalogStateKind | 'ready';
@@ -42,7 +42,6 @@ interface SloFormValues {
   objective: number;
   latency_threshold_ms?: number;
   evaluation_window: ApmSloEvaluationWindow;
-  is_enabled: boolean;
 }
 
 const sliLabels: Record<ApmSliType, string> = {
@@ -65,10 +64,33 @@ function BudgetProgress({ value }: { value: number | null }) {
       ? 'var(--theme-color-status-warning)'
       : 'var(--color-fail)';
   return (
-    <div className="flex min-w-40 items-center gap-2">
+    <div className="grid w-full min-w-0 grid-cols-[minmax(72px,1fr)_44px] items-center gap-2.5">
       <Progress className="!mb-0 flex-1" percent={value} showInfo={false} size="small" strokeColor={color} />
-      <span className="w-12 text-right text-xs tabular-nums text-[var(--color-text-3)]">{value.toFixed(1)}%</span>
+      <span className="text-right text-xs tabular-nums text-[var(--color-text-3)]">{value.toFixed(1)}%</span>
     </div>
+  );
+}
+
+function SloColumnHeading({
+  label,
+  hint,
+  align = 'left',
+}: {
+  label: string;
+  hint: string;
+  align?: 'left' | 'center' | 'right';
+}) {
+  const alignmentClass = align === 'right'
+    ? 'items-end text-right'
+    : align === 'center'
+      ? 'items-center text-center'
+      : 'items-start text-left';
+
+  return (
+    <span className={`flex min-w-0 flex-col ${alignmentClass}`}>
+      <span>{label}</span>
+      <span className="text-xs font-normal leading-4 text-[var(--color-text-3)]">{hint}</span>
+    </span>
   );
 }
 
@@ -141,7 +163,6 @@ export default function ApmSloPage() {
       objective: 99.9,
       latency_threshold_ms: undefined,
       evaluation_window: 'rolling30d',
-      is_enabled: true,
     });
     setDrawerOpen(true);
   };
@@ -157,14 +178,15 @@ export default function ApmSloPage() {
       objective: Number(row.objective),
       latency_threshold_ms: row.latency_threshold_ms ?? undefined,
       evaluation_window: row.evaluation_window,
-      is_enabled: row.is_enabled,
     });
     setDrawerOpen(true);
   };
 
   const submit = async (values: SloFormValues) => {
+    const editingRow = editingId ? rows.find((row) => row.id === editingId) : undefined;
     const payload: ApmSloInput = {
       ...values,
+      is_enabled: editingRow?.is_enabled ?? true,
       endpoint: values.endpoint?.trim() ?? '',
       latency_threshold_ms: values.sli_type === 'availability' ? null : values.latency_threshold_ms,
     };
@@ -210,77 +232,87 @@ export default function ApmSloPage() {
 
   const columns: TableColumnsType<ApmSlo> = [
     {
-      title: '名称',
+      title: <SloColumnHeading hint="评估结果" label="名称" />,
       dataIndex: 'name',
       render: (value, row) => (
-        <Space direction="vertical" size={4} className="min-w-0">
-          <EllipsisWithTooltip className="truncate font-medium text-[var(--color-primary)]" text={value} />
+        <Space direction="vertical" size={4} className="!flex w-full min-w-0">
+          <EllipsisWithTooltip className="truncate font-semibold text-[var(--color-text-1)]" text={value} />
           <EvaluationTag row={row} />
         </Space>
       ),
     },
     {
-      title: '目标对象',
-      width: 220,
-      responsive: ['sm'],
+      title: <SloColumnHeading hint="服务 · 环境" label="目标对象" />,
+      responsive: ['md'],
       render: (_, row) => (
-        <Space direction="vertical" size={2} className="min-w-0">
+        <Space direction="vertical" size={2} className="!flex w-full min-w-0">
           <EllipsisWithTooltip className="truncate" text={`${row.service_namespace ? `${row.service_namespace} / ` : ''}${row.service_name}`} />
           <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={[row.environment, row.endpoint || '服务级'].join(' · ')} />
         </Space>
       ),
     },
     {
-      title: 'SLI 类型',
+      title: <SloColumnHeading hint="计算口径" label="SLI 类型" />,
       dataIndex: 'sli_type',
-      width: 210,
-      responsive: ['lg'],
+      responsive: ['xl'],
       render: (value: ApmSliType, row) => (
-        <Space direction="vertical" size={2}>
-          <span>{sliLabels[value]}</span>
+        <Space direction="vertical" size={2} className="!flex w-full min-w-0">
+          <EllipsisWithTooltip className="truncate" text={sliLabels[value]} />
           {row.latency_threshold_ms ? <Typography.Text type="secondary" className="!text-xs">阈值 {row.latency_threshold_ms} ms</Typography.Text> : null}
         </Space>
       ),
     },
     {
-      title: '目标 / 窗口',
-      width: 130,
-      responsive: ['md'],
+      title: <SloColumnHeading align="right" hint="评估窗口" label="目标值" />,
+      width: 128,
+      align: 'right',
+      responsive: ['lg'],
       render: (_, row) => (
-        <Space direction="vertical" size={2}>
+        <Space direction="vertical" size={2} className="!flex w-full !items-end">
           <span className="tabular-nums">{Number(row.objective).toFixed(2)}%</span>
           <Typography.Text type="secondary" className="!text-xs">{windowLabels[row.evaluation_window]}</Typography.Text>
         </Space>
       ),
     },
     {
-      title: '当前达标率',
+      title: <SloColumnHeading align="right" hint="达标率" label="当前表现" />,
       dataIndex: 'current_rate',
-      width: 130,
+      width: 128,
+      align: 'right',
+      responsive: ['sm'],
       render: (value: number | null) => value === null ? '—' : <span className="tabular-nums">{value.toFixed(2)}%</span>,
     },
     {
-      title: '错误预算剩余',
+      title: <SloColumnHeading hint="剩余" label="错误预算" />,
       dataIndex: 'budget_remaining',
-      width: 210,
-      responsive: ['xl'],
+      width: 200,
+      responsive: ['xxl'],
       render: (value: number | null) => <BudgetProgress value={value} />,
+    },
+    {
+      title: <SloColumnHeading align="center" hint="状态" label="启用" />,
+      dataIndex: 'is_enabled',
+      width: 96,
+      align: 'center',
+      render: (_, row) => (
+        <Switch
+          aria-label={`${row.is_enabled ? '停用' : '启用'} ${row.name}`}
+          checked={row.is_enabled}
+          loading={mutatingId === row.id}
+          size="small"
+          onChange={(enabled) => void toggleEnabled(row, enabled)}
+        />
+      ),
     },
     {
       title: '操作',
       key: 'actions',
-      width: 160,
+      width: 120,
+      align: 'right',
       fixed: 'right',
       render: (_, row) => (
-        <Space size={0}>
-          <Switch
-            aria-label={`${row.is_enabled ? '停用' : '启用'} ${row.name}`}
-            checked={row.is_enabled}
-            loading={mutatingId === row.id}
-            size="small"
-            onChange={(enabled) => void toggleEnabled(row, enabled)}
-          />
-          <Button aria-label={`编辑 ${row.name}`} icon={<EditOutlined aria-hidden="true" />} size="small" type="link" onClick={() => openEditDrawer(row)} />
+        <Space className="w-full justify-end whitespace-nowrap" size={8}>
+          <Button className="!px-0" size="small" type="link" onClick={() => openEditDrawer(row)}>编辑</Button>
           <Popconfirm
             cancelText="取消"
             okButtonProps={{ danger: true, loading: mutatingId === row.id }}
@@ -289,7 +321,7 @@ export default function ApmSloPage() {
             description="删除后将停止目标评估，且无法恢复。"
             onConfirm={() => remove(row)}
           >
-            <Button aria-label={`删除 ${row.name}`} danger icon={<DeleteOutlined aria-hidden="true" />} size="small" type="link" />
+            <Button className="!px-0" danger disabled={mutatingId !== null && mutatingId !== row.id} size="small" type="link">删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -297,10 +329,10 @@ export default function ApmSloPage() {
   ];
 
   const content = state === 'ready' ? (
-    <CustomTable
-      autoScrollX={false}
+    <ApmDataTable
       columns={columns}
       dataSource={pageRows}
+      headerAlignment="column"
       pagination={{
         current: page,
         pageSize,
@@ -324,11 +356,15 @@ export default function ApmSloPage() {
 
   return (
     <ApmRouteShell dependency="telemetry" description="定义服务可靠性目标，跟踪达标率与错误预算。" title="SLO">
-      <ApmSurface className="overflow-hidden" padding="none">
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
+      <ApmSurface>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <Typography.Text strong>SLO 列表</Typography.Text>
-            <Typography.Text type="secondary" className="ml-2 !text-xs tabular-nums">共 {rows.length} 个</Typography.Text>
+            <div className="flex items-center gap-2">
+              <Typography.Text strong>SLO 列表</Typography.Text>
+              <span className="inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-fill-1)] px-2 py-0.5 text-xs tabular-nums text-[var(--color-text-3)]">
+                {rows.length} 项
+              </span>
+            </div>
           </div>
           <Space>
             <Button aria-label="刷新 SLO" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
@@ -361,7 +397,7 @@ export default function ApmSloPage() {
           <Form.Item label="环境" name="environment" extra="SLO 在单个部署环境内评估。" rules={[{ required: true, message: '请选择环境' }]}>
             <Select showSearch optionFilterProp="label" placeholder="选择环境" options={environmentOptions} />
           </Form.Item>
-          <Form.Item label="端点（可选）" name="endpoint" extra="留空时按整个服务计算。">
+          <Form.Item label="端点" name="endpoint" extra="留空时按整个服务计算。">
             <Input maxLength={512} placeholder="例如：POST /api/checkout" />
           </Form.Item>
           <Form.Item label="SLI 类型" name="sli_type" rules={[{ required: true, message: '请选择 SLI 类型' }]}>
@@ -379,9 +415,6 @@ export default function ApmSloPage() {
           </Form.Item>
           <Form.Item label="评估窗口" name="evaluation_window" rules={[{ required: true, message: '请选择评估窗口' }]}>
             <Select options={Object.entries(windowLabels).map(([value, label]) => ({ value, label }))} />
-          </Form.Item>
-          <Form.Item label="启用" name="is_enabled" valuePropName="checked" extra="启用后开始评估目标并计算错误预算。">
-            <Switch />
           </Form.Item>
         </Form>
       </Drawer>

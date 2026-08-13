@@ -19,9 +19,9 @@ class IngestSnippetRequest:
     service_name: str
     service_version: str
     environment: str
-    # Java host/docker 接入需要的探针下载地址，由服务器根据云区域
+    # 本版本四类接入都需要的离线包下载地址，由服务器根据云区域
     # NODE_SERVER_URL 解析，指向本系统的免登录下载接口。
-    java_agent_download_url: str = ""
+    probe_download_url: str = ""
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,7 @@ class CatalogDiscovery:
     instance_id: str | None
     environment: str
     version: str = ""
+    language: str = ""
     seen_at: datetime | None = None
 
 
@@ -220,6 +221,7 @@ class ServiceMetricQuery:
     started_at: datetime
     ended_at: datetime
     include_breakdown: bool = False
+    endpoint: str = ""
 
 
 @dataclass(frozen=True)
@@ -294,6 +296,7 @@ class InstanceActivity:
     environment: str
     version: str
     last_seen_at: datetime
+    language: str = ""
 
 
 @dataclass(frozen=True)
@@ -409,13 +412,9 @@ class TelemetryCatalogService(Protocol):
 
     def archive_service(self, service_id: UUID, *, reason: str, actor: str) -> ApmService: ...
 
-    def archive_instance(self, instance_id: UUID, *, reason: str, actor: str) -> ApmServiceInstance: ...
-
     def restore_service(self, service_id: UUID, *, actor: str) -> ApmService: ...
 
-    def restore_instance(self, instance_id: UUID, *, actor: str) -> ApmServiceInstance: ...
-
-    def archive_stale(self, *, observed_at: datetime) -> tuple[int, int]: ...
+    def archive_stale_instances(self, *, observed_at: datetime) -> int: ...
 
 
 class TelemetryQueryService(Protocol):

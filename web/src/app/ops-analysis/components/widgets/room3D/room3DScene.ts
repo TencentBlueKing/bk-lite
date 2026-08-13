@@ -31,6 +31,7 @@ export {
 export interface Room3DSceneCallbacks {
   onHover: (state: { rack: Room3DRack; x: number; y: number } | null) => void;
   onSelect: (rack: Room3DRack | null) => void;
+  onFirstRender?: () => void;
   onDeviceSelect?: (
     state: { rack: Room3DRack; device: Room3DRenderableDevice } | null,
   ) => void;
@@ -38,6 +39,7 @@ export interface Room3DSceneCallbacks {
 
 export interface Room3DSceneController {
   resetView: () => void;
+  resize: () => void;
   dispose: () => void;
 }
 
@@ -53,7 +55,19 @@ interface PickedRoomObject {
   target?: "rack" | "door" | "device";
 }
 
+interface PointerCoordinates {
+  clientX: number;
+  clientY: number;
+}
+
+interface HoverNotification {
+  rackId: string;
+  x: number;
+  y: number;
+}
+
 const READABLE_RACK_CAMERA_DISTANCE = 6.4;
+const HOVER_POSITION_EPSILON = 0.5;
 const RACK_DEVICE_VIEW_CAMERA_OFFSET = new THREE.Vector3(-2.35, 1.62, 3.25);
 const RACK_DEVICE_VIEW_TARGET_OFFSET = new THREE.Vector3(-0.08, 0.88, 0.18);
 
@@ -257,10 +271,8 @@ export const createRoom3DScene = (
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     alpha: true,
-    powerPreference: "high-performance",
   });
   renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.18;
@@ -311,12 +323,118 @@ export const createRoom3DScene = (
   let hasUserInteracted = false;
   let desiredCameraPosition: THREE.Vector3 | null = null;
   let desiredTarget: THREE.Vector3 | null = null;
+  let pendingRenderFrameId: number | null = null;
+  let pendingPointerFrameId: number | null = null;
+  let pendingPointerCoordinates: PointerCoordinates | null = null;
+  let hoverNotification: HoverNotification | null = null;
+  let disposed = false;
+  let isIntersecting = true;
+  let hasRenderedFirstFrame = false;
+  let viewportWidth = 0;
+  let viewportHeight = 0;
+  let viewportPixelRatio = 0;
+  let pixelRatioMediaQuery: MediaQueryList | null = null;
 
-  controls.addEventListener("start", () => {
+  const cancelPendingRender = () => {
+    if (pendingRenderFrameId === null) {
+      return;
+    }
+    window.cancelAnimationFrame(pendingRenderFrameId);
+    pendingRenderFrameId = null;
+  };
+
+  const cancelPendingPointerMove = () => {
+    pendingPointerCoordinates = null;
+    if (pendingPointerFrameId === null) {
+      return;
+    }
+    window.cancelAnimationFrame(pendingPointerFrameId);
+    pendingPointerFrameId = null;
+  };
+
+  const requestRender = () => {
+    if (
+      disposed ||
+      document.visibilityState === "hidden" ||
+      (!isIntersecting && hasRenderedFirstFrame) ||
+      pendingRenderFrameId !== null
+    ) {
+      return;
+    }
+    pendingRenderFrameId = window.requestAnimationFrame(renderFrame);
+  };
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === "hidden") {
+      cancelPendingRender();
+      return;
+    }
+    requestRender();
+  };
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  const intersectionObserver =
+    typeof IntersectionObserver === "undefined"
+      ? null
+      : new IntersectionObserver(([entry]) => {
+        if (!entry) {
+          return;
+        }
+        isIntersecting = entry.isIntersecting;
+        if (!isIntersecting) {
+          if (hasRenderedFirstFrame) {
+            cancelPendingRender();
+          }
+          return;
+        }
+        requestRender();
+      });
+  intersectionObserver?.observe(mountNode);
+
+  const animateCamera = () => {
+    if (!desiredCameraPosition || !desiredTarget) {
+      return false;
+    }
+
+    camera.position.lerp(desiredCameraPosition, 0.08);
+    controls.target.lerp(desiredTarget, 0.1);
+    if (
+      camera.position.distanceTo(desiredCameraPosition) < 0.02 &&
+      controls.target.distanceTo(desiredTarget) < 0.02
+    ) {
+      camera.position.copy(desiredCameraPosition);
+      controls.target.copy(desiredTarget);
+      desiredCameraPosition = null;
+      desiredTarget = null;
+      return false;
+    }
+    return true;
+  };
+
+  function renderFrame() {
+    pendingRenderFrameId = null;
+    let rackVisualAnimating = false;
+    visuals.forEach((visual) => {
+      rackVisualAnimating = animateRackVisual(visual) || rackVisualAnimating;
+    });
+    const cameraAnimating = animateCamera();
+    const controlsAnimating = controls.update();
+    renderer.render(scene, camera);
+    if (!hasRenderedFirstFrame) {
+      hasRenderedFirstFrame = true;
+      callbacks.onFirstRender?.();
+    }
+    if (rackVisualAnimating || cameraAnimating || controlsAnimating) {
+      requestRender();
+    }
+  }
+
+  const handleControlsStart = () => {
     hasUserInteracted = true;
     desiredCameraPosition = null;
     desiredTarget = null;
-  });
+  };
+  controls.addEventListener("start", handleControlsStart);
+  controls.addEventListener("change", requestRender);
 
   const updateVisualStates = () => {
     visuals.forEach((visual, rackId) => {
@@ -327,12 +445,13 @@ export const createRoom3DScene = (
         selectedDeviceId,
       });
     });
+    requestRender();
   };
 
-  const pickRack = (event: PointerEvent) => {
+  const pickRack = ({ clientX, clientY }: PointerCoordinates) => {
     const rect = renderer.domElement.getBoundingClientRect();
-    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(pickTargets, false);
     const firstHit = hits[0];
@@ -417,31 +536,74 @@ export const createRoom3DScene = (
     );
   };
 
-  const handlePointerMove = (event: PointerEvent) => {
-    const rack = pickRack(event);
-    hoveredRackId = rack?.rack.rack_id || "";
-    updateVisualStates();
+  const notifyHover = (rack: Room3DRack | null) => {
     if (!rack) {
-      callbacks.onHover(null);
+      if (hoverNotification) {
+        hoverNotification = null;
+        callbacks.onHover(null);
+      }
+      return;
+    }
+    const point = getRackScreenPoint(rack);
+    if (
+      hoverNotification?.rackId === rack.rack_id &&
+      Math.abs(hoverNotification.x - point.x) < HOVER_POSITION_EPSILON &&
+      Math.abs(hoverNotification.y - point.y) < HOVER_POSITION_EPSILON
+    ) {
+      return;
+    }
+    hoverNotification = { rackId: rack.rack_id, ...point };
+    callbacks.onHover({ rack, ...point });
+  };
+
+  const processPointerMove = () => {
+    pendingPointerFrameId = null;
+    const coordinates = pendingPointerCoordinates;
+    pendingPointerCoordinates = null;
+    if (!coordinates || disposed) {
+      return;
+    }
+    const rack = pickRack(coordinates);
+    const nextHoveredRackId = rack?.rack.rack_id || "";
+    if (nextHoveredRackId !== hoveredRackId) {
+      hoveredRackId = nextHoveredRackId;
+      updateVisualStates();
+    }
+    if (!rack) {
+      notifyHover(null);
       renderer.domElement.style.cursor = "grab";
       return;
     }
     renderer.domElement.style.cursor = "pointer";
     if (openRackId) {
-      callbacks.onHover(null);
+      notifyHover(null);
       return;
     }
-    callbacks.onHover({ rack: rack.rack, ...getRackScreenPoint(rack.rack) });
+    notifyHover(rack.rack);
+  };
+
+  const handlePointerMove = (event: PointerEvent) => {
+    pendingPointerCoordinates = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    };
+    if (pendingPointerFrameId === null) {
+      pendingPointerFrameId = window.requestAnimationFrame(processPointerMove);
+    }
   };
 
   const handlePointerLeave = () => {
-    hoveredRackId = "";
-    updateVisualStates();
-    callbacks.onHover(null);
+    cancelPendingPointerMove();
+    if (hoveredRackId) {
+      hoveredRackId = "";
+      updateVisualStates();
+    }
+    notifyHover(null);
     renderer.domElement.style.cursor = "grab";
   };
 
   const handleClick = (event: PointerEvent) => {
+    cancelPendingPointerMove();
     const rack = pickRack(event);
     if (!rack) {
       if (!openRackId) {
@@ -482,6 +644,9 @@ export const createRoom3DScene = (
         ? { rack: rack.rack, device: rack.device }
         : null,
     );
+    if (openRackId) {
+      notifyHover(null);
+    }
     if (
       openRackId &&
       openRackId !== previousOpenRackId &&
@@ -493,19 +658,52 @@ export const createRoom3DScene = (
   };
 
   const resize = () => {
-    const width = mountNode.clientWidth || 1;
-    const height = mountNode.clientHeight || 1;
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-    renderer.setSize(width, height, false);
-    if (!hasUserInteracted && !desiredCameraPosition) {
-      camera.position.copy(
-        getResponsiveCameraPosition(initialCameraPosition, camera.aspect),
-      );
-      controls.target.set(0, 0, 0);
-      controls.update();
+    const visualRect = mountNode.getBoundingClientRect();
+    const width = Math.max(Math.round(visualRect.width), 1);
+    const height = Math.max(Math.round(visualRect.height), 1);
+    const pixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+    const sizeChanged = width !== viewportWidth || height !== viewportHeight;
+    const pixelRatioChanged = pixelRatio !== viewportPixelRatio;
+    if (!sizeChanged && !pixelRatioChanged) {
+      return;
     }
+    viewportWidth = width;
+    viewportHeight = height;
+    viewportPixelRatio = pixelRatio;
+    if (pixelRatioChanged) {
+      renderer.setPixelRatio(pixelRatio);
+    }
+    if (sizeChanged) {
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height, false);
+      if (!hasUserInteracted && !desiredCameraPosition) {
+        camera.position.copy(
+          getResponsiveCameraPosition(initialCameraPosition, camera.aspect),
+        );
+        controls.target.set(0, 0, 0);
+        controls.update();
+      }
+    }
+    requestRender();
   };
+
+  const handleWindowResize = () => resize();
+  const handlePixelRatioChange = () => {
+    resize();
+    observePixelRatio();
+  };
+  function observePixelRatio() {
+    pixelRatioMediaQuery?.removeEventListener(
+      "change",
+      handlePixelRatioChange,
+    );
+    pixelRatioMediaQuery =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+        : null;
+    pixelRatioMediaQuery?.addEventListener("change", handlePixelRatioChange);
+  }
 
   const resetView = () => {
     selectedRackId = "";
@@ -518,6 +716,7 @@ export const createRoom3DScene = (
       camera.aspect,
     );
     desiredTarget = new THREE.Vector3(0, 0, 0);
+    hoverNotification = null;
     callbacks.onHover(null);
     callbacks.onSelect(null);
     callbacks.onDeviceSelect?.(null);
@@ -530,40 +729,34 @@ export const createRoom3DScene = (
 
   const resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(mountNode);
+  window.addEventListener("resize", handleWindowResize);
+  observePixelRatio();
   resize();
   updateVisualStates();
 
-  let animationFrame = 0;
-  const animate = () => {
-    visuals.forEach(animateRackVisual);
-    if (desiredCameraPosition && desiredTarget) {
-      camera.position.lerp(desiredCameraPosition, 0.08);
-      controls.target.lerp(desiredTarget, 0.1);
-      if (
-        camera.position.distanceTo(desiredCameraPosition) < 0.02 &&
-        controls.target.distanceTo(desiredTarget) < 0.02
-      ) {
-        desiredCameraPosition = null;
-        desiredTarget = null;
-      }
-    }
-    controls.update();
-    renderer.render(scene, camera);
-    animationFrame = window.requestAnimationFrame(animate);
-  };
-  animate();
-
   return {
     resetView,
+    resize,
     dispose: () => {
-      window.cancelAnimationFrame(animationFrame);
+      disposed = true;
+      cancelPendingRender();
+      cancelPendingPointerMove();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      intersectionObserver?.disconnect();
       resizeObserver.disconnect();
+      window.removeEventListener("resize", handleWindowResize);
+      pixelRatioMediaQuery?.removeEventListener(
+        "change",
+        handlePixelRatioChange,
+      );
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       renderer.domElement.removeEventListener(
         "pointerleave",
         handlePointerLeave,
       );
       renderer.domElement.removeEventListener("click", handleClick);
+      controls.removeEventListener("start", handleControlsStart);
+      controls.removeEventListener("change", requestRender);
       controls.dispose();
       disposeObject3D(scene);
       renderer.dispose();

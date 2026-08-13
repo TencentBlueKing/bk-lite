@@ -55,6 +55,94 @@ def test_builtin_datasource_rejects_regular_mutations(authenticated_user, method
     assert "内置数据源" in response.data["detail"]
 
 
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_builtin_datasource_partial_update_allows_visibility_only(authenticated_user):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+
+    authenticated_user.is_superuser = True
+    datasource = DataSourceAPIModel.objects.create(
+        name="builtin-visibility",
+        rest_api="builtin/visibility",
+        groups=[1],
+        is_build_in=True,
+        build_in_key="builtin::visibility",
+    )
+    factory = APIRequestFactory()
+    request = factory.patch(
+        f"/operation_analysis/api/data_source/{datasource.pk}/",
+        data={"groups": [1, 2]},
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(datasource.pk))
+
+    datasource.refresh_from_db()
+    assert response.status_code == status.HTTP_200_OK
+    assert datasource.name == "builtin-visibility"
+    assert datasource.groups == [1, 2]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_builtin_datasource_visibility_update_requires_edit_permission(authenticated_user):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+
+    datasource = DataSourceAPIModel.objects.create(
+        name="builtin-visibility-permission",
+        rest_api="builtin/visibility-permission",
+        groups=[1],
+        is_build_in=True,
+        build_in_key="builtin::visibility-permission",
+    )
+    factory = APIRequestFactory()
+    request = factory.patch(
+        f"/operation_analysis/api/data_source/{datasource.pk}/",
+        data={"groups": [1, 2]},
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(datasource.pk))
+
+    datasource.refresh_from_db()
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert datasource.groups == [1]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_builtin_datasource_rejects_visibility_mixed_with_content(authenticated_user):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+
+    authenticated_user.is_superuser = True
+    datasource = DataSourceAPIModel.objects.create(
+        name="builtin-visibility-mixed-fields",
+        rest_api="builtin/visibility-mixed-fields",
+        groups=[1],
+        is_build_in=True,
+        build_in_key="builtin::visibility-mixed-fields",
+    )
+    factory = APIRequestFactory()
+    request = factory.patch(
+        f"/operation_analysis/api/data_source/{datasource.pk}/",
+        data={"groups": [1, 2], "name": "changed"},
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(datasource.pk))
+
+    datasource.refresh_from_db()
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert datasource.name == "builtin-visibility-mixed-fields"
+    assert datasource.groups == [1]
+
+
 def _build_instance(groups=(1,), rest_api="monitor/query_latest_active_alerts", params=None):
     return SimpleNamespace(
         id=1,

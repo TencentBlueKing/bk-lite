@@ -117,7 +117,10 @@ apiClient.interceptors.response.use(
       const { status } = error.response;
       const payload = error.response?.data;
       const messageText =
-        payload?.message ?? payload?.error ?? `Request failed (${status})`;
+        payload?.message ??
+        payload?.error ??
+        payload?.detail ??
+        `Request failed (${status})`;
       const presentation = getRequestErrorPresentation(payload);
       const suppressErrorNotification = Boolean(error.config?.suppressErrorNotification);
       const handledError = new HandledRequestError(messageText, {

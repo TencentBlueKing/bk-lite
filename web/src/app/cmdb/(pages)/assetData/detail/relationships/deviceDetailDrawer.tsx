@@ -57,7 +57,7 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
     setDetail(null);
     setAttrs([]);
     Promise.all([
-      getInstanceDetail(device.inst_id).catch(() => null),
+      getInstanceDetail(device.inst_uuid || device.inst_id).catch(() => null),
       getModelAttrList(device.model_id).catch(() => []),
     ])
       .then(([d, a]) => {
@@ -67,14 +67,14 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
       })
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, device?.inst_id]);
+     
+  }, [open, device?.inst_uuid, device?.inst_id]);
 
   const jump = () => {
     if (!device) return;
     const params = new URLSearchParams({
       icn: '', model_name: device.model_id, model_id: device.model_id,
-      classification_id: '', inst_id: device.inst_id, inst_name: device.inst_name,
+      classification_id: '', inst_uuid: device.inst_uuid || device.inst_id, inst_name: device.inst_name,
     }).toString();
     router.push(`/cmdb/assetData/detail/baseInfo?${params}`);
   };

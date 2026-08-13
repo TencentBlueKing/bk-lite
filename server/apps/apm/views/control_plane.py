@@ -1,4 +1,3 @@
-import logging
 from dataclasses import asdict
 
 from django.db import transaction
@@ -54,12 +53,13 @@ from apps.apm.services import (
 from apps.apm.services.access import current_organization_id, filter_current_organization, validate_assignable_organizations
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
+from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
+from apps.core.logger import apm_logger as logger
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.rpc.node_mgmt import NodeMgmt
 
-logger = logging.getLogger(__name__)
 MAX_CATALOG_KEYWORD_TOKENS = 8
 
 
@@ -119,7 +119,7 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
         organization_id = current_organization_id(self.request)
         if organization_id is None:
             return queryset.none()
-        return queryset.filter(Q(is_builtin=True) | Q(organization_links__organization=organization_id)).distinct()
+        return queryset.filter(organization_links__organization=organization_id, is_builtin=False).distinct()
 
     @HasPermission("applications-View,integration_add-View,services-View,integration_instances-View")
     def list(self, request, *args, **kwargs):
@@ -150,8 +150,6 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
     @HasPermission("applications-Operate")
     def update(self, request, *args, **kwargs):
         application = self.get_object()
-        if application.is_builtin:
-            return Response({"detail": "内置应用不可修改。"}, status=status.HTTP_409_CONFLICT)
         payload = {key: value for key, value in request.data.items() if key != "application_id"}
         serializer = ApplicationMutationSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
@@ -204,13 +202,14 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
             "organization_links",
         )
         application = get_object_or_404(applications, application_id=data["application_id"])
-        needs_java_agent_download = data["language"] == "java" and data["runtime"] in ("host", "docker")
+        probe_artifact_name = LANGUAGE_PROBE_ARTIFACTS.get(data["language"], "")
         try:
             endpoints = self.service.resolve_region(
                 NodeMgmt(),
                 data["cloud_region_id"],
                 organization_ids=[organization_id],
-                include_java_agent_download=needs_java_agent_download,
+                include_probe_download=bool(probe_artifact_name),
+                probe_artifact_name=probe_artifact_name,
             )
         except CloudRegionConfigurationError as exc:
             response_status = (
@@ -234,7 +233,7 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
                 service_name=data["service_name"],
                 service_version=data.get("service_version", ""),
                 environment=data["environment"],
-                java_agent_download_url=endpoints.java_agent_download_url,
+                probe_download_url=endpoints.probe_download_url,
             )
         )
         return Response(
@@ -257,7 +256,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self) -> QuerySet[ApmService]:
         params = _catalog_list_params(self)
-        queryset = ApmService.objects.select_related("application").prefetch_related(
+        queryset = ApmService.objects.filter(application__isnull=False).select_related("application").prefetch_related(
             "organization_links",
             Prefetch("instances", queryset=ApmServiceInstance.objects.order_by("environment", "id")),
         )
@@ -343,6 +342,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
             started_at=data["started_at"],
             ended_at=data["ended_at"],
             include_breakdown=True,
+            endpoint=data["endpoint"],
         )
         try:
             red = DjangoTelemetryQueryService(VictoriaTracesTelemetryStore()).service_red(query)
@@ -399,7 +399,7 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self) -> QuerySet[ApmServiceInstance]:
         params = _catalog_list_params(self)
-        queryset = ApmServiceInstance.objects.select_related("service", "service__application").prefetch_related("organization_links")
+        queryset = ApmServiceInstance.objects.filter(service__application__isnull=False).select_related("service", "service__application").prefetch_related("organization_links")
         if self.action == "list":
             queryset = _filter_catalog_status(queryset, params.get("status"), params["include_archived"])
             if params.get("application"):
@@ -453,25 +453,6 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
             actor=request.user.username,
         )
         return Response(self.get_serializer(updated).data)
-
-    @action(methods=("post",), detail=True)
-    @HasPermission("integration_instances-Operate")
-    def archive(self, request, *args, **kwargs):
-        instance = self.get_object()
-        archived = self.catalog.archive_instance(
-            instance.id,
-            reason=str(request.data.get("reason", "manual")),
-            actor=request.user.username,
-        )
-        return Response(self.get_serializer(archived).data)
-
-    @action(methods=("post",), detail=True)
-    @HasPermission("integration_instances-Operate")
-    def restore(self, request, *args, **kwargs):
-        instance = self.get_object()
-        restored = self.catalog.restore_instance(instance.id, actor=request.user.username)
-        return Response(self.get_serializer(restored).data)
-
 
 class ApmSloViewSet(viewsets.GenericViewSet):
     renderer_classes = (ApmRenderer,)

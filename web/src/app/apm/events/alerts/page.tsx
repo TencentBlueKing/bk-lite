@@ -17,16 +17,18 @@ import {
   Tag,
   Timeline,
   Typography,
+  theme,
   type TableColumnsType,
 } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import FilterToolbar from '@/components/filter-toolbar';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
-import type { ApmEvent, ApmEventQuery, ApmNotificationDelivery, ApmPolicyMetric, ApmPolicySeverity } from '@/app/apm/types';
-import CustomTable from '@/components/custom-table';
+import type { ApmEvent, ApmEventQuery, ApmNotificationDelivery, ApmPolicyMetric, ApmPolicySeverity, ApmServiceRed } from '@/app/apm/types';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 
 type PageState = CatalogStateKind | 'ready';
 type AlertTab = 'active' | 'history';
@@ -77,8 +79,9 @@ const DELIVERY_STATUS: Record<ApmNotificationDelivery['status'], { label: string
 };
 
 export default function ApmEventsPage() {
+  const { token } = theme.useToken();
   const searchParams = useSearchParams();
-  const { getEvents, isLoading: authLoading, retryNotificationDelivery } = useApmApi();
+  const { getEvents, getServiceRed, isLoading: authLoading, retryNotificationDelivery } = useApmApi();
   const [events, setEvents] = useState<ApmEvent[]>([]);
   const [state, setState] = useState<PageState>('loading');
   const [query, setQuery] = useState<ApmEventQuery>({ limit: 50 });
@@ -94,6 +97,7 @@ export default function ApmEventsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('alert');
   const [selectedAlert, setSelectedAlert] = useState<ApmEvent | null>(null);
+  const [alertRed, setAlertRed] = useState<ApmServiceRed | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
@@ -122,6 +126,22 @@ export default function ApmEventsPage() {
     if (!refreshed || refreshed === selectedAlert) return;
     setSelectedAlert(refreshed);
   }, [drawerOpen, events]);
+
+  useEffect(() => {
+    if (!drawerOpen || !selectedAlert?.resource_id || !selectedAlert.environment) {
+      setAlertRed(null);
+      return;
+    }
+    const occurredAt = new Date(selectedAlert.start_time);
+    const startedAt = new Date(occurredAt.getTime() - 60 * 60 * 1000);
+    const endedAt = selectedAlert.end_time ? new Date(selectedAlert.end_time) : new Date();
+    getServiceRed(
+      selectedAlert.resource_id,
+      selectedAlert.environment,
+      startedAt.toISOString(),
+      endedAt.toISOString(),
+    ).then(setAlertRed).catch(() => setAlertRed(null));
+  }, [drawerOpen, getServiceRed, selectedAlert]);
 
   const alerts = useMemo(() => {
     const seen = new Set<string>();
@@ -268,7 +288,6 @@ export default function ApmEventsPage() {
     {
       title: '告警',
       dataIndex: 'title',
-      fixed: 'left',
       render: (title, event) => (
         <Space direction="vertical" size={0} className="min-w-0">
           <EllipsisWithTooltip className="truncate font-medium" text={title} />
@@ -280,37 +299,30 @@ export default function ApmEventsPage() {
       title: '级别',
       dataIndex: 'severity',
       width: 90,
+      align: 'center',
+      responsive: ['sm'],
       render: (severity: ApmEvent['severity']) => (
         <Tag bordered={false} color={SEVERITY[severity].color}>{SEVERITY[severity].label}</Tag>
       ),
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      responsive: ['sm'],
-      render: (status: ApmEvent['status']) => (
-        <Tag bordered={false} color={ALERT_STATUS[status].color}>{ALERT_STATUS[status].label}</Tag>
-      ),
-    },
-    {
-      title: '指标',
-      dataIndex: 'item',
-      width: 130,
-      responsive: ['lg'],
-      render: (item: ApmPolicyMetric) => METRIC_LABELS[item] ?? item,
-    },
-    {
-      title: '值',
-      dataIndex: 'value',
-      width: 100,
+      title: '服务',
+      dataIndex: 'service',
+      width: 180,
       responsive: ['md'],
-      render: (value) => value ?? '—',
-      className: 'tabular-nums',
+      render: (value) => <EllipsisWithTooltip className="truncate" text={value || '—'} />,
+    },
+    {
+      title: '端点',
+      key: 'endpoint',
+      width: 200,
+      responsive: ['lg'],
+      render: () => <Typography.Text type="secondary">服务级</Typography.Text>,
     },
     {
       title: '通知',
       width: 130,
+      responsive: ['xl'],
       render: (_, event) => {
         const deliveries = event.notification_deliveries ?? [];
         if (!deliveries.length) return <Typography.Text type="secondary">未配置</Typography.Text>;
@@ -334,6 +346,7 @@ export default function ApmEventsPage() {
       title: '操作',
       key: 'action',
       width: 90,
+      align: 'right',
       fixed: 'right',
       render: (_, event) => (
         <Button
@@ -443,24 +456,15 @@ export default function ApmEventsPage() {
                 .map(([value, config]) => ({ value: value as ApmPolicySeverity, label: config.label }))}
               onChange={(severity) => { setQuery((current) => ({ ...current, severity })); setPage(1); }}
             />
-            <Badge
-              count={visibleAlerts.length}
-              showZero
-              color="var(--color-primary)"
-              className="text-xs text-[var(--color-text-3)]"
-            />
-            <Typography.Text type="secondary" className="text-xs">
-              {activeTab === 'active' ? '当前未恢复' : '最近 7 天已恢复'}
-            </Typography.Text>
           </Space>
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 p-4">
           {visibleState === 'ready' || (state === 'loading' && events.length > 0) ? (
-            <CustomTable
-              autoScrollX={false}
+            <ApmDataTable
               rowKey="event_id"
               columns={columns}
               dataSource={pageAlerts}
+              headerAlignment="column"
               loading={state === 'loading'}
               pagination={{
                 current: page,
@@ -551,6 +555,31 @@ export default function ApmEventsPage() {
             <div className="min-h-0 flex-1 overflow-y-auto pb-2">
               {drawerTab === 'alert' ? (
                 <div className="flex flex-col gap-4">
+                  <div>
+                    <Typography.Text strong className="mb-2 block">告警趋势</Typography.Text>
+                    <div className="h-64 rounded-lg border border-[var(--color-border)] p-2">
+                      <TimeSeriesComposedChart
+                        data={(alertRed?.timeseries ?? []).map((point) => ({
+                          ...point,
+                          error_rate_percent: point.error_rate === null ? null : point.error_rate * 100,
+                        }))}
+                        xDataKey="timestamp"
+                        getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')}
+                        xAxisBoundaryGap={false}
+                        yAxes={[
+                          { formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)}` },
+                          { formatter: (value) => `${value.toFixed(1)}%`, splitLine: false },
+                          { formatter: (value) => `${value.toFixed(0)} ms`, splitLine: false },
+                        ]}
+                        series={[
+                          { name: '吞吐量 req/s', type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
+                          { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1 },
+                          { name: 'P95 ms', type: 'line', dataKey: 'p95_ms', color: token.colorWarning, yAxisIndex: 2 },
+                        ]}
+                        surfaceProps={{ emptyStateProps: { description: '告警时间窗内暂无指标趋势' } }}
+                      />
+                    </div>
+                  </div>
                   <Descriptions
                     title="告警信息"
                     bordered

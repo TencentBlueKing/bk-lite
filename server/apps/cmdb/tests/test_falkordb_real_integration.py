@@ -76,9 +76,7 @@ def test_create_and_query_entity_roundtrip(label):
     assert "host-real-1" in names
 
     # 分页查询时才返回真实总数
-    paged_rows, paged_count = client.query_entity(
-        label=label, params=[], page={"skip": 0, "limit": 10}
-    )
+    paged_rows, paged_count = client.query_entity(label=label, params=[], page={"skip": 0, "limit": 10})
     assert paged_count >= 1
 
 
@@ -152,9 +150,57 @@ def test_query_entity_by_id_roundtrip(label):
         check_attr_map={"is_only": {}, "is_required": {}},
         exist_items=[],
     )
-    fetched = client.query_entity_by_id(created["_id"])
-    assert fetched["_id"] == created["_id"]
-    assert fetched["inst_name"] == "byid"
+
+    got = client.query_entity_by_id(created["_id"])
+    assert got["_id"] == created["_id"]
+    assert got["inst_name"] == "byid"
+
+
+def test_ensure_node_property_index_is_idempotent_real(label):
+    client = FalkorDBClient()
+    client.connect()
+    client.ensure_node_property_index(label, "inst_uuid")
+    client.ensure_node_property_index(label, "inst_uuid")
+
+
+def test_create_edge_persists_uuid_endpoints_real(label):
+    client = FalkorDBClient()
+    client.connect()
+    src_uuid = str(uuid.uuid4())
+    dst_uuid = str(uuid.uuid4())
+    src = client.create_entity(
+        label=label,
+        properties={"inst_name": "edge-src", "model_id": "host", "inst_uuid": src_uuid},
+        check_attr_map={"is_only": {}, "is_required": {}},
+        exist_items=[],
+    )
+    dst = client.create_entity(
+        label=label,
+        properties={"inst_name": "edge-dst", "model_id": "host", "inst_uuid": dst_uuid},
+        check_attr_map={"is_only": {}, "is_required": {}},
+        exist_items=[],
+    )
+
+    edge = client.create_edge(
+        label="connects",
+        a_id=src["_id"],
+        a_label=label,
+        b_id=dst["_id"],
+        b_label=label,
+        properties={
+            "model_asst_id": "conn",
+            "src_inst_id": src["_id"],
+            "dst_inst_id": dst["_id"],
+            "src_inst_uuid": src_uuid,
+            "dst_inst_uuid": dst_uuid,
+        },
+        check_asst_key="model_asst_id",
+    )
+
+    assert edge.get("src_inst_uuid") == src_uuid
+    assert edge.get("dst_inst_uuid") == dst_uuid
+    assert "src_inst_id" not in edge
+    assert "dst_inst_id" not in edge
 
 
 def test_entity_count_grouped_real(label):

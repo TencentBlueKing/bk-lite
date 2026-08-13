@@ -73,6 +73,8 @@ class ImportService:
         created_by: str = "",
         updated_by: str = "",
         groups: list[int] | None = None,
+        existing_canvas_ids: dict[tuple[str, str], int] | None = None,
+        preserve_existing_canvas_groups: bool = False,
     ):
         """
         初始化导入服务
@@ -85,6 +87,8 @@ class ImportService:
             created_by: 创建者
             updated_by: 更新者
             groups: 导入对象所属的组织ID列表
+            existing_canvas_ids: 由受信调用方按（对象类型，稳定键）解析的存量画布 ID
+            preserve_existing_canvas_groups: 覆盖存量画布时保留其组织可见性配置
         """
         self.doc = doc
         self.target_directory_id = target_directory_id
@@ -93,6 +97,8 @@ class ImportService:
         self.created_by = created_by
         self.updated_by = updated_by
         self.groups = groups or []
+        self.existing_canvas_ids = existing_canvas_ids or {}
+        self.preserve_existing_canvas_groups = preserve_existing_canvas_groups
 
         # 导入过程中的映射表：YAML key -> DB ID
         self.namespace_key_to_id: dict[str, int] = {}
@@ -122,6 +128,20 @@ class ImportService:
             else:
                 return None
         return current
+
+    def _normalize_transform_config(self, ds_item) -> dict:
+        config = getattr(ds_item, "transform_config", None)
+        if not isinstance(config, dict):
+            return {}
+        enabled = bool(config.get("enabled"))
+        script = config.get("script") if isinstance(config.get("script"), str) else ""
+        if enabled and not script.strip():
+            return {"enabled": False, "language": "python", "script": ""}
+        return {
+            "enabled": enabled,
+            "language": "python",
+            "script": script,
+        }
 
     def _resolve_config_placeholders(self, object_key: str, field: str, config: dict, existing: dict | None = None):
         """用显式补密值或覆盖目标中的原值替换连接器配置里的脱敏占位符。"""
@@ -165,6 +185,25 @@ class ImportService:
             existing.query_config if existing else None,
         )
         return connection_config, query_config, missing_connection + missing_query
+
+    def _reset_excel_materialization_if_needs_upload(self, existing: DataSourceAPIModel, query_config: dict) -> None:
+        """新格式 Excel（无 imported_items）覆盖时清空旧槽，强制 needs_upload。"""
+        imported = query_config.get("imported_items") if isinstance(query_config, dict) else None
+        if isinstance(imported, list) and imported:
+            return
+        if existing.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+            return
+
+        from apps.operation_analysis.models.excel_materialization_models import ExcelMaterializationSlot
+
+        old_success_id = existing.excel_success_slot_id
+        old_candidate_id = existing.excel_candidate_slot_id
+        existing.excel_success_slot = None
+        existing.excel_candidate_slot = None
+        existing.excel_materialization_generation = 0
+        slot_ids = [sid for sid in (old_success_id, old_candidate_id) if sid]
+        if slot_ids:
+            ExcelMaterializationSlot.objects.filter(pk__in=slot_ids).delete()
 
     def _generate_rename_name(self, original_name: str, model) -> str:
         """
@@ -365,14 +404,19 @@ class ImportService:
                     return None
                 existing.desc = ds_item.desc
                 existing.source_type = ds_item.source_type
+                existing.connection = None
+                existing.connection_overrides = {}
                 existing.connection_config = connection_config
                 existing.query_config = query_config
+                existing.transform_config = self._normalize_transform_config(ds_item)
                 # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 existing.is_active = ds_item.is_active
                 existing.params = ds_item.params
                 existing.chart_type = ds_item.chart_type
                 existing.field_schema = ds_item.field_schema
                 existing.updated_by = self.updated_by
+                if existing.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+                    self._reset_excel_materialization_if_needs_upload(existing, query_config)
                 existing.save()
                 existing.namespaces.set(namespace_ids)
                 existing.tag.set(tag_ids)
@@ -400,8 +444,11 @@ class ImportService:
                     name=new_name,
                     rest_api=ds_item.rest_api,
                     source_type=ds_item.source_type,
+                    connection=None,
+                    connection_overrides={},
                     connection_config=connection_config,
                     query_config=query_config,
+                    transform_config=self._normalize_transform_config(ds_item),
                     desc=ds_item.desc,
                     # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                     is_active=ds_item.is_active,
@@ -437,8 +484,11 @@ class ImportService:
                 name=ds_item.name,
                 rest_api=ds_item.rest_api,
                 source_type=ds_item.source_type,
+                connection=None,
+                connection_overrides={},
                 connection_config=connection_config,
                 query_config=query_config,
+                transform_config=self._normalize_transform_config(ds_item),
                 desc=ds_item.desc,
                 # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 is_active=ds_item.is_active,
@@ -472,7 +522,11 @@ class ImportService:
         Returns:
             新建或已存在的画布ID
         """
-        existing = model.objects.filter(name=canvas_item.name).first()
+        stable_existing_id = self.existing_canvas_ids.get((object_type.value, canvas_item.key))
+        if stable_existing_id is not None:
+            existing = model.objects.filter(pk=stable_existing_id).first()
+        else:
+            existing = model.objects.filter(name=canvas_item.name).first()
         action = self._get_conflict_action(canvas_item.key)
 
         # 获取目标目录
@@ -491,8 +545,21 @@ class ImportService:
                 self.datasource_key_to_id,
             ),
             "directory": directory,
-            "groups": canvas_groups,
         }
+        if existing is None or not (stable_existing_id is not None and self.preserve_existing_canvas_groups):
+            canvas_data["groups"] = canvas_groups
+
+        if stable_existing_id is not None:
+            name_conflict = model.objects.filter(name=canvas_item.name).exclude(pk=stable_existing_id).exists()
+            if name_conflict:
+                logger.warning(
+                    "[CanvasImport] 内置%s稳定键 %s 的目标名称 %s 已被占用，保留原名称",
+                    object_type.value,
+                    canvas_item.key,
+                    canvas_item.name,
+                )
+            else:
+                canvas_data["name"] = canvas_item.name
 
         if object_type == ObjectType.NETWORK_TOPOLOGY:
             canvas_data["base_url"] = canvas_item.base_url

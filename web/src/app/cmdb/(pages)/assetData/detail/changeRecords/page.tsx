@@ -28,7 +28,8 @@ const { RangePicker } = DatePicker;
 
 interface ChangeRecord {
   id: number;
-  inst_id: number;
+  inst_uuid?: string;
+  inst_id?: number;
   model_id: string;
   label: string;
   type: string;
@@ -106,7 +107,7 @@ const ChangeRecords: React.FC = () => {
 
   const searchParams = useSearchParams();
   const modelId: string = searchParams.get('model_id') || '';
-  const instId: string = searchParams.get('inst_id') || '';
+  const instUuid: string = searchParams.get('inst_uuid') || '';
 
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -157,7 +158,7 @@ const ChangeRecords: React.FC = () => {
       try {
         const query: any = {
           model_id: modelId,
-          inst_id: instId,
+          inst_uuid: instUuid,
           ...params,
         };
         const data = await changeRecordApi.getChangeRecords(query);
@@ -170,7 +171,7 @@ const ChangeRecords: React.FC = () => {
         setLoading(false);
       }
     },
-    [modelId, instId, changeRecordApi, selectedId]
+    [modelId, instUuid, changeRecordApi, selectedId]
   );
 
   useEffect(() => {
@@ -180,7 +181,7 @@ const ChangeRecords: React.FC = () => {
           changeRecordApi.getChangeRecordEnumData(),
           changeRecordApi.getChangeRecordScenarioEnum(),
           modelApi.getModelAttrList(modelId),
-          instId ? instanceApi.getInstanceDetail(instId) : Promise.resolve({}),
+          instUuid ? instanceApi.getInstanceDetail(instUuid) : Promise.resolve({}),
         ]);
         setTypeEnum(typeData || {});
         setScenarioEnum(scenarioData || {});
@@ -191,7 +192,7 @@ const ChangeRecords: React.FC = () => {
       }
       fetchRecords();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // 属性 id → 中文名
@@ -304,7 +305,7 @@ const ChangeRecords: React.FC = () => {
   const handleExport = async () => {
     try {
       setExporting(true);
-      const params: any = { model_id: modelId, inst_id: instId };
+      const params: any = { model_id: modelId, inst_uuid: instUuid };
       if (scenarioFilters.length) {
         params.scenarios = scenarioFilters.join(',');
       }
@@ -316,7 +317,7 @@ const ChangeRecords: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `change_record_${instId}_${dayjs().format(
+      link.download = `change_record_${instUuid}_${dayjs().format(
         'YYYYMMDD_HHmmss'
       )}.xlsx`;
       document.body.appendChild(link);

@@ -15,7 +15,7 @@ import DeviceDetailDrawer from './deviceDetailDrawer';
 
 interface Props {
   modelId: string;
-  instId: string;
+  instUuid: string;
   /** When set, rack click navigates via callback instead of opening the elevation Drawer. */
   onRackSelect?: (rack: RoomRack) => void;
   /** After returning from a rack drill-down, scroll this rack into view and pulse it. */
@@ -24,7 +24,7 @@ interface Props {
 
 const RoomFloorPlan: React.FC<Props> = ({
   modelId,
-  instId,
+  instUuid,
   onRackSelect,
   highlightRackId,
 }) => {
@@ -40,16 +40,16 @@ const RoomFloorPlan: React.FC<Props> = ({
   const isDark = mode === 'dark';
 
   useEffect(() => {
-    if (!modelId || !instId) return;
+    if (!modelId || !instUuid) return;
     let cancelled = false;
     setLoading(true);
-    getRoomLayout(modelId, instId)
+    getRoomLayout(modelId, instUuid)
       .then((res: RoomLayoutData) => !cancelled && setData(res))
       .catch(() => !cancelled && setData(null))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, instId]);
+     
+  }, [modelId, instUuid]);
 
   useEffect(() => {
     if (!highlightRackId || !data || loading) return;
@@ -230,7 +230,7 @@ const RoomFloorPlan: React.FC<Props> = ({
             </div>
             <RackElevation
               modelId="rack"
-              instId={rack.inst_id}
+              instUuid={rack.inst_uuid || rack.inst_id}
               embedded
               onDeviceClick={(d) => { setDevice(d); setDevOpen(true); }}
             />

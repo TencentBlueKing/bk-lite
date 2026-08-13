@@ -38,7 +38,7 @@ export const useFollowedAssets = () => {
   }, [refresh]);
 
   const followAsset = useCallback(
-    async (asset: Pick<FollowedAssetItem, 'model_id' | 'inst_id'>) => {
+    async (asset: Pick<FollowedAssetItem, 'model_id' | 'inst_uuid'>) => {
       setSubmitting(true);
       try {
         const nextConfig = addFollowedAsset(config, asset);
@@ -58,10 +58,10 @@ export const useFollowedAssets = () => {
   );
 
   const unfollowAsset = useCallback(
-    async (modelId: string, instId: string | number) => {
+    async (modelId: string, instUuid: string) => {
       setSubmitting(true);
       try {
-        const nextConfig = removeFollowedAsset(config, modelId, instId);
+        const nextConfig = removeFollowedAsset(config, modelId, instUuid);
         setConfig(nextConfig);
         try {
           await updateConfig(FOLLOWED_ASSETS_CONFIG_KEY, nextConfig);
@@ -78,8 +78,8 @@ export const useFollowedAssets = () => {
   );
 
   const isFollowed = useCallback(
-    (modelId: string, instId: string | number) =>
-      isFollowedAsset(config, modelId, instId),
+    (modelId: string, instUuid: string) =>
+      isFollowedAsset(config, modelId, instUuid),
     [config]
   );
 

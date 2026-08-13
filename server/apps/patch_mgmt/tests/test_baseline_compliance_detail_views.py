@@ -230,7 +230,7 @@ class TestBaselineComplianceDetailApi:
         assert objects_response.data["items"][0]["id"] == target.id
         assert objects_response.data["items"][0]["distribution"] == [
             {"status": "satisfied", "count": 1},
-            {"status": "pending", "count": 1},
+            {"status": "unknown", "count": 1},
         ]
         assert details_response.data["selected"]["id"] == target.id
         assert details_response.data["details"]["count"] == 2
@@ -249,8 +249,16 @@ class TestBaselineComplianceDetailApi:
         assert details_response.data["details"]["items"][0]["evidence"] == {
             "installed_kb": "KB6000201"
         }
-        assert details_response.data["details"]["items"][1]["status"] == "pending"
+        assert details_response.data["details"]["items"][1]["status"] == "unknown"
         assert details_response.data["details"]["items"][1]["status_scope"] == "host"
+        assert (
+            details_response.data["details"]["items"][1]["reason"]
+            == "No current valid assessment snapshot; assessment data is incomplete"
+        )
+        assert (
+            details_response.data["details"]["items"][1]["evaluated_at"]
+            == evaluated_at.isoformat().replace("+00:00", "Z")
+        )
 
     def test_patch_perspective_returns_patch_list_and_all_host_results(self, su_client):
         baseline = PatchBaseline.objects.create(
@@ -368,7 +376,8 @@ class TestBaselineComplianceDetailApi:
             risk_snapshot=[{"baseline_id": baseline.id, "host_id": target.id}],
             team=[1],
         )
-        GovernanceTaskHost.objects.create(
+        failed_at = timezone.now() - timedelta(minutes=1)
+        task_host = GovernanceTaskHost.objects.create(
             task=task,
             target_id=target.id,
             target_name=target.name,
@@ -378,6 +387,7 @@ class TestBaselineComplianceDetailApi:
             failed_stage="assess",
             reason="nats: no responders available for request",
         )
+        GovernanceTaskHost.objects.filter(id=task_host.id).update(updated_at=failed_at)
 
         response = su_client.get(
             f"{BASE}/baseline/{baseline.id}/compliance_matrix_details/",
@@ -394,8 +404,9 @@ class TestBaselineComplianceDetailApi:
         assert item["requirement_id"] == requirement.id
         assert item["status"] == "failed"
         assert item["status_scope"] == "host"
-        assert item["reason"] == ""
+        assert item["reason"] == "nats: no responders available for request"
         assert item["evidence"] == {}
+        assert item["evaluated_at"] == failed_at.isoformat().replace("+00:00", "Z")
 
         patch_response = su_client.get(
             f"{BASE}/baseline/{baseline.id}/compliance_matrix_details/",
@@ -410,6 +421,10 @@ class TestBaselineComplianceDetailApi:
             "error_code": "executor_unavailable",
             "failed_stage": "assess",
         }
+        assert (
+            patch_item["evaluated_at"]
+            == failed_at.isoformat().replace("+00:00", "Z")
+        )
 
     def test_patch_perspective_filters_projected_host_scope_status(self, su_client):
         baseline = PatchBaseline.objects.create(
@@ -461,6 +476,62 @@ class TestBaselineComplianceDetailApi:
         assert response.data["details"]["items"][0]["target_id"] == evaluating_target.id
         assert response.data["details"]["items"][0]["status"] == "evaluating"
         assert response.data["details"]["items"][0]["status_scope"] == "host"
+
+    def test_patch_perspective_filters_missing_snapshot_by_effective_fallback_status(
+        self, su_client
+    ):
+        baseline = PatchBaseline.objects.create(
+            name="Windows production",
+            os_type=OSType.WINDOWS,
+            team=[1],
+        )
+        requirement = _windows_requirement(baseline, "KB6000226")
+        evaluated_at = timezone.now() - timedelta(minutes=5)
+        unknown_target = PatchTarget.objects.create(
+            name="incomplete-host",
+            ip="10.0.2.27",
+            os_type=OSType.WINDOWS,
+            team=[1],
+        )
+        pending_target = PatchTarget.objects.create(
+            name="new-host",
+            ip="10.0.2.28",
+            os_type=OSType.WINDOWS,
+            team=[1],
+        )
+        HostBaselineBinding.objects.create(
+            target=unknown_target,
+            baseline=baseline,
+            compliance_status=ComplianceStatus.NON_COMPLIANT,
+            last_evaluated_at=evaluated_at,
+        )
+        HostBaselineBinding.objects.create(target=pending_target, baseline=baseline)
+
+        unknown_response = su_client.get(
+            f"{BASE}/baseline/{baseline.id}/compliance_matrix_details/",
+            {
+                "perspective": "patch",
+                "selected_id": requirement.id,
+                "status": "unknown",
+            },
+        )
+        pending_response = su_client.get(
+            f"{BASE}/baseline/{baseline.id}/compliance_matrix_details/",
+            {
+                "perspective": "patch",
+                "selected_id": requirement.id,
+                "status": "pending",
+            },
+        )
+
+        assert [
+            item["target_id"]
+            for item in unknown_response.data["details"]["items"]
+        ] == [unknown_target.id]
+        assert [
+            item["target_id"]
+            for item in pending_response.data["details"]["items"]
+        ] == [pending_target.id]
 
     def test_only_returns_targets_visible_to_current_user(
         self, api_client, authenticated_user, mocker

@@ -8,10 +8,10 @@ export default function AssetDetail() {
   const modelName = searchParams.get('model_name');
   const modelId = searchParams.get('model_id');
   const classificationId = searchParams.get('classification_id');
-  const instId = searchParams.get('inst_id');
+  const instUuid = searchParams.get('inst_uuid');
   const instName = searchParams.get('inst_name');
   redirect(
-    `/cmdb/assetData/detail/baseInfo?icn=${objIcon}&model_name=${modelName}&model_id=${modelId}&classification_id=${classificationId}&inst_id=${instId}&inst_name=${instName}`
+    `/cmdb/assetData/detail/baseInfo?icn=${objIcon}&model_name=${modelName}&model_id=${modelId}&classification_id=${classificationId}&inst_uuid=${instUuid}&inst_name=${instName}`
   );
   return null;
 }

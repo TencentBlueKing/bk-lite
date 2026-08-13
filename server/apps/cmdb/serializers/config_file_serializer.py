@@ -16,6 +16,7 @@ class ConfigFileVersionSerializer(serializers.ModelSerializer):
             "id",
             "collect_task_id",
             "instance_id",
+            "instance_uuid",
             "model_id",
             "version",
             "file_path",

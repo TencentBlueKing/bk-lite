@@ -4,17 +4,8 @@ from typing import Any
 
 from django.utils import timezone
 
-from apps.cmdb.constants.subscription import (
-    FilterType,
-    INSTANCE_QUERY_PAGE_SIZE,
-    TriggerType,
-)
-from apps.cmdb.models.change_record import (
-    CREATE_INST,
-    DELETE_INST,
-    ChangeRecord,
-    UPDATE_INST,
-)
+from apps.cmdb.constants.subscription import INSTANCE_QUERY_PAGE_SIZE, FilterType, TriggerType
+from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.subscription_rule import SubscriptionRule
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
@@ -194,11 +185,27 @@ class SubscriptionTriggerService:
             if self.rule.filter_type == FilterType.CONDITION.value:
                 query_list = self.rule.instance_filter.get("query_list", [])
             else:
-                instance_ids = self.rule.instance_filter.get("instance_ids", [])
-                if not instance_ids:
+                from apps.cmdb.services.instance_identity import normalize_inst_uuid
+
+                instance_uuids = self.rule.instance_filter.get("instance_uuids") or []
+                instance_ids = self.rule.instance_filter.get("instance_ids") or []
+                if instance_uuids:
+                    normalized_uuids = []
+                    for value in instance_uuids:
+                        try:
+                            normalized_uuids.append(normalize_inst_uuid(value))
+                        except Exception:
+                            continue
+                    if not normalized_uuids:
+                        logger.info(f"[Subscription] 实例 UUID 筛选为空，跳过 rule_id={self.rule.id}")
+                        return []
+                    query_list = [{"field": "inst_uuid", "type": "str[]", "value": normalized_uuids}]
+                elif instance_ids:
+                    # 过渡期只读兼容：清洗前旧规则仍可能仅有 instance_ids
+                    query_list = [{"field": "id", "type": "id[]", "value": instance_ids}]
+                else:
                     logger.info(f"[Subscription] 实例筛选为空，跳过 rule_id={self.rule.id}")
                     return []
-                query_list = [{"field": "id", "type": "id[]", "value": instance_ids}]
 
             data, count = InstanceManage.instance_list(
                 model_id=self.rule.model_id,
@@ -225,9 +232,7 @@ class SubscriptionTriggerService:
                 instance_ids,
                 related_model=related_model,
             )
-            logger.info(
-                f"[Subscription] 关联实例批量查询完成 rule_id={self.rule.id}, related_model={related_model}, relation_map_size={len(relation_map)}"
-            )
+            logger.info(f"[Subscription] 关联实例批量查询完成 rule_id={self.rule.id}, related_model={related_model}, relation_map_size={len(relation_map)}")
             return relation_map, set()
         except Exception as exc:
             logger.error(
@@ -479,9 +484,7 @@ class SubscriptionTriggerService:
 
             if added_ids or removed_ids:
                 logger.info(
-                    "[Subscription] 过滤条件实例集合变化检测完成 "
-                    f"rule_id={self.rule.id}, added_count={len(added_ids)}, "
-                    f"removed_count={len(removed_ids)}"
+                    "[Subscription] 过滤条件实例集合变化检测完成 " f"rule_id={self.rule.id}, added_count={len(added_ids)}, " f"removed_count={len(removed_ids)}"
                 )
 
         if not candidate_instance_ids:
@@ -759,10 +762,7 @@ class SubscriptionTriggerService:
         events: list[TriggerEvent] = []
 
         if self.rule.model_id != "host":
-            logger.info(
-                f"[Subscription] 配置文件触发仅对主机模型生效，跳过 "
-                f"rule_id={self.rule.id}, model_id={self.rule.model_id}"
-            )
+            logger.info(f"[Subscription] 配置文件触发仅对主机模型生效，跳过 " f"rule_id={self.rule.id}, model_id={self.rule.model_id}")
             return events
 
         instance_ids = [str(inst.get("_id")) for inst in instances if inst.get("_id") is not None]
@@ -788,9 +788,7 @@ class SubscriptionTriggerService:
             )
             return events
 
-        previous_notified = set(
-            ((self.rule.snapshot_data or {}).get("config_file_notified", {}) or {}).keys()
-        )
+        previous_notified = set(((self.rule.snapshot_data or {}).get("config_file_notified", {}) or {}).keys())
         current_notified: dict[str, str] = {}
         now_str = timezone.now().isoformat()
         notified_instance_ids: set[str] = set()
@@ -814,20 +812,17 @@ class SubscriptionTriggerService:
                 TriggerEvent(
                     rule_id=self.rule.id,
                     rule_name=self.rule.name,
-                        model_id=self.rule.model_id,
-                        model_name=self.model_name,
-                        trigger_type=TriggerType.CONFIG_FILE.value,
-                        inst_id=int(version.instance_id),
-                        inst_name=inst_name,
-                        change_summary="检测到配置采集任务采集到配置文件",
-                        triggered_at=now_str,
-                    )
+                    model_id=self.rule.model_id,
+                    model_name=self.model_name,
+                    trigger_type=TriggerType.CONFIG_FILE.value,
+                    inst_id=int(version.instance_id),
+                    inst_name=inst_name,
+                    change_summary="检测到配置采集任务采集到配置文件",
+                    triggered_at=now_str,
                 )
+            )
 
         current_snapshot["config_file_notified"] = current_notified
 
-        logger.info(
-            f"[Subscription] 配置文件检测完成 "
-            f"rule_id={self.rule.id}, events_count={len(events)}"
-        )
+        logger.info(f"[Subscription] 配置文件检测完成 " f"rule_id={self.rule.id}, events_count={len(events)}")
         return events

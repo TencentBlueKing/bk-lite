@@ -341,7 +341,7 @@ def test_detect_db_id_references_allows_network_topology_external_ids():
                         {
                             "id": "node-1",
                             "bk_obj_id": "bk_firewall",
-                            "bk_inst_id": 383679,
+                            "bk_inst_uuid": "383679a0-0000-4000-8000-000000000001",
                             "plugin_template_id": 2170,
                             "network_collect_task_id": 197,
                             "network_collect_instance_id": 1994,
@@ -354,8 +354,14 @@ def test_detect_db_id_references_allows_network_topology_external_ids():
                             "target_node_id": "node-2",
                             "port_pairs": [
                                 {
-                                    "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 383676},
-                                    "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 36563},
+                                    "source_interface": {
+                                        "bk_obj_id": "bk_interface",
+                                        "bk_inst_uuid": "383676a0-0000-4000-8000-000000000001",
+                                    },
+                                    "target_interface": {
+                                        "bk_obj_id": "bk_interface",
+                                        "bk_inst_uuid": "36563a00-0000-4000-8000-000000000001",
+                                    },
                                 }
                             ],
                         }

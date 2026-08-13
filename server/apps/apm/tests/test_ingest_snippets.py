@@ -12,7 +12,18 @@ from apps.apm.services import DjangoIntegrationConfigurationService
 from apps.apm.services.contracts import IngestSnippetRequest
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
 
-_JAVA_AGENT_URL = "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar"
+_PROBE_DOWNLOAD_URLS = {
+    "java": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar",
+    "python": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-python-wheels.tar.gz",
+    "nodejs": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-js-auto.tgz",
+    "go": "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-go-sdk.zip",
+}
+
+
+def _request(**kwargs) -> IngestSnippetRequest:
+    language = kwargs["language"]
+    kwargs.setdefault("probe_download_url", _PROBE_DOWNLOAD_URLS[language])
+    return IngestSnippetRequest(**kwargs)
 
 
 def _configuration_script(code: str) -> str:
@@ -35,7 +46,7 @@ def test_region_resolution_fails_closed_without_organization_scope():
 @pytest.mark.parametrize("runtime", ["kubernetes", "docker", "host", "other"])
 def test_snippet_uses_a_runtime_instance_identity_instead_of_a_shared_constant(runtime):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
+        _request(
             language="python",
             runtime=runtime,
             endpoint="https://apm.example.com/",
@@ -61,7 +72,7 @@ def test_snippet_uses_a_runtime_instance_identity_instead_of_a_shared_constant(r
 
 def test_snippet_uses_http_protocol_and_language_specific_launch_command():
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
+        _request(
             language="java",
             runtime="kubernetes",
             endpoint="https://apm.example.com",
@@ -78,7 +89,7 @@ def test_snippet_uses_http_protocol_and_language_specific_launch_command():
 
 def test_host_snippet_generates_a_valid_instance_id_without_platform_variables():
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
+        _request(
             language="nodejs",
             runtime="host",
             endpoint="https://apm.example.com",
@@ -102,7 +113,7 @@ def test_host_snippet_generates_a_valid_instance_id_without_platform_variables()
 
 def test_host_snippet_fails_closed_when_uuid_sources_are_unavailable(tmp_path):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
+        _request(
             language="nodejs",
             runtime="host",
             endpoint="https://apm.example.com",
@@ -134,7 +145,7 @@ def test_host_snippet_fails_closed_when_uuid_sources_are_unavailable(tmp_path):
 )
 def test_non_docker_runtime_profile_selects_and_validates_one_process_identity(runtime, runtime_environment, expected):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
+        _request(
             language="python",
             runtime=runtime,
             endpoint="https://apm.example.com",
@@ -160,7 +171,7 @@ def test_non_docker_runtime_profile_selects_and_validates_one_process_identity(r
 @pytest.mark.parametrize("invalid", ["", "shared,replica", "line\nbreak", "x" * 513])
 def test_explicit_instance_identity_fails_closed_outside_the_safe_boundary(invalid):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
+        _request(
             language="python",
             runtime="other",
             endpoint="https://apm.example.com",
@@ -186,15 +197,15 @@ def test_explicit_instance_identity_fails_closed_outside_the_safe_boundary(inval
 @pytest.mark.parametrize(
     ("language", "expected_install", "expected_start"),
     [
-        ("python", 'python -m pip install "opentelemetry-distro[otlp]"', "opentelemetry-instrument python app.py"),
-        ("nodejs", "npm install --save @opentelemetry/auto-instrumentations-node", "node --require"),
+        ("python", '--no-index --find-links otel-python-wheels "opentelemetry-distro[otlp]"', "opentelemetry-instrument python app.py"),
+        ("nodejs", "npm install --offline --save ./opentelemetry-js-auto.tgz", "node --require"),
         ("java", "curl --fail --silent --show-error --location", "java -javaagent:./opentelemetry-javaagent.jar"),
-        ("go", "go get go.opentelemetry.io/otel", "Go 无通用零代码探针"),
+        ("go", 'export GOPROXY="file://$(pwd)/.otel-go-sdk"', "Go 无通用零代码探针"),
     ],
 )
 def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected_install, expected_start):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
+        _request(
             language=language,
             runtime="host",
             endpoint="https://apm.example.com",
@@ -202,43 +213,51 @@ def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected
             service_name="checkout",
             service_version="1.0",
             environment="production",
-            java_agent_download_url=_JAVA_AGENT_URL,
         )
     )
 
     assert expected_install in snippet.code
     assert expected_start in snippet.code
+    assert _PROBE_DOWNLOAD_URLS[language] in snippet.code
+    assert "pypi.org" not in snippet.code
+    assert "npmjs" not in snippet.code
+    assert "github.com" not in snippet.code
+    assert "go get " not in snippet.code
     assert "# 1. 安装探针" in snippet.code
     assert "# 2. 配置上报" in snippet.code
     assert "# 3. 启动应用" in snippet.code
 
 
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go"])
 @pytest.mark.parametrize("runtime", ["host", "docker"])
-def test_java_snippet_downloads_agent_from_the_system_address_instead_of_the_public_internet(runtime):
+def test_snippet_downloads_probe_from_the_system_address_instead_of_the_public_internet(language, runtime):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
-            language="java",
+        _request(
+            language=language,
             runtime=runtime,
             endpoint="https://apm.example.com",
             service_namespace="shop",
             service_name="checkout",
             service_version="1.0",
             environment="production",
-            java_agent_download_url=_JAVA_AGENT_URL,
         )
     )
 
-    assert _JAVA_AGENT_URL in snippet.code
+    assert _PROBE_DOWNLOAD_URLS[language] in snippet.code
     assert "github.com" not in snippet.code
+    assert "pypi.org" not in snippet.code
+    assert "npmjs" not in snippet.code
+    assert "go get " not in snippet.code
     assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
 
 
-@pytest.mark.parametrize("runtime", ["host", "docker"])
-def test_java_snippet_fails_closed_without_a_resolved_system_download_address(runtime):
-    with pytest.raises(ValueError, match="java_agent_download_url"):
+@pytest.mark.parametrize("language", ["python", "nodejs", "java", "go"])
+@pytest.mark.parametrize("runtime", ["host", "docker", "kubernetes", "other"])
+def test_snippet_fails_closed_without_a_resolved_system_download_address(language, runtime):
+    with pytest.raises(ValueError, match="probe_download_url"):
         DjangoIntegrationConfigurationService().render_snippet(
             IngestSnippetRequest(
-                language="java",
+                language=language,
                 runtime=runtime,
                 endpoint="https://apm.example.com",
                 service_namespace="shop",
@@ -249,7 +268,16 @@ def test_java_snippet_fails_closed_without_a_resolved_system_download_address(ru
         )
 
 
-def test_resolve_region_builds_the_java_agent_download_url_from_node_server_url():
+@pytest.mark.parametrize(
+    ("language", "artifact_name"),
+    [
+        ("java", "opentelemetry-javaagent.jar"),
+        ("python", "opentelemetry-python-wheels.tar.gz"),
+        ("nodejs", "opentelemetry-js-auto.tgz"),
+        ("go", "opentelemetry-go-sdk.zip"),
+    ],
+)
+def test_resolve_region_builds_the_probe_download_url_from_node_server_url(language, artifact_name):
     node_mgmt = Mock()
     node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
     node_mgmt.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
@@ -259,27 +287,28 @@ def test_resolve_region_builds_the_java_agent_download_url_from_node_server_url(
         node_mgmt,
         7,
         organization_ids=[10],
-        include_java_agent_download=True,
+        include_probe_download=True,
+        probe_artifact_name=artifact_name,
     )
 
     assert endpoints.http_endpoint == "http://apm-east.example.com:4318"
-    assert endpoints.java_agent_download_url == ("http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar")
+    assert endpoints.probe_download_url == f"http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/{artifact_name}"
     node_mgmt.get_cloud_region_envconfig.assert_called_once_with(7)
 
 
-def test_resolve_region_skips_env_config_when_java_agent_download_is_not_needed():
+def test_resolve_region_skips_env_config_when_probe_download_is_not_needed():
     node_mgmt = Mock()
     node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
     node_mgmt.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
 
     endpoints = DjangoIntegrationConfigurationService().resolve_region(node_mgmt, 7, organization_ids=[10])
 
-    assert endpoints.java_agent_download_url == ""
+    assert endpoints.probe_download_url == ""
     node_mgmt.get_cloud_region_envconfig.assert_not_called()
 
 
 @pytest.mark.parametrize("env_config", [{}, {"NODE_SERVER_URL": "ftp://10.10.10.1:8011"}, "not-a-dict"])
-def test_resolve_region_fails_closed_when_the_java_agent_download_address_is_unavailable(env_config):
+def test_resolve_region_fails_closed_when_the_probe_download_address_is_unavailable(env_config):
     node_mgmt = Mock()
     node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
     node_mgmt.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
@@ -290,7 +319,8 @@ def test_resolve_region_fails_closed_when_the_java_agent_download_address_is_una
             node_mgmt,
             7,
             organization_ids=[10],
-            include_java_agent_download=True,
+            include_probe_download=True,
+            probe_artifact_name="opentelemetry-javaagent.jar",
         )
 
     assert exc_info.value.code == "probe_download_unavailable"
@@ -298,7 +328,7 @@ def test_resolve_region_fails_closed_when_the_java_agent_download_address_is_una
 
 def test_docker_snippet_uses_runtime_environment_injection_instead_of_host_exports():
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
+        _request(
             language="nodejs",
             runtime="docker",
             endpoint="https://apm.example.com",
@@ -318,7 +348,7 @@ def test_docker_snippet_uses_runtime_environment_injection_instead_of_host_expor
 
 def test_kubernetes_snippet_uses_downward_api_pod_uid_and_standard_otel_environment():
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
+        _request(
             language="python",
             runtime="kubernetes",
             endpoint="https://apm.example.com",
@@ -342,11 +372,13 @@ def test_kubernetes_snippet_uses_downward_api_pod_uid_and_standard_otel_environm
     assert environment["OTEL_EXPORTER_OTLP_ENDPOINT"]["value"] == "https://apm.example.com"
     assert "service.instance.id=$(OTEL_SERVICE_INSTANCE_ID)" in environment["OTEL_RESOURCE_ATTRIBUTES"]["value"]
     assert "${POD_UID" not in snippet.code
+    assert _PROBE_DOWNLOAD_URLS["python"] in snippet.code
+    assert "pypi.org" not in snippet.code
 
 
 def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup():
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
+        _request(
             language="go",
             runtime="host",
             endpoint="https://apm.example.com",
@@ -358,6 +390,8 @@ def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup
     )
 
     assert "Go 无通用零代码探针" in snippet.code
+    assert _PROBE_DOWNLOAD_URLS["go"] in snippet.code
+    assert "go get " not in snippet.code
     assert "telemetry/otel.go.example" in snippet.code
     assert "func NewTracerProvider(ctx context.Context) (*sdktrace.TracerProvider, error)" in snippet.code
     assert "otlptracehttp.New(ctx)" in snippet.code
@@ -372,7 +406,7 @@ def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup
 def test_snippet_separately_quotes_shell_literals_and_encodes_otel_resource_values(runtime):
     malicious = "checkout%'\n,forged.key=forged $(printf injected) `printf injected` ; # 界"
     snippet = DjangoIntegrationConfigurationService().render_snippet(
-        IngestSnippetRequest(
+        _request(
             language="python",
             runtime=runtime,
             endpoint="https://apm.example.com",

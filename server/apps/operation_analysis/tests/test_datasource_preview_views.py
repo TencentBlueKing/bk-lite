@@ -35,12 +35,13 @@ class FakePreviewExecutor:
     def __init__(self):
         self.calls = []
 
-    def preview(self, connection_config, query_config, limit=100):
+    def preview(self, connection_config, query_config, limit=100, **kwargs):
         self.calls.append(
             {
                 "connection_config": connection_config,
                 "query_config": query_config,
                 "limit": limit,
+                **kwargs,
             }
         )
         return PreviewResult(
