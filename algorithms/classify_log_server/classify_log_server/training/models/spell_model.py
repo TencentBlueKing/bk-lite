@@ -22,6 +22,8 @@ class SpellModel(BaseLogClusterModel):
     论文："Spell: Online Streaming Parsing of Large Unstructured System Logs"
     """
 
+    ARTIFACT_SCHEMA_VERSION = 2
+
     def __init__(self, **kwargs):
         """
         初始化 Spell 模型。
@@ -547,6 +549,7 @@ class SpellModel(BaseLogClusterModel):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         model_data = {
+            "artifact_schema_version": self.ARTIFACT_SCHEMA_VERSION,
             "config": self.config,
             "templates": self.templates,
             "clusters": self.clusters,
@@ -745,6 +748,7 @@ class SpellModel(BaseLogClusterModel):
         instance.diversity_threshold = model_data.get("diversity_threshold", 3)
         instance.min_cluster_size = model_data.get("min_cluster_size", 5)
         instance.is_trained = model_data["is_trained"]
+        instance.artifact_schema_version = model_data.get("artifact_schema_version", 1)
 
         for cluster in instance.clusters:
             instance._ensure_cluster_state(cluster)

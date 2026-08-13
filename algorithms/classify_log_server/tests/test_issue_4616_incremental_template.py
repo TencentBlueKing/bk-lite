@@ -1,6 +1,6 @@
 """Issue #4616：Spell 同簇模板更新应保持语义且不保留全部 token 历史。"""
 
-from collections import Counter
+from collections import Counter, defaultdict
 import importlib.util
 from pathlib import Path
 import random
@@ -79,6 +79,29 @@ def _load_spell_model():
 
 
 SpellModel = _load_spell_model()
+
+
+def _load_with_legacy_reader(artifact):
+    """Run the pre-schema-version load flow against a current artifact."""
+    import joblib
+
+    model_data = joblib.load(artifact)
+    instance = SpellModel(**model_data.get("config", {}))
+    instance.templates = model_data["templates"]
+    instance.clusters = model_data.get("clusters", [])
+    instance.tau = model_data["tau"]
+    instance.use_position_weight = model_data.get("use_position_weight", True)
+    instance.position_weight_config = model_data.get("position_weight_config", instance.position_weight_config)
+    instance.merge_threshold = model_data.get("merge_threshold", 0.85)
+    instance.diversity_threshold = model_data.get("diversity_threshold", 3)
+    instance.min_cluster_size = model_data.get("min_cluster_size", 5)
+    instance.is_trained = model_data["is_trained"]
+    instance.token_index = defaultdict(set)
+    for cluster in instance.clusters:
+        for token in cluster["template"]:
+            if token != "<*>":
+                instance.token_index[token].add(cluster["id"])
+    return instance, model_data
 
 
 def _legacy_update_template(model, logs):
@@ -279,6 +302,22 @@ def test_current_artifact_round_trip_preserves_legacy_length_slot(tmp_path):
     # 回滚到旧读取器时可由长度哨兵精确恢复平均长度，但不保留任何 token。
     assert sum(map(len, loaded.clusters[0]["logs"])) == 50
     assert all(isinstance(log, range) for log in loaded.clusters[0]["logs"])
+
+
+def test_current_artifact_remains_readable_by_legacy_inference_flow(tmp_path):
+    model = SpellModel(tau=0.3, merge_threshold=0, enable_explain=False)
+    logs = [f"service request id{index} completed successfully" for index in range(10)]
+    model.fit(logs, verbose=False, log_to_mlflow=False)
+    artifact = tmp_path / "current-spell.joblib"
+    model.save(artifact)
+
+    loaded, model_data = _load_with_legacy_reader(artifact)
+
+    assert model_data["artifact_schema_version"] == 2
+    assert loaded.predict(["service request next completed successfully"]) == [0]
+    legacy_logs = loaded.clusters[0]["logs"]
+    assert sum(map(len, legacy_logs)) / len(legacy_logs) == 5
+    assert all(isinstance(log, range) for log in legacy_logs)
 
 
 def test_merged_cluster_state_matches_original_concatenation_order():
