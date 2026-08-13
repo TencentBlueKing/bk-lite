@@ -240,6 +240,7 @@ def k8s_image_response(monkeypatch):
     )
 
 
+@pytest.mark.unit
 def test_k8s_image_tar_is_removed_after_response_stream_finishes(k8s_image_export_paths, k8s_image_response):
     response = k8s_image_response()
     exported_path = k8s_image_export_paths[0]
@@ -252,6 +253,7 @@ def test_k8s_image_tar_is_removed_after_response_stream_finishes(k8s_image_expor
     assert not exported_path.exists()
 
 
+@pytest.mark.unit
 def test_k8s_image_tar_is_removed_when_response_closes_early(k8s_image_export_paths, k8s_image_response):
     response = k8s_image_response()
     exported_path = k8s_image_export_paths[0]
@@ -261,6 +263,7 @@ def test_k8s_image_tar_is_removed_when_response_closes_early(k8s_image_export_pa
     assert not exported_path.exists()
 
 
+@pytest.mark.unit
 def test_k8s_image_tar_is_removed_when_docker_save_fails(monkeypatch, k8s_image_export_paths):
     from apps.alerts.views import alert_source as alert_source_module
 
@@ -278,6 +281,7 @@ def test_k8s_image_tar_is_removed_when_docker_save_fails(monkeypatch, k8s_image_
     assert not k8s_image_export_paths[0].exists()
 
 
+@pytest.mark.unit
 def test_k8s_image_tar_is_removed_when_export_is_interrupted(monkeypatch, k8s_image_export_paths):
     from apps.alerts.views import alert_source as alert_source_module
 
