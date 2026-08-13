@@ -41,19 +41,33 @@ import topoStyle from './index.module.scss';
 
 const NODE_WIDTH = NETWORK_TOPO_VISUAL.node.width;
 const NODE_HEIGHT = NETWORK_TOPO_VISUAL.node.height;
-const DEVICE_NODE_SHAPE = 'topo-network-device';
+const DEVICE_NODE_SHAPE = NETWORK_TOPO_VISUAL.shape;
 
 // 展开策略：首屏 2 跳，最多 4 跳，节点上限 100（与后端常量一致）
 const DEFAULT_HOP = 2;
 const MAX_HOP = 4;
 
-// 分层布局列距/行距：列距需足够大，让接口标签落在设备卡片之间的空隙、不遮挡卡片
+// 分层布局列距/行距：列距需足够大，让接口标签落在设备之间的空隙、不遮挡节点
 const HIER_COL_GAP = NETWORK_TOPO_VISUAL.layout.columnGap;
 const HIER_ROW_GAP = NETWORK_TOPO_VISUAL.layout.rowGap;
 
 type LayoutMode = 'hierarchical' | 'force' | 'circular';
 
-const ACTIVE_BODY_ATTRS = NETWORK_TOPO_VISUAL.node.activeBody;
+const DEFAULT_BODY_ATTRS = NETWORK_TOPO_VISUAL.node.defaultBody;
+const ACTIVE_GLOW = NETWORK_TOPO_VISUAL.node.activeGlow;
+
+const applyNodeActiveGlow = (isActive: boolean) => ({
+  iconRing: {
+    fill: isActive ? ACTIVE_GLOW.haloFill : 'transparent',
+    opacity: isActive ? 1 : 0,
+    stroke: 'none',
+    strokeWidth: 0,
+    filter: ACTIVE_GLOW.haloBlur,
+  },
+  img: {
+    filter: isActive ? ACTIVE_GLOW.iconFilter : 'none',
+  },
+});
 
 // inst_name 形如 `${device}-${端口名}`，展示端口时剥掉设备前缀
 const stripDevicePrefix = (instName?: string, device?: string): string => {
@@ -213,6 +227,7 @@ const buildGraphData = (
     centers[id] = { x: p.x, y: p.y };
     const label = nameOf(id);
     const subtitle = subtitleOf(id);
+    const isCenter = id === centerId;
     return {
       id,
       x: p.x - NODE_WIDTH / 2,
@@ -221,27 +236,18 @@ const buildGraphData = (
       height: NODE_HEIGHT,
       shape: DEVICE_NODE_SHAPE,
       data: {
-        isCenter: id === centerId,
+        isCenter,
       },
       attrs: {
-        body: id === centerId ? ACTIVE_BODY_ATTRS : {},
-        iconColumn: {
-          fill: id === centerId ? '#eef7ff' : '#f7fbff',
-        },
-        divider: {
-          stroke: id === centerId ? '#c7def8' : '#e1ebf6',
-        },
-        statusDot: {
-          fill: id === centerId ? '#42d9a6' : '#7dd3fc',
-          stroke: id === centerId ? '#eafff7' : '#eff8ff',
-        },
+        body: { ...DEFAULT_BODY_ATTRS },
+        ...applyNodeActiveGlow(isCenter),
         img: {
           'xlink:href': getIconUrl({
             icn: '',
             model_id: merged.nodes.get(id)?.model_id || '',
           }),
+          filter: isCenter ? ACTIVE_GLOW.iconFilter : 'none',
         },
-        tt: { text: label },
         lbl: { text: label, title: label },
         subLbl: { text: subtitle, title: subtitle },
       },
@@ -281,8 +287,18 @@ const buildGraphData = (
 
     return {
       id: `edge-${l.relationship_id}`,
-      source: l.source_device,
-      target: l.target_device,
+      source: {
+        cell: l.source_device,
+        selector: 'edgeHull',
+        anchor: { name: 'nodeCenter' },
+        connectionPoint: { name: 'boundary', args: { selector: 'edgeHull' } },
+      },
+      target: {
+        cell: l.target_device,
+        selector: 'edgeHull',
+        anchor: { name: 'nodeCenter' },
+        connectionPoint: { name: 'boundary', args: { selector: 'edgeHull' } },
+      },
       vertices,
       connector: { name: 'smooth' },
       attrs: {
@@ -292,6 +308,7 @@ const buildGraphData = (
           strokeLinecap: 'round',
           strokeLinejoin: 'round',
           targetMarker: null,
+          sourceMarker: null,
           filter: 'drop-shadow(0 1px 2px rgba(28, 55, 92, 0.16))',
         },
       },
