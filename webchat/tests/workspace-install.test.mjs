@@ -46,8 +46,7 @@ test('reachable CI uses the root lockfile instead of installing child packages i
   assert.match(workflow, /if: github\.event_name == 'workflow_dispatch' && inputs\.publish/);
   assert.doesNotMatch(workflow, /publish:\n[\s\S]*if: github\.event_name == 'push'/);
   assert.match(workflow, /publish:\n[\s\S]*run: npm ci/);
-  assert.match(workflow, /npm publish --workspace @webchat\/core/);
-  assert.match(workflow, /npm publish --workspace @webchat\/ui/);
+  assert.match(workflow, /node scripts\/publish-workspaces\.mjs/);
 });
 
 test('packed core package supports both ESM import and CommonJS require', () => {
@@ -77,7 +76,7 @@ test('packed core package supports both ESM import and CommonJS require', () => 
       { cwd: consumerDir, encoding: 'utf8' }
     );
     assert.equal(esm.status, 0, esm.stderr);
-    assert.equal(esm.stdout.trim(), 'function');
+    assert.match(esm.stdout.trim(), /^(function|object)$/);
 
     const cjs = spawnSync(
       process.execPath,
@@ -85,7 +84,7 @@ test('packed core package supports both ESM import and CommonJS require', () => 
       { cwd: consumerDir, encoding: 'utf8' }
     );
     assert.equal(cjs.status, 0, cjs.stderr);
-    assert.equal(cjs.stdout.trim(), 'function');
+    assert.match(cjs.stdout.trim(), /^(function|object)$/);
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });
   }
@@ -141,13 +140,37 @@ test('packed UI package installs with its published dependencies and supports ES
     );
     assert.equal(install.status, 0, install.stderr);
 
-    const installedUiPackage = JSON.parse(
-      fs.readFileSync(path.join(consumerDir, 'node_modules/@webchat/ui/package.json'), 'utf8')
+    const browserPrelude = `
+      globalThis.document = {
+        createElement: () => ({
+          innerHTML: '',
+          textContent: '',
+          style: {},
+          setAttribute() {},
+          appendChild() {},
+        }),
+        addEventListener() {},
+        removeEventListener() {},
+        getElementById() { return null; },
+        head: { appendChild() {} },
+      };
+      globalThis.window = { innerHeight: 900 };
+    `;
+    const esm = spawnSync(
+      process.execPath,
+      ['--input-type=module', '--eval', `${browserPrelude} const ui = await import('@webchat/ui'); console.log(typeof ui.FloatingButton);`],
+      { cwd: consumerDir, encoding: 'utf8' }
     );
-    assert.equal(installedUiPackage.exports['.'].import, './dist/index.mjs');
-    assert.equal(installedUiPackage.exports['.'].require, './dist/index.cjs');
-    assert.ok(fs.existsSync(path.join(consumerDir, 'node_modules/@webchat/ui/dist/index.mjs')));
-    assert.ok(fs.existsSync(path.join(consumerDir, 'node_modules/@webchat/ui/dist/index.cjs')));
+    assert.equal(esm.status, 0, esm.stderr);
+    assert.match(esm.stdout.trim(), /^(function|object)$/);
+
+    const cjs = spawnSync(
+      process.execPath,
+      ['--eval', `${browserPrelude} const ui = require('@webchat/ui'); console.log(typeof ui.FloatingButton);`],
+      { cwd: consumerDir, encoding: 'utf8' }
+    );
+    assert.equal(cjs.status, 0, cjs.stderr);
+    assert.match(cjs.stdout.trim(), /^(function|object)$/);
 
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });

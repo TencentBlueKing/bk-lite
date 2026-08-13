@@ -76,8 +76,6 @@ jobs:
         run: npm run build
 
       - name: Publish packages
-        run: |
-          npm publish --workspace @webchat/core
-          npm publish --workspace @webchat/ui
+        run: node scripts/publish-workspaces.mjs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
