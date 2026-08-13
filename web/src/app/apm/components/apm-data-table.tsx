@@ -7,10 +7,13 @@ import styles from './apm-data-table.module.scss';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
-type ApmDataTableProps<RecordType extends object> = Omit<TableProps<RecordType>, 'bordered'>;
+type ApmDataTableProps<RecordType extends object> = Omit<TableProps<RecordType>, 'bordered'> & {
+  headerAlignment?: 'left' | 'column';
+};
 
-function leftAlignColumnHeaders<RecordType extends object>(
+function alignColumnHeaders<RecordType extends object>(
   columns: TableColumnsType<RecordType> | undefined,
+  headerAlignment: NonNullable<ApmDataTableProps<RecordType>['headerAlignment']>,
 ): TableColumnsType<RecordType> | undefined {
   return columns?.map((column) => {
     const onHeaderCell = column.onHeaderCell;
@@ -23,7 +26,7 @@ function leftAlignColumnHeaders<RecordType extends object>(
           ...headerCellProps,
           style: {
             ...headerCellProps.style,
-            textAlign: 'left' as const,
+            textAlign: headerAlignment === 'column' ? column.align ?? 'left' : 'left',
           },
         };
       },
@@ -32,7 +35,7 @@ function leftAlignColumnHeaders<RecordType extends object>(
     if ('children' in column) {
       return {
         ...normalizedColumn,
-        children: leftAlignColumnHeaders(column.children) ?? [],
+        children: alignColumnHeaders(column.children, headerAlignment) ?? [],
       };
     }
 
@@ -63,6 +66,7 @@ function normalizePagination(
 export default function ApmDataTable<RecordType extends object>({
   className = '',
   columns,
+  headerAlignment = 'left',
   pagination,
   size = 'middle',
   tableLayout = 'fixed',
@@ -73,7 +77,7 @@ export default function ApmDataTable<RecordType extends object>({
       {...props}
       bordered={false}
       className={`${styles.table} ${className}`.trim()}
-      columns={leftAlignColumnHeaders(columns)}
+      columns={alignColumnHeaders(columns, headerAlignment)}
       pagination={normalizePagination(pagination as TableProps<never>['pagination'])}
       size={size}
       tableLayout={tableLayout}

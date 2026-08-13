@@ -75,4 +75,27 @@ describe('ApmDataTable', () => {
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '服务数' })).textAlign).toBe('left');
     expect(getComputedStyle(screen.getByText('3').closest('td')! as HTMLElement).textAlign).toBe('right');
   });
+
+  it('指标表可让表头跟随列语义对齐', () => {
+    render(
+      <ApmDataTable<Row>
+        columns={[
+          { title: '名称', dataIndex: 'name' },
+          { title: '当前达标率', dataIndex: 'count', align: 'right' },
+          { title: '启用状态', key: 'enabled', align: 'center', render: () => '启用' },
+        ]}
+        dataSource={[{ id: 1, name: 'checkout', count: 99.9 }]}
+        headerAlignment="column"
+        pagination={false}
+        rowKey="id"
+      />,
+    );
+
+    expect(
+      getComputedStyle(screen.getByRole('columnheader', { name: '当前达标率' })).textAlign,
+    ).toBe('right');
+    expect(
+      getComputedStyle(screen.getByRole('columnheader', { name: '启用状态' })).textAlign,
+    ).toBe('center');
+  });
 });
