@@ -25,7 +25,6 @@ import {
   Segmented,
   Select,
   Space,
-  Table,
   Tag,
   Tooltip,
   Typography,
@@ -54,6 +53,7 @@ import MiniTrend from '@/app/apm/components/mini-trend';
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import ApplicationCard from '@/app/apm/components/application-card';
 import type { ActiveAlertStatus } from '@/app/apm/components/application-card';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ServiceLanguage from '@/app/apm/components/service-language';
 import type {
   ApmApplication,
@@ -538,7 +538,6 @@ export default function ApmServicesPage() {
         </Space>
       ),
       key: 'service',
-      fixed: 'left',
       render: (_, item) => {
         const silent = item.status === 'silent';
         const href = item.environment
@@ -566,6 +565,7 @@ export default function ApmServicesPage() {
       title: '状态',
       key: 'status',
       width: 96,
+      align: 'center',
       render: (_, item) => {
         const status = alertStatusFromLevel(alertCounts.get(alertKey(item.serviceName, item.environment))?.level);
         const presentation = alertStatusPresentation[status];
@@ -585,6 +585,8 @@ export default function ApmServicesPage() {
       title: '活跃告警',
       key: 'alerts',
       width: 100,
+      align: 'center',
+      responsive: ['md'],
       render: (_, item) => {
         const alert = alertCounts.get(alertKey(item.serviceName, item.environment));
         const count = alert?.count ?? 0;
@@ -616,6 +618,7 @@ export default function ApmServicesPage() {
       width: 120,
       align: 'right',
       className: 'tabular-nums',
+      responsive: ['md'],
       render: (_, item) => {
         const metric = redMetrics[metricKey(item.serviceId, item.environment)];
         const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
@@ -635,6 +638,7 @@ export default function ApmServicesPage() {
       width: 110,
       align: 'right',
       className: 'tabular-nums',
+      responsive: ['md'],
       render: (_, item) => {
         const metric = redMetrics[metricKey(item.serviceId, item.environment)];
         const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
@@ -654,7 +658,7 @@ export default function ApmServicesPage() {
       width: 100,
       align: 'right',
       className: 'tabular-nums',
-      responsive: ['md'],
+      responsive: ['lg'],
       render: (_, item) => {
         const metric = redMetrics[metricKey(item.serviceId, item.environment)];
         const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
@@ -671,7 +675,7 @@ export default function ApmServicesPage() {
       title: '趋势',
       key: 'trend',
       width: 90,
-      responsive: ['lg'],
+      responsive: ['xl'],
       render: (_, item) => {
         const metric = redMetrics[metricKey(item.serviceId, item.environment)];
         return (
@@ -687,7 +691,7 @@ export default function ApmServicesPage() {
       title: '环境',
       dataIndex: 'environment',
       width: 110,
-      responsive: ['sm'],
+      responsive: ['lg'],
       render: (value) => <Tag bordered={false}>{value || '未设置'}</Tag>,
     },
     {
@@ -720,7 +724,7 @@ export default function ApmServicesPage() {
       title: '最近活跃',
       dataIndex: 'last_seen_at',
       width: 110,
-      responsive: ['md'],
+      responsive: ['xl'],
       render: (value) => (
         <Tooltip title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}>
           <span className="text-xs text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
@@ -731,7 +735,7 @@ export default function ApmServicesPage() {
       title: '组织',
       dataIndex: 'serviceOrganizationIds',
       width: 120,
-      responsive: ['xl'],
+      responsive: ['xxl'],
       render: (value: number[]) => value.length
         ? value.map((id) => (
           <Tag bordered={false} key={id}>{groupNames.get(id) ?? `#${id}`}</Tag>
@@ -743,7 +747,6 @@ export default function ApmServicesPage() {
       key: 'action',
       width: 56,
       align: 'right',
-      fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
           <MoreActionsDropdown
@@ -932,8 +935,8 @@ export default function ApmServicesPage() {
             </ApmSurface>
           )
         ) : (
-          <ApmSurface padding="none" className="overflow-hidden">
-            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
+          <ApmSurface>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
                 <Typography.Text strong>
                   {namespace === undefined
@@ -949,8 +952,7 @@ export default function ApmServicesPage() {
               </Typography.Text>
             </div>
             {state === 'ready' ? (
-              <Table
-                size="middle"
+              <ApmDataTable
                 columns={columns}
                 dataSource={filteredRows}
                 rowKey="key"

@@ -5,10 +5,10 @@ import { Alert, Button, Grid, Input, Segmented, Select, Tag, Typography, type Ta
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyHealth, ApmTopologyNode } from '@/app/apm/types';
-import CustomTable from '@/components/custom-table';
 import FilterToolbar from '@/components/filter-toolbar';
 
 type LayoutMode = 'layered' | 'force';
@@ -260,6 +260,8 @@ export default function ApmTopologyPage() {
       title: '健康',
       dataIndex: 'health',
       width: 90,
+      align: 'center',
+      responsive: ['sm'],
       render: (health: ApmTopologyHealth) => (
         <Tag color={health === 'critical' ? 'error' : health === 'warning' ? 'warning' : health === 'healthy' ? 'success' : undefined}>
           {healthLabels[health]}
@@ -272,7 +274,7 @@ export default function ApmTopologyPage() {
       align: 'right',
       width: 110,
       className: 'tabular-nums',
-      responsive: ['sm'],
+      responsive: ['lg'],
     },
     {
       title: '平均耗时',
@@ -280,6 +282,7 @@ export default function ApmTopologyPage() {
       align: 'right',
       width: 110,
       className: 'tabular-nums',
+      responsive: ['md'],
       render: (value: number) => `${value.toFixed(0)} ms`,
     },
   ];
@@ -329,18 +332,19 @@ export default function ApmTopologyPage() {
                 />
               </>
             ) : (
-              <CustomTable
-                autoScrollX={false}
-                columns={dependencyColumns}
-                dataSource={dependencyRows}
-                rowKey="key"
-                pagination={{
-                  defaultPageSize: 20,
-                  pageSizeOptions: [10, 20, 50, 100],
-                  showSizeChanger: true,
-                  showTotal: (total) => `共 ${total} 条依赖`,
-                }}
-              />
+              <div className="p-4">
+                <ApmDataTable
+                  columns={dependencyColumns}
+                  dataSource={dependencyRows}
+                  rowKey="key"
+                  pagination={{
+                    defaultPageSize: 20,
+                    pageSizeOptions: [10, 20, 50, 100],
+                    showSizeChanger: true,
+                    showTotal: (total) => `共 ${total} 条依赖`,
+                  }}
+                />
+              </div>
             )
           ) : state === 'empty' ? (
             <CatalogState

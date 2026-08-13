@@ -27,7 +27,7 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
 beforeEach(() => {
   search = 'entity=traces&service_name=checkout&environment=prod';
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: false,
+    matches: query.includes('min-width'),
     media: query,
     onchange: null,
     addListener: vi.fn(),

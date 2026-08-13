@@ -20,6 +20,7 @@ import {
 import dayjs from 'dayjs';
 import FilterToolbar from '@/components/filter-toolbar';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import HealthDot from '@/app/apm/components/health-dot';
@@ -31,7 +32,6 @@ import {
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
 import type { ApmService, ApmServiceRed, ApmTraceSummary } from '@/app/apm/types';
-import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import SummaryMetricCard from '@/components/summary-metric-card';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
@@ -242,6 +242,7 @@ export default function ApmEndpointsPage() {
       title: '方法',
       dataIndex: 'method',
       width: 80,
+      responsive: ['md'],
       render: (value) => (
         <span className={`rounded px-2 py-0.5 font-mono text-xs font-medium ${
           value === 'POST'
@@ -255,7 +256,6 @@ export default function ApmEndpointsPage() {
     },
     {
       title: '端点',
-      width: 300,
       render: (_, row) => (
         <span className="inline-flex min-w-0 items-center gap-2">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-primary)]" aria-hidden="true" />
@@ -265,7 +265,7 @@ export default function ApmEndpointsPage() {
     },
     {
       title: '所属服务',
-      width: 180,
+      responsive: ['sm'],
       render: (_, row) => (
         <Space direction="vertical" size={0} className="min-w-0">
           <EllipsisWithTooltip className="truncate" text={row.serviceName} />
@@ -280,6 +280,7 @@ export default function ApmEndpointsPage() {
       width: 130,
       sorter: true,
       sortOrder: sortKey === 'request_rate' ? sortOrder : null,
+      responsive: ['md'],
       render: (value) => (
         <span className="tabular-nums">
           <strong>{formatThroughput(value)}</strong>
@@ -295,6 +296,7 @@ export default function ApmEndpointsPage() {
       width: 100,
       sorter: true,
       sortOrder: sortKey === 'error_rate' ? sortOrder : null,
+      responsive: ['md'],
       render: (value: number | null) => value === null
         ? '—'
         : <Tag bordered={false} color={errorRateColor(value)}>{formatErrorRate(value)}</Tag>,
@@ -306,6 +308,7 @@ export default function ApmEndpointsPage() {
       width: 100,
       sorter: true,
       sortOrder: sortKey === 'p95_ms' ? sortOrder : null,
+      responsive: ['lg'],
       render: (value: number | null) => <span className="tabular-nums">{formatLatency(value)}</span>,
     },
     {
@@ -313,6 +316,7 @@ export default function ApmEndpointsPage() {
       dataIndex: 'lastSeenAt',
       align: 'right',
       width: 110,
+      responsive: ['xl'],
       render: (value) => <Typography.Text type="secondary" className="text-xs">{formatRelativeTime(value)}</Typography.Text>,
     },
     {
@@ -320,7 +324,6 @@ export default function ApmEndpointsPage() {
       key: 'actions',
       width: 72,
       align: 'right',
-      fixed: 'right',
       render: (_, row) => <Button size="small" type="link" onClick={() => setSelected(row)}>查看</Button>,
     },
   ];
@@ -386,10 +389,9 @@ export default function ApmEndpointsPage() {
             <Button aria-label="刷新端点" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load} />
           </FilterToolbar>
         </ApmSurface>
-        <ApmSurface padding="none" className="overflow-hidden">
+        <ApmSurface>
           {state === 'ready' || (state === 'loading' && rows.length > 0) ? (
-            <CustomTable
-              autoScrollX={false}
+            <ApmDataTable
               rowKey="key"
               size="middle"
               columns={columns}
@@ -520,8 +522,7 @@ export default function ApmEndpointsPage() {
               {samplesLoading ? (
                 <CatalogState kind="loading" />
               ) : sampleTraces.length ? (
-                <CustomTable
-                  autoScrollX={false}
+                <ApmDataTable
                   size="small"
                   rowKey="trace_id"
                   pagination={false}

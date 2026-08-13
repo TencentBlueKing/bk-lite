@@ -19,6 +19,7 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type {
@@ -28,7 +29,6 @@ import type {
   ApmSloEvaluationWindow,
   ApmSloInput,
 } from '@/app/apm/types';
-import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 type PageState = CatalogStateKind | 'ready';
@@ -221,7 +221,7 @@ export default function ApmSloPage() {
     {
       title: '目标对象',
       width: 220,
-      responsive: ['sm'],
+      responsive: ['md'],
       render: (_, row) => (
         <Space direction="vertical" size={2} className="min-w-0">
           <EllipsisWithTooltip className="truncate" text={`${row.service_namespace ? `${row.service_namespace} / ` : ''}${row.service_name}`} />
@@ -233,7 +233,7 @@ export default function ApmSloPage() {
       title: 'SLI 类型',
       dataIndex: 'sli_type',
       width: 210,
-      responsive: ['lg'],
+      responsive: ['xl'],
       render: (value: ApmSliType, row) => (
         <Space direction="vertical" size={2}>
           <span>{sliLabels[value]}</span>
@@ -244,7 +244,7 @@ export default function ApmSloPage() {
     {
       title: '目标 / 窗口',
       width: 130,
-      responsive: ['md'],
+      responsive: ['lg'],
       render: (_, row) => (
         <Space direction="vertical" size={2}>
           <span className="tabular-nums">{Number(row.objective).toFixed(2)}%</span>
@@ -256,19 +256,22 @@ export default function ApmSloPage() {
       title: '当前达标率',
       dataIndex: 'current_rate',
       width: 130,
+      align: 'right',
+      responsive: ['sm'],
       render: (value: number | null) => value === null ? '—' : <span className="tabular-nums">{value.toFixed(2)}%</span>,
     },
     {
       title: '错误预算剩余',
       dataIndex: 'budget_remaining',
       width: 210,
-      responsive: ['xl'],
+      responsive: ['xxl'],
       render: (value: number | null) => <BudgetProgress value={value} />,
     },
     {
       title: '启用状态',
       dataIndex: 'is_enabled',
       width: 110,
+      align: 'center',
       render: (_, row) => (
         <Switch
           aria-label={`${row.is_enabled ? '停用' : '启用'} ${row.name}`}
@@ -282,8 +285,8 @@ export default function ApmSloPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 160,
-      fixed: 'right',
+      width: 96,
+      align: 'right',
       render: (_, row) => (
         <Space size={0}>
           <Button aria-label={`编辑 ${row.name}`} icon={<EditOutlined aria-hidden="true" />} size="small" type="link" onClick={() => openEditDrawer(row)} />
@@ -303,8 +306,7 @@ export default function ApmSloPage() {
   ];
 
   const content = state === 'ready' ? (
-    <CustomTable
-      autoScrollX={false}
+    <ApmDataTable
       columns={columns}
       dataSource={pageRows}
       pagination={{
@@ -330,8 +332,8 @@ export default function ApmSloPage() {
 
   return (
     <ApmRouteShell dependency="telemetry" description="定义服务可靠性目标，跟踪达标率与错误预算。" title="SLO">
-      <ApmSurface className="overflow-hidden" padding="none">
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
+      <ApmSurface>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <Typography.Text strong>SLO 列表</Typography.Text>
             <Typography.Text type="secondary" className="ml-2 !text-xs tabular-nums">共 {rows.length} 个</Typography.Text>
