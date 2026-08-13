@@ -42,6 +42,8 @@ MAX_ACTIVE_TARGETS=2000
 TARGET_TASK_WINDOW=2000
 REDIS_MAX_CONNECTIONS=2560
 REDIS_POOL_TIMEOUT=2
+# 默认 RESP2，兼容不支持 HELLO 的旧 Redis / 代理；仅在确认服务端支持 RESP3 时设为 3
+REDIS_PROTOCOL=2
 CONNECT_TIMEOUT=7
 PLUGIN_TIMEOUT=60
 RUN_LEASE_TTL=600
@@ -67,6 +69,9 @@ TARGET_TASK_WINDOW=0
 `≳ MAX_ACTIVE_TARGETS`；目标不限制时按机器与 Redis `maxclients` 自行抬高）。多 Pod 时还要保证
 `单池峰值 × Pod 数 < Redis maxclients`。池满时会有限等待
 `REDIS_POOL_TIMEOUT` 秒，而不是立刻 `MaxConnectionsError` 打崩整轮 run。
+
+`REDIS_PROTOCOL` 默认 `2`（RESP2）。`redis-py` 8+ 默认会走 RESP3 并发送 `HELLO`；
+若 Redis 过旧或不支持 `HELLO` 的代理会在启动 `ping` 时直接失败，因此显式钉在 RESP2。
 
 协议预检 / access_probe 外层默认 7 秒（`CONNECT_TIMEOUT`）：TCP 协议先连接实际端口，SNMP/UDP
 在 CIDR 通过后进入凭据感知 probe（SNMP GET 固定 timeout=5、retries=1），云账号检查逻辑端点；ICMP 不作为硬过滤条件。

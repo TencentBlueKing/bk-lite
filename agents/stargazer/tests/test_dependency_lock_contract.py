@@ -67,6 +67,7 @@ def test_runbook_documents_stateless_runtime_limits() -> None:
     assert "TARGET_TASK_WINDOW" in readme
     assert "REDIS_MAX_CONNECTIONS" in readme
     assert "REDIS_POOL_TIMEOUT" in readme
+    assert "REDIS_PROTOCOL" in readme
     assert "CONNECT_TIMEOUT" in readme
     assert "MAX_ACTIVE_TARGETS=0" in readme
 
