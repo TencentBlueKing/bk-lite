@@ -918,7 +918,7 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         metrics = metrics[start:end]
 
     query_by_metric_id = {}
-    query_responses = {}
+    query_has_data = {}
     query_errors = {}
     if only_with_data:
         metrics = list(metrics)
@@ -933,14 +933,19 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
                     instance_ids=[instance_id],
                 )
         vm_api = VictoriaMetricsAPI()
-        query_responses, query_errors = run_unique_vm_queries(
-            query_by_metric_id.values(),
-            lambda query: vm_api.query_range(
+
+        def _query_has_data(query):
+            response = vm_api.query_range(
                 query,
                 start_seconds,
                 end_seconds,
                 str(step_seconds),
-            ),
+            )
+            return response.get("status") == "success" and bool(response.get("data", {}).get("result"))
+
+        query_has_data, query_errors = run_unique_vm_queries(
+            query_by_metric_id.values(),
+            _query_has_data,
         )
 
     result_metrics = []
@@ -964,15 +969,16 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
             if not query:
                 continue
             if query in query_errors:
+                error = query_errors[query]
                 logger.warning(
                     "monitor_instance_metrics query failed, instance_id=%s, metric=%s, error=%s",
                     instance_id,
                     metric.name,
-                    query_errors[query],
+                    error,
+                    exc_info=(type(error), error, error.__traceback__),
                 )
                 continue
-            resp = query_responses[query]
-            if not (resp.get("status") == "success" and resp.get("data", {}).get("result")):
+            if not query_has_data[query]:
                 continue
 
         result_metrics.append(metric_info)

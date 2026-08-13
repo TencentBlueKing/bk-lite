@@ -4,6 +4,7 @@ import time
 import types
 
 import pytest
+import requests
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import CurrentTeamDataScope
@@ -380,6 +381,35 @@ def test_vm_query_worker_config_is_safe_and_bounded(monkeypatch, raw_value, expe
         monkeypatch.setenv("MONITOR_VM_QUERY_MAX_WORKERS", raw_value)
 
     assert vm_query_batch._resolve_vm_query_max_workers() == expected
+
+
+def test_vm_query_batch_worker_one_is_serial_and_timeout_is_isolated(monkeypatch):
+    from apps.monitor.utils import vm_query_batch
+
+    monkeypatch.setattr(vm_query_batch, "VM_QUERY_MAX_WORKERS", 1)
+    active = 0
+    peak_active = 0
+
+    def query(query_text):
+        nonlocal active, peak_active
+        active += 1
+        peak_active = max(peak_active, active)
+        try:
+            if query_text == "timeout":
+                raise requests.Timeout("VM query timed out")
+            time.sleep(0.01)
+            return query_text.upper()
+        finally:
+            active -= 1
+
+    results, errors = vm_query_batch.run_unique_vm_queries(
+        ["first", "timeout", "first", "last"],
+        query,
+    )
+
+    assert results == {"first": "FIRST", "last": "LAST"}
+    assert isinstance(errors["timeout"], requests.Timeout)
+    assert peak_active == 1
 
 
 def test_effective_plugins_service_resolves_derived_instance_without_row(db, monkeypatch):
