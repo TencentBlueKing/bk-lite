@@ -16,7 +16,13 @@ async function loadMonitorAdapter(apiGet) {
   const sourceFile = ts.createSourceFile('adapter.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const declarations = sourceFile.statements.filter((statement) => {
     if (ts.isFunctionDeclaration(statement)) {
-      return ['record', 'text', 'number', 'texts', 'unwrap', 'getMonitorInstance'].includes(statement.name?.text);
+      return ['record', 'text', 'number', 'texts', 'unwrap', 'mapMonitorInstance', 'getMonitorInstance'].includes(statement.name?.text);
+    }
+    if (ts.isVariableStatement(statement)) {
+      return statement.declarationList.declarations.some((declaration) => (
+        ts.isIdentifier(declaration.name)
+        && ['LEGACY_INSTANCE_LOOKUP_PAGE_SIZE', 'LEGACY_INSTANCE_LOOKUP_MAX_PAGES'].includes(declaration.name.text)
+      ));
     }
     return false;
   });
@@ -728,6 +734,15 @@ test('旧 Server 忽略 instance_id 时不会把分页第一条误认成最近�
   const calls = [];
   const { getMonitorInstance } = await loadMonitorAdapter(async (url, params) => {
     calls.push({ url, params });
+    if (!params.instance_id) {
+      return {
+        count: 2,
+        results: [
+          { instance_id: "('other',)", instance_name: '其他实例', instance_id_values: ['other'] },
+          { instance_id: "('target',)", instance_name: '已重命名实例', instance_id_values: ['target'] },
+        ],
+      };
+    }
     return {
       count: 2,
       results: [{
@@ -740,11 +755,16 @@ test('旧 Server 忽略 instance_id 时不会把分页第一条误认成最近�
 
   try {
     const result = await getMonitorInstance(7, "('target',)", { addMetrics: true });
-    assert.equal(result, null);
+    assert.equal(result?.name, '已重命名实例');
     assert.deepEqual(calls[0].params, {
       page: 1,
       page_size: 1,
       instance_id: "('target',)",
+      add_metrics: true,
+    });
+    assert.deepEqual(calls[1].params, {
+      page: 1,
+      page_size: 100,
       add_metrics: true,
     });
   } finally {
@@ -752,41 +772,80 @@ test('旧 Server 忽略 instance_id 时不会把分页第一条误认成最近�
   }
 });
 
+test('旧 Server 精确回退有分页上界，重复页不会无限请求', async () => {
+  let calls = 0;
+  const { getMonitorInstance } = await loadMonitorAdapter(async () => {
+    calls += 1;
+    return {
+      count: 100_000,
+      results: [{ instance_id: "('other',)", instance_name: '其他实例' }],
+    };
+  });
+
+  try {
+    await assert.rejects(
+      getMonitorInstance(7, "('target',)"),
+      /repeated a pagination page/,
+    );
+    assert.equal(calls, 3);
+  } finally {
+    delete globalThis.__monitorAdapterApiGet;
+  }
+});
+
 test('最近访问能区分真实空、完整恢复、部分失败与全部不可用', async () => {
   const {
+    mergeRecentViewResolutionEntries,
     monitorRecentViewsResolutionStatus,
   } = await loadModel('src/features/monitor/model.ts');
   const entry = { item: {}, object: {}, instance: {} };
 
   assert.equal(monitorRecentViewsResolutionStatus({
-    entries: [], requestedCount: 0, failedCount: 0,
+    entries: [], requestedCount: 0, failedCount: 0, failedItems: [],
   }), 'empty');
   assert.equal(monitorRecentViewsResolutionStatus({
-    entries: [entry], requestedCount: 1, failedCount: 0,
+    entries: [entry], requestedCount: 1, failedCount: 0, failedItems: [],
   }), 'ready');
   assert.equal(monitorRecentViewsResolutionStatus({
-    entries: [entry], requestedCount: 3, failedCount: 1,
+    entries: [entry], requestedCount: 3, failedCount: 1, failedItems: [{}],
   }), 'partial');
   assert.equal(monitorRecentViewsResolutionStatus({
-    entries: [], requestedCount: 2, failedCount: 1,
+    entries: [], requestedCount: 2, failedCount: 1, failedItems: [{}],
   }), 'unavailable');
   assert.equal(monitorRecentViewsResolutionStatus({
-    entries: [], requestedCount: 2, failedCount: 1,
+    entries: [], requestedCount: 2, failedCount: 1, failedItems: [{}],
   }, true), 'refresh-error');
   assert.equal(monitorRecentViewsResolutionStatus({
-    entries: [], requestedCount: 1, failedCount: 0,
+    entries: [], requestedCount: 1, failedCount: 0, failedItems: [],
   }), 'empty');
   assert.equal(monitorRecentViewsResolutionStatus({
-    entries: [entry], requestedCount: 2, failedCount: 0,
+    entries: [entry], requestedCount: 2, failedCount: 0, failedItems: [],
   }), 'ready');
+
+  const resolved = (instanceId, viewedAt, name) => ({
+    item: { objectId: 7, instanceId, viewedAt },
+    object: { id: 7 },
+    instance: { id: instanceId, name },
+  });
+  const merged = mergeRecentViewResolutionEntries([
+    resolved("('failed',)", '2026-08-12T00:00:00Z', '保留旧内容'),
+    resolved("('deleted',)", '2026-08-11T00:00:00Z', '不应复活'),
+  ], {
+    entries: [resolved("('ready',)", '2026-08-13T00:00:00Z', '新内容')],
+    requestedCount: 3,
+    failedCount: 1,
+    failedItems: [{ objectId: 7, instanceId: "('failed',)", viewedAt: '2026-08-12T00:00:00Z' }],
+  });
+  assert.deepEqual(merged.map(({ instance }) => instance.name), ['新内容', '保留旧内容']);
 
   const panel = await readProjectFile('src/features/monitor/recent-views-panel.tsx');
   const hook = await readProjectFile('src/features/monitor/use-recent-views.ts');
   assert.match(hook, /monitorRecentViewsResolutionStatus\([\s\S]*preserveContent && entriesRef\.current\.length > 0/);
-  assert.match(hook, /nextStatus !== 'refresh-error'[\s\S]*setEntries\(resolution\.entries\)/);
+  assert.match(hook, /mergeRecentViewResolutionEntries\(entriesRef\.current, resolution\)/);
   assert.match(panel, /status === 'unavailable'[\s\S]*recentRestoreFailed/);
   assert.match(panel, /status === 'partial'[\s\S]*recentPartialRestore/);
   assert.match(panel, /status === 'refresh-error'[\s\S]*recentRefreshFailed/);
+  assert.match(panel, /recentNoticeAction[\s\S]*common\.retry/);
 });
 
 test('精确实例查询兼容重命名和复合 ID，删除或越权时安全为空', async () => {

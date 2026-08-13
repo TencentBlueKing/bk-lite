@@ -109,7 +109,14 @@ export default function MonitorRecentViewsPanel() {
               <div className={styles.recentList}>
                 {status === 'partial' || status === 'refresh-error' ? (
                   <div role="status" className={styles.recentPartialNotice}>
-                    {t(status === 'refresh-error' ? 'monitor.recentRefreshFailed' : 'monitor.recentPartialRestore')}
+                    <span>{t(status === 'refresh-error' ? 'monitor.recentRefreshFailed' : 'monitor.recentPartialRestore')}</span>
+                    <button
+                      type="button"
+                      className={styles.recentNoticeAction}
+                      onClick={() => void reload(undefined, true).catch(() => undefined)}
+                    >
+                      {t('common.retry')}
+                    </button>
                   </div>
                 ) : null}
                 {entries.map(({ item, object, instance, metricUnits }) => {

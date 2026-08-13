@@ -21,6 +21,23 @@ function unwrap<T>(value: unknown): T {
   return data.data as T;
 }
 
+const LEGACY_INSTANCE_LOOKUP_PAGE_SIZE = 100;
+const LEGACY_INSTANCE_LOOKUP_MAX_PAGES = 20;
+
+function mapMonitorInstance(value: unknown): MonitorInstance {
+  const item = record(value);
+  return {
+    id: text(item.instance_id),
+    name: text(item.instance_name || item.instance_id),
+    idValues: texts(item.instance_id_values),
+    status: text(item.status),
+    lastReportedAt: Number.isFinite(Number(item.time)) && Number(item.time) > 0 ? Number(item.time) : null,
+    interval: Number.isFinite(Number(item.interval)) && Number(item.interval) > 0 ? Number(item.interval) : null,
+    facts: record(item.summary_facts),
+    raw: item,
+  };
+}
+
 export async function listMonitorObjects(signal?: AbortSignal): Promise<MonitorObject[]> {
   const raw = unwrap<unknown>(await apiGet('/monitor/api/monitor_object/', { add_instance_count: true }, { signal }));
   return (Array.isArray(raw) ? raw : []).map((value) => {
@@ -85,15 +102,7 @@ export async function listMonitorInstances(
   const results = Array.isArray(raw.results) ? raw.results : [];
   return {
     count: number(raw.count),
-    items: results.map((value) => {
-      const item = record(value);
-      return {
-        id: text(item.instance_id), name: text(item.instance_name || item.instance_id), idValues: texts(item.instance_id_values),
-        status: text(item.status), lastReportedAt: Number.isFinite(Number(item.time)) && Number(item.time) > 0 ? Number(item.time) : null,
-        interval: Number.isFinite(Number(item.interval)) && Number(item.interval) > 0 ? Number(item.interval) : null,
-        facts: record(item.summary_facts), raw: item,
-      };
-    }).filter((item) => item.id),
+    items: results.map(mapMonitorInstance).filter((item) => item.id),
   };
 }
 
@@ -114,22 +123,35 @@ export async function getMonitorInstance(
   }, { signal });
   const raw = record(unwrap<unknown>(response));
   const results = Array.isArray(raw.results) ? raw.results : [];
-  const mapped = results.map((value) => {
-    const item = record(value);
-    return {
-      id: text(item.instance_id),
-      name: text(item.instance_name || item.instance_id),
-      idValues: texts(item.instance_id_values),
-      status: text(item.status),
-      lastReportedAt: Number.isFinite(Number(item.time)) && Number(item.time) > 0 ? Number(item.time) : null,
-      interval: Number.isFinite(Number(item.interval)) && Number(item.interval) > 0 ? Number(item.interval) : null,
-      facts: record(item.summary_facts),
-      raw: item,
-    };
-  });
+  const mapped = results.map(mapMonitorInstance);
   // 混合版本部署时，旧 Server 可能忽略 instance_id 并返回分页第一条。
-  // 只能接受 ID 精确一致的结果，避免把最近访问串成其他实例。
-  return mapped.find((item) => item.id === instanceId) || null;
+  // 先拒绝错配，再做有界分页精确回退，兼容只有 ID 的存量最近访问记录。
+  const exact = mapped.find((item) => item.id === instanceId);
+  if (exact || mapped.length === 0) return exact || null;
+
+  const seenLegacyIds = new Set<string>();
+  for (let page = 1; page <= LEGACY_INSTANCE_LOOKUP_MAX_PAGES; page += 1) {
+    const fallbackResponse = await apiGet(`/monitor/api/monitor_instance/${objectId}/list/`, {
+      page,
+      page_size: LEGACY_INSTANCE_LOOKUP_PAGE_SIZE,
+      add_metrics: hints.addMetrics ?? false,
+    }, { signal });
+    const fallbackRaw = record(unwrap<unknown>(fallbackResponse));
+    const fallbackResults = Array.isArray(fallbackRaw.results) ? fallbackRaw.results : [];
+    const fallbackItems = fallbackResults.map(mapMonitorInstance);
+    const fallbackExact = fallbackItems.find((item) => item.id === instanceId);
+    if (fallbackExact) return fallbackExact;
+
+    const pageIds = fallbackItems.map((item) => item.id).filter(Boolean);
+    if (page > 1 && pageIds.length > 0 && pageIds.every((id) => seenLegacyIds.has(id))) {
+      throw new Error('Legacy Server instance lookup repeated a pagination page');
+    }
+    pageIds.forEach((id) => seenLegacyIds.add(id));
+
+    const count = number(fallbackRaw.count);
+    if (fallbackResults.length === 0 || page * LEGACY_INSTANCE_LOOKUP_PAGE_SIZE >= count) return null;
+  }
+  throw new Error('Legacy Server instance lookup exceeded the safe pagination limit');
 }
 
 export async function listEffectivePlugins(objectId: number, instanceId: string, signal?: AbortSignal): Promise<MonitorPlugin[]> {
@@ -289,10 +311,13 @@ export async function resolveRecentViews(
   const entries = settled.flatMap((result) => (
     result.status === 'fulfilled' && result.value ? [result.value] : []
   ));
-  const failedCount = settled.filter((result) => result.status === 'rejected').length;
+  const failedItems = settled.flatMap((result, index) => (
+    result.status === 'rejected' ? [config.items[index]] : []
+  ));
   return {
     entries,
     requestedCount: config.items.length,
-    failedCount,
+    failedCount: failedItems.length,
+    failedItems,
   };
 }

@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/auth';
 import { listMonitorObjects, resolveRecentViews } from '@/features/monitor/adapter';
 import type { ResolvedMonitorRecentView } from '@/features/monitor/model';
-import { monitorRecentViewsResolutionStatus } from '@/features/monitor/model';
+import {
+  mergeRecentViewResolutionEntries,
+  monitorRecentViewsResolutionStatus,
+} from '@/features/monitor/model';
 import { readRecentViews } from '@/features/monitor/recent-views-storage';
 import { getCurrentTeamCookie } from '@/utils/teamCookie';
 
@@ -31,10 +34,11 @@ export function useRecentViews() {
         resolution,
         preserveContent && entriesRef.current.length > 0,
       );
-      if (nextStatus !== 'refresh-error') {
-        entriesRef.current = resolution.entries;
-        setEntries(resolution.entries);
-      }
+      const nextEntries = preserveContent && resolution.failedCount > 0
+        ? mergeRecentViewResolutionEntries(entriesRef.current, resolution)
+        : resolution.entries;
+      entriesRef.current = nextEntries;
+      setEntries(nextEntries);
       setStatus(nextStatus);
     } catch (error) {
       if (current !== requestId.current || signal?.aborted) return;

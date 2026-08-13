@@ -139,6 +139,7 @@ export interface MonitorRecentViewsResolution {
   entries: ResolvedMonitorRecentView[];
   requestedCount: number;
   failedCount: number;
+  failedItems: MonitorRecentViewItem[];
 }
 
 export type MonitorRecentViewsResolutionStatus = 'empty' | 'ready' | 'partial' | 'unavailable' | 'refresh-error';
@@ -154,6 +155,27 @@ export function monitorRecentViewsResolutionStatus(
   }
   if (resolution.entries.length === 0) return 'empty';
   return 'ready';
+}
+
+function recentViewItemKey(item: MonitorRecentViewItem) {
+  return `${item.objectId}:${item.instanceId}`;
+}
+
+export function mergeRecentViewResolutionEntries(
+  existing: readonly ResolvedMonitorRecentView[],
+  resolution: MonitorRecentViewsResolution,
+): ResolvedMonitorRecentView[] {
+  const failedKeys = new Set(resolution.failedItems.map(recentViewItemKey));
+  const merged = new Map(
+    resolution.entries.map((entry) => [recentViewItemKey(entry.item), entry]),
+  );
+  existing.forEach((entry) => {
+    const key = recentViewItemKey(entry.item);
+    if (failedKeys.has(key) && !merged.has(key)) merged.set(key, entry);
+  });
+  return Array.from(merged.values()).sort((left, right) => (
+    new Date(right.item.viewedAt || 0).getTime() - new Date(left.item.viewedAt || 0).getTime()
+  ));
 }
 
 export function normalizeRecentViews(value: unknown): MonitorRecentViewsConfig {
