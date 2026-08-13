@@ -20,7 +20,7 @@ import { parseLegacyMessage } from './legacyMessage';
 import { MessageBubble } from './components/MessageBubble';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { useLatestChatStateCallback } from './chatStateCallback';
+import { useLatestCallback } from './useLatestCallback';
 import {
   isAbortError,
   runOwnedStream,
@@ -93,12 +93,8 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   if (!streamLifecycleRef.current) {
     streamLifecycleRef.current = new StreamLifecycle();
   }
-  const onStateChangeRef = useLatestChatStateCallback(onStateChange);
-  // 保持 onMessageReceived 最新引用，避免 useEffect 空 deps 闭包固化旧 prop
-  const onMessageReceivedRef = useRef(onMessageReceived);
-  useEffect(() => {
-    onMessageReceivedRef.current = onMessageReceived;
-  }, [onMessageReceived]);
+  const onStateChangeRef = useLatestCallback(onStateChange);
+  const onMessageReceivedRef = useLatestCallback(onMessageReceived);
 
   // Cache avatar elements to prevent re-fetching on every render
   const botAvatar = React.useMemo(
