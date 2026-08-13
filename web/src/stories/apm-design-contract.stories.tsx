@@ -154,7 +154,7 @@ const tableRows: TableContractRow[] = [
 ];
 
 export const DataTableDensityAndResponsive: Story = {
-  name: '列表密度与响应式列',
+  name: '单层列表承载与响应式列',
   render: () => (
     <div className="grid gap-4 bg-[var(--color-background-body)] p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       <ApmSurface>

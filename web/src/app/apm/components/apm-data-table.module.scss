@@ -8,10 +8,10 @@
   font-size: 14px;
 }
 
-.table :global(.ant-table-container) {
-  overflow: hidden;
-  border: 1px solid var(--color-border-2);
-  border-radius: 6px;
+.table.table :global(.ant-table-container),
+.table.table :global(.ant-table-thead > tr:first-child > th:first-child),
+.table.table :global(.ant-table-thead > tr:first-child > th:last-child) {
+  border-radius: 0;
 }
 
 .table :global(.ant-table-thead > tr > th) {

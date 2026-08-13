@@ -27,7 +27,7 @@ describe('ApmDataTable', () => {
     }));
   });
 
-  it('使用固定布局并保留自适应高度，不创建表体滚动区', () => {
+  it('使用单层承载、固定布局和自适应高度，不创建表体滚动区', () => {
     const { container } = render(
       <ApmDataTable<Row>
         columns={columns}
@@ -38,6 +38,7 @@ describe('ApmDataTable', () => {
     );
 
     expect(screen.getByText('checkout')).toBeTruthy();
+    expect(container.querySelector('.ant-table-bordered')).toBeNull();
     expect(container.querySelector('table')?.getAttribute('style')).toContain('table-layout: fixed');
     expect(container.querySelector('.ant-table-body')).toBeNull();
   });

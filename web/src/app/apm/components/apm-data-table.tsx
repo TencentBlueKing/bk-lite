@@ -7,6 +7,8 @@ import styles from './apm-data-table.module.scss';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
+type ApmDataTableProps<RecordType extends object> = Omit<TableProps<RecordType>, 'bordered'>;
+
 const defaultShowTotal = (total: number) => (
   <span className={styles.paginationTotal}>共 {total} 条</span>
 );
@@ -33,10 +35,11 @@ export default function ApmDataTable<RecordType extends object>({
   size = 'middle',
   tableLayout = 'fixed',
   ...props
-}: TableProps<RecordType>) {
+}: ApmDataTableProps<RecordType>) {
   return (
     <Table<RecordType>
       {...props}
+      bordered={false}
       className={`${styles.table} ${className}`.trim()}
       pagination={normalizePagination(pagination as TableProps<never>['pagination'])}
       size={size}
