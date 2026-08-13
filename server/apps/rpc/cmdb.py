@@ -12,7 +12,17 @@ class CMDB(object):
         transport_keys = {"_timeout", "_raw"}
         transport_kwargs = {key: kwargs[key] for key in transport_keys if key in kwargs} if isinstance(self.client, RpcClient) else {}
         payload_kwargs = {key: value for key, value in kwargs.items() if key not in transport_keys}
-        params = payload_kwargs["params"] if set(payload_kwargs) == {"params"} else payload_kwargs
+        params = payload_kwargs.pop("params", None)
+        if isinstance(params, dict):
+            conflicts = sorted(set(params).intersection(payload_kwargs))
+            if conflicts:
+                raise ValueError(f"CMDB RPC params conflict: {conflicts}")
+            params = {**params, **payload_kwargs}
+        elif params is None:
+            params = payload_kwargs
+        else:
+            # list_instances 的业务查询条件也名为 params；它不是 RPC envelope。
+            params = {"params": params, **payload_kwargs}
         return self.client.run(method_name, params=params, **transport_kwargs)
 
     def get_module_data(self, **kwargs):

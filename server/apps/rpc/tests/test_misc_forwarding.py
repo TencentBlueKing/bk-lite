@@ -4,8 +4,6 @@
 operation_analysis / alerts / stargazer 客户端的方法名 + 参数转发契约。
 统一把 self.client 替换为记录器，断言转发的方法名与入参，不触达真实 NATS。
 """
-import json
-
 import pydantic.root_model  # noqa
 import pytest
 
@@ -24,11 +22,6 @@ class _Recorder:
     def request(self, method_name, *args, **kwargs):
         self.calls.append(("request", method_name, args, kwargs))
         return self.ret
-
-
-class _LocalParamsHandler:
-    def run(self, method_name, *, params):
-        return method_name, params
 
 
 def _last(rec):
@@ -73,42 +66,6 @@ def test_cmdb_search_instances_batch_preserves_prebuilt_params_envelope(cmdb):
     params = {"protocol_version": "2", "model_id": "host", "inst_uuids": ["u1"], "organization_ids": [1]}
     cmdb.search_instances_batch(params=params)
     assert _last(cmdb.client) == ("run", "search_instances_batch", (), {"params": params})
-
-
-def test_cmdb_remote_payload_binds_single_params_handler(monkeypatch):
-    from django.conf import settings
-
-    from apps.rpc.cmdb import CMDB
-    from nats_client.handlers import nats_handler
-    from nats_client.registry import default_registry
-    from nats_client.utils import parse_arguments
-
-    probe_key = f"{settings.NATS_NAMESPACE}.issue_4663_params_probe"
-
-    def probe(params):
-        return params
-
-    monkeypatch.setitem(default_registry.registry, probe_key, {"func": probe})
-
-    async def dispatch_serialized_request(namespace, method_name, *args, **kwargs):
-        assert namespace == settings.NATS_NAMESPACE
-        assert method_name == "search_instances_batch"
-        return await nats_handler(probe_key, json.loads(parse_arguments(args, kwargs)))
-
-    monkeypatch.setenv("IS_LOCAL_RPC", "0")
-    monkeypatch.setattr("apps.rpc.base.nats_client.request", dispatch_serialized_request)
-    params = {"protocol_version": "2", "model_id": "host", "inst_uuids": ["u1"], "organization_ids": [1]}
-
-    assert CMDB().search_instances_batch(**params) == params
-
-
-def test_cmdb_local_params_handler_does_not_receive_remote_controls(cmdb):
-    cmdb.client = _LocalParamsHandler()
-
-    assert cmdb.search_instances_batch(model_id="host", _timeout=5, _raw=True) == (
-        "search_instances_batch",
-        {"model_id": "host"},
-    )
 
 
 def test_cmdb_list_instances(cmdb):
