@@ -20,7 +20,7 @@
         },
         {
           "title": "服务拓扑",
-          "icon": "guanlian",
+          "icon": "tuoputu",
           "url": "/apm/services/topology",
           "name": "services"
         },
@@ -152,7 +152,7 @@
         },
         {
           "title": "Service topology",
-          "icon": "guanlian",
+          "icon": "tuoputu",
           "url": "/apm/services/topology",
           "name": "services"
         },
