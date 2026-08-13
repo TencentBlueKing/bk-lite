@@ -1,84 +1,133 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { StateMachine } from '../packages/webchat-core/src/stateMachine';
-import { useLatestChatStateCallback } from '../packages/webchat-ui/src/chatStateCallback';
+import { StateMachine } from '@webchat/core';
+import { Chat } from '../packages/webchat-ui/src/Chat';
+import { FloatingButton } from '../packages/webchat-ui/src/FloatingButton';
 
-type StateChangeCallback = (state: string) => void;
+const documentStub = {
+  addEventListener: () => undefined,
+  removeEventListener: () => undefined,
+};
+Object.defineProperty(globalThis, 'document', { configurable: true, value: documentStub });
 
-function ChatStateListener({
-  stateMachine,
-  onStateChange,
-}: {
-  stateMachine: StateMachine;
-  onStateChange?: StateChangeCallback;
-}) {
-  const callbackRef = useLatestChatStateCallback(onStateChange);
+function captureMountedStateMachine() {
+  let mountedStateMachine: StateMachine | undefined;
+  let subscriptionCount = 0;
+  const recordStateMachine = (stateMachine: StateMachine) => {
+    mountedStateMachine = stateMachine;
+  };
+  const originalOn = StateMachine.prototype.on;
+  StateMachine.prototype.on = function capture(listener) {
+    recordStateMachine(this);
+    subscriptionCount += 1;
+    return originalOn.call(this, listener);
+  };
 
-  useEffect(
-    () => stateMachine.on((event) => callbackRef.current?.(event.to)),
-    [callbackRef, stateMachine]
-  );
-  return null;
+  return {
+    get: () => {
+      assert.ok(mountedStateMachine, 'the production Chat must subscribe to its StateMachine');
+      return mountedStateMachine;
+    },
+    subscriptionCount: () => subscriptionCount,
+    restore: () => {
+      StateMachine.prototype.on = originalOn;
+    },
+  };
 }
 
-test('rerendered listener dispatches state-machine events only to the latest callback', () => {
+test('Chat dispatches state events only to the latest callback and stops after unmount', () => {
   const initialStates: string[] = [];
   const latestStates: string[] = [];
-  const stateMachine = new StateMachine('idle');
+  const captured = captureMountedStateMachine();
   let renderer: ReactTestRenderer;
 
-  act(() => {
-    renderer = create(
-      React.createElement(ChatStateListener, {
-        stateMachine,
-        onStateChange: (state) => initialStates.push(state),
-      })
-    );
-  });
-  act(() => {
-    stateMachine.transition('connecting');
-  });
-  act(() => {
-    renderer.update(
-      React.createElement(ChatStateListener, {
-        stateMachine,
-        onStateChange: (state) => latestStates.push(state),
-      })
-    );
-  });
-  act(() => {
+  try {
+    act(() => {
+      renderer = create(
+        React.createElement(Chat, {
+          enableStorage: false,
+          onStateChange: (state) => initialStates.push(state),
+        })
+      );
+    });
+    const stateMachine = captured.get();
+    act(() => {
+      stateMachine.transition('connecting');
+    });
+    act(() => {
+      renderer.update(
+        React.createElement(Chat, {
+          enableStorage: false,
+          onStateChange: (state) => latestStates.push(state),
+        })
+      );
+    });
+    assert.equal(captured.subscriptionCount(), 1);
+    act(() => {
+      stateMachine.transition('connected');
+    });
+    act(() => renderer.update(React.createElement(Chat, { enableStorage: false })));
+    act(() => {
+      stateMachine.transition('chatting');
+    });
+    act(() => renderer.unmount());
     stateMachine.transition('connected');
-  });
-  act(() => renderer.unmount());
-  stateMachine.transition('chatting');
 
-  assert.deepEqual(initialStates, ['connecting']);
-  assert.deepEqual(latestStates, ['connected']);
+    assert.deepEqual(initialStates, ['connecting']);
+    assert.deepEqual(latestStates, ['connected']);
+  } finally {
+    captured.restore();
+  }
 });
 
-test('removing the callback stops later state notifications', () => {
-  const states: string[] = [];
-  const stateMachine = new StateMachine('idle');
+test('FloatingButton keeps standard and legacy callback compatibility across rerenders', () => {
+  const standardStates: string[] = [];
+  const legacyStates: string[] = [];
+  const captured = captureMountedStateMachine();
   let renderer: ReactTestRenderer;
 
-  act(() => {
-    renderer = create(
-      React.createElement(ChatStateListener, {
-        stateMachine,
-        onStateChange: (state) => states.push(state),
-      })
-    );
-  });
-  act(() => {
-    renderer.update(React.createElement(ChatStateListener, { stateMachine }));
-  });
-  act(() => {
-    stateMachine.transition('connecting');
-  });
-  act(() => renderer.unmount());
+  try {
+    act(() => {
+      renderer = create(
+        React.createElement(FloatingButton, {
+          enableStorage: false,
+          onStateChange: (state) => standardStates.push(state),
+        })
+      );
+    });
+    act(() => renderer.root.findByType('button').props.onClick());
+    const stateMachine = captured.get();
+    act(() => {
+      stateMachine.transition('connecting');
+    });
+    act(() => {
+      renderer.update(
+        React.createElement(FloatingButton, {
+          enableStorage: false,
+          onStateChange: (state) => standardStates.push(`fallback:${state}`),
+          onChatStateChange: (state) => legacyStates.push(state),
+        })
+      );
+    });
+    assert.equal(captured.subscriptionCount(), 1);
+    act(() => {
+      stateMachine.transition('connected');
+    });
+    act(() => {
+      renderer.update(React.createElement(FloatingButton, { enableStorage: false }));
+    });
+    act(() => {
+      stateMachine.transition('chatting');
+    });
+    act(() => renderer.unmount());
+    stateMachine.transition('connected');
 
-  assert.deepEqual(states, []);
+    assert.deepEqual(standardStates, ['connecting']);
+    assert.deepEqual(legacyStates, ['connected']);
+  } finally {
+    captured.restore();
+  }
 });
