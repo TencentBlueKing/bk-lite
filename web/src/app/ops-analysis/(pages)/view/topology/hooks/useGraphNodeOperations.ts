@@ -23,7 +23,7 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import { buildValueConfig } from '../utils/namespaceUtils';
 import { createNodeByType, updateNodeAttributes } from '../utils/registerNode';
-import { getColorByThreshold } from '../utils/thresholdUtils';
+import { getColorByThreshold, isFiniteNumber } from '../utils/thresholdUtils';
 import { formatUnit } from '@/app/ops-analysis/utils/unitFormat';
 import { applyValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import {
@@ -51,8 +51,8 @@ function formatNumericValue(
     typeof rawValue === 'string' ? parseFloat(rawValue) : rawValue;
 
   if (typeof numericValue === 'number' && !isNaN(numericValue)) {
-    const factor = conversionFactor !== undefined ? conversionFactor : 1;
-    const places = decimalPlaces !== undefined ? decimalPlaces : 2;
+    const factor = isFiniteNumber(conversionFactor) ? conversionFactor : 1;
+    const places = isFiniteNumber(decimalPlaces) ? decimalPlaces : 2;
     return parseFloat((numericValue * factor).toFixed(places)).toString();
   }
 
@@ -381,8 +381,12 @@ export const useGraphNodeOperations = ({
       type: editingNode.type,
       name: values.name,
       unit: values.unit,
-      conversionFactor: values.conversionFactor,
-      decimalPlaces: values.decimalPlaces,
+      conversionFactor: isFiniteNumber(values.conversionFactor)
+        ? values.conversionFactor
+        : undefined,
+      decimalPlaces: isFiniteNumber(values.decimalPlaces)
+        ? values.decimalPlaces
+        : undefined,
       description: values.description,
       position: editingNode.position,
       logoType: values.logoType || editingNode.logoType,

@@ -10,7 +10,10 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
-import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
+import {
+  isFiniteNumber,
+  type ThresholdColorConfig,
+} from '@/app/ops-analysis/utils/thresholdUtils';
 import type { NetworkStatusTopologyConfig } from '@/app/ops-analysis/types/sceneWidget';
 import {
   normalizeCardListAccentStyle,
@@ -229,12 +232,7 @@ const applySingleValueConfig = (
   if (values.unit !== undefined) result.unit = values.unit;
   result.unitId = values.unitId;
   result.valueMappings = values.valueMappings || undefined;
-  if (values.conversionFactor !== undefined) {
-    result.conversionFactor = values.conversionFactor;
-  }
-  if (values.decimalPlaces !== undefined) {
-    result.decimalPlaces = values.decimalPlaces;
-  }
+  applyOptionalNumericDisplayFields(result, values);
 };
 
 const trimOptionalField = (value?: string) => {
@@ -253,6 +251,37 @@ const CARD_LIST_FOREIGN_KEYS = [
   'topNValueField',
 ] as const;
 
+const OPTIONAL_NUMERIC_DISPLAY_FIELDS = [
+  'conversionFactor',
+  'decimalPlaces',
+] as const;
+
+const applyOptionalNumericDisplayFields = (
+  result: WidgetConfig,
+  values: WidgetConfigFormValues,
+) => {
+  for (const key of OPTIONAL_NUMERIC_DISPLAY_FIELDS) {
+    if (isFiniteNumber(values[key])) {
+      result[key] = values[key];
+    } else if (values[key] === null) {
+      // InputNumber 清空后的显式 sentinel，供 merge/spread 覆盖旧值后再剥离
+      (result as unknown as Record<string, unknown>)[key] = null;
+    }
+  }
+};
+
+const stripUnsetOptionalNumericDisplayFields = <T extends object>(
+  valueConfig: T,
+): T => {
+  const next = { ...valueConfig } as T & Record<string, unknown>;
+  for (const key of OPTIONAL_NUMERIC_DISPLAY_FIELDS) {
+    if (!isFiniteNumber(next[key])) {
+      delete next[key];
+    }
+  }
+  return next;
+};
+
 export const omitForeignChartTypeFields = <T extends object>(
   valueConfig: T,
   chartType: string,
@@ -262,10 +291,10 @@ export const omitForeignChartTypeFields = <T extends object>(
     for (const key of CARD_LIST_FOREIGN_KEYS) {
       delete next[key];
     }
-    return next;
+  } else {
+    delete next.cardList;
   }
-  delete next.cardList;
-  return next;
+  return stripUnsetOptionalNumericDisplayFields(next);
 };
 
 /**
@@ -365,12 +394,7 @@ const applyGaugeConfig = (
   if (values.unit !== undefined) result.unit = values.unit;
   result.unitId = values.unitId;
   result.valueMappings = values.valueMappings || undefined;
-  if (values.conversionFactor !== undefined) {
-    result.conversionFactor = values.conversionFactor;
-  }
-  if (values.decimalPlaces !== undefined) {
-    result.decimalPlaces = values.decimalPlaces;
-  }
+  applyOptionalNumericDisplayFields(result, values);
   if (values.gaugeMin !== undefined) result.gaugeMin = values.gaugeMin;
   if (values.gaugeMax !== undefined) result.gaugeMax = values.gaugeMax;
   if (values.gaugeShape !== undefined) result.gaugeShape = values.gaugeShape;

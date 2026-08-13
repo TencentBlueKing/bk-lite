@@ -3,4 +3,5 @@
  */
 export {
   getColorByThreshold,
+  isFiniteNumber,
 } from '@/app/ops-analysis/utils/thresholdUtils';
