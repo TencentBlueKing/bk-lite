@@ -241,7 +241,7 @@ export default function ApmEndpointsPage() {
     {
       title: '方法',
       dataIndex: 'method',
-      width: 80,
+      width: '7%',
       responsive: ['md'],
       render: (value) => (
         <span className={`rounded px-2 py-0.5 font-mono text-xs font-medium ${
@@ -256,6 +256,7 @@ export default function ApmEndpointsPage() {
     },
     {
       title: '端点',
+      width: '27%',
       render: (_, row) => (
         <span className="inline-flex min-w-0 items-center gap-2">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-primary)]" aria-hidden="true" />
@@ -265,6 +266,7 @@ export default function ApmEndpointsPage() {
     },
     {
       title: '所属服务',
+      width: '20%',
       responsive: ['sm'],
       render: (_, row) => (
         <Space direction="vertical" size={0} className="min-w-0">
@@ -277,7 +279,7 @@ export default function ApmEndpointsPage() {
       title: '吞吐量',
       dataIndex: 'requestRate',
       align: 'right',
-      width: 130,
+      width: '12%',
       sorter: true,
       sortOrder: sortKey === 'request_rate' ? sortOrder : null,
       responsive: ['md'],
@@ -293,7 +295,7 @@ export default function ApmEndpointsPage() {
       title: '错误率',
       dataIndex: 'errorRate',
       align: 'right',
-      width: 100,
+      width: '10%',
       sorter: true,
       sortOrder: sortKey === 'error_rate' ? sortOrder : null,
       responsive: ['md'],
@@ -305,7 +307,7 @@ export default function ApmEndpointsPage() {
       title: 'P95',
       dataIndex: 'p95Ms',
       align: 'right',
-      width: 100,
+      width: '9%',
       sorter: true,
       sortOrder: sortKey === 'p95_ms' ? sortOrder : null,
       responsive: ['lg'],
@@ -315,14 +317,14 @@ export default function ApmEndpointsPage() {
       title: '最近活跃',
       dataIndex: 'lastSeenAt',
       align: 'right',
-      width: 110,
+      width: '8%',
       responsive: ['xl'],
       render: (value) => <Typography.Text type="secondary" className="text-xs">{formatRelativeTime(value)}</Typography.Text>,
     },
     {
       title: '操作',
       key: 'actions',
-      width: 72,
+      width: '7%',
       align: 'right',
       render: (_, row) => <Button size="small" type="link" onClick={() => setSelected(row)}>查看</Button>,
     },

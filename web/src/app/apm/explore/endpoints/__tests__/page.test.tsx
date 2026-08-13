@@ -142,4 +142,19 @@ describe('APM 端点详情抽屉', () => {
     expect(screen.getByRole('columnheader', { name: /错误率/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: /P95/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
   });
+
+  it('按容器比例平衡主信息列与指标列', async () => {
+    render(
+      <IntlProvider locale="zh" messages={tableMessages}>
+        <ApmEndpointsPage />
+      </IntlProvider>,
+    );
+
+    await screen.findByText('POST /pay');
+    const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
+      .map((column) => (column as HTMLElement).style.width);
+
+    expect(columnWidths).toEqual(['7%', '27%', '20%', '12%', '10%', '9%', '8%', '7%']);
+    expect(columnWidths.every((width) => width.endsWith('%'))).toBe(true);
+  });
 });
