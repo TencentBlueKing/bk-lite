@@ -22,11 +22,11 @@ import {
 } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import FilterToolbar from '@/components/filter-toolbar';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmEvent, ApmEventQuery, ApmNotificationDelivery, ApmPolicyMetric, ApmPolicySeverity, ApmServiceRed } from '@/app/apm/types';
-import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 
@@ -288,7 +288,6 @@ export default function ApmEventsPage() {
     {
       title: '告警',
       dataIndex: 'title',
-      fixed: 'left',
       render: (title, event) => (
         <Space direction="vertical" size={0} className="min-w-0">
           <EllipsisWithTooltip className="truncate font-medium" text={title} />
@@ -300,6 +299,8 @@ export default function ApmEventsPage() {
       title: '级别',
       dataIndex: 'severity',
       width: 90,
+      align: 'center',
+      responsive: ['sm'],
       render: (severity: ApmEvent['severity']) => (
         <Tag bordered={false} color={SEVERITY[severity].color}>{SEVERITY[severity].label}</Tag>
       ),
@@ -308,18 +309,20 @@ export default function ApmEventsPage() {
       title: '服务',
       dataIndex: 'service',
       width: 180,
+      responsive: ['md'],
       render: (value) => <EllipsisWithTooltip className="truncate" text={value || '—'} />,
     },
     {
       title: '端点',
       key: 'endpoint',
       width: 200,
-      responsive: ['md'],
+      responsive: ['lg'],
       render: () => <Typography.Text type="secondary">服务级</Typography.Text>,
     },
     {
       title: '通知',
       width: 130,
+      responsive: ['xl'],
       render: (_, event) => {
         const deliveries = event.notification_deliveries ?? [];
         if (!deliveries.length) return <Typography.Text type="secondary">未配置</Typography.Text>;
@@ -343,7 +346,7 @@ export default function ApmEventsPage() {
       title: '操作',
       key: 'action',
       width: 90,
-      fixed: 'right',
+      align: 'right',
       render: (_, event) => (
         <Button
           type="link"
@@ -454,10 +457,9 @@ export default function ApmEventsPage() {
             />
           </Space>
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 p-4">
           {visibleState === 'ready' || (state === 'loading' && events.length > 0) ? (
-            <CustomTable
-              autoScrollX={false}
+            <ApmDataTable
               rowKey="event_id"
               columns={columns}
               dataSource={pageAlerts}

@@ -22,6 +22,7 @@ import {
 } from 'antd';
 import SearchActionBar from '@/components/search-action-bar';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import dayjs from 'dayjs';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
@@ -36,7 +37,6 @@ import type {
   ApmNotificationRecipient,
   ApmPolicyNotificationTarget,
 } from '@/app/apm/types';
-import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 type PageState = CatalogStateKind | 'ready';
@@ -197,20 +197,20 @@ export default function ApmPoliciesPage() {
       title: '创建人',
       dataIndex: 'created_by',
       width: 120,
-      responsive: ['md'],
+      responsive: ['lg'],
       render: (value) => value || '—',
     },
     {
       title: '创建时间',
       dataIndex: 'created_at',
       width: 170,
-      responsive: ['lg'],
+      responsive: ['xl'],
       render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm')}</span>,
     },
     {
       title: '执行时间',
       width: 170,
-      responsive: ['lg'],
+      responsive: ['xxl'],
       render: (_, policy) => policy.state?.last_succeeded_at
         ? <span className="tabular-nums">{dayjs(policy.state.last_succeeded_at).format('YYYY-MM-DD HH:mm')}</span>
         : <Typography.Text type="secondary">从未执行</Typography.Text>,
@@ -218,6 +218,7 @@ export default function ApmPoliciesPage() {
     {
       title: '启停',
       width: 90,
+      align: 'center',
       render: (_, policy) => (
         <Switch
           checked={policy.is_enabled}
@@ -241,12 +242,11 @@ export default function ApmPoliciesPage() {
     },
     {
       title: '操作',
-      width: 140,
+      width: 120,
       align: 'right',
-      fixed: 'right',
       render: (_, policy) => (
-        <Space wrap>
-          <Button type="link" onClick={() => openEdit(policy)}>编辑</Button>
+        <Space size={0}>
+          <Button size="small" type="link" onClick={() => openEdit(policy)}>编辑</Button>
           <Popconfirm
             title="删除策略"
             description="删除后不再评估该策略，确认继续？"
@@ -264,7 +264,7 @@ export default function ApmPoliciesPage() {
               }
             }}
           >
-            <Button type="link" danger>删除</Button>
+            <Button size="small" type="link" danger>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -311,10 +311,9 @@ export default function ApmPoliciesPage() {
             />
           </div>
         </ApmSurface>
-        <ApmSurface padding="none" className="overflow-hidden">
+        <ApmSurface>
           {state === 'ready' ? (
-            <CustomTable
-              autoScrollX={false}
+            <ApmDataTable
               rowKey="id"
               columns={columns}
               dataSource={pagePolicies}

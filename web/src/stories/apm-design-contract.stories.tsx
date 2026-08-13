@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import { Button } from 'antd';
+import { Button, Tag, type TableColumnsType } from 'antd';
 import ApplicationCard from '@/app/apm/components/application-card';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState from '@/app/apm/components/catalog-state';
 
@@ -115,6 +116,63 @@ export const NarrowApplicationCard: Story = {
         eventsHref="/apm/events/alerts"
         href="/apm/integration/applications/long-name"
       />
+    </div>
+  ),
+};
+
+interface TableContractRow {
+  id: number;
+  name: string;
+  service: string;
+  status: string;
+  throughput: string;
+}
+
+const tableColumns: TableColumnsType<TableContractRow> = [
+  { title: '名称', dataIndex: 'name' },
+  { title: '服务', dataIndex: 'service', responsive: ['sm'] },
+  {
+    title: '吞吐量',
+    dataIndex: 'throughput',
+    width: 120,
+    align: 'right',
+    responsive: ['md'],
+    className: 'tabular-nums',
+  },
+  {
+    title: '状态',
+    dataIndex: 'status',
+    width: 88,
+    align: 'center',
+    render: (value) => <Tag bordered={false} color="success">{value}</Tag>,
+  },
+];
+
+const tableRows: TableContractRow[] = [
+  { id: 1, name: 'checkout-api-production-with-long-name', service: 'checkout', status: '正常', throughput: '1,284.4/s' },
+  { id: 2, name: 'payment-worker', service: 'payment', status: '正常', throughput: '862.1/s' },
+];
+
+export const DataTableDensityAndResponsive: Story = {
+  name: '列表密度与响应式列',
+  render: () => (
+    <div className="grid gap-4 bg-[var(--color-background-body)] p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <ApmSurface>
+        <ApmDataTable<TableContractRow>
+          columns={tableColumns}
+          dataSource={tableRows}
+          pagination={{ current: 1, pageSize: 20, total: 42 }}
+          rowKey="id"
+        />
+      </ApmSurface>
+      <ApmSurface>
+        <ApmDataTable<TableContractRow>
+          columns={tableColumns}
+          dataSource={tableRows}
+          pagination={false}
+          rowKey="id"
+        />
+      </ApmSurface>
     </div>
   ),
 };

@@ -21,12 +21,12 @@ import {
   Row,
   Segmented,
   Space,
-  Table,
   Tag,
   Typography,
 } from 'antd';
 import type { TableProps } from 'antd';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import { formatLatency } from '@/app/apm/components/metric-format';
@@ -452,7 +452,7 @@ export default function ApmTraceDetailPage() {
                       </Descriptions>
                       <div>
                         <Typography.Text type="secondary" className="mb-2 block text-xs">属性</Typography.Text>
-                        <Table
+                        <ApmDataTable
                           rowKey="key"
                           size="small"
                           columns={attributeColumns}

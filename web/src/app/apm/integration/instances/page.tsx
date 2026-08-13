@@ -5,6 +5,7 @@ import { EditOutlined, SearchOutlined } from '@ant-design/icons';
 import { Alert, Button, Input, message, Radio, Select, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, {
   catalogErrorKind,
@@ -19,7 +20,6 @@ import Permission from '@/components/permission';
 import FilterToolbar from '@/components/filter-toolbar';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
-import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 type PageState = CatalogStateKind | 'ready';
@@ -139,24 +139,24 @@ export default function ApmIntegrationInstancesPage() {
     {
       title: '实例 ID',
       dataIndex: 'instance_id',
-      width: 220,
       render: (value) => <EllipsisWithTooltip className="max-w-52 truncate font-mono text-xs" text={value} />,
     },
     {
       title: '服务',
       key: 'service',
+      responsive: ['sm'],
       render: (_, item) => (
         <ServiceIdentity namespace={item.service_namespace} name={item.service_name} />
       ),
     },
-    { title: '环境', dataIndex: 'environment', width: 120, responsive: ['sm'], render: (value) => <Tag bordered={false}>{value || '未设置'}</Tag> },
+    { title: '环境', dataIndex: 'environment', width: 120, responsive: ['md'], render: (value) => <Tag bordered={false}>{value || '未设置'}</Tag> },
     { title: '版本', dataIndex: 'version', width: 100, responsive: ['lg'], render: (value) => value || '—' },
     { title: '应用', dataIndex: 'application_name', width: 140, responsive: ['xl'], render: (value, item) => <EllipsisWithTooltip className="truncate" text={value || item.application_id || '—'} /> },
     {
       title: '接入时间',
       dataIndex: 'first_seen_at',
       width: 170,
-      responsive: ['xl'],
+      responsive: ['xxl'],
       render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm')}</span>,
     },
     {
@@ -175,7 +175,7 @@ export default function ApmIntegrationInstancesPage() {
       title: '组织',
       dataIndex: 'organization_ids',
       width: 120,
-      responsive: ['xl'],
+      responsive: ['xxl'],
       render: (value: number[]) => value.map((id) => (
         <Tag bordered={false} key={id}>{groupNames.get(id) ?? `#${id}`}</Tag>
       )),
@@ -185,7 +185,6 @@ export default function ApmIntegrationInstancesPage() {
       key: 'action',
       width: 80,
       align: 'right',
-      fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/instances">
           {!item.archived_at ? (
@@ -291,10 +290,9 @@ export default function ApmIntegrationInstancesPage() {
             </Typography.Text>
           </FilterToolbar>
         </ApmSurface>
-        <ApmSurface padding="none" className="overflow-hidden">
+        <ApmSurface>
           {state === 'ready' ? (
-            <CustomTable
-              autoScrollX={false}
+            <ApmDataTable
               rowKey="id"
               columns={columns}
               dataSource={instances}

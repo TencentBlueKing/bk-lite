@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { AppstoreAddOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Form, Input, message, Modal, Space, Typography, type TableColumnsType } from 'antd';
+import { Button, Form, Input, message, Modal, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmApplication, ApmApplicationInput } from '@/app/apm/types';
@@ -13,12 +15,14 @@ import FilterToolbar from '@/components/filter-toolbar';
 import GroupTreeSelect from '@/components/group-tree-select';
 import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
-import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 
 type PageState = CatalogStateKind | 'ready';
 
 export default function ApmApplicationsPage() {
+  const router = useRouter();
   const [messageApi, messageContextHolder] = message.useMessage();
   const { getApplications, createApplication, updateApplication, isLoading } = useApmApi();
   const { flatGroups } = useUserInfoContext();
@@ -99,6 +103,27 @@ export default function ApmApplicationsPage() {
     [filtered, page, pageSize],
   );
 
+  const actionMenuItems = (item: ApmApplication): MoreActionsDropdownItem[] => [
+    {
+      key: 'access',
+      icon: <PlusOutlined aria-hidden="true" />,
+      label: '添加接入',
+      onClick: () => router.push(`/apm/integration/add?application_id=${encodeURIComponent(item.application_id)}`),
+    },
+    {
+      key: 'detail',
+      icon: <AppstoreAddOutlined aria-hidden="true" />,
+      label: '查看详情',
+      onClick: () => router.push(`/apm/integration/applications/${item.id}`),
+    },
+    {
+      key: 'edit',
+      icon: <EditOutlined aria-hidden="true" />,
+      label: '编辑',
+      onClick: () => openEdit(item),
+    },
+  ];
+
   const columns: TableColumnsType<ApmApplication> = [
     {
       title: '应用',
@@ -117,10 +142,10 @@ export default function ApmApplicationsPage() {
         </div>
       ),
     },
-    { title: '说明', dataIndex: 'description', responsive: ['md'], render: (value) => <EllipsisWithTooltip className="truncate" text={value || '—'} /> },
-    { title: '服务数', dataIndex: 'service_count', width: 100, align: 'right', className: 'tabular-nums' },
+    { title: '说明', dataIndex: 'description', responsive: ['lg'], render: (value) => <EllipsisWithTooltip className="truncate" text={value || '—'} /> },
+    { title: '服务数', dataIndex: 'service_count', width: 100, align: 'right', className: 'tabular-nums', responsive: ['md'] },
     {
-      title: '组织', dataIndex: 'organization_ids', width: 180, responsive: ['lg'],
+      title: '组织', dataIndex: 'organization_ids', width: 180, responsive: ['xl'],
       render: (values: number[]) => (
         <EllipsisWithTooltip
           className="truncate"
@@ -128,21 +153,13 @@ export default function ApmApplicationsPage() {
         />
       ),
     },
-    { title: '更新时间', dataIndex: 'updated_at', width: 170, responsive: ['xl'], className: 'tabular-nums', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
+    { title: '更新时间', dataIndex: 'updated_at', width: 170, responsive: ['xxl'], className: 'tabular-nums', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
     {
-      title: '操作', key: 'action', width: 210, align: 'right', fixed: 'right',
+      title: '操作', key: 'action', width: 72, align: 'right',
       render: (_, item) => (
-          <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
-            <Space size={0}>
-              <Link href={`/apm/integration/add?application_id=${encodeURIComponent(item.application_id)}`}>
-                <Button type="link" size="small">添加接入</Button>
-              </Link>
-              <Link href={`/apm/integration/applications/${item.id}`}>
-                <Button type="link" size="small">详情</Button>
-              </Link>
-              <Button type="link" size="small" icon={<EditOutlined aria-hidden="true" />} onClick={() => openEdit(item)}>编辑</Button>
-            </Space>
-          </Permission>
+        <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
+          <MoreActionsDropdown ariaLabel={`${item.name}更多操作`} items={actionMenuItems(item)} />
+        </Permission>
       ),
     },
   ];
@@ -160,10 +177,9 @@ export default function ApmApplicationsPage() {
             </Permission>
           </FilterToolbar>
         </ApmSurface>
-        <ApmSurface padding="none" className="overflow-hidden">
+        <ApmSurface>
           {state === 'ready' ? (
-            <CustomTable
-              autoScrollX={false}
+            <ApmDataTable
               rowKey="id"
               columns={columns}
               dataSource={pageRows}

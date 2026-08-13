@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SearchOutlined } from '@ant-design/icons';
-import { Button, Checkbox, Input, InputNumber, Segmented, Select, Space, Table, Tag, Typography } from 'antd';
+import { Button, Checkbox, Input, InputNumber, Segmented, Select, Space, Tag, Typography } from 'antd';
 import type { TableProps } from 'antd';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import HealthDot from '@/app/apm/components/health-dot';
@@ -412,13 +413,16 @@ export default function ApmTracesPage() {
     {
       title: '资源',
       dataIndex: 'root_span_name',
+      responsive: ['md'],
       render: (value) => <span className="font-mono text-xs">{value}</span>,
     },
     {
       title: '总耗时',
       dataIndex: 'duration_ms',
       width: 100,
+      align: 'right',
       className: 'tabular-nums',
+      responsive: ['sm'],
       render: (value: number) => formatLatency(value),
     },
     {
@@ -427,12 +431,13 @@ export default function ApmTracesPage() {
       width: 90,
       align: 'right',
       className: 'tabular-nums',
-      responsive: ['md'],
+      responsive: ['lg'],
     },
     {
       title: '状态',
       dataIndex: 'status',
       width: 90,
+      align: 'center',
       render: (value) => (
         value === 'error'
           ? <Tag bordered={false} color="error">错误</Tag>
@@ -443,7 +448,7 @@ export default function ApmTracesPage() {
       title: '时间',
       dataIndex: 'started_at',
       width: 110,
-      responsive: ['lg'],
+      responsive: ['xl'],
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
       ),
@@ -463,11 +468,13 @@ export default function ApmTracesPage() {
     {
       title: '资源',
       dataIndex: 'name',
+      responsive: ['sm'],
       render: (value) => <span className="font-mono text-xs">{value}</span>,
     },
     {
       title: 'HTTP',
       width: 120,
+      responsive: ['lg'],
       render: (_, item) => {
         if (!item.http_method && !item.http_status_code) {
           return <span className="text-xs text-[var(--color-text-3)]">-</span>;
@@ -483,13 +490,16 @@ export default function ApmTracesPage() {
       title: '耗时',
       dataIndex: 'duration_ms',
       width: 100,
+      align: 'right',
       className: 'tabular-nums',
+      responsive: ['md'],
       render: (value: number) => formatLatency(value),
     },
     {
       title: '时间',
       dataIndex: 'started_at',
       width: 110,
+      responsive: ['xl'],
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
       ),
@@ -588,6 +598,7 @@ export default function ApmTracesPage() {
       width: 100,
       align: 'right',
       className: 'tabular-nums',
+      responsive: ['sm'],
       render: (value: number) => `${(value * 100).toFixed(1)}%`,
     },
     {
@@ -596,6 +607,7 @@ export default function ApmTracesPage() {
       width: 100,
       align: 'right',
       className: 'tabular-nums',
+      responsive: ['md'],
       render: (value: number) => formatLatency(value),
     },
     {
@@ -604,6 +616,7 @@ export default function ApmTracesPage() {
       width: 100,
       align: 'right',
       className: 'tabular-nums',
+      responsive: ['lg'],
       render: (value: number) => formatLatency(value),
     },
     {
@@ -908,10 +921,9 @@ export default function ApmTracesPage() {
                       unitLabel={entityMode === 'spans' ? 'Span' : 'Trace'}
                     />
                   </ApmSurface>
-                  <ApmSurface padding="none" className="overflow-hidden">
+                  <ApmSurface>
                     {entityMode === 'spans' ? (
-                      <Table
-                        size="middle"
+                      <ApmDataTable
                         rowKey="span_id"
                         columns={spanColumns}
                         dataSource={visibleSpans}
@@ -931,8 +943,7 @@ export default function ApmTracesPage() {
                         })}
                       />
                     ) : (
-                      <Table
-                        size="middle"
+                      <ApmDataTable
                         rowKey="trace_id"
                         columns={traceColumns}
                         dataSource={visibleTraces}
@@ -953,15 +964,15 @@ export default function ApmTracesPage() {
                       />
                     )}
                     {nextCursor ? (
-                      <div className="flex justify-center border-t border-[var(--color-border-1)] p-3">
+                      <div className="mt-4 flex justify-center border-t border-[var(--color-border-1)] pt-4">
                         <Button loading={loadingMore} disabled={loadingMore} onClick={() => search(nextCursor)}>加载更多</Button>
                       </div>
                     ) : null}
                   </ApmSurface>
                 </>
               ) : (
-                <ApmSurface padding="none" className="overflow-hidden">
-                  <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
+                <ApmSurface>
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                     <Typography.Text strong>聚合分析</Typography.Text>
                     <Segmented<AggregateDimension>
                       size="small"
@@ -974,8 +985,7 @@ export default function ApmTracesPage() {
                       ]}
                     />
                   </div>
-                  <Table
-                    size="middle"
+                  <ApmDataTable
                     rowKey="key"
                     columns={aggregateColumns}
                     dataSource={aggregateRows}

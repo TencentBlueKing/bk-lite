@@ -6,12 +6,12 @@ import { useParams } from 'next/navigation';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Descriptions, Space, Tag, Typography, type TableColumnsType } from 'antd';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import ServiceLanguage from '@/app/apm/components/service-language';
 import ApmStatusTag from '@/app/apm/components/status-tag';
 import type { ApmApplication, ApmService } from '@/app/apm/types';
-import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 type PageState = CatalogStateKind | 'ready';
@@ -53,6 +53,7 @@ export default function ApmApplicationDetailPage() {
     {
       title: '环境',
       width: 240,
+      responsive: ['sm'],
       render: (_, service) => (
         <div className="flex flex-wrap gap-1">
           {service.environment_views.length
@@ -61,11 +62,12 @@ export default function ApmApplicationDetailPage() {
         </div>
       ),
     },
-    { title: '状态', dataIndex: 'status', width: 100, render: (value) => <ApmStatusTag status={value} /> },
+    { title: '状态', dataIndex: 'status', width: 100, align: 'center', render: (value) => <ApmStatusTag status={value} /> },
     {
       title: '最近上报',
       dataIndex: 'last_seen_at',
       width: 190,
+      responsive: ['lg'],
       render: (value) => <EllipsisWithTooltip text={new Date(value).toLocaleString()} />,
     },
   ], []);
@@ -94,14 +96,13 @@ export default function ApmApplicationDetailPage() {
               ]}
             />
           </ApmSurface>
-          <ApmSurface padding="none" className="overflow-hidden">
-            <div className="border-b border-[var(--color-border)] px-4 py-3">
+          <ApmSurface>
+            <div className="mb-4">
               <Typography.Text strong>下属服务</Typography.Text>
               <Typography.Text type="secondary" className="ml-2 !text-xs">共 {services.length} 个</Typography.Text>
             </div>
             {services.length ? (
-              <CustomTable
-                autoScrollX={false}
+              <ApmDataTable
                 columns={columns}
                 dataSource={services}
                 rowKey="id"

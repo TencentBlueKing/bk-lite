@@ -45,7 +45,7 @@ vi.mock('@/components/time-series-composed-chart', () => ({
 
 beforeEach(() => {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: false,
+    matches: query.includes('min-width'),
     media: query,
     onchange: null,
     addListener: vi.fn(),
@@ -110,7 +110,7 @@ afterEach(() => {
 
 describe('APM 端点详情抽屉', () => {
   it('通过显式查看操作打开详情并加载样本调用链', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <IntlProvider locale="zh" messages={tableMessages}>
         <ApmEndpointsPage />

@@ -188,7 +188,6 @@ export default function ApmErrorsPage() {
       title="错误"
       description="按服务与环境查看错误调用链，定位故障入口与样本 Trace。"
       dependency="telemetry"
-      showDependencyNote={false}
     >
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
@@ -252,12 +251,12 @@ export default function ApmErrorsPage() {
           </ApmSurface>
         ) : null}
 
-        <ApmSurface padding="none" className="overflow-hidden">
+        <ApmSurface>
           {state === 'idle' ? (
             <CatalogState kind="empty" description="选择服务与环境后查看错误调用链。" />
           ) : state === 'ready' ? (
             <>
-              <div className="border-b border-[var(--color-border-2)] p-3">
+              <div className="mb-4">
                 <Input
                   allowClear
                   aria-label="搜索错误调用链"
@@ -269,7 +268,7 @@ export default function ApmErrorsPage() {
                 />
               </div>
               {clusters.length ? (
-                <div className="flex flex-col gap-3 bg-[var(--color-fill-1)] p-3">
+                <div className="flex flex-col gap-3">
                   {clusters.map((cluster) => (
                   <article key={cluster.key} className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
                     <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-start lg:justify-between">
@@ -310,7 +309,7 @@ export default function ApmErrorsPage() {
                           </Button>
                         </div>
                       </div>
-                      <div className="grid shrink-0 grid-cols-3 gap-8 text-right">
+                      <div className="grid shrink-0 grid-cols-3 gap-3 text-center sm:gap-6 lg:text-right">
                         <div>
                           <div className="font-semibold tabular-nums text-[var(--color-fail)]">{cluster.samples.length}</div>
                           <Typography.Text type="secondary" className="text-xs">受影响 Trace</Typography.Text>
@@ -337,11 +336,11 @@ export default function ApmErrorsPage() {
                               <button
                                 key={item.trace_id}
                                 type="button"
-                                className="flex items-center justify-between gap-3 rounded-md bg-[var(--color-fill-1)] px-3 py-2 text-left hover:bg-[var(--color-primary-bg-active)]"
+                                className="flex flex-col items-start justify-between gap-1 rounded-md bg-[var(--color-fill-1)] px-3 py-2 text-left transition-colors duration-150 hover:bg-[var(--color-primary-bg-active)] sm:flex-row sm:items-center sm:gap-3"
                                 onClick={() => router.push(`/apm/explore/traces/${item.trace_id}`)}
                               >
                                 <span className="min-w-0 truncate font-mono text-xs">{item.trace_id}</span>
-                                <span className="shrink-0 text-xs tabular-nums text-[var(--color-text-3)]">
+                                <span className="text-xs tabular-nums text-[var(--color-text-3)] sm:shrink-0">
                                   {formatLatency(item.duration_ms)} · {formatRelativeTime(item.started_at)}
                                 </span>
                               </button>
