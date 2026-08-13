@@ -59,6 +59,9 @@
   --mobile-dense-list-row-inner-gap: 6px;
   --mobile-table-row-min-height: 68px;
   --mobile-table-row-padding-block: 12px;
+  --mobile-notice-spacing: 8px;
+  --mobile-notice-padding-inline: 10px;
+  --mobile-notice-radius: 8px;
   
   /* 边框颜色 */
   --color-border: #eaecf0;
@@ -157,6 +160,9 @@
   --mobile-dense-list-row-inner-gap: 6px;
   --mobile-table-row-min-height: 68px;
   --mobile-table-row-padding-block: 12px;
+  --mobile-notice-spacing: 8px;
+  --mobile-notice-padding-inline: 10px;
+  --mobile-notice-radius: 8px;
   
   /* 边框颜色 */
   --color-border: #333333;

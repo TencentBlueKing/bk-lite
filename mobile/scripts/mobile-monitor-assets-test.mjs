@@ -759,17 +759,23 @@ test('最近访问能区分真实空、完整恢复、部分失败与全部不�
   const entry = { item: {}, object: {}, instance: {} };
 
   assert.equal(monitorRecentViewsResolutionStatus({
-    entries: [], requestedCount: 0, unresolvedCount: 0, failedCount: 0,
+    entries: [], requestedCount: 0, failedCount: 0,
   }), 'empty');
   assert.equal(monitorRecentViewsResolutionStatus({
-    entries: [entry], requestedCount: 1, unresolvedCount: 0, failedCount: 0,
+    entries: [entry], requestedCount: 1, failedCount: 0,
   }), 'ready');
   assert.equal(monitorRecentViewsResolutionStatus({
-    entries: [entry], requestedCount: 3, unresolvedCount: 1, failedCount: 1,
+    entries: [entry], requestedCount: 3, failedCount: 1,
   }), 'partial');
   assert.equal(monitorRecentViewsResolutionStatus({
-    entries: [], requestedCount: 2, unresolvedCount: 1, failedCount: 1,
+    entries: [], requestedCount: 2, failedCount: 1,
   }), 'unavailable');
+  assert.equal(monitorRecentViewsResolutionStatus({
+    entries: [], requestedCount: 1, failedCount: 0,
+  }), 'empty');
+  assert.equal(monitorRecentViewsResolutionStatus({
+    entries: [entry], requestedCount: 2, failedCount: 0,
+  }), 'ready');
 
   const panel = await readProjectFile('src/features/monitor/recent-views-panel.tsx');
   const hook = await readProjectFile('src/features/monitor/use-recent-views.ts');

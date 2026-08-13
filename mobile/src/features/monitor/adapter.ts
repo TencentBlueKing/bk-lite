@@ -289,14 +289,10 @@ export async function resolveRecentViews(
   const entries = settled.flatMap((result) => (
     result.status === 'fulfilled' && result.value ? [result.value] : []
   ));
-  const unresolvedCount = settled.filter((result) => (
-    result.status === 'fulfilled' && result.value === null
-  )).length;
   const failedCount = settled.filter((result) => result.status === 'rejected').length;
   return {
     entries,
     requestedCount: config.items.length,
-    unresolvedCount,
     failedCount,
   };
 }

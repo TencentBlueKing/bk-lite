@@ -35,6 +35,7 @@ export default function MonitorRecentViewsPanel() {
   const { t } = useTranslation();
   const { userInfo } = useAuth();
   const { entries, status, reload } = useRecentViews();
+  const canSnapshot = status === 'ready' || status === 'partial';
   const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
   const initialSnapshot = useRef(readMobileViewSnapshot<MonitorRecentViewsViewState>(cacheScope, 'monitor-recent'));
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -51,14 +52,14 @@ export default function MonitorRecentViewsPanel() {
   }, []);
 
   useEffect(() => {
-    if (status !== 'ready' && status !== 'partial') return;
+    if (!canSnapshot) return;
     writeMobileViewSnapshot<MonitorRecentViewsViewState>(
       cacheScope,
       'monitor-recent',
       { entryKeys: entries.map((entry) => entryKey(entry.object.id, entry.instance.id)) },
       scrollRef.current?.scrollTop || 0,
     );
-  }, [cacheScope, entries, status]);
+  }, [cacheScope, canSnapshot, entries]);
 
   return (
     <div className={styles.recentPanel}>
@@ -66,7 +67,7 @@ export default function MonitorRecentViewsPanel() {
         className={styles.scroll}
         ref={scrollRef}
         onScroll={(event) => {
-          if (status !== 'ready' && status !== 'partial') return;
+          if (!canSnapshot) return;
           writeMobileViewSnapshot<MonitorRecentViewsViewState>(
             cacheScope,
             'monitor-recent',

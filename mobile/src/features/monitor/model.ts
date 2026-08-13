@@ -138,7 +138,6 @@ export interface ResolvedMonitorRecentView {
 export interface MonitorRecentViewsResolution {
   entries: ResolvedMonitorRecentView[];
   requestedCount: number;
-  unresolvedCount: number;
   failedCount: number;
 }
 
@@ -148,8 +147,10 @@ export function monitorRecentViewsResolutionStatus(
   resolution: MonitorRecentViewsResolution,
 ): MonitorRecentViewsResolutionStatus {
   if (resolution.requestedCount === 0) return 'empty';
-  if (resolution.entries.length === 0) return 'unavailable';
-  if (resolution.unresolvedCount > 0 || resolution.failedCount > 0) return 'partial';
+  if (resolution.failedCount > 0) {
+    return resolution.entries.length === 0 ? 'unavailable' : 'partial';
+  }
+  if (resolution.entries.length === 0) return 'empty';
   return 'ready';
 }
 
