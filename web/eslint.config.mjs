@@ -76,7 +76,6 @@ export default defineConfig([
     'dist/**',
     'storybook-static/**',
     'public/iconfont.js',
-    'public/webchat/**',
     '**/*.config.js',
     '**/*.config.mjs',
     'scripts/**',
