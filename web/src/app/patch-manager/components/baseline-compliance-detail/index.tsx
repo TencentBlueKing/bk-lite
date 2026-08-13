@@ -34,7 +34,6 @@ import type {
   BaselineCompliancePatchDetail,
   BaselineCompliancePatchObject,
   BaselineCompliancePerspective,
-  BaselineComplianceResultScope,
   BaselineComplianceResultStatus,
 } from '@/app/patch-manager/types';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -68,26 +67,13 @@ type ComplianceDetailRow = ComplianceDetailSource & {
   evaluated_at_display: string;
 };
 
-function ResultTag({
-  status,
-  scope,
-}: {
-  status: BaselineComplianceResultStatus;
-  scope: BaselineComplianceResultScope;
-}) {
+function ResultTag({ status }: { status: BaselineComplianceResultStatus }) {
   const { t } = useTranslation();
-  const presentation = getComplianceResultPresentation(status, scope);
+  const presentation = getComplianceResultPresentation(status, 'requirement');
   return (
-    <Space size={4} wrap>
-      <Tag color={presentation.color} style={{ marginInlineEnd: 0 }}>
-        {t(presentation.labelKey)}
-      </Tag>
-      {presentation.hostScoped && (
-        <Tooltip title={t('patchManager.baseline.complianceDetail.hostScopeHint')}>
-          <Tag bordered={false}>{t('patchManager.baseline.complianceDetail.hostScope')}</Tag>
-        </Tooltip>
-      )}
-    </Space>
+    <Tag color={presentation.color} style={{ marginInlineEnd: 0 }}>
+      {t(presentation.labelKey)}
+    </Tag>
   );
 }
 
@@ -134,6 +120,8 @@ export default function BaselineComplianceDetail({
   const [selectedId, setSelectedId] = useState<number>();
   const [detailPage, setDetailPage] = useState(1);
   const [detailPageSize, setDetailPageSize] = useState(20);
+  const selectedIdRef = useRef<number | undefined>(undefined);
+  selectedIdRef.current = selectedId;
   const objectsRequestRef = useRef<AbortController | null>(null);
   const detailsRequestRef = useRef<AbortController | null>(null);
   const objectsRequestKeyRef = useRef('');
@@ -296,6 +284,8 @@ export default function BaselineComplianceDetail({
   };
 
   const selectObject = (id: number) => {
+    if (id === selectedIdRef.current) return;
+    selectedIdRef.current = id;
     setDetailsData(null);
     setSelectedId(id);
     setDetailPage(1);
@@ -329,8 +319,8 @@ export default function BaselineComplianceDetail({
       title: t('patchManager.baseline.complianceDetail.assessmentStatus'),
       dataIndex: 'status',
       width: 150,
-      render: (status: BaselineComplianceResultStatus, row: { status_scope: BaselineComplianceResultScope }) => (
-        <><ResultTag status={status} scope={row.status_scope} /></>
+      render: (status: BaselineComplianceResultStatus) => (
+        <><ResultTag status={status} /></>
       ),
     },
     {
