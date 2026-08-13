@@ -1,10 +1,11 @@
+import json
 import threading
 
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, LogExtractor, SystemVectorConfigState
-from apps.log.services.log_extractor import semantics
+from apps.log.services.log_extractor import preview_runtime
 from apps.log.views.extractor import LogExtractorViewSet
 from apps.system_mgmt.models.operation_log import OperationLog
 
@@ -21,6 +22,19 @@ def _allow_current_team(mocker):
     mocker.patch(
         "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
         return_value={"result": True, "data": [1]},
+    )
+
+
+def _allow_view_permission(mocker, collect_instance):
+    mocker.patch(
+        "apps.log.views.extractor.get_permissions_rules",
+        return_value={
+            "data": {
+                str(collect_instance.collect_type_id): {
+                    "instance": [{"id": collect_instance.id, "permission": ["View"]}],
+                }
+            }
+        },
     )
 
 
@@ -66,16 +80,7 @@ def test_create_rule_saves_resource_and_marks_one_global_generation(authenticate
 @pytest.mark.django_db
 def test_view_user_cannot_create_rule(authenticated_user, collect_instance, mocker):
     _allow_current_team(mocker)
-    mocker.patch(
-        "apps.log.views.extractor.get_permissions_rules",
-        return_value={
-            "data": {
-                str(collect_instance.collect_type_id): {
-                    "instance": [{"id": collect_instance.id, "permission": ["View"]}],
-                }
-            }
-        },
-    )
+    _allow_view_permission(mocker, collect_instance)
     request = APIRequestFactory().post(
         "/api/v1/log/log_extractors/",
         {"collect_instance": collect_instance.id},
@@ -105,16 +110,7 @@ def test_view_user_can_list_rules_in_current_team(authenticated_user, collect_in
         delete_source=False,
         sort_order=0,
     )
-    mocker.patch(
-        "apps.log.views.extractor.get_permissions_rules",
-        return_value={
-            "data": {
-                str(collect_instance.collect_type_id): {
-                    "instance": [{"id": collect_instance.id, "permission": ["View"]}],
-                }
-            }
-        },
-    )
+    _allow_view_permission(mocker, collect_instance)
     request = APIRequestFactory().get("/api/v1/log/log_extractors/", {"collect_instance": collect_instance.id})
     request.COOKIES["current_team"] = "1"
     force_authenticate(request, user=authenticated_user)
@@ -155,17 +151,8 @@ def test_view_user_gets_bounded_error_for_catastrophic_regex_preview(authenticat
         delete_source=False,
         sort_order=0,
     )
-    mocker.patch(
-        "apps.log.views.extractor.get_permissions_rules",
-        return_value={
-            "data": {
-                str(collect_instance.collect_type_id): {
-                    "instance": [{"id": collect_instance.id, "permission": ["View"]}],
-                }
-            }
-        },
-    )
-    monkeypatch.setattr(semantics, "REGEX_PREVIEW_TIMEOUT_SECONDS", 0.1)
+    _allow_view_permission(mocker, collect_instance)
+    monkeypatch.setattr(preview_runtime, "REGEX_PREVIEW_TIMEOUT_SECONDS", 0.1)
     request = APIRequestFactory().post(
         "/api/v1/log/log_extractors/preview/",
         {
@@ -188,26 +175,21 @@ def test_view_user_gets_bounded_error_for_catastrophic_regex_preview(authenticat
     response = LogExtractorViewSet.as_view({"post": "preview"})(request)
 
     assert response.status_code == 400
-    assert str(response.data["rule"]) == "正则预览执行超时"
+    assert response.data == {
+        "detail": "正则预览执行超时",
+        "data": {"error_code": "log_extractor_preview_timeout"},
+    }
+    assert json.loads(response.render().content)["data"] == {"error_code": "log_extractor_preview_timeout"}
 
 
 @pytest.mark.integration
 @pytest.mark.django_db
 def test_regex_preview_capacity_exhaustion_returns_retryable_status(authenticated_user, collect_instance, mocker, monkeypatch):
     _allow_current_team(mocker)
-    mocker.patch(
-        "apps.log.views.extractor.get_permissions_rules",
-        return_value={
-            "data": {
-                str(collect_instance.collect_type_id): {
-                    "instance": [{"id": collect_instance.id, "permission": ["View"]}],
-                }
-            }
-        },
-    )
+    _allow_view_permission(mocker, collect_instance)
     slots = threading.BoundedSemaphore(1)
     slots.acquire()
-    monkeypatch.setattr(semantics, "_REGEX_PREVIEW_SLOTS", slots)
+    monkeypatch.setattr(preview_runtime, "_REGEX_PREVIEW_SLOTS", slots)
     request = APIRequestFactory().post(
         "/api/v1/log/log_extractors/preview/",
         {
@@ -233,3 +215,39 @@ def test_regex_preview_capacity_exhaustion_returns_retryable_status(authenticate
     assert response["Retry-After"] == "1"
     assert response.data == {"detail": "正则预览并发已达上限，请稍后重试"}
     slots.release()
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_regex_preview_oversized_field_returns_structured_400(authenticated_user, collect_instance, mocker, monkeypatch):
+    _allow_current_team(mocker)
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=("is_superuser",))
+    monkeypatch.setattr(preview_runtime, "REGEX_PREVIEW_MAX_FIELD_BYTES", 3)
+    request = APIRequestFactory().post(
+        "/api/v1/log/log_extractors/preview/",
+        {
+            "collect_instance": collect_instance.id,
+            "event": {"message": "aaaa"},
+            "draft": {
+                "extractor_type": "regex_replace",
+                "source_field": "message",
+                "target_field": "result",
+                "condition": {},
+                "config": {"pattern": "a+$", "replacement": "masked"},
+                "delete_source": False,
+            },
+        },
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = LogExtractorViewSet.as_view({"post": "preview"})(request)
+
+    assert response.status_code == 400
+    assert response.data == {
+        "detail": "正则预览字段大小超过上限",
+        "data": {"error_code": "log_extractor_preview_too_large"},
+    }
+    assert json.loads(response.render().content)["data"] == {"error_code": "log_extractor_preview_too_large"}

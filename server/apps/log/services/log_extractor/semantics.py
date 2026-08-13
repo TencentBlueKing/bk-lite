@@ -1,12 +1,15 @@
 import copy
 import json
-import math
-import multiprocessing
-import os
 import re
-import threading
 from dataclasses import dataclass
 from typing import Any
+
+from apps.log.services.log_extractor.preview_runtime import (
+    RuleExecutionBusyError,
+    RuleExecutionLimitError,
+    RuleExecutionTimeoutError,
+    execute_regex_preview,
+)
 
 PROTECTED_FIELDS = {"instance_id", "source_type", "timestamp", "_msg", "log_message", "raw_message", "trap_message"}
 EXTRACTOR_TYPES = {"copy", "split", "kv", "regex", "regex_replace", "json"}
@@ -16,36 +19,7 @@ _MISSING = object()
 _REGEX_EXTRACTOR_TYPES = {"regex", "regex_replace"}
 
 
-def _positive_float_env(name: str, default: float) -> float:
-    try:
-        value = float(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
-        return default
-    return value if math.isfinite(value) and value > 0 else default
-
-
-def _positive_int_env(name: str, default: int) -> int:
-    try:
-        value = int(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
-        return default
-    return value if value > 0 else default
-
-
-REGEX_PREVIEW_TIMEOUT_SECONDS = _positive_float_env("LOG_EXTRACTOR_PREVIEW_TIMEOUT_SECONDS", 1.0)
-REGEX_PREVIEW_MAX_CONCURRENCY = _positive_int_env("LOG_EXTRACTOR_PREVIEW_MAX_CONCURRENCY", 1)
-_REGEX_PREVIEW_SLOTS = threading.BoundedSemaphore(REGEX_PREVIEW_MAX_CONCURRENCY)
-
-
 class RuleValidationError(ValueError):
-    pass
-
-
-class RuleExecutionTimeoutError(ValueError):
-    pass
-
-
-class RuleExecutionBusyError(ValueError):
     pass
 
 
@@ -486,57 +460,7 @@ def _execute_rules_inline(event: dict[str, Any], rules: list[NormalizedRule]) ->
     return ExecutionResult(event=current, results=results)
 
 
-def _execute_rules_worker(connection, event: dict[str, Any], rules: list[NormalizedRule]) -> None:
-    try:
-        payload = ("success", _execute_rules_inline(event, rules))
-    except Exception as exc:  # pragma: no cover - parent converts unexpected child failures into a stable error
-        payload = ("error", (type(exc).__name__, str(exc)))
-    try:
-        connection.send(payload)
-    finally:
-        connection.close()
-
-
-def _stop_process(process: multiprocessing.Process) -> None:
-    process.join(timeout=0.1)
-    if process.is_alive():
-        process.kill()
-        process.join()
-    process.close()
-
-
-def _execute_rules_isolated(event: dict[str, Any], rules: list[NormalizedRule], timeout_seconds: float) -> ExecutionResult:
-    context = multiprocessing.get_context("spawn")
-    parent_connection, child_connection = context.Pipe(duplex=False)
-    process = context.Process(target=_execute_rules_worker, args=(child_connection, event, rules))
-    started = False
-    try:
-        process.start()
-        started = True
-        child_connection.close()
-        if not parent_connection.poll(timeout_seconds):
-            raise RuleExecutionTimeoutError("正则预览执行超时")
-        try:
-            status, payload = parent_connection.recv()
-        except EOFError as exc:
-            raise RuntimeError("正则预览执行进程意外退出") from exc
-        if status == "error":
-            error_type, message = payload
-            raise RuntimeError(f"正则预览执行失败: {error_type}: {message}")
-        return payload
-    finally:
-        parent_connection.close()
-        child_connection.close()
-        if started:
-            _stop_process(process)
-
-
 def execute_rules(event: dict[str, Any], rules: list[NormalizedRule], *, timeout_seconds: float | None = None) -> ExecutionResult:
     if not any(rule.extractor_type in _REGEX_EXTRACTOR_TYPES for rule in rules):
         return _execute_rules_inline(event, rules)
-    if not _REGEX_PREVIEW_SLOTS.acquire(blocking=False):
-        raise RuleExecutionBusyError("正则预览并发已达上限，请稍后重试")
-    try:
-        return _execute_rules_isolated(event, rules, timeout_seconds or REGEX_PREVIEW_TIMEOUT_SECONDS)
-    finally:
-        _REGEX_PREVIEW_SLOTS.release()
+    return execute_regex_preview(event, rules, timeout_seconds=timeout_seconds)
