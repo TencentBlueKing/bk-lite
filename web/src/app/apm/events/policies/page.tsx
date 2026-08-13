@@ -277,8 +277,8 @@ export default function ApmPoliciesPage() {
       description="配置服务指标阈值与通知渠道，列表内可直接启停。"
       dependency="control"
     >
-      <div className="flex flex-col gap-3">
-        <ApmSurface padding="compact">
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Badge
@@ -310,8 +310,6 @@ export default function ApmPoliciesPage() {
               )}
             />
           </div>
-        </ApmSurface>
-        <ApmSurface>
           {state === 'ready' ? (
             <ApmDataTable
               rowKey="id"
@@ -337,8 +335,8 @@ export default function ApmPoliciesPage() {
               onRetry={state === 'forbidden' ? undefined : load}
             />
           )}
-        </ApmSurface>
-      </div>
+        </div>
+      </ApmSurface>
       <Modal
         title="编辑 APM 策略"
         open={modalOpen}

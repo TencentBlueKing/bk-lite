@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import { Button, Tag, type TableColumnsType } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
+import { Button, Input, Tag, Typography, type TableColumnsType } from 'antd';
 import ApplicationCard from '@/app/apm/components/application-card';
 import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState from '@/app/apm/components/catalog-state';
+import FilterToolbar from '@/components/filter-toolbar';
 
 const meta = {
   title: 'APM/Design Contract',
@@ -154,16 +156,22 @@ const tableRows: TableContractRow[] = [
 ];
 
 export const DataTableDensityAndResponsive: Story = {
-  name: '单层列表承载与响应式列',
+  name: '单层筛选与列表承载',
   render: () => (
     <div className="grid gap-4 bg-[var(--color-background-body)] p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       <ApmSurface>
-        <ApmDataTable<TableContractRow>
-          columns={tableColumns}
-          dataSource={tableRows}
-          pagination={{ current: 1, pageSize: 20, total: 42 }}
-          rowKey="id"
-        />
+        <div className="flex flex-col gap-4">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+            <Input allowClear className="min-w-0 flex-1" prefix={<SearchOutlined aria-hidden="true" />} placeholder="搜索服务" />
+            <Typography.Text type="secondary" className="text-xs">共 42 条</Typography.Text>
+          </FilterToolbar>
+          <ApmDataTable<TableContractRow>
+            columns={tableColumns}
+            dataSource={tableRows}
+            pagination={{ current: 1, pageSize: 20, total: 42 }}
+            rowKey="id"
+          />
+        </div>
       </ApmSurface>
       <ApmSurface>
         <ApmDataTable<TableContractRow>

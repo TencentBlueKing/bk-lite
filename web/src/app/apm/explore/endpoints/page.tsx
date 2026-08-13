@@ -344,54 +344,53 @@ export default function ApmEndpointsPage() {
             type="warning"
           />
         ) : null}
-        <ApmSurface padding="compact">
-          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-            <Input
-              allowClear
-              aria-label="搜索路径模板或服务"
-              className="w-72"
-              placeholder="搜索路径模板 / 服务"
-              prefix={<SearchOutlined aria-hidden="true" />}
-              value={keyword}
-              onChange={(event) => { setKeyword(event.target.value); setPage(1); }}
-            />
-            <Select
-              aria-label="服务"
-              className="w-40"
-              value={serviceId}
-              options={[{ value: 'all', label: '全部服务' }, ...serviceOptions]}
-              onChange={(value) => { setServiceId(value); setPage(1); }}
-            />
-            <Select
-              aria-label="环境"
-              className="w-36"
-              value={environment || undefined}
-              placeholder="选择环境"
-              options={environmentOptions}
-              onChange={(value) => {
-                setEnvironment(value);
-                setServiceId('all');
-                setPage(1);
-              }}
-            />
-            <div className="flex-1" />
-            <Radio.Group
-              aria-label="时间范围"
-              buttonStyle="solid"
-              size="small"
-              value={timeRange}
-              onChange={(event) => setTimeRange(event.target.value)}
-            >
-              {(Object.keys(RANGE_MS) as MetricRange[]).map((value) => (
-                <Radio.Button key={value} value={value}>{value}</Radio.Button>
-              ))}
-            </Radio.Group>
-            <Button aria-label="刷新端点" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load} />
-          </FilterToolbar>
-        </ApmSurface>
         <ApmSurface>
-          {state === 'ready' || (state === 'loading' && rows.length > 0) ? (
-            <ApmDataTable
+          <div className="flex flex-col gap-4">
+            <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+              <Input
+                allowClear
+                aria-label="搜索路径模板或服务"
+                className="w-72"
+                placeholder="搜索路径模板 / 服务"
+                prefix={<SearchOutlined aria-hidden="true" />}
+                value={keyword}
+                onChange={(event) => { setKeyword(event.target.value); setPage(1); }}
+              />
+              <Select
+                aria-label="服务"
+                className="w-40"
+                value={serviceId}
+                options={[{ value: 'all', label: '全部服务' }, ...serviceOptions]}
+                onChange={(value) => { setServiceId(value); setPage(1); }}
+              />
+              <Select
+                aria-label="环境"
+                className="w-36"
+                value={environment || undefined}
+                placeholder="选择环境"
+                options={environmentOptions}
+                onChange={(value) => {
+                  setEnvironment(value);
+                  setServiceId('all');
+                  setPage(1);
+                }}
+              />
+              <div className="flex-1" />
+              <Radio.Group
+                aria-label="时间范围"
+                buttonStyle="solid"
+                size="small"
+                value={timeRange}
+                onChange={(event) => setTimeRange(event.target.value)}
+              >
+                {(Object.keys(RANGE_MS) as MetricRange[]).map((value) => (
+                  <Radio.Button key={value} value={value}>{value}</Radio.Button>
+                ))}
+              </Radio.Group>
+              <Button aria-label="刷新端点" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load} />
+            </FilterToolbar>
+            {state === 'ready' || (state === 'loading' && rows.length > 0) ? (
+              <ApmDataTable
               rowKey="key"
               size="middle"
               columns={columns}
@@ -422,14 +421,15 @@ export default function ApmEndpointsPage() {
                 setSortOrder(activeSorter.order);
                 setPage(1);
               }}
-            />
-          ) : (
-            <CatalogState
-              kind={state}
-              description={state === 'empty' ? '当前环境和时间范围内没有端点指标。' : undefined}
-              onRetry={state === 'forbidden' ? undefined : load}
-            />
-          )}
+              />
+            ) : (
+              <CatalogState
+                kind={state}
+                description={state === 'empty' ? '当前环境和时间范围内没有端点指标。' : undefined}
+                onRetry={state === 'forbidden' ? undefined : load}
+              />
+            )}
+          </div>
         </ApmSurface>
       </div>
       <Drawer

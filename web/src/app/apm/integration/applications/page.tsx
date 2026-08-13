@@ -167,8 +167,8 @@ export default function ApmApplicationsPage() {
   return (
     <ApmRouteShell title="应用管理" description="维护 APM 应用边界，并从对应应用发起遥测接入。">
       {messageContextHolder}
-      <div className="flex flex-col gap-3">
-        <ApmSurface padding="compact">
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input allowClear className="min-w-0 flex-1 md:max-w-sm" prefix={<SearchOutlined aria-hidden="true" />} placeholder="搜索应用 ID / 名称" value={keyword} onChange={(event) => { setKeyword(event.target.value); setPage(1); }} />
             <Typography.Text type="secondary" className="text-xs">共 {filtered.length} 个应用</Typography.Text>
@@ -176,8 +176,6 @@ export default function ApmApplicationsPage() {
               <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreate}>创建应用</Button>
             </Permission>
           </FilterToolbar>
-        </ApmSurface>
-        <ApmSurface>
           {state === 'ready' ? (
             <ApmDataTable
               rowKey="id"
@@ -196,8 +194,8 @@ export default function ApmApplicationsPage() {
               }}
             />
           ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />}
-        </ApmSurface>
-      </div>
+        </div>
+      </ApmSurface>
 
       <Modal title={editing ? '编辑应用' : '创建应用'} open={modalOpen} confirmLoading={submitting} okText={editing ? '保存' : '创建'} cancelText="取消" styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }} onOk={() => void submit()} onCancel={() => setModalOpen(false)} forceRender>
         <Form form={form} layout="vertical" preserve={false} className="pt-3">
