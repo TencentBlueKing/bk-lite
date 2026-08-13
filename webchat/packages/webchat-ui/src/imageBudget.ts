@@ -37,6 +37,7 @@ export const DEFAULT_IMAGE_BUDGET: Readonly<ImageBudget> = {
 const positiveIntegerOr = (value: number | undefined, fallback: number): number =>
   Number.isSafeInteger(value) && (value ?? 0) > 0 ? (value as number) : fallback;
 
+/** Resolves optional public configuration to safe positive image budget limits. */
 export const resolveImageBudget = (
   config: Partial<
     Pick<WebChatConfig, 'imageReadConcurrency' | 'maxImageCount' | 'maxTotalImageBytes'>
@@ -53,9 +54,11 @@ export const resolveImageBudget = (
   ),
 });
 
+/** Returns the original byte total represented by selected or pending images. */
 export const pendingImageBytes = (images: readonly Pick<ImageFile, 'size'>[]): number =>
   images.reduce((total, image) => total + image.size, 0);
 
+/** Validates an incoming batch atomically against the current message budget. */
 export const validateImageBatch = (
   current: readonly Pick<ImageFile, 'size'>[],
   incoming: readonly ImageFile[],
@@ -73,6 +76,7 @@ export const validateImageBatch = (
   return { ok: true };
 };
 
+/** Reads one browser File as a Data URL and propagates read or abort failures. */
 export const readFileAsDataUrl = (file: File): Promise<string> =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -82,6 +86,7 @@ export const readFileAsDataUrl = (file: File): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
+/** Reads a batch with bounded concurrency while preserving the input order. */
 export const readImageBatch = async <T extends ImageFile>(
   files: readonly T[],
   concurrency: number,
@@ -113,6 +118,7 @@ export const readImageBatch = async <T extends ImageFile>(
   return results;
 };
 
+/** Applies append, remove, and clear operations to the pending image ledger. */
 export const pendingImagesReducer = (
   state: readonly PendingImage[],
   action: PendingImageAction
