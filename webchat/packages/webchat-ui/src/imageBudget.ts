@@ -53,11 +53,11 @@ export const resolveImageBudget = (
   ),
 });
 
-export const pendingImageBytes = (images: readonly PendingImage[]): number =>
+export const pendingImageBytes = (images: readonly Pick<ImageFile, 'size'>[]): number =>
   images.reduce((total, image) => total + image.size, 0);
 
 export const validateImageBatch = (
-  current: readonly PendingImage[],
+  current: readonly Pick<ImageFile, 'size'>[],
   incoming: readonly ImageFile[],
   budget: ImageBudget
 ): { ok: true } | ImageBudgetViolation => {

@@ -34,6 +34,7 @@ import {
   resolveImageBudget,
   validateImageBatch,
   type ImageBudgetViolation,
+  type ImageFile,
   type PendingImage,
   type PendingImageAction,
 } from './imageBudget';
@@ -119,6 +120,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   streamingTextBatchingRef.current = streamingTextBatching;
   const streamLifecycleRef = useRef<StreamLifecycle | null>(null);
   const uploadedImagesRef = useRef<PendingImage[]>([]);
+  const pendingImageFilesRef = useRef<ImageFile[]>([]);
   const imageBatchQueueRef = useRef<Promise<void>>(Promise.resolve());
   const imageSelectionGenerationRef = useRef(0);
   if (!streamLifecycleRef.current) {
@@ -258,17 +260,19 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   const queueImageFiles = useCallback((files: readonly File[]) => {
     if (files.length === 0) return;
 
+    const accountedImages = [...uploadedImagesRef.current, ...pendingImageFilesRef.current];
+    const validation = validateImageBatch(accountedImages, files, imageBudget);
+    if (!validation.ok) {
+      reportImageBudgetViolation(validation);
+      return;
+    }
+
+    pendingImageFilesRef.current = [...pendingImageFilesRef.current, ...files];
     const generation = imageSelectionGenerationRef.current;
     imageBatchQueueRef.current = imageBatchQueueRef.current.then(async () => {
-      if (generation !== imageSelectionGenerationRef.current) return;
-
-      const validation = validateImageBatch(uploadedImagesRef.current, files, imageBudget);
-      if (!validation.ok) {
-        reportImageBudgetViolation(validation);
-        return;
-      }
-
       try {
+        if (generation !== imageSelectionGenerationRef.current) return;
+
         const images = await readImageBatch(files, imageBudget.imageReadConcurrency, readFileAsDataUrl);
         if (generation !== imageSelectionGenerationRef.current) return;
 
@@ -281,6 +285,8 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
       } catch (error) {
         if (generation !== imageSelectionGenerationRef.current) return;
         onError?.(toError(error));
+      } finally {
+        pendingImageFilesRef.current = pendingImageFilesRef.current.slice(files.length);
       }
     });
   }, [imageBudget, onError, reportImageBudgetViolation, updateUploadedImages]);

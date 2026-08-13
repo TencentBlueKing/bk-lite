@@ -158,6 +158,27 @@ test('Chat 显式放宽后有界读取、乱序完成仍保序，移除后释放
   renderer.unmount();
 });
 
+test('Chat 在前一批仍读取时立即按预留预算拒绝后续超限批次', async () => {
+  const errors: Error[] = [];
+  const renderer = renderChat({
+    imageReadConcurrency: 1,
+    maxImageCount: 2,
+    maxTotalImageBytes: 8,
+    onError: (error) => errors.push(error),
+  });
+
+  await selectFiles(renderer.root, [imageFile('first.png', 4), imageFile('second.png', 4)]);
+  assert.equal(ControlledFileReader.pending.length, 1);
+
+  await selectFiles(renderer.root, [imageFile('queued-overflow.png', 1)]);
+  assert.equal(ControlledFileReader.pending.length, 1);
+  assert.match(errors[0]?.message ?? '', /最多选择 2 张/);
+
+  await finishReaders([ControlledFileReader.pending[0]]);
+  await finishReaders([ControlledFileReader.pending[1]]);
+  renderer.unmount();
+});
+
 test('FloatingButton 将预算配置透传给 Chat', async () => {
   const errors: Error[] = [];
   ControlledFileReader.reset();
