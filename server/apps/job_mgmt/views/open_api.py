@@ -291,7 +291,8 @@ class OpenScriptExecuteView(TeamResolveMixin, APIView):
                 if "调度服务" in message
                 else status.HTTP_400_BAD_REQUEST
             )
-            return Response({"detail": message}, status=http_status)
+            logger.warning("Open script execute failed: team=%s, message=%s", user_team, message)
+            return Response({"detail": "脚本执行失败"}, status=http_status)
         return Response(result.get("data") or {}, status=status.HTTP_201_CREATED)
 
 
