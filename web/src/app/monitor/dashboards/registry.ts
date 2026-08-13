@@ -8,6 +8,7 @@ export {
   PROFESSIONAL_DASHBOARDS,
   findProfessionalDashboardMeta,
   findProfessionalDashboardMetaByKey,
+  getDashboardObjectMatchKeys,
   getProfessionalDashboardKey,
   getProfessionalObjectDisplayName,
   getProfessionalDashboardUrl,
