@@ -3,6 +3,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Optional
 
+from django.db import transaction
 from django.db.models import Count, F, Q
 from django.utils import timezone
 from rest_framework import serializers
@@ -345,7 +346,8 @@ def _execute_nats_create(create_func, data: dict, user_info: Optional[dict] = No
         return identity_error
     try:
         operator, domain = _resolve_nats_actor(user_info)
-        _, result_data = create_func(data, operator=operator, domain=domain)
+        with transaction.atomic():
+            _, result_data = create_func(data, operator=operator, domain=domain)
         return {"result": True, "data": result_data, "message": ""}
     except (serializers.ValidationError, ValueError) as exc:
         return {"result": False, "data": [], "message": _build_validation_message(exc)}
