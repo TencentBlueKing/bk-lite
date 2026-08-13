@@ -45,7 +45,9 @@ test('reachable CI uses the root lockfile instead of installing child packages i
   assert.doesNotMatch(workflow, /npm ci --prefix/);
   assert.match(workflow, /node-version: \['18\.18\.0', '20'\]/);
   assert.match(workflow, /publish:\n[\s\S]*needs: build-and-test/);
-  assert.match(workflow, /if: github\.event_name == 'workflow_dispatch' && inputs\.publish/);
+  assert.match(workflow, /github\.event_name == 'workflow_dispatch'/);
+  assert.match(workflow, /github\.ref == 'refs\/heads\/master'/);
+  assert.match(workflow, /inputs\.publish/);
   assert.doesNotMatch(workflow, /publish:\n[\s\S]*if: github\.event_name == 'push'/);
   assert.match(workflow, /publish:\n[\s\S]*run: npm ci/);
   assert.match(workflow, /node scripts\/publish-workspaces\.mjs/);
