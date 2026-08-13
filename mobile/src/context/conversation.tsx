@@ -336,6 +336,7 @@ class ConversationManager {
         if (controller) {
             controller.abort();
             this.streamControllers.delete(sessionId);
+            this.setAIRunning(sessionId, false);
         }
     }
 
@@ -387,6 +388,9 @@ class ConversationManager {
         // 初始化会话
         this.initSession(sessionId);
 
+        // 先结束旧流，再标记新流运行，避免旧流取消状态覆盖同会话的新请求。
+        this.abortStream(sessionId);
+
         const userMessageTimestamp = Date.now();
         const userMsgId = `user-${userMessageTimestamp}`;
         const aiMsgId = `ai-${userMessageTimestamp}`;
@@ -431,7 +435,6 @@ class ConversationManager {
         }
 
         // 同一会话只保留一条活跃流，并将取消传递到底层请求。
-        this.abortStream(sessionId);
         const abortController = new AbortController();
         const controller: StreamController = {
             abort: () => abortController.abort(),
@@ -550,13 +553,24 @@ class ConversationManager {
             this.setMessageMarkdown(sessionId, aiMsgId, totalMessageAccumulated);
         };
 
+        const preserveCancelledText = (): void => {
+            preservePartialText();
+            this.updateMessages(sessionId, (prev) =>
+                prev.map((msg) =>
+                    msg.id === aiMsgId
+                        ? { ...msg, status: 'interrupted' as const }
+                        : msg
+                )
+            );
+        };
+
         try {
             const eventStream = aiChatStream(bot, nodeId, userMessage, sessionId, { signal });
 
             for await (const event of eventStream) {
                 // 检查是否已取消
                 if (signal.aborted) {
-                    preservePartialText();
+                    preserveCancelledText();
                     return;
                 }
 
@@ -768,13 +782,13 @@ class ConversationManager {
             }
 
             if (signal.aborted) {
-                preservePartialText();
+                preserveCancelledText();
                 return;
             }
             throw new Error('AI response stream ended before RUN_FINISHED');
         } catch (error) {
             if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
-                preservePartialText();
+                preserveCancelledText();
                 return;
             }
             preservePartialText();
