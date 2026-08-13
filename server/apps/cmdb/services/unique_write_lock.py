@@ -4,7 +4,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import timedelta
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils.timezone import now
 
 from apps.cmdb.models.operation import CmdbUniqueWriteLock
@@ -77,3 +77,25 @@ class UniqueWriteLockService:
         finally:
             for lock_key in reversed(acquired):
                 cls.release(lock_key, owner_token=owner_token)
+
+    @classmethod
+    @contextmanager
+    def serialize(cls, lock_key: str):
+        """用既有锁表的数据库行锁串行化长任务，锁持有者退出后后继任务自动接棒。"""
+        owner_token = uuid.uuid4().hex
+        lease_expires_at = now() + timedelta(seconds=cls.DEFAULT_LEASE_SECONDS)
+        try:
+            CmdbUniqueWriteLock.objects.get_or_create(
+                lock_key=lock_key,
+                defaults={"owner_token": owner_token, "lease_expires_at": lease_expires_at},
+            )
+        except IntegrityError:
+            # 并发首次创建同一锁行时，另一事务已负责创建；随后统一等待行锁。
+            pass
+
+        with transaction.atomic():
+            lock = CmdbUniqueWriteLock.objects.select_for_update().get(lock_key=lock_key)
+            lock.owner_token = owner_token
+            lock.lease_expires_at = lease_expires_at
+            lock.save(update_fields=["owner_token", "lease_expires_at", "updated_at"])
+            yield owner_token

@@ -1,3 +1,5 @@
+import threading
+import time
 from datetime import timedelta
 
 import pytest
@@ -37,3 +39,32 @@ def test_lock_keys_are_stable_and_ignore_empty_unique_values():
     assert UniqueWriteLockService.build_lock_keys(
         "host", {"serial": "", "region": "cn", "name": ""}, check_attr_map
     ) == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_serialize_orders_waiting_tasks_and_hands_lock_to_later_task():
+    entered = []
+    first_entered = threading.Event()
+    release_first = threading.Event()
+
+    def _run(name):
+        with UniqueWriteLockService.serialize("display-sync-order"):
+            entered.append(name)
+            if name == "first":
+                first_entered.set()
+                assert release_first.wait(timeout=5)
+
+    first = threading.Thread(target=_run, args=("first",))
+    second = threading.Thread(target=_run, args=("second",))
+    first.start()
+    assert first_entered.wait(timeout=5)
+    second.start()
+    time.sleep(0.1)
+    assert entered == ["first"]
+    release_first.set()
+    first.join(timeout=5)
+    second.join(timeout=5)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert entered == ["first", "second"]

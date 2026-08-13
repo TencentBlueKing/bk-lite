@@ -231,7 +231,17 @@ def test_sync_collect_credential_results_task_skips():
 # --------------------------------------------------------------------------
 # sync_cmdb_display_fields_task
 # --------------------------------------------------------------------------
+def _install_display_sync_lock(monkeypatch):
+    from contextlib import nullcontext
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.unique_write_lock.UniqueWriteLockService.serialize",
+        lambda lock_key: nullcontext("test-owner"),
+    )
+
+
 def test_sync_cmdb_display_fields_success(monkeypatch):
+    _install_display_sync_lock(monkeypatch)
     monkeypatch.setattr("apps.cmdb.display_field.sync.refresh_display_sync_data", lambda data: data)
     monkeypatch.setattr(
         "apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all",
@@ -245,6 +255,7 @@ def test_sync_cmdb_display_fields_success(monkeypatch):
 def test_sync_cmdb_display_fields_failure(monkeypatch):
     calls = 0
 
+    _install_display_sync_lock(monkeypatch)
     monkeypatch.setattr("apps.cmdb.display_field.sync.refresh_display_sync_data", lambda data: data)
 
     def _boom(data):
@@ -262,6 +273,7 @@ def test_sync_cmdb_display_fields_failure(monkeypatch):
 def test_sync_cmdb_display_fields_retries_transient_partial_failure(monkeypatch):
     calls = 0
 
+    _install_display_sync_lock(monkeypatch)
     monkeypatch.setattr("apps.cmdb.display_field.sync.refresh_display_sync_data", lambda data: data)
 
     def _transient(data):
@@ -287,6 +299,8 @@ def test_sync_cmdb_display_fields_refreshes_stale_snapshot_before_each_attempt(m
     current_names = iter(["新名称", "更新后的名称"])
     observed = []
 
+    _install_display_sync_lock(monkeypatch)
+
     def _refresh(data):
         return {"organizations": [{"id": 1, "name": next(current_names)}], "users": []}
 
@@ -303,6 +317,56 @@ def test_sync_cmdb_display_fields_refreshes_stale_snapshot_before_each_attempt(m
 
     assert out["result"] is True
     assert [item["organizations"][0]["name"] for item in observed] == ["新名称", "更新后的名称"]
+
+
+def test_sync_cmdb_display_fields_enters_global_lock_before_refreshing_authoritative_values(monkeypatch):
+    from contextlib import contextmanager
+
+    events = []
+
+    @contextmanager
+    def _serialize(lock_key):
+        events.append(("lock-enter", lock_key))
+        yield "owner"
+        events.append(("lock-exit", lock_key))
+
+    def _refresh(data):
+        events.append(("refresh", data["organizations"][0]["name"]))
+        return data
+
+    def _sync(data):
+        events.append(("graph-write", data["organizations"][0]["name"]))
+        return {"organizations": 1, "users": 0}
+
+    monkeypatch.setattr("apps.cmdb.services.unique_write_lock.UniqueWriteLockService.serialize", _serialize)
+    monkeypatch.setattr("apps.cmdb.display_field.sync.refresh_display_sync_data", _refresh)
+    monkeypatch.setattr("apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all", staticmethod(_sync))
+
+    out = ct.sync_cmdb_display_fields_task({"organizations": [{"id": 1, "name": "当前名称"}], "users": []})
+
+    assert out["result"] is True
+    assert events == [
+        ("lock-enter", "cmdb-display-field-sync"),
+        ("refresh", "当前名称"),
+        ("graph-write", "当前名称"),
+        ("lock-exit", "cmdb-display-field-sync"),
+    ]
+
+
+def test_sync_cmdb_display_fields_returns_compatible_failure_when_lock_fails(monkeypatch):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _serialize(lock_key):
+        raise TimeoutError("display sync lock timeout")
+        yield
+
+    monkeypatch.setattr("apps.cmdb.services.unique_write_lock.UniqueWriteLockService.serialize", _serialize)
+
+    out = ct.sync_cmdb_display_fields_task({"organizations": [{"id": 1, "name": "x"}], "users": []})
+
+    assert out["result"] is False
+    assert out["message"] == "Failed to sync CMDB display fields: display sync lock timeout"
 
 
 # --------------------------------------------------------------------------
