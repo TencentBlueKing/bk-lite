@@ -2172,7 +2172,11 @@ class ModelManage(object):
         return file_stream
 
     @staticmethod
-    def _apply_model_config_post_import_extras(model_config: dict[str, list[dict]]):
+    def _apply_model_config_post_import_extras(
+        model_config: dict[str, list[dict]],
+        *,
+        keep_existing_unique_rules_on_conflict: bool = False,
+    ):
         with GraphClient() as ag:
             for sheet_name, rows in model_config.items():
                 if not sheet_name.startswith("attr-"):
@@ -2193,6 +2197,16 @@ class ModelManage(object):
                         exist_items,
                     )
                     if conflicts:
+                        if keep_existing_unique_rules_on_conflict:
+                            logger.warning(
+                                "[UniqueRule] 存量实例与待应用规则冲突，保留原唯一规则并继续初始化 "
+                                "model_id=%s sheet_name=%s conflict_count=%s reason=%s",
+                                model_id,
+                                sheet_name,
+                                len(conflicts),
+                                conflicts[0].message,
+                            )
+                            continue
                         raise BaseAppException(conflicts[0].message)
                     ag.set_entity_properties(
                         MODEL,
