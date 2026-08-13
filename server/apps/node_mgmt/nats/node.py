@@ -77,6 +77,7 @@ class NatsService:
         for collector in Collector.objects.filter(
             name__in={collector_name for _, collector_name in missing_pairs},
             node_operating_system__in={node.operating_system for node in node_map.values()},
+            cpu_architecture__in={"", NodeConstants.X86_64_ARCH, NodeConstants.ARM64_ARCH},
         ).order_by("cpu_architecture", "id"):
             collectors_by_name_and_os.setdefault((collector.name, collector.node_operating_system), []).append(collector)
 
@@ -113,8 +114,8 @@ class NatsService:
 
         pending_configs = []
         expected_by_name = {}
-        try:
-            for node, collector in resolved_pairs:
+        for node, collector in resolved_pairs:
+            try:
                 variables = variables_by_region[node.cloud_region_id]
                 default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
                 config_template = collector.default_config.get(default_sidecar_mode)
@@ -140,17 +141,20 @@ class NatsService:
                 )
                 expected_by_name[config_name] = (node.id, collector.id, pending_config.id)
                 pending_configs.append(pending_config)
-        except BaseAppException:
-            raise
-        except Exception as error:
-            raise BaseAppException(f"批量渲染采集器父配置失败: {error}") from error
+            except BaseAppException:
+                raise
+            except Exception as error:
+                raise BaseAppException(f"节点 {node.id} 自动创建 {collector.name} 父配置失败: {error}") from error
 
         try:
-            CollectorConfiguration.objects.bulk_create(
-                pending_configs,
-                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
-                ignore_conflicts=True,
-            )
+            with transaction.atomic():
+                CollectorConfiguration.objects.bulk_create(
+                    pending_configs,
+                    batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                )
+        except IntegrityError:
+            # 并发创建同名父配置时允许进入下方统一重查；内层保存点保证外层事务仍可用。
+            pass
         except Exception as error:
             raise BaseAppException(f"批量创建采集器父配置失败: {error}") from error
         created_configs = {
@@ -178,11 +182,14 @@ class NatsService:
             node_config_associations.append(NodeCollectorConfiguration(node_id=node_id, collector_config_id=created_config["id"]))
 
         try:
-            NodeCollectorConfiguration.objects.bulk_create(
-                node_config_associations,
-                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
-                ignore_conflicts=True,
-            )
+            with transaction.atomic():
+                NodeCollectorConfiguration.objects.bulk_create(
+                    node_config_associations,
+                    batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                )
+        except IntegrityError:
+            # 并发完成关联时由最终批量查询验证；其他缺失关联仍会使整批失败并回滚。
+            pass
         except Exception as error:
             raise BaseAppException(f"批量关联采集器父配置失败: {error}") from error
 

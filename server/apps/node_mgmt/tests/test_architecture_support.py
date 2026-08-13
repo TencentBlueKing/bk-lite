@@ -4627,7 +4627,7 @@ def test_nats_ensure_parent_configs_wraps_template_errors_and_rolls_back():
         updated_by="tester",
     )
 
-    with pytest.raises(BaseAppException, match="批量渲染采集器父配置失败"):
+    with pytest.raises(BaseAppException, match=f"节点 {node.id} 自动创建 Telegraf 父配置失败"):
         NatsService()._ensure_parent_configs_for_child_configs([{"node_id": node.id, "collector_name": "Telegraf"}])
 
     assert not CollectorConfiguration.objects.filter(name=f"Telegraf-{node.id}").exists()
@@ -4672,6 +4672,43 @@ def test_nats_ensure_parent_configs_rejects_unbound_name_collision():
         NatsService()._ensure_parent_configs_for_child_configs([{"node_id": node.id, "collector_name": "Telegraf"}])
 
     assert not occupied_config.nodes.filter(id=node.id).exists()
+
+
+@pytest.mark.django_db
+def test_nats_ensure_parent_configs_ignores_noncanonical_architecture_alias():
+    cloud_region = CloudRegion.objects.create(name="region-parent-arch-alias", created_by="tester", updated_by="tester")
+    node = Node.objects.create(
+        id="node-parent-arch-alias",
+        name="node-parent-arch-alias",
+        ip="10.30.0.3",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    for collector_id, architecture in (("telegraf_linux_amd64_alias", "amd64"), ("telegraf_linux_x86_canonical", NodeConstants.X86_64_ARCH)):
+        Collector.objects.create(
+            id=collector_id,
+            name="Telegraf",
+            service_type="exec",
+            node_operating_system=NodeConstants.LINUX_OS,
+            cpu_architecture=architecture,
+            executable_path="/opt/telegraf",
+            execute_parameters="--config %s",
+            controller_default_run=True,
+            default_config={"nats": f"architecture = '{architecture}'"},
+            package_name="telegraf",
+            created_by="tester",
+            updated_by="tester",
+        )
+
+    NatsService()._ensure_parent_configs_for_child_configs([{"node_id": node.id, "collector_name": "Telegraf"}])
+
+    parent_config = CollectorConfiguration.objects.get(nodes=node, collector__name="Telegraf")
+    assert parent_config.collector_id == "telegraf_linux_x86_canonical"
+    assert parent_config.config_template == "architecture = 'x86_64'"
 
 
 @pytest.mark.django_db
