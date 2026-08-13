@@ -4545,12 +4545,14 @@ def test_nats_ensure_parent_configs_batches_database_queries():
 
         cached_env_rows = [{"key": "SIDECAR_INPUT_MODE", "value": "cached", "type": "text"}]
         with patch("apps.node_mgmt.services.cloudregion.cache.get", return_value=cached_env_rows):
-            with CaptureQueriesContext(connection) as queries:
-                NatsService()._ensure_parent_configs_for_child_configs(configs + configs)
-        return len(queries)
+            with patch("apps.node_mgmt.nats.node.invalidate_bulk_config_node_etags") as invalidate_etags:
+                with CaptureQueriesContext(connection) as queries:
+                    NatsService()._ensure_parent_configs_for_child_configs(configs + configs)
+        invalidated_node_ids = {config["node_id"] for config in invalidate_etags.call_args.args[0]}
+        return len(queries), invalidated_node_ids
 
-    single_queries = ensure_parent_configs("single", 1)
-    batch_queries = ensure_parent_configs("batch", 8)
+    single_queries, single_invalidated_node_ids = ensure_parent_configs("single", 1)
+    batch_queries, batch_invalidated_node_ids = ensure_parent_configs("batch", 8)
 
     parent_configs = CollectorConfiguration.objects.filter(collector__name="Telegraf")
     parent_templates = set(parent_configs.values_list("config_template", flat=True))
@@ -4558,6 +4560,8 @@ def test_nats_ensure_parent_configs_batches_database_queries():
     assert len(parent_templates) == 1
     assert parent_templates == {"[[inputs.mem]]\n  interval = '10s'"}
     assert batch_queries <= single_queries + 2
+    assert single_invalidated_node_ids == {"node-single-0"}
+    assert batch_invalidated_node_ids == {f"node-batch-{index}" for index in range(8)}
 
 
 @pytest.mark.django_db
@@ -4592,6 +4596,82 @@ def test_cloud_region_env_batch_loader_uses_one_query_for_cache_misses():
 
     assert len(queries) == 1
     assert variables_by_region == {cloud_region.id: {"SIDECAR_INPUT_MODE": "nats"} for cloud_region in cloud_regions}
+
+
+@pytest.mark.django_db
+def test_nats_ensure_parent_configs_wraps_template_errors_and_rolls_back():
+    cloud_region = CloudRegion.objects.create(name="region-invalid-template", created_by="tester", updated_by="tester")
+    node = Node.objects.create(
+        id="node-invalid-template",
+        name="node-invalid-template",
+        ip="10.30.0.1",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    Collector.objects.create(
+        id="telegraf_linux_invalid_template",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        controller_default_run=True,
+        default_config={"nats": "{% invalid-template %}"},
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    with pytest.raises(BaseAppException, match="批量渲染采集器父配置失败"):
+        NatsService()._ensure_parent_configs_for_child_configs([{"node_id": node.id, "collector_name": "Telegraf"}])
+
+    assert not CollectorConfiguration.objects.filter(name=f"Telegraf-{node.id}").exists()
+
+
+@pytest.mark.django_db
+def test_nats_ensure_parent_configs_rejects_unbound_name_collision():
+    cloud_region = CloudRegion.objects.create(name="region-parent-name-collision", created_by="tester", updated_by="tester")
+    node = Node.objects.create(
+        id="node-parent-name-collision",
+        name="node-parent-name-collision",
+        ip="10.30.0.2",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="telegraf_linux_parent_name_collision",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]"},
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    occupied_config = CollectorConfiguration.objects.create(
+        name=f"Telegraf-{node.id}",
+        collector=collector,
+        config_template="occupied",
+        cloud_region=cloud_region,
+    )
+
+    with pytest.raises(BaseAppException, match="已被其他配置占用"):
+        NatsService()._ensure_parent_configs_for_child_configs([{"node_id": node.id, "collector_name": "Telegraf"}])
+
+    assert not occupied_config.nodes.filter(id=node.id).exists()
 
 
 @pytest.mark.django_db

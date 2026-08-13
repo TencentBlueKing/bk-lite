@@ -113,23 +113,24 @@ class NatsService:
 
         pending_configs = []
         expected_by_name = {}
-        for node, collector in resolved_pairs:
-            variables = variables_by_region[node.cloud_region_id]
-            default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
-            config_template = collector.default_config.get(default_sidecar_mode)
-            if not config_template:
-                raise BaseAppException(f"节点 {node.id} 的采集器 {collector.name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量")
+        try:
+            for node, collector in resolved_pairs:
+                variables = variables_by_region[node.cloud_region_id]
+                default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
+                config_template = collector.default_config.get(default_sidecar_mode)
+                if not config_template:
+                    raise BaseAppException(
+                        f"节点 {node.id} 的采集器 {collector.name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量"
+                    )
 
-            if node.node_type == ControllerConstants.NODE_TYPE_CONTAINER:
-                add_config = collector.default_config.get("add_config", "")
-                if add_config:
-                    config_template = config_template + "\n" + add_config
+                if node.node_type == ControllerConstants.NODE_TYPE_CONTAINER:
+                    add_config = collector.default_config.get("add_config", "")
+                    if add_config:
+                        config_template = config_template + "\n" + add_config
 
-            rendered_config = build_sandboxed_env().from_string(config_template).render(variables)
-            config_name = f"{collector.name}-{node.id}"
-            expected_by_name[config_name] = (node.id, collector.id)
-            pending_configs.append(
-                CollectorConfiguration(
+                rendered_config = build_sandboxed_env().from_string(config_template).render(variables)
+                config_name = f"{collector.name}-{node.id}"
+                pending_config = CollectorConfiguration(
                     id=uuid.uuid4().hex,
                     name=config_name,
                     collector=collector,
@@ -137,7 +138,12 @@ class NatsService:
                     is_pre=True,
                     cloud_region=node.cloud_region,
                 )
-            )
+                expected_by_name[config_name] = (node.id, collector.id, pending_config.id)
+                pending_configs.append(pending_config)
+        except BaseAppException:
+            raise
+        except Exception as error:
+            raise BaseAppException(f"批量渲染采集器父配置失败: {error}") from error
 
         try:
             CollectorConfiguration.objects.bulk_create(
@@ -150,11 +156,25 @@ class NatsService:
         created_configs = {
             item["name"]: item for item in CollectorConfiguration.objects.filter(name__in=expected_by_name).values("id", "name", "collector_id")
         }
+        conflicting_config_ids = {
+            created_configs[config_name]["id"]
+            for config_name, (_, _, pending_config_id) in expected_by_name.items()
+            if config_name in created_configs and created_configs[config_name]["id"] != pending_config_id
+        }
+        existing_associations = set(
+            NodeCollectorConfiguration.objects.filter(collector_config_id__in=conflicting_config_ids).values_list(
+                "node_id", "collector_config_id"
+            )
+        )
         node_config_associations = []
-        for config_name, (node_id, collector_id) in expected_by_name.items():
+        for config_name, (node_id, collector_id, pending_config_id) in expected_by_name.items():
             created_config = created_configs.get(config_name)
             if not created_config or created_config["collector_id"] != collector_id:
                 raise BaseAppException(f"节点 {node_id} 的采集器父配置名称 {config_name} 已被其他配置占用")
+            if created_config["id"] != pending_config_id:
+                if (node_id, created_config["id"]) not in existing_associations:
+                    raise BaseAppException(f"节点 {node_id} 的采集器父配置名称 {config_name} 已被其他配置占用")
+                continue
             node_config_associations.append(NodeCollectorConfiguration(node_id=node_id, collector_config_id=created_config["id"]))
 
         try:
@@ -176,6 +196,8 @@ class NatsService:
         )
         if missing_pairs - created_pairs:
             raise BaseAppException("批量创建采集器父配置失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量")
+
+        invalidate_bulk_config_node_etags([{"node_id": node_id} for node_id, _ in missing_pairs])
 
     @staticmethod
     def _resolve_collector_from_candidates(node: Node, collectors: list[Collector]):
