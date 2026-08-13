@@ -110,6 +110,34 @@ test('parses split SSE data lines and ignores keep-alive comments', async () => 
   }
 });
 
+test('a message listener replacement stops remaining payloads from the stale fetch chunk', async () => {
+  const originalFetch = globalThis.fetch;
+  const messages: Message[] = [];
+  let attempts = 0;
+  const handler = new SSEHandler(0, 0);
+  globalThis.fetch = async () => {
+    attempts += 1;
+    return attempts === 1
+      ? streamResponse(['data: first\ndata: stale second\n'])
+      : streamResponse(['data: current\n']);
+  };
+  handler.on('message', (event: WebChatMessageEvent) => {
+    messages.push(event.message);
+    if (event.message.content === 'first') {
+      void handler.connect('https://example.test/replacement', { Authorization: 'replacement' });
+    }
+  });
+
+  try {
+    await handler.connect('https://example.test/stream', { Authorization: 'first' });
+    await wait(0);
+    assert.deepEqual(messages.map((message) => message.content), ['first', 'current']);
+  } finally {
+    handler.destroy();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('fetch reconnect respects its retry budget and resets it only after opening', async () => {
   const originalFetch = globalThis.fetch;
   const originalError = console.error;
@@ -318,12 +346,15 @@ test('EventSource reconnect closes and isolates the superseded connection', asyn
   const handler = new SSEHandler(1, 0);
   const messages: Message[] = [];
   let opens = 0;
+  const lifecycleEvents: string[] = [];
   handler.on('message', (event: WebChatMessageEvent) => {
     messages.push(event.message);
   });
   handler.on('open', () => {
     opens += 1;
+    lifecycleEvents.push('open');
   });
+  handler.on('error', () => lifecycleEvents.push('error'));
 
   try {
     void handler.connect('https://example.test/stream');
@@ -362,6 +393,7 @@ test('EventSource reconnect closes and isolates the superseded connection', asyn
 
     assert.equal(opens, 1);
     assert.equal(FakeEventSource.instances.length, 6);
+    assert.deepEqual(lifecycleEvents, ['error', 'error', 'error', 'open', 'error']);
   } finally {
     handler.destroy();
     restoreEventSource();

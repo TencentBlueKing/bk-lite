@@ -122,7 +122,7 @@ export class SSEHandler {
         if (done || !this.isCurrentFetch(abortController, generation)) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        this.processChunk(chunk);
+        this.processChunk(chunk, abortController, generation);
       }
     } catch (error) {
       if (
@@ -146,8 +146,13 @@ export class SSEHandler {
   /**
    * Process incoming chunk through the shared SSE parser
    */
-  private processChunk(chunk: string): void {
+  private processChunk(
+    chunk: string,
+    abortController: AbortController,
+    generation: number
+  ): void {
     for (const payload of this.parser.push(chunk)) {
+      if (!this.isCurrentFetch(abortController, generation)) break;
       this.emitMessage(this.payloadToMessage(payload));
     }
   }
