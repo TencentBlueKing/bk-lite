@@ -2,6 +2,7 @@ import React from 'react';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import dayjs from 'dayjs';
 
 import ApmServicesPage from '../page';
 
@@ -240,6 +241,17 @@ describe('APM 服务目录服务视角与归档', () => {
     ).toBe('/apm/events/alerts?service=bklite-server&environment=production');
     await waitFor(() => expect(screen.getAllByText('12.5').length).toBeGreaterThan(0));
     expect(screen.getAllByText('2.00%').length).toBeGreaterThan(0);
+    const searchInput = screen.getByRole('textbox', { name: '按应用或服务名称搜索' });
+    const serviceHeader = screen.getByRole('columnheader', { name: '服务' });
+    expect(searchInput.closest('section')).toBe(serviceHeader.closest('section'));
+    expect(screen.queryByText('全部服务')).toBeNull();
+    expect(screen.queryByText(/个环境视图/)).toBeNull();
+    const lastSeenText = dayjs(serviceWithEnv.environment_views[0].last_seen_at).format('YYYY-MM-DD HH:mm');
+    const lastSeen = screen.getByText(lastSeenText);
+    expect(lastSeen.closest('td')?.textContent).toBe(lastSeenText);
+    expect(lastSeen.getAttribute('title')).toBe(
+      dayjs(serviceWithEnv.environment_views[0].last_seen_at).format('YYYY-MM-DD HH:mm:ss')
+    );
   });
 
   it('已归档入口打开抽屉并列出归档服务', async () => {
