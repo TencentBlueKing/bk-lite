@@ -186,38 +186,43 @@ export default function ApmPoliciesPage() {
     () => filteredPolicies.slice((page - 1) * pageSize, page * pageSize),
     [filteredPolicies, page, pageSize],
   );
+  const firingPolicyCount = useMemo(
+    () => policies.filter((policy) => policy.state?.status === 'firing').length,
+    [policies],
+  );
 
   const columns: TableColumnsType<ApmPolicy> = [
     {
       title: '策略名称',
       dataIndex: 'name',
+      width: '38%',
       render: (value) => <EllipsisWithTooltip className="truncate font-medium" text={value} />,
     },
     {
-      title: '创建人',
+      title: '创建者',
       dataIndex: 'created_by',
-      width: 120,
+      width: '12%',
       responsive: ['lg'],
       render: (value) => value || '—',
     },
     {
       title: '创建时间',
       dataIndex: 'created_at',
-      width: 170,
+      width: '16%',
       responsive: ['xl'],
       render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm')}</span>,
     },
     {
-      title: '执行时间',
-      width: 170,
+      title: '最近执行',
+      width: '16%',
       responsive: ['xxl'],
       render: (_, policy) => policy.state?.last_succeeded_at
         ? <span className="tabular-nums">{dayjs(policy.state.last_succeeded_at).format('YYYY-MM-DD HH:mm')}</span>
         : <Typography.Text type="secondary">从未执行</Typography.Text>,
     },
     {
-      title: '启停',
-      width: 90,
+      title: '启用状态',
+      width: '8%',
       align: 'center',
       render: (_, policy) => (
         <Switch
@@ -242,7 +247,7 @@ export default function ApmPoliciesPage() {
     },
     {
       title: '操作',
-      width: 120,
+      width: '10%',
       align: 'right',
       render: (_, policy) => (
         <Space size={0}>
@@ -280,16 +285,17 @@ export default function ApmPoliciesPage() {
       <ApmSurface>
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+            <Space size={12} wrap>
+              <Typography.Text strong>策略列表</Typography.Text>
               <Badge
-                count={policies.filter((policy) => policy.state?.status === 'firing').length}
-                showZero
-                color="var(--color-fail)"
+                status={firingPolicyCount > 0 ? 'error' : 'default'}
+                text={(
+                  <Typography.Text type="secondary" className="text-xs">
+                    {firingPolicyCount} 条告警中
+                  </Typography.Text>
+                )}
               />
-              <Typography.Text type="secondary" className="text-xs">
-                告警中策略 · 每分钟评估，查询失败时保持上次状态
-              </Typography.Text>
-            </div>
+            </Space>
             <SearchActionBar
               spacing="flush"
               searchClassName="!w-64"
@@ -315,6 +321,7 @@ export default function ApmPoliciesPage() {
               rowKey="id"
               columns={columns}
               dataSource={pagePolicies}
+              headerAlignment="column"
               pagination={{
                 current: page,
                 pageSize,
