@@ -11,6 +11,7 @@ export interface ApiRequest {
   method: string;
   headers?: Record<string, string>;
   body?: string;
+  requestId?: string;
 }
 
 export interface ApiResponse {
@@ -29,6 +30,13 @@ export interface CurrentTeamResolution {
   source: 'cookie' | 'stored-login-info' | 'missing';
 }
 
+let requestSequence = 0;
+
+function createNativeRequestId(): string {
+  requestSequence = (requestSequence + 1) % Number.MAX_SAFE_INTEGER;
+  return `request-${Date.now()}-${requestSequence}`;
+}
+
 type NativeStreamEvent =
   | { event: 'chunk'; data: string }
   | { event: 'end' }
@@ -45,7 +53,7 @@ export class TauriStreamError extends Error {
  * 安全地调用 Tauri invoke
  * Tauri 2.x 使用 __TAURI_INTERNALS__ 作为主要标识
  */
-async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+async function getTauriCore() {
   // 检查 Tauri 运行时是否可用
   if (typeof window === 'undefined') {
     throw new Error('Tauri is not available: window is undefined');
@@ -56,18 +64,70 @@ async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promi
     throw new Error('Tauri is not available: __TAURI_INTERNALS__ not found');
   }
 
+  // 动态导入 Tauri API
+  const { Channel, invoke } = await import('@tauri-apps/api/core');
+
+  if (typeof invoke !== 'function') {
+    throw new Error('Tauri invoke is not a function');
+  }
+
+  return { Channel, invoke };
+}
+
+async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await getTauriCore();
+  return normalizeInvokeError(invoke<T>(cmd, args));
+}
+
+async function normalizeInvokeError<T>(operation: Promise<T>): Promise<T> {
   try {
-    // 动态导入 Tauri API
-    const { invoke } = await import('@tauri-apps/api/core');
-
-    if (typeof invoke !== 'function') {
-      throw new Error('Tauri invoke is not a function');
-    }
-
-    return await invoke<T>(cmd, args);
+    return await operation;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(`Tauri invoke failed: ${errorMessage}`);
+  }
+}
+
+async function invokeCancellableApiProxy(
+  request: ApiRequest,
+  signal: AbortSignal,
+  requestId: string
+): Promise<ApiResponse> {
+  const { Channel, invoke } = await getTauriCore();
+  if (signal.aborted) {
+    throw new DOMException('The operation was aborted', 'AbortError');
+  }
+
+  let markRegistered: (() => void) | undefined;
+  const registered = new Promise<void>((resolve) => {
+    markRegistered = resolve;
+  });
+  const onRegistered = new Channel<boolean>();
+  onRegistered.onmessage = () => markRegistered?.();
+  const nativeRequest = normalizeInvokeError(
+    invoke<ApiResponse>('api_proxy_cancellable', { request, onRegistered })
+  );
+  let abort: (() => void) | undefined;
+  try {
+    return await Promise.race([
+      nativeRequest,
+      new Promise<never>((_, reject) => {
+        abort = () => {
+          void registered
+            .then(() => invoke('cancel_request', { requestId }))
+            .catch(() => undefined);
+          reject(new DOMException('The operation was aborted', 'AbortError'));
+        };
+        signal.addEventListener('abort', abort, { once: true });
+        if (signal.aborted) {
+          abort();
+        }
+      }),
+    ]);
+  } finally {
+    if (abort) {
+      signal.removeEventListener('abort', abort);
+    }
   }
 }
 
@@ -174,14 +234,18 @@ export async function tauriApiFetch(
     }
   }
 
-  const response = await tauriApiProxy({
+  const requestId = options.signal ? createNativeRequestId() : undefined;
+  const request = {
     url,
     method,
     headers,
     body,
-  });
+    ...(requestId ? { requestId } : {}),
+  };
+  const response = options.signal && requestId
+    ? await invokeCancellableApiProxy(request, options.signal, requestId)
+    : await tauriApiProxy(request);
 
-  // 原生非流式请求暂不支持中途取消，但取消后的响应不得再进入业务状态。
   if (options.signal?.aborted) {
     throw new DOMException('The operation was aborted', 'AbortError');
   }

@@ -177,3 +177,5 @@ monitor_object_metric_group:
     Base: Base
     Performance: Performance
     Storage: Storage
+    Connection: Connection
+    Wait: Wait

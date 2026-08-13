@@ -5,11 +5,11 @@
 因此跨 DB 可用、无需向量;后续接入聊天链时只需在技能执行处调用本服务。
 """
 
-import logging
 import re
 
 from django.db.models import Q
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import WikiKnowledgeBase
 from apps.opspilot.services.wiki.active_generation_query_service import (
     ActiveGenerationReadError,
@@ -24,8 +24,6 @@ from apps.opspilot.services.wiki.generation_query_routing_service import Overvie
 from apps.opspilot.services.wiki.retrieval_service import hybrid_search as wiki_hybrid_search
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, estimate_tokens, load_wiki_budget_config, new_query_call_budget
-
-logger = logging.getLogger("opspilot")
 
 _RETRIEVAL_MODES = {"keyword", "hybrid", "chunk"}
 

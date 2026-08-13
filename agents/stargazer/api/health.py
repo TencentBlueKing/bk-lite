@@ -165,6 +165,14 @@ stargazer_collection_plugin_timeout_total {stats.get("plugin_timeout_total", 0)}
 stargazer_collection_result_publish_failure_total {stats.get("result_publish_failure_total", 0)}
 # TYPE stargazer_collection_lease_takeover_total counter
 stargazer_collection_lease_takeover_total {stats.get("lease_takeover_total", 0)}
+# TYPE stargazer_redis_pool_wait_seconds_total counter
+stargazer_redis_pool_wait_seconds_total {stats.get("redis_pool_wait_seconds_total", 0)}
+# TYPE stargazer_redis_pool_timeout_total counter
+stargazer_redis_pool_timeout_total {stats.get("redis_pool_timeout_total", 0)}
+# TYPE stargazer_redis_pool_exhaustion_total counter
+stargazer_redis_pool_exhaustion_total {stats.get("redis_pool_exhaustion_total", 0)}
+# TYPE stargazer_collection_credential_state_redis_error_total counter
+stargazer_collection_credential_state_redis_error_total {stats.get("credential_state_redis_error_total", 0)}
 """
 
         return response.text(prometheus_text, content_type="text/plain; version=0.0.4")

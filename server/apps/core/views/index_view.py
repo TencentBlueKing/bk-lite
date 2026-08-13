@@ -170,8 +170,10 @@ def _get_login_auth_binding_by_id(binding_id: int):
 
 
 def verify_wechat_code(code: str) -> dict:
-    """
-    真实微信 API 验证 code。
+    """遗留 LoginModule 微信认证实现。
+
+    新认证走集成中心 WeChat Provider 的 ``login_auth`` capability；本函数仅
+    为仍在并行期的旧扫码入口兼容保留，新链路稳定后与 ``wechat_login`` 一并移除。
 
     Returns:
         {

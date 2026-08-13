@@ -756,6 +756,46 @@ class TestHostCollectorExtractStdout:
         }
         assert self.collector._extract_stdout(result) == '{"mem": {}}'
 
+    def test_process_result_without_expected_host_raises(self):
+        result = {
+            "success": True,
+            "result": [
+                {
+                    "host": "10.0.0.2",
+                    "status": "success",
+                    "stdout": '{"cpu": {"usage_percent": 91}}',
+                }
+            ]
+        }
+
+        with pytest.raises(RuntimeError, match="missing expected host 10.0.0.1"):
+            self.collector.process_adhoc_result(result)
+
+    def test_process_result_uses_expected_host_among_multiple_hosts(self):
+        result = {
+            "success": True,
+            "result": [
+                {"host": "10.0.0.2", "stdout": '{"cpu": {}}'},
+                {"host": "10.0.0.1", "stdout": '{"mem": {}}'},
+            ]
+        }
+
+        metrics = self.collector.process_adhoc_result(result)
+
+        assert "host_mem_total_bytes" in metrics
+        assert "host_cpu_usage_percent" not in metrics
+
+    def test_process_result_with_empty_expected_host_stdout_raises(self):
+        result = {
+            "success": True,
+            "result": [
+                {"host": "10.0.0.1", "status": "success", "stdout": ""},
+            ]
+        }
+
+        with pytest.raises(RuntimeError, match="missing expected host 10.0.0.1"):
+            self.collector.process_adhoc_result(result)
+
     def test_empty_result(self):
         result = {"result": {}}
         # 空 dict 应返回 JSON 序列化

@@ -10,7 +10,7 @@ def sync_node_properties_to_sidecar(
     node_id: str, name: str | None = None, organizations: list[str] | None = None
 ):
     """
-    异步同步节点属性到远程 sidecar.yaml 配置文件
+    异步同步节点属性到远程 sidecar.yml 配置文件
 
     Args:
         node_id: 节点 ID

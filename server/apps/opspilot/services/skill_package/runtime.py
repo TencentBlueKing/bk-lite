@@ -6,6 +6,7 @@ from typing import Any, Iterable
 import yaml
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 
 # SKILL.md frontmatter 提取正则(与 importer._split_frontmatter 保持一致)
 _SKILL_MD_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
@@ -119,8 +120,9 @@ def build_skill_package_prompt(
         "事实数据必须来自工具或上下文。"
         "\n运行规则：当用户要求你实际获取、访问、转换、读取、生成或处理外部内容时，"
         "不要只输出安装步骤或示例代码；必须优先调用当前可用工具完成任务。"
-        "DeepAgent 沙箱提供 `execute`、`read_file`、`write_file` 等工具时，"
-        "应使用这些工具运行技能包中的 CLI 或脚本，并基于工具返回的真实结果回答。"
+        "技能包若声明了 reports.source_tool，用该业务工具取数；不要用 `execute` 去探 "
+        "`~/.kube` 代替已声明的业务工具。其他无业务工具覆盖的技能脚本，仍可用沙箱 "
+        "`execute`/`read_file`/`write_file`。"
         "只有工具不可用或执行失败时，才说明失败原因并给出人工执行步骤。"
     )
     return (base_prompt or "") + "\n".join(blocks), matched_packages
@@ -171,7 +173,11 @@ def hydrate_skill_packages(skill_packages: Any) -> list[dict[str, Any]]:
 
     try:
         # 同步 ORM 查询,调用方须在 sync 上下文(用 ThreadPoolExecutor 包一层)。
-        stored_list = list(SkillPackage.objects.filter(id__in=ids, is_enabled=True))
+        # 该线程可能是 asyncio/LangGraph 旁路线程，必须在本线程清理连接。
+        def _load_packages():
+            return list(SkillPackage.objects.filter(id__in=ids, is_enabled=True))
+
+        stored_list = run_with_db_cleanup(_load_packages)
         # key 统一转 str:LangGraph configurable 跨节点序列化会把 int id 转 str,
         # 后续 stored_packages.get(item.get("id")) 也用 str 查,保持一致。
         stored_packages = {str(item.id): item for item in stored_list}

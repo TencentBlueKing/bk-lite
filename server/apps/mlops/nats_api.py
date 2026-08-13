@@ -1,7 +1,6 @@
 import os
 
 import nats_client
-
 from apps.mlops.models.anomaly_detection import (
     AnomalyDetectionDataset,
     AnomalyDetectionDatasetRelease,
@@ -44,7 +43,7 @@ from apps.mlops.models.timeseries_predict import (
     TimeSeriesPredictTrainData,
     TimeSeriesPredictTrainJob,
 )
-
+from apps.mlops.utils.i18n import mlops_message_for_locale
 
 ROOT_MODULE_MODEL_MAP = {
     "dataset": {
@@ -117,55 +116,79 @@ INHERITED_MODULE_MODEL_MAP = {
 
 MAX_PAGE_SIZE = int(os.getenv("MLOPS_NATS_MAX_PAGE_SIZE", "500"))
 
+MODULE_NAMES = ("dataset", "train_job", "serving")
 
-MODULE_DISPLAY_NAMES = {
-    "dataset": "数据集",
-    "train_job": "训练任务",
-    "serving": "能力发布",
+MODULE_DISPLAY_NAME_KEYS = {
+    "dataset": "module.dataset",
+    "train_job": "module.train_job",
+    "serving": "module.serving",
 }
 
-CHILD_DISPLAY_NAMES = {
-    "anomaly_detection_dataset": "异常检测数据集",
-    "anomaly_detection_train_data": "异常检测训练数据",
-    "anomaly_detection_dataset_release": "异常检测数据集发布版本",
-    "anomaly_detection_train_job": "异常检测训练任务",
-    "anomaly_detection_serving": "异常检测能力发布",
-    "classification_dataset": "分类任务数据集",
-    "classification_train_data": "分类任务训练数据",
-    "classification_dataset_release": "分类任务数据集发布版本",
-    "classification_train_job": "分类任务训练任务",
-    "classification_serving": "分类任务能力发布",
-    "image_classification_dataset": "图片分类数据集",
-    "image_classification_train_data": "图片分类训练数据",
-    "image_classification_dataset_release": "图片分类数据集发布版本",
-    "image_classification_train_job": "图片分类训练任务",
-    "image_classification_serving": "图片分类能力发布",
-    "log_clustering_dataset": "日志聚类数据集",
-    "log_clustering_train_data": "日志聚类训练数据",
-    "log_clustering_dataset_release": "日志聚类数据集发布版本",
-    "log_clustering_train_job": "日志聚类训练任务",
-    "log_clustering_serving": "日志聚类能力发布",
-    "object_detection_dataset": "目标检测数据集",
-    "object_detection_train_data": "目标检测训练数据",
-    "object_detection_dataset_release": "目标检测数据集发布版本",
-    "object_detection_train_job": "目标检测训练任务",
-    "object_detection_serving": "目标检测能力发布",
-    "timeseries_predict_dataset": "时间序列预测数据集",
-    "timeseries_predict_train_data": "时间序列预测训练数据",
-    "timeseries_predict_dataset_release": "时间序列预测数据集发布版本",
-    "timeseries_predict_train_job": "时间序列预测训练任务",
-    "timeseries_predict_serving": "时间序列预测能力发布",
+CHILD_DISPLAY_NAME_KEYS = {
+    "anomaly_detection_dataset": "module.anomaly_detection_dataset",
+    "anomaly_detection_train_data": "module.anomaly_detection_train_data",
+    "anomaly_detection_dataset_release": "module.anomaly_detection_dataset_release",
+    "anomaly_detection_train_job": "module.anomaly_detection_train_job",
+    "anomaly_detection_serving": "module.anomaly_detection_serving",
+    "classification_dataset": "module.classification_dataset",
+    "classification_train_data": "module.classification_train_data",
+    "classification_dataset_release": "module.classification_dataset_release",
+    "classification_train_job": "module.classification_train_job",
+    "classification_serving": "module.classification_serving",
+    "image_classification_dataset": "module.image_classification_dataset",
+    "image_classification_train_data": "module.image_classification_train_data",
+    "image_classification_dataset_release": "module.image_classification_dataset_release",
+    "image_classification_train_job": "module.image_classification_train_job",
+    "image_classification_serving": "module.image_classification_serving",
+    "log_clustering_dataset": "module.log_clustering_dataset",
+    "log_clustering_train_data": "module.log_clustering_train_data",
+    "log_clustering_dataset_release": "module.log_clustering_dataset_release",
+    "log_clustering_train_job": "module.log_clustering_train_job",
+    "log_clustering_serving": "module.log_clustering_serving",
+    "object_detection_dataset": "module.object_detection_dataset",
+    "object_detection_train_data": "module.object_detection_train_data",
+    "object_detection_dataset_release": "module.object_detection_dataset_release",
+    "object_detection_train_job": "module.object_detection_train_job",
+    "object_detection_serving": "module.object_detection_serving",
+    "timeseries_predict_dataset": "module.timeseries_predict_dataset",
+    "timeseries_predict_train_data": "module.timeseries_predict_train_data",
+    "timeseries_predict_dataset_release": "module.timeseries_predict_dataset_release",
+    "timeseries_predict_train_job": "module.timeseries_predict_train_job",
+    "timeseries_predict_serving": "module.timeseries_predict_serving",
 }
 
 
 def _get_module_registry():
     registry = {}
-    for module_name in MODULE_DISPLAY_NAMES:
+    for module_name in MODULE_NAMES:
         merged = {}
         merged.update(ROOT_MODULE_MODEL_MAP.get(module_name, {}))
         merged.update(INHERITED_MODULE_MODEL_MAP.get(module_name, {}))
         registry[module_name] = merged
     return registry
+
+
+def _resolve_nats_locale(locale=None, actor_context=None):
+    if locale is not None:
+        return locale
+    if isinstance(actor_context, dict) and actor_context.get("locale") is not None:
+        return actor_context.get("locale")
+    return "zh-Hans"
+
+
+def _nats_message(locale, key, **values):
+    return mlops_message_for_locale(locale, key, **values)
+
+
+def _module_display_name(module_name, locale):
+    return _nats_message(locale, MODULE_DISPLAY_NAME_KEYS[module_name])
+
+
+def _child_display_name(child_name, locale):
+    key = CHILD_DISPLAY_NAME_KEYS.get(child_name)
+    if not key:
+        return child_name
+    return _nats_message(locale, key)
 
 
 def _normalize_actor_group_ids(actor_context):
@@ -179,56 +202,69 @@ def _normalize_actor_group_ids(actor_context):
     return group_ids
 
 
-def _validate_actor_group(actor_context, group_id):
+def _validate_actor_group(actor_context, group_id, locale="zh-Hans"):
     if not isinstance(actor_context, dict):
-        return False, None, "缺少调用方上下文"
+        return False, None, _nats_message(locale, "error.nats_missing_actor_context")
 
     try:
         group_id = int(group_id)
     except (TypeError, ValueError):
-        return False, None, "group_id 参数非法"
+        return False, None, _nats_message(locale, "error.nats_invalid_group_id")
 
     if actor_context.get("is_superuser"):
         return True, group_id, ""
 
     if group_id not in _normalize_actor_group_ids(actor_context):
-        return False, group_id, "无权访问该组织"
+        return False, group_id, _nats_message(locale, "error.nats_group_access_denied")
 
     return True, group_id, ""
 
 
 @nats_client.register
-def get_mlops_module_list():
+def get_mlops_module_list(locale=None, actor_context=None):
+    locale = _resolve_nats_locale(locale=locale, actor_context=actor_context)
     registry = _get_module_registry()
     return [
         {
             "name": module_name,
-            "display_name": MODULE_DISPLAY_NAMES[module_name],
+            "display_name": _module_display_name(module_name, locale),
             "children": [
                 {
                     "name": child_name,
-                    "display_name": CHILD_DISPLAY_NAMES.get(child_name, child_name),
+                    "display_name": _child_display_name(child_name, locale),
                 }
                 for child_name in registry[module_name]
             ],
         }
-        for module_name in MODULE_DISPLAY_NAMES
+        for module_name in MODULE_NAMES
     ]
 
 
 @nats_client.register
-def get_mlops_module_data(module, child_module, page, page_size, group_id, actor_context=None):
+def get_mlops_module_data(module, child_module, page, page_size, group_id, actor_context=None, locale=None):
+    locale = _resolve_nats_locale(locale=locale, actor_context=actor_context)
     registry = _get_module_registry()
 
     module_map = registry.get(module)
     if module_map is None:
-        return {"result": False, "message": f"未知模块：{module}"}
+        return {
+            "result": False,
+            "message": _nats_message(locale, "error.nats_unknown_module", module=module),
+        }
 
     entry = module_map.get(child_module)
     if entry is None:
-        return {"result": False, "message": f"未知子模块：{module}/{child_module}"}
+        return {
+            "result": False,
+            "message": _nats_message(
+                locale,
+                "error.nats_unknown_child_module",
+                module=module,
+                child_module=child_module,
+            ),
+        }
 
-    is_valid, group_id, message = _validate_actor_group(actor_context, group_id)
+    is_valid, group_id, message = _validate_actor_group(actor_context, group_id, locale=locale)
     if not is_valid:
         return {"result": False, "message": message}
 

@@ -233,7 +233,8 @@ export class AGUIMessageHandler {
         msgItem.id === this.botMessage.id
           ? {
             ...msgItem,
-            content,
+            // 流式过程中禁止用空串覆盖已有正文，避免中途「回答变空」
+            content: content || msgItem.content || '',
             thinking: thinking !== undefined ? thinking : msgItem.thinking,
             isThinking: isThinking !== undefined ? isThinking : msgItem.isThinking,
             browserStepProgress: browserStepProgress !== undefined ? browserStepProgress : msgItem.browserStepProgress,
@@ -470,8 +471,8 @@ export class AGUIMessageHandler {
       toolCall.result = content;
       this.syncAttachmentDownloadFromToolResult(toolCallId, toolCall.name, content);
 
-      // Fallback: if report_config_diff completed but CUSTOM event wasn't received,
-      // construct the DiffReportCard from tool args
+      // Fallback: if report_config_diff / generate_repair_report completed but CUSTOM
+      // repair_diff_report event wasn't received, construct DiffReportCard from args/result.
       if (toolCall.name === 'report_config_diff' && toolCall.args) {
         try {
           const args = JSON.parse(toolCall.args);
@@ -492,6 +493,27 @@ export class AGUIMessageHandler {
           }
         } catch {
           // args parse failed, skip fallback
+        }
+      }
+
+      if (toolCall.name === 'generate_repair_report' && content) {
+        try {
+          const parsed = JSON.parse(content);
+          const items = Array.isArray(parsed?.items) ? parsed.items : [];
+          if (items.length > 0 && this.configDiffReports.length === 0) {
+            const report: ConfigDiffReport = {
+              report_id: `fallback_repair_${toolCallId}`,
+              title: parsed.title || 'K8S 配置修复对比',
+              cluster_name: parsed.cluster_name || '',
+              items,
+              received_at: Date.now(),
+            };
+            this.configDiffReports.push(report);
+            this.flushCurrentTextBlock();
+            this.contentBlocks.push({ type: 'configDiff', reportId: report.report_id });
+          }
+        } catch {
+          // result parse failed, skip fallback
         }
       }
 
@@ -848,6 +870,8 @@ export class AGUIMessageHandler {
         return false;
 
       case 'TEXT_MESSAGE_START':
+        // 新文本消息开始前先落盘上一段，避免后续工具/自定义事件打空 currentTextBlock 时丢字
+        this.flushCurrentTextBlock();
         return false;
 
       case 'TEXT_MESSAGE_CONTENT':
@@ -857,6 +881,8 @@ export class AGUIMessageHandler {
         return false;
 
       case 'TEXT_MESSAGE_END':
+        this.flushCurrentTextBlock();
+        this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
         return false;
 
       case 'TOOL_CALL_START':

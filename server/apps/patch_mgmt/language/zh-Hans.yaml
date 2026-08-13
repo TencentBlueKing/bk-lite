@@ -15,6 +15,7 @@ error:
   patches_not_in_baseline: "所选补丁不属于对应主机的当前基线: {pairs}"
   patches_not_remediable: "所选补丁不在最新评估的待治理范围内: {pairs}"
   targets_not_pending_reboot: "以下主机当前不是待重启状态: {ids}"
+  container_targets_reboot_unsupported: "以下目标为容器节点，不支持执行主机重启: {ids}"
   reboot_scope_changed: "待重启范围已变化，请刷新后重新确认"
   risk_item_not_retryable: "该风险项不可重试或不存在"
   risk_item_already_retried: "该风险项已创建新的重试记录"
@@ -95,6 +96,10 @@ message:
   yesterday: "昨天"
   windows_requirement: "装 {kb} 或有效替代 KB"
   linux_requirement: "包版本 ≥ {version}"
+  assessment_not_run: "尚未执行评估"
+  assessment_running: "评估任务执行中"
+  assessment_failed: "评估失败"
+  assessment_snapshot_incomplete: "没有当前有效评估快照，评估数据不完整"
 status:
   task_type:
     assess: "评估"

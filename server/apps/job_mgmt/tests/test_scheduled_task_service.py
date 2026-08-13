@@ -5,8 +5,10 @@ cron / once / 删除 / 切换 / 同步 及各无效分支。
 """
 
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
+from django.db import DatabaseError
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 
@@ -14,7 +16,7 @@ from apps.job_mgmt.constants import JobType, ScheduleType
 from apps.job_mgmt.models import ScheduledTask
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 
 def _task(**over):
@@ -90,6 +92,16 @@ class TestUpdateDeleteToggleSync:
 
     def test_toggle_missing_returns_false(self):
         assert ScheduledTaskService.toggle_periodic_task(999999, True) is False
+
+    def test_disable_missing_is_idempotent_success(self):
+        assert ScheduledTaskService.toggle_periodic_task(999999, False) is True
+
+    def test_toggle_or_raise_preserves_database_error(self):
+        with patch(
+            "apps.job_mgmt.services.scheduled_task_service.PeriodicTask.objects.filter",
+            side_effect=DatabaseError("beat unavailable"),
+        ), pytest.raises(DatabaseError, match="beat unavailable"):
+            ScheduledTaskService.toggle_periodic_task_or_raise(1, False)
 
     def test_sync_returns_id(self):
         st = _task()

@@ -9,81 +9,177 @@ monitor_object_metric:
   Minio:
     minio_cluster_capacity_usable_total_bytes_gauge:
       name: 集群可用总容量
-      desc: 集群经过纠删码计算后的可用逻辑存储总容量，反映了考虑冗余后的存储资源规模
+      desc: 集群经过纠删码计算后的可用逻辑存储总容量，反映了考虑冗余后的存储资源规模 自 MinIO RELEASE.2021-01-30T00-20-58Z 起可采集（Metrics v2）。
     minio_cluster_capacity_usable_free_bytes_gauge:
       name: 集群可用空闲容量
-      desc: 集群可用逻辑存储的空闲容量，用于监控存储使用情况和预测存储需求
+      desc: 集群可用逻辑存储的空闲容量，用于监控存储使用情况和预测存储需求 自 MinIO RELEASE.2021-01-30T00-20-58Z 起可采集（Metrics v2）。
     minio_cluster_drive_online_total_gauge:
       name: 在线驱动器数
-      desc: 集群中当前在线可用的存储驱动器数量，反映存储硬件的可用性状态
+      desc: 集群中当前在线可用的存储驱动器数量，反映存储硬件的可用性状态 自 MinIO RELEASE.2021-01-30T00-20-58Z 起可采集（Metrics v2）。
     minio_cluster_nodes_online_total_gauge:
       name: 在线节点数
-      desc: 集群中当前在线可用的节点服务器数量，影响集群处理能力和容错能力
+      desc: 集群中当前在线可用的节点服务器数量，影响集群处理能力和容错能力 自 MinIO RELEASE.2021-01-30T00-20-58Z 起可采集（Metrics v2）。
     minio_cluster_health_status_gauge:
       name: 集群健康状态
-      desc: 集群整体健康状态，1表示健康，0表示不健康，提供集群运行状况快速概览
+      desc: 集群整体健康状态，1表示健康，0表示不健康，提供集群运行状况快速概览 自 MinIO RELEASE.2023-08-04T17-40-21Z 起可采集（Metrics v2）。
     minio_cluster_health_erasure_set_status_gauge:
       name: 擦除集状态
-      desc: 擦除集的状态（1=正常），反映数据冗余集的健康状况，直接影响数据安全性
+      desc: 擦除集的状态（1=正常），反映数据冗余集的健康状况，直接影响数据安全性 自 MinIO RELEASE.2024-01-28T22-35-53Z 起可采集（Metrics v2）。
     minio_cluster_health_erasure_set_online_drives_gauge:
       name: 擦除集在线驱动器数
-      desc: 擦除集中在线驱动器的数量，影响数据可用性和冗余度，确保冗余策略有效性
+      desc: 擦除集中在线驱动器的数量，影响数据可用性和冗余度，确保冗余策略有效性 自 MinIO RELEASE.2023-12-23T07-19-11Z 起可采集（Metrics v2）。
     minio_node_cpu_avg_load1_gauge:
       name: 节点1分钟平均负载
-      desc: 节点过去1分钟的平均系统负载，反映短期CPU压力，评估短期性能压力
+      desc: 节点过去1分钟的平均系统负载，反映短期CPU压力，评估短期性能压力 自 MinIO RELEASE.2023-10-07T15-07-38Z 起可采集（Metrics v2）。
     minio_node_cpu_avg_idle_gauge:
       name: 节点CPU空闲率
-      desc: 节点CPU的空闲时间百分比，反映CPU利用率，低空闲率可能表示CPU瓶颈
+      desc: 节点CPU的空闲时间百分比，反映CPU利用率，低空闲率可能表示CPU瓶颈 自 MinIO RELEASE.2023-10-07T15-07-38Z 起可采集（Metrics v2）。
     minio_node_mem_used_perc_gauge:
       name: 节点内存使用率
-      desc: 节点内存使用百分比，反映内存压力，过高使用率可能导致性能下降
+      desc: 节点内存使用百分比，反映内存压力，过高使用率可能导致性能下降 自 MinIO RELEASE.2023-12-07T04-16-00Z 起可采集（Metrics v2）。
     minio_node_drive_perc_util_gauge:
       name: 驱动器使用率
-      desc: 单个驱动器的使用百分比，反映存储设备空间使用情况，对容量规划重要
+      desc: 单个驱动器的使用百分比，反映存储设备空间使用情况，对容量规划重要 自 MinIO RELEASE.2023-10-07T15-07-38Z 起可采集（Metrics v2）。
     minio_node_drive_reads_per_sec_gauge:
       name: 驱动器每秒读取次数
-      desc: 单个驱动器每秒读取操作次数，反映存储设备读取性能和工作负载
+      desc: 单个驱动器每秒读取操作次数，反映存储设备读取性能和工作负载 自 MinIO RELEASE.2023-10-07T15-07-38Z 起可采集（Metrics v2）。
     minio_node_drive_writes_per_sec_gauge:
       name: 驱动器每秒写入次数
-      desc: 单个驱动器每秒写入操作次数，反映存储设备写入性能和工作负载
-    minio_node_if_rx_bytes_gauge:
-      name: 网络接口接收字节数
-      desc: 网络接口接收的数据字节数，反映网络流入流量，监控网络带宽使用
-    minio_node_if_tx_bytes_gauge:
-      name: 网络接口发送字节数
-      desc: 网络接口发送的数据字节数，反映网络流出流量，监控网络带宽使用
+      desc: 单个驱动器每秒写入操作次数，反映存储设备写入性能和工作负载 自 MinIO RELEASE.2023-10-07T15-07-38Z 起可采集（Metrics v2）。
     minio_node_process_uptime_seconds_gauge:
       name: 进程运行时间
-      desc: MinIO进程运行秒数，反映进程稳定性，长时间运行表示稳定，频繁重启可能有问题
+      desc: MinIO进程运行秒数，反映进程稳定性，长时间运行表示稳定，频繁重启可能有问题 自 MinIO RELEASE.2021-03-26T00-00-41Z 起可采集（Metrics v2）。
     minio_node_process_cpu_total_seconds_counter_rate:
       name: 进程CPU使用速率
-      desc: MinIO进程每秒消耗的CPU时间，反映MinIO服务对CPU资源的实时消耗
+      desc: MinIO进程每秒消耗的CPU时间，反映MinIO服务对CPU资源的实时消耗 自 MinIO RELEASE.2021-05-11T23-27-41Z 起可采集（Metrics v2）。
     minio_node_process_resident_memory_bytes_gauge:
       name: 进程常驻内存
-      desc: MinIO进程占用的常驻内存大小，反映进程内存使用情况，监控内存泄漏
-    minio_node_go_routine_total_gauge:
-      name: Go协程总数
-      desc: MinIO进程中当前的Go协程数量，反映并发处理能力，异常增加可能表示问题
+      desc: MinIO进程占用的常驻内存大小，反映进程内存使用情况，监控内存泄漏 自 MinIO RELEASE.2021-05-11T23-27-41Z 起可采集（Metrics v2）。
     minio_s3_requests_incoming_total_gauge:
       name: 当前传入S3请求数
-      desc: 当前正在处理的传入S3 API请求数量，反映当前S3服务负载
+      desc: 当前正在处理的传入S3 API请求数量，反映当前S3服务负载 自 MinIO RELEASE.2022-02-12T00-51-25Z 起可采集（Metrics v2）。
     minio_s3_requests_waiting_total_gauge:
       name: 等待中S3请求数
-      desc: 当前等待处理的S3 API请求数量，反映S3服务处理队列积压情况
+      desc: 当前等待处理的S3 API请求数量，反映S3服务处理队列积压情况 自 MinIO RELEASE.2021-02-23T20-05-01Z 起可采集（Metrics v2）。
     minio_s3_traffic_received_bytes_counter_rate:
       name: S3接收流量速率
-      desc: S3服务每秒接收的数据流量，反映数据上传速率和网络流入带宽使用
+      desc: S3服务每秒接收的数据流量，反映数据上传速率和网络流入带宽使用 自 MinIO RELEASE.2021-01-30T00-20-58Z 起可采集（Metrics v2）。
     minio_s3_traffic_sent_bytes_counter_rate:
       name: S3发送流量速率
-      desc: S3服务每秒发送的数据流量，反映数据下载速率和网络流出带宽使用
+      desc: S3服务每秒发送的数据流量，反映数据下载速率和网络流出带宽使用 自 MinIO RELEASE.2021-01-30T00-20-58Z 起可采集（Metrics v2）。
     minio_s3_requests_rejected_auth_total_counter_rate:
       name: 认证拒绝S3请求速率
-      desc: 因认证失败而被拒绝的S3请求每秒数量，反映认证失败频率和安全状况
+      desc: 因认证失败而被拒绝的S3请求每秒数量，反映认证失败频率和安全状况 自 MinIO RELEASE.2021-04-18T19-26-29Z 起可采集（Metrics v2）。
     minio_node_scanner_objects_scanned_counter_rate:
       name: 对象扫描速率
-      desc: 扫描器每秒扫描的对象数量，反映存储系统内部维护活动的效率
+      desc: 扫描器每秒扫描的对象数量，反映存储系统内部维护活动的效率 自 MinIO RELEASE.2021-12-18T04-42-33Z 起可采集（Metrics v2）。
+    minio_cluster_drive_offline_total_gauge:
+      name: V2 离线磁盘数
+      desc: Metrics v2 集群端点报告的离线磁盘数量。 自 MinIO RELEASE.2021-01-30T00-20-58Z 起可采集（Metrics v2）。
+    minio_cluster_nodes_offline_total_gauge:
+      name: V2 离线节点数
+      desc: Metrics v2 集群端点报告的离线节点数量。 自 MinIO RELEASE.2021-01-30T00-20-58Z 起可采集（Metrics v2）。
+    minio_s3_requests_5xx_errors_total_counter_rate:
+      name: V2 S3 5xx 错误速率
+      desc: Metrics v2 报告的每秒 S3 服务端错误数。 自 MinIO RELEASE.2022-06-10T16-59-15Z 起可采集（Metrics v2）。
+    minio_cluster_erasure_set_overall_health_gauge:
+      name: V3 纠删组整体健康
+      desc: 纠删组整体健康状态，1 为健康，0 为不健康。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_cluster_erasure_set_online_drives_count_gauge:
+      name: V3 纠删组在线磁盘数
+      desc: Metrics v3 各纠删组中的在线磁盘数量。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_cluster_health_capacity_usable_total_bytes_gauge:
+      name: V3 集群可用总容量
+      desc: Metrics v3 报告的集群可用总容量。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_cluster_health_capacity_usable_free_bytes_gauge:
+      name: V3 集群可用空闲容量
+      desc: Metrics v3 报告的集群可用空闲容量。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_cluster_health_drives_online_count_gauge:
+      name: V3 在线磁盘数
+      desc: Metrics v3 报告的集群在线磁盘数量。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_cluster_health_drives_offline_count_gauge:
+      name: V3 离线磁盘数
+      desc: Metrics v3 报告的集群离线磁盘数量。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_cluster_health_nodes_online_count_gauge:
+      name: V3 在线节点数
+      desc: Metrics v3 报告的集群在线节点数量。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_cluster_health_nodes_offline_count_gauge:
+      name: V3 离线节点数
+      desc: Metrics v3 报告的集群离线节点数量。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_cluster_usage_objects_total_bytes_gauge:
+      name: V3 对象占用字节数
+      desc: Metrics v3 使用量数据中的对象总占用字节数。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_cluster_usage_objects_count_gauge:
+      name: V3 对象总数
+      desc: Metrics v3 使用量数据中的对象总数。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_api_requests_incoming_total_gauge:
+      name: V3 当前传入 API 请求数
+      desc: Metrics v3 报告的当前传入 S3 API 请求数量。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_api_requests_waiting_total_gauge:
+      name: V3 等待中 API 请求数
+      desc: 当前在服务端队列中等待的 S3 API 请求数量。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_api_requests_5xx_errors_total_counter_rate:
+      name: V3 API 5xx 错误速率
+      desc: 每秒返回服务端错误的 API 请求数。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_api_requests_rejected_auth_total_counter_rate:
+      name: V3 API 鉴权拒绝速率
+      desc: 因鉴权失败而被拒绝的 API 请求每秒速率。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_api_requests_traffic_received_bytes_counter_rate:
+      name: V3 API 接收流量速率
+      desc: Metrics v3 API 每秒接收的请求字节数。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_api_requests_traffic_sent_bytes_counter_rate:
+      name: V3 API 发送流量速率
+      desc: Metrics v3 API 每秒发送的响应字节数。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_system_cpu_avg_idle_gauge:
+      name: V3 系统 CPU 空闲率
+      desc: Metrics v3 报告的平均 CPU 空闲百分比。 自 MinIO RELEASE.2024-04-28T17-53-50Z 起可采集（Metrics v3）。
+    minio_system_memory_used_perc_gauge:
+      name: V3 内存使用率
+      desc: Metrics v3 报告的节点内存使用百分比。 自 MinIO RELEASE.2024-04-18T19-09-19Z 起可采集（Metrics v3）。
+    minio_system_drive_perc_util_gauge:
+      name: V3 磁盘利用率
+      desc: Metrics v3 报告的单磁盘利用百分比。 自 MinIO RELEASE.2024-04-18T19-09-19Z 起可采集（Metrics v3）。
+    minio_system_process_uptime_seconds_gauge:
+      name: V3 进程运行时间
+      desc: Metrics v3 报告的 MinIO 服务进程运行秒数。 自 MinIO RELEASE.2024-04-28T17-53-50Z 起可采集（Metrics v3）。
+    minio_system_process_cpu_total_seconds_counter_rate:
+      name: V3 进程 CPU 使用速率
+      desc: Metrics v3 进程每秒消耗的 CPU 时间。 自 MinIO RELEASE.2024-04-28T17-53-50Z 起可采集（Metrics v3）。
+    minio_system_network_internode_errors_total_counter_rate:
+      name: V3 节点间调用错误速率
+      desc: 节点间调用每秒失败数量。 自 MinIO RELEASE.2024-03-15T01-07-19Z 起可采集（Metrics v3）。
+    minio_cluster_usage_buckets_total_bytes_gauge:
+      name: V3 Bucket 已用字节数
+      desc: 高层 Bucket 使用量端点报告的各 Bucket 占用字节数。 自 MinIO RELEASE.2024-07-15T19-02-30Z 起可采集（Metrics v3）。
+    minio_replication_recent_backlog_count_gauge:
+      name: V3 近期复制积压对象数
+      desc: 最近五分钟在集群复制积压中观察到的对象数量。 自 MinIO RELEASE.2024-08-03T04-33-23Z 起可采集（Metrics v3）。
+    minio_ilm_expiry_pending_tasks_gauge:
+      name: V3 待处理 ILM 过期任务数
+      desc: MinIO 生命周期过期队列中等待处理的任务数。 自 MinIO RELEASE.2024-06-06T09-36-42Z 起可采集（Metrics v3）。
+    minio_scanner_objects_scanned_counter_rate:
+      name: V3 对象扫描速率
+      desc: Metrics v3 扫描器每秒扫描的对象数。 自 MinIO RELEASE.2024-05-27T19-17-46Z 起可采集（Metrics v3）。
+    minio_audit_failed_messages_counter_rate:
+      name: V3 审计消息投递失败速率
+      desc: 审计消息每秒投递失败数量。 自 MinIO RELEASE.2024-05-27T19-17-46Z 起可采集（Metrics v3）。
+    minio_notification_events_errors_total_counter_rate:
+      name: V3 通知事件投递错误速率
+      desc: 通知事件每秒投递失败数量。 自 MinIO RELEASE.2024-04-28T17-53-50Z 起可采集（Metrics v3）。
+    minio_cluster_iam_sync_failures_counter_rate:
+      name: V3 IAM 同步失败速率
+      desc: IAM 同步操作每秒失败数量。 自 MinIO RELEASE.2024-05-07T06-41-25Z 起可采集（Metrics v3）。
+    minio_cluster_kms_request_failure_counter_rate:
+      name: V2 KMS 内部失败速率
+      desc: KMS 请求因服务端内部错误失败的每秒速率。 自 MinIO RELEASE.2022-07-13T23-29-44Z 起可采集（Metrics v2）。
 monitor_object_metric_group:
   Minio:
     Cluster Monitoring: 集群监控
     Resource Monitoring: 资源监控
     S3 Service Monitoring: S3服务监控
+    Cluster Health and Erasure: 集群健康与纠删冗余
+    Capacity and Object Usage: 容量与对象使用量
+    Node Drive and Process Resources: 节点磁盘与进程资源
+    S3 API Requests: S3 API 请求
+    Bucket Replication and Lifecycle: Bucket复制与生命周期
+    External Integrations and Security: 外部集成与安全

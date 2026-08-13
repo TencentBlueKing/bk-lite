@@ -5,6 +5,12 @@ from apps.system_mgmt.models.login_module import LoginModule
 
 
 class Command(BaseCommand):
+    """初始化遗留 bk_login 配置。
+
+    认证源管理入口已关闭。该默认记录仅兼容已部署实例，后续由集成中心
+    Provider 的 ``login_auth`` capability 替代；禁止基于此命令扩展新功能。
+    """
+
     help = "初始登陆化设置"
 
     def handle(self, *args, **options):

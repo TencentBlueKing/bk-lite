@@ -1,13 +1,19 @@
 'use client';
 
-import { Empty, Result, Skeleton } from 'antd';
+import { Button, Empty, Result, Skeleton } from 'antd';
+import type { ReactNode } from 'react';
 import { HandledRequestError } from '@/utils/request';
 
 export type CatalogStateKind = 'loading' | 'empty' | 'forbidden' | 'degraded' | 'error';
 
-interface CatalogStateProps {
+export interface CatalogStateProps {
   kind: CatalogStateKind;
-  description?: string;
+  title?: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+  onRetry?: () => void;
+  retryLoading?: boolean;
+  compact?: boolean;
 }
 
 export function catalogErrorKind(error: unknown): Exclude<CatalogStateKind, 'loading' | 'empty'> {
@@ -16,28 +22,71 @@ export function catalogErrorKind(error: unknown): Exclude<CatalogStateKind, 'loa
   return 'error';
 }
 
-export default function CatalogState({ kind, description }: CatalogStateProps) {
+const defaultTitle: Record<Exclude<CatalogStateKind, 'loading' | 'empty'>, string> = {
+  forbidden: '无权访问当前组织的 APM 数据',
+  degraded: '遥测存储暂不可用',
+  error: 'APM 数据加载失败',
+};
+
+export default function CatalogState({
+  kind,
+  title,
+  description,
+  action,
+  onRetry,
+  retryLoading = false,
+  compact = false,
+}: CatalogStateProps) {
   if (kind === 'loading') {
     return (
-      <div className="min-h-56 p-6" aria-label="加载 APM 数据">
-        <Skeleton active paragraph={{ rows: 5 }} title={false} />
+      <div
+        className={compact ? 'min-h-24 p-4' : 'min-h-56 p-6'}
+        aria-label="加载 APM 数据"
+        aria-busy="true"
+      >
+        <Skeleton active paragraph={{ rows: compact ? 2 : 5 }} title={false} />
       </div>
     );
   }
+
+  const recoveryAction = action ?? (onRetry && kind !== 'forbidden' ? (
+    <Button loading={retryLoading} type="primary" onClick={onRetry}>
+      重新加载
+    </Button>
+  ) : undefined);
+
   if (kind === 'empty') {
-    return <Empty className="my-10" description={description ?? '当前范围暂无 APM 数据'} />;
+    return (
+      <Empty
+        className={compact ? 'my-5' : 'my-10'}
+        description={description ?? '当前范围暂无 APM 数据'}
+      >
+        {recoveryAction}
+      </Empty>
+    );
   }
   if (kind === 'forbidden') {
-    return <Result status="403" title="无权访问当前组织的 APM 数据" subTitle={description} />;
-  }
-  if (kind === 'degraded') {
     return (
       <Result
-        status="warning"
-        title="遥测存储暂不可用"
-        subTitle={description ?? '目录元数据仍然可用，请稍后重试遥测查询。'}
+        className={compact ? '!py-6' : undefined}
+        status="403"
+        title={title ?? defaultTitle.forbidden}
+        subTitle={description ?? '请联系组织管理员申请查看权限。'}
+        extra={recoveryAction}
       />
     );
   }
-  return <Result status="error" title="APM 数据加载失败" subTitle={description} />;
+  return (
+    <div role="alert">
+      <Result
+        className={compact ? '!py-6' : undefined}
+        status={kind === 'degraded' ? 'warning' : 'error'}
+        title={title ?? defaultTitle[kind]}
+        subTitle={description ?? (kind === 'degraded'
+          ? '目录元数据仍然可用，请稍后重试遥测查询。'
+          : '请检查筛选条件或网络状态后重试。')}
+        extra={recoveryAction}
+      />
+    </div>
+  );
 }

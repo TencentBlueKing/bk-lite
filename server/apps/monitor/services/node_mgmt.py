@@ -3,6 +3,7 @@ from django.db import IntegrityError, models, transaction
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.logger import monitor_logger as logger
 from apps.core.utils.current_team_scope import CurrentTeamDataScope, scope_permission_queryset
+from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
@@ -252,10 +253,7 @@ class InstanceConfigService:
             return 0
 
         instances_to_update = []
-        existing_map = {
-            obj.id: obj
-            for obj in MonitorInstance.objects.filter(id__in=[item["instance_id"] for item in existing_instances])
-        }
+        existing_map = {obj.id: obj for obj in MonitorInstance.objects.filter(id__in=[item["instance_id"] for item in existing_instances])}
         for instance in existing_instances:
             current = existing_map[instance["instance_id"]]
             summary_facts = InstanceFactResolver.merge(
@@ -423,7 +421,11 @@ class InstanceConfigService:
             )
 
         if rules:
-            created_rules = MonitorObjectOrganizationRule.objects.bulk_create(rules, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            created_rules = bulk_create_with_primary_keys(
+                MonitorObjectOrganizationRule.objects,
+                rules,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+            )
             return [rule.id for rule in created_rules]
 
         return []
@@ -492,7 +494,11 @@ class InstanceConfigService:
 
         # 批量创建所有规则
         if all_rules:
-            created_rules = MonitorObjectOrganizationRule.objects.bulk_create(all_rules, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            created_rules = bulk_create_with_primary_keys(
+                MonitorObjectOrganizationRule.objects,
+                all_rules,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+            )
             logger.info(f"批量创建默认规则数量: {len(created_rules)}")
             return [rule.id for rule in created_rules]
 
@@ -534,16 +540,14 @@ class InstanceConfigService:
             raise BaseAppException(f"请求中存在重复的监控实例标识: {', '.join(sorted(duplicate_ids))}")
 
         # 主键是全局唯一的，必须跨监控对象检查占用。调用方保证当前位于事务内。
-        existing_instances_qs = MonitorInstance.objects.select_for_update().filter(id__in=instance_ids).values_list(
-            "id", "is_deleted", "monitor_object_id"
+        existing_instances_qs = (
+            MonitorInstance.objects.select_for_update().filter(id__in=instance_ids).values_list("id", "is_deleted", "monitor_object_id")
         )
         existing_map = {row[0]: {"is_deleted": row[1], "monitor_object_id": row[2]} for row in existing_instances_qs}
         reclaimable_ids = {instance_id for instance_id, state in existing_map.items() if state["is_deleted"]}
 
         active_cross_object_ids = sorted(
-            instance_id
-            for instance_id, state in existing_map.items()
-            if not state["is_deleted"] and state["monitor_object_id"] != monitor_object_id
+            instance_id for instance_id, state in existing_map.items() if not state["is_deleted"] and state["monitor_object_id"] != monitor_object_id
         )
         if active_cross_object_ids:
             raise BaseAppException(f"监控实例标识已被占用: {', '.join(active_cross_object_ids)}")
@@ -730,10 +734,7 @@ class InstanceConfigService:
             identity = normalize_instance_identity((host_logical_id, process_name))
             storage_key = identity["storage_instance_key"]
             if len(storage_key) > 200:
-                raise ValueError(
-                    "process instance id too long "
-                    f"({len(storage_key)} > 200); shorten process_name or host id"
-                )
+                raise ValueError("process instance id too long " f"({len(storage_key)} > 200); shorten process_name or host id")
             prepared.append(
                 {
                     **instance,
@@ -839,13 +840,14 @@ class InstanceConfigService:
                 monitor_object=monitor_object_id,
                 collector=collector,
                 collect_type=collect_type,
-            ).order_by("id").first()
+            )
+            .order_by("id")
+            .first()
         )
         if monitor_plugin_id not in (None, "") and not plugin:
             raise BaseAppException("监控插件不存在")
         requires_nodes = bool(plugin) and any(
-            binding.get("resolver") in {"selected_node", "selected_nodes"}
-            for binding in (plugin.instance_fact_bindings or [])
+            binding.get("resolver") in {"selected_node", "selected_nodes"} for binding in (plugin.instance_fact_bindings or [])
         )
         prepared_fact_instances = []
         for instance in sanitized_instances:
@@ -876,17 +878,12 @@ class InstanceConfigService:
         if is_host_monitoring_onboarding:
             requested_node_ids = list(
                 dict.fromkeys(
-                    str(node_id)
-                    for instance in sanitized_instances
-                    for node_id in instance.get("node_ids", [])
-                    if node_id not in (None, "")
+                    str(node_id) for instance in sanitized_instances for node_id in instance.get("node_ids", []) if node_id not in (None, "")
                 )
             )
             configured_node_ids = HostDeploymentStatus().get_configured_node_ids(requested_node_ids)
             if configured_node_ids:
-                raise BaseAppException(
-                    f"以下节点已接入主机监控，请刷新节点列表: {', '.join(sorted(configured_node_ids))}"
-                )
+                raise BaseAppException(f"以下节点已接入主机监控，请刷新节点列表: {', '.join(sorted(configured_node_ids))}")
         prepared_instances = sanitized_instances
         if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
             try:
@@ -929,10 +926,7 @@ class InstanceConfigService:
                     logger.info("没有需要处理的实例")
                     return
 
-                logger.info(
-                    f"需要创建 {len(new_instances)} 个新实例,需要复用 {len(existing_instances)} 个已存在实例,"
-                    f"需要回收 {len(reclaimable_ids)} 个历史墓碑"
-                )
+                logger.info(f"需要创建 {len(new_instances)} 个新实例,需要复用 {len(existing_instances)} 个已存在实例," f"需要回收 {len(reclaimable_ids)} 个历史墓碑")
                 if reclaimable_ids:
                     from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 
@@ -950,11 +944,7 @@ class InstanceConfigService:
                 # 注意：所有实例（新建+已存在）都需要创建采集配置
                 sanitized_data = {**data}
                 sanitized_data["instances"] = [
-                    {
-                        key: value
-                        for key, value in instance.items()
-                        if key not in {"_summary_fact_source", "summary_facts"}
-                    }
+                    {key: value for key, value in instance.items() if key not in {"_summary_fact_source", "summary_facts"}}
                     for instance in new_instances + existing_instances
                 ]
                 sanitized_data["monitor_plugin_id"] = monitor_plugin_id
@@ -1051,11 +1041,7 @@ class InstanceConfigService:
 
                 ensure_kafka_sasl_mechanism_in_env(env_config)
                 child_content = child_info.get("content") or {}
-                child_interval = (
-                    (child_content.get("config") or {}).get("interval")
-                    if isinstance(child_content, dict)
-                    else None
-                )
+                child_interval = (child_content.get("config") or {}).get("interval") if isinstance(child_content, dict) else None
                 assert_kafka_group_metrics_timeout_lt_interval(
                     extract_group_metrics_timeout_from_env(env_config),
                     child_interval,

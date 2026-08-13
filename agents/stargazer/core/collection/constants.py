@@ -97,3 +97,7 @@ SNMP_NO_RESPONSE_WORDS = (
 
 # Redis 键前缀默认值（可被环境变量覆盖）
 DEFAULT_COLLECTION_REDIS_PREFIX = "stargazer:collection:v1"
+
+# 配置采集目标并发默认值（环境变量可覆盖；0 = 不限制）
+DEFAULT_MAX_ACTIVE_TARGETS = 2000
+DEFAULT_TARGET_TASK_WINDOW = 2000

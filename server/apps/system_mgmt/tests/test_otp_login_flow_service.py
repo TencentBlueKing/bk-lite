@@ -9,6 +9,9 @@ Tests cover:
 """
 
 import os
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -226,6 +229,109 @@ class TestVerifyOtpLogin:
 
         assert result["result"] is False
         assert "rate" in result["message"].lower() or "limit" in result["message"].lower() or "attempts" in result["message"].lower()
+
+    @pytest.mark.django_db
+    def test_verify_otp_rotating_client_ip_cannot_bypass_account_limit(self, clear_cache, otp_enabled_user, enable_otp_setting):
+        """A forged forwarding header cannot distribute guesses across IP keys."""
+        from apps.system_mgmt.nats_api import verify_otp_login
+
+        challenge_id = create_challenge(user_id=otp_enabled_user.id, username=otp_enabled_user.username)
+        for attempt in range(RATE_LIMIT_MAX_ATTEMPTS):
+            result = verify_otp_login(
+                challenge_id=challenge_id,
+                otp_code="000000",
+                client_ip=f"198.51.100.{attempt + 1}",
+            )
+            assert result["message"] == "Invalid OTP code"
+
+        blocked = verify_otp_login(
+            challenge_id=challenge_id,
+            otp_code="000000",
+            client_ip="203.0.113.9",
+        )
+        assert blocked["message"] == "Too many failed attempts. Please try again later."
+
+    @pytest.mark.django_db
+    def test_success_resets_account_limit(self, clear_cache, otp_enabled_user, enable_otp_setting):
+        """A successful OTP clears both the legacy IP and account-scoped counters."""
+        import pyotp
+
+        from apps.system_mgmt.nats_api import verify_otp_login
+
+        challenge_id = create_challenge(user_id=otp_enabled_user.id, username=otp_enabled_user.username)
+        for attempt in range(RATE_LIMIT_MAX_ATTEMPTS - 1):
+            verify_otp_login(
+                challenge_id=challenge_id,
+                otp_code="000000",
+                client_ip=f"198.51.100.{attempt + 1}",
+            )
+
+        with patch.dict(os.environ, {"SECRET_KEY": "test-secret-key"}):
+            success = verify_otp_login(
+                challenge_id=challenge_id,
+                otp_code=pyotp.TOTP(otp_enabled_user.otp_secret).now(),
+                client_ip="203.0.113.7",
+            )
+        assert success["result"] is True
+
+        next_challenge = create_challenge(user_id=otp_enabled_user.id, username=otp_enabled_user.username)
+        retry = verify_otp_login(
+            challenge_id=next_challenge,
+            otp_code="000000",
+            client_ip="203.0.113.8",
+        )
+        assert retry["message"] == "Invalid OTP code"
+
+    @pytest.mark.django_db
+    def test_account_limit_keeps_same_username_in_other_domain_independent(self, clear_cache, otp_enabled_user, enable_otp_setting):
+        """The compatibility guard follows account identity, not username text."""
+        from apps.system_mgmt.nats_api import verify_otp_login
+
+        for attempt in range(RATE_LIMIT_MAX_ATTEMPTS):
+            challenge_id = create_challenge(user_id=otp_enabled_user.id, username=otp_enabled_user.username)
+            verify_otp_login(challenge_id=challenge_id, otp_code="000000", client_ip=f"198.51.100.{attempt + 1}")
+
+        other_domain_user = User.objects.create(
+            username=otp_enabled_user.username,
+            password=make_password("testpass123"),
+            display_name="Same Name Other Domain",
+            domain="other.example",
+            locale="en",
+            timezone="UTC",
+            otp_secret="JBSWY3DPEHPK3PXP",
+        )
+        other_challenge = create_challenge(user_id=other_domain_user.id, username=other_domain_user.username)
+        result = verify_otp_login(challenge_id=other_challenge, otp_code="000000", client_ip="203.0.113.10")
+
+        assert result["message"] == "Invalid OTP code"
+
+    def test_concurrent_requests_execute_at_most_five_otp_guesses(self, clear_cache):
+        """The account slot is reserved before OTP verification, not after it."""
+        from apps.system_mgmt.nats import otp
+
+        challenge_id = create_challenge(user_id=42, username="alice")
+        verification_barrier = Barrier(RATE_LIMIT_MAX_ATTEMPTS)
+
+        def reject_otp(_totp, _code):
+            verification_barrier.wait(timeout=5)
+            return False
+
+        with (
+            patch.object(otp.User.objects, "filter") as user_filter,
+            patch.object(otp.pyotp.TOTP, "verify", reject_otp),
+        ):
+            user_filter.return_value.first.return_value = SimpleNamespace(otp_secret="JBSWY3DPEHPK3PXP")
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                results = list(
+                    executor.map(
+                        lambda attempt: otp.verify_otp_login(challenge_id, "000000", f"198.51.100.{attempt}"),
+                        range(1, 9),
+                    )
+                )
+
+        messages = [result["message"] for result in results]
+        assert messages.count("Invalid OTP code") == RATE_LIMIT_MAX_ATTEMPTS
+        assert messages.count("Too many failed attempts. Please try again later.") == 3
 
 
 class TestOtpLoginWithTemporaryPassword:

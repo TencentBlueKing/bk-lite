@@ -61,6 +61,8 @@ import { TableSettingsSection } from './widgetConfig/sections/tableSettingsSecti
 import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection';
 import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
 import { RadarSettingsSection } from './widgetConfig/sections/radarSettingsSection';
+import { CardListSettingsSection } from './widgetConfig/sections/cardListSettingsSection';
+import { resolveCardListSettingsRemountKey } from './widgetConfig/utils/cardListSettingsRemountKey';
 import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
@@ -311,6 +313,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             max: 100,
             indicators: [],
           },
+          cardList: {
+            leading: { type: 'none' },
+            layout: 'list',
+          },
           compare: false,
           compareMode: 'percent',
           tableConfig: undefined,
@@ -372,6 +378,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           min: 0,
           max: 100,
           indicators: [],
+        },
+        cardList: {
+          leading: { type: 'none' },
+          layout: 'list',
         },
         compare: false,
         compareMode: 'percent',
@@ -513,6 +523,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
     if (newChartType === 'radar' && !form.getFieldValue('radar')) {
       form.setFieldValue('radar', { min: 0, max: 100, indicators: [] });
+    }
+    if (newChartType === 'cardList' && !form.getFieldValue('cardList')) {
+      form.setFieldValue('cardList', {
+        leading: { type: 'none' },
+        layout: 'list',
+      });
     }
     if (surface === 'screen') {
       form.setFieldValue(
@@ -775,6 +791,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (valueConfig?.radar !== undefined) {
       formValues.radar = valueConfig.radar;
     }
+    if (valueConfig?.cardList !== undefined) {
+      formValues.cardList = {
+        ...valueConfig.cardList,
+        leading: valueConfig.cardList.leading || { type: 'none' },
+        layout: valueConfig.cardList.layout || 'list',
+      };
+    } else {
+      formValues.cardList = {
+        leading: { type: 'none' },
+        layout: 'list',
+      };
+    }
     if (valueConfig?.compare !== undefined) {
       formValues.compare = valueConfig.compare && canEnableCompare({
         config: { chartType: 'single', dataSourceParams: targetDataSource?.params },
@@ -785,6 +813,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
     singleValueConfig.setThresholdColors(initThresholdColors(valueConfig?.thresholdColors));
 
+    // Nested cardList fields are registered individually; reset first so omitted
+    // optional slots from the previous edit target cannot survive setFieldsValue merge.
+    form.resetFields(['cardList']);
     form.setFieldsValue(formValues);
     // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
     markFormPristine(form);
@@ -893,6 +924,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   useEffect(() => {
     if (open) {
+      if (!widgetItem) {
+        return;
+      }
       const requestId = nextConfigRequestId();
       void initializeItemForm(widgetItem, requestId);
     } else if (!open) {
@@ -1007,6 +1041,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         }
         if (submitResult.error === 'multipleComponentSwitchParams') {
           message.error(t('dashboard.multipleComponentSwitchParams'));
+          return;
+        }
+        if (submitResult.error === 'cardListTitleRequired') {
+          message.error(t('dashboard.cardListTitleRequired'));
+          return;
+        }
+        if (submitResult.error === 'cardListLeadingFieldRequired') {
+          message.error(t('dashboard.cardListLeadingFieldRequired'));
           return;
         }
       }
@@ -1384,6 +1426,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             selectedDataSource={selectedDataSource}
             topNLabelFieldOptions={topNLabelFieldOptions}
             topNValueFieldOptions={topNValueFieldOptions}
+          />
+        )}
+
+        {chartType === 'cardList' && (
+          <CardListSettingsSection
+            key={resolveCardListSettingsRemountKey(widgetItem)}
+            t={t}
+            availableFields={availableFields}
           />
         )}
 

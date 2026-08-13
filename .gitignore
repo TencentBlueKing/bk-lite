@@ -69,3 +69,20 @@ automation/
 # 之前误推到 bk-lite 仓库,现在显式 ignore
 docs/ai-product-capabilities/
 docs/superpowers/
+
+# 本机 IDE / agent 工作区（skills 仍由仓内跟踪）
+.cursor/
+.claude/launch.json
+.claude/settings.local.json
+.superpowers/
+
+# 本机开发底座与热同步脚本（不进入生产交付）
+/deploy/local/
+/scripts/
+/web/scripts/sync_lite_web_build.sh
+/server/scripts/sync_lite_server_apps.sh
+
+# 本机构建与下载缓存
+/server/installer-downloads/
+/server/:memory:
+*.local-before-pull

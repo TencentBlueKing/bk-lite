@@ -41,6 +41,8 @@ class FakeGraphClient:
             # 合理默认：查询类返回 ([], 0)，其余返回 {}
             if name.startswith("query") or name in ("entity_objs", "full_text", "full_text_by_model"):
                 return ([], 0)
+            if name == "batch_update_node_property_values":
+                return [{"_id": item["id"]} for item in args[2]]
             return {}
 
         return _method

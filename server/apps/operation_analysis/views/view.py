@@ -136,20 +136,37 @@ def _execute_with_clean_validation_error(handler):
 
 class BuiltinVisibleMixin:
     """
-    内置对象跳过实例级权限过滤（但仍受组织过滤约束）。
-    通过 get_queryset_by_permission 将内置对象从权限过滤中排除后合并；
-    在 retrieve 中内置对象跳过实例级校验。
+    运营分析目录/画布：可见性仅按组织归属过滤。
+
+    功能动作（查看/编辑/删除）仍由 HasPermission 功能权限控制；
+    不依赖系统管理实例数据权限或 created_by。
+    内置对象 retrieve 仍可直接返回序列化结果。
     """
 
     def get_queryset_by_permission(self, request, queryset, permission_key=None):
-        builtin_qs = queryset.filter(is_build_in=True)
-        normal_qs = queryset.filter(is_build_in=False)
-        # 内置对象：复用 filter_by_group 做组织过滤（支持 include_children），跳过实例级权限
-        _ct, _ic, _of, org_query = self.filter_by_group(builtin_qs, request, request.user)
-        builtin_filtered = builtin_qs.filter(org_query)
-        # 普通对象：走完整权限过滤
-        normal_filtered = super().get_queryset_by_permission(request, normal_qs, permission_key)
-        return (normal_filtered | builtin_filtered).distinct()
+        _ct, _ic, _of, org_query = self.filter_by_group(queryset, request, request.user)
+        return queryset.filter(org_query)
+
+    def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False, include_children=False):
+        from apps.core.utils.user_group import normalize_user_group_ids
+
+        user_groups = normalize_user_group_ids(getattr(user, "group_list", []))
+        if include_children:
+            group_tree = getattr(user, "group_tree", [])
+            child_groups = self.extract_child_group_ids(group_tree, current_team)
+            if child_groups:
+                user_groups = child_groups
+
+        org_field = getattr(self, "ORGANIZATION_FIELD", "groups")
+        if is_list:
+            for item in instance:
+                org_value = getattr(item, org_field, []) or []
+                if not set(org_value).intersection(set(user_groups)):
+                    return False
+            return True
+
+        org_value = getattr(instance, org_field, []) or []
+        return bool(set(org_value).intersection(set(user_groups)))
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()

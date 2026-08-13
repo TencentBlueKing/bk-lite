@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus, ScriptType, TargetSource
+from apps.job_mgmt.models import JobExecution
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.services.execution_stream_service import (
@@ -114,6 +115,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                         execution.script_type,
                         execution.timeout,
                         execution.id,
+                        execution,
                     ): t
                     for t in batch
                 }
@@ -193,7 +195,14 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         return script_content
 
     def execute_script_on_target(
-        self, target_info: dict, target_source: str, script_content: str, script_type: str, timeout: int, execution_id: int
+        self,
+        target_info: dict,
+        target_source: str,
+        script_content: str,
+        script_type: str,
+        timeout: int,
+        execution_id: int,
+        execution: JobExecution | None = None,
     ) -> dict:
         target_key = target_info.get("node_id") or str(target_info.get("target_id", ""))
         target_name = target_info.get("name", "")
@@ -245,7 +254,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                 )
             else:
                 target_id = target_info.get("target_id")
-                ssh_creds = self.get_ssh_credentials(target_id)
+                ssh_creds = self.get_ssh_credentials(target_id, execution=execution)
                 if not ssh_creds:
                     raise ValueError(f"无法获取目标凭据: target_id={target_id}")
 

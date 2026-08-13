@@ -6,7 +6,6 @@ from datetime import timedelta
 
 import requests
 from django.db import transaction
-from django.db.models import F
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -65,7 +64,7 @@ class K8sLogCollectService:
                 token_hash=token_hash,
                 usage_count=usage_count,
                 expires_at__gt=timezone.now(),
-            ).update(usage_count=F("usage_count") + 1)
+            ).claim_usage()
             if updated:
                 return token_data, usage_count + 1
 

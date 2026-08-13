@@ -1,26 +1,16 @@
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from unittest.mock import MagicMock
 
 import pytest
 from django.utils import timezone
 
 from apps.operation_analysis.models.models import Dashboard, Directory
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportSubscription,
-)
-from apps.operation_analysis.services.due_subscription_scanner import (
-    DueSubscriptionScanner,
-)
-from apps.operation_analysis.services.execution_service import (
-    DashboardReportExecutionService,
-)
-from apps.operation_analysis.services.schedule_calculator import (
-    ScheduleSpec,
-    catch_up_scheduled_time,
-)
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportSubscription
+from apps.operation_analysis.services.due_subscription_scanner import DueSubscriptionScanner
+from apps.operation_analysis.services.execution_service import DashboardReportExecutionService
+from apps.operation_analysis.services.schedule_calculator import ScheduleSpec, catch_up_scheduled_time
 from apps.system_mgmt.models import Channel
-
 
 pytestmark = pytest.mark.django_db
 
@@ -77,9 +67,7 @@ def _catch_up_for(subscription, now):
     )
 
 
-def test_create_scheduled_creates_execution_and_advances_next_run(
-    due_subscription, monkeypatch, django_capture_on_commit_callbacks
-):
+def test_create_scheduled_creates_execution_and_advances_next_run(due_subscription, monkeypatch, django_capture_on_commit_callbacks):
     dispatch = MagicMock()
     monkeypatch.setattr(
         DashboardReportExecutionService,
@@ -109,9 +97,7 @@ def test_create_scheduled_creates_execution_and_advances_next_run(
     dispatch.assert_called_once_with(result.execution.id)
 
 
-def test_create_scheduled_skips_when_in_flight(
-    due_subscription, monkeypatch
-):
+def test_create_scheduled_skips_when_in_flight(due_subscription, monkeypatch):
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_dispatch_render",
@@ -136,9 +122,7 @@ def test_create_scheduled_skips_when_in_flight(
     assert due_subscription.next_run_at == original_next
 
 
-def test_snapshot_failure_marks_execution_failed_and_advances_next_run(
-    due_subscription, monkeypatch
-):
+def test_snapshot_failure_marks_execution_failed_and_advances_next_run(due_subscription, monkeypatch):
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_dispatch_render",
@@ -171,9 +155,7 @@ def test_snapshot_failure_marks_execution_failed_and_advances_next_run(
     assert due_subscription.next_run_at > now
 
 
-def test_scanner_ignores_unscheduled_subscriptions(
-    authenticated_user, email_channel, monkeypatch
-):
+def test_scanner_ignores_unscheduled_subscriptions(authenticated_user, email_channel, monkeypatch):
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_dispatch_render",
@@ -208,10 +190,13 @@ def test_scanner_creates_due_subscription(due_subscription, monkeypatch):
     stats = DueSubscriptionScanner.scan(now=timezone.now())
     assert stats.scanned == 1
     assert stats.created == 1
-    assert DashboardReportExecution.objects.filter(
-        subscription=due_subscription,
-        trigger_type="scheduled",
-    ).count() == 1
+    assert (
+        DashboardReportExecution.objects.filter(
+            subscription=due_subscription,
+            trigger_type="scheduled",
+        ).count()
+        == 1
+    )
 
 
 def test_scanner_does_not_call_orchestrator(due_subscription, monkeypatch):
@@ -222,17 +207,14 @@ def test_scanner_does_not_call_orchestrator(due_subscription, monkeypatch):
     )
     orchestrator = MagicMock()
     monkeypatch.setattr(
-        "apps.operation_analysis.services.execution_orchestrator."
-        "ExecutionOrchestrator.execute",
+        "apps.operation_analysis.services.execution_orchestrator." "ExecutionOrchestrator.execute",
         orchestrator,
     )
     DueSubscriptionScanner.scan(now=timezone.now())
     orchestrator.assert_not_called()
 
 
-def test_scanner_can_create_next_cycle_after_snapshot_failure(
-    due_subscription, monkeypatch
-):
+def test_scanner_can_create_next_cycle_after_snapshot_failure(due_subscription, monkeypatch):
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_dispatch_render",
@@ -274,9 +256,7 @@ def test_scanner_can_create_next_cycle_after_snapshot_failure(
     )
 
 
-def test_same_scheduled_time_is_not_created_twice_after_snapshot_failure(
-    due_subscription, monkeypatch
-):
+def test_same_scheduled_time_is_not_created_twice_after_snapshot_failure(due_subscription, monkeypatch):
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_dispatch_render",
@@ -288,9 +268,7 @@ def test_same_scheduled_time_is_not_created_twice_after_snapshot_failure(
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_create_snapshot",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            RuntimeError("snapshot broken")
-        ),
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("snapshot broken")),
     )
 
     first = DashboardReportExecutionService.create_scheduled(
@@ -320,24 +298,14 @@ def test_beat_schedule_registers_scan_task():
     from apps.operation_analysis.config import CELERY_BEAT_SCHEDULE
 
     entry = CELERY_BEAT_SCHEDULE["scan_due_dashboard_report_subscriptions"]
-    assert (
-        entry["task"]
-        == "operation_analysis.scan_due_dashboard_report_subscriptions"
-    )
-    timeout_entry = CELERY_BEAT_SCHEDULE[
-        "converge_timed_out_dashboard_report_executions"
-    ]
-    assert (
-        timeout_entry["task"]
-        == "operation_analysis.converge_timed_out_dashboard_report_executions"
-    )
+    assert entry["task"] == "operation_analysis.scan_due_dashboard_report_subscriptions"
+    timeout_entry = CELERY_BEAT_SCHEDULE["converge_timed_out_dashboard_report_executions"]
+    assert timeout_entry["task"] == "operation_analysis.converge_timed_out_dashboard_report_executions"
     assert entry["schedule"]._orig_minute == "*"
     assert timeout_entry["schedule"]._orig_minute == "*"
 
 
-def test_manual_execute_does_not_change_next_run_at(
-    due_subscription, authenticated_user, monkeypatch
-):
+def test_manual_execute_does_not_change_next_run_at(due_subscription, authenticated_user, monkeypatch):
     from types import SimpleNamespace
 
     monkeypatch.setattr(
@@ -346,8 +314,7 @@ def test_manual_execute_does_not_change_next_run_at(
         MagicMock(),
     )
     monkeypatch.setattr(
-        "apps.operation_analysis.services.subscription_service."
-        "DashboardSubscriptionService.require_canvas_view",
+        "apps.operation_analysis.services.subscription_service." "DashboardSubscriptionService.require_canvas_view",
         lambda *args, **kwargs: None,
     )
     original = due_subscription.next_run_at
@@ -355,16 +322,12 @@ def test_manual_execute_does_not_change_next_run_at(
         user=authenticated_user,
         data={"request_id": "manual-keep-schedule"},
     )
-    DashboardReportExecutionService.execute_manual(
-        request, due_subscription, request_id="manual-keep-schedule"
-    )
+    DashboardReportExecutionService.execute_manual(request, due_subscription, request_id="manual-keep-schedule")
     due_subscription.refresh_from_db()
     assert due_subscription.next_run_at == original
 
 
-def test_daily_outage_three_days_creates_only_one_execution(
-    authenticated_user, email_channel, monkeypatch
-):
+def test_daily_outage_three_days_creates_only_one_execution(authenticated_user, email_channel, monkeypatch):
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_dispatch_render",
@@ -403,27 +366,18 @@ def test_daily_outage_three_days_creates_only_one_execution(
         )
     )
     assert len(executions) == 1
-    assert executions[0].scheduled_time_utc == datetime(
-        2026, 8, 4, 1, 0, tzinfo=dt_timezone.utc
-    )
+    assert executions[0].scheduled_time_utc == datetime(2026, 8, 4, 1, 0, tzinfo=dt_timezone.utc)
     sub.refresh_from_db()
-    assert sub.next_run_at == datetime(
-        2026, 8, 5, 1, 0, tzinfo=dt_timezone.utc
-    )
+    assert sub.next_run_at == datetime(2026, 8, 5, 1, 0, tzinfo=dt_timezone.utc)
     assert sub.next_run_at > now
 
     # 同一次扫描语义：再次扫描不因陈旧历史再补多期
     again = DueSubscriptionScanner.scan(now=now)
     assert again.created == 0
-    assert (
-        DashboardReportExecution.objects.filter(subscription=sub).count()
-        == 1
-    )
+    assert DashboardReportExecution.objects.filter(subscription=sub).count() == 1
 
 
-def test_weekly_outage_cross_week_creates_only_one_execution(
-    authenticated_user, email_channel, monkeypatch
-):
+def test_weekly_outage_cross_week_creates_only_one_execution(authenticated_user, email_channel, monkeypatch):
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_dispatch_render",
@@ -456,18 +410,13 @@ def test_weekly_outage_cross_week_creates_only_one_execution(
     stats = DueSubscriptionScanner.scan(now=now)
     assert stats.created == 1
     execution = DashboardReportExecution.objects.get(subscription=sub)
-    assert execution.scheduled_time_utc == datetime(
-        2026, 8, 10, 1, 0, tzinfo=dt_timezone.utc
-    )
+    assert execution.scheduled_guard is True
+    assert execution.scheduled_time_utc == datetime(2026, 8, 10, 1, 0, tzinfo=dt_timezone.utc)
     sub.refresh_from_db()
-    assert sub.next_run_at == datetime(
-        2026, 8, 17, 1, 0, tzinfo=dt_timezone.utc
-    )
+    assert sub.next_run_at == datetime(2026, 8, 17, 1, 0, tzinfo=dt_timezone.utc)
 
 
-def test_monthly_day_31_outage_creates_only_one_execution(
-    authenticated_user, email_channel, monkeypatch
-):
+def test_monthly_day_31_outage_creates_only_one_execution(authenticated_user, email_channel, monkeypatch):
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_dispatch_render",
@@ -500,17 +449,13 @@ def test_monthly_day_31_outage_creates_only_one_execution(
     stats = DueSubscriptionScanner.scan(now=now)
     assert stats.created == 1
     execution = DashboardReportExecution.objects.get(subscription=sub)
-    assert execution.scheduled_time_utc == datetime(
-        2026, 3, 31, 1, 0, tzinfo=dt_timezone.utc
-    )
+    assert execution.scheduled_time_utc == datetime(2026, 3, 31, 1, 0, tzinfo=dt_timezone.utc)
     sub.refresh_from_db()
     assert sub.next_run_at > now
     assert sub.next_run_at.astimezone(dt_timezone.utc).month == 4
 
 
-def test_dst_outage_creates_only_one_execution(
-    authenticated_user, email_channel, monkeypatch
-):
+def test_dst_outage_creates_only_one_execution(authenticated_user, email_channel, monkeypatch):
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_dispatch_render",
@@ -541,21 +486,14 @@ def test_dst_outage_creates_only_one_execution(
 
     stats = DueSubscriptionScanner.scan(now=now)
     assert stats.created == 1
-    assert (
-        DashboardReportExecution.objects.filter(subscription=sub).count()
-        == 1
-    )
+    assert DashboardReportExecution.objects.filter(subscription=sub).count() == 1
     execution = DashboardReportExecution.objects.get(subscription=sub)
-    assert execution.scheduled_time_utc == datetime(
-        2026, 3, 9, 6, 30, tzinfo=dt_timezone.utc
-    )
+    assert execution.scheduled_time_utc == datetime(2026, 3, 9, 6, 30, tzinfo=dt_timezone.utc)
     sub.refresh_from_db()
     assert sub.next_run_at > now
 
 
-def test_dual_scanner_concurrent_create_only_one_execution(
-    due_subscription, monkeypatch
-):
+def test_dual_scanner_concurrent_create_only_one_execution(due_subscription, monkeypatch):
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_dispatch_render",
@@ -575,9 +513,7 @@ def test_dual_scanner_concurrent_create_only_one_execution(
     )
 
 
-def test_scanner_skips_paused_and_deleted(
-    authenticated_user, email_channel, monkeypatch
-):
+def test_scanner_skips_paused_and_deleted(authenticated_user, email_channel, monkeypatch):
     monkeypatch.setattr(
         DashboardReportExecutionService,
         "_dispatch_render",
@@ -621,9 +557,4 @@ def test_scanner_skips_paused_and_deleted(
     )
     stats = DueSubscriptionScanner.scan(now=timezone.now())
     assert stats.scanned == 0
-    assert (
-        DashboardReportExecution.objects.filter(
-            subscription_id__in=[paused.id, deleted.id]
-        ).count()
-        == 0
-    )
+    assert DashboardReportExecution.objects.filter(subscription_id__in=[paused.id, deleted.id]).count() == 0

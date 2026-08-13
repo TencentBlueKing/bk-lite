@@ -851,15 +851,17 @@ export type DecisionListView = "pending" | "processed";
 export type CheckDecisionAction =
   // 知识冲突
   | "keep_current"
+  | "keep_all"
   | "use_new"
   | "edit_accept"
   // 页面合并
   | "keep_separate"
   | "merge";
 
-// 知识冲突决策三选一
+// 知识冲突决策
 export const KNOWLEDGE_CONFLICT_ACTIONS: CheckDecisionAction[] = [
   "keep_current",
+  "keep_all",
   "use_new",
   "edit_accept",
 ];

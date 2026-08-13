@@ -48,21 +48,6 @@ def _client_for(user, *, current_team: int):
     return client
 
 
-def _grant_instance(monkeypatch, topology, *permissions):
-    monkeypatch.setattr(
-        "apps.core.utils.viewset_utils.get_permission_rules",
-        lambda *args, **kwargs: {
-            "team": [],
-            "instance": [
-                {
-                    "id": topology.id,
-                    "permission": list(permissions),
-                }
-            ],
-        },
-    )
-
-
 @pytest.mark.django_db
 def test_non_space_member_cannot_read_config_or_call_metric_values(monkeypatch):
     topology = _make_topology()
@@ -100,7 +85,8 @@ def test_non_space_member_cannot_read_config_or_call_metric_values(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_space_member_without_view_rule_cannot_read_topology_config(monkeypatch):
+def test_space_member_without_instance_rule_can_read_topology_config(monkeypatch):
+    """同组织成员仅凭功能查看权限即可读配置，不依赖实例数据权限。"""
     topology = _make_topology()
     member = _make_user(
         username=f"nt-member-no-view-{uuid.uuid4()}",
@@ -117,11 +103,11 @@ def test_space_member_without_view_rule_cannot_read_topology_config(monkeypatch)
         f"/api/v1/operation_analysis/api/network_topology/{topology.id}/config/"
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 200
 
 
 @pytest.mark.django_db
-def test_space_member_with_view_rule_can_read_topology_and_config(monkeypatch):
+def test_space_member_with_view_feature_can_read_topology_and_config(monkeypatch):
     topology = _make_topology()
     viewer = _make_user(
         username=f"nt-viewer-{uuid.uuid4()}",
@@ -129,7 +115,10 @@ def test_space_member_with_view_rule_can_read_topology_and_config(monkeypatch):
         permissions={"view-View"},
     )
     client = _client_for(viewer, current_team=1)
-    _grant_instance(monkeypatch, topology, "View")
+    monkeypatch.setattr(
+        "apps.core.utils.viewset_utils.get_permission_rules",
+        lambda *args, **kwargs: {"team": [], "instance": []},
+    )
 
     detail_response = client.get(
         f"/api/v1/operation_analysis/api/network_topology/{topology.id}/"
@@ -143,7 +132,7 @@ def test_space_member_with_view_rule_can_read_topology_and_config(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_space_member_with_edit_rule_can_update_topology(monkeypatch):
+def test_space_member_with_edit_feature_can_update_topology(monkeypatch):
     topology = _make_topology()
     editor = _make_user(
         username="nt-editor",
@@ -151,7 +140,10 @@ def test_space_member_with_edit_rule_can_update_topology(monkeypatch):
         permissions={"view-EditChart"},
     )
     client = _client_for(editor, current_team=1)
-    _grant_instance(monkeypatch, topology, "Operate")
+    monkeypatch.setattr(
+        "apps.core.utils.viewset_utils.get_permission_rules",
+        lambda *args, **kwargs: {"team": [], "instance": []},
+    )
 
     response = client.patch(
         f"/api/v1/operation_analysis/api/network_topology/{topology.id}/",
@@ -173,7 +165,10 @@ def test_update_and_delete_require_their_feature_permissions(monkeypatch):
         permissions={"view-View"},
     )
     client = _client_for(viewer, current_team=1)
-    _grant_instance(monkeypatch, topology, "View", "Operate")
+    monkeypatch.setattr(
+        "apps.core.utils.viewset_utils.get_permission_rules",
+        lambda *args, **kwargs: {"team": [], "instance": []},
+    )
 
     update_response = client.patch(
         f"/api/v1/operation_analysis/api/network_topology/{topology.id}/",
@@ -200,7 +195,10 @@ def test_space_member_with_delete_permission_can_delete_topology(monkeypatch):
         permissions={"view-DeleteChart"},
     )
     client = _client_for(deleter, current_team=1)
-    _grant_instance(monkeypatch, topology, "Operate")
+    monkeypatch.setattr(
+        "apps.core.utils.viewset_utils.get_permission_rules",
+        lambda *args, **kwargs: {"team": [], "instance": []},
+    )
 
     response = client.delete(
         f"/api/v1/operation_analysis/api/network_topology/{topology_id}/"

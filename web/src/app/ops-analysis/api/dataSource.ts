@@ -6,6 +6,19 @@ import {
   type SourceDataResult,
 } from '@/app/ops-analysis/utils/sourceDataResponse';
 
+export interface SourceDataRequestOptions {
+  suppressErrorNotification?: boolean;
+}
+
+export const withRuntimeSourceDataErrorSuppression = (
+  getSourceDataByApiId: (
+    id: number,
+    params?: unknown,
+    options?: SourceDataRequestOptions,
+  ) => Promise<SourceDataResult>,
+) => (id: number, params?: unknown) =>
+  getSourceDataByApiId(id, params, { suppressErrorNotification: true });
+
 export const useDataSourceApi = () => {
   const { get, post, put, del } = useApiClient();
   const sharedAccess = useSharedDataSourceQuery();
@@ -62,10 +75,21 @@ export const useDataSourceApi = () => {
     return get(`/operation_analysis/api/data_source/${id}/`);
   }, [get]);
 
-  const getSourceDataByApiId = useCallback(async (id: number, params?: any): Promise<SourceDataResult> => {
+  const getSourceDataByApiId = useCallback(async (
+    id: number,
+    params?: unknown,
+    options?: SourceDataRequestOptions,
+  ): Promise<SourceDataResult> => {
+    const requestConfig = options?.suppressErrorNotification
+      ? { suppressErrorNotification: true as const }
+      : undefined;
     const raw = sharedAccess
-      ? await sharedAccess.queryDataSource(id, params)
-      : await post(`/operation_analysis/api/data_source/get_source_data/${id}/`, params);
+      ? await sharedAccess.queryDataSource(id, params, options)
+      : await post(
+        `/operation_analysis/api/data_source/get_source_data/${id}/`,
+        params,
+        requestConfig,
+      );
     return parseSourceDataResponse(raw);
   }, [post, sharedAccess]);
 

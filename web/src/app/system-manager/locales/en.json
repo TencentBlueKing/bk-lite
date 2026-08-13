@@ -909,7 +909,14 @@
         "notInWhitelist": "webhook domain or IP is not in the whitelist",
         "builtinEntryProtected": "Built-in entries cannot be modified or deleted",
         "name": "Name",
-        "team": "Organization"
+        "team": "Organization",
+        "nats_mode": "Notification delivery target",
+        "subject_key": "Notification topic identifier",
+        "subjectKeyRequired": "Enter a notification topic identifier",
+        "subjectKeyPattern": "Use letters, numbers, hyphens (-), and underscores (_) only",
+        "subjectKeyPlaceholder": "For example, customer-alerts-prod",
+        "natsModeRequestReply": "Send to an internal service",
+        "natsModeEventPublish": "Publish to external subscribers"
       },
       "table": {
         "description": "DESCRIPTION",

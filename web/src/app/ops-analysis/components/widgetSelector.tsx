@@ -53,6 +53,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     table: t('dataSource.table'),
     eventTable: t('dataSource.eventTable'),
     eventTimeline: t('dashboard.eventTimeline'),
+    cardList: t('dataSource.cardList'),
     message: t('dataSource.eventTable'),
     topN: t('dataSource.topN'),
     radar: t('dashboard.radar'),

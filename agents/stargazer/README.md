@@ -33,11 +33,18 @@ Token、community 或私钥。移除持久队列后，Pod 故障丢单依赖下�
 
 ## 并发与超时
 
+目标并发**只从环境变量读取**（代码默认值仅作缺省），改配置重启即可，不必改代码：
+
 ```bash
 MAX_ACTIVE_RUNS=16
-MAX_ACTIVE_TARGETS=200
-TARGET_TASK_WINDOW=200
-CONNECT_TIMEOUT=5
+# 配置采集目标并发；设为 0 表示不限制（尽快打满机器、靠监控扩容）
+MAX_ACTIVE_TARGETS=2000
+TARGET_TASK_WINDOW=2000
+REDIS_MAX_CONNECTIONS=2560
+REDIS_POOL_TIMEOUT=2
+# 默认 RESP2，兼容不支持 HELLO 的旧 Redis / 代理；仅在确认服务端支持 RESP3 时设为 3
+REDIS_PROTOCOL=2
+CONNECT_TIMEOUT=7
 PLUGIN_TIMEOUT=60
 RUN_LEASE_TTL=600
 RUN_LEASE_HEARTBEAT=30
@@ -45,11 +52,33 @@ COLLECTION_SHUTDOWN_GRACE=30
 EVENT_LOOP_LAG_INTERVAL=1
 OUTBOUND_ALLOWED_CIDRS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 OUTBOUND_ALLOWED_DOMAINS=
+# 默认 off：跳过 TCP/TLS 端口短探，CIDR 出站与 Job remote 通道检查仍保留；设为 on 恢复探活
+PREFLIGHT_REACHABILITY=off
 ```
 
-这些值都是部署参数；`200` 不是固定容量。`MAX_ACTIVE_TARGETS` 是单 Pod、跨所有运行共享的
-目标并发上限。协议预检默认 5 秒：TCP 协议先连接实际端口，SNMP/UDP 返回“不确定”并进入
-凭据感知采集，云账号检查逻辑端点；ICMP 不作为硬过滤条件。
+这些值都是部署参数。未设置时默认 `MAX_ACTIVE_TARGETS=2000`、
+`TARGET_TASK_WINDOW=2000`。二者是单 Pod、跨所有运行共享的配置采集目标并发窗口；
+默认偏大是为了不把压力藏在软上限后面。需要临时去掉目标并发上限时：
+
+```bash
+MAX_ACTIVE_TARGETS=0
+TARGET_TASK_WINDOW=0
+```
+
+`MAX_ACTIVE_RUNS` 仍保留 run 级准入；满了返回 busy/429。
+
+`REDIS_MAX_CONNECTIONS` 应不小于目标并发并留租约余量（推荐
+`≳ MAX_ACTIVE_TARGETS`；目标不限制时按机器与 Redis `maxclients` 自行抬高）。多 Pod 时还要保证
+`单池峰值 × Pod 数 < Redis maxclients`。池满时会有限等待
+`REDIS_POOL_TIMEOUT` 秒，而不是立刻 `MaxConnectionsError` 打崩整轮 run。
+
+`REDIS_PROTOCOL` 默认 `2`（RESP2）。`redis-py` 8+ 默认会走 RESP3 并发送 `HELLO`；
+若 Redis 过旧或不支持 `HELLO` 的代理会在启动 `ping` 时直接失败，因此显式钉在 RESP2。
+
+协议预检 / access_probe 外层默认 7 秒（`CONNECT_TIMEOUT`）。`PREFLIGHT_REACHABILITY` 默认
+`off`：TCP/TLS 不再做端口短探，CIDR 通过后直接进入凭据/采集；Job `remote` 仍检查执行通道。
+设为 `on` 时 TCP 协议会先连接实际端口。SNMP/UDP 始终在 CIDR 通过后进入凭据感知 probe
+（SNMP GET 固定 timeout=5、retries=2），云账号检查逻辑端点；ICMP 不作为硬过滤条件。
 直接 IP 与域名解析后的每个可用地址都必须落在 `OUTBOUND_ALLOWED_CIDRS`；配置
 `OUTBOUND_ALLOWED_DOMAINS` 后，域名还必须同时命中该名单，域名名单不能绕过 CIDR 边界。
 生产环境应按实际采集边界收窄这两项。
@@ -66,7 +95,7 @@ OUTBOUND_ALLOWED_DOMAINS=
 - `/api/health/metrics`：Prometheus 格式的运行时指标。
 
 重点观察 `active_runs`、`active_targets`、接纳拒绝、事件循环 lag、预检失败、插件超时、结果
-发布失败和租约接管。日志和指标只允许任务、目标、插件、凭据 ID 与稳定错误码，不得记录凭据
+发布失败、Redis 连接池等待/超时，以及凭据状态 Redis 错误。日志和指标只允许任务、目标、插件、凭据 ID 与稳定错误码，不得记录凭据
 正文。
 
 ## Host Remote

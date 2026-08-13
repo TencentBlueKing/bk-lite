@@ -513,6 +513,122 @@ def test_finalize_coerces_missing_page_type_and_promotes_source_only_output():
     assert any(page["page_type"] == "source" for page in promoted)
 
 
+def test_generation_page_contract_includes_fact_preservation_rules():
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.wiki import build_service
+
+    structure_revision = SimpleNamespace(structure_snapshot={"page_types": ["source", "concept", "entity"], "directories": []})
+    contract = build_service._generation_page_contract(
+        structure_revision,
+        source_metadata={"source_title": "资料A", "display_name": "资料A"},
+    )
+    assert "可核验事实保留硬性要求" in contract
+    assert "联系人姓名、电话、内线/分机" in contract
+    assert "禁止把资料中已写明的具体事实改写成" in contract
+    assert "仅当资料确实未给出时才写信息缺口" in contract
+
+
+def test_ensure_contact_facts_preserved_backfills_missing_contacts():
+    from apps.opspilot.services.wiki import build_service
+
+    source_text = "后备电源安全管理指引\n" "联系人：丁妍曼  联系电话：0757-23623013  内线：3013\n" "联系人：何永根  联系电话：0757-27720410  内线：1410\n"
+    pages = [
+        {
+            "page_type": "concept",
+            "title": "日常巡检",
+            "body": "应定期检查电池与线路状态。",
+        },
+        {
+            "page_type": "concept",
+            "title": "后备电源安全管理指引",
+            "body": "联系方式是否仍有效未确认。",
+        },
+        {
+            "page_type": "source",
+            "title": "资料：后备电源",
+            "body": "本资料介绍后备电源安全管理要求。",
+        },
+    ]
+
+    result = build_service.ensure_contact_facts_preserved(source_text, pages)
+    target = next(page for page in result if "指引" in page["title"])
+    body = target["body"]
+    assert "## 联系方式" in body
+    assert "丁妍曼" in body
+    assert "0757-23623013" in body
+    assert "3013" in body
+    assert "何永根" in body
+    assert "0757-27720410" in body
+    assert "1410" in body
+
+    source = next(page for page in result if page["page_type"] == "source")
+    assert "丁妍曼" in source["body"]
+    assert "0757-23623013" in source["body"]
+    assert "3013" in source["body"]
+    # 联系方式应靠前，避免页末被检索摘录截断
+    assert source["body"].find("## 联系方式") < source["body"].find("本资料介绍")
+
+    again = build_service.ensure_contact_facts_preserved(source_text, result)
+    assert again[1]["body"].count("丁妍曼") == body.count("丁妍曼")
+    assert again[1]["body"].count("## 联系方式") == 1
+
+
+def test_prepare_page_data_with_contact_facts_covers_source_only_publish_path():
+    """主题页进待审批时，唯一生效的 source 页仍必须带上联系方式。"""
+    from apps.opspilot.services.wiki import build_service
+
+    source_text = "联系人：丁妍曼  联系电话：0757-23623013  内线：3013\n" "联系人：何永根  联系电话：0757-27720410  内线：1410\n"
+    # 模拟定稿时联系方式只写进了主题页；source 仅有摘要。
+    source_page = {
+        "page_type": "source",
+        "title": "资料：后备电源安全管理指引",
+        "body": "资料包含联系人信息，但未写出具体电话。\n\n## 已知缺口\n- 联系方式是否仍有效未确认。",
+    }
+    prepared = build_service.prepare_page_data_with_contact_facts(source_text, source_page)
+    assert "丁妍曼" in prepared["body"]
+    assert "何永根" in prepared["body"]
+    assert "0757-23623013" in prepared["body"]
+    assert "0757-27720410" in prepared["body"]
+    assert "3013" in prepared["body"]
+    assert "1410" in prepared["body"]
+    # 靠前插入，避免问答摘录截断页末
+    assert prepared["body"].find("## 联系方式") < prepared["body"].find("已知缺口")
+    assert build_service.published_pages_missing_contact_facts(source_text, [prepared]) == []
+
+
+def test_finalize_material_pages_backfills_contacts_from_source_text():
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.wiki import build_service
+
+    kb = SimpleNamespace(id=1)
+    structure_revision = SimpleNamespace(structure_snapshot={"page_types": ["source", "concept"], "directories": []})
+    source_text = "联系人：丁妍曼\n电话：0757-23623013\n内线：3013\n"
+    pages = build_service._finalize_material_pages(
+        [
+            {
+                "page_type": "concept",
+                "title": "安全管理指引",
+                "body": "信息缺口：联系方式是否仍有效未确认。",
+            },
+            {
+                "page_type": "source",
+                "title": "资料A",
+                "body": "本资料介绍安全管理要求。",
+            },
+        ],
+        kb=kb,
+        structure_revision=structure_revision,
+        source_metadata={"source_title": "资料A", "display_name": "资料A"},
+        source_text=source_text,
+    )
+    joined = "\n".join(page["body"] for page in pages)
+    assert "丁妍曼" in joined
+    assert "0757-23623013" in joined
+    assert "3013" in joined
+
+
 def test_generate_and_finalize_pages_retries_once_on_empty_topic_pages(monkeypatch):
     from types import SimpleNamespace
 

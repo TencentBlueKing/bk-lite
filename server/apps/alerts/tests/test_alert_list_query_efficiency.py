@@ -58,6 +58,7 @@ def test_alert_list_counts_events_without_loading_event_details(superuser):
         for index in range(3)
     ]
     Event.objects.bulk_create(events)
+    events = list(Event.objects.filter(event_id__in=[event.event_id for event in events]))
     alert.events.add(*events)
 
     request = APIRequestFactory().get("/alerts/?page=1&page_size=20")

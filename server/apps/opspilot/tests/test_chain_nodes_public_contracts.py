@@ -82,6 +82,66 @@ def test_normalize_messages_empty_input():
     assert node.normalize_messages_for_llm([]) == []
 
 
+def test_without_system_messages_drops_graph_system_for_deepagent():
+    from apps.opspilot.metis.llm.chain.node import without_system_messages
+
+    kept = without_system_messages(
+        [
+            SystemMessage(content="图前置"),
+            HumanMessage(content="写月报"),
+            AIMessage(content="好的"),
+        ]
+    )
+    assert [type(message) for message in kept] == [HumanMessage, AIMessage]
+
+
+def test_merge_openai_payload_system_messages_moves_mid_conversation_system_to_front():
+    from apps.opspilot.metis.llm.chain.lc_patches import merge_openai_payload_system_messages
+
+    leading = [
+        {"role": "system", "content": "only"},
+        {"role": "user", "content": "hi"},
+    ]
+    assert merge_openai_payload_system_messages(leading) is leading
+
+    merged = merge_openai_payload_system_messages(
+        [
+            {"role": "system", "content": "graph-system"},
+            {"role": "user", "content": "生成附件"},
+            {"role": "assistant", "content": "开始"},
+            {"role": "system", "content": "deepagent-system"},
+        ]
+    )
+    assert merged[0]["role"] == "system"
+    assert "graph-system" in merged[0]["content"]
+    assert "deepagent-system" in merged[0]["content"]
+    assert [item["role"] for item in merged[1:]] == ["user", "assistant"]
+    assert sum(1 for item in merged if item.get("role") == "system") == 1
+
+
+def test_chatopenai_request_payload_merges_mid_conversation_system():
+    """ChatOpenAI 覆盖了 Base._get_request_payload；补丁必须打在实际发请求的类上。"""
+    from langchain_openai import ChatOpenAI
+
+    import apps.opspilot.metis.llm.chain.lc_patches  # noqa: F401
+
+    llm = ChatOpenAI(model="qwen-plus", api_key="test-key", base_url="http://127.0.0.1")
+    payload = llm._get_request_payload(
+        [
+            SystemMessage(content="graph-system"),
+            HumanMessage(content="生成附件"),
+            AIMessage(content="开始"),
+            SystemMessage(content="deepagent-system"),
+        ]
+    )
+    messages = payload["messages"]
+    assert messages[0]["role"] in {"system", "developer"}
+    assert "graph-system" in messages[0]["content"]
+    assert "deepagent-system" in messages[0]["content"]
+    assert [item["role"] for item in messages[1:]] == ["user", "assistant"]
+    assert sum(1 for item in messages if item.get("role") in {"system", "developer"}) == 1
+
+
 def test_prompt_suggestion_and_history_nodes_build_valid_message_sequence():
     request = SimpleNamespace(
         system_message_prompt="Follow operations policy.",

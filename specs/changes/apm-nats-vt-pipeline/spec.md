@@ -15,23 +15,26 @@ OTel SDK / Agent
   ← apps.apm VictoriaTracesTelemetryStore 受控查询
 ```
 
-APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM 只使用 VictoriaTraces，Log 只使用 VictoriaLogs。NATS 是区域到中心的长期遥测传输模块，不是临时转发层。运维负责生产 Stream、系统级 Collector、VictoriaTraces、容量和告警；研发交付区域发布能力、中心消费能力、传输契约、参考部署、本地契约验证以及 Server/Web 查询闭环。
+APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM 只使用 VictoriaTraces，Log 只使用 VictoriaLogs。NATS 是区域到中心的长期遥测传输模块，不是临时转发层。研发交付传输契约、产品自有组件（Collector 发行版与区域代理内嵌）、契约夹具/本地验证以及 Server/Web 查询闭环；运维按自身流水线部署生产 Stream、系统级 Collector、VictoriaTraces、容量和告警，须满足硬约束但编排方式自选。`deploy/apm` 的 Compose 不是生产编排真相源。
 
 ## 非目标
 
 - 不引入 `ApmIngestSource`、APM Token、浏览器可提交的 endpoint 或持久化接入配置。
 - 不复用 `/telegraf/api`，不改变 Monitor 的 VictoriaMetrics 或 Log 的 VictoriaLogs 配置和数据。
-- 不保留独立 APM Edge Nginx，不在 Django 中接收、转发或保存原始 Span。
+- 不引入独立 APM Edge Nginx，不在 Django 中接收、转发或保存原始 Span。
 - 不生成 Span Metrics，不运行 metrics pipeline，不执行尾采样；默认全量 Trace 进入 VT。
 - 不在 `batch_init`、迁移或 Server 启动钩子创建 Stream、等待 Collector 或探测 VT。
 - 不在本变更顺手实现 APM 首页、任意 LogsQL/TraceQL 输入或无关 Storybook 差距。
 
 ## 基线审计
 
+APM 从未正式部署。下表中的“基线”只描述仓库内曾存在的开发实现或未发布设计，不代表生产
+存量，不产生数据迁移、旧路由切换或历史组件回滚义务。
+
 | 域/链路 | 当前事实 | 本变更差异与复用 |
 | --- | --- | --- |
 | APM 接入 | `integration-config` 仍接受浏览器 endpoint；页面按浏览器 hostname 拼 4318；配置无状态、无 Token；Shell/Docker 混合单双引号存在注入风险 | 保留应用与无状态片段；新增受权限保护的云区域选择，Server 从 NodeMgmt 解析该区域受信代理地址并固定生成 OTLP/HTTP 4318；所有 shell 值统一安全引用 |
-| APM 数据面 | `deploy/apm` 为 Edge Nginx → 单个 contrib Collector → VT/VM；Collector 先 spanmetrics、后 tail sampling；compose 含 standalone VM | 删除 Edge、spanmetrics、tail sampling、metrics pipeline 和 VM；拆成区域发布与中心消费两种角色 |
+| APM 数据面 | 仓库曾有未发布的 Edge Nginx → 单个 contrib Collector → VT/VM 参考实现；Collector 先 spanmetrics、后 tail sampling；compose 含 standalone VM | 不把该参考实现带入首次生产上线；正式链路拆成区域发布与中心消费两种角色，只有 VT 一个遥测事实源 |
 | APM 查询 | `TraceStore` 查 VT，`MetricStore` 查 VM；目录、RED、SLO、策略依赖 VM；拓扑逐 Trace 详情扫描 | 用一个 `TelemetryStore` interface 隐藏 VT 的 Jaeger/LogsQL 查询；dependencies 接口替代 N+1 拓扑扫描 |
 | Monitor/Log 被动接收地址 | Log Syslog/SNMP 与 Monitor Flow 通过 NodeMgmt 读取有权限的云区域代理地址，再组合各协议固定端口；Monitor Telegraf 使用受信 `NODE_SERVER_URL` 与固定 `/telegraf/api` | APM 复用“受信云区域代理地址 + 固定监听端口”模式，服务端生成 OTLP/HTTP 4318；不从浏览器 hostname 或 `NODE_SERVER_URL` 猜测 |
 | Monitor NATS | NodeMgmt Telegraf 以环境注入 NATS TLS/用户名密码，向 `metrics.<node>` 发布 Influx；系统 Telegraf 使用 `nats_consumer` 消费 `metrics.*` | 复用现有 Broker、认证与区域 envconfig；APM 使用独立受限 `apm.traces.*` Subject 和 OTLP Protobuf，不复用 metrics payload |
@@ -42,7 +45,7 @@ APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM
 
 - 普通 APM 应用由用户创建；平台提供不可删改的内置“未归类应用”。非空 `service.namespace` 必须等于一个当前可见的普通应用 ID，空值归入未归类应用，非空未知值不得进入目录并产生有界诊断计数/日志。
 - APM 服务由 `service.namespace + service.name` 发现；实例由服务身份 + `service.instance.id` 发现；版本和环境是查询维度。
-- 接入片段必须为每个运行实例提供 `service.instance.id`，但 Server 生成配置时不得固化实例 UUID。主机进程在每次启动片段时生成一次 UUID，进程生命周期内复用；新进程或副本生成新 UUID。Docker 默认使用容器 hostname，Kubernetes 使用 Downward API 提供的 Pod UID；`APM_INSTANCE_ID` 只作为运维显式覆盖，且每个并发副本必须使用不同值。片段不得要求未由平台或 OpenTelemetry 提供的隐式环境变量。
+- 接入片段必须为每个运行实例提供 `service.instance.id`，但 Server 生成配置时不得固化实例 UUID。主机进程在每次启动片段时生成一次 UUID，进程生命周期内复用；新进程或副本生成新 UUID。Docker 默认使用容器 hostname；Kubernetes 清单通过 Downward API 把 Pod UID 直接写入 `OTEL_SERVICE_INSTANCE_ID`，需要覆盖时由运维显式修改该变量且每个并发 Pod 必须使用不同值。其他 Shell 运行时可用 `APM_INSTANCE_ID` 显式覆盖。片段不得要求未由平台或 OpenTelemetry 提供的隐式环境变量。
 - Host、Docker、Kubernetes 和 other 共用一个运行时身份 profile：profile 只负责身份来源、同一份非空/字符/512 长度校验和面向操作者的提示。Host 的 `/proc/sys/kernel/random/uuid` 与 `uuidgen` 都不可用、返回空值或非法 UUID 时必须非零退出；other 没有可靠运行时身份时必须要求显式 `APM_INSTANCE_ID`，不得猜测。
 - 区域 Collector 删除客户端提交的全部 `bk.*` 保留属性后注入可信 `bk.cloud_region.id`。组织 ID、NATS 凭据和 endpoint 不进入 Span。
 - 应用组织更新必须在一个事务内同步继承态实例和该应用下服务的 `ApmServiceOrganization`；自定义实例组织仍不被覆盖。
@@ -173,29 +176,31 @@ VT 开启 `-servicegraph.enableTask=true`。拓扑使用 dependencies 接口，�
 
 ## 健康与启动语义
 
-APM 健康模型包含：区域 Collector 接收/清洗、本地发布队列、NATS publish ACK、JetStream backlog/max-delivery、系统级 Collector 消费/下游写入、VictoriaTraces 查询/保留期、目录对账、策略评估和通知投递。移除 APM Edge、APM VictoriaMetrics 和 spanmetrics 状态。
+APM 健康模型包含：区域 Collector 接收/清洗、本地发布队列、NATS publish ACK、JetStream backlog/max-delivery、系统级 Collector 消费/下游写入、VictoriaTraces 查询/保留期、目录对账、策略评估和通知投递。健康模型不包含 Edge、APM VictoriaMetrics 或 spanmetrics 状态。
 
 所有数据面检查只在运行期执行。`batch_init`、数据库迁移、API/Worker/Beat/Listener 启动不连接 NATS、Collector 或 VT，不声明 Stream/Consumer。外部依赖异常只使 APM degraded；API 的元数据能力继续可用，遥测查询返回明确 503/降级状态。
 
 ## 安全
 
 - endpoint 只来自受信云区域 envconfig；客户端不能影响出站目标，避免 SSRF 和伪造区域。
+- 区域代理的 OTLP/HTTP 4318 只向受信区域内网开放，并由防火墙、安全组或等价网络策略限制来源；公网、跨租户或其他不受信网络接入当前不支持。
+- 当前接入不创建应用级 Token，也不发送 Authorization Header；`service.namespace` 只表达应用归属，不是认证、授权或租户隔离凭据。未来开放不受信网络前必须另行设计代理层 TLS/mTLS、工作负载凭据、轮换撤销、限流和审计，不能把共享秘密写入片段代替完整身份模型。
 - NATS 凭据、TLS 私钥/CA 和 VT 地址由环境注入，不提交 `.env`、keystore、Token 或环境专属地址。
 - NATS 区域发布 ACL 精确到单 Subject；中心只读 APM Stream；Stream/Consumer 管理凭据与运行凭据分离。
 - payload、属性、批次、队列、查询窗口、响应大小和并发均有上界；敏感字段删除发生在持久队列和 NATS 之前。
 - Server 数据库仅使用 Django ORM；无 raw SQL、`.raw()`、`RawSQL` 或 `cursor.execute`。
 
-## 迁移与回滚
+## 首次上线与回滚
 
-1. 先发布兼容 Server/Web：接入请求改用 cloud region，VT Adapter 就绪但旧任务尚可回滚。
-2. 运维创建有界 Stream/Consumer、部署中心 Collector 和 35d VT，开启 service graph；重复执行与存量同名漂移必须由运维预检，不在 Server 启动期自动修正。
-3. 按区域部署新 Collector，把云区域受信代理地址的 4318 映射到区域 Collector，验证 publish ACK、积压与中心写入后切流；4317 只作为兼容入口；移除 Edge 路由。
-4. 停止 APM spanmetrics/VM 写入，再切目录/RED/SLO/策略读取到 VT；观察至少一个最大策略窗口后才清理 APM 专用 VM 配置。Monitor 的 VM 数据、配置和保留期绝不删除。
-5. 删除 compose 中 Edge、standalone VM、APM VM env/健康项和旧 tail-sampling 配置。旧镜像/配置至少保留一个发布窗口，可通过回滚镜像与恢复旧路由恢复；VT 全量数据不删除。
+1. 运维先创建或核对有界 Stream/Consumer，再部署 35d VT 和系统级 Collector；重复声明遇到同名但配置不一致的对象时必须停止上线并人工处理，不在 Server 启动期修正。
+2. 先在一个非关键云区域部署区域 Collector、持久队列和受信内网 4318，使用 Server 生成配置与真实 SDK 验证 publish ACK、积压、中心写入、清洗和 VT 查询。
+3. 完成 NATS 断连、中心暂停和 VT 暂停的恢复演练后，每次只开放一个区域；全部区域通过后再开放 Server/Web APM 入口。
+4. 首次上线失败时停止新增区域、关闭未验收 4318、停止或回退本次发布的 Collector/Server/Web 版本；没有已验证前序版本时安全关闭 APM，不引入其他接收或存储路径。
+5. 回滚保留 Stream、区域队列和 VT 中已写数据，不清空或手工重复发布。删除 Stream/Consumer、VT 卷或 Secret 以及缩短保留期都是独立审批动作，不由应用回滚执行。
 
-应用模型升级时创建内置“未归类应用”、回填空 namespace 服务并移除应用启用字段。数据库降级只移除内置标识字段，保留该应用、组织关系和目录数据，避免回滚过程删除可恢复的历史目录。
+应用模型首次上线时创建内置“未归类应用”并回填开发期空 namespace 数据；数据库降级只移除内置标识字段，保留应用、组织关系和目录数据，避免回滚删除可恢复事实。
 
-迁移失败时停止切流并恢复上一版本区域入口/读路径。Stream 和 VT 数据属于可恢复运行数据，删除或缩短保留期是运维显式操作，不由应用升级执行。
+详细的生产验收与回滚约束以 `deploy/apm/ACCEPTANCE.md` 为准；容量下界见 `deploy/apm/CAPACITY.md`。二者是约束清单，不是运维流水线设计。
 
 ## 容量模型
 
@@ -222,10 +227,14 @@ TDD 只在以下已确认 interface 上测试，不耦合内部实现：
 
 - [x] 阶段 0：审计 APM/Monitor/Log；更新术语；新增本 spec 与 ADR 0006；废弃冲突规格。
 - [x] 阶段 1：云区域接入 API/UI、受信 endpoint、Shell 安全和前后端测试。
-- [x] 阶段 2：自定义 Collector、JetStream interface、区域/中心参考配置、Edge 删除和容器契约。
+- [x] 阶段 2：自定义 Collector、JetStream interface、区域/中心参考配置、未发布 Edge 方案退出和容器契约。
 - [x] 阶段 3：VT-only Adapter、任务切换、dependencies、35d 保留期和组织一致性。
-- [x] 阶段 4：健康、迁移、升级/回滚和可靠性故障语义。
+- [x] 阶段 4：健康、首次上线/回滚和可靠性故障语义。
 - [x] 阶段 5：单元/接口/容器/故障/数据正确性/Web 与 Storybook 全量验证。
+- [x] 交付补强：`deploy/apm` 作为契约夹具（Makefile/Compose）管理本地验证；受管区域代理内置区域 Collector 与 4318 映射；Server 提供 APM 运行期环境变量模板；生产编排交运维。
+- [x] 交付补强：容器契约使用 Server 生成配置和真实 Python OpenTelemetry SDK 验证端到端 Trace。
+- [x] 交付补强：Kubernetes 输出可应用的 Pod patch 与 Downward API Pod UID；Go 明确为手动 SDK 接入并提供完整初始化模板。
+- [x] 交付补强：ADR 0008 固化受信区域网络边界，旧 Token/Gateway PRD 退出事实入口。
 
 ### 完成门槛
 

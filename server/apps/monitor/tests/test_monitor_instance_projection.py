@@ -1,5 +1,7 @@
 import types
 
+from django.db import connection
+
 from apps.monitor.models import Metric, MetricGroup, MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.monitor_instance import InstanceSearch
@@ -33,26 +35,22 @@ def test_monitor_object_service_projects_flow_asset_fields_for_existing_asset_pr
     queryset = MonitorObjectService._project_instance_identity(MonitorInstance.objects.all())
     sql = str(queryset.query)
 
-    assert '"monitor_monitorinstance"."id"' in sql
-    assert '"monitor_monitorinstance"."name"' in sql
-    assert '"monitor_monitorinstance"."interval"' in sql
-    assert '"monitor_monitorinstance"."cloud_region_id"' in sql
-    assert '"monitor_monitorinstance"."ip"' in sql
-    assert '"monitor_monitorinstance"."fallback_sampling_rate"' in sql
-    assert '"monitor_monitorinstance"."enabled_protocols"' not in sql
+    quote = connection.ops.quote_name
+    table = quote(MonitorInstance._meta.db_table)
+    for field in ("id", "name", "interval", "cloud_region_id", "ip", "fallback_sampling_rate"):
+        assert f"{table}.{quote(field)}" in sql
+    assert f"{table}.{quote('enabled_protocols')}" not in sql
 
 
 def test_instance_search_projects_flow_asset_fields_for_existing_asset_prefill(db):
     queryset = InstanceSearch._project_instance_identity(MonitorInstance.objects.all())
     sql = str(queryset.query)
 
-    assert '"monitor_monitorinstance"."id"' in sql
-    assert '"monitor_monitorinstance"."name"' in sql
-    assert '"monitor_monitorinstance"."interval"' in sql
-    assert '"monitor_monitorinstance"."cloud_region_id"' in sql
-    assert '"monitor_monitorinstance"."ip"' in sql
-    assert '"monitor_monitorinstance"."fallback_sampling_rate"' in sql
-    assert '"monitor_monitorinstance"."enabled_protocols"' not in sql
+    quote = connection.ops.quote_name
+    table = quote(MonitorInstance._meta.db_table)
+    for field in ("id", "name", "interval", "cloud_region_id", "ip", "fallback_sampling_rate"):
+        assert f"{table}.{quote(field)}" in sql
+    assert f"{table}.{quote('enabled_protocols')}" not in sql
 
 
 def test_monitor_instance_list_returns_flow_asset_fields(db, monkeypatch):

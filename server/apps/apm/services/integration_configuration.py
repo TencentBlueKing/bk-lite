@@ -1,3 +1,4 @@
+import json
 import shlex
 from dataclasses import dataclass
 from urllib.parse import quote, urlsplit
@@ -6,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 
 from apps.apm.services.contracts import IngestSnippet, IngestSnippetRequest
+from apps.apm.services.probe_artifacts import JAVA_AGENT_ARTIFACT_NAME, build_probe_artifact_download_url
 
 
 class CloudRegionConfigurationError(ValueError):
@@ -20,10 +22,55 @@ class CloudRegionEndpoints:
     region_id: int
     region_name: str
     http_endpoint: str
+    java_agent_download_url: str = ""
 
 
 OTLP_HTTP_PORT = 4318
 MAX_INSTANCE_ID_LENGTH = 512
+
+_GO_SDK_GUIDE = """# Go 无通用零代码探针；下面生成完整初始化示例，不会覆盖应用源码。
+mkdir -p telemetry
+if [ -e telemetry/otel.go.example ]; then
+  printf "%s\\n" "telemetry/otel.go.example already exists; refusing to overwrite" >&2
+  exit 1
+fi
+cat > telemetry/otel.go.example <<'GO'
+package telemetry
+
+import (
+    "context"
+    "fmt"
+
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+    "go.opentelemetry.io/otel/sdk/resource"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
+)
+
+func NewTracerProvider(ctx context.Context) (*sdktrace.TracerProvider, error) {
+    exporter, err := otlptracehttp.New(ctx)
+    if err != nil {
+        return nil, fmt.Errorf("create OTLP trace exporter: %w", err)
+    }
+    detected, err := resource.New(ctx, resource.WithFromEnv(), resource.WithTelemetrySDK())
+    if err != nil {
+        return nil, fmt.Errorf("detect OpenTelemetry resource: %w", err)
+    }
+    return sdktrace.NewTracerProvider(
+        sdktrace.WithBatcher(exporter),
+        sdktrace.WithResource(detected),
+    ), nil
+}
+GO
+cat <<'GO'
+审阅 telemetry/otel.go.example 后将其改名为 telemetry/otel.go，并在 main 中加入：
+
+tracerProvider, err := telemetry.NewTracerProvider(context.Background())
+if err != nil {
+    log.Fatal(err)
+}
+otel.SetTracerProvider(tracerProvider)
+defer tracerProvider.Shutdown(context.Background())
+GO"""
 
 
 @dataclass(frozen=True)
@@ -110,6 +157,55 @@ def _otel_resource_value(value: str) -> str:
     return quote(value, safe="-._~")
 
 
+def _kubernetes_snippet(language: str, environment: dict[str, str]) -> str:
+    """生成可作为 strategic merge patch 使用的容器环境片段。"""
+
+    image_guidance = {
+        "python": "应用镜像需预装 opentelemetry-distro[otlp] 并使用 opentelemetry-instrument 启动。",
+        "nodejs": "应用镜像需预装 @opentelemetry/auto-instrumentations-node。",
+        "java": "应用镜像需包含 /opt/opentelemetry-javaagent.jar。",
+        "go": "Go 无通用自动探针；应用二进制需先完成 OpenTelemetry Go SDK 初始化。",
+    }
+    runtime_environment = {
+        "nodejs": {"NODE_OPTIONS": "--require @opentelemetry/auto-instrumentations-node/register"},
+        "java": {"JAVA_TOOL_OPTIONS": "-javaagent:/opt/opentelemetry-javaagent.jar"},
+    }.get(language, {})
+    kubernetes_environment = {
+        **environment,
+        **runtime_environment,
+    }
+    kubernetes_environment["OTEL_RESOURCE_ATTRIBUTES"] = kubernetes_environment["OTEL_RESOURCE_ATTRIBUTES"].replace(
+        "${OTEL_SERVICE_INSTANCE_ID}",
+        "$(OTEL_SERVICE_INSTANCE_ID)",
+    )
+    lines = [
+        f"# {image_guidance.get(language, '应用镜像需预装所选 OpenTelemetry SDK。')}",
+        "# 把 YOUR_CONTAINER_NAME 替换为应用容器名，保存后执行：",
+        "# kubectl patch deployment YOUR_DEPLOYMENT_NAME --type strategic --patch-file apm-env.yaml",
+        "spec:",
+        "  template:",
+        "    spec:",
+        "      containers:",
+        "        - name: YOUR_CONTAINER_NAME",
+        "          env:",
+        "            - name: POD_UID",
+        "              valueFrom:",
+        "                fieldRef:",
+        "                  apiVersion: v1",
+        "                  fieldPath: metadata.uid",
+        "            - name: OTEL_SERVICE_INSTANCE_ID",
+        '              value: "$(POD_UID)"',
+    ]
+    for key, value in kubernetes_environment.items():
+        lines.extend(
+            (
+                f"            - name: {key}",
+                f"              value: {json.dumps(value, ensure_ascii=False)}",
+            )
+        )
+    return "\n".join(lines)
+
+
 def _normalize_proxy_address(value: object) -> str:
     raw = str(value or "").strip()
     if not raw or "://" in raw or any(character in raw for character in ("\r", "\n", "\0")):
@@ -140,6 +236,23 @@ def _receiver_host_from_node_server_url(value: object) -> str:
     return f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
 
 
+def _download_base_from_node_server_url(value: object) -> str:
+    """从 NODE_SERVER_URL 提取 scheme://host[:port]，作为系统内下载地址前缀。"""
+    raw = str(value or "").strip()
+    try:
+        parsed = urlsplit(raw)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("invalid NODE_SERVER_URL") from exc
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("NODE_SERVER_URL must contain a trusted HTTP host")
+    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    base = f"{parsed.scheme}://{host}"
+    if port is not None:
+        base = f"{base}:{port}"
+    return base
+
+
 class DjangoIntegrationConfigurationService:
     """无状态生成 SDK/探针配置；不创建接入源，也不持久化表单内容。"""
 
@@ -164,7 +277,14 @@ class DjangoIntegrationConfigurationService:
             normalized.append({"id": region_id, "name": region_name})
         return normalized
 
-    def resolve_region(self, node_mgmt, cloud_region_id: int, *, organization_ids: list[int]) -> CloudRegionEndpoints:
+    def resolve_region(
+        self,
+        node_mgmt,
+        cloud_region_id: int,
+        *,
+        organization_ids: list[int],
+        include_java_agent_download: bool = False,
+    ) -> CloudRegionEndpoints:
         if not organization_ids:
             raise CloudRegionConfigurationError(
                 "cloud_region_receiver_unavailable",
@@ -174,12 +294,20 @@ class DjangoIntegrationConfigurationService:
         region = next((item for item in regions if item["id"] == cloud_region_id), None)
         if region is None:
             raise CloudRegionConfigurationError("cloud_region_not_found", "云区域不存在或已不可用。")
+
+        env_config_cache: dict[str, dict] = {}
+
+        def _node_server_url() -> object:
+            if "value" not in env_config_cache:
+                env_config = node_mgmt.get_cloud_region_envconfig(cloud_region_id)
+                env_config_cache["value"] = env_config if isinstance(env_config, dict) else {}
+            return env_config_cache["value"].get("NODE_SERVER_URL")
+
         # APM SDK/Agent 不要求先成为节点管理中的节点；这里不能用 NodeOrganization
         # 过滤，否则新接入区域会形成“先有关联节点，才能获取接入地址”的循环依赖。
         proxy_address = node_mgmt.get_cloud_region_proxy_address(cloud_region_id)
         if not str(proxy_address or "").strip():
-            env_config = node_mgmt.get_cloud_region_envconfig(cloud_region_id)
-            node_server_url = env_config.get("NODE_SERVER_URL") if isinstance(env_config, dict) else None
+            node_server_url = _node_server_url()
             if not str(node_server_url or "").strip():
                 raise CloudRegionConfigurationError(
                     "cloud_region_receiver_unavailable",
@@ -199,15 +327,36 @@ class DjangoIntegrationConfigurationService:
                 "invalid_cloud_region_proxy_address",
                 "云区域接收地址格式无效，请联系管理员检查配置。",
             ) from exc
+
+        java_agent_download_url = ""
+        if include_java_agent_download:
+            node_server_url = _node_server_url()
+            if not str(node_server_url or "").strip():
+                raise CloudRegionConfigurationError(
+                    "probe_download_unavailable",
+                    "所选云区域缺少 NODE_SERVER_URL，无法生成探针下载地址，请联系管理员配置。",
+                )
+            try:
+                download_base = _download_base_from_node_server_url(node_server_url)
+            except ValueError as exc:
+                raise CloudRegionConfigurationError(
+                    "probe_download_unavailable",
+                    "云区域 NODE_SERVER_URL 格式无效，无法生成探针下载地址，请联系管理员检查配置。",
+                ) from exc
+            java_agent_download_url = build_probe_artifact_download_url(download_base, JAVA_AGENT_ARTIFACT_NAME)
+
         return CloudRegionEndpoints(
             region_id=region["id"],
             region_name=region["name"],
             http_endpoint=f"http://{proxy_address}:{OTLP_HTTP_PORT}",
+            java_agent_download_url=java_agent_download_url,
         )
 
     def render_snippet(self, request: IngestSnippetRequest) -> IngestSnippet:
         runtime_profile = _RUNTIME_PROFILES[request.runtime]
         protocol = "http/protobuf"
+        if request.language == "java" and request.runtime in ("host", "docker") and not request.java_agent_download_url:
+            raise ValueError("java host/docker snippets require a resolved java_agent_download_url")
 
         static_resource = ",".join(
             (
@@ -237,7 +386,7 @@ class DjangoIntegrationConfigurationService:
             "java": shell_continuation.join(
                 (
                     "curl --fail --silent --show-error --location",
-                    "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar",
+                    shlex.quote(request.java_agent_download_url),
                     "--output opentelemetry-javaagent.jar",
                 )
             ),
@@ -253,17 +402,19 @@ class DjangoIntegrationConfigurationService:
             "python": "opentelemetry-instrument python app.py",
             "nodejs": "node --require @opentelemetry/auto-instrumentations-node/register app.js",
             "java": "java -javaagent:./opentelemetry-javaagent.jar -jar app.jar",
-            "go": "# Initialize the OpenTelemetry Go SDK in your application, then start it normally.\ngo run .",
+            "go": _GO_SDK_GUIDE,
         }
 
-        if request.runtime == "docker":
+        if request.runtime == "kubernetes":
+            code = _kubernetes_snippet(request.language, environment)
+        elif request.runtime == "docker":
             image_install_commands = {
                 "python": 'RUN python -m pip install "opentelemetry-distro[otlp]" && opentelemetry-bootstrap -a install',
                 "nodejs": "RUN npm install --save @opentelemetry/auto-instrumentations-node",
                 "java": shell_continuation.join(
                     (
                         "RUN curl --fail --silent --show-error --location",
-                        "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar",
+                        shlex.quote(request.java_agent_download_url),
                         "--output /opt/opentelemetry-javaagent.jar",
                     )
                 ),

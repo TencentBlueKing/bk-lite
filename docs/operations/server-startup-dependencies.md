@@ -27,7 +27,7 @@
 
 ## Server 生产容器启动顺序
 
-1. `migrate`（当前失败会被 `|| true` 忽略）
+1. `migrate`（关键初始化；失败时保留原始退出码并阻断后续启动）
 2. `createcachetable`
 3. `collectstatic`
 4. `batch_init`（启动硬门禁，失败会使 `startup.sh` 退出）
@@ -35,6 +35,14 @@
 6. `supervisord -n`
 7. Supervisor 才启动 Django API、默认 Celery Worker、独立 Dashboard Report
    Render Worker、Celery Beat、`nats_listener` 和 SNMP Bridge 等运行期进程
+
+迁移失败时，启动脚本保留 `manage.py migrate` 的标准错误与退出码并停止容器，
+不会执行缓存表、静态资源、批量初始化或 Supervisor。运维应先按迁移原始错误修复
+数据库连通性、权限、锁冲突或坏迁移，再重新启动容器；若当前版本无法完成迁移，
+回滚到上一镜像，并按迁移是否可逆决定是否执行 `manage.py migrate <app> <target>`。
+数据库 Schema 是所有 Server ORM 读写和权限数据完整性的共同前提；旧或部分 Schema
+会使核心 API、Worker 和 Listener 读取不存在的表或字段，并可能在混合 Schema 上产生
+部分写入。因此迁移属于关键初始化，失败后继续拉起运行期进程不具备安全服务条件。
 
 Dashboard Report Render Worker 只消费 `dashboard_report_render` 队列，默认并发
 为 2。它和默认 Celery Worker 均属于运行期进程，只能在 `batch_init` 成功后由

@@ -6,10 +6,13 @@ from unittest.mock import Mock
 from urllib.parse import unquote
 
 import pytest
+import yaml
 
 from apps.apm.services import DjangoIntegrationConfigurationService
 from apps.apm.services.contracts import IngestSnippetRequest
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
+
+_JAVA_AGENT_URL = "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar"
 
 
 def _configuration_script(code: str) -> str:
@@ -45,7 +48,10 @@ def test_snippet_uses_a_runtime_instance_identity_instead_of_a_shared_constant(r
 
     assert "service.instance.id=${OTEL_SERVICE_INSTANCE_ID}" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
     assert "BK_INSTANCE_ID" not in snippet.code
-    assert "APM_INSTANCE_ID" in snippet.code
+    if runtime == "kubernetes":
+        assert "fieldPath: metadata.uid" in snippet.code
+    else:
+        assert "APM_INSTANCE_ID" in snippet.code
     assert "OTEL_EXPORTER_OTLP_HEADERS" not in snippet.environment
     assert "service.namespace=shop" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
     assert "service.name=checkout" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
@@ -123,7 +129,6 @@ def test_host_snippet_fails_closed_when_uuid_sources_are_unavailable(tmp_path):
     ("runtime", "runtime_environment", "expected"),
     [
         ("host", {"APM_INSTANCE_ID": "host-replica-a"}, "host-replica-a"),
-        ("kubernetes", {"POD_UID": "2f8a5cc2-2e44-4df5-a8c6-7182942541ce"}, "2f8a5cc2-2e44-4df5-a8c6-7182942541ce"),
         ("other", {"APM_INSTANCE_ID": "custom-runtime-a"}, "custom-runtime-a"),
     ],
 )
@@ -184,7 +189,7 @@ def test_explicit_instance_identity_fails_closed_outside_the_safe_boundary(inval
         ("python", 'python -m pip install "opentelemetry-distro[otlp]"', "opentelemetry-instrument python app.py"),
         ("nodejs", "npm install --save @opentelemetry/auto-instrumentations-node", "node --require"),
         ("java", "curl --fail --silent --show-error --location", "java -javaagent:./opentelemetry-javaagent.jar"),
-        ("go", "go get go.opentelemetry.io/otel", "Initialize the OpenTelemetry Go SDK"),
+        ("go", "go get go.opentelemetry.io/otel", "Go 无通用零代码探针"),
     ],
 )
 def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected_install, expected_start):
@@ -197,6 +202,7 @@ def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected
             service_name="checkout",
             service_version="1.0",
             environment="production",
+            java_agent_download_url=_JAVA_AGENT_URL,
         )
     )
 
@@ -205,6 +211,89 @@ def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected
     assert "# 1. 安装探针" in snippet.code
     assert "# 2. 配置上报" in snippet.code
     assert "# 3. 启动应用" in snippet.code
+
+
+@pytest.mark.parametrize("runtime", ["host", "docker"])
+def test_java_snippet_downloads_agent_from_the_system_address_instead_of_the_public_internet(runtime):
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="java",
+            runtime=runtime,
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+            java_agent_download_url=_JAVA_AGENT_URL,
+        )
+    )
+
+    assert _JAVA_AGENT_URL in snippet.code
+    assert "github.com" not in snippet.code
+    assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+
+
+@pytest.mark.parametrize("runtime", ["host", "docker"])
+def test_java_snippet_fails_closed_without_a_resolved_system_download_address(runtime):
+    with pytest.raises(ValueError, match="java_agent_download_url"):
+        DjangoIntegrationConfigurationService().render_snippet(
+            IngestSnippetRequest(
+                language="java",
+                runtime=runtime,
+                endpoint="https://apm.example.com",
+                service_namespace="shop",
+                service_name="checkout",
+                service_version="1.0",
+                environment="production",
+            )
+        )
+
+
+def test_resolve_region_builds_the_java_agent_download_url_from_node_server_url():
+    node_mgmt = Mock()
+    node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
+    node_mgmt.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
+    node_mgmt.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
+
+    endpoints = DjangoIntegrationConfigurationService().resolve_region(
+        node_mgmt,
+        7,
+        organization_ids=[10],
+        include_java_agent_download=True,
+    )
+
+    assert endpoints.http_endpoint == "http://apm-east.example.com:4318"
+    assert endpoints.java_agent_download_url == ("http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar")
+    node_mgmt.get_cloud_region_envconfig.assert_called_once_with(7)
+
+
+def test_resolve_region_skips_env_config_when_java_agent_download_is_not_needed():
+    node_mgmt = Mock()
+    node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
+    node_mgmt.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
+
+    endpoints = DjangoIntegrationConfigurationService().resolve_region(node_mgmt, 7, organization_ids=[10])
+
+    assert endpoints.java_agent_download_url == ""
+    node_mgmt.get_cloud_region_envconfig.assert_not_called()
+
+
+@pytest.mark.parametrize("env_config", [{}, {"NODE_SERVER_URL": "ftp://10.10.10.1:8011"}, "not-a-dict"])
+def test_resolve_region_fails_closed_when_the_java_agent_download_address_is_unavailable(env_config):
+    node_mgmt = Mock()
+    node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
+    node_mgmt.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
+    node_mgmt.get_cloud_region_envconfig.return_value = env_config
+
+    with pytest.raises(CloudRegionConfigurationError) as exc_info:
+        DjangoIntegrationConfigurationService().resolve_region(
+            node_mgmt,
+            7,
+            organization_ids=[10],
+            include_java_agent_download=True,
+        )
+
+    assert exc_info.value.code == "probe_download_unavailable"
 
 
 def test_docker_snippet_uses_runtime_environment_injection_instead_of_host_exports():
@@ -225,6 +314,58 @@ def test_docker_snippet_uses_runtime_environment_injection_instead_of_host_expor
     assert "OTEL_EXPORTER_OTLP_HEADERS" not in snippet.code
     assert "NODE_OPTIONS=" in snippet.code
     assert "export OTEL_EXPORTER_OTLP_ENDPOINT" not in snippet.code
+
+
+def test_kubernetes_snippet_uses_downward_api_pod_uid_and_standard_otel_environment():
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="python",
+            runtime="kubernetes",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+
+    manifest = yaml.safe_load(snippet.code)
+    container = manifest["spec"]["template"]["spec"]["containers"][0]
+    environment = {item["name"]: item for item in container["env"]}
+
+    assert container["name"] == "YOUR_CONTAINER_NAME"
+    assert environment["POD_UID"]["valueFrom"]["fieldRef"] == {
+        "apiVersion": "v1",
+        "fieldPath": "metadata.uid",
+    }
+    assert environment["OTEL_SERVICE_INSTANCE_ID"]["value"] == "$(POD_UID)"
+    assert environment["OTEL_EXPORTER_OTLP_ENDPOINT"]["value"] == "https://apm.example.com"
+    assert "service.instance.id=$(OTEL_SERVICE_INSTANCE_ID)" in environment["OTEL_RESOURCE_ATTRIBUTES"]["value"]
+    assert "${POD_UID" not in snippet.code
+
+
+def test_go_snippet_is_an_explicit_manual_sdk_guide_with_complete_provider_setup():
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="go",
+            runtime="host",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+
+    assert "Go 无通用零代码探针" in snippet.code
+    assert "telemetry/otel.go.example" in snippet.code
+    assert "func NewTracerProvider(ctx context.Context) (*sdktrace.TracerProvider, error)" in snippet.code
+    assert "otlptracehttp.New(ctx)" in snippet.code
+    assert "resource.WithFromEnv()" in snippet.code
+    assert "sdktrace.WithBatcher(exporter)" in snippet.code
+    assert "defer tracerProvider.Shutdown" in snippet.code
+    assert "Initialize the OpenTelemetry Go SDK" not in snippet.code
+    assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
 
 
 @pytest.mark.parametrize("runtime", ["host", "docker"])

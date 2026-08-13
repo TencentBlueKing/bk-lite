@@ -4,6 +4,7 @@ import {
   getEffectiveRootDepartmentFieldKey,
   excludeUserSyncRootScope,
   getUserSyncBusinessConfigDefaults,
+  getUserSyncEditFormBusinessConfig,
   getRootDepartmentFieldKey,
   getRootDepartmentInputMode,
   isDepartmentSelectMode,
@@ -212,6 +213,43 @@ assert.deepEqual(
   ),
   { department_id_type: 'department_id', user_id_type: 'user_id' },
   '编辑态在部门选项解析前不能将原始根部门 ID 放进 TreeSelect 的表单值',
+);
+assert.deepEqual(
+  getUserSyncEditFormBusinessConfig(
+    { root_dn: 'OU=PAAS,DC=corp,DC=example,DC=com', user_filter: '(mail=*)' },
+    adManualInputTemplate,
+    'root_dn',
+  ),
+  {
+    user_object_class: 'user',
+    user_filter: '(mail=*)',
+    root_dn: 'OU=PAAS,DC=corp,DC=example,DC=com',
+  },
+  'AD 编辑弹窗必须回显已保存的同步起始目录',
+);
+assert.deepEqual(
+  getUserSyncEditFormBusinessConfig(
+    { root_department_id: '8eba59d61667gb86', department_id_type: 'department_id', user_id_type: 'user_id' },
+    departmentSelectTemplate,
+    'root_department_id',
+  ),
+  { department_id_type: 'department_id', user_id_type: 'user_id' },
+  '部门树编辑态仍不能把原始根部门 ID 提前写进表单',
+);
+
+const configModal = readFileSync(
+  new URL('../src/app/system-manager/components/user/user-sync/UserSyncConfigModal.tsx', import.meta.url),
+  'utf8',
+);
+assert.match(
+  configModal,
+  /getUserSyncEditFormBusinessConfig\(/,
+  '编辑弹窗必须按 input_mode 组装表单初值，不能无条件剥掉根范围',
+);
+assert.doesNotMatch(
+  configModal,
+  /excludeUserSyncRootScope\(/,
+  '剥根范围只能发生在部门树模式的 helper 内部',
 );
 assert.doesNotMatch(
   userSyncTypes,

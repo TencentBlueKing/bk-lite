@@ -5,6 +5,12 @@ import type {
   InputControlConfig,
 } from './dataSource';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
+import type {
+  CardListConfig,
+  CardListLeadingConfig,
+} from '@/app/ops-analysis/utils/cardList';
+
+export type { CardListConfig, CardListLeadingConfig };
 import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import type { Dayjs } from 'dayjs';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
@@ -136,6 +142,7 @@ export interface ValueConfig {
       label?: string;
     }>;
   };
+  cardList?: CardListConfig;
   actions?: DashboardActionConfig[];
   appearance?: ScreenWidgetAppearance;
 }
@@ -209,7 +216,8 @@ export type ViewConfigItem = LayoutItem | TopologyNodeData;
 
 export interface ViewConfigProps {
   open: boolean;
-  item: ViewConfigItem;
+  /** Dashboard keeps ViewConfig mounted and may pass undefined while closed. */
+  item?: ViewConfigItem | null;
   onConfirm?: (values: WidgetConfig) => void;
   onClose?: () => void;
   builtinNamespaceId?: number;

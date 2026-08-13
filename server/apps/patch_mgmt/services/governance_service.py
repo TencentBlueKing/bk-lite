@@ -33,6 +33,7 @@ from apps.patch_mgmt.models import (
     Patch,
     PatchTarget,
 )
+from apps.patch_mgmt.services.target_node_context import container_target_ids
 
 
 class HostBusyError(PatchBusinessError):
@@ -282,6 +283,13 @@ def get_reboot_scope(target_ids: list) -> dict:
         raise PatchBusinessError(
             "targets_not_found", "Targets not found: {ids}", params={"ids": missing}
         )
+    container_ids = container_target_ids(normalized)
+    if container_ids:
+        raise PatchBusinessError(
+            "container_targets_reboot_unsupported",
+            "Container targets do not support host reboot: {ids}",
+            params={"ids": container_ids},
+        )
     snapshot, token = _build_reboot_scope(normalized)
     covered = {int(item["host_id"]) for item in snapshot}
     not_pending = sorted(set(normalized) - covered)
@@ -444,6 +452,13 @@ def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
     missing = [h for h in target_ids if h not in existing]
     if missing:
         raise PatchBusinessError("targets_not_found", "Targets not found: {ids}", params={"ids": missing})
+    container_ids = container_target_ids(target_ids)
+    if container_ids:
+        raise PatchBusinessError(
+            "container_targets_reboot_unsupported",
+            "Container targets do not support host reboot: {ids}",
+            params={"ids": container_ids},
+        )
 
     # 重启必须有窗口
     if data.get("execution_mode") != "window":

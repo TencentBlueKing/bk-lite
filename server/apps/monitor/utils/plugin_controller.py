@@ -20,6 +20,7 @@ from apps.rpc.node_mgmt import NodeMgmt
 
 _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "default",
+    "join",
     "lower",
     "urlencode",
     "replace",
@@ -64,6 +65,8 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "ip_version",
     "jmx_url",
     "logical_instance_value",
+    "metric_extensions",
+    "metrics_api_version",
     "metrics_modules",
     "monitor_plugin_id",
     "namespace",
@@ -93,6 +96,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "send",
     "server",
     "server_url",
+    "scheme",
     "sslmode",
     "storage_instance_key",
     "timeout",
@@ -275,6 +279,7 @@ class Controller:
             ensure_public_ifmib_input_tagexclude,
             ensure_snmp_interface_filter_jinja,
             isolate_snmp_interface_tagpass,
+            merge_page_snmp_interface_filters,
             needs_snmp_interface_filter_jinja,
             validate_rendered_core_network_ifmib,
         )
@@ -300,6 +305,8 @@ class Controller:
         template = self.jinja_env.from_string(template_content)
         rendered_template = template.render(safe_context)
         rendered_template = isolate_snmp_interface_tagpass(rendered_template, _context)
+        # #4715 跳过与无 marker 用户段同 kind 的 Jinja 后，必须把页面过滤合并回 owner。
+        rendered_template = merge_page_snmp_interface_filters(rendered_template, _context)
         # Jinja 不能在 table.field 后裸写 tagexclude（会绑到 field）；渲染后补到 input 级。
         rendered_template = ensure_public_ifmib_input_tagexclude(rendered_template, _context)
         validate_rendered_core_network_ifmib(rendered_template, _context)

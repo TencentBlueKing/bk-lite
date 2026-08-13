@@ -143,7 +143,9 @@ const Overview: React.FC<ViewDetailProps> = ({
           { keys: item.instance_id_keys || [], values: idValues }
         ])
       ),
-      source_unit: item.unit || ''
+      source_unit: item.unit || '',
+      // 概览卡按指标声明单位格式化，禁止服务端自动换算（否则 ms/bytes/counts 被缩放过后再按原单位展示）。
+      auto_convert_unit: false
     };
     // Overview 指标卡与详情指标 Tab 共用 card budget，避免大基数全量打满。
     params.query_budget = 'card';

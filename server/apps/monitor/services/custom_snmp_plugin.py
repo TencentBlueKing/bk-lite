@@ -1,17 +1,23 @@
 import copy
 import re
-from urllib.parse import urlparse
 from typing import Optional
+from urllib.parse import urlparse
 
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
 from apps.core.utils.safe_template import TemplateSecurityError, check_dangerous_patterns
 from apps.monitor.models import CollectConfig, MonitorPlugin, MonitorPluginConfigTemplate, MonitorPluginUITemplate
+from apps.monitor.services.custom_snmp_blueprint import (
+    CUSTOM_SNMP_CONFIG_TYPE,
+    DEFAULT_CUSTOM_SNMP_CHILD_TEMPLATE,
+    DEFAULT_CUSTOM_SNMP_COLLECT_SNIPPET,
+    build_default_custom_snmp_ui_template,
+)
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
-
 
 SNMP_COLLECT_MARKER_START = "{# BK_LITE_SNMP_COLLECT_START #}"
 SNMP_COLLECT_MARKER_END = "{# BK_LITE_SNMP_COLLECT_END #}"
@@ -20,18 +26,8 @@ SNMP_COLLECT_PATTERN = re.compile(
     re.S,
 )
 SNMP_SECTION_START_PATTERN = re.compile(r"^\s*\[\[inputs\.snmp\.(?:field|table)\]\]\s*$", re.M)
-DEFAULT_CUSTOM_SNMP_COLLECT_SNIPPET = """# [[inputs.snmp.field]]
-#   oid = ".1.3.6.1.2.1.1.3.0"
-#   name = "snmp_uptime"
-#
-# [[inputs.snmp.table]]
-#   oid = ".1.3.6.1.2.1.2.2"
-#   name = "interface"
-#
-#   [[inputs.snmp.table.field]]
-#     oid = ".1.3.6.1.2.1.2.2.1.2"
-#     name = "ifDescr"
-#     is_tag = true"""
+SNMP_TAGS_PATTERN = re.compile(r"^(?P<indent>\s*)\[inputs\.snmp\.tags\]\s*$", re.M)
+SNMP_PLUGIN_ID_TAG_PATTERN = re.compile(r"^\s*plugin_id\s*=", re.M)
 
 
 class CustomSnmpPluginService:
@@ -54,10 +50,55 @@ class CustomSnmpPluginService:
             ).order_by("id")
         )
         if not builtin_plugins:
-            raise BaseAppException("当前监控对象暂无可复用的 SNMP 内置模板")
+            return None
         if len(builtin_plugins) > 1:
-            raise BaseAppException("当前监控对象存在多份 SNMP 内置模板，请联系管理员处理")
-        return builtin_plugins[0]
+            logger.warning(
+                "监控对象存在多份可复用 SNMP 内置模板，改用通用蓝图: monitor_object_id=%s, plugin_ids=%s",
+                monitor_object.id,
+                [item.id for item in builtin_plugins],
+            )
+            return None
+        source_plugin = builtin_plugins[0]
+        child_templates = list(MonitorPluginConfigTemplate.objects.filter(plugin=source_plugin, config_type="child").only("id", "content"))
+        ui_template = MonitorPluginUITemplate.objects.filter(plugin=source_plugin).only("id", "content").first()
+        reusable = (
+            len(child_templates) == 1
+            and isinstance(ui_template.content if ui_template else None, dict)
+            and bool(ui_template.content)
+            and "[[inputs.snmp]]" in child_templates[0].content
+            and SNMP_TAGS_PATTERN.search(child_templates[0].content) is not None
+            and SNMP_SECTION_START_PATTERN.search(child_templates[0].content) is not None
+        )
+        if not reusable:
+            logger.warning(
+                "SNMP 内置模板结构不完整，改用通用蓝图: monitor_object_id=%s, plugin_id=%s",
+                monitor_object.id,
+                source_plugin.id,
+            )
+            return None
+        return source_plugin
+
+    @staticmethod
+    def _create_default_templates(plugin: MonitorPlugin):
+        monitor_object = CustomSnmpPluginService.get_monitor_object(plugin)
+        MonitorPluginConfigTemplate.objects.update_or_create(
+            plugin=plugin,
+            type=CUSTOM_SNMP_CONFIG_TYPE,
+            config_type="child",
+            file_type="toml",
+            defaults={"content": DEFAULT_CUSTOM_SNMP_CHILD_TEMPLATE},
+        )
+        MonitorPluginUITemplate.objects.update_or_create(
+            plugin=plugin,
+            defaults={"content": build_default_custom_snmp_ui_template(monitor_object)},
+        )
+
+    @staticmethod
+    def _build_default_status_query(plugin: MonitorPlugin):
+        monitor_object = CustomSnmpPluginService.get_monitor_object(plugin)
+        instance_id_keys = monitor_object.instance_id_keys if isinstance(monitor_object.instance_id_keys, list) else []
+        group_by = ", ".join(str(key) for key in instance_id_keys if key not in (None, "")) or "instance_id"
+        return f"any({{plugin_id='{plugin.template_id}'}}) by ({group_by})"
 
     @staticmethod
     def _get_snmp_section_bounds(content: str) -> tuple[int, int]:
@@ -65,6 +106,16 @@ class CustomSnmpPluginService:
         if not match:
             raise BaseAppException("SNMP 子配置模板缺少可编辑的采集片段")
         return match.start(), len(content)
+
+    @staticmethod
+    def _ensure_plugin_id_tag(content: str) -> str:
+        if SNMP_PLUGIN_ID_TAG_PATTERN.search(content):
+            return content
+        tags_match = SNMP_TAGS_PATTERN.search(content)
+        if not tags_match:
+            raise BaseAppException("SNMP 子配置模板缺少 tags 配置")
+        tag_line = f'{tags_match.group("indent")}    plugin_id = "{{{{ plugin_id }}}}"'
+        return f"{content[:tags_match.end()]}\n{tag_line}{content[tags_match.end():]}"
 
     @staticmethod
     def _inject_collect_markers(content: str) -> str:
@@ -108,6 +159,7 @@ class CustomSnmpPluginService:
             if template.config_type == "child":
                 content = CustomSnmpPluginService._inject_collect_markers(content)
                 content = CustomSnmpPluginService._replace_collect_snippet(content, DEFAULT_CUSTOM_SNMP_COLLECT_SNIPPET)
+                content = CustomSnmpPluginService._ensure_plugin_id_tag(content)
             MonitorPluginConfigTemplate.objects.update_or_create(
                 plugin=target_plugin,
                 type=template.type,
@@ -128,16 +180,19 @@ class CustomSnmpPluginService:
         source_plugin = CustomSnmpPluginService.get_builtin_plugin(plugin)
 
         with transaction.atomic():
-            CustomSnmpPluginService._clone_templates(source_plugin, plugin)
+            if source_plugin is None:
+                CustomSnmpPluginService._create_default_templates(plugin)
+            else:
+                CustomSnmpPluginService._clone_templates(source_plugin, plugin)
 
             update_fields = []
-            if not (plugin.status_query or "").strip() and (source_plugin.status_query or "").strip():
-                plugin.status_query = source_plugin.status_query
+            if not (plugin.status_query or "").strip():
+                plugin.status_query = CustomSnmpPluginService._build_default_status_query(plugin)
                 update_fields.append("status_query")
-            if not (plugin.description or "").strip() and (source_plugin.description or "").strip():
+            if source_plugin and not (plugin.description or "").strip() and (source_plugin.description or "").strip():
                 plugin.description = source_plugin.description
                 update_fields.append("description")
-            if not plugin.node_selector and source_plugin.node_selector:
+            if source_plugin and not plugin.node_selector and source_plugin.node_selector:
                 plugin.node_selector = copy.deepcopy(source_plugin.node_selector)
                 update_fields.append("node_selector")
             if update_fields:

@@ -32,6 +32,18 @@ class MonitorObjConstants:
         {"name_list": ["Docker", "Docker Container"], "type": "Container Management"},
         {"name_list": ["Cluster", "Pod", "Node"], "type": "K8S"},
         {"name_list": ["vCenter", "ESXI", "VM", "DataStorage"], "type": "VMWare"},
+        {
+            "name_list": [
+                "SangforSCP",
+                "SangforSCPHost",
+                "SangforSCPVM",
+                "CNware",
+                "CNwareHost",
+                "CNwareVM",
+            ],
+            "type": "Cloud",
+        },
         {"name_list": ["TCP", "CVM"], "type": "Tencent Cloud"},
+        {"name_list": ["Aliyun"], "type": "Aliyun Cloud"},
         {"name_list": ["JVM", "SNMP Trap"], "type": "Other"},
     ]

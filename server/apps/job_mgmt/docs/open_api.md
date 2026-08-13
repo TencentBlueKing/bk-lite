@@ -8,7 +8,12 @@
 |------|------|------|------|
 | 查询节点列表 | NATS `bklite.node_list` | 无 | 同步，分页返回节点 |
 | 查询目标列表 | NATS `bklite.job_target_list` | 无 | 同步，分页返回目标 |
+| 作业列表 | NATS `bklite.job_list` | 无 | 同步，返回脚本库与 Playbook 及参数定义 |
+| 作业列表 | REST `GET /api/v1/job_mgmt/api/open/job_list` | Api-Authorization | 同步，执行前获取作业背景信息 |
 | 脚本执行 | NATS `bklite.job_script_execute` | 无 | 异步，返回 task_id |
+| 脚本执行 | REST `POST /api/v1/job_mgmt/api/open/script_execute` | Api-Authorization | 异步，返回 task_id |
+| 批量查询状态 | REST `POST /api/v1/job_mgmt/api/open/job_status` | Api-Authorization | 同步，按 task_ids 查询状态 |
+| 查询作业详情 | REST `GET /api/v1/job_mgmt/api/open/job_detail/{task_id}` | Api-Authorization | 同步，返回执行详情与状态 |
 | 文件上传 | REST `POST /api/v1/job_mgmt/api/open/upload_file` | Api-Authorization | 同步，返回 file_id + file_key |
 | 文件删除 | REST `DELETE /api/v1/job_mgmt/api/open/delete_file` | Api-Authorization | 同步，删除文件 |
 | 文件分发 | NATS `bklite.job_file_distribute` | 无 | 异步，返回 task_id |
@@ -20,14 +25,14 @@
 ### NATS 接口
 无需鉴权，信任内网 NATS 通道。NATS subject 前缀由 `NATS_NAMESPACE` 配置决定（默认 `bklite`）。
 
-### REST 文件上传接口
+### REST 接口
 使用 `UserAPISecret` 的 `api_secret` 作为 token：
 
 ```
 Api-Authorization: <api_secret>
 ```
 
-`api_secret` 可在系统管理中创建，绑定特定用户和团队。
+`api_secret` 可在系统管理中创建，绑定特定用户和团队。作业列表、脚本执行与状态查询的团队以 Secret 绑定为准，请求体中的 `team` 会被忽略；跨团队任务按不存在处理。
 
 ---
 
@@ -60,6 +65,85 @@ Api-Authorization: <api_secret>
        │─────────────────────────────────────────────────────▶│
        │◀─────────── { execution_results, ... } ──────────────│
 ```
+
+---
+
+## REST 作业列表、执行与状态查询
+
+与文件上传/删除相同：`Api-Authorization` 鉴权，路径挂在 `/api/v1/job_mgmt/api/open/` 下。请求体与对应 NATS 接口一致；`team` 由 Secret 绑定团队写入，调用方传入的 `team` 无效。
+
+### 查询作业列表
+
+**REST**: `GET /api/v1/job_mgmt/api/open/job_list`
+
+返回当前团队脚本库与 Playbook 的作业信息及参数定义，供执行前获取背景信息。不含脚本内容 / Playbook 文件。加密参数的 `default` 以 `******` 返回。
+
+Query：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 否 | 按名称模糊搜索 |
+| page | int | 否 | 页码，默认 1 |
+| page_size | int | 否 | 每页数量，默认 20，最大 100 |
+
+成功返回：
+
+```json
+{
+  "scripts": {
+    "count": 1,
+    "items": [
+      {
+        "id": 12,
+        "job_type": "script",
+        "name": "补丁安装",
+        "description": "安装安全补丁",
+        "script_type": "shell",
+        "params": [
+          {"name": "pkg", "label": "包名", "description": "rpm", "default": "openssl", "is_encrypted": false}
+        ],
+        "timeout": 120,
+        "is_built_in": false
+      }
+    ]
+  },
+  "playbooks": {
+    "count": 1,
+    "items": [
+      {
+        "id": 3,
+        "job_type": "playbook",
+        "name": "nginx-deploy",
+        "description": "部署 nginx",
+        "version": "v1.0.0",
+        "params": [{"name": "port", "default": "80", "description": "监听端口"}]
+      }
+    ]
+  }
+}
+```
+
+### 脚本执行
+
+**REST**: `POST /api/v1/job_mgmt/api/open/script_execute`
+
+请求字段见下方 NATS `job_script_execute`。成功返回 `{"task_id": 123}`。
+
+### 批量查询作业状态
+
+**REST**: `POST /api/v1/job_mgmt/api/open/job_status`
+
+```json
+{"task_ids": [123, 456]}
+```
+
+最多 100 个 ID。当前团队任务返回状态计数；其他团队或缺失返回 `{"task_id": ..., "status": "not_found"}`。
+
+### 查询作业详情
+
+**REST**: `GET /api/v1/job_mgmt/api/open/job_detail/{task_id}`
+
+返回字段见下方 NATS `job_detail_query`。跨团队与不存在统一 404。
 
 ---
 
@@ -159,6 +243,33 @@ Api-Authorization: <api_secret>
   }
 }
 ```
+
+---
+
+### 2.1 查询作业列表
+
+**NATS Subject**: `bklite.job_list`
+
+返回当前团队脚本库与 Playbook 的作业信息及参数定义。不含脚本内容 / Playbook 文件。加密参数的 `default` 以 `******` 返回。
+
+**Request:**
+```json
+{
+  "team": [1],
+  "name": "补丁",
+  "page": 1,
+  "page_size": 20
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| team | array | 是 | 团队 ID 列表 |
+| name | string | 否 | 按名称模糊搜索 |
+| page | int | 否 | 页码，默认 1 |
+| page_size | int | 否 | 每页数量，默认 20，最大 100 |
+
+响应字段与 REST `GET /api/v1/job_mgmt/api/open/job_list` 相同。
 
 ---
 

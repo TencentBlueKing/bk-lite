@@ -43,11 +43,23 @@ const activeInstance = {
 
 function renderPage() {
   return render(
-    // @ts-expect-error react-intl type incompatibility with React 19
     <IntlProvider
       locale="zh"
       messages={{
         'apm.instances.defaultActiveHelp': '默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。',
+        'common.total': '共',
+        'common.items': '条',
+        'common.checked': '已选',
+        'common.confirm': '确认',
+        'common.cancel': '取消',
+        'common.searchPlaceHolder': '搜索字段',
+        'common.selectAll': '全选',
+        'common.selected': '已选',
+        'common.clear': '清空',
+        'common.pin': '固定',
+        'common.unpin': '取消固定',
+        'cutomTable.fieldSetting': '字段设置',
+        'cutomTable.pinHint': '固定字段会显示在表格左侧',
       }}
     >
       <ApmIntegrationInstancesPage />

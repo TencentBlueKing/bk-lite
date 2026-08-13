@@ -79,8 +79,9 @@ export function DashboardPageHeader({
           onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
         />
         {showTimeSelector ? (
-          <div className={styles.toolbarTimeSelector}>
+            <div className={styles.toolbarTimeSelector}>
             <TimeSelector
+              appearance="toolbar"
               defaultValue={timeDefaultValue}
               customFrequencyList={frequencyList}
               onChange={onTimeChange}

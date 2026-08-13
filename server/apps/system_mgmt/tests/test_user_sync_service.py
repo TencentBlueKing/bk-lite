@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.hashers import make_password
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.system_mgmt.models import (
@@ -261,9 +261,7 @@ def test_historical_duplicate_root_group_sources_are_reported_but_not_auto_repai
 
 
 @pytest.mark.django_db
-def test_user_sync_source_records_collection_returns_paginated_runs(
-    api_client, authenticated_user, ready_integration_instance
-):
+def test_user_sync_source_records_collection_returns_paginated_runs(api_client, authenticated_user, ready_integration_instance):
     authenticated_user.permission = {"system-manager": {"user_sync-View"}}
     api_client.cookies["current_team"] = "1"
 
@@ -554,19 +552,19 @@ def test_feishu_list_departments_returns_items_without_selection_state():
 
     def fake_get(url, *args, **kwargs):
         if url.endswith("/contact/v3/scopes"):
-            return DummyResponse(
-                {"code": 0, "data": {"department_ids": ["dept-visible"], "has_more": False}}
-            )
+            return DummyResponse({"code": 0, "data": {"department_ids": ["dept-visible"], "has_more": False}})
         if url.endswith("/contact/v3/departments/batch"):
             return DummyResponse(
                 {
                     "code": 0,
                     "data": {
-                        "items": [{
-                            "department_id": "dept-visible",
-                            "parent_department_id": "0",
-                            "name": "Visible Department",
-                        }],
+                        "items": [
+                            {
+                                "department_id": "dept-visible",
+                                "parent_department_id": "0",
+                                "name": "Visible Department",
+                            }
+                        ],
                         "has_more": False,
                     },
                 }
@@ -600,9 +598,7 @@ def test_feishu_list_departments_returns_items_without_selection_state():
 
 
 @pytest.mark.django_db
-def test_department_options_marks_legacy_virtual_roots_missing(
-    api_client, authenticated_user, ready_integration_instance
-):
+def test_department_options_marks_legacy_virtual_roots_missing(api_client, authenticated_user, ready_integration_instance):
     authenticated_user.permission = {"system-manager": {"user_sync-View"}}
     api_client.cookies["current_team"] = "1"
 
@@ -1681,6 +1677,47 @@ def test_user_sync_run_allows_only_one_running_run_per_source(ready_integration_
 
 
 @pytest.mark.django_db
+def test_mysql_guard_migration_rejects_duplicate_running_run_without_changing_status(ready_integration_instance):
+    from importlib import import_module
+
+    from django.apps import apps
+    from django.db import connection, models
+
+    if connection.vendor != "mysql":
+        pytest.skip("MySQL 5.7 legacy data migration contract")
+
+    source = UserSyncSource.objects.create(
+        name="source-duplicate-running-guard",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Duplicate Running Guard Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+    older = UserSyncRun.objects.create(source=source, status=UserSyncRunStatusChoices.RUNNING)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        UserSyncRun.objects.bulk_create([UserSyncRun(source=source, status=UserSyncRunStatusChoices.RUNNING)])
+    newer = UserSyncRun.objects.create(source=source, status=UserSyncRunStatusChoices.FAILED)
+    models.QuerySet(model=UserSyncRun, using="default").filter(pk=newer.pk).update(
+        status=UserSyncRunStatusChoices.RUNNING,
+        running_guard=None,
+    )
+
+    migration = import_module("apps.system_mgmt.migrations.0045_cross_database_running_guards")
+    schema_editor = SimpleNamespace(connection=connection)
+    with pytest.raises(RuntimeError, match="重复运行记录"):
+        migration.ensure_running_runs_unique(apps, schema_editor)
+
+    older.refresh_from_db()
+    newer.refresh_from_db()
+    assert older.status == UserSyncRunStatusChoices.RUNNING
+    assert older.running_guard is True
+    assert newer.status == UserSyncRunStatusChoices.RUNNING
+    assert newer.running_guard is None
+
+
+@pytest.mark.django_db
 def test_user_sync_source_periodic_task_args_are_json_serialized(ready_integration_instance):
     source = UserSyncSource.objects.create(
         name="source-periodic-json",
@@ -1741,9 +1778,7 @@ def test_existing_user_skips_password_initialization(password_init_source_factor
 @pytest.mark.django_db
 def test_none_mode_does_not_enqueue_initial_password_email(password_init_source_factory):
     source = password_init_source_factory("none")
-    with patch(
-        "apps.system_mgmt.services.password_init_service.send_initial_password_email_batch.delay"
-    ) as delay:
+    with patch("apps.system_mgmt.services.password_init_service.send_initial_password_email_batch.delay") as delay:
         _apply_user_sync_payload(
             source,
             {"user_list": [{"user_id": "alice-none", "name": "Alice", "email": "a@b.c"}], "group_list": []},
@@ -1903,8 +1938,8 @@ def test_get_batch_size_adapts_to_total():
 
     assert _get_batch_size(0) == 1
     assert _get_batch_size(1) == 1
-    assert _get_batch_size(10) == 1   # 10 // 20 = 0 → max(1, 0) = 1
-    assert _get_batch_size(20) == 1   # 20 // 20 = 1
+    assert _get_batch_size(10) == 1  # 10 // 20 = 0 → max(1, 0) = 1
+    assert _get_batch_size(20) == 1  # 20 // 20 = 1
     assert _get_batch_size(100) == 5  # 100 // 20 = 5
     assert _get_batch_size(200) == 10
     assert _get_batch_size(1000) == 50
@@ -1931,9 +1966,7 @@ def test_execute_user_sync_snapshots_password_init_mode(ready_integration_instan
         field_mapping={"username": "user_id"},
         schedule_config={"mode": "disabled"},
     )
-    payload_empty = CapabilityExecutionResult.success_result(
-        "ok", payload={"group_list": [], "user_list": []}
-    )
+    payload_empty = CapabilityExecutionResult.success_result("ok", payload={"group_list": [], "user_list": []})
     with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload_empty):
         result_none = execute_user_sync(source_none.id)
     assert result_none["result"] is True
@@ -1992,11 +2025,7 @@ def test_apply_user_sync_writes_phase_progress_at_batch_boundary(ready_integrati
         schedule_config={"mode": "disabled"},
     )
 
-    user_list = [
-        {"user_id": f"u{i:03d}", "name": f"User{i}", "email": f"u{i}@x.com",
-         "department_ids": ["0"]}
-        for i in range(200)
-    ]
+    user_list = [{"user_id": f"u{i:03d}", "name": f"User{i}", "email": f"u{i}@x.com", "department_ids": ["0"]} for i in range(200)]
     payload = CapabilityExecutionResult.success_result(
         "ok",
         payload={
@@ -2013,8 +2042,9 @@ def test_apply_user_sync_writes_phase_progress_at_batch_boundary(ready_integrati
             progress_writes["sync_users"] += 1
         return original_write_progress(run_id, phase, current=current, total=total, status=status, counters=counters)
 
-    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload), \
-         patch("apps.system_mgmt.services.user_sync_service._write_phase_progress", side_effect=counting_write_progress):
+    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload), patch(
+        "apps.system_mgmt.services.user_sync_service._write_phase_progress", side_effect=counting_write_progress
+    ):
         result = execute_user_sync(source.id)
 
     assert result["result"] is True
@@ -2064,11 +2094,7 @@ def test_batch_sync_does_not_disable_later_batch_users(ready_integration_instanc
         schedule_config={"mode": "disabled"},
     )
 
-    user_list = [
-        {"user_id": f"u{i:03d}", "name": f"User{i}", "email": f"u{i}@x.com",
-         "department_ids": ["0"]}
-        for i in range(500)
-    ]
+    user_list = [{"user_id": f"u{i:03d}", "name": f"User{i}", "email": f"u{i}@x.com", "department_ids": ["0"]} for i in range(500)]
     payload = CapabilityExecutionResult.success_result(
         "ok",
         payload={"group_list": [], "user_list": user_list},
@@ -2084,8 +2110,9 @@ def test_batch_sync_does_not_disable_later_batch_users(ready_integration_instanc
             raise RuntimeError("simulated batch 2 failure")
         return real_process(*args, **kwargs)
 
-    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload), \
-         patch("apps.system_mgmt.services.user_sync_service._process_user_batch", side_effect=failing_process):
+    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload), patch(
+        "apps.system_mgmt.services.user_sync_service._process_user_batch", side_effect=failing_process
+    ):
         result = execute_user_sync(source.id)
 
     assert result["result"] is False
@@ -2098,9 +2125,7 @@ def test_batch_sync_does_not_disable_later_batch_users(ready_integration_instanc
     assert run.payload.get("phase_error", {}).get("phase") == "sync_users"
 
     # 第 1 批(u000~u024)应被成功创建(500 用户,batch_size=25)
-    created_usernames = list(
-        User.objects.filter(domain="domain.com", sync_source=source).values_list("username", flat=True)
-    )
+    created_usernames = list(User.objects.filter(domain="domain.com", sync_source=source).values_list("username", flat=True))
     # 第 1 批 25 个用户都被创建
     for i in range(25):
         assert f"u{i:03d}" in created_usernames, f"u{i:03d} 应在第 1 批被创建"
@@ -2130,11 +2155,7 @@ def test_run_payload_mutations_preserve_all_writers(ready_integration_instance):
         schedule_config={"mode": "disabled"},
     )
 
-    user_list = [
-        {"user_id": f"u{i}", "name": f"User{i}", "email": f"u{i}@x.com",
-         "department_ids": ["0"]}
-        for i in range(5)
-    ]
+    user_list = [{"user_id": f"u{i}", "name": f"User{i}", "email": f"u{i}@x.com", "department_ids": ["0"]} for i in range(5)]
     payload = CapabilityExecutionResult.success_result(
         "ok",
         payload={
@@ -2146,9 +2167,7 @@ def test_run_payload_mutations_preserve_all_writers(ready_integration_instance):
     with patch(
         "apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute",
         return_value=payload,
-    ), patch(
-        "apps.system_mgmt.services.password_init_service.send_initial_password_email_batch.delay"
-    ):
+    ), patch("apps.system_mgmt.services.password_init_service.send_initial_password_email_batch.delay"):
         result = execute_user_sync(source.id)
 
     assert result["result"] is True
@@ -2204,9 +2223,7 @@ def test_failed_run_preserves_phase_progress_payload(ready_integration_instance)
     # provider 调用失败,返回 CapabilityExecutionResult.failed_result
     # summary 故意带敏感信息,验证其不会进入运行记录 payload。
     sensitive_summary = "POST https://internal.api/users?app_secret=plain-secret failed with stack trace: line 42 SQL select * from secret_table"
-    failed_payload = CapabilityExecutionResult.failed_result(
-        sensitive_summary, code="provider.request_failed"
-    )
+    failed_payload = CapabilityExecutionResult.failed_result(sensitive_summary, code="provider.request_failed")
     failed_payload.request_id = "req-test-123"
 
     with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=failed_payload):
@@ -2243,10 +2260,14 @@ def test_to_safe_error_code_classifies_errors_without_retaining_exception_text()
     assert _to_safe_error_code(Exception("GET https://api.example.com/users?token=secret123&id=42")) == "sync_failed"
 
     # 堆栈
-    assert _to_safe_error_code(Exception("Traceback (most recent call last):\n  File '/var/secret/path/x.py', line 1\n    secret_func()")) == "sync_failed"
+    assert (
+        _to_safe_error_code(Exception("Traceback (most recent call last):\n  File '/var/secret/path/x.py', line 1\n    secret_func()"))
+        == "sync_failed"
+    )
 
     # 已知异常类型的标准化文案
     from django.db.utils import IntegrityError
+
     assert _to_safe_error_code(IntegrityError("duplicate key value violates unique constraint")) == "data_conflict"
 
     assert _to_safe_error_code(Exception("")) == "sync_failed"
@@ -2365,11 +2386,7 @@ def test_per_phase_counters_split_between_sync_users_and_reconcile(ready_integra
         )
 
     # 外部清单:5 个新用户(全部不在历史遗留名单里)
-    user_list = [
-        {"user_id": f"u{i}", "name": f"User{i}", "email": f"u{i}@x.com",
-         "department_ids": ["0"]}
-        for i in range(5)
-    ]
+    user_list = [{"user_id": f"u{i}", "name": f"User{i}", "email": f"u{i}@x.com", "department_ids": ["0"]} for i in range(5)]
     payload = CapabilityExecutionResult.success_result(
         "ok",
         payload={"group_list": [], "user_list": user_list},
@@ -2384,21 +2401,24 @@ def test_per_phase_counters_split_between_sync_users_and_reconcile(ready_integra
 
     # 1. 同步用户阶段 counters 只含本阶段字段
     sync_users_counters = phase_progress.get("sync_users", {}).get("counters") or {}
-    assert set(sync_users_counters.keys()) == {"new_users", "updated_users", "conflict_users"}, \
-        f"sync_users phase counters 应只含这 3 个字段,实际: {sync_users_counters.keys()}"
+    assert set(sync_users_counters.keys()) == {
+        "new_users",
+        "updated_users",
+        "conflict_users",
+    }, f"sync_users phase counters 应只含这 3 个字段,实际: {sync_users_counters.keys()}"
     assert sync_users_counters["new_users"] == 5
     assert sync_users_counters["updated_users"] == 0
     assert sync_users_counters["conflict_users"] == 0
     # 关键断言:sync_users 阶段不能有 deleted_users
-    assert "deleted_users" not in sync_users_counters, \
-        "deleted_users 是对账阶段指标,不应在 sync_users 阶段出现"
+    assert "deleted_users" not in sync_users_counters, "deleted_users 是对账阶段指标,不应在 sync_users 阶段出现"
 
     # 2. 对账阶段 counters 只含本阶段字段
     reconcile_counters = phase_progress.get("reconcile", {}).get("counters") or {}
-    assert set(reconcile_counters.keys()) == {"deleted_users", "deleted_group_count"}, \
-        f"reconcile phase counters 应只含这 2 个字段,实际: {reconcile_counters.keys()}"
-    assert reconcile_counters["deleted_users"] == 3, \
-        f"应删除 3 个 legacy 用户,实际删除 {reconcile_counters['deleted_users']}"
+    assert set(reconcile_counters.keys()) == {
+        "deleted_users",
+        "deleted_group_count",
+    }, f"reconcile phase counters 应只含这 2 个字段,实际: {reconcile_counters.keys()}"
+    assert reconcile_counters["deleted_users"] == 3, f"应删除 3 个 legacy 用户,实际删除 {reconcile_counters['deleted_users']}"
     assert reconcile_counters["deleted_group_count"] == 0
     # 关键断言:reconcile 阶段不能有 new_users/updated_users
     assert "new_users" not in reconcile_counters
@@ -2569,9 +2589,7 @@ def test_finalize_only_written_for_password_init_modes(ready_integration_instanc
         field_mapping={"username": "user_id"},
         schedule_config={"mode": "disabled"},
     )
-    payload_empty = CapabilityExecutionResult.success_result(
-        "ok", payload={"group_list": [], "user_list": []}
-    )
+    payload_empty = CapabilityExecutionResult.success_result("ok", payload={"group_list": [], "user_list": []})
     with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload_empty):
         execute_user_sync(source_none.id)
     run_none = UserSyncRun.objects.get(source=source_none)
@@ -2652,9 +2670,7 @@ def test_sync_groups_keeps_stale_groups_until_reconcile(ready_integration_instan
         ("_reconcile_synced_directory", "reconcile"),
     ],
 )
-def test_non_batch_stage_failure_marks_corresponding_phase(
-    ready_integration_instance, failed_helper, expected_phase
-):
+def test_non_batch_stage_failure_marks_corresponding_phase(ready_integration_instance, failed_helper, expected_phase):
     """组织同步和全量对账失败也必须标记具体阶段,而非只写 run=FAILED。"""
     source = UserSyncSource.objects.create(
         name=f"failure-phase-{expected_phase}",
@@ -2665,9 +2681,7 @@ def test_non_batch_stage_failure_marks_corresponding_phase(
         field_mapping={"username": "user_id"},
         schedule_config={"mode": "disabled"},
     )
-    result = CapabilityExecutionResult.success_result(
-        "ok", payload={"group_list": [], "user_list": []}
-    )
+    result = CapabilityExecutionResult.success_result("ok", payload={"group_list": [], "user_list": []})
     with patch(
         "apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute",
         return_value=result,

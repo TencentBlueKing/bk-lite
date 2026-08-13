@@ -2,7 +2,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
-from rest_framework import viewsets
+from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -264,8 +264,11 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             obj.encrypt_field("webhook_url", config)
             config.setdefault("webhook_url", obj.config["webhook_url"])
         elif obj.channel_type == "nats":
-            # NATS 配置无需加密处理
-            pass
+            try:
+                ChannelSerializer.validate_nats_config(config)
+                ChannelSerializer.validate_nats_subject_key_unique(config, exclude_channel_id=obj.pk)
+            except serializers.ValidationError as exc:
+                return Response({"result": False, "message": exc.detail}, status=400)
         obj.config = config
         obj.save()
 
@@ -297,9 +300,14 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         content = f"This is a test message from channel '{channel_name}'.<br/>Receiver: {receiver_name}"
 
         if channel_type == ChannelChoices.EMAIL:
-            if not request.user.email:
+            # request.user 是 base.User；发信收件人必须定位到同 username/domain 的 system_mgmt.User，
+            # 不能用 base 主键去查业务用户表（两表自增 id 不对齐）。
+            domain = getattr(request.user, "domain", None) or "domain.com"
+            user_list = User.objects.filter(username=request.user.username, domain=domain)
+            if not user_list.exists():
+                return Response({"result": False, "message": "Current user not found"}, status=400)
+            if not user_list.exclude(email="").exists():
                 return Response({"result": False, "message": "Current user email is empty"}, status=400)
-            user_list = User.objects.filter(id=request.user.id)
             result = send_email(test_channel, title, content, user_list)
         elif channel_type == ChannelChoices.ENTERPRISE_WECHAT_BOT:
             result = send_by_wecom_bot(test_channel, content, [receiver_name])

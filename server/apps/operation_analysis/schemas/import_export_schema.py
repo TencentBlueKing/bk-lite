@@ -21,7 +21,7 @@ from apps.operation_analysis.constants.import_export import (
     ImportExportErrorCode,
     ObjectType,
 )
-
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 
 DATE_RANGE_QUICK_TYPES = {
     "today",
@@ -174,7 +174,8 @@ class DatasourceItem(BaseModel):
     @field_validator("source_type")
     @classmethod
     def validate_source_type(cls, v: str) -> str:
-        if v not in {"nats", "mysql", "postgresql", "rest_api", "excel", "prometheus"}:
+        allowed = {choice[0] for choice in DataSourceAPIModel.SOURCE_TYPE_CHOICES}
+        if v not in allowed:
             raise ValueError("source_type 不支持")
         return v
 

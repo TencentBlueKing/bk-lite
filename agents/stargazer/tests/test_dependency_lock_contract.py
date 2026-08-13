@@ -65,7 +65,12 @@ def test_runbook_documents_stateless_runtime_limits() -> None:
     assert "MAX_ACTIVE_RUNS" in readme
     assert "MAX_ACTIVE_TARGETS" in readme
     assert "TARGET_TASK_WINDOW" in readme
+    assert "REDIS_MAX_CONNECTIONS" in readme
+    assert "REDIS_POOL_TIMEOUT" in readme
+    assert "REDIS_PROTOCOL" in readme
     assert "CONNECT_TIMEOUT" in readme
+    assert "PREFLIGHT_REACHABILITY" in readme
+    assert "MAX_ACTIVE_TARGETS=0" in readme
 
 
 def test_sanic_imports_with_the_approved_tracerite_api() -> None:

@@ -90,9 +90,10 @@ class RunSummary:
 
 @dataclass(frozen=True)
 class TargetExecutorSettings:
-    max_active_targets: int = 200
-    target_task_window: int = 200
-    connect_timeout_seconds: float = 5.0
+    # 0 = 不限制；默认与环境变量 DEFAULT 对齐，运行时由 ApplicationSettings.from_env 注入
+    max_active_targets: int = 2000
+    target_task_window: int = 2000
+    connect_timeout_seconds: float = 7.0
     plugin_timeout_seconds: float = 60.0
     publish_guard_seconds: float = 30.0
     # 0 = 不限制；默认 3 = 连续 protocol_no_response 最多尝试次数
@@ -100,10 +101,14 @@ class TargetExecutorSettings:
     publish_max_attempts: int = 2
 
     def __post_init__(self) -> None:
-        if self.max_active_targets <= 0:
-            raise ValueError("max_active_targets must be greater than zero")
-        if self.target_task_window <= 0:
-            raise ValueError("target_task_window must be greater than zero")
+        if self.max_active_targets < 0:
+            raise ValueError(
+                "max_active_targets must be >= 0 (0 means unlimited)"
+            )
+        if self.target_task_window < 0:
+            raise ValueError(
+                "target_task_window must be >= 0 (0 means unlimited)"
+            )
         if self.connect_timeout_seconds <= 0:
             raise ValueError("connect_timeout_seconds must be greater than zero")
         if self.plugin_timeout_seconds <= 0:

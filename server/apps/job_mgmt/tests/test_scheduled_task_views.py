@@ -7,12 +7,13 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.db import DatabaseError
 
 from apps.job_mgmt.constants import JobType
 from apps.job_mgmt.models import ScheduledTask
 from apps.job_mgmt.services.dangerous_checker import DangerousCheckResult
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 URL = "/api/v1/job_mgmt/api/scheduled_task/"
 SVC = "apps.job_mgmt.serializers.scheduled_task.ScheduledTaskService"
@@ -140,6 +141,37 @@ class TestScheduledTaskCrud:
         task.refresh_from_db()
         assert task.name == "task1-edit"
 
+    def test_update_rejects_task_team_change_after_initial_read(self, api_client, authenticated_user):
+        """首次权限读取后团队发生变化时，锁内新快照必须拒绝旧团队用户。"""
+        from apps.job_mgmt.views.scheduled_task import ScheduledTaskViewSet
+
+        task = _make_task(team=[1])
+        authenticated_user.is_superuser = False
+        authenticated_user.group_list = [{"id": 1}]
+        authenticated_user.permission = {"job": {"cron_task-Edit"}}
+        api_client.cookies["current_team"] = "1"
+        original_get_object = ScheduledTaskViewSet.get_object
+
+        def get_object_then_change_team(view):
+            stale_task = original_get_object(view)
+            ScheduledTask.objects.filter(pk=stale_task.pk).update(team=[2])
+            return stale_task
+
+        with patch.object(ScheduledTaskViewSet, "get_object", new=get_object_then_change_team), patch(
+            SVC + ".update_periodic_task"
+        ) as update_periodic_task:
+            resp = api_client.patch(
+                f"{URL}{task.id}/",
+                {"name": "must-not-overwrite", "team": [1]},
+                format="json",
+            )
+
+        assert resp.status_code == 403
+        task.refresh_from_db()
+        assert task.team == [2]
+        assert task.name == "t"
+        update_periodic_task.assert_not_called()
+
     def test_list_and_retrieve(self, su_client):
         task = _make_task()
         assert su_client.get(URL).status_code == 200
@@ -162,12 +194,102 @@ class TestScheduledTaskCrud:
 
 
 class TestScheduledTaskActions:
+    @pytest.mark.parametrize("action,payload", [("toggle", {"is_enabled": False}), ("run_now", {})])
+    def test_cross_team_user_cannot_operate_task(self, api_client, authenticated_user, action, payload):
+        task = _make_task(team=[2], is_enabled=True)
+        authenticated_user.is_superuser = False
+        authenticated_user.group_list = [{"id": 1}]
+        authenticated_user.permission = {"job": {"cron_task-Edit"}}
+        api_client.cookies["current_team"] = "1"
+
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise") as toggle, patch(
+            "apps.job_mgmt.views.scheduled_task.dispatch_celery_task"
+        ) as dispatch:
+            resp = api_client.post(f"{URL}{task.id}/{action}/", payload, format="json")
+
+        assert resp.status_code == 403
+        task.refresh_from_db()
+        assert task.is_enabled is True
+        toggle.assert_not_called()
+        dispatch.assert_not_called()
+
+    @pytest.mark.parametrize("action,payload", [("toggle", {"is_enabled": False}), ("run_now", {})])
+    def test_task_team_change_after_initial_read_is_rejected(self, api_client, authenticated_user, action, payload):
+        """首次权限读取后团队发生变化时，锁内新快照必须再次拒绝旧团队用户。"""
+        from apps.job_mgmt.views.scheduled_task import ScheduledTaskViewSet
+
+        task = _make_task(team=[1], is_enabled=True)
+        authenticated_user.is_superuser = False
+        authenticated_user.group_list = [{"id": 1}]
+        authenticated_user.permission = {"job": {"cron_task-Edit"}}
+        api_client.cookies["current_team"] = "1"
+        original_get_object = ScheduledTaskViewSet.get_object
+
+        def get_object_then_change_team(view):
+            stale_task = original_get_object(view)
+            ScheduledTask.objects.filter(pk=stale_task.pk).update(team=[2])
+            return stale_task
+
+        with patch.object(ScheduledTaskViewSet, "get_object", new=get_object_then_change_team), patch(
+            VIEW_SVC + ".toggle_periodic_task_or_raise"
+        ) as toggle, patch("apps.job_mgmt.views.scheduled_task.dispatch_celery_task") as dispatch:
+            resp = api_client.post(f"{URL}{task.id}/{action}/", payload, format="json")
+
+        assert resp.status_code == 403
+        task.refresh_from_db()
+        assert task.team == [2]
+        assert task.is_enabled is True
+        toggle.assert_not_called()
+        dispatch.assert_not_called()
+
     def test_toggle(self, su_client):
         task = _make_task(is_enabled=True)
-        with patch(VIEW_SVC + ".toggle_periodic_task"):
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise"):
             resp = su_client.post(f"{URL}{task.id}/toggle/", {"is_enabled": False}, format="json")
         assert resp.status_code == 200
         assert resp.data["is_enabled"] is False
+
+    def test_toggle_disable_keeps_business_task_disabled_when_beat_db_fails(self, su_client):
+        task = _make_task(is_enabled=True)
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise", side_effect=DatabaseError("beat unavailable")):
+            resp = su_client.post(f"{URL}{task.id}/toggle/", {"is_enabled": False}, format="json")
+
+        assert resp.status_code == 200
+        task.refresh_from_db()
+        assert task.is_enabled is False
+        assert "重试" in resp.data["message"]
+
+    def test_toggle_enable_rolls_back_when_beat_db_fails(self, su_client):
+        task = _make_task(is_enabled=False)
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise", side_effect=DatabaseError("beat unavailable")):
+            resp = su_client.post(f"{URL}{task.id}/toggle/", {"is_enabled": True}, format="json")
+
+        assert resp.status_code == 400
+        task.refresh_from_db()
+        assert task.is_enabled is False
+
+    def test_patch_disable_keeps_business_task_disabled_when_beat_db_fails(self, su_client):
+        task = _make_task(is_enabled=True)
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise", side_effect=DatabaseError("beat unavailable")):
+            resp = su_client.patch(f"{URL}{task.id}/", {"is_enabled": False}, format="json")
+
+        assert resp.status_code == 200
+        task.refresh_from_db()
+        assert task.is_enabled is False
+
+    def test_patch_disable_accepts_authorized_legacy_multi_team_task(self, api_client, authenticated_user):
+        task = _make_task(team=[1, 2], is_enabled=True)
+        authenticated_user.is_superuser = False
+        authenticated_user.group_list = [{"id": 1}]
+        authenticated_user.permission = {"job": {"cron_task-Edit"}}
+        api_client.cookies["current_team"] = "1"
+
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise", return_value=True):
+            resp = api_client.patch(f"{URL}{task.id}/", {"is_enabled": False}, format="json")
+
+        assert resp.status_code == 200
+        task.refresh_from_db()
+        assert task.is_enabled is False
 
     def test_run_now_triggers_execution(self, su_client):
         task = _make_task()
@@ -205,22 +327,16 @@ class TestScheduledTaskActions:
         assert "高危" in resp.data.get("error", "")
         assert JobExecution.objects.count() == before_count, "高危命中时不应创建执行记录"
 
-    def test_run_now_dangerous_path_returns_400_without_creating_execution(self, su_client):
-        """run_now 在高危路径命中时应直接返回 400，不创建 JobExecution。"""
+    def test_run_now_temporary_file_distribution_returns_400_without_creating_execution(self, su_client):
+        """周期文件分发没有永久团队制品时应直接返回 400，不创建 JobExecution。"""
         from apps.job_mgmt.models import JobExecution
 
         task = _make_task(job_type=JobType.FILE_DISTRIBUTION, target_path="/etc/passwd")
-        bad_result = DangerousCheckResult()
-        bad_result.add_match(
-            SimpleNamespace(id=2, name="禁止系统路径", pattern="/etc/", level="forbidden"),
-            "/etc/passwd",
-        )
         before_count = JobExecution.objects.count()
-        with patch("apps.job_mgmt.views.scheduled_task.DangerousChecker.check_path", return_value=bad_result):
-            resp = su_client.post(f"{URL}{task.id}/run_now/", {}, format="json")
+        resp = su_client.post(f"{URL}{task.id}/run_now/", {}, format="json")
         assert resp.status_code == 400
-        assert "高危" in resp.data.get("error", "")
-        assert JobExecution.objects.count() == before_count, "高危路径命中时不应创建执行记录"
+        assert "永久" in str(resp.data)
+        assert JobExecution.objects.count() == before_count, "不支持的周期文件分发不应创建执行记录"
 
     def test_run_now_safe_script_proceeds_normally(self, su_client):
         """run_now 在安全脚本时应正常创建执行记录并触发任务。"""

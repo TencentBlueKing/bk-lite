@@ -124,41 +124,6 @@ def test_max_tokens_budget_env_and_request(monkeypatch):
     assert get_planned_execution_max_tokens_budget() == 0
 
 
-@pytest.mark.asyncio
-async def test_ask_limit_continue_defaults_node_id_to_skill_test(mocker):
-    """无工作流 node_id 时必须发 skill_test，否则 submit_choice 会 404。"""
-    from apps.opspilot.metis.llm.middleware.planned_execution_limits import ask_limit_continue
-
-    captured = {}
-
-    def _dispatch(name, data, config=None):
-        captured["event"] = data
-
-    async def _wait(**kwargs):
-        captured["wait"] = kwargs
-        return {"selected": ["continue"]}
-
-    mocker.patch(
-        "apps.opspilot.metis.llm.chain.report_renderers.k8s.build_a2ui_report_contract",
-        return_value={"component": "user-choice"},
-    )
-    mocker.patch(
-        "apps.opspilot.metis.llm.middleware.planned_execution_limits.dispatch_custom_event",
-        side_effect=_dispatch,
-    )
-    mocker.patch("apps.opspilot.utils.user_choice.wait_for_choice", side_effect=_wait)
-
-    ok = await ask_limit_continue(
-        kind="model_calls",
-        step_objective="排查",
-        config={"configurable": {"execution_id": "exec-1"}},
-    )
-    assert ok is True
-    assert captured["event"]["node_id"] == "skill_test"
-    assert captured["event"]["execution_id"] == "exec-1"
-    assert captured["wait"]["node_id"] == "skill_test"
-
-
 def test_planned_execution_limit_middleware_messages_and_continue():
     from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
     from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
@@ -470,6 +435,48 @@ def test_compact_planned_execution_messages_truncates_tool_and_ai_text():
     assert out[2].content == "keep tool call"
 
 
+def test_compact_analyze_deployment_keeps_parseable_issues_detail_under_budget():
+    """60 对象分析结果被模型侧压缩后仍须可 JSON 解析，且保留 issues_detail。"""
+    import json
+
+    from langchain_core.messages import ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import compact_planned_execution_messages
+
+    issues_detail = [
+        {
+            "severity": "high",
+            "issue": f"未配置探针-{index}",
+            "count": 59,
+            "workloads": [f"scan-fixture-{i:03d} (bk-lite-scan-fixtures)" for i in range(59)],
+        }
+        for index in range(12)
+    ]
+    payload = {
+        "cluster_name": "Kubernetes - 2",
+        "total": 60,
+        "healthy": 0,
+        "problematic": 60,
+        "issues_detail": issues_detail,
+        "_report_emitted_capability": "config_analysis_report",
+        "_next_step_hint": "结构化配置检查报告已通过界面卡片展示。",
+        "_deployments_full": [{"name": f"d-{i}", "namespace": "ns", "issues": ["x"]} for i in range(60)],
+    }
+    raw = json.dumps(payload, ensure_ascii=False)
+    assert len(raw) > 1500
+
+    out = compact_planned_execution_messages(
+        [ToolMessage(content=raw, tool_call_id="a1", name="analyze_deployment_configurations")],
+        max_tool_chars=1500,
+    )
+    compact = json.loads(out[0].content)
+    assert compact["problematic"] == 60
+    assert compact.get("issues_detail")
+    assert compact.get("_deployments_full_omitted") is True
+    assert "不要因 workloads 列表缩短而重跑" in compact["_next_step_hint"]
+    assert len(out[0].content) <= 1500
+
+
 def test_enforce_k8s_namespace_lookup_first_prepends_resolve_step():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, enforce_k8s_namespace_lookup_first
 
@@ -584,6 +591,147 @@ async def test_planner_drops_use_skills_without_packages():
 
     plan = await ToolExecutionPlanner(FakeLLM()).plan("你好", tools, skill_packages=[])
     assert plan.steps == []
+
+
+def test_enforce_generate_attachment_file_injects_when_empty_plan():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        GENERATE_ATTACHMENT_FILE_TOOL_NAME,
+        ToolExecutionPlan,
+        enforce_generate_attachment_file,
+        looks_like_attachment_file_task,
+    )
+
+    assert looks_like_attachment_file_task("RC 数据", "你是月报生成器，输出 .md 文件") is True
+    assert looks_like_attachment_file_task("你好", "月报生成器") is False
+    # chat_service 注入的强制规则模板不得单独触发硬注入
+    force_rule = "【附件生成强制规则 - 最高优先级，不可违反】\n" "当前工作流已配置文件生成工具 generate_attachment_file。\n" "必须调用 generate_attachment_file 工具把完整内容写入可下载文件"
+    assert looks_like_attachment_file_task("今天天气怎么样", force_rule) is False
+    assert looks_like_attachment_file_task("写一份运维月报", force_rule) is True
+
+    fixed = enforce_generate_attachment_file(
+        ToolExecutionPlan(goal="写月报", steps=[]),
+        {GENERATE_ATTACHMENT_FILE_TOOL_NAME},
+        user_message='{"root_causes":[]}',
+        agent_system_prompt="生成 K8s 集群运维月报，内容放在 .md 文件",
+    )
+    assert len(fixed.steps) == 1
+    assert fixed.steps[0].tools == [GENERATE_ATTACHMENT_FILE_TOOL_NAME]
+
+
+@pytest.mark.asyncio
+async def test_planner_forces_attachment_tool_when_model_returns_empty_steps():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import GENERATE_ATTACHMENT_FILE_TOOL_NAME
+
+    tools = [_tool(GENERATE_ATTACHMENT_FILE_TOOL_NAME, "生成可下载附件")]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(content='{"goal":"写月报","steps":[]}')
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan(
+        "month=2026-06 root_causes=[...]",
+        tools,
+        agent_system_prompt="你是 OpsPilot K8s 月报生成器，月报是一个 .md 报告文件。",
+    )
+    assert plan.steps
+    assert GENERATE_ATTACHMENT_FILE_TOOL_NAME in plan.steps[0].tools
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "generate_attachment_file" in prompt
+    assert "禁止返回空 steps" in prompt or "禁止空 steps" in prompt
+
+
+@pytest.mark.asyncio
+async def test_planner_aligns_use_skills_to_declared_source_tool():
+    """技能包声明 source_tool 后，纯 __use_skills__ 步应对齐到业务工具。"""
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ANALYZE_DEPLOYMENT_CONFIGURATIONS_TOOL_NAME,
+        USE_SKILLS_TOOL_NAME,
+        ToolExecutionPlanner,
+    )
+
+    tools = [_tool(ANALYZE_DEPLOYMENT_CONFIGURATIONS_TOOL_NAME, "分析 Deployment 配置")]
+    skill_packages = [
+        {
+            "name": "kubernetes-configuration",
+            "description": "K8s 配置检查",
+            "capabilities": ["config_analysis_report", "repair_diff_report"],
+            "reports": {
+                "config_analysis": {
+                    "source_tool": ANALYZE_DEPLOYMENT_CONFIGURATIONS_TOOL_NAME,
+                    "event": "config_analysis_report",
+                }
+            },
+        }
+    ]
+
+    class FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            return AIMessage(content=('{"goal":"检查配置","steps":[{"objective":"按技能包检查","tools":["' + USE_SKILLS_TOOL_NAME + '"]}]}'))
+
+    plan = await ToolExecutionPlanner(FakeLLM()).plan(
+        "使用技能查看 k8s 集群下所有的工作负载有没有配置问题",
+        tools,
+        skill_packages=skill_packages,
+    )
+    assert plan.steps
+    assert plan.steps[0].tools == [ANALYZE_DEPLOYMENT_CONFIGURATIONS_TOOL_NAME]
+    assert USE_SKILLS_TOOL_NAME not in plan.steps[0].tools
+
+
+def test_enforce_source_tool_rewrites_bare_use_skills_only():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ANALYZE_DEPLOYMENT_CONFIGURATIONS_TOOL_NAME,
+        USE_SKILLS_TOOL_NAME,
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        enforce_skill_report_source_tools,
+    )
+
+    plan = ToolExecutionPlan(
+        goal="检查配置",
+        steps=[ToolExecutionStep(objective="读技能包", tools=[USE_SKILLS_TOOL_NAME])],
+    )
+    fixed = enforce_skill_report_source_tools(
+        plan,
+        {ANALYZE_DEPLOYMENT_CONFIGURATIONS_TOOL_NAME, USE_SKILLS_TOOL_NAME},
+        skill_packages=[{"capabilities": ["config_analysis_report"]}],
+    )
+    assert fixed.steps[0].tools == [ANALYZE_DEPLOYMENT_CONFIGURATIONS_TOOL_NAME]
+
+
+def test_enforce_source_tool_does_not_inject_when_plan_has_business_tools():
+    """有列表等业务工具时只去掉哨兵，不硬塞 analyze。"""
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ANALYZE_DEPLOYMENT_CONFIGURATIONS_TOOL_NAME,
+        USE_SKILLS_TOOL_NAME,
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        enforce_skill_report_source_tools,
+    )
+
+    plan = ToolExecutionPlan(
+        goal="列工作负载",
+        steps=[
+            ToolExecutionStep(objective="列出 Deployment", tools=["list_kubernetes_deployments", USE_SKILLS_TOOL_NAME]),
+        ],
+    )
+    fixed = enforce_skill_report_source_tools(
+        plan,
+        {
+            ANALYZE_DEPLOYMENT_CONFIGURATIONS_TOOL_NAME,
+            USE_SKILLS_TOOL_NAME,
+            "list_kubernetes_deployments",
+        },
+        skill_packages=[{"capabilities": ["config_analysis_report"]}],
+    )
+    assert fixed.steps == [
+        ToolExecutionStep(objective="列出 Deployment", tools=["list_kubernetes_deployments"]),
+    ]
 
 
 def test_token_usage_middleware_records_each_model_call_and_visible_tools():

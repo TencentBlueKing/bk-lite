@@ -36,6 +36,7 @@ import { useClientData } from '@/context/client';
 import { getSoldModulePushTargets } from '@/app/node-manager/utils/modulePush';
 import { message } from 'antd';
 import {
+  applyIpAsDefaultNodeName,
   applyWinrmCertificateValidation,
   DEFAULT_WINRM_CERTIFICATE_VALIDATION
 } from './utils';
@@ -357,10 +358,25 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const handleBatchEditSuccess = (editedFields: any) => {
     const updatedData = tableData.map((item) => {
       if (selectedRowKeys.includes(item.key as string)) {
-        return {
-          ...item,
+        const rowWithIpDefault = Object.prototype.hasOwnProperty.call(
+          editedFields,
+          'ip'
+        )
+          ? applyIpAsDefaultNodeName(item, editedFields.ip)
+          : item;
+        const nodeNameWasSynced =
+          rowWithIpDefault.node_name !== item.node_name;
+        const updatedRow = {
+          ...rowWithIpDefault,
           ...editedFields
         };
+        if (
+          nodeNameWasSynced ||
+          Object.prototype.hasOwnProperty.call(editedFields, 'node_name')
+        ) {
+          updatedRow.node_name_error = null;
+        }
+        return updatedRow;
       }
       return item;
     });

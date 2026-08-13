@@ -29,6 +29,17 @@ FILTER_MARKER_END = "# ---- BK-Lite SNMP interface dimension filters (end) ----"
 
 IFMIB_MARKER_BEGIN = "# ---- BK-Lite core IF-MIB collection (begin) ----"
 IFMIB_MARKER_END = "# ---- BK-Lite core IF-MIB collection (end) ----"
+
+
+def _marker_line_pattern(marker: str) -> re.Pattern[str]:
+    """只匹配独占一行的 BK-Lite 保留标记。"""
+    return re.compile(rf"^[ \t]*{re.escape(marker)}[ \t]*(?:\r?\n|\Z)", re.MULTILINE)
+
+
+IFMIB_MARKER_BEGIN_LINE_RE = _marker_line_pattern(IFMIB_MARKER_BEGIN)
+IFMIB_MARKER_END_LINE_RE = _marker_line_pattern(IFMIB_MARKER_END)
+FILTER_MARKER_BEGIN_LINE_RE = _marker_line_pattern(FILTER_MARKER_BEGIN)
+FILTER_MARKER_END_LINE_RE = _marker_line_pattern(FILTER_MARKER_END)
 # 编辑走 toml↔dict 会丢掉注释标记；用该旗标在写回时恢复关闭态，避免对账误回填。
 BK_IFMIB_CLOSED_FLAG = "_bk_ifmib_closed"
 COMMON_IFMIB_TABLE_PATH = Path(__file__).resolve().parents[1] / "support-files/plugins/Telegraf/snmp/_common/ifmib.table.toml"
@@ -45,8 +56,7 @@ PUBLIC_IFDESCR_OIDS = frozenset({"1.3.6.1.2.1.2.2.1.2", "1.3.6.1.2.1.31.1.1.1.1"
 
 def has_managed_ifmib_section(raw_content: str | None) -> bool:
     """渲染后的 child 是否包含公共 IF-MIB 管理区间（含 enable_ifmib=false 的空区间）。"""
-    text = raw_content or ""
-    return IFMIB_MARKER_BEGIN in text and IFMIB_MARKER_END in text
+    return _has_canonical_ifmib_marker_section(raw_content or "")
 
 
 def _iter_content_snmp_inputs(content: dict) -> list[dict]:
@@ -94,6 +104,7 @@ def preserve_closed_ifmib_markers(toml_text: str | None, content: dict | None) -
         return text
     if has_managed_ifmib_section(text):
         return text
+    text = _remove_ifmib_marker_lines(text)
     return f"{IFMIB_MARKER_BEGIN}\n{IFMIB_MARKER_END}\n{text}"
 
 
@@ -126,6 +137,16 @@ def is_public_ifmib_table(table: dict[str, Any]) -> bool:
     return isinstance(fields, list) and any(
         isinstance(field, dict) and field.get("name") == "ifDescr" and field.get("oid") in PUBLIC_IFDESCR_OIDS
         for field in fields
+    )
+
+
+def is_ambiguous_ifmib_table(table: dict[str, Any]) -> bool:
+    """识别既无法证明为公共 IF-MIB、也没有私有 OID 身份的 interface 表。"""
+    if is_public_ifmib_table(table) or table.get("name") != "interface" or table.get("oid") not in (None, ""):
+        return False
+    fields = table.get("field")
+    return not isinstance(fields, list) or not any(
+        isinstance(field, dict) and field.get("oid") not in (None, "") for field in fields
     )
 
 
@@ -162,6 +183,50 @@ FILTER_JINJA_BLOCK = f"""\
 {FILTER_MARKER_END}
 {{% endif %}}
 """
+
+
+def _build_filter_jinja_block(*, include_tagpass: bool = True, include_tagdrop: bool = True) -> str:
+    """按现有 TOML 过滤段裁剪生成块，避免与无 marker 的用户 tagpass/tagdrop 重复。"""
+    setup_lines = [
+        "{% if enable_ifmib | default(true) %}",
+        FILTER_MARKER_BEGIN,
+        "{# ifType/ifDescr 黑白名单：空规则不输出对应键；默认排除由页面/创建注入，模板不做静默 fallback #}",
+        "{# 使用 |default 而非 is defined：采集沙箱 Environment 清空了 Jinja tests #}",
+    ]
+    if include_tagpass:
+        setup_lines.extend(
+            [
+                "{% set _iftype_include = iftype_include | default('', true) %}",
+                "{% set _ifdescr_include = ifdescr_include | default('', true) %}",
+                "{% if _iftype_include or _ifdescr_include %}",
+                "    [inputs.snmp.tagpass]",
+                "{% if _iftype_include %}",
+                "        ifType = {{ _iftype_include | to_toml_str_array }}",
+                "{% endif %}",
+                "{% if _ifdescr_include %}",
+                "        ifDescr = {{ _ifdescr_include | to_toml_str_array }}",
+                "{% endif %}",
+                "{% endif %}",
+            ]
+        )
+    if include_tagdrop:
+        setup_lines.extend(
+            [
+                "{% set _iftype_exclude = iftype_exclude | default('', true) %}",
+                "{% set _ifdescr_exclude = ifdescr_exclude | default('', true) %}",
+                "{% if _iftype_exclude or _ifdescr_exclude %}",
+                "    [inputs.snmp.tagdrop]",
+                "{% if _iftype_exclude %}",
+                "        ifType = {{ _iftype_exclude | to_toml_str_array }}",
+                "{% endif %}",
+                "{% if _ifdescr_exclude %}",
+                "        ifDescr = {{ _ifdescr_exclude | to_toml_str_array }}",
+                "{% endif %}",
+                "{% endif %}",
+            ]
+        )
+    setup_lines.extend([FILTER_MARKER_END, "{% endif %}"])
+    return "\n".join(setup_lines)
 
 UI_ADVANCED_PANEL = {
     "title": "接口采集与过滤",
@@ -371,7 +436,7 @@ IFMIB_HINT_RE = re.compile(
 )
 TABLE_BLOCK_RE = re.compile(
     r"^[ \t]*\[\[inputs\.snmp\.table\]\][^\n]*\n.*?"
-    r"(?=^[ \t]*\[\[(?!inputs\.snmp\.table\.field\]\])|\Z)",
+    r"(?=^[ \t]*(?:\[(?!\[)|\[\[(?!inputs\.snmp\.table\.field\]\]))|\Z)",
     re.MULTILINE | re.DOTALL,
 )
 FIELD_BLOCK_RE = re.compile(
@@ -379,13 +444,174 @@ FIELD_BLOCK_RE = re.compile(
     re.MULTILINE | re.DOTALL,
 )
 PROCESSORS_RE = re.compile(r"^\[\[processors\.", re.MULTILINE)
-FILTER_BLOCK_RE = re.compile(
-    re.escape(FILTER_MARKER_BEGIN) + r".*?" + re.escape(FILTER_MARKER_END) + r"\n?",
-    re.DOTALL,
+FILTER_TABLE_BLOCK_RE = re.compile(
+    r"^[ \t]*\[inputs\.snmp\.(?:tagpass|tagdrop)\][^\n]*\n.*?(?=^[ \t]*\[|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+FILTER_ARRAY_TABLE_HEADER_RE = re.compile(
+    r"^[ \t]*\[\[inputs\.snmp\.(?:tagpass|tagdrop)\]\]",
+    re.MULTILINE,
 )
 TAGEXCLUDE_IFTYPE_RE = re.compile(r'^\s*tagexclude\s*=\s*\["ifType"\]\s*\n', re.MULTILINE)
 INPUT_TAGEXCLUDE_KEY_RE = re.compile(r"^[ \t]*tagexclude\s*=", re.MULTILINE)
-SNMP_INPUT_RE = re.compile(r"^\s*\[\[inputs\.snmp\]\]", re.MULTILINE)
+SNMP_INPUT_RE = re.compile(r"^[ \t]*\[\[inputs\.snmp\]\]", re.MULTILINE)
+
+
+def _toml_non_string_view(text: str) -> str:
+    """屏蔽 TOML 字符串，同时保留注释、原始位置与换行。"""
+    chars = list(text)
+    index = 0
+    quote = ""
+    multiline = False
+    while index < len(text):
+        if quote:
+            delimiter = quote * (3 if multiline else 1)
+            if text.startswith(delimiter, index):
+                delimiter_length = len(delimiter)
+                if multiline:
+                    while index + delimiter_length < len(text) and text[index + delimiter_length] == quote:
+                        delimiter_length += 1
+                for offset in range(delimiter_length):
+                    chars[index + offset] = " "
+                index += delimiter_length
+                quote = ""
+                multiline = False
+                continue
+            if quote == '"' and text[index] == "\\":
+                chars[index] = " "
+                index += 1
+                if index < len(text):
+                    if text[index] not in "\r\n":
+                        chars[index] = " "
+                    index += 1
+                continue
+            if text[index] not in "\r\n":
+                chars[index] = " "
+            index += 1
+            continue
+
+        if text[index] == "#":
+            while index < len(text) and text[index] not in "\r\n":
+                index += 1
+            continue
+        if text[index] in {'"', "'"}:
+            quote = text[index]
+            multiline = text.startswith(quote * 3, index)
+            delimiter_length = 3 if multiline else 1
+            for offset in range(delimiter_length):
+                chars[index + offset] = " "
+            index += delimiter_length
+            continue
+        index += 1
+    return "".join(chars)
+
+
+def _toml_structural_view(text: str) -> str:
+    """屏蔽 TOML 字符串和注释，同时保留原始位置与换行。"""
+    chars = list(_toml_non_string_view(text))
+    index = 0
+    while index < len(chars):
+        if chars[index] == "#":
+            while index < len(chars) and chars[index] not in "\r\n":
+                chars[index] = " "
+                index += 1
+            continue
+        index += 1
+    return "".join(chars)
+
+
+def _non_string_spans(pattern: re.Pattern[str], text: str) -> list[tuple[int, int]]:
+    return [match.span() for match in pattern.finditer(_toml_non_string_view(text))]
+
+
+def _structural_spans(pattern: re.Pattern[str], text: str) -> list[tuple[int, int]]:
+    return [match.span() for match in pattern.finditer(_toml_structural_view(text))]
+
+
+def _first_structural_raw_match(pattern: re.Pattern[str], text: str) -> re.Match[str] | None:
+    structural = _toml_structural_view(text)
+    return next((match for match in pattern.finditer(text) if structural[match.start() : match.end()].strip()), None)
+
+
+def _replace_structural_blocks(
+    pattern: re.Pattern[str],
+    text: str,
+    replace: Any,
+) -> str:
+    return _replace_spans(text, _structural_spans(pattern, text), replace)
+
+
+def _replace_spans(
+    text: str,
+    spans: list[tuple[int, int]],
+    replace: Any,
+) -> str:
+    if not spans:
+        return text
+    chunks: list[str] = []
+    cursor = 0
+    for start, end in spans:
+        chunks.append(text[cursor:start])
+        chunks.append(replace(text[start:end]))
+        cursor = end
+    chunks.append(text[cursor:])
+    return "".join(chunks)
+
+
+def _marker_tokens(
+    text: str,
+    begin_pattern: re.Pattern[str],
+    end_pattern: re.Pattern[str],
+) -> list[tuple[str, int, int]]:
+    """在字符串外提取精确 marker 行，返回保持原始 offset 的有序 token。"""
+    view = _toml_non_string_view(text)
+    tokens = [
+        ("begin", *match.span())
+        for match in begin_pattern.finditer(text)
+        if view[match.start() : match.end()] == match.group(0)
+    ]
+    tokens.extend(
+        ("end", *match.span())
+        for match in end_pattern.finditer(text)
+        if view[match.start() : match.end()] == match.group(0)
+    )
+    return sorted(tokens, key=lambda token: token[1])
+
+
+def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _remove_marker_lines(
+    text: str,
+    begin_pattern: re.Pattern[str],
+    end_pattern: re.Pattern[str],
+) -> str:
+    spans = [(start, end) for _, start, end in _marker_tokens(text, begin_pattern, end_pattern)]
+    return _replace_spans(text, spans, lambda _: "")
+
+
+def _strip_owned_marker_sections(
+    text: str,
+    begin_pattern: re.Pattern[str],
+    end_pattern: re.Pattern[str],
+    owns_payload: Any,
+) -> str:
+    """删除可证明归属的相邻 marker 块；畸形序列只删 marker 行，绝不跨区吞业务内容。"""
+    tokens = _marker_tokens(text, begin_pattern, end_pattern)
+    owned_spans = [
+        (left[1], right[2])
+        for left, right in zip(tokens, tokens[1:])
+        if left[0] == "begin" and right[0] == "end" and owns_payload(text[left[2] : right[1]])
+    ]
+    marker_spans = [(start, end) for _, start, end in tokens]
+    return _replace_spans(text, _merge_spans([*owned_spans, *marker_spans]), lambda _: "")
 
 
 def get_common_ifmib_table_block() -> str:
@@ -431,43 +657,122 @@ def get_ui_advanced_panel() -> dict[str, Any]:
 
 
 def has_interface_collection(template_content: str) -> bool:
-    return bool(INTERFACE_HINT_RE.search(template_content or ""))
+    return _first_structural_raw_match(INTERFACE_HINT_RE, template_content or "") is not None
 
 
 def _table_block_header_value(table_text: str, key: str) -> str | None:
-    header = table_text.split("[[inputs.snmp.table.field]]", 1)[0]
-    match = re.search(rf'^\s*{re.escape(key)}\s*=\s*"([^"]+)"\s*$', header, re.MULTILINE)
+    fields = _structural_spans(FIELD_BLOCK_RE, table_text)
+    header = table_text[: fields[0][0]] if fields else table_text
+    pattern = re.compile(rf'^\s*{re.escape(key)}\s*=\s*"([^"]+)"\s*$', re.MULTILINE)
+    match = _first_structural_raw_match(pattern, header)
     return match.group(1) if match else None
 
 
 def is_public_ifmib_table_block(table_text: str) -> bool:
     """渲染文本层面的公共表判定，与 is_public_ifmib_table 的 OID 口径保持一致。"""
+    try:
+        tables = _get_snmp_input_tables(tomllib.loads(f"[[inputs.snmp]]\n{table_text}"))
+    except tomllib.TOMLDecodeError:
+        tables = []
+    if len(tables) == 1:
+        return is_public_ifmib_table(tables[0])
+
     table_oid = _table_block_header_value(table_text, "oid")
     if table_oid in PUBLIC_IFMIB_TABLE_OIDS:
         return True
     if table_oid not in (None, "") or _table_block_header_value(table_text, "name") != "interface":
         return False
     return any(
-        re.search(rf'^\s*oid\s*=\s*"{re.escape(ifdescr_oid)}"\s*$', table_text, re.MULTILINE)
+        _first_structural_raw_match(
+            re.compile(rf'^\s*oid\s*=\s*"{re.escape(ifdescr_oid)}"\s*$', re.MULTILINE),
+            table_text,
+        )
         for ifdescr_oid in PUBLIC_IFDESCR_OIDS
     )
+
+
+def _strip_ifmib_jinja_wrapper(payload: str) -> str | None:
+    """剥离本模块生成的 IF-MIB 外层 Jinja；其他 Jinja 形态不视为模块所有。"""
+    normalized = payload.replace("\r\n", "\n").strip()
+    opening = "{% if enable_ifmib | default(true) %}"
+    closing = "{% endif %}"
+    if not normalized.startswith(f"{opening}\n") or not normalized.endswith(f"\n{closing}"):
+        return None
+    return normalized[len(opening) : -len(closing)].strip()
+
+
+def _is_owned_ifmib_payload(payload: str) -> bool:
+    """只认空关闭块或只含一张公共表的 BK-Lite 管理内容。"""
+    candidate = payload.strip()
+    if not candidate:
+        return True
+    without_wrapper = _strip_ifmib_jinja_wrapper(payload)
+    if without_wrapper is not None:
+        candidate = without_wrapper
+    elif "{%" in candidate or "{{" in candidate:
+        return False
+
+    try:
+        document = tomllib.loads(f"[[inputs.snmp]]\n{candidate}\n")
+    except tomllib.TOMLDecodeError:
+        return False
+    snmp_inputs = document.get("inputs", {}).get("snmp", [])
+    if not isinstance(snmp_inputs, list) or len(snmp_inputs) != 1:
+        return False
+    snmp_input = snmp_inputs[0]
+    if not isinstance(snmp_input, dict) or set(snmp_input) != {"table"}:
+        return False
+    tables = snmp_input.get("table")
+    return isinstance(tables, list) and len(tables) == 1 and is_public_ifmib_table(tables[0])
+
+
+def _has_canonical_ifmib_marker_section(text: str) -> bool:
+    tokens = _marker_tokens(text, IFMIB_MARKER_BEGIN_LINE_RE, IFMIB_MARKER_END_LINE_RE)
+    return (
+        len(tokens) == 2
+        and tokens[0][0] == "begin"
+        and tokens[1][0] == "end"
+        and _is_owned_ifmib_payload(text[tokens[0][2] : tokens[1][1]])
+    )
+
+
+def _remove_ifmib_marker_lines(text: str) -> str:
+    return _remove_marker_lines(text, IFMIB_MARKER_BEGIN_LINE_RE, IFMIB_MARKER_END_LINE_RE)
 
 
 def _strip_ifmib_tables(template_content: str) -> str:
     """删除各厂商复制的 IF-MIB table，绝不删除私有 OID table。"""
 
-    def strip_table(table_match: re.Match[str]) -> str:
-        table_text = table_match.group(0)
+    def strip_table(table_text: str) -> str:
         return "" if is_public_ifmib_table_block(table_text) else table_text
 
-    text = TABLE_BLOCK_RE.sub(strip_table, template_content)
-    text = re.sub(
-        re.escape(IFMIB_MARKER_BEGIN) + r".*?" + re.escape(IFMIB_MARKER_END) + r"\n?",
-        "",
-        text,
-        flags=re.DOTALL,
-    )
-    return re.sub(r"\n{3,}", "\n\n", text)
+    tokens = _marker_tokens(template_content, IFMIB_MARKER_BEGIN_LINE_RE, IFMIB_MARKER_END_LINE_RE)
+    owned_spans = [
+        (left[1], right[2])
+        for left, right in zip(tokens, tokens[1:])
+        if left[0] == "begin"
+        and right[0] == "end"
+        and _is_owned_ifmib_payload(template_content[left[2] : right[1]])
+    ]
+    if len(tokens) == 2 and len(owned_spans) == 1:
+        start, end = owned_spans[0]
+        # 该块由 ensure_core_network_ifmib_jinja 以一个空行作为边界追加；删除旧块时
+        # 一并吞掉紧邻两侧的整行空白，再由追加路径重建固定边界，避免重复渲染累积。
+        leading = re.search(r"(?:^|\r?\n)(?:[ \t]*\r?\n)*\Z", template_content[:start])
+        trailing = re.match(r"(?:[ \t]*\r?\n)*", template_content[end:])
+        leading_newline_length = 2 if leading.group(0).startswith("\r\n") else int(leading.group(0).startswith("\n"))
+        start = leading.start() + leading_newline_length
+        end += trailing.end()
+        text = _replace_spans(template_content, [(start, end)], lambda _: "")
+    else:
+        text = _strip_owned_marker_sections(
+            template_content,
+            IFMIB_MARKER_BEGIN_LINE_RE,
+            IFMIB_MARKER_END_LINE_RE,
+            _is_owned_ifmib_payload,
+        )
+    text = _replace_structural_blocks(TABLE_BLOCK_RE, text, strip_table)
+    return text
 
 
 def should_manage_core_network_ifmib(context: dict[str, Any]) -> bool:
@@ -511,27 +816,28 @@ def ensure_public_ifmib_input_tagexclude(
             return template_content
 
     text = template_content or ""
-    headers = list(SNMP_INPUT_RE.finditer(text))
+    headers = _structural_spans(SNMP_INPUT_RE, text)
     if not headers:
         return text
 
     insert_positions: list[tuple[int, str]] = []
-    for index, header in enumerate(headers):
-        segment_end = headers[index + 1].start() if index + 1 < len(headers) else len(text)
-        segment = text[header.start() : segment_end]
-        if not any(is_public_ifmib_table_block(match.group(0)) for match in TABLE_BLOCK_RE.finditer(segment)):
+    for index, (header_start, _) in enumerate(headers):
+        segment_end = headers[index + 1][0] if index + 1 < len(headers) else len(text)
+        segment = text[header_start:segment_end]
+        if not any(is_public_ifmib_table_block(segment[start:end]) for start, end in _structural_spans(TABLE_BLOCK_RE, segment)):
             continue
         header_line_end = segment.find("\n")
         if header_line_end == -1:
             continue
         body = segment[header_line_end + 1 :]
-        first_section = re.search(r"^[ \t]*\[", body, re.MULTILINE)
-        input_level = body[: first_section.start()] if first_section else body
-        if INPUT_TAGEXCLUDE_KEY_RE.search(input_level):
+        section_spans = _structural_spans(re.compile(r"^[ \t]*\[", re.MULTILINE), body)
+        input_level = body[: section_spans[0][0]] if section_spans else body
+        if _structural_spans(INPUT_TAGEXCLUDE_KEY_RE, input_level):
             continue
         indent_match = re.search(r"^([ \t]+)\S", input_level, re.MULTILINE)
         indent = indent_match.group(1) if indent_match else "    "
-        insert_positions.append((header.start() + header_line_end + 1, f'{indent}tagexclude = ["ifType"]\n'))
+        newline = "\r\n" if segment[: header_line_end + 1].endswith("\r\n") else "\n"
+        insert_positions.append((header_start + header_line_end + 1, f'{indent}tagexclude = ["ifType"]{newline}'))
 
     if not insert_positions:
         return text
@@ -542,7 +848,7 @@ def ensure_public_ifmib_input_tagexclude(
 
 def validate_rendered_core_network_ifmib(template_content: str, context: dict[str, Any]) -> None:
     """在下发前校验最终 SNMP TOML，拒绝公共 IF-MIB 与厂商配置的结构冲突。"""
-    if not should_manage_core_network_ifmib(context) or not SNMP_INPUT_RE.search(template_content):
+    if not should_manage_core_network_ifmib(context) or not _structural_spans(SNMP_INPUT_RE, template_content):
         return
 
     try:
@@ -554,8 +860,14 @@ def validate_rendered_core_network_ifmib(template_content: str, context: dict[st
     snmp_inputs = config.get("inputs", {}).get("snmp", []) if isinstance(config.get("inputs"), dict) else []
     if isinstance(snmp_inputs, dict):
         snmp_inputs = [snmp_inputs]
-    interface_tables = [table for table in _get_snmp_input_tables(config) if is_public_ifmib_table(table)]
+    tables = _get_snmp_input_tables(config)
     enabled = context.get("enable_ifmib", True) is not False
+    if any(is_ambiguous_ifmib_table(table) for table in tables):
+        raise ValidationAppException(
+            "SNMP IF-MIB 配置冲突：存在无 OID 的 interface 表，公共 IF-MIB 身份无法证明"
+        )
+
+    interface_tables = [table for table in tables if is_public_ifmib_table(table)]
     if enabled:
         if len(interface_tables) != 1:
             raise ValidationAppException(
@@ -604,23 +916,246 @@ def restore_managed_ifmib_markers(template_content: str) -> str:
     text = template_content or ""
     if has_managed_ifmib_section(text):
         return text
-    headers = list(SNMP_INPUT_RE.finditer(text))
+    headers = _structural_spans(SNMP_INPUT_RE, text)
     wraps: list[tuple[int, int]] = []
-    for index, header in enumerate(headers):
-        segment_end = headers[index + 1].start() if index + 1 < len(headers) else len(text)
-        segment = text[header.start() : segment_end]
+    for index, (header_start, _) in enumerate(headers):
+        segment_end = headers[index + 1][0] if index + 1 < len(headers) else len(text)
+        segment = text[header_start:segment_end]
         public_blocks = [
-            match
-            for match in TABLE_BLOCK_RE.finditer(segment)
-            if is_public_ifmib_table_block(match.group(0))
+            span
+            for span in _structural_spans(TABLE_BLOCK_RE, segment)
+            if is_public_ifmib_table_block(segment[span[0] : span[1]])
         ]
         if not public_blocks:
             continue
-        wraps.append((header.start() + public_blocks[0].start(), header.start() + public_blocks[-1].end()))
+        wraps.append((header_start + public_blocks[0][0], header_start + public_blocks[-1][1]))
     for start, end in reversed(wraps):
         chunk = text[start:end].strip("\n")
         text = f"{text[:start]}{IFMIB_MARKER_BEGIN}\n{chunk}\n{IFMIB_MARKER_END}\n{text[end:]}"
     return text
+
+
+def _restore_managed_filter_markers_after_roundtrip(
+    template_content: str,
+    *,
+    managed_filter_provenance: dict[str, dict[str, list[str]]] | None,
+    owner_index: int,
+) -> str:
+    """仅为往返前可证明受管的接口过滤恢复注释标记。"""
+    text = template_content or ""
+    if not managed_filter_provenance or _has_canonical_filter_marker_section(text):
+        return text
+
+    headers = _structural_spans(SNMP_INPUT_RE, text)
+    if owner_index >= len(headers):
+        return text
+    header_start = headers[owner_index][0]
+    segment_end = headers[owner_index + 1][0] if owner_index + 1 < len(headers) else len(text)
+    segment = text[header_start:segment_end]
+    if sum(
+        is_public_ifmib_table_block(candidate[start:end])
+        for input_index, (input_start, _) in enumerate(headers)
+        for candidate in [text[input_start : headers[input_index + 1][0] if input_index + 1 < len(headers) else len(text)]]
+        for start, end in _structural_spans(TABLE_BLOCK_RE, candidate)
+    ) != 1:
+        return text
+    matched: dict[str, tuple[int, int]] = {}
+    for start, end in _structural_spans(FILTER_TABLE_BLOCK_RE, segment):
+        filters = _parse_owned_filter_payload(segment[start:end])
+        if not filters or len(filters) != 1:
+            continue
+        kind, values = next(iter(filters.items()))
+        if managed_filter_provenance.get(kind) == values:
+            matched[kind] = (header_start + start, header_start + end)
+    if set(matched) != set(managed_filter_provenance):
+        return text
+
+    start = min(span[0] for span in matched.values())
+    end = max(span[1] for span in matched.values())
+    chunk = text[start:end].strip("\n")
+    if _parse_owned_filter_payload(chunk) != managed_filter_provenance:
+        return text
+    return f"{text[:start]}{FILTER_MARKER_BEGIN}\n{chunk}\n{FILTER_MARKER_END}\n{text[end:]}"
+
+
+_INTERFACE_FILTER_TAG_KEYS = frozenset({"ifType", "ifDescr"})
+
+
+def _owned_interface_filter_provenance(
+    snmp_input: dict[str, Any],
+) -> dict[str, dict[str, list[str]]] | None:
+    """仅当 tagpass/tagdrop 全部是接口键时，才能宣称受管归属。"""
+    provenance: dict[str, dict[str, list[str]]] = {}
+    for kind in ("tagpass", "tagdrop"):
+        table = snmp_input.get(kind)
+        if not isinstance(table, dict) or not table:
+            continue
+        if not set(table).issubset(_INTERFACE_FILTER_TAG_KEYS):
+            continue
+        if any(
+            not isinstance(values, list) or not all(isinstance(value, str) for value in values)
+            for values in table.values()
+        ):
+            continue
+        provenance[kind] = deepcopy(table)
+    return provenance or None
+
+
+def _assert_owner_filter_table_mergeable(
+    owner: dict[str, Any],
+    table_name: str,
+    *,
+    page_updates: list[tuple[str, str, list[str]]],
+) -> None:
+    """拒绝无法安全就地合并的 tagpass/tagdrop 形态。"""
+    relevant = [(key, values) for name, key, values in page_updates if name == table_name]
+    if not relevant:
+        return
+    table = owner.get(table_name)
+    if table is None:
+        return
+    if not isinstance(table, dict):
+        raise ValidationAppException(
+            f"SNMP IF-MIB 配置冲突：公共接口 input 上的 {table_name} 不是可合并的表结构，"
+            "无法安全写入页面过滤"
+        )
+    if table_name != "tagpass":
+        return
+    non_interface_keys = set(table) - _INTERFACE_FILTER_TAG_KEYS
+    if non_interface_keys and any(values for _key, values in relevant):
+        raise ValidationAppException(
+            "SNMP IF-MIB 配置冲突：公共接口 input 上已有非接口 tagpass，"
+            "无法与页面提交的接口白名单安全合并；请先清理原有 tagpass 或改为排除规则"
+        )
+
+
+def merge_page_snmp_interface_filters(
+    template_content: str,
+    context: dict[str, Any] | None = None,
+) -> str:
+    """把页面提交的接口过滤精确合并进公共 IF-MIB owner 的既有 tagpass/tagdrop。
+
+    #4715 为避免与无 marker 用户段重复，会跳过同 kind 的 managed Jinja；此时若不再
+    合并，页面值会被静默丢弃。只在 context 显式出现的字段上替换/清空接口键，保留
+    brand 等非接口键；tagpass 已有非接口键且页面提交了非空 include 时 fail-closed。
+    """
+    from apps.monitor.constants.snmp_interface import (
+        FIELD_IFDESCR_EXCLUDE,
+        FIELD_IFDESCR_INCLUDE,
+        FIELD_IFTYPE_EXCLUDE,
+        FIELD_IFTYPE_INCLUDE,
+    )
+    from apps.monitor.utils.snmp_interface_filters import (
+        assert_snmp_interface_filter_mutex,
+        normalize_filter_list,
+        normalize_iftype_list,
+    )
+
+    page_filter_bindings = (
+        (FIELD_IFTYPE_INCLUDE, "tagpass", "ifType", True),
+        (FIELD_IFDESCR_INCLUDE, "tagpass", "ifDescr", False),
+        (FIELD_IFTYPE_EXCLUDE, "tagdrop", "ifType", True),
+        (FIELD_IFDESCR_EXCLUDE, "tagdrop", "ifDescr", False),
+    )
+
+    context = context or {}
+    if not should_manage_core_network_ifmib(context) or context.get("enable_ifmib", True) is False:
+        return template_content
+    if not any(field in context for field, *_ in page_filter_bindings):
+        return template_content
+
+    page_updates: list[tuple[str, str, list[str]]] = []
+    for field, table_name, key, is_iftype in page_filter_bindings:
+        if field not in context:
+            continue
+        normalizer = normalize_iftype_list if is_iftype else normalize_filter_list
+        page_updates.append((table_name, key, normalizer(context.get(field))))
+    if not page_updates:
+        return template_content
+
+    assert_snmp_interface_filter_mutex(
+        iftype_include=normalize_iftype_list(context.get(FIELD_IFTYPE_INCLUDE))
+        if FIELD_IFTYPE_INCLUDE in context
+        else None,
+        iftype_exclude=normalize_iftype_list(context.get(FIELD_IFTYPE_EXCLUDE))
+        if FIELD_IFTYPE_EXCLUDE in context
+        else None,
+        ifdescr_include=normalize_filter_list(context.get(FIELD_IFDESCR_INCLUDE))
+        if FIELD_IFDESCR_INCLUDE in context
+        else None,
+        ifdescr_exclude=normalize_filter_list(context.get(FIELD_IFDESCR_EXCLUDE))
+        if FIELD_IFDESCR_EXCLUDE in context
+        else None,
+    )
+
+    managed_filter_source = _canonical_managed_filter_provenance(template_content)
+    try:
+        document = toml.loads(template_content)
+    except Exception as exc:
+        raise ValidationAppException(
+            f"SNMP IF-MIB 配置冲突：最终 TOML 无法解析，请检查重复的接口表或 tagpass/tagdrop 段：{exc}"
+        ) from exc
+
+    snmp_inputs = document.get("inputs", {}).get("snmp", [])
+    if isinstance(snmp_inputs, dict):
+        snmp_inputs = [snmp_inputs]
+        document.setdefault("inputs", {})["snmp"] = snmp_inputs
+    if not isinstance(snmp_inputs, list):
+        return template_content
+
+    owners = [
+        snmp_input
+        for snmp_input in snmp_inputs
+        if isinstance(snmp_input, dict)
+        and isinstance(snmp_input.get("table"), list)
+        and any(isinstance(table, dict) and is_public_ifmib_table(table) for table in snmp_input["table"])
+    ]
+    if not owners:
+        return template_content
+    owner = max(
+        owners,
+        key=lambda snmp_input: (
+            any(key in snmp_input for key in ("tagpass", "tagdrop")),
+            "tagexclude" in snmp_input,
+        ),
+    )
+
+    _assert_owner_filter_table_mergeable(owner, "tagpass", page_updates=page_updates)
+    _assert_owner_filter_table_mergeable(owner, "tagdrop", page_updates=page_updates)
+
+    changed = False
+    for table_name, key, values in page_updates:
+        table = owner.get(table_name)
+        if values:
+            if not isinstance(table, dict):
+                table = {}
+                owner[table_name] = table
+            if table.get(key) != values:
+                table[key] = values
+                changed = True
+            continue
+        if not isinstance(table, dict) or key not in table:
+            continue
+        table.pop(key, None)
+        if not table:
+            owner.pop(table_name, None)
+        changed = True
+
+    if not changed:
+        return template_content
+
+    owner_index = snmp_inputs.index(owner)
+    rendered = toml.dumps(document).replace("[inputs]\n", "")
+    rendered = restore_managed_ifmib_markers(rendered)
+    managed_filter_provenance = None
+    if managed_filter_source is not None and managed_filter_source[0] == owner_index:
+        # 合并后接口键值已变，必须用新负载恢复 marker，不能沿用往返前旧 provenance。
+        managed_filter_provenance = _owned_interface_filter_provenance(owner)
+    return _restore_managed_filter_markers_after_roundtrip(
+        rendered,
+        managed_filter_provenance=managed_filter_provenance,
+        owner_index=owner_index,
+    )
 
 
 def isolate_snmp_interface_tagpass(
@@ -639,6 +1174,7 @@ def isolate_snmp_interface_tagpass(
         if not should_manage_core_network_ifmib(context) or context.get("enable_ifmib", True) is False:
             return template_content
 
+    managed_filter_source = _canonical_managed_filter_provenance(template_content)
     document = toml.loads(template_content)
     snmp_inputs = document.get("inputs", {}).get("snmp", [])
     if isinstance(snmp_inputs, dict):
@@ -679,13 +1215,23 @@ def isolate_snmp_interface_tagpass(
 
         if remaining_tables or has_non_tag_fields:
             snmp_inputs.insert(index + 1, interface_input)
+            owner_index = index + 1
         else:
             # 原 input 仅承载公共接口表（以及已复制的 tag 字段）时直接替换，
             # 避免生成一个没有任何采集载荷的额外 inputs.snmp。
             snmp_inputs[index] = interface_input
+            owner_index = index
         rendered = toml.dumps(document).replace("[inputs]\n", "")
         # toml.dumps 会丢掉注释；管理区间标记必须写回，否则对账无法识别关闭态。
-        return restore_managed_ifmib_markers(rendered)
+        rendered = restore_managed_ifmib_markers(rendered)
+        managed_filter_provenance = None
+        if managed_filter_source is not None and managed_filter_source[0] == index:
+            managed_filter_provenance = managed_filter_source[1]
+        return _restore_managed_filter_markers_after_roundtrip(
+            rendered,
+            managed_filter_provenance=managed_filter_provenance,
+            owner_index=owner_index,
+        )
     return template_content
 
 
@@ -701,37 +1247,148 @@ def needs_snmp_interface_filter_jinja(template_content: str) -> bool:
     return has_interface_collection(text) or FILTER_MARKER_BEGIN in text
 
 
+def _parse_owned_filter_payload(payload: str) -> dict[str, dict[str, list[str]]] | None:
+    """解析只含接口 tagpass/tagdrop 的模块负载；其他键不宣称归属。"""
+    normalized = payload.replace("\r\n", "\n").strip()
+    if not normalized:
+        return {}
+
+    if "{%" in normalized or "{{" in normalized:
+        return None
+
+    try:
+        document = tomllib.loads(normalized)
+    except tomllib.TOMLDecodeError:
+        return None
+    inputs = document.get("inputs")
+    if set(document) != {"inputs"} or not isinstance(inputs, dict):
+        return None
+    snmp = inputs.get("snmp")
+    if set(inputs) != {"snmp"} or not isinstance(snmp, dict):
+        return None
+    if not snmp or not set(snmp).issubset({"tagpass", "tagdrop"}):
+        return None
+    for filters in snmp.values():
+        if not isinstance(filters, dict) or not filters or not set(filters).issubset({"ifType", "ifDescr"}):
+            return None
+        if any(
+            not isinstance(values, list) or not all(isinstance(value, str) for value in values)
+            for values in filters.values()
+        ):
+            return None
+    return deepcopy(snmp)
+
+
+def _is_generated_filter_jinja_payload(payload: str) -> bool:
+    """仅识别本模块生成的完整过滤 Jinja 负载。"""
+    normalized = payload.replace("\r\n", "\n").strip()
+    generated_payloads: list[str] = []
+    for include_tagpass, include_tagdrop in ((True, True), (True, False), (False, True), (False, False)):
+        generated = _build_filter_jinja_block(include_tagpass=include_tagpass, include_tagdrop=include_tagdrop)
+        generated_tokens = _marker_tokens(
+            generated,
+            FILTER_MARKER_BEGIN_LINE_RE,
+            FILTER_MARKER_END_LINE_RE,
+        )
+        generated_payloads.append(generated[generated_tokens[0][2] : generated_tokens[1][1]].replace("\r\n", "\n").strip())
+    return normalized in generated_payloads
+
+
+def _is_owned_filter_payload(payload: str) -> bool:
+    """只删除本模块生成的过滤 Jinja 或只含接口 tagpass/tagdrop 的渲染结果。"""
+    return _is_generated_filter_jinja_payload(payload) or _parse_owned_filter_payload(payload) is not None
+
+
+def _strip_owned_filter_sections(text: str) -> str:
+    """删除受管 FILTER 区间；完整生成态同时删除紧邻的外层开关 Jinja。"""
+    tokens = _marker_tokens(text, FILTER_MARKER_BEGIN_LINE_RE, FILTER_MARKER_END_LINE_RE)
+    owned_spans: list[tuple[int, int]] = []
+    for left, right in zip(tokens, tokens[1:]):
+        if left[0] != "begin" or right[0] != "end":
+            continue
+        payload = text[left[2] : right[1]]
+        if not _is_owned_filter_payload(payload):
+            continue
+
+        start, end = left[1], right[2]
+        if _is_generated_filter_jinja_payload(payload):
+            for newline in ("\n", "\r\n"):
+                opening = f"{{% if enable_ifmib | default(true) %}}{newline}"
+                closing = f"{{% endif %}}{newline}"
+                if text[:start].endswith(opening) and text.startswith(closing, end):
+                    start -= len(opening)
+                    end += len(closing)
+                    break
+        owned_spans.append((start, end))
+
+    marker_spans = [(start, end) for _, start, end in tokens]
+    return _replace_spans(text, _merge_spans([*owned_spans, *marker_spans]), lambda _: "")
+
+
+def _canonical_managed_filter_provenance(
+    text: str,
+) -> tuple[int, dict[str, dict[str, list[str]]]] | None:
+    """返回唯一规范 FILTER 区间的源 input 索引与逐类精确负载。"""
+    tokens = _marker_tokens(text, FILTER_MARKER_BEGIN_LINE_RE, FILTER_MARKER_END_LINE_RE)
+    if len(tokens) != 2 or tokens[0][0] != "begin" or tokens[1][0] != "end":
+        return None
+    filters = _parse_owned_filter_payload(text[tokens[0][2] : tokens[1][1]])
+    if not filters:
+        return None
+    headers = _structural_spans(SNMP_INPUT_RE, text)
+    owner_indexes = [index for index, (start, _) in enumerate(headers) if start < tokens[0][1]]
+    if not owner_indexes:
+        return None
+    owner_index = owner_indexes[-1]
+    next_header = headers[owner_index + 1][0] if owner_index + 1 < len(headers) else len(text)
+    if tokens[1][2] > next_header:
+        return None
+    return owner_index, filters
+
+
+def _has_canonical_filter_marker_section(text: str) -> bool:
+    return _canonical_managed_filter_provenance(text) is not None
+
+
 def ensure_iftype_tag_fields(template_content: str) -> str:
     """幂等：在每个 ifDescr 采集字段后注入 ifType tag，供 tagpass/tagdrop 使用。"""
     if not has_interface_collection(template_content):
         return template_content
 
-    def ensure_table(table_match: re.Match[str]) -> str:
-        table_text = table_match.group(0)
-        fields = list(FIELD_BLOCK_RE.finditer(table_text))
+    def ensure_table(table_text: str) -> str:
+        fields = _structural_spans(FIELD_BLOCK_RE, table_text)
         ifdescr = next(
-            (field for field in fields if re.search(r'^\s*name\s*=\s*"ifDescr"\s*$', field.group(0), re.MULTILINE)),
+            (
+                field
+                for field in fields
+                if _first_structural_raw_match(
+                    re.compile(r'^\s*name\s*=\s*"ifDescr"\s*$', re.MULTILINE),
+                    table_text[field[0] : field[1]],
+                )
+            ),
             None,
         )
         if ifdescr is None:
             return table_text
         if any(
-            re.search(r'^\s*name\s*=\s*"ifType"\s*$', field.group(0), re.MULTILINE)
-            or re.search(
-                rf'^\s*oid\s*=\s*"{re.escape(IFTYPE_OID)}"\s*$',
-                field.group(0),
-                re.MULTILINE,
+            _first_structural_raw_match(
+                re.compile(r'^\s*name\s*=\s*"ifType"\s*$', re.MULTILINE),
+                table_text[field[0] : field[1]],
+            )
+            or _first_structural_raw_match(
+                re.compile(rf'^\s*oid\s*=\s*"{re.escape(IFTYPE_OID)}"\s*$', re.MULTILINE),
+                table_text[field[0] : field[1]],
             )
             for field in fields
         ):
             return table_text
-        insert_at = ifdescr.end()
+        insert_at = ifdescr[1]
         before = table_text[:insert_at].rstrip("\n")
         after = table_text[insert_at:].lstrip("\n")
         injected = f"{before}\n{IFTYPE_FIELD_BLOCK.rstrip()}"
         return f"{injected}\n{after}" if after else f"{injected}\n"
 
-    return TABLE_BLOCK_RE.sub(ensure_table, template_content)
+    return _replace_structural_blocks(TABLE_BLOCK_RE, template_content, ensure_table)
 
 
 def ensure_snmp_interface_filter_jinja(template_content: str) -> str:
@@ -741,16 +1398,41 @@ def ensure_snmp_interface_filter_jinja(template_content: str) -> str:
 
     # 核心网络模板的公共 IF-MIB 条件块已在同一块内声明 ifType；再次用
     # 正则插入会跨越 Jinja endif，把字段遗留在关闭块之外。
-    text = template_content if IFMIB_MARKER_BEGIN in template_content else ensure_iftype_tag_fields(template_content)
-    text = FILTER_BLOCK_RE.sub("", text)
-    text = TAGEXCLUDE_IFTYPE_RE.sub("", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = template_content if has_managed_ifmib_section(template_content) else ensure_iftype_tag_fields(template_content)
+    text = _strip_owned_filter_sections(text)
+    text = _replace_structural_blocks(TAGEXCLUDE_IFTYPE_RE, text, lambda _: "")
 
-    processors = PROCESSORS_RE.search(text)
-    insert_at = processors.start() if processors else len(text)
+    processors = _structural_spans(PROCESSORS_RE, text)
+    insert_at = processors[0][0] if processors else len(text)
+    headers = _structural_spans(SNMP_INPUT_RE, text)
+    owner_segment = ""
+    owner_indexes = [index for index, (start, _) in enumerate(headers) if start < insert_at]
+    if owner_indexes:
+        owner_index = owner_indexes[-1]
+        owner_start = headers[owner_index][0]
+        owner_end = headers[owner_index + 1][0] if owner_index + 1 < len(headers) else insert_at
+        owner_segment = text[owner_start:min(owner_end, insert_at)]
+
+    existing_filter_kinds = set()
+    for start, end in _structural_spans(FILTER_TABLE_BLOCK_RE, owner_segment):
+        header = owner_segment[start:end].splitlines()[0].strip()
+        if header == "[inputs.snmp.tagpass]":
+            existing_filter_kinds.add("tagpass")
+        elif header == "[inputs.snmp.tagdrop]":
+            existing_filter_kinds.add("tagdrop")
+    for start, end in _structural_spans(FILTER_ARRAY_TABLE_HEADER_RE, owner_segment):
+        header = owner_segment[start:end].strip()
+        if header.startswith("[[inputs.snmp.tagpass]]"):
+            existing_filter_kinds.add("tagpass")
+        elif header.startswith("[[inputs.snmp.tagdrop]]"):
+            existing_filter_kinds.add("tagdrop")
+
     before = text[:insert_at].rstrip("\n")
     after = text[insert_at:].lstrip("\n")
-    block = FILTER_JINJA_BLOCK.strip("\n")
+    block = _build_filter_jinja_block(
+        include_tagpass="tagpass" not in existing_filter_kinds,
+        include_tagdrop="tagdrop" not in existing_filter_kinds,
+    )
     if after:
         return f"{before}\n\n{block}\n\n{after}"
     return f"{before}\n\n{block}\n"

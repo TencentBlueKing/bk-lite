@@ -25,6 +25,7 @@ from core.collection.contracts import (
 from core.collection.metrics import CollectionMetrics
 from core.collection.runtime import CollectionRequest, RunLease
 from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
+from core.infra.redis_client import is_credential_state_redis_error
 from core.logger import logger
 
 # 兼容旧 import：执行器专属符号仍由此导出；领域类型请优先 from core.collection.contracts
@@ -66,22 +67,31 @@ class TargetActivityTracker:
 
 
 class TargetWorkerBudget:
-    """跨运行限制已创建且未完成的目标 worker 协程数量。"""
+    """跨运行限制已创建且未完成的目标 worker 协程数量。
+
+    capacity=0 表示不限制（按 desired 全量发放）。
+    """
 
     def __init__(self, capacity: int) -> None:
-        if capacity <= 0:
-            raise ValueError("capacity must be greater than zero")
+        if capacity < 0:
+            raise ValueError("capacity must be >= 0 (0 means unlimited)")
+        self._unlimited = capacity == 0
         self._capacity = capacity
-        self._available = capacity
+        self._available = 0 if self._unlimited else capacity
         self._condition = asyncio.Condition()
         self.active = 0
         self.peak = 0
 
     async def reserve(self, desired: int) -> int:
         async with self._condition:
+            wanted = max(1, desired)
+            if self._unlimited:
+                self.active += wanted
+                self.peak = max(self.peak, self.active)
+                return wanted
             while self._available <= 0:
                 await self._condition.wait()
-            reserved = min(max(1, desired), self._available)
+            reserved = min(wanted, self._available)
             self._available -= reserved
             self.active += reserved
             self.peak = max(self.peak, self.active)
@@ -91,10 +101,23 @@ class TargetWorkerBudget:
         async with self._condition:
             released = min(max(0, count), self.active)
             self.active -= released
-            self._available = min(
-                self._capacity, self._available + released
-            )
+            if not self._unlimited:
+                self._available = min(
+                    self._capacity, self._available + released
+                )
             self._condition.notify_all()
+
+
+class _UnlimitedTargetGate:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+
+def unlimited_target_gate() -> _UnlimitedTargetGate:
+    return _UnlimitedTargetGate()
 
 
 class TargetCollectionExecutor:
@@ -123,9 +146,14 @@ class TargetCollectionExecutor:
             store=InMemoryCredentialStateStore()
         )
         self._settings = settings or TargetExecutorSettings()
-        self._target_semaphore = target_semaphore or asyncio.Semaphore(
-            self._settings.max_active_targets
-        )
+        if target_semaphore is not None:
+            self._target_semaphore = target_semaphore
+        elif self._settings.max_active_targets <= 0:
+            self._target_semaphore = unlimited_target_gate()
+        else:
+            self._target_semaphore = asyncio.Semaphore(
+                self._settings.max_active_targets
+            )
         self._activity_tracker = activity_tracker or TargetActivityTracker()
         self._worker_budget = worker_budget or TargetWorkerBudget(
             self._settings.target_task_window
@@ -171,9 +199,11 @@ class TargetCollectionExecutor:
                 if publish_error is not None:
                     raise publish_error
 
-        desired_workers = min(
-            len(targets), self._settings.target_task_window
-        )
+        window = self._settings.target_task_window
+        if window <= 0:
+            desired_workers = max(1, len(targets))
+        else:
+            desired_workers = min(len(targets), window) if targets else 1
         worker_count = await self._worker_budget.reserve(desired_workers)
         worker_tasks = [
             asyncio.create_task(
@@ -229,9 +259,14 @@ class TargetCollectionExecutor:
                 error_code=error_code,
             )
 
-        credentials = await self._credential_policy.eligible_credentials(
-            request, target
-        )
+        credentials = await self._load_eligible_credentials(request, target)
+        if credentials is None:
+            return TargetCollectionResult(
+                target=target,
+                status="failed",
+                attempts=0,
+                error_code="credential_state_unavailable",
+            )
         if not credentials:
             return await self._no_credential_result(request, target)
 
@@ -245,6 +280,76 @@ class TargetCollectionExecutor:
         return await self._run_credential_attempts(
             request, target, credentials, context
         )
+
+    async def _load_eligible_credentials(
+        self, request: CollectionRequest, target: str
+    ):
+        try:
+            return await self._credential_policy.eligible_credentials(
+                request, target
+            )
+        except Exception as exc:  # noqa: BLE001 - 凭据状态失败隔离为单目标
+            if not is_credential_state_redis_error(exc):
+                raise
+            self._metrics.increment("credential_state_redis_error_total")
+            logger.warning(
+                "event=credential_state_unavailable task_id=%s target=%s "
+                "error_type=%s detail=%s",
+                request.task_id,
+                target,
+                type(exc).__name__,
+                str(exc)[:200] or "-",
+            )
+            return None
+
+    async def _safe_record_success(
+        self,
+        request: CollectionRequest,
+        target: str,
+        credential,
+    ) -> None:
+        try:
+            await self._credential_policy.record_success(
+                request, target, credential
+            )
+        except Exception as exc:  # noqa: BLE001 - 写亲和失败不阻断成功结果
+            if not is_credential_state_redis_error(exc):
+                raise
+            self._metrics.increment("credential_state_redis_error_total")
+            logger.warning(
+                "event=credential_success_persist_failed task_id=%s target=%s "
+                "error_type=%s",
+                request.task_id,
+                target,
+                type(exc).__name__,
+            )
+
+    async def _safe_record_auth_failure(
+        self,
+        request: CollectionRequest,
+        target: str,
+        credential,
+        *,
+        error_code: str,
+    ) -> None:
+        try:
+            await self._credential_policy.record_auth_failure(
+                request,
+                target,
+                credential,
+                error_code=error_code,
+            )
+        except Exception as exc:  # noqa: BLE001 - 写冷冻失败不阻断轮换
+            if not is_credential_state_redis_error(exc):
+                raise
+            self._metrics.increment("credential_state_redis_error_total")
+            logger.warning(
+                "event=credential_failure_persist_failed task_id=%s target=%s "
+                "error_type=%s",
+                request.task_id,
+                target,
+                type(exc).__name__,
+            )
 
     async def _run_preflight(
         self, request: CollectionRequest, target: str
@@ -275,9 +380,15 @@ class TargetCollectionExecutor:
         self, request: CollectionRequest, target: str
     ) -> TargetCollectionResult:
         self._metrics.increment("credential_cooldown_total")
-        next_retry_at = await self._credential_policy.next_retry_at(
-            request, target
-        )
+        next_retry_at = None
+        try:
+            next_retry_at = await self._credential_policy.next_retry_at(
+                request, target
+            )
+        except Exception as exc:  # noqa: BLE001 - 读冷冻时间失败不影响结果
+            if not is_credential_state_redis_error(exc):
+                raise
+            self._metrics.increment("credential_state_redis_error_total")
         has_matching_credential = bool(
             self._credential_policy.matching_credentials(request, target)
         )
@@ -439,7 +550,7 @@ class TargetCollectionExecutor:
             AccessProbeStatus.AUTH_FAILED,
             AccessProbeStatus.CAPABILITY_DENIED,
         }:
-            await self._credential_policy.record_auth_failure(
+            await self._safe_record_auth_failure(
                 request,
                 target,
                 credential,
@@ -624,7 +735,7 @@ class TargetCollectionExecutor:
         credential_id: str,
     ):
         if outcome.status == CollectOutcomeStatus.SUCCESS:
-            await self._credential_policy.record_success(
+            await self._safe_record_success(
                 request, target, credential
             )
             return _AttemptDecision(
@@ -649,7 +760,7 @@ class TargetCollectionExecutor:
                 ),
             )
         if outcome.status == CollectOutcomeStatus.AUTH_FAILED:
-            await self._credential_policy.record_auth_failure(
+            await self._safe_record_auth_failure(
                 request,
                 target,
                 credential,

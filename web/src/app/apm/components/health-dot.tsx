@@ -45,10 +45,9 @@ export default function HealthDot({
     <span
       className={`inline-flex items-center gap-1.5 ${className}`}
       aria-label={label}
-      title={label}
     >
       {dot}
-      <span className="text-[11px] leading-none text-[var(--color-text-3)]">{label}</span>
+      <span className="text-xs leading-none text-[var(--color-text-3)]">{label}</span>
     </span>
   );
 }

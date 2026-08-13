@@ -14,6 +14,9 @@ interface ValueMappingsConfigSectionProps {
   readonly?: boolean;
 }
 
+/** ColorPicker 展示默认色；新增规则时必须写入 result.color，否则只显示不落盘。 */
+export const DEFAULT_VALUE_MAPPING_COLOR = '#366ce4';
+
 const TYPE_OPTIONS: { value: ValueMappingType; label: string }[] = [
   { value: 'value', label: '精确值' },
   { value: 'range', label: '数值区间' },
@@ -58,7 +61,14 @@ export const ValueMappingsConfigSection: React.FC<
   };
 
   const addRule = () => {
-    emit([...mappings, { type: 'value', value: '', result: { text: '' } }]);
+    emit([
+      ...mappings,
+      {
+        type: 'value',
+        value: '',
+        result: { text: '', color: DEFAULT_VALUE_MAPPING_COLOR },
+      },
+    ]);
   };
 
   const removeAt = (index: number) => {
@@ -154,7 +164,7 @@ export const ValueMappingsConfigSection: React.FC<
               disabled={readonly}
             />
             <ColorPicker
-              value={m.result?.color || '#366ce4'}
+              value={m.result?.color || DEFAULT_VALUE_MAPPING_COLOR}
               onChange={(c) => updateResult(index, { color: c.toHexString() })}
               size="small"
               showText

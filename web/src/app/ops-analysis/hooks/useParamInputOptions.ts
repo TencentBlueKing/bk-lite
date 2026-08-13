@@ -7,6 +7,7 @@ import {
   createParamInputOptionsLoader,
   buildParamInputOptionsResultKey,
   getParamInputConfigKey,
+  type ParamInputOptionsLoaderOptions,
   type ParamInputOptionsState,
 } from '@/app/ops-analysis/utils/paramInputOptionsLoader';
 
@@ -14,16 +15,22 @@ export type UseParamInputOptionsState = ParamInputOptionsState & { resultKey?: s
 
 export const useParamInputOptions = (
   inputConfig?: InputControlConfig,
+  loaderOptions?: ParamInputOptionsLoaderOptions,
 ): UseParamInputOptionsState => {
   const api = useDataSourceApi();
   const apiRef = useRef(api);
   apiRef.current = api;
+  const loaderOptionsRef = useRef(loaderOptions);
+  loaderOptionsRef.current = loaderOptions;
   const loaderRef = useRef<ReturnType<typeof createParamInputOptionsLoader> | null>(null);
   if (!loaderRef.current) {
-    loaderRef.current = createParamInputOptionsLoader({
-      getDataSourceList: (...args) => apiRef.current.getDataSourceList(...args),
-      getSourceDataByApiId: (...args) => apiRef.current.getSourceDataByApiId(...args),
-    });
+    loaderRef.current = createParamInputOptionsLoader(
+      {
+        getDataSourceList: (...args) => apiRef.current.getDataSourceList(...args),
+        getSourceDataByApiId: (...args) => apiRef.current.getSourceDataByApiId(...args),
+      },
+      () => loaderOptionsRef.current,
+    );
   }
   const configRef = useRef(inputConfig);
   configRef.current = inputConfig;

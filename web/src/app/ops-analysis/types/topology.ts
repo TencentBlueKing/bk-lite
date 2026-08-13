@@ -115,6 +115,7 @@ export interface TopologyNodeData {
   isLoading?: boolean;
   hasError?: boolean;
   errorMessage?: string;
+  fetchError?: boolean;
   rawData?: TopologyRawData;
   isPlaceholder?: boolean;
   isNewNode?: boolean; 

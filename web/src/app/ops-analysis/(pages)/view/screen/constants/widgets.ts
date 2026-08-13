@@ -73,6 +73,27 @@ export const SCREEN_WIDGET_DEFINITIONS: ScreenWidgetDefinition[] = [
     defaultHeight: 360,
   },
   {
+    chartType: 'eventTimeline',
+    titleKey: 'opsAnalysis.screen.widgets.eventTimeline',
+    descriptionKey: 'opsAnalysis.screen.widgetDescriptions.eventTimeline',
+    defaultWidth: 520,
+    defaultHeight: 360,
+  },
+  {
+    chartType: 'cardList',
+    titleKey: 'opsAnalysis.screen.widgets.cardList',
+    descriptionKey: 'opsAnalysis.screen.widgetDescriptions.cardList',
+    defaultWidth: 520,
+    defaultHeight: 360,
+  },
+  {
+    chartType: 'radar',
+    titleKey: 'opsAnalysis.screen.widgets.radar',
+    descriptionKey: 'opsAnalysis.screen.widgetDescriptions.radar',
+    defaultWidth: 360,
+    defaultHeight: 300,
+  },
+  {
     chartType: 'topologyMap',
     titleKey: 'opsAnalysis.screen.widgets.topologyMap',
     descriptionKey: 'opsAnalysis.screen.widgetDescriptions.topologyMap',
