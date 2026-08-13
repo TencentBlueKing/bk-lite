@@ -83,6 +83,66 @@ test('Chat dispatches state events only to the latest callback and stops after u
   }
 });
 
+test('Chat commits the latest callback before passive effects run', () => {
+  const initialStates: string[] = [];
+  const latestStates: string[] = [];
+  const captured = captureMountedStateMachine();
+  let renderer: ReactTestRenderer;
+
+  try {
+    act(() => {
+      renderer = create(
+        React.createElement(Chat, {
+          enableStorage: false,
+          onStateChange: (state) => initialStates.push(state),
+        })
+      );
+    });
+    const stateMachine = captured.get();
+
+    renderer.update(
+      React.createElement(Chat, {
+        enableStorage: false,
+        onStateChange: (state) => latestStates.push(state),
+      })
+    );
+    stateMachine.transition('connecting');
+
+    assert.deepEqual(initialStates, []);
+    assert.deepEqual(latestStates, ['connecting']);
+    act(() => renderer.unmount());
+  } finally {
+    captured.restore();
+  }
+});
+
+test('FloatingButton supports the legacy callback without the standard callback', () => {
+  const legacyStates: string[] = [];
+  const captured = captureMountedStateMachine();
+  let renderer: ReactTestRenderer;
+
+  try {
+    act(() => {
+      renderer = create(
+        React.createElement(FloatingButton, {
+          enableStorage: false,
+          onChatStateChange: (state) => legacyStates.push(state),
+        })
+      );
+    });
+    act(() => renderer.root.findByType('button').props.onClick());
+    const stateMachine = captured.get();
+    act(() => {
+      stateMachine.transition('connecting');
+    });
+    act(() => renderer.unmount());
+
+    assert.deepEqual(legacyStates, ['connecting']);
+  } finally {
+    captured.restore();
+  }
+});
+
 test('FloatingButton keeps standard and legacy callback compatibility across rerenders', () => {
   const standardStates: string[] = [];
   const legacyStates: string[] = [];
