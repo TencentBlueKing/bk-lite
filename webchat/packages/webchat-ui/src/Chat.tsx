@@ -34,7 +34,6 @@ import {
   resolveImageBudget,
   validateImageBatch,
   type ImageBudgetViolation,
-  type ImageFile,
   type PendingImage,
   type PendingImageAction,
 } from './imageBudget';
@@ -120,7 +119,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   streamingTextBatchingRef.current = streamingTextBatching;
   const streamLifecycleRef = useRef<StreamLifecycle | null>(null);
   const uploadedImagesRef = useRef<PendingImage[]>([]);
-  const pendingImageFilesRef = useRef<ImageFile[]>([]);
+  const pendingImageBatchesRef = useRef(new Map<symbol, readonly File[]>());
   const imageBatchQueueRef = useRef<Promise<void>>(Promise.resolve());
   const imageSelectionGenerationRef = useRef(0);
   if (!streamLifecycleRef.current) {
@@ -169,6 +168,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     // Initialize AGUIHandler (默认启用)
     aguiHandlerRef.current = new AGUIHandler(agui || { enabled: true, debug: false });
     const aguiSubscription = setupAGUIEventHandlers();
+    const pendingImageBatches = pendingImageBatchesRef.current;
 
     // Load previous session
     const session = sessionManagerRef.current.initSession();
@@ -179,6 +179,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     return () => {
       handleAGUIEvent.cancelPendingText();
       imageSelectionGenerationRef.current += 1;
+      pendingImageBatches.clear();
       void streamLifecycle?.dispose();
       aguiSubscription?.unsubscribe();
       aguiHandlerRef.current?.destroy();
@@ -260,14 +261,16 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   const queueImageFiles = useCallback((files: readonly File[]) => {
     if (files.length === 0) return;
 
-    const accountedImages = [...uploadedImagesRef.current, ...pendingImageFilesRef.current];
+    const pendingFiles = Array.from(pendingImageBatchesRef.current.values()).flat();
+    const accountedImages = [...uploadedImagesRef.current, ...pendingFiles];
     const validation = validateImageBatch(accountedImages, files, imageBudget);
     if (!validation.ok) {
       reportImageBudgetViolation(validation);
       return;
     }
 
-    pendingImageFilesRef.current = [...pendingImageFilesRef.current, ...files];
+    const batchToken = Symbol('pending-image-batch');
+    pendingImageBatchesRef.current.set(batchToken, files);
     const generation = imageSelectionGenerationRef.current;
     imageBatchQueueRef.current = imageBatchQueueRef.current.then(async () => {
       try {
@@ -286,7 +289,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
         if (generation !== imageSelectionGenerationRef.current) return;
         onError?.(toError(error));
       } finally {
-        pendingImageFilesRef.current = pendingImageFilesRef.current.slice(files.length);
+        pendingImageBatchesRef.current.delete(batchToken);
       }
     });
   }, [imageBudget, onError, reportImageBudgetViolation, updateUploadedImages]);
@@ -379,6 +382,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     addMessage(userMsg);
     setInputValue('');
     imageSelectionGenerationRef.current += 1;
+    pendingImageBatchesRef.current.clear();
     updateUploadedImages({ type: 'clear' });
     setIsLoading(true);
 
@@ -499,6 +503,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     void streamLifecycleRef.current?.cancel('session-cleared');
     setMessages([]);
     imageSelectionGenerationRef.current += 1;
+    pendingImageBatchesRef.current.clear();
     updateUploadedImages({ type: 'clear' });
     // Clear and reinitialize session
     sessionManagerRef.current?.clearSession();

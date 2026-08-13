@@ -125,6 +125,20 @@ test('Chat 默认预算在上传和粘贴入口读取前原子拒绝超限批次
   renderer.unmount();
 });
 
+test('Chat 在上传和粘贴入口按累计原始字节拒绝且不启动读取', async () => {
+  const errors: Error[] = [];
+  const renderer = renderChat({ maxImageCount: 4, maxTotalImageBytes: 3, onError: (error) => errors.push(error) });
+
+  await selectFiles(renderer.root, [imageFile('upload.png', 4)]);
+  assert.equal(ControlledFileReader.pending.length, 0);
+  assert.match(errors[0]?.message ?? '', /图片总大小不能超过/);
+
+  await pasteFiles(renderer.root, [imageFile('paste.png', 4)]);
+  assert.equal(ControlledFileReader.pending.length, 0);
+  assert.match(errors[1]?.message ?? '', /图片总大小不能超过/);
+  renderer.unmount();
+});
+
 test('Chat 显式放宽后有界读取、乱序完成仍保序，移除后释放累计预算', async () => {
   const renderer = renderChat({
     imageReadConcurrency: 2,
@@ -212,6 +226,32 @@ test('Chat 发送期间使正在读取的旧批次失效，不回填预览', asy
   await flush();
 
   assert.equal(previews(renderer.root).length, 0);
+  renderer.unmount();
+});
+
+test('Chat 发送时同步释放旧批次预算，允许下一条消息立即选择图片', async () => {
+  const errors: Error[] = [];
+  const renderer = renderChat({
+    imageReadConcurrency: 1,
+    maxImageCount: 1,
+    onError: (error) => errors.push(error),
+  });
+  await selectFiles(renderer.root, [imageFile('stale.png')]);
+  const staleReader = ControlledFileReader.pending[0];
+  const sender = renderer.root.find((node) => typeof node.props.onSubmit === 'function');
+
+  await act(async () => {
+    sender.props.onSubmit('先发送文字');
+    await Promise.resolve();
+  });
+  await selectFiles(renderer.root, [imageFile('next.png')]);
+  assert.equal(errors.length, 0);
+
+  await finishReaders([staleReader]);
+  const nextReader = ControlledFileReader.pending[1];
+  assert.equal(nextReader.file?.name, 'next.png');
+  await finishReaders([nextReader]);
+  assert.deepEqual(previews(renderer.root).map((node) => node.props.src), ['data:next.png']);
   renderer.unmount();
 });
 
