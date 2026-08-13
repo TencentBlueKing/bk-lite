@@ -69,7 +69,7 @@ class ControllerTaskNode(models.Model):
     organizations = JSONField(default=list, verbose_name="所属组织")
     port = models.IntegerField(verbose_name="端口")
     username = models.CharField(max_length=100, verbose_name="用户名")
-    password = models.CharField(max_length=100, verbose_name="密码")
+    password = models.TextField(verbose_name="密码")
     private_key = models.TextField(default="", blank=True, verbose_name="SSH私钥")
     passphrase = models.TextField(default="", blank=True, verbose_name="私钥密码短语")
     winrm_scheme = models.CharField(max_length=16, blank=True, default="https", verbose_name="WinRM协议")

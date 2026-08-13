@@ -11,8 +11,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from django.db import DataError, models
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import Node, NodeOrganization, PackageVersion
 from apps.node_mgmt.models.cloud_region import CloudRegion, SidecarEnv
@@ -176,6 +178,82 @@ def test_uninstall_controller_creates_task_and_nodes():
     assert node.node_name == "controller-to-remove"
     assert node.organizations == [1]
     assert node.private_key != "key"
+
+
+@pytest.mark.django_db
+def test_controller_task_password_storage_accepts_encrypted_long_password():
+    region = CloudRegion.objects.create(name="cr-long-password")
+    plaintext = "p" * 48
+
+    task_id = InstallerService.install_controller(
+        region.id,
+        "work-long-password",
+        5,
+        [
+            {
+                "ip": "10.0.0.48",
+                "node_id": "node-long-password",
+                "node_name": "long-password",
+                "os": "linux",
+                "cpu_architecture": "x86_64",
+                "organizations": [1],
+                "port": 22,
+                "username": "root",
+                "password": plaintext,
+                "private_key": "",
+                "passphrase": "",
+            }
+        ],
+        "x86_64",
+    )
+
+    password_field = ControllerTaskNode._meta.get_field("password")
+    task_node = ControllerTaskNode.objects.get(task_id=task_id)
+    assert isinstance(password_field, models.TextField)
+    assert len(task_node.password) > 100
+    assert AESCryptor().decode(task_node.password) == plaintext
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("operation", ["install", "uninstall"])
+def test_controller_task_creation_rolls_back_parent_when_node_insert_fails(operation):
+    region = CloudRegion.objects.create(name=f"cr-{operation}-rollback")
+    node = {
+        "ip": "10.0.0.49",
+        "node_id": "node-rollback",
+        "node_name": "rollback",
+        "os": "linux",
+        "cpu_architecture": "x86_64",
+        "organizations": [1],
+        "port": 22,
+        "username": "root",
+        "password": "secret",
+        "private_key": "",
+        "passphrase": "",
+    }
+
+    with patch.object(
+        ControllerTaskNode.objects,
+        "bulk_create",
+        side_effect=DataError("value too long for type character varying(100)"),
+    ):
+        with pytest.raises(DataError):
+            if operation == "install":
+                InstallerService.install_controller(
+                    region.id,
+                    "work-rollback",
+                    5,
+                    [node],
+                    "x86_64",
+                )
+            else:
+                InstallerService.uninstall_controller(
+                    region.id,
+                    "work-rollback",
+                    [node],
+                )
+
+    assert ControllerTask.objects.filter(cloud_region=region).exists() is False
 
 
 # --------------------------------------------------------------------------- #
