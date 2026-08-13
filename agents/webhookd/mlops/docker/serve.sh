@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd mlops serve script
-# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://127.0.0.1:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "network_mode": "bridge", "device": "auto|cpu|gpu", "startup_timeout_seconds": 120, "timeseries_predict_timeout_seconds": 120}
+# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://127.0.0.1:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "network_mode": "bridge", "device": "auto|cpu|gpu", "startup_timeout_seconds": 120, "timeseries_predict_timeout_seconds": 120, "max_recursive_feature_engineering_work": 2000000}
 
 set -e
 
@@ -40,6 +40,7 @@ NETWORK_MODE=$(echo "$JSON_DATA" | jq -r '.network_mode // "bridge"')
 TRAIN_IMAGE=$(echo "$JSON_DATA" | jq -r '.train_image // empty')
 DEVICE=$(echo "$JSON_DATA" | jq -r '.device // empty')  # 未传递时为空字符串
 TIMESERIES_PREDICT_TIMEOUT_SECONDS=$(echo "$JSON_DATA" | jq -r '.timeseries_predict_timeout_seconds // empty')
+MAX_RECURSIVE_FEATURE_ENGINEERING_WORK=$(echo "$JSON_DATA" | jq -r '.max_recursive_feature_engineering_work // empty')
 SERVING_INSTANCE_ID=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
 export SERVING_INSTANCE_ID
 
@@ -57,6 +58,13 @@ fi
 if [ -n "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" ]; then
     if ! [[ "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || [ "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" -gt 290 ]; then
         json_error "INVALID_PREDICT_TIMEOUT" "$ID" "timeseries_predict_timeout_seconds must be between 1 and 290"
+        exit 1
+    fi
+fi
+
+if [ -n "$MAX_RECURSIVE_FEATURE_ENGINEERING_WORK" ]; then
+    if ! [[ "$MAX_RECURSIVE_FEATURE_ENGINEERING_WORK" =~ ^[1-9][0-9]*$ ]]; then
+        json_error "INVALID_RECURSIVE_FEATURE_WORK" "$ID" "max_recursive_feature_engineering_work must be a positive integer"
         exit 1
     fi
 fi
@@ -240,6 +248,10 @@ PREDICT_TIMEOUT_ENV_ARGS=()
 if [ -n "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" ]; then
     PREDICT_TIMEOUT_ENV_ARGS=(-e "TIMESERIES_PREDICT_TIMEOUT_SECONDS=$TIMESERIES_PREDICT_TIMEOUT_SECONDS")
 fi
+RECURSIVE_FEATURE_WORK_ENV_ARGS=()
+if [ -n "$MAX_RECURSIVE_FEATURE_ENGINEERING_WORK" ]; then
+    RECURSIVE_FEATURE_WORK_ENV_ARGS=(-e "MAX_RECURSIVE_FEATURE_ENGINEERING_WORK=$MAX_RECURSIVE_FEATURE_ENGINEERING_WORK")
+fi
 
 # 初次启动禁用重启策略；readiness 通过后再恢复 unless-stopped。
 # 否则 BentoML 因模型加载失败退出时，Docker 重启环会让 docker ps 持续可见，
@@ -266,6 +278,7 @@ DOCKER_OUTPUT=$(run_with_startup_budget docker run -d \
     -e BENTOML_CONTAINERIZED="true" \
     -e SERVING_INSTANCE_ID="$SERVING_INSTANCE_ID" \
     "${PREDICT_TIMEOUT_ENV_ARGS[@]}" \
+    "${RECURSIVE_FEATURE_WORK_ENV_ARGS[@]}" \
     "$TRAIN_IMAGE" 2>&1)
 
 DOCKER_STATUS=$?

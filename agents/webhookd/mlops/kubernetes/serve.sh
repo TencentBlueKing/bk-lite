@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd mlops serve script (Kubernetes)
-# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://mlflow.default.svc.cluster.local:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "namespace": "mlops", "port": 30000, "service_type": "NodePort", "device": "auto|cpu|gpu", "timeseries_predict_timeout_seconds": 120}
+# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://mlflow.default.svc.cluster.local:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "namespace": "mlops", "port": 30000, "service_type": "NodePort", "device": "auto|cpu|gpu", "timeseries_predict_timeout_seconds": 120, "max_recursive_feature_engineering_work": 2000000}
 
 set -e
 
@@ -51,6 +51,7 @@ TRAIN_IMAGE=$(echo "$JSON_DATA" | jq -r '.train_image // empty')
 DEVICE=$(echo "$JSON_DATA" | jq -r '.device // empty')
 REPLICAS=$(echo "$JSON_DATA" | jq -r '.replicas // "1"')
 TIMESERIES_PREDICT_TIMEOUT_SECONDS=$(echo "$JSON_DATA" | jq -r '.timeseries_predict_timeout_seconds // empty')
+MAX_RECURSIVE_FEATURE_ENGINEERING_WORK=$(echo "$JSON_DATA" | jq -r '.max_recursive_feature_engineering_work // empty')
 
 # 使用默认命名空间（如果未指定）
 if [ -z "$NAMESPACE" ]; then
@@ -76,6 +77,13 @@ fi
 if [ -n "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" ]; then
     if ! [[ "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || [ "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" -gt 290 ]; then
         json_error "INVALID_PREDICT_TIMEOUT" "$ID" "timeseries_predict_timeout_seconds must be between 1 and 290"
+        exit 1
+    fi
+fi
+
+if [ -n "$MAX_RECURSIVE_FEATURE_ENGINEERING_WORK" ]; then
+    if ! [[ "$MAX_RECURSIVE_FEATURE_ENGINEERING_WORK" =~ ^[1-9][0-9]*$ ]]; then
+        json_error "INVALID_RECURSIVE_FEATURE_WORK" "$ID" "max_recursive_feature_engineering_work must be a positive integer"
         exit 1
     fi
 fi
@@ -140,6 +148,14 @@ if [ -n "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" ]; then
 EOF
 )
 fi
+RECURSIVE_FEATURE_WORK_ENV_YAML=""
+if [ -n "$MAX_RECURSIVE_FEATURE_ENGINEERING_WORK" ]; then
+    RECURSIVE_FEATURE_WORK_ENV_YAML=$(cat <<EOF
+        - name: MAX_RECURSIVE_FEATURE_ENGINEERING_WORK
+          value: "${MAX_RECURSIVE_FEATURE_ENGINEERING_WORK}"
+EOF
+)
+fi
 
 # 生成 Kubernetes Deployment YAML
 DEPLOYMENT_YAML=$(cat <<EOF
@@ -186,6 +202,7 @@ spec:
         - name: ALLOW_DUMMY_FALLBACK
           value: "false"
 ${PREDICT_TIMEOUT_ENV_YAML}
+${RECURSIVE_FEATURE_WORK_ENV_YAML}
         livenessProbe:
           httpGet:
             path: /healthz

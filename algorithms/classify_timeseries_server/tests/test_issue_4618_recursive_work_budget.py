@@ -46,6 +46,14 @@ class UnreadablePyFuncModel:
         raise RuntimeError("unsupported artifact")
 
 
+class LegacyPyFuncModel(UnreadablePyFuncModel):
+    """模拟公开解包不可用、但仍保留历史内部结构的 MLflow 制品。"""
+
+    def __init__(self, python_model):
+        self._model_impl = type("LegacyModelImpl", (), {})()
+        self._model_impl.python_model = python_model
+
+
 def test_estimate_includes_recursive_history_growth():
     assert estimate_recursive_feature_engineering_work(100, 4) == 406
 
@@ -74,6 +82,18 @@ def test_budget_accepts_boundary_and_rejects_next_unit(name, wrapped):
 
 def test_maximum_individual_limits_are_rejected():
     model = LoadedPyFuncModel(make_wrapper())
+
+    with pytest.raises(RecursiveFeatureEngineeringBudgetExceeded):
+        enforce_recursive_feature_engineering_budget(
+            model,
+            history_points=50_000,
+            steps=1_000,
+            limit=2_000_000,
+        )
+
+
+def test_legacy_mlflow_model_is_still_protected():
+    model = LegacyPyFuncModel(make_wrapper())
 
     with pytest.raises(RecursiveFeatureEngineeringBudgetExceeded):
         enforce_recursive_feature_engineering_budget(
