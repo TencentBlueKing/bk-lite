@@ -17,7 +17,7 @@ export default function ApmRouteShell({
   children,
 }: ApmRouteShellProps) {
   return (
-    <div className="h-full overflow-auto p-4 lg:p-5">
+    <div className="h-full overflow-auto px-4 pb-4 lg:px-5 lg:pb-5">
       <div className="mx-auto w-full min-w-0">
         <h1 className="sr-only">{title}</h1>
         <div className="min-w-0">
