@@ -80,6 +80,7 @@ def _patch_common(monkeypatch, fake, attrs=None):
     monkeypatch.setattr(mod, "get_collect_enterprise_extension", lambda: _Ext())
     # 关闭自动关联调度
     import apps.cmdb.services.auto_relation_reconcile as ar
+
     monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids: None)
     monkeypatch.setattr(ar, "schedule_incoming_rule_full_sync_by_model_ids", lambda ids: None)
 
@@ -241,7 +242,10 @@ def test_contrast_immediately_skips_delete_when_no_model_id(monkeypatch):
     new = [{"inst_name": "a"}]
     # collect_plugin 无 _MODEL_ID → 不删除
     m = _mgmt(
-        monkeypatch, fake, old, new,
+        monkeypatch,
+        fake,
+        old,
+        new,
         collect_plugin=object(),
         data_cleanup_strategy=DataCleanupStrategy.IMMEDIATELY,
     )
@@ -252,20 +256,24 @@ def test_contrast_immediately_skips_delete_when_no_model_id(monkeypatch):
 # add_inst
 # --------------------------------------------------------------------------
 def test_add_inst_success_and_schedule(monkeypatch):
-    fake = FakeGraph(query_entity=lambda l, c: ([], 0), new_id=55)
+    fake = FakeGraph(query_entity=lambda _label, c: ([], 0), new_id=55)
     m = _mgmt(monkeypatch, fake, [], [])
     scheduled = []
     import apps.cmdb.services.auto_relation_reconcile as ar
+
     monkeypatch.setattr(ar, "schedule_instance_auto_relation_reconcile", lambda ids: scheduled.append(list(ids)))
     result = m.add_inst([{"inst_name": "new", "assos": []}])
     assert len(result["success"]) == 1
     assert result["success"][0]["inst_info"]["_id"] == 55
     assert scheduled == [[55]]
     assert len(fake.created_entities) == 1
+    from uuid import UUID
+
+    assert UUID(fake.created_entities[0]["inst_uuid"]).version == 4
 
 
 def test_add_inst_failure_goes_to_failed(monkeypatch):
-    fake = FakeGraph(query_entity=lambda l, c: ([], 0), create_entity_raises=ValueError("dup"))
+    fake = FakeGraph(query_entity=lambda _label, c: ([], 0), create_entity_raises=ValueError("dup"))
     m = _mgmt(monkeypatch, fake, [], [])
     result = m.add_inst([{"inst_name": "new", "assos": []}])
     assert result["success"] == []
@@ -283,7 +291,7 @@ def test_add_inst_empty_noop(monkeypatch):
 # update_inst
 # --------------------------------------------------------------------------
 def test_update_inst_success(monkeypatch):
-    fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 7, "inst_name": "a"}], 1))
+    fake = FakeGraph(query_entity=lambda _label, c: ([{"_id": 7, "inst_name": "a"}], 1))
     m = _mgmt(monkeypatch, fake, [], [])
     result = m.update_inst([{"_id": 7, "inst_name": "a", "assos": []}])
     assert len(result["success"]) == 1
@@ -291,7 +299,7 @@ def test_update_inst_success(monkeypatch):
 
 
 def test_update_inst_queries_only_unique_candidates(monkeypatch):
-    fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 7, "inst_name": "a"}], 1))
+    fake = FakeGraph(query_entity=lambda _label, c: ([{"_id": 7, "inst_name": "a"}], 1))
     attrs = [{"attr_id": "inst_name", "attr_name": "名称", "is_only": True, "editable": True}]
     m = _mgmt(monkeypatch, fake, [], [], attrs=attrs)
 
@@ -309,7 +317,7 @@ def test_update_inst_queries_only_unique_candidates(monkeypatch):
 
 
 def test_refresh_heartbeat_updates_only_runtime_metadata(monkeypatch):
-    fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 7, "inst_name": "a"}], 1))
+    fake = FakeGraph(query_entity=lambda _label, c: ([{"_id": 7, "inst_name": "a"}], 1))
     m = _mgmt(monkeypatch, fake, [], [])
     scheduled = []
     import apps.cmdb.services.auto_relation_reconcile as ar
@@ -331,7 +339,7 @@ def test_refresh_heartbeat_updates_only_runtime_metadata(monkeypatch):
 
 
 def test_controller_heartbeat_is_reported_but_excluded_from_audit(monkeypatch):
-    fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 1, "inst_name": "a"}], 1))
+    fake = FakeGraph(query_entity=lambda _label, c: ([{"_id": 1, "inst_name": "a"}], 1))
     old = [{"inst_name": "a", "_id": 1}]
     new = [{"inst_name": "a"}]
     m = _mgmt(monkeypatch, fake, old, new)
@@ -355,6 +363,7 @@ def test_delete_inst_success(monkeypatch):
     _patch_common(monkeypatch, fake)
     captured = []
     import apps.cmdb.services.auto_relation_reconcile as ar
+
     monkeypatch.setattr(ar, "schedule_incoming_rule_full_sync_by_model_ids", lambda ids: captured.append(list(ids)))
     result = Management.delete_inst([{"_id": 3, "model_id": "host"}])
     assert result["success"][0]["_id"] == 3
@@ -388,7 +397,7 @@ def test_set_asso_info_builds_contract(monkeypatch):
 
 
 def test_setting_assos_success(monkeypatch):
-    fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 11}], 1))
+    fake = FakeGraph(query_entity=lambda _label, c: ([{"_id": 11}], 1))
     m = _mgmt(monkeypatch, fake, [], [])
     src = {"model_id": "vm", "_id": 1, "inst_name": "src"}
     dst_list = [{"model_id": "host", "inst_name": "h1", "model_asst_id": "vm_run_host", "asst_id": "run"}]
@@ -399,7 +408,7 @@ def test_setting_assos_success(monkeypatch):
 
 
 def test_setting_assos_target_not_found(monkeypatch):
-    fake = FakeGraph(query_entity=lambda l, c: ([], 0))
+    fake = FakeGraph(query_entity=lambda _label, c: ([], 0))
     m = _mgmt(monkeypatch, fake, [], [])
     src = {"model_id": "vm", "_id": 1, "inst_name": "src"}
     dst_list = [{"model_id": "host", "inst_name": "missing", "model_asst_id": "vm_run_host", "asst_id": "run"}]
@@ -411,7 +420,7 @@ def test_setting_assos_target_not_found(monkeypatch):
 
 def test_setting_assos_edge_already_exists_is_idempotent_success(monkeypatch):
     fake = FakeGraph(
-        query_entity=lambda l, c: ([{"_id": 11}], 1),
+        query_entity=lambda _label, c: ([{"_id": 11}], 1),
         create_edge_raises=Exception("edge already exists"),
     )
     m = _mgmt(monkeypatch, fake, [], [])
@@ -427,7 +436,7 @@ def test_setting_assos_edge_already_exists_is_idempotent_success(monkeypatch):
 # update / controller 编排
 # --------------------------------------------------------------------------
 def test_controller_runs_delete_add_update(monkeypatch):
-    fake = FakeGraph(query_entity=lambda l, c: ([], 0))
+    fake = FakeGraph(query_entity=lambda _label, c: ([], 0))
     old = [{"inst_name": "a", "_id": 1}]
     new = [{"inst_name": "a"}, {"inst_name": "b"}]
     m = _mgmt(monkeypatch, fake, old, new)
@@ -438,7 +447,7 @@ def test_controller_runs_delete_add_update(monkeypatch):
 
 
 def test_controller_add_and_update_query_unique_candidates(monkeypatch):
-    fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 1, "inst_name": "a"}], 1))
+    fake = FakeGraph(query_entity=lambda _label, c: ([{"_id": 1, "inst_name": "a"}], 1))
     attrs = [{"attr_id": "inst_name", "attr_name": "名称", "is_only": True, "editable": True}]
     old = [{"inst_name": "a", "_id": 1}]
     new = [{"inst_name": "a"}, {"inst_name": "b"}]
@@ -464,7 +473,7 @@ def test_controller_add_and_update_query_unique_candidates(monkeypatch):
 
 
 def test_update_only_runs_update(monkeypatch):
-    fake = FakeGraph(query_entity=lambda l, c: ([{"_id": 1, "inst_name": "a"}], 1))
+    fake = FakeGraph(query_entity=lambda _label, c: ([{"_id": 1, "inst_name": "a"}], 1))
     old = [{"inst_name": "a", "_id": 1}]
     new = [{"inst_name": "a"}]
     m = _mgmt(monkeypatch, fake, old, new)

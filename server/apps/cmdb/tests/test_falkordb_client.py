@@ -5,12 +5,12 @@
 
 import json
 import threading
+from uuid import UUID
 
 import pytest
 
 from apps.cmdb.graph.falkordb import FalkorDBClient, FalkorDBConnectionPool
 from apps.core.exceptions.base_app_exception import BaseAppException
-
 
 # --------------------------------------------------------------------------
 # fake graph result
@@ -298,6 +298,19 @@ def test_create_entity_success():
     )
     assert out["_id"] == 7
     assert "CREATE (n:instance)" in c._graph.last_query
+    assert UUID(c._graph.last_params["props"]["inst_uuid"]).version == 4
+
+
+def test_create_entity_skips_uuid_for_non_instance_label():
+    created = FakeNode(7, ["model"], {"model_id": "host"})
+    c = _client(_entity_result([created]))
+    c.create_entity(
+        label="model",
+        properties={"model_id": "host"},
+        check_attr_map={"is_only": {}, "is_required": {}},
+        exist_items=[],
+    )
+    assert "inst_uuid" not in (c._graph.last_params or {}).get("props", {})
 
 
 def test_create_entity_required_missing():
@@ -320,6 +333,79 @@ def test_create_entity_unique_conflict():
             check_attr_map={"is_only": {"inst_name": "名称"}, "is_required": {}},
             exist_items=[{"inst_name": "dup"}],
         )
+
+
+def test_ensure_node_property_index_uses_validated_schema_query():
+    c = _client()
+
+    c.ensure_node_property_index("instance", "inst_uuid")
+
+    assert c._graph.last_query == "CREATE INDEX FOR (n:instance) ON (n.inst_uuid)"
+    assert c._graph.last_params is None
+
+
+def test_ensure_node_property_index_rejects_invalid_field():
+    c = _client()
+
+    with pytest.raises(BaseAppException):
+        c.ensure_node_property_index("instance", "inst_uuid) DELETE n")
+
+    assert c._graph.calls == []
+
+
+def test_ensure_node_property_index_swallows_already_indexed():
+    class AlreadyIndexedGraph(FakeGraph):
+        def query(self, cql, params=None):
+            raise Exception("Attribute 'inst_uuid' is already indexed")
+
+    c = FalkorDBClient()
+    c._client = object()
+    c._graph = AlreadyIndexedGraph()
+
+    assert c.ensure_node_property_index("instance", "inst_uuid") is None
+    assert c._graph is not None
+
+
+def test_create_edge_persists_uuid_endpoints_and_strips_numeric_ids():
+    src_uuid = "123e4567-e89b-42d3-a456-426614174001"
+    dst_uuid = "123e4567-e89b-42d3-a456-426614174002"
+    edge = FakeRelEdge(
+        9,
+        "connects",
+        {
+            "model_asst_id": "conn",
+            "src_inst_uuid": src_uuid,
+            "dst_inst_uuid": dst_uuid,
+        },
+    )
+
+    def result(cql, params):
+        if "COUNT(e)" in cql:
+            return FakeResultSet([("count", "count")], [[0]])
+        return FakeResultSet([("edge", "e")], [[edge]])
+
+    c = _client(result)
+    c.create_edge(
+        label="connects",
+        a_id=1,
+        a_label="instance",
+        b_id=2,
+        b_label="instance",
+        properties={
+            "model_asst_id": "conn",
+            "src_inst_id": 1,
+            "dst_inst_id": 2,
+            "src_inst_uuid": src_uuid.upper(),
+            "dst_inst_uuid": dst_uuid,
+        },
+        check_asst_key="model_asst_id",
+    )
+
+    props = c._graph.last_params["props"]
+    assert props["src_inst_uuid"] == src_uuid
+    assert props["dst_inst_uuid"] == dst_uuid
+    assert "src_inst_id" not in props
+    assert "dst_inst_id" not in props
 
 
 def test_set_entity_properties_instance():
@@ -476,6 +562,21 @@ def test_query_edge_returns_edges():
     edges = c.query_edge(label="", params=[], return_entity=True)
     assert edges[0]["edge"]["model_asst_id"] == "conn"
     assert edges[0]["src"]["inst_name"] == "h1"
+    assert edges[0]["dst"]["inst_name"] == "s1"
+
+
+def test_query_edge_keeps_src_dst_when_models_are_the_same():
+    edge = FakeEdge(8, {"src_model_id": "host", "dst_model_id": "host", "model_asst_id": "host_run_host"})
+    src = FakeNode(11, ["instance"], {"model_id": "host", "inst_name": "src-host", "inst_uuid": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"})
+    dst = FakeNode(22, ["instance"], {"model_id": "host", "inst_name": "dst-host", "inst_uuid": "ffffffff-bbbb-4ccc-8ddd-eeeeeeeeeeee"})
+    path = FakePath([edge], [src, dst])
+    result = FakeResultSet([("path", "p")], [[path]])
+    c = _client(result)
+    edges = c.query_edge(label="instance_association", params=[], return_entity=True)
+    assert edges[0]["src"]["inst_name"] == "src-host"
+    assert edges[0]["dst"]["inst_name"] == "dst-host"
+    assert edges[0]["src"]["_id"] == 11
+    assert edges[0]["dst"]["_id"] == 22
 
 
 # --------------------------------------------------------------------------
@@ -498,12 +599,13 @@ def test_find_entity_by_id():
 
 def test_create_node_builds_tree():
     c = _client()
-    entity = {"_id": 1, "model_id": "host", "inst_name": "h1"}
-    entities = [entity, {"_id": 2, "model_id": "sw", "inst_name": "s1"}]
+    entity = {"_id": 1, "inst_uuid": "123e4567-e89b-42d3-a456-426614174001", "model_id": "host", "inst_name": "h1"}
+    entities = [entity, {"_id": 2, "inst_uuid": "123e4567-e89b-42d3-a456-426614174002", "model_id": "sw", "inst_name": "s1"}]
     edges = [{"src_inst_id": 1, "dst_inst_id": 2, "model_asst_id": "conn", "asst_id": "a1"}]
     node = c.create_node(entity, edges, entities, entity_is_src=True)
     assert node["_id"] == 1
-    assert node["children"][0]["_id"] == 2
+    assert node["inst_uuid"] == "123e4567-e89b-42d3-a456-426614174001"
+    assert node["children"][0]["inst_uuid"] == "123e4567-e89b-42d3-a456-426614174002"
 
 
 def test_create_node_lite_depth_limit():
@@ -522,10 +624,12 @@ def test_create_node_lite_depth_limit():
 
 
 class FakeRelEdge:
-    def __init__(self, edge_id, relation, properties):
+    def __init__(self, edge_id, relation, properties, src_node=None, dest_node=None):
         self.id = edge_id
         self.relation = relation
         self.properties = properties
+        self.src_node = src_node if src_node is not None else properties.get("src_inst_id", 1)
+        self.dest_node = dest_node if dest_node is not None else properties.get("dst_inst_id", 2)
 
 
 class FakeTopoElement:
@@ -536,14 +640,33 @@ class FakeTopoElement:
 
 def test_format_topo():
     c = _client()
-    n1 = FakeNode(1, ["instance"], {"model_id": "host", "inst_name": "h1"})
-    n2 = FakeNode(2, ["instance"], {"model_id": "sw", "inst_name": "s1"})
-    e = FakeRelEdge(100, "connects", {"src_inst_id": 1, "dst_inst_id": 2, "model_asst_id": "conn", "asst_id": "a1"})
+    n1 = FakeNode(1, ["instance"], {"inst_uuid": "123e4567-e89b-42d3-a456-426614174001", "model_id": "host", "inst_name": "h1"})
+    n2 = FakeNode(2, ["instance"], {"inst_uuid": "123e4567-e89b-42d3-a456-426614174002", "model_id": "sw", "inst_name": "s1"})
+    e = FakeRelEdge(
+        100,
+        "connects",
+        {"src_inst_uuid": n1.properties["inst_uuid"], "dst_inst_uuid": n2.properties["inst_uuid"], "model_asst_id": "conn", "asst_id": "a1"},
+        src_node=1,
+        dest_node=2,
+    )
     element = FakeTopoElement([n1, n2], [e])
     objs = FakeResultSet([("path", "p")], [[element]])
     result = c.format_topo(1, objs, entity_is_src=True)
-    assert result["_id"] == 1
-    assert result["children"][0]["_id"] == 2
+    assert result["inst_uuid"] == "123e4567-e89b-42d3-a456-426614174001"
+    assert result["children"][0]["inst_uuid"] == "123e4567-e89b-42d3-a456-426614174002"
+
+
+@pytest.mark.parametrize("formatter", ["format_topo", "format_topo_lite"])
+def test_format_topo_prefers_graph_connection_endpoints(formatter):
+    c = _client()
+    n1 = FakeNode(1, ["instance"], {"inst_uuid": "123e4567-e89b-42d3-a456-426614174001", "model_id": "host", "inst_name": "h1"})
+    n2 = FakeNode(2, ["instance"], {"inst_uuid": "123e4567-e89b-42d3-a456-426614174002", "model_id": "sw", "inst_name": "s1"})
+    edge = FakeRelEdge(100, "connects", {"model_asst_id": "conn", "asst_id": "a1"}, src_node=1, dest_node=2)
+    objs = FakeResultSet([("path", "p")], [[FakeTopoElement([n1, n2], [edge])]])
+
+    result = getattr(c, formatter)(1, objs, entity_is_src=True)
+
+    assert result["children"][0]["inst_uuid"] == "123e4567-e89b-42d3-a456-426614174002"
 
 
 def test_format_topo_start_not_found():
@@ -554,9 +677,9 @@ def test_format_topo_start_not_found():
 
 def test_query_topo():
     c = _client()
-    n1 = FakeNode(1, ["instance"], {"model_id": "host", "inst_name": "h1"})
-    n2 = FakeNode(2, ["instance"], {"model_id": "sw", "inst_name": "s1"})
-    e = FakeRelEdge(100, "connects", {"src_inst_id": 1, "dst_inst_id": 2, "model_asst_id": "conn", "asst_id": "a1"})
+    n1 = FakeNode(1, ["instance"], {"inst_uuid": "123e4567-e89b-42d3-a456-426614174001", "model_id": "host", "inst_name": "h1"})
+    n2 = FakeNode(2, ["instance"], {"inst_uuid": "123e4567-e89b-42d3-a456-426614174002", "model_id": "sw", "inst_name": "s1"})
+    e = FakeRelEdge(100, "connects", {"model_asst_id": "conn", "asst_id": "a1"}, src_node=1, dest_node=2)
     element = FakeTopoElement([n1, n2], [e])
     c._graph = FakeGraph(FakeResultSet([("path", "p")], [[element]]))
     out = c.query_topo("instance", 1)
@@ -602,32 +725,77 @@ def test_query_entity_by_inst_names_empty():
     assert c.query_entity_by_inst_names(["x"]) == []
 
 
+def test_query_entity_by_inst_uuid():
+    uid = "123e4567-e89b-42d3-a456-426614174001"
+    nodes = [FakeNode(1, ["instance"], {"inst_uuid": uid, "inst_name": "h1"})]
+    c = _client(_entity_result(nodes))
+    out = c.query_entity_by_inst_uuid(uid.upper())
+    assert out["inst_uuid"] == uid
+    assert c._graph.last_params == {"inst_uuid": uid}
+
+
+def test_query_entity_by_inst_uuids_keeps_order():
+    u1 = "123e4567-e89b-42d3-a456-426614174001"
+    u2 = "123e4567-e89b-42d3-a456-426614174002"
+    nodes = [
+        FakeNode(2, ["instance"], {"inst_uuid": u2}),
+        FakeNode(1, ["instance"], {"inst_uuid": u1}),
+    ]
+    c = _client(_entity_result(nodes))
+    out = c.query_entity_by_inst_uuids([u1, u2])
+    assert [item["inst_uuid"] for item in out] == [u1, u2]
+
+
+def test_query_entity_by_inst_uuids_rejects_duplicates():
+    uid = "123e4567-e89b-42d3-a456-426614174001"
+    c = _client()
+    with pytest.raises(BaseAppException, match="不允许重复"):
+        c.query_entity_by_inst_uuids([uid, uid])
+
+
 # --------------------------------------------------------------------------
 # batch_create_entity / batch_create_edge / batch_update_entity_properties
 # --------------------------------------------------------------------------
 
 
 def test_batch_create_edge_mixed():
-    created_edge = FakeNode(1, ["connects"], {})  # edge_to_dict reads .properties via FormatDBResult
+    src_uuid = "123e4567-e89b-42d3-a456-426614174001"
+    dst_uuid = "123e4567-e89b-42d3-a456-426614174002"
 
     def result(cql, params):
         if "COUNT(e)" in cql:
             return FakeResultSet([("count", "count")], [[0]])
-        # create edge returns edge node
-        return FakeResultSet([("edge", "e")], [[FakeRelEdge(1, "connects", {"model_asst_id": "c"})]])
+        return FakeResultSet(
+            [("edge", "e")],
+            [[FakeRelEdge(1, "connects", {"model_asst_id": "c", "src_inst_uuid": src_uuid, "dst_inst_uuid": dst_uuid})]],
+        )
 
-    # edge_to_dict uses entity_to_dict which reads .properties; FakeRelEdge has .properties
     c = _client(result)
-    edges = [{"src_id": 1, "dst_id": 2, "model_asst_id": "c"}]
+    edges = [
+        {
+            "src_id": 1,
+            "dst_id": 2,
+            "model_asst_id": "c",
+            "src_inst_uuid": src_uuid,
+            "dst_inst_uuid": dst_uuid,
+        }
+    ]
     results = c.batch_create_edge("connects", "host", "switch", edges, "model_asst_id")
     assert results[0]["success"] is True
+    props = c._graph.last_params["props"]
+    assert props["src_inst_uuid"] == src_uuid
+    assert "src_inst_id" not in props
 
 
 def test_batch_update_entity_properties():
     updated = FakeNode(1, ["instance"], {"inst_name": "h", "desc": "x"})
     c = _client(_entity_result([updated]))
     out = c.batch_update_entity_properties(
-        label="instance", entity_ids=[1], properties={"desc": "x"}, check_attr_map={}, check=False,
+        label="instance",
+        entity_ids=[1],
+        properties={"desc": "x"},
+        check_attr_map={},
+        check=False,
     )
     assert out["success"] is True
     assert out["data"][0]["_id"] == 1
@@ -668,7 +836,8 @@ def test_entity_count_with_permission_dict():
     result = FakeResultSet([("model_id", "model_id"), ("count", "count")], [["host", 1]])
     c = _client(result)
     out = c.entity_count(
-        "instance", group_by_attr="model_id",
+        "instance",
+        group_by_attr="model_id",
         format_permission_dict={4: [{"field": "inst_name", "type": "str[]", "value": ["h"]}]},
     )
     assert out == {"host": 1}
@@ -784,10 +953,8 @@ def test_connection_pool_singleton_under_concurrency(monkeypatch):
     # 恢复原始状态
     FalkorDBConnectionPool._instance = original_instance
 
-    unique_instances = set(id(i) for i in instances)
-    assert len(unique_instances) == 1, (
-        f"预期单例，但并发创建出 {len(unique_instances)} 个不同实例（连接泄漏）"
-    )
+    unique_instances = {id(i) for i in instances}
+    assert len(unique_instances) == 1, f"预期单例，但并发创建出 {len(unique_instances)} 个不同实例（连接泄漏）"
 
 
 def test_connection_pool_initialize_called_once_under_concurrency(monkeypatch):
@@ -797,6 +964,7 @@ def test_connection_pool_initialize_called_once_under_concurrency(monkeypatch):
     revert _initialize 双检锁后此测试将断言 connection_count > 1，即验证了修复点。
     """
     import time
+
     from apps.cmdb.graph import falkordb as falkordb_module
 
     pool = FalkorDBConnectionPool()
@@ -840,9 +1008,7 @@ def test_connection_pool_initialize_called_once_under_concurrency(monkeypatch):
     pool._client = original_client
     pool._graph = original_graph
 
-    assert connection_count[0] == 1, (
-        f"FalkorDB 连接应只被创建 1 次，实际创建了 {connection_count[0]} 次（出现连接泄漏）"
-    )
+    assert connection_count[0] == 1, f"FalkorDB 连接应只被创建 1 次，实际创建了 {connection_count[0]} 次（出现连接泄漏）"
 
 
 def test_connection_pool_reinitializes_when_handles_missing(monkeypatch):

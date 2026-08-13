@@ -11,10 +11,10 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 
 from .errors import CMDBOpenAPIError
 from .serializers import (
+    AssociationCreateSerializer,
     BatchCreateSerializer,
     BatchDeleteSerializer,
     BatchUpdateSerializer,
-    AssociationCreateSerializer,
     InstanceListQuerySerializer,
     validate_instance_payload,
 )
@@ -41,14 +41,17 @@ def _organization_ids(instance):
     return result
 
 
+def _as_uuid_str(value) -> str:
+    return str(value)
+
+
 def serialize_instance(instance):
     aliases = {
-        "_id": "inst_id",
         "_creator": "creator",
         "_created_at": "created_at",
         "_updated_at": "updated_at",
     }
-    hidden = {"_labels", "permission"}
+    hidden = {"_id", "_labels", "permission"}
     return {aliases.get(key, key): value for key, value in instance.items() if key not in hidden}
 
 
@@ -114,16 +117,18 @@ class CMDBOpenAPIService:
     def _instance_permission_map(self, model_id):
         return self.context.permission_map(model_id, PERMISSION_INSTANCES)
 
-    def _get_instance(self, model_id, inst_id, operator):
+    def _get_instance(self, model_id, inst_uuid, operator):
         model = ModelManage.search_model_info(model_id)
         if not BusinessModelVisibility.is_visible(model):
             raise CMDBOpenAPIError("cmdb.instance.not_found", "实例不存在", 404)
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
-        if (
-            not instance
-            or instance.get("model_id") != model_id
-            or self.context.team_id not in _organization_ids(instance)
-        ):
+        try:
+            instance = InstanceManage.query_entity_by_uuid(inst_uuid)
+        except BaseAppException as exc:
+            message = getattr(exc, "message", str(exc))
+            if "UUIDv4" in message or "inst_uuid 必须" in message:
+                raise CMDBOpenAPIError("cmdb.validation.failed", message, 400) from None
+            raise CMDBOpenAPIError("cmdb.instance.not_found", "实例不存在", 404) from None
+        if not instance or instance.get("model_id") != model_id or self.context.team_id not in _organization_ids(instance):
             raise CMDBOpenAPIError("cmdb.instance.not_found", "实例不存在", 404)
         creator_allowed = instance.get("_creator") == self.context.user.username
         if not creator_allowed and not CmdbRulesFormatUtil.has_object_permission(
@@ -175,92 +180,93 @@ class CMDBOpenAPIService:
         )
         return serialize_instance(result)
 
-    def update_instance(self, model_id, inst_id, payload):
+    def update_instance(self, model_id, inst_uuid, payload):
         self.context.require_feature("asset_info-Edit")
-        self._get_instance(model_id, inst_id, OPERATE)
+        self._get_instance(model_id, inst_uuid, OPERATE)
         data = validate_instance_payload(
             payload,
             self.get_model_attrs(model_id),
             team_id=self.context.team_id,
             for_update=True,
         )
-        result = InstanceManage.instance_update(
+        result = InstanceManage.instance_update_by_uuid(
             self.context.user_groups,
             self.context.user.roles,
-            int(inst_id),
+            _as_uuid_str(inst_uuid),
             data,
             self.context.user.username,
             allowed_org_ids=[self.context.team_id],
         )
         return serialize_instance(result)
 
-    def delete_instance(self, model_id, inst_id):
+    def delete_instance(self, model_id, inst_uuid):
         self.context.require_feature("asset_info-Delete")
-        self._get_instance(model_id, inst_id, OPERATE)
-        InstanceManage.instance_batch_delete(
+        instance = self._get_instance(model_id, inst_uuid, OPERATE)
+        deleted_uuid = instance.get("inst_uuid") or _as_uuid_str(inst_uuid)
+        InstanceManage.instance_batch_delete_by_uuids(
             self.context.user_groups,
             self.context.user.roles,
-            [int(inst_id)],
+            [deleted_uuid],
             self.context.user.username,
         )
-        return {"deleted": [int(inst_id)]}
+        return {"deleted": [deleted_uuid]}
 
-    def list_instance_associations(self, model_id, inst_id):
+    def list_instance_associations(self, model_id, inst_uuid):
         self.context.require_feature("asset_info-View")
-        self._get_instance(model_id, inst_id, VIEW)
-        return InstanceManage.instance_association_instance_list(
+        self._get_instance(model_id, inst_uuid, VIEW)
+        result = InstanceManage.instance_association_instance_list_by_uuid(
             model_id,
-            int(inst_id),
+            _as_uuid_str(inst_uuid),
             business_only=True,
         )
+        for group in result:
+            group["inst_list"] = [serialize_instance(item) for item in group.get("inst_list", [])]
+        return result
 
-    def create_instance_association(self, model_id, inst_id, payload):
+    def create_instance_association(self, model_id, inst_uuid, payload):
         self.context.require_feature("asset_info-Add Associate")
         serializer = AssociationCreateSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        self._get_instance(model_id, inst_id, OPERATE)
-        self._get_instance(data["target_model_id"], data["target_inst_id"], OPERATE)
+        target_inst_uuid = _as_uuid_str(data["target_inst_uuid"])
+        src = self._get_instance(model_id, inst_uuid, OPERATE)
+        self._get_instance(data["target_model_id"], target_inst_uuid, OPERATE)
         association = ModelManage.model_association_info_search(data["model_asst_id"])
-        if (
-            not association
-            or association.get("src_model_id") != model_id
-            or association.get("dst_model_id") != data["target_model_id"]
-        ):
+        if not association or association.get("src_model_id") != model_id or association.get("dst_model_id") != data["target_model_id"]:
             raise CMDBOpenAPIError("cmdb.association.invalid_direction", "关联方向非法", 400)
         try:
-            edge = InstanceManage.instance_association_create(
-                {
-                    "src_inst_id": int(inst_id),
-                    "dst_inst_id": data["target_inst_id"],
-                    "model_asst_id": data["model_asst_id"],
-                },
-                self.context.user.username,
+            return InstanceManage.instance_association_create_by_uuid(
+                src_inst_uuid=src["inst_uuid"],
+                dst_inst_uuid=target_inst_uuid,
+                model_asst_id=data["model_asst_id"],
+                operator=self.context.user.username,
             )
         except BaseAppException as exc:
             if exc.message == "instance association repetition":
                 raise CMDBOpenAPIError("cmdb.association.conflict", "关联关系已存在", 409) from exc
             raise
-        return {"association_id": edge["_id"], "model_asst_id": data["model_asst_id"]}
 
-    def delete_instance_association(self, model_id, inst_id, association_id):
+    def delete_instance_association(self, model_id, inst_uuid, dst_inst_uuid, model_asst_id):
         self.context.require_feature("asset_info-Delete Associate")
-        association = InstanceManage.instance_association_by_asso_id(int(association_id))
-        src = (association or {}).get("src") or {}
-        if int(src.get("_id") or 0) != int(inst_id) or src.get("model_id") != model_id:
+        association = ModelManage.model_association_info_search(model_asst_id)
+        if not association or association.get("src_model_id") != model_id:
             raise CMDBOpenAPIError("cmdb.association.not_found", "关联关系不存在", 404)
-        dst = (association or {}).get("dst") or {}
+        dst_model_id = association.get("dst_model_id")
+        if not dst_model_id:
+            raise CMDBOpenAPIError("cmdb.association.not_found", "关联关系不存在", 404)
+        src = self._get_instance(model_id, inst_uuid, OPERATE)
+        self._get_instance(dst_model_id, dst_inst_uuid, OPERATE)
         try:
-            dst_inst_id = int(dst.get("_id") or 0)
-        except (TypeError, ValueError):
-            dst_inst_id = 0
-        dst_model_id = dst.get("model_id")
-        if dst_inst_id <= 0 or not dst_model_id:
-            raise CMDBOpenAPIError("cmdb.association.not_found", "关联关系不存在", 404)
-        self._get_instance(model_id, inst_id, OPERATE)
-        self._get_instance(dst_model_id, dst_inst_id, OPERATE)
-        InstanceManage.instance_association_delete(int(association_id), self.context.user.username)
-        return {"deleted": int(association_id)}
+            return InstanceManage.instance_association_delete_by_key(
+                src_inst_uuid=src["inst_uuid"],
+                dst_inst_uuid=_as_uuid_str(dst_inst_uuid),
+                model_asst_id=model_asst_id,
+                operator=self.context.user.username,
+            )
+        except BaseAppException as exc:
+            if exc.message in {"实例关联不存在", "实例关联业务键不唯一"}:
+                raise CMDBOpenAPIError("cmdb.association.not_found", "关联关系不存在", 404) from exc
+            raise
 
     def batch_create_instances(self, model_id, payload):
         self.context.require_feature("asset_info-Add")
@@ -301,16 +307,16 @@ class CMDBOpenAPIService:
         self.context.require_feature("asset_info-Edit")
         serializer = BatchUpdateSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
-        inst_ids = list(dict.fromkeys(serializer.validated_data["inst_ids"]))
-        for inst_id in inst_ids:
+        inst_uuids = list(dict.fromkeys(_as_uuid_str(value) for value in serializer.validated_data["inst_uuids"]))
+        for inst_uuid in inst_uuids:
             try:
-                self._get_instance(model_id, inst_id, OPERATE)
+                self._get_instance(model_id, inst_uuid, OPERATE)
             except CMDBOpenAPIError as exc:
                 raise CMDBOpenAPIError(
                     exc.code,
                     exc.message,
                     exc.status_code,
-                    {**exc.data, "inst_id": inst_id},
+                    {**exc.data, "inst_uuid": inst_uuid},
                 ) from exc
 
         update_data = validate_instance_payload(
@@ -320,10 +326,10 @@ class CMDBOpenAPIService:
             for_update=True,
         )
         try:
-            updated = InstanceManage.batch_instance_update(
+            updated = InstanceManage.batch_instance_update_by_uuids(
                 self.context.user_groups,
                 self.context.user.roles,
-                inst_ids,
+                inst_uuids,
                 update_data,
                 self.context.user.username,
                 [self.context.team_id],
@@ -336,25 +342,25 @@ class CMDBOpenAPIService:
         self.context.require_feature("asset_info-Delete")
         serializer = BatchDeleteSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
-        inst_ids = list(dict.fromkeys(serializer.validated_data["inst_ids"]))
-        for inst_id in inst_ids:
+        inst_uuids = list(dict.fromkeys(_as_uuid_str(value) for value in serializer.validated_data["inst_uuids"]))
+        for inst_uuid in inst_uuids:
             try:
-                self._get_instance(model_id, inst_id, OPERATE)
+                self._get_instance(model_id, inst_uuid, OPERATE)
             except CMDBOpenAPIError as exc:
                 raise CMDBOpenAPIError(
                     exc.code,
                     exc.message,
                     exc.status_code,
-                    {**exc.data, "inst_id": inst_id},
+                    {**exc.data, "inst_uuid": inst_uuid},
                 ) from exc
 
         try:
-            InstanceManage.instance_batch_delete(
+            InstanceManage.instance_batch_delete_by_uuids(
                 self.context.user_groups,
                 self.context.user.roles,
-                inst_ids,
+                inst_uuids,
                 self.context.user.username,
             )
         except InstanceBatchError as exc:
             _raise_open_api_batch_error(exc)
-        return {"deleted": inst_ids}
+        return {"deleted": inst_uuids}

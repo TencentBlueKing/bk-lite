@@ -55,7 +55,7 @@ const isValidFocus = (value: unknown): value is ViewFocus => {
   if (!value || typeof value !== 'object') return false;
   const focus = value as ViewFocus;
   return typeof focus.model_id === 'string'
-    && typeof focus.inst_id === 'string';
+    && typeof focus.inst_uuid === 'string';
 };
 
 const normalizeRecent = (value: unknown): ViewRecentItem[] => {
@@ -68,7 +68,7 @@ const normalizeRecent = (value: unknown): ViewRecentItem[] => {
 };
 
 const recentItemKey = (item: ViewFocus): string =>
-  `${item.model_id}:${item.inst_id}`;
+  `${item.model_id}:${item.inst_uuid}`;
 
 const normalizeModeFocus = (
   focus: ViewFocus,

@@ -221,7 +221,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({ ip, open, onClose }) =>
       model_name: 'ip',
       model_id: 'ip',
       classification_id: '',
-      inst_id: String(ip._id),
+      inst_uuid: String(ip.inst_uuid || ip._id),
       inst_name: ip.ip_addr,
     }).toString();
     router.push(`/cmdb/assetData/detail/baseInfo?${params}`);
@@ -555,7 +555,7 @@ const HeatView: React.FC<HeatViewProps> = ({ data, onDrill }) => {
 // ─── Main IpamMatrix component ─────────────────────────────────────────────────
 
 interface IpamMatrixProps {
-  instId: string;
+  instUuid: string;
 }
 
 interface DrillState {
@@ -568,7 +568,7 @@ interface DrillState {
   };
 }
 
-const IpamMatrix: React.FC<IpamMatrixProps> = ({ instId }) => {
+const IpamMatrix: React.FC<IpamMatrixProps> = ({ instUuid }) => {
   const { t } = useTranslation();
   const { getIpamView } = useInstanceApi();
 
@@ -578,12 +578,12 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instId }) => {
   const [drill, setDrill] = useState<DrillState | null>(null);
 
   useEffect(() => {
-    if (!instId) return;
+    if (!instUuid) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
     setDrill(null);
-    getIpamView(instId)
+    getIpamView(instUuid)
       .then((res: IpamViewData) => {
         if (!cancelled) setData(res ?? null);
       })
@@ -594,8 +594,8 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instId }) => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instId]);
+     
+  }, [instUuid]);
 
   if (loading) {
     return (

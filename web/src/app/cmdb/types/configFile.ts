@@ -17,7 +17,7 @@ export interface ConfigFileContentResponse {
 export interface ConfigFileVersion {
   id: number;
   collect_task_id: number | null;
-  instance_id: string;
+  instance_uuid: string;
   model_id: string;
   version: string;
   file_path: string;
@@ -37,7 +37,7 @@ export interface ConfigFileDiffResponse {
 }
 
 export interface CreateManualConfigFileParams {
-  instance_id: string;
+  instance_uuid: string;
   model_id: string;
   file_path: string;
   content: string;

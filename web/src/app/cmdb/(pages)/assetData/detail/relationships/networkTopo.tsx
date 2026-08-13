@@ -328,15 +328,15 @@ const buildGraphData = (
   return { nodes, edges };
 };
 
-export type NetworkTopoFocusPayload = {
+export interface NetworkTopoFocusPayload {
   modelId: string;
-  instId: string;
+  instUuid: string;
   instName?: string;
-};
+}
 
 interface NetworkTopoProps {
   modelId: string;
-  instId: string;
+  instUuid: string;
   /** Hub flex layout: fill parent instead of viewport calc. Default false keeps detail page height. */
   fillContainer?: boolean;
   /** When provided (hub), enable 「设为当前」 via dblclick / context menu. Detail omits → expand-on-click unchanged. */
@@ -347,7 +347,7 @@ interface NetworkTopoProps {
 
 const NetworkTopo: React.FC<NetworkTopoProps> = ({
   modelId,
-  instId,
+  instUuid,
   fillContainer = false,
   onRequestFocus,
   onViewDetail,
@@ -418,7 +418,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
         )
       )
       .catch(() => setNetworkModels([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const rebuild = useCallback(async (center: string, mode: LayoutMode) => {
@@ -464,14 +464,14 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
 
   // 初次加载：默认展开 2 跳
   useEffect(() => {
-    if (!modelId || !instId) return;
+    if (!modelId || !instUuid) return;
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       try {
         const data: NetworkTopoData = await getNetworkTopo(
           modelId,
-          instId,
+          instUuid,
           DEFAULT_HOP
         );
         if (cancelled) return;
@@ -496,8 +496,8 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, instId]);
+     
+  }, [modelId, instUuid]);
 
   // 点击对端设备：取其下一跳并合并（受最大跳数与节点上限约束）
   const handleExpand = useCallback(
@@ -547,7 +547,16 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
   // 删除连线（已落库），更新合并图并 rebuild
   const handleDeleteLink = useCallback(
     async (relationshipId: string) => {
-      await deleteInstanceAssociation(relationshipId);
+      const link = mergedRef.current.links.get(relationshipId);
+      if (!link?.src_inst_uuid || !link?.dst_inst_uuid || !link?.model_asst_id) {
+        message.error(t('common.operationFailed'));
+        return;
+      }
+      await deleteInstanceAssociation(
+        link.src_inst_uuid,
+        link.dst_inst_uuid,
+        link.model_asst_id
+      );
       mergedRef.current.links.delete(relationshipId);
       message.success(t('successfullyDisassociated'));
       await rebuild(centerId, layoutMode);
@@ -581,7 +590,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
       if (!n?.model_id) return null;
       return {
         modelId: n.model_id,
-        instId: n.id,
+        instUuid: n.id,
         instName: n.name,
       };
     },
@@ -696,7 +705,8 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
         }
       });
       const link = buildLinkFromConnection({
-        relationshipId: String(res._id),
+        srcInstUuid: String(res.src_inst_uuid || r.sourcePortId),
+        dstInstUuid: String(res.dst_inst_uuid || r.targetPortId),
         sourceDevice: sourceId,
         targetDevice: targetId,
         sourcePortName: r.sourcePortName,

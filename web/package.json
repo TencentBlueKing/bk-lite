@@ -149,6 +149,7 @@
     "@antv/x6-plugin-selection": "^2.2.2",
     "@antv/x6-plugin-transform": "^2.1.8",
     "@antv/x6-react-shape": "^2.2.3",
+    "@antv/xflow": "2.2.4",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^9.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -187,7 +188,8 @@
     "remark": "^15.0.1",
     "remark-gfm": "^4.0.0",
     "remark-html": "^16.0.1",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "zustand": "5.0.9"
   },
   "devDependencies": {
     "@ant-design/v5-patch-for-react-19": "^1.0.3",

@@ -4,9 +4,8 @@
 实例解析、任务状态汇总、文件清单。MinIO 写入路径(save_content)不在单测范围。
 """
 
-from types import SimpleNamespace
-
 import base64
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,8 +16,12 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 
 def _task(**kw):
     defaults = dict(
-        id=1, params={"config_file_path": "/etc/app.conf"}, instances=[],
-        collect_data={}, exec_time=None, model_id="host",
+        id=1,
+        params={"config_file_path": "/etc/app.conf"},
+        instances=[],
+        collect_data={},
+        exec_time=None,
+        model_id="host",
     )
     defaults.update(kw)
     return SimpleNamespace(**defaults)
@@ -55,9 +58,7 @@ def test_normalize_payload_plain():
 
 
 def test_normalize_payload_nested():
-    out = S._normalize_collect_payload(
-        {"config_file_path": "/x/y.conf", "collect_result": {"status": "success", "content_base64": "Zg=="}}
-    )
+    out = S._normalize_collect_payload({"config_file_path": "/x/y.conf", "collect_result": {"status": "success", "content_base64": "Zg=="}})
     assert out["status"] == "success"
     assert out["file_path"] == "/x/y.conf"
     assert out["file_name"] == "y.conf"
@@ -154,16 +155,42 @@ def test_resolve_task_instance_by_id():
     task = _task(instances=[{"_id": "10", "ip_addr": "1.1.1.1"}])
     rid, inst = S._resolve_task_instance(task, "10")
     assert rid == "10"
+    assert inst["_id"] == "10"
 
 
-def test_resolve_task_instance_by_name():
-    task = _task(instances=[{"_id": "10", "ip_addr": "1.1.1.1"}])
-    rid, inst = S._resolve_task_instance(task, "1.1.1.1")
+def test_resolve_task_instance_by_uuid():
+    task = _task(
+        instances=[
+            {
+                "_id": "10",
+                "inst_uuid": "123e4567-e89b-42d3-a456-426614174000",
+                "ip_addr": "1.1.1.1",
+            }
+        ]
+    )
+    rid, inst = S._resolve_task_instance(task, "123e4567-e89b-42d3-a456-426614174000")
     assert rid == "10"
+    assert inst["inst_uuid"] == "123e4567-e89b-42d3-a456-426614174000"
+
+
+def test_resolve_task_instance_rejects_hostname_only():
+    task = _task(instances=[{"_id": "10", "ip_addr": "1.1.1.1"}])
+    assert S._resolve_task_instance(task, "1.1.1.1") == ("", {})
 
 
 def test_resolve_task_instance_empty():
     assert S._resolve_task_instance(_task(), "") == ("", {})
+
+
+def test_validate_callback_identity_requires_uuid_v2():
+    with pytest.raises(BaseAppException):
+        S._validate_callback_identity({"protocol_version": "1", "instance_uuid": "123e4567-e89b-42d3-a456-426614174000"})
+    with pytest.raises(BaseAppException):
+        S._validate_callback_identity({"protocol_version": "2", "instance_id": "10", "instance_uuid": "123e4567-e89b-42d3-a456-426614174000"})
+    assert (
+        S._validate_callback_identity({"protocol_version": "2", "instance_uuid": "123e4567-e89b-42d3-a456-426614174000"})
+        == "123e4567-e89b-42d3-a456-426614174000"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -204,7 +231,9 @@ def test_build_summary_success_no_change():
 
 def test_build_summary_error():
     task = _task(instances=[{"_id": "1"}])
-    summary = S._build_summary(task, items={"1": {"instance_id": "1", "status": ConfigFileVersionStatus.ERROR, "changed": False, "version": "100", "error_message": "boom"}})
+    summary = S._build_summary(
+        task, items={"1": {"instance_id": "1", "status": ConfigFileVersionStatus.ERROR, "changed": False, "version": "100", "error_message": "boom"}}
+    )
     assert summary["config_file_data"]["status"] == "error"
 
 
@@ -222,18 +251,22 @@ def test_build_pending_result():
 
 @pytest.mark.django_db
 def test_get_latest_version_and_file_list():
-    ConfigFileVersion.objects.create(
-        instance_id="5", model_id="host", version="100", file_path="/a", file_name="a", status="success"
-    )
-    v2 = ConfigFileVersion.objects.create(
-        instance_id="5", model_id="host", version="200", file_path="/a", file_name="a", status="success"
-    )
+    ConfigFileVersion.objects.create(instance_id="5", model_id="host", version="100", file_path="/a", file_name="a", status="success")
+    v2 = ConfigFileVersion.objects.create(instance_id="5", model_id="host", version="200", file_path="/a", file_name="a", status="success")
     latest = S.get_latest_version(None, "5", "/a")
     assert latest.id == v2.id
 
     file_list = S.get_file_list("5")
     assert len(file_list) == 1
     assert file_list[0]["latest_version_id"] == v2.id
+
+
+@pytest.mark.django_db
+def test_get_file_list_by_uuid_includes_unmigrated_numeric_rows():
+    ConfigFileVersion.objects.create(instance_id="5", model_id="host", version="100", file_path="/a", file_name="a", status="success")
+    file_list = S.get_file_list(instance_id="5", instance_uuid="550e8400-e29b-41d4-a716-446655440000")
+    assert len(file_list) == 1
+    assert file_list[0]["file_path"] == "/a"
 
 
 @pytest.mark.django_db

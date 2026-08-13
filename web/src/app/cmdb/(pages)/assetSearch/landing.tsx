@@ -57,7 +57,7 @@ export interface RecentChangeItem {
 
 export interface FollowedAssetViewItem {
   key: string;
-  inst_id: string | number;
+  inst_uuid: string;
   model_id: string;
   model_name: string;
   inst_name: string;

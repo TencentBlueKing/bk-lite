@@ -1,47 +1,30 @@
 from django.http import HttpResponse, JsonResponse
-from rest_framework import viewsets, status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.cmdb.constants.constants import (
-    PERMISSION_INSTANCES,
-    OPERATE,
-    VIEW,
-    NETWORK_TOPO_DEFAULT_HOP,
-    NETWORK_TOPO_MAX_HOP,
-)
-from apps.cmdb.models.change_record import (
-    INSTANCE_EDIT_CORRECTABLE_SCENARIOS,
-    ORDINARY_ATTRIBUTE_CHANGE,
-)
+
+from apps.cmdb.constants.constants import NETWORK_TOPO_DEFAULT_HOP, NETWORK_TOPO_MAX_HOP, OPERATE, PERMISSION_INSTANCES, VIEW
 from apps.cmdb.instance_ops.extensions import get_instance_enterprise_extension
-from apps.cmdb.services.instance import InstanceManage
-from apps.cmdb.services.model import ModelManage
-from apps.cmdb.services.model_visibility import BusinessModelVisibility
-from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
-from apps.cmdb.utils.base import (
-    format_group_params,
-    format_groups_params,
-    get_current_team_from_request,
-    get_organization_and_children_ids,
-)
-from apps.cmdb.services.topology_theme import get_topo_themes
-from apps.cmdb.services.rack_room import get_room_layout, get_rack_layout
-from apps.cmdb.services.application_resource_overview import ApplicationResourceOverviewService
-from apps.cmdb.services.k8s_resource_overview import K8sResourceOverviewService
-from apps.cmdb.serializers.application_resource_overview import (
-    ApplicationResourceTopologyQuerySerializer,
-    ApplicationResourceEntrySerializer,
-    ApplicationResourceNodeIdsSerializer,
-)
+from apps.cmdb.models.change_record import INSTANCE_EDIT_CORRECTABLE_SCENARIOS, ORDINARY_ATTRIBUTE_CHANGE
+from apps.cmdb.serializers.application_resource_overview import ApplicationResourceEntrySerializer, ApplicationResourceTopologyQuerySerializer
 from apps.cmdb.serializers.k8s_resource_overview import (
     K8sLayerQuerySerializer,
     K8sPageQuerySerializer,
     K8sResourceKindSerializer,
     K8sResourceListQuerySerializer,
 )
+from apps.cmdb.services.application_resource_overview import ApplicationResourceOverviewService
+from apps.cmdb.services.instance import InstanceManage
+from apps.cmdb.services.k8s_resource_overview import K8sResourceOverviewService
+from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.model_visibility import BusinessModelVisibility
+from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
+from apps.cmdb.services.rack_room import get_rack_layout, get_room_layout
+from apps.cmdb.services.topology_theme import get_topo_themes
+from apps.cmdb.utils.base import format_group_params, format_groups_params, get_current_team_from_request, get_organization_and_children_ids
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.current_team_scope import resolve_assignable_organization_ids
 from apps.core.utils.team_utils import get_current_team
@@ -51,6 +34,11 @@ from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
+    @staticmethod
+    def _transport_instance(instance):
+        """对外响应剥离图内部字段。"""
+        return {key: value for key, value in dict(instance or {}).items() if key not in {"_id", "_labels"}}
+
     K8S_CHILD_MODELS = ("k8s_namespace", "k8s_workload", "k8s_pod", "k8s_node")
 
     @staticmethod
@@ -58,31 +46,22 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         model_id = instance.get("model_id")
         if not model_id:
             return True
-        return BusinessModelVisibility.is_visible(
-            ModelManage.search_model_info(model_id)
-        )
+        return BusinessModelVisibility.is_visible(ModelManage.search_model_info(model_id))
 
     @staticmethod
     def _is_model_visible(model_id: str) -> bool:
-        return BusinessModelVisibility.is_visible(
-            ModelManage.search_model_info(model_id)
-        )
+        return BusinessModelVisibility.is_visible(ModelManage.search_model_info(model_id))
 
-    def _k8s_resource_context(self, request, cluster_id):
-        instance = InstanceManage.query_entity_by_id(int(cluster_id))
+    def _k8s_resource_context(self, request, cluster_uuid):
+        instance = InstanceManage.query_entity_by_uuid(cluster_uuid)
         if not instance:
             return None, None, WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
         if instance.get("model_id") != "k8s_cluster":
-            return None, None, WebUtils.response_error(
-                "实例不是 k8s_cluster", status_code=status.HTTP_400_BAD_REQUEST
-            )
+            return None, None, WebUtils.response_error("实例不是 k8s_cluster", status_code=status.HTTP_400_BAD_REQUEST)
         permission_error = self.require_instance_permission(request, instance, operator=VIEW)
         if permission_error:
             return None, None, permission_error
-        permission_maps = {
-            model_id: CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
-            for model_id in self.K8S_CHILD_MODELS
-        }
+        permission_maps = {model_id: CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id) for model_id in self.K8S_CHILD_MODELS}
         return instance, permission_maps, None
 
     @staticmethod
@@ -294,18 +273,20 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             permission_instances_map=permissions_map,
             creator=request.user.username,
         )
-        return WebUtils.response_success(dict(insts=instance_list, count=count))
+        return WebUtils.response_success(dict(insts=[self._transport_instance(item) for item in instance_list], count=count))
 
     @HasPermission("asset_info-View")
     def retrieve(self, request, pk: str):
-        instance = InstanceManage.query_entity_by_id(int(pk))
+        if str(pk).isdigit():
+            return WebUtils.response_error("请使用 inst_uuid 定位实例，不再支持数字 ID", status_code=status.HTTP_400_BAD_REQUEST)
+        instance = InstanceManage.query_entity_by_uuid(pk)
         if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         if self.check_creator_and_organizations(request, instance):
             # 如果是自己创建的实例，直接返回
             instance["permission"] = [VIEW, OPERATE]
-            return WebUtils.response_success(instance)
+            return WebUtils.response_success(self._transport_instance(instance))
 
         organizations = self.organizations(request, instance)
         # 再次确认用户所在的组织
@@ -330,7 +311,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             permission_instances_map=permissions_map,
             creator=request.user.username,
         )
-        return WebUtils.response_success(instance)
+        return WebUtils.response_success(self._transport_instance(instance))
 
     @HasPermission("asset_info-Edit")
     @action(methods=["post"], detail=True, url_path="push_to_monitor")
@@ -343,29 +324,19 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if not self.check_creator_and_organizations(request, instance):
             organizations = self.organizations(request, instance)
             if not organizations:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
-            has_permission = self.check_instance_permission(
-                request, instance, operator=OPERATE
-            )
+                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
+            has_permission = self.check_instance_permission(request, instance, operator=OPERATE)
             if not has_permission:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
+                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
 
         actor_scope = build_cmdb_push_actor_scope(request)
         try:
-            result = CmdbToMonitorPushService.push_instance(
-                int(pk), actor_scope=actor_scope
-            )
+            result = CmdbToMonitorPushService.push_instance(int(pk), actor_scope=actor_scope)
         except ValueError as exc:
             return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
         except Exception:
             logger.exception("[push_to_monitor] failed inst_id=%s", pk)
-            return WebUtils.response_error(
-                "推送到监控失败", status_code=status.HTTP_502_BAD_GATEWAY
-            )
+            return WebUtils.response_error("推送到监控失败", status_code=status.HTTP_502_BAD_GATEWAY)
         return WebUtils.response_success(result)
 
     # ---- 附件/图片文件（企业版；社区版返回未启用） -----------------------
@@ -397,9 +368,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return WebUtils.response_error("model_id 和 attr_id 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
         if not uploaded:
             return WebUtils.response_error("未接收到文件", status_code=status.HTTP_400_BAD_REQUEST)
-        meta = get_instance_enterprise_extension().handle_upload(
-            request=request, model_id=model_id, attr_id=attr_id, uploaded_file=uploaded
-        )
+        meta = get_instance_enterprise_extension().handle_upload(request=request, model_id=model_id, attr_id=attr_id, uploaded_file=uploaded)
         return WebUtils.response_success(meta)
 
     @HasPermission("asset_info-View")
@@ -412,15 +381,17 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         限制，从而绕开「直链请求不带令牌」的鉴权问题。
         """
 
-        def _check_read(inst_id):
-            if inst_id is None:
+        def _check_read(inst_uuid):
+            if inst_uuid is None:
                 return False
-            instance = InstanceManage.query_entity_by_id(int(inst_id))
+            instance = InstanceManage.query_entity_by_uuid(str(inst_uuid))
             return bool(instance) and self._check_instance_read_permission(request, instance)
 
         as_attachment = request.query_params.get("download") == "1"
         url = get_instance_enterprise_extension().handle_download(
-            request=request, file_id=file_id, check_read_permission=_check_read,
+            request=request,
+            file_id=file_id,
+            check_read_permission=_check_read,
             as_attachment=as_attachment,
         )
         return WebUtils.response_success({"url": url})
@@ -469,13 +440,15 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             )
         except OperationConflict as exc:
             return WebUtils.response_error(str(exc), status_code=status.HTTP_409_CONFLICT)
-        response = WebUtils.response_success(inst)
+        response = WebUtils.response_success(self._transport_instance(inst))
         response["X-CMDB-Operation-ID"] = str(started.operation.operation_id)
         return response
 
     @HasPermission("asset_info-Delete")
-    def destroy(self, request, pk: int):
-        instance = InstanceManage.query_entity_by_id(pk)
+    def destroy(self, request, pk: str):
+        if str(pk).isdigit():
+            return WebUtils.response_error("请使用 inst_uuid 定位实例，不再支持数字 ID", status_code=status.HTTP_400_BAD_REQUEST)
+        instance = InstanceManage.query_entity_by_uuid(pk)
         if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -497,10 +470,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         else:
             user_groups = format_group_params(current_team)
 
-        InstanceManage.instance_batch_delete(
+        InstanceManage.instance_batch_delete_by_uuids(
             user_groups,
             request.user.roles,
-            [int(pk)],
+            [pk],
             request.user.username,
         )
         return WebUtils.response_success()
@@ -508,7 +481,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-Delete")
     @action(detail=False, methods=["post"], url_path="batch_delete")
     def instance_batch_delete(self, request):
-        instances = InstanceManage.query_entity_by_ids(request.data)
+        inst_uuids = request.data.get("inst_uuids") if isinstance(request.data, dict) else None
+        if not isinstance(inst_uuids, list) or not inst_uuids:
+            return WebUtils.response_error("inst_uuids 必须是非空数组", status_code=status.HTTP_400_BAD_REQUEST)
+        instances = InstanceManage.query_entity_by_uuids(inst_uuids)
         if not instances:
             return WebUtils.response_error(error_message="实例不存在", status_code=status.HTTP_404_NOT_FOUND)
         if any(not self._is_instance_model_visible(instance) for instance in instances):
@@ -547,10 +523,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             user_groups = format_group_params(current_team)
 
         try:
-            InstanceManage.instance_batch_delete(
+            InstanceManage.instance_batch_delete_by_uuids(
                 user_groups,
                 request.user.roles,
-                request.data,
+                inst_uuids,
                 request.user.username,
             )
         except BaseAppException as e:
@@ -558,12 +534,14 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         return WebUtils.response_success()
 
     @HasPermission("asset_info-Edit")
-    def partial_update(self, request, pk: int):
+    def partial_update(self, request, pk: str):
         import uuid
 
         from apps.cmdb.services.operation_service import OperationConflict, OperationService
 
-        instance = InstanceManage.query_entity_by_id(pk)
+        if str(pk).isdigit():
+            return WebUtils.response_error("请使用 inst_uuid 定位实例，不再支持数字 ID", status_code=status.HTTP_400_BAD_REQUEST)
+        instance = InstanceManage.query_entity_by_uuid(pk)
         if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -589,9 +567,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         from apps.cmdb.services.module_ingest import strip_system_link_fields
 
-        update_attr = strip_system_link_fields(
-            {k: v for k, v in request.data.items() if k != "_scenario"}
-        )
+        update_attr = strip_system_link_fields({k: v for k, v in request.data.items() if k != "_scenario"})
         scenario = request.data.get("_scenario") or ORDINARY_ATTRIBUTE_CHANGE
         if scenario not in INSTANCE_EDIT_CORRECTABLE_SCENARIOS:
             scenario = ORDINARY_ATTRIBUTE_CHANGE
@@ -602,15 +578,15 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 operator=request.user.username,
                 idempotency_key=idempotency_key,
                 action="instance.update",
-                target={"model_id": instance["model_id"], "instance_id": int(pk)},
+                target={"model_id": instance["model_id"], "inst_uuid": pk},
                 request_payload={"update_attr": update_attr, "scenario": scenario},
             )
             inst = OperationService.execute_graph(
                 started.operation,
-                graph_write=lambda operation_id: InstanceManage.instance_update(
+                graph_write=lambda operation_id: InstanceManage.instance_update_by_uuid(
                     user_groups,
                     request.user.roles,
-                    int(pk),
+                    pk,
                     update_attr,
                     request.user.username,
                     allowed_org_ids=allowed_org_ids,
@@ -626,21 +602,21 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             )
         except OperationConflict as exc:
             return WebUtils.response_error(str(exc), status_code=status.HTTP_409_CONFLICT)
-        response = WebUtils.response_success(inst)
+        response = WebUtils.response_success(self._transport_instance(inst))
         response["X-CMDB-Operation-ID"] = str(started.operation.operation_id)
         return response
 
     @HasPermission("asset_info-Edit")
     @action(detail=False, methods=["post"], url_path="batch_update")
     def instance_batch_update(self, request):
-        inst_ids = request.data.get("inst_ids")
-        if not isinstance(inst_ids, list) or not inst_ids:
-            return WebUtils.response_error("inst_ids 必须是非空数组", status_code=status.HTTP_400_BAD_REQUEST)
+        inst_uuids = request.data.get("inst_uuids")
+        if not isinstance(inst_uuids, list) or not inst_uuids:
+            return WebUtils.response_error("inst_uuids 必须是非空数组", status_code=status.HTTP_400_BAD_REQUEST)
         update_data = request.data.get("update_data")
         if not isinstance(update_data, dict) or not update_data:
             return WebUtils.response_error("update_data 必须是非空对象", status_code=status.HTTP_400_BAD_REQUEST)
 
-        instances = InstanceManage.query_entity_by_ids(inst_ids)
+        instances = InstanceManage.query_entity_by_uuids(inst_uuids)
         if not instances:
             return WebUtils.response_success()
         if any(not self._is_instance_model_visible(instance) for instance in instances):
@@ -680,10 +656,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         allowed_org_ids = self._get_allowed_org_ids(request)
 
         try:
-            InstanceManage.batch_instance_update(
+            InstanceManage.batch_instance_update_by_uuids(
                 user_groups,
                 request.user.roles,
-                request.data["inst_ids"],
+                request.data["inst_uuids"],
                 request.data["update_data"],
                 request.user.username,
                 allowed_org_ids=allowed_org_ids,
@@ -695,10 +671,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-Add Associate")
     @action(detail=False, methods=["post"], url_path="association")
     def instance_association_create(self, request):
-        src_inst_id = request.data.get("src_inst_id")
-        dst_inst_id = request.data.get("dst_inst_id")
-        src_inst = InstanceManage.query_entity_by_id(src_inst_id)
-        dst_inst = InstanceManage.query_entity_by_id(dst_inst_id)
+        src_inst_uuid = request.data.get("src_inst_uuid")
+        dst_inst_uuid = request.data.get("dst_inst_uuid")
+        src_inst = InstanceManage.query_entity_by_uuid(src_inst_uuid)
+        dst_inst = InstanceManage.query_entity_by_uuid(dst_inst_uuid)
 
         if not src_inst or not self._is_instance_model_visible(src_inst):
             return WebUtils.response_error("源实例不存在", status_code=status.HTTP_404_NOT_FOUND)
@@ -734,23 +710,30 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 )
 
         try:
-            asso = InstanceManage.instance_association_create(request.data, request.user.username)
+            asso = InstanceManage.instance_association_create_by_uuid(
+                src_inst_uuid=src_inst_uuid,
+                dst_inst_uuid=dst_inst_uuid,
+                model_asst_id=request.data.get("model_asst_id"),
+                operator=request.user.username,
+            )
             return WebUtils.response_success(asso)
         except BaseAppException as e:
             return WebUtils.response_error(error_message=e.message, status_code=status.HTTP_400_BAD_REQUEST)
 
     @HasPermission("asset_info-Delete Associate")
-    @action(detail=False, methods=["delete"], url_path="association/(?P<id>.+?)")
-    def instance_association_delete(self, request, id: int):
-        asso_id = int(id)
+    @action(
+        detail=False,
+        methods=["delete"],
+        url_path=("association/(?P<src_inst_uuid>[^/]+)/(?P<dst_inst_uuid>[^/]+)/" "(?P<model_asst_id>[^/]+)"),
+    )
+    def instance_association_delete(self, request, src_inst_uuid: str, dst_inst_uuid: str, model_asst_id: str):
         # 删除前必须做与 instance_association_create 对称的对象级权限校验，
         # 否则仅凭菜单级 "asset_info-Delete Associate" 权限即可越权清除跨组织边。
-        asso_info = InstanceManage.instance_association_by_asso_id(asso_id)
-        if not asso_info:
-            return WebUtils.response_error("关联关系不存在", status_code=status.HTTP_404_NOT_FOUND)
-
-        for endpoint_key, endpoint_label in (("src", "源"), ("dst", "目标")):
-            endpoint_inst = asso_info.get(endpoint_key)
+        endpoints = [
+            (InstanceManage.query_entity_by_uuid(src_inst_uuid), "源"),
+            (InstanceManage.query_entity_by_uuid(dst_inst_uuid), "目标"),
+        ]
+        for endpoint_inst, endpoint_label in endpoints:
             if not endpoint_inst or not self._is_instance_model_visible(endpoint_inst):
                 return WebUtils.response_error(
                     f"{endpoint_label}实例不存在",
@@ -769,17 +752,25 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     status_code=status.HTTP_403_FORBIDDEN,
                 )
 
-        InstanceManage.instance_association_delete(asso_id, request.user.username)
-        return WebUtils.response_success()
+        try:
+            deleted = InstanceManage.instance_association_delete_by_key(
+                src_inst_uuid=src_inst_uuid,
+                dst_inst_uuid=dst_inst_uuid,
+                model_asst_id=model_asst_id,
+                operator=request.user.username,
+            )
+        except BaseAppException as exc:
+            return WebUtils.response_error(exc.message, status_code=status.HTTP_404_NOT_FOUND)
+        return WebUtils.response_success(deleted)
 
     @action(
         detail=False,
         methods=["get"],
-        url_path="association_instance_list/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path="association_instance_list/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def instance_association_instance_list(self, request, model_id: str, inst_id: int):
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+    def instance_association_instance_list(self, request, model_id: str, inst_uuid: str):
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -791,22 +782,24 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        asso_insts = InstanceManage.instance_association_instance_list(
+        asso_insts = InstanceManage.instance_association_instance_list_by_uuid(
             model_id,
-            int(inst_id),
+            inst_uuid,
             business_only=True,
             language=request.user.locale,
         )
+        for group in asso_insts:
+            group["inst_list"] = [self._transport_instance(item) for item in group.get("inst_list", [])]
         return WebUtils.response_success(asso_insts)
 
     @action(
         detail=False,
         methods=["get"],
-        url_path="instance_association/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path="instance_association/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def instance_association(self, request, model_id: str, inst_id: int):
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+    def instance_association(self, request, model_id: str, inst_uuid: str):
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -814,13 +807,14 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        asso_insts = InstanceManage.instance_association(
+        # 返回关联边列表（非关联实例分组）
+        asso_edges = InstanceManage.instance_association_by_uuid(
             model_id,
-            int(inst_id),
+            inst_uuid,
             business_only=True,
             language=request.user.locale,
         )
-        return WebUtils.response_success(asso_insts)
+        return WebUtils.response_success(asso_edges)
 
     @HasPermission("asset_info-Add")
     @action(methods=["get"], detail=False, url_path=r"(?P<model_id>.+?)/download_template")
@@ -914,7 +908,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         # 获取导出参数
         attr_list = request.data.get("attr_list", [])
         association_list = request.data.get("association_list", [])
-        inst_ids = request.data.get("inst_ids", [])
+        inst_uuids = request.data.get("inst_uuids", [])
+        selected_instances = InstanceManage.query_entity_by_uuids(inst_uuids) if inst_uuids else []
+        if inst_uuids and len(selected_instances) != len(set(inst_uuids)):
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        export_ids = [item["_id"] for item in selected_instances]
 
         response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f"attachment;filename={f'{model_id}_export.xlsx'}"
@@ -923,7 +921,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         response.write(
             InstanceManage.inst_export(
                 model_id=model_id,
-                ids=inst_ids,
+                ids=export_ids,
                 permissions_map=permissions_map,
                 attr_list=attr_list,
                 association_list=association_list,
@@ -941,7 +939,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="")
 
         result = InstanceManage.fulltext_search(search=search, permission_map=permissions_map, creator=request.user.username)
-        return WebUtils.response_success(result)
+        return WebUtils.response_success([self._transport_instance(item) for item in result])
 
     @HasPermission("search-View")
     @action(methods=["post"], detail=False, url_path="fulltext_search/stats")
@@ -1050,16 +1048,17 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             case_sensitive=case_sensitive,
         )
 
+        result["data"] = [self._transport_instance(item) for item in result.get("data", [])]
         return WebUtils.response_success(result)
 
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"topo_search/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path=r"topo_search/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def topo_search(self, request, model_id: str, inst_id: int):
-        instance = InstanceManage.query_entity_by_id(inst_id)
+    def topo_search(self, request, model_id: str, inst_uuid: str):
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1068,8 +1067,8 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return permission_error
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
-        result = InstanceManage.topo_search_lite(
-            int(inst_id),
+        result = InstanceManage.topo_search_lite_by_uuid(
+            inst_uuid,
             depth=3,
             permission_map=permissions_map,
             user=request.user,
@@ -1085,22 +1084,20 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def topo_search_expand_post(self, request):
         """
         用于拓扑第3层节点点击“+”后的二次查询：
-        前端传入 model_id / inst_id / parent_id（父节点列表），后端返回该节点为中心的下一层拓扑数据。
+        前端传入 model_id / inst_uuid / parent_uuid（父节点列表），后端返回该节点为中心的下一层拓扑数据。
         """
-        inst_id = request.data.get("inst_id")
-        parent_ids = request.data.get("parent_id") or []
+        inst_uuid = request.data.get("inst_uuid")
+        parent_uuids = request.data.get("parent_uuid") or []
 
-        if inst_id is None:
-            return WebUtils.response_error("inst_id不能为空", status_code=status.HTTP_400_BAD_REQUEST)
-        try:
-            inst_id = int(inst_id)
-        except (TypeError, ValueError):
-            return WebUtils.response_error("inst_id不合法", status_code=status.HTTP_400_BAD_REQUEST)
+        if not inst_uuid:
+            return WebUtils.response_error("inst_uuid不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+        if str(inst_uuid).isdigit():
+            return WebUtils.response_error("请使用 inst_uuid 定位实例，不再支持数字 ID", status_code=status.HTTP_400_BAD_REQUEST)
 
-        if not isinstance(parent_ids, list):
-            parent_ids = [parent_ids]
+        if not isinstance(parent_uuids, list):
+            parent_uuids = [parent_uuids]
 
-        instance = InstanceManage.query_entity_by_id(inst_id)
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1109,23 +1106,26 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return permission_error
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
-        result = InstanceManage.topo_search_expand(
-            inst_id,
-            parent_ids,
-            depth=2,
-            permission_map=permissions_map,
-            user=request.user,
-        )
+        try:
+            result = InstanceManage.topo_search_expand_by_uuid(
+                inst_uuid,
+                parent_uuids,
+                depth=2,
+                permission_map=permissions_map,
+                user=request.user,
+            )
+        except BaseAppException as exc:
+            return WebUtils.response_error(exc.message, status_code=status.HTTP_400_BAD_REQUEST)
         return WebUtils.response_success(result)
 
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"topo_search_test_config/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path=r"topo_search_test_config/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def topo_search_test_config(self, request, model_id: str, inst_id: int):
-        instance = InstanceManage.query_entity_by_id(inst_id)
+    def topo_search_test_config(self, request, model_id: str, inst_uuid: str):
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1133,38 +1133,37 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        result = InstanceManage.topo_search_test_config(int(inst_id), model_id)
+        result = InstanceManage.topo_search_test_config_by_uuid(inst_uuid, model_id)
         return WebUtils.response_success(result)
 
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"k8s_resource_overview/(?P<cluster_id>.+?)",
+        url_path=r"k8s_resource_overview/(?P<cluster_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def k8s_resource_overview(self, request, cluster_id: int):
-        _, permission_maps, error = self._k8s_resource_context(request, cluster_id)
+    def k8s_resource_overview(self, request, cluster_uuid: str):
+        cluster, permission_maps, error = self._k8s_resource_context(request, cluster_uuid)
         if error:
             return error
-        result = K8sResourceOverviewService.get_overview(
-            int(cluster_id), permission_maps=permission_maps, user=request.user
-        )
+        # K8s 概览服务尚未切 UUID：视图层解析后桥接图内部 ID
+        result = K8sResourceOverviewService.get_overview(cluster["_id"], permission_maps=permission_maps, user=request.user)
         return WebUtils.response_success(result)
 
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"k8s_resource_layer/(?P<cluster_id>.+?)/(?P<layer>.+?)",
+        url_path=r"k8s_resource_layer/(?P<cluster_uuid>.+?)/(?P<layer>.+?)",
     )
     @HasPermission("asset_info-View")
-    def k8s_resource_layer(self, request, cluster_id: int, layer: str):
-        _, permission_maps, error = self._k8s_resource_context(request, cluster_id)
+    def k8s_resource_layer(self, request, cluster_uuid: str, layer: str):
+        cluster, permission_maps, error = self._k8s_resource_context(request, cluster_uuid)
         if error:
             return error
         serializer = K8sLayerQuerySerializer(data=request.query_params, context={"layer": layer})
         serializer.is_valid(raise_exception=True)
         result = K8sResourceOverviewService.get_layer(
-            int(cluster_id),
+            cluster["_id"],
             layer,
             permission_maps=permission_maps,
             user=request.user,
@@ -1175,18 +1174,22 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"k8s_workload_pods/(?P<cluster_id>.+?)/(?P<workload_id>.+?)",
+        url_path=r"k8s_workload_pods/(?P<cluster_uuid>.+?)/(?P<workload_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def k8s_workload_pods(self, request, cluster_id: int, workload_id: int):
-        _, permission_maps, error = self._k8s_resource_context(request, cluster_id)
+    def k8s_workload_pods(self, request, cluster_uuid: str, workload_uuid: str):
+        cluster, permission_maps, error = self._k8s_resource_context(request, cluster_uuid)
         if error:
             return error
         serializer = K8sPageQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
+        workload = InstanceManage.query_entity_by_uuid(workload_uuid)
+        if not workload or workload.get("model_id") != "k8s_workload":
+            return WebUtils.response_error("Workload 实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        # K8s 服务尚未切 UUID：桥接图内部 ID
         result = K8sResourceOverviewService.get_workload_pods(
-            int(cluster_id),
-            int(workload_id),
+            cluster["_id"],
+            workload["_id"],
             permission_maps=permission_maps,
             user=request.user,
             **serializer.validated_data,
@@ -1196,17 +1199,17 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"k8s_unowned_pods/(?P<cluster_id>.+?)",
+        url_path=r"k8s_unowned_pods/(?P<cluster_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def k8s_unowned_pods(self, request, cluster_id: int):
-        _, permission_maps, error = self._k8s_resource_context(request, cluster_id)
+    def k8s_unowned_pods(self, request, cluster_uuid: str):
+        cluster, permission_maps, error = self._k8s_resource_context(request, cluster_uuid)
         if error:
             return error
         serializer = K8sPageQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         result = K8sResourceOverviewService.get_unowned_pods(
-            int(cluster_id),
+            cluster["_id"],
             permission_maps=permission_maps,
             user=request.user,
             **serializer.validated_data,
@@ -1216,11 +1219,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"k8s_resource_list/(?P<cluster_id>.+?)/(?P<kind>.+?)",
+        url_path=r"k8s_resource_list/(?P<cluster_uuid>.+?)/(?P<kind>.+?)",
     )
     @HasPermission("asset_info-View")
-    def k8s_resource_list(self, request, cluster_id: int, kind: str):
-        _, permission_maps, error = self._k8s_resource_context(request, cluster_id)
+    def k8s_resource_list(self, request, cluster_uuid: str, kind: str):
+        cluster, permission_maps, error = self._k8s_resource_context(request, cluster_uuid)
         if error:
             return error
         kind_serializer = K8sResourceKindSerializer(data={"kind": kind})
@@ -1228,7 +1231,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         serializer = K8sResourceListQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         result = K8sResourceOverviewService.list_resources(
-            int(cluster_id),
+            cluster["_id"],
             kind_serializer.validated_data["kind"],
             permission_maps=permission_maps,
             user=request.user,
@@ -1249,11 +1252,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"application_resource_apps/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path=r"application_resource_apps/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def application_resource_apps(self, request, model_id: str, inst_id: int):
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+    def application_resource_apps(self, request, model_id: str, inst_uuid: str):
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1266,22 +1269,19 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=instance["model_id"]
-        )
-        applications = ApplicationResourceOverviewService.list_system_applications(
-            int(inst_id), permission_map=permissions_map, user=request.user
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
+        # 应用资源服务尚未切 UUID：桥接图内部 ID
+        applications = ApplicationResourceOverviewService.list_system_applications(instance["_id"], permission_map=permissions_map, user=request.user)
         return WebUtils.response_success({"applications": applications})
 
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"application_resource_topology/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path=r"application_resource_topology/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def application_resource_topology(self, request, model_id: str, inst_id: int):
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+    def application_resource_topology(self, request, model_id: str, inst_uuid: str):
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1293,11 +1293,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         serializer.is_valid(raise_exception=True)
         depth = serializer.validated_data["depth"]
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=instance["model_id"]
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
         result = ApplicationResourceOverviewService.build_application_topology(
-            int(inst_id),
+            instance["_id"],
             instance["model_id"],
             depth=depth,
             permission_map=permissions_map,
@@ -1308,11 +1306,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"application_resource_resources/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path=r"application_resource_resources/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def application_resource_resources(self, request, model_id: str, inst_id: int):
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+    def application_resource_resources(self, request, model_id: str, inst_uuid: str):
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1320,11 +1318,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=instance["model_id"]
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
         result = ApplicationResourceOverviewService.build_application_resources(
-            int(inst_id),
+            instance["_id"],
             instance["model_id"],
             permission_map=permissions_map,
             user=request.user,
@@ -1334,11 +1330,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(
         detail=False,
         methods=["post"],
-        url_path=r"application_resource_instances/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path=r"application_resource_instances/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def application_resource_instances(self, request, model_id: str, inst_id: int):
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+    def application_resource_instances(self, request, model_id: str, inst_uuid: str):
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1346,14 +1342,16 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        serializer = ApplicationResourceNodeIdsSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        node_uuids = request.data.get("node_uuids")
+        if not isinstance(node_uuids, list):
+            return WebUtils.response_error("node_uuids 必须是数组", status_code=status.HTTP_400_BAD_REQUEST)
+        nodes = InstanceManage.query_entity_by_uuids(node_uuids) if node_uuids else []
+        if node_uuids and len(nodes) != len({str(v) for v in node_uuids}):
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=instance["model_id"]
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
         result = ApplicationResourceOverviewService.build_topology_instance_groups(
-            node_ids=serializer.validated_data["node_ids"],
+            node_ids=[item["_id"] for item in nodes],
             permission_map=permissions_map,
             user=request.user,
         )
@@ -1362,11 +1360,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(
         detail=False,
         methods=["post"],
-        url_path=r"application_resource_export/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path=r"application_resource_export/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def application_resource_export(self, request, model_id: str, inst_id: int):
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+    def application_resource_export(self, request, model_id: str, inst_uuid: str):
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1374,14 +1372,16 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        serializer = ApplicationResourceNodeIdsSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        node_uuids = request.data.get("node_uuids")
+        if not isinstance(node_uuids, list):
+            return WebUtils.response_error("node_uuids 必须是数组", status_code=status.HTTP_400_BAD_REQUEST)
+        nodes = InstanceManage.query_entity_by_uuids(node_uuids) if node_uuids else []
+        if node_uuids and len(nodes) != len({str(v) for v in node_uuids}):
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=instance["model_id"]
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
         content = ApplicationResourceOverviewService.export_topology_instance_groups_excel(
-            node_ids=serializer.validated_data["node_ids"],
+            node_ids=[item["_id"] for item in nodes],
             permission_map=permissions_map,
             user=request.user,
         )
@@ -1392,12 +1392,13 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         response["Content-Disposition"] = 'attachment; filename="application_topology_instances.xlsx"'
         return response
 
-    @action(detail=False, methods=["get"], url_path=r"ipam_view/(?P<inst_id>.+?)")
+    @action(detail=False, methods=["get"], url_path=r"ipam_view/(?P<inst_uuid>.+?)")
     @HasPermission("asset_info-View")
-    def ipam_view(self, request, inst_id: str):
+    def ipam_view(self, request, inst_uuid: str):
         """子网 IP 视图数据：容量/利用率/状态计数/落库 IP 列表。"""
         from apps.cmdb.services.ipam_view import build_ipam_view
-        subnet = InstanceManage.query_entity_by_id(int(inst_id))
+
+        subnet = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not subnet:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1410,16 +1411,16 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"network_topo/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path=r"network_topo/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def network_topo(self, request, model_id: str, inst_id: int):
+    def network_topo(self, request, model_id: str, inst_uuid: str):
         """网络设备拓扑：以该设备为中心按 depth 跳展开接口直连。
 
         depth 查询参数控制展开层数（默认 2，钳制到 [1, NETWORK_TOPO_MAX_HOP]）；
         前端首屏传 depth=2，点击对端增量展开传 depth=1。节点上限 100 由服务层兜底。
         """
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1433,11 +1434,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             depth = NETWORK_TOPO_DEFAULT_HOP
         depth = max(1, min(depth, NETWORK_TOPO_MAX_HOP))
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=instance["model_id"]
-        )
-        result = InstanceManage.network_topology(
-            int(inst_id),
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
+        result = InstanceManage.network_topology_by_uuid(
+            inst_uuid,
             instance["model_id"],
             depth=depth,
             permission_map=permissions_map,
@@ -1448,12 +1447,12 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"room_layout/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path=r"room_layout/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def room_layout(self, request, model_id: str, inst_id: int):
+    def room_layout(self, request, model_id: str, inst_uuid: str):
         """机房俯视平面图：返回该机房下机柜的 row/col/类型/U 占用率，供平面图布局。"""
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1461,21 +1460,20 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=instance["model_id"]
-        )
-        result = get_room_layout(int(inst_id), permission_map=permissions_map, user=request.user)
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
+        # rack/room 服务尚未切 UUID：桥接图内部 ID
+        result = get_room_layout(instance["_id"], permission_map=permissions_map, user=request.user)
         return WebUtils.response_success(result)
 
     @action(
         detail=False,
         methods=["get"],
-        url_path=r"rack_layout/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+        url_path=r"rack_layout/(?P<model_id>.+?)/(?P<inst_uuid>.+?)",
     )
     @HasPermission("asset_info-View")
-    def rack_layout(self, request, model_id: str, inst_id: int):
+    def rack_layout(self, request, model_id: str, inst_uuid: str):
         """机柜正视 U 图：返回机柜 u_count 及其 contains 设备的 U 位排布。"""
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -1483,10 +1481,8 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=instance["model_id"]
-        )
-        result = get_rack_layout(int(inst_id), permission_map=permissions_map, user=request.user)
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
+        result = get_rack_layout(instance["_id"], permission_map=permissions_map, user=request.user)
         return WebUtils.response_success(result)
 
     @action(
@@ -1544,6 +1540,4 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         from apps.cmdb.services.ipam_reconcile_job import IPAMReconcileJob
 
         result = IPAMReconcileJob.enqueue(trigger="manual")
-        return WebUtils.response_success(
-            {"run_id": str(result.run.run_id), "status": result.run.status, "reused": result.reused}
-        )
+        return WebUtils.response_success({"run_id": str(result.run.run_id), "status": result.run.status, "reused": result.reused})

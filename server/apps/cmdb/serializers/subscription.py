@@ -49,9 +49,7 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request:
             return False
-        return check_subscription_manage_permission(
-            obj.organization, get_current_team(request)
-        )
+        return check_subscription_manage_permission(obj.organization, get_current_team(request))
 
     def validate_name(self, value):
         if not value or not value.strip():
@@ -77,11 +75,26 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
             if len(query_list) > 8:
                 raise serializers.ValidationError("筛选条件最多支持 8 个")
         elif filter_type == FilterType.INSTANCES.value:
+            instance_uuids = value.get("instance_uuids", [])
             instance_ids = value.get("instance_ids", [])
-            if not isinstance(instance_ids, list):
-                raise serializers.ValidationError("instance_ids 必须为列表")
-            if not instance_ids:
+            if instance_ids and not instance_uuids:
+                raise serializers.ValidationError("请使用 instance_uuids 定位实例，不再接受 instance_ids 写入")
+            if not isinstance(instance_uuids, list):
+                raise serializers.ValidationError("instance_uuids 必须为列表")
+            if not instance_uuids:
                 raise serializers.ValidationError("至少选择一个实例")
+            from apps.cmdb.services.instance_identity import normalize_inst_uuid
+
+            normalized = []
+            for item in instance_uuids:
+                try:
+                    normalized.append(normalize_inst_uuid(item))
+                except Exception as exc:  # noqa: BaseAppException
+                    raise serializers.ValidationError("instance_uuids 必须为合法 UUIDv4 列表") from exc
+            # 新写入只保留 UUID；清掉遗留数字键
+            cleaned = {key: val for key, val in value.items() if key != "instance_ids"}
+            cleaned["instance_uuids"] = normalized
+            return cleaned
         else:
             raise serializers.ValidationError("filter_type 非法")
         return value
@@ -118,9 +131,7 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("属性变化需配置监听字段")
         if TriggerType.RELATION_CHANGE.value in trigger_types:
             relation_change = normalized_value.get("relation_change", {})
-            normalized_relation_change = self._normalize_relation_change_config(
-                relation_change
-            )
+            normalized_relation_change = self._normalize_relation_change_config(relation_change)
             normalized_value["relation_change"] = normalized_relation_change
         if TriggerType.EXPIRATION.value in trigger_types:
             expiration = normalized_value.get("expiration", {})
@@ -165,14 +176,9 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
         if related_models_raw is not None:
             if not isinstance(related_models_raw, list) or not related_models_raw:
                 raise serializers.ValidationError("关联变化需配置至少一个关联模型")
-            normalized_models = [
-                self._normalize_relation_change_item(item)
-                for item in related_models_raw
-            ]
+            normalized_models = [self._normalize_relation_change_item(item) for item in related_models_raw]
 
-        has_legacy = isinstance(related_model_legacy, str) and bool(
-            related_model_legacy.strip()
-        )
+        has_legacy = isinstance(related_model_legacy, str) and bool(related_model_legacy.strip())
         if has_legacy:
             if not isinstance(fields_legacy, list) or not fields_legacy:
                 raise serializers.ValidationError("关联变化需配置关联字段")
@@ -182,14 +188,10 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
             }
             if normalized_models:
                 matched = any(
-                    item["related_model"] == legacy_item["related_model"]
-                    and item["fields"] == legacy_item["fields"]
-                    for item in normalized_models
+                    item["related_model"] == legacy_item["related_model"] and item["fields"] == legacy_item["fields"] for item in normalized_models
                 )
                 if not matched:
-                    raise serializers.ValidationError(
-                        "关联变化新旧结构配置冲突，请仅保留一种或保持一致"
-                    )
+                    raise serializers.ValidationError("关联变化新旧结构配置冲突，请仅保留一种或保持一致")
             else:
                 normalized_models = [legacy_item]
 

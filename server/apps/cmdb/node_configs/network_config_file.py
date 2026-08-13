@@ -26,11 +26,7 @@ class NetworkConfigFileNodeParams(BaseNodeParams):
         # (set_credential 仍会调 _target_instance 走一次完整 normalize)。
         if not (self.instance.instances or []):
             return "hosts", ""
-        hosts = ",".join(
-            (inst.get("ip_addr") or inst.get("host") or "").strip()
-            for inst in self.instance.instances
-            if isinstance(inst, dict)
-        )
+        hosts = ",".join((inst.get("ip_addr") or inst.get("host") or "").strip() for inst in self.instance.instances if isinstance(inst, dict))
         return "hosts", hosts
 
     def _secret_env_name(self, field_name):
@@ -53,10 +49,11 @@ class NetworkConfigFileNodeParams(BaseNodeParams):
             "need_enable": need_enable,
             "collect_task_id": self.instance.id,
             "target_model_id": target_instance.get("model_id"),
-            "target_instance_id": target_instance.get("_id") or target_instance.get("id") or "",
+            "target_instance_uuid": target_instance.get("inst_uuid") or "",
             "instance_name": target_instance.get("inst_name") or target_instance.get("host") or "",
             "device_type": target_instance.get("device_type"),
             "callback_subject": "receive_config_file_result",
+            "protocol_version": "2",
         }
         if need_enable:
             data["enable_password"] = "${" + self._secret_env_name("enable_password") + "}"
