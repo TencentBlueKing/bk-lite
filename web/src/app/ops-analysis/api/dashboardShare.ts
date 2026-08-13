@@ -52,10 +52,18 @@ export const useCanvasShareApi = () => {
   );
 
   const querySharedDataSource = useCallback(
-    (sessionId: string, dataSourceId: number, params?: unknown) =>
+    (
+      sessionId: string,
+      dataSourceId: number,
+      params?: unknown,
+      options?: { suppressErrorNotification?: boolean },
+    ) =>
       post(
         `/operation_analysis/api/dashboard_share/session/${sessionId}/query/${dataSourceId}/`,
         params,
+        options?.suppressErrorNotification
+          ? { suppressErrorNotification: true }
+          : undefined,
       ),
     [post],
   );

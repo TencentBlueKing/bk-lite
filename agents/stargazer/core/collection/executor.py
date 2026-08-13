@@ -67,22 +67,31 @@ class TargetActivityTracker:
 
 
 class TargetWorkerBudget:
-    """跨运行限制已创建且未完成的目标 worker 协程数量。"""
+    """跨运行限制已创建且未完成的目标 worker 协程数量。
+
+    capacity=0 表示不限制（按 desired 全量发放）。
+    """
 
     def __init__(self, capacity: int) -> None:
-        if capacity <= 0:
-            raise ValueError("capacity must be greater than zero")
+        if capacity < 0:
+            raise ValueError("capacity must be >= 0 (0 means unlimited)")
+        self._unlimited = capacity == 0
         self._capacity = capacity
-        self._available = capacity
+        self._available = 0 if self._unlimited else capacity
         self._condition = asyncio.Condition()
         self.active = 0
         self.peak = 0
 
     async def reserve(self, desired: int) -> int:
         async with self._condition:
+            wanted = max(1, desired)
+            if self._unlimited:
+                self.active += wanted
+                self.peak = max(self.peak, self.active)
+                return wanted
             while self._available <= 0:
                 await self._condition.wait()
-            reserved = min(max(1, desired), self._available)
+            reserved = min(wanted, self._available)
             self._available -= reserved
             self.active += reserved
             self.peak = max(self.peak, self.active)
@@ -92,10 +101,23 @@ class TargetWorkerBudget:
         async with self._condition:
             released = min(max(0, count), self.active)
             self.active -= released
-            self._available = min(
-                self._capacity, self._available + released
-            )
+            if not self._unlimited:
+                self._available = min(
+                    self._capacity, self._available + released
+                )
             self._condition.notify_all()
+
+
+class _UnlimitedTargetGate:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+
+def unlimited_target_gate() -> _UnlimitedTargetGate:
+    return _UnlimitedTargetGate()
 
 
 class TargetCollectionExecutor:
@@ -124,9 +146,14 @@ class TargetCollectionExecutor:
             store=InMemoryCredentialStateStore()
         )
         self._settings = settings or TargetExecutorSettings()
-        self._target_semaphore = target_semaphore or asyncio.Semaphore(
-            self._settings.max_active_targets
-        )
+        if target_semaphore is not None:
+            self._target_semaphore = target_semaphore
+        elif self._settings.max_active_targets <= 0:
+            self._target_semaphore = unlimited_target_gate()
+        else:
+            self._target_semaphore = asyncio.Semaphore(
+                self._settings.max_active_targets
+            )
         self._activity_tracker = activity_tracker or TargetActivityTracker()
         self._worker_budget = worker_budget or TargetWorkerBudget(
             self._settings.target_task_window
@@ -172,9 +199,11 @@ class TargetCollectionExecutor:
                 if publish_error is not None:
                     raise publish_error
 
-        desired_workers = min(
-            len(targets), self._settings.target_task_window
-        )
+        window = self._settings.target_task_window
+        if window <= 0:
+            desired_workers = max(1, len(targets))
+        else:
+            desired_workers = min(len(targets), window) if targets else 1
         worker_count = await self._worker_budget.reserve(desired_workers)
         worker_tasks = [
             asyncio.create_task(

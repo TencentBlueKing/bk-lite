@@ -542,6 +542,7 @@
       "originalValue": "原始值",
       "metricTitle": "此收集器支持以下监控指标",
       "searchMetricPlaceholder": "请输入指标名称",
+      "baseObject": "基础",
       "step1": "步骤1",
       "portDes": "配置SNMP端口号，通常使用161端口与设备进行通信。",
       "access": "接入",

@@ -2,6 +2,7 @@ export type ThemeMode = 'light' | 'dark';
 
 export interface SemanticColorTokens {
   interactionPrimary: string;
+  interactionPrimaryForeground: string;
   interactionPrimarySoft: string;
   interactionPrimaryActiveBackground: string;
   interactionPrimaryBackground: string;
@@ -75,6 +76,9 @@ export interface SemanticColorTokens {
   chartError: string;
   chartGapFill: string;
   chartGapBoundary: string;
+  codeBlockBackground: string;
+  codeBlockText: string;
+  codeBlockBorder: string;
 }
 
 export interface ThemeMetadata {

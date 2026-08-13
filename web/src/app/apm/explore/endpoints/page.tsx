@@ -12,7 +12,6 @@ import {
   Radio,
   Select,
   Space,
-  Table,
   Tag,
   Typography,
   type TableColumnsType,
@@ -31,6 +30,9 @@ import {
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
 import type { ApmService, ApmTraceSummary } from '@/app/apm/types';
+import CustomTable from '@/components/custom-table';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import SummaryMetricCard from '@/components/summary-metric-card';
 
 type PageState = CatalogStateKind | 'ready';
 type MetricRange = '15m' | '1h' | '4h' | '1d' | '7d';
@@ -86,6 +88,8 @@ export default function ApmEndpointsPage() {
   const [selected, setSelected] = useState<EndpointRow | null>(null);
   const [sampleTraces, setSampleTraces] = useState<ApmTraceSummary[]>([]);
   const [samplesLoading, setSamplesLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const load = useCallback(async () => {
     if (authLoading) return;
@@ -207,6 +211,10 @@ export default function ApmEndpointsPage() {
         return (right.p95Ms ?? -1) - (left.p95Ms ?? -1);
       });
   }, [keyword, rows, serviceId, sortKey]);
+  const pageRows = useMemo(
+    () => visibleRows.slice((page - 1) * pageSize, page * pageSize),
+    [page, pageSize, visibleRows],
+  );
 
   const columns: TableColumnsType<EndpointRow> = [
     {
@@ -214,7 +222,7 @@ export default function ApmEndpointsPage() {
       dataIndex: 'method',
       width: 80,
       render: (value) => (
-        <span className={`rounded px-2 py-0.5 font-mono text-[11px] font-medium ${
+        <span className={`rounded px-2 py-0.5 font-mono text-xs font-medium ${
           value === 'POST'
             ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
             : 'bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
@@ -227,9 +235,9 @@ export default function ApmEndpointsPage() {
     {
       title: '端点',
       render: (_, row) => (
-        <span className="inline-flex items-center gap-2">
+        <span className="inline-flex min-w-0 items-center gap-2">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-primary)]" aria-hidden="true" />
-          <Typography.Text className="font-mono text-xs">{row.method} {row.route}</Typography.Text>
+          <EllipsisWithTooltip className="truncate font-mono text-xs" text={`${row.method} ${row.route}`} />
         </span>
       ),
     },
@@ -237,9 +245,9 @@ export default function ApmEndpointsPage() {
       title: '所属服务',
       width: 180,
       render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text>{row.serviceName}</Typography.Text>
-          <Typography.Text type="secondary" className="text-xs">{row.namespace || '未归类应用'} · {row.environment}</Typography.Text>
+        <Space direction="vertical" size={0} className="min-w-0">
+          <EllipsisWithTooltip className="truncate" text={row.serviceName} />
+          <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={`${row.namespace || '未归类应用'} · ${row.environment}`} />
         </Space>
       ),
     },
@@ -279,12 +287,20 @@ export default function ApmEndpointsPage() {
       width: 110,
       render: (value) => <Typography.Text type="secondary" className="text-xs">{formatRelativeTime(value)}</Typography.Text>,
     },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 72,
+      align: 'right',
+      fixed: 'right',
+      render: (_, row) => <Button size="small" type="link" onClick={() => setSelected(row)}>查看</Button>,
+    },
   ];
 
   return (
     <ApmRouteShell
       title="端点"
-      description="按服务端点查看吞吐量、错误率与时延，点击行打开详情与样本调用链。"
+      description="按服务端点查看吞吐量、错误率与时延，通过查看操作打开详情与样本调用链。"
       dependency="telemetry"
     >
       <div className="flex flex-col gap-3">
@@ -306,7 +322,7 @@ export default function ApmEndpointsPage() {
               placeholder="搜索路径模板 / 服务"
               prefix={<SearchOutlined aria-hidden="true" />}
               value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
+              onChange={(event) => { setKeyword(event.target.value); setPage(1); }}
             />
             <Select
               aria-label="环境"
@@ -317,6 +333,7 @@ export default function ApmEndpointsPage() {
               onChange={(value) => {
                 setEnvironment(value);
                 setServiceId('all');
+                setPage(1);
               }}
             />
             <div className="flex-1" />
@@ -325,7 +342,7 @@ export default function ApmEndpointsPage() {
               className="w-40"
               value={serviceId}
               options={[{ value: 'all', label: '全部服务' }, ...serviceOptions]}
-              onChange={setServiceId}
+              onChange={(value) => { setServiceId(value); setPage(1); }}
             />
             <Select<SortKey>
               aria-label="排序"
@@ -336,7 +353,7 @@ export default function ApmEndpointsPage() {
                 { value: 'error_rate', label: '错误率' },
                 { value: 'p95_ms', label: 'P95 耗时' },
               ]}
-              onChange={setSortKey}
+              onChange={(value) => { setSortKey(value); setPage(1); }}
             />
             <Radio.Group
               aria-label="时间范围"
@@ -349,35 +366,47 @@ export default function ApmEndpointsPage() {
                 <Radio.Button key={value} value={value}>{value}</Radio.Button>
               ))}
             </Radio.Group>
-            <Button aria-label="刷新端点" icon={<ReloadOutlined aria-hidden="true" />} onClick={load} />
+            <Button aria-label="刷新端点" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load} />
           </FilterToolbar>
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">
-          {state === 'ready' ? (
-            <Table
+          {state === 'ready' || (state === 'loading' && rows.length > 0) ? (
+            <CustomTable
+              autoScrollX={false}
               rowKey="key"
               size="middle"
               columns={columns}
-              dataSource={visibleRows}
-              pagination={false}
-              onRow={(row) => ({
-                onClick: () => setSelected(row),
-                className: 'cursor-pointer',
-              })}
+              dataSource={pageRows}
+              loading={state === 'loading'}
+              pagination={{
+                current: page,
+                pageSize,
+                total: visibleRows.length,
+                pageSizeOptions: [10, 20, 50, 100],
+                showSizeChanger: true,
+                onChange: (nextPage, nextPageSize) => {
+                  setPage(nextPageSize === pageSize ? nextPage : 1);
+                  setPageSize(nextPageSize);
+                },
+              }}
             />
           ) : (
-            <CatalogState kind={state} description={state === 'empty' ? '当前环境和时间范围内没有端点指标。' : undefined} />
+            <CatalogState
+              kind={state}
+              description={state === 'empty' ? '当前环境和时间范围内没有端点指标。' : undefined}
+              onRetry={state === 'forbidden' ? undefined : load}
+            />
           )}
         </ApmSurface>
       </div>
       <Drawer
-        width={720}
+        width="min(720px, 100vw)"
         open={Boolean(selected)}
         onClose={() => setSelected(null)}
         title={selected ? (
           <div>
             <div className="flex items-center gap-2">
-              <span className={`rounded px-2 py-0.5 font-mono text-[11px] font-medium ${
+              <span className={`rounded px-2 py-0.5 font-mono text-xs font-medium ${
                 selected.method === 'POST'
                   ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
                   : 'bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
@@ -406,12 +435,17 @@ export default function ApmEndpointsPage() {
                 { label: 'P95', value: formatLatency(selected.p95Ms) },
                 { label: 'P99', value: formatLatency(selected.p99Ms) },
               ].map((metric) => (
-                <div key={metric.label} className="rounded-md border border-[var(--color-border)] px-3 py-2.5">
-                  <Typography.Text type="secondary" className="!text-[11px]">{metric.label}</Typography.Text>
-                  <div className={`mt-1 text-xl font-bold tabular-nums ${metric.danger ? 'text-[var(--color-fail)]' : ''}`}>
-                    {metric.value}
-                  </div>
-                </div>
+                <SummaryMetricCard
+                  key={metric.label}
+                  className="rounded-lg px-3 py-2.5"
+                  label={metric.label}
+                  labelClassName="!text-xs"
+                  layout="vertical"
+                  maxFontSize={20}
+                  minFontSize={18}
+                  value={metric.value}
+                  valueColor={metric.danger ? 'var(--color-fail)' : undefined}
+                />
               ))}
             </div>
             <div>
@@ -430,7 +464,8 @@ export default function ApmEndpointsPage() {
               {samplesLoading ? (
                 <CatalogState kind="loading" />
               ) : sampleTraces.length ? (
-                <Table
+                <CustomTable
+                  autoScrollX={false}
                   size="small"
                   rowKey="trace_id"
                   pagination={false}

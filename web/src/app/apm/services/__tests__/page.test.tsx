@@ -45,6 +45,9 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
 }));
 vi.mock('@/app/apm/components/organization-assignment-modal', () => ({ default: () => null }));
+vi.mock('@/components/more-actions-dropdown', () => ({
+  default: () => <button type="button" aria-label="更多操作">更多</button>,
+}));
 
 const serviceWithEnv = {
   id: 'service-bklite',
@@ -187,7 +190,9 @@ describe('APM 服务目录应用视角', () => {
     render(<ApmServicesPage />);
 
     const builtinCard = await screen.findByRole('button', { name: '查看应用 未归类应用 下的服务' });
-    expect(within(builtinCard).getByText(/0 个服务/)).not.toBeNull();
+    const cardArticle = builtinCard.closest('article');
+    expect(cardArticle).not.toBeNull();
+    expect(within(cardArticle!).getByLabelText('0 个服务')).not.toBeNull();
   });
 
   it('将内置未归类应用稳定排在普通应用之后', async () => {
@@ -205,10 +210,18 @@ describe('APM 服务目录应用视角', () => {
     render(<ApmServicesPage />);
 
     const card = await screen.findByRole('button', { name: '查看应用 未归类应用测试 下的服务' });
-    await waitFor(() => expect(within(card).getByText('12.5')).not.toBeNull());
-    expect(within(card).getByText('2.00%')).not.toBeNull();
-    expect(within(card).getByLabelText('警告')).not.toBeNull();
-    const alertLink = within(card).getByRole('link', { name: /应用内 1 个活跃告警/ });
+    const cardArticle = card.closest('article');
+    expect(cardArticle).not.toBeNull();
+    await waitFor(() => expect(within(cardArticle!).getByText('12.5')).not.toBeNull());
+    expect(within(cardArticle!).getByText('2.00%')).not.toBeNull();
+    expect(within(cardArticle!).getByLabelText('警告')).not.toBeNull();
+    expect(within(cardArticle!).getByLabelText('1 个服务')).not.toBeNull();
+    expect(within(cardArticle!).queryByText(/个服务/)).toBeNull();
+    expect(within(cardArticle!).getByText(/应用 · 1h/)).not.toBeNull();
+    expect(within(cardArticle!).getByTitle('吞吐量趋势')).not.toBeNull();
+    expect(within(cardArticle!).getByTitle('错误率趋势')).not.toBeNull();
+    const alertLink = within(cardArticle!).getByRole('link', { name: /应用内 1 个活跃告警/ });
+    expect(card.contains(alertLink)).toBe(false);
     expect(alertLink.getAttribute('href')).toBe('/apm/events/alerts?service=bklite-server');
   });
 });

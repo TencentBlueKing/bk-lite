@@ -43,8 +43,13 @@ assert.match(topologyPage, /title="服务拓扑"/, '服务拓扑页面标题缺�
 assert.match(topologyPage, /options=\{\['15m', '1h', '4h', '1d', '7d'\]\}/, '拓扑必须提供时间窗切换');
 assert.match(topologyPage, /只看异常/, '拓扑必须支持异常筛选');
 assert.match(topologyPage, /getTopology/, '拓扑必须来自服务端的真实 Trace 聚合');
-assert.match(topologyPage, /overflow-x-auto/, '窄屏下拓扑画布必须在页面内可滚动，不能静默裁切节点');
-assert.match(topologyPage, /tabIndex=\{0\}/, '拓扑滚动区域必须支持键盘聚焦');
+assert.match(topologyPage, /type ViewMode = 'graph' \| 'list'/, '拓扑必须提供图形与依赖列表双视图');
+assert.match(topologyPage, /screens\.md === false[\s\S]*setViewMode\('list'\)/, '窄屏必须默认使用依赖列表，避免图形撑宽页面');
+assert.match(topologyPage, /viewBox="0 0 1030 520"/, '图形视图必须使用响应式 viewBox');
+assert.doesNotMatch(topologyPage, /min-w-\[960px\]|scroll=\{\{ x:/, '拓扑不得通过固定宽度撑开整页');
+assert.match(topologyPage, /columns=\{dependencyColumns\}/, '图形必须提供可访问的依赖表格替代视图');
+assert.match(topologyPage, /tabIndex=\{onNodeClick \? 0 : undefined\}/, '可点击拓扑节点必须支持键盘聚焦');
+assert.match(topologyPage, /event\.key === 'Enter' \|\| event\.key === ' '/, '拓扑节点必须支持 Enter 与 Space 下钻');
 assert.match(topologyPage, /sampled_spans/, '拓扑节点大小必须编码采样吞吐');
 assert.match(topologyPage, /onNodeClick/, '拓扑节点必须可下钻到服务详情');
 assert.doesNotMatch(topologyPage, /设计预览|Storybook 示例数据/, '已有后端契约时不得继续展示示例拓扑');

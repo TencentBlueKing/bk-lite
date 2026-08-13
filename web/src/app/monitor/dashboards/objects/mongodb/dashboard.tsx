@@ -297,7 +297,7 @@ export default function MongoDashboardPage() {
             compareMetrics,
             METRIC_QUERY_CONCURRENCY,
             async (metric) =>
-              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, undefined, undefined, currentInstanceInterval))
+              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, undefined, false, currentInstanceInterval))
                 .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
                 .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
           )

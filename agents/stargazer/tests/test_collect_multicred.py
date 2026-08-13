@@ -545,6 +545,25 @@ def test_snmp_topo_default_oid_collection_includes_fdb_fallback_without_duplicat
     assert len(default_oids) == len(set(default_oids))
 
 
+def test_snmp_classes_default_to_timeout_5_retries_2(monkeypatch):
+    snmp_facts_module = _import_snmp_facts_with_stubbed_deps(monkeypatch)
+    snmp_topo_module = importlib.import_module("plugins.inputs.network_topo.snmp_topo")
+    kwargs = {
+        "host": "127.0.0.1",
+        "version": "v2c",
+        "community": "public",
+    }
+    facts = snmp_facts_module.SnmpFacts(kwargs)
+    topo = snmp_topo_module.SnmpTopo(kwargs)
+    auth = snmp_topo_module.SnmpAuth(
+        cmdGen=object(), version="v2c", community="public"
+    )
+    assert (facts.timeout, facts.retries) == (5, 2)
+    assert (topo.timeout, topo.retries) == (5, 2)
+    assert (auth.timeout, auth.retries) == (5, 2)
+    assert auth.get_transport_opts() == {"timeout": 5, "retries": 2}
+
+
 @pytest.mark.parametrize(
     ("configured_timeout", "expected_probe_timeout"),
     [(3, 3), (5, 5), (10, 5)],

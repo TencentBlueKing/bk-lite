@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import socket
 import ssl
 from urllib.parse import urlsplit
@@ -12,15 +13,28 @@ from core.infra.outbound_policy import OutboundTargetPolicy, OutboundTargetRejec
 from core.collection.contracts import PreflightResult, PreflightStatus
 from core.logger import logger
 
+_REACHABILITY_OFF = {"", "0", "off", "false", "no"}
+
+
+def reachability_enabled_from_env() -> bool:
+    raw = str(os.getenv("PREFLIGHT_REACHABILITY", "off")).strip().lower()
+    return raw not in _REACHABILITY_OFF
+
 
 class AsyncProtocolPreflight:
     def __init__(
         self,
         policy: OutboundTargetPolicy | None = None,
         remote_probe=None,
+        reachability_enabled: bool | None = None,
     ) -> None:
         self._policy = policy or OutboundTargetPolicy()
         self._remote_probe = remote_probe
+        self._reachability_enabled = (
+            reachability_enabled_from_env()
+            if reachability_enabled is None
+            else bool(reachability_enabled)
+        )
 
     async def check(
         self,
@@ -117,6 +131,18 @@ class AsyncProtocolPreflight:
         writer = None
         try:
             connect_host = await self._policy.resolve_allowed(host, port)
+            if not self._reachability_enabled:
+                logger.info(
+                    "event=preflight_reachability_skipped task_id=%s "
+                    "target=%s kind=%s",
+                    request.task_id,
+                    target,
+                    kind,
+                )
+                return PreflightResult(
+                    status=PreflightStatus.UNKNOWN,
+                    detail="outbound allowed; tcp reachability disabled",
+                )
             connect_options = {}
             if use_tls:
                 connect_options = {

@@ -20,6 +20,12 @@ def _run_scan_and_record_success(policy_obj, scan_time):
     MonitorPolicy.objects.filter(id=policy_obj.id).update(last_run_time=scan_time)
 
 
+def _legacy_alert_center_retry_statuses(*, outbox_enabled, created_retry_enabled):
+    # active outbox 在进入 legacy 查询前已返回；其余 disabled/shadow/rollback
+    # 阶段都必须继续补偿首次告警，不能因只开启 outbox 双写而退化。
+    return ["new", "recovered", "closed"]
+
+
 @shared_task(base=Singleton, raise_on_duplicate=False)
 def scan_policy_task(policy_id):
     """扫描监控策略
@@ -99,33 +105,72 @@ def scan_policy_task(policy_id):
 @shared_task(base=Singleton, raise_on_duplicate=False)
 def retry_alert_center_lifecycle_notify_task():
     """补偿任务：重试推送到告警中心失败的告警通知（每5分钟执行，每次最多处理200条）"""
-    from apps.monitor.models import MonitorAlert
-    from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
-
-    alerts = list(
-        MonitorAlert.objects.filter(
-            status__in=["recovered", "closed"],
-            alert_center_notified=False,
-            alert_center_retry_count__lt=10,
-        ).order_by("id")[:200]
+    from apps.monitor.services.alert_center_delivery import (
+        ALERT_CENTER_OUTBOX_DELIVERY_ENABLED,
+        ALERT_CENTER_OUTBOX_ENABLED,
+        backfill_legacy_alerts,
+        due_delivery_ids,
     )
+
+    if ALERT_CENTER_OUTBOX_ENABLED:
+        backfilled = backfill_legacy_alerts()
+        if ALERT_CENTER_OUTBOX_DELIVERY_ENABLED:
+            delivery_ids = due_delivery_ids()
+            for delivery_id in delivery_ids:
+                deliver_alert_center_lifecycle_delivery.delay(delivery_id)
+            return {
+                "success": True,
+                "backfilled": backfilled,
+                "scheduled": len(delivery_ids),
+            }
+
+    from apps.monitor.models import MonitorAlert, MonitorPolicy
+    from apps.monitor.services.alert_lifecycle_notify import (
+        ALERT_CENTER_CREATED_RETRY_ENABLED,
+        AlertLifecycleNotifier,
+    )
+
+    retry_statuses = _legacy_alert_center_retry_statuses(
+        outbox_enabled=ALERT_CENTER_OUTBOX_ENABLED,
+        created_retry_enabled=ALERT_CENTER_CREATED_RETRY_ENABLED,
+    )
+    retry_alerts = MonitorAlert.objects.filter(
+        status__in=retry_statuses,
+        alert_center_notified=False,
+        alert_center_retry_count__lt=10,
+    )
+    if ALERT_CENTER_OUTBOX_DELIVERY_ENABLED:
+        # active 阶段不得按当前状态越过 outbox 中尚未完成的 created 代次；
+        # shadow/rollback 阶段仍由 legacy 补偿负责实际送达。
+        retry_alerts = retry_alerts.exclude(
+            alert_center_deliveries__status__in=["pending", "delivering"]
+        )
+    alerts = list(retry_alerts.order_by("id")[:200])
     if not alerts:
         return {"success": True, "message": "no alerts to retry"}
 
     logger.info(f"告警中心补偿任务：发现 {len(alerts)} 条待重试告警")
 
+    new_policy_ids = {
+        alert.policy_id
+        for alert in alerts
+        if alert.status == "new" and alert.policy_id
+    }
+    policies_by_id = MonitorPolicy.objects.in_bulk(new_policy_ids)
+
     groups = defaultdict(list)
     for alert in alerts:
         groups[alert.status].append(alert)
 
-    notifier = AlertLifecycleNotifier()
+    notifier = AlertLifecycleNotifier(policies_by_id=policies_by_id)
     success_ids = []
     fail_ids = []
 
     for status, group_alerts in groups.items():
         # 单组异常隔离：一组毒数据不应崩溃整个任务，否则该批次会被反复取回永久楔死
         try:
-            results = notifier.push_to_alert_center_only(group_alerts, action=status)
+            action = "created" if status == "new" else status
+            results = notifier.push_to_alert_center_only(group_alerts, action=action)
         except Exception:
             logger.exception(f"告警中心补偿任务：status={status} 推送异常，本组按失败处理")
             fail_ids.extend(alert.id for alert in group_alerts)
@@ -155,3 +200,10 @@ def retry_alert_center_lifecycle_notify_task():
 
     logger.info(f"告警中心补偿任务完成：成功 {len(success_ids)} 条，失败 {len(fail_ids)} 条")
     return {"success": True, "total": len(alerts), "succeeded": len(success_ids), "failed": len(fail_ids)}
+
+
+@shared_task(autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={"max_retries": 5})
+def deliver_alert_center_lifecycle_delivery(delivery_id):
+    from apps.monitor.services.alert_center_delivery import deliver_alert_center_delivery
+
+    return deliver_alert_center_delivery(delivery_id)

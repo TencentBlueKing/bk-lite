@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aggregateApplicationRedTrends,
   deriveHealth,
   formatErrorRate,
   formatLatency,
   formatMetricEmpty,
+  formatPercentage,
   formatRelativeTime,
   formatThroughput,
   isErrorRateDanger,
@@ -35,6 +37,8 @@ describe('APM metric-format', () => {
     expect(formatThroughput(1500)).toBe('1.5k');
     expect(formatErrorRate(0.0123)).toBe('1.23%');
     expect(formatErrorRate(0.2)).toBe('20.0%');
+    expect(formatPercentage(99.9)).toBe('99.90%');
+    expect(formatPercentage('83.6712')).toBe('83.67%');
     expect(formatLatency(42)).toBe('42ms');
     expect(formatLatency(1500)).toBe('1.50s');
     expect(isErrorRateDanger(0.01)).toBe(true);
@@ -45,5 +49,33 @@ describe('APM metric-format', () => {
     expect(formatRelativeTime(undefined)).toBe('—');
     expect(formatRelativeTime('not-a-date')).toBe('—');
     expect(formatRelativeTime(new Date().toISOString())).toBe('刚刚');
+  });
+
+  it('按时间戳对齐并加权聚合应用级趋势', () => {
+    const trends = aggregateApplicationRedTrends([
+      {
+        timeseries: [
+          { timestamp: 't1', request_rate: 10, error_rate: 0.1 },
+          { timestamp: 't2', request_rate: 20, error_rate: 0.0 },
+        ],
+      },
+      {
+        timeseries: [
+          { timestamp: 't1', request_rate: 30, error_rate: 0.2 },
+          { timestamp: 't2', request_rate: 10, error_rate: 0.1 },
+        ],
+      },
+    ]);
+    expect(trends.requestRateTrend).toEqual([40, 30]);
+    // t1: (10*0.1 + 30*0.2) / 40 = 0.175; t2: (20*0 + 10*0.1) / 30 ≈ 0.0333
+    expect(trends.errorRateTrend[0]).toBeCloseTo(0.175);
+    expect(trends.errorRateTrend[1]).toBeCloseTo(1 / 30);
+  });
+
+  it('无时序时返回空趋势', () => {
+    expect(aggregateApplicationRedTrends([{ timeseries: [] }])).toEqual({
+      requestRateTrend: [],
+      errorRateTrend: [],
+    });
   });
 });

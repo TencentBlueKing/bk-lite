@@ -15,6 +15,7 @@ import PatchSourceDisplay from '@/app/patch-manager/components/patch-source-disp
 import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
+import BaselineComplianceDetail from '@/app/patch-manager/components/baseline-compliance-detail';
 import FilterToolbar from '@/components/filter-toolbar';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -42,6 +43,13 @@ export default function BaselineManagementPage() {
   const [bindSaving, setBindSaving] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [bindOpen, setBindOpen] = useState(false);
+  const [complianceBaseline, setComplianceBaseline] = useState<{
+    id: number;
+    name: string;
+    bound_host_count?: number;
+    can_assess?: boolean;
+    assess_disabled_reason?: string;
+  } | null>(null);
   const [patchPickerOpen, setPatchPickerOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [draftOs, setDraftOs] = useState<'win' | 'linux'>('win');
@@ -115,6 +123,17 @@ export default function BaselineManagementPage() {
       );
       if (!baselineRequestCoordinatorRef.current.shouldApply(ticket)) return;
       setData(res.items || []);
+      setComplianceBaseline((current) => {
+        if (!current) return current;
+        const latest = (res.items || []).find((item: { id: number }) => item.id === current.id);
+        return latest ? {
+          id: latest.id,
+          name: latest.name,
+          bound_host_count: latest.bound_host_count,
+          can_assess: latest.can_assess,
+          assess_disabled_reason: latest.assess_disabled_reason,
+        } : current;
+      });
       setPagination((p) => ({ ...p, current: page, pageSize, total: res.count || 0 }));
     } catch {
       if (
@@ -332,11 +351,20 @@ export default function BaselineManagementPage() {
       dataIndex: 'bound_host_count',
       width: 100,
       render: (v: number, r: any) => (
-        <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/target">
-          <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={() => openBindDrawer(r)}>
-            {t('patchManager.dashboard.targetCount', undefined, { count: v || 0 })}
-          </Button>
-        </PermissionWrapper>
+        <Button
+          type="link"
+          size="small"
+          style={{ paddingInline: 0 }}
+          onClick={() => setComplianceBaseline({
+            id: r.id,
+            name: r.name,
+            bound_host_count: r.bound_host_count,
+            can_assess: r.can_assess,
+            assess_disabled_reason: r.assess_disabled_reason,
+          })}
+        >
+          {t('patchManager.dashboard.targetCount', undefined, { count: v || 0 })}
+        </Button>
       ),
     },
     {
@@ -638,6 +666,13 @@ export default function BaselineManagementPage() {
         </Form>
         </Spin>
       </OperateDrawer>
+
+      <BaselineComplianceDetail
+        open={Boolean(complianceBaseline)}
+        baseline={complianceBaseline}
+        onClose={() => setComplianceBaseline(null)}
+        onRefresh={() => loadData()}
+      />
 
       <OperateDrawer
         title={t('patchManager.baseline.bindTitle', undefined, { name: bindTarget?.name || '' })}

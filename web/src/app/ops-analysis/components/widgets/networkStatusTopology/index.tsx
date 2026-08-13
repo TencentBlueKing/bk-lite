@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Empty, Modal, Spin } from 'antd';
+import { Empty, Alert, Button, Modal, Spin } from 'antd';
 import type { Graph } from '@antv/x6';
 import {
   NetworkTopologyX6Canvas,
@@ -15,6 +15,7 @@ import type {
 import { useTranslation } from '@/utils/i18n';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import { useNetworkStatusTopologyApi } from '@/app/ops-analysis/api/networkStatusTopology';
+import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import type {
   NetworkStatusTopologyConfig,
   NetworkStatusTopologyLink,
@@ -209,7 +210,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     } catch (err) {
       console.error('network status topology fetch failed:', err);
       setData(null);
-      setError(t('dashboard.networkTopoLoadFailed'));
+      setError(getRequestErrorMessage(err, t('dashboard.networkTopoLoadFailed')));
       onReadyRef.current?.(false);
     } finally {
       setLoading(false);

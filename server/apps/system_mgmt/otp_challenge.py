@@ -18,6 +18,7 @@ CHALLENGE_PREFIX = "otp_challenge:"
 RATE_LIMIT_TTL = 300  # 5 minutes
 RATE_LIMIT_MAX_ATTEMPTS = 5
 RATE_LIMIT_PREFIX = "otp_rate_limit:"
+OTP_LOGIN_ACCOUNT_RATE_LIMIT_PREFIX = "otp_login_account_rate_limit:"
 
 
 def create_challenge(user_id: int, username: str) -> str:
@@ -133,3 +134,31 @@ def reset_rate_limit(ip: str, username: str) -> bool:
     """
     cache_key = f"{RATE_LIMIT_PREFIX}{ip}:{username}"
     return cache.delete(cache_key)
+
+
+def check_otp_login_account_rate_limit(user_id: int) -> tuple[bool, int]:
+    """Check the forwarding-header-independent OTP login limit."""
+    attempts = cache.get(f"{OTP_LOGIN_ACCOUNT_RATE_LIMIT_PREFIX}{user_id}", 0)
+    if attempts >= RATE_LIMIT_MAX_ATTEMPTS:
+        return True, 0
+    return False, RATE_LIMIT_MAX_ATTEMPTS - attempts
+
+
+def reserve_otp_login_account_attempt(user_id: int) -> int:
+    """Atomically reserve one OTP verification attempt for an account."""
+    cache_key = f"{OTP_LOGIN_ACCOUNT_RATE_LIMIT_PREFIX}{user_id}"
+    if cache.add(cache_key, 1, timeout=RATE_LIMIT_TTL):
+        return 1
+    try:
+        attempts = cache.incr(cache_key)
+        cache.touch(cache_key, timeout=RATE_LIMIT_TTL)
+        return attempts
+    except ValueError:
+        # The key can expire between add() and incr(); retry bounded initialization.
+        cache.add(cache_key, 1, timeout=RATE_LIMIT_TTL)
+        return cache.get(cache_key, 1)
+
+
+def reset_otp_login_account_rate_limit(user_id: int) -> bool:
+    """Clear the account-scoped OTP login counter after successful verification."""
+    return cache.delete(f"{OTP_LOGIN_ACCOUNT_RATE_LIMIT_PREFIX}{user_id}")

@@ -24,7 +24,7 @@ import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
 import RepairCommandsCard from './RepairCommandsCard';
 import SkillView from './SkillView';
-import { hydrateGeneratedFileLinks } from './downloadUrl';
+import { hydrateGeneratedFileLinks, isRenderableReportDownload, rewriteAttachmentDownloadMentions } from './downloadUrl';
 import {CustomChatMessage} from '@/app/opspilot/types/global';
 import {useSession} from 'next-auth/react';
 import {useAuth} from '@/context/auth';
@@ -613,11 +613,12 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const renderContent = (msg: CustomChatMessage) => {
     const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, toolCalls, isStreamingTools } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
-      ? reportFileDownloads.filter(download => Boolean(download.content_base64))
+      ? reportFileDownloads.filter(isRenderableReportDownload)
       : [];
 
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
+    replacedContent = rewriteAttachmentDownloadMentions(replacedContent, reportFileDownloads);
 
     // Split content at placeholder markers and render components inline
     const renderContentWithInlineComponents = () => {

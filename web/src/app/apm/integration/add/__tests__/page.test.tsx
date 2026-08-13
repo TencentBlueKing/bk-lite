@@ -88,6 +88,15 @@ afterEach(() => {
 });
 
 describe('APM 添加接入', () => {
+  it('为每种接入方式提供可识别的矢量图标', async () => {
+    renderPage();
+
+    const nodeMethod = await screen.findByRole('button', { name: 'Node.js 接入' });
+    const dotnetMethod = screen.getByRole('button', { name: '.NET 接入，尚未开放' });
+    expect(nodeMethod.querySelector('.anticon')).not.toBeNull();
+    expect(dotnetMethod.querySelector('.anticon')).not.toBeNull();
+  });
+
   it('点击 SDK 接入方式后从右侧打开配置抽屉', async () => {
     const user = userEvent.setup();
     renderPage();

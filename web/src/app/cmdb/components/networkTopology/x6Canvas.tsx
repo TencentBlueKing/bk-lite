@@ -20,7 +20,7 @@ import {
   useGraphStore,
   useGraphInstance,
 } from '@antv/xflow';
-import { NETWORK_TOPO_VISUAL } from './x6Visual';
+import { NETWORK_TOPO_VISUAL, NETWORK_TOPO_CARD_VISUAL } from './x6Visual';
 import { normalizeManualEdgeVertices } from './edgeGeometry';
 
 export interface NetworkTopologyX6GraphData {
@@ -127,8 +127,14 @@ const syncEdgeVertexTools = (graph: Graph, enabled: boolean) => {
 
 const NODE_WIDTH = NETWORK_TOPO_VISUAL.node.width;
 const NODE_HEIGHT = NETWORK_TOPO_VISUAL.node.height;
-const DEVICE_NODE_SHAPE = 'topo-network-device';
+const DEVICE_NODE_SHAPE = NETWORK_TOPO_VISUAL.shape;
+const CARD_NODE_WIDTH = NETWORK_TOPO_CARD_VISUAL.node.width;
+const CARD_NODE_HEIGHT = NETWORK_TOPO_CARD_VISUAL.node.height;
+const CARD_NODE_SHAPE = NETWORK_TOPO_CARD_VISUAL.shape;
 const DYNAMIC_COLOR_PATTERN = /(?:var|color-mix)\(/;
+
+const PE_NONE = Object.freeze({ 'pointer-events': 'none' as const });
+const PE_ALL = Object.freeze({ 'pointer-events': 'visiblePainted' as const });
 
 const inlineDynamicSvgStyles = (source: SVGSVGElement, target: SVGSVGElement) => {
   const sourceElements = [source, ...Array.from(source.querySelectorAll('*'))];
@@ -295,8 +301,149 @@ const patchGraphAttrs = (graph: Graph, data: NetworkTopologyX6GraphData) => {
 };
 
 export const ensureNetworkTopologyDeviceNodeRegistered = () => {
+  const iconSize = NETWORK_TOPO_VISUAL.node.iconSize;
+  const iconTop = NETWORK_TOPO_VISUAL.node.iconTop;
+  const iconX = (NODE_WIDTH - iconSize) / 2;
+  const iconCenterY = iconTop + iconSize / 2;
+  const badgeCx = iconX + iconSize - 8;
+  const badgeCy = iconTop + 8;
+
+  // Icon-centric shape for CMDB network topology (views hub + detail).
   Graph.registerNode(
     DEVICE_NODE_SHAPE,
+    {
+      inherit: 'rect',
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+      markup: [
+        { tagName: 'circle', selector: 'pulseHalo' },
+        { tagName: 'rect', selector: 'body' },
+        { tagName: 'rect', selector: 'edgeHull' },
+        { tagName: 'circle', selector: 'iconRing' },
+        { tagName: 'image', selector: 'img' },
+        { tagName: 'circle', selector: 'alertBadge' },
+        { tagName: 'text', selector: 'alertBadgeText' },
+        { tagName: 'text', selector: 'lbl' },
+        { tagName: 'text', selector: 'subLbl' },
+      ],
+      attrs: {
+        body: {
+          fill: 'none',
+          stroke: 'none',
+          strokeWidth: 0,
+          ...PE_NONE,
+        },
+        edgeHull: {
+          x: iconX,
+          y: 0,
+          width: iconSize,
+          height: NODE_HEIGHT,
+          fill: 'none',
+          stroke: 'none',
+          strokeWidth: 0,
+          ...PE_NONE,
+        },
+        pulseHalo: {
+          cx: NODE_WIDTH / 2,
+          cy: iconCenterY,
+          r: iconSize / 2 + 10,
+          fill: 'none',
+          stroke: '#ff4d4f',
+          strokeWidth: 2,
+          opacity: 0,
+          ...PE_NONE,
+        },
+        // Soft glow disk behind icon (active/center). Hard stroke ring removed.
+        iconRing: {
+          cx: NODE_WIDTH / 2,
+          cy: iconCenterY,
+          r: iconSize / 2 + NETWORK_TOPO_VISUAL.node.activeGlow.haloRadiusExtra,
+          fill: 'transparent',
+          stroke: 'none',
+          strokeWidth: 0,
+          opacity: 0,
+          filter: NETWORK_TOPO_VISUAL.node.activeGlow.haloBlur,
+          ...PE_NONE,
+        },
+        img: {
+          x: iconX,
+          y: iconTop,
+          width: iconSize,
+          height: iconSize,
+          opacity: 0.98,
+          cursor: 'pointer',
+          filter: 'none',
+          ...PE_ALL,
+        },
+        alertBadge: {
+          cx: badgeCx,
+          cy: badgeCy,
+          r: NETWORK_TOPO_VISUAL.node.badgeRadius,
+          fill: '#ff4d4f',
+          stroke: '#fff',
+          strokeWidth: 2,
+          opacity: 0,
+          ...PE_NONE,
+        },
+        alertBadgeText: {
+          refX: badgeCx,
+          refY: badgeCy,
+          textAnchor: 'middle',
+          textVerticalAnchor: 'middle',
+          fontSize: NETWORK_TOPO_VISUAL.node.badgeFontSize,
+          fontWeight: 800,
+          fill: '#fff',
+          opacity: 0,
+          ...PE_NONE,
+        },
+        lbl: {
+          refX: 0.5,
+          refY: NETWORK_TOPO_VISUAL.node.labelNameY,
+          textAnchor: 'middle',
+          textVerticalAnchor: 'middle',
+          fontSize: NETWORK_TOPO_VISUAL.node.nameFontSize,
+          fontWeight: 700,
+          fill: '#1f2a37',
+          ...PE_NONE,
+        },
+        subLbl: {
+          refX: 0.5,
+          refY: NETWORK_TOPO_VISUAL.node.labelTypeY,
+          textAnchor: 'middle',
+          textVerticalAnchor: 'middle',
+          fontSize: NETWORK_TOPO_VISUAL.node.typeFontSize,
+          fontWeight: 500,
+          fill: '#6b7c90',
+          ...PE_NONE,
+        },
+      },
+      ports: {
+        groups: {
+          icon: {
+            position: {
+              name: 'absolute',
+              args: { x: NODE_WIDTH / 2, y: iconCenterY },
+            },
+            attrs: {
+              circle: {
+                r: 0,
+                magnet: true,
+                stroke: 'transparent',
+                fill: 'transparent',
+                style: { visibility: 'hidden' },
+              },
+            },
+          },
+        },
+        items: [{ id: 'anchor', group: 'icon' }],
+      },
+    },
+    true
+  );
+
+  // Legacy card shape kept for application resource overview.
+  Graph.registerNode(
+    CARD_NODE_SHAPE,
     {
       inherit: 'rect',
       markup: [
@@ -316,10 +463,10 @@ export const ensureNetworkTopologyDeviceNodeRegistered = () => {
         pulseHalo: {
           x: -6,
           y: -6,
-          width: NODE_WIDTH + 12,
-          height: NODE_HEIGHT + 12,
-          rx: NETWORK_TOPO_VISUAL.node.radius + 6,
-          ry: NETWORK_TOPO_VISUAL.node.radius + 6,
+          width: CARD_NODE_WIDTH + 12,
+          height: CARD_NODE_HEIGHT + 12,
+          rx: NETWORK_TOPO_CARD_VISUAL.node.radius + 6,
+          ry: NETWORK_TOPO_CARD_VISUAL.node.radius + 6,
           fill: 'none',
           stroke: '#ff4d4f',
           strokeWidth: 2,
@@ -327,54 +474,56 @@ export const ensureNetworkTopologyDeviceNodeRegistered = () => {
           style: { pointerEvents: 'none' },
         },
         body: {
-          rx: NETWORK_TOPO_VISUAL.node.radius,
-          ry: NETWORK_TOPO_VISUAL.node.radius,
+          rx: NETWORK_TOPO_CARD_VISUAL.node.radius,
+          ry: NETWORK_TOPO_CARD_VISUAL.node.radius,
           cursor: 'pointer',
-          ...NETWORK_TOPO_VISUAL.node.defaultBody,
+          ...NETWORK_TOPO_CARD_VISUAL.node.defaultBody,
         },
         iconColumn: {
           x: 1,
           y: 1,
-          width: NETWORK_TOPO_VISUAL.node.iconColumnWidth - 1,
-          height: NODE_HEIGHT - 2,
-          rx: NETWORK_TOPO_VISUAL.node.radius - 1,
-          ry: NETWORK_TOPO_VISUAL.node.radius - 1,
+          width: NETWORK_TOPO_CARD_VISUAL.node.iconColumnWidth - 1,
+          height: CARD_NODE_HEIGHT - 2,
+          rx: NETWORK_TOPO_CARD_VISUAL.node.radius - 1,
+          ry: NETWORK_TOPO_CARD_VISUAL.node.radius - 1,
           fill: '#f7fbff',
           stroke: 'transparent',
           strokeWidth: 0,
           style: { pointerEvents: 'none' },
         },
         divider: {
-          x1: NETWORK_TOPO_VISUAL.node.iconColumnWidth,
+          x1: NETWORK_TOPO_CARD_VISUAL.node.iconColumnWidth,
           y1: 9,
-          x2: NETWORK_TOPO_VISUAL.node.iconColumnWidth,
-          y2: NODE_HEIGHT - 9,
+          x2: NETWORK_TOPO_CARD_VISUAL.node.iconColumnWidth,
+          y2: CARD_NODE_HEIGHT - 9,
           stroke: '#e1ebf6',
           strokeWidth: 1,
           style: { pointerEvents: 'none' },
         },
         iconPlate: {
-          x: (NETWORK_TOPO_VISUAL.node.iconColumnWidth - NETWORK_TOPO_VISUAL.node.iconPlateSize) / 2,
-          y: (NODE_HEIGHT - NETWORK_TOPO_VISUAL.node.iconPlateSize) / 2,
-          width: NETWORK_TOPO_VISUAL.node.iconPlateSize,
-          height: NETWORK_TOPO_VISUAL.node.iconPlateSize,
+          x: (NETWORK_TOPO_CARD_VISUAL.node.iconColumnWidth
+            - NETWORK_TOPO_CARD_VISUAL.node.iconPlateSize) / 2,
+          y: (CARD_NODE_HEIGHT - NETWORK_TOPO_CARD_VISUAL.node.iconPlateSize) / 2,
+          width: NETWORK_TOPO_CARD_VISUAL.node.iconPlateSize,
+          height: NETWORK_TOPO_CARD_VISUAL.node.iconPlateSize,
           rx: 11,
           ry: 11,
-          fill: NETWORK_TOPO_VISUAL.node.iconPlate.fill,
-          stroke: NETWORK_TOPO_VISUAL.node.iconPlate.stroke,
+          fill: NETWORK_TOPO_CARD_VISUAL.node.iconPlate.fill,
+          stroke: NETWORK_TOPO_CARD_VISUAL.node.iconPlate.stroke,
           strokeWidth: 1,
           style: { pointerEvents: 'none' },
         },
         img: {
-          width: NETWORK_TOPO_VISUAL.node.iconSize,
-          height: NETWORK_TOPO_VISUAL.node.iconSize,
-          x: (NETWORK_TOPO_VISUAL.node.iconColumnWidth - NETWORK_TOPO_VISUAL.node.iconSize) / 2,
-          y: (NODE_HEIGHT - NETWORK_TOPO_VISUAL.node.iconSize) / 2,
+          width: NETWORK_TOPO_CARD_VISUAL.node.iconSize,
+          height: NETWORK_TOPO_CARD_VISUAL.node.iconSize,
+          x: (NETWORK_TOPO_CARD_VISUAL.node.iconColumnWidth
+            - NETWORK_TOPO_CARD_VISUAL.node.iconSize) / 2,
+          y: (CARD_NODE_HEIGHT - NETWORK_TOPO_CARD_VISUAL.node.iconSize) / 2,
           opacity: 0.95,
           style: { pointerEvents: 'none' },
         },
         statusDot: {
-          cx: NODE_WIDTH - 18,
+          cx: CARD_NODE_WIDTH - 18,
           cy: 16,
           r: 4,
           fill: '#55d6ad',
@@ -383,7 +532,7 @@ export const ensureNetworkTopologyDeviceNodeRegistered = () => {
           style: { pointerEvents: 'none' },
         },
         alertBadge: {
-          cx: NODE_WIDTH - 8,
+          cx: CARD_NODE_WIDTH - 8,
           cy: 6,
           r: 15,
           fill: '#ff4d4f',
@@ -393,7 +542,7 @@ export const ensureNetworkTopologyDeviceNodeRegistered = () => {
           style: { pointerEvents: 'none' },
         },
         alertBadgeText: {
-          refX: NODE_WIDTH - 8,
+          refX: CARD_NODE_WIDTH - 8,
           refY: 6,
           textAnchor: 'middle',
           textVerticalAnchor: 'middle',
@@ -404,30 +553,30 @@ export const ensureNetworkTopologyDeviceNodeRegistered = () => {
           style: { pointerEvents: 'none' },
         },
         lbl: {
-          refX: NETWORK_TOPO_VISUAL.node.label.x,
+          refX: NETWORK_TOPO_CARD_VISUAL.node.label.x,
           refY: 0.41,
           textAnchor: 'start',
           textVerticalAnchor: 'middle',
           fontSize: 14,
           fontWeight: 600,
-          fill: NETWORK_TOPO_VISUAL.node.label.fill,
+          fill: NETWORK_TOPO_CARD_VISUAL.node.label.fill,
           textWrap: {
-            width: NETWORK_TOPO_VISUAL.node.label.width,
+            width: NETWORK_TOPO_CARD_VISUAL.node.label.width,
             height: 22,
             ellipsis: true,
           },
           style: { pointerEvents: 'none' },
         },
         subLbl: {
-          refX: NETWORK_TOPO_VISUAL.node.label.x,
+          refX: NETWORK_TOPO_CARD_VISUAL.node.label.x,
           refY: 0.67,
           textAnchor: 'start',
           textVerticalAnchor: 'middle',
           fontSize: 12,
           fontWeight: 400,
-          fill: NETWORK_TOPO_VISUAL.node.label.subFill,
+          fill: NETWORK_TOPO_CARD_VISUAL.node.label.subFill,
           textWrap: {
-            width: NETWORK_TOPO_VISUAL.node.label.width,
+            width: NETWORK_TOPO_CARD_VISUAL.node.label.width,
             height: 18,
             ellipsis: true,
           },

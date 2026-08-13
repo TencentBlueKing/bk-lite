@@ -542,6 +542,7 @@
       "originalValue": "Original Value",
       "metricTitle": "The following monitoring indicators are supported by this collector",
       "searchMetricPlaceholder": "Please enter the metric name",
+      "baseObject": "Base",
       "step1": "Step1",
       "portDes": "Configured SNMP port number, typically using port 161 for communication with the device.",
       "access": "Access",

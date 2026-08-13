@@ -12,6 +12,8 @@ from apps.apm.services import DjangoIntegrationConfigurationService
 from apps.apm.services.contracts import IngestSnippetRequest
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
 
+_JAVA_AGENT_URL = "http://bklite.example.com:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar"
+
 
 def _configuration_script(code: str) -> str:
     section = code.split("# 2. 配置上报", maxsplit=1)[1].split("# 3. 启动应用", maxsplit=1)[0]
@@ -200,6 +202,7 @@ def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected
             service_name="checkout",
             service_version="1.0",
             environment="production",
+            java_agent_download_url=_JAVA_AGENT_URL,
         )
     )
 
@@ -208,6 +211,89 @@ def test_host_snippet_installs_or_bootstraps_the_selected_sdk(language, expected
     assert "# 1. 安装探针" in snippet.code
     assert "# 2. 配置上报" in snippet.code
     assert "# 3. 启动应用" in snippet.code
+
+
+@pytest.mark.parametrize("runtime", ["host", "docker"])
+def test_java_snippet_downloads_agent_from_the_system_address_instead_of_the_public_internet(runtime):
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="java",
+            runtime=runtime,
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+            java_agent_download_url=_JAVA_AGENT_URL,
+        )
+    )
+
+    assert _JAVA_AGENT_URL in snippet.code
+    assert "github.com" not in snippet.code
+    assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+
+
+@pytest.mark.parametrize("runtime", ["host", "docker"])
+def test_java_snippet_fails_closed_without_a_resolved_system_download_address(runtime):
+    with pytest.raises(ValueError, match="java_agent_download_url"):
+        DjangoIntegrationConfigurationService().render_snippet(
+            IngestSnippetRequest(
+                language="java",
+                runtime=runtime,
+                endpoint="https://apm.example.com",
+                service_namespace="shop",
+                service_name="checkout",
+                service_version="1.0",
+                environment="production",
+            )
+        )
+
+
+def test_resolve_region_builds_the_java_agent_download_url_from_node_server_url():
+    node_mgmt = Mock()
+    node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
+    node_mgmt.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
+    node_mgmt.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
+
+    endpoints = DjangoIntegrationConfigurationService().resolve_region(
+        node_mgmt,
+        7,
+        organization_ids=[10],
+        include_java_agent_download=True,
+    )
+
+    assert endpoints.http_endpoint == "http://apm-east.example.com:4318"
+    assert endpoints.java_agent_download_url == ("http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar")
+    node_mgmt.get_cloud_region_envconfig.assert_called_once_with(7)
+
+
+def test_resolve_region_skips_env_config_when_java_agent_download_is_not_needed():
+    node_mgmt = Mock()
+    node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
+    node_mgmt.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
+
+    endpoints = DjangoIntegrationConfigurationService().resolve_region(node_mgmt, 7, organization_ids=[10])
+
+    assert endpoints.java_agent_download_url == ""
+    node_mgmt.get_cloud_region_envconfig.assert_not_called()
+
+
+@pytest.mark.parametrize("env_config", [{}, {"NODE_SERVER_URL": "ftp://10.10.10.1:8011"}, "not-a-dict"])
+def test_resolve_region_fails_closed_when_the_java_agent_download_address_is_unavailable(env_config):
+    node_mgmt = Mock()
+    node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
+    node_mgmt.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
+    node_mgmt.get_cloud_region_envconfig.return_value = env_config
+
+    with pytest.raises(CloudRegionConfigurationError) as exc_info:
+        DjangoIntegrationConfigurationService().resolve_region(
+            node_mgmt,
+            7,
+            organization_ids=[10],
+            include_java_agent_download=True,
+        )
+
+    assert exc_info.value.code == "probe_download_unavailable"
 
 
 def test_docker_snippet_uses_runtime_environment_injection_instead_of_host_exports():

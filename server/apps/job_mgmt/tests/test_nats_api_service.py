@@ -266,3 +266,50 @@ class TestQueries:
         Target.objects.create(name="t", ip="10.0.0.9", ssh_user="r", team=[1])
         out = nats_api.job_target_list({"page_size": -1})
         assert out["result"] is True
+
+
+class TestJobList:
+    def test_requires_team(self):
+        out = nats_api.job_list({})
+        assert out["result"] is False
+        assert "team" in out["message"]
+
+    def test_lists_owned_scripts_and_playbooks(self):
+        from apps.job_mgmt.models import Playbook
+
+        Script.objects.create(
+            name="owned",
+            description="d",
+            content="echo secret",
+            script_type="shell",
+            team=[1],
+            timeout=30,
+            params=[{"name": "p", "label": "P", "default": "v", "is_encrypted": False}],
+        )
+        Script.objects.create(name="foreign", content="echo", script_type="shell", team=[2])
+        Playbook.objects.create(name="pb-owned", team=[1], params=[{"name": "x", "default": "1"}])
+        Playbook.objects.create(name="pb-foreign", team=[2])
+
+        out = nats_api.job_list({"team": [1]})
+        assert out["result"] is True
+        scripts = out["data"]["scripts"]
+        playbooks = out["data"]["playbooks"]
+        assert scripts["count"] == 1
+        assert scripts["items"][0]["name"] == "owned"
+        assert scripts["items"][0]["params"][0]["name"] == "p"
+        assert "content" not in scripts["items"][0]
+        assert playbooks["count"] == 1
+        assert playbooks["items"][0]["name"] == "pb-owned"
+
+    def test_rejects_oversize_page_size(self):
+        out = nats_api.job_list({"team": [1], "page_size": 101})
+        assert out["result"] is False
+        assert "page_size" in out["message"]
+
+    def test_name_filter(self):
+        Script.objects.create(name="patch-install", content="echo", script_type="shell", team=[1])
+        Script.objects.create(name="cleanup", content="echo", script_type="shell", team=[1])
+        out = nats_api.job_list({"team": [1], "name": "patch"})
+        assert out["result"] is True
+        assert out["data"]["scripts"]["count"] == 1
+        assert out["data"]["scripts"]["items"][0]["name"] == "patch-install"

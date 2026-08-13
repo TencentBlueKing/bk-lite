@@ -53,6 +53,7 @@ import type {
   ApmTopologyNode,
   ApmTraceSummary,
 } from '@/app/apm/types';
+import SummaryMetricCard from '@/components/summary-metric-card';
 import Permission from '@/components/permission';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 
@@ -75,7 +76,7 @@ const RANGE_MS: Record<TimeRange, number> = {
   '7d': 7 * 24 * 60 * 60 * 1000,
 };
 
-function KpiCard({
+function ServiceMetricCard({
   label,
   value,
   suffix,
@@ -87,19 +88,17 @@ function KpiCard({
   danger?: boolean;
 }) {
   return (
-    <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3.5">
-      <Typography.Text type="secondary" className="!text-xs">{label}</Typography.Text>
-      <div className="mt-1">
-        <span
-          className={`text-2xl font-bold tabular-nums leading-none ${
-            danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'
-          }`}
-        >
-          {value}
-        </span>
-        {suffix ? <span className="ml-0.5 text-[13px] text-[var(--color-text-3)]">{suffix}</span> : null}
-      </div>
-    </div>
+    <SummaryMetricCard
+      className="rounded-lg px-4 py-3.5"
+      label={label}
+      labelClassName="!text-xs"
+      layout="vertical"
+      maxFontSize={24}
+      minFontSize={20}
+      unit={suffix}
+      value={value}
+      valueColor={danger ? 'var(--color-fail)' : undefined}
+    />
   );
 }
 
@@ -129,10 +128,12 @@ export default function ApmServiceDetailPage() {
   const [upstream, setUpstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [downstream, setDownstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [serviceSlos, setServiceSlos] = useState<ApmSlo[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (authLoading || !params.serviceId) return;
     let active = true;
+    setCatalogState('loading');
     getService(params.serviceId)
       .then((item) => {
         if (!active) return;
@@ -149,7 +150,7 @@ export default function ApmServiceDetailPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, getService, params.serviceId]);
+  }, [authLoading, getService, params.serviceId, refreshKey]);
 
   useEffect(() => {
     if (!service || environment === undefined) {
@@ -172,7 +173,7 @@ export default function ApmServiceDetailPage() {
     return () => {
       active = false;
     };
-  }, [environment, getServiceRed, service, timeRange]);
+  }, [environment, getServiceRed, refreshKey, service, timeRange]);
 
   useEffect(() => {
     if (!service || environment === undefined || authLoading) return;
@@ -231,7 +232,7 @@ export default function ApmServiceDetailPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, environment, getSlos, getTopology, getTraces, service, timeRange]);
+  }, [authLoading, environment, getSlos, getTopology, getTraces, refreshKey, service, timeRange]);
 
   const exploreHref = service && red
     ? `/apm/explore/traces?${new URLSearchParams({
@@ -304,11 +305,11 @@ export default function ApmServiceDetailPage() {
         <Space direction="vertical" size={2}>
           <Space size={6}>
             <HealthDot level={item.status === 'error' ? 1 : 5} />
-            <span className="text-[13px] font-medium">{item.service_name}</span>
+            <span className="text-sm font-medium">{item.service_name}</span>
           </Space>
           <Link
             href={`/apm/explore/traces/${item.trace_id}`}
-            className="font-mono text-[11px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
+            className="font-mono text-xs text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
           >
             {item.trace_id}
           </Link>
@@ -373,7 +374,12 @@ export default function ApmServiceDetailPage() {
       dependency="telemetry"
     >
       {catalogState !== 'ready' ? (
-        <ApmSurface padding="none"><CatalogState kind={catalogState} /></ApmSurface>
+        <ApmSurface padding="none">
+          <CatalogState
+            kind={catalogState}
+            onRetry={catalogState === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
+          />
+        </ApmSurface>
       ) : service ? (
         <div className="flex flex-col gap-4">
           <ApmSurface padding="compact">
@@ -387,7 +393,7 @@ export default function ApmServiceDetailPage() {
                 <div className="min-w-0">
                   <Space size={10} align="center" wrap>
                     <HealthDot level={health} />
-                    <Typography.Title level={2} className="!mb-0 !text-lg !font-semibold">
+                    <Typography.Title level={2} className="!mb-0 !text-base !font-semibold">
                       {service.name}
                     </Typography.Title>
                     <Tag
@@ -444,28 +450,28 @@ export default function ApmServiceDetailPage() {
           {metricState === 'ready' && red ? (
             <Row gutter={[12, 12]}>
               <Col xs={12} lg={6}>
-                <KpiCard
+                <ServiceMetricCard
                   label="吞吐"
                   value={formatThroughput(red.request_rate)}
                   suffix={red.request_rate === null ? undefined : '/s'}
                 />
               </Col>
               <Col xs={12} lg={6}>
-                <KpiCard
+                <ServiceMetricCard
                   label="错误率"
                   value={formatErrorRate(red.error_rate)}
                   danger={isErrorRateDanger(red.error_rate)}
                 />
               </Col>
               <Col xs={12} lg={6}>
-                <KpiCard
+                <ServiceMetricCard
                   label="P99"
                   value={formatLatency(red.p99_ms)}
                   danger={red.p99_ms !== null && red.p99_ms >= 500}
                 />
               </Col>
               <Col xs={12} lg={6}>
-                <KpiCard label="P95" value={formatLatency(red.p95_ms)} />
+                <ServiceMetricCard label="P95" value={formatLatency(red.p95_ms)} />
               </Col>
             </Row>
           ) : null}
@@ -513,8 +519,8 @@ export default function ApmServiceDetailPage() {
                               xAxisBoundaryGap={false}
                               yAxes={[{ formatter: (value) => `${value.toFixed(0)} ms` }]}
                               series={[
-                                { name: 'P95', type: 'line', dataKey: 'p95_ms', color: '#722ed1', showArea: true },
-                                { name: 'P99', type: 'line', dataKey: 'p99_ms', color: '#fa8c16' },
+                                { name: 'P95', type: 'line', dataKey: 'p95_ms', color: 'var(--theme-color-chart-primary)', showArea: true },
+                                { name: 'P99', type: 'line', dataKey: 'p99_ms', color: 'var(--theme-color-chart-warning)' },
                               ]}
                               surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无延迟趋势点' } }}
                             />
@@ -537,7 +543,7 @@ export default function ApmServiceDetailPage() {
                                   <div className="mb-1.5 flex items-start justify-between gap-3">
                                     <Link
                                       href={`/apm/explore/endpoints?service=${encodeURIComponent(service.name)}&environment=${encodeURIComponent(environment ?? '')}&endpoint=${encodeURIComponent(item.endpoint)}`}
-                                      className="min-w-0 break-all text-[13px] text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+                                      className="min-w-0 break-all text-sm text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
                                     >
                                       {item.endpoint}
                                     </Link>
@@ -592,6 +598,7 @@ export default function ApmServiceDetailPage() {
                     <CatalogState
                       kind={metricState === 'ready' ? 'error' : metricState}
                       description={metricState === 'empty' ? '当前服务尚无可查询的环境视图。' : undefined}
+                      onRetry={metricState === 'forbidden' || metricState === 'empty' ? undefined : () => setRefreshKey((value) => value + 1)}
                     />
                   </ApmSurface>
                 ),
@@ -619,6 +626,7 @@ export default function ApmServiceDetailPage() {
                       <CatalogState
                         kind={tracesState}
                         description={tracesState === 'empty' ? '当前时间窗暂无调用链样本。' : undefined}
+                        onRetry={tracesState === 'forbidden' || tracesState === 'empty' ? undefined : () => setRefreshKey((value) => value + 1)}
                       />
                     )}
                   </ApmSurface>
@@ -651,16 +659,16 @@ export default function ApmServiceDetailPage() {
                           </div>
                           <Space size={24}>
                             <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-[11px]">跨度数</Typography.Text>
+                              <Typography.Text type="secondary" className="!text-xs">跨度数</Typography.Text>
                               <div className="text-lg font-semibold tabular-nums text-[var(--color-fail)]">{item.span_count}</div>
                             </div>
                             <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-[11px]">耗时</Typography.Text>
+                              <Typography.Text type="secondary" className="!text-xs">耗时</Typography.Text>
                               <div className="text-lg font-semibold tabular-nums">{formatLatency(item.duration_ms)}</div>
                             </div>
                             <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-[11px]">最近出现</Typography.Text>
-                              <div className="text-[13px] tabular-nums">{formatRelativeTime(item.started_at)}</div>
+                              <Typography.Text type="secondary" className="!text-xs">最近出现</Typography.Text>
+                              <div className="text-sm tabular-nums">{formatRelativeTime(item.started_at)}</div>
                             </div>
                           </Space>
                         </div>

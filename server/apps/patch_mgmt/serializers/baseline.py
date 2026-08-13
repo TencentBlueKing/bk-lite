@@ -2,7 +2,12 @@
 
 from rest_framework import serializers
 
-from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType
+from apps.patch_mgmt.constants import (
+    ComplianceStatus,
+    GovernanceTaskStatus,
+    GovernanceTaskType,
+    RequirementAssessmentStatus,
+)
 from apps.patch_mgmt.models import (
     BaselineRequirement,
     GovernanceTask,
@@ -337,3 +342,48 @@ class HostBaselineBindingSerializer(PatchPermissionSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_by", "created_at"]
+
+
+class BaselineComplianceObjectsQuerySerializer(serializers.Serializer):
+    """基线合规矩阵左侧对象列表参数。"""
+
+    perspective = serializers.ChoiceField(
+        choices=("host", "patch"), default="host"
+    )
+    page = serializers.IntegerField(min_value=1, default=1)
+    page_size = serializers.IntegerField(default=-1)
+
+    def validate_page_size(self, value):
+        if value == -1 or 1 <= value <= 100:
+            return value
+        raise serializers.ValidationError(
+            "page_size must be -1 or between 1 and 100"
+        )
+
+
+class BaselineComplianceDetailsQuerySerializer(serializers.Serializer):
+    """基线合规矩阵右侧选中对象明细参数。"""
+
+    perspective = serializers.ChoiceField(
+        choices=("host", "patch"), default="host"
+    )
+    selected_id = serializers.IntegerField(min_value=1)
+    page = serializers.IntegerField(min_value=1, default=1)
+    page_size = serializers.IntegerField(min_value=1, max_value=100, default=20)
+    search = serializers.CharField(
+        required=False, allow_blank=True, max_length=128, default=""
+    )
+    status = serializers.ChoiceField(
+        required=False,
+        allow_blank=True,
+        choices=(
+            RequirementAssessmentStatus.SATISFIED,
+            RequirementAssessmentStatus.MISSING,
+            RequirementAssessmentStatus.NOT_APPLICABLE,
+            RequirementAssessmentStatus.UNKNOWN,
+            ComplianceStatus.PENDING,
+            ComplianceStatus.EVALUATING,
+            ComplianceStatus.FAILED,
+        ),
+        default="",
+    )

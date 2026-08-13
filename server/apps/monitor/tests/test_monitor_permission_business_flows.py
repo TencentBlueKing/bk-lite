@@ -112,6 +112,69 @@ def _patch_condition_business_permissions(mocker, *, teams=None, instances=None)
 
 
 class TestMonitorPolicyBusinessFlow:
+    def test_retrieve_keeps_sibling_organizations_for_edit(self, api_client, mocker):
+        """跨组织策略详情编辑必须回传完整 organizations，不能按 current_team 裁剪。"""
+        api_client.cookies["current_team"] = "2"
+        monitor_object = _monitor_object()
+        policy = _policy(monitor_object, org=2, name=_name("shared-edit"))
+        policy.organizations = [1, 2]
+        policy.save(update_fields=["organizations"])
+        PolicyOrganization.objects.get_or_create(policy=policy, organization=1)
+
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+            return_value={"result": True, "data": [2]},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1, 2]},
+        )
+        mocker.patch(
+            "apps.monitor.views.monitor_policy.get_permission_rules",
+            return_value={"team": [2], "instance": []},
+        )
+        mocker.patch(
+            "apps.monitor.views.monitor_policy.InstanceConfigService._get_actor_scope_groups",
+            return_value=[2],
+        )
+
+        resp = api_client.get(f"{BASE}/api/monitor_policy/{policy.id}/")
+        assert resp.status_code == 200
+        data = _response_data(resp)
+        assert sorted(data["organizations"]) == [1, 2]
+        assert data["schedule"] == {"type": "min", "value": 5}
+
+    def test_list_still_projects_organizations_to_current_team(self, api_client, mocker):
+        api_client.cookies["current_team"] = "2"
+        monitor_object = _monitor_object()
+        policy = _policy(monitor_object, org=2, name=_name("shared-list"))
+        policy.organizations = [1, 2]
+        policy.save(update_fields=["organizations"])
+        PolicyOrganization.objects.get_or_create(policy=policy, organization=1)
+
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+            return_value={"result": True, "data": [2]},
+        )
+        mocker.patch(
+            "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
+            return_value={"result": True, "data": [1, 2]},
+        )
+        mocker.patch(
+            "apps.monitor.views.monitor_policy.get_permission_rules",
+            return_value={"team": [2], "instance": []},
+        )
+        mocker.patch(
+            "apps.monitor.views.monitor_policy.InstanceConfigService._get_actor_scope_groups",
+            return_value=[2],
+        )
+
+        resp = api_client.get(f"{BASE}/api/monitor_policy/?monitor_object_id={monitor_object.id}")
+        assert resp.status_code == 200
+        items = _response_data(resp).get("items") or []
+        matched = next(item for item in items if item["id"] == policy.id)
+        assert matched["organizations"] == [2]
+
     def test_partial_update_without_organizations_keeps_assignment_and_explicit_empty_is_rejected(self, api_client, mocker):
         api_client.cookies["current_team"] = "1"
         _patch_policy_business_permissions(mocker, teams=[1])

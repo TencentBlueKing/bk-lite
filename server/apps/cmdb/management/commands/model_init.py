@@ -1,7 +1,8 @@
 from django.core.management import BaseCommand
+
+from apps.cmdb.model_migrate.migrete_service import ModelMigrate
 from apps.cmdb.services.model import ModelManage
 from apps.core.logger import cmdb_logger as logger
-from apps.cmdb.model_migrate.migrete_service import ModelMigrate
 
 
 class Command(BaseCommand):
@@ -13,6 +14,9 @@ class Command(BaseCommand):
         # 模型初始化
         logger.info("初始化模型！")
         result = migrator.main()
-        ModelManage._apply_model_config_post_import_extras(migrator.model_config)
+        ModelManage._apply_model_config_post_import_extras(
+            migrator.model_config,
+            keep_existing_unique_rules_on_conflict=True,
+        )
         logger.info("初始化模型完成！")
         logger.debug(result)

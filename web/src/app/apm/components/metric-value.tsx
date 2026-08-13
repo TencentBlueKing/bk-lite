@@ -43,7 +43,7 @@ export default function MetricValue({
       type="link"
       size="small"
       className={`!h-auto !p-0 ${size === 'lg' ? '!text-[22px] !font-bold' : '!text-xs'}`}
-      icon={<ReloadOutlined aria-hidden="true" className="text-[11px]" />}
+      icon={<ReloadOutlined aria-hidden="true" className="text-xs" />}
       onClick={(event) => {
         event.stopPropagation();
         onRetry();

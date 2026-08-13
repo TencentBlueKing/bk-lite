@@ -15,6 +15,8 @@ from core.infra.redis_config import REDIS_CONFIG
 # 对齐配置采集目标并发意向（默认 2000）并留租约/余量
 _DEFAULT_MAX_CONNECTIONS = 2560
 _DEFAULT_POOL_TIMEOUT_SECONDS = 2.0
+# redis-py 8+ 默认 RESP3 会发 HELLO；旧 Redis / 不支持 HELLO 的代理会启动失败
+_DEFAULT_PROTOCOL = 2
 
 _redis_client: "GatedRedis | None" = None
 _redis_lock = asyncio.Lock()
@@ -34,6 +36,13 @@ def _max_connections() -> int:
     return int(
         os.getenv("REDIS_MAX_CONNECTIONS", str(_DEFAULT_MAX_CONNECTIONS))
     )
+
+
+def _redis_protocol() -> int:
+    protocol = int(os.getenv("REDIS_PROTOCOL", str(_DEFAULT_PROTOCOL)))
+    if protocol not in (2, 3):
+        raise ValueError("REDIS_PROTOCOL must be 2 or 3")
+    return protocol
 
 
 def is_redis_pool_exhaustion(exc: BaseException) -> bool:
@@ -113,6 +122,7 @@ def build_redis_client() -> GatedRedis:
         socket_timeout=float(os.getenv("REDIS_SOCKET_TIMEOUT", "5")),
         max_connections=max_connections,
         pool_timeout_seconds=_pool_timeout_seconds(),
+        protocol=_redis_protocol(),
         retry_on_timeout=True,
     )
 

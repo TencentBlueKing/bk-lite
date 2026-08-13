@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   filterNetworkDeviceModels,
   isNetworkModel,
@@ -118,5 +121,30 @@ assert.equal(relationshipIdFromEdgeId('123'), '123');
 const p0 = nextFloatingPosition(0);
 assert.ok(Math.abs(p0.x - 320) < 1e-6 && Math.abs(p0.y) < 1e-6);
 assert.notDeepEqual(nextFloatingPosition(1), nextFloatingPosition(0));
+
+// Visual contract: CMDB network topo uses icon-centric shape + plain port labels
+// (aligned with ops-analysis network status topology).
+{
+  const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const visualSrc = fs.readFileSync(
+    path.join(webRoot, 'src/app/cmdb/components/networkTopology/x6Visual.ts'),
+    'utf8'
+  );
+  const topoSrc = fs.readFileSync(
+    path.join(
+      webRoot,
+      'src/app/cmdb/(pages)/assetData/detail/relationships/networkTopo.tsx'
+    ),
+    'utf8'
+  );
+  assert.match(visualSrc, /shape:\s*'topo-network-device-v3'/);
+  assert.match(visualSrc, /iconSize:\s*72/);
+  assert.match(visualSrc, /activeGlow/);
+  const portFn = visualSrc.slice(visualSrc.indexOf('buildNetworkTopoPortLabel'));
+  assert.equal(/tagName:\s*'rect',\s*selector:\s*'bg'/.test(portFn), false);
+  assert.match(topoSrc, /NETWORK_TOPO_VISUAL\.shape/);
+  assert.match(topoSrc, /activeGlow|iconFilter/);
+  assert.match(topoSrc, /selector:\s*'edgeHull'/);
+}
 
 console.log('cmdb-network-topo-editing-test passed');

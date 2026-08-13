@@ -276,6 +276,9 @@ export const validateThresholds = (thresholds: ThresholdColorConfig[]) => {
   };
 };
 
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
 export const formatDisplayValue = (
   value: number | string | null | undefined,
   unit?: string,
@@ -283,10 +286,17 @@ export const formatDisplayValue = (
   conversionFactor?: number,
   unitId?: string,
 ): string => {
+  const resolvedDecimalPlaces = isFiniteNumber(decimalPlaces)
+    ? decimalPlaces
+    : undefined;
+  const resolvedConversionFactor = isFiniteNumber(conversionFactor)
+    ? conversionFactor
+    : undefined;
+
   if (unitId && unitId.trim()) {
     return formatUnit(value, unitId, {
-      decimals: decimalPlaces,
-      conversionFactor,
+      decimals: resolvedDecimalPlaces,
+      conversionFactor: resolvedConversionFactor,
     }).text;
   }
 
@@ -299,11 +309,11 @@ export const formatDisplayValue = (
     return String(value);
   }
 
-  const factor = conversionFactor !== undefined ? conversionFactor : 1;
+  const factor = resolvedConversionFactor ?? 1;
   const convertedValue = numericValue * factor;
   let formattedValue =
-    decimalPlaces !== undefined
-      ? convertedValue.toFixed(decimalPlaces)
+    resolvedDecimalPlaces !== undefined
+      ? convertedValue.toFixed(resolvedDecimalPlaces)
       : String(convertedValue);
 
   if (unit && unit.trim()) {

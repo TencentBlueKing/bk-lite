@@ -8,6 +8,7 @@ test('getChartTypeList includes datasource-driven chart types', () => {
 
   assert.ok(values.includes('eventTimeline'));
   assert.ok(values.includes('radar'));
+  assert.ok(values.includes('cardList'));
   assert.ok(values.includes('topologyMap'));
 });
 
@@ -54,7 +55,12 @@ test('resolveDatasourceChartTypes does not inject widget-only chart types', () =
   });
 
   assert.equal(
-    result.some((item) => item.value === 'radar' || item.value === 'eventTimeline'),
+    result.some(
+      (item) =>
+        item.value === 'radar' ||
+        item.value === 'eventTimeline' ||
+        item.value === 'cardList',
+    ),
     false,
   );
 });

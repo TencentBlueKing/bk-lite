@@ -53,8 +53,17 @@ export default function ShareDashboardPage() {
 
   const getDetailOverride = useCallback(async () => canvas, [canvas]);
   const queryDataSource = useCallback(
-    (dataSourceId: number, requestParams?: unknown) =>
-      api.querySharedDataSource(params.sessionId, dataSourceId, requestParams),
+    (
+      dataSourceId: number,
+      requestParams?: unknown,
+      options?: { suppressErrorNotification?: boolean },
+    ) =>
+      api.querySharedDataSource(
+        params.sessionId,
+        dataSourceId,
+        requestParams,
+        options,
+      ),
     [api.querySharedDataSource, params.sessionId],
   );
   const shareAccess = useMemo(

@@ -12,6 +12,7 @@ import {
   getThresholdUnitOptions,
   getValidThresholdUnitOptions,
   isVacantThresholdUnit,
+  pruneNoticeUsers,
   resolveFormulaResultUnit,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
@@ -20,6 +21,7 @@ import {
   resolveThresholdUnit,
   resolveUnitOnMetricSelect,
   restoreCalculationUnitState,
+  shouldRequireNoticeUsers,
   shouldShowThresholdUnitSelector,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
 import {
@@ -666,5 +668,71 @@ assert.deepEqual(
 // 枚举类型:返回空
 const enumOptions = getThresholdUnitOptions({ unitList: crossSystemUnitList, metricUnit: 'bytes', isEnumMetric: true });
 assert.equal(enumOptions.length, 0);
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const strategyDetailPath = fileURLToPath(
+  new URL(
+    '../src/app/monitor/(pages)/event/strategy/detail/page.tsx',
+    import.meta.url
+  )
+);
+const strategyDetailSource = readFileSync(strategyDetailPath, 'utf8');
+assert.match(
+  strategyDetailSource,
+  /else if \(formData\?\.id != null\)/,
+  '编辑策略必须等详情 id 就绪后再 dealDetail，避免空数据冲掉频率'
+);
+assert.match(
+  strategyDetailSource,
+  /setUnit\(schedule\?\.type \|\| 'min'\)/,
+  '频率单位缺失时回退 min，避免空单位导致输入框不可用'
+);
+assert.match(
+  strategyDetailSource,
+  /getAllUsers\(orgIds\)/,
+  '通知人列表必须按策略所属组织拉取'
+);
+assert.match(
+  strategyDetailSource,
+  /pruneNoticeUsers/,
+  '组织变更后必须自动剔除越界通知人'
+);
+
+assert.deepEqual(
+  pruneNoticeUsers([1, '2', 3], [
+    { id: 1, username: 'a' },
+    { id: 2, username: 'b' },
+  ]),
+  [1, '2']
+);
+assert.deepEqual(pruneNoticeUsers([1, 2], []), []);
+assert.deepEqual(pruneNoticeUsers(undefined, [{ id: 1 }]), []);
+
+assert.equal(
+  shouldRequireNoticeUsers({
+    notice: true,
+    noticeTypeIds: [1],
+    channelList: [{ id: 1, channel_type: 'email' }],
+  }),
+  true
+);
+assert.equal(
+  shouldRequireNoticeUsers({
+    notice: true,
+    noticeTypeIds: [1],
+    channelList: [{ id: 1, channel_type: 'nats' }],
+  }),
+  false
+);
+assert.equal(
+  shouldRequireNoticeUsers({
+    notice: false,
+    noticeTypeIds: [1],
+    channelList: [{ id: 1, channel_type: 'email' }],
+  }),
+  false
+);
 
 console.log('monitor-strategy-detail logic validation passed');
