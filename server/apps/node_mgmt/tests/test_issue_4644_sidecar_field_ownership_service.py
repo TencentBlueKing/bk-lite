@@ -213,3 +213,18 @@ def test_first_sidecar_heartbeat_keeps_zone_registration_compatibility(monkeypat
 def test_sidecar_heartbeat_rejects_non_object_node_details(node_details):
     with pytest.raises(ValidationAppException, match="node_details must be an object"):
         Sidecar.update_node_client(_heartbeat_request("invalid", node_details), "issue-4644-invalid")
+
+
+@pytest.mark.parametrize(
+    ("node_details", "message"),
+    [
+        ({"ip": "10.0.0.1"}, "node_details.operating_system is required"),
+        ({"operating_system": 1}, "node_details contains invalid field values"),
+        ({"operating_system": "Linux", "tags": "zone:1"}, "node_details contains invalid field values"),
+        ({"operating_system": "Linux", "tags": [1]}, "node_details contains invalid field values"),
+        ({"operating_system": "Linux", "tags": ["zone:not-an-id"]}, "node_details.tags contains an invalid zone"),
+    ],
+)
+def test_sidecar_heartbeat_rejects_invalid_client_field_values(node_details, message):
+    with pytest.raises(ValidationAppException, match=message):
+        Sidecar.update_node_client(_heartbeat_request("invalid", node_details), "issue-4644-invalid")

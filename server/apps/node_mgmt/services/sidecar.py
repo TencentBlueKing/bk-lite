@@ -36,21 +36,6 @@ class Sidecar:
     CONVERGE_DEBOUNCE_SECONDS = 5
     CPU_ARCHITECTURE_TAG = "cpu_architecture"
     INSTALL_TASK_NODE_TAG = "install_task_node"
-    CLIENT_REPORTED_NODE_FIELDS = frozenset(
-        {
-            "ip",
-            "operating_system",
-            "cpu_architecture",
-            "architecture",
-            "collector_configuration_directory",
-            "metrics",
-            "status",
-            "tags",
-            "log_file_list",
-            "install_method",
-            "node_type",
-        }
-    )
     SERVER_OWNED_NODE_FIELDS = frozenset(
         {
             "id",
@@ -68,6 +53,20 @@ class Sidecar:
             "updated_by_domain",
         }
     )
+    CLIENT_REPORTED_NODE_FIELD_TYPES = {
+        "ip": str,
+        "operating_system": str,
+        "cpu_architecture": str,
+        "architecture": str,
+        "collector_configuration_directory": str,
+        "metrics": dict,
+        "status": dict,
+        "tags": list,
+        "log_file_list": list,
+        "install_method": str,
+        "node_type": str,
+    }
+    CLIENT_REPORTED_NODE_FIELDS = frozenset(CLIENT_REPORTED_NODE_FIELD_TYPES)
     BASE_CONFIG_HEADER = "# ---- BK-Lite collector base configuration (shared by all monitoring templates) ----\n"
     INSTANCE_CONFIG_HEADER = "# ---- BK-Lite instance collection configurations (per monitoring template) ----\n"
 
@@ -420,6 +419,14 @@ class Sidecar:
         """Keep heartbeat input within fields owned by the Sidecar client."""
         if not isinstance(node_details, dict):
             raise ValidationAppException("node_details must be an object")
+        invalid_fields = [
+            field
+            for field, value in node_details.items()
+            if field in Sidecar.CLIENT_REPORTED_NODE_FIELD_TYPES
+            and not isinstance(value, Sidecar.CLIENT_REPORTED_NODE_FIELD_TYPES[field])
+        ]
+        if invalid_fields or any(not isinstance(tag, str) for tag in node_details.get("tags", [])):
+            raise ValidationAppException("node_details contains invalid field values")
         dropped_fields = set(node_details) - Sidecar.CLIENT_REPORTED_NODE_FIELDS
         if dropped_fields:
             server_fields = sorted(dropped_fields & Sidecar.SERVER_OWNED_NODE_FIELDS)
@@ -503,6 +510,9 @@ class Sidecar:
             response["ETag"] = cached_etag
             return response
 
+        if not node_details.get("operating_system"):
+            raise ValidationAppException("node_details.operating_system is required")
+
         # 从请求体中获取数据
         request_data = dict(
             id=node_id,
@@ -539,7 +549,10 @@ class Sidecar:
         # 补充云区域关联
         clouds = tags_data.get(ControllerConstants.CLOUD_TAG, [])
         if clouds and not node:
-            request_data.update(cloud_region_id=int(clouds[0]))
+            try:
+                request_data.update(cloud_region_id=int(clouds[0]))
+            except (TypeError, ValueError) as exc:
+                raise ValidationAppException("node_details.tags contains an invalid zone") from exc
 
         # 补充安装方法
         install_methods = tags_data.get(ControllerConstants.INSTALL_METHOD_TAG, [])
