@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BugOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import { Alert, Button, Collapse, Input, Radio, Select, Space, Tag, Typography } from 'antd';
+import { Button, Collapse, Input, Radio, Select, Space, Tag, Typography } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -150,16 +150,11 @@ export default function ApmErrorsPage() {
   return (
     <ApmRouteShell
       title="错误"
-      description="从真实错误调用链下钻故障上下文；Issue 自动聚类将在数据能力就绪后接入。"
+      description="按服务与环境查看错误调用链，定位故障入口与样本 Trace。"
       dependency="telemetry"
+      showDependencyNote={false}
     >
       <div className="flex flex-col gap-3">
-        <Alert
-          showIcon
-          type="info"
-          message="当前版本按错误调用链展示；Issue 聚类与异常栈聚合将在数据能力接入后开放。"
-          description="以下卡片按入口操作做了客户端归并，便于浏览，不代表正式 Issue 模型。"
-        />
         <ApmSurface padding="compact">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Radio.Group
