@@ -31,6 +31,38 @@ def test_groups_subset_invariant():
     assert is_groups_subset([], [1]) is False
 
 
+def test_data_connection_partial_update_toggle_is_active(authenticated_user):
+    from rest_framework.test import APIRequestFactory, force_authenticate
+
+    request = APIRequestFactory().patch(
+        "/operation_analysis/api/data_connection/1/",
+        data={},
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    request.COOKIES["include_children"] = "0"
+    request.user = authenticated_user
+    force_authenticate(request, user=authenticated_user)
+
+    connection = DataConnection.objects.create(
+        name="toggle-rest",
+        connection_type=DataConnection.TYPE_REST_API,
+        groups=[1],
+        is_active=True,
+        config=encrypt_connection_config({"base_url": "https://example.com", "headers": {}}),
+    )
+    serializer = DataConnectionSerializer(
+        connection,
+        data={"is_active": False},
+        partial=True,
+        context={"request": request},
+    )
+    assert serializer.is_valid(), serializer.errors
+    updated = serializer.save()
+    assert updated.is_active is False
+    assert updated.name == "toggle-rest"
+
+
 @pytest.mark.parametrize(
     "header_name",
     ["Host", "content-length", "Transfer-Encoding", "Connection", "Proxy-Authorization"],

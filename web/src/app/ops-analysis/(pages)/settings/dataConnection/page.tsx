@@ -26,6 +26,7 @@ const DataConnectionPage: React.FC = () => {
   const [filteredList, setFilteredList] = useState<DataConnectionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [testingId, setTestingId] = useState<number | null>(null);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [currentRow, setCurrentRow] = useState<DataConnectionItem | undefined>();
   const [pagination, setPagination] = useState({
@@ -148,11 +149,18 @@ const DataConnectionPage: React.FC = () => {
     checked: boolean,
   ) => {
     try {
+      setTogglingId(row.id);
       await updateDataConnection(row.id, { is_active: checked });
+      setFilteredList((prev) =>
+        prev.map((item) =>
+          item.id === row.id ? { ...item, is_active: checked } : item,
+        ),
+      );
       message.success(t('dataConnection.updateSuccess'));
-      fetchList();
     } catch (error: any) {
       message.error(error?.message || t('dataConnection.operationFailed'));
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -217,7 +225,10 @@ const DataConnectionPage: React.FC = () => {
       render: (value: boolean, row: DataConnectionItem) => (
         <PermissionWrapper requiredPermissions={['Edit']}>
           <Switch
+            size="small"
             checked={!!value}
+            loading={togglingId === row.id}
+            disabled={togglingId !== null && togglingId !== row.id}
             onChange={(checked) => handleToggleActive(row, checked)}
           />
         </PermissionWrapper>

@@ -1035,6 +1035,7 @@
     "nameLabel": "Name",
     "inputPlaceholder": "Please enter name",
     "selectItem": "Please select a canvas",
+    "selectItemHint": "Select a canvas from the directory to view and edit it here.",
     "addDash": "Add Dashboard",
     "dashboardType": "Dashboard",
     "topologyType": "Topology",

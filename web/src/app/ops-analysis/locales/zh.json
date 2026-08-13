@@ -1046,6 +1046,7 @@
     "nameLabel": "名称",
     "inputPlaceholder": "请输入名称",
     "selectItem": "请选择一个画布",
+    "selectItemHint": "从左侧目录选择画布后，可在这里查看和编辑内容",
     "addDash": "添加仪表盘",
     "dashboardType": "仪表盘",
     "topologyType": "拓扑图",

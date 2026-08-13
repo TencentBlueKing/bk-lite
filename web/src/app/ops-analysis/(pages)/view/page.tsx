@@ -16,8 +16,12 @@ import {
   CanvasType,
   isCanvasType,
 } from '@/app/ops-analysis/constants/canvasTypes';
-import { LeftOutlined, RightOutlined } from '@ant-design/icons';
-import { Button, Empty, Modal } from 'antd';
+import {
+  LayoutOutlined,
+  LeftOutlined,
+  RightOutlined,
+} from '@ant-design/icons';
+import { Button, Modal } from 'antd';
 import { useRouter } from 'next/navigation';
 import { DirItem } from '@/app/ops-analysis/types';
 
@@ -211,10 +215,23 @@ const ViewPage: React.FC = () => {
             selectedNetworkTopology={selectedItem.networkTopology}
           />
         ) : (
-          <Empty
-            className="w-full mt-[20vh]"
-            description={t('opsAnalysisSidebar.selectItem')}
-          />
+          <div className="flex min-h-0 w-full flex-1 items-center justify-center bg-[var(--color-bg-1)] px-6 py-10">
+            <div
+              className="flex max-w-[420px] flex-col items-center text-center"
+              role="status"
+            >
+              <LayoutOutlined
+                aria-hidden="true"
+                className="text-[72px] leading-none text-[var(--color-text-4)]"
+              />
+              <h2 className="mb-0 mt-5 text-base font-semibold leading-6 text-[var(--color-text-1)]">
+                {t('opsAnalysisSidebar.selectItem')}
+              </h2>
+              <p className="mb-0 mt-2 text-sm leading-6 text-[var(--color-text-3)]">
+                {t('opsAnalysisSidebar.selectItemHint')}
+              </p>
+            </div>
+          </div>
         )}
       </div>
     </div>
