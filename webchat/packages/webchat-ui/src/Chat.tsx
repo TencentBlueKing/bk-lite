@@ -119,7 +119,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   streamingTextBatchingRef.current = streamingTextBatching;
   const streamLifecycleRef = useRef<StreamLifecycle | null>(null);
   const uploadedImagesRef = useRef<PendingImage[]>([]);
-  const pendingImageBatchesRef = useRef(new Map<symbol, readonly File[]>());
+  const pendingImageBatchesRef = useRef(new Map<symbol, { controller: AbortController; files: readonly File[] }>());
   const imageBatchQueueRef = useRef<Promise<void>>(Promise.resolve());
   const imageSelectionGenerationRef = useRef(0);
   if (!streamLifecycleRef.current) {
@@ -179,6 +179,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     return () => {
       handleAGUIEvent.cancelPendingText();
       imageSelectionGenerationRef.current += 1;
+      pendingImageBatches.forEach(({ controller }) => controller.abort());
       pendingImageBatches.clear();
       void streamLifecycle?.dispose();
       aguiSubscription?.unsubscribe();
@@ -261,7 +262,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   const queueImageFiles = useCallback((files: readonly File[]) => {
     if (files.length === 0) return;
 
-    const pendingFiles = Array.from(pendingImageBatchesRef.current.values()).flat();
+    const pendingFiles = Array.from(pendingImageBatchesRef.current.values()).flatMap(({ files }) => files);
     const accountedImages = [...uploadedImagesRef.current, ...pendingFiles];
     const validation = validateImageBatch(accountedImages, files, imageBudget);
     if (!validation.ok) {
@@ -270,13 +271,14 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     }
 
     const batchToken = Symbol('pending-image-batch');
-    pendingImageBatchesRef.current.set(batchToken, files);
+    const controller = new AbortController();
+    pendingImageBatchesRef.current.set(batchToken, { controller, files });
     const generation = imageSelectionGenerationRef.current;
     imageBatchQueueRef.current = imageBatchQueueRef.current.then(async () => {
       try {
         if (generation !== imageSelectionGenerationRef.current) return;
 
-        const images = await readImageBatch(files, imageBudget.imageReadConcurrency, readFileAsDataUrl);
+        const images = await readImageBatch(files, imageBudget.imageReadConcurrency, readFileAsDataUrl, controller.signal);
         if (generation !== imageSelectionGenerationRef.current) return;
 
         const latestValidation = validateImageBatch(uploadedImagesRef.current, files, imageBudget);
@@ -382,6 +384,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     addMessage(userMsg);
     setInputValue('');
     imageSelectionGenerationRef.current += 1;
+    pendingImageBatchesRef.current.forEach(({ controller }) => controller.abort());
     pendingImageBatchesRef.current.clear();
     updateUploadedImages({ type: 'clear' });
     setIsLoading(true);
@@ -503,6 +506,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     void streamLifecycleRef.current?.cancel('session-cleared');
     setMessages([]);
     imageSelectionGenerationRef.current += 1;
+    pendingImageBatchesRef.current.forEach(({ controller }) => controller.abort());
     pendingImageBatchesRef.current.clear();
     updateUploadedImages({ type: 'clear' });
     // Clear and reinitialize session

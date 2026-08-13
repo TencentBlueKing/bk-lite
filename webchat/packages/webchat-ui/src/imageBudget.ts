@@ -77,12 +77,25 @@ export const validateImageBatch = (
 };
 
 /** Reads one browser File as a Data URL and propagates read or abort failures. */
-export const readFileAsDataUrl = (file: File): Promise<string> =>
+export const readFileAsDataUrl = (file: File, signal?: AbortSignal): Promise<string> =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (event) => resolve(event.target?.result as string);
-    reader.onerror = () => reject(reader.error || new Error(`读取图片“${file.name}”失败。`));
-    reader.onabort = () => reject(new Error(`读取图片“${file.name}”已取消。`));
+    const cleanup = () => signal?.removeEventListener('abort', abort);
+    const abort = () => reader.abort();
+    reader.onload = (event) => {
+      cleanup();
+      resolve(event.target?.result as string);
+    };
+    reader.onerror = () => {
+      cleanup();
+      reject(reader.error || new Error(`读取图片“${file.name}”失败。`));
+    };
+    reader.onabort = () => {
+      cleanup();
+      reject(new Error(`读取图片“${file.name}”已取消。`));
+    };
+    if (signal?.aborted) return abort();
+    signal?.addEventListener('abort', abort, { once: true });
     reader.readAsDataURL(file);
   });
 
@@ -90,7 +103,8 @@ export const readFileAsDataUrl = (file: File): Promise<string> =>
 export const readImageBatch = async <T extends ImageFile>(
   files: readonly T[],
   concurrency: number,
-  readFile: (file: T) => Promise<string>
+  readFile: (file: T, signal?: AbortSignal) => Promise<string>,
+  signal?: AbortSignal
 ): Promise<PendingImage[]> => {
   if (files.length === 0) return [];
 
@@ -100,12 +114,12 @@ export const readImageBatch = async <T extends ImageFile>(
   const workerCount = Math.min(positiveIntegerOr(concurrency, 1), files.length);
 
   const worker = async () => {
-    while (firstError === undefined && nextIndex < files.length) {
+    while (!signal?.aborted && firstError === undefined && nextIndex < files.length) {
       const index = nextIndex;
       nextIndex += 1;
       const file = files[index];
       try {
-        const dataUrl = await readFile(file);
+        const dataUrl = await readFile(file, signal);
         results[index] = { dataUrl, name: file.name, size: file.size };
       } catch (error) {
         firstError ??= error;
@@ -114,6 +128,7 @@ export const readImageBatch = async <T extends ImageFile>(
   };
 
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  if (signal?.aborted) throw new Error('图片读取已取消。');
   if (firstError !== undefined) throw firstError;
   return results;
 };

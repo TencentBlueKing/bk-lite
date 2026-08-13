@@ -16,6 +16,7 @@ interface TestFile {
 
 class ControlledFileReader {
   static pending: ControlledFileReader[] = [];
+  static aborted: ControlledFileReader[] = [];
 
   error: DOMException | null = null;
   file?: TestFile;
@@ -26,6 +27,14 @@ class ControlledFileReader {
   readAsDataURL(file: Blob) {
     this.file = file as unknown as TestFile;
     ControlledFileReader.pending.push(this);
+  }
+
+  abort() {
+    ControlledFileReader.aborted.push(this);
+    this.onabort?.call(
+      this as unknown as FileReader,
+      { target: this } as unknown as ProgressEvent<FileReader>,
+    );
   }
 
   finish(dataUrl = `data:${this.file?.name}`) {
@@ -45,6 +54,7 @@ class ControlledFileReader {
 
   static reset() {
     ControlledFileReader.pending = [];
+    ControlledFileReader.aborted = [];
   }
 }
 
@@ -213,8 +223,8 @@ test('FloatingButton 将预算配置透传给 Chat', async () => {
 });
 
 test('Chat 发送期间使正在读取的旧批次失效，不回填预览', async () => {
-  const renderer = renderChat();
-  await selectFiles(renderer.root, [imageFile('late.png')]);
+  const renderer = renderChat({ imageReadConcurrency: 1 });
+  await selectFiles(renderer.root, [imageFile('late.png'), imageFile('never-started.png')]);
   const reader = ControlledFileReader.pending[0];
   const sender = renderer.root.find((node) => typeof node.props.onSubmit === 'function');
 
@@ -225,6 +235,8 @@ test('Chat 发送期间使正在读取的旧批次失效，不回填预览', asy
   });
   await flush();
 
+  assert.deepEqual(ControlledFileReader.aborted, [reader]);
+  assert.equal(ControlledFileReader.pending.length, 1);
   assert.equal(previews(renderer.root).length, 0);
   renderer.unmount();
 });
