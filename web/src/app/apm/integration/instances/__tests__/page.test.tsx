@@ -45,7 +45,6 @@ function renderPage() {
     <IntlProvider
       locale="zh"
       messages={{
-        'apm.instances.defaultActiveHelp': '默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。',
         'common.total': '共',
         'common.items': '条',
         'common.checked': '已选',
@@ -94,7 +93,10 @@ describe('APM 接入实例目录', () => {
     renderPage();
 
     await screen.findByText('pod-a');
-    expect(screen.getByText('默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。')).not.toBeNull();
+    expect(screen.queryByText('默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。')).toBeNull();
+    expect(screen.getByText('已接入 1 个实例').nextElementSibling).toBe(
+      document.querySelector('[aria-label="接入上报时间范围"]')
+    );
     await waitFor(() => expect(api.getInstancePage).toHaveBeenCalledWith(expect.objectContaining({
       page: 1,
       page_size: 20,
@@ -123,7 +125,13 @@ describe('APM 接入实例目录', () => {
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['14%', '20%', '7%', '6%', '12%', '11%', '9%', '7%', '7%', '7%']);
+    expect(columnWidths).toEqual(['14%', '20%', '7%', '6%', '12%', '11%', '7%', '7%', '9%', '7%']);
+    expect(screen.getAllByRole('columnheader').slice(-4).map((header) => header.textContent)).toEqual([
+      '实例状态',
+      '所属组织',
+      '最近上报',
+      '操作',
+    ]);
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '最近上报' })).textAlign).toBe('right');
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '实例状态' })).textAlign).toBe('center');
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '操作' })).textAlign).toBe('right');
