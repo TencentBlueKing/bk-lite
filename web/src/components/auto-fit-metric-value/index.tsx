@@ -95,6 +95,8 @@ const AutoFitMetricValue: React.FC<AutoFitMetricValueProps> = ({
     let frameId = 0;
     updateFontSize();
 
+    if (typeof ResizeObserver === 'undefined') return undefined;
+
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frameId);
       frameId = requestAnimationFrame(updateFontSize);

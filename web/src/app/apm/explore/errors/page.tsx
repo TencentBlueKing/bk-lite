@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BugOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import { Alert, Button, Collapse, Empty, Input, Radio, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Collapse, Input, Radio, Select, Space, Tag, Typography } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -197,7 +197,7 @@ export default function ApmErrorsPage() {
               options={environmentOptions}
               onChange={setEnvironment}
             />
-            <Button aria-label="刷新错误调用链" icon={<ReloadOutlined aria-hidden="true" />} disabled={!selectedService || !environment} onClick={search} />
+            <Button aria-label="刷新错误调用链" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} disabled={!selectedService || !environment} onClick={search} />
           </FilterToolbar>
         </ApmSurface>
 
@@ -223,7 +223,7 @@ export default function ApmErrorsPage() {
 
         <ApmSurface padding="none" className="overflow-hidden">
           {state === 'idle' ? (
-            <Empty className="my-10" description="选择服务与环境后查看错误调用链。" />
+            <CatalogState kind="empty" description="选择服务与环境后查看错误调用链。" />
           ) : state === 'ready' ? (
             <>
               <div className="border-b border-[var(--color-border-2)] p-3">
@@ -237,8 +237,9 @@ export default function ApmErrorsPage() {
                   onChange={(event) => setKeyword(event.target.value)}
                 />
               </div>
-              <div className="flex flex-col gap-3 bg-[var(--color-fill-1)] p-3">
-                {clusters.map((cluster) => (
+              {clusters.length ? (
+                <div className="flex flex-col gap-3 bg-[var(--color-fill-1)] p-3">
+                  {clusters.map((cluster) => (
                   <article key={cluster.key} className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
                     <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0">
@@ -288,7 +289,7 @@ export default function ApmErrorsPage() {
                           <Typography.Text type="secondary" className="text-xs">出现次数</Typography.Text>
                         </div>
                         <div>
-                          <div className="text-[13px] tabular-nums">{formatRelativeTime(cluster.lastSeenAt)}</div>
+                          <div className="text-sm tabular-nums">{formatRelativeTime(cluster.lastSeenAt)}</div>
                           <Typography.Text type="secondary" className="text-xs">最近出现</Typography.Text>
                         </div>
                       </div>
@@ -319,11 +320,23 @@ export default function ApmErrorsPage() {
                       }]}
                     />
                   </article>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <CatalogState
+                  compact
+                  kind="empty"
+                  description="没有匹配的错误调用链。"
+                  action={<Button onClick={() => setKeyword('')}>清除搜索</Button>}
+                />
+              )}
             </>
           ) : (
-            <CatalogState kind={state} description={state === 'empty' ? '当前条件下没有错误调用链。' : undefined} />
+            <CatalogState
+              kind={state}
+              description={state === 'empty' ? '当前条件下没有错误调用链。' : undefined}
+              onRetry={state === 'forbidden' || state === 'empty' ? undefined : search}
+            />
           )}
         </ApmSurface>
       </div>
