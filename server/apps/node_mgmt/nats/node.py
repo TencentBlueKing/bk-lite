@@ -190,9 +190,9 @@ class NatsService:
             if config_name in created_configs and created_configs[config_name]["id"] != pending_config_id
         }
         existing_associations = set(
-            NodeCollectorConfiguration.objects.filter(collector_config_id__in=conflicting_config_ids).values_list(
-                "node_id", "collector_config_id"
-            )
+            NodeCollectorConfiguration.objects.select_for_update()
+            .filter(collector_config_id__in=conflicting_config_ids)
+            .values_list("node_id", "collector_config_id")
         )
         node_config_associations = []
         for config_name, (node_id, collector_id, pending_config_id) in expected_by_name.items():
