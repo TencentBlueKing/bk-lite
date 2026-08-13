@@ -7,9 +7,9 @@
 
 - YAML 文件不存在或为空时静默跳过
 - 命名空间冲突复用已有对象，内置数据源按稳定 key 覆盖更新
-- 画布冲突策略为 skip（用户同名画布优先保留，内置不覆盖）
-- 导入前先删除旧内置画布，避免 ImportService 按 name 匹配到旧内置
-- 内置目录和内置对象只属于 Default 组织、只读
+- 内置画布按 build_in_key 原位同步，保留主键和组织可见性
+- 新增画布遇到用户同名对象时跳过，避免覆盖用户数据
+- 新建内置对象默认属于 Default 组织；存量 groups 作为运营配置保留
 """
 
 import os
@@ -31,6 +31,7 @@ YAML_FILE_PATH = os.path.join(
     "builtin_canvases.yaml",
 )
 MERGEABLE_SECTIONS = ("dashboards", "topologies", "architectures", "screens", "reports", "datasources", "namespaces")
+DEFAULT_RETIRE_LIMIT = 200
 
 
 def _get_default_group_ids():
@@ -46,10 +47,6 @@ def _get_or_create_builtin_directory(groups):
 
     directory = Directory.objects.filter(build_in_key=BUILTIN_DIRECTORY_KEY).first()
     if directory:
-        # 更新组织可见性
-        if set(directory.groups or []) != set(groups):
-            directory.groups = groups
-            directory.save(update_fields=["groups"])
         return directory
 
     # 处理同名目录冲突（name+parent 有唯一约束，parent=None）
@@ -75,30 +72,140 @@ def _get_or_create_builtin_directory(groups):
     return directory
 
 
-def _build_conflict_decisions(doc):
+def _iter_canvas_sections(doc):
+    return (
+        ("dashboard", doc.dashboards),
+        ("topology", doc.topologies),
+        ("architecture", doc.architectures),
+        ("screen", doc.screens),
+        ("report", doc.reports),
+    )
+
+
+def _build_conflict_decisions(doc, existing_canvas_ids=None):
     """
     构建冲突决策。
     - namespace：复用已有
     - datasource：系统内置定义覆盖更新
-    - canvas（dashboard/topology/architecture）：保护用户同名画布不被覆盖
-      导入前已删除旧内置画布，所以 ImportService 只会匹配到用户同名画布（此时 skip 保护用户数据）
+    - 已按稳定键识别的内置 canvas：原位覆盖内容
+    - 新增 canvas：同名用户画布存在时跳过，避免覆盖用户数据
     """
     decisions = {}
     for ns in doc.namespaces:
         decisions[ns.key] = "skip"
     for ds in doc.datasources:
         decisions[ds.key] = "overwrite"
-    for db in doc.dashboards:
-        decisions[db.key] = "skip"
-    for tp in doc.topologies:
-        decisions[tp.key] = "skip"
-    for ar in doc.architectures:
-        decisions[ar.key] = "skip"
-    for screen in doc.screens:
-        decisions[screen.key] = "skip"
-    for report in doc.reports:
-        decisions[report.key] = "skip"
+    existing_canvas_ids = existing_canvas_ids or {}
+    for object_type, items in _iter_canvas_sections(doc):
+        for item in items:
+            decisions[item.key] = "overwrite" if (object_type, item.key) in existing_canvas_ids else "skip"
     return decisions
+
+
+def _get_existing_builtin_canvas_ids(doc, canvas_type_model_map):
+    existing_canvas_ids = {}
+    for object_type, items in _iter_canvas_sections(doc):
+        keys = [item.key for item in items]
+        if not keys:
+            continue
+        model = canvas_type_model_map[object_type]
+        rows = model.objects.select_for_update().filter(is_build_in=True, build_in_key__in=keys).values_list("build_in_key", "id")
+        existing_canvas_ids.update({(object_type, build_in_key): object_id for build_in_key, object_id in rows})
+        for item in items:
+            identity = (object_type, item.key)
+            if identity in existing_canvas_ids:
+                continue
+            legacy = (
+                model.objects.select_for_update()
+                .filter(is_build_in=True, name=item.name)
+                .exclude(build_in_key__in=keys)
+                .first()
+            )
+            if legacy is None:
+                continue
+            previous_key = legacy.build_in_key
+            legacy.build_in_key = item.key
+            legacy.save(update_fields=["build_in_key", "updated_at"])
+            existing_canvas_ids[identity] = legacy.pk
+            logger.warning(
+                "[BuiltinCanvas] 按名称认领历史内置%s: id=%s, old_key=%s, new_key=%s",
+                object_type,
+                legacy.pk,
+                previous_key,
+                item.key,
+            )
+    return existing_canvas_ids
+
+
+def _collect_retired_builtin_objects(doc, canvas_type_model_map, datasource_model, *, lock, limit):
+    candidates = []
+    for object_type, items in _iter_canvas_sections(doc):
+        model = canvas_type_model_map[object_type]
+        active_keys = {item.key for item in items}
+        queryset = (
+            model.objects.filter(is_build_in=True, build_in_key__isnull=False)
+            .exclude(build_in_key="")
+            .exclude(build_in_key__in=active_keys)
+            .order_by("pk")
+        )
+        if lock:
+            queryset = queryset.select_for_update()
+        remaining = limit - len(candidates)
+        candidates.extend((object_type, instance) for instance in queryset[: remaining + 1])
+        if len(candidates) > limit:
+            raise RuntimeError(f"待退役内置对象超过安全上限 {limit}，停止清理")
+
+    builtin_keys = {item.key for item in doc.datasources}
+    datasource_queryset = (
+        datasource_model.objects.filter(is_build_in=True, build_in_key__isnull=False)
+        .exclude(build_in_key="")
+        .exclude(build_in_key__in=builtin_keys)
+        .order_by("pk")
+    )
+    if lock:
+        datasource_queryset = datasource_queryset.select_for_update()
+    remaining = limit - len(candidates)
+    candidates.extend(("datasource", instance) for instance in datasource_queryset[: remaining + 1])
+    if len(candidates) > limit:
+        raise RuntimeError(f"待退役内置对象超过安全上限 {limit}，停止清理")
+    return candidates
+
+
+def _write_retirement_plan(candidates, stdout, *, dry_run):
+    action = "预检待退役" if dry_run else "清理已退役"
+    for object_type, instance in candidates:
+        stdout.write(
+            f"{action}内置对象: type={object_type}, id={instance.pk}, "
+            f"build_in_key={instance.build_in_key}, name={instance.name}"
+        )
+    stdout.write(f"{action}内置对象合计: {len(candidates)} 个")
+
+
+def _delete_retired_builtin_objects(candidates, stdout):
+    from apps.operation_analysis.services.canvas_report.registry import get_canvas_report_adapter
+
+    results = []
+    for object_type, instance in candidates:
+        instance_id = instance.pk
+        build_in_key = instance.build_in_key
+        name = instance.name
+        if object_type in {"dashboard", "screen"}:
+            get_canvas_report_adapter(object_type).terminate_subscriptions_on_delete(
+                instance,
+                actor="system",
+            )
+        instance.delete()
+        results.append((object_type, instance_id, build_in_key, name))
+
+    def write_results():
+        for object_type, instance_id, build_in_key, name in results:
+            stdout.write(
+                f"清理已退役内置对象: type={object_type}, id={instance_id}, "
+                f"build_in_key={build_in_key}, name={name}"
+            )
+        stdout.write(f"清理已退役内置对象合计: {len(results)} 个")
+
+    transaction.on_commit(write_results)
 
 
 def _get_builtin_canvas_file_paths():
@@ -109,6 +216,25 @@ def _get_builtin_canvas_file_paths():
     paths = [YAML_FILE_PATH]
     paths.extend(str(path) for path in extra_files if str(path).strip())
     return paths
+
+
+def _get_object_counts_error(data):
+    meta = data.get("meta") if isinstance(data, dict) else None
+    object_counts = meta.get("object_counts") if isinstance(meta, dict) else None
+    if not isinstance(object_counts, dict):
+        return "缺少 meta.object_counts"
+
+    for section in MERGEABLE_SECTIONS:
+        expected = object_counts.get(section)
+        if not isinstance(expected, int) or isinstance(expected, bool):
+            return f"meta.object_counts.{section} 缺失或不是整数"
+        section_items = data.get(section) or []
+        if not isinstance(section_items, list):
+            return f"{section} 不是数组"
+        actual = len(section_items)
+        if expected != actual:
+            return f"meta.object_counts.{section}={expected}，实际为 {actual}"
+    return None
 
 
 def _merge_yaml_documents(documents):
@@ -213,26 +339,56 @@ def _claim_legacy_builtin_datasources(doc):
 class Command(BaseCommand):
     help = "从 YAML 文件导入内置画布（仪表盘/拓扑/架构图）"
 
+    def add_arguments(self, parser):
+        parser.add_argument("--dry-run", action="store_true", help="只预检待退役内置对象，不修改数据库")
+
     def handle(self, *args, **options):
         # 1. 读取 YAML 文件
-        yaml_documents = [_load_source_api_document()]
+        try:
+            yaml_documents = [_load_source_api_document()]
+        except Exception as error:
+            self.stdout.write(self.style.ERROR(f"内置数据源定义加载失败，跳过同步: {type(error).__name__}: {error}"))
+            logger.error("[BuiltinCanvas] 内置数据源定义加载失败，跳过同步：%s", error, exc_info=True)
+            return
         loaded_yaml_count = 0
+        definitions_complete = True
         for file_path in _get_builtin_canvas_file_paths():
             if not os.path.isfile(file_path):
+                definitions_complete = False
                 self.stdout.write(self.style.WARNING(f"内置画布 YAML 文件不存在，跳过: {file_path}"))
                 continue
 
-            with open(file_path, "r", encoding="utf-8") as f:
-                raw_content = f.read()
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    raw_content = f.read()
+            except (OSError, UnicodeError) as error:
+                self.stdout.write(self.style.ERROR(f"内置画布 YAML 读取失败，跳过同步: {file_path}: {error}"))
+                logger.error("[BuiltinCanvas] 内置画布 YAML 读取失败，跳过同步：%s", file_path, exc_info=True)
+                return
 
             if not raw_content.strip():
+                definitions_complete = False
                 self.stdout.write(self.style.WARNING(f"内置画布 YAML 文件为空，跳过: {file_path}"))
                 continue
 
-            data = yaml.safe_load(raw_content)
+            try:
+                data = yaml.safe_load(raw_content)
+            except yaml.YAMLError as error:
+                self.stdout.write(
+                    self.style.ERROR(f"内置画布 YAML 解析失败，跳过同步: {file_path}: {type(error).__name__}: {error}")
+                )
+                logger.error("[BuiltinCanvas] 内置画布 YAML 解析失败，跳过同步：%s", file_path, exc_info=True)
+                return
             if not data:
+                definitions_complete = False
                 self.stdout.write(self.style.WARNING(f"内置画布 YAML 解析结果为空，跳过: {file_path}"))
                 continue
+            object_counts_error = _get_object_counts_error(data)
+            if object_counts_error:
+                definitions_complete = False
+                self.stdout.write(
+                    self.style.WARNING(f"内置画布 YAML 快照不完整，本次禁止退役清理: {file_path}: {object_counts_error}")
+                )
             yaml_documents.append(data)
             loaded_yaml_count += 1
 
@@ -241,6 +397,7 @@ class Command(BaseCommand):
             return
 
         # 2. 延迟导入（避免循环依赖）
+        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
         from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
         from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
         from apps.operation_analysis.services.import_export.import_service import ImportService
@@ -258,10 +415,52 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("内置画布 YAML 中无可导入对象，跳过"))
             return
 
-        # 4. 准备环境
-        groups = _get_default_group_ids()
-        conflict_decisions = _build_conflict_decisions(doc)
+        canvas_type_model_map = {
+            "dashboard": Dashboard,
+            "topology": Topology,
+            "architecture": Architecture,
+            "screen": Screen,
+            "report": Report,
+        }
+        try:
+            retire_limit = int(getattr(settings, "OPERATION_ANALYSIS_BUILTIN_RETIRE_LIMIT", DEFAULT_RETIRE_LIMIT))
+            if retire_limit < 0:
+                raise ValueError("退役上限不能小于 0")
+        except (TypeError, ValueError) as error:
+            self.stdout.write(self.style.ERROR(f"内置对象退役上限无效，跳过同步: {error}"))
+            logger.error("[BuiltinCanvas] 内置对象退役上限无效，跳过同步：%s", error, exc_info=True)
+            return
 
+        if options.get("dry_run"):
+            if not definitions_complete:
+                self.stdout.write(self.style.WARNING("内置定义文件不完整，无法预检退役对象"))
+                return
+            try:
+                with transaction.atomic():
+                    _claim_legacy_builtin_datasources(doc)
+                    _get_existing_builtin_canvas_ids(doc, canvas_type_model_map)
+                    candidates = _collect_retired_builtin_objects(
+                        doc,
+                        canvas_type_model_map,
+                        DataSourceAPIModel,
+                        lock=True,
+                        limit=retire_limit,
+                    )
+                    _write_retirement_plan(candidates, self.stdout, dry_run=True)
+                    transaction.set_rollback(True)
+            except Exception as error:
+                self.stdout.write(self.style.ERROR(f"内置对象退役预检失败: {type(error).__name__}: {error}"))
+                logger.error("[BuiltinCanvas] 内置对象退役预检失败：%s", error, exc_info=True)
+                return
+            return
+
+        # 4. 准备环境
+        try:
+            groups = _get_default_group_ids()
+        except Exception as error:
+            self.stdout.write(self.style.ERROR(f"Default 组织加载失败，跳过内置画布同步: {type(error).__name__}: {error}"))
+            logger.error("[BuiltinCanvas] Default 组织加载失败，跳过同步：%s", error, exc_info=True)
+            return
         self.stdout.write(
             f"开始导入内置画布: "
             f"{len(doc.namespaces)} 命名空间, "
@@ -273,20 +472,24 @@ class Command(BaseCommand):
             f"{len(doc.reports)} 报表"
         )
 
-        # 5~8 在同一事务中：删旧内置 → 导入 → 标记新内置
-        #     如果导入失败，整个事务回滚（包括删除），避免旧内置丢失
+        # 5~8 在同一事务中：按稳定键同步 → 标记新内置 → 清理已退役内置
         try:
             with transaction.atomic():
-                _ensure_builtin_tags()
                 _claim_legacy_builtin_datasources(doc)
+                existing_canvas_ids = _get_existing_builtin_canvas_ids(doc, canvas_type_model_map)
+                retired_candidates = []
+                if definitions_complete:
+                    retired_candidates = _collect_retired_builtin_objects(
+                        doc,
+                        canvas_type_model_map,
+                        DataSourceAPIModel,
+                        lock=True,
+                        limit=retire_limit,
+                    )
+                _ensure_builtin_tags()
                 builtin_dir = _get_or_create_builtin_directory(groups)
 
-                # 5. 先删除旧内置画布（这样 ImportService 不会按 name 匹配到旧内置，
-                #    只会匹配用户同名画布 → skip 保护用户数据）
-                for model in (Dashboard, Topology, Architecture, Screen, Report):
-                    deleted_count, _ = model.objects.filter(is_build_in=True).delete()
-                    if deleted_count:
-                        self.stdout.write(f"清理旧内置 {model.__name__}: {deleted_count} 个")
+                conflict_decisions = _build_conflict_decisions(doc, existing_canvas_ids)
 
                 # 6. 调用 ImportService 执行导入
                 import_service = ImportService(
@@ -297,6 +500,8 @@ class Command(BaseCommand):
                     created_by="system",
                     updated_by="system",
                     groups=groups,
+                    existing_canvas_ids=existing_canvas_ids,
+                    preserve_existing_canvas_groups=True,
                 )
 
                 result = import_service.execute()
@@ -315,14 +520,6 @@ class Command(BaseCommand):
                     raise RuntimeError("内置画布导入失败，回滚事务")
 
                 # 7. 将导入成功的画布对象标记为内置
-                canvas_type_model_map = {
-                    "dashboard": Dashboard,
-                    "topology": Topology,
-                    "architecture": Architecture,
-                    "screen": Screen,
-                    "report": Report,
-                }
-
                 marked_count = 0
                 for item_result in result["results"]:
                     obj_type = item_result["object_type"]
@@ -334,7 +531,7 @@ class Command(BaseCommand):
                         continue
                     if not new_id:
                         continue
-                    if status != "success":
+                    if status not in {"success", "overwritten"}:
                         continue
 
                     model = canvas_type_model_map[obj_type]
@@ -345,19 +542,17 @@ class Command(BaseCommand):
                     )
                     marked_count += 1
 
-                from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+                if definitions_complete:
+                    _delete_retired_builtin_objects(retired_candidates, self.stdout)
+                else:
+                    self.stdout.write(self.style.WARNING("内置定义文件不完整，本次跳过已退役画布与数据源清理"))
 
-                builtin_keys = {item.key for item in doc.datasources}
                 for item in doc.datasources:
                     DataSourceAPIModel.objects.filter(name=item.name, rest_api=item.rest_api).update(
                         is_build_in=True,
                         build_in_key=item.key,
-                        groups=groups,
                         updated_by="system",
                     )
-                stale_count, _ = DataSourceAPIModel.objects.filter(is_build_in=True).exclude(build_in_key__in=builtin_keys).delete()
-                if stale_count:
-                    self.stdout.write(f"清理已移除内置数据源: {stale_count} 个")
 
         except Exception as error:
             # 非关键本地初始化保持 fail-open；事务已回滚，不留下半更新。

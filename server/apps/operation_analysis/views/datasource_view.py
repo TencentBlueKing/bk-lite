@@ -18,6 +18,7 @@ from apps.core.utils.trend_granularity import TREND_GROUP_BY_AUTO_REST_APIS
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.common.audit_log import get_response_name, log_ops_analysis_success
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
+from apps.operation_analysis.common.visibility_update import partial_update_groups_with_auth
 from apps.operation_analysis.filters.datasource_filters import DataSourceAPIModelFilter, DataSourceTagModelFilter, NameSpaceModelFilter
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace, NamespacePasswordDecryptionError
 from apps.operation_analysis.serializers.datasource_serializers import (
@@ -1062,9 +1063,13 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     @HasPermission("data_source-Edit")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
-        if instance.is_build_in:
+        visibility_only = kwargs.get("partial", False) and set(request.data.keys()) == {"groups"}
+        if instance.is_build_in and not visibility_only:
             return Response({"detail": "内置数据源不允许通过普通接口修改"}, status=status.HTTP_403_FORBIDDEN)
-        response = super(DataSourceAPIModelViewSet, self).update(request, *args, **kwargs)
+        if instance.is_build_in and visibility_only:
+            response = partial_update_groups_with_auth(self, request, instance)
+        else:
+            response = super(DataSourceAPIModelViewSet, self).update(request, *args, **kwargs)
         name = get_response_name(response, request.data.get("name", instance.name))
         log_ops_analysis_success(request, response, "update", f"编辑数据源: {name}")
         return response

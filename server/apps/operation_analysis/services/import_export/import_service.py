@@ -73,6 +73,8 @@ class ImportService:
         created_by: str = "",
         updated_by: str = "",
         groups: list[int] | None = None,
+        existing_canvas_ids: dict[tuple[str, str], int] | None = None,
+        preserve_existing_canvas_groups: bool = False,
     ):
         """
         初始化导入服务
@@ -85,6 +87,8 @@ class ImportService:
             created_by: 创建者
             updated_by: 更新者
             groups: 导入对象所属的组织ID列表
+            existing_canvas_ids: 由受信调用方按（对象类型，稳定键）解析的存量画布 ID
+            preserve_existing_canvas_groups: 覆盖存量画布时保留其组织可见性配置
         """
         self.doc = doc
         self.target_directory_id = target_directory_id
@@ -93,6 +97,8 @@ class ImportService:
         self.created_by = created_by
         self.updated_by = updated_by
         self.groups = groups or []
+        self.existing_canvas_ids = existing_canvas_ids or {}
+        self.preserve_existing_canvas_groups = preserve_existing_canvas_groups
 
         # 导入过程中的映射表：YAML key -> DB ID
         self.namespace_key_to_id: dict[str, int] = {}
@@ -516,7 +522,11 @@ class ImportService:
         Returns:
             新建或已存在的画布ID
         """
-        existing = model.objects.filter(name=canvas_item.name).first()
+        stable_existing_id = self.existing_canvas_ids.get((object_type.value, canvas_item.key))
+        if stable_existing_id is not None:
+            existing = model.objects.filter(pk=stable_existing_id).first()
+        else:
+            existing = model.objects.filter(name=canvas_item.name).first()
         action = self._get_conflict_action(canvas_item.key)
 
         # 获取目标目录
@@ -535,8 +545,21 @@ class ImportService:
                 self.datasource_key_to_id,
             ),
             "directory": directory,
-            "groups": canvas_groups,
         }
+        if existing is None or not (stable_existing_id is not None and self.preserve_existing_canvas_groups):
+            canvas_data["groups"] = canvas_groups
+
+        if stable_existing_id is not None:
+            name_conflict = model.objects.filter(name=canvas_item.name).exclude(pk=stable_existing_id).exists()
+            if name_conflict:
+                logger.warning(
+                    "[CanvasImport] 内置%s稳定键 %s 的目标名称 %s 已被占用，保留原名称",
+                    object_type.value,
+                    canvas_item.key,
+                    canvas_item.name,
+                )
+            else:
+                canvas_data["name"] = canvas_item.name
 
         if object_type == ObjectType.NETWORK_TOPOLOGY:
             canvas_data["base_url"] = canvas_item.base_url
