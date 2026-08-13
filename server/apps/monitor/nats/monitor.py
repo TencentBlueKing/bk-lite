@@ -48,6 +48,7 @@ from apps.monitor.services.network_device_resource_top import validate_metric_ty
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 from apps.rpc.system_mgmt import SystemMgmt
 
 
@@ -916,6 +917,37 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         end = start + page_size
         metrics = metrics[start:end]
 
+    query_by_metric_id = {}
+    query_has_data = {}
+    query_errors = {}
+    if only_with_data:
+        metrics = list(metrics)
+        lookback_seconds = Metrics.parse_step_to_seconds(lookback)
+        end_seconds = int(time.time())
+        start_seconds = end_seconds - lookback_seconds
+        step_seconds = max(1, min(max(lookback_seconds // 12, 1), 300))
+        for metric in metrics:
+            if metric.query:
+                query_by_metric_id[metric.id] = _build_metric_label_query(
+                    metric.query,
+                    instance_ids=[instance_id],
+                )
+        vm_api = VictoriaMetricsAPI()
+
+        def _query_has_data(query):
+            response = vm_api.query_range(
+                query,
+                start_seconds,
+                end_seconds,
+                str(step_seconds),
+            )
+            return response.get("status") == "success" and bool(response.get("data", {}).get("result"))
+
+        query_has_data, query_errors = run_unique_vm_queries(
+            query_by_metric_id.values(),
+            _query_has_data,
+        )
+
     result_metrics = []
     for metric in metrics:
         metric_info = {
@@ -933,32 +965,20 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         }
 
         if only_with_data:
-            if not metric.query:
+            query = query_by_metric_id.get(metric.id)
+            if not query:
                 continue
-            query = _build_metric_label_query(
-                metric.query,
-                instance_ids=[instance_id],
-            )
-            try:
-                lookback_seconds = Metrics.parse_step_to_seconds(lookback)
-                end_seconds = int(time.time())
-                start_seconds = end_seconds - lookback_seconds
-                step_seconds = max(1, min(max(lookback_seconds // 12, 1), 300))
-                resp = VictoriaMetricsAPI().query_range(
-                    query,
-                    start_seconds,
-                    end_seconds,
-                    str(step_seconds),
-                )
-                if not (resp.get("status") == "success" and resp.get("data", {}).get("result")):
-                    continue
-            except Exception as exc:
+            if query in query_errors:
+                error = query_errors[query]
                 logger.warning(
                     "monitor_instance_metrics query failed, instance_id=%s, metric=%s, error=%s",
                     instance_id,
                     metric.name,
-                    exc,
+                    error,
+                    exc_info=(type(error), error, error.__traceback__),
                 )
+                continue
+            if not query_has_data[query]:
                 continue
 
         result_metrics.append(metric_info)
