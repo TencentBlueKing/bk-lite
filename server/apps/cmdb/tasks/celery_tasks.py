@@ -719,6 +719,7 @@ def sync_cmdb_display_fields_task(data: dict):
             }
     """
     from apps.cmdb.display_field import DisplayFieldSynchronizer
+    from apps.cmdb.display_field.sync import refresh_display_sync_data
 
     logger.info(
         f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, "
@@ -729,7 +730,7 @@ def sync_cmdb_display_fields_task(data: dict):
     # 因此在同一任务内有界重跑一次，既补齐部分写，又保持既有 Celery 返回结构。
     for attempt in range(2):
         try:
-            result = DisplayFieldSynchronizer.sync_all(data)
+            result = DisplayFieldSynchronizer.sync_all(refresh_display_sync_data(data))
             logger.info(
                 f"[SyncCMDBDisplayFields] 同步完成, 组织更新实例数: {result.get('organizations', 0)}, "
                 f"用户更新实例数: {result.get('users', 0)}"

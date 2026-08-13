@@ -7,7 +7,7 @@
 """
 import pytest
 
-from apps.cmdb.display_field.sync import DisplayFieldSynchronizer, sync_display_fields_for_system_mgmt
+from apps.cmdb.display_field.sync import DisplayFieldSynchronizer, refresh_display_sync_data, sync_display_fields_for_system_mgmt
 
 MODULE = "apps.cmdb.display_field.sync"
 
@@ -76,6 +76,47 @@ def _install_mapping(monkeypatch, mapping):
         "apps.cmdb.display_field.cache.ExcludeFieldsCache.get_model_fields_mapping",
         classmethod(lambda cls: mapping),
     )
+
+
+def test_refresh_display_sync_data_uses_current_values_and_preserves_missing_legacy_items(monkeypatch):
+    class _GroupQS:
+        def filter(self, **kwargs):
+            assert kwargs == {"id__in": [1, 9]}
+            return self
+
+        def values_list(self, *fields):
+            assert fields == ("id", "name")
+            return [(1, "当前组织名")]
+
+    class _UserQS:
+        def filter(self, **kwargs):
+            assert kwargs == {"id__in": [2, 8]}
+            return self
+
+        def values(self, *fields):
+            assert fields == ("id", "username", "display_name")
+            return [{"id": 2, "username": "current", "display_name": "当前用户"}]
+
+    monkeypatch.setattr(f"{MODULE}.Group.objects", _GroupQS())
+    monkeypatch.setattr(f"{MODULE}.User.objects", _UserQS())
+
+    refreshed = refresh_display_sync_data(
+        {
+            "organizations": [{"id": 1, "name": "旧组织名"}, {"id": 9, "name": "历史组织"}],
+            "users": [
+                {"id": 2, "username": "old", "display_name": "旧用户"},
+                {"id": 8, "username": "legacy", "display_name": "历史用户"},
+            ],
+        }
+    )
+
+    assert refreshed == {
+        "organizations": [{"id": 1, "name": "当前组织名"}, {"id": 9, "name": "历史组织"}],
+        "users": [
+            {"id": 2, "username": "current", "display_name": "当前用户"},
+            {"id": 8, "username": "legacy", "display_name": "历史用户"},
+        ],
+    }
 
 
 # --------------------------------------------------------------------------

@@ -132,6 +132,37 @@ def _load_missing_references(missing_org_ids, missing_user_ids):
     return group_map, missing_user_map
 
 
+def refresh_display_sync_data(data: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
+    """用权威关系库刷新事件值，避免旧异步任务覆盖较新的组织或用户名称。"""
+    organizations = data.get("organizations", [])
+    users = data.get("users", [])
+    organization_ids = [item.get("id") for item in organizations if item.get("id") is not None]
+    user_ids = [item.get("id") for item in users if item.get("id") is not None]
+
+    current_organizations = (
+        dict(Group.objects.filter(id__in=organization_ids).values_list("id", "name")) if organization_ids else {}
+    )
+    current_users = (
+        {
+            user["id"]: user
+            for user in User.objects.filter(id__in=user_ids).values("id", "username", "display_name")
+        }
+        if user_ids
+        else {}
+    )
+
+    return {
+        "organizations": [
+            {**item, "name": current_organizations.get(item.get("id"), item.get("name", ""))}
+            for item in organizations
+        ],
+        "users": [
+            {**item, **current_users.get(item.get("id"), {})}
+            for item in users
+        ],
+    }
+
+
 def _append_organization_updates(field_updates, node_id, matched_fields, org_map, group_map):
     for field_id, field_values in matched_fields:
         display_names = [

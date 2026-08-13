@@ -232,6 +232,7 @@ def test_sync_collect_credential_results_task_skips():
 # sync_cmdb_display_fields_task
 # --------------------------------------------------------------------------
 def test_sync_cmdb_display_fields_success(monkeypatch):
+    monkeypatch.setattr("apps.cmdb.display_field.sync.refresh_display_sync_data", lambda data: data)
     monkeypatch.setattr(
         "apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all",
         staticmethod(lambda data: {"organizations": 3, "users": 1}),
@@ -243,6 +244,8 @@ def test_sync_cmdb_display_fields_success(monkeypatch):
 
 def test_sync_cmdb_display_fields_failure(monkeypatch):
     calls = 0
+
+    monkeypatch.setattr("apps.cmdb.display_field.sync.refresh_display_sync_data", lambda data: data)
 
     def _boom(data):
         nonlocal calls
@@ -258,6 +261,8 @@ def test_sync_cmdb_display_fields_failure(monkeypatch):
 
 def test_sync_cmdb_display_fields_retries_transient_partial_failure(monkeypatch):
     calls = 0
+
+    monkeypatch.setattr("apps.cmdb.display_field.sync.refresh_display_sync_data", lambda data: data)
 
     def _transient(data):
         nonlocal calls
@@ -276,6 +281,28 @@ def test_sync_cmdb_display_fields_retries_transient_partial_failure(monkeypatch)
         "message": "CMDB display fields synced successfully",
         "data": {"organizations": 3, "users": 1},
     }
+
+
+def test_sync_cmdb_display_fields_refreshes_stale_snapshot_before_each_attempt(monkeypatch):
+    current_names = iter(["新名称", "更新后的名称"])
+    observed = []
+
+    def _refresh(data):
+        return {"organizations": [{"id": 1, "name": next(current_names)}], "users": []}
+
+    def _sync(data):
+        observed.append(data)
+        if len(observed) == 1:
+            raise RuntimeError("temporary graph failure")
+        return {"organizations": 1, "users": 0}
+
+    monkeypatch.setattr("apps.cmdb.display_field.sync.refresh_display_sync_data", _refresh)
+    monkeypatch.setattr("apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all", staticmethod(_sync))
+
+    out = ct.sync_cmdb_display_fields_task({"organizations": [{"id": 1, "name": "旧名称"}], "users": []})
+
+    assert out["result"] is True
+    assert [item["organizations"][0]["name"] for item in observed] == ["新名称", "更新后的名称"]
 
 
 # --------------------------------------------------------------------------
