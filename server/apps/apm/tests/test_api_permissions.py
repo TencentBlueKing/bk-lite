@@ -376,6 +376,53 @@ def test_integration_config_falls_back_to_trusted_node_server_url_without_node_o
     region.get_cloud_region_envconfig.assert_called_once_with(7)
 
 
+def test_integration_config_java_snippet_uses_the_system_probe_download_address(apm_api_client, monkeypatch):
+    create_application("shop", (10,))
+    region = _integration_region(monkeypatch)
+    region.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
+
+    response = apm_api_client.post(
+        "/api/v1/apm/integration-config/",
+        {
+            "application_id": "shop",
+            "cloud_region_id": 7,
+            "language": "java",
+            "runtime": "host",
+            "service_name": "checkout",
+            "service_version": "1.4.0",
+            "environment": "production",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert "http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar" in response.data["code"]
+    assert "github.com" not in response.data["code"]
+    region.get_cloud_region_envconfig.assert_called_once_with(7)
+
+
+def test_integration_config_java_snippet_reports_missing_probe_download_address(apm_api_client, monkeypatch):
+    create_application("shop", (10,))
+    region = _integration_region(monkeypatch)
+    region.get_cloud_region_envconfig.return_value = {}
+
+    response = apm_api_client.post(
+        "/api/v1/apm/integration-config/",
+        {
+            "application_id": "shop",
+            "cloud_region_id": 7,
+            "language": "java",
+            "runtime": "host",
+            "service_name": "checkout",
+            "environment": "production",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 404
+    assert response.data["code"] == "probe_download_unavailable"
+
+
 def test_integration_config_rejects_unknown_or_out_of_scope_application(apm_api_client):
     create_application("hidden", (20,))
 

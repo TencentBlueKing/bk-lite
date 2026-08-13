@@ -73,11 +73,18 @@ const Information: React.FC<InformationProps> = ({
   };
 
   const showNotifiers = (row: TableDataItem) => {
-    const users = row.policy?.notice_users;
-    if (!Array.isArray(users)) return users;
+    // 列表接口会补 notice_users_display；无展示名时再回退到本地 userList 映射
+    if (
+      Array.isArray(row.notice_users_display) &&
+      row.notice_users_display.length
+    ) {
+      return row.notice_users_display.join(',') || '--';
+    }
+    const users = row.notice_users || row.policy?.notice_users;
+    if (!Array.isArray(users) || !users.length) return '--';
     return (
-      (row.policy?.notice_users || [])
-        .map((item: string) => formatUserDisplayName(item, userList))
+      users
+        .map((item: string | number) => formatUserDisplayName(item, userList))
         .join(',') || '--'
     );
   };

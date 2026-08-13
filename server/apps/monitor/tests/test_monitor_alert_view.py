@@ -175,6 +175,37 @@ class TestAlertUpdateClose:
         notifier.return_value.notify_alerts.assert_called_once()
 
 
+class TestAlertListNoticeUsersDisplay:
+    def test_list_enriches_notice_users_display(self, api_client, grant_all):
+        from apps.system_mgmt.models import User
+
+        api_client.cookies["current_team"] = "1"
+        user = User.objects.create(
+            username="notifier1",
+            display_name="通知人甲",
+            email="notifier1@example.com",
+            password="x",
+        )
+        policy = _policy(notice=True, notice_users=[user.id])
+        MonitorAlert.objects.create(
+            policy_id=policy.id,
+            monitor_instance_id="h1",
+            status="new",
+            notice_users=[user.id],
+            content="memory high",
+        )
+
+        resp = api_client.get(
+            f"{BASE}/api/monitor_alert/",
+            {"status_in": "new", "page": 1, "page_size": 20},
+        )
+
+        assert resp.status_code == 200
+        results = resp.json()["data"]["results"]
+        assert results
+        assert results[0]["notice_users_display"] == ["通知人甲(notifier1)"]
+
+
 class TestGetEvents:
     def test_alert_not_found(self, api_client, grant_all):
         api_client.cookies["current_team"] = "1"

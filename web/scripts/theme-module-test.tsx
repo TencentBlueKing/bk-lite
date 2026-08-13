@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ThemeBootstrap } from '../src/theme/bootstrap';
 import { createThemeCss, legacyVariableMap } from '../src/theme/css-adapter';

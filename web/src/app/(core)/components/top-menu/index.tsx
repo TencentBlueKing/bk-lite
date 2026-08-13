@@ -161,19 +161,19 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
   );
 
   return (
-    <div className="z-30 flex flex-col grow-0 shrink-0 w-full basis-auto h-[56px] relative">
-      <div className="flex items-center justify-between px-4 w-full h-full">
+    <div className="relative z-30 flex h-[104px] w-full grow-0 shrink-0 basis-auto flex-col sm:h-[56px]">
+      <div className="flex h-[56px] w-full items-center justify-between px-2 sm:px-4">
         <div className="flex items-center space-x-2">
-          <img src={logoUrl} className="block h-10 w-auto object-contain" alt="logo" />
-          <div className="font-medium">{portalName}</div>
+          <img src={logoUrl} className="block h-8 w-auto object-contain sm:h-10" alt="logo" />
+          <div className="hidden font-medium sm:block">{portalName}</div>
           <Popover content={renderContent} title={t('common.appList')} trigger="hover">
-            <div className={`flex items-center justify-center cursor-pointer rounded-[10px] px-3 py-2 ${styles.nav}`}>
+            <div className={`flex cursor-pointer items-center justify-center rounded-[10px] px-2 py-2 sm:px-3 ${styles.nav}`}>
               <Icon type="caidandaohang" className="mr-1" />
               <CaretDownFilled className={`text-sm ${styles.icons}`} />
             </div>
           </Popover>
         </div>
-        <div className="flex items-center flex-shrink-0 gap-4">
+        <div className="flex flex-shrink-0 items-center gap-2 sm:gap-4">
           <Notifications />
           {hasViewedTour && (
             <Tooltip title={t('common.officialDocument')}>
@@ -189,9 +189,9 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
         </div>
       </div>
       {!hideMainMenu && (
-        <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 overflow-x-hidden px-2 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2">
           <div
-            className="flex items-center space-x-4 overflow-x-auto"
+            className="pointer-events-auto mx-auto flex w-fit max-w-full items-center space-x-4 overflow-x-auto"
             style={{ whiteSpace: 'nowrap' }}
           >
             {menuItems

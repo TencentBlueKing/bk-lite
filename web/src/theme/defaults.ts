@@ -2,6 +2,7 @@ import type { ResolvedTheme, SemanticColorTokens } from './contract';
 
 export const defaultLightTokens: SemanticColorTokens = {
   interactionPrimary: '#155AEF',
+  interactionPrimaryForeground: '#FFFFFF',
   interactionPrimarySoft: '#e1edfc',
   interactionPrimaryActiveBackground: '#155aef14',
   interactionPrimaryBackground: '#FFFFFF',
@@ -75,10 +76,14 @@ export const defaultLightTokens: SemanticColorTokens = {
   chartError: '#f5222d',
   chartGapFill: 'rgba(244, 59, 44, 0.07)',
   chartGapBoundary: 'rgba(244, 59, 44, 0.3)',
+  codeBlockBackground: '#F6F8F9',
+  codeBlockText: '#1E252E',
+  codeBlockBorder: '#E6E9EE',
 };
 
 export const defaultDarkTokens: SemanticColorTokens = {
   interactionPrimary: '#155AEF',
+  interactionPrimaryForeground: '#FFFFFF',
   interactionPrimarySoft: '#172637',
   interactionPrimaryActiveBackground: '#155aef14',
   interactionPrimaryBackground: '#1d1d20',
@@ -152,6 +157,9 @@ export const defaultDarkTokens: SemanticColorTokens = {
   chartError: '#ef4444',
   chartGapFill: 'rgba(255, 119, 107, 0.09)',
   chartGapBoundary: 'rgba(255, 137, 126, 0.38)',
+  codeBlockBackground: '#0F172A',
+  codeBlockText: '#E2E8F0',
+  codeBlockBorder: '#334155',
 };
 
 export const defaultTheme: ResolvedTheme = {

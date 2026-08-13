@@ -1,9 +1,26 @@
 import React from 'react';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { IntlProvider } from 'react-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ApmEndpointsPage from '../page';
+
+const tableMessages = {
+  'common.total': '共',
+  'common.items': '条',
+  'common.checked': '已选',
+  'common.confirm': '确认',
+  'common.cancel': '取消',
+  'common.searchPlaceHolder': '搜索字段',
+  'common.selectAll': '全选',
+  'common.selected': '已选',
+  'common.clear': '清空',
+  'common.pin': '固定',
+  'common.unpin': '取消固定',
+  'cutomTable.fieldSetting': '字段设置',
+  'cutomTable.pinHint': '固定字段会显示在表格左侧',
+};
 
 const api = {
   getServices: vi.fn(),
@@ -87,12 +104,16 @@ afterEach(() => {
 });
 
 describe('APM 端点详情抽屉', () => {
-  it('点击端点行打开详情并加载样本调用链', async () => {
+  it('通过显式查看操作打开详情并加载样本调用链', async () => {
     const user = userEvent.setup();
-    render(<ApmEndpointsPage />);
+    render(
+      <IntlProvider locale="zh" messages={tableMessages}>
+        <ApmEndpointsPage />
+      </IntlProvider>,
+    );
 
     expect(await screen.findByText('POST /pay')).not.toBeNull();
-    await user.click(screen.getByText('POST /pay'));
+    await user.click(screen.getByRole('button', { name: '查看' }));
 
     expect(await screen.findByText('样本调用链')).not.toBeNull();
     await waitFor(() => expect(api.getTraces).toHaveBeenCalled());

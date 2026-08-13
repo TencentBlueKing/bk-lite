@@ -55,6 +55,8 @@ import {
   getCalculationUnitOnMetricRowsChange,
   getReverseModeCalculationUnit,
   getThresholdUnitOnCalculationUnitChange,
+  pruneNoticeUsers,
+  shouldRequireNoticeUsers,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
   resolveThresholdUnit,
@@ -85,7 +87,8 @@ const StrategyOperation = () => {
     getMetricsGroup,
     getMonitorMetrics,
     getMonitorPlugin,
-    getMonitorObject
+    getMonitorObject,
+    getAllUsers
   } = useMonitorApi();
   const { getMonitorPolicy, getSystemChannelList, savePolicyTemplate } = useEventApi();
   const commonContext = useCommon();
@@ -97,7 +100,16 @@ const StrategyOperation = () => {
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const router = useRouter();
-  const userList: UserItem[] = commonContext?.userList || [];
+  const organizations = Form.useWatch('organizations', form);
+  const [noticeUserList, setNoticeUserList] = useState<UserItem[]>([]);
+  const [noticeUserLoadKey, setNoticeUserLoadKey] = useState('');
+  const organizationKey = useMemo(() => {
+    return (Array.isArray(organizations) ? organizations : [])
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item) && item > 0)
+      .sort((a, b) => a - b)
+      .join(',');
+  }, [organizations]);
   const instRef = useRef<ModalRef>(null);
   const formContainerRef = useRef<HTMLDivElement>(null);
   const basicInfoRef = useRef<HTMLDivElement>(null);
@@ -226,6 +238,118 @@ const StrategyOperation = () => {
     }
   }, [isLoading]);
 
+  // 通知人候选按策略所属组织渲染；组织变更后自动剔除越界已选通知人
+  useEffect(() => {
+    const applyPrunedNoticeUsers = (
+      pruned: Array<string | number>
+    ) => {
+      form.setFieldValue('notice_users', pruned);
+      // 开启通知且渠道需要通知人时，清空后立即触发校验，阻止带着空通知人保存
+      if (
+        shouldRequireNoticeUsers({
+          notice: form.getFieldValue('notice'),
+          noticeTypeIds: form.getFieldValue('notice_type_ids') || [],
+          channelList
+        }) &&
+        pruned.length === 0
+      ) {
+        Promise.resolve().then(() => {
+          form.validateFields(['notice_users']).catch(() => undefined);
+        });
+      }
+    };
+
+    const orgIds = organizationKey
+      ? organizationKey.split(',').map((item) => Number(item))
+      : [];
+
+    if (!orgIds.length) {
+      setNoticeUserList([]);
+      setNoticeUserLoadKey('');
+      const current = form.getFieldValue('notice_users') || [];
+      if (Array.isArray(current) && current.length) {
+        applyPrunedNoticeUsers([]);
+      } else if (
+        shouldRequireNoticeUsers({
+          notice: form.getFieldValue('notice'),
+          noticeTypeIds: form.getFieldValue('notice_type_ids') || [],
+          channelList
+        })
+      ) {
+        Promise.resolve().then(() => {
+          form.validateFields(['notice_users']).catch(() => undefined);
+        });
+      }
+      return;
+    }
+
+    let cancelled = false;
+    getAllUsers(orgIds)
+      .then((users) => {
+        if (cancelled) return;
+        const list = Array.isArray(users) ? users : [];
+        setNoticeUserList(list);
+        setNoticeUserLoadKey(organizationKey);
+        const current = form.getFieldValue('notice_users') || [];
+        const pruned = pruneNoticeUsers(current, list);
+        if (
+          Array.isArray(current) &&
+          (pruned.length !== current.length ||
+            pruned.some(
+              (item, index) => String(item) !== String(current[index])
+            ))
+        ) {
+          applyPrunedNoticeUsers(pruned);
+        } else if (
+          pruned.length === 0 &&
+          shouldRequireNoticeUsers({
+            notice: form.getFieldValue('notice'),
+            noticeTypeIds: form.getFieldValue('notice_type_ids') || [],
+            channelList
+          })
+        ) {
+          Promise.resolve().then(() => {
+            form.validateFields(['notice_users']).catch(() => undefined);
+          });
+        }
+      })
+      .catch(() => {
+        // 拉取失败时不改动已选通知人，避免误清空
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationKey, form, channelList]);
+
+  // dealDetail 可能再次用详情里的 notice_users 覆盖表单，候选就绪后需再裁一次
+  useEffect(() => {
+    if (!organizationKey || noticeUserLoadKey !== organizationKey) {
+      return;
+    }
+    const current = form.getFieldValue('notice_users') || [];
+    const pruned = pruneNoticeUsers(current, noticeUserList);
+    if (
+      Array.isArray(current) &&
+      (pruned.length !== current.length ||
+        pruned.some((item, index) => String(item) !== String(current[index])))
+    ) {
+      form.setFieldValue('notice_users', pruned);
+      if (
+        shouldRequireNoticeUsers({
+          notice: form.getFieldValue('notice'),
+          noticeTypeIds: form.getFieldValue('notice_type_ids') || [],
+          channelList
+        }) &&
+        pruned.length === 0
+      ) {
+        Promise.resolve().then(() => {
+          form.validateFields(['notice_users']).catch(() => undefined);
+        });
+      }
+    }
+  }, [formData, noticeUserList, noticeUserLoadKey, organizationKey, form, channelList]);
+
   useEffect(() => {
     form.resetFields();
     if (['builtIn', 'add'].includes(type)) {
@@ -319,7 +443,8 @@ const StrategyOperation = () => {
         type: 'instance',
         values: instanceIds
       });
-    } else {
+    } else if (formData?.id != null) {
+      // 等详情接口回填后再 dealDetail，避免空 formData 把频率/组织等字段冲成空值
       dealDetail(formData);
     }
   }, [type, formData, pluginList, channelList, initMetricData]);
@@ -464,7 +589,7 @@ const StrategyOperation = () => {
     setNodataUnit(no_data_period?.type || 'min');
     setNoDataRecovery(no_data_recovery_period?.value || null);
     setNoDataRecoveryUnit(no_data_recovery_period?.type || '');
-    setUnit(schedule?.type || '');
+    setUnit(schedule?.type || 'min');
     setEnableAlerts(enable_alerts?.length ? enable_alerts : ['threshold']);
     // 设置无数据告警级别和名称
     if (enable_alerts?.includes('no_data') && no_data_level) {
@@ -883,10 +1008,15 @@ const StrategyOperation = () => {
   };
 
   const createStrategy = () => {
-    form?.validateFields().then((values) => {
-      const params = buildStrategyParams(values);
-      if (params) void operateStrategy(params);
-    });
+    form
+      ?.validateFields()
+      .then((values) => {
+        const params = buildStrategyParams(values);
+        if (params) void operateStrategy(params);
+      })
+      .catch(() => {
+        // 校验失败（含通知开启且通知人为空）时阻止创建/保存
+      });
   };
 
   const saveTemplate = async () => {
@@ -977,7 +1107,7 @@ const StrategyOperation = () => {
         <div className={strategyStyle.form} ref={formContainerRef}>
           <div className="flex gap-6">
             <div className="w-[820px] flex-shrink-0">
-              <Form form={form} name="basic">
+              <Form form={form} name="basic" scrollToFirstError>
                 <Steps
                   direction="vertical"
                   items={[
@@ -1075,7 +1205,7 @@ const StrategyOperation = () => {
                       description: (
                         <NotificationForm
                           channelList={channelList}
-                          userList={userList}
+                          userList={noticeUserList}
                           onLinkToSystemManage={linkToSystemManage}
                         />
                       ),

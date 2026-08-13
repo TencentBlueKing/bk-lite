@@ -63,7 +63,7 @@ export default function Top5BarChart({
           >
             <Link
               href={`/apm/services/${row.service_id}?environment=${encodeURIComponent(row.environment)}&window=${window}`}
-              className="truncate text-[13px] font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+              className="truncate text-sm font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
               title={row.name}
             >
               {row.name}
@@ -75,7 +75,7 @@ export default function Top5BarChart({
                   style={{ width: `${pct}%`, background: color }}
                 />
               </div>
-              <span className="min-w-[88px] shrink-0 text-right text-[11px] tabular-nums text-[var(--color-text-4)]">
+              <span className="min-w-[88px] shrink-0 text-right text-xs tabular-nums text-[var(--color-text-4)]">
                 {subField} {row.sub}
               </span>
             </div>

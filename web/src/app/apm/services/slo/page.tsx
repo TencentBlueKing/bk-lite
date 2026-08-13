@@ -4,7 +4,6 @@ import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant
 import {
   Button,
   Drawer,
-  Empty,
   Form,
   Input,
   InputNumber,
@@ -14,7 +13,6 @@ import {
   Select,
   Space,
   Switch,
-  Table,
   Tag,
   Typography,
   type TableColumnsType,
@@ -30,6 +28,8 @@ import type {
   ApmSloEvaluationWindow,
   ApmSloInput,
 } from '@/app/apm/types';
+import CustomTable from '@/components/custom-table';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 type PageState = CatalogStateKind | 'ready';
 
@@ -91,6 +91,8 @@ export default function ApmSloPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const load = useCallback(async () => {
     setState('loading');
@@ -116,6 +118,10 @@ export default function ApmSloPage() {
   const environmentOptions = useMemo(() => Array.from(new Set(services.flatMap((service) =>
     service.environment_views.map((view) => view.environment).filter(Boolean)
   ))).sort().map((value) => ({ value, label: value })), [services]);
+  const pageRows = useMemo(
+    () => rows.slice((page - 1) * pageSize, page * pageSize),
+    [page, pageSize, rows],
+  );
 
   const closeDrawer = () => {
     setDrawerOpen(false);
@@ -207,8 +213,8 @@ export default function ApmSloPage() {
       title: '名称',
       dataIndex: 'name',
       render: (value, row) => (
-        <Space direction="vertical" size={4}>
-          <Typography.Text className="font-medium text-[var(--color-primary)]">{value}</Typography.Text>
+        <Space direction="vertical" size={4} className="min-w-0">
+          <EllipsisWithTooltip className="truncate font-medium text-[var(--color-primary)]" text={value} />
           <EvaluationTag row={row} />
         </Space>
       ),
@@ -216,12 +222,11 @@ export default function ApmSloPage() {
     {
       title: '目标对象',
       width: 220,
+      responsive: ['sm'],
       render: (_, row) => (
-        <Space direction="vertical" size={2}>
-          <Typography.Text>{row.service_namespace ? `${row.service_namespace} / ` : ''}{row.service_name}</Typography.Text>
-          <Typography.Text type="secondary" className="!text-xs">
-            {[row.environment, row.endpoint || '服务级'].join(' · ')}
-          </Typography.Text>
+        <Space direction="vertical" size={2} className="min-w-0">
+          <EllipsisWithTooltip className="truncate" text={`${row.service_namespace ? `${row.service_namespace} / ` : ''}${row.service_name}`} />
+          <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={[row.environment, row.endpoint || '服务级'].join(' · ')} />
         </Space>
       ),
     },
@@ -229,6 +234,7 @@ export default function ApmSloPage() {
       title: 'SLI 类型',
       dataIndex: 'sli_type',
       width: 210,
+      responsive: ['lg'],
       render: (value: ApmSliType, row) => (
         <Space direction="vertical" size={2}>
           <span>{sliLabels[value]}</span>
@@ -239,6 +245,7 @@ export default function ApmSloPage() {
     {
       title: '目标 / 窗口',
       width: 130,
+      responsive: ['md'],
       render: (_, row) => (
         <Space direction="vertical" size={2}>
           <span className="tabular-nums">{Number(row.objective).toFixed(2)}%</span>
@@ -256,6 +263,7 @@ export default function ApmSloPage() {
       title: '错误预算剩余',
       dataIndex: 'budget_remaining',
       width: 210,
+      responsive: ['xl'],
       render: (value: number | null) => <BudgetProgress value={value} />,
     },
     {
@@ -289,12 +297,30 @@ export default function ApmSloPage() {
   ];
 
   const content = state === 'ready' ? (
-    <Table columns={columns} dataSource={rows} pagination={false} rowKey="id" scroll={{ x: 1120 }} />
+    <CustomTable
+      autoScrollX={false}
+      columns={columns}
+      dataSource={pageRows}
+      pagination={{
+        current: page,
+        pageSize,
+        total: rows.length,
+        pageSizeOptions: [10, 20, 50, 100],
+        showSizeChanger: true,
+        onChange: (nextPage, nextPageSize) => {
+          setPage(nextPageSize === pageSize ? nextPage : 1);
+          setPageSize(nextPageSize);
+        },
+      }}
+      rowKey="id"
+    />
   ) : state === 'empty' ? (
-    <Empty className="py-14" description="还没有 SLO，创建一个目标开始跟踪服务可靠性。">
-      <Button disabled={!services.length} type="primary" onClick={openCreateDrawer}>新建 SLO</Button>
-    </Empty>
-  ) : <CatalogState kind={state} />;
+    <CatalogState
+      kind="empty"
+      description="还没有 SLO，创建一个目标开始跟踪服务可靠性。"
+      action={<Button disabled={!services.length} type="primary" onClick={openCreateDrawer}>新建 SLO</Button>}
+    />
+  ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />;
 
   return (
     <ApmRouteShell dependency="telemetry" description="定义服务可靠性目标，跟踪达标率与错误预算。" title="SLO">
@@ -305,7 +331,7 @@ export default function ApmSloPage() {
             <Typography.Text type="secondary" className="ml-2 !text-xs tabular-nums">共 {rows.length} 个</Typography.Text>
           </div>
           <Space>
-            <Button aria-label="刷新 SLO" icon={<ReloadOutlined aria-hidden="true" />} onClick={() => void load()} />
+            <Button aria-label="刷新 SLO" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
             <Button disabled={!services.length} type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreateDrawer}>新建 SLO</Button>
           </Space>
         </div>
@@ -315,7 +341,7 @@ export default function ApmSloPage() {
         destroyOnHidden
         open={drawerOpen}
         title={editingId ? '编辑 SLO' : '新建 SLO'}
-        width={480}
+        width="min(480px, 100vw)"
         styles={{ body: { maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' } }}
         extra={(
           <Space>
