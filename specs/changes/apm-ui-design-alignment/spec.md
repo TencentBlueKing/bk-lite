@@ -276,7 +276,7 @@ P1 必须先于视觉细节；P2/P3 可按页面家族并行，但共享组件�
 | 表格与图表 | 9/10 | 标准分页、长文本、响应式列与拓扑替代视图 |
 | 状态与反馈 | 9/10 | 状态有解释、动作和 pending；首页使用形状匹配骨架 |
 | 键盘与可访问性 | 8.5/10 | 阻断性交互已关闭；完整读屏回归仍需真实浏览器复核 |
-| 响应式 | 8.5/10 | 固定撑宽已移除；320px 真实设备矩阵仍需发布前复核 |
+| 响应式 | 8.5/10 | 固定撑宽已移除；320px 关键路径无整页横向溢出 |
 | 表单与弹窗 | 9/10 | label、校验、计数、pending 与 viewport fit 已覆盖 |
 | 排版与长内容 | 9/10 | 字号、数字和 tooltip 契约已收敛 |
 | i18n | 3/10 | 新增文案保留 fallback；存量 APM 中文尚未全量迁移 locale |
@@ -284,8 +284,9 @@ P1 必须先于视觉细节；P2/P3 可按页面家族并行，但共享组件�
 
 ### Automated Verification
 
-- `pnpm exec vitest run src/app/apm`：12 个测试文件、42 个用例通过。
+- `pnpm exec vitest run src/app/apm --maxWorkers=1 --no-file-parallelism`：13 个测试文件、43 个用例通过。
 - `pnpm run test:theme-module`：通过；亮暗主题 token 键集合与兼容变量完整。
+- `pnpm run test:apm-responsive-shell`：通过；顶部主导航和 APM 二级导航具备窄屏局部滚动契约。
 - `pnpm run test:apm-{home,event,explore,integration,instance,service}-workflow`：全部通过。
 - `pnpm run test:apm-real-query-wiring`、`test:apm-notification-closure`、`test:apm-dynamic-route-permission`：全部通过。
 - 变更文件定向 ESLint：通过。
@@ -296,4 +297,5 @@ P1 必须先于视觉细节；P2/P3 可按页面家族并行，但共享组件�
 - 新增 `APM/Design Contract`，覆盖页面壳、CatalogState 状态矩阵、应用卡长文本/降级状态和 320px 窄屏。
 - Trace/Span cursor 结果和详情内有界样本表保留 `pagination={false}`，因为不存在可展示的 total，继续加载使用显式 cursor 按钮。
 - Trace 瀑布图保留组件内部局部横向滚动；移动端默认 Span 列表，因此不会撑宽整页。
-- 存量 APM 文案全量 i18n 与真实浏览器的亮暗主题、320/768/1440px、200% 缩放截图矩阵留作发布前 P4，不在本次静态结果中虚报完成。
+- 本机真实浏览器已复核亮暗主题下 `/apm/home`、`/apm/services`，以及 320px 下首页、服务、拓扑和添加接入关键路径；均无 APM 灰底或整页横向溢出。
+- 存量 APM 文案全量 i18n，以及 768px、200% 缩放和完整读屏矩阵留作发布前 P4，不在本次结果中虚报完成。
