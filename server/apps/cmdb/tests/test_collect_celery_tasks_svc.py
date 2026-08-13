@@ -377,6 +377,7 @@ def test_sync_cmdb_display_fields_returns_compatible_failure_when_lock_fails(mon
 
     assert isinstance(retry_calls[0]["exc"], TimeoutError)
     assert retry_calls[0]["countdown"] == 105
+    assert retry_calls[0]["countdown"] * ct.sync_cmdb_display_fields_task.max_retries >= 310
     assert ct.sync_cmdb_display_fields_task.max_retries == 3
     assert ct.sync_cmdb_display_fields_task.default_retry_delay == 5
     assert ct.sync_cmdb_display_fields_task.soft_time_limit == 240
