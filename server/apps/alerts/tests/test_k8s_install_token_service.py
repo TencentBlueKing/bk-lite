@@ -134,6 +134,25 @@ def test_new_worker_honors_usage_already_consumed_by_old_worker(token_payload, l
     assert first_new_worker_result["remaining_usage"] == 3
 
 
+def test_mixed_version_phase_uses_one_legacy_counter_domain(token_payload, legacy_cache, settings):
+    settings.K8S_INSTALL_TOKEN_DB_ENABLED = False
+    token = K8sInstallService.generate_install_token(token_payload)
+    cache_key = K8sInstallService._build_cache_key(token)
+
+    # 模拟旧 worker 与新 worker 交替消费；兼容阶段两者都只更新 payload 计数。
+    old_worker_payload = legacy_cache.get(cache_key)
+    old_worker_payload["usage_count"] += 1
+    legacy_cache.set(cache_key, old_worker_payload, timeout=K8sInstallService.TOKEN_EXPIRE_TIME)
+    assert K8sInstallService.validate_and_get_token_data(token)["remaining_usage"] == 3
+    assert legacy_cache.get(f"{cache_key}:usage_count") is None
+
+    old_worker_payload = legacy_cache.get(cache_key)
+    old_worker_payload["usage_count"] += 1
+    legacy_cache.set(cache_key, old_worker_payload, timeout=K8sInstallService.TOKEN_EXPIRE_TIME)
+    assert K8sInstallService.validate_and_get_token_data(token)["remaining_usage"] == 1
+    assert legacy_cache.get(cache_key)["usage_count"] == 4
+
+
 def test_generation_rejects_empty_encryption_key(token_payload, settings):
     settings.SECRET_KEY = ""
     with pytest.raises((ImproperlyConfigured, ValueError), match="SECRET_KEY"):

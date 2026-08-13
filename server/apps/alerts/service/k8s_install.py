@@ -88,6 +88,17 @@ class K8sInstallService:
         usage_count = data.get("usage_count", 0)
         max_usage = data.get("max_usage", cls.TOKEN_MAX_USAGE)
         payload = {key: value for key, value in data.items() if key not in {"usage_count", "max_usage"}}
+        if not settings.K8S_INSTALL_TOKEN_DB_ENABLED:
+            # 第一阶段与旧 worker 共存时沿用同一 payload 计数域，避免新旧进程
+            # 分别更新 payload 与独立计数键而形成两套额度。全 worker 升级并
+            # 开启数据库签发后，旧 cache token 才切换到下面的原子计数键。
+            if usage_count >= max_usage:
+                cache.delete(cache_key)
+                raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
+            data["usage_count"] = usage_count + 1
+            cache.set(cache_key, data, timeout=cls.TOKEN_EXPIRE_TIME)
+            return payload, usage_count + 1, max_usage
+
         usage_cache_key = f"{cache_key}:usage_count"
         cache.add(usage_cache_key, usage_count, timeout=cls.TOKEN_EXPIRE_TIME)
         try:
