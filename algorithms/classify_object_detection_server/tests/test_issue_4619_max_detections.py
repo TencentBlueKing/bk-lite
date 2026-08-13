@@ -61,6 +61,34 @@ async def test_service_passes_max_detections_to_model(max_detections):
     )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("max_detections", [0, 1_001])
+async def test_service_rejects_invalid_max_detections(max_detections):
+    service = make_service()
+
+    response = await service.predict(
+        ["A" * 100], {"max_detections": max_detections}
+    )
+
+    assert response.success is False
+    assert response.error.code == "E1000"
+    service.model.predict.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_service_preserves_model_error_contract():
+    service = make_service()
+    service.model.predict.side_effect = RuntimeError("model unavailable")
+
+    response = await service.predict(
+        ["A" * 100], {"max_detections": 301}
+    )
+
+    assert response.success is False
+    assert response.error.code == "E2001"
+    assert response.metadata.total_detections == 0
+
+
 @pytest.mark.parametrize("max_det", [1, 300, 301, 1_000])
 def test_wrapper_passes_max_det_to_ultralytics(max_det):
     wrapper = YOLODetectionWrapper()
@@ -103,9 +131,10 @@ def test_wrapper_preserves_default_max_detections_for_legacy_input():
 
 
 @pytest.mark.asyncio
-async def test_service_keeps_response_slice_as_defense_in_depth():
+@pytest.mark.parametrize("max_detections", [1, 300, 301, 1_000])
+async def test_service_keeps_response_slice_as_defense_in_depth(max_detections):
     service = make_service()
-    detection_count = 305
+    detection_count = max_detections + 4
     service.model.predict.return_value = [
         {
             "boxes": [[0.1, 0.1, 0.2, 0.2]] * detection_count,
@@ -117,9 +146,10 @@ async def test_service_keeps_response_slice_as_defense_in_depth():
     ]
 
     response = await service.predict(
-        ["A" * 100], {"max_detections": 301}
+        ["A" * 100], {"max_detections": max_detections}
     )
 
     assert response.success is True
-    assert len(response.results[0].detections) == 301
-    assert response.metadata.total_detections == 301
+    assert len(response.results[0].detections) == max_detections
+    assert response.metadata.total_detections == max_detections
+    assert len(response.model_dump()["results"][0]["detections"]) == max_detections
