@@ -53,6 +53,7 @@ from apps.apm.services import (
 from apps.apm.services.access import current_organization_id, filter_current_organization, validate_assignable_organizations
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceMetricQuery
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
+from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
 from apps.core.logger import apm_logger as logger
 from apps.core.decorators.api_permission import HasPermission
@@ -201,13 +202,14 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
             "organization_links",
         )
         application = get_object_or_404(applications, application_id=data["application_id"])
-        needs_java_agent_download = data["language"] == "java" and data["runtime"] in ("host", "docker")
+        probe_artifact_name = LANGUAGE_PROBE_ARTIFACTS.get(data["language"], "")
         try:
             endpoints = self.service.resolve_region(
                 NodeMgmt(),
                 data["cloud_region_id"],
                 organization_ids=[organization_id],
-                include_java_agent_download=needs_java_agent_download,
+                include_probe_download=bool(probe_artifact_name),
+                probe_artifact_name=probe_artifact_name,
             )
         except CloudRegionConfigurationError as exc:
             response_status = (
@@ -231,7 +233,7 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
                 service_name=data["service_name"],
                 service_version=data.get("service_version", ""),
                 environment=data["environment"],
-                java_agent_download_url=endpoints.java_agent_download_url,
+                probe_download_url=endpoints.probe_download_url,
             )
         )
         return Response(
