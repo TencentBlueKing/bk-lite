@@ -40,3 +40,15 @@ export const PdfReport: Story = {
     },
   },
 };
+
+export const SignedUrlAttachment: Story = {
+  args: {
+    download: {
+      download_id: 'download-3',
+      filename: 'K8s_集群运维月报_2026-08.md',
+      mime_type: 'text/markdown',
+      file_url: '/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/signed-real-token/',
+      received_at: Date.now(),
+    },
+  },
+};

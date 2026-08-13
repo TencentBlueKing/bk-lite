@@ -59,6 +59,8 @@ from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
     _patched_convert_dict_to_message,
     _patched_convert_message_to_dict,
     _patched_create_chat_result,
+    _patched_get_request_payload,
+    merge_openai_payload_system_messages,
 )
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
@@ -144,6 +146,15 @@ def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
         return [merged_system] + non_system_messages
     else:
         return non_system_messages
+
+
+def without_system_messages(messages: List[Any]) -> List[Any]:
+    """Drop SystemMessage so DeepAgent 的 system_prompt 成为唯一 system。
+
+    图前置节点已写入 SystemMessage；create_deep_agent(system_prompt=...) 会再注入一条，
+    部分网关会因此返回 400 “System message must be at the beginning.”
+    """
+    return [message for message in (messages or []) if not isinstance(message, SystemMessage)]
 
 
 class BasicNode:
@@ -3058,7 +3069,8 @@ class ToolsNodes(BasicNode):
                     },
                 }
                 try:
-                    result = await deep_agent.ainvoke({"messages": original_messages}, config=deep_config)
+                    deep_input_messages = without_system_messages(original_messages)
+                    result = await deep_agent.ainvoke({"messages": deep_input_messages}, config=deep_config)
                 except Exception as _await_exc:
                     try:
                         err_prompt = (
@@ -3092,7 +3104,7 @@ class ToolsNodes(BasicNode):
                 final_messages = result.get("messages", [])
                 if not final_messages:
                     return {"messages": [AIMessage(content="DeepAgent 未返回任何消息")]}
-                new_messages = final_messages[len(original_messages) :]
+                new_messages = final_messages[len(deep_input_messages) :]
                 if not new_messages:
                     return {"messages": [AIMessage(content="DeepAgent 未产生新的响应")]}
                 try:
@@ -3319,7 +3331,7 @@ class ToolsNodes(BasicNode):
                 else:
                     header = "【步骤摘要】以下为已完成步骤摘要，请仅基于摘要与用户问题继续，不要重复已完成步骤。\n"
                 summary = _internal_message(header + ("\n".join(summary_lines) if summary_lines else "无"))
-                return {"messages": list(original_messages) + [summary]}
+                return {"messages": without_system_messages(original_messages) + [summary]}
 
             def _step_summary(messages: List[BaseMessage]) -> str:
                 for message in reversed(messages):
@@ -3366,7 +3378,7 @@ class ToolsNodes(BasicNode):
             try:
                 completed_steps: List[CompletedExecutionStep] = []
                 pending_steps = list(plan.steps)
-                agent_state: Dict[str, Any] = {"messages": original_messages}
+                agent_state: Dict[str, Any] = {"messages": without_system_messages(original_messages)}
                 replan_count = 0
                 total_steps = len(plan.steps)
 
