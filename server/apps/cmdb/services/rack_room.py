@@ -31,11 +31,15 @@ def letter_to_index(value: str) -> int:
 
 
 def format_rack_location_label(row: int, col: int) -> str:
-    return f"{col_to_letter(row)}{col:02d}"
+    """格式化机柜位置标签：字母为列（A–…）、数字为行（01–…）。"""
+    return f"{col_to_letter(col)}{row:02d}"
 
 
 def parse_rack_location(value) -> tuple[int, int] | None:
-    """解析 rack.location，字母为行、数字为列；支持 A3/A03。"""
+    """解析 rack.location，字母为列、数字为行；支持 A3/A03。
+
+    与机房俯视图约定一致：列 A–L（横轴）、行 1–N（纵轴）。
+    """
     if not isinstance(value, str):
         return None
 
@@ -43,8 +47,8 @@ def parse_rack_location(value) -> tuple[int, int] | None:
     if not match:
         return None
 
-    row = letter_to_index(match.group(1))
-    col = int(match.group(2))
+    col = letter_to_index(match.group(1))
+    row = int(match.group(2))
     if row < 1 or col < 1:
         return None
     return row, col
@@ -75,11 +79,7 @@ def build_room_layout(racks: list) -> dict:
             unplaced.append(
                 {
                     **r,
-                    "unplaced_reason": (
-                        "missing_location"
-                        if not isinstance(location, str) or not location.strip()
-                        else "invalid_location"
-                    ),
+                    "unplaced_reason": ("missing_location" if not isinstance(location, str) or not location.strip() else "invalid_location"),
                 }
             )
 

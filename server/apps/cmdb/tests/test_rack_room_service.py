@@ -100,10 +100,11 @@ class TestGetRoomLayout:
         out = rack_room.get_room_layout(7, permission_map={"x": 1}, user=None)
 
         assert len(out["racks"]) == 1
-        assert out["racks"][0]["row"] == 1
-        assert out["racks"][0]["col"] == 9
+        # A09：字母 A=列 1，数字 09=行 9（与俯视图「列字母 × 行数字」一致）
+        assert out["racks"][0]["row"] == 9
+        assert out["racks"][0]["col"] == 1
         assert out["racks"][0]["location"] == "A09"
-        assert out["grid"] == {"max_row": 1, "max_col": 9}
+        assert out["grid"] == {"max_row": 9, "max_col": 1}
 
     @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=True)
     @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")

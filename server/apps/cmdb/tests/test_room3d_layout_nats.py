@@ -83,8 +83,8 @@ def test_get_room3d_layout_ok_contract(monkeypatch):
             {
                 "rack_id": "5",
                 "rack_name": "RACK-5",
-                "row": 1,
-                "col": 3,
+                "row": 3,
+                "col": 1,
                 "location": "A03",
                 "rack_type": "2",
                 "u_count": 42,
@@ -311,9 +311,9 @@ def test_get_room3d_layout_returns_conflicting_racks_for_frontend_resolution(mon
     assert result["result"] is True
     assert [rack["rack_id"] for rack in result["data"]["racks"]] == ["5", "6", "7"]
     assert [(rack["row"], rack["col"], rack["location"]) for rack in result["data"]["racks"]] == [
-        (1, 3, "A03"),
-        (1, 3, "A03"),
-        (2, 1, "B01"),
+        (3, 1, "A03"),
+        (3, 1, "A03"),
+        (1, 2, "B01"),
     ]
     assert "diagnostics" not in result["data"]
     assert captured_rack_ids == ["5", "6", "7"]
@@ -381,7 +381,7 @@ def test_get_room3d_layout_formats_invalid_location_notice_in_english(monkeypatc
 
 
 @pytest.mark.unit
-def test_get_room3d_layout_parses_letter_row_and_number_col(monkeypatch):
+def test_get_room3d_layout_parses_letter_col_and_number_row(monkeypatch):
     _install_permission(monkeypatch)
 
     def fake_get_room_layout(*args, **kwargs):
@@ -401,8 +401,9 @@ def test_get_room3d_layout_parses_letter_row_and_number_col(monkeypatch):
     result = N.get_room3d_layout(server_room_id=7, user_info=USER_INFO)
 
     assert result["result"] is True
-    assert result["data"]["racks"][0]["row"] == 2
-    assert result["data"]["racks"][0]["col"] == 21
+    # B21：字母 B=列 2，数字 21=行 21
+    assert result["data"]["racks"][0]["row"] == 21
+    assert result["data"]["racks"][0]["col"] == 2
     assert result["data"]["racks"][0]["location"] == "B21"
 
 
@@ -424,8 +425,9 @@ def test_get_room3d_layout_accepts_unpadded_location_number(monkeypatch):
     result = N.get_room3d_layout(server_room_id=7, user_info=USER_INFO)
 
     assert result["result"] is True
-    assert result["data"]["racks"][0]["row"] == 1
-    assert result["data"]["racks"][0]["col"] == 3
+    # A3 → 列 A、行 3，格式化为 A03
+    assert result["data"]["racks"][0]["row"] == 3
+    assert result["data"]["racks"][0]["col"] == 1
     assert result["data"]["racks"][0]["location"] == "A03"
 
 
