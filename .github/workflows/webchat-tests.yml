@@ -1,0 +1,81 @@
+name: WebChat Tests
+
+on:
+  pull_request:
+    paths:
+      - 'webchat/**'
+      - '.github/workflows/webchat-tests.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'webchat/**'
+      - '.github/workflows/webchat-tests.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish WebChat packages after build and test
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        node-version: ['18.18.0', '20']
+    defaults:
+      run:
+        working-directory: webchat
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages and demo
+        run: npm run build
+
+      - name: Run tests and lint
+        run: npm test && npm run lint
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: webchat
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npm run build
+
+      - name: Publish packages
+        run: node scripts/publish-workspaces.mjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
