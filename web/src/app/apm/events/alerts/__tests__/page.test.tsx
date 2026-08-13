@@ -42,7 +42,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
 vi.mock('@/app/apm/components/apm-route-shell', () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
-  ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
+  ApmSurface: ({ children }: { children: React.ReactNode }) => <section data-testid="apm-surface">{children}</section>,
 }));
 
 const firingEvent = {
@@ -104,6 +104,13 @@ afterEach(() => {
 });
 
 describe('APM 告警详情抽屉', () => {
+  it('筛选、分布、状态切换与列表收敛在同一沉浸式承载面', async () => {
+    renderPage();
+
+    expect(await screen.findByText('checkout 错误率升高')).not.toBeNull();
+    expect(screen.getAllByTestId('apm-surface')).toHaveLength(1);
+  });
+
   it('点击详情打开告警抽屉并展示投递信息', async () => {
     const user = userEvent.setup();
     renderPage();

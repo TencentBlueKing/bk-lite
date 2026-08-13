@@ -356,9 +356,9 @@ export default function ApmEventsPage() {
       description="集中查看当前告警与已恢复的历史告警，并追踪每次通知投递结果。"
       dependency="control"
     >
-      <div className="flex flex-col gap-3">
-        <ApmSurface padding="compact">
-          <FilterToolbar align="start" spacing="flush" className="mb-3 w-full" contentClassName="w-full">
+      <ApmSurface padding="none" className="overflow-hidden">
+        <div className="border-b border-[var(--color-border-2)] p-3">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input.Search
               allowClear
               aria-label="搜索告警标题、服务或规则"
@@ -393,28 +393,30 @@ export default function ApmEventsPage() {
             </Radio.Group>
             <Button icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load}>刷新</Button>
           </FilterToolbar>
-          <div className="mb-3 rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <Typography.Text strong>告警分布（近 {timeRange}）</Typography.Text>
-              <Space size="middle">
-                <Typography.Text type="secondary" className="text-xs">严重 {events.filter((event) => event.severity === 'critical').length}</Typography.Text>
-                <Typography.Text type="secondary" className="text-xs">错误 {events.filter((event) => event.severity === 'error').length}</Typography.Text>
-                <Typography.Text type="secondary" className="text-xs">警告 {events.filter((event) => event.severity === 'warning').length}</Typography.Text>
-              </Space>
-            </div>
-            <div className="flex h-16 items-end gap-1" role="img" aria-label={`近 ${timeRange} 告警分布`}>
-              {distribution.map((bucket, index) => (
-                <div key={index} className="flex h-full min-w-1 flex-1 flex-col justify-end overflow-hidden rounded-t-sm" title={`第 ${index + 1} 时间段：${bucket.critical + bucket.error + bucket.warning} 条`}>
-                  <span className="block" style={{ height: `${(bucket.critical / maxDistribution) * 100}%`, background: SEVERITY_CHART.critical }} />
-                  <span className="block" style={{ height: `${(bucket.error / maxDistribution) * 100}%`, background: SEVERITY_CHART.error }} />
-                  <span className="block" style={{ height: `${(bucket.warning / maxDistribution) * 100}%`, background: SEVERITY_CHART.warning }} />
-                </div>
-              ))}
-            </div>
+        </div>
+        <div className="border-b border-[var(--color-border-2)] px-3 py-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <Typography.Text strong>告警分布（近 {timeRange}）</Typography.Text>
+            <Space size="middle">
+              <Typography.Text type="secondary" className="text-xs">严重 {events.filter((event) => event.severity === 'critical').length}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs">错误 {events.filter((event) => event.severity === 'error').length}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs">警告 {events.filter((event) => event.severity === 'warning').length}</Typography.Text>
+            </Space>
           </div>
+          <div className="relative flex h-16 items-end gap-1 border-b border-[var(--color-border-2)]" role="img" aria-label={`近 ${timeRange} 告警分布`}>
+            {distribution.map((bucket, index) => (
+              <div key={index} className="flex h-full min-w-1 flex-1 flex-col justify-end overflow-hidden rounded-t-sm" title={`第 ${index + 1} 时间段：${bucket.critical + bucket.error + bucket.warning} 条`}>
+                <span className="block" style={{ height: `${(bucket.critical / maxDistribution) * 100}%`, background: SEVERITY_CHART.critical }} />
+                <span className="block" style={{ height: `${(bucket.error / maxDistribution) * 100}%`, background: SEVERITY_CHART.error }} />
+                <span className="block" style={{ height: `${(bucket.warning / maxDistribution) * 100}%`, background: SEVERITY_CHART.warning }} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="px-3">
           <Tabs
             activeKey={activeTab}
-            className="mb-3"
+            className="!mb-0"
             items={[
               {
                 key: 'active',
@@ -427,32 +429,32 @@ export default function ApmEventsPage() {
             ]}
             onChange={(key) => { setActiveTab(key as AlertTab); setPage(1); }}
           />
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border-2)] pt-3">
-            <Space wrap size="middle">
-              <Select
-                allowClear
-                aria-label="按告警级别筛选"
-                className="w-36"
-                placeholder="全部级别"
-                value={query.severity}
-                options={(Object.entries(SEVERITY) as [ApmEvent['severity'], typeof SEVERITY[keyof typeof SEVERITY]][])
-                  .filter(([value]) => value !== 'info')
-                  .map(([value, config]) => ({ value: value as ApmPolicySeverity, label: config.label }))}
-                onChange={(severity) => { setQuery((current) => ({ ...current, severity })); setPage(1); }}
-              />
-              <Badge
-                count={visibleAlerts.length}
-                showZero
-                color="var(--color-primary)"
-                className="text-xs text-[var(--color-text-3)]"
-              />
-              <Typography.Text type="secondary" className="text-xs">
-                {activeTab === 'active' ? '当前未恢复' : '最近 7 天已恢复'}
-              </Typography.Text>
-            </Space>
-          </div>
-        </ApmSurface>
-        <ApmSurface padding="none" className="overflow-hidden">
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-2)] px-3 pb-3">
+          <Space wrap size="middle">
+            <Select
+              allowClear
+              aria-label="按告警级别筛选"
+              className="w-36"
+              placeholder="全部级别"
+              value={query.severity}
+              options={(Object.entries(SEVERITY) as [ApmEvent['severity'], typeof SEVERITY[keyof typeof SEVERITY]][])
+                .filter(([value]) => value !== 'info')
+                .map(([value, config]) => ({ value: value as ApmPolicySeverity, label: config.label }))}
+              onChange={(severity) => { setQuery((current) => ({ ...current, severity })); setPage(1); }}
+            />
+            <Badge
+              count={visibleAlerts.length}
+              showZero
+              color="var(--color-primary)"
+              className="text-xs text-[var(--color-text-3)]"
+            />
+            <Typography.Text type="secondary" className="text-xs">
+              {activeTab === 'active' ? '当前未恢复' : '最近 7 天已恢复'}
+            </Typography.Text>
+          </Space>
+        </div>
+        <div className="min-w-0">
           {visibleState === 'ready' || (state === 'loading' && events.length > 0) ? (
             <CustomTable
               autoScrollX={false}
@@ -483,8 +485,8 @@ export default function ApmEventsPage() {
               onRetry={visibleState === 'forbidden' ? undefined : load}
             />
           )}
-        </ApmSurface>
-      </div>
+        </div>
+      </ApmSurface>
 
       <Drawer
         open={drawerOpen}
