@@ -268,3 +268,25 @@ class TestExecuteNatsCreate:
         )
         assert out["result"] is False
         assert out["message"]
+
+    def test_late_failure_rolls_back_database_writes(self):
+        from apps.monitor.models.monitor_object import MonitorObjectType
+
+        object_type_id = "nats-create-rollback"
+
+        def create_then_fail(data, operator, domain):
+            MonitorObjectType.objects.create(id=object_type_id, name="待回滚类型")
+            raise RuntimeError("simulated late create failure")
+
+        out = nm._execute_nats_create(
+            create_then_fail,
+            {},
+            user_info={"user": SimpleNamespace(username="a", domain="domain.com")},
+        )
+
+        assert out == {
+            "result": False,
+            "data": [],
+            "message": "simulated late create failure",
+        }
+        assert not MonitorObjectType.objects.filter(id=object_type_id).exists()
