@@ -20,6 +20,12 @@
           "name": "data_source"
         },
         {
+          "title": "连接库",
+          "icon": "ops-analysis",
+          "url": "/ops-analysis/settings/dataConnection",
+          "name": "data_source"
+        },
+        {
           "title": "命名空间",
           "icon": "ops-analysis",
           "url": "/ops-analysis/settings/namespace",
@@ -46,6 +52,12 @@
           "title": "Data Source",
           "icon": "ops-analysis",
           "url": "/ops-analysis/settings/dataSource",
+          "name": "data_source"
+        },
+        {
+          "title": "Connection Library",
+          "icon": "ops-analysis",
+          "url": "/ops-analysis/settings/dataConnection",
           "name": "data_source"
         },
         {

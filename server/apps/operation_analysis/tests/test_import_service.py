@@ -515,3 +515,73 @@ def test_generate_rename_name_uses_one_query_for_conflict_chain():
 
     assert new_name == "ns-a_copy_copy_copy_copy"
     assert len(queries) == 1, queries.captured_queries
+
+
+@pytest.mark.django_db
+def test_precheck_warns_excel_needs_upload_without_imported_items():
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                key="excel-a::",
+                name="excel-a",
+                source_type="excel",
+                rest_api="",
+                connection_config={"filename": "a.xlsx"},
+                query_config={},
+                transform_config={"enabled": False, "language": "python", "script": ""},
+            )
+        ]
+    )
+    warnings = PrecheckService.check_excel_needs_upload(doc)
+    assert warnings
+    assert warnings[0]["code"] == "OA_EXCEL_NEEDS_UPLOAD"
+
+
+@pytest.mark.django_db
+def test_import_excel_without_imported_items_is_needs_upload():
+    from apps.operation_analysis.services.excel_materialize import resolve_excel_runtime_status
+
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                key="excel-b::",
+                name="excel-b",
+                source_type="excel",
+                rest_api="",
+                connection_config={"filename": "b.xlsx"},
+                query_config={},
+                transform_config={
+                    "enabled": True,
+                    "language": "python",
+                    "script": "def transform(rows, params):\n    return rows\n",
+                },
+            )
+        ]
+    )
+    result = _service(doc).execute()
+    assert result["success"] is True
+    ds = DataSourceAPIModel.objects.get(name="excel-b")
+    assert ds.transform_config.get("enabled") is True
+    assert resolve_excel_runtime_status(ds) == "needs_upload"
+
+
+@pytest.mark.django_db
+def test_import_excel_legacy_imported_items_stays_ready():
+    from apps.operation_analysis.services.excel_materialize import resolve_excel_runtime_status
+
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                key="excel-legacy::",
+                name="excel-legacy",
+                source_type="excel",
+                rest_api="",
+                connection_config={"filename": "legacy.xlsx"},
+                query_config={"imported_items": [{"name": "a", "value": 1}]},
+            )
+        ]
+    )
+    result = _service(doc).execute()
+    assert result["success"] is True
+    ds = DataSourceAPIModel.objects.get(name="excel-legacy")
+    assert resolve_excel_runtime_status(ds) == "ready"

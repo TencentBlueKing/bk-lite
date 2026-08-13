@@ -123,6 +123,20 @@ class ImportService:
                 return None
         return current
 
+    def _normalize_transform_config(self, ds_item) -> dict:
+        config = getattr(ds_item, "transform_config", None)
+        if not isinstance(config, dict):
+            return {}
+        enabled = bool(config.get("enabled"))
+        script = config.get("script") if isinstance(config.get("script"), str) else ""
+        if enabled and not script.strip():
+            return {"enabled": False, "language": "python", "script": ""}
+        return {
+            "enabled": enabled,
+            "language": "python",
+            "script": script,
+        }
+
     def _resolve_config_placeholders(self, object_key: str, field: str, config: dict, existing: dict | None = None):
         """用显式补密值或覆盖目标中的原值替换连接器配置里的脱敏占位符。"""
         resolved = deepcopy(config)
@@ -165,6 +179,25 @@ class ImportService:
             existing.query_config if existing else None,
         )
         return connection_config, query_config, missing_connection + missing_query
+
+    def _reset_excel_materialization_if_needs_upload(self, existing: DataSourceAPIModel, query_config: dict) -> None:
+        """新格式 Excel（无 imported_items）覆盖时清空旧槽，强制 needs_upload。"""
+        imported = query_config.get("imported_items") if isinstance(query_config, dict) else None
+        if isinstance(imported, list) and imported:
+            return
+        if existing.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+            return
+
+        from apps.operation_analysis.models.excel_materialization_models import ExcelMaterializationSlot
+
+        old_success_id = existing.excel_success_slot_id
+        old_candidate_id = existing.excel_candidate_slot_id
+        existing.excel_success_slot = None
+        existing.excel_candidate_slot = None
+        existing.excel_materialization_generation = 0
+        slot_ids = [sid for sid in (old_success_id, old_candidate_id) if sid]
+        if slot_ids:
+            ExcelMaterializationSlot.objects.filter(pk__in=slot_ids).delete()
 
     def _generate_rename_name(self, original_name: str, model) -> str:
         """
@@ -365,14 +398,19 @@ class ImportService:
                     return None
                 existing.desc = ds_item.desc
                 existing.source_type = ds_item.source_type
+                existing.connection = None
+                existing.connection_overrides = {}
                 existing.connection_config = connection_config
                 existing.query_config = query_config
+                existing.transform_config = self._normalize_transform_config(ds_item)
                 # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 existing.is_active = ds_item.is_active
                 existing.params = ds_item.params
                 existing.chart_type = ds_item.chart_type
                 existing.field_schema = ds_item.field_schema
                 existing.updated_by = self.updated_by
+                if existing.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+                    self._reset_excel_materialization_if_needs_upload(existing, query_config)
                 existing.save()
                 existing.namespaces.set(namespace_ids)
                 existing.tag.set(tag_ids)
@@ -400,8 +438,11 @@ class ImportService:
                     name=new_name,
                     rest_api=ds_item.rest_api,
                     source_type=ds_item.source_type,
+                    connection=None,
+                    connection_overrides={},
                     connection_config=connection_config,
                     query_config=query_config,
+                    transform_config=self._normalize_transform_config(ds_item),
                     desc=ds_item.desc,
                     # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                     is_active=ds_item.is_active,
@@ -437,8 +478,11 @@ class ImportService:
                 name=ds_item.name,
                 rest_api=ds_item.rest_api,
                 source_type=ds_item.source_type,
+                connection=None,
+                connection_overrides={},
                 connection_config=connection_config,
                 query_config=query_config,
+                transform_config=self._normalize_transform_config(ds_item),
                 desc=ds_item.desc,
                 # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 is_active=ds_item.is_active,

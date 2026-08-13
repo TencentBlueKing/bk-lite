@@ -585,7 +585,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                       style={{ width: '100%' }}
                       options={filteredDataSourceList.map((item) => ({
                         value: item.id,
-                        label: `${item.name}（${item.rest_api}）`,
+                        label: `${item.name}${item.rest_api ? `（${item.rest_api}）` : ''}`,
                       }))}
                       onChange={(sourceId) => {
                         previewRequestIdRef.current += 1;

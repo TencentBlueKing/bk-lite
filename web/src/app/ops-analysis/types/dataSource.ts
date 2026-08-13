@@ -61,7 +61,27 @@ export interface DatasourceItem {
   /** 普通列表接口返回；分享元数据刻意不返回，避免暴露内部执行路径 */
   rest_api?: string;
   connection_config?: Record<string, any>;
+  connection_overrides?: Record<string, any>;
+  connection?: number | null;
+  connection_id?: number | null;
   query_config?: Record<string, any>;
+  transform_config?: {
+    enabled?: boolean;
+    language?: string;
+    script?: string;
+  };
+  excel_materialization?: {
+    status?: string;
+    generation?: number;
+    success_slot_id?: number | null;
+    candidate_slot_id?: number | null;
+    candidate_status?: string | null;
+    error_code?: string;
+    error_summary?: string;
+    success_updated_at?: string | null;
+    has_saved_source?: boolean;
+    can_retry?: boolean;
+  };
   desc: string;
   // [内部预留] is_active 字段仅后端/导入导出链路使用，前端不再暴露
   params: ParamItem[];
@@ -83,6 +103,10 @@ export interface DataSourcePreviewResult {
   count: number;
   fields: ResponseFieldDefinition[];
   warnings?: string[];
+  raw_items?: Record<string, any>[];
+  raw_count?: number;
+  raw_fields?: ResponseFieldDefinition[];
+  transform_error?: { code?: string; message?: string } | null;
 }
 
 export interface OperateModalProps {

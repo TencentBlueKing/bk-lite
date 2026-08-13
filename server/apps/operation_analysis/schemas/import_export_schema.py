@@ -149,6 +149,7 @@ class DatasourceItem(BaseModel):
     source_type: str = Field(default="nats")
     connection_config: dict = Field(default_factory=dict)
     query_config: dict = Field(default_factory=dict)
+    transform_config: dict = Field(default_factory=dict)
     desc: str = Field(default="")
     is_active: bool = Field(default=True)
     params: dict | list | None = Field(default_factory=list)
@@ -173,7 +174,7 @@ class DatasourceItem(BaseModel):
     @field_validator("source_type")
     @classmethod
     def validate_source_type(cls, v: str) -> str:
-        if v not in {"nats", "mysql", "postgresql", "rest_api", "excel"}:
+        if v not in {"nats", "mysql", "postgresql", "rest_api", "excel", "prometheus"}:
             raise ValueError("source_type 不支持")
         return v
 

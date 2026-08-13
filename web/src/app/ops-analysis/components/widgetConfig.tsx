@@ -1125,7 +1125,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 rules={[{ required: true, message: t('common.selectTip') }]}
                 getValueProps={() => ({
                   value: selectedDataSource
-                    ? `${selectedDataSource.name}（${selectedDataSource.rest_api}）`
+                    ? `${selectedDataSource.name}${
+                        selectedDataSource.rest_api
+                          ? `（${selectedDataSource.rest_api}）`
+                          : ''
+                      }`
                     : '',
                 })}
               >
