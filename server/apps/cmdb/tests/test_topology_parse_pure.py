@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import pytest
 
+from apps.cmdb.collection.collect_plugin.topology import parse as topology_parse
 from apps.cmdb.collection.collect_plugin.topology.models import NormalizedPort
 from apps.cmdb.collection.collect_plugin.topology.parse import (
+    build_device_mac_correlations,
     build_multi_vlan_corroboration_summary,
     extract_previous_links,
     parse_aggregate_result,
@@ -16,6 +19,77 @@ pytestmark = [pytest.mark.unit]
 
 
 class ParseTopologyTest(unittest.TestCase):
+    def test_device_mac_correlations_index_observed_device_macs_once(self) -> None:
+        class CountingDeviceMacSets(dict):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.items_calls = 0
+
+            def items(self):
+                self.items_calls += 1
+                return super().items()
+
+        observed_mac_sets = CountingDeviceMacSets({f"target-{index}": {f"00:00:00:00:{index:02x}:01"} for index in range(64)})
+        ports = {
+            "source:1": NormalizedPort(
+                device_id="source",
+                port_id="source:1",
+                ifindex="1",
+                ifname="Ethernet1",
+                mac="00:00:00:00:ff:01",
+            )
+        }
+        devices = {"source": {"host": "source", "ips": []}}
+        devices.update(
+            {device_id: {"host": device_id, "ips": []} for device_id in observed_mac_sets}
+        )
+        normalized = {
+            "arp_observations": [],
+            "fdb_observations": [
+                {
+                    "status": "learned",
+                    "source_device_id": "source",
+                    "local_port_id": "source:1",
+                    "mac": "ff:ff:ff:ff:ff:fe",
+                    "vlan": "1",
+                    "evidence_key": f"fdb-{index}",
+                }
+                for index in range(16)
+            ],
+        }
+
+        with (
+            patch.object(
+                topology_parse,
+                "build_observed_device_mac_sets",
+                return_value=observed_mac_sets,
+            ),
+            patch.object(
+                topology_parse,
+                "build_mac_device_index",
+                wraps=topology_parse.build_mac_device_index,
+            ) as build_index,
+        ):
+            self.assertEqual(build_device_mac_correlations(normalized, ports, devices), [])
+
+        self.assertEqual(observed_mac_sets.items_calls, 1)
+        self.assertEqual(build_index.call_count, 2)
+
+    def test_mac_device_index_preserves_device_order_for_shared_macs(self) -> None:
+        self.assertTrue(
+            hasattr(topology_parse, "build_mac_device_index"),
+            "缺少 MAC 到设备列表的倒排索引构建器",
+        )
+        index = topology_parse.build_mac_device_index(
+            {
+                "device-b": {"shared", "only-b"},
+                "device-a": {"shared"},
+            }
+        )
+
+        self.assertEqual(index["shared"], ["device-b", "device-a"])
+        self.assertEqual(index["only-b"], ["device-b"])
+
     def test_authoritative_neighbor_link_uses_bridge_port_resolution(self) -> None:
         aggregate = {
             "devices": [
