@@ -32,9 +32,12 @@ for (const range of ["'1h'", "'24h'", "'7d'"]) {
 }
 assert.match(policies, /新建策略/);
 assert.match(policies, /编辑/);
-assert.match(policies, /title: '启停'/, '策略启停必须保留在列表中');
+assert.match(policies, /title: '启用状态'/, '策略启停必须保留在列表中');
 assert.doesNotMatch(policies, /测试查询|title: '监控对象'/, '策略列表不得保留测试查询或监控对象列');
-assert.match(policies, /events\/policies\/new/, '新建策略必须进入独立页面');
+assert.match(policies, /openCreate/, '新建策略必须打开创建表单');
+assert.doesNotMatch(policies, /events\/policies\/new/, '新建策略不得再跳转旧的独立页面');
+assert.match(policies, /FilterToolbar/, '策略列表工具栏必须复用统一筛选布局');
+assert.match(policies, /MoreActionsDropdown/, '策略行操作必须收敛到统一更多操作菜单');
 assert.match(legacyEvents, /\/apm\/events\/alerts/, '旧 /apm/events 必须兼容跳转到告警列表');
 assert.match(legacyPolicies, /\/apm\/events\/policies/, '旧 /apm/policies 必须兼容跳转到事件策略');
 
