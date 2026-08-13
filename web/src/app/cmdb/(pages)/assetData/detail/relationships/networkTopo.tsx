@@ -41,19 +41,33 @@ import topoStyle from './index.module.scss';
 
 const NODE_WIDTH = NETWORK_TOPO_VISUAL.node.width;
 const NODE_HEIGHT = NETWORK_TOPO_VISUAL.node.height;
-const DEVICE_NODE_SHAPE = 'topo-network-device';
+const DEVICE_NODE_SHAPE = NETWORK_TOPO_VISUAL.shape;
 
 // 展开策略：首屏 2 跳，最多 4 跳，节点上限 100（与后端常量一致）
 const DEFAULT_HOP = 2;
 const MAX_HOP = 4;
 
-// 分层布局列距/行距：列距需足够大，让接口标签落在设备卡片之间的空隙、不遮挡卡片
+// 分层布局列距/行距：列距需足够大，让接口标签落在设备之间的空隙、不遮挡节点
 const HIER_COL_GAP = NETWORK_TOPO_VISUAL.layout.columnGap;
 const HIER_ROW_GAP = NETWORK_TOPO_VISUAL.layout.rowGap;
 
 type LayoutMode = 'hierarchical' | 'force' | 'circular';
 
-const ACTIVE_BODY_ATTRS = NETWORK_TOPO_VISUAL.node.activeBody;
+const DEFAULT_BODY_ATTRS = NETWORK_TOPO_VISUAL.node.defaultBody;
+const ACTIVE_GLOW = NETWORK_TOPO_VISUAL.node.activeGlow;
+
+const applyNodeActiveGlow = (isActive: boolean) => ({
+  iconRing: {
+    fill: isActive ? ACTIVE_GLOW.haloFill : 'transparent',
+    opacity: isActive ? 1 : 0,
+    stroke: 'none',
+    strokeWidth: 0,
+    filter: ACTIVE_GLOW.haloBlur,
+  },
+  img: {
+    filter: isActive ? ACTIVE_GLOW.iconFilter : 'none',
+  },
+});
 
 // inst_name 形如 `${device}-${端口名}`，展示端口时剥掉设备前缀
 const stripDevicePrefix = (instName?: string, device?: string): string => {
@@ -213,6 +227,7 @@ const buildGraphData = (
     centers[id] = { x: p.x, y: p.y };
     const label = nameOf(id);
     const subtitle = subtitleOf(id);
+    const isCenter = id === centerId;
     return {
       id,
       x: p.x - NODE_WIDTH / 2,
@@ -221,27 +236,18 @@ const buildGraphData = (
       height: NODE_HEIGHT,
       shape: DEVICE_NODE_SHAPE,
       data: {
-        isCenter: id === centerId,
+        isCenter,
       },
       attrs: {
-        body: id === centerId ? ACTIVE_BODY_ATTRS : {},
-        iconColumn: {
-          fill: id === centerId ? '#eef7ff' : '#f7fbff',
-        },
-        divider: {
-          stroke: id === centerId ? '#c7def8' : '#e1ebf6',
-        },
-        statusDot: {
-          fill: id === centerId ? '#42d9a6' : '#7dd3fc',
-          stroke: id === centerId ? '#eafff7' : '#eff8ff',
-        },
+        body: { ...DEFAULT_BODY_ATTRS },
+        ...applyNodeActiveGlow(isCenter),
         img: {
           'xlink:href': getIconUrl({
             icn: '',
             model_id: merged.nodes.get(id)?.model_id || '',
           }),
+          filter: isCenter ? ACTIVE_GLOW.iconFilter : 'none',
         },
-        tt: { text: label },
         lbl: { text: label, title: label },
         subLbl: { text: subtitle, title: subtitle },
       },
@@ -281,8 +287,18 @@ const buildGraphData = (
 
     return {
       id: `edge-${l.relationship_id}`,
-      source: l.source_device,
-      target: l.target_device,
+      source: {
+        cell: l.source_device,
+        selector: 'edgeHull',
+        anchor: { name: 'nodeCenter' },
+        connectionPoint: { name: 'boundary', args: { selector: 'edgeHull' } },
+      },
+      target: {
+        cell: l.target_device,
+        selector: 'edgeHull',
+        anchor: { name: 'nodeCenter' },
+        connectionPoint: { name: 'boundary', args: { selector: 'edgeHull' } },
+      },
       vertices,
       connector: { name: 'smooth' },
       attrs: {
@@ -292,6 +308,7 @@ const buildGraphData = (
           strokeLinecap: 'round',
           strokeLinejoin: 'round',
           targetMarker: null,
+          sourceMarker: null,
           filter: 'drop-shadow(0 1px 2px rgba(28, 55, 92, 0.16))',
         },
       },
@@ -311,15 +328,15 @@ const buildGraphData = (
   return { nodes, edges };
 };
 
-export type NetworkTopoFocusPayload = {
+export interface NetworkTopoFocusPayload {
   modelId: string;
-  instId: string;
+  instUuid: string;
   instName?: string;
-};
+}
 
 interface NetworkTopoProps {
   modelId: string;
-  instId: string;
+  instUuid: string;
   /** Hub flex layout: fill parent instead of viewport calc. Default false keeps detail page height. */
   fillContainer?: boolean;
   /** When provided (hub), enable 「设为当前」 via dblclick / context menu. Detail omits → expand-on-click unchanged. */
@@ -330,7 +347,7 @@ interface NetworkTopoProps {
 
 const NetworkTopo: React.FC<NetworkTopoProps> = ({
   modelId,
-  instId,
+  instUuid,
   fillContainer = false,
   onRequestFocus,
   onViewDetail,
@@ -401,7 +418,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
         )
       )
       .catch(() => setNetworkModels([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const rebuild = useCallback(async (center: string, mode: LayoutMode) => {
@@ -447,14 +464,14 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
 
   // 初次加载：默认展开 2 跳
   useEffect(() => {
-    if (!modelId || !instId) return;
+    if (!modelId || !instUuid) return;
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       try {
         const data: NetworkTopoData = await getNetworkTopo(
           modelId,
-          instId,
+          instUuid,
           DEFAULT_HOP
         );
         if (cancelled) return;
@@ -479,8 +496,8 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, instId]);
+     
+  }, [modelId, instUuid]);
 
   // 点击对端设备：取其下一跳并合并（受最大跳数与节点上限约束）
   const handleExpand = useCallback(
@@ -530,7 +547,16 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
   // 删除连线（已落库），更新合并图并 rebuild
   const handleDeleteLink = useCallback(
     async (relationshipId: string) => {
-      await deleteInstanceAssociation(relationshipId);
+      const link = mergedRef.current.links.get(relationshipId);
+      if (!link?.src_inst_uuid || !link?.dst_inst_uuid || !link?.model_asst_id) {
+        message.error(t('common.operationFailed'));
+        return;
+      }
+      await deleteInstanceAssociation(
+        link.src_inst_uuid,
+        link.dst_inst_uuid,
+        link.model_asst_id
+      );
       mergedRef.current.links.delete(relationshipId);
       message.success(t('successfullyDisassociated'));
       await rebuild(centerId, layoutMode);
@@ -564,7 +590,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
       if (!n?.model_id) return null;
       return {
         modelId: n.model_id,
-        instId: n.id,
+        instUuid: n.id,
         instName: n.name,
       };
     },
@@ -679,7 +705,8 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
         }
       });
       const link = buildLinkFromConnection({
-        relationshipId: String(res._id),
+        srcInstUuid: String(res.src_inst_uuid || r.sourcePortId),
+        dstInstUuid: String(res.dst_inst_uuid || r.targetPortId),
         sourceDevice: sourceId,
         targetDevice: targetId,
         sourcePortName: r.sourcePortName,

@@ -23,7 +23,6 @@ from apps.operation_analysis.constants.import_export import (
 )
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 
-
 DATE_RANGE_QUICK_TYPES = {
     "today",
     "yesterday",
@@ -150,6 +149,7 @@ class DatasourceItem(BaseModel):
     source_type: str = Field(default="nats")
     connection_config: dict = Field(default_factory=dict)
     query_config: dict = Field(default_factory=dict)
+    transform_config: dict = Field(default_factory=dict)
     desc: str = Field(default="")
     is_active: bool = Field(default=True)
     params: dict | list | None = Field(default_factory=list)
@@ -444,7 +444,7 @@ DB_ID_FIELD_PATTERN = re.compile(r"(^|_)(id|ids)$", re.IGNORECASE)
 PURE_NUMERIC_PATTERN = re.compile(r"^\d+$")
 
 NETWORK_TOPOLOGY_EXTERNAL_ID_FIELDS = {
-    "bk_inst_id",
+    "bk_inst_uuid",
     "plugin_group_id",
     "plugin_template_id",
     "network_collect_task_id",

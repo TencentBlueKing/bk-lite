@@ -20,7 +20,10 @@ def _empty_summary(**extra) -> dict:
 
 
 def extract_subnet_discovery_params(task) -> tuple:
-    """从采集任务 model 实例或 dict 中提取 (subnet_ids, scan_method, ports)。"""
+    """从采集任务提取 (subnet_refs, scan_method, ports)。
+
+    subnet_refs 优先为 UUID 字符串列表（subnet_uuids）；过渡期可回退 subnet_ids。
+    """
     if hasattr(task, "instances"):
         raw_instances = task.instances
         raw_params = getattr(task, "params", {}) or {}
@@ -35,39 +38,67 @@ def extract_subnet_discovery_params(task) -> tuple:
 
     raw_instances = {**raw_instances, **raw_params}
 
+    subnet_uuids = raw_instances.get("subnet_uuids", [])
     subnet_ids = raw_instances.get("subnet_ids", [])
+    if not isinstance(subnet_uuids, list):
+        subnet_uuids = list(subnet_uuids) if subnet_uuids else []
     if not isinstance(subnet_ids, list):
         subnet_ids = list(subnet_ids) if subnet_ids else []
+
+    subnet_refs = subnet_uuids or subnet_ids
 
     scan_method = raw_instances.get("scan_method", "icmp") or "icmp"
     ports = raw_instances.get("ports", None)
     if ports is not None and not isinstance(ports, list):
         ports = list(ports)
 
-    return subnet_ids, scan_method, ports
+    return subnet_refs, scan_method, ports
 
 
-def _load_subnets_by_ids(subnet_ids: list) -> list:
+def _load_subnets_by_ids(subnet_refs: list) -> list:
+    """按 UUID 优先加载子网；数字 ID 仅作过渡期回退。"""
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+
+    uuids = []
     ids = []
-    for item in subnet_ids or []:
+    for item in subnet_refs or []:
         if isinstance(item, bool):
             continue
         try:
+            uuids.append(normalize_inst_uuid(item))
+            continue
+        except Exception:
+            pass
+        try:
             ids.append(int(item))
         except (TypeError, ValueError):
-            logger.warning("[IPDiscovery] 忽略非法 subnet_id=%r", item)
-    if not ids:
+            logger.warning("[IPDiscovery] 忽略非法 subnet_ref=%r", item)
+    if not uuids and not ids:
         return []
     with GraphClient() as ag:
-        rows, _ = ag.query_entity(INSTANCE, [
-            {"field": "model_id", "type": "str=", "value": "subnet"},
-            {"field": "id", "type": "id[]", "value": ids}])
+        if uuids:
+            rows, _ = ag.query_entity(
+                INSTANCE,
+                [
+                    {"field": "model_id", "type": "str=", "value": "subnet"},
+                    {"field": "inst_uuid", "type": "str[]", "value": uuids},
+                ],
+            )
+            return rows or []
+        rows, _ = ag.query_entity(
+            INSTANCE,
+            [
+                {"field": "model_id", "type": "str=", "value": "subnet"},
+                {"field": "id", "type": "id[]", "value": ids},
+            ],
+        )
     return rows or []
 
 
 # ---------------------------------------------------------------------------
 # 回写层:apply_discovery_result / apply_ip_discovery_vm_rows
 # ---------------------------------------------------------------------------
+
 
 def _dedupe_ip_rows(rows: list) -> list:
     result = []
@@ -86,10 +117,13 @@ def _dedupe_ip_rows(rows: list) -> list:
 def _load_subnet_ips_by_field(subnet_id) -> list:
     """兼容旧数据:按 subnet_id 字段查询某子网下所有 IP 记录。"""
     with GraphClient() as ag:
-        rows, _ = ag.query_entity(INSTANCE, [
-            {"field": "model_id", "type": "str=", "value": "ip"},
-            {"field": "subnet_id", "type": "str=", "value": str(subnet_id)},
-        ])
+        rows, _ = ag.query_entity(
+            INSTANCE,
+            [
+                {"field": "model_id", "type": "str=", "value": "ip"},
+                {"field": "subnet_id", "type": "str=", "value": str(subnet_id)},
+            ],
+        )
     return rows or []
 
 
@@ -139,13 +173,18 @@ def _ensure_subnet_ip_association(subnet_id, ip_id) -> dict:
 # 系统写公共 helper,周期任务写台账用,跳过权限校验 + 不记变更日志
 # ---------------------------------------------------------------------------
 
+
 def _system_create_or_update(model_id: str, instance_info: dict, existing_id=None, organization=None) -> dict:
     """已有 _id 走 update,否则 create。统一走 system 操作员 + 跳过权限校验。"""
     from apps.cmdb.services.instance import InstanceManage
 
     if existing_id:
         InstanceManage.instance_update(
-            [], [], existing_id, instance_info, "system",
+            [],
+            [],
+            existing_id,
+            instance_info,
+            "system",
             skip_permission_check=True,
             allowed_org_ids=organization or [],
             record_change=False,
@@ -166,8 +205,13 @@ def _system_update(instance_id, instance_info: dict) -> None:
     from apps.cmdb.services.instance import InstanceManage
 
     InstanceManage.instance_update(
-        [], [], instance_id, instance_info, "system",
-        skip_permission_check=True, record_change=False,
+        [],
+        [],
+        instance_id,
+        instance_info,
+        "system",
+        skip_permission_check=True,
+        record_change=False,
     )
 
 
@@ -225,18 +269,23 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
             # 手工录入不被自动发现覆盖(仅 auto_collect is True 的记录归发现采集所有、可写)
             continue
         try:
-            upsert_result = _upsert_alive_ip(
-                existing_id=(prev or {}).get("_id"),
-                subnet_id=subnet_id,
-                ip_addr=item["ip"],
-                mac=item.get("mac", ""),
-                organization=organization,
-            ) or {}
+            upsert_result = (
+                _upsert_alive_ip(
+                    existing_id=(prev or {}).get("_id"),
+                    subnet_id=subnet_id,
+                    ip_addr=item["ip"],
+                    mac=item.get("mac", ""),
+                    organization=organization,
+                )
+                or {}
+            )
         except Exception as err:
             failed += 1
             logger.warning(
                 "[IPDiscovery] upsert IP 失败 subnet_id=%s ip=%s err=%s,继续处理其他 IP",
-                subnet_id, item["ip"], err,
+                subnet_id,
+                item["ip"],
+                err,
             )
             continue
 
@@ -270,20 +319,24 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
                 failed += 1
                 logger.warning(
                     "[IPDiscovery] mark_offline 失败 subnet_id=%s ip_id=%s err=%s,继续处理其他 IP",
-                    subnet_id, ip["_id"], err,
+                    subnet_id,
+                    ip["_id"],
+                    err,
                 )
                 continue
             offline += 1
-            format_data["update"].append({
-                "_status": "success",
-                "_id": ip["_id"],
-                "model_id": "ip",
-                "inst_name": ip.get("inst_name") or ip.get("ip_addr"),
-                "ip_addr": ip.get("ip_addr"),
-                "subnet_id": str(subnet_id),
-                "ip_status": ["offline"],
-                "auto_collect": True,
-            })
+            format_data["update"].append(
+                {
+                    "_status": "success",
+                    "_id": ip["_id"],
+                    "model_id": "ip",
+                    "inst_name": ip.get("inst_name") or ip.get("ip_addr"),
+                    "ip_addr": ip.get("ip_addr"),
+                    "subnet_id": str(subnet_id),
+                    "ip_status": ["offline"],
+                    "auto_collect": True,
+                }
+            )
 
     _writeback_subnet_utilization([subnet_id])
     format_data["all"] = len(format_data["add"]) + len(format_data["update"]) + len(format_data["delete"])
@@ -314,9 +367,7 @@ def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
             continue
         if subnet_id not in selected_subnet_ids:
             continue
-        alive_by_subnet.setdefault(subnet_id, []).append(
-            {"ip": ip_addr, "mac": row.get("mac", "")}
-        )
+        alive_by_subnet.setdefault(subnet_id, []).append({"ip": ip_addr, "mac": row.get("mac", "")})
 
     summary = _empty_summary()
     for subnet_id in selected_subnet_ids:

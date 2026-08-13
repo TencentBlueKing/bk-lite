@@ -380,3 +380,63 @@ def test_export_canvas_network_topology_yaml_section_and_secret_mask():
     assert parsed["network_topologies"][0]["key"] == "networkTopology::net-a"
     assert parsed["network_topologies"][0]["base_url"] == "https://weops.example.com"
     assert parsed["network_topologies"][0]["token"] == "******"
+
+
+@pytest.mark.django_db
+def test_export_excel_new_model_strips_imported_items_and_keeps_transform():
+    ds = DataSourceAPIModel.objects.create(
+        name="excel-new",
+        rest_api="",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_EXCEL,
+        query_config={"imported_items": [{"a": 1}], "sheet_name": "Sheet1"},
+        transform_config={
+            "enabled": True,
+            "language": "python",
+            "script": "def transform(rows, params):\n    return rows\n",
+        },
+        excel_materialization_generation=1,
+        created_by="s",
+        updated_by="s",
+    )
+    payload = ExportService.convert_datasource_to_yaml(ds)
+    assert "imported_items" not in payload["query_config"]
+    assert payload["query_config"].get("sheet_name") == "Sheet1"
+    assert payload["transform_config"]["enabled"] is True
+
+
+@pytest.mark.django_db
+def test_export_shared_connection_expands_to_redacted_inline():
+    from apps.operation_analysis.models.datasource_models import DataConnection
+    from apps.operation_analysis.services.data_connection.config_crypto import encrypt_connection_config
+
+    connection = DataConnection.objects.create(
+        name="shared-mysql",
+        connection_type=DataConnection.TYPE_MYSQL,
+        groups=[1],
+        config=encrypt_connection_config(
+            {
+                "host": "db.example.com",
+                "port": 3306,
+                "database": "ops",
+                "username": "reader",
+                "password": "secret",
+            }
+        ),
+        created_by="s",
+        updated_by="s",
+    )
+    ds = DataSourceAPIModel.objects.create(
+        name="ds-shared",
+        rest_api="",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_MYSQL,
+        connection=connection,
+        groups=[1],
+        connection_overrides={"database": "ops"},
+        query_config={"sql": "select 1"},
+        created_by="s",
+        updated_by="s",
+    )
+    payload = ExportService.convert_datasource_to_yaml(ds)
+    assert "connection_id" not in payload
+    assert payload["connection_config"]["host"] == "db.example.com"
+    assert payload["connection_config"]["password"] == "******"

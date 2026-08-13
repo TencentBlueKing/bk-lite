@@ -20,6 +20,17 @@ export interface ViewCanvasHostProps {
   focus: ViewFocus;
   /** Shell focus updater — wired to NetworkTopo onRequestFocus when viewType is network. */
   onFocusChange?: (focus: ViewFocus) => void;
+  /**
+   * Called when the user drills from a room floor plan into a rack while
+   * staying in the views hub. Shell should stash the room focus for Back.
+   */
+  onRoomRackDrill?: (rack: {
+    inst_uuid: string;
+    inst_name?: string;
+    fromRoom: ViewFocus;
+  }) => void;
+  /** When returning to a room, scroll/highlight this rack on the floor plan. */
+  highlightRackId?: string | null;
   /** Optional override; when set, skips built-in view canvases. */
   children?: React.ReactNode;
 }
@@ -32,6 +43,8 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   viewType,
   focus,
   onFocusChange,
+  onRoomRackDrill,
+  highlightRackId,
   children,
 }) => {
   const { t } = useTranslation();
@@ -42,13 +55,13 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   useEffect(() => {
     setDevice(null);
     setDevOpen(false);
-  }, [viewType, focus.model_id, focus.inst_id, focus.mode]);
+  }, [viewType, focus.model_id, focus.inst_uuid, focus.mode]);
 
   const handleNetworkRequestFocus = useCallback(
-    (payload: { modelId: string; instId: string; instName?: string }) => {
+    (payload: { modelId: string; instUuid: string; instName?: string }) => {
       onFocusChange?.({
         model_id: payload.modelId,
-        inst_id: payload.instId,
+        inst_uuid: payload.instUuid,
         inst_name: payload.instName,
       });
     },
@@ -56,11 +69,11 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   );
 
   const handleNetworkViewDetail = useCallback(
-    (payload: { modelId: string; instId: string; instName?: string }) => {
+    (payload: { modelId: string; instUuid: string; instName?: string }) => {
       window.open(
         buildBaseInfoPath({
           model_id: payload.modelId,
-          inst_id: payload.instId,
+          inst_uuid: payload.instUuid,
           inst_name: payload.instName,
         }),
         '_blank',
@@ -71,15 +84,28 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   );
 
   const handleRackSelect = useCallback(
-    (rack: { inst_id: string; inst_name?: string }) => {
+    (rack: { inst_uuid?: string; inst_id?: string; inst_name?: string }) => {
+      const rackUuid = rack.inst_uuid || rack.inst_id || '';
+      onRoomRackDrill?.({
+        inst_uuid: rackUuid,
+        inst_name: rack.inst_name,
+        fromRoom: {
+          model_id: focus.model_id,
+          inst_uuid: focus.inst_uuid,
+          inst_name: focus.inst_name,
+          model_name: focus.model_name,
+          icn: focus.icn,
+          mode: 'room',
+        },
+      });
       onFocusChange?.({
         model_id: 'rack',
-        inst_id: rack.inst_id,
+        inst_uuid: rackUuid,
         inst_name: rack.inst_name,
         mode: 'rack',
       });
     },
-    [onFocusChange]
+    [onFocusChange, onRoomRackDrill, focus]
   );
 
   if (children) {
@@ -92,7 +118,7 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
         <RelationshipsProvider>
           <NetworkTopo
             modelId={focus.model_id}
-            instId={focus.inst_id}
+            instUuid={focus.inst_uuid}
             fillContainer
             onRequestFocus={handleNetworkRequestFocus}
             onViewDetail={handleNetworkViewDetail}
@@ -107,7 +133,7 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
       <div className="h-full min-h-0 overflow-auto">
         <ApplicationResourceOverview
           modelId={focus.model_id}
-          instId={focus.inst_id}
+          instUuid={focus.inst_uuid}
         />
       </div>
     );
@@ -116,7 +142,7 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   if (viewType === 'k8s') {
     return (
       <div className="h-full min-h-0 overflow-hidden">
-        <K8sResourceDetailsContent instId={focus.inst_id} />
+        <K8sResourceDetailsContent instUuid={focus.inst_uuid} />
       </div>
     );
   }
@@ -124,7 +150,7 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   if (viewType === 'ip') {
     return (
       <div className="h-full min-h-0 overflow-auto">
-        <IpamMatrix instId={focus.inst_id} />
+        <IpamMatrix instUuid={focus.inst_uuid} />
       </div>
     );
   }
@@ -138,7 +164,7 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
         <div className="h-full min-h-0 overflow-auto">
           <RackElevation
             modelId={focus.model_id}
-            instId={focus.inst_id}
+            instUuid={focus.inst_uuid}
             onDeviceClick={(d) => {
               setDevice(d);
               setDevOpen(true);
@@ -157,8 +183,9 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
       <div className="h-full min-h-0 overflow-auto">
         <RoomFloorPlan
           modelId={focus.model_id}
-          instId={focus.inst_id}
+          instUuid={focus.inst_uuid}
           onRackSelect={handleRackSelect}
+          highlightRackId={highlightRackId || undefined}
         />
       </div>
     );

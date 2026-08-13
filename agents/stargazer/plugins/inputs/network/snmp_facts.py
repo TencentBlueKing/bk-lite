@@ -60,7 +60,7 @@ class SnmpFacts:
         self.privacy = kwargs.get("privacy")
         self.authkey = kwargs.get("authkey")
         self.privkey = kwargs.get("privkey")
-        self.timeout = int(kwargs.get("timeout", 1))
+        self.timeout = int(kwargs.get("timeout", 5))
         self.retries = int(kwargs.get("retries", 2))
         self.snmp_port = int(kwargs.get("snmp_port", 161))  # 默认 SNMP 端口为 161
         # 支持 has_network_topo 和 topo 两个参数名，保持向后兼容
@@ -278,10 +278,10 @@ class SnmpFacts:
 
         cmd_gen = cmdgen.CommandGenerator()
         oid = DefineOid(dotprefix=True)
-        # access_probe：固定 5 秒超时、重试 1 次（与正式采集 timeout 解耦）
+        # access_probe：固定 5 秒超时、重试 2 次（与正式采集 timeout 解耦）
         transport_opts = {
             "timeout": 5,
-            "retries": 1,
+            "retries": 2,
         }
         try:
             error_indication, error_status, _error_index, var_binds = cmd_gen.getCmd(

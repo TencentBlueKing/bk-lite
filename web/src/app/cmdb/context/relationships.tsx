@@ -25,7 +25,7 @@ interface RelationshipsContextType {
   fetchModelData: () => Promise<void>;
   fetchAssoInstances: (
     modelId: string,
-    instId: string
+    instUuid: string
   ) => Promise<CrentialsAssoInstItem[]>;
 }
 
@@ -49,12 +49,12 @@ export const RelationshipsProvider: React.FC<{ children: React.ReactNode }> = ({
   const [selectedAssoId, setSelectedAssoId] = useState<string>('');
   const searchParams = useSearchParams();
   const modelId: string = searchParams.get('model_id') || '';
-  const instId: string = searchParams.get('inst_id') || '';
+  const instUuid: string = searchParams.get('inst_uuid') || '';
 
   useEffect(() => {
-    fetchAssoInstances(modelId, instId);
+    fetchAssoInstances(modelId, instUuid);
     fetchModelData();
-  }, [modelId, instId]);
+  }, [modelId, instUuid]);
 
   const fetchModelData = useCallback(async () => {
     setLoading(true);
@@ -69,12 +69,12 @@ export const RelationshipsProvider: React.FC<{ children: React.ReactNode }> = ({
   const fetchAssoInstances = useCallback(
     async (
       modelId: string,
-      instId: string
+      instUuid: string
     ): Promise<CrentialsAssoInstItem[]> => {
-      if (!modelId || !instId) return [];
+      if (!modelId || !instUuid) return [];
       setLoading(true);
       try {
-        const data = await getAssociationInstanceList(modelId, instId);
+        const data = await getAssociationInstanceList(modelId, instUuid);
         const result = Array.isArray(data) ? data : [];
         setAssoInstances(result);
         return result;

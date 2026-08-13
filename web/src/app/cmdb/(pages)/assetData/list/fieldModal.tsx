@@ -29,7 +29,7 @@ import styles from './filterBar.module.scss';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
 interface FieldModalProps {
-  onSuccess: (instId?: string) => void;
+  onSuccess: (instUuid?: string) => void;
   userList: UserItem[];
 }
 
@@ -343,13 +343,13 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
           });
         } else {
           result = await instanceApi.batchUpdateInstances({
-            inst_ids: type === 'edit' ? [instanceData._id] : selectedRows,
+            inst_uuids: type === 'edit' ? [instanceData.inst_uuid] : selectedRows.map((id: any) => String(id)),
             update_data: formData,
           });
         }
-        const instId = result?._id;
+        const instUuid = result?.inst_uuid;
         message.success(msg);
-        onSuccess(confirmType ? instId : '');
+        onSuccess(confirmType ? instUuid : '');
         handleCancel();
       } catch (error) {
         console.log(error);

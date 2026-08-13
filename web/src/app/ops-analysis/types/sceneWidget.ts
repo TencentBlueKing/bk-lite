@@ -17,7 +17,7 @@ export interface NetworkStatusTopologyModeLayout {
 
 export interface NetworkStatusTopologyConfig {
   modelId: string;
-  instId: string;
+  instUuid: string;
   depth: number;
   /** 可选；缺省视为 hierarchical */
   layoutMode?: NetworkStatusTopologyLayoutMode;

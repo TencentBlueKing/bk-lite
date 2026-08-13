@@ -79,6 +79,7 @@ class ExportService:
         对敏感字段进行脱敏处理
 
         遍历字典，将敏感字段值替换为占位符。
+        REST headers 的所有值一律脱敏（Header 名可见）。
         """
         if isinstance(data, list):
             return [ExportService.mask_sensitive_fields(item) for item in data]
@@ -87,7 +88,12 @@ class ExportService:
 
         result = {}
         for key, value in data.items():
-            if is_sensitive_field_name(key) and value:
+            if key == "headers" and isinstance(value, dict):
+                result[key] = {
+                    header_key: (SENSITIVE_PLACEHOLDER if header_value not in (None, "") else header_value)
+                    for header_key, header_value in value.items()
+                }
+            elif is_sensitive_field_name(key) and value:
                 result[key] = SENSITIVE_PLACEHOLDER
             else:
                 result[key] = ExportService.mask_sensitive_fields(value)
@@ -111,9 +117,42 @@ class ExportService:
 
     @staticmethod
     def convert_datasource_to_yaml(ds: DataSourceAPIModel) -> dict:
-        """将数据源对象转换为YAML结构"""
+        """将数据源对象转换为YAML结构。
+
+        - 公共连接不作为一级对象；引用连接时展开为脱敏内联配置。
+        - 新 Excel 不导出原文件/物化行；旧 imported_items 仅在仍存在时导出以保持兼容。
+        """
         namespace_keys = [ns.name for ns in ds.namespaces.all()]
         tag_names = [tag.name for tag in ds.tag.all()]
+
+        # 共享连接展开为可导入的脱敏内联配置，不导出 connection_id。
+        if ds.connection_id:
+            from apps.operation_analysis.services.data_connection.resolver import (
+                ConnectionResolveError,
+                resolve_datasource_connection,
+            )
+
+            try:
+                connection_config = resolve_datasource_connection(ds)
+            except ConnectionResolveError:
+                connection_config = dict(ds.connection_config or {})
+        else:
+            connection_config = dict(ds.connection_config or {})
+
+        query_config = dict(ds.query_config or {})
+        if ds.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+            entered_new_model = bool(
+                getattr(ds, "excel_materialization_generation", 0)
+                or getattr(ds, "excel_success_slot_id", None)
+                or getattr(ds, "excel_candidate_slot_id", None)
+            )
+            if entered_new_model:
+                query_config.pop("imported_items", None)
+                query_config.pop("imported_fields", None)
+                query_config.pop("imported_count", None)
+            connection_config.pop("file", None)
+
+        transform_config = ds.transform_config if isinstance(ds.transform_config, dict) else {}
 
         return ExportService.mask_sensitive_fields(
             {
@@ -121,8 +160,9 @@ class ExportService:
                 "name": ds.name,
                 "rest_api": ds.rest_api,
                 "source_type": ds.source_type,
-                "connection_config": ds.connection_config or {},
-                "query_config": ds.query_config or {},
+                "connection_config": connection_config,
+                "query_config": query_config,
+                "transform_config": transform_config,
                 "desc": ds.desc or "",
                 # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 "is_active": ds.is_active,

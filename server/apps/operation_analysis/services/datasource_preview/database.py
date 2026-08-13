@@ -4,6 +4,7 @@ from urllib.parse import quote_plus
 
 from sqlalchemy import create_engine, text
 
+from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.services.datasource_preview.base import BaseConnectorExecutor, ConnectorError, PreviewResult
 from apps.operation_analysis.services.datasource_preview.schema import infer_fields
 
@@ -84,15 +85,35 @@ class DatabaseConnectorExecutor(BaseConnectorExecutor):
 
     def test_connection(self, connection_config: dict[str, Any]) -> None:
         database_url = build_database_url(self.source_type, connection_config)
-        engine = self.engine_factory(database_url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+        try:
+            engine = self.engine_factory(
+                database_url,
+                pool_pre_ping=True,
+                connect_args={"connect_timeout": 5},
+            )
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except ConnectorError:
+            raise
+        except Exception as exc:
+            logger.error(
+                "[DatabaseConnector] connection failed source_type=%s: %s",
+                self.source_type,
+                exc,
+                exc_info=True,
+            )
+            raise ConnectorError(
+                "数据库连接失败，请检查地址、账号和网络后重试",
+                code="db_connection_failed",
+                status_code=502,
+            ) from exc
 
     def preview(
         self,
         connection_config: dict[str, Any],
         query_config: dict[str, Any],
         limit: int = 100,
+        **kwargs,
     ) -> PreviewResult:
         safe_limit = min(max(int(limit or 100), 1), 1000)
         database_url = build_database_url(self.source_type, connection_config)
@@ -105,7 +126,17 @@ class DatabaseConnectorExecutor(BaseConnectorExecutor):
         except ConnectorError:
             raise
         except Exception as exc:
-            raise ConnectorError(f"数据库预览失败: {exc}", code="db_preview_failed", status_code=502)
+            logger.error(
+                "[DatabaseConnector] preview failed source_type=%s: %s",
+                self.source_type,
+                exc,
+                exc_info=True,
+            )
+            raise ConnectorError(
+                "数据库查询失败，请检查 SQL 或连接配置后重试",
+                code="db_preview_failed",
+                status_code=502,
+            ) from exc
 
         items = normalize_db_rows(rows)
         return PreviewResult(items=items, count=len(items), fields=infer_fields(items))

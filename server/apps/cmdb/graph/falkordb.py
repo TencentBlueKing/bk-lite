@@ -11,7 +11,7 @@ from typing import List, Union
 from dotenv import load_dotenv
 from falkordb import falkordb
 
-from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
+from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, ModelConstraintKey
 from apps.cmdb.constants.field_constraints import (
     DEFAULT_NUMBER_CONSTRAINT,
     DEFAULT_STRING_CONSTRAINT,
@@ -23,6 +23,13 @@ from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.cmdb.graph.falkordb_format import FormatDBResult
 from apps.cmdb.graph.format_type import FORMAT_TYPE, FORMAT_TYPE_PARAMS, ParameterCollector
 from apps.cmdb.graph.validators import CQLValidator
+from apps.cmdb.services.instance_identity import (
+    EDGE_DST_UUID_FIELD,
+    EDGE_SRC_UUID_FIELD,
+    ensure_graph_instance_identity,
+    normalize_inst_uuid,
+    prepare_edge_endpoint_properties,
+)
 from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
@@ -433,6 +440,8 @@ class FalkorDBClient:
         operator: str = None,
         attrs: list = None,
     ):
+        properties = ensure_graph_instance_identity(label, properties)
+
         # 验证标签（不能参数化）
         validated_label = CQLValidator.validate_label(label)
         if not validated_label:
@@ -498,6 +507,21 @@ class FalkorDBClient:
         result = self._create_edge(label, a_id, a_label, b_id, b_label, properties, check_asst_key)
         return result
 
+    def _resolve_edge_endpoint_uuids(self, properties: dict, a_id: int, b_id: int) -> dict:
+        """仅实例关联边：写入前确保 UUID 端点；缺失时从图节点补齐。"""
+        props = dict(properties or {})
+        src_uuid = props.get(EDGE_SRC_UUID_FIELD)
+        dst_uuid = props.get(EDGE_DST_UUID_FIELD)
+        if not src_uuid:
+            src_uuid = self.query_entity_by_id(a_id).get("inst_uuid")
+        if not dst_uuid:
+            dst_uuid = self.query_entity_by_id(b_id).get("inst_uuid")
+        return prepare_edge_endpoint_properties(
+            props,
+            src_inst_uuid=src_uuid,
+            dst_inst_uuid=dst_uuid,
+        )
+
     def _create_edge(
         self,
         label: str,
@@ -550,6 +574,10 @@ class FalkorDBClient:
         edge_count = result[0] if result else 0
         if edge_count > 0:
             raise BaseAppException("edge already exists")
+
+        # model_association / 分类边等非实例关联不写入 src/dst_inst_uuid
+        if validated_label == INSTANCE_ASSOCIATION:
+            properties = self._resolve_edge_endpoint_uuids(properties, validated_a_id, validated_b_id)
 
         # 创建边
         if self.ENABLE_PARAMETERIZATION:
@@ -875,6 +903,44 @@ class FalkorDBClient:
             return []
         return self.entity_to_list(objs)
 
+    def query_entity_by_inst_uuid(self, inst_uuid: str):
+        """按不可变业务 UUID 查询单个实例节点。"""
+        normalized = normalize_inst_uuid(inst_uuid)
+        if self.ENABLE_PARAMETERIZATION:
+            query = "MATCH (n) WHERE n.inst_uuid = $inst_uuid RETURN n"
+            objs = self._execute_query(query, params={"inst_uuid": normalized})
+        else:
+            objs = self._execute_query(f"MATCH (n) WHERE n.inst_uuid = '{normalized}' RETURN n")
+
+        entities = self.entity_to_list(objs) if objs else []
+        if len(entities) > 1:
+            raise BaseAppException("inst_uuid 查询结果不唯一")
+        return entities[0] if entities else {}
+
+    def query_entity_by_inst_uuids(self, inst_uuids: list):
+        """按不可变业务 UUID 批量查询实例节点；保持输入顺序。"""
+        if not inst_uuids:
+            return []
+        normalized = [normalize_inst_uuid(value) for value in inst_uuids]
+        if len(set(normalized)) != len(normalized):
+            raise BaseAppException("inst_uuid 不允许重复")
+
+        if self.ENABLE_PARAMETERIZATION:
+            query = "MATCH (n) WHERE n.inst_uuid IN $inst_uuids RETURN n"
+            objs = self._execute_query(query, params={"inst_uuids": normalized})
+        else:
+            uuids_literal = "[" + ", ".join(f"'{value}'" for value in normalized) + "]"
+            objs = self._execute_query(f"MATCH (n) WHERE n.inst_uuid IN {uuids_literal} RETURN n")
+
+        entities = self.entity_to_list(objs) if objs else []
+        by_uuid = {}
+        for item in entities:
+            key = item.get("inst_uuid")
+            if key in by_uuid:
+                raise BaseAppException("inst_uuid 查询结果不唯一")
+            by_uuid[key] = item
+        return [by_uuid[value] for value in normalized if value in by_uuid]
+
     def query_edge(
         self,
         label: str,
@@ -1114,15 +1180,32 @@ class FalkorDBClient:
             return []
 
         query = (
-            f"UNWIND $property_values AS row "
-            f"MATCH (n:{validated_label}) WHERE ID(n) = row.id "
-            f"SET n.{validated_field} = row.value RETURN n"
+            f"UNWIND $property_values AS row " f"MATCH (n:{validated_label}) WHERE ID(n) = row.id " f"SET n.{validated_field} = row.value RETURN n"
         )
         result = self._execute_query(
             query,
             params={"property_values": validated_property_values},
         )
         return self.entity_to_list(result)
+
+    def ensure_node_property_index(self, label: str, field: str):
+        """创建节点属性索引。
+
+        唯一性由索引加速 + 应用层保证；图引擎若不支持强唯一约束，不得宣称 DB 唯一。
+        重复执行时接受“已存在”类错误。
+        """
+        validated_label = CQLValidator.validate_label(label)
+        validated_field = CQLValidator.validate_field(field)
+        query = f"CREATE INDEX FOR (n:{validated_label}) ON (n.{validated_field})"
+        try:
+            if self._graph is None and not self.connect():
+                raise RuntimeError("FalkorDB connection is not available")
+            return self._graph.query(query)
+        except Exception as exc:
+            message = str(exc).lower()
+            if "index" in message and ("already exists" in message or "already indexed" in message):
+                return None
+            raise
 
     def format_properties_remove(self, attrs: list):
         """格式化properties的remove数据，验证字段名防止注入"""
@@ -1197,6 +1280,21 @@ class FalkorDBClient:
             self._execute_query(query, params=params)
         else:
             self._execute_query(f"MATCH ()-[n]->() WHERE ID(n) = {validated_id} DELETE n")
+
+    def remove_edge_properties(self, edge_ids: list[int], attrs: list[str]):
+        """批量删除关系属性；关系 ID 仅作为本次图内维护定位符。"""
+        if not edge_ids or not attrs:
+            return
+        validated_ids = CQLValidator.validate_ids(edge_ids)
+        validated_attrs = [CQLValidator.validate_field(attr) for attr in attrs]
+        remove_clause = ", ".join(f"e.`{attr}`" for attr in validated_attrs)
+        if self.ENABLE_PARAMETERIZATION:
+            self._execute_query(
+                f"MATCH ()-[e]->() WHERE ID(e) IN $edge_ids REMOVE {remove_clause}",
+                params={"edge_ids": validated_ids},
+            )
+        else:
+            self._execute_query(f"MATCH ()-[e]->() WHERE ID(e) IN {validated_ids} REMOVE {remove_clause}")
 
     def set_edge_properties(self, edge_id: int, properties: dict):
         validated_id = CQLValidator.validate_id(edge_id)
@@ -1430,7 +1528,8 @@ class FalkorDBClient:
         inst_id = int(inst_id)
         ret = (
             "RETURN ID(dev) AS dev_id, dev.inst_name AS dev_name, dev.model_id AS dev_model, "
-            "i.inst_name AS local_if, p.inst_name AS peer_if, "
+            "i.inst_name AS local_if, i.inst_uuid AS local_if_uuid, "
+            "p.inst_name AS peer_if, p.inst_uuid AS peer_if_uuid, "
             "ID(dev2) AS peer_id, dev2.inst_name AS peer_name, dev2.model_id AS peer_model, "
             "ID(e2) AS rel_id"
         )
@@ -1452,15 +1551,31 @@ class FalkorDBClient:
             )
             objs = self._execute_query(match + ret)
 
-        keys = ["dev_id", "dev_name", "dev_model", "local_if", "peer_if",
-                "peer_id", "peer_name", "peer_model", "rel_id"]
+        keys = [
+            "dev_id",
+            "dev_name",
+            "dev_model",
+            "local_if",
+            "local_if_uuid",
+            "peer_if",
+            "peer_if_uuid",
+            "peer_id",
+            "peer_name",
+            "peer_model",
+            "rel_id",
+        ]
         rows = []
         for row in getattr(objs, "result_set", []) or []:
             rows.append({k: row[idx] for idx, k in enumerate(keys)})
         return rows
 
+    @staticmethod
+    def _relationship_endpoint_id(endpoint):
+        """兼容 FalkorDB 不同驱动版本返回的关系端点类型。"""
+        return endpoint.id if hasattr(endpoint, "id") else endpoint
+
     def format_topo(self, start_id, objs, entity_is_src=True):
-        """格式化拓扑数据"""
+        """格式化拓扑数据；导航优先使用图连接端点，边属性 UUID 供序列化/过滤。"""
 
         # 修复 FalkorDB QueryResult 对象检查方式
         all_results = objs.result_set
@@ -1483,6 +1598,11 @@ class FalkorDBClient:
                         _label=relationship.relation,
                         **props,
                     )
+                    # 内部建树仍用图 ID；由连接端点合成，不依赖边属性上的数字端点
+                    edge_map[relationship.id].update(
+                        src_inst_id=self._relationship_endpoint_id(relationship.src_node),
+                        dst_inst_id=self._relationship_endpoint_id(relationship.dest_node),
+                    )
 
         edges = list(edge_map.values())
         # 去除自己指向自己的边
@@ -1500,6 +1620,7 @@ class FalkorDBClient:
         """entity作为目标"""
         node = {
             "_id": entity["_id"],
+            "inst_uuid": entity.get("inst_uuid"),
             "model_id": entity.get("model_id"),
             "inst_name": entity.get("inst_name"),
             "children": [],
@@ -1550,6 +1671,10 @@ class FalkorDBClient:
                         _label=relationship.relation,
                         **props,
                     )
+                    edge_map[relationship.id].update(
+                        src_inst_id=self._relationship_endpoint_id(relationship.src_node),
+                        dst_inst_id=self._relationship_endpoint_id(relationship.dest_node),
+                    )
 
         edges = list(edge_map.values())
         edges = [edge for edge in edges if edge.get("src_inst_id") != edge.get("dst_inst_id")]
@@ -1583,6 +1708,7 @@ class FalkorDBClient:
     ):
         node = {
             "_id": entity.get("_id"),
+            "inst_uuid": entity.get("inst_uuid"),
             "model_id": entity.get("model_id"),
             "inst_name": entity.get("inst_name") or entity.get("ip_addr") or str(entity.get("_id")),
             "children": [],

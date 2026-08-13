@@ -67,8 +67,13 @@ def test_build_field_maps_categorizes():
         {"attr_id": "tag", "attr_name": "标签", "attr_type": "tag"},
         {"attr_id": "org", "attr_name": "组织", "attr_type": "organization", "option": [{"id": 1, "name": "Default"}]},
         {"attr_id": "user", "attr_name": "用户", "attr_type": "user", "option": [{"id": "alice", "name": "张三"}]},
-        {"attr_id": "status", "attr_name": "状态", "attr_type": "enum",
-         "option": [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}], "enum_select_mode": "single"},
+        {
+            "attr_id": "status",
+            "attr_name": "状态",
+            "attr_type": "enum",
+            "option": [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}],
+            "enum_select_mode": "single",
+        },
     ]
     fm = _make(attrs)._build_field_maps()
     assert "tab" in fm["table_fields"]
@@ -281,15 +286,15 @@ def test_normalize_tag_records_valid(monkeypatch):
         "apps.cmdb.services.model.ModelManage.merge_tag_options_from_values",
         lambda mid, vals: None,
     )
-    obj = _make([{"attr_id": "tag", "attr_type": "tag", "attr_name": "标签",
-                  "option": {"mode": "free"}}])
+    obj = _make([{"attr_id": "tag", "attr_type": "tag", "attr_name": "标签", "option": {"mode": "free"}}])
     out = obj._normalize_and_merge_tag_records([{"inst_name": "h", "tag": ["env:prod"]}])
     assert out[0]["tag"] == ["env:prod"]
 
 
 def test_normalize_tag_records_invalid_collects_error():
-    obj = _make([{"attr_id": "tag", "attr_type": "tag", "attr_name": "标签",
-                  "option": {"mode": "strict", "options": [{"key": "env", "value": "prod"}]}}])
+    obj = _make(
+        [{"attr_id": "tag", "attr_type": "tag", "attr_name": "标签", "option": {"mode": "strict", "options": [{"key": "env", "value": "prod"}]}}]
+    )
     obj._normalize_and_merge_tag_records([{"inst_name": "h", "tag": ["env:dev"]}])
     # strict 模式 dev 不在候选 → validation_errors 增加
     assert len(obj.validation_errors) > 0
@@ -312,7 +317,7 @@ def test_inst_list_save(fake_graph, monkeypatch):
     )
     obj = _make([{"attr_id": "inst_name", "attr_type": "str", "attr_name": "名称", "is_required": True}])
     # 用上下文管理器 patch GraphClient
-    fake_graph("apps.cmdb.utils.Import", batch_create_entity=[{"data": {"inst_name": "h1"}, "success": True}])
+    graph = fake_graph("apps.cmdb.utils.Import", batch_create_entity=[{"data": {"inst_name": "h1"}, "success": True}])
     # get_check_attr_map 依赖 build_unique_rule_context → mock 之
     monkeypatch.setattr(
         "apps.cmdb.utils.Import.build_unique_rule_context",
@@ -320,6 +325,10 @@ def test_inst_list_save(fake_graph, monkeypatch):
     )
     result = obj.inst_list_save([{"inst_name": "h1"}])
     assert result[0]["success"] is True
+    from uuid import UUID
+
+    prepared = graph.calls[0][1][1]
+    assert UUID(prepared[0]["inst_uuid"]).version == 4
 
 
 @pytest.mark.django_db
@@ -374,12 +383,15 @@ def test_add_asso_data_empty():
 @pytest.mark.django_db
 def test_format_excel_data():
     import io
+
     import openpyxl
 
-    obj = _make([
-        {"attr_id": "inst_name", "attr_type": "str", "attr_name": "名称", "is_required": True},
-        {"attr_id": "ip", "attr_type": "str", "attr_name": "IP"},
-    ])
+    obj = _make(
+        [
+            {"attr_id": "inst_name", "attr_type": "str", "attr_name": "名称", "is_required": True},
+            {"attr_id": "ip", "attr_type": "str", "attr_name": "IP"},
+        ]
+    )
     wb = openpyxl.Workbook()
     sheet = wb.active
     sheet.title = "host"  # model_id
@@ -401,6 +413,7 @@ def test_format_excel_data():
 @pytest.mark.django_db
 def test_format_excel_data_wrong_sheet_name():
     import io
+
     import openpyxl
 
     obj = _make([{"attr_id": "inst_name", "attr_type": "str", "attr_name": "名称"}])

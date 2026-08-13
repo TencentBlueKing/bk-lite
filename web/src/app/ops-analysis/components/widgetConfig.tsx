@@ -289,7 +289,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           dataSource: undefined,
           networkStatusTopology: {
             modelId: '',
-            instId: '',
+            instUuid: '',
             depth: 2,
           },
           params: {},
@@ -585,7 +585,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (isSceneWidget) {
       const networkStatusTopology = valueConfig?.networkStatusTopology || {
         modelId: '',
-        instId: '',
+        instUuid: '',
         depth: 2,
       };
       setSelectedDataSource(undefined);
@@ -1001,7 +1001,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         const formTopology = values.networkStatusTopology;
         values.networkStatusTopology = {
           modelId: formTopology?.modelId || existingTopology?.modelId || '',
-          instId: formTopology?.instId || existingTopology?.instId || '',
+          instUuid: formTopology?.instUuid || existingTopology?.instUuid || '',
           depth: formTopology?.depth || existingTopology?.depth || 2,
           layoutMode: formTopology?.layoutMode ?? existingTopology?.layoutMode,
           layoutByMode:
@@ -1124,7 +1124,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               </Form.Item>
               <Form.Item
                 label={t('dashboard.networkTopoInstance')}
-                name={['networkStatusTopology', 'instId']}
+                name={['networkStatusTopology', 'instUuid']}
                 rules={[{ required: true, message: t('dashboard.selectInstance') }]}
                 tooltip={t('dashboard.networkTopoInstanceHelp')}
               >
@@ -1167,7 +1167,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 rules={[{ required: true, message: t('common.selectTip') }]}
                 getValueProps={() => ({
                   value: selectedDataSource
-                    ? `${selectedDataSource.name}（${selectedDataSource.rest_api}）`
+                    ? `${selectedDataSource.name}${
+                        selectedDataSource.rest_api
+                          ? `（${selectedDataSource.rest_api}）`
+                          : ''
+                      }`
                     : '',
                 })}
               >

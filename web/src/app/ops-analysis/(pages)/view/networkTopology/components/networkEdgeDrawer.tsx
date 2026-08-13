@@ -38,13 +38,13 @@ const interfaceOptions = (
   return list
     .filter((item) => Boolean(item.interface_name))
     .filter((item) => {
-      const key = `${item.bk_inst_id}`;
+      const key = `${item.bk_inst_uuid}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     })
     .map((item) => ({
-      value: String(item.bk_inst_id),
+      value: String(item.bk_inst_uuid),
       label: item.interface_name,
     }));
 };
@@ -53,7 +53,7 @@ const findInterface = (
   list: NetworkInterfaceRef[],
   instId: number | string,
 ): NetworkInterfaceRef | undefined =>
-  list.find((item) => String(item.bk_inst_id) === String(instId));
+  list.find((item) => String(item.bk_inst_uuid) === String(instId));
 
 const drawerFooterStyle: React.CSSProperties = {
   display: 'flex',
@@ -159,7 +159,7 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
   const canSave =
     !loading &&
     draftPairs.length > 0 &&
-    draftPairs.every((pair) => pair.source_interface.bk_inst_id && pair.target_interface.bk_inst_id);
+    draftPairs.every((pair) => pair.source_interface.bk_inst_uuid && pair.target_interface.bk_inst_uuid);
 
   const updatePair = (index: number, partial: Partial<NetworkPortPair>) => {
     setDraftPairs((prev) =>
@@ -171,8 +171,8 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
     setDraftPairs((prev) => [
       ...prev,
       {
-        source_interface: { bk_obj_id: 'bk_interface', bk_inst_id: 0, interface_name: '' },
-        target_interface: { bk_obj_id: 'bk_interface', bk_inst_id: 0, interface_name: '' },
+        source_interface: { bk_obj_id: 'bk_interface', bk_inst_uuid: '', interface_name: '' },
+        target_interface: { bk_obj_id: 'bk_interface', bk_inst_uuid: '', interface_name: '' },
       },
     ]);
   };
@@ -265,7 +265,7 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
                 onClick={() => {
                   onCommit(
                     draftPairs
-                      .filter((p) => p.source_interface.bk_inst_id && p.target_interface.bk_inst_id)
+                      .filter((p) => p.source_interface.bk_inst_uuid && p.target_interface.bk_inst_uuid)
                       .map((p) => ({
                         source_interface: { ...p.source_interface },
                         target_interface: { ...p.target_interface },
@@ -371,9 +371,9 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
               getPopupContainer={(trigger) =>
                 trigger.parentElement ?? document.body
               }
-              value={pair.source_interface.bk_inst_id ? String(pair.source_interface.bk_inst_id) : undefined}
+              value={pair.source_interface.bk_inst_uuid ? String(pair.source_interface.bk_inst_uuid) : undefined}
               onChange={(instId) => {
-                const found = findInterface(sourceInterfaces, Number(instId));
+                const found = findInterface(sourceInterfaces, String(instId));
                 if (found) updatePair(index, { source_interface: found });
               }}
               disabled={readonly || loading}
@@ -387,9 +387,9 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
               getPopupContainer={(trigger) =>
                 trigger.parentElement ?? document.body
               }
-              value={pair.target_interface.bk_inst_id ? String(pair.target_interface.bk_inst_id) : undefined}
+              value={pair.target_interface.bk_inst_uuid ? String(pair.target_interface.bk_inst_uuid) : undefined}
               onChange={(instId) => {
-                const found = findInterface(targetInterfaces, Number(instId));
+                const found = findInterface(targetInterfaces, String(instId));
                 if (found) updatePair(index, { target_interface: found });
               }}
               disabled={readonly || loading}

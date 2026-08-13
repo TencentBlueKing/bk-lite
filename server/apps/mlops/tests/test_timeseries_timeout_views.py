@@ -115,6 +115,44 @@ def test_predict_timeout_reports_configured_budget(mlops_api_client, mlops_user,
     assert response.data["error"] == "预测请求超时（超过 80 秒）"
 
 
+def test_predict_preserves_algorithm_error_contract(mlops_api_client, mlops_user, monkeypatch):
+    mlops_user.permission["mlops"].add("timeseries_predict-Predict")
+    serving = _create_serving()
+    monkeypatch.setattr("apps.mlops.views.timeseries_predict.build_predict_url", _fake_build_predict_url)
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "success": False,
+                "error": {
+                    "code": "E1002",
+                    "message": "递归特征工程工作量超限",
+                    "details": {"estimated_work": 18, "limit": 17},
+                },
+            }
+
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.requests.post",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+
+    response = mlops_api_client.post(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/predict/",
+        {"data": [{"timestamp": "2024-01-01", "value": 1}], "config": {"steps": 3}},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data == {
+        "error": "递归特征工程工作量超限",
+        "code": "E1002",
+        "error_code": "E1002",
+        "details": {"estimated_work": 18, "limit": 17},
+    }
+
+
 def test_update_rejects_invalid_budget_before_removing_running_container(
     mlops_api_client,
     mlops_user,
@@ -140,7 +178,36 @@ def test_update_rejects_invalid_budget_before_removing_running_container(
     )
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert "TIMESERIES_PREDICT_TIMEOUT_SECONDS" in response.data["error"]
+    assert remove_calls == []
+    serving.refresh_from_db()
+    assert serving.port is None
+
+
+def test_update_rejects_invalid_recursive_feature_work_before_removing_running_container(
+    mlops_api_client,
+    mlops_user,
+    monkeypatch,
+):
+    mlops_user.permission["mlops"].add("timeseries_predict-Edit")
+    serving = _create_serving()
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.TimeSeriesPredictServingViewSet.get_has_permission",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setenv("MAX_RECURSIVE_FEATURE_ENGINEERING_WORK", "invalid")
+    remove_calls = []
+    monkeypatch.setattr(
+        "apps.mlops.views.timeseries_predict.WebhookClient.remove",
+        lambda serving_id: remove_calls.append(serving_id),
+    )
+
+    response = mlops_api_client.patch(
+        f"/api/v1/mlops/timeseries_predict_servings/{serving.id}/",
+        {"port": 31001},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
     assert remove_calls == []
     serving.refresh_from_db()
     assert serving.port is None
@@ -160,6 +227,7 @@ def test_update_restores_old_service_when_new_container_fails(
         lambda *args, **kwargs: True,
     )
     monkeypatch.setenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "75")
+    monkeypatch.setenv("MAX_RECURSIVE_FEATURE_ENGINEERING_WORK", "123456")
     monkeypatch.setattr(
         "apps.mlops.views.timeseries_predict.get_mlflow_tracking_uri",
         lambda: "http://mlflow:15000",
@@ -210,6 +278,8 @@ def test_update_restores_old_service_when_new_container_fails(
     assert serve_calls[0]["args"][2] == "models:/timeseries/v2"
     assert serve_calls[1]["args"][2] == "models:/timeseries/latest"
     assert serve_calls[1]["kwargs"]["port"] == 3000
+    assert serve_calls[0]["kwargs"]["max_recursive_feature_engineering_work"] == 123456
+    assert serve_calls[1]["kwargs"]["max_recursive_feature_engineering_work"] == 123456
     serving.refresh_from_db()
     assert serving.model_version == "latest"
     assert serving.name == "timeseries-timeout-test"

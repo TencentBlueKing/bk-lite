@@ -1,6 +1,7 @@
 import base64
 import difflib
 import hashlib
+import uuid
 from datetime import datetime
 
 from django.db import IntegrityError, transaction
@@ -12,12 +13,13 @@ from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
 from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
+from apps.cmdb.services.instance_identity import normalize_inst_uuid
 from apps.cmdb.utils.config_file_path import extract_file_name
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
-from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.core.utils.team_utils import get_current_team
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 MAX_CONFIG_FILE_SIZE_LIMIT = 5 * 1024 * 1024
 
@@ -78,11 +80,8 @@ class ConfigFileService(object):
 
         try:
             params = dict(task.params or {})
-            instance_identifier = str(payload.get("instance_name") or payload.get("instance_id") or "")
-            if not instance_identifier:
-                raise BaseAppException("配置文件采集回调缺少目标实例标识")
-
-            instance_id, instance = cls._get_task_instance_or_raise(task, instance_identifier)
+            instance_uuid = cls._validate_callback_identity(payload)
+            instance_id, instance = cls._get_task_instance_or_raise(task, instance_uuid)
 
             model_id = str(payload.get("model_id") or (instance or {}).get("model_id") or params.get("target_model_id") or task.model_id or "host")
             file_path = str(payload.get("file_path") or params.get("config_file_path") or "")
@@ -134,11 +133,12 @@ class ConfigFileService(object):
                     version=version,
                 ).first()
                 if existing_version:
-                    version_obj, _ = cls._resolve_existing_version(existing_version, content_hash)
+                    version_obj, _ = cls._resolve_existing_version(existing_version, content_hash, instance_uuid=instance_uuid)
                     return {"version_obj": version_obj, "changed": False, "task_updated": False}
 
                 latest_success_version = cls._get_latest_success_version(task.id, instance_id, file_path)
                 if latest_success_version and latest_success_version.content_hash == content_hash:
+                    cls._backfill_instance_uuid(latest_success_version, instance_uuid)
                     task_updated = cls._update_task_lifecycle(
                         task=task,
                         instance_id=instance_id,
@@ -154,6 +154,7 @@ class ConfigFileService(object):
                 version_obj, created = cls._create_or_get_version(
                     task=task,
                     instance_id=instance_id,
+                    instance_uuid=instance_uuid,
                     version=version,
                     model_id=model_id,
                     file_path=file_path,
@@ -202,7 +203,7 @@ class ConfigFileService(object):
             return False
 
         error_message = str(error) or "配置文件采集结果处理失败"
-        instance_identifier = str(payload.get("instance_name") or payload.get("instance_id") or "")
+        instance_identifier = str(payload.get("instance_uuid") or "").strip()
         expected_instance_ids = cls._get_expected_instance_ids(task)
         instance_id, _ = cls._resolve_task_instance(task, instance_identifier)
 
@@ -217,9 +218,7 @@ class ConfigFileService(object):
                 error_message=error_message,
                 stale_callback=False,
                 allowed_current_statuses=(
-                    [CollectRunStatusType.RUNNING, CollectRunStatusType.SUCCESS]
-                    if allow_success_transition
-                    else [CollectRunStatusType.RUNNING]
+                    [CollectRunStatusType.RUNNING, CollectRunStatusType.SUCCESS] if allow_success_transition else [CollectRunStatusType.RUNNING]
                 ),
             )
 
@@ -250,9 +249,7 @@ class ConfigFileService(object):
                 id=task.id,
                 task_id=task.task_id,
                 exec_status__in=(
-                    [CollectRunStatusType.RUNNING, CollectRunStatusType.SUCCESS]
-                    if allow_success_transition
-                    else [CollectRunStatusType.RUNNING]
+                    [CollectRunStatusType.RUNNING, CollectRunStatusType.SUCCESS] if allow_success_transition else [CollectRunStatusType.RUNNING]
                 ),
             ).update(
                 collect_data={"config_file": summary["config_file_data"]},
@@ -271,14 +268,17 @@ class ConfigFileService(object):
         if payload_execution_id != str(task.task_id or ""):
             return "配置文件采集回调 execution ID 已过期"
         if task.exec_status == CollectRunStatusType.SUCCESS:
-            instance_identifier = str(payload.get("instance_name") or payload.get("instance_id") or "")
+            instance_identifier = str(payload.get("instance_uuid") or "").strip()
             instance_id, _ = cls._resolve_task_instance(task, instance_identifier)
             version = cls._normalize_version(str(payload.get("version") or payload.get("collected_at") or ""))
-            if instance_id and ConfigFileVersion.objects.filter(
-                collect_task=task,
-                instance_id=instance_id,
-                version=version,
-            ).exists():
+            if (
+                instance_id
+                and ConfigFileVersion.objects.filter(
+                    collect_task=task,
+                    instance_id=instance_id,
+                    version=version,
+                ).exists()
+            ):
                 return ""
         if task.exec_status != CollectRunStatusType.RUNNING:
             return "配置文件采集任务已进入终态"
@@ -299,6 +299,7 @@ class ConfigFileService(object):
         error_message: str,
         content_hash: str,
         text_content: str,
+        instance_uuid=None,
     ) -> tuple[ConfigFileVersion, bool]:
         business_key = {
             "collect_task": task,
@@ -307,7 +308,7 @@ class ConfigFileService(object):
         }
         existing = ConfigFileVersion.objects.filter(**business_key).first()
         if existing:
-            return cls._resolve_existing_version(existing, content_hash)
+            return cls._resolve_existing_version(existing, content_hash, instance_uuid=instance_uuid)
 
         try:
             temp_content_key = ConfigFileContentLifecycle.stage_content(text_content)
@@ -315,6 +316,7 @@ class ConfigFileService(object):
             with transaction.atomic():
                 version_obj = ConfigFileVersion.objects.create(
                     **business_key,
+                    instance_uuid=instance_uuid,
                     model_id=model_id,
                     file_path=file_path,
                     file_name=file_name,
@@ -328,7 +330,7 @@ class ConfigFileService(object):
         except IntegrityError:
             ConfigFileContentLifecycle.discard_temp_content(temp_content_key)
             existing = ConfigFileVersion.objects.get(**business_key)
-            return cls._resolve_existing_version(existing, content_hash)
+            return cls._resolve_existing_version(existing, content_hash, instance_uuid=instance_uuid)
         except Exception:
             if "temp_content_key" in locals():
                 ConfigFileContentLifecycle.discard_temp_content(temp_content_key)
@@ -340,14 +342,36 @@ class ConfigFileService(object):
         )
         return version_obj, True
 
-    @staticmethod
+    @classmethod
     def _resolve_existing_version(
+        cls,
         existing: ConfigFileVersion,
         content_hash: str,
+        instance_uuid=None,
     ) -> tuple[ConfigFileVersion, bool]:
         if existing.content_hash == content_hash:
+            cls._backfill_instance_uuid(existing, instance_uuid)
             return existing, False
         raise ConfigFileVersionConflict("配置文件回调业务键内容冲突")
+
+    @staticmethod
+    def _instance_uuid_from_entity(instance: dict | None):
+        if not isinstance(instance, dict):
+            return None
+        raw = instance.get("inst_uuid")
+        if not raw:
+            return None
+        try:
+            return normalize_inst_uuid(raw)
+        except BaseAppException:
+            return None
+
+    @staticmethod
+    def _backfill_instance_uuid(version_obj: ConfigFileVersion, instance_uuid) -> None:
+        if not instance_uuid or version_obj.instance_uuid:
+            return
+        version_obj.instance_uuid = instance_uuid
+        version_obj.save(update_fields=["instance_uuid"])
 
     @staticmethod
     def _normalize_collect_payload(data: dict) -> dict:
@@ -519,24 +543,43 @@ class ConfigFileService(object):
             raise BaseAppException(f"配置文件采集回调实例不属于当前任务: {instance_identifier}")
         return resolved_instance_id, instance or {}
 
+    @staticmethod
+    def _validate_callback_identity(payload: dict) -> str:
+        if str(payload.get("protocol_version") or "") != "2":
+            raise BaseAppException("配置文件采集回调协议版本不受支持")
+        if "instance_id" in payload or "target_instance_id" in payload:
+            raise BaseAppException("配置文件采集回调包含已废弃的数字实例标识")
+
+        instance_uuid = str(payload.get("instance_uuid") or "").strip()
+        try:
+            parsed_uuid = uuid.UUID(instance_uuid)
+        except (TypeError, ValueError, AttributeError) as err:
+            raise BaseAppException("配置文件采集回调缺少有效的实例 UUID") from err
+        if parsed_uuid.version != 4 or str(parsed_uuid) != instance_uuid.lower():
+            raise BaseAppException("配置文件采集回调实例标识必须是规范 UUIDv4")
+        return str(parsed_uuid)
+
     @classmethod
     def _resolve_task_instance(cls, task: CollectModels, instance_identifier: str) -> tuple[str, dict]:
         normalized_identifier = str(instance_identifier or "").strip()
         if not normalized_identifier:
             return "", {}
 
+        for instance in task.instances or []:
+            if not isinstance(instance, dict):
+                continue
+            inst_uuid = str(instance.get("inst_uuid") or "").strip()
+            if not inst_uuid or inst_uuid != normalized_identifier:
+                continue
+            graph_id = str(instance.get("_id") or instance.get("id") or "").strip()
+            return graph_id or inst_uuid, instance
+
         expected_instance_map = cls._get_expected_instance_map(task)
         instance = expected_instance_map.get(normalized_identifier)
         if instance:
             return normalized_identifier, instance
 
-        expected_instance_name_map = cls._get_expected_instance_name_map(task)
-        instance = expected_instance_name_map.get(normalized_identifier)
-        if not instance:
-            return "", {}
-
-        resolved_instance_id = str(instance.get("_id") or instance.get("id") or "")
-        return resolved_instance_id, instance
+        return "", {}
 
     @classmethod
     def _get_expected_instance_ids(cls, task: CollectModels) -> list[str]:
@@ -742,14 +785,28 @@ class ConfigFileService(object):
         )
 
     @staticmethod
-    def get_file_list(instance_id: str, base_queryset=None) -> list[dict]:
+    def _instance_lookup_q(instance_id: str = "", instance_uuid=None) -> Q:
+        """过渡期同时匹配 UUID 列与旧数字/UUID 字符串 instance_id。"""
+        query = Q()
+        uuid_value = str(instance_uuid or "").strip()
+        graph_id = str(instance_id or "").strip()
+        if uuid_value:
+            query |= Q(instance_uuid=uuid_value) | Q(instance_id=uuid_value)
+        if graph_id:
+            query |= Q(instance_id=graph_id)
+        return query
+
+    @staticmethod
+    def get_file_list(instance_id: str = "", base_queryset=None, instance_uuid=None) -> list[dict]:
         # 权限过滤必须先于聚合：传入的 base_queryset 已按任务权限收紧，
         # 在其之上做 Max 聚合，避免 latest_* 字段来自用户无权访问的任务版本。
         if base_queryset is None:
             base_queryset = ConfigFileVersion.objects.all()
-        latest_ids = (
-            base_queryset.filter(instance_id=instance_id).values("file_path").annotate(latest_id=Max("id")).values_list("latest_id", flat=True)
-        )
+        lookup = ConfigFileService._instance_lookup_q(instance_id, instance_uuid)
+        if not lookup:
+            return []
+        scoped = base_queryset.filter(lookup)
+        latest_ids = scoped.values("file_path").annotate(latest_id=Max("id")).values_list("latest_id", flat=True)
         rows = ConfigFileVersion.objects.filter(id__in=latest_ids).order_by("file_name", "file_path")
         return [
             {
@@ -790,22 +847,29 @@ class ConfigFileService(object):
             return base_queryset
 
     @classmethod
-    def create_manual_version(cls, instance_id: str, model_id: str, file_path: str, content: str) -> dict:
+    def create_manual_version(
+        cls,
+        instance_id: str,
+        model_id: str,
+        file_path: str,
+        content: str,
+        instance_uuid=None,
+    ) -> dict:
         """手动创建配置文件版本。"""
         file_name = extract_file_name(file_path) or file_path
         version = str(int(now().timestamp() * 1000))
         content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
-        # 查重：同 instance_id + file_path 最新成功版本
-        latest = (
-            ConfigFileVersion.objects.filter(
-                instance_id=instance_id,
-                file_path=file_path,
-                status=ConfigFileVersionStatus.SUCCESS,
-            )
-            .order_by("-created_at")
-            .first()
+        # 查重：同 instance + file_path 最新成功版本
+        latest_qs = ConfigFileVersion.objects.filter(
+            file_path=file_path,
+            status=ConfigFileVersionStatus.SUCCESS,
         )
+        if instance_uuid:
+            latest_qs = latest_qs.filter(instance_uuid=instance_uuid)
+        else:
+            latest_qs = latest_qs.filter(instance_id=instance_id)
+        latest = latest_qs.order_by("-created_at").first()
         if latest and latest.content_hash == content_hash:
             return {"unchanged": True, "version_obj": latest}
 
@@ -827,6 +891,7 @@ class ConfigFileService(object):
                 version_obj = ConfigFileVersion.objects.create(
                     collect_task=None,
                     instance_id=instance_id,
+                    instance_uuid=instance_uuid,
                     model_id=model_id,
                     version=version,
                     file_path=file_path,

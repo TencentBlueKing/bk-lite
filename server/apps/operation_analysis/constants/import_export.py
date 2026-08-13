@@ -203,3 +203,4 @@ class ImportExportWarningCode:
     """导入导出警告码定义"""
 
     SECRET_PLACEHOLDER = "OA_SECRET_PLACEHOLDER"
+    EXCEL_NEEDS_UPLOAD = "OA_EXCEL_NEEDS_UPLOAD"

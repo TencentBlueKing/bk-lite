@@ -96,6 +96,10 @@ message:
   yesterday: "昨天"
   windows_requirement: "装 {kb} 或有效替代 KB"
   linux_requirement: "包版本 ≥ {version}"
+  assessment_not_run: "尚未执行评估"
+  assessment_running: "评估任务执行中"
+  assessment_failed: "评估失败"
+  assessment_snapshot_incomplete: "没有当前有效评估快照，评估数据不完整"
 status:
   task_type:
     assess: "评估"

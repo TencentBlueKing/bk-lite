@@ -27,6 +27,7 @@
 ## 4. 外部输入与出站连接
 
 - **用户可配置的出站目标必须经过统一策略**:REST、数据库、Webhook 等目标在 DNS 解析、重定向和实际连接阶段均须校验;允许范围与存量默认行为必须在 capability 或 change spec 中明确,不得由各调用点自行硬编码或隐式放行。
+- **运营分析 Python 转换不得共享 Server 出站权**:`TransformExecutor` 仅调用独立 Runner；Runner 不接收数据源凭据、不访问业务网/公网；须服务间认证、可杀进程超时、V1 单副本单 Worker；脚本 import 白名单只作能力限制，不是安全边界。证据：`specs/changes/ops-analysis-data-connection-transform/spec.md`、`agents/ops-analysis-transform-runner/`、`services/transform/`。
 - **可膨胀输入必须在分配前设置多维上界**:图片、压缩包和归档文件同时限制编码大小、条目数、解码后尺寸/像素及预计内存,不得只限制请求体或压缩大小。
 - **初始凭据必须有受控交付和恢复路径**:随机凭据须支持安全交付、首次轮换和恢复;生成、存储或解密失败时不得回退到固定弱密码、明文或可预测默认值。
 

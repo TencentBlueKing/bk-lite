@@ -2,6 +2,7 @@ import asyncio
 import base64
 import re
 import time
+import uuid
 
 try:
     from netmiko import ConnectHandler
@@ -10,9 +11,9 @@ except Exception:
 
 from plugins.inputs.network_config_file.constants import (
     COMMAND_ERROR_PATTERNS,
-    DEVICE_TYPE_DISABLE_PAGING,
     DANGEROUS_COMMAND_PREFIXES,
     DANGEROUS_EXACT_COMMANDS,
+    DEVICE_TYPE_DISABLE_PAGING,
     SUPPORTED_DEVICE_TYPES,
 )
 
@@ -67,11 +68,22 @@ class NetworkConfigFileInfo:
         }
 
     def _success_payload(self, merged_output: str) -> dict:
+        if str(self.params.get("protocol_version") or "") != "2":
+            raise ValueError("unsupported config collection protocol version")
+        target_instance_uuid = str(self.params.get("target_instance_uuid") or "").strip()
+        try:
+            parsed_uuid = uuid.UUID(target_instance_uuid)
+        except (TypeError, ValueError, AttributeError) as err:
+            raise ValueError("target_instance_uuid must be a valid UUIDv4") from err
+        if parsed_uuid.version != 4 or str(parsed_uuid) != target_instance_uuid.lower():
+            raise ValueError("target_instance_uuid must be a canonical UUIDv4")
+
         encoded = base64.b64encode(merged_output.encode()).decode()
         config_name = str(self.params.get("config_name") or "").strip()
         return {
             "collect_task_id": self.params.get("collect_task_id"),
-            "instance_id": self.params.get("target_instance_id") or self.params.get("host") or "",
+            "protocol_version": "2",
+            "instance_uuid": target_instance_uuid,
             "instance_name": self.params.get("instance_name") or self.params.get("host") or "",
             "model_id": self.params.get("target_model_id"),
             "file_path": f"network://{config_name}",
@@ -110,19 +122,13 @@ class NetworkConfigFileInfo:
                         duration_ms = int((time.monotonic() - started) * 1000)
                         if self._has_command_error(output):
                             failures.append(f"{command}: {output[:200]}")
-                            command_results.append(
-                                {"command": command, "status": "error", "error": output[:200], "duration_ms": duration_ms}
-                            )
+                            command_results.append({"command": command, "status": "error", "error": output[:200], "duration_ms": duration_ms})
                             continue
-                        command_results.append(
-                            {"command": command, "status": "success", "output": output, "duration_ms": duration_ms}
-                        )
+                        command_results.append({"command": command, "status": "success", "output": output, "duration_ms": duration_ms})
                     except Exception as err:
                         duration_ms = int((time.monotonic() - started) * 1000)
                         failures.append(f"{command}: {err}")
-                        command_results.append(
-                            {"command": command, "status": "error", "error": str(err), "duration_ms": duration_ms}
-                        )
+                        command_results.append({"command": command, "status": "error", "error": str(err), "duration_ms": duration_ms})
 
             if failures:
                 return {"success": False, "result": {"cmdb_collect_error": "; ".join(failures)[:2000]}}

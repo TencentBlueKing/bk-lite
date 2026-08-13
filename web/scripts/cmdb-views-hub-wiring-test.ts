@@ -58,6 +58,45 @@ if (!/<RoomFloorPlan[\s\S]*?onRackSelect\s*=/.test(hostSrc)) {
   failures.push('[ViewCanvasHost.tsx] RoomFloorPlan missing onRackSelect wiring');
 }
 
+if (!/onRoomRackDrill/.test(hostSrc)) {
+  failures.push('[ViewCanvasHost.tsx] missing onRoomRackDrill prop wiring');
+}
+
+if (!/highlightRackId/.test(hostSrc)) {
+  failures.push('[ViewCanvasHost.tsx] missing highlightRackId prop wiring');
+}
+
+const pickerPath = path.join(
+  webRoot,
+  'src/app/cmdb/(pages)/views/components/ViewInstancePicker.tsx'
+);
+const pickerSrc = fs.readFileSync(pickerPath, 'utf8');
+if (!/onPopupScroll/.test(pickerSrc)) {
+  failures.push('[ViewInstancePicker.tsx] missing instance popup lazy-load scroll');
+}
+if (!/SEARCH_PAGE_SIZE/.test(pickerSrc)) {
+  failures.push('[ViewInstancePicker.tsx] missing paged instance search');
+}
+
+const shellPath = path.join(
+  webRoot,
+  'src/app/cmdb/(pages)/views/components/ViewsWorkspaceShell.tsx'
+);
+const shellSrc = fs.readFileSync(shellPath, 'utf8');
+if (!/backToRoom|handleBackToRoom/.test(shellSrc)) {
+  failures.push('[ViewsWorkspaceShell.tsx] missing back-to-room control');
+}
+if (!/getModelAssociations/.test(shellSrc)) {
+  failures.push(
+    '[ViewsWorkspaceShell.tsx] network discovery should use getModelAssociations (not N× topo_themes)'
+  );
+}
+if (/getTopoThemes/.test(shellSrc)) {
+  failures.push(
+    '[ViewsWorkspaceShell.tsx] must not probe every model via getTopoThemes'
+  );
+}
+
 if (!/export\s+const\s+buildViewsPathPreserving\s*=/.test(urlsSrc)) {
   failures.push('[viewUrls.ts] missing export buildViewsPathPreserving');
 }

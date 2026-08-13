@@ -37,7 +37,7 @@ const nextConfig = withBundleAnalyzer({
     implementation: 'sass-embedded',
   },
   staticPageGenerationTimeout: 300,
-  transpilePackages: ['@antv/g6'],
+  transpilePackages: ['@antv/g6', '@antv/xflow'],
   typescript: {
     tsconfigPath: 'tsconfig.build.json',
   },
@@ -47,8 +47,8 @@ const nextConfig = withBundleAnalyzer({
     : undefined,
   experimental: {
     externalDir: true,
+    // 16.0.x 稳定版仅允许 Dev 缓存；ForBuild 需 canary / ≥16.3 才可显式开启
     turbopackFileSystemCacheForDev: true,
-    turbopackFileSystemCacheForBuild: true,
     // proxyTimeout: 300_000, // Set timeout to 300 seconds
   },
   // async rewrites() {

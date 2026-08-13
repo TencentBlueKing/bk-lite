@@ -142,7 +142,10 @@ def test_model_init_reuses_shared_post_import_extras():
 
         mock_migrator_cls.assert_called_once_with()
         mock_migrator.main.assert_called_once_with()
-        mock_apply_extras.assert_called_once_with(mock_migrator.model_config)
+        mock_apply_extras.assert_called_once_with(
+            mock_migrator.model_config,
+            keep_existing_unique_rules_on_conflict=True,
+        )
 
 
 def test_instance_association_instance_list_denies_user_without_object_permission():

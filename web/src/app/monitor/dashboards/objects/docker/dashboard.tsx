@@ -81,7 +81,7 @@ export default function DockerDashboardPage() {
       dashboardContent={
         <>
           <div className={styles.sectionLabel}>健康概览</div>
-          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
           <div className={styles.sectionLabel}>性能趋势</div>
           <FlexiblePanelSection styles={styles}>

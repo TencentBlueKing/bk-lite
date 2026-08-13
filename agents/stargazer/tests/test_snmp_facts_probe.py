@@ -61,7 +61,7 @@ def test_snmp_probe_ready_on_successful_get(monkeypatch):
     assert result.status == AccessProbeStatus.READY
 
 
-def test_snmp_probe_uses_fixed_timeout_5_retries_1(monkeypatch):
+def test_snmp_probe_uses_fixed_timeout_5_retries_2(monkeypatch):
     facts = SnmpFacts(
         {
             "host": "127.0.0.1",
@@ -92,7 +92,7 @@ def test_snmp_probe_uses_fixed_timeout_5_retries_1(monkeypatch):
         fake_udp,
     )
     facts._probe_sync()
-    assert captured["opts"] == {"timeout": 5, "retries": 1}
+    assert captured["opts"] == {"timeout": 5, "retries": 2}
 
 
 @pytest.mark.asyncio

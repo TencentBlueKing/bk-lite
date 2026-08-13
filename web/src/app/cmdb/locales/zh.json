@@ -1562,6 +1562,7 @@
         "modeRoom": "机房",
         "modeRack": "机柜",
         "selectModel": "选择模型",
+        "backToRoom": "返回机房",
         "workspacePlaceholder": "画布区域（后续接入）",
         "unknownView": "未知视图"
     }

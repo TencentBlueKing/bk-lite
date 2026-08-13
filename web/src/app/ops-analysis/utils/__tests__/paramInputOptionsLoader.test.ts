@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it, vi } from 'vitest';
 import { HandledRequestError } from '@/utils/request';
+import type { SourceDataRequestOptions } from '@/app/ops-analysis/api/dataSource';
 import { createParamInputOptionsLoader } from '@/app/ops-analysis/utils/paramInputOptionsLoader';
 import type { InputControlConfig } from '@/app/ops-analysis/types/dataSource';
 
@@ -16,6 +17,12 @@ const dynamicConfig: InputControlConfig = {
 };
 
 const asSourceData = (data: unknown) => ({ data, warnings: undefined });
+
+type GetSourceDataByApiId = (
+  id: number,
+  params?: unknown,
+  options?: SourceDataRequestOptions,
+) => Promise<ReturnType<typeof asSourceData>>;
 
 describe('paramInputOptionsLoader runtime errors', () => {
   it('preserves business errorMessage when options request fails', async () => {
@@ -34,7 +41,9 @@ describe('paramInputOptionsLoader runtime errors', () => {
   });
 
   it('passes suppressErrorNotification only when loader option enables it', async () => {
-    const getSourceDataByApiId = vi.fn(async () => asSourceData([{ id: 1, name: 'A' }]));
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(
+      async () => asSourceData([{ id: 1, name: 'A' }]),
+    );
     const suppressed = createParamInputOptionsLoader(
       {
         getDataSourceList: async () => [],

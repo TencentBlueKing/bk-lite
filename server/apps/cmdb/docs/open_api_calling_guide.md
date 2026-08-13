@@ -50,7 +50,7 @@ response = requests.get(
     params={
         "page": 1,
         "page_size": 20,
-        "order": "-inst_id",
+        "order": "-inst_uuid",
         "filters": json.dumps(filters, ensure_ascii=False),
     },
     timeout=10,
@@ -67,7 +67,7 @@ response.raise_for_status()
 data = payload["data"]
 print(f"共 {data['count']} 条")
 for instance in data["items"]:
-    print(instance["inst_id"], instance.get("inst_name"))
+    print(instance["inst_uuid"], instance.get("inst_name"))
 ```
 
 关键点：
@@ -140,7 +140,7 @@ if not payload.get("result"):
 response.raise_for_status()
 
 instance = payload["data"]
-print(f"创建成功，实例 ID={instance['inst_id']}")
+print(f"创建成功，实例 UUID={instance['inst_uuid']}")
 ```
 
 创建时不要提交 `organization`。服务端会使用 API Secret 绑定的唯一团队强制设置实例所属团队。

@@ -3,16 +3,21 @@ export const MAX_FOLLOWED_ASSETS = 100;
 
 export interface FollowedAssetItem {
   model_id: string;
-  inst_id: string | number;
+  inst_uuid: string;
   followed_at: string;
 }
+
+/** 兼容读取旧配置中的 inst_id 字段。 */
+type FollowedAssetItemRaw = Partial<FollowedAssetItem> & {
+  inst_id?: string | number;
+};
 
 export interface FollowedAssetsConfig {
   items: FollowedAssetItem[];
 }
 
 export interface FollowedAssetInstance {
-  _id: string | number;
+  inst_uuid: string;
   model_id: string;
 }
 
@@ -21,25 +26,41 @@ export interface ResolvedFollowedAsset<T extends FollowedAssetInstance> {
   detail: T;
 }
 
+const resolveInstUuid = (item: FollowedAssetItemRaw): string | null => {
+  const value = item.inst_uuid ?? item.inst_id;
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim();
+  return text.length > 0 ? text : null;
+};
+
 const isSameAsset = (
   item: FollowedAssetItem,
   modelId: string,
-  instId: string | number
-) => item.model_id === modelId && String(item.inst_id) === String(instId);
+  instUuid: string
+) => item.model_id === modelId && String(item.inst_uuid) === String(instUuid);
 
 export const normalizeFollowedAssetsConfig = (
   config?: Partial<FollowedAssetsConfig> | null
 ): FollowedAssetsConfig => ({
   items: sortFollowedAssets(
     Array.isArray(config?.items)
-      ? config.items.filter(
-        (item): item is FollowedAssetItem =>
-          !!item &&
-          typeof item.model_id === 'string' &&
-          item.model_id.length > 0 &&
-          item.inst_id !== undefined &&
-          item.inst_id !== null
-      )
+      ? config.items
+        .map((raw): FollowedAssetItem | null => {
+          if (!raw || typeof raw.model_id !== 'string' || !raw.model_id) {
+            return null;
+          }
+          const instUuid = resolveInstUuid(raw as FollowedAssetItemRaw);
+          if (!instUuid) return null;
+          return {
+            model_id: raw.model_id,
+            inst_uuid: instUuid,
+            followed_at:
+                typeof raw.followed_at === 'string'
+                  ? raw.followed_at
+                  : new Date(0).toISOString(),
+          };
+        })
+        .filter((item): item is FollowedAssetItem => item !== null)
       : []
   ).slice(0, MAX_FOLLOWED_ASSETS),
 });
@@ -54,21 +75,21 @@ export const sortFollowedAssets = (items: FollowedAssetItem[]) =>
 export const isFollowedAsset = (
   config: FollowedAssetsConfig,
   modelId: string,
-  instId: string | number
-) => config.items.some((item) => isSameAsset(item, modelId, instId));
+  instUuid: string
+) => config.items.some((item) => isSameAsset(item, modelId, instUuid));
 
 export const addFollowedAsset = (
   config: FollowedAssetsConfig,
-  asset: Pick<FollowedAssetItem, 'model_id' | 'inst_id'>,
+  asset: Pick<FollowedAssetItem, 'model_id' | 'inst_uuid'>,
   followedAt = new Date().toISOString()
 ): FollowedAssetsConfig => {
   const nextItem: FollowedAssetItem = {
     model_id: asset.model_id,
-    inst_id: asset.inst_id,
+    inst_uuid: asset.inst_uuid,
     followed_at: followedAt,
   };
   const restItems = config.items.filter(
-    (item) => !isSameAsset(item, asset.model_id, asset.inst_id)
+    (item) => !isSameAsset(item, asset.model_id, asset.inst_uuid)
   );
   return {
     items: sortFollowedAssets([nextItem, ...restItems]).slice(
@@ -81,9 +102,9 @@ export const addFollowedAsset = (
 export const removeFollowedAsset = (
   config: FollowedAssetsConfig,
   modelId: string,
-  instId: string | number
+  instUuid: string
 ): FollowedAssetsConfig => ({
-  items: config.items.filter((item) => !isSameAsset(item, modelId, instId)),
+  items: config.items.filter((item) => !isSameAsset(item, modelId, instUuid)),
 });
 
 export const resolveVisibleFollowedAssets = async <
@@ -92,7 +113,7 @@ export const resolveVisibleFollowedAssets = async <
   items: FollowedAssetItem[],
   fetchInstances: (
     modelId: string,
-    instanceIds: Array<string | number>
+    instanceUuids: string[]
   ) => Promise<T[]>,
   limit: number
 ): Promise<Array<ResolvedFollowedAsset<T>>> => {
@@ -110,7 +131,7 @@ export const resolveVisibleFollowedAssets = async <
       modelId,
       instances: await fetchInstances(
         modelId,
-        modelItems.map((item) => item.inst_id)
+        modelItems.map((item) => item.inst_uuid)
       ),
     }))
   );
@@ -119,7 +140,7 @@ export const resolveVisibleFollowedAssets = async <
     if (result.status !== 'fulfilled') return;
     result.value.instances.forEach((instance) => {
       instanceByAsset.set(
-        `${result.value.modelId}:${String(instance._id)}`,
+        `${result.value.modelId}:${String(instance.inst_uuid)}`,
         instance
       );
     });
@@ -128,7 +149,7 @@ export const resolveVisibleFollowedAssets = async <
   const resolved: Array<ResolvedFollowedAsset<T>> = [];
   for (const item of items) {
     const detail = instanceByAsset.get(
-      `${item.model_id}:${String(item.inst_id)}`
+      `${item.model_id}:${String(item.inst_uuid)}`
     );
     if (!detail) continue;
     resolved.push({ item, detail });

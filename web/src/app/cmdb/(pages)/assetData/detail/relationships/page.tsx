@@ -37,7 +37,7 @@ const Ralationships = () => {
     searchParams.get('tab') || 'list'
   );
   const modelId: string = searchParams.get('model_id') || '';
-  const instId: string = searchParams.get('inst_id') || '';
+  const instUuid: string = searchParams.get('inst_uuid') || '';
   const tabParam: string = searchParams.get('tab') || '';
 
   const { getTopoThemes } = useInstanceApi();
@@ -59,13 +59,13 @@ const Ralationships = () => {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [modelId]);
 
   // 下钻进入时若带 tab 参数（如机房视图点机柜跳到机柜的「机柜视图」），自动选中该 Tab
   useEffect(() => {
     if (tabParam) setActiveTab(tabParam);
-  }, [tabParam, instId]);
+  }, [tabParam, instUuid]);
 
   const segmentedOptions = [
     { label: t('list'), value: 'list' },
@@ -145,22 +145,22 @@ const Ralationships = () => {
           assoTypeList={assoTypes}
           modelList={modelList}
           modelId={modelId}
-          instId={instId}
+          instUuid={instUuid}
         />
       )}
       {activeTab === 'network' && (
-        <NetworkTopo modelId={modelId} instId={instId} />
+        <NetworkTopo modelId={modelId} instUuid={instUuid} />
       )}
       {activeTab === 'ipam' && (
-        <IpamMatrix instId={instId} />
+        <IpamMatrix instUuid={instUuid} />
       )}
       {activeTab === 'appOverview' && (
-        <ApplicationResourceOverview modelId={modelId} instId={instId} />
+        <ApplicationResourceOverview modelId={modelId} instUuid={instUuid} />
       )}
       {activeTab === 'rackView' && (
         <RackElevation
           modelId={modelId}
-          instId={instId}
+          instUuid={instUuid}
           onDeviceClick={(d) => {
             setDevice(d);
             setDevOpen(true);
@@ -168,7 +168,7 @@ const Ralationships = () => {
         />
       )}
       {activeTab === 'roomView' && (
-        <RoomFloorPlan modelId={modelId} instId={instId} />
+        <RoomFloorPlan modelId={modelId} instUuid={instUuid} />
       )}
       <DeviceDetailDrawer
         device={device}

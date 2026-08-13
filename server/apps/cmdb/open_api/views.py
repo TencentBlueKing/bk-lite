@@ -1,10 +1,4 @@
-from rest_framework.exceptions import (
-    APIException,
-    MethodNotAllowed,
-    NotAuthenticated,
-    PermissionDenied,
-    ValidationError,
-)
+from rest_framework.exceptions import APIException, MethodNotAllowed, NotAuthenticated, PermissionDenied, ValidationError
 from rest_framework.permissions import BasePermission
 from rest_framework.views import APIView
 
@@ -37,23 +31,15 @@ class CMDBOpenAPIView(APIView):
         if isinstance(exc, CMDBOpenAPIError):
             return open_api_error(exc)
         if isinstance(exc, BaseAppException):
-            return open_api_error(
-                CMDBOpenAPIError("cmdb.validation.failed", exc.message, 400)
-            )
+            return open_api_error(CMDBOpenAPIError("cmdb.validation.failed", exc.message, 400))
         if isinstance(exc, NotAuthenticated):
-            return open_api_error(
-                CMDBOpenAPIError("cmdb.auth.authentication_required", "需要认证", exc.status_code)
-            )
+            return open_api_error(CMDBOpenAPIError("cmdb.auth.authentication_required", "需要认证", exc.status_code))
         if isinstance(exc, PermissionDenied):
             return open_api_error(CMDBOpenAPIError("cmdb.permission.denied", "权限不足", exc.status_code))
         if isinstance(exc, MethodNotAllowed):
-            return open_api_error(
-                CMDBOpenAPIError("cmdb.request.method_not_allowed", "请求方法不被允许", exc.status_code)
-            )
+            return open_api_error(CMDBOpenAPIError("cmdb.request.method_not_allowed", "请求方法不被允许", exc.status_code))
         if isinstance(exc, ValidationError):
-            return open_api_error(
-                CMDBOpenAPIError("cmdb.validation.failed", "请求参数非法", exc.status_code)
-            )
+            return open_api_error(CMDBOpenAPIError("cmdb.validation.failed", "请求参数非法", exc.status_code))
         if isinstance(exc, APIException):
             return open_api_error(CMDBOpenAPIError("cmdb.request.failed", "请求处理失败", exc.status_code))
         return super().handle_exception(exc)
@@ -96,34 +82,32 @@ class OpenInstanceCollectionView(CMDBOpenAPIView):
 
 
 class OpenInstanceDetailView(CMDBOpenAPIView):
-    def get(self, request, model_id, inst_id):
+    def get(self, request, model_id, inst_uuid):
         service = self.service(request)
         service.context.require_feature("asset_info-View")
-        return open_api_success(serialize_instance(service._get_instance(model_id, inst_id, VIEW)))
+        return open_api_success(serialize_instance(service._get_instance(model_id, inst_uuid, VIEW)))
 
-    def patch(self, request, model_id, inst_id):
-        return open_api_success(self.service(request).update_instance(model_id, inst_id, request.data))
+    def patch(self, request, model_id, inst_uuid):
+        return open_api_success(self.service(request).update_instance(model_id, inst_uuid, request.data))
 
-    def delete(self, request, model_id, inst_id):
-        return open_api_success(self.service(request).delete_instance(model_id, inst_id))
+    def delete(self, request, model_id, inst_uuid):
+        return open_api_success(self.service(request).delete_instance(model_id, inst_uuid))
 
 
 class OpenInstanceAssociationsView(CMDBOpenAPIView):
-    def get(self, request, model_id, inst_id):
-        return open_api_success(self.service(request).list_instance_associations(model_id, inst_id))
+    def get(self, request, model_id, inst_uuid):
+        return open_api_success(self.service(request).list_instance_associations(model_id, inst_uuid))
 
-    def post(self, request, model_id, inst_id):
+    def post(self, request, model_id, inst_uuid):
         return open_api_success(
-            self.service(request).create_instance_association(model_id, inst_id, request.data),
+            self.service(request).create_instance_association(model_id, inst_uuid, request.data),
             status_code=201,
         )
 
 
 class OpenInstanceAssociationDetailView(CMDBOpenAPIView):
-    def delete(self, request, model_id, inst_id, association_id):
-        return open_api_success(
-            self.service(request).delete_instance_association(model_id, inst_id, association_id)
-        )
+    def delete(self, request, model_id, inst_uuid, dst_inst_uuid, model_asst_id):
+        return open_api_success(self.service(request).delete_instance_association(model_id, inst_uuid, dst_inst_uuid, model_asst_id))
 
 
 class OpenBatchCreateView(CMDBOpenAPIView):
