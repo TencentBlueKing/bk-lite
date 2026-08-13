@@ -1,14 +1,19 @@
+import uuid
+
 from django.db import transaction
 from django.db import IntegrityError
 
 import nats_client
 from apps.core.logger import node_logger as logger
+from apps.core.utils.safe_template import build_sandboxed_env
+from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
 from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
@@ -49,15 +54,7 @@ class NatsService:
                 cpu_architecture__in=allowed_architectures,
             ).order_by("cpu_architecture", "id")
         )
-        if not collectors:
-            return None
-
-        if node_arch == NodeConstants.ARM64_ARCH:
-            return next((item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.ARM64_ARCH), None)
-
-        x86_match = next((item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.X86_64_ARCH), None)
-        legacy_x86_match = next((item for item in collectors if item.cpu_architecture == ""), None)
-        return x86_match or legacy_x86_match
+        return NatsService._resolve_collector_from_candidates(node, collectors)
 
     def _ensure_parent_configs_for_child_configs(self, configs: list):
         if not configs:
@@ -76,13 +73,23 @@ class NatsService:
             return
 
         node_map = {node.id: node for node in Node.objects.filter(id__in=node_ids).select_related("cloud_region")}
+        collectors_by_name_and_os = {}
+        for collector in Collector.objects.filter(
+            name__in={collector_name for _, collector_name in missing_pairs},
+            node_operating_system__in={node.operating_system for node in node_map.values()},
+        ).order_by("cpu_architecture", "id"):
+            collectors_by_name_and_os.setdefault((collector.name, collector.node_operating_system), []).append(collector)
 
-        for node_id, collector_name in missing_pairs:
+        resolved_pairs = []
+        for node_id, collector_name in sorted(missing_pairs):
             node = node_map.get(node_id)
             if not node:
                 raise BaseAppException(f"节点 {node_id} 不存在，无法为采集器 {collector_name} 创建父配置")
 
-            collector = self._resolve_collector_for_node(node, collector_name)
+            collector = self._resolve_collector_from_candidates(
+                node,
+                collectors_by_name_and_os.get((collector_name, node.operating_system), []),
+            )
             if not collector:
                 raise BaseAppException(
                     "节点 %s 的采集器 %s 不存在（%s/%s）"
@@ -100,12 +107,91 @@ class NatsService:
             if not collector.default_config:
                 raise BaseAppException(f"节点 {node_id} 的采集器 {collector_name} 缺少 default_config，无法创建父配置")
 
-            NodeService._create_collector_default_config(node, collector)
+            resolved_pairs.append((node, collector))
 
-            if not CollectorConfiguration.objects.filter(nodes__id=node_id, collector__name=collector_name).exists():
-                raise BaseAppException(
-                    f"节点 {node_id} 的采集器 {collector_name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量"
+        variables_by_region = RegionService.get_cloud_regions_envconfig({node.cloud_region_id for node, _ in resolved_pairs})
+
+        pending_configs = []
+        expected_by_name = {}
+        for node, collector in resolved_pairs:
+            variables = variables_by_region[node.cloud_region_id]
+            default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
+            config_template = collector.default_config.get(default_sidecar_mode)
+            if not config_template:
+                raise BaseAppException(f"节点 {node.id} 的采集器 {collector.name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量")
+
+            if node.node_type == ControllerConstants.NODE_TYPE_CONTAINER:
+                add_config = collector.default_config.get("add_config", "")
+                if add_config:
+                    config_template = config_template + "\n" + add_config
+
+            rendered_config = build_sandboxed_env().from_string(config_template).render(variables)
+            config_name = f"{collector.name}-{node.id}"
+            expected_by_name[config_name] = (node.id, collector.id)
+            pending_configs.append(
+                CollectorConfiguration(
+                    id=uuid.uuid4().hex,
+                    name=config_name,
+                    collector=collector,
+                    config_template=rendered_config,
+                    is_pre=True,
+                    cloud_region=node.cloud_region,
                 )
+            )
+
+        try:
+            CollectorConfiguration.objects.bulk_create(
+                pending_configs,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                ignore_conflicts=True,
+            )
+        except Exception as error:
+            raise BaseAppException(f"批量创建采集器父配置失败: {error}") from error
+        created_configs = {
+            item["name"]: item for item in CollectorConfiguration.objects.filter(name__in=expected_by_name).values("id", "name", "collector_id")
+        }
+        node_config_associations = []
+        for config_name, (node_id, collector_id) in expected_by_name.items():
+            created_config = created_configs.get(config_name)
+            if not created_config or created_config["collector_id"] != collector_id:
+                raise BaseAppException(f"节点 {node_id} 的采集器父配置名称 {config_name} 已被其他配置占用")
+            node_config_associations.append(NodeCollectorConfiguration(node_id=node_id, collector_config_id=created_config["id"]))
+
+        try:
+            NodeCollectorConfiguration.objects.bulk_create(
+                node_config_associations,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                ignore_conflicts=True,
+            )
+        except Exception as error:
+            raise BaseAppException(f"批量关联采集器父配置失败: {error}") from error
+
+        created_pairs = set(
+            CollectorConfiguration.objects.filter(
+                nodes__id__in=node_ids,
+                collector__name__in=collector_names,
+            )
+            .values_list("nodes__id", "collector__name")
+            .distinct()
+        )
+        if missing_pairs - created_pairs:
+            raise BaseAppException("批量创建采集器父配置失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量")
+
+    @staticmethod
+    def _resolve_collector_from_candidates(node: Node, collectors: list[Collector]):
+        node_arch = normalize_cpu_architecture(getattr(node, "cpu_architecture", ""))
+        if node_arch == NodeConstants.ARM64_ARCH:
+            return next(
+                (item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.ARM64_ARCH),
+                None,
+            )
+
+        x86_match = next(
+            (item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.X86_64_ARCH),
+            None,
+        )
+        legacy_x86_match = next((item for item in collectors if item.cpu_architecture == ""), None)
+        return x86_match or legacy_x86_match
 
     @staticmethod
     def _resolve_child_parent_config_id(base_configs: list[dict], node_id: str, collector_name: str, node_arch: str) -> str:

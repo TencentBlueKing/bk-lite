@@ -10,6 +10,8 @@ from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.base.models import User
@@ -2243,6 +2245,7 @@ def test_sidecar_configuration_endpoint_rejects_old_configuration_after_unbind()
         created_by="tester",
         updated_by="tester",
     )
+
     config = CollectorConfiguration.objects.create(
         id="cfg-sidecar-unbind",
         name="cfg-sidecar-unbind",
@@ -2772,7 +2775,6 @@ def test_repair_node_config_rebinds_defaults_by_node_architecture(monkeypatch):
         created_by="tester",
         updated_by="tester",
     )
-
     config = CollectorConfiguration.objects.create(
         id="cfg-repair-node-config-arch",
         name=f"Telegraf-{node.id}",
@@ -4484,6 +4486,112 @@ def test_nats_batch_create_child_configs_auto_creates_missing_default_parent_con
     child = parent_config.childconfig_set.get(id="child-autocreate-telegraf")
     assert parent_config.is_pre is True
     assert child.collector_config_id == parent_config.id
+
+
+@pytest.mark.django_db
+def test_nats_ensure_parent_configs_batches_database_queries():
+    cloud_region = CloudRegion.objects.create(
+        name="region-nats-child-batch-queries",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    SidecarEnv.objects.create(
+        cloud_region=cloud_region,
+        key="SIDECAR_INPUT_MODE",
+        value="nats",
+        type="text",
+    )
+    Collector.objects.create(
+        id="telegraf_linux_batch_queries",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="x86_64",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={
+            "nats": "[[inputs.cpu]]\n  interval = '10s'",
+            "cached": "[[inputs.mem]]\n  interval = '10s'",
+        },
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    def ensure_parent_configs(prefix, count):
+        configs = []
+        for index in range(count):
+            node = Node.objects.create(
+                id=f"node-{prefix}-{index}",
+                name=f"node-{prefix}-{index}",
+                ip=f"10.20.{count}.{index + 1}",
+                operating_system=NodeConstants.LINUX_OS,
+                cpu_architecture=NodeConstants.X86_64_ARCH,
+                collector_configuration_directory="/etc/collector",
+                metrics={},
+                status={},
+                tags=[],
+                log_file_list=[],
+                cloud_region=cloud_region,
+                created_by="tester",
+                updated_by="tester",
+            )
+            configs.append({"node_id": node.id, "collector_name": "Telegraf"})
+
+        cached_env_rows = [{"key": "SIDECAR_INPUT_MODE", "value": "cached", "type": "text"}]
+        with patch("apps.node_mgmt.services.cloudregion.cache.get", return_value=cached_env_rows):
+            with CaptureQueriesContext(connection) as queries:
+                NatsService()._ensure_parent_configs_for_child_configs(configs + configs)
+        return len(queries)
+
+    single_queries = ensure_parent_configs("single", 1)
+    batch_queries = ensure_parent_configs("batch", 8)
+
+    parent_configs = CollectorConfiguration.objects.filter(collector__name="Telegraf")
+    parent_templates = set(parent_configs.values_list("config_template", flat=True))
+    assert parent_configs.count() == 9
+    assert len(parent_templates) == 1
+    assert parent_templates == {"[[inputs.mem]]\n  interval = '10s'"}
+    assert batch_queries <= single_queries + 2
+
+
+@pytest.mark.django_db
+def test_cloud_region_env_batch_loader_uses_one_query_for_cache_misses():
+    cloud_regions = CloudRegion.objects.bulk_create(
+        [
+            CloudRegion(
+                name=f"region-env-batch-{index}",
+                introduction="test",
+                created_by="tester",
+                updated_by="tester",
+            )
+            for index in range(8)
+        ]
+    )
+    SidecarEnv.objects.bulk_create(
+        [
+            SidecarEnv(
+                cloud_region=cloud_region,
+                key="SIDECAR_INPUT_MODE",
+                value="nats",
+                type="text",
+            )
+            for cloud_region in cloud_regions
+        ]
+    )
+
+    with patch("apps.node_mgmt.services.cloudregion.cache.get", return_value=None):
+        with patch("apps.node_mgmt.services.cloudregion.cache.set"):
+            with CaptureQueriesContext(connection) as queries:
+                variables_by_region = RegionService.get_cloud_regions_envconfig({cloud_region.id for cloud_region in cloud_regions})
+
+    assert len(queries) == 1
+    assert variables_by_region == {cloud_region.id: {"SIDECAR_INPUT_MODE": "nats"} for cloud_region in cloud_regions}
 
 
 @pytest.mark.django_db
