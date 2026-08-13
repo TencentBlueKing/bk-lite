@@ -1,10 +1,11 @@
+import base64
 import hashlib
 import json
 import uuid
 from datetime import timedelta
 from urllib.parse import urljoin
 
-from cryptography.fernet import InvalidToken
+from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
@@ -19,6 +20,7 @@ class K8sInstallService:
     TOKEN_MAX_USAGE = 5
     TOKEN_CLAIM_RETRIES = TOKEN_MAX_USAGE + 1
     TOKEN_CACHE_PREFIX = "alerts_k8s_install_token"
+    ENCRYPTED_PAYLOAD_VERSION = "v1"
 
     @classmethod
     def _build_cache_key(cls, token: str) -> str:
@@ -33,17 +35,34 @@ class K8sInstallService:
         if not settings.SECRET_KEY:
             raise ValueError("SECRET_KEY must be configured before issuing K8s install tokens")
         serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-        return EncryptMixin.get_cipher_suite().encrypt(serialized.encode("utf-8")).decode("utf-8")
+        ciphertext = EncryptMixin.get_cipher_suite().encrypt(serialized.encode("utf-8")).decode("utf-8")
+        return f"{K8sInstallService.ENCRYPTED_PAYLOAD_VERSION}:{ciphertext}"
+
+    @staticmethod
+    def _cipher_suite(secret_key: str):
+        key_hash = hashlib.sha256(secret_key.encode("utf-8")).digest()
+        return EncryptMixin.get_cipher_suite() if secret_key == settings.SECRET_KEY else Fernet(base64.urlsafe_b64encode(key_hash))
 
     @staticmethod
     def _decrypt_payload(encrypted_payload: str) -> dict:
         if not settings.SECRET_KEY:
             raise BaseAppException("Invalid or expired token")
         try:
-            serialized = EncryptMixin.get_cipher_suite().decrypt(encrypted_payload.encode("utf-8"))
-            payload = json.loads(serialized.decode("utf-8"))
-        except (InvalidToken, UnicodeDecodeError, json.JSONDecodeError) as error:
+            version, ciphertext = encrypted_payload.split(":", 1)
+        except ValueError as error:
             raise BaseAppException("Invalid or expired token") from error
+        if version != K8sInstallService.ENCRYPTED_PAYLOAD_VERSION:
+            raise BaseAppException("Invalid or expired token")
+        last_error = None
+        for secret_key in (settings.SECRET_KEY, *getattr(settings, "SECRET_KEY_FALLBACKS", [])):
+            try:
+                serialized = K8sInstallService._cipher_suite(secret_key).decrypt(ciphertext.encode("utf-8"))
+                payload = json.loads(serialized.decode("utf-8"))
+                break
+            except (InvalidToken, UnicodeDecodeError, json.JSONDecodeError) as error:
+                last_error = error
+        else:
+            raise BaseAppException("Invalid or expired token") from last_error
         if not isinstance(payload, dict):
             raise BaseAppException("Invalid or expired token")
         return payload
@@ -79,11 +98,14 @@ class K8sInstallService:
         if claimed_usage > max_usage:
             # 保留耗尽计数到原 payload 自然过期。若删除计数键，已经读取到旧
             # payload 的并发请求可以重新 add 计数器并再次获得额度。
+            cache.delete(cache_key)
             raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
         return payload, claimed_usage, max_usage
 
     @classmethod
     def _consume_token_usage(cls, token: str) -> tuple[dict, int, int]:
+        if not isinstance(token, str):
+            raise BaseAppException("Invalid or expired token")
         token_hash = cls._hash_token(token)
         fields = ("encrypted_payload", "usage_count", "max_usage", "expires_at")
 

@@ -70,6 +70,7 @@ def test_token_payload_is_encrypted_at_rest(token_payload):
 
     assert token not in record.encrypted_payload
     assert token_payload["secret"] not in record.encrypted_payload
+    assert record.encrypted_payload.startswith(f"{K8sInstallService.ENCRYPTED_PAYLOAD_VERSION}:")
     assert record.usage_count == 0
     assert record.max_usage == K8sInstallService.TOKEN_MAX_USAGE
 
@@ -118,6 +119,21 @@ def test_mixed_new_workers_can_consume_both_storage_shapes(token_payload, legacy
     assert K8sInstallService.validate_and_get_token_data(database_token)["remaining_usage"] == 4
 
 
+def test_new_worker_honors_usage_already_consumed_by_old_worker(token_payload, legacy_cache, settings):
+    settings.K8S_INSTALL_TOKEN_DB_ENABLED = False
+    token = K8sInstallService.generate_install_token(token_payload)
+    cache_key = K8sInstallService._build_cache_key(token)
+    cached = legacy_cache.get(cache_key)
+
+    # 模拟旧版本 worker 的第一次消费：payload 内计数直接加一并写回。
+    cached["usage_count"] = 1
+    legacy_cache.set(cache_key, cached, timeout=K8sInstallService.TOKEN_EXPIRE_TIME)
+
+    first_new_worker_result = K8sInstallService.validate_and_get_token_data(token)
+
+    assert first_new_worker_result["remaining_usage"] == 3
+
+
 def test_generation_rejects_empty_encryption_key(token_payload, settings):
     settings.SECRET_KEY = ""
     with pytest.raises((ImproperlyConfigured, ValueError), match="SECRET_KEY"):
@@ -135,6 +151,35 @@ def test_wrong_encryption_key_does_not_consume_usage(token_payload, settings):
         K8sInstallService.validate_and_get_token_data(token)
 
     record = K8sInstallToken.objects.get(token_hash=K8sInstallService._hash_token(token))
+    assert record.usage_count == 0
+
+
+def test_fallback_key_decrypts_existing_token_while_new_key_encrypts_new_tokens(token_payload, settings):
+    settings.SECRET_KEY = "old-key"
+    old_token = K8sInstallService.generate_install_token(token_payload)
+    settings.SECRET_KEY = "new-key"
+    settings.SECRET_KEY_FALLBACKS = ["old-key"]
+
+    assert K8sInstallService.validate_and_get_token_data(old_token)["remaining_usage"] == 4
+
+    new_token = K8sInstallService.generate_install_token(token_payload)
+    settings.SECRET_KEY = "old-key"
+    settings.SECRET_KEY_FALLBACKS = []
+    with pytest.raises(BaseAppException, match="Invalid or expired token"):
+        K8sInstallService.validate_and_get_token_data(new_token)
+
+
+def test_unknown_ciphertext_version_does_not_consume_usage(token_payload):
+    from apps.alerts.models.install_token import K8sInstallToken
+
+    token = K8sInstallService.generate_install_token(token_payload)
+    record = K8sInstallToken.objects.get(token_hash=K8sInstallService._hash_token(token))
+    K8sInstallToken.objects.filter(pk=record.pk).update(encrypted_payload=f"v2:{record.encrypted_payload.split(':', 1)[1]}")
+
+    with pytest.raises(BaseAppException, match="Invalid or expired token"):
+        K8sInstallService.validate_and_get_token_data(token)
+
+    record.refresh_from_db()
     assert record.usage_count == 0
 
 
@@ -240,12 +285,12 @@ def test_exhausted_legacy_counter_remains_a_tombstone(token_payload, legacy_cach
         timeout=K8sInstallService.TOKEN_EXPIRE_TIME,
     )
 
-    for _ in range(2):
-        with pytest.raises(BaseAppException, match=r"maximum usage limit \(5 times\)"):
-            K8sInstallService._consume_legacy_cache_usage(token)
+    with pytest.raises(BaseAppException, match=r"maximum usage limit \(5 times\)"):
+        K8sInstallService._consume_legacy_cache_usage(token)
 
-    assert legacy_cache.get(cache_key) is not None
+    assert legacy_cache.get(cache_key) is None
     assert legacy_cache.get(usage_cache_key) > K8sInstallService.TOKEN_MAX_USAGE
+    assert K8sInstallService._consume_legacy_cache_usage(token) is None
 
 
 def test_missing_and_exhausted_tokens_preserve_existing_errors(token_payload):
@@ -287,6 +332,11 @@ def test_render_endpoint_preserves_error_responses(token_payload, api_client):
         {"token": "does-not-exist"},
         format="json",
     )
+    invalid_type = api_client.post(
+        "/api/v1/alerts/open_api/k8s/render/",
+        {"token": {"unexpected": "object"}},
+        format="json",
+    )
     expired_token = K8sInstallService.generate_install_token(token_payload)
     from apps.alerts.models.install_token import K8sInstallToken
 
@@ -309,5 +359,6 @@ def test_render_endpoint_preserves_error_responses(token_payload, api_client):
 
     assert (missing.status_code, missing.json()["message"]) == (500, "Missing required parameter: token")
     assert (invalid.status_code, invalid.json()["message"]) == (500, "Invalid or expired token")
+    assert (invalid_type.status_code, invalid_type.json()["message"]) == (500, "Invalid or expired token")
     assert (expired.status_code, expired.json()["message"]) == (500, "Invalid or expired token")
     assert (exhausted.status_code, exhausted.json()["message"]) == (500, "Token has exceeded maximum usage limit (5 times)")
