@@ -108,6 +108,16 @@ def test_disabled_database_issuance_preserves_legacy_shape(token_payload, legacy
     assert not K8sInstallToken.objects.filter(token_hash=K8sInstallService._hash_token(token)).exists()
 
 
+def test_issuance_can_pause_while_existing_tokens_keep_consuming(token_payload, settings):
+    token = K8sInstallService.generate_install_token(token_payload)
+    settings.K8S_INSTALL_TOKEN_ISSUANCE_PAUSED = True
+
+    with pytest.raises(BaseAppException, match="issuance is temporarily paused"):
+        K8sInstallService.generate_install_token(token_payload)
+
+    assert K8sInstallService.validate_and_get_token_data(token)["remaining_usage"] == 4
+
+
 def test_mixed_new_workers_can_consume_both_storage_shapes(token_payload, legacy_cache, settings):
     settings.K8S_INSTALL_TOKEN_DB_ENABLED = False
     legacy_token = K8sInstallService.generate_install_token(token_payload)
@@ -222,8 +232,7 @@ def test_concurrent_validation_never_exceeds_max_usage(token_payload):
         remaining_usage = list(executor.map(lambda _: consume(), range(attempts)))
 
     assert sorted(value for value in remaining_usage if value is not None) == list(range(K8sInstallService.TOKEN_MAX_USAGE))
-    record = K8sInstallToken.objects.get(token_hash=K8sInstallService._hash_token(token))
-    assert record.usage_count == K8sInstallService.TOKEN_MAX_USAGE
+    assert not K8sInstallToken.objects.filter(token_hash=K8sInstallService._hash_token(token)).exists()
 
 
 def test_validation_does_not_extend_token_expiry(token_payload):
@@ -375,9 +384,15 @@ def test_render_endpoint_preserves_error_responses(token_payload, api_client):
         {"token": token},
         format="json",
     )
+    invalid_after_exhaustion = api_client.post(
+        "/api/v1/alerts/open_api/k8s/render/",
+        {"token": token},
+        format="json",
+    )
 
     assert (missing.status_code, missing.json()["message"]) == (500, "Missing required parameter: token")
     assert (invalid.status_code, invalid.json()["message"]) == (500, "Invalid or expired token")
     assert (invalid_type.status_code, invalid_type.json()["message"]) == (500, "Invalid or expired token")
     assert (expired.status_code, expired.json()["message"]) == (500, "Invalid or expired token")
     assert (exhausted.status_code, exhausted.json()["message"]) == (500, "Token has exceeded maximum usage limit (5 times)")
+    assert (invalid_after_exhaustion.status_code, invalid_after_exhaustion.json()["message"]) == (500, "Invalid or expired token")

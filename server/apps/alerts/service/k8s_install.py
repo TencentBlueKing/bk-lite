@@ -8,6 +8,7 @@ from urllib.parse import urljoin
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.core.cache import cache
+from django.db.models import F
 from django.utils import timezone
 
 from apps.alerts.models.install_token import K8sInstallToken
@@ -137,6 +138,7 @@ class K8sInstallService:
             usage_count = token_data["usage_count"]
             max_usage = token_data["max_usage"]
             if usage_count >= max_usage:
+                K8sInstallToken.objects.filter(token_hash=token_hash, usage_count__gte=F("max_usage")).delete()
                 raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
 
             # 先验证载荷可解密，再领取额度。密钥配置错误或轮换窗口中的旧密文
@@ -200,6 +202,8 @@ class K8sInstallService:
 
     @classmethod
     def generate_install_token(cls, payload: dict) -> str:
+        if settings.K8S_INSTALL_TOKEN_ISSUANCE_PAUSED:
+            raise BaseAppException("K8s install token issuance is temporarily paused")
         token = str(uuid.uuid4())
         if settings.K8S_INSTALL_TOKEN_DB_ENABLED:
             K8sInstallToken.objects.filter(expires_at__lte=timezone.now()).delete()
