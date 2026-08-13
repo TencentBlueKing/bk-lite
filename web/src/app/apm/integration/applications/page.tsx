@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AppstoreAddOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Form, Input, message, Modal, Typography, type TableColumnsType } from 'antd';
+import { Button, Drawer, Form, Input, message, Space, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable from '@/app/apm/components/apm-data-table';
@@ -29,7 +29,7 @@ export default function ApmApplicationsPage() {
   const [form] = Form.useForm<ApmApplicationInput>();
   const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [editing, setEditing] = useState<ApmApplication | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
@@ -60,7 +60,7 @@ export default function ApmApplicationsPage() {
     setEditing(null);
     form.resetFields();
     form.setFieldsValue({ name: '', application_id: '', description: '', organization_ids: [] });
-    setModalOpen(true);
+    setDrawerOpen(true);
   };
 
   const openEdit = (application: ApmApplication) => {
@@ -71,11 +71,10 @@ export default function ApmApplicationsPage() {
       description: application.description,
       organization_ids: application.organization_ids,
     });
-    setModalOpen(true);
+    setDrawerOpen(true);
   };
 
-  const submit = async () => {
-    const values = await form.validateFields();
+  const submit = async (values: ApmApplicationInput) => {
     setSubmitting(true);
     try {
       if (editing) {
@@ -85,7 +84,7 @@ export default function ApmApplicationsPage() {
         await createApplication(values);
         messageApi.success('应用已创建');
       }
-      setModalOpen(false);
+      setDrawerOpen(false);
       await load();
     } finally {
       setSubmitting(false);
@@ -171,8 +170,7 @@ export default function ApmApplicationsPage() {
         <div className="flex flex-col gap-4">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input allowClear className="min-w-0 flex-1 md:max-w-sm" prefix={<SearchOutlined aria-hidden="true" />} placeholder="搜索应用 ID / 名称" value={keyword} onChange={(event) => { setKeyword(event.target.value); setPage(1); }} />
-            <Typography.Text type="secondary" className="text-xs">共 {filtered.length} 个应用</Typography.Text>
-            <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
+            <Permission className="ml-auto" requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
               <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreate}>创建应用</Button>
             </Permission>
           </FilterToolbar>
@@ -197,8 +195,30 @@ export default function ApmApplicationsPage() {
         </div>
       </ApmSurface>
 
-      <Modal title={editing ? '编辑应用' : '创建应用'} open={modalOpen} confirmLoading={submitting} okText={editing ? '保存' : '创建'} cancelText="取消" styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }} onOk={() => void submit()} onCancel={() => setModalOpen(false)} forceRender>
-        <Form form={form} layout="vertical" preserve={false} className="pt-3">
+      <Drawer
+        destroyOnHidden
+        open={drawerOpen}
+        title={editing ? '编辑应用' : '创建应用'}
+        width="min(480px, 100vw)"
+        styles={{ body: { maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' } }}
+        extra={(
+          <Space>
+            <Button disabled={submitting} onClick={() => setDrawerOpen(false)}>取消</Button>
+            <Button form="apm-application-form" htmlType="submit" loading={submitting} type="primary">
+              {editing ? '保存' : '创建'}
+            </Button>
+          </Space>
+        )}
+        onClose={() => setDrawerOpen(false)}
+      >
+        <Form<ApmApplicationInput>
+          form={form}
+          id="apm-application-form"
+          layout="vertical"
+          preserve={false}
+          requiredMark="optional"
+          onFinish={(values) => void submit(values)}
+        >
           <Form.Item name="application_id" label="应用 ID" extra="创建后不可修改，将作为 service.namespace。" rules={editing ? [] : [{ required: true, message: '请输入应用 ID' }, { pattern: /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/, message: '仅支持字母、数字、点、下划线和连字符' }]} hidden={Boolean(editing)}>
             <Input placeholder="例如 shop" autoComplete="off" />
           </Form.Item>
@@ -212,7 +232,7 @@ export default function ApmApplicationsPage() {
             <GroupTreeSelect multiple mode="ownership" showSearch placeholder="选择可管理此应用的组织" />
           </Form.Item>
         </Form>
-      </Modal>
+      </Drawer>
     </ApmRouteShell>
   );
 }
