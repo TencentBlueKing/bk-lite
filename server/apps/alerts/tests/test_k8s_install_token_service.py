@@ -4,17 +4,21 @@ from datetime import timedelta
 import pytest
 from django.core.cache import caches
 from django.core.cache.backends.locmem import LocMemCache
-from django.db import close_old_connections
+from django.core.exceptions import ImproperlyConfigured
+from django.db import IntegrityError, close_old_connections
 from django.utils import timezone
-from rest_framework.test import APIRequestFactory
 
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.service import k8s_install as k8s_install_module
 from apps.alerts.service.k8s_install import K8sInstallService
-from apps.alerts.views.open_api_k8s import K8sOpenAPIViewSet
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def enable_database_token_issuance(settings):
+    settings.K8S_INSTALL_TOKEN_DB_ENABLED = True
 
 
 @pytest.fixture
@@ -68,6 +72,70 @@ def test_token_payload_is_encrypted_at_rest(token_payload):
     assert token_payload["secret"] not in record.encrypted_payload
     assert record.usage_count == 0
     assert record.max_usage == K8sInstallService.TOKEN_MAX_USAGE
+
+
+@pytest.mark.parametrize(
+    ("usage_count", "max_usage", "constraint_name"),
+    [(0, 0, "alerts_k8s_token_max_usage_gt_0"), (2, 1, "alerts_k8s_token_usage_lte_max")],
+)
+def test_token_check_contracts_are_enforced_by_the_model_layer(usage_count, max_usage, constraint_name):
+    from apps.alerts.models.install_token import K8sInstallToken
+
+    with pytest.raises(IntegrityError, match=constraint_name):
+        K8sInstallToken.objects.create(
+            token_hash=f"invalid-{usage_count}-{max_usage}",
+            encrypted_payload="ciphertext",
+            usage_count=usage_count,
+            max_usage=max_usage,
+            expires_at=timezone.now() + timedelta(minutes=1),
+        )
+
+
+def test_disabled_database_issuance_preserves_legacy_shape(token_payload, legacy_cache, settings):
+    settings.K8S_INSTALL_TOKEN_DB_ENABLED = False
+    token = K8sInstallService.generate_install_token(token_payload)
+
+    cached = legacy_cache.get(K8sInstallService._build_cache_key(token))
+
+    assert cached == {
+        **token_payload,
+        "usage_count": 0,
+        "max_usage": K8sInstallService.TOKEN_MAX_USAGE,
+    }
+    from apps.alerts.models.install_token import K8sInstallToken
+
+    assert not K8sInstallToken.objects.filter(token_hash=K8sInstallService._hash_token(token)).exists()
+
+
+def test_mixed_new_workers_can_consume_both_storage_shapes(token_payload, legacy_cache, settings):
+    settings.K8S_INSTALL_TOKEN_DB_ENABLED = False
+    legacy_token = K8sInstallService.generate_install_token(token_payload)
+    settings.K8S_INSTALL_TOKEN_DB_ENABLED = True
+    database_token = K8sInstallService.generate_install_token(token_payload)
+
+    assert K8sInstallService.validate_and_get_token_data(legacy_token)["remaining_usage"] == 4
+    settings.K8S_INSTALL_TOKEN_DB_ENABLED = False
+    assert K8sInstallService.validate_and_get_token_data(database_token)["remaining_usage"] == 4
+
+
+def test_generation_rejects_empty_encryption_key(token_payload, settings):
+    settings.SECRET_KEY = ""
+    with pytest.raises((ImproperlyConfigured, ValueError), match="SECRET_KEY"):
+        K8sInstallService.generate_install_token(token_payload)
+
+
+def test_wrong_encryption_key_does_not_consume_usage(token_payload, settings):
+    from apps.alerts.models.install_token import K8sInstallToken
+
+    settings.SECRET_KEY = "issuer-key"
+    token = K8sInstallService.generate_install_token(token_payload)
+    settings.SECRET_KEY = "different-reader-key"
+
+    with pytest.raises(BaseAppException, match="Invalid or expired token"):
+        K8sInstallService.validate_and_get_token_data(token)
+
+    record = K8sInstallToken.objects.get(token_hash=K8sInstallService._hash_token(token))
+    assert record.usage_count == 0
 
 
 @pytest.mark.django_db(transaction=True)
@@ -162,6 +230,24 @@ def test_legacy_cache_token_uses_an_atomic_compatibility_counter(token_payload, 
     assert sorted(value for value in remaining_usage if value is not None) == list(range(K8sInstallService.TOKEN_MAX_USAGE))
 
 
+def test_exhausted_legacy_counter_remains_a_tombstone(token_payload, legacy_cache):
+    token = "legacy-exhausted-alerts-token"
+    cache_key = K8sInstallService._build_cache_key(token)
+    usage_cache_key = f"{cache_key}:usage_count"
+    legacy_cache.set(
+        cache_key,
+        {**token_payload, "usage_count": K8sInstallService.TOKEN_MAX_USAGE, "max_usage": K8sInstallService.TOKEN_MAX_USAGE},
+        timeout=K8sInstallService.TOKEN_EXPIRE_TIME,
+    )
+
+    for _ in range(2):
+        with pytest.raises(BaseAppException, match=r"maximum usage limit \(5 times\)"):
+            K8sInstallService._consume_legacy_cache_usage(token)
+
+    assert legacy_cache.get(cache_key) is not None
+    assert legacy_cache.get(usage_cache_key) > K8sInstallService.TOKEN_MAX_USAGE
+
+
 def test_missing_and_exhausted_tokens_preserve_existing_errors(token_payload):
     token = K8sInstallService.generate_install_token(token_payload)
     for _ in range(K8sInstallService.TOKEN_MAX_USAGE):
@@ -173,7 +259,7 @@ def test_missing_and_exhausted_tokens_preserve_existing_errors(token_payload):
         K8sInstallService.validate_and_get_token_data("does-not-exist")
 
 
-def test_render_endpoint_preserves_response_contract(token_payload):
+def test_render_endpoint_preserves_response_contract(token_payload, api_client):
     AlertSource.objects.create(
         name="K8s",
         source_id="k8s",
@@ -182,15 +268,46 @@ def test_render_endpoint_preserves_response_contract(token_payload):
         team_secrets={"1": "team-secret"},
     )
     token = K8sInstallService.generate_install_token(token_payload)
-    request = APIRequestFactory().post(
+    response = api_client.post(
         "/api/v1/alerts/open_api/k8s/render/",
         {"token": token},
         format="json",
     )
 
-    response = K8sOpenAPIViewSet.as_view({"post": "render"})(request)
-
     assert response.status_code == 200
     assert response["Content-Type"].startswith("text/yaml")
     assert response["X-Token-Remaining-Usage"] == "4"
     assert b"team-secret" in response.content
+
+
+def test_render_endpoint_preserves_error_responses(token_payload, api_client):
+    missing = api_client.post("/api/v1/alerts/open_api/k8s/render/", {}, format="json")
+    invalid = api_client.post(
+        "/api/v1/alerts/open_api/k8s/render/",
+        {"token": "does-not-exist"},
+        format="json",
+    )
+    expired_token = K8sInstallService.generate_install_token(token_payload)
+    from apps.alerts.models.install_token import K8sInstallToken
+
+    K8sInstallToken.objects.filter(token_hash=K8sInstallService._hash_token(expired_token)).update(
+        expires_at=timezone.now() - timedelta(seconds=1)
+    )
+    expired = api_client.post(
+        "/api/v1/alerts/open_api/k8s/render/",
+        {"token": expired_token},
+        format="json",
+    )
+    token = K8sInstallService.generate_install_token(token_payload)
+    for _ in range(K8sInstallService.TOKEN_MAX_USAGE):
+        K8sInstallService.validate_and_get_token_data(token)
+    exhausted = api_client.post(
+        "/api/v1/alerts/open_api/k8s/render/",
+        {"token": token},
+        format="json",
+    )
+
+    assert (missing.status_code, missing.json()["message"]) == (500, "Missing required parameter: token")
+    assert (invalid.status_code, invalid.json()["message"]) == (500, "Invalid or expired token")
+    assert (expired.status_code, expired.json()["message"]) == (500, "Invalid or expired token")
+    assert (exhausted.status_code, exhausted.json()["message"]) == (500, "Token has exceeded maximum usage limit (5 times)")

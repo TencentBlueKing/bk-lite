@@ -5,6 +5,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if BASE_DIR.name == "config":
     BASE_DIR = BASE_DIR.parent
 SECRET_KEY = os.getenv("SECRET_KEY", "")
+K8S_INSTALL_TOKEN_DB_ENABLED = os.getenv("K8S_INSTALL_TOKEN_DB_ENABLED", "0").lower() in ["1", "true"]
 APP_CODE = os.getenv("APP_CODE", "bk-lite")
 DASHBOARD_SHARE_SIGNING_KEY = os.getenv("DASHBOARD_SHARE_SIGNING_KEY", "")
 DASHBOARD_SHARE_SESSION_AGE = int(os.getenv("DASHBOARD_SHARE_SESSION_AGE", "28800"))
