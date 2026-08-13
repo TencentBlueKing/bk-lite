@@ -7,10 +7,7 @@
 """
 import pytest
 
-from apps.cmdb.display_field.sync import (
-    DisplayFieldSynchronizer,
-    sync_display_fields_for_system_mgmt,
-)
+from apps.cmdb.display_field.sync import DisplayFieldSynchronizer, sync_display_fields_for_system_mgmt
 
 MODULE = "apps.cmdb.display_field.sync"
 
@@ -21,6 +18,9 @@ class _FakeGraph:
     def __init__(self, instances):
         self._instances = instances
         self.updates = []  # list of (label, ids, data)
+        self.legacy_updates = []
+        self.property_updates = []
+        self.query_calls = []
 
     def __enter__(self):
         return self
@@ -28,12 +28,41 @@ class _FakeGraph:
     def __exit__(self, *a):
         return False
 
-    def query_entity(self, label, params):
-        return list(self._instances), len(self._instances)
+    def query_entity(self, label, params, page=None, include_count=True):
+        self.query_calls.append(
+            {
+                "label": label,
+                "params": list(params),
+                "page": dict(page) if page else None,
+                "include_count": include_count,
+            }
+        )
+        instances = list(self._instances)
+        for param in params:
+            if param["type"] == "str[]":
+                instances = [instance for instance in instances if instance.get(param["field"]) in param["value"]]
+            elif param["type"] == "id>":
+                instances = [instance for instance in instances if instance["_id"] > param["value"]]
+        if page:
+            instances = instances[page["skip"] : page["skip"] + page["limit"]]
+        return instances, len(instances) if include_count else None
 
     def batch_update_node_properties(self, label, ids, data):
+        self.legacy_updates.append((label, list(ids), dict(data)))
         self.updates.append((label, list(ids), dict(data)))
         return {}
+
+    def batch_update_node_property_values(self, label, field, property_values):
+        copied_values = [dict(item) for item in property_values]
+        self.property_updates.append((label, field, copied_values))
+        for item in copied_values:
+            node_id = item["id"]
+            existing = next((update for update in self.updates if update[1] == [node_id]), None)
+            if existing:
+                existing[2][field] = item["value"]
+            else:
+                self.updates.append((label, [node_id], {field: item["value"]}))
+        return []
 
 
 def _install_graph(monkeypatch, instances):
@@ -90,9 +119,7 @@ def test_sync_all_rebuilds_organization_display(monkeypatch):
     )
     _install_mapping(monkeypatch, {"host": {"organization": ["org"], "user": []}})
 
-    out = DisplayFieldSynchronizer.sync_all(
-        {"organizations": [{"id": 1, "name": "研发部"}, {"id": 2, "name": "运维部"}]}
-    )
+    out = DisplayFieldSynchronizer.sync_all({"organizations": [{"id": 1, "name": "研发部"}, {"id": 2, "name": "运维部"}]})
 
     assert out["organizations"] == 1
     assert len(fake.updates) == 1
@@ -123,8 +150,9 @@ def test_sync_all_org_missing_id_falls_back_to_db(monkeypatch):
             assert kw == {"id__in": [9]}
             return self
 
-        def values_list(self, field, flat=False):
-            return ["历史部门"]
+        def values_list(self, *fields):
+            assert fields == ("id", "name")
+            return [(9, "历史部门")]
 
     monkeypatch.setattr(f"{MODULE}.Group.objects", _QS())
 
@@ -154,9 +182,7 @@ def test_sync_all_rebuilds_user_display_with_display_name(monkeypatch):
     fake = _install_graph(monkeypatch, [{"_id": 20, "model_id": "host", "owner": [1]}])
     _install_mapping(monkeypatch, {"host": {"organization": [], "user": ["owner"]}})
 
-    out = DisplayFieldSynchronizer.sync_all(
-        {"users": [{"id": 1, "username": "admin", "display_name": "超级管理员"}]}
-    )
+    out = DisplayFieldSynchronizer.sync_all({"users": [{"id": 1, "username": "admin", "display_name": "超级管理员"}]})
     assert out["users"] == 1
     _, ids, data = fake.updates[0]
     assert ids == [20]
@@ -168,9 +194,7 @@ def test_sync_all_user_without_display_name_uses_username(monkeypatch):
     fake = _install_graph(monkeypatch, [{"_id": 21, "model_id": "host", "owner": 1}])
     _install_mapping(monkeypatch, {"host": {"user": ["owner"]}})
 
-    out = DisplayFieldSynchronizer.sync_all(
-        {"users": [{"id": 1, "username": "alice", "display_name": ""}]}
-    )
+    out = DisplayFieldSynchronizer.sync_all({"users": [{"id": 1, "username": "alice", "display_name": ""}]})
     assert out["users"] == 1
     _, _, data = fake.updates[0]
     assert data["owner_display"] == "alice"
@@ -186,13 +210,12 @@ def test_sync_all_user_missing_id_falls_back_to_db(monkeypatch):
             return self
 
         def values(self, *fields):
-            return [{"username": "bob", "display_name": "鲍勃"}]
+            assert fields == ("id", "username", "display_name")
+            return [{"id": 8, "username": "bob", "display_name": "鲍勃"}]
 
     monkeypatch.setattr(f"{MODULE}.User.objects", _QS())
 
-    out = DisplayFieldSynchronizer.sync_all(
-        {"users": [{"id": 1, "username": "admin", "display_name": "管理员"}]}
-    )
+    out = DisplayFieldSynchronizer.sync_all({"users": [{"id": 1, "username": "admin", "display_name": "管理员"}]})
     assert out["users"] == 1
     _, _, data = fake.updates[0]
     assert data["owner_display"] == "管理员(admin), 鲍勃(bob)"
@@ -202,9 +225,7 @@ def test_sync_all_user_no_intersection_skips(monkeypatch):
     fake = _install_graph(monkeypatch, [{"_id": 23, "model_id": "host", "owner": [5]}])
     _install_mapping(monkeypatch, {"host": {"user": ["owner"]}})
 
-    out = DisplayFieldSynchronizer.sync_all(
-        {"users": [{"id": 1, "username": "admin", "display_name": "x"}]}
-    )
+    out = DisplayFieldSynchronizer.sync_all({"users": [{"id": 1, "username": "admin", "display_name": "x"}]})
     assert out["users"] == 0
     assert fake.updates == []
 
@@ -233,6 +254,95 @@ def test_sync_all_both_org_and_user_single_instance(monkeypatch):
     _, _, data = fake.updates[0]
     assert data["org_display"] == "研发部"
     assert data["owner_display"] == "管理员(admin)"
+
+
+def test_sync_all_pages_by_graph_id_and_batches_field_writes(monkeypatch):
+    monkeypatch.setenv("CMDB_DISPLAY_SYNC_BATCH_SIZE", "2")
+    fake = _install_graph(
+        monkeypatch,
+        [{"_id": node_id, "model_id": "host", "org": [1]} for node_id in range(1, 6)],
+    )
+    _install_mapping(monkeypatch, {"host": {"organization": ["org"], "user": []}})
+
+    out = DisplayFieldSynchronizer.sync_all({"organizations": [{"id": 1, "name": "研发部"}]})
+
+    assert out == {"organizations": 5, "users": 0}
+    assert [call["params"] for call in fake.query_calls] == [
+        [{"field": "model_id", "type": "str[]", "value": ["host"]}],
+        [
+            {"field": "model_id", "type": "str[]", "value": ["host"]},
+            {"field": "id", "type": "id>", "value": 2},
+        ],
+        [
+            {"field": "model_id", "type": "str[]", "value": ["host"]},
+            {"field": "id", "type": "id>", "value": 4},
+        ],
+    ]
+    assert all(call["page"] == {"skip": 0, "limit": 2} for call in fake.query_calls)
+    assert all(call["include_count"] is False for call in fake.query_calls)
+    assert [len(values) for _, field, values in fake.property_updates if field == "org_display"] == [2, 2, 1]
+    assert fake.legacy_updates == []
+
+
+def test_sync_all_clamps_batch_size_to_graph_write_limit(monkeypatch):
+    monkeypatch.setenv("CMDB_DISPLAY_SYNC_BATCH_SIZE", "5000")
+    fake = _install_graph(monkeypatch, [{"_id": 1, "model_id": "host", "org": [1]}])
+    _install_mapping(monkeypatch, {"host": {"organization": ["org"], "user": []}})
+
+    DisplayFieldSynchronizer.sync_all({"organizations": [{"id": 1, "name": "研发部"}]})
+
+    assert fake.query_calls[0]["page"] == {"skip": 0, "limit": 1000}
+
+
+def test_sync_all_prefetches_missing_references_once_per_page(monkeypatch):
+    monkeypatch.setenv("CMDB_DISPLAY_SYNC_BATCH_SIZE", "10")
+    fake = _install_graph(
+        monkeypatch,
+        [
+            {"_id": 41, "model_id": "host", "org": [1, 9], "owner": [1, 8]},
+            {"_id": 42, "model_id": "host", "org": [1, 9], "owner": [1, 8]},
+        ],
+    )
+    _install_mapping(monkeypatch, {"host": {"organization": ["org"], "user": ["owner"]}})
+
+    class _GroupQS:
+        filter_calls = []
+
+        def filter(self, **kwargs):
+            self.filter_calls.append(kwargs)
+            return self
+
+        def values_list(self, *fields):
+            assert fields == ("id", "name")
+            return [(9, "历史部门")]
+
+    class _UserQS:
+        filter_calls = []
+
+        def filter(self, **kwargs):
+            self.filter_calls.append(kwargs)
+            return self
+
+        def values(self, *fields):
+            assert fields == ("id", "username", "display_name")
+            return [{"id": 8, "username": "bob", "display_name": "鲍勃"}]
+
+    group_qs = _GroupQS()
+    user_qs = _UserQS()
+    monkeypatch.setattr(f"{MODULE}.Group.objects", group_qs)
+    monkeypatch.setattr(f"{MODULE}.User.objects", user_qs)
+
+    out = DisplayFieldSynchronizer.sync_all(
+        {
+            "organizations": [{"id": 1, "name": "研发部"}],
+            "users": [{"id": 1, "username": "admin", "display_name": "管理员"}],
+        }
+    )
+
+    assert out == {"organizations": 2, "users": 2}
+    assert group_qs.filter_calls == [{"id__in": [9]}]
+    assert user_qs.filter_calls == [{"id__in": [8]}]
+    assert all(data == {"org_display": "研发部, 历史部门", "owner_display": "管理员(admin), 鲍勃(bob)"} for _, _, data in fake.updates)
 
 
 # --------------------------------------------------------------------------
