@@ -262,9 +262,10 @@ test('batched and immediate modes produce the same final message and session', (
     harness.dispatch({ type: 'TOOL_CALL_END', toolCallId: 'tool-1' });
     harness.dispatch({ type: 'TEXT_MESSAGE_CHUNK', role: 'assistant', delta: 'after' });
     harness.dispatch({ type: 'RUN_FINISHED' });
+    const withoutRuntimeFields = ({ id: _id, timestamp: _timestamp, ...message }) => message;
     return {
-      messages: harness.messages.map(({ id: _id, ...message }) => message),
-      sessionMessages: harness.session.messages.map(({ id: _id, ...message }) => message),
+      messages: harness.messages.map(withoutRuntimeFields),
+      sessionMessages: harness.session.messages.map(withoutRuntimeFields),
     };
   };
 
