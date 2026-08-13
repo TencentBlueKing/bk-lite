@@ -26,7 +26,6 @@ import {
   Select,
   Space,
   Tag,
-  Tooltip,
   Typography,
   type TableColumnsType,
 } from 'antd';
@@ -407,11 +406,6 @@ export default function ApmServicesPage() {
     });
   }, [alertCounts, environment, keyword, namespace, rows, statusFilter]);
 
-  const filteredServiceCount = useMemo(
-    () => new Set(filteredRows.map((item) => item.serviceId)).size,
-    [filteredRows]
-  );
-
   const applicationSummaries = useMemo<ApplicationSummary[]>(() => {
     const summaries = new Map<string, {
       serviceNames: Map<string, boolean>;
@@ -723,12 +717,16 @@ export default function ApmServicesPage() {
     {
       title: '最近活跃',
       dataIndex: 'last_seen_at',
-      width: 110,
+      width: 150,
       responsive: ['xl'],
       render: (value) => (
-        <Tooltip title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}>
-          <span className="text-xs text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
-        </Tooltip>
+        <time
+          className="whitespace-nowrap tabular-nums text-[var(--color-text-1)]"
+          dateTime={value}
+          title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}
+        >
+          {dayjs(value).format('YYYY-MM-DD HH:mm')}
+        </time>
       ),
     },
     {
@@ -758,6 +756,94 @@ export default function ApmServicesPage() {
       ),
     },
   ];
+
+  const catalogFilters = (
+    <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+      <div className="flex items-center gap-2 border-r border-[var(--color-border)] pr-3">
+        <Typography.Text type="secondary" className="!text-xs">视角</Typography.Text>
+        <Segmented<ServicePerspective>
+          aria-label="服务目录视角"
+          options={[
+            { value: 'application', label: <span><AppstoreOutlined aria-hidden="true" className="mr-1" />应用</span> },
+            { value: 'service', label: <span><BarsOutlined aria-hidden="true" className="mr-1" />服务</span> },
+          ]}
+          value={perspective}
+          onChange={setPerspective}
+        />
+      </div>
+      <Input
+        allowClear
+        aria-label="按应用或服务名称搜索"
+        className="min-w-52 flex-1 md:max-w-xs"
+        prefix={<SearchOutlined className="text-[var(--color-text-4)]" aria-hidden="true" />}
+        placeholder="按应用或服务名称搜索"
+        value={keyword}
+        onChange={(event) => setKeyword(event.target.value)}
+      />
+      <Select
+        allowClear
+        aria-label="按环境筛选"
+        className="w-36"
+        placeholder="全部环境"
+        value={environment}
+        options={environmentOptions}
+        onChange={setEnvironment}
+      />
+      <Select
+        allowClear
+        aria-label="按应用筛选"
+        className="w-40"
+        placeholder="全部应用"
+        value={namespace}
+        options={namespaceOptions}
+        onChange={setNamespace}
+      />
+      <Select<AlertStatusFilter>
+        allowClear
+        aria-label="按最高活跃告警筛选"
+        className="w-36"
+        placeholder="全部状态"
+        value={statusFilter}
+        options={[
+          { value: 'critical', label: '严重' },
+          { value: 'error', label: '错误' },
+          { value: 'warning', label: '警告' },
+          { value: 'info', label: '提示' },
+          { value: 'normal', label: '正常' },
+        ]}
+        onChange={setStatusFilter}
+      />
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <Typography.Text type="secondary" className="!text-xs">时间窗</Typography.Text>
+        <Segmented<TimeWindow>
+          aria-label="服务指标时间窗口"
+          options={['15m', '1h', '4h', '1d', '7d']}
+          size="small"
+          value={timeWindow}
+          onChange={setTimeWindow}
+        />
+        {metricsLoading ? (
+          <span
+            role="status"
+            aria-live="polite"
+            className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-3)]"
+          >
+            <LoadingOutlined spin className="text-[12px] text-[var(--color-primary)]" aria-hidden="true" />
+            更新 {timeWindow} 指标
+          </span>
+        ) : null}
+        <Button
+          icon={<InboxOutlined aria-hidden="true" />}
+          onClick={() => setArchivedOpen(true)}
+        >
+          已归档
+          {archivedServices.length ? (
+            <span className="ml-1 tabular-nums text-[var(--color-text-3)]">{archivedServices.length}</span>
+          ) : null}
+        </Button>
+      </div>
+    </FilterToolbar>
+  );
 
   return (
     <ApmRouteShell
@@ -796,93 +882,9 @@ export default function ApmServicesPage() {
         />
       ) : null}
       <div className="flex flex-col gap-3">
-        <ApmSurface padding="compact">
-          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-            <div className="flex items-center gap-2 border-r border-[var(--color-border)] pr-3">
-              <Typography.Text type="secondary" className="!text-xs">视角</Typography.Text>
-              <Segmented<ServicePerspective>
-                aria-label="服务目录视角"
-                options={[
-                  { value: 'application', label: <span><AppstoreOutlined aria-hidden="true" className="mr-1" />应用</span> },
-                  { value: 'service', label: <span><BarsOutlined aria-hidden="true" className="mr-1" />服务</span> },
-                ]}
-                value={perspective}
-                onChange={setPerspective}
-              />
-            </div>
-            <Input
-              allowClear
-              aria-label="按应用或服务名称搜索"
-              className="min-w-52 flex-1 md:max-w-xs"
-              prefix={<SearchOutlined className="text-[var(--color-text-4)]" aria-hidden="true" />}
-              placeholder="按应用或服务名称搜索"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-            <Select
-              allowClear
-              aria-label="按环境筛选"
-              className="w-36"
-              placeholder="全部环境"
-              value={environment}
-              options={environmentOptions}
-              onChange={setEnvironment}
-            />
-            <Select
-              allowClear
-              aria-label="按应用筛选"
-              className="w-40"
-              placeholder="全部应用"
-              value={namespace}
-              options={namespaceOptions}
-              onChange={setNamespace}
-            />
-            <Select<AlertStatusFilter>
-              allowClear
-              aria-label="按最高活跃告警筛选"
-              className="w-36"
-              placeholder="全部状态"
-              value={statusFilter}
-              options={[
-                { value: 'critical', label: '严重' },
-                { value: 'error', label: '错误' },
-                { value: 'warning', label: '警告' },
-                { value: 'info', label: '提示' },
-                { value: 'normal', label: '正常' },
-              ]}
-              onChange={setStatusFilter}
-            />
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <Typography.Text type="secondary" className="!text-xs">时间窗</Typography.Text>
-              <Segmented<TimeWindow>
-                aria-label="服务指标时间窗口"
-                options={['15m', '1h', '4h', '1d', '7d']}
-                size="small"
-                value={timeWindow}
-                onChange={setTimeWindow}
-              />
-              {metricsLoading ? (
-                <span
-                  role="status"
-                  aria-live="polite"
-                  className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-3)]"
-                >
-                  <LoadingOutlined spin className="text-[12px] text-[var(--color-primary)]" aria-hidden="true" />
-                  更新 {timeWindow} 指标
-                </span>
-              ) : null}
-              <Button
-                icon={<InboxOutlined aria-hidden="true" />}
-                onClick={() => setArchivedOpen(true)}
-              >
-                已归档
-                {archivedServices.length ? (
-                  <span className="ml-1 tabular-nums text-[var(--color-text-3)]">{archivedServices.length}</span>
-                ) : null}
-              </Button>
-            </div>
-          </FilterToolbar>
-        </ApmSurface>
+        {perspective === 'application' ? (
+          <ApmSurface padding="compact">{catalogFilters}</ApmSurface>
+        ) : null}
         {perspective === 'application' ? (
           state === 'ready' ? (
             applicationSummaries.length ? (
@@ -938,39 +940,27 @@ export default function ApmServicesPage() {
           )
         ) : (
           <ApmSurface>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <Typography.Text strong>
-                  {namespace === undefined
-                    ? '全部服务'
-                    : selectedApplication?.name ?? namespace}
-                </Typography.Text>
-                {namespace !== undefined ? (
-                  <Button size="small" type="link" onClick={() => setNamespace(undefined)}>清除应用筛选</Button>
-                ) : null}
-              </div>
-              <Typography.Text type="secondary" className="!text-xs tabular-nums">
-                {filteredRows.length} 个环境视图 · {filteredServiceCount} 个逻辑服务
-              </Typography.Text>
+            <div className="flex flex-col gap-4">
+              {catalogFilters}
+              {state === 'ready' ? (
+                <ApmDataTable
+                  columns={columns}
+                  dataSource={filteredRows}
+                  rowKey="key"
+                  pagination={{
+                    defaultPageSize: 20,
+                    pageSizeOptions: [10, 20, 50, 100],
+                    showSizeChanger: true,
+                    showTotal: (total) => `共 ${total} 条`,
+                  }}
+                />
+              ) : (
+                <CatalogState
+                  kind={state}
+                  onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
+                />
+              )}
             </div>
-            {state === 'ready' ? (
-              <ApmDataTable
-                columns={columns}
-                dataSource={filteredRows}
-                rowKey="key"
-                pagination={{
-                  defaultPageSize: 20,
-                  pageSizeOptions: [10, 20, 50, 100],
-                  showSizeChanger: true,
-                  showTotal: (total) => `共 ${total} 条`,
-                }}
-              />
-            ) : (
-              <CatalogState
-                kind={state}
-                onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
-              />
-            )}
           </ApmSurface>
         )}
       </div>
