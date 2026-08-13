@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'react-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import dayjs from 'dayjs';
 
 import ApmIntegrationInstancesPage from '../page';
 
@@ -108,7 +109,7 @@ describe('APM 接入实例目录', () => {
     expect(screen.getByRole('combobox', { name: '按实例状态筛选' }).getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('用自适应列宽和语义对齐统一右侧状态与操作列', async () => {
+  it('按身份、归属、运行上下文、生命周期和治理操作组织表格列', async () => {
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: query.includes('min-width'),
       media: query,
@@ -125,16 +126,24 @@ describe('APM 接入实例目录', () => {
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['14%', '20%', '7%', '6%', '12%', '11%', '7%', '7%', '9%', '7%']);
-    expect(screen.getAllByRole('columnheader').slice(-4).map((header) => header.textContent)).toEqual([
+    expect(columnWidths).toEqual(['13%', '18%', '12%', '7%', '6%', '11%', '12%', '8%', '7%', '6%']);
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      '实例 ID',
+      '服务',
+      '所属应用',
+      '环境',
+      '版本',
+      '首次接入',
+      '最近上报',
       '实例状态',
       '所属组织',
-      '最近上报',
       '操作',
     ]);
-    expect(getComputedStyle(screen.getByRole('columnheader', { name: '最近上报' })).textAlign).toBe('right');
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '首次接入' })).textAlign).toBe('left');
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '最近上报' })).textAlign).toBe('left');
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '实例状态' })).textAlign).toBe('center');
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '操作' })).textAlign).toBe('right');
+    expect(screen.getByText(dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm'))).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '所属组织' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '调整组织' })).not.toBeNull();
   });
