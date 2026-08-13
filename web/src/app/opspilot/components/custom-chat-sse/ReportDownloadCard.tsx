@@ -4,7 +4,7 @@ import React, { useCallback } from 'react';
 import { Tag } from 'antd';
 import { DownloadOutlined, FileWordOutlined } from '@ant-design/icons';
 import { ReportFileDownload } from '@/app/opspilot/types/global';
-import { normalizeSafeDownloadUrl } from './downloadUrl';
+import { normalizeSafeDownloadUrl, toAbsoluteDownloadHref } from './downloadUrl';
 
 interface ReportDownloadCardProps {
   download: ReportFileDownload;
@@ -16,8 +16,8 @@ const ReportDownloadCard: React.FC<ReportDownloadCardProps> = ({ download }) => 
   const handleDownload = useCallback(() => {
     if (normalizedFileUrl) {
       const link = document.createElement('a');
-      link.href = normalizedFileUrl;
-      link.download = download.filename;
+      link.setAttribute('href', toAbsoluteDownloadHref(download.file_url) || normalizedFileUrl);
+      link.setAttribute('download', download.filename);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

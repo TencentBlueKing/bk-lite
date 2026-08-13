@@ -21,6 +21,7 @@ import langchain_openai.chat_models.base as _lc_openai_base
 import openai
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_openai.chat_models.base import BaseChatOpenAI as _BaseChatOpenAI
+from langchain_openai.chat_models.base import ChatOpenAI as _ChatOpenAI
 from langchain_openai.chat_models.base import _convert_delta_to_message_chunk as _original_convert_delta_to_message_chunk
 from langchain_openai.chat_models.base import _convert_dict_to_message as _original_convert_dict_to_message
 from langchain_openai.chat_models.base import _convert_message_to_dict as _original_convert_message_to_dict
@@ -159,3 +160,88 @@ def _patched_convert_message_to_dict(message, *args, **kwargs):
 
 
 _lc_openai_base._convert_message_to_dict = _patched_convert_message_to_dict
+
+
+# --- Patch 5: merge system messages to the front of the OpenAI payload --------
+#
+# Qwen / MiniMax compatible gateways reject any system message that is not
+# messages[0] ("System message must be at the beginning."). DeepAgent prepends
+# its own system_prompt while the graph already inserted a SystemMessage, and
+# some tool loops inject extra SystemMessage mid-conversation. Merge them.
+
+
+def _payload_message_text(content) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and item.get("text"):
+                parts.append(str(item.get("text") or ""))
+        return "\n".join(part for part in parts if part)
+    return str(content)
+
+
+def merge_openai_payload_system_messages(messages: list) -> list:
+    """Keep a single system/developer message at index 0; leave other roles in order."""
+    if not messages:
+        return messages
+
+    system_indexes = [
+        index
+        for index, message in enumerate(messages)
+        if isinstance(message, dict) and str(message.get("role") or "").lower() in {"system", "developer"}
+    ]
+    if not system_indexes or system_indexes == [0]:
+        return messages
+
+    system_parts = []
+    rest = []
+    first_system = None
+    for message in messages:
+        if isinstance(message, dict) and str(message.get("role") or "").lower() in {"system", "developer"}:
+            if first_system is None:
+                first_system = dict(message)
+            text = _payload_message_text(message.get("content"))
+            if text:
+                system_parts.append(text)
+            continue
+        rest.append(message)
+
+    merged = dict(first_system or {"role": "system", "content": ""})
+    merged["content"] = "\n\n".join(system_parts)
+    return [merged] + rest
+
+
+def _install_system_message_payload_patch(cls) -> None:
+    """Merge system/developer messages after the class builds the OpenAI payload.
+
+    ChatOpenAI overrides ``_get_request_payload`` and calls ``super()``, then
+    may rewrite ``system`` → ``developer`` for o-series models. Patching only
+    BaseChatOpenAI still works via super(), but patching ChatOpenAI itself
+    makes the merge the last step on the class LLMClientFactory actually uses.
+    """
+    original = cls._get_request_payload
+    if getattr(original, "_opspilot_system_merge", False):
+        return
+
+    def _patched(self, *args, **kwargs):
+        payload = original(self, *args, **kwargs)
+        messages = payload.get("messages") if isinstance(payload, dict) else None
+        if isinstance(messages, list):
+            payload["messages"] = merge_openai_payload_system_messages(messages)
+        return payload
+
+    _patched._opspilot_system_merge = True
+    cls._get_request_payload = _patched
+
+
+_install_system_message_payload_patch(_BaseChatOpenAI)
+if _ChatOpenAI is not _BaseChatOpenAI:
+    _install_system_message_payload_patch(_ChatOpenAI)
+
+_patched_get_request_payload = _BaseChatOpenAI._get_request_payload
