@@ -46,7 +46,10 @@
           "name": "Integration",
           "operation": [
             "View",
-            "Detail"
+            "Detail",
+            "Add",
+            "Edit",
+            "Delete"
           ]
         }
       ]
