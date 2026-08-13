@@ -35,6 +35,38 @@ class Sidecar:
     CONVERGE_DEBOUNCE_SECONDS = 5
     CPU_ARCHITECTURE_TAG = "cpu_architecture"
     INSTALL_TASK_NODE_TAG = "install_task_node"
+    CLIENT_REPORTED_NODE_FIELDS = frozenset(
+        {
+            "ip",
+            "operating_system",
+            "cpu_architecture",
+            "architecture",
+            "collector_configuration_directory",
+            "metrics",
+            "status",
+            "tags",
+            "log_file_list",
+            "install_method",
+            "node_type",
+        }
+    )
+    SERVER_OWNED_NODE_FIELDS = frozenset(
+        {
+            "id",
+            "name",
+            "cloud_region",
+            "cloud_region_id",
+            "cmdb_id",
+            "monitor_id",
+            "push_status",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+        }
+    )
     BASE_CONFIG_HEADER = "# ---- BK-Lite collector base configuration (shared by all monitoring templates) ----\n"
     INSTANCE_CONFIG_HEADER = "# ---- BK-Lite instance collection configurations (per monitoring template) ----\n"
 
@@ -383,6 +415,21 @@ class Sidecar:
         return updates, request_data.get("ip", "")
 
     @staticmethod
+    def _filter_reported_node_details(node_id: str, node_details: dict) -> dict:
+        """Keep heartbeat input within fields owned by the Sidecar client."""
+        dropped_fields = set(node_details) - Sidecar.CLIENT_REPORTED_NODE_FIELDS
+        if dropped_fields:
+            server_fields = sorted(dropped_fields & Sidecar.SERVER_OWNED_NODE_FIELDS)
+            unknown_field_count = len(dropped_fields - Sidecar.SERVER_OWNED_NODE_FIELDS)
+            logger.warning(
+                "Ignored non-client fields in Sidecar heartbeat node_id=%s server_fields=%s unknown_field_count=%d",
+                node_id,
+                ",".join(server_fields),
+                unknown_field_count,
+            )
+        return {key: value for key, value in node_details.items() if key in Sidecar.CLIENT_REPORTED_NODE_FIELDS}
+
+    @staticmethod
     def _default_collector_priority(collector_cpu_architecture: str, node_cpu_architecture: str) -> int:
         collector_arch = normalize_cpu_architecture(collector_cpu_architecture)
         node_arch = normalize_cpu_architecture(node_cpu_architecture)
@@ -433,6 +480,8 @@ class Sidecar:
     def update_node_client(request, node_id):
         """更新sidecar客户端信息"""
 
+        node_details = Sidecar._filter_reported_node_details(node_id, request.data.get("node_details", {}))
+
         # 获取客户端发送的ETag
         if_none_match = request.headers.get("If-None-Match")
         if if_none_match:
@@ -443,7 +492,6 @@ class Sidecar:
 
         # 如果缓存的ETag存在且与客户端的相同，则返回304 Not Modified
         if cached_etag and cached_etag == if_none_match:
-            node_details = request.data.get("node_details", {})
             updates, node_ip = Sidecar._cached_heartbeat_updates(node_id, node_details)
             Node.objects.filter(id=node_id).update(**updates)
             Sidecar.trigger_converge_tasks_if_needed(node_id, node_ip, updates["status"])
@@ -456,7 +504,7 @@ class Sidecar:
         request_data = dict(
             id=node_id,
             name=request.data.get("node_name", ""),
-            **request.data.get("node_details", {}),
+            **node_details,
         )
 
         # 操作系统转小写
@@ -487,7 +535,7 @@ class Sidecar:
 
         # 补充云区域关联
         clouds = tags_data.get(ControllerConstants.CLOUD_TAG, [])
-        if clouds:
+        if clouds and not node:
             request_data.update(cloud_region_id=int(clouds[0]))
 
         # 补充安装方法
