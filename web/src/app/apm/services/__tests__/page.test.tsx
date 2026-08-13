@@ -241,7 +241,7 @@ describe('APM 服务目录服务视角与归档', () => {
     const serviceHeader = screen.getByRole('columnheader', { name: '服务' });
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });
     expect(searchInput.closest('section')).toBe(serviceHeader.closest('section'));
-    expect(getComputedStyle(actionHeader).textAlign).toBe('right');
+    expect(getComputedStyle(actionHeader).textAlign).toBe('left');
     expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
     expect(screen.getByRole('button', { name: '调整组织' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '归档' })).not.toBeNull();

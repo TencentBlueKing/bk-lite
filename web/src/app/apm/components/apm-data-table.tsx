@@ -8,17 +8,18 @@ import styles from './apm-data-table.module.scss';
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 type ApmDataTableProps<RecordType extends object> = Omit<TableProps<RecordType>, 'bordered'> & {
+  /** @deprecated APM 表格已统一使用左对齐；保留此属性只为兼容存量调用。 */
   headerAlignment?: 'left' | 'column';
 };
 
-function alignColumnHeaders<RecordType extends object>(
+function alignColumnsLeft<RecordType extends object>(
   columns: TableColumnsType<RecordType> | undefined,
-  headerAlignment: NonNullable<ApmDataTableProps<RecordType>['headerAlignment']>,
 ): TableColumnsType<RecordType> | undefined {
   return columns?.map((column) => {
     const onHeaderCell = column.onHeaderCell;
     const normalizedColumn = {
       ...column,
+      align: 'left' as const,
       onHeaderCell: (...args: Parameters<NonNullable<typeof onHeaderCell>>) => {
         const headerCellProps = onHeaderCell?.(...args) ?? {};
 
@@ -26,7 +27,7 @@ function alignColumnHeaders<RecordType extends object>(
           ...headerCellProps,
           style: {
             ...headerCellProps.style,
-            textAlign: headerAlignment === 'column' ? column.align ?? 'left' : 'left',
+            textAlign: 'left' as const,
           },
         };
       },
@@ -35,7 +36,7 @@ function alignColumnHeaders<RecordType extends object>(
     if ('children' in column) {
       return {
         ...normalizedColumn,
-        children: alignColumnHeaders(column.children, headerAlignment) ?? [],
+        children: alignColumnsLeft(column.children) ?? [],
       };
     }
 
@@ -66,18 +67,21 @@ function normalizePagination(
 export default function ApmDataTable<RecordType extends object>({
   className = '',
   columns,
-  headerAlignment = 'left',
+  headerAlignment,
   pagination,
   size = 'middle',
   tableLayout = 'fixed',
   ...props
 }: ApmDataTableProps<RecordType>) {
+  // 存量页面可能仍传入 column；公共契约始终以节点管理的左对齐规范为准。
+  void headerAlignment;
+
   return (
     <Table<RecordType>
       {...props}
       bordered={false}
       className={`${styles.table} ${className}`.trim()}
-      columns={alignColumnHeaders(columns, headerAlignment)}
+      columns={alignColumnsLeft(columns)}
       pagination={normalizePagination(pagination as TableProps<never>['pagination'])}
       size={size}
       tableLayout={tableLayout}
