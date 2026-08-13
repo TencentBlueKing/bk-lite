@@ -1,20 +1,14 @@
 import { HEALTH_GREEN, HEALTH_AMBER, HEALTH_RED, SATURATION_WARN, SATURATION_CRIT } from './queries';
-import { formatMetricValue } from '../../shared/utils';
+import { formatMetricValue, latestFiniteValue } from '../../shared/utils';
 import { TOP_N } from './queries';
 
-type QueryResult = { data?: { result?: Array<{ metric?: Record<string, string>; values?: Array<[number, string]> }> } } | null;
-
-const lastValue = (values?: Array<[number, string]>): number => {
-  if (!values || values.length === 0) return 0;
-  const v = Number(values[values.length - 1][1]);
-  return Number.isFinite(v) ? v : 0;
-};
+type QueryResult = { data?: { result?: Array<{ metric?: Record<string, string>; values?: Array<[number, string | number | null]> }> } } | null;
 
 /** 取单序列结果的最新标量(无数据 → 0)。 */
 export const latestScalar = (result: QueryResult): number => {
   const series = result?.data?.result;
   if (!series || series.length === 0) return 0;
-  return lastValue(series[0].values);
+  return latestFiniteValue(series[0].values);
 };
 
 /**
@@ -31,7 +25,7 @@ export const seriesLatestByLabel = (
   return series
     .map((s) => {
       const picked = candidates.map((l) => s.metric?.[l]).find((v) => v !== undefined && v !== '');
-      return { label: String(picked ?? ''), value: lastValue(s.values) };
+      return { label: String(picked ?? ''), value: latestFiniteValue(s.values) };
     })
     .filter((item) => item.label !== '');
 };

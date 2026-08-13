@@ -69,18 +69,6 @@ interface MysqlInstanceOption {
 }
 
 const MYSQL_REFRESH_FREQUENCY_LIST = DEFAULT_REFRESH_FREQUENCY_LIST;
-const RAW_VALUE_METRICS = new Set([
-  'mysql_uptime',
-  'mysql_innodb_buffer_pool_pages_total',
-  'mysql_innodb_buffer_pool_pages_free',
-  'mysql_innodb_buffer_pool_pages_dirty',
-  // 字节速率(byteps)与字节配置项(bytes):禁用服务端自动换算,避免与前端双重换算
-  'mysql_bytes_received',
-  'mysql_bytes_sent',
-  'mysql_variables_innodb_buffer_pool_size',
-  'mysql_variables_tmp_table_size',
-  'mysql_variables_max_heap_table_size'
-]);
 const METRIC_QUERY_CONCURRENCY = 4;
 const MYSQL_METRIC_GROUPS = [
   {
@@ -395,7 +383,7 @@ export default function MysqlDashboardPage() {
       metrics,
       METRIC_QUERY_CONCURRENCY,
       async (metric) =>
-        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, RAW_VALUE_METRICS, undefined, currentInstanceInterval))
+        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, undefined, false, currentInstanceInterval))
           .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
           .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
     );
@@ -419,7 +407,7 @@ export default function MysqlDashboardPage() {
         );
         const summaryResultsPromise = loadMetricGroup(MYSQL_METRIC_GROUPS[0].names, frozenTimeValues);
 
-        const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(buildSearchParams(MYSQL_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, frozenTimeValues, RAW_VALUE_METRICS, undefined, currentInstanceInterval))
+        const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(buildSearchParams(MYSQL_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, frozenTimeValues, undefined, false, currentInstanceInterval))
           .then((result) =>
             toMetricSeries(
               {
@@ -456,7 +444,7 @@ export default function MysqlDashboardPage() {
             compareMetrics,
             METRIC_QUERY_CONCURRENCY,
             async (metric) =>
-              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, RAW_VALUE_METRICS, undefined, currentInstanceInterval))
+              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, undefined, false, currentInstanceInterval))
                 .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
                 .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
           )

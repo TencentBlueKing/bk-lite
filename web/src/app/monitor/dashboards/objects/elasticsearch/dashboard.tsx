@@ -80,7 +80,9 @@ export default function ElasticsearchDashboardPage() {
     }
     let active = true;
     runWithConcurrency(ES_TOP_NODE_QUERIES, TOP_NODE_CONCURRENCY, async (q) =>
-      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues, undefined, undefined, currentInstanceInterval))
+      // autoConvert=false:禁用服务端单位自动换算,否则会与前端 formatMetricValue 双重换算
+      //(如 bytes 被后端先缩成 GiB,前端再按 bytes 缩放)。见 postgresql / host 同因。
+      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues, undefined, false, currentInstanceInterval))
         .then((res: any) => [q.key, topNodeBars(res, q.unit, q.color)] as const)
         .catch(() => [q.key, [] as BarItem[]] as const)
     ).then((entries) => {
