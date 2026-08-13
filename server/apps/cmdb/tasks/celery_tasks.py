@@ -697,8 +697,8 @@ def sync_collect_credential_results_task():
     }
 
 
-@shared_task
-def sync_cmdb_display_fields_task(data: dict):
+@shared_task(bind=True, max_retries=3, default_retry_delay=5, soft_time_limit=240, time_limit=300)
+def sync_cmdb_display_fields_task(self, data: dict):
     """
     同步 CMDB 实例的 _display 字段（Celery 任务）
 
@@ -750,6 +750,9 @@ def sync_cmdb_display_fields_task(data: dict):
                         logger.warning("[SyncCMDBDisplayFields] 同步失败，将从头重试一次: %s", exc)
                         continue
                     raise
+    except TimeoutError as exc:
+        logger.warning("[SyncCMDBDisplayFields] 同步锁繁忙，任务将有界重试: %s", exc)
+        raise self.retry(exc=exc)
     except Exception as exc:
         logger.error(f"[SyncCMDBDisplayFields] 同步失败: {str(exc)}", exc_info=True)
         return {

@@ -1,5 +1,4 @@
 import threading
-import time
 from datetime import timedelta
 
 import pytest
@@ -42,24 +41,30 @@ def test_lock_keys_are_stable_and_ignore_empty_unique_values():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_serialize_orders_waiting_tasks_and_hands_lock_to_later_task():
+def test_serialize_fails_fast_on_contention_and_succeeds_after_holder_exits():
     entered = []
     first_entered = threading.Event()
     release_first = threading.Event()
+    second_finished = threading.Event()
 
-    def _run(name):
+    def _run_first():
         with UniqueWriteLockService.serialize("display-sync-order"):
-            entered.append(name)
-            if name == "first":
-                first_entered.set()
-                assert release_first.wait(timeout=5)
+            entered.append("first")
+            first_entered.set()
+            assert release_first.wait(timeout=5)
 
-    first = threading.Thread(target=_run, args=("first",))
-    second = threading.Thread(target=_run, args=("second",))
+    def _run_contender():
+        with pytest.raises(TimeoutError, match="CMDB 写锁正被占用"):
+            with UniqueWriteLockService.serialize("display-sync-order"):
+                entered.append("unexpected")
+        second_finished.set()
+
+    first = threading.Thread(target=_run_first)
+    second = threading.Thread(target=_run_contender)
     first.start()
     assert first_entered.wait(timeout=5)
     second.start()
-    time.sleep(0.1)
+    assert second_finished.wait(timeout=2)
     assert entered == ["first"]
     release_first.set()
     first.join(timeout=5)
@@ -67,4 +72,6 @@ def test_serialize_orders_waiting_tasks_and_hands_lock_to_later_task():
 
     assert not first.is_alive()
     assert not second.is_alive()
-    assert entered == ["first", "second"]
+    with UniqueWriteLockService.serialize("display-sync-order"):
+        entered.append("retry")
+    assert entered == ["first", "retry"]

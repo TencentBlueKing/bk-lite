@@ -355,6 +355,9 @@ def test_sync_cmdb_display_fields_enters_global_lock_before_refreshing_authorita
 
 def test_sync_cmdb_display_fields_returns_compatible_failure_when_lock_fails(monkeypatch):
     from contextlib import contextmanager
+    from celery.exceptions import Retry
+
+    retry_calls = []
 
     @contextmanager
     def _serialize(lock_key):
@@ -363,10 +366,41 @@ def test_sync_cmdb_display_fields_returns_compatible_failure_when_lock_fails(mon
 
     monkeypatch.setattr("apps.cmdb.services.unique_write_lock.UniqueWriteLockService.serialize", _serialize)
 
-    out = ct.sync_cmdb_display_fields_task({"organizations": [{"id": 1, "name": "x"}], "users": []})
+    def _retry(**kwargs):
+        retry_calls.append(kwargs)
+        raise Retry()
 
-    assert out["result"] is False
-    assert out["message"] == "Failed to sync CMDB display fields: display sync lock timeout"
+    monkeypatch.setattr(ct.sync_cmdb_display_fields_task, "retry", _retry)
+
+    with pytest.raises(Retry):
+        ct.sync_cmdb_display_fields_task({"organizations": [{"id": 1, "name": "x"}], "users": []})
+
+    assert isinstance(retry_calls[0]["exc"], TimeoutError)
+    assert ct.sync_cmdb_display_fields_task.max_retries == 3
+    assert ct.sync_cmdb_display_fields_task.default_retry_delay == 5
+    assert ct.sync_cmdb_display_fields_task.soft_time_limit == 240
+    assert ct.sync_cmdb_display_fields_task.time_limit == 300
+
+
+def test_sync_cmdb_display_fields_lock_retry_exhaustion_is_bounded_failure(monkeypatch):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _serialize(lock_key):
+        raise TimeoutError("display sync lock timeout")
+        yield
+
+    monkeypatch.setattr("apps.cmdb.services.unique_write_lock.UniqueWriteLockService.serialize", _serialize)
+
+    result = ct.sync_cmdb_display_fields_task.apply(
+        args=[{"organizations": [{"id": 1, "name": "x"}], "users": []}],
+        throw=False,
+        retries=ct.sync_cmdb_display_fields_task.max_retries,
+    )
+
+    assert result.failed()
+    assert isinstance(result.result, TimeoutError)
+    assert str(result.result) == "display sync lock timeout"
 
 
 # --------------------------------------------------------------------------
