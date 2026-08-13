@@ -209,8 +209,8 @@ export default function ApmIntegrationInstancesPage() {
           description="下方是最近一次成功对账后的元数据，可能落后于 Trace 与指标存储。"
         />
       ) : null}
-      <div className="flex flex-col gap-3">
-        <ApmSurface padding="compact">
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input.Search
               allowClear
@@ -289,8 +289,6 @@ export default function ApmIntegrationInstancesPage() {
               {t('apm.instances.defaultActiveHelp', '默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。')}
             </Typography.Text>
           </FilterToolbar>
-        </ApmSurface>
-        <ApmSurface>
           {state === 'ready' ? (
             <ApmDataTable
               rowKey="id"
@@ -325,8 +323,8 @@ export default function ApmIntegrationInstancesPage() {
           ) : (
             <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)} />
           )}
-        </ApmSurface>
-      </div>
+        </div>
+      </ApmSurface>
       <OrganizationAssignmentModal
         open={Boolean(organizationInstance)}
         title={`调整实例组织${organizationInstance ? `：${organizationInstance.instance_id}` : ''}`}
