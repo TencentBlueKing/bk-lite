@@ -20,6 +20,7 @@ import { parseLegacyMessage } from './legacyMessage';
 import { MessageBubble } from './components/MessageBubble';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { useLatestChatStateCallback } from './chatStateCallback';
 import {
   isAbortError,
   runOwnedStream,
@@ -92,6 +93,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   if (!streamLifecycleRef.current) {
     streamLifecycleRef.current = new StreamLifecycle();
   }
+  const onStateChangeRef = useLatestChatStateCallback(onStateChange);
   // 保持 onMessageReceived 最新引用，避免 useEffect 空 deps 闭包固化旧 prop
   const onMessageReceivedRef = useRef(onMessageReceived);
   useEffect(() => {
@@ -124,7 +126,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     // Initialize StateMachine
     stateMachineRef.current = new StateMachine('idle');
     const unsubscribeState = stateMachineRef.current.on((event) => {
-      onStateChange?.(event.to);
+      onStateChangeRef.current?.(event.to);
     });
 
     // Initialize SSEHandler - 不再需要，我们用 fetch 直接处理

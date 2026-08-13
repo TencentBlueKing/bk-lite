@@ -1,0 +1,26 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "declaration": false,
+    "declarationMap": false,
+    "jsx": "react-jsx",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "outDir": "../packages/webchat-ui/.test-dist/issue-4636",
+    "paths": {
+      "@webchat/core": ["packages/webchat-core/src/types.ts"]
+    },
+    "rootDir": "..",
+    "sourceMap": false
+  },
+  "include": [
+    "chat-state-callback.issue-4636.test.ts",
+    "../packages/webchat-core/src/stateMachine.ts",
+    "../packages/webchat-core/src/types.ts",
+    "../packages/webchat-ui/src/chatStateCallback.ts"
+  ]
+}
