@@ -14,6 +14,7 @@ from apps.apm.views.control_plane import (
 )
 from apps.apm.views.dashboard import ApmDashboardViewSet
 from apps.apm.views.health import ApmHealthViewSet
+from apps.apm.views.open_probe import ApmOpenProbeViewSet
 from apps.apm.views.spans import ApmSpanViewSet
 from apps.apm.views.traces import ApmTraceViewSet
 from apps.apm.views.topology import ApmTopologyViewSet
@@ -35,4 +36,7 @@ router.register(r"notification-channels", ApmNotificationChannelViewSet, basenam
 router.register(r"notification-deliveries", ApmNotificationDeliveryViewSet, basename="apm-notification-delivery")
 router.register(r"notification-recipients", ApmNotificationRecipientViewSet, basename="apm-notification-recipient")
 
-urlpatterns = router.urls
+router_without_slash = routers.DefaultRouter(trailing_slash=False)
+router_without_slash.register(r"open_api", ApmOpenProbeViewSet, basename="apm-open-probe")
+
+urlpatterns = router.urls + router_without_slash.urls
