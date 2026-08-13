@@ -8,6 +8,12 @@ class CMDB(object):
         is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
         self.client = AppClient("apps.cmdb.nats.nats") if is_local_client else RpcClient()
 
+    def _run_params_handler(self, method_name, kwargs):
+        transport_kwargs = {key: kwargs[key] for key in ("_timeout", "_raw") if key in kwargs}
+        payload_kwargs = {key: value for key, value in kwargs.items() if key not in transport_kwargs}
+        params = payload_kwargs["params"] if set(payload_kwargs) == {"params"} else payload_kwargs
+        return self.client.run(method_name, params=params, **transport_kwargs)
+
     def get_module_data(self, **kwargs):
         """
         :param module: 模块
@@ -32,14 +38,14 @@ class CMDB(object):
         告警丰富查询CMDB接口（UUID 定位）
         :param kwargs/params: {"protocol_version": "2", "model_id": .., "inst_uuid": .., "inst_name": .., "organization_ids": [..]}
         """
-        return_data = self.client.run("search_instances", **kwargs)
+        return_data = self._run_params_handler("search_instances", kwargs)
         return return_data
 
     def search_instances_batch(self, **kwargs):
         """告警丰富批量查询 CMDB 实例（UUID）。
         :param kwargs/params: {"protocol_version": "2", "model_id": .., "inst_uuids": [..], "inst_names": [..], "organization_ids": [..]}
         """
-        return self.client.run("search_instances_batch", **kwargs)
+        return self._run_params_handler("search_instances_batch", kwargs)
 
     def list_instances(self, **kwargs):
         """
@@ -48,56 +54,56 @@ class CMDB(object):
                         "params": [..], "page": .., "page_size": .., "order": "", "format": True}
         :return: {"count": .., "items": [..]}
         """
-        return self.client.run("list_instances", **kwargs)
+        return self._run_params_handler("list_instances", kwargs)
 
     def search_model_attrs(self, **kwargs):
         """
         查询模型属性列表
         :param params: {"model_id": ..}
         """
-        return self.client.run("search_model_attrs", **kwargs)
+        return self._run_params_handler("search_model_attrs", kwargs)
 
     def search_models(self, **kwargs):
         """
         查询模型列表
         :param params: {"classification_id": .., "include_hidden": False}
         """
-        return self.client.run("search_models", **kwargs)
+        return self._run_params_handler("search_models", kwargs)
 
     def search_classifications(self, **kwargs):
         """
         查询模型分类列表
         :param params: {"include_hidden": False}
         """
-        return self.client.run("search_classifications", **kwargs)
+        return self._run_params_handler("search_classifications", kwargs)
 
     def search_model_associations(self, **kwargs):
         """
         查询模型关联定义
         :param params: {"model_id": ..}
         """
-        return self.client.run("search_model_associations", **kwargs)
+        return self._run_params_handler("search_model_associations", kwargs)
 
     def search_instance_associations(self, **kwargs):
         """
         查询实例关联列表
         :param params: {"protocol_version": "2", "model_id": .., "inst_uuid": .., "organization_ids": [..]}
         """
-        return self.client.run("search_instance_associations", **kwargs)
+        return self._run_params_handler("search_instance_associations", kwargs)
 
     def create_instance_association(self, **kwargs):
         """
         创建实例关联
         :param params: {"protocol_version": "2", "src_inst_uuid": .., "dst_inst_uuid": .., "model_asst_id": .., "operator": ..}
         """
-        return self.client.run("create_instance_association", **kwargs)
+        return self._run_params_handler("create_instance_association", kwargs)
 
     def delete_instance_association(self, **kwargs):
         """
         删除实例关联（业务键）
         :param params: {"protocol_version": "2", "src_inst_uuid": .., "dst_inst_uuid": .., "model_asst_id": .., "operator": ..}
         """
-        return self.client.run("delete_instance_association", **kwargs)
+        return self._run_params_handler("delete_instance_association", kwargs)
 
     def sync_display_fields(self, **kwargs):
         """
