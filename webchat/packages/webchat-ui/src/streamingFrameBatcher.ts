@@ -25,7 +25,8 @@ function createBrowserFrameScheduler(): FrameScheduler {
 /** Coalesce high-frequency streaming text into at most one commit per animation frame. */
 export function createStreamingFrameBatcher(
   commit: (text: string) => void,
-  scheduler: FrameScheduler = createBrowserFrameScheduler()
+  scheduler: FrameScheduler = createBrowserFrameScheduler(),
+  shouldBatch: () => boolean = () => true
 ): StreamingFrameBatcher {
   let pendingText: string | null = null;
   let frameId: number | null = null;
@@ -40,6 +41,15 @@ export function createStreamingFrameBatcher(
 
   return {
     schedule(text) {
+      if (!shouldBatch()) {
+        if (frameId !== null) {
+          scheduler.cancel(frameId);
+          frameId = null;
+        }
+        pendingText = null;
+        commit(text);
+        return;
+      }
       pendingText = text;
       if (frameId === null) {
         frameId = scheduler.schedule(commitPending);

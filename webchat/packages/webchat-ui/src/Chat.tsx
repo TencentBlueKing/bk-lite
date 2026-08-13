@@ -23,6 +23,7 @@ import {
 } from '@webchat/core';
 import { AGUIHandler, AGUIConfig, AGUIEvent } from './agui';
 import { createAGUIEventHandler } from './aguiEventHandler';
+import type { FrameScheduler } from './streamingFrameBatcher';
 import { parseLegacyMessage } from './legacyMessage';
 import { MessageBubble } from './components/MessageBubble';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
@@ -46,6 +47,10 @@ export interface ChatProps extends WebChatConfig {
   showFullscreenButton?: boolean;
   showClearButton?: boolean;
   apiKey?: string;
+  /** @inheritdoc WebChatConfig.streamingTextBatching */
+  streamingTextBatching?: WebChatConfig['streamingTextBatching'];
+  /** Internal scheduler seam used to verify frame cancellation. */
+  streamingFrameScheduler?: FrameScheduler;
 }
 
 // 图片大小上限（字节），默认 4MB，可通过 NEXT_PUBLIC_MAX_IMAGE_SIZE 环境变量覆盖
@@ -77,6 +82,8 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     showFullscreenButton = true,
     showClearButton = false,
     apiKey,
+    streamingTextBatching = true,
+    streamingFrameScheduler,
   } = normalizeWebChatConfig(props) as ChatProps;
 
   // State
@@ -95,6 +102,8 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
+  const streamingTextBatchingRef = useRef(streamingTextBatching);
+  streamingTextBatchingRef.current = streamingTextBatching;
   const streamLifecycleRef = useRef<StreamLifecycle | null>(null);
   if (!streamLifecycleRef.current) {
     streamLifecycleRef.current = new StreamLifecycle();
@@ -193,8 +202,10 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
         setIsLoading,
         setIsThinking,
         addMessage,
+        streamingTextBatchingRef,
+        frameScheduler: streamingFrameScheduler,
       }),
-    [addMessage]
+    [addMessage, streamingFrameScheduler]
   );
 
   // Handle legacy message format (fallback)

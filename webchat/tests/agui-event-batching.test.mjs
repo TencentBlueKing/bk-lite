@@ -22,12 +22,14 @@ process.on('exit', () => fs.rmSync(outputDir, { recursive: true, force: true }))
 
 const { createAGUIEventHandler } = await import(pathToFileURL(outputPath));
 
-function createHarness() {
+function createHarness({ batching = true } = {}) {
   let nextFrameId = 0;
   const frames = new Map();
   let messages = [];
   let messageUpdates = 0;
   let saves = 0;
+  let persistedSession = null;
+  const streamingTextBatchingRef = { current: batching };
   const session = {
     sessionId: 'session-1',
     messages: [],
@@ -39,6 +41,7 @@ function createHarness() {
     addMessage: (message) => session.messages.push(message),
     saveSession: () => {
       saves += 1;
+      persistedSession = structuredClone(session);
     },
   };
   const setMessages = (next) => {
@@ -68,6 +71,7 @@ function createHarness() {
         frames.delete(id);
       },
     },
+    streamingTextBatchingRef,
   });
   return {
     dispatch,
@@ -87,6 +91,12 @@ function createHarness() {
     },
     get saves() {
       return saves;
+    },
+    get persistedSession() {
+      return persistedSession;
+    },
+    setBatching(enabled) {
+      streamingTextBatchingRef.current = enabled;
     },
   };
 }
@@ -181,4 +191,82 @@ test('RUN_ERROR flushes the complete error text before persisting', () => {
   );
   assert.equal(harness.session.messages[0].content, harness.messages[0].content);
   assert.equal(harness.saves, 1);
+});
+
+test('TEXT_MESSAGE_CHUNK uses the same frame and persistence contract', () => {
+  const harness = createHarness();
+  harness.dispatch({ type: 'TEXT_MESSAGE_CHUNK', role: 'assistant', delta: 'a' });
+  harness.dispatch({ type: 'TEXT_MESSAGE_CHUNK', role: 'assistant', delta: 'b' });
+
+  assert.equal(harness.messages[0].content, '');
+  harness.dispatch({ type: 'RUN_FINISHED' });
+
+  assert.equal(harness.messages[0].content, 'ab');
+  assert.equal(harness.session.messages[0].content, 'ab');
+  assert.equal(harness.saves, 1);
+});
+
+test('Chat stop or network-error flush persists pending text before a late frame', () => {
+  const harness = createHarness();
+  harness.dispatch({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
+  harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: 'partial' });
+
+  harness.dispatch.flushPendingText();
+  harness.runFrame();
+
+  assert.equal(harness.messages[0].content, 'partial');
+  assert.equal(harness.session.messages[0].content, 'partial');
+  assert.equal(harness.saves, 1);
+  assert.equal(harness.persistedSession.messages[0].content, 'partial');
+});
+
+test('Chat clear or unmount cancellation prevents stale pending writes', () => {
+  const harness = createHarness();
+  harness.dispatch({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
+  harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: 'stale' });
+
+  harness.dispatch.cancelPendingText();
+  harness.session.messages.length = 0;
+  harness.runFrame();
+
+  assert.equal(harness.messages[0].content, '');
+  assert.deepEqual(harness.session.messages, []);
+  assert.equal(harness.saves, 0);
+});
+
+test('runtime rollback restores immediate commits while preserving final text', () => {
+  const harness = createHarness();
+  harness.dispatch({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
+  const updatesAfterStart = harness.messageUpdates;
+  harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: 'a' });
+  harness.setBatching(false);
+  harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: 'b' });
+
+  assert.equal(harness.messageUpdates, updatesAfterStart + 1);
+  assert.equal(harness.messages[0].content, 'ab');
+  assert.equal(harness.session.messages[0].content, 'ab');
+  harness.runFrame();
+  assert.equal(harness.messageUpdates, updatesAfterStart + 1);
+});
+
+test('batched and immediate modes produce the same final message and session', () => {
+  const replay = (batching) => {
+    const harness = createHarness({ batching });
+    harness.dispatch({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
+    harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: 'before' });
+    harness.dispatch({
+      type: 'TOOL_CALL_START',
+      toolCallId: 'tool-1',
+      toolCallName: 'search',
+    });
+    harness.dispatch({ type: 'TOOL_CALL_END', toolCallId: 'tool-1' });
+    harness.dispatch({ type: 'TEXT_MESSAGE_CHUNK', role: 'assistant', delta: 'after' });
+    harness.dispatch({ type: 'RUN_FINISHED' });
+    return {
+      messages: harness.messages.map(({ id: _id, ...message }) => message),
+      sessionMessages: harness.session.messages.map(({ id: _id, ...message }) => message),
+    };
+  };
+
+  assert.deepEqual(replay(true), replay(false));
 });

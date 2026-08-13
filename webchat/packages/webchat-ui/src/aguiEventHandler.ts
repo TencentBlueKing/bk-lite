@@ -30,15 +30,16 @@ export interface AGUIEventHandlerDeps {
   setIsThinking: Dispatch<SetStateAction<boolean>>;
   addMessage: (message: Message) => void;
   frameScheduler?: FrameScheduler;
+  streamingTextBatchingRef?: MutableRefObject<boolean>;
 }
 
-/** Create the AG-UI protocol event dispatcher used by Chat. */
 export interface AGUIEventDispatcher {
   (event: AGUIEvent): void;
   flushPendingText(): void;
   cancelPendingText(): void;
 }
 
+/** Create the AG-UI protocol event dispatcher used by Chat. */
 export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDispatcher {
   const {
     currentMessageIdRef,
@@ -51,6 +52,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
     setIsThinking,
     addMessage,
     frameScheduler,
+    streamingTextBatchingRef,
   } = deps;
   let streamingSegmentContent = '';
 
@@ -88,7 +90,18 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
     );
   };
 
-  const textBatcher = createStreamingFrameBatcher(applyStreamingText, frameScheduler);
+  const textBatcher = createStreamingFrameBatcher(
+    applyStreamingText,
+    frameScheduler,
+    () => streamingTextBatchingRef?.current !== false
+  );
+
+  const flushAndPersistPendingText = () => {
+    textBatcher.flush();
+    if (currentMessageIdRef.current) {
+      sessionManagerRef.current?.saveSession();
+    }
+  };
 
   const applyToolPatch = (toolCallId: string, patch: Partial<ToolCall>) => {
     textBatcher.flush();
@@ -182,10 +195,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
       }
 
       case 'TEXT_MESSAGE_END':
-        textBatcher.flush();
-        if (currentMessageIdRef.current && sessionManagerRef.current) {
-          sessionManagerRef.current.saveSession();
-        }
+        flushAndPersistPendingText();
         break;
 
       case 'TOOL_CALL_START': {
@@ -231,10 +241,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
         break;
 
       case 'RUN_FINISHED':
-        textBatcher.flush();
-        if (currentMessageIdRef.current && sessionManagerRef.current) {
-          sessionManagerRef.current.saveSession();
-        }
+        flushAndPersistPendingText();
         setIsThinking(false);
         stateMachineRef.current?.transition('connected');
         break;
@@ -244,7 +251,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
     }
   };
 
-  dispatch.flushPendingText = () => textBatcher.flush();
+  dispatch.flushPendingText = flushAndPersistPendingText;
   dispatch.cancelPendingText = () => textBatcher.cancel();
   return dispatch;
 }

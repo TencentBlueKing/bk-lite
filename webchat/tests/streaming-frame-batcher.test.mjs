@@ -92,3 +92,38 @@ test('cancel drops pending work without a late commit', () => {
 
   assert.deepEqual(commits, []);
 });
+
+test('disabled batching commits every update immediately and schedules no frame', () => {
+  const frames = createManualFrameScheduler();
+  const commits = [];
+  const batcher = createStreamingFrameBatcher(
+    (text) => commits.push(text),
+    frames.scheduler,
+    () => false
+  );
+
+  batcher.schedule('a');
+  batcher.schedule('ab');
+
+  assert.deepEqual(commits, ['a', 'ab']);
+  assert.equal(frames.size, 0);
+});
+
+test('disabling batching cancels a queued frame and commits the newest text immediately', () => {
+  const frames = createManualFrameScheduler();
+  const commits = [];
+  let batching = true;
+  const batcher = createStreamingFrameBatcher(
+    (text) => commits.push(text),
+    frames.scheduler,
+    () => batching
+  );
+
+  batcher.schedule('a');
+  batching = false;
+  batcher.schedule('ab');
+  frames.runFrame();
+
+  assert.deepEqual(commits, ['ab']);
+  assert.equal(frames.size, 0);
+});

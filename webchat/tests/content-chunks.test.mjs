@@ -136,3 +136,30 @@ test('active trailing message update preserves every historical message referenc
   history.forEach((message, index) => assert.equal(next[index], message));
   assert.notEqual(next[500], active);
 });
+
+test('a non-trailing active message retains the compatibility lookup path', () => {
+  const active = {
+    id: 'active',
+    type: 'text',
+    content: '',
+    sender: 'bot',
+    timestamp: 1,
+    metadata: { contentChunks: [] },
+  };
+  const trailing = {
+    id: 'trailing',
+    type: 'text',
+    content: 'newer',
+    sender: 'user',
+    timestamp: 2,
+  };
+  const next = mapMessageChunks(
+    [active, trailing],
+    'active',
+    (chunks) => upsertTextChunk(chunks, 'streaming'),
+    'streaming'
+  );
+
+  assert.equal(next[0].content, 'streaming');
+  assert.equal(next[1], trailing);
+});

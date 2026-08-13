@@ -65,6 +65,8 @@ export interface WebChatConfig {
   enableSSE?: boolean;
   enableStorage?: boolean;
   storageKey?: string;
+  /** Coalesce streaming text per animation frame; set false for immediate rollback. */
+  streamingTextBatching?: boolean;
   /**
    * Opaque integration metadata. WebChat preserves this namespace but does not
    * include it in chat requests; request metadata belongs in `customData`.
