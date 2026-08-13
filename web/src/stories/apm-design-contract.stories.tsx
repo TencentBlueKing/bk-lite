@@ -63,8 +63,7 @@ export const ApplicationCardStates: Story = {
     <div className="grid gap-4 bg-[var(--color-background-body)] p-4 lg:grid-cols-2">
       <ApplicationCard
         label="交易清结算 / production 🚦"
-        isBuiltin={false}
-        status="active"
+        status="critical"
         services={services}
         requestRate={1284.4}
         errorRate={0.023}
@@ -74,12 +73,11 @@ export const ApplicationCardStates: Story = {
         alertCount={3}
         timeWindow="1h"
         eventsHref="/apm/events/alerts"
-        onOpen={() => undefined}
+        href="/apm/integration/applications/checkout"
       />
       <ApplicationCard
-        label="未归类应用"
-        isBuiltin
-        status="silent"
+        label="支付应用"
+        status="normal"
         services={services}
         requestRate={null}
         errorRate={null}
@@ -89,7 +87,7 @@ export const ApplicationCardStates: Story = {
         alertCount={0}
         timeWindow="1h"
         eventsHref="/apm/events/alerts"
-        onOpen={() => undefined}
+        href="/apm/integration/applications/payment"
         onRetryMetrics={() => undefined}
       />
     </div>
@@ -105,8 +103,7 @@ export const NarrowApplicationCard: Story = {
     <div className="w-[320px] max-w-full bg-[var(--color-background-body)] p-2">
       <ApplicationCard
         label="a-very-long-service-namespace-with-emoji-🚀"
-        isBuiltin={false}
-        status="active"
+        status="warning"
         services={services}
         requestRate={12.5}
         errorRate={0.001}
@@ -116,7 +113,7 @@ export const NarrowApplicationCard: Story = {
         alertCount={0}
         timeWindow="15m"
         eventsHref="/apm/events/alerts"
-        onOpen={() => undefined}
+        href="/apm/integration/applications/long-name"
       />
     </div>
   ),

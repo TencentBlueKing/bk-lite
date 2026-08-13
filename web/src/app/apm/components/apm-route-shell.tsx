@@ -2,7 +2,6 @@
 
 import {
   CloudUploadOutlined,
-  InfoCircleOutlined,
   RadarChartOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
@@ -15,15 +14,8 @@ interface ApmRouteShellProps {
   title: string;
   description: string;
   dependency?: 'metadata' | 'telemetry' | 'control';
-  showDependencyNote?: boolean;
   children?: ReactNode;
 }
-
-const dependencyCopy = {
-  metadata: '接入与目录元数据可用；遥测数据将在数据面配置后出现。',
-  telemetry: '遥测存储不可用时，本页会明确显示降级状态，不会将查询故障伪装成空数据。',
-  control: '策略与告警事件由 APM 自己管理；外部通知渠道不可用不会影响事件查询。',
-};
 
 const dependencyIcon = {
   metadata: <CloudUploadOutlined aria-hidden="true" />,
@@ -35,7 +27,6 @@ export default function ApmRouteShell({
   title,
   description,
   dependency = 'metadata',
-  showDependencyNote = true,
   children,
 }: ApmRouteShellProps) {
   return (
@@ -55,12 +46,6 @@ export default function ApmRouteShell({
               </Text>
             </div>
           </div>
-          {showDependencyNote ? (
-            <div className="flex max-w-xl items-start gap-2 text-xs leading-5 text-[var(--color-text-3)] md:justify-end md:text-right">
-              <InfoCircleOutlined className="mt-1 shrink-0 text-[var(--color-primary)]" aria-hidden="true" />
-              <span>{dependencyCopy[dependency]}</span>
-            </div>
-          ) : null}
         </header>
         <div className="min-w-0">
           {children ?? (

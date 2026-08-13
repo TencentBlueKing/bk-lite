@@ -37,6 +37,11 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
 }));
+vi.mock('@/components/time-series-composed-chart', () => ({
+  default: ({ series }: { series: Array<{ name: string }> }) => (
+    <div data-testid="endpoint-trend">{series.map((item) => item.name).join(' / ')}</div>
+  ),
+}));
 
 beforeEach(() => {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -115,8 +120,26 @@ describe('APM 端点详情抽屉', () => {
     expect(await screen.findByText('POST /pay')).not.toBeNull();
     await user.click(screen.getByRole('button', { name: '查看' }));
 
+
+    expect(await screen.findByText('端点趋势')).not.toBeNull();
+    expect(screen.getByTestId('endpoint-trend')).not.toBeNull();
     expect(await screen.findByText('样本调用链')).not.toBeNull();
     await waitFor(() => expect(api.getTraces).toHaveBeenCalled());
     expect(await screen.findByText(/trace-endpoint-1/)).not.toBeNull();
+  });
+
+  it('把服务筛选放在左侧，并由表头承载三个指标排序', async () => {
+    render(
+      <IntlProvider locale="zh" messages={tableMessages}>
+        <ApmEndpointsPage />
+      </IntlProvider>,
+    );
+
+    await screen.findByText('POST /pay');
+    expect(screen.getByRole('combobox', { name: '服务' })).not.toBeNull();
+    expect(screen.queryByRole('combobox', { name: '排序' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: /吞吐量/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: /错误率/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: /P95/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
   });
 });

@@ -24,6 +24,7 @@ import {
   Tag,
   Typography,
   message,
+  theme,
   type TableColumnsType,
 } from 'antd';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
@@ -103,6 +104,7 @@ function ServiceMetricCard({
 }
 
 export default function ApmServiceDetailPage() {
+  const { token } = theme.useToken();
   const params = useParams<{ serviceId: string }>();
   const searchParams = useSearchParams();
   const {
@@ -410,7 +412,7 @@ export default function ApmServiceDetailPage() {
                       href={`/apm/services?namespace=${encodeURIComponent(service.namespace)}`}
                       className="text-[var(--color-primary)]"
                     >
-                      {service.application_name || service.namespace || '未归类应用'}
+                      {service.application_name || service.namespace || '未设置 namespace'}
                     </Link>
                   </Typography.Text>
                 </div>
@@ -500,8 +502,8 @@ export default function ApmServiceDetailPage() {
                                 { formatter: (value) => `${value.toFixed(1)}%`, splitLine: false },
                               ]}
                               series={[
-                                { name: '请求速率 req/s', type: 'line', dataKey: 'request_rate', color: 'var(--color-primary)', showArea: true },
-                                { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: 'var(--color-fail)', yAxisIndex: 1 },
+                                { name: '请求速率 req/s', type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
+                                { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1 },
                               ]}
                               surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无 RED 趋势点' } }}
                             />
@@ -519,8 +521,8 @@ export default function ApmServiceDetailPage() {
                               xAxisBoundaryGap={false}
                               yAxes={[{ formatter: (value) => `${value.toFixed(0)} ms` }]}
                               series={[
-                                { name: 'P95', type: 'line', dataKey: 'p95_ms', color: 'var(--theme-color-chart-primary)', showArea: true },
-                                { name: 'P99', type: 'line', dataKey: 'p99_ms', color: 'var(--theme-color-chart-warning)' },
+                                { name: 'P95', type: 'line', dataKey: 'p95_ms', color: token.colorPrimary, showArea: true },
+                                { name: 'P99', type: 'line', dataKey: 'p99_ms', color: token.colorWarning },
                               ]}
                               surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无延迟趋势点' } }}
                             />

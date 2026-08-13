@@ -124,7 +124,7 @@ def test_reconciler_does_not_archive_when_victoria_traces_query_fails(mocker):
         TelemetryCatalogReconciler(store, catalog).reconcile(observed_at=timezone.now())
 
     catalog.discover.assert_not_called()
-    catalog.archive_stale.assert_not_called()
+    catalog.archive_stale_instances.assert_not_called()
 
 
 def test_stale_instances_archive_and_new_activity_unarchives_history():
@@ -136,8 +136,10 @@ def test_stale_instances_archive_and_new_activity_unarchives_history():
 
     archived = reconciler.reconcile(observed_at=observed_at)
     instance = ApmServiceInstance.objects.get(instance_id="pod-old")
-    assert archived.archived_instances == archived.archived_services == 1
+    assert archived.archived_instances == 1
+    assert archived.archived_services == 0
     assert instance.archived_at == observed_at
+    assert instance.service.archived_at is None
 
     metric_store.add_activity(_activity("shop", "pod-old", observed_at + timedelta(minutes=1)))
     reconciler.reconcile(observed_at=observed_at + timedelta(minutes=1))
@@ -148,18 +150,18 @@ def test_stale_instances_archive_and_new_activity_unarchives_history():
     assert ApmServiceInstance.objects.count() == 1
 
 
-def test_manual_archives_survive_new_activity():
+def test_manual_service_archive_survives_new_activity():
     observed_at = timezone.now()
     create_application("shop", (10,))
     catalog = DjangoTelemetryCatalogService()
     discovered = catalog.discover(CatalogDiscovery("shop", "checkout", "pod-manual", "production", seen_at=observed_at))
     catalog.archive_service(discovered.service.id, reason="manual", actor="tester")
-    catalog.archive_instance(discovered.instance.id, reason="manual", actor="tester")
 
     catalog.discover(CatalogDiscovery("shop", "checkout", "pod-manual", "production", seen_at=observed_at + timedelta(minutes=1)))
     discovered.service.refresh_from_db()
     discovered.instance.refresh_from_db()
-    assert discovered.service.archive_reason == discovered.instance.archive_reason == "manual"
+    assert discovered.service.archive_reason == "manual"
+    assert discovered.instance.archive_reason == ""
 
 
 def test_environment_views_and_instance_status_filters_are_bounded(apm_api_client):

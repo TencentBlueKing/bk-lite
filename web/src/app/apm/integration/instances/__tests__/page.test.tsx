@@ -10,7 +10,6 @@ const api = {
   getApplications: vi.fn(),
   getHealth: vi.fn(),
   getInstancePage: vi.fn(),
-  setInstanceArchived: vi.fn(),
   setInstanceOrganizations: vi.fn(),
   isLoading: false,
 };
@@ -120,5 +119,6 @@ describe('APM 接入实例目录', () => {
       status: 'archived',
       include_archived: true,
     })));
+    expect(screen.queryByRole('button', { name: /归档|恢复/ })).toBeNull();
   });
 });

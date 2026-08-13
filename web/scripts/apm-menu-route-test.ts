@@ -36,8 +36,8 @@ assert.deepEqual(menu.zh[3].children?.flatMap((item) => item.title ? [item.title
 assert.deepEqual(menu.en[3].children?.flatMap((item) => item.title ? [item.title] : []), ['Alerts', 'Policies']);
 assert.deepEqual(menu.zh[1].children?.flatMap((item) => item.title ? [item.title] : []), ['服务', '服务拓扑', 'SLO']);
 assert.deepEqual(menu.en[1].children?.flatMap((item) => item.title ? [item.title] : []), ['Services', 'Service topology', 'SLO']);
-assert.deepEqual(menu.zh[4].children?.flatMap((item) => item.title ? [item.title] : []), ['添加接入', '接入实例', '应用管理']);
-assert.deepEqual(menu.en[4].children?.flatMap((item) => item.title ? [item.title] : []), ['Add integration', 'Reporting instances', 'Applications']);
+assert.deepEqual(menu.zh[4].children?.flatMap((item) => item.title ? [item.title] : []), ['应用管理', '接入实例']);
+assert.deepEqual(menu.en[4].children?.flatMap((item) => item.title ? [item.title] : []), ['Applications', 'Reporting instances']);
 assert.deepEqual(
   menu.zh[1].children?.flatMap((item) => item.title ? [item.url] : []),
   ['/apm/services', '/apm/services/topology', '/apm/services/slo'],
@@ -55,8 +55,8 @@ assert.deepEqual(
 );
 assert.equal(menu.zh[2].url, '/apm/explore/traces', '探索一级入口必须直达默认二级');
 assert.equal(menu.zh[3].url, '/apm/events/alerts', '事件一级入口必须直达告警列表');
-assert.equal(menu.zh[4].url, '/apm/integration/add', '集成一级入口必须直达添加接入页，避免客户端二次重定向');
-assert.equal(menu.en[4].url, '/apm/integration/add', 'Integration must link directly to its first usable child route');
+assert.equal(menu.zh[4].url, '/apm/integration/applications', '集成一级入口必须直达应用管理');
+assert.equal(menu.en[4].url, '/apm/integration/applications', 'Integration must link directly to application management');
 assert.equal(
   menu.zh[4].children?.some((item) => item.url === '/apm/integration' && item.isNotMenuItem),
   true,

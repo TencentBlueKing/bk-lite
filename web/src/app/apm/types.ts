@@ -17,6 +17,7 @@ export interface ApmService {
   application_name: string;
   namespace: string;
   name: string;
+  language: string;
   first_seen_at: string;
   last_seen_at: string;
   archived_at: string | null;

@@ -227,7 +227,7 @@ export default function ApmTraceDetailPage() {
                     </Tag>
                   </Space>
                   <Typography.Text type="secondary" className="mt-1 block truncate text-xs">
-                    {trace.service_namespace || '未归类应用'} · {trace.service_name} · {trace.environment || '未设置环境'}
+                    {trace.service_namespace || '未设置 namespace'} · {trace.service_name} · {trace.environment || '未设置环境'}
                   </Typography.Text>
                 </div>
               </div>
@@ -442,7 +442,7 @@ export default function ApmTraceDetailPage() {
                       <Descriptions size="small" column={1}>
                         <Descriptions.Item label="总耗时">{formatLatency(selected.duration_ms)}</Descriptions.Item>
                         <Descriptions.Item label="服务">
-                          {selected.service_namespace || '未归类应用'} / {selected.service_name}
+                          {selected.service_namespace || '未设置 namespace'} / {selected.service_name}
                         </Descriptions.Item>
                         <Descriptions.Item label="实例">{selected.instance_id || '身份缺失'}</Descriptions.Item>
                         <Descriptions.Item label="环境">{selected.environment || '未设置环境'}</Descriptions.Item>

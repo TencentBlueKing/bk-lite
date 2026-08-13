@@ -49,6 +49,7 @@ _SERVICE_FIELD = "`resource_attr:service.name`"
 _INSTANCE_FIELD = "`resource_attr:service.instance.id`"
 _ENVIRONMENT_FIELD = "`resource_attr:deployment.environment`"
 _VERSION_FIELD = "`resource_attr:service.version`"
+_LANGUAGE_FIELD = "`resource_attr:telemetry.sdk.language`"
 _KIND_TO_CODE = {
     "internal": "1",
     "server": "2",
@@ -252,7 +253,12 @@ class VictoriaTracesTelemetryStore:
 
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
         window_seconds = _validate_window(query.started_at, query.ended_at)
-        deduped = self._deduped_entry_query(query.service_namespace, query.service_name, query.environment)
+        deduped = self._deduped_entry_query(
+            query.service_namespace,
+            query.service_name,
+            query.environment,
+            endpoint=query.endpoint,
+        )
         aggregate = (
             f"{self._bounded_spans(deduped)} | stats count() as requests, count() if (status_code:=\"2\") as errors, "
             "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
@@ -285,7 +291,7 @@ class VictoriaTracesTelemetryStore:
                 for timestamp, count in list(ranged.get("requests", {}).items())[-MAX_RED_POINTS:]
             )
             endpoint_query = (
-                f"{self._bounded_spans(self._deduped_entry_query(query.service_namespace, query.service_name, query.environment, keep_name=True))} "
+                f"{self._bounded_spans(self._deduped_entry_query(query.service_namespace, query.service_name, query.environment, endpoint=query.endpoint, keep_name=True))} "
                 "| stats by (endpoint) count() as requests, count() if (status_code:=\"2\") as errors, "
                 "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99 "
                 f"| sort by (requests) desc | limit {MAX_TOP_ENDPOINTS}"
@@ -336,7 +342,7 @@ class VictoriaTracesTelemetryStore:
         _validate_window(query.started_at, query.ended_at)
         logs_query = (
             f"{_SERVICE_FIELD}:* | stats by ({_NAMESPACE_FIELD}, {_SERVICE_FIELD}, {_INSTANCE_FIELD}, "
-            f"{_ENVIRONMENT_FIELD}, {_VERSION_FIELD}) max(end_time_unix_nano) as last_seen "
+            f"{_ENVIRONMENT_FIELD}, {_VERSION_FIELD}, {_LANGUAGE_FIELD}) max(end_time_unix_nano) as last_seen "
             f"| sort by (last_seen) desc | limit {MAX_ACTIVITY_DIMENSIONS + 1}"
         )
         rows = self._query_rows(logs_query, query.started_at, query.ended_at)
@@ -361,6 +367,7 @@ class VictoriaTracesTelemetryStore:
                     environment=str(row.get("resource_attr:deployment.environment", "")),
                     version=str(row.get("resource_attr:service.version", "")),
                     last_seen_at=last_seen_at,
+                    language=str(row.get("resource_attr:telemetry.sdk.language", "")),
                 )
             )
         return activities

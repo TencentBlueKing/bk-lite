@@ -11,6 +11,7 @@ import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm
 import HealthDot from '@/app/apm/components/health-dot';
 import { formatLatency, formatRelativeTime } from '@/app/apm/components/metric-format';
 import type {
+  ApmService,
   ApmSpanSearchParams,
   ApmSpanSummary,
   ApmTraceSearchParams,
@@ -226,7 +227,7 @@ function buildAggregate(
 export default function ApmTracesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { getSpans, getTraces, isLoading: authLoading } = useApmApi();
+  const { getServices, getSpans, getTraces, isLoading: authLoading } = useApmApi();
   const initialFilters = useMemo(() => filtersFromSearchParams(searchParams), [searchParams]);
   const [entityMode, setEntityMode] = useState<EntityMode>(
     searchParams.get('entity') === 'traces' ? 'traces' : 'spans',
@@ -243,10 +244,12 @@ export default function ApmTracesPage() {
   const [state, setState] = useState<PageState>(initialFilters.serviceName ? 'loading' : 'idle');
   const [loadingMore, setLoadingMore] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [services, setServices] = useState<ApmService[]>([]);
   const [queryStartedAt, setQueryStartedAt] = useState<string>();
   const [queryEndedAt, setQueryEndedAt] = useState<string>();
   const autoSearched = useRef(false);
   const entityModeReady = useRef(false);
+  const servicesLoaded = useRef(false);
 
   const {
     serviceName,
@@ -351,6 +354,29 @@ export default function ApmTracesPage() {
     applyFilters(next);
     search(undefined, next);
   }, [applyFilters, filters, search]);
+
+  useEffect(() => {
+    if (authLoading || servicesLoaded.current) return;
+    servicesLoaded.current = true;
+    getServices()
+      .then((items) => {
+        setServices(items);
+        if (initialFilters.serviceName || autoSearched.current) return;
+        const first = items.find((item) => item.environment_views.length > 0) || items[0];
+        if (!first) return;
+        const next: TraceFilters = {
+          ...initialFilters,
+          namespace: first.namespace,
+          serviceName: first.name,
+          environment: first.environment_views[0]?.environment ?? '',
+        };
+        autoSearched.current = true;
+        entityModeReady.current = true;
+        applyFilters(next);
+        search(undefined, next);
+      })
+      .catch(() => setServices([]));
+  }, [applyFilters, authLoading, getServices, initialFilters, search]);
 
   useEffect(() => {
     if (!authLoading && serviceName && !autoSearched.current) {
@@ -681,10 +707,10 @@ export default function ApmTracesPage() {
           <ApmSurface padding="none">
             <CatalogState kind="empty" description="在上方输入 service:... 后回车搜索调用链。" />
           </ApmSurface>
-        ) : state === 'ready' ? (
+        ) : state === 'ready' || state === 'empty' ? (
           <div className="grid min-h-0 grid-cols-1 gap-3 xl:grid-cols-[240px_minmax(0,1fr)]">
             <ApmSurface className="self-start" padding="compact">
-              <Typography.Title level={2} className="!mb-4 !text-sm !font-semibold">分面筛选</Typography.Title>
+              <Typography.Title level={2} className="!mb-4 !text-sm !font-semibold">快速筛选</Typography.Title>
               <div className="flex flex-col gap-5">
                 <div>
                   <Typography.Text type="secondary" className="mb-2 block !text-xs">
@@ -728,7 +754,10 @@ export default function ApmTracesPage() {
                     ) : null}
                   </Typography.Text>
                   <Space direction="vertical" size={6} className="w-full">
-                    {serviceCounts.slice(0, 8).map(([name, count]) => (
+                    {(serviceCounts.length
+                      ? serviceCounts
+                      : services.map((service) => [service.name, 0] as [string, number])
+                    ).slice(0, 8).map(([name, count]) => (
                       <button
                         key={name}
                         type="button"
@@ -960,10 +989,7 @@ export default function ApmTracesPage() {
           <ApmSurface padding="none">
             <CatalogState
               kind={state}
-              description={state === 'empty'
-                ? (entityMode === 'spans' ? '当前条件下没有可见 Span。' : '当前条件下没有可见 Trace。')
-                : undefined}
-              onRetry={state === 'forbidden' || state === 'empty' ? undefined : () => search(undefined, filters)}
+              onRetry={state === 'forbidden' ? undefined : () => search(undefined, filters)}
             />
           </ApmSurface>
         )}

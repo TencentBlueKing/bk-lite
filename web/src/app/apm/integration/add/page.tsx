@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   ApiOutlined,
   CodeOutlined,
@@ -126,6 +127,7 @@ function requestErrorMessage(error: unknown) {
 }
 
 export default function ApmIntegrationAddPage() {
+  const searchParams = useSearchParams();
   const { t } = useTranslation();
   const [messageApi, messageContextHolder] = message.useMessage();
   const { getApplications, getCloudRegions, getIngestSnippet, isLoading } = useApmApi();
@@ -183,6 +185,12 @@ export default function ApmIntegrationAddPage() {
     value: application.application_id,
     label: `${application.name}（${application.application_id}）`,
   })), [applications]);
+  const preferredApplicationId = useMemo(() => {
+    const requested = searchParams?.get('application_id') ?? null;
+    return applications.some((application) => application.application_id === requested)
+      ? requested ?? applications[0]?.application_id
+      : applications[0]?.application_id;
+  }, [applications, searchParams]);
   const cloudRegionOptions = useMemo(() => cloudRegions.map((region) => ({
     value: region.id,
     label: region.name,
@@ -312,10 +320,10 @@ export default function ApmIntegrationAddPage() {
             <div className="mb-1 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">1</span><Typography.Text strong>接入配置</Typography.Text></div>
             <Typography.Text type="secondary" className="mb-4 block text-xs">应用 ID、服务名称和版本将映射到标准 OpenTelemetry 资源属性；平台根据所选云区域分配上报端点。</Typography.Text>
             <Form<SnippetForm>
-              key={selectedMethod?.key ?? 'integration-form'}
+              key={`${selectedMethod?.key ?? 'integration-form'}:${preferredApplicationId ?? ''}`}
               layout="vertical"
               initialValues={{
-                application_id: applications[0]?.application_id,
+                application_id: preferredApplicationId,
                 cloud_region_id: cloudRegions[0]?.id,
                 service_name: '',
                 service_version: '',

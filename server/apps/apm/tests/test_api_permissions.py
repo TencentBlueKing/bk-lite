@@ -64,28 +64,12 @@ def test_application_crud_persists_business_boundary_without_a_token(apm_api_cli
     assert updated.data["is_builtin"] is False
 
 
-def test_builtin_application_is_visible_but_cannot_be_modified(apm_api_client):
-    application = ApmApplication.objects.get(application_id="", is_builtin=True)
-
+def test_application_catalog_does_not_expose_a_builtin_uncategorized_application(apm_api_client):
     listed = apm_api_client.get("/api/v1/apm/applications/")
-    updated = apm_api_client.put(
-        f"/api/v1/apm/applications/{application.id}/",
-        {
-            "name": "被篡改的名称",
-            "description": "",
-            "organization_ids": [10],
-        },
-        format="json",
-    )
-    deleted = apm_api_client.delete(f"/api/v1/apm/applications/{application.id}/")
 
     assert listed.status_code == 200
-    assert listed.data[0]["is_builtin"] is True
-    assert updated.status_code == 409
-    assert updated.data["detail"] == "内置应用不可修改。"
-    assert deleted.status_code == 405
-    application.refresh_from_db()
-    assert application.name == "未归类应用"
+    assert listed.data == []
+    assert not ApmApplication.objects.filter(is_builtin=True).exists()
 
 
 def test_application_update_ignores_immutable_application_id_from_stale_payload(apm_api_client):
@@ -579,7 +563,7 @@ def test_service_catalog_permission_can_read_application_boundaries(apm_user):
     response = client.get("/api/v1/apm/applications/")
 
     assert response.status_code == 200
-    assert [(item["name"], item["is_builtin"]) for item in response.data] == [("未归类应用", True)]
+    assert response.data == []
 
 
 def test_service_and_instance_lists_keep_independent_organization_scopes(apm_api_client):
@@ -598,7 +582,7 @@ def test_service_and_instance_lists_keep_independent_organization_scopes(apm_api
     assert apm_api_client.get(f"/api/v1/apm/instances/{hidden.instance.id}/").status_code == 404
 
 
-def test_service_and_instance_organization_archive_restore_actions_remain_real(apm_api_client):
+def test_service_archive_and_catalog_organization_actions_remain_real_but_instance_archive_is_removed(apm_api_client):
     create_application("shop", (10,))
     discovered = DjangoTelemetryCatalogService().discover(CatalogDiscovery("shop", "checkout", "pod-a", "prod"))
 
@@ -611,6 +595,7 @@ def test_service_and_instance_organization_archive_restore_actions_remain_real(a
 
     assert service_orgs.data["organization_ids"] == [10, 20]
     assert instance_orgs.data["organization_ids"] == [10, 30]
-    assert archived_service.data["status"] == archived_instance.data["status"] == "archived"
+    assert archived_service.data["status"] == "archived"
+    assert archived_instance.status_code == 404
     assert apm_api_client.post(f"/api/v1/apm/services/{discovered.service.id}/restore/").status_code == 200
-    assert apm_api_client.post(f"/api/v1/apm/instances/{discovered.instance.id}/restore/").status_code == 200
+    assert apm_api_client.post(f"/api/v1/apm/instances/{discovered.instance.id}/restore/").status_code == 404
