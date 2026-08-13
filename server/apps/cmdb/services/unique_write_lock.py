@@ -4,7 +4,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import timedelta
 
-from django.db import DatabaseError, IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError
 from django.utils.timezone import now
 
 from apps.cmdb.models.operation import CmdbUniqueWriteLock
@@ -80,25 +80,16 @@ class UniqueWriteLockService:
 
     @classmethod
     @contextmanager
-    def serialize(cls, lock_key: str):
-        """用既有锁表串行化长任务；竞争时立即失败，由调用方有界退避重试。"""
+    def serialize(cls, lock_key: str, *, lease_seconds: int | None = None):
+        """用跨数据库的原子租约串行化长任务，竞争时由调用方有界退避重试。"""
         owner_token = uuid.uuid4().hex
-        lease_expires_at = now() + timedelta(seconds=cls.DEFAULT_LEASE_SECONDS)
         try:
-            CmdbUniqueWriteLock.objects.get_or_create(
-                lock_key=lock_key,
-                defaults={"owner_token": owner_token, "lease_expires_at": lease_expires_at},
-            )
-        except IntegrityError:
-            # 并发首次创建同一锁行时，另一事务已负责创建；随后统一等待行锁。
-            pass
-
-        try:
-            with transaction.atomic():
-                lock = CmdbUniqueWriteLock.objects.select_for_update(nowait=True).get(lock_key=lock_key)
-                lock.owner_token = owner_token
-                lock.lease_expires_at = lease_expires_at
-                lock.save(update_fields=["owner_token", "lease_expires_at", "updated_at"])
-                yield owner_token
+            acquired = cls.acquire(lock_key, owner_token=owner_token, lease_seconds=lease_seconds)
         except DatabaseError as exc:
-            raise TimeoutError("CMDB 写锁正被占用") from exc
+            raise RuntimeError("CMDB 写锁获取失败") from exc
+        if not acquired:
+            raise TimeoutError("CMDB 写锁正被占用")
+        try:
+            yield owner_token
+        finally:
+            cls.release(lock_key, owner_token=owner_token)

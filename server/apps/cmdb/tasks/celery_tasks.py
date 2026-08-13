@@ -9,6 +9,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 from django.db import transaction
 from django.db.models import Q
 from django.utils.dateparse import parse_datetime
@@ -728,9 +729,10 @@ def sync_cmdb_display_fields_task(self, data: dict):
     )
 
     try:
-        # 同步域使用稳定的数据库行锁跨进程串行。后发任务取得锁后才读取权威 ORM，
+        # 同步域使用稳定的数据库租约跨进程串行。租期长于任务硬时限，进程崩溃后可过期接管；
+        # owner token 防止旧任务误释放接管者的租约。后发任务取得租约后才读取权威 ORM，
         # 因此旧任务不能在新任务之后继续写旧快照，后发变更最终会覆盖全量实例。
-        with UniqueWriteLockService.serialize("cmdb-display-field-sync"):
+        with UniqueWriteLockService.serialize("cmdb-display-field-sync", lease_seconds=360):
             # 图写按字段分批提交，瞬时失败前可能已有部分字段落图。全量同步本身幂等，
             # 因此在同一锁内有界重跑一次，既补齐部分写，又保持既有 Celery 返回结构。
             for attempt in range(2):
@@ -745,14 +747,23 @@ def sync_cmdb_display_fields_task(self, data: dict):
                         "message": "CMDB display fields synced successfully",
                         "data": result,
                     }
+                except SoftTimeLimitExceeded:
+                    # 不在剩余硬时限内重扫全量；先退出 context 释放租约，再交给 Celery 有界重试。
+                    raise
                 except Exception as exc:
                     if attempt == 0:
                         logger.warning("[SyncCMDBDisplayFields] 同步失败，将从头重试一次: %s", exc)
                         continue
                     raise
-    except TimeoutError as exc:
-        logger.warning("[SyncCMDBDisplayFields] 同步锁繁忙，任务将有界重试: %s", exc)
-        raise self.retry(exc=exc)
+    except (TimeoutError, SoftTimeLimitExceeded) as exc:
+        if self.request.retries < self.max_retries:
+            logger.warning("[SyncCMDBDisplayFields] 同步繁忙或超时，任务将有界重试: %s", exc)
+            raise self.retry(exc=exc)
+        logger.error("[SyncCMDBDisplayFields] 同步重试已耗尽: %s", exc, exc_info=True)
+        return {
+            "result": False,
+            "message": f"Failed to sync CMDB display fields: {str(exc)}",
+        }
     except Exception as exc:
         logger.error(f"[SyncCMDBDisplayFields] 同步失败: {str(exc)}", exc_info=True)
         return {

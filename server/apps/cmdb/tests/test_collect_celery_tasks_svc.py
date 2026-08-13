@@ -236,7 +236,7 @@ def _install_display_sync_lock(monkeypatch):
 
     monkeypatch.setattr(
         "apps.cmdb.services.unique_write_lock.UniqueWriteLockService.serialize",
-        lambda lock_key: nullcontext("test-owner"),
+        lambda lock_key, **kwargs: nullcontext("test-owner"),
     )
 
 
@@ -325,8 +325,8 @@ def test_sync_cmdb_display_fields_enters_global_lock_before_refreshing_authorita
     events = []
 
     @contextmanager
-    def _serialize(lock_key):
-        events.append(("lock-enter", lock_key))
+    def _serialize(lock_key, *, lease_seconds=None):
+        events.append(("lock-enter", lock_key, lease_seconds))
         yield "owner"
         events.append(("lock-exit", lock_key))
 
@@ -346,7 +346,7 @@ def test_sync_cmdb_display_fields_enters_global_lock_before_refreshing_authorita
 
     assert out["result"] is True
     assert events == [
-        ("lock-enter", "cmdb-display-field-sync"),
+        ("lock-enter", "cmdb-display-field-sync", 360),
         ("refresh", "当前名称"),
         ("graph-write", "当前名称"),
         ("lock-exit", "cmdb-display-field-sync"),
@@ -360,7 +360,7 @@ def test_sync_cmdb_display_fields_returns_compatible_failure_when_lock_fails(mon
     retry_calls = []
 
     @contextmanager
-    def _serialize(lock_key):
+    def _serialize(lock_key, **kwargs):
         raise TimeoutError("display sync lock timeout")
         yield
 
@@ -386,7 +386,7 @@ def test_sync_cmdb_display_fields_lock_retry_exhaustion_is_bounded_failure(monke
     from contextlib import contextmanager
 
     @contextmanager
-    def _serialize(lock_key):
+    def _serialize(lock_key, **kwargs):
         raise TimeoutError("display sync lock timeout")
         yield
 
@@ -398,9 +398,67 @@ def test_sync_cmdb_display_fields_lock_retry_exhaustion_is_bounded_failure(monke
         retries=ct.sync_cmdb_display_fields_task.max_retries,
     )
 
-    assert result.failed()
-    assert isinstance(result.result, TimeoutError)
-    assert str(result.result) == "display sync lock timeout"
+    assert result.successful()
+    assert result.result == {
+        "result": False,
+        "message": "Failed to sync CMDB display fields: display sync lock timeout",
+    }
+
+
+def test_sync_cmdb_display_fields_soft_timeout_releases_lock_before_retry(monkeypatch):
+    from contextlib import contextmanager
+
+    from celery.exceptions import Retry, SoftTimeLimitExceeded
+
+    events = []
+
+    @contextmanager
+    def _serialize(lock_key, **kwargs):
+        events.append("lock-enter")
+        try:
+            yield "owner"
+        finally:
+            events.append("lock-exit")
+
+    def _sync(_data):
+        events.append("graph-write")
+        raise SoftTimeLimitExceeded()
+
+    def _retry(**kwargs):
+        events.append("celery-retry")
+        assert isinstance(kwargs["exc"], SoftTimeLimitExceeded)
+        raise Retry()
+
+    monkeypatch.setattr("apps.cmdb.services.unique_write_lock.UniqueWriteLockService.serialize", _serialize)
+    monkeypatch.setattr("apps.cmdb.display_field.sync.refresh_display_sync_data", lambda data: data)
+    monkeypatch.setattr("apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all", staticmethod(_sync))
+    monkeypatch.setattr(ct.sync_cmdb_display_fields_task, "retry", _retry)
+
+    with pytest.raises(Retry):
+        ct.sync_cmdb_display_fields_task({"organizations": [], "users": []})
+
+    assert events == ["lock-enter", "graph-write", "lock-exit", "celery-retry"]
+
+
+def test_sync_cmdb_display_fields_soft_timeout_exhaustion_keeps_failure_contract(monkeypatch):
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    _install_display_sync_lock(monkeypatch)
+    monkeypatch.setattr("apps.cmdb.display_field.sync.refresh_display_sync_data", lambda data: data)
+    monkeypatch.setattr(
+        "apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all",
+        staticmethod(lambda _data: (_ for _ in ()).throw(SoftTimeLimitExceeded())),
+    )
+
+    result = ct.sync_cmdb_display_fields_task.apply(
+        args=[{"organizations": [], "users": []}],
+        throw=False,
+        retries=ct.sync_cmdb_display_fields_task.max_retries,
+    )
+
+    assert result.successful()
+    assert result.result["result"] is False
+    assert result.result["message"].startswith("Failed to sync CMDB display fields:")
 
 
 # --------------------------------------------------------------------------
