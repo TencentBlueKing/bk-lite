@@ -263,6 +263,7 @@ class WebhookClient:
         train_image: Optional[str] = None,
         device: Optional[str] = None,
         timeseries_predict_timeout_seconds: Optional[int] = None,
+        max_recursive_feature_engineering_work: Optional[int] = None,
     ) -> dict:
         """
         启动 serving 服务
@@ -275,6 +276,7 @@ class WebhookClient:
             train_image: 训练镜像名称，为 None 时由 webhookd 使用默认镜像
             device: 设备类型 ("cpu", "gpu", "auto")
             timeseries_predict_timeout_seconds: 时序预测服务预算，为 None 时不注入
+            max_recursive_feature_engineering_work: 递归特征工程组合工作量上限，为 None 时不注入
 
         Returns:
             dict: 容器状态信息，格式: {"status": "success", "id": "...", "state": "running", "port": "3042", "detail": "Up"}
@@ -299,6 +301,10 @@ class WebhookClient:
             if not 1 <= timeseries_predict_timeout_seconds <= 290:
                 raise ValueError("timeseries_predict_timeout_seconds must be between 1 and 290")
             payload["timeseries_predict_timeout_seconds"] = timeseries_predict_timeout_seconds
+        if max_recursive_feature_engineering_work is not None:
+            if max_recursive_feature_engineering_work <= 0:
+                raise ValueError("max_recursive_feature_engineering_work must be a positive integer")
+            payload["max_recursive_feature_engineering_work"] = max_recursive_feature_engineering_work
 
         request_timeout = 30
         if WebhookClient.get_runtime() == "docker":
