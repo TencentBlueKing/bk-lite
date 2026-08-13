@@ -741,7 +741,7 @@ export default function ApmServicesPage() {
         : <Typography.Text type="secondary">—</Typography.Text>,
     },
     {
-      title: '',
+      title: <span className="block w-full text-right">操作</span>,
       key: 'action',
       width: 56,
       align: 'right',
