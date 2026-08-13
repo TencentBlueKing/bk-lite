@@ -346,7 +346,7 @@ def test_sync_cmdb_display_fields_enters_global_lock_before_refreshing_authorita
 
     assert out["result"] is True
     assert events == [
-        ("lock-enter", "cmdb-display-field-sync", 360),
+        ("lock-enter", "cmdb-display-field-sync", 310),
         ("refresh", "当前名称"),
         ("graph-write", "当前名称"),
         ("lock-exit", "cmdb-display-field-sync"),
@@ -376,6 +376,7 @@ def test_sync_cmdb_display_fields_returns_compatible_failure_when_lock_fails(mon
         ct.sync_cmdb_display_fields_task({"organizations": [{"id": 1, "name": "x"}], "users": []})
 
     assert isinstance(retry_calls[0]["exc"], TimeoutError)
+    assert retry_calls[0]["countdown"] == 105
     assert ct.sync_cmdb_display_fields_task.max_retries == 3
     assert ct.sync_cmdb_display_fields_task.default_retry_delay == 5
     assert ct.sync_cmdb_display_fields_task.soft_time_limit == 240
@@ -427,6 +428,7 @@ def test_sync_cmdb_display_fields_soft_timeout_releases_lock_before_retry(monkey
     def _retry(**kwargs):
         events.append("celery-retry")
         assert isinstance(kwargs["exc"], SoftTimeLimitExceeded)
+        assert kwargs["countdown"] == 5
         raise Retry()
 
     monkeypatch.setattr("apps.cmdb.services.unique_write_lock.UniqueWriteLockService.serialize", _serialize)

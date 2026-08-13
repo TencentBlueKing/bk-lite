@@ -732,7 +732,7 @@ def sync_cmdb_display_fields_task(self, data: dict):
         # 同步域使用稳定的数据库租约跨进程串行。租期长于任务硬时限，进程崩溃后可过期接管；
         # owner token 防止旧任务误释放接管者的租约。后发任务取得租约后才读取权威 ORM，
         # 因此旧任务不能在新任务之后继续写旧快照，后发变更最终会覆盖全量实例。
-        with UniqueWriteLockService.serialize("cmdb-display-field-sync", lease_seconds=360):
+        with UniqueWriteLockService.serialize("cmdb-display-field-sync", lease_seconds=310):
             # 图写按字段分批提交，瞬时失败前可能已有部分字段落图。全量同步本身幂等，
             # 因此在同一锁内有界重跑一次，既补齐部分写，又保持既有 Celery 返回结构。
             for attempt in range(2):
@@ -758,7 +758,10 @@ def sync_cmdb_display_fields_task(self, data: dict):
     except (TimeoutError, SoftTimeLimitExceeded) as exc:
         if self.request.retries < self.max_retries:
             logger.warning("[SyncCMDBDisplayFields] 同步繁忙或超时，任务将有界重试: %s", exc)
-            raise self.retry(exc=exc)
+            # 锁竞争的三次等待总跨度需覆盖 310s 租期，确保占锁者即使硬退出，后发任务也能接管；
+            # soft timeout 已释放租约，沿用短延迟即可。
+            countdown = 105 if isinstance(exc, TimeoutError) else self.default_retry_delay
+            raise self.retry(exc=exc, countdown=countdown)
         logger.error("[SyncCMDBDisplayFields] 同步重试已耗尽: %s", exc, exc_info=True)
         return {
             "result": False,
