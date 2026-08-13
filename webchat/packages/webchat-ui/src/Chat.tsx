@@ -125,6 +125,11 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   if (!streamLifecycleRef.current) {
     streamLifecycleRef.current = new StreamLifecycle();
   }
+  const cancelPendingImageBatches = useCallback(() => {
+    imageSelectionGenerationRef.current += 1;
+    pendingImageBatchesRef.current.forEach(({ controller }) => controller.abort());
+    pendingImageBatchesRef.current.clear();
+  }, []);
   const onStateChangeRef = useRef(onStateChange);
   useLayoutEffect(() => {
     onStateChangeRef.current = onStateChange;
@@ -168,8 +173,6 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     // Initialize AGUIHandler (默认启用)
     aguiHandlerRef.current = new AGUIHandler(agui || { enabled: true, debug: false });
     const aguiSubscription = setupAGUIEventHandlers();
-    const pendingImageBatches = pendingImageBatchesRef.current;
-
     // Load previous session
     const session = sessionManagerRef.current.initSession();
     if (session && session.messages.length > 0) {
@@ -178,16 +181,14 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
 
     return () => {
       handleAGUIEvent.cancelPendingText();
-      imageSelectionGenerationRef.current += 1;
-      pendingImageBatches.forEach(({ controller }) => controller.abort());
-      pendingImageBatches.clear();
+      cancelPendingImageBatches();
       void streamLifecycle?.dispose();
       aguiSubscription?.unsubscribe();
       aguiHandlerRef.current?.destroy();
       unsubscribeState();
       stateMachineRef.current?.destroy();
     };
-  }, []);
+  }, [cancelPendingImageBatches]);
 
   // Setup AG-UI event handlers
   const setupAGUIEventHandlers = () => {
@@ -383,9 +384,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
 
     addMessage(userMsg);
     setInputValue('');
-    imageSelectionGenerationRef.current += 1;
-    pendingImageBatchesRef.current.forEach(({ controller }) => controller.abort());
-    pendingImageBatchesRef.current.clear();
+    cancelPendingImageBatches();
     updateUploadedImages({ type: 'clear' });
     setIsLoading(true);
 
@@ -491,6 +490,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     uploadedImages,
     handleAGUIEvent,
     updateUploadedImages,
+    cancelPendingImageBatches,
   ]);
 
   const handleStopStreaming = useCallback(() => {
@@ -505,9 +505,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     handleAGUIEvent.cancelPendingText();
     void streamLifecycleRef.current?.cancel('session-cleared');
     setMessages([]);
-    imageSelectionGenerationRef.current += 1;
-    pendingImageBatchesRef.current.forEach(({ controller }) => controller.abort());
-    pendingImageBatchesRef.current.clear();
+    cancelPendingImageBatches();
     updateUploadedImages({ type: 'clear' });
     // Clear and reinitialize session
     sessionManagerRef.current?.clearSession();
@@ -521,7 +519,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     stateMachineRef.current?.transition('idle');
     // Close the confirmation dialog
     setShowClearConfirm(false);
-  }, [handleAGUIEvent, updateUploadedImages]);
+  }, [cancelPendingImageBatches, handleAGUIEvent, updateUploadedImages]);
 
   // Use message handlers hook
   const { handleRegenerate, handleCopy, handleDelete } = useMessageHandlers({
