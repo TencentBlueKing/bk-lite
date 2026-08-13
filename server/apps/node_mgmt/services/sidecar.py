@@ -8,10 +8,11 @@ from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Q
 from django.http import HttpResponse
-from apps.core.utils.safe_template import build_sandboxed_env
 
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.safe_template import build_sandboxed_env
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants
@@ -417,6 +418,8 @@ class Sidecar:
     @staticmethod
     def _filter_reported_node_details(node_id: str, node_details: dict) -> dict:
         """Keep heartbeat input within fields owned by the Sidecar client."""
+        if not isinstance(node_details, dict):
+            raise ValidationAppException("node_details must be an object")
         dropped_fields = set(node_details) - Sidecar.CLIENT_REPORTED_NODE_FIELDS
         if dropped_fields:
             server_fields = sorted(dropped_fields & Sidecar.SERVER_OWNED_NODE_FIELDS)

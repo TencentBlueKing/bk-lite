@@ -3,10 +3,13 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import CloudRegion, Node
 from apps.node_mgmt.services.sidecar import Sidecar
+
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
 def _heartbeat_request(node_name, node_details):
@@ -32,7 +35,6 @@ def _node_details(region_id, **overrides):
     return details
 
 
-@pytest.mark.django_db
 def test_existing_sidecar_heartbeat_preserves_server_owned_fields(monkeypatch, caplog):
     original_region = CloudRegion.objects.create(name="issue-4644-original")
     reported_region = CloudRegion.objects.create(name="issue-4644-reported")
@@ -98,7 +100,6 @@ def test_existing_sidecar_heartbeat_preserves_server_owned_fields(monkeypatch, c
     assert "cmdb-untrusted" not in caplog.text
 
 
-@pytest.mark.django_db
 def test_cached_heartbeat_ignores_server_owned_and_unknown_fields(monkeypatch, caplog):
     region = CloudRegion.objects.create(name="issue-4644-cached")
     node = Node.objects.create(
@@ -146,7 +147,6 @@ def test_cached_heartbeat_ignores_server_owned_and_unknown_fields(monkeypatch, c
     assert "x" * 100 not in caplog.text
 
 
-@pytest.mark.django_db
 def test_existing_heartbeat_keeps_direct_client_runtime_fields(monkeypatch):
     region = CloudRegion.objects.create(name="issue-4644-direct-runtime-fields")
     node = Node.objects.create(
@@ -178,7 +178,6 @@ def test_existing_heartbeat_keeps_direct_client_runtime_fields(monkeypatch):
     assert node.node_type == ControllerConstants.NODE_TYPE_CONTAINER
 
 
-@pytest.mark.django_db
 def test_first_sidecar_heartbeat_keeps_zone_registration_compatibility(monkeypatch):
     region = CloudRegion.objects.create(name="issue-4644-registration")
     monkeypatch.setattr(Sidecar, "create_default_config", lambda *args, **kwargs: None)
@@ -208,3 +207,9 @@ def test_first_sidecar_heartbeat_keeps_zone_registration_compatibility(monkeypat
     assert node.created_by == ""
     assert node.install_method == ControllerConstants.MANUAL
     assert node.node_type == ControllerConstants.NODE_TYPE_CONTAINER
+
+
+@pytest.mark.parametrize("node_details", [None, [], "invalid"])
+def test_sidecar_heartbeat_rejects_non_object_node_details(node_details):
+    with pytest.raises(ValidationAppException, match="node_details must be an object"):
+        Sidecar.update_node_client(_heartbeat_request("invalid", node_details), "issue-4644-invalid")
