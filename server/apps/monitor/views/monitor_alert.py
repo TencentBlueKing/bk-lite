@@ -21,6 +21,7 @@ from apps.monitor.services.chart_unit import convert_snapshots_copy, resolve_cha
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.pagination import parse_page_params
+from apps.monitor.utils.user_display import enrich_alerts_notice_users_display
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -206,11 +207,17 @@ class MonitorAlertViewSet(
             alert["policy"] = (
                 MonitorPolicySerializer(
                     policy_dict.get(alert["policy_id"]),
-                    context={"data_team_ids": self._get_data_scope(request).data_team_ids},
+                    context={
+                        "data_team_ids": self._get_data_scope(request).data_team_ids,
+                        "filter_organizations": True,
+                    },
                 ).data
                 if alert["policy_id"]
                 else None
             )
+
+        # 通知人字段存的是用户 ID；列表详情共用本页数据，这里补展示名避免前端依赖组织范围 userList
+        enrich_alerts_notice_users_display(results)
 
         # 返回成功响应
         return WebUtils.response_success(dict(count=queryset.count(), results=results))

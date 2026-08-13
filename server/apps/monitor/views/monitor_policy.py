@@ -103,6 +103,8 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context["data_team_ids"] = self._get_data_scope().data_team_ids
+        # 仅列表投影裁剪组织；retrieve/update 需完整 organizations 供编辑回填
+        context["filter_organizations"] = getattr(self, "action", None) == "list"
         return context
 
     def _scope_queryset(self, queryset, permission, scope):

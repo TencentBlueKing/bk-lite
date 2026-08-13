@@ -180,8 +180,12 @@ const useMonitorApi = () => {
     return await patch(`/monitor/api/monitor_alert/${String(id)}/`, data);
   };
 
-  const getAllUsers = async () => {
-    return await get(`/monitor/api/system_mgmt/user_all/`);
+  const getAllUsers = async (organizationIds?: Array<string | number>) => {
+    const params =
+      organizationIds && organizationIds.length
+        ? { organization_ids: organizationIds.join(',') }
+        : undefined;
+    return await get(`/monitor/api/system_mgmt/user_all/`, { params });
   };
 
   const getUnitList = async () => {
