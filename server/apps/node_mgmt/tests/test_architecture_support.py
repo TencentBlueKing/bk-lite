@@ -3,14 +3,17 @@ import json
 import os
 import shlex
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 from queue import Queue
+from threading import Barrier
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from django.core.cache import cache
 from django.core.management import call_command
-from django.db import IntegrityError, connection
+from django.db import IntegrityError, close_old_connections, connection, transaction
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -4421,8 +4424,20 @@ def test_nats_batch_create_child_configs_rejects_ambiguous_generic_collector_con
         )
 
 
+@pytest.mark.integration
 @pytest.mark.django_db
-def test_nats_batch_create_child_configs_auto_creates_missing_default_parent_configuration():
+@pytest.mark.parametrize(
+    ("node_architecture", "collector_architecture"),
+    [
+        (NodeConstants.X86_64_ARCH, ""),
+        (NodeConstants.ARM64_ARCH, NodeConstants.ARM64_ARCH),
+    ],
+)
+def test_nats_batch_create_child_configs_auto_creates_missing_default_parent_configuration(
+    node_architecture,
+    collector_architecture,
+    django_capture_on_commit_callbacks,
+):
     cloud_region = CloudRegion.objects.create(
         name="region-nats-child-autocreate",
         introduction="test",
@@ -4440,7 +4455,7 @@ def test_nats_batch_create_child_configs_auto_creates_missing_default_parent_con
         name="node-child-autocreate",
         ip="10.0.0.26",
         operating_system=NodeConstants.LINUX_OS,
-        cpu_architecture=NodeConstants.X86_64_ARCH,
+        cpu_architecture=node_architecture,
         collector_configuration_directory="/etc/collector",
         metrics={},
         status={},
@@ -4451,11 +4466,11 @@ def test_nats_batch_create_child_configs_auto_creates_missing_default_parent_con
         updated_by="tester",
     )
     Collector.objects.create(
-        id="telegraf_linux_autocreate",
+        id=f"telegraf_linux_autocreate_{node_architecture}",
         name="Telegraf",
         service_type="exec",
         node_operating_system=NodeConstants.LINUX_OS,
-        cpu_architecture="",
+        cpu_architecture=collector_architecture,
         executable_path="/opt/telegraf",
         execute_parameters="--config %s",
         introduction="generic",
@@ -4468,26 +4483,31 @@ def test_nats_batch_create_child_configs_auto_creates_missing_default_parent_con
         updated_by="tester",
     )
 
-    NatsService().batch_create_child_configs(
-        [
-            {
-                "id": "child-autocreate-telegraf",
-                "collect_type": "host",
-                "type": "cpu",
-                "content": "[[inputs.cpu]]",
-                "node_id": node.id,
-                "collector_name": "Telegraf",
-                "env_config": {},
-            }
-        ]
-    )
+    node_etag_key = f"node_etag_{node.id}"
+    cache.set(node_etag_key, "stale")
+    with django_capture_on_commit_callbacks(execute=True):
+        NatsService().batch_create_child_configs(
+            [
+                {
+                    "id": "child-autocreate-telegraf",
+                    "collect_type": "host",
+                    "type": "cpu",
+                    "content": "[[inputs.cpu]]",
+                    "node_id": node.id,
+                    "collector_name": "Telegraf",
+                    "env_config": {},
+                }
+            ]
+        )
 
     parent_config = CollectorConfiguration.objects.get(nodes=node, collector__name="Telegraf")
     child = parent_config.childconfig_set.get(id="child-autocreate-telegraf")
     assert parent_config.is_pre is True
     assert child.collector_config_id == parent_config.id
+    assert cache.get(node_etag_key) is None
 
 
+@pytest.mark.integration
 @pytest.mark.django_db
 def test_nats_ensure_parent_configs_batches_database_queries():
     cloud_region = CloudRegion.objects.create(
@@ -4564,6 +4584,7 @@ def test_nats_ensure_parent_configs_batches_database_queries():
     assert batch_invalidated_node_ids == {f"node-batch-{index}" for index in range(8)}
 
 
+@pytest.mark.integration
 @pytest.mark.django_db
 def test_cloud_region_env_batch_loader_uses_one_query_for_cache_misses():
     cloud_regions = CloudRegion.objects.bulk_create(
@@ -4598,6 +4619,7 @@ def test_cloud_region_env_batch_loader_uses_one_query_for_cache_misses():
     assert variables_by_region == {cloud_region.id: {"SIDECAR_INPUT_MODE": "nats"} for cloud_region in cloud_regions}
 
 
+@pytest.mark.integration
 @pytest.mark.django_db
 def test_nats_ensure_parent_configs_wraps_template_errors_and_rolls_back():
     cloud_region = CloudRegion.objects.create(name="region-invalid-template", created_by="tester", updated_by="tester")
@@ -4633,6 +4655,7 @@ def test_nats_ensure_parent_configs_wraps_template_errors_and_rolls_back():
     assert not CollectorConfiguration.objects.filter(name=f"Telegraf-{node.id}").exists()
 
 
+@pytest.mark.integration
 @pytest.mark.django_db
 def test_nats_ensure_parent_configs_rejects_unbound_name_collision():
     cloud_region = CloudRegion.objects.create(name="region-parent-name-collision", created_by="tester", updated_by="tester")
@@ -4674,6 +4697,7 @@ def test_nats_ensure_parent_configs_rejects_unbound_name_collision():
     assert not occupied_config.nodes.filter(id=node.id).exists()
 
 
+@pytest.mark.integration
 @pytest.mark.django_db
 def test_nats_ensure_parent_configs_ignores_noncanonical_architecture_alias():
     cloud_region = CloudRegion.objects.create(name="region-parent-arch-alias", created_by="tester", updated_by="tester")
@@ -4711,6 +4735,7 @@ def test_nats_ensure_parent_configs_ignores_noncanonical_architecture_alias():
     assert parent_config.config_template == "architecture = 'x86_64'"
 
 
+@pytest.mark.integration
 @pytest.mark.django_db
 def test_nats_ensure_parent_configs_retries_non_native_bulk_conflicts():
     cloud_region = CloudRegion.objects.create(name="region-parent-conflict-retry", created_by="tester", updated_by="tester")
@@ -4771,6 +4796,66 @@ def test_nats_ensure_parent_configs_retries_non_native_bulk_conflicts():
     assert CollectorConfiguration.objects.filter(nodes__in=nodes, collector__name="Telegraf").distinct().count() == 2
 
 
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+def test_nats_ensure_parent_configs_converges_native_unique_conflict():
+    if not connection.features.supports_ignore_conflicts:
+        pytest.skip("需要原生 ignore_conflicts 语义")
+
+    cloud_region = CloudRegion.objects.create(name="region-parent-native-conflict", created_by="tester", updated_by="tester")
+    node = Node.objects.create(
+        id="node-parent-native-conflict",
+        name="node-parent-native-conflict",
+        ip="10.30.1.10",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    Collector.objects.create(
+        id="telegraf_linux_parent_native_conflict",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]"},
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    configs = [{"node_id": node.id, "collector_name": "Telegraf"}]
+    ready_to_resolve = Barrier(2)
+    real_resolver = NatsService._resolve_collector_from_candidates
+
+    def synchronized_resolver(node_obj, collectors):
+        resolved = real_resolver(node_obj, collectors)
+        ready_to_resolve.wait(timeout=10)
+        return resolved
+
+    def ensure_once():
+        close_old_connections()
+        try:
+            with transaction.atomic():
+                NatsService()._ensure_parent_configs_for_child_configs(configs)
+        finally:
+            close_old_connections()
+
+    with patch.object(NatsService, "_resolve_collector_from_candidates", side_effect=synchronized_resolver):
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(ensure_once) for _ in range(2)]
+            for future in futures:
+                future.result(timeout=20)
+
+    assert CollectorConfiguration.objects.filter(name=f"Telegraf-{node.id}").count() == 1
+    assert NodeCollectorConfiguration.objects.filter(node_id=node.id, collector_config__collector__name="Telegraf").count() == 1
+
+
+@pytest.mark.integration
 @pytest.mark.django_db
 def test_nats_batch_create_child_configs_reports_missing_default_config_for_parent_creation():
     cloud_region = CloudRegion.objects.create(
@@ -4828,6 +4913,7 @@ def test_nats_batch_create_child_configs_reports_missing_default_config_for_pare
         )
 
 
+@pytest.mark.integration
 @pytest.mark.django_db
 def test_nats_batch_create_child_configs_reports_bulk_create_failures():
     cloud_region = CloudRegion.objects.create(
@@ -4861,22 +4947,13 @@ def test_nats_batch_create_child_configs_reports_bulk_create_failures():
         execute_parameters="--config %s",
         introduction="generic",
         icon="telegraf",
-        default_config={},
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]"},
         tags=[],
         package_name="telegraf",
         created_by="tester",
         updated_by="tester",
     )
-    parent_config = collector.collectorconfiguration_set.create(
-        id="cfg-bulk-failure",
-        name="cfg-bulk-failure",
-        config_template="[[inputs.cpu]]",
-        cloud_region=cloud_region,
-        created_by="tester",
-        updated_by="tester",
-    )
-    parent_config.nodes.add(node)
-
     with patch("apps.node_mgmt.nats.node.ChildConfig.objects.bulk_create", side_effect=Exception("db write failed")):
         with pytest.raises(BaseAppException, match="批量创建子配置失败"):
             NatsService().batch_create_child_configs(
@@ -4892,6 +4969,11 @@ def test_nats_batch_create_child_configs_reports_bulk_create_failures():
                     }
                 ]
             )
+
+    parent_name = f"{collector.name}-{node.id}"
+    assert not CollectorConfiguration.objects.filter(name=parent_name).exists()
+    assert not NodeCollectorConfiguration.objects.filter(node_id=node.id).exists()
+    assert not ChildConfig.objects.filter(id="child-bulk-failure-telegraf").exists()
 
 
 @pytest.mark.django_db
