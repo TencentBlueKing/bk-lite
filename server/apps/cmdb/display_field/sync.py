@@ -134,17 +134,21 @@ def _load_missing_references(missing_org_ids, missing_user_ids):
 
 def _append_organization_updates(field_updates, node_id, matched_fields, org_map, group_map):
     for field_id, field_values in matched_fields:
-        display_names = [org_map[value] for value in field_values if value in org_map]
-        display_names.extend(group_map[value] for value in field_values if value not in org_map and value in group_map)
+        display_names = [
+            org_map[value] if value in org_map else group_map[value]
+            for value in field_values
+            if value in org_map or value in group_map
+        ]
         field_updates[f"{field_id}{DISPLAY_SUFFIX}"].append({"id": node_id, "value": DISPLAY_VALUES_SEPARATOR.join(display_names)})
 
 
 def _append_user_updates(field_updates, node_id, matched_fields, user_map, missing_user_map):
     for field_id, field_values in matched_fields:
-        display_names = [_format_user_display(user_map[value]) for value in field_values if value in user_map]
-        display_names.extend(
-            _format_user_display(missing_user_map[value]) for value in field_values if value not in user_map and value in missing_user_map
-        )
+        display_names = [
+            _format_user_display(user_map[value] if value in user_map else missing_user_map[value])
+            for value in field_values
+            if value in user_map or value in missing_user_map
+        ]
         field_updates[f"{field_id}{DISPLAY_SUFFIX}"].append({"id": node_id, "value": DISPLAY_VALUES_SEPARATOR.join(display_names)})
 
 
@@ -243,14 +247,18 @@ class DisplayFieldSynchronizer:
                     org_updated_count += page_org_count
                     user_updated_count += page_user_count
 
-                    cursor = instances[-1]["_id"]
-                    if len(instances) < batch_size:
-                        break
+                    next_cursor = instances[-1]["_id"]
+                    if cursor is not None and next_cursor <= cursor:
+                        raise RuntimeError("图实例分页游标未向前推进")
+                    cursor = next_cursor
 
                 result = {"organizations": org_updated_count, "users": user_updated_count}
 
                 if org_updated_count > 0 or user_updated_count > 0:
-                    logger.info(f"[DisplayFieldSynchronizer] 同步完成, " f"组织更新实例数: {org_updated_count}, " f"用户更新实例数: {user_updated_count}")
+                    logger.info(
+                        f"[DisplayFieldSynchronizer] 同步完成, 组织更新实例数: {org_updated_count}, "
+                        f"用户更新实例数: {user_updated_count}"
+                    )
 
                 return result
 

@@ -277,6 +277,10 @@ def test_sync_all_pages_by_graph_id_and_batches_field_writes(monkeypatch):
             {"field": "model_id", "type": "str[]", "value": ["host"]},
             {"field": "id", "type": "id>", "value": 4},
         ],
+        [
+            {"field": "model_id", "type": "str[]", "value": ["host"]},
+            {"field": "id", "type": "id>", "value": 5},
+        ],
     ]
     assert all(call["page"] == {"skip": 0, "limit": 2} for call in fake.query_calls)
     assert all(call["include_count"] is False for call in fake.query_calls)
@@ -292,6 +296,24 @@ def test_sync_all_clamps_batch_size_to_graph_write_limit(monkeypatch):
     DisplayFieldSynchronizer.sync_all({"organizations": [{"id": 1, "name": "研发部"}]})
 
     assert fake.query_calls[0]["page"] == {"skip": 0, "limit": 1000}
+
+
+@pytest.mark.parametrize(
+    ("configured_value", "expected_limit"),
+    [("invalid", 500), ("0", 1), ("-10", 1)],
+)
+def test_sync_all_uses_bounded_batch_size_for_invalid_and_non_positive_config(
+    monkeypatch,
+    configured_value,
+    expected_limit,
+):
+    monkeypatch.setenv("CMDB_DISPLAY_SYNC_BATCH_SIZE", configured_value)
+    fake = _install_graph(monkeypatch, [{"_id": 1, "model_id": "host", "org": [1]}])
+    _install_mapping(monkeypatch, {"host": {"organization": ["org"], "user": []}})
+
+    DisplayFieldSynchronizer.sync_all({"organizations": [{"id": 1, "name": "研发部"}]})
+
+    assert fake.query_calls[0]["page"] == {"skip": 0, "limit": expected_limit}
 
 
 def test_sync_all_prefetches_missing_references_once_per_page(monkeypatch):
@@ -343,6 +365,124 @@ def test_sync_all_prefetches_missing_references_once_per_page(monkeypatch):
     assert group_qs.filter_calls == [{"id__in": [9]}]
     assert user_qs.filter_calls == [{"id__in": [8]}]
     assert all(data == {"org_display": "研发部, 历史部门", "owner_display": "管理员(admin), 鲍勃(bob)"} for _, _, data in fake.updates)
+
+
+def test_sync_all_preserves_reference_order_across_changed_and_fallback_values(monkeypatch):
+    fake = _install_graph(
+        monkeypatch,
+        [{"_id": 43, "model_id": "host", "org": [9, 1], "owner": [8, 1]}],
+    )
+    _install_mapping(monkeypatch, {"host": {"organization": ["org"], "user": ["owner"]}})
+
+    class _GroupQS:
+        def filter(self, **kwargs):
+            assert kwargs == {"id__in": [9]}
+            return self
+
+        def values_list(self, *fields):
+            assert fields == ("id", "name")
+            return [(9, "历史部门")]
+
+    class _UserQS:
+        def filter(self, **kwargs):
+            assert kwargs == {"id__in": [8]}
+            return self
+
+        def values(self, *fields):
+            assert fields == ("id", "username", "display_name")
+            return [{"id": 8, "username": "bob", "display_name": "鲍勃"}]
+
+    monkeypatch.setattr(f"{MODULE}.Group.objects", _GroupQS())
+    monkeypatch.setattr(f"{MODULE}.User.objects", _UserQS())
+
+    out = DisplayFieldSynchronizer.sync_all(
+        {
+            "organizations": [{"id": 1, "name": "研发部"}],
+            "users": [{"id": 1, "username": "admin", "display_name": "管理员"}],
+        }
+    )
+
+    assert out == {"organizations": 1, "users": 1}
+    assert fake.updates[0][2] == {
+        "org_display": "历史部门, 研发部",
+        "owner_display": "鲍勃(bob), 管理员(admin)",
+    }
+
+
+def test_sync_all_exact_page_boundary_reads_empty_terminal_page(monkeypatch):
+    monkeypatch.setenv("CMDB_DISPLAY_SYNC_BATCH_SIZE", "2")
+    fake = _install_graph(
+        monkeypatch,
+        [{"_id": node_id, "model_id": "host", "org": [1]} for node_id in range(1, 5)],
+    )
+    _install_mapping(monkeypatch, {"host": {"organization": ["org"], "user": []}})
+
+    out = DisplayFieldSynchronizer.sync_all({"organizations": [{"id": 1, "name": "研发部"}]})
+
+    assert out == {"organizations": 4, "users": 0}
+    assert len(fake.query_calls) == 3
+    assert fake.query_calls[-1]["params"][-1] == {"field": "id", "type": "id>", "value": 4}
+    assert [len(values) for _, _, values in fake.property_updates] == [2, 2]
+
+
+def test_sync_all_continues_after_short_page_until_empty(monkeypatch):
+    class _ShortPageGraph(_FakeGraph):
+        def __init__(self):
+            super().__init__([])
+            self._pages = [
+                [{"_id": 1, "model_id": "host", "org": [1]}],
+                [{"_id": 3, "model_id": "host", "org": [1]}],
+                [],
+            ]
+
+        def query_entity(self, label, params, page=None, include_count=True):
+            self.query_calls.append({"label": label, "params": list(params), "page": dict(page), "include_count": include_count})
+            return self._pages.pop(0), None
+
+    fake = _ShortPageGraph()
+    monkeypatch.setattr(f"{MODULE}.GraphClient", lambda *args, **kwargs: fake)
+    monkeypatch.setenv("CMDB_DISPLAY_SYNC_BATCH_SIZE", "2")
+    _install_mapping(monkeypatch, {"host": {"organization": ["org"], "user": []}})
+
+    out = DisplayFieldSynchronizer.sync_all({"organizations": [{"id": 1, "name": "研发部"}]})
+
+    assert out == {"organizations": 2, "users": 0}
+    assert len(fake.query_calls) == 3
+    assert [call["params"][-1] for call in fake.query_calls[1:]] == [
+        {"field": "id", "type": "id>", "value": 1},
+        {"field": "id", "type": "id>", "value": 3},
+    ]
+
+
+def test_sync_all_partial_field_failure_is_safe_to_rerun(monkeypatch):
+    class _FailOnceGraph(_FakeGraph):
+        def __init__(self):
+            super().__init__([{"_id": 44, "model_id": "host", "org": [1], "owner": [1]}])
+            self._failed = False
+
+        def batch_update_node_property_values(self, label, field, property_values):
+            if field == "owner_display" and not self._failed:
+                self._failed = True
+                raise RuntimeError("temporary graph failure")
+            return super().batch_update_node_property_values(label, field, property_values)
+
+    fake = _FailOnceGraph()
+    monkeypatch.setattr(f"{MODULE}.GraphClient", lambda *args, **kwargs: fake)
+    _install_mapping(monkeypatch, {"host": {"organization": ["org"], "user": ["owner"]}})
+    data = {
+        "organizations": [{"id": 1, "name": "研发部"}],
+        "users": [{"id": 1, "username": "admin", "display_name": "管理员"}],
+    }
+
+    with pytest.raises(RuntimeError, match="temporary graph failure"):
+        DisplayFieldSynchronizer.sync_all(data)
+    out = DisplayFieldSynchronizer.sync_all(data)
+
+    assert out == {"organizations": 1, "users": 1}
+    assert fake.updates[-1][2] == {
+        "org_display": "研发部",
+        "owner_display": "管理员(admin)",
+    }
 
 
 # --------------------------------------------------------------------------

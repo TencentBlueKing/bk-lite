@@ -242,13 +242,40 @@ def test_sync_cmdb_display_fields_success(monkeypatch):
 
 
 def test_sync_cmdb_display_fields_failure(monkeypatch):
+    calls = 0
+
     def _boom(data):
+        nonlocal calls
+        calls += 1
         raise RuntimeError("sync failed")
 
     monkeypatch.setattr("apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all", staticmethod(_boom))
     out = ct.sync_cmdb_display_fields_task({})
     assert out["result"] is False
     assert "sync failed" in out["message"]
+    assert calls == 2
+
+
+def test_sync_cmdb_display_fields_retries_transient_partial_failure(monkeypatch):
+    calls = 0
+
+    def _transient(data):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("temporary graph failure")
+        return {"organizations": 3, "users": 1}
+
+    monkeypatch.setattr("apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all", staticmethod(_transient))
+
+    out = ct.sync_cmdb_display_fields_task({"organizations": [{"id": 1, "name": "x"}], "users": []})
+
+    assert calls == 2
+    assert out == {
+        "result": True,
+        "message": "CMDB display fields synced successfully",
+        "data": {"organizations": 3, "users": 1},
+    }
 
 
 # --------------------------------------------------------------------------
