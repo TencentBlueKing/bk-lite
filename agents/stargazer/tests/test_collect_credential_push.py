@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def test_nats_server_registers_collect_credential_push_loop_on_import(monkeypatch):
-    from core import nats as nats_module
+    from core.infra import nats as nats_module
 
     app = Sanic("Stargazer")
     registered_subjects = []
@@ -103,6 +103,7 @@ def test_list_collect_credential_results_returns_bounded_payload(monkeypatch):
             "credential_id": "cred-1",
             "success": False,
             "finished_at": "2026-06-04T10:05:00+00:00",
+            "_stream_cursor": "opaque-member",
         },
     ]
 
@@ -122,10 +123,12 @@ def test_list_collect_credential_results_returns_bounded_payload(monkeypatch):
         )
     )
 
-    assert result == {
-        "results": events,
-        "next_since": "2026-06-04T10:05:00+00:00",
-    }
+    assert result["results"] == [
+        events[0],
+        {key: value for key, value in events[1].items() if key != "_stream_cursor"},
+    ]
+    assert result["next_since"].startswith("2026-06-04T10:05:00+00:00|m:")
+    assert "_stream_cursor" not in result["results"][1]
 
 
 def test_push_collect_credential_results_once_publishes_batch_and_updates_cursor(monkeypatch):
@@ -178,8 +181,9 @@ def test_push_collect_credential_results_once_publishes_batch_and_updates_cursor
 
     result = asyncio.run(CollectCredentialResultPushService.push_once())
 
-    assert result == {"pushed": 2, "next_since": "2026-06-04T10:05:00+00:00"}
+    assert result["pushed"] == 2
+    assert result["next_since"].startswith("2026-06-04T10:05:00+00:00|m:")
     assert published["subject"] == "bklite.receive_collect_credential_result"
     assert published["payload"]["kwargs"]["data"]["events"] == events
-    assert published["payload"]["kwargs"]["data"]["next_since"] == "2026-06-04T10:05:00+00:00"
-    assert cursor_updates == ["2026-06-04T10:05:00+00:00"]
+    assert published["payload"]["kwargs"]["data"]["next_since"] == result["next_since"]
+    assert cursor_updates == [result["next_since"]]
