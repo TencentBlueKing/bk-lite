@@ -1,3 +1,5 @@
+"""目录并发重挂的数据库集成测试。"""
+
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 

@@ -1,3 +1,5 @@
+"""目录父链无环约束的单元测试。"""
+
 import signal
 from contextlib import contextmanager
 

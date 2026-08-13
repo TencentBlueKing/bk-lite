@@ -1,3 +1,5 @@
+"""目录循环审计的纯函数测试。"""
+
 import pytest
 
 from apps.operation_analysis.management.commands.audit_directory_cycles import find_directory_cycles

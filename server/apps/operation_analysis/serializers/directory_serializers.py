@@ -16,12 +16,16 @@ from apps.operation_analysis.services.import_export.view_sets import normalize_c
 class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
     permission_key = "directory"
 
-    def validate_parent(self, parent):
-        candidate = Directory(pk=getattr(self.instance, "pk", None), parent=parent)
+    @staticmethod
+    def _validate_parent_candidate(instance_pk, parent):
+        candidate = Directory(pk=instance_pk, parent=parent)
         try:
             candidate.clean()
         except DjangoValidationError as error:
             raise serializers.ValidationError(error.messages) from error
+
+    def validate_parent(self, parent):
+        self._validate_parent_candidate(getattr(self.instance, "pk", None), parent)
         return parent
 
     def update(self, instance, validated_data):
@@ -33,11 +37,7 @@ class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             list(Directory.objects.select_for_update().order_by("pk").values_list("pk", flat=True))
             locked_instance = Directory.objects.get(pk=instance.pk)
             validated_data["parent"] = Directory.objects.get(pk=parent_id) if parent_id is not None else None
-            candidate = Directory(pk=locked_instance.pk, parent=validated_data["parent"])
-            try:
-                candidate.clean()
-            except DjangoValidationError as error:
-                raise serializers.ValidationError(error.messages) from error
+            self._validate_parent_candidate(locked_instance.pk, validated_data["parent"])
             return super().update(locked_instance, validated_data)
 
     class Meta:
