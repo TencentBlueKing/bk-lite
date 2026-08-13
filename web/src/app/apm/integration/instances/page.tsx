@@ -14,7 +14,6 @@ import CatalogState, {
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import ServiceIdentity from '@/app/apm/components/service-identity';
 import ApmStatusTag from '@/app/apm/components/status-tag';
-import { formatRelativeTime } from '@/app/apm/components/metric-format';
 import type { ApmApplication, ApmServiceInstance, CatalogStatus } from '@/app/apm/types';
 import Permission from '@/components/permission';
 import FilterToolbar from '@/components/filter-toolbar';
@@ -169,18 +168,13 @@ export default function ApmIntegrationInstancesPage() {
       width: '12%',
       responsive: ['md'],
       render: (value) => (
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <time
-            className="whitespace-nowrap tabular-nums text-[var(--color-text-1)]"
-            dateTime={value}
-            title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}
-          >
-            {dayjs(value).format('YYYY-MM-DD HH:mm')}
-          </time>
-          <Typography.Text type="secondary" className="text-xs tabular-nums">
-            {formatRelativeTime(value)}
-          </Typography.Text>
-        </div>
+        <time
+          className="whitespace-nowrap tabular-nums text-[var(--color-text-1)]"
+          dateTime={value}
+          title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}
+        >
+          {dayjs(value).format('YYYY-MM-DD HH:mm')}
+        </time>
       ),
     },
     { title: '实例状态', dataIndex: 'status', width: '8%', align: 'center', render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },

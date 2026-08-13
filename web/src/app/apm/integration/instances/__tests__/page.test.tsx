@@ -143,7 +143,10 @@ describe('APM 接入实例目录', () => {
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '最近上报' })).textAlign).toBe('left');
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '实例状态' })).textAlign).toBe('center');
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '操作' })).textAlign).toBe('right');
-    expect(screen.getByText(dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm'))).not.toBeNull();
+    const lastSeenText = dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm');
+    const lastSeen = screen.getByText(lastSeenText);
+    expect(lastSeen.closest('td')?.textContent).toBe(lastSeenText);
+    expect(lastSeen.getAttribute('title')).toBe(dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm:ss'));
     expect(screen.getByRole('columnheader', { name: '所属组织' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '调整组织' })).not.toBeNull();
   });
