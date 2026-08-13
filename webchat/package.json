@@ -21,7 +21,7 @@
     "pretest:config": "node -e \"require('node:fs').rmSync('packages/webchat-ui/.test-dist/issue-4037', { recursive: true, force: true })\"",
     "test:config": "tsc -p tests/tsconfig.issue-4037.json && node packages/webchat-ui/.test-dist/issue-4037/tests/webchat-config.issue-4037.test.js",
     "pretest:issue-4636": "node -e \"require('node:fs').rmSync('.test-dist/issue-4636', { recursive: true, force: true })\"",
-    "test:issue-4636": "packages/webchat-ui/node_modules/.bin/vite build --config tests/vite.config.issue-4636.ts && node --test .test-dist/issue-4636/chat-state-callback.issue-4636.test.mjs",
+    "test:issue-4636": "npm run test:issue-4636 --workspace @webchat/ui && node --test .test-dist/issue-4636/chat-state-callback.issue-4636.test.mjs",
     "lint": "eslint \"packages/webchat-core/src/**/*.{ts,tsx}\" \"packages/webchat-ui/src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx,mjs}\"",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist packages/*/.next"

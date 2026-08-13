@@ -23,4 +23,7 @@ export default {
     },
     ssr: path.resolve(testsDirectory, 'chat-state-callback.issue-4636.test.ts'),
   },
+  ssr: {
+    noExternal: true,
+  },
 };

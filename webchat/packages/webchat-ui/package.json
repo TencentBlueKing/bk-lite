@@ -20,6 +20,7 @@
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly --declaration --outDir dist",
     "build:browser": "vite build --config vite.config.umd.ts",
+    "test:issue-4636": "vite build --config ../../tests/vite.config.issue-4636.ts",
     "dev": "vite",
     "clean": "rm -rf dist",
     "preview": "vite preview",
