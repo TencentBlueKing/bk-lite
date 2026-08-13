@@ -9,8 +9,9 @@ class CMDB(object):
         self.client = AppClient("apps.cmdb.nats.nats") if is_local_client else RpcClient()
 
     def _run_params_handler(self, method_name, kwargs):
-        transport_kwargs = {key: kwargs[key] for key in ("_timeout", "_raw") if key in kwargs}
-        payload_kwargs = {key: value for key, value in kwargs.items() if key not in transport_kwargs}
+        transport_keys = {"_timeout", "_raw"}
+        transport_kwargs = {key: kwargs[key] for key in transport_keys if key in kwargs} if isinstance(self.client, RpcClient) else {}
+        payload_kwargs = {key: value for key, value in kwargs.items() if key not in transport_keys}
         params = payload_kwargs["params"] if set(payload_kwargs) == {"params"} else payload_kwargs
         return self.client.run(method_name, params=params, **transport_kwargs)
 

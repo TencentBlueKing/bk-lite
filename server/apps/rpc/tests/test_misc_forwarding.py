@@ -26,6 +26,11 @@ class _Recorder:
         return self.ret
 
 
+class _LocalParamsHandler:
+    def run(self, method_name, *, params):
+        return method_name, params
+
+
 def _last(rec):
     return rec.calls[-1]
 
@@ -95,6 +100,15 @@ def test_cmdb_remote_payload_binds_single_params_handler(monkeypatch):
     params = {"protocol_version": "2", "model_id": "host", "inst_uuids": ["u1"], "organization_ids": [1]}
 
     assert CMDB().search_instances_batch(**params) == params
+
+
+def test_cmdb_local_params_handler_does_not_receive_remote_controls(cmdb):
+    cmdb.client = _LocalParamsHandler()
+
+    assert cmdb.search_instances_batch(model_id="host", _timeout=5, _raw=True) == (
+        "search_instances_batch",
+        {"model_id": "host"},
+    )
 
 
 def test_cmdb_list_instances(cmdb):
