@@ -38,7 +38,7 @@ async def test_tcp_preflight_uses_protocol_port_and_closes_connection(monkeypatc
         params={"port": "3306", "preflight_kind": "tcp"},
     )
 
-    result = await AsyncProtocolPreflight().check(
+    result = await AsyncProtocolPreflight(reachability_enabled=True).check(
         "10.10.24.10", request, timeout_seconds=5
     )
 
@@ -73,9 +73,9 @@ async def test_http_preflight_uses_base_url_scheme_and_port(monkeypatch):
         },
     )
 
-    result = await AsyncProtocolPreflight(policy=Policy()).check(
-        "api.example.test", request, timeout_seconds=5
-    )
+    result = await AsyncProtocolPreflight(
+        policy=Policy(), reachability_enabled=True
+    ).check("api.example.test", request, timeout_seconds=5)
 
     assert result.status == PreflightStatus.REACHABLE
     assert calls == [("api.example.test", 8080, {})]
@@ -98,9 +98,9 @@ async def test_https_certificate_failure_has_stable_error_code(monkeypatch):
         params={"preflight_kind": "https"},
     )
 
-    result = await AsyncProtocolPreflight(policy=Policy()).check(
-        "api.example.test", request, timeout_seconds=5
-    )
+    result = await AsyncProtocolPreflight(
+        policy=Policy(), reachability_enabled=True
+    ).check("api.example.test", request, timeout_seconds=5)
 
     assert result.status == PreflightStatus.UNREACHABLE
     assert result.error_code == "tls_validation_failed"
@@ -148,7 +148,7 @@ async def test_tcp_preflight_returns_stable_unreachable_error(monkeypatch):
         params={"port": 3306, "preflight_kind": "tcp"},
     )
 
-    result = await AsyncProtocolPreflight().check(
+    result = await AsyncProtocolPreflight(reachability_enabled=True).check(
         "10.10.24.30", request, timeout_seconds=5
     )
 
@@ -247,3 +247,78 @@ async def test_remote_preflight_checks_cidr_then_responder():
     assert calls == [("executor-region-a", 5)]
     assert result.status == PreflightStatus.UNREACHABLE
     assert result.error_code == "remote_responder_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_tcp_reachability_off_skips_dial_after_cidr(monkeypatch):
+    async def unexpected_open(*args, **kwargs):
+        raise AssertionError("tcp reachability must not dial when disabled")
+
+    monkeypatch.setattr(asyncio, "open_connection", unexpected_open)
+    request = CollectionRequest(
+        task_id="probe-mysql-no-dial",
+        plugin_ref="mysql.config",
+        targets=("10.10.24.10",),
+        params={"port": 3306, "preflight_kind": "tcp"},
+    )
+
+    result = await AsyncProtocolPreflight(reachability_enabled=False).check(
+        "10.10.24.10", request, timeout_seconds=5
+    )
+
+    assert result.status == PreflightStatus.UNKNOWN
+    assert "tcp reachability disabled" in (result.detail or "")
+
+
+@pytest.mark.asyncio
+async def test_tcp_reachability_off_still_rejects_cidr():
+    request = CollectionRequest(
+        task_id="probe-mysql-cidr",
+        plugin_ref="mysql.config",
+        targets=("8.8.8.8",),
+        params={"port": 3306, "preflight_kind": "tcp"},
+    )
+    policy = OutboundTargetPolicy(allowed_cidrs=("10.0.0.0/8",))
+
+    result = await AsyncProtocolPreflight(
+        policy=policy, reachability_enabled=False
+    ).check("8.8.8.8", request, timeout_seconds=1)
+
+    assert result.status == PreflightStatus.UNREACHABLE
+    assert result.error_code == "outbound_target_rejected"
+
+
+@pytest.mark.asyncio
+async def test_remote_still_checks_responder_when_reachability_off():
+    calls = []
+
+    async def probe(node_id, *, timeout_seconds):
+        calls.append((node_id, timeout_seconds))
+        return False
+
+    request = CollectionRequest(
+        task_id="probe-remote-no-tcp",
+        plugin_ref="host.monitor",
+        targets=("10.10.24.10",),
+        params={
+            "preflight_kind": "remote",
+            "ansible_node_id": "executor-region-a",
+        },
+    )
+
+    result = await AsyncProtocolPreflight(
+        remote_probe=probe, reachability_enabled=False
+    ).check("10.10.24.10", request, timeout_seconds=5)
+
+    assert calls == [("executor-region-a", 5)]
+    assert result.status == PreflightStatus.UNREACHABLE
+    assert result.error_code == "remote_responder_unavailable"
+
+
+def test_reachability_defaults_off(monkeypatch):
+    monkeypatch.delenv("PREFLIGHT_REACHABILITY", raising=False)
+    from core.collection.preflight import reachability_enabled_from_env
+
+    assert reachability_enabled_from_env() is False
+    monkeypatch.setenv("PREFLIGHT_REACHABILITY", "on")
+    assert reachability_enabled_from_env() is True

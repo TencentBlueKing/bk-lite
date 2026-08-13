@@ -52,6 +52,8 @@ COLLECTION_SHUTDOWN_GRACE=30
 EVENT_LOOP_LAG_INTERVAL=1
 OUTBOUND_ALLOWED_CIDRS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 OUTBOUND_ALLOWED_DOMAINS=
+# 默认 off：跳过 TCP/TLS 端口短探，CIDR 出站与 Job remote 通道检查仍保留；设为 on 恢复探活
+PREFLIGHT_REACHABILITY=off
 ```
 
 这些值都是部署参数。未设置时默认 `MAX_ACTIVE_TARGETS=2000`、
@@ -73,8 +75,10 @@ TARGET_TASK_WINDOW=0
 `REDIS_PROTOCOL` 默认 `2`（RESP2）。`redis-py` 8+ 默认会走 RESP3 并发送 `HELLO`；
 若 Redis 过旧或不支持 `HELLO` 的代理会在启动 `ping` 时直接失败，因此显式钉在 RESP2。
 
-协议预检 / access_probe 外层默认 7 秒（`CONNECT_TIMEOUT`）：TCP 协议先连接实际端口，SNMP/UDP
-在 CIDR 通过后进入凭据感知 probe（SNMP GET 固定 timeout=5、retries=1），云账号检查逻辑端点；ICMP 不作为硬过滤条件。
+协议预检 / access_probe 外层默认 7 秒（`CONNECT_TIMEOUT`）。`PREFLIGHT_REACHABILITY` 默认
+`off`：TCP/TLS 不再做端口短探，CIDR 通过后直接进入凭据/采集；Job `remote` 仍检查执行通道。
+设为 `on` 时 TCP 协议会先连接实际端口。SNMP/UDP 始终在 CIDR 通过后进入凭据感知 probe
+（SNMP GET 固定 timeout=5、retries=1），云账号检查逻辑端点；ICMP 不作为硬过滤条件。
 直接 IP 与域名解析后的每个可用地址都必须落在 `OUTBOUND_ALLOWED_CIDRS`；配置
 `OUTBOUND_ALLOWED_DOMAINS` 后，域名还必须同时命中该名单，域名名单不能绕过 CIDR 边界。
 生产环境应按实际采集边界收窄这两项。
