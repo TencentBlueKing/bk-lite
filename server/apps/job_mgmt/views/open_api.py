@@ -12,7 +12,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.logger import job_logger as logger
-from apps.job_mgmt.models import DistributionFile
+from apps.job_mgmt.models import DistributionFile, JobExecution
+from apps.job_mgmt.nats_api import job_detail_query, job_list, job_script_execute, job_status_batch_query
+from apps.job_mgmt.utils.team_authz import is_team_authorized
 from apps.job_mgmt.views.mixins import TeamResolveMixin
 from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
 
@@ -225,3 +227,131 @@ class OpenFileDeleteView(TeamResolveMixin, APIView):
             result,
             status=status.HTTP_200_OK,
         )
+
+
+def _resolve_open_team(view, request):
+    user_team, error = view.resolve_user_team(request)
+    if error:
+        return None, Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+    return user_team, None
+
+
+class OpenJobListView(TeamResolveMixin, APIView):
+    """
+    开放作业列表查询
+
+    返回当前团队脚本库与 Playbook 的作业信息及参数定义，供执行前获取背景信息。
+    不含脚本内容 / Playbook 文件。
+
+    GET /api/v1/job_mgmt/api/open/job_list
+    Header: Api-Authorization: <api_secret>
+    Query: name, page, page_size（默认 20，最大 100）
+    """
+
+    def get(self, request):
+        user_team, error_response = _resolve_open_team(self, request)
+        if error_response:
+            return error_response
+
+        result = job_list(
+            {
+                "team": [user_team],
+                "name": request.query_params.get("name") or "",
+                "page": request.query_params.get("page") or 1,
+                "page_size": request.query_params.get("page_size") or 20,
+            }
+        )
+        if not result.get("result"):
+            return Response({"detail": result.get("message") or "查询失败"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result.get("data") or {}, status=status.HTTP_200_OK)
+
+
+class OpenScriptExecuteView(TeamResolveMixin, APIView):
+    """
+    开放脚本执行接口
+
+    请求体与 NATS ``job_script_execute`` 相同；团队取 API Secret 绑定值，忽略请求体 team。
+
+    POST /api/v1/job_mgmt/api/open/script_execute
+    Header: Api-Authorization: <api_secret>
+    """
+
+    def post(self, request):
+        user_team, error_response = _resolve_open_team(self, request)
+        if error_response:
+            return error_response
+
+        payload = dict(request.data)
+        payload["team"] = [user_team]
+        result = job_script_execute(payload)
+        if not result.get("result"):
+            message = result.get("message") or "脚本执行失败"
+            http_status = (
+                status.HTTP_503_SERVICE_UNAVAILABLE
+                if "调度服务" in message
+                else status.HTTP_400_BAD_REQUEST
+            )
+            return Response({"detail": message}, status=http_status)
+        return Response(result.get("data") or {}, status=status.HTTP_201_CREATED)
+
+
+class OpenJobStatusView(TeamResolveMixin, APIView):
+    """
+    开放作业状态批量查询
+
+    请求体与 NATS ``job_status_batch_query`` 相同。跨团队任务按 not_found 返回。
+
+    POST /api/v1/job_mgmt/api/open/job_status
+    Header: Api-Authorization: <api_secret>
+    Body: {"task_ids": [123, 456]}
+    """
+
+    def post(self, request):
+        user_team, error_response = _resolve_open_team(self, request)
+        if error_response:
+            return error_response
+
+        task_ids = request.data.get("task_ids") or []
+        if not isinstance(task_ids, list) or not task_ids:
+            return Response({"detail": "task_ids 不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+        if len(task_ids) > 100:
+            return Response({"detail": "task_ids 最多 100 个"}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = job_status_batch_query({"task_ids": task_ids})
+        if not result.get("result"):
+            return Response({"detail": result.get("message") or "查询失败"}, status=status.HTTP_400_BAD_REQUEST)
+
+        owned_ids = {
+            execution.id
+            for execution in JobExecution.objects.filter(id__in=task_ids)
+            if is_team_authorized(execution.team, {user_team})
+        }
+        items = []
+        for item in result.get("data") or []:
+            task_id = item.get("task_id")
+            if task_id not in owned_ids:
+                items.append({"task_id": task_id, "status": "not_found"})
+            else:
+                items.append(item)
+        return Response(items, status=status.HTTP_200_OK)
+
+
+class OpenJobDetailView(TeamResolveMixin, APIView):
+    """
+    开放作业详情查询
+
+    查询当前团队的执行任务详情。跨团队与不存在统一返回 404。
+
+    GET /api/v1/job_mgmt/api/open/job_detail/<task_id>
+    Header: Api-Authorization: <api_secret>
+    """
+
+    def get(self, request, task_id):
+        user_team, error_response = _resolve_open_team(self, request)
+        if error_response:
+            return error_response
+
+        result = job_detail_query({"task_id": task_id, "team": [user_team]})
+        if not result.get("result"):
+            return Response({"detail": "任务不存在"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(result.get("data") or {}, status=status.HTTP_200_OK)
