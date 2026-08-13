@@ -18,10 +18,9 @@ const baseInput = {
   displayColumns: [],
   filterFields: [],
   actions: [],
-} as const;
+};
 
 const existingValueConfig: ValueConfig = {
-  name: 'CPU',
   chartType: 'single',
   selectedFields: ['cpu'],
   conversionFactor: 100,

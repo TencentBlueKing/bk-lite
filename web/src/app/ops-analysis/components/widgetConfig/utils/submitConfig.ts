@@ -265,7 +265,7 @@ const applyOptionalNumericDisplayFields = (
       result[key] = values[key];
     } else if (values[key] === null) {
       // InputNumber 清空后的显式 sentinel，供 merge/spread 覆盖旧值后再剥离
-      (result as Record<string, unknown>)[key] = null;
+      (result as unknown as Record<string, unknown>)[key] = null;
     }
   }
 };
