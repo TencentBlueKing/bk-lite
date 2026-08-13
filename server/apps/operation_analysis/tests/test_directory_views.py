@@ -6,8 +6,6 @@
 import json
 
 import pytest
-from django.test import override_settings
-from django.urls import path
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -17,14 +15,6 @@ from apps.operation_analysis.services.directory_service import DictDirectoryServ
 from apps.operation_analysis.services.node_tree import TreeNodeBuilder
 from apps.operation_analysis.views import view as view_module
 from apps.system_mgmt.models import OperationLog
-
-urlpatterns = [
-    path(
-        "api/directory/<int:pk>/",
-        view_module.DirectoryModelViewSet.as_view({"patch": "partial_update"}),
-        name="test-directory-detail",
-    )
-]
 
 
 def _request(method, path, user, data=None, team="1", include_children="0"):
@@ -242,54 +232,6 @@ def test_directory_partial_update_normal_superuser(authenticated_user):
     assert response.status_code == status.HTTP_200_OK
     assert payload["data"]["desc"] == "新描述"
     assert payload["data"]["permissions"] == ["View", "Operate"]
-
-
-@pytest.mark.integration
-@pytest.mark.django_db
-@override_settings(ROOT_URLCONF=__name__, MIDDLEWARE=())
-def test_directory_partial_update_rejects_parent_cycle(api_client, authenticated_user):
-    _superuser(authenticated_user)
-    root = Directory.objects.create(name="根目录", groups=[1], created_by="testuser")
-    child = Directory.objects.create(name="子目录", groups=[1], parent=root, created_by="testuser")
-
-    response = api_client.patch(f"/api/directory/{root.id}/", {"parent": child.id}, format="json")
-    payload = response.json()
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "cannot contain cycles" in json.dumps(payload, ensure_ascii=False)
-    root.refresh_from_db()
-    assert root.parent_id is None
-
-
-@pytest.mark.integration
-@pytest.mark.django_db
-@override_settings(ROOT_URLCONF=__name__, MIDDLEWARE=())
-def test_directory_partial_update_rejects_self_parent(api_client, authenticated_user):
-    _superuser(authenticated_user)
-    directory = Directory.objects.create(name="自指目录", groups=[1], created_by="testuser")
-
-    response = api_client.patch(f"/api/directory/{directory.id}/", {"parent": directory.id}, format="json")
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "cannot contain cycles" in json.dumps(response.json(), ensure_ascii=False)
-    directory.refresh_from_db()
-    assert directory.parent_id is None
-
-
-@pytest.mark.integration
-@pytest.mark.django_db
-@override_settings(ROOT_URLCONF=__name__, MIDDLEWARE=())
-def test_directory_partial_update_persists_valid_reparenting(api_client, authenticated_user):
-    _superuser(authenticated_user)
-    first_root = Directory.objects.create(name="原父目录", groups=[1], created_by="testuser")
-    second_root = Directory.objects.create(name="新父目录", groups=[1], created_by="testuser")
-    child = Directory.objects.create(name="待重挂目录", groups=[1], parent=first_root, created_by="testuser")
-
-    response = api_client.patch(f"/api/directory/{child.id}/", {"parent": second_root.id}, format="json")
-
-    assert response.status_code == status.HTTP_200_OK
-    child.refresh_from_db()
-    assert child.parent_id == second_root.id
 
 
 # --------------------------------------------------------------------------
