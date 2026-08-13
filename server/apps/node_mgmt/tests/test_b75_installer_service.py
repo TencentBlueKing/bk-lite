@@ -11,7 +11,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from django.db import DataError, models
+from django.db import DataError
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -143,6 +145,7 @@ def test_install_controller_creates_task_and_nodes():
     # 密码被加密（不等于明文）
     assert node.password != "secret"
     assert node.password
+    assert AESCryptor().decode(node.password) == "secret"
 
 
 @pytest.mark.django_db
@@ -178,40 +181,90 @@ def test_uninstall_controller_creates_task_and_nodes():
     assert node.node_name == "controller-to-remove"
     assert node.organizations == [1]
     assert node.private_key != "key"
+    assert AESCryptor().decode(node.private_key) == "key"
 
 
 @pytest.mark.django_db
-def test_controller_task_password_storage_accepts_encrypted_long_password():
-    region = CloudRegion.objects.create(name="cr-long-password")
-    plaintext = "p" * 48
+@pytest.mark.parametrize("operation", ["install", "uninstall"])
+@pytest.mark.parametrize("plaintext", ["p" * 47, "p" * 48, "p" * 100, "密码" * 48])
+def test_controller_task_password_storage_round_trips_supported_passwords(operation, plaintext):
+    region = CloudRegion.objects.create(name=f"cr-{operation}-{len(plaintext)}")
+    node = {
+        "ip": "10.0.0.48",
+        "node_id": "node-long-password",
+        "node_name": "long-password",
+        "os": "linux",
+        "cpu_architecture": "x86_64",
+        "organizations": [1],
+        "port": 22,
+        "username": "root",
+        "password": plaintext,
+        "private_key": "",
+        "passphrase": "",
+    }
 
-    task_id = InstallerService.install_controller(
-        region.id,
-        "work-long-password",
-        5,
-        [
-            {
-                "ip": "10.0.0.48",
-                "node_id": "node-long-password",
-                "node_name": "long-password",
-                "os": "linux",
-                "cpu_architecture": "x86_64",
-                "organizations": [1],
-                "port": 22,
-                "username": "root",
-                "password": plaintext,
-                "private_key": "",
-                "passphrase": "",
-            }
-        ],
-        "x86_64",
+    if operation == "install":
+        task_id = InstallerService.install_controller(
+            region.id,
+            "work-long-password",
+            5,
+            [node],
+            "x86_64",
+        )
+    else:
+        task_id = InstallerService.uninstall_controller(
+            region.id,
+            "work-long-password",
+            [node],
+        )
+
+    task_node = ControllerTaskNode.objects.get(task_id=task_id)
+    assert AESCryptor().decode(task_node.password) == plaintext
+
+
+@pytest.mark.django_db(transaction=True)
+def test_password_migration_preserves_legacy_and_oversized_data_across_state_rollback():
+    executor = MigrationExecutor(connection)
+    executor.migrate([("node_mgmt", "0042_controllertasknode_connectivity_observation")])
+    legacy_apps = executor.loader.project_state(
+        [("node_mgmt", "0042_controllertasknode_connectivity_observation")]
+    ).apps
+    legacy_region = legacy_apps.get_model("node_mgmt", "CloudRegion").objects.create(name="cr-migration")
+    legacy_task = legacy_apps.get_model("node_mgmt", "ControllerTask").objects.create(
+        cloud_region=legacy_region,
+        type="install",
+        status="waiting",
+    )
+    legacy_node_model = legacy_apps.get_model("node_mgmt", "ControllerTaskNode")
+    legacy_node_model.objects.create(
+        task=legacy_task,
+        ip="10.0.0.52",
+        os="linux",
+        organizations=[1],
+        port=22,
+        username="root",
+        password="legacy-short",
     )
 
-    password_field = ControllerTaskNode._meta.get_field("password")
-    task_node = ControllerTaskNode.objects.get(task_id=task_id)
-    assert isinstance(password_field, models.TextField)
-    assert len(task_node.password) > 100
-    assert AESCryptor().decode(task_node.password) == plaintext
+    executor = MigrationExecutor(connection)
+    executor.migrate([("node_mgmt", "0043_alter_controllertasknode_password")])
+    widened_apps = executor.loader.project_state([("node_mgmt", "0043_alter_controllertasknode_password")]).apps
+    widened_node_model = widened_apps.get_model("node_mgmt", "ControllerTaskNode")
+    task_node = widened_node_model.objects.get(ip="10.0.0.52")
+    assert task_node.password == "legacy-short"
+    task_node.password = "x" * 101
+    task_node.save(update_fields=["password"])
+
+    executor = MigrationExecutor(connection)
+    executor.migrate([("node_mgmt", "0042_controllertasknode_connectivity_observation")])
+    rolled_back_apps = executor.loader.project_state(
+        [("node_mgmt", "0042_controllertasknode_connectivity_observation")]
+    ).apps
+    rolled_back_node = rolled_back_apps.get_model("node_mgmt", "ControllerTaskNode").objects.get(ip="10.0.0.52")
+    assert rolled_back_node.password == "x" * 101
+
+    executor = MigrationExecutor(connection)
+    executor.migrate([("node_mgmt", "0043_alter_controllertasknode_password")])
 
 
 @pytest.mark.django_db
@@ -232,10 +285,16 @@ def test_controller_task_creation_rolls_back_parent_when_node_insert_fails(opera
         "passphrase": "",
     }
 
+    nodes = [node, {**node, "ip": "10.0.0.50", "node_id": "node-rollback-second"}]
+
+    def insert_first_then_fail(objects, *args, **kwargs):
+        objects[0].save()
+        raise DataError("second node insert failed")
+
     with patch.object(
         ControllerTaskNode.objects,
         "bulk_create",
-        side_effect=DataError("value too long for type character varying(100)"),
+        side_effect=insert_first_then_fail,
     ):
         with pytest.raises(DataError):
             if operation == "install":
@@ -243,17 +302,18 @@ def test_controller_task_creation_rolls_back_parent_when_node_insert_fails(opera
                     region.id,
                     "work-rollback",
                     5,
-                    [node],
+                    nodes,
                     "x86_64",
                 )
             else:
                 InstallerService.uninstall_controller(
                     region.id,
                     "work-rollback",
-                    [node],
+                    nodes,
                 )
 
     assert ControllerTask.objects.filter(cloud_region=region).exists() is False
+    assert ControllerTaskNode.objects.filter(ip="10.0.0.49").exists() is False
 
 
 # --------------------------------------------------------------------------- #
