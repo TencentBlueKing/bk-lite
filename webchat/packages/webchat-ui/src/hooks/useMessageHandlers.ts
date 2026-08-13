@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Message, SessionManager } from '@webchat/core';
+import { planMessageRegeneration } from '../messageContentActions';
 
 interface UseMessageHandlersProps {
   messages: Message[];
@@ -23,49 +24,24 @@ export const useMessageHandlers = ({
   const handleRegenerate = useCallback(
     (messageId: string) => {
       const currentMessages = messagesRef.current;
-      const messageIndex = currentMessages.findIndex((msg) => msg.id === messageId);
-      if (messageIndex === -1) return;
-
-      const currentMessage = currentMessages[messageIndex];
-      let userMessageIndex = -1;
-
-      // If current message is a bot message, find the user message before it
-      if (currentMessage.sender === 'bot') {
-        userMessageIndex = messageIndex - 1;
-        while (
-          userMessageIndex >= 0 &&
-          currentMessages[userMessageIndex].sender !== 'user'
-        ) {
-          userMessageIndex--;
-        }
-      }
-      // If current message is a user message, it's the one we want to regenerate
-      else {
-        userMessageIndex = messageIndex;
-      }
-
-      if (userMessageIndex >= 0) {
-        const userMessage = currentMessages[userMessageIndex];
-        // Keep all messages before the user message, remove the user message and everything after
-        setMessages((prev) => prev.slice(0, userMessageIndex));
+      const plan = planMessageRegeneration(currentMessages, messageId);
+      if (plan) {
+        setMessages(plan.preservedMessages);
 
         // Update session storage
         if (sessionManagerRef.current) {
-          const newMessages = currentMessages.slice(0, userMessageIndex);
           const session = sessionManagerRef.current.getSession();
           if (session) {
-            session.messages = newMessages;
+            session.messages = plan.preservedMessages;
             sessionManagerRef.current.clearSession();
             sessionManagerRef.current.initSession();
-            newMessages.forEach((msg) => sessionManagerRef.current?.addMessage(msg));
+            plan.preservedMessages.forEach((msg) =>
+              sessionManagerRef.current?.addMessage(msg)
+            );
           }
         }
 
-        // Resend the user message
-        const contentToSend = typeof userMessage.content === 'string' 
-          ? userMessage.content 
-          : (userMessage.content.find((item) => item.type === 'text')?.text || '');
-        setTimeout(() => handleSendMessage(contentToSend), 100);
+        setTimeout(() => handleSendMessage(plan.contentToSend), 100);
       }
     },
     [handleSendMessage, setMessages, sessionManagerRef]
