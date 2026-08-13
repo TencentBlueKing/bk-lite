@@ -1059,6 +1059,8 @@ test('文本、工具和自定义组件按流事件顺序渲染', async () => {
 });
 
 test('同会话重连后旧 timer 和回调不会覆盖新回答', { timeout: 5000 }, async () => {
+  const originalDateNow = Date.now;
+  Date.now = () => 1730000000000;
   let markOldContentReady;
   const oldContentReady = new Promise((resolve) => {
     markOldContentReady = resolve;
@@ -1110,6 +1112,7 @@ test('同会话重连后旧 timer 和回调不会覆盖新回答', { timeout: 50
 
     const messages = manager.getSessionState('session-reconnect')?.messages;
     assert.equal(messages?.length, 2);
+    assert.notEqual(messages?.[0]?.id, messages?.[1]?.id);
     assert.equal(messages?.[0]?.status, 'interrupted');
     assert.equal(messages?.[0]?.contentParts?.[0]?.content, 'old');
     assert.equal(messages?.[1]?.status, 'ended');
@@ -1120,7 +1123,53 @@ test('同会话重连后旧 timer 和回调不会覆盖新回答', { timeout: 50
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.equal(notifications, notificationsAfterCompletion);
   } finally {
+    Date.now = originalDateNow;
     unsubscribe();
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('登出后旧流取消收尾不会写入新账号同 ID 会话', { timeout: 5000 }, async () => {
+  let markOldContentReady;
+  const oldContentReady = new Promise((resolve) => {
+    markOldContentReady = resolve;
+  });
+  const { ConversationManager } = await loadConversationManager(async function* (
+    _bot,
+    _nodeId,
+    _message,
+    _sessionId,
+    options,
+  ) {
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'old-account-secret' };
+    markOldContentReady();
+    await new Promise((resolve) => options.signal.addEventListener('abort', resolve, { once: true }));
+  });
+  const manager = new ConversationManager();
+
+  try {
+    const oldResponse = manager.startAIResponse(
+      'shared-session-id',
+      9,
+      'mobile-node',
+      'old',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+      false,
+    );
+    await oldContentReady;
+
+    manager.clearAll();
+    manager.initSession('shared-session-id');
+    await oldResponse;
+
+    const newScopeState = manager.getSessionState('shared-session-id');
+    assert.deepEqual(newScopeState?.messages, []);
+    assert.equal(newScopeState?.messageMarkdown.size, 0);
+    assert.equal(manager.isSessionRunning('shared-session-id'), false);
+  } finally {
+    manager.clearAll();
     delete globalThis.__conversationAiChatStream;
   }
 });
