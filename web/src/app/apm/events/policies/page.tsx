@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DeleteOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import {
   Alert,
@@ -11,7 +11,6 @@ import {
   InputNumber,
   message,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Switch,
@@ -19,7 +18,6 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
-import SearchActionBar from '@/components/search-action-bar';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable from '@/app/apm/components/apm-data-table';
 import dayjs from 'dayjs';
@@ -37,6 +35,9 @@ import type {
   ApmPolicyNotificationTarget,
 } from '@/app/apm/types';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import FilterToolbar from '@/components/filter-toolbar';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 
 type PageState = CatalogStateKind | 'ready';
 type ChannelState = 'loading' | 'ready' | 'empty' | 'error';
@@ -212,6 +213,42 @@ export default function ApmPoliciesPage() {
     () => filteredPolicies.slice((page - 1) * pageSize, page * pageSize),
     [filteredPolicies, page, pageSize],
   );
+
+  const removePolicy = async (policy: ApmPolicy) => {
+    setMutatingId(policy.id);
+    try {
+      await deletePolicy(policy.id);
+      message.success('策略已删除');
+      load();
+    } finally {
+      setMutatingId(null);
+    }
+  };
+
+  const actionMenuItems = (policy: ApmPolicy): MoreActionsDropdownItem[] => [
+    {
+      key: 'edit',
+      icon: <EditOutlined aria-hidden="true" />,
+      label: '编辑',
+      disabled: mutatingId !== null,
+      onClick: () => openEdit(policy),
+    },
+    {
+      key: 'delete',
+      icon: <DeleteOutlined aria-hidden="true" />,
+      label: '删除',
+      danger: true,
+      disabled: mutatingId !== null,
+      confirm: {
+        title: '删除策略',
+        content: '删除后不再评估该策略，确认继续？',
+        okText: '删除',
+        cancelText: '取消',
+      },
+      onClick: () => removePolicy(policy),
+    },
+  ];
+
   const columns: TableColumnsType<ApmPolicy> = [
     {
       title: '策略名称',
@@ -268,31 +305,14 @@ export default function ApmPoliciesPage() {
     },
     {
       title: '操作',
-      width: '10%',
+      key: 'action',
+      width: 72,
       align: 'right',
       render: (_, policy) => (
-        <Space size={0}>
-          <Button size="small" type="link" onClick={() => openEdit(policy)}>编辑</Button>
-          <Popconfirm
-            title="删除策略"
-            description="删除后不再评估该策略，确认继续？"
-            okText="删除"
-            cancelText="取消"
-            okButtonProps={{ danger: true, loading: mutatingId === policy.id }}
-            onConfirm={async () => {
-              setMutatingId(policy.id);
-              try {
-                await deletePolicy(policy.id);
-                message.success('策略已删除');
-                load();
-              } finally {
-                setMutatingId(null);
-              }
-            }}
-          >
-            <Button size="small" type="link" danger>删除</Button>
-          </Popconfirm>
-        </Space>
+        <MoreActionsDropdown
+          ariaLabel={`${policy.name}更多操作`}
+          items={actionMenuItems(policy)}
+        />
       ),
     },
   ];
@@ -303,55 +323,50 @@ export default function ApmPoliciesPage() {
       description="配置服务指标阈值与通知渠道，列表内可直接启停。"
       dependency="control"
     >
-      <ApmSurface padding="none" className="overflow-hidden">
-        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--color-border-2)] px-3 py-2">
-          <Typography.Text strong>策略列表</Typography.Text>
-          <div className="ml-auto">
-            <SearchActionBar
-              spacing="flush"
-              searchClassName="!w-64"
-              searchProps={{
-                allowClear: true,
-                'aria-label': '搜索策略',
-                placeholder: '搜索策略名称',
-                value: keyword,
-                onChange: (event) => { setKeyword(event.target.value); setPage(1); },
-              }}
-              actions={(
-                <Space>
-                  <Button icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load}>刷新</Button>
-                  <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} disabled={!services.length} onClick={openCreate}>新建策略</Button>
-                </Space>
-              )}
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+            <Input
+              allowClear
+              aria-label="搜索策略"
+              className="min-w-0 flex-1 md:max-w-sm"
+              prefix={<SearchOutlined aria-hidden="true" />}
+              placeholder="搜索策略名称"
+              value={keyword}
+              onChange={(event) => { setKeyword(event.target.value); setPage(1); }}
             />
-          </div>
+            <Space className="ml-auto">
+              <Button icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load}>刷新</Button>
+              <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} disabled={!services.length} onClick={openCreate}>新建策略</Button>
+            </Space>
+          </FilterToolbar>
+          {state === 'ready' ? (
+            <ApmDataTable
+              rowKey="id"
+              columns={columns}
+              dataSource={pagePolicies}
+              headerAlignment="column"
+              pagination={{
+                current: page,
+                pageSize,
+                total: filteredPolicies.length,
+                pageSizeOptions: [10, 20, 50, 100],
+                showSizeChanger: true,
+                onChange: (nextPage, nextPageSize) => {
+                  setPage(nextPageSize === pageSize ? nextPage : 1);
+                  setPageSize(nextPageSize);
+                },
+              }}
+            />
+          ) : (
+            <CatalogState
+              kind={state}
+              description={state === 'empty' ? (services.length ? '当前组织暂无 APM 策略。' : '请先接入并发现服务，再创建策略。') : undefined}
+              action={state === 'empty' && services.length ? <Button type="primary" onClick={openCreate}>新建策略</Button> : undefined}
+              onRetry={state === 'forbidden' ? undefined : load}
+            />
+          )}
         </div>
-        {state === 'ready' ? (
-          <ApmDataTable
-            rowKey="id"
-            columns={columns}
-            dataSource={pagePolicies}
-            headerAlignment="column"
-            pagination={{
-              current: page,
-              pageSize,
-              total: filteredPolicies.length,
-              pageSizeOptions: [10, 20, 50, 100],
-              showSizeChanger: true,
-              onChange: (nextPage, nextPageSize) => {
-                setPage(nextPageSize === pageSize ? nextPage : 1);
-                setPageSize(nextPageSize);
-              },
-            }}
-          />
-        ) : (
-          <CatalogState
-            kind={state}
-            description={state === 'empty' ? (services.length ? '当前组织暂无 APM 策略。' : '请先接入并发现服务，再创建策略。') : undefined}
-            action={state === 'empty' && services.length ? <Button type="primary" onClick={openCreate}>新建策略</Button> : undefined}
-            onRetry={state === 'forbidden' ? undefined : load}
-          />
-        )}
       </ApmSurface>
       <Modal
         title={editing ? '编辑 APM 策略' : '新建 APM 策略'}

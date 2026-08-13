@@ -107,7 +107,8 @@ afterEach(() => {
 });
 
 describe('APM 告警策略列表', () => {
-  it('用紧凑工具栏和语义对齐的自适应列取代拼凑式表头', async () => {
+  it('与应用管理统一工具栏、分页和操作入口', async () => {
+    const user = userEvent.setup();
     render(
       <IntlProvider locale="zh" messages={tableMessages}>
         <ApmPoliciesPage />
@@ -115,17 +116,33 @@ describe('APM 告警策略列表', () => {
     );
 
     expect(await screen.findByText('结账接口 P95 过慢')).not.toBeNull();
-    const listTitle = screen.getByText('策略列表');
+    expect(screen.queryByText('策略列表')).toBeNull();
     expect(screen.queryByText('1 条告警中')).toBeNull();
     expect(screen.queryByText(/每分钟评估/)).toBeNull();
-    expect(listTitle.closest('div')?.className).toContain('py-2');
-    expect(listTitle.closest('section')?.getAttribute('data-padding')).toBe('none');
+
+    const searchInput = screen.getByRole('textbox', { name: '搜索策略' });
+    const refreshButton = screen.getByRole('button', { name: '刷新' });
+    const createButton = screen.getByRole('button', { name: '新建策略' });
+    const actionGroup = createButton.closest('.ant-space');
+    expect(searchInput.getAttribute('placeholder')).toBe('搜索策略名称');
+    expect(screen.queryByRole('button', { name: 'search' })).toBeNull();
+    expect(actionGroup?.classList.contains('ml-auto')).toBe(true);
+    expect(actionGroup?.contains(refreshButton)).toBe(true);
 
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
-    expect(columnWidths).toEqual(['38%', '12%', '16%', '16%', '8%', '10%']);
+    expect(columnWidths).toEqual(['38%', '12%', '16%', '16%', '8%', '72px']);
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '启用状态' })).textAlign).toBe('center');
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '操作' })).textAlign).toBe('right');
+    const moreActionsButton = screen.getByRole('button', { name: '结账接口 P95 过慢更多操作' });
+    expect(moreActionsButton).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '编辑' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '删除' })).toBeNull();
+    expect(screen.getByText('共 1 条')).not.toBeNull();
+
+    await user.click(moreActionsButton);
+    expect(await screen.findByRole('menuitem', { name: '编辑' })).not.toBeNull();
+    expect(screen.getByRole('menuitem', { name: '删除' })).not.toBeNull();
   });
 
   it('通过弹窗新建策略而不是跳转独立页面', async () => {
