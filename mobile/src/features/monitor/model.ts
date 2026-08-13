@@ -141,14 +141,16 @@ export interface MonitorRecentViewsResolution {
   failedCount: number;
 }
 
-export type MonitorRecentViewsResolutionStatus = 'empty' | 'ready' | 'partial' | 'unavailable';
+export type MonitorRecentViewsResolutionStatus = 'empty' | 'ready' | 'partial' | 'unavailable' | 'refresh-error';
 
 export function monitorRecentViewsResolutionStatus(
   resolution: MonitorRecentViewsResolution,
+  preserveExistingEntries = false,
 ): MonitorRecentViewsResolutionStatus {
   if (resolution.requestedCount === 0) return 'empty';
   if (resolution.failedCount > 0) {
-    return resolution.entries.length === 0 ? 'unavailable' : 'partial';
+    if (resolution.entries.length > 0) return 'partial';
+    return preserveExistingEntries ? 'refresh-error' : 'unavailable';
   }
   if (resolution.entries.length === 0) return 'empty';
   return 'ready';

@@ -771,6 +771,9 @@ test('最近访问能区分真实空、完整恢复、部分失败与全部不�
     entries: [], requestedCount: 2, failedCount: 1,
   }), 'unavailable');
   assert.equal(monitorRecentViewsResolutionStatus({
+    entries: [], requestedCount: 2, failedCount: 1,
+  }, true), 'refresh-error');
+  assert.equal(monitorRecentViewsResolutionStatus({
     entries: [], requestedCount: 1, failedCount: 0,
   }), 'empty');
   assert.equal(monitorRecentViewsResolutionStatus({
@@ -779,9 +782,11 @@ test('最近访问能区分真实空、完整恢复、部分失败与全部不�
 
   const panel = await readProjectFile('src/features/monitor/recent-views-panel.tsx');
   const hook = await readProjectFile('src/features/monitor/use-recent-views.ts');
-  assert.match(hook, /setStatus\(monitorRecentViewsResolutionStatus\(resolution\)\)/);
+  assert.match(hook, /monitorRecentViewsResolutionStatus\([\s\S]*preserveContent && entriesRef\.current\.length > 0/);
+  assert.match(hook, /nextStatus !== 'refresh-error'[\s\S]*setEntries\(resolution\.entries\)/);
   assert.match(panel, /status === 'unavailable'[\s\S]*recentRestoreFailed/);
   assert.match(panel, /status === 'partial'[\s\S]*recentPartialRestore/);
+  assert.match(panel, /status === 'refresh-error'[\s\S]*recentRefreshFailed/);
 });
 
 test('精确实例查询兼容重命名和复合 ID，删除或越权时安全为空', async () => {

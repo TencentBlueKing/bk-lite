@@ -118,6 +118,7 @@
         "recentLoadFailed": "最近查看加载失败",
         "recentRestoreFailed": "最近查看记录暂时无法恢复",
         "recentPartialRestore": "部分最近查看记录暂时无法恢复",
+        "recentRefreshFailed": "刷新失败，已保留原有最近查看记录",
         "noRecentViews": "还没有最近查看",
         "noRecentViewsHint": "成功打开实例详情后会出现在这里",
         "viewedAtJustNow": "刚才",

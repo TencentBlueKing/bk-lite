@@ -35,7 +35,7 @@ export default function MonitorRecentViewsPanel() {
   const { t } = useTranslation();
   const { userInfo } = useAuth();
   const { entries, status, reload } = useRecentViews();
-  const canSnapshot = status === 'ready' || status === 'partial';
+  const canSnapshot = status === 'ready' || status === 'partial' || status === 'refresh-error';
   const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
   const initialSnapshot = useRef(readMobileViewSnapshot<MonitorRecentViewsViewState>(cacheScope, 'monitor-recent'));
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -107,9 +107,9 @@ export default function MonitorRecentViewsPanel() {
               />
             ) : (
               <div className={styles.recentList}>
-                {status === 'partial' ? (
+                {status === 'partial' || status === 'refresh-error' ? (
                   <div role="status" className={styles.recentPartialNotice}>
-                    {t('monitor.recentPartialRestore')}
+                    {t(status === 'refresh-error' ? 'monitor.recentRefreshFailed' : 'monitor.recentPartialRestore')}
                   </div>
                 ) : null}
                 {entries.map(({ item, object, instance, metricUnits }) => {
