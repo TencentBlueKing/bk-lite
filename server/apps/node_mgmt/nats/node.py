@@ -1,6 +1,6 @@
 import uuid
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.db import IntegrityError
 
 import nats_client
@@ -146,19 +146,43 @@ class NatsService:
             except Exception as error:
                 raise BaseAppException(f"节点 {node.id} 自动创建 {collector.name} 父配置失败: {error}") from error
 
+        configs_to_create = pending_configs
         try:
-            with transaction.atomic():
+            if connection.features.supports_ignore_conflicts:
                 CollectorConfiguration.objects.bulk_create(
-                    pending_configs,
+                    configs_to_create,
                     batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                    ignore_conflicts=True,
                 )
-        except IntegrityError:
-            # 并发创建同名父配置时允许进入下方统一重查；内层保存点保证外层事务仍可用。
-            pass
+            else:
+                for _ in range(3):
+                    try:
+                        with transaction.atomic():
+                            CollectorConfiguration.objects.bulk_create(
+                                configs_to_create,
+                                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                            )
+                        break
+                    except IntegrityError:
+                        existing_names = set(
+                            CollectorConfiguration.objects.select_for_update()
+                            .filter(name__in=[config.name for config in configs_to_create])
+                            .values_list("name", flat=True)
+                        )
+                        configs_to_create = [config for config in configs_to_create if config.name not in existing_names]
+                        if not configs_to_create:
+                            break
+                else:
+                    raise BaseAppException("批量创建采集器父配置发生重复冲突，重试后仍未收敛")
         except Exception as error:
+            if isinstance(error, BaseAppException):
+                raise
             raise BaseAppException(f"批量创建采集器父配置失败: {error}") from error
         created_configs = {
-            item["name"]: item for item in CollectorConfiguration.objects.filter(name__in=expected_by_name).values("id", "name", "collector_id")
+            item["name"]: item
+            for item in CollectorConfiguration.objects.select_for_update()
+            .filter(name__in=expected_by_name)
+            .values("id", "name", "collector_id")
         }
         conflicting_config_ids = {
             created_configs[config_name]["id"]
@@ -181,25 +205,55 @@ class NatsService:
                 continue
             node_config_associations.append(NodeCollectorConfiguration(node_id=node_id, collector_config_id=created_config["id"]))
 
+        associations_to_create = node_config_associations
         try:
-            with transaction.atomic():
+            if connection.features.supports_ignore_conflicts:
                 NodeCollectorConfiguration.objects.bulk_create(
-                    node_config_associations,
+                    associations_to_create,
                     batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                    ignore_conflicts=True,
                 )
-        except IntegrityError:
-            # 并发完成关联时由最终批量查询验证；其他缺失关联仍会使整批失败并回滚。
-            pass
+            else:
+                for _ in range(3):
+                    try:
+                        with transaction.atomic():
+                            NodeCollectorConfiguration.objects.bulk_create(
+                                associations_to_create,
+                                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                            )
+                        break
+                    except IntegrityError:
+                        existing_associations = set(
+                            NodeCollectorConfiguration.objects.select_for_update()
+                            .filter(
+                                node_id__in=[association.node_id for association in associations_to_create],
+                                collector_config_id__in=[
+                                    association.collector_config_id for association in associations_to_create
+                                ],
+                            )
+                            .values_list("node_id", "collector_config_id")
+                        )
+                        associations_to_create = [
+                            association
+                            for association in associations_to_create
+                            if (association.node_id, association.collector_config_id) not in existing_associations
+                        ]
+                        if not associations_to_create:
+                            break
+                else:
+                    raise BaseAppException("批量关联采集器父配置发生重复冲突，重试后仍未收敛")
         except Exception as error:
+            if isinstance(error, BaseAppException):
+                raise
             raise BaseAppException(f"批量关联采集器父配置失败: {error}") from error
 
         created_pairs = set(
-            CollectorConfiguration.objects.filter(
-                nodes__id__in=node_ids,
-                collector__name__in=collector_names,
+            NodeCollectorConfiguration.objects.select_for_update()
+            .filter(
+                node_id__in=node_ids,
+                collector_config__collector__name__in=collector_names,
             )
-            .values_list("nodes__id", "collector__name")
-            .distinct()
+            .values_list("node_id", "collector_config__collector__name")
         )
         if missing_pairs - created_pairs:
             raise BaseAppException("批量创建采集器父配置失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量")

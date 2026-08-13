@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
-from django.db import connection
+from django.db import IntegrityError, connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -33,7 +33,7 @@ from apps.node_mgmt.management.services.node_init.controller_init import control
 from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
 from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, NodeComponentVersion, PackageVersion, SidecarEnv
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
-from apps.node_mgmt.models.sidecar import ChildConfig, NodeOrganization
+from apps.node_mgmt.models.sidecar import ChildConfig, NodeCollectorConfiguration, NodeOrganization
 from apps.node_mgmt.nats.node import NatsService
 from apps.node_mgmt.serializers.collector import CollectorSerializer
 from apps.node_mgmt.serializers.package import PackageVersionSerializer
@@ -4709,6 +4709,66 @@ def test_nats_ensure_parent_configs_ignores_noncanonical_architecture_alias():
     parent_config = CollectorConfiguration.objects.get(nodes=node, collector__name="Telegraf")
     assert parent_config.collector_id == "telegraf_linux_x86_canonical"
     assert parent_config.config_template == "architecture = 'x86_64'"
+
+
+@pytest.mark.django_db
+def test_nats_ensure_parent_configs_retries_non_native_bulk_conflicts():
+    cloud_region = CloudRegion.objects.create(name="region-parent-conflict-retry", created_by="tester", updated_by="tester")
+    nodes = [
+        Node.objects.create(
+            id=f"node-parent-conflict-retry-{index}",
+            name=f"node-parent-conflict-retry-{index}",
+            ip=f"10.30.1.{index + 1}",
+            operating_system=NodeConstants.LINUX_OS,
+            cpu_architecture=NodeConstants.X86_64_ARCH,
+            collector_configuration_directory="/etc/collector",
+            cloud_region=cloud_region,
+            created_by="tester",
+            updated_by="tester",
+        )
+        for index in range(2)
+    ]
+    Collector.objects.create(
+        id="telegraf_linux_parent_conflict_retry",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]"},
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    config_bulk_create = CollectorConfiguration.objects.bulk_create
+    association_bulk_create = NodeCollectorConfiguration.objects.bulk_create
+    config_attempts = []
+    association_attempts = []
+
+    def flaky_config_bulk_create(objects, **kwargs):
+        config_attempts.append([obj.name for obj in objects])
+        if len(config_attempts) == 1:
+            raise IntegrityError("simulated concurrent configuration conflict")
+        return config_bulk_create(objects, **kwargs)
+
+    def flaky_association_bulk_create(objects, **kwargs):
+        association_attempts.append([(obj.node_id, obj.collector_config_id) for obj in objects])
+        if len(association_attempts) == 1:
+            raise IntegrityError("simulated concurrent association conflict")
+        return association_bulk_create(objects, **kwargs)
+
+    with patch("apps.node_mgmt.nats.node.connection", SimpleNamespace(features=SimpleNamespace(supports_ignore_conflicts=False))):
+        with patch.object(CollectorConfiguration.objects, "bulk_create", side_effect=flaky_config_bulk_create):
+            with patch.object(NodeCollectorConfiguration.objects, "bulk_create", side_effect=flaky_association_bulk_create):
+                NatsService()._ensure_parent_configs_for_child_configs(
+                    [{"node_id": node.id, "collector_name": "Telegraf"} for node in nodes]
+                )
+
+    assert len(config_attempts) == 2
+    assert len(association_attempts) == 2
+    assert CollectorConfiguration.objects.filter(nodes__in=nodes, collector__name="Telegraf").distinct().count() == 2
 
 
 @pytest.mark.django_db
