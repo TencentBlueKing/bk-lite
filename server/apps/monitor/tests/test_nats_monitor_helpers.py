@@ -5,9 +5,11 @@
 
 from datetime import datetime
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
+import apps.node_mgmt  # noqa: F401 - MonitorPolicyViewSet 的运行时模型依赖
 from apps.monitor.nats import monitor as nm
 
 
@@ -244,6 +246,7 @@ class TestRequireAuthenticatedActor:
         assert nm._require_authenticated_actor({"user": user}) is None
 
 
+@pytest.mark.integration
 @pytest.mark.django_db
 class TestExecuteNatsCreate:
     def test_identity_gate_blocks_anonymous(self):
@@ -290,3 +293,53 @@ class TestExecuteNatsCreate:
             "message": "simulated late create failure",
         }
         assert not MonitorObjectType.objects.filter(id=object_type_id).exists()
+
+    def test_object_child_failure_rolls_back_and_retry_succeeds(self, mocker):
+        from apps.monitor.models.monitor_object import MonitorObject
+
+        name = f"nats-object-{uuid4().hex[:8]}"
+        original_bulk_create = MonitorObject.objects.bulk_create
+        bulk_create = mocker.patch.object(MonitorObject.objects, "bulk_create")
+        bulk_create.side_effect = RuntimeError("child create failed")
+        payload = {"name": name, "level": "base", "children": [{"id": f"{name}-child", "name": "子对象"}]}
+        user_info = {"user": SimpleNamespace(username="a", domain="domain.com")}
+
+        assert nm.create_monitor_object(payload, user_info=user_info)["result"] is False
+        assert not MonitorObject.objects.filter(name=name).exists()
+        bulk_create.side_effect = original_bulk_create
+        assert nm.create_monitor_object(payload, user_info=user_info)["result"] is True
+        assert MonitorObject.objects.filter(name__in=[name, f"{name}-child"]).count() == 2
+
+    @pytest.mark.parametrize(
+        ("failing_method", "enable_alerts"),
+        [
+            ("update_or_create_task", ["threshold"]),
+            ("update_policy_organizations", ["threshold"]),
+            ("update_policy_baselines", ["no_data"]),
+        ],
+    )
+    def test_policy_stage_failure_rolls_back_all_writes(self, mocker, failing_method, enable_alerts):
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+        from apps.monitor.models.monitor_object import MonitorObject
+        from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
+        from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
+
+        monitor_object = MonitorObject.objects.create(name=f"nats-policy-object-{uuid4().hex[:8]}", level="base")
+        policy_name = f"nats-policy-{uuid4().hex[:8]}"
+        before_tasks = set(PeriodicTask.objects.values_list("id", flat=True))
+        before_schedules = set(CrontabSchedule.objects.values_list("id", flat=True))
+        failing_write = mocker.patch.object(MonitorPolicyViewSet, failing_method, side_effect=RuntimeError("late failure"))
+        payload = {
+            "name": policy_name, "monitor_object": monitor_object.id, "organizations": [1],
+            "algorithm": "max_over_time", "group_algorithm": "max", "query_condition": {"type": "pmq", "query": "up"},
+            "schedule": {"type": "min", "value": 5}, "period": {"type": "min", "value": 5},
+            "enable_alerts": enable_alerts,
+        }
+
+        assert nm.create_monitor_policy(payload, user_info={"user": SimpleNamespace(username="a", domain="domain.com")})["result"] is False
+        failing_write.assert_called_once()
+        assert not MonitorPolicy.objects.filter(name=policy_name).exists()
+        assert set(PeriodicTask.objects.values_list("id", flat=True)) == before_tasks
+        assert set(CrontabSchedule.objects.values_list("id", flat=True)) == before_schedules
+        assert not PolicyOrganization.objects.filter(policy__name=policy_name).exists()
