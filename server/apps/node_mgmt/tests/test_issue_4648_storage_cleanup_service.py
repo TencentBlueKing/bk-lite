@@ -290,6 +290,48 @@ def test_streaming_download_removes_tempfile_when_object_read_fails(
     assert instances[0].close_count == 1
 
 
+def test_streaming_download_retries_unlink_after_object_read_failure(
+    monkeypatch,
+    tmp_path,
+):
+    created_paths = _capture_named_tempfiles(monkeypatch, tmp_path)
+    unlink_calls = []
+    original_unlink = package_service.os.unlink
+
+    def flaky_unlink(path):
+        unlink_calls.append(path)
+        if len(unlink_calls) == 1:
+            raise OSError("unlink failed")
+        original_unlink(path)
+
+    class ObjectStore:
+        async def get_info(self, key):
+            return SimpleNamespace(description="sidecar.tar.gz")
+
+        async def get(self, key, writeinto):
+            raise RuntimeError("object read interrupted")
+
+    class JetStreamService:
+        def __init__(self):
+            self.object_store = ObjectStore()
+
+        async def connect(self):
+            return None
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(package_service.os, "unlink", flaky_unlink)
+    monkeypatch.setattr("apps.rpc.jetstream.JetStreamService", JetStreamService)
+
+    with pytest.raises(RuntimeError, match="object read interrupted"):
+        PackageService.download_file_streaming(_package())
+
+    assert len(created_paths) == 1
+    assert unlink_calls == [created_paths[0], created_paths[0]]
+    assert not os.path.exists(created_paths[0])
+
+
 def test_streaming_download_removes_tempfile_when_connection_close_is_cancelled(
     monkeypatch,
     tmp_path,

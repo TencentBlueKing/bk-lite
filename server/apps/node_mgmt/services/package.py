@@ -338,13 +338,13 @@ class PackageService:
                             tmp.seek(0)
                             return tmp, filename
                         except ObjectNotFoundError as error:
-                            _close_and_unlink_tempfile(tmp)
-                            tmp = None
+                            if _close_and_unlink_tempfile(tmp):
+                                tmp = None
                             last_error = error
                             continue
                         except BaseException:
-                            _close_and_unlink_tempfile(tmp)
-                            tmp = None
+                            if _close_and_unlink_tempfile(tmp):
+                                tmp = None
                             raise
                     if last_error:
                         raise last_error
