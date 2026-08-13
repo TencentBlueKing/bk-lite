@@ -31,8 +31,9 @@ test('pull request quality gate cannot publish packages or receive npm credentia
   assert.ok(publishJob);
   assert.match(
     publishJob,
-    /if: github\.event_name == 'workflow_dispatch' && inputs\.publish/
+    /github\.event_name == 'workflow_dispatch'/
   );
+  assert.match(publishJob, /github\.ref == 'refs\/heads\/master'/);
   assert.match(publishJob, /NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
   assert.doesNotMatch(publishJob, /github\.event_name == 'pull_request'/);
 });
