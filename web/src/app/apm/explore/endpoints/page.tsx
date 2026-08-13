@@ -239,34 +239,25 @@ export default function ApmEndpointsPage() {
 
   const columns: TableColumnsType<EndpointRow> = [
     {
-      title: '方法',
-      dataIndex: 'method',
-      width: '7%',
-      responsive: ['md'],
-      render: (value) => (
-        <span className={`rounded px-2 py-0.5 font-mono text-xs font-medium ${
-          value === 'POST'
-            ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
-            : 'bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
-        }`}
-        >
-          {value}
-        </span>
-      ),
-    },
-    {
       title: '端点',
-      width: '27%',
+      width: '29%',
       render: (_, row) => (
         <span className="inline-flex min-w-0 items-center gap-2">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-primary)]" aria-hidden="true" />
-          <EllipsisWithTooltip className="truncate font-mono text-xs" text={`${row.method} ${row.route}`} />
+          <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-xs font-medium ${
+            row.method === 'POST'
+              ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
+              : 'bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
+          }`}
+          >
+            {row.method}
+          </span>
+          <EllipsisWithTooltip className="truncate font-mono text-xs" text={row.route} />
         </span>
       ),
     },
     {
       title: '所属服务',
-      width: '20%',
+      width: '22%',
       responsive: ['sm'],
       render: (_, row) => (
         <Space direction="vertical" size={0} className="min-w-0">
@@ -279,7 +270,7 @@ export default function ApmEndpointsPage() {
       title: '吞吐量',
       dataIndex: 'requestRate',
       align: 'right',
-      width: '12%',
+      width: '14%',
       sorter: true,
       sortOrder: sortKey === 'request_rate' ? sortOrder : null,
       responsive: ['md'],
@@ -295,7 +286,7 @@ export default function ApmEndpointsPage() {
       title: '错误率',
       dataIndex: 'errorRate',
       align: 'right',
-      width: '10%',
+      width: '11%',
       sorter: true,
       sortOrder: sortKey === 'error_rate' ? sortOrder : null,
       responsive: ['md'],
@@ -307,7 +298,7 @@ export default function ApmEndpointsPage() {
       title: 'P95',
       dataIndex: 'p95Ms',
       align: 'right',
-      width: '9%',
+      width: '10%',
       sorter: true,
       sortOrder: sortKey === 'p95_ms' ? sortOrder : null,
       responsive: ['lg'],
@@ -317,14 +308,14 @@ export default function ApmEndpointsPage() {
       title: '最近活跃',
       dataIndex: 'lastSeenAt',
       align: 'right',
-      width: '8%',
+      width: '9%',
       responsive: ['xl'],
       render: (value) => <Typography.Text type="secondary" className="text-xs">{formatRelativeTime(value)}</Typography.Text>,
     },
     {
       title: '操作',
       key: 'actions',
-      width: '7%',
+      width: '5%',
       align: 'right',
       render: (_, row) => <Button size="small" type="link" onClick={() => setSelected(row)}>查看</Button>,
     },
@@ -397,6 +388,7 @@ export default function ApmEndpointsPage() {
               size="middle"
               columns={columns}
               dataSource={pageRows}
+              headerAlignment="column"
               loading={state === 'loading'}
               pagination={{
                 current: page,

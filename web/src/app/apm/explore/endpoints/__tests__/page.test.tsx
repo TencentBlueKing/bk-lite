@@ -117,7 +117,7 @@ describe('APM 端点详情抽屉', () => {
       </IntlProvider>,
     );
 
-    expect(await screen.findByText('POST /pay')).not.toBeNull();
+    expect(await screen.findByText('/pay')).not.toBeNull();
     await user.click(screen.getByRole('button', { name: '查看' }));
 
 
@@ -135,7 +135,7 @@ describe('APM 端点详情抽屉', () => {
       </IntlProvider>,
     );
 
-    await screen.findByText('POST /pay');
+    await screen.findByText('/pay');
     expect(screen.getByRole('combobox', { name: '服务' })).not.toBeNull();
     expect(screen.queryByRole('combobox', { name: '排序' })).toBeNull();
     expect(screen.getByRole('columnheader', { name: /吞吐量/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
@@ -150,11 +150,14 @@ describe('APM 端点详情抽屉', () => {
       </IntlProvider>,
     );
 
-    await screen.findByText('POST /pay');
+    await screen.findByText('/pay');
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['7%', '27%', '20%', '12%', '10%', '9%', '8%', '7%']);
+    expect(columnWidths).toEqual(['29%', '22%', '14%', '11%', '10%', '9%', '5%']);
     expect(columnWidths.every((width) => width.endsWith('%'))).toBe(true);
+    expect(screen.queryByRole('columnheader', { name: '方法' })).toBeNull();
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: /吞吐量/ })).textAlign).toBe('right');
+    expect(getComputedStyle(screen.getByRole('columnheader', { name: '操作' })).textAlign).toBe('right');
   });
 });
