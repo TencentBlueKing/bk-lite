@@ -20,6 +20,17 @@ export interface ViewCanvasHostProps {
   focus: ViewFocus;
   /** Shell focus updater — wired to NetworkTopo onRequestFocus when viewType is network. */
   onFocusChange?: (focus: ViewFocus) => void;
+  /**
+   * Called when the user drills from a room floor plan into a rack while
+   * staying in the views hub. Shell should stash the room focus for Back.
+   */
+  onRoomRackDrill?: (rack: {
+    inst_id: string;
+    inst_name?: string;
+    fromRoom: ViewFocus;
+  }) => void;
+  /** When returning to a room, scroll/highlight this rack on the floor plan. */
+  highlightRackId?: string | null;
   /** Optional override; when set, skips built-in view canvases. */
   children?: React.ReactNode;
 }
@@ -32,6 +43,8 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   viewType,
   focus,
   onFocusChange,
+  onRoomRackDrill,
+  highlightRackId,
   children,
 }) => {
   const { t } = useTranslation();
@@ -72,6 +85,18 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
 
   const handleRackSelect = useCallback(
     (rack: { inst_id: string; inst_name?: string }) => {
+      onRoomRackDrill?.({
+        inst_id: rack.inst_id,
+        inst_name: rack.inst_name,
+        fromRoom: {
+          model_id: focus.model_id,
+          inst_id: focus.inst_id,
+          inst_name: focus.inst_name,
+          model_name: focus.model_name,
+          icn: focus.icn,
+          mode: 'room',
+        },
+      });
       onFocusChange?.({
         model_id: 'rack',
         inst_id: rack.inst_id,
@@ -79,7 +104,7 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
         mode: 'rack',
       });
     },
-    [onFocusChange]
+    [onFocusChange, onRoomRackDrill, focus]
   );
 
   if (children) {
@@ -159,6 +184,7 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
           modelId={focus.model_id}
           instId={focus.inst_id}
           onRackSelect={handleRackSelect}
+          highlightRackId={highlightRackId || undefined}
         />
       </div>
     );

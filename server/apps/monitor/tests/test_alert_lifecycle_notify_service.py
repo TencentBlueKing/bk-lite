@@ -5,7 +5,7 @@
 告警生命周期通知映射直接影响外部告警中心数据，必须准确。
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pydantic.root_model  # noqa
@@ -96,7 +96,7 @@ class TestBuildContent:
         assert "告警内容：CPU 超阈值" in content
         assert "资源：主机A" in content
         assert "级别：critical" in content
-        assert "开始时间：2026-01-01 10:00:00" in content
+        assert "开始时间：2026-01-01 18:00:00" in content
 
     def test_升级动作状态行(self):
         notifier = AlertLifecycleNotifier(policy=None)
@@ -113,6 +113,70 @@ class TestBuildContent:
         alert = _alert(monitor_instance_name="")
         content = notifier._build_content(alert, "created", "", "")
         assert "资源：inst-1" in content
+
+    def test_开始时间按通知人时区转换为本地墙钟(self):
+        notifier = AlertLifecycleNotifier(policy=None)
+        alert = _alert(start_event_time=datetime(2026, 8, 13, 1, 24, 0, tzinfo=timezone.utc))
+        content = notifier._build_content(
+            alert, "created", "", "", target_timezone="Asia/Shanghai"
+        )
+        assert "开始时间：2026-08-13 09:24:00" in content
+        assert "开始时间：2026-08-13 01:24:00" not in content
+
+    def test_开始时间跟随通知人时区而不是写死上海(self):
+        notifier = AlertLifecycleNotifier(policy=None)
+        alert = _alert(start_event_time=datetime(2026, 8, 13, 1, 24, 0, tzinfo=timezone.utc))
+        content = notifier._build_content(
+            alert, "created", "", "", target_timezone="America/New_York"
+        )
+        assert "开始时间：2026-08-12 21:24:00" in content
+
+
+class TestResolveNoticeTimezone:
+    def test_取第一个通知人的账号时区(self, monkeypatch):
+        class FakeQuerySet:
+            def first(self):
+                return SimpleNamespace(timezone="America/New_York")
+
+        monkeypatch.setattr(
+            lifecycle_notify.User.objects,
+            "filter",
+            lambda **kwargs: FakeQuerySet(),
+        )
+        notifier = AlertLifecycleNotifier(policy=None)
+        assert notifier._resolve_notice_timezone(["admin", "bob"]) == "America/New_York"
+
+    def test_查不到用户时回退上海(self, monkeypatch):
+        class FakeQuerySet:
+            def first(self):
+                return None
+
+        monkeypatch.setattr(
+            lifecycle_notify.User.objects,
+            "filter",
+            lambda **kwargs: FakeQuerySet(),
+        )
+        notifier = AlertLifecycleNotifier(policy=None)
+        assert notifier._resolve_notice_timezone(["ghost"]) == "Asia/Shanghai"
+
+    def test_无通知人时回退上海(self):
+        notifier = AlertLifecycleNotifier(policy=None)
+        assert notifier._resolve_notice_timezone([]) == "Asia/Shanghai"
+
+
+class TestSendNormalNoticeTimezone:
+    def test_发送前按通知人时区写入开始时间(self, monkeypatch):
+        notifier = AlertLifecycleNotifier(policy=None)
+        alert = _alert(start_event_time=datetime(2026, 8, 13, 1, 24, 0, tzinfo=timezone.utc))
+        sent = {}
+        monkeypatch.setattr(notifier, "_resolve_notice_timezone", lambda users: "Asia/Shanghai")
+        monkeypatch.setattr(
+            lifecycle_notify.SystemMgmtUtils,
+            "send_msg_with_channel",
+            lambda channel_id, title, content, receivers: sent.update(content=content) or {"result": True},
+        )
+        notifier._send_normal_notice(1, "告警通知", ["admin"], [alert], "created", "", "")
+        assert "开始时间：2026-08-13 09:24:00" in sent["content"]
 
 
 class TestBuildAlertCenterPayload:

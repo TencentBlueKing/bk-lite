@@ -1560,6 +1560,7 @@
         "modeRoom": "Room",
         "modeRack": "Rack",
         "selectModel": "Select model",
+        "backToRoom": "Back to room",
         "workspacePlaceholder": "Canvas area (coming in later tasks)",
         "unknownView": "Unknown view"
     },

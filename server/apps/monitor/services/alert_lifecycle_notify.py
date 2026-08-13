@@ -1,10 +1,15 @@
 import os
 from collections import defaultdict
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+from django.utils import timezone as dj_timezone
 
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
-from apps.system_mgmt.models import Channel
+from apps.system_mgmt.models import Channel, User
+
+DEFAULT_NOTICE_TIMEZONE = "Asia/Shanghai"
 
 
 ACTION_TO_ALERT_CENTER = {
@@ -355,10 +360,13 @@ class AlertLifecycleNotifier:
 
     def _send_normal_notice(self, channel_id, channel_name, notice_users, alerts, action, operator, reason):
         results = []
+        target_timezone = self._resolve_notice_timezone(notice_users)
         for alert in alerts:
             now = datetime.now(timezone.utc).isoformat()
             title = self._build_title(alert, action)
-            content = self._build_content(alert, action, operator, reason)
+            content = self._build_content(
+                alert, action, operator, reason, target_timezone=target_timezone
+            )
             try:
                 send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, title, content, notice_users)
                 success, error_msg = self._parse_channel_result(send_result)
@@ -563,7 +571,42 @@ class AlertLifecycleNotifier:
         policy_name = getattr(self.policy, "name", "") if self.policy else ""
         return f"{label}：{policy_name}" if policy_name else label
 
-    def _build_content(self, alert, action, operator, reason):
+    def _resolve_notice_timezone(self, notice_users):
+        """取第一个通知人的账号时区；查不到或列表为空时回退 Asia/Shanghai。"""
+        if not notice_users:
+            return DEFAULT_NOTICE_TIMEZONE
+        try:
+            user = User.objects.filter(username__in=list(notice_users)).first()
+        except Exception:
+            logger.warning("Failed to resolve notice timezone for users=%s", notice_users, exc_info=True)
+            return DEFAULT_NOTICE_TIMEZONE
+        tz_name = getattr(user, "timezone", None) if user else None
+        return tz_name or DEFAULT_NOTICE_TIMEZONE
+
+    @staticmethod
+    def _coerce_notice_timezone(target_timezone):
+        if isinstance(target_timezone, str) and target_timezone:
+            try:
+                return ZoneInfo(target_timezone)
+            except Exception:
+                logger.warning(
+                    "Invalid notice timezone %s, fallback to %s",
+                    target_timezone,
+                    DEFAULT_NOTICE_TIMEZONE,
+                )
+        elif target_timezone is not None and not isinstance(target_timezone, str):
+            return target_timezone
+        return ZoneInfo(DEFAULT_NOTICE_TIMEZONE)
+
+    def _format_notice_time(self, dt, target_timezone=None):
+        if not dt:
+            return ""
+        tz = self._coerce_notice_timezone(target_timezone)
+        if dj_timezone.is_naive(dt):
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dj_timezone.localtime(dt, tz).strftime("%Y-%m-%d %H:%M:%S")
+
+    def _build_content(self, alert, action, operator, reason, target_timezone=None):
         parts = [f"告警内容：{alert.content}"]
 
         instance_name = getattr(alert, "monitor_instance_name", "") or alert.monitor_instance_id
@@ -583,6 +626,8 @@ class AlertLifecycleNotifier:
             parts.append("状态：已自动恢复")
 
         if alert.start_event_time:
-            parts.append(f"开始时间：{alert.start_event_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            parts.append(
+                f"开始时间：{self._format_notice_time(alert.start_event_time, target_timezone)}"
+            )
 
         return "\n".join(parts)
