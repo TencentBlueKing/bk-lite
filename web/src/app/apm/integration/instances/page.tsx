@@ -19,7 +19,6 @@ import type { ApmApplication, ApmServiceInstance, CatalogStatus } from '@/app/ap
 import Permission from '@/components/permission';
 import FilterToolbar from '@/components/filter-toolbar';
 import { useUserInfoContext } from '@/context/userInfo';
-import { useTranslation } from '@/utils/i18n';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 type PageState = CatalogStateKind | 'ready';
@@ -35,7 +34,6 @@ const RANGE_UNITS: Record<Exclude<TimeRange, 'all'>, [number, dayjs.ManipulateTy
 };
 
 export default function ApmIntegrationInstancesPage() {
-  const { t } = useTranslation();
   const {
     getApplications,
     getHealth,
@@ -161,6 +159,19 @@ export default function ApmIntegrationInstancesPage() {
       responsive: ['xxl'],
       render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm')}</span>,
     },
+    { title: '实例状态', dataIndex: 'status', width: '7%', align: 'center', render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
+    {
+      title: '所属组织',
+      dataIndex: 'organization_ids',
+      width: '7%',
+      responsive: ['xxl'],
+      render: (value: number[]) => (
+        <EllipsisWithTooltip
+          className="truncate text-xs"
+          text={value.length ? value.map((id) => groupNames.get(id) ?? `#${id}`).join('、') : '未分配'}
+        />
+      ),
+    },
     {
       title: '最近上报',
       dataIndex: 'last_seen_at',
@@ -173,19 +184,6 @@ export default function ApmIntegrationInstancesPage() {
             {formatRelativeTime(value)}
           </Typography.Text>
         </Tooltip>
-      ),
-    },
-    { title: '实例状态', dataIndex: 'status', width: '7%', align: 'center', render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
-    {
-      title: '所属组织',
-      dataIndex: 'organization_ids',
-      width: '7%',
-      responsive: ['xxl'],
-      render: (value: number[]) => (
-        <EllipsisWithTooltip
-          className="truncate text-xs"
-          text={value.length ? value.map((id) => groupNames.get(id) ?? `#${id}`).join('、') : '未分配'}
-        />
       ),
     },
     {
@@ -276,6 +274,9 @@ export default function ApmIntegrationInstancesPage() {
                 { value: 'archived', label: '已归档' },
               ]}
             />
+            <Typography.Text type="secondary" className="ml-auto text-xs tabular-nums">
+              已接入 {total} 个实例
+            </Typography.Text>
             <Radio.Group
               aria-label="接入上报时间范围"
               buttonStyle="solid"
@@ -290,12 +291,6 @@ export default function ApmIntegrationInstancesPage() {
                 <Radio.Button key={value} value={value}>{value === 'all' ? '全部' : value}</Radio.Button>
               ))}
             </Radio.Group>
-            <Typography.Text type="secondary" className="ml-auto text-xs tabular-nums">
-              已接入 {total} 个实例
-            </Typography.Text>
-            <Typography.Text type="secondary" className="basis-full text-xs">
-              {t('apm.instances.defaultActiveHelp', '默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。')}
-            </Typography.Text>
           </FilterToolbar>
           {state === 'ready' ? (
             <ApmDataTable
