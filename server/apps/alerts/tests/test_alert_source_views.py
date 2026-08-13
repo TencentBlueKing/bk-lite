@@ -4,6 +4,8 @@
 """
 
 import json
+import subprocess
+from pathlib import Path
 
 import pytest
 from rest_framework import status
@@ -207,6 +209,90 @@ def test_k8s_deploy_yaml_embeds_secret_hash_for_rolling_restart():
     assert f"bk-lite.tencent.com/secret-hash: {hash_b}" in yaml_b
     # 幂等：相同 secret 同 hash → apply 不会无谓滚动
     assert yaml_a == yaml_a2
+
+
+@pytest.fixture
+def k8s_image_export_paths(monkeypatch, tmp_path):
+    from apps.alerts.views import alert_source as alert_source_module
+
+    exported_paths = []
+
+    def fake_docker_save(command, **kwargs):
+        output_path = Path(command[3])
+        output_path.write_bytes(b"image-tar")
+        exported_paths.append(output_path)
+
+    monkeypatch.setattr(alert_source_module.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(alert_source_module.subprocess, "run", fake_docker_save)
+    return exported_paths
+
+
+@pytest.fixture
+def k8s_image_response(monkeypatch):
+    from django.http import response as django_response
+
+    from apps.core.utils.web_utils import WebUtils
+
+    monkeypatch.setattr(django_response.signals.request_finished, "send", lambda **kwargs: [])
+    return lambda: WebUtils.response_file(
+        AlertSourceModelViewSet._build_k8s_image_tar_file(),
+        "kubernetes-event-exporter.tar",
+    )
+
+
+def test_k8s_image_tar_is_removed_after_response_stream_finishes(k8s_image_export_paths, k8s_image_response):
+    response = k8s_image_response()
+    exported_path = k8s_image_export_paths[0]
+
+    assert b"".join(response.streaming_content) == b"image-tar"
+    assert exported_path.exists()
+
+    response.close()
+
+    assert not exported_path.exists()
+
+
+def test_k8s_image_tar_is_removed_when_response_closes_early(k8s_image_export_paths, k8s_image_response):
+    response = k8s_image_response()
+    exported_path = k8s_image_export_paths[0]
+
+    response.close()
+
+    assert not exported_path.exists()
+
+
+def test_k8s_image_tar_is_removed_when_docker_save_fails(monkeypatch, k8s_image_export_paths):
+    from apps.alerts.views import alert_source as alert_source_module
+
+    def failing_docker_save(command, **kwargs):
+        output_path = Path(command[3])
+        output_path.write_bytes(b"partial-image-tar")
+        k8s_image_export_paths.append(output_path)
+        raise subprocess.CalledProcessError(1, command, stderr="docker save failed")
+
+    monkeypatch.setattr(alert_source_module.subprocess, "run", failing_docker_save)
+
+    with pytest.raises(RuntimeError, match="docker save failed"):
+        AlertSourceModelViewSet._build_k8s_image_tar_file()
+
+    assert not k8s_image_export_paths[0].exists()
+
+
+def test_k8s_image_tar_is_removed_when_export_is_interrupted(monkeypatch, k8s_image_export_paths):
+    from apps.alerts.views import alert_source as alert_source_module
+
+    def interrupted_docker_save(command, **kwargs):
+        output_path = Path(command[3])
+        output_path.write_bytes(b"partial-image-tar")
+        k8s_image_export_paths.append(output_path)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(alert_source_module.subprocess, "run", interrupted_docker_save)
+
+    with pytest.raises(KeyboardInterrupt):
+        AlertSourceModelViewSet._build_k8s_image_tar_file()
+
+    assert not k8s_image_export_paths[0].exists()
 
 
 @pytest.mark.django_db
