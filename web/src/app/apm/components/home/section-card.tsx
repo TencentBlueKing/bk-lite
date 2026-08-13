@@ -33,12 +33,12 @@ export default function SectionCard({
 }: SectionCardProps) {
   return (
     <div
-      className={`flex h-full min-h-0 flex-col rounded-[6px] border border-[var(--color-border)] bg-[var(--color-bg)] px-6 py-5 ${className}`}
+      className={`flex h-full min-h-0 flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 ${className}`}
     >
       <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          {icon ? <span className="inline-flex shrink-0 text-[15px] leading-none">{icon}</span> : null}
-          <h3 className="m-0 truncate text-[15px] font-semibold leading-6 text-[var(--color-text-1)]">
+          {icon ? <span className="inline-flex shrink-0 text-base leading-none">{icon}</span> : null}
+          <h3 className="m-0 truncate text-sm font-semibold leading-5 text-[var(--color-text-1)]">
             {title}
           </h3>
           {subtitle ? (
@@ -48,7 +48,7 @@ export default function SectionCard({
         {viewAllHref ? (
           <Link
             href={viewAllHref}
-            className="shrink-0 text-[13px] text-[var(--color-primary)] hover:underline"
+            className="shrink-0 text-sm text-[var(--color-primary)] hover:underline"
           >
             {viewAllLabel}
           </Link>
@@ -78,7 +78,7 @@ export function SectionEmpty({
 }) {
   return (
     <div
-      className={`flex h-full min-h-[160px] items-center justify-center px-4 py-10 text-center text-[13px] leading-5 ${
+      className={`flex h-full min-h-[160px] items-center justify-center px-4 py-10 text-center text-sm leading-5 ${
         tone === 'success' ? 'text-[var(--color-success)]' : 'text-[var(--color-text-3)]'
       }`}
     >
@@ -97,22 +97,22 @@ export function StatusPill({
   const styles =
     tone === 'success'
       ? {
-          color: 'var(--color-success)',
-          background: 'color-mix(in srgb, var(--color-success) 12%, var(--color-bg))',
-        }
+        color: 'var(--color-success)',
+        background: 'color-mix(in srgb, var(--color-success) 12%, var(--color-bg))',
+      }
       : tone === 'danger'
         ? {
-            color: 'var(--color-fail)',
-            background: 'color-mix(in srgb, var(--color-fail) 12%, var(--color-bg))',
-          }
+          color: 'var(--color-fail)',
+          background: 'color-mix(in srgb, var(--color-fail) 12%, var(--color-bg))',
+        }
         : {
-            color: 'var(--theme-color-status-warning)',
-            background: 'color-mix(in srgb, var(--theme-color-status-warning) 12%, var(--color-bg))',
-          };
+          color: 'var(--theme-color-status-warning)',
+          background: 'color-mix(in srgb, var(--theme-color-status-warning) 12%, var(--color-bg))',
+        };
 
   return (
     <span
-      className="inline-block min-w-[50px] rounded px-2.5 py-0.5 text-center text-[11px] font-medium leading-[18px]"
+      className="inline-block min-w-[50px] rounded px-2.5 py-0.5 text-center text-xs font-medium leading-[18px]"
       style={styles}
     >
       {label}

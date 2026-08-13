@@ -98,12 +98,17 @@
 |---|---|---|---|
 | 资产列表 | 展示已接入资产列表及基础信息 | — | GA |
 | 资产生命周期 | 资产编辑、模板配置、删除 | — | GA |
+| 跨模块关联归并 | 接收节点管理、CMDB 的实例关联更新并回填关联 | 节点关联优先于 CMDB 关联；两类关联命中不同监控实例时返回冲突，不自动合并 | GA |
+| 节点自动监控 | 节点管理新建节点时创建关联的主机监控实例并尝试配置默认主机采集 | 仅节点来源的新增实例触发；配置失败不阻断实例创建 | GA |
+| CMDB 显式推送 | 将已授权的监控实例推送至 CMDB 并回填关联 | 仅操作权限范围内实例可发起；冲突或忽略结果不回填关联 | GA |
+| 关联解绑与退役 | 按来源处理关联解除和节点退役 | 节点退役停用并软删除监控实例；CMDB 解绑仅清除 CMDB 关联，不删除监控资产 | GA |
 | 上报状态查看 | 查看采集模板状态与最近上报状态 | — | GA |
 | 采集探测任务 | 发起接入前采集探测并轮询任务结果 | 创建接口返回 `task_id/status`；结果查询返回 `status/phase/result/error_message/started_at/finished_at`；仅创建人可查看结果；完成后不主动弹窗，由用户点击状态标签查看详情 | GA |
 | 视图跳转 | 按监控对象与实例参数统一拼装监控视图详情地址 | 默认跳转 `/monitor/view/detail`，可被专业版视图解析器覆盖 | GA |
 
-相关 PRD：[[spec/prd/监控系统/集成.md#4. 关键规则]]；相关架构：[[spec/ARD/modules/monitor.md#3. 接口【已实现/已存在】]]
+相关 PRD：[[legacy-prd-监控系统-集成.md#4. 关键规则]]；相关架构：[[legacy-ard-modules-monitor.md#3. 接口【已实现/已存在】]]
 > 证据来源：server/apps/monitor/views/collect_detect.py:33-86，server/apps/monitor/services/collect_detect.py:29-69，server/apps/monitor/support-files/plugins/Telegraf/snmp/access_topvision/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/access_icotera/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/switch_ipinfusion/policy.json:1-18，server/apps/monitor/support-files/plugins/Telegraf/snmp/transmission_ifotec/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/wireless_xirrus/policy.json:1-5　|　同步基线：a9d981aeb　|　【已实现】
+> 证据来源：server/apps/monitor/models/monitor_object.py:122-136，server/apps/monitor/services/module_ingest.py:53-163,531-619,750-898，server/apps/monitor/services/module_push.py:62-178,291-406，server/apps/monitor/views/monitor_instance.py:397-410　|　同步基线：d2769559　|　【已实现】
 
 ### 8. Integration - 分组管理
 
@@ -125,7 +130,10 @@
 
 ## 四、平台协同
 
-监控系统从 CMDB 获取资产上下文与责任人信息用于策略范围与告警归属；采集接入与上报通过节点管理提供的采集通道执行；通知渠道来源于系统管理统一配置（NATS 渠道不要求填写通知人，其余按渠道类型录入）；监控事件可作为标准化事件源向告警中心 `/alarm` 输送，由告警中心完成跨源聚合、分派与事故协同；指标时序数据存于 VictoriaMetrics。
+监控系统从 CMDB 获取资产上下文与责任人信息用于策略范围与告警归属，并可将监控实例显式推送回 CMDB；采集接入与上报通过节点管理提供的采集通道执行，节点新建与退役会相应创建或停用关联主机监控实例。通知渠道来源于系统管理统一配置（NATS 渠道不要求填写通知人，其余按渠道类型录入）；监控事件可作为标准化事件源向告警中心 `/alarm` 输送，由告警中心完成跨源聚合、分派与事故协同；指标时序数据存于 VictoriaMetrics。实例关联采用节点标识优先、CMDB 标识兜底的归并方式，冲突不会自动合并。
+
+相关架构：[[legacy-ard-modules-monitor.md#5.1 跨模块实例归并与生命周期【已实现】]]、[[legacy-ard-modules-cmdb.md#4. 依赖与通信【已实现/已存在】]]、[[legacy-ard-modules-node-mgmt.md#4. 通信机制【已实现/已存在】]]；相关产品能力：[[legacy-prd-监控系统-集成.md#3.2.1 资产协同]]。
+> 证据来源：server/apps/monitor/services/module_ingest.py:53-163,531-619，server/apps/monitor/services/module_push.py:62-178，server/apps/monitor/views/monitor_instance.py:397-410　|　同步基线：d2769559　|　【已实现】
 
 ## 五、支持的监控对象与指标范围
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import ipaddress
+from dataclasses import dataclass, field
 from typing import Any
 
 from apps.cmdb.constants.constants import CollectPluginTypes
@@ -86,17 +86,11 @@ class CollectTargetService:
 
     @staticmethod
     def _build_instance_target(task, instance: dict[str, Any]) -> CanonicalCollectTarget:
-        host = str(
-            instance.get("ip")
-            or instance.get("ip_addr")
-            or instance.get("inst_name")
-            or instance.get("name")
-            or ""
-        )
+        host = str(instance.get("ip") or instance.get("ip_addr") or instance.get("inst_name") or instance.get("name") or "")
         port = CollectTargetService._resolve_target_port(task, instance)
         endpoint = instance.get("endpoint")
         cloud_region_id = str(instance.get("cloud_id") or instance.get("cloud_region_id") or "") or None
-        instance_id = str(instance.get("_id") or instance.get("id") or "") or None
+        instance_id = str(instance.get("inst_uuid") or instance.get("instance_uuid") or instance.get("_id") or instance.get("id") or "") or None
         return CanonicalCollectTarget(
             task_id=task.id,
             task_type=task.task_type,

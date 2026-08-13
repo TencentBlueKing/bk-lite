@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import os
 import re
+import threading
 import uuid
 from typing import Any, Dict, Tuple
 
@@ -30,7 +31,7 @@ from apps.opspilot.services.chat_request import ChatRequest
 from apps.opspilot.services.history_service import history_service
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, load_wiki_budget_config
-from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace
+from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace, should_skip_wiki_retrieval
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
@@ -225,37 +226,64 @@ class ChatService:
                 raise RuntimeError("当前 Celery worker 使用 eventlet 池，不支持异步执行，请改用 --pool threads 或 solo")
 
             # 调用 agent 的 execute 方法（非流式同步执行）
-            # 在独立线程中创建全新事件循环来执行异步代码，避免与 ASGI 主事件循环交互导致死锁
+            # 在独立 daemon 线程中创建全新事件循环来执行异步代码，避免与 ASGI
+            # 主事件循环交互导致死锁；超时后调用方立即返回，后台线程结束时
+            # 仍会清理本线程 Django 连接（CONN_MAX_AGE=0 下避免 idle 驻留）。
+            from django.db import close_old_connections
+
+            timed_out_holder = {"value": False}
+            worker_result: Dict[str, Any] = {}
+            worker_done = threading.Event()
+
             def _run_in_new_loop():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
+                close_old_connections()
                 try:
                     return loop.run_until_complete(graph.execute(request))
                 finally:
-                    # 清理所有待处理的异步资源（如 httpx 连接池）
                     try:
-                        _cancel_all_tasks(loop)
-                        loop.run_until_complete(loop.shutdown_asyncgens())
-                        loop.run_until_complete(loop.shutdown_default_executor())
+                        if not loop.is_closed() and not timed_out_holder["value"]:
+                            _cancel_all_tasks(loop)
+                            loop.run_until_complete(loop.shutdown_asyncgens())
+                            loop.run_until_complete(loop.shutdown_default_executor())
+                        elif not loop.is_closed():
+                            # 超时路径：不 wait 默认 executor；旁路 ORM 连接由
+                            # run_with_db_cleanup / 工具包装负责。
+                            executor = getattr(loop, "_default_executor", None)
+                            if executor is not None:
+                                executor.shutdown(wait=False, cancel_futures=True)
+                                loop._default_executor = None
                     except Exception:
                         pass
-                    loop.close()
+                    try:
+                        if not loop.is_closed():
+                            loop.close()
+                    except Exception:
+                        pass
+                    close_old_connections()
+
+            def _worker():
+                try:
+                    worker_result["response"] = _run_in_new_loop()
+                except BaseException as exc:  # noqa: BLE001 — 原样传回调用方
+                    worker_result["error"] = exc
+                finally:
+                    worker_done.set()
 
             # 整轮 agent 执行预算（含多轮 LLM + 工具调用），独立于单次 LLM 调用超时
             _agent_timeout = _resolve_agent_execute_timeout()
-            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            timed_out = False
-            try:
-                future = pool.submit(_run_in_new_loop)
-                response = future.result(timeout=_agent_timeout)
-            except concurrent.futures.TimeoutError:
-                timed_out = True
-                # Python 无法强制终止已运行的线程；先尽力取消尚未启动的任务，
-                # 再让工作流立即收敛到失败，不能在 shutdown(wait=True) 中继续阻塞。
-                future.cancel()
-                raise
-            finally:
-                pool.shutdown(wait=not timed_out, cancel_futures=timed_out)
+            worker = threading.Thread(target=_worker, name="opspilot-invoke-chat", daemon=True)
+            worker.start()
+            if not worker_done.wait(timeout=_agent_timeout):
+                timed_out_holder["value"] = True
+                # Python 无法强制终止已运行的线程；调用方立即返回。
+                # daemon 线程在进程退出时不阻塞；若进程仍存活，线程结束时会
+                # 走 _run_in_new_loop.finally 清理本线程 DB 连接。
+                raise concurrent.futures.TimeoutError()
+            if "error" in worker_result:
+                raise worker_result["error"]
+            response = worker_result["response"]
 
             # 构建返回结果
             result = {
@@ -443,6 +471,9 @@ class ChatService:
                         "- 用户明确说了集群名 → 直接操作该集群\n"
                         "- 用户说 '所有工作负载/全部工作负载' 只是工作负载范围，不是全部集群范围；多集群时仍然必须先选择目标集群\n"
                         "【禁止】用户说'所有工作负载'时，不要调用 search_workload_across_namespaces，那是用于搜索特定名称的。\n"
+                        "【禁止】用户说全部/所有工作负载做配置检查时，调用 analyze_deployment_configurations 不得传 name，"
+                        "也不得擅自传用户未提及的 namespace（例如 kube-system）；应分析约定范围内全部 Deployment，"
+                        "确保 config_analysis_report 扫描对象数与范围一致。\n"
                         "【禁止】用户已经指定了工作负载名称时，不允许跳过搜索直接问用户选集群。必须先搜索。"
                     )
                     tool_params["extra_tools_prompt"] = tool_params.get("extra_tools_prompt", "") + k8s_prompt
@@ -471,9 +502,12 @@ class ChatService:
             attachment_override = (
                 "\n\n【附件生成强制规则 - 最高优先级，不可违反】\n"
                 "当前工作流已配置文件生成工具 generate_attachment_file。\n"
-                "* 如果任务目标涉及生成、创建、导出任何文件、报告或文档，"
-                "必须调用 generate_attachment_file 工具，绝对不允许将文件内容以纯文字直接输出。\n"
-                "* 工具调用成功后，仅输出简短摘要与工具返回的下载链接，不要重复输出完整内容。\n"
+                "* 如果任务目标涉及生成、创建、导出任何文件、报告、月报或文档，"
+                "必须调用 generate_attachment_file 工具把完整内容写入可下载文件"
+                "（如 .md），绝对不允许将文件全文以纯文字/Markdown 直接渲染在对话中。\n"
+                "* 工具调用成功后，仅输出简短摘要，不要重复输出完整内容。\n"
+                "* 不要在回复或附件正文中粘贴下载 URL、file:// 链接、/api/proxy 路径或「加密token」占位符；"
+                "下载入口由界面提供。\n"
                 "* 以上规则覆盖所有其他'直接输出'类指令。"
             )
             chat_kwargs["system_message_prompt"] = chat_kwargs.get("system_message_prompt", "") + attachment_override
@@ -505,10 +539,21 @@ class ChatService:
         # 处理 skill_params: 解密并替换 prompt 中的 {{key}} 占位符
         resolved_prompt = resolve_skill_params(kwargs["skill_prompt"], kwargs.get("skill_params", []))
 
-        # Wiki 知识库复用:若技能选择了 Wiki 知识库,则检索并把上下文注入系统提示词
+        # Wiki 知识库复用:若技能选择了 Wiki 知识库,则检索并把上下文注入系统提示词。
+        # 寒暄/闲聊跳过检索与 Wiki 答疑预算收口，按普通对话回复。
         wiki_budget_trace = {}
         wiki_kb_ids = kwargs.get("wiki_kb_ids")
-        if wiki_kb_ids:
+        wiki_active = bool(wiki_kb_ids) and not should_skip_wiki_retrieval(user_message)
+        if wiki_kb_ids and not wiki_active:
+            wiki_budget_trace = {
+                "overview_status": "skipped_chitchat",
+                "overview_scopes": [],
+                "overview_tokens": 0,
+                "llm_budget": {"used_calls": 0},
+            }
+            extra_config["wiki_budget"] = wiki_budget_trace
+            logger.info("Wiki 问答跳过(寒暄/闲聊): query=%r", str(user_message)[:32])
+        if wiki_active:
             resolved_prompt, wiki_citations, wiki_budget_trace = augment_prompt_with_trace(
                 resolved_prompt,
                 wiki_kb_ids,
@@ -539,7 +584,7 @@ class ChatService:
             "locale": kwargs.get("locale", "en"),
         }
 
-        if wiki_kb_ids:
+        if wiki_active:
             budget_config = load_wiki_budget_config()
             route_calls = int((wiki_budget_trace.get("llm_budget") or {}).get("used_calls") or 0)
             remaining_calls = budget_config.qa_max_llm_calls - route_calls

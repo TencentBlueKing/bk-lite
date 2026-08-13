@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from apps.system_mgmt.providers.adapters.wecom import (
+    WeComBaseConnectionAdapter,
     WeComIMNotificationAdapter,
     WeComLoginAuthAdapter,
     WeComUserSyncAdapter,
@@ -25,6 +26,22 @@ def response(payload):
     item.status_code = 200
     item.json.return_value = payload
     return item
+
+
+def test_base_connection_only_requests_access_token():
+    with patch(
+        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        return_value=response({"errcode": 0, "access_token": "token"}),
+    ) as get:
+        result = WeComBaseConnectionAdapter.test_connection(CONFIG, "wecom", "base")
+
+    assert result.success is True
+    assert result.summary == "WeCom base connection is ready"
+    get.assert_called_once_with(
+        CONFIG["access_token_url"],
+        params={"corpid": CONFIG["corp_id"], "corpsecret": CONFIG["corp_secret"]},
+        timeout=10,
+    )
 
 
 def test_user_sync_returns_normalized_departments_and_users():

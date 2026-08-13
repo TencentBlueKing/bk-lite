@@ -2,11 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { ApiOutlined, CodeOutlined, CopyOutlined, ExperimentOutlined, GlobalOutlined, RocketOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Drawer, Form, Input, message, Modal, Result, Segmented, Select, Space, Tag, Typography } from 'antd';
+import {
+  ApiOutlined,
+  CodeOutlined,
+  CoffeeOutlined,
+  CopyOutlined,
+  DeploymentUnitOutlined,
+  DotNetOutlined,
+  ExperimentOutlined,
+  JavaScriptOutlined,
+  KubernetesOutlined,
+  PythonOutlined,
+  RocketOutlined,
+} from '@ant-design/icons';
+import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tag, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
-import CatalogState from '@/app/apm/components/catalog-state';
+import CatalogState, { type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmApplication, ApmCloudRegion, ApmIngestSnippet, ApmIngestSnippetInput } from '@/app/apm/types';
 import { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -15,6 +27,7 @@ interface IntegrationMethod {
   key: string;
   title: string;
   description: string;
+  icon: ReactNode;
   badge?: string;
   language?: ApmIngestSnippetInput['language'];
   available: boolean;
@@ -22,21 +35,21 @@ interface IntegrationMethod {
 
 const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods: IntegrationMethod[] }[] = [
   {
-    key: 'sdk', title: 'SDK', icon: <CodeOutlined />, methods: [
-      { key: 'nodejs', title: 'Node.js', description: '零代码自动探针，支持 Express / Nest / Koa / Fastify', badge: '推荐', language: 'nodejs', available: true },
-      { key: 'java', title: 'Java', description: 'Java Agent 字节码注入，支持 Spring / Dubbo / gRPC', badge: '推荐', language: 'java', available: true },
-      { key: 'python', title: 'Python', description: '自动探针接入，支持 Django / Flask / FastAPI', language: 'python', available: true },
-      { key: 'dotnet', title: '.NET', description: '基于 OpenTelemetry .NET 自动探针', available: false },
-      { key: 'go', title: 'Go', description: '通过 OpenTelemetry Go SDK 完成应用内埋点', language: 'go', available: true },
+    key: 'sdk', title: 'SDK', icon: <CodeOutlined aria-hidden="true" />, methods: [
+      { key: 'nodejs', title: 'Node.js', description: '零代码自动探针，支持 Express / Nest / Koa / Fastify', icon: <JavaScriptOutlined aria-hidden="true" />, badge: '推荐', language: 'nodejs', available: true },
+      { key: 'java', title: 'Java', description: 'Java Agent 字节码注入，支持 Spring / Dubbo / gRPC', icon: <CoffeeOutlined aria-hidden="true" />, badge: '推荐', language: 'java', available: true },
+      { key: 'python', title: 'Python', description: '自动探针接入，支持 Django / Flask / FastAPI', icon: <PythonOutlined aria-hidden="true" />, language: 'python', available: true },
+      { key: 'dotnet', title: '.NET', description: '基于 OpenTelemetry .NET 自动探针', icon: <DotNetOutlined aria-hidden="true" />, available: false },
+      { key: 'go', title: 'Go', description: '手动初始化 OpenTelemetry Go SDK，生成完整 Provider 示例', icon: <CodeOutlined aria-hidden="true" />, badge: '手动 SDK', language: 'go', available: true },
     ],
   },
-  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined />, methods: [{ key: 'otel-collector', title: 'OTel Collector', description: '复用自建 Collector，将链路转发到平台 OTLP 端点', available: false }] },
-  { key: 'ebpf', title: 'eBPF', icon: <ExperimentOutlined />, methods: [{ key: 'ebpf-obi', title: 'eBPF 自动注入（OBI）', description: '无需修改业务代码，通过内核态捕获服务链路', badge: '低侵入', available: false }] },
-  { key: 'kubernetes', title: 'Kubernetes', icon: <GlobalOutlined />, methods: [{ key: 'otel-operator', title: 'Kubernetes 自动注入', description: '通过 OTel Operator 和 Pod 注解自动注入探针', available: false }] },
+  { key: 'otel', title: 'OpenTelemetry', icon: <ApiOutlined aria-hidden="true" />, methods: [{ key: 'otel-collector', title: 'OTel Collector', description: '复用自建 Collector，将链路转发到平台 OTLP 端点', icon: <DeploymentUnitOutlined aria-hidden="true" />, available: false }] },
+  { key: 'ebpf', title: 'eBPF', icon: <ExperimentOutlined aria-hidden="true" />, methods: [{ key: 'ebpf-obi', title: 'eBPF 自动注入（OBI）', description: '无需修改业务代码，通过内核态捕获服务链路', icon: <ExperimentOutlined aria-hidden="true" />, badge: '低侵入', available: false }] },
+  { key: 'kubernetes', title: 'Kubernetes', icon: <KubernetesOutlined aria-hidden="true" />, methods: [{ key: 'otel-operator', title: 'Kubernetes 自动注入', description: '通过 OTel Operator 和 Pod 注解自动注入探针', icon: <KubernetesOutlined aria-hidden="true" />, available: false }] },
 ];
 
 type PageState = 'loading' | 'empty' | 'ready' | 'error';
-type SnippetMode = 'agent' | 'docker';
+type SnippetMode = 'agent' | 'docker' | 'kubernetes';
 type SnippetForm = Omit<ApmIngestSnippetInput, 'language' | 'runtime'>;
 type CatalogSource = 'applications' | 'cloud-regions';
 
@@ -115,7 +128,6 @@ function requestErrorMessage(error: unknown) {
 export default function ApmIntegrationAddPage() {
   const { t } = useTranslation();
   const [messageApi, messageContextHolder] = message.useMessage();
-  const [modalApi, modalContextHolder] = Modal.useModal();
   const { getApplications, getCloudRegions, getIngestSnippet, isLoading } = useApmApi();
   const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [cloudRegions, setCloudRegions] = useState<ApmCloudRegion[]>([]);
@@ -175,12 +187,13 @@ export default function ApmIntegrationAddPage() {
     value: region.id,
     label: region.name,
   })), [cloudRegions]);
+  const isGo = selectedMethod?.language === 'go';
+  const generatedSnippetLabel = mode === 'kubernetes'
+    ? 'Kubernetes 配置片段'
+    : isGo ? 'Go SDK 接入指南' : 'Shell 接入片段';
 
   const openMethod = (method: IntegrationMethod) => {
-    if (!method.available || !method.language) {
-      modalApi.info({ title: `${method.title} 接入`, content: '当前 MVP 尚未开放此接入方式。', okText: '知道了' });
-      return;
-    }
+    if (!method.available || !method.language) return;
     setSelectedMethod(method);
     setMode('agent');
     setSnippet(null);
@@ -204,7 +217,7 @@ export default function ApmIntegrationAddPage() {
       const result = await getIngestSnippet({
         ...values,
         language: selectedMethod.language,
-        runtime: mode === 'docker' ? 'docker' : 'host',
+        runtime: mode === 'agent' ? 'host' : mode,
       });
       setSnippet(result);
       messageApi.success('临时接入配置已生成');
@@ -219,24 +232,30 @@ export default function ApmIntegrationAddPage() {
   return (
     <ApmRouteShell title="添加接入" description="选择语言与应用，即时生成可复制的 OpenTelemetry 接入配置。">
       {messageContextHolder}
-      {modalContextHolder}
       {state === 'loading' ? (
         <ApmSurface><CatalogState kind="loading" /></ApmSurface>
       ) : state === 'error' && catalogError ? (
         <ApmSurface>
-          <div role="alert">
-            <Result
-              status={catalogError.status}
-              title={catalogError.title}
-              subTitle={catalogError.description}
-              extra={<Button type="primary" onClick={() => void loadCatalog()}>重新加载</Button>}
-            />
-          </div>
+          <CatalogState
+            kind={(catalogError.status === '403'
+              ? 'forbidden'
+              : catalogError.status === 'warning' ? 'degraded' : 'error') satisfies CatalogStateKind}
+            title={catalogError.title}
+            description={catalogError.description}
+            onRetry={catalogError.status === '403' ? undefined : () => void loadCatalog()}
+          />
         </ApmSurface>
       ) : state === 'empty' ? (
         <ApmSurface>
-          <CatalogState kind="empty" description={emptyDescription} />
-          {applications.length === 0 ? <div className="mt-3 text-center"><Link href="/apm/integration/applications"><Button type="primary">前往应用管理</Button></Link></div> : null}
+          <CatalogState
+            kind="empty"
+            description={emptyDescription}
+            action={applications.length === 0 ? (
+              <Link href="/apm/integration/applications"><Button type="primary">前往应用管理</Button></Link>
+            ) : (
+              <Button type="primary" onClick={() => void loadCatalog()}>重新加载</Button>
+            )}
+          />
         </ApmSurface>
       ) : (
         <div className="flex flex-col gap-4">
@@ -245,26 +264,33 @@ export default function ApmIntegrationAddPage() {
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--color-text-1)]"><span className="text-[var(--color-primary)]">{group.icon}</span>{group.title}</div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {group.methods.map((method) => (
-                  <Card
+                  <button
                     key={method.key}
-                    hoverable
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${method.title} 接入${method.available ? '' : '，规划中'}`}
-                    className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+                    aria-label={`${method.title} 接入${method.available ? '' : '，尚未开放'}`}
+                    className="min-h-32 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 text-left transition-colors duration-150 enabled:cursor-pointer enabled:hover:border-[var(--color-primary)] enabled:hover:bg-[var(--color-fill-1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!method.available}
+                    title={method.available ? `选择 ${method.title} 接入` : `${method.title} 接入尚未开放`}
+                    type="button"
                     onClick={() => openMethod(method)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        openMethod(method);
-                      }
-                    }}
                   >
                     <div className="flex min-h-24 items-start justify-between gap-3">
-                      <div><Typography.Title level={5} className="!mb-2">{method.title}</Typography.Title><Typography.Text type="secondary" className="text-xs leading-5">{method.description}</Typography.Text></div>
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--color-primary-bg-active)] text-base text-[var(--color-primary)]">
+                          {method.icon}
+                        </span>
+                        <div className="min-w-0">
+                          <Typography.Title level={5} className="!mb-2 !text-sm">{method.title}</Typography.Title>
+                          <Typography.Text type="secondary" className="text-xs leading-5">{method.description}</Typography.Text>
+                          {!method.available ? (
+                            <Typography.Text type="secondary" className="!mt-2 !block !text-xs">
+                              当前 MVP 尚未开放此接入方式。
+                            </Typography.Text>
+                          ) : null}
+                        </div>
+                      </div>
                       <Space direction="vertical" align="end" size={4}>{method.badge ? <Tag color="blue">{method.badge}</Tag> : null}{!method.available ? <Tag>规划中</Tag> : null}</Space>
                     </div>
-                  </Card>
+                  </button>
                 ))}
               </div>
             </ApmSurface>
@@ -283,7 +309,7 @@ export default function ApmIntegrationAddPage() {
       >
         <div className="flex flex-col gap-4 pt-2">
           <ApmSurface>
-            <div className="mb-1 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-white">1</span><Typography.Text strong>接入配置</Typography.Text></div>
+            <div className="mb-1 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">1</span><Typography.Text strong>接入配置</Typography.Text></div>
             <Typography.Text type="secondary" className="mb-4 block text-xs">应用 ID、服务名称和版本将映射到标准 OpenTelemetry 资源属性；平台根据所选云区域分配上报端点。</Typography.Text>
             <Form<SnippetForm>
               key={selectedMethod?.key ?? 'integration-form'}
@@ -306,11 +332,20 @@ export default function ApmIntegrationAddPage() {
                 <Form.Item name="environment" label="部署环境" rules={[{ required: true, whitespace: true, message: '请输入部署环境' }, { max: 256 }]}><Input placeholder="deployment.environment，例如 production" /></Form.Item>
               </div>
               <Form.Item label="运行方式" className="!mb-4">
-                <Segmented aria-label="运行方式" value={mode} onChange={(value) => { setMode(value as SnippetMode); setSnippet(null); setGenerationError(null); }} options={[{ label: `${selectedMethod?.title ?? ''} 自动探针`, value: 'agent' }, { label: 'Docker 运行（-e 注入）', value: 'docker' }]} />
+                <Segmented
+                  aria-label="运行方式"
+                  value={mode}
+                  onChange={(value) => { setMode(value as SnippetMode); setSnippet(null); setGenerationError(null); }}
+                  options={[
+                    { label: isGo ? 'Go 手动 SDK' : `${selectedMethod?.title ?? ''} 自动探针`, value: 'agent' },
+                    { label: 'Docker 运行（-e 注入）', value: 'docker' },
+                    { label: 'Kubernetes Pod（Downward API）', value: 'kubernetes' },
+                  ]}
+                />
               </Form.Item>
               {generationError ? <Alert className="mb-4" showIcon type="error" message="配置生成失败" description={generationError} /> : null}
               <div className="flex justify-end">
-                <Button htmlType="submit" type="primary" icon={<RocketOutlined />} loading={generating}>生成临时配置</Button>
+                <Button htmlType="submit" type="primary" icon={<RocketOutlined aria-hidden="true" />} loading={generating}>生成临时配置</Button>
               </div>
             </Form>
           </ApmSurface>
@@ -319,7 +354,7 @@ export default function ApmIntegrationAddPage() {
             <ApmSurface>
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-white">2</span><Typography.Text strong>生成结果</Typography.Text></div>
+                  <div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">2</span><Typography.Text strong>生成结果</Typography.Text></div>
                   <Typography.Text type="secondary" className="mt-1 block text-xs">{snippet.cloud_region.name} · 仅在本窗口保留</Typography.Text>
                 </div>
               </div>
@@ -342,21 +377,21 @@ export default function ApmIntegrationAddPage() {
               <div className="mt-4 border-t border-[var(--color-border)] pt-4">
                 <div role="group" aria-labelledby="apm-shell-snippet-title" className="mb-2 flex items-center justify-between gap-3">
                   <div>
-                    <Typography.Text id="apm-shell-snippet-title" strong>Shell 接入片段</Typography.Text>
+                    <Typography.Text id="apm-shell-snippet-title" strong>{generatedSnippetLabel}</Typography.Text>
                     <Typography.Text type="secondary" className="mt-1 block text-xs">
                       {t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
                     </Typography.Text>
                   </div>
                   <Button
-                    aria-label={t('apm.integration.copyShellSnippet', '复制 Shell 接入片段')}
+                    aria-label={isGo && mode !== 'kubernetes' ? '复制 Go SDK 接入指南' : mode === 'kubernetes' ? '复制 Kubernetes 配置片段' : t('apm.integration.copyShellSnippet', '复制 Shell 接入片段')}
                     icon={<CopyOutlined aria-hidden />}
                     onClick={() => void copyWithFeedback(
                       snippet.code,
-                      t('apm.integration.copyShellSnippetSuccess', 'Shell 接入片段已复制')
+                      `${generatedSnippetLabel}已复制`
                     )}
                   >复制片段</Button>
                 </div>
-                <pre className="max-h-[420px] overflow-auto rounded-lg bg-[#0f172a] p-4 text-xs leading-6 text-slate-100"><code>{snippet.code}</code></pre>
+                <pre className="max-h-[420px] overflow-auto rounded-lg border border-[var(--color-code-block-border)] bg-[var(--color-code-block-bg)] p-4 font-mono text-sm leading-6 text-[var(--color-code-block-text)]"><code>{snippet.code}</code></pre>
               </div>
             </ApmSurface>
           ) : null}

@@ -19,6 +19,7 @@ import {
 } from '@/features/assets/model';
 import { getAssetFieldGroups, getAssetInstance, getAssetModel, getFollowedConfig, updateFollowedConfig } from '@/features/assets/adapter';
 import { resolveAssetModelIconUrl } from '@/features/assets/model-icon';
+import AssetStructuredField from '@/features/assets/asset-structured-field';
 import { useAuth } from '@/context/auth';
 import { formatAccountDateTime } from '@/platform/preferences/dateTime';
 import { invalidateMobileViewSnapshot, readMobileViewSnapshot, writeMobileViewSnapshot } from '@/navigation/mobile-view-cache';
@@ -232,21 +233,32 @@ function AssetDetailContent() {
               </button>
               {open && (
                 <div className={styles.fieldGrid}>
-                  {group.fields.map((field) => (
-                    <Fragment key={field.id}>
-                      <span className={styles.fieldLabel}>{field.name}</span>
-                      <span className={styles.fieldValue}>
-                        {assetValueText(
-                          field,
-                          asset.values[field.id],
-                          t('assets.yes'),
-                          t('assets.no'),
-                          time,
-                          asset.values[`${field.id}_display`],
-                        )}
-                      </span>
-                    </Fragment>
-                  ))}
+                  {group.fields.map((field) => {
+                    const structured = field.type === 'table' || field.type === 'attachment' || field.type === 'image';
+                    if (structured) {
+                      return (
+                        <div className={styles.structuredField} key={field.id}>
+                          <span className={styles.structuredFieldLabel}>{field.name}</span>
+                          <AssetStructuredField field={field} value={asset.values[field.id]} />
+                        </div>
+                      );
+                    }
+                    return (
+                      <Fragment key={field.id}>
+                        <span className={styles.fieldLabel}>{field.name}</span>
+                        <span className={styles.fieldValue}>
+                          {assetValueText(
+                            field,
+                            asset.values[field.id],
+                            t('assets.yes'),
+                            t('assets.no'),
+                            time,
+                            asset.values[`${field.id}_display`],
+                          )}
+                        </span>
+                      </Fragment>
+                    );
+                  })}
                 </div>
               )}
             </section>

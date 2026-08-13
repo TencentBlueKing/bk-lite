@@ -37,11 +37,12 @@
   /*
    * Mobile 字号阶梯：业务 CSS 只引用这些语义变量，不要写死 px。
    * 以后整体放大/缩小，只改这里即可；底部一级导航用 tab-nav，与内容阶梯解耦。
-   * title 18 / subtitle 16 / body 15 / secondary 13 / caption 12 / tab-nav 11
+   * title 18 / subtitle 16 / body 15 / compact-title 14 / secondary 13 / caption 12 / tab-nav 11
    */
   --font-size-title: 18px;
   --font-size-subtitle: 16px;
   --font-size-body: 15px;
+  --font-size-compact-title: 14px;
   --font-size-secondary: 13px;
   --font-size-caption: 12px;
   --font-size-tab-nav: 11px;
@@ -140,6 +141,7 @@
   --font-size-title: 18px;
   --font-size-subtitle: 16px;
   --font-size-body: 15px;
+  --font-size-compact-title: 14px;
   --font-size-secondary: 13px;
   --font-size-caption: 12px;
   --font-size-tab-nav: 11px;

@@ -78,6 +78,7 @@ const FormTimeSelector: React.FC<{
     <div className="w-full">
       {disabled ? (
         <Input
+          size="small"
           disabled
           value={Array.isArray(value) ? value.join(" - ") : String(value ?? "")}
         />
@@ -285,6 +286,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         width: 120,
         render: (_: any, record: ParamItem) => (
           <Input
+            size="small"
             disabled={readOnly}
             value={record.name}
             placeholder={t("dataSource.name")}
@@ -306,6 +308,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         width: 120,
         render: (_: any, record: ParamItem) => (
           <Input
+            size="small"
             disabled={readOnly}
             value={record.alias_name || ""}
             placeholder={t("dataSource.aliasName")}
@@ -322,6 +325,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         width: 110,
         render: (_: any, record: ParamItem) => (
           <Select
+            size="small"
             disabled={readOnly}
             value={record.type || "string"}
             options={paramTypeOptions}
@@ -345,6 +349,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
             );
           return (
             <Select
+              size="small"
               disabled={readOnly}
               value={record.filterType || "fixed"}
               options={availableFilterTypeOptions}
@@ -379,6 +384,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           if (type === "date") {
             return (
               <DatePicker
+                size="small"
                 disabled={readOnly}
                 showTime
                 value={text ? dayjs(text) : undefined}
@@ -430,6 +436,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           if (type === "number") {
             return (
               <Input
+                size="small"
                 disabled={readOnly}
                 type="number"
                 value={text ?? ""}
@@ -447,6 +454,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           }
           return (
             <Input
+              size="small"
               disabled={readOnly}
               value={text}
               placeholder={
@@ -505,41 +513,24 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
 
     return (
       <div style={{ margin: 0 }}>
-        <div
-          style={{
-            marginBottom: "8px",
-            color: "var(--color-text-1)",
-            fontSize: "14px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
+        <CustomTable
+          rowKey="id"
+          size="small"
+          columns={columns}
+          dataSource={params}
+          pagination={false}
+          bordered
+          locale={{
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={t("common.noData")}
+                className="!my-0 py-1"
+                styles={{ image: { height: 36 } }}
+              />
+            ),
           }}
-        >
-          <span>{t("dataSource.params")}：</span>
-          {readOnly ? null : (
-            <Button
-              type="dashed"
-              size="small"
-              icon={<PlusCircleOutlined />}
-              onClick={() => onChange([...params, createDefaultParam()])}
-            >
-              {t("dataSource.addParam")}
-            </Button>
-          )}
-        </div>
-        {params.length > 0 ? (
-          <CustomTable
-            rowKey="id"
-            columns={columns}
-            dataSource={params}
-            pagination={false}
-          />
-        ) : (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={t("common.noData")}
-          />
-        )}
+        />
         {duplicateNames.length > 0 && (
           <div
             style={{

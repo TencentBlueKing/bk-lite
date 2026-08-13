@@ -83,6 +83,10 @@
       "@/app/opspilot/(enterprise)/*": [
         "./src/app/opspilot/(enterprise)/*",
         "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/patch-manager/(enterprise)/*": [
+        "./src/app/patch-manager/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
       ]
     }
   },

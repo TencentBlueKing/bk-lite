@@ -13,6 +13,7 @@ from asgiref.sync import sync_to_async
 from django.http import StreamingHttpResponse
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.common.llm_error_diagnostics import classify_llm_error, format_llm_failure_log, summarize_llm_endpoint
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.chat_service import chat_service
@@ -499,7 +500,14 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
                 if output_line:
                     yield output_line
         except Exception as stream_err:
-            logger.error(f"[AGUI Chat] graph.agui_stream 异常: {stream_err}")
+            classification = classify_llm_error(stream_err)
+            logger.error(
+                format_llm_failure_log(
+                    stage="agui_chat.graph_stream",
+                    classification=classification,
+                    endpoint=summarize_llm_endpoint(request),
+                )
+            )
             raise
 
         final_stats["content"] = accumulated_content
@@ -529,8 +537,25 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
             }
         )
     except Exception as e:
-        logger.error(f"[AGUI Chat] async stream error: {e}", exc_info=True)
-        error_data = {"type": "ERROR", "error": f"聊天错误: {str(e)}", "timestamp": int(time.time() * 1000)}
+        classification = classify_llm_error(e)
+        endpoint = summarize_llm_endpoint(
+            model=str((kwargs or {}).get("model") or (params or {}).get("model") or ""),
+            api_base=str((kwargs or {}).get("openai_api_base") or (params or {}).get("openai_api_base") or ""),
+        )
+        logger.error(
+            format_llm_failure_log(
+                stage="agui_chat",
+                classification=classification,
+                endpoint=endpoint,
+            ),
+            exc_info=True,
+        )
+        error_data = {
+            "type": "ERROR",
+            "error": f"{classification['user_message']}: {classification['detail']}"[:1000],
+            "error_code": classification["code"],
+            "timestamp": int(time.time() * 1000),
+        }
         yield _build_sse_line(error_data)
 
 
@@ -638,6 +663,8 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     skill_type = params.get("skill_type")
     params.pop("group", 0)
     params["execution_id"] = params.get("execution_id") or params.get("thread_id") or str(int(time.time() * 1000))
+    # 技能测试入口无 workflow node_id；显式标记便于 HITL submit_choice 归属放行
+    params["node_id"] = params.get("node_id") or "skill_test"
 
     # 用于存储最终统计信息的共享变量
     final_stats = {

@@ -4,8 +4,9 @@ from apps.node_mgmt.constants.node import NodeConstants
 class ControllerConstants:
     """控制器相关常量"""
 
-    # Windows 安装路径
+    LINUX_INSTALL_DIR = "/opt/fusion-collectors"
     WINDOWS_INSTALL_DIR = "C:\\fusion-collectors"
+    SIDECAR_CONFIG_FILENAME = "sidecar.yml"
 
     CONTROLLER = [
         {
@@ -133,10 +134,9 @@ class ControllerConstants:
         INSTALLED: "安装成功",
     }
 
-    # Sidecar 配置文件路径
     SIDECAR_CONFIG_PATH = {
-        NodeConstants.LINUX_OS: "/etc/sidecar/sidecar.yaml",
-        NodeConstants.WINDOWS_OS: r"C:\fusion-collectors\sidecar.yaml",
+        NodeConstants.LINUX_OS: f"{LINUX_INSTALL_DIR}/{SIDECAR_CONFIG_FILENAME}",
+        NodeConstants.WINDOWS_OS: rf"{WINDOWS_INSTALL_DIR}\{SIDECAR_CONFIG_FILENAME}",
     }
 
     # Sidecar 服务重启命令

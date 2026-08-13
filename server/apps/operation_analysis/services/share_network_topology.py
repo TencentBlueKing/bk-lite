@@ -7,6 +7,7 @@ Phase B-1：仅 metric_values / link_runtime。
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
@@ -26,7 +27,7 @@ _FORBIDDEN_BODY_KEYS = frozenset(
 _NODE_REF_KEYS = frozenset(
     {
         "bk_obj_id",
-        "bk_inst_id",
+        "bk_inst_uuid",
         "network_collect_task_id",
         "network_collect_instance_id",
         "plugin_group_id",
@@ -61,10 +62,17 @@ def _as_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _as_uuid(value: Any) -> str:
+    try:
+        return str(UUID(str(value)))
+    except (TypeError, ValueError, AttributeError):
+        return ""
+
+
 def _normalize_node_ref(ref: dict[str, Any]) -> tuple:
     return (
         str(ref.get("bk_obj_id") or ""),
-        _as_int(ref.get("bk_inst_id")),
+        _as_uuid(ref.get("bk_inst_uuid")),
         _as_int(ref.get("network_collect_task_id")),
         _as_int(ref.get("network_collect_instance_id")),
         _as_int(ref.get("plugin_group_id")),
@@ -94,14 +102,14 @@ def _find_node_by_ref(view_sets: Any, node_ref: dict[str, Any]) -> dict[str, Any
         # 前端 node_ref 可能省略 plugin_group_id；再按核心字段兜底匹配。
         loose = (
             str(node.get("bk_obj_id") or ""),
-            _as_int(node.get("bk_inst_id")),
+            _as_uuid(node.get("bk_inst_uuid")),
             _as_int(node.get("network_collect_task_id")),
             _as_int(node.get("network_collect_instance_id")),
             str(node.get("plugin_template_id") or "0"),
         )
         request_loose = (
             str(node_ref.get("bk_obj_id") or ""),
-            _as_int(node_ref.get("bk_inst_id")),
+            _as_uuid(node_ref.get("bk_inst_uuid")),
             _as_int(node_ref.get("network_collect_task_id")),
             _as_int(node_ref.get("network_collect_instance_id")),
             str(node_ref.get("plugin_template_id") or "0"),
@@ -130,9 +138,7 @@ def _find_stored_metric(node: dict[str, Any], metric_ref: dict[str, Any]) -> dic
 def _stored_metric_query_semantics(metric: dict[str, Any]) -> dict[str, Any]:
     """与 NetworkTopologyRuntimeService._build_metric_requests 对齐：只用画布已存配置。"""
     dimensions = metric.get("dimensions") if isinstance(metric.get("dimensions"), dict) else {}
-    condition_filter = (
-        metric.get("condition_filter") if isinstance(metric.get("condition_filter"), list) else []
-    )
+    condition_filter = metric.get("condition_filter") if isinstance(metric.get("condition_filter"), list) else []
     raw_mode = metric.get("display_mode")
     if raw_mode in ("aggregate", "dimension"):
         display_mode = raw_mode
@@ -154,8 +160,8 @@ def _validate_node_ref_shape(node_ref: Any) -> dict[str, Any]:
     unknown = set(node_ref.keys()) - _NODE_REF_KEYS
     if unknown:
         raise ValidationError({"node_ref": [f"包含未声明字段: {', '.join(sorted(unknown))}"]})
-    if "bk_obj_id" not in node_ref or "bk_inst_id" not in node_ref:
-        raise ValidationError({"node_ref": ["缺少 bk_obj_id / bk_inst_id"]})
+    if "bk_obj_id" not in node_ref or "bk_inst_uuid" not in node_ref:
+        raise ValidationError({"node_ref": ["缺少 bk_obj_id / bk_inst_uuid"]})
     return node_ref
 
 
@@ -220,9 +226,9 @@ def _port_pairs_fingerprint(link: dict[str, Any]) -> list[tuple]:
         target = pair.get("target_interface") or {}
         fingerprints.append(
             (
-                _as_int(source.get("bk_inst_id")),
+                _as_uuid(source.get("bk_inst_uuid")),
                 str(source.get("interface_name") or ""),
-                _as_int(target.get("bk_inst_id")),
+                _as_uuid(target.get("bk_inst_uuid")),
                 str(target.get("interface_name") or ""),
             )
         )
@@ -249,9 +255,7 @@ def validate_share_link_runtime(
     if stored is None:
         raise ShareNetworkTopologyRuntimeDenied("link 不属于当前分享画布")
 
-    if link_payload.get("source_node_id") != stored.get("source_node_id") or link_payload.get(
-        "target_node_id"
-    ) != stored.get("target_node_id"):
+    if link_payload.get("source_node_id") != stored.get("source_node_id") or link_payload.get("target_node_id") != stored.get("target_node_id"):
         raise ShareNetworkTopologyRuntimeDenied("link 端点与分享画布不一致")
 
     if _port_pairs_fingerprint(link_payload) != _port_pairs_fingerprint(stored):
@@ -273,9 +277,7 @@ def validate_share_link_runtime(
             if node_id not in endpoint_ids:
                 raise ShareNetworkTopologyRuntimeDenied("nodes 超出当前 link 端点")
             stored_node = nodes_by_id[node_id]
-            if _normalize_node_ref(_node_ref_from_view_set(node)) != _normalize_node_ref(
-                _node_ref_from_view_set(stored_node)
-            ):
+            if _normalize_node_ref(_node_ref_from_view_set(node)) != _normalize_node_ref(_node_ref_from_view_set(stored_node)):
                 raise ShareNetworkTopologyRuntimeDenied("node_ref 与分享画布不一致")
 
     canonical_nodes = [nodes_by_id[node_id] for node_id in endpoint_ids if node_id in nodes_by_id]

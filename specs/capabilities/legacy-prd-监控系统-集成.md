@@ -27,7 +27,7 @@
 - 内置网络设备模板持续扩展，可直接接入新增的接入网、交换机、传输与无线设备品牌模板，并复用既有 SNMP 配置流程；本轮新增 Topvision、Icotera、IP Infusion、Ifotec、Xirrus 五组模板，其中 IP Infusion 额外预置电源温度告警模板。
 - 社区版不渲染 WebLogic/JBoss/Jetty/TongWeb 等企业版 EE 中间件卡片；如需相应能力，由企业版通过 `useEnterpriseConfig` 覆盖提供。
 
-相关架构：[[spec/ARD/modules/monitor.md#3. 接口【已实现/已存在】]]；对应功能清单：[[spec/fuctionlist/02-监控系统-功能清单.md#7. Integration - 资产管理]]
+相关架构：[[legacy-ard-modules-monitor.md#3. 接口【已实现/已存在】]]；对应功能清单：[[legacy-fuctionlist-02-监控系统-功能清单.md#7. Integration - 资产管理]]
 > 证据来源：server/apps/monitor/support-files/plugins/Telegraf/snmp/access_topvision/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/access_icotera/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/switch_ipinfusion/policy.json:1-18，server/apps/monitor/support-files/plugins/Telegraf/snmp/transmission_ifotec/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/wireless_xirrus/policy.json:1-5　|　同步基线：a9d981aeb　|　【已实现】
 
 ### 3.2 资产
@@ -37,6 +37,15 @@
 - 支持删除实例并同步清理其子配置与分组规则，删除主机等远程监控对象时一并刷新其复用关系。
 - 支持实例可达性检验。
 - 支持根据资产与监控对象拼装实例监控视图跳转参数，统一跳转到监控视图详情。
+
+#### 3.2.1 资产协同
+
+- 支持节点管理、CMDB 与监控实例之间的双向关联同步：已有监控实例按节点或 CMDB 关联信息更新；两类关联信息分别指向不同实例时保留现状并返回冲突，不自动合并。
+- 节点管理新建的节点可自动建立主机监控实例并尝试完成默认主机采集配置；监控侧新建主机实例时，会尽力建立到节点管理和 CMDB 的关联，任一关联失败不阻断实例创建。用户可对已有监控实例发起显式推送到 CMDB。
+- 节点退役会使关联监控实例停止并进入软删除状态；CMDB 解绑或其他来源解绑仅解除相应关联，不删除监控资产。来自 CMDB 的自动创建监控实例能力当前未启用，未命中已有实例时不会据此创建监控资产。
+
+相关架构：[[legacy-ard-modules-monitor.md#5.1 跨模块实例归并与生命周期【已实现】]]、[[legacy-ard-modules-cmdb.md#4. 依赖与通信【已实现/已存在】]]、[[legacy-ard-modules-node-mgmt.md#4. 通信机制【已实现/已存在】]]；对应功能清单：[[legacy-fuctionlist-02-监控系统-功能清单.md#7. Integration - 资产管理]]。
+> 证据来源：server/apps/monitor/services/module_ingest.py:53-163,531-619,750-898，server/apps/monitor/services/module_push.py:62-178,291-406，server/apps/monitor/views/monitor_instance.py:397-410　|　同步基线：d2769559　|　【已实现】
 
 ### 3.5 流量监控接入
 
@@ -86,7 +95,7 @@
 - 配置模板以模板渲染方式生成实际采集配置；敏感凭据以加密环境变量注入而非写入明文模板。
 - 流量监控复用 Telegraf 监听采集，按云区域下发资产映射环境变量，并以协议默认端口（NetFlow 2055、sFlow 6343）拼接监听接入地址。
 
-相关架构：[[spec/ARD/modules/monitor.md#3. 接口【已实现/已存在】]]；对应功能清单：[[spec/fuctionlist/02-监控系统-功能清单.md#7. Integration - 资产管理]]
+相关架构：[[legacy-ard-modules-monitor.md#3. 接口【已实现/已存在】]]；对应功能清单：[[legacy-fuctionlist-02-监控系统-功能清单.md#7. Integration - 资产管理]]
 > 证据来源：server/apps/monitor/views/collect_detect.py:15-86，server/apps/monitor/services/collect_detect.py:29-69　|　同步基线：83091efe　|　【已实现】
 
 ## 6. 验收标准

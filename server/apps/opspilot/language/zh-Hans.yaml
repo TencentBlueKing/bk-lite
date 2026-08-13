@@ -273,7 +273,7 @@ tools:
          - rollback_deployment: 回滚部署
     tools:
       analyze_deployment_configurations:
-        description: 分析 Deployment 配置的合理性，检查每个 Deployment 的资源配置、探针设置、副本策略等，评估配置是否合理并识别潜在问题。
+        description: 分析 Deployment 配置的合理性，检查每个 Deployment 的资源配置、探针设置、副本策略等，评估配置是否合理并识别潜在问题。用户要求全部/所有工作负载时不要传 name，也不要擅自传未提及的 namespace；name 仅在用户明确点名某个 Deployment 时使用。
       analyze_pod_restart_pattern:
         description: 深度分析Pod重启模式，定位根本原因。分析容器退出码含义、识别CrashLoopBackOff重启模式、关联最近事件，提供针对性修复建议。
       batch_restart_pods:

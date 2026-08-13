@@ -620,7 +620,8 @@ class AuthViewSet(MaintainerViewSet):
                     delete_team = [i for i in instance_org_value if i not in org_values]
                     if not skip_rule_cleanup:
                         self.delete_rules(instance.id, delete_team)
-                return super().update(request, *args, **kwargs)
+                # 必须回传 partial，否则 PATCH 会被当成全量更新，必填字段误报
+                return super().update(request, *args, partial=partial, **kwargs)
 
             if not update_access_prechecked:
                 access_error = self._validate_update_access(request, instance, data)

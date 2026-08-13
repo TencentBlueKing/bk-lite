@@ -8,9 +8,9 @@ import tarfile
 from pathlib import Path
 
 import pytest
+import yaml
 from cryptography import x509
 from cryptography.x509.oid import ExtensionOID
-
 
 PROXY_SCRIPT = Path(__file__).resolve().parents[1] / "proxy.sh"
 
@@ -58,6 +58,8 @@ def _generate_proxy_archive(proxy_address, certificate_authority):
         "proxy_ip": proxy_address,
         "nats_monitor_username": "monitor",
         "nats_monitor_password": "monitor-password",
+        "apm_nats_username": "apm_region_2",
+        "apm_nats_password": "apm-password",
         "traefik_web_port": "443",
     }
     env = os.environ | {
@@ -93,21 +95,41 @@ def test_proxy_certificate_contains_typed_san_and_valid_nats_route(
     certificate_authority,
 ):
     with _generate_proxy_archive(proxy_address, certificate_authority) as archive:
-        certificate = x509.load_pem_x509_certificate(
-            archive.extractfile("./conf/certs/proxy.crt").read()
-        )
-        san = certificate.extensions.get_extension_for_oid(
-            ExtensionOID.SUBJECT_ALTERNATIVE_NAME
-        ).value
-        nats_config = archive.extractfile(
-            "./conf/nats/nats.conf"
-        ).read().decode()
+        certificate = x509.load_pem_x509_certificate(archive.extractfile("./conf/certs/proxy.crt").read())
+        san = certificate.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value
+        nats_config = archive.extractfile("./conf/nats/nats.conf").read().decode()
+        compose_config = archive.extractfile("./docker-compose.yaml").read().decode()
+        generated_env = archive.extractfile("./.env").read().decode()
+        regional_config = archive.extractfile("./conf/apm/regional.yaml").read().decode()
 
     if expected_dns:
         assert expected_dns in san.get_values_for_type(x509.DNSName)
     if expected_ip:
-        assert expected_ip in {
-            str(address)
-            for address in san.get_values_for_type(x509.IPAddress)
-        }
+        assert expected_ip in {str(address) for address in san.get_values_for_type(x509.IPAddress)}
     assert f'url: "tls://{proxy_address}:4222"' in nats_config
+    assert 'publish = ["apm.traces.2"]' in nats_config
+    assert 'subscribe = ["_INBOX.>"]' in nats_config
+    assert "apm-regional-collector:" in compose_config
+    assert "APM_NATS_USERNAME=apm_region_2" in generated_env
+    assert "APM_NATS_PASSWORD=apm-password" in generated_env
+    assert "trace_guard:" in regional_config
+
+
+def test_proxy_compose_injects_zone_instance_id_for_region_services(
+    certificate_authority,
+):
+    with _generate_proxy_archive("10.0.0.8", certificate_authority) as archive:
+        compose_config = yaml.safe_load(archive.extractfile("./docker-compose.yaml").read().decode())
+        generated_env = archive.extractfile("./.env").read().decode()
+
+    assert "ZONE_NAME=proxy-test" in generated_env
+
+    services = compose_config["services"]
+    stargazer = services["stargazer"]
+    nats_executor = services["nats-executor"]
+
+    # server 端按 {zone_name}_stargazer / {zone_name} 探活，两个服务都必须拿到 ZONE_NAME
+    assert stargazer["environment"]["NATS_INSTANCE_ID"] == "${ZONE_NAME}"
+    assert "NATS_INSTANCE_ID=${ZONE_NAME}" in nats_executor["environment"]
+
+    assert stargazer["restart"] == "always"

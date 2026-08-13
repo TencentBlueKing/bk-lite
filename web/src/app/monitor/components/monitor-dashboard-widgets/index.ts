@@ -13,6 +13,7 @@ export type {
   CollectionStatusCardStyles,
   CollectionStatusTone,
   CollectionStatusLegendItem,
+  CollectionStatusTimelineSegment,
 } from '@/app/monitor/components/monitor-dashboard-widgets/collection-status-card';
 
 export { RingChartPanel } from '@/app/monitor/components/monitor-dashboard-widgets/ring-chart-panel';

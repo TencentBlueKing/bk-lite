@@ -5,6 +5,13 @@ import type {
   InputControlConfig,
 } from './dataSource';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
+import type {
+  CardListConfig,
+  CardListLeadingConfig,
+} from '@/app/ops-analysis/utils/cardList';
+
+export type { CardListConfig, CardListLeadingConfig };
+import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import type { Dayjs } from 'dayjs';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type {
@@ -81,6 +88,12 @@ export interface TableColumnConfigItem {
   order: number;
   width?: number;
   columnType?: 'data' | 'actions';
+  /** 单元格展示形态；缺省为 text */
+  cellType?: 'text' | 'colorBackground';
+  /** 列级值映射（枚举/范围等 → 文案/颜色） */
+  valueMappings?: ValueMapping[];
+  /** 列级数值阈值配色 */
+  cellThresholdColors?: ThresholdColorConfig[];
 }
 
 /** 表格组件配置 */
@@ -88,8 +101,6 @@ export interface TableConfig {
   filterFields?: TableFilterFieldConfig[];
   columns?: TableColumnConfigItem[];
 }
-
-import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 
 export interface ValueConfig {
   chartType?: string;
@@ -104,6 +115,8 @@ export interface ValueConfig {
   tableConfig?: TableConfig;
   filterBindings?: FilterBindings;
   selectedFields?: string[];
+  /** 单值可选说明字段；未设置时不渲染说明行 */
+  descriptionField?: string;
   topNLabelField?: string;
   topNValueField?: string;
   unit?: string;
@@ -118,6 +131,18 @@ export interface ValueConfig {
   gaugeMin?: number;
   gaugeMax?: number;
   gaugeShape?: 'semicircle' | 'circle';
+  eventTimeline?: {
+    sortOrder?: 'asc' | 'desc';
+  };
+  radar?: {
+    min?: number;
+    max?: number;
+    indicators?: Array<{
+      key: string;
+      label?: string;
+    }>;
+  };
+  cardList?: CardListConfig;
   actions?: DashboardActionConfig[];
   appearance?: ScreenWidgetAppearance;
 }
@@ -191,7 +216,8 @@ export type ViewConfigItem = LayoutItem | TopologyNodeData;
 
 export interface ViewConfigProps {
   open: boolean;
-  item: ViewConfigItem;
+  /** Dashboard keeps ViewConfig mounted and may pass undefined while closed. */
+  item?: ViewConfigItem | null;
   onConfirm?: (values: WidgetConfig) => void;
   onClose?: () => void;
   builtinNamespaceId?: number;

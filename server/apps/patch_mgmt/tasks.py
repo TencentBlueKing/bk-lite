@@ -9,8 +9,9 @@
   - 流式结果回调的完整解析逻辑
 """
 
-import logging
+from copy import deepcopy
 from datetime import timedelta
+from uuid import uuid4
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
@@ -18,7 +19,8 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-logger = logging.getLogger("app")
+from apps.core.logger import patch_mgmt_logger as logger
+from apps.rpc.system_mgmt import SystemMgmt
 
 
 @shared_task(max_retries=0)
@@ -90,12 +92,195 @@ def run_periodic_compliance_scan() -> None:
         status=GovernanceTaskStatus.PENDING,
         target_list=target_ids,
         patch_list=[],
+        trigger_source="periodic_scan",
+        notification_snapshot={
+            "enabled": bool(setting.notification_enabled),
+            "rules": deepcopy(setting.notification_rules),
+        },
     )
     execute_governance_task.delay(task.id)
     logger.info(
         "[run_periodic_compliance_scan] 已创建并触发评估任务: task_id=%s targets=%s",
         task.id, len(target_ids),
     )
+
+
+def _channel_delivery_succeeded(result) -> bool:
+    if not isinstance(result, dict):
+        return False
+    if result.get("result") is True:
+        return True
+    if result.get("result") is False:
+        return False
+    if result.get("errcode") not in (None, 0):
+        return False
+    if result.get("code") not in (None, 0):
+        return False
+    return True
+
+
+@shared_task(max_retries=0)
+def send_assessment_notification_delivery(delivery_id: int) -> None:
+    """投递一条周期评估通知；通过栅栏令牌防止并发结果覆盖。"""
+    from apps.patch_mgmt.models import AssessmentNotificationDelivery
+
+    claim_token = uuid4().hex
+    with transaction.atomic():
+        delivery = (
+            AssessmentNotificationDelivery.objects.select_for_update()
+            .filter(pk=delivery_id)
+            .first()
+        )
+        if delivery is None or delivery.status not in {
+            AssessmentNotificationDelivery.Status.PENDING,
+            AssessmentNotificationDelivery.Status.RETRY,
+        }:
+            return
+        if (
+            delivery.status == AssessmentNotificationDelivery.Status.RETRY
+            and delivery.next_retry_at
+            and delivery.next_retry_at > timezone.now()
+        ):
+            return
+        delivery.status = AssessmentNotificationDelivery.Status.SENDING
+        delivery.attempts += 1
+        delivery.claim_token = claim_token
+        delivery.last_error = ""
+        delivery.save(
+            update_fields=[
+                "status",
+                "attempts",
+                "claim_token",
+                "last_error",
+                "updated_at",
+            ]
+        )
+
+    content = delivery.content
+    if delivery.channel_type == "nats":
+        content = {
+            "message": delivery.content,
+            "team": delivery.team_id,
+            "user_ids": [],
+        }
+    try:
+        result = SystemMgmt().send_msg_with_channel(
+            channel_id=delivery.channel_id,
+            title=delivery.title,
+            content=content,
+            receivers=delivery.receivers,
+        )
+        if not _channel_delivery_succeeded(result):
+            raise RuntimeError(
+                str((result or {}).get("message") or "通知渠道返回失败")
+            )
+    except Exception as exc:  # noqa: BLE001
+        failed = delivery.attempts >= delivery.max_attempts
+        next_retry_at = None
+        if not failed:
+            delay_seconds = min(15 * 60, 60 * (2 ** (delivery.attempts - 1)))
+            next_retry_at = timezone.now() + timedelta(seconds=delay_seconds)
+        AssessmentNotificationDelivery.objects.filter(
+            pk=delivery_id,
+            status=AssessmentNotificationDelivery.Status.SENDING,
+            claim_token=claim_token,
+        ).update(
+            status=(
+                AssessmentNotificationDelivery.Status.FAILED
+                if failed
+                else AssessmentNotificationDelivery.Status.RETRY
+            ),
+            next_retry_at=next_retry_at,
+            last_error=str(exc)[:2000],
+            updated_at=timezone.now(),
+        )
+        logger.warning(
+            "周期评估通知投递失败 delivery=%s channel=%s attempts=%s/%s error=%s",
+            delivery.id,
+            delivery.channel_id,
+            delivery.attempts,
+            delivery.max_attempts,
+            exc,
+        )
+        return
+
+    delivered_at = timezone.now()
+    AssessmentNotificationDelivery.objects.filter(
+        pk=delivery_id,
+        status=AssessmentNotificationDelivery.Status.SENDING,
+        claim_token=claim_token,
+    ).update(
+        status=AssessmentNotificationDelivery.Status.DELIVERED,
+        delivered_at=delivered_at,
+        next_retry_at=None,
+        last_error="",
+        updated_at=delivered_at,
+    )
+
+
+@shared_task(queue="patch_maintenance", max_retries=0)
+def reconcile_assessment_notification_deliveries() -> None:
+    """运行期补偿终态任务的缺失意图、到期重试和过期投递租约。"""
+    from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
+    from apps.patch_mgmt.models import AssessmentNotificationDelivery, GovernanceTask
+    from apps.patch_mgmt.services.assessment_notification import (
+        reconcile_periodic_assessment_notification_intent,
+    )
+
+    now = timezone.now()
+    unreconciled_tasks = GovernanceTask.objects.filter(
+        task_type=GovernanceTaskType.ASSESS,
+        trigger_source="periodic_scan",
+        status__in=GovernanceTaskStatus.TERMINAL_STATES,
+        notification_reconciled_at__isnull=True,
+    ).order_by("id")[:200]
+    for task in unreconciled_tasks:
+        try:
+            reconcile_periodic_assessment_notification_intent(
+                task,
+                schedule=False,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("补偿周期评估通知意图失败 task=%s", task.id)
+
+    lease_deadline = now - timedelta(minutes=5)
+    stale_deliveries = AssessmentNotificationDelivery.objects.filter(
+        status=AssessmentNotificationDelivery.Status.SENDING,
+        updated_at__lte=lease_deadline,
+    ).order_by("id")[:200]
+    for delivery in stale_deliveries:
+        next_status = (
+            AssessmentNotificationDelivery.Status.FAILED
+            if delivery.attempts >= delivery.max_attempts
+            else AssessmentNotificationDelivery.Status.RETRY
+        )
+        AssessmentNotificationDelivery.objects.filter(
+            pk=delivery.pk,
+            status=AssessmentNotificationDelivery.Status.SENDING,
+            claim_token=delivery.claim_token,
+        ).update(
+            status=next_status,
+            next_retry_at=(now if next_status == AssessmentNotificationDelivery.Status.RETRY else None),
+            last_error="投递租约过期，已由补偿任务接管",
+            updated_at=now,
+        )
+
+    ready_ids = list(
+        AssessmentNotificationDelivery.objects.filter(
+            Q(status=AssessmentNotificationDelivery.Status.PENDING)
+            | Q(
+                status=AssessmentNotificationDelivery.Status.RETRY,
+                next_retry_at__lte=now,
+            )
+        )
+        .order_by("id")
+        .values_list("id", flat=True)[:500]
+    )
+    for delivery_id in ready_ids:
+        try:
+            send_assessment_notification_delivery.delay(delivery_id)
+        except Exception:  # noqa: BLE001
+            logger.exception("补偿通知任务投递到 broker 失败 delivery=%s", delivery_id)
 
 
 @shared_task(max_retries=0)

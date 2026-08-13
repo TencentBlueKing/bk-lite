@@ -26,11 +26,16 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "max(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -39,11 +44,16 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_memory_used{instance_type='switch', __$labels__}",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -52,11 +62,16 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_memory_free{instance_type='switch', __$labels__}",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -65,11 +80,16 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
+      "query": "device_memory_used{instance_type='switch', __$labels__} / (device_memory_used{instance_type='switch', __$labels__} + device_memory_free{instance_type='switch', __$labels__}) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -78,11 +98,16 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -91,11 +116,16 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "max(device_fan_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
       "display_name": "Fan State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -104,11 +134,16 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
       "display_name": "PSU State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -123,8 +158,8 @@
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
-          "name": "descr",
-          "description": "Fan description"
+          "name": "index",
+          "description": "SNMP table row index"
         }
       ],
       "instance_id_keys": [
@@ -141,8 +176,8 @@
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"abnormal\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
-          "name": "descr",
-          "description": "PSU description"
+          "name": "index",
+          "description": "SNMP table row index"
         }
       ],
       "instance_id_keys": [

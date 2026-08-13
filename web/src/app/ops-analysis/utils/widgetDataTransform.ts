@@ -255,8 +255,8 @@ export const fetchWidgetData = async ({
       filterDefinitions,
     });
 
-    const rawData = await getSourceDataByApiId(config.dataSource, finalRequestParams);
-    return rawData;
+    const result = await getSourceDataByApiId(config.dataSource, finalRequestParams);
+    return result.data;
   } catch (err: any) {
     console.error('获取数据失败:', err);
     if (throwError) {

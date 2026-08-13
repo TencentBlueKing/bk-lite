@@ -10,7 +10,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
-from django.db.models.functions import TruncDate, TruncHour, TruncMonth, TruncWeek
+from django.db.models.functions import TruncDate, TruncHour, TruncMinute, TruncMonth
 from django.utils import timezone
 
 import nats_client
@@ -51,15 +51,16 @@ from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_utc
+from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 _CHANGE_TREND_MAX_SPAN_SECONDS = {
+    "minute": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MINUTE", str(7 * 24 * 3600))),
     "hour": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_HOUR", str(90 * 24 * 3600))),
     "day": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_DAY", str(730 * 24 * 3600))),
-    "week": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_WEEK", str(730 * 24 * 3600))),
-    "month": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MONTH", str(730 * 24 * 3600))),
+    "month": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MONTH", str(10 * 365 * 24 * 3600))),
 }
 
 
@@ -69,6 +70,19 @@ def _normalize_to_list(value):
     if isinstance(value, list):
         return [item for item in value if item not in (None, "")]
     return [value]
+
+
+def _require_uuid_protocol(params):
+    if str((params or {}).get("protocol_version") or "") != "2":
+        raise ValueError("unsupported CMDB identity protocol version")
+
+
+def _reject_legacy_numeric_locators(params, *keys):
+    """Reject legacy graph/numeric identity keys with a clear error."""
+    params = params or {}
+    present = [key for key in keys if params.get(key) not in (None, "", [])]
+    if present:
+        raise ValueError(f"legacy numeric locators {present} are no longer supported; use UUID params")
 
 
 def _normalize_permission_user(user, domain=None):
@@ -397,24 +411,33 @@ def search_instances(params):
     """
     根据参数查询实例
     """
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "_id", "inst_id", "ids")
+    allowed_org_ids = set(_normalize_allowed_org_ids_for_scope(params.get("organization_ids")))
+    if not allowed_org_ids:
+        raise ValueError("organization_ids is required")
     model_id = params["model_id"]
     inst_name = params.get("inst_name", None)
-    _id = params.get("_id", None)
+    inst_uuid = params.get("inst_uuid")
 
-    instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name, _id=_id)
+    instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name, inst_uuid=inst_uuid)
     result = instances[0] if instances else {}
-    return result
+    if result and not allowed_org_ids.intersection(_normalize_allowed_org_ids_for_scope(result.get("organization"))):
+        return {}
+    return _serialize_instance_for_transport(result)
 
 
 @nats_client.register
 def search_instances_batch(params):
-    """批量查询实例。params={"model_id":..,"ids":[..],"inst_names":[..]} -> {key: instance}"""
+    """批量查询实例。params={"model_id":..,"inst_uuids":[..],"inst_names":[..]}。"""
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "ids", "_id", "inst_ids")
     allowed_org_ids = set(_normalize_allowed_org_ids_for_scope(params.get("organization_ids")))
     if not allowed_org_ids:
         return {}
     result = InstanceManage.search_inst_batch(
         model_id=params["model_id"],
-        ids=params.get("ids"),
+        inst_uuids=params.get("inst_uuids"),
         inst_names=params.get("inst_names"),
     )
     filtered = {}
@@ -426,7 +449,7 @@ def search_instances_batch(params):
             except (TypeError, ValueError):
                 continue
         if allowed_org_ids & instance_org_ids:
-            filtered[key] = instance
+            filtered[key] = _serialize_instance_for_transport(instance)
     return filtered
 
 
@@ -501,47 +524,46 @@ def _ensure_organization_in_scope(data, allowed_org_ids):
         raise ValueError(f"organization {invalid_org_ids} 不在授权范围内")
 
 
+def _serialize_instance_for_transport(instance):
+    return {key: value for key, value in dict(instance or {}).items() if key not in {"_id", "_labels", "permission"}}
+
+
 @nats_client.register
 def update_instance(params):
     """
     修改实例属性
 
     params={
-        "inst_id": 123,            # 实例ID，优先使用；缺省时用 model_id+inst_name 定位
-        "model_id": "host",        # 配合 inst_name 定位实例时必填
-        "inst_name": "host-01",    # 配合 model_id 定位实例时必填
+        "protocol_version": "2",
+        "inst_uuid": "...",       # 实例 UUID，必填
         "update_attr": {...},      # 待更新的属性键值
         "operator": "admin",       # 操作人，用于变更记录
         "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
-    -> 更新后的实例数据
+    -> 更新后的实例数据（不含图内部 _id）
     """
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "inst_id", "_id", "inst_ids")
     update_attr = params.get("update_attr") or {}
     if not update_attr:
         raise ValueError("update_attr is required")
     allowed_org_ids = _resolve_allowed_org_ids(params)
     _ensure_organization_in_scope(update_attr, allowed_org_ids)
 
-    inst_id = params.get("inst_id") or params.get("_id")
-    if not inst_id:
-        model_id = params.get("model_id")
-        inst_name = params.get("inst_name")
-        if not (model_id and inst_name):
-            raise ValueError("inst_id or (model_id and inst_name) is required")
-        instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name)
-        if not instances:
-            raise ValueError("实例不存在！")
-        inst_id = instances[0]["_id"]
+    inst_uuid = params.get("inst_uuid")
+    if not inst_uuid:
+        raise ValueError("inst_uuid is required")
 
-    return InstanceManage.instance_update(
+    result = InstanceManage.instance_update_by_uuid(
         user_groups=_build_scope_user_groups(allowed_org_ids),
         roles=[],
-        inst_id=int(inst_id),
+        inst_uuid=inst_uuid,
         update_attr=update_attr,
         operator=params.get("operator", ""),
         allowed_org_ids=allowed_org_ids,
         skip_permission_check=False,
     )
+    return _serialize_instance_for_transport(result)
 
 
 @nats_client.register
@@ -550,13 +572,15 @@ def create_instance(params):
     创建实例
 
     params={
+        "protocol_version": "2",
         "model_id": "host",        # 模型ID，必填
         "instance_info": {...},    # 实例属性键值，必填
         "operator": "admin",       # 操作人，用于变更记录
         "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
-    -> 创建后的实例数据
+    -> 创建后的实例数据（不含图内部 _id）
     """
+    _require_uuid_protocol(params)
     model_id = params.get("model_id")
     if not model_id:
         raise ValueError("model_id is required")
@@ -567,11 +591,13 @@ def create_instance(params):
     allowed_org_ids = _resolve_allowed_org_ids(params)
     _ensure_organization_in_scope(instance_info, allowed_org_ids)
 
-    return InstanceManage.instance_create(
-        model_id=model_id,
-        instance_info=instance_info,
-        operator=params.get("operator", ""),
-        allowed_org_ids=allowed_org_ids,
+    return _serialize_instance_for_transport(
+        InstanceManage.instance_create(
+            model_id=model_id,
+            instance_info=instance_info,
+            operator=params.get("operator", ""),
+            allowed_org_ids=allowed_org_ids,
+        )
     )
 
 
@@ -593,42 +619,31 @@ def delete_instance(params):
     删除实例（支持单个或批量）
 
     params={
-        "inst_ids": [1, 2],        # 实例ID列表，优先使用
-        "inst_id": 1,              # 单个实例ID（兼容 _id）
-        "model_id": "host",        # 配合 inst_name 定位单个实例时必填
-        "inst_name": "host-01",    # 配合 model_id 定位单个实例时必填
+        "protocol_version": "2",
+        "inst_uuids": ["..."],    # 实例 UUID 列表
+        "inst_uuid": "...",       # 单个实例 UUID
         "operator": "admin",       # 操作人，用于变更记录
         "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
-    -> {"result": True, "deleted": [<inst_ids>]}
+    -> {"result": True, "deleted": [<inst_uuids>]}
     """
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "inst_ids", "inst_id", "_id")
     allowed_org_ids = _resolve_allowed_org_ids(params)
     if not allowed_org_ids:
         raise ValueError("authorization scope is required for CMDB NATS writes")
-    inst_ids = _normalize_to_list(params.get("inst_ids"))
-
-    if not inst_ids:
-        single_id = params.get("inst_id") or params.get("_id")
-        if single_id:
-            inst_ids = [single_id]
-        else:
-            model_id = params.get("model_id")
-            inst_name = params.get("inst_name")
-            if not (model_id and inst_name):
-                raise ValueError("inst_ids, inst_id or (model_id and inst_name) is required")
-            instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name)
-            if not instances:
-                raise ValueError("实例不存在！")
-            inst_ids = [instances[0]["_id"]]
-
-    inst_ids = [int(i) for i in inst_ids]
-    InstanceManage.instance_batch_delete(
+    inst_uuids = _normalize_to_list(params.get("inst_uuids"))
+    if not inst_uuids and params.get("inst_uuid"):
+        inst_uuids = [params["inst_uuid"]]
+    if not inst_uuids:
+        raise ValueError("inst_uuids or inst_uuid is required")
+    InstanceManage.instance_batch_delete_by_uuids(
         user_groups=_build_scope_user_groups(allowed_org_ids),
         roles=[],
-        inst_ids=inst_ids,
+        inst_uuids=inst_uuids,
         operator=params.get("operator", ""),
     )
-    return {"result": True, "deleted": inst_ids}
+    return {"result": True, "deleted": inst_uuids}
 
 
 @nats_client.register
@@ -637,7 +652,9 @@ def list_instances(params):
     查询单个模型下的实例列表（分页 + 过滤）
 
     params={
+        "protocol_version": "2",
         "model_id": "host",          # 模型ID，必填
+        "organization_ids": [1],     # 组织范围，必填
         "params": [...],             # 可选；查询条件，格式同 instance_list，如
                                      #   [{"field": "ip_addr", "type": "str*", "value": "10."}]
         "page": 1,                   # 页码，默认 1
@@ -647,13 +664,20 @@ def list_instances(params):
     }
     -> {"count": <总数>, "items": [<实例>, ...]}
     """
+    _require_uuid_protocol(params)
     model_id = params.get("model_id")
     if not model_id:
         raise ValueError("model_id is required")
 
     page = int(params.get("page") or 1)
     page_size = int(params.get("page_size") or 20)
-    query_params = params.get("params") or []
+    allowed_org_ids = _normalize_allowed_org_ids_for_scope(params.get("organization_ids"))
+    if not allowed_org_ids:
+        raise ValueError("organization_ids is required")
+    query_params = [
+        *(params.get("params") or []),
+        {"field": "organization", "type": "list[]", "value": allowed_org_ids},
+    ]
     order = params.get("order") or ""
     need_format = params.get("format", True)
 
@@ -667,7 +691,8 @@ def list_instances(params):
         permission_map={},
     )
 
-    items = _format_asset_instances_response(model_id, instances) if need_format else [dict(i) for i in instances]
+    raw_items = _format_asset_instances_response(model_id, instances) if need_format else instances
+    items = [_serialize_instance_for_transport(item) for item in raw_items]
     return {"count": count, "items": items}
 
 
@@ -735,21 +760,38 @@ def search_instance_associations(params):
     查询实例关联列表（某实例关联到的其它实例，按 model_asst_id 分组）
 
     params={
+        "protocol_version": "2",
         "model_id": "host",   # 模型ID，必填
-        "inst_id": 123        # 实例ID，必填
+        "inst_uuid": "...",   # 实例 UUID，必填
+        "organization_ids": [1]
     }
     -> [{"src_model_id":..,"dst_model_id":..,"model_asst_id":..,"asst_id":..,"inst_list":[..]}, ...]
     """
     params = params or {}
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "inst_id", "_id")
+    allowed_org_ids = set(_normalize_allowed_org_ids_for_scope(params.get("organization_ids")))
+    if not allowed_org_ids:
+        raise ValueError("organization_ids is required")
     model_id = params.get("model_id")
-    inst_id = params.get("inst_id") or params.get("_id")
-    if not model_id or inst_id in (None, ""):
-        raise ValueError("model_id and inst_id are required")
-    return InstanceManage.instance_association_instance_list(
+    inst_uuid = params.get("inst_uuid")
+    if not model_id or not inst_uuid:
+        raise ValueError("model_id and inst_uuid are required")
+    source = InstanceManage.query_entity_by_uuid(inst_uuid)
+    if not source or not allowed_org_ids.intersection(_normalize_allowed_org_ids_for_scope(source.get("organization"))):
+        return []
+    groups = InstanceManage.instance_association_instance_list_by_uuid(
         model_id,
-        int(inst_id),
+        inst_uuid,
         business_only=True,
     )
+    for group in groups:
+        group["inst_list"] = [
+            _serialize_instance_for_transport(item)
+            for item in group.get("inst_list", [])
+            if allowed_org_ids.intersection(_normalize_allowed_org_ids_for_scope(item.get("organization")))
+        ]
+    return groups
 
 
 @nats_client.register
@@ -758,30 +800,34 @@ def create_instance_association(params):
     创建实例关联（写）
 
     params={
-        "src_inst_id": 1,                  # 源实例ID，必填
-        "dst_inst_id": 2,                  # 目标实例ID，必填
+        "protocol_version": "2",
+        "src_inst_uuid": "...",           # 源实例 UUID，必填
+        "dst_inst_uuid": "...",           # 目标实例 UUID，必填
         "model_asst_id": "host_run_app",   # 模型关联ID，必填
         "operator": "admin"                # 操作人，用于变更记录
     }
     -> 创建后的关联边数据
     """
     params = params or {}
-    src_inst_id = params.get("src_inst_id")
-    dst_inst_id = params.get("dst_inst_id")
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "src_inst_id", "dst_inst_id", "asso_id", "_id")
+    allowed_org_ids = set(_resolve_allowed_org_ids(params))
+    src_inst_uuid = params.get("src_inst_uuid")
+    dst_inst_uuid = params.get("dst_inst_uuid")
     model_asst_id = params.get("model_asst_id")
-    if src_inst_id in (None, "") or dst_inst_id in (None, "") or not model_asst_id:
-        raise ValueError("src_inst_id, dst_inst_id and model_asst_id are required")
-
-    data = {
-        "src_inst_id": int(src_inst_id),
-        "dst_inst_id": int(dst_inst_id),
-        "model_asst_id": model_asst_id,
-    }
-    for key in ("asst_id", "src_model_id", "dst_model_id"):
-        if params.get(key) is not None:
-            data[key] = params[key]
-
-    return InstanceManage.instance_association_create(data, params.get("operator", ""))
+    if not src_inst_uuid or not dst_inst_uuid or not model_asst_id:
+        raise ValueError("src_inst_uuid, dst_inst_uuid and model_asst_id are required")
+    endpoints = InstanceManage.query_entity_by_uuids([src_inst_uuid, dst_inst_uuid])
+    if len(endpoints) != 2 or any(
+        not allowed_org_ids.intersection(_normalize_allowed_org_ids_for_scope(item.get("organization"))) for item in endpoints
+    ):
+        raise ValueError("association endpoint is outside authorization scope")
+    return InstanceManage.instance_association_create_by_uuid(
+        src_inst_uuid=src_inst_uuid,
+        dst_inst_uuid=dst_inst_uuid,
+        model_asst_id=model_asst_id,
+        operator=params.get("operator", ""),
+    )
 
 
 @nats_client.register
@@ -790,19 +836,33 @@ def delete_instance_association(params):
     删除实例关联（写）
 
     params={
-        "asso_id": 10,        # 关联ID，必填（兼容 inst_asst_id / _id）
+        "protocol_version": "2",
+        "src_inst_uuid": "...",
+        "dst_inst_uuid": "...",
+        "model_asst_id": "host_run_app",
         "operator": "admin"   # 操作人，用于变更记录
     }
-    -> {"result": True, "deleted": <asso_id>}
+    -> {"result": True, "deleted": <stable relation key>}
     """
     params = params or {}
-    asso_id = params.get("asso_id") or params.get("inst_asst_id") or params.get("_id")
-    if asso_id in (None, ""):
-        raise ValueError("asso_id is required")
-
-    asso_id = int(asso_id)
-    InstanceManage.instance_association_delete(asso_id, params.get("operator", ""))
-    return {"result": True, "deleted": asso_id}
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "asso_id", "inst_asst_id", "_id", "src_inst_id", "dst_inst_id")
+    allowed_org_ids = set(_resolve_allowed_org_ids(params))
+    required = ("src_inst_uuid", "dst_inst_uuid", "model_asst_id")
+    if any(not params.get(key) for key in required):
+        raise ValueError("src_inst_uuid, dst_inst_uuid and model_asst_id are required")
+    endpoints = InstanceManage.query_entity_by_uuids([params["src_inst_uuid"], params["dst_inst_uuid"]])
+    if len(endpoints) != 2 or any(
+        not allowed_org_ids.intersection(_normalize_allowed_org_ids_for_scope(item.get("organization"))) for item in endpoints
+    ):
+        raise ValueError("association endpoint is outside authorization scope")
+    deleted = InstanceManage.instance_association_delete_by_key(
+        src_inst_uuid=params["src_inst_uuid"],
+        dst_inst_uuid=params["dst_inst_uuid"],
+        model_asst_id=params["model_asst_id"],
+        operator=params.get("operator", ""),
+    )
+    return {"result": True, "deleted": deleted}
 
 
 @nats_client.register
@@ -1164,9 +1224,9 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
 
 def _get_trunc_func_and_format(group_by):
     mapping = {
+        "minute": (TruncMinute, "%Y-%m-%d %H:%M"),
         "hour": (TruncHour, "%Y-%m-%d %H:00"),
         "day": (TruncDate, "%Y-%m-%d"),
-        "week": (TruncWeek, "%Y-%m-%d"),
         "month": (TruncMonth, "%Y-%m"),
     }
     return mapping.get(group_by, (TruncDate, "%Y-%m-%d"))
@@ -1214,22 +1274,21 @@ def _format_period_value(value, target_tz):
 
 def _generate_time_periods(start_dt, end_dt, group_by, target_tz):
     periods = []
-    if group_by == "hour":
+    if group_by == "minute":
+        current = start_dt.replace(second=0, microsecond=0)
+        while current < end_dt:
+            periods.append(_format_period_value(current, target_tz))
+            current += datetime.timedelta(minutes=1)
+    elif group_by == "hour":
         current = start_dt.replace(minute=0, second=0, microsecond=0)
         while current < end_dt:
             periods.append(_format_period_value(current, target_tz))
             current += datetime.timedelta(hours=1)
     elif group_by == "day":
-        current = start_dt.date()
-        end_date = end_dt.date()
-        while current <= end_date:
-            periods.append(_format_period_value(current, target_tz))
-            current += datetime.timedelta(days=1)
-    elif group_by == "week":
-        current = start_dt - datetime.timedelta(days=start_dt.weekday())
+        current = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
         while current < end_dt:
             periods.append(_format_period_value(current, target_tz))
-            current += datetime.timedelta(weeks=1)
+            current += datetime.timedelta(days=1)
     elif group_by == "month":
         current = start_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         while current < end_dt:
@@ -1255,36 +1314,16 @@ def get_room_list(user_info=None, **kwargs):
 
 
 @nats_client.register
-def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, **kwargs):
+def get_change_trend(time=None, model_id=None, user_info=None, **kwargs):
     """
-    获取 CMDB 变更趋势数据
+    获取 CMDB 变更趋势数据。
 
-    Args:
-        time: [start_time, end_time] - 带 Z 或显式 UTC 偏移的 RFC3339 时间范围
-        group_by: "day" | "hour" | "week" | "month" - 分组方式
-        model_id: str | None - 可选，按模型过滤
-        user_info: { team: int, user: str }
-
-    Returns:
-        {
-            "result": True,
-            "data": {
-                "create": [["2026-04-15", 10], ["2026-04-16", 8]],
-                "update": [["2026-04-15", 25], ["2026-04-16", 30]],
-                "delete": [["2026-04-15", 2], ["2026-04-16", 1]]
-            },
-            "message": ""
-        }
+    聚合粒度按时间窗自动推导：
+    ≤6h minute / ≤7d hour / ≤2y day / 更长 month。
     """
+    kwargs.pop("group_by", None)
     if not time or len(time) != 2:
         return {"result": False, "data": {}, "message": "time parameter is required as [start_time, end_time]"}
-
-    if group_by not in _CHANGE_TREND_MAX_SPAN_SECONDS:
-        return {
-            "result": False,
-            "data": {},
-            "message": "group_by must be one of: hour, day, week, month",
-        }
 
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
     start_time, end_time = time
@@ -1303,6 +1342,7 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
     if aware_start >= aware_end:
         return {"result": False, "data": {}, "message": "start_time must be earlier than end_time"}
 
+    group_by = resolve_trend_group_by_from_range(aware_start, aware_end)
     span_seconds = (aware_end - aware_start).total_seconds()
     max_span = _CHANGE_TREND_MAX_SPAN_SECONDS[group_by]
     if span_seconds > max_span:
@@ -1315,9 +1355,7 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
         return {
             "result": False,
             "data": {},
-            "message": (
-                f"Time range exceeds the maximum limit for {group_by} grouping " f"({max_span} seconds). Use a shorter range or coarser grouping."
-            ),
+            "message": (f"Time range exceeds the maximum limit for {group_by} grouping " f"({max_span} seconds). Use a shorter range."),
         }
 
     trunc_func, _ = _get_trunc_func_and_format(group_by)

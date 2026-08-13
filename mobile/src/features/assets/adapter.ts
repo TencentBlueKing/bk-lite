@@ -47,6 +47,15 @@ export async function resolveFollowedAssets(config: FollowedAssetsConfig, models
 
 export async function getAssetInstance(instanceId: string | number, signal?: AbortSignal) { return mapInstance(unwrap<unknown>(await apiGet(`/cmdb/api/instance/${instanceId}/`, undefined, { signal })), ''); }
 
+export async function getAssetFileUrl(fileId: string, download = false, signal?: AbortSignal) {
+  const raw = record(unwrap<unknown>(await apiGet(
+    `/cmdb/api/instance/download_file/${encodeURIComponent(fileId)}/`,
+    download ? { download: 1 } : undefined,
+    { signal },
+  )));
+  return text(raw.url);
+}
+
 /** Web 无单模型 GET，模型元数据统一走 `/cmdb/api/model/` 列表后按 model_id 匹配 */
 export async function getAssetModel(modelId: string, signal?: AbortSignal): Promise<AssetModel | null> {
   const raw = unwrap<unknown>(await apiGet('/cmdb/api/model/', undefined, { signal }));

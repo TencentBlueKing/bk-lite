@@ -1,45 +1,50 @@
-from config.drf.viewsets import ModelViewSet
-from apps.mlops.filters.log_clustering import *
-from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRunStatus
-from rest_framework.decorators import action
+import json
+import os
+
+import numpy as np
+import pandas as pd
+import requests
+from django.http import FileResponse
 from rest_framework import status
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from apps.mlops.utils.i18n import mlops_message
-from apps.mlops.utils.webhook_client import (
-    WebhookClient,
-    WebhookError,
-    WebhookConnectionError,
-    WebhookTimeoutError,
+
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import mlops_logger as logger
+from apps.mlops.constants import DatasetReleaseStatus, MLflowRunStatus, TrainJobStatus
+from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+from apps.mlops.filters.log_clustering import (
+    LogClusteringDatasetFilter,
+    LogClusteringDatasetReleaseFilter,
+    LogClusteringServingFilter,
+    LogClusteringTrainDataFilter,
+    LogClusteringTrainJobFilter,
+)
+from apps.mlops.models import AlgorithmConfig
+from apps.mlops.models.log_clustering import (
+    LogClusteringDataset,
+    LogClusteringDatasetRelease,
+    LogClusteringServing,
+    LogClusteringTrainData,
+    LogClusteringTrainJob,
 )
 from apps.mlops.predict_url_builder import build_predict_url
+from apps.mlops.serializers.algorithm_config import AlgorithmConfigListSerializer, AlgorithmConfigSerializer
+from apps.mlops.serializers.log_clustering import (
+    LogClusteringDatasetReleaseSerializer,
+    LogClusteringDatasetSerializer,
+    LogClusteringServingSerializer,
+    LogClusteringTrainDataSerializer,
+    LogClusteringTrainJobSerializer,
+)
+from apps.mlops.services import ConfigurationError, get_image_by_prefix, get_mlflow_tracking_uri, get_mlflow_train_config
 from apps.mlops.utils import mlflow_service
-from apps.mlops.utils.validators import validate_serving_status_change
-from apps.mlops.services import (
-    get_image_by_prefix,
-    get_mlflow_train_config,
-    get_mlflow_tracking_uri,
-    ConfigurationError,
-)
-import os
-import pandas as pd
-import numpy as np
-import requests
-import json
-
-from apps.core.logger import mlops_logger as logger
-from apps.core.decorators.api_permission import HasPermission
-from apps.mlops.models.log_clustering import *
-from apps.mlops.serializers.log_clustering import *
-from config.drf.pagination import CustomPageNumberPagination
-from django.http import FileResponse
-from apps.mlops.models import AlgorithmConfig
-from apps.mlops.serializers.algorithm_config import (
-    AlgorithmConfigSerializer,
-    AlgorithmConfigListSerializer,
-)
-from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
-from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
+from apps.mlops.utils.i18n import mlops_message
+from apps.mlops.utils.webhook_client import WebhookClient, WebhookConnectionError, WebhookError, WebhookTimeoutError
+from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
+from config.drf.pagination import CustomPageNumberPagination
+from config.drf.viewsets import ModelViewSet
 
 
 class LogClusteringDatasetViewSet(TeamModelViewSet):
@@ -1172,7 +1177,9 @@ class LogClusteringServingViewSet(TeamModelViewSet):
                 return Response({"error": mlops_message(request, "error.predict_input_required", field="data")}, status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(data, list):
-                return Response({"error": mlops_message(request, "error.predict_input_must_be_array", field="data")}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"error": mlops_message(request, "error.predict_input_must_be_array", field="data")}, status=status.HTTP_400_BAD_REQUEST
+                )
 
             max_batch_size = int(os.getenv("MLOPS_PREDICT_MAX_BATCH_SIZE", "10000"))
             if len(data) > max_batch_size:
@@ -1188,7 +1195,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
                 )
             except ValueError as e:
                 return Response(
-                    {"error": str(e)},
+                    {"error": mlops_message(request, str(e))},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1234,7 +1241,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
                 return Response({"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         except requests.exceptions.Timeout:
-            error_msg = f"预测请求超时（超过 60 秒）"
+            error_msg = "预测请求超时（超过 60 秒）"
             logger.error(f"预测超时: serving_id={serving.id}, url={predict_url}")
             return Response({"error": error_msg}, status=status.HTTP_504_GATEWAY_TIMEOUT)
         except requests.exceptions.ConnectionError as e:

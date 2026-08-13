@@ -27,18 +27,6 @@ export interface AGUIEventHandlerDeps {
   addMessage: (message: Message) => void;
 }
 
-type AGUIEventWithExtras = AGUIEvent & {
-  role?: string;
-  sender?: string;
-  delta?: string;
-  content?: string;
-  message?: string;
-  toolCallId?: string;
-  toolCallName?: string;
-  name?: string;
-  arguments?: unknown;
-};
-
 /** Create the AG-UI protocol event dispatcher used by Chat. */
 export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
   const {
@@ -93,10 +81,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
   };
 
   return (event: AGUIEvent) => {
-    const typedEvent = event as AGUIEventWithExtras;
-    const eventType = typedEvent.type;
-
-    switch (eventType) {
+    switch (event.type) {
       case 'RUN_STARTED':
         setIsThinking(true);
         stateMachineRef.current?.transitionToChatting();
@@ -115,7 +100,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
 
       case 'RUN_ERROR': {
         setIsThinking(false);
-        const error = typedEvent.message || 'Unknown error';
+        const error = event.message || 'Unknown error';
         const errorContent = `\n\n❌ **错误**: ${error}`;
 
         if (currentMessageIdRef.current) {
@@ -135,8 +120,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
       }
 
       case 'TEXT_MESSAGE_START': {
-        const startRole = typedEvent.role || typedEvent.sender;
-        if (startRole === 'user') {
+        if (event.role === 'user') {
           break;
         }
         ensureCurrentMessage();
@@ -147,17 +131,24 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
       }
 
       case 'TEXT_MESSAGE_CONTENT': {
-        const delta = typedEvent.delta || typedEvent.content || '';
-        const contentRole = typedEvent.role || typedEvent.sender;
-        if (contentRole === 'user') {
-          break;
-        }
         if (!currentMessageIdRef.current) {
           console.warn('Received CONTENT without START, ignoring');
           break;
         }
-        streamingContentRef.current += delta;
+        streamingContentRef.current += event.delta;
         applyStreamingText(streamingContentRef.current);
+        break;
+      }
+
+      case 'TEXT_MESSAGE_CHUNK': {
+        if (event.role === 'user') {
+          break;
+        }
+        ensureCurrentMessage();
+        streamingContentRef.current += event.delta || '';
+        applyStreamingText(streamingContentRef.current);
+        setIsThinking(false);
+        setIsLoading(true);
         break;
       }
 
@@ -169,8 +160,8 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
 
       case 'TOOL_CALL_START': {
         const newToolCall: ToolCall = {
-          id: typedEvent.toolCallId || generateId(),
-          name: typedEvent.toolCallName || typedEvent.name || 'Unknown Tool',
+          id: event.toolCallId || generateId(),
+          name: event.toolCallName || 'Unknown Tool',
           status: 'running',
         };
         ensureCurrentMessage();
@@ -191,30 +182,19 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
       }
 
       case 'TOOL_CALL_ARGS': {
-        const rawArgs = typedEvent.delta ?? typedEvent.arguments;
-        applyToolPatch(typedEvent.toolCallId || '', {
-          args:
-            typeof rawArgs === 'string'
-              ? rawArgs
-              : rawArgs === undefined
-                ? undefined
-                : JSON.stringify(rawArgs),
+        applyToolPatch(event.toolCallId || '', {
+          args: event.delta,
         });
         break;
       }
 
       case 'TOOL_CALL_END':
-        applyToolPatch(typedEvent.toolCallId || '', { status: 'completed' });
+        applyToolPatch(event.toolCallId || '', { status: 'completed' });
         break;
 
       case 'TOOL_CALL_RESULT':
-        applyToolPatch(typedEvent.toolCallId || '', {
-          result:
-            typeof typedEvent.content === 'string'
-              ? typedEvent.content
-              : typedEvent.content === undefined
-                ? undefined
-                : JSON.stringify(typedEvent.content),
+        applyToolPatch(event.toolCallId || '', {
+          result: event.content,
         });
         break;
 

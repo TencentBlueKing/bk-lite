@@ -59,15 +59,22 @@ class YOLODetectionWrapper(mlflow.pyfunc.PythonModel):
             conf = model_input.get("conf", 0.25)
             iou = model_input.get("iou", 0.45)
             imgsz = model_input.get("imgsz", 640)
+            max_det = model_input.get("max_det", 300)
         else:
             images = model_input
             conf = 0.25
             iou = 0.45
             imgsz = 640
+            max_det = 300
 
         # 执行预测
         results = self.model.predict(
-            images, conf=conf, iou=iou, imgsz=imgsz, verbose=False
+            images,
+            conf=conf,
+            iou=iou,
+            imgsz=imgsz,
+            max_det=max_det,
+            verbose=False,
         )
 
         # 格式化输出

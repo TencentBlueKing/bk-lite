@@ -25,10 +25,10 @@ from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event
 
-
 # --------------------------------------------------------------------------
 # fingerprint
 # --------------------------------------------------------------------------
+
 
 def test_fingerprint_format_and_stability():
     fp = _build_fingerprint(7, "EVENT-AB")
@@ -48,6 +48,7 @@ def test_fingerprint_namespace_isolation():
 # --------------------------------------------------------------------------
 # 缓存
 # --------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _reset_cache(settings):
@@ -146,13 +147,25 @@ def test_cache_survives_local_memory_reset(instant_strategy, monkeypatch):
 # bulk_build / dispatch 主流程
 # --------------------------------------------------------------------------
 
+
 def _make_event(source, event_id="EVENT-1", title="login fail", level="1", service="api"):
     return Event.objects.create(
-        source=source, raw_data={}, title=title, description="d",
-        level=level, service=service, location="loc",
-        resource_id="r1", resource_name="rn1", resource_type="rt1",
-        item="i1", event_id=event_id, push_source_id="p",
-        start_time=timezone.now(), labels={}, tags={},
+        source=source,
+        raw_data={},
+        title=title,
+        description="d",
+        level=level,
+        service=service,
+        location="loc",
+        resource_id="r1",
+        resource_name="rn1",
+        resource_type="rt1",
+        item="i1",
+        event_id=event_id,
+        push_source_id="p",
+        start_time=timezone.now(),
+        labels={},
+        tags={},
         action=EventAction.CREATED,
     )
 
@@ -175,9 +188,8 @@ def test_single_hit_creates_one_alert(source, instant_strategy):
     with mock.patch("apps.alerts.tasks.deliver_alert_outbox.delay"):
         InstantAlertDispatcher.dispatch([[evt]])
     from apps.alerts.models import AlertOutbox
-    assert set(AlertOutbox.objects.values_list("kind", flat=True)) == {
-        "auto_assignment", "action"
-    }
+
+    assert set(AlertOutbox.objects.values_list("kind", flat=True)) == {"auto_assignment", "action"}
     alerts = Alert.objects.all()
     assert alerts.count() == 1
     alert = alerts.first()
@@ -186,6 +198,7 @@ def test_single_hit_creates_one_alert(source, instant_strategy):
     assert alert.rule_id == str(instant_strategy.id)
     assert alert.group_by_field == "instant"
     from apps.alerts.models import ActiveAlertFingerprint
+
     assert ActiveAlertFingerprint.objects.get(fingerprint=alert.fingerprint).alert_id == alert.pk
     # M2M 关联
     assert list(alert.events.values_list("event_id", flat=True)) == [evt.event_id]
@@ -256,10 +269,7 @@ def test_shielded_filter_queries_once(source, instant_strategy):
     ):
         InstantAlertDispatcher.dispatch([[evt]])
 
-    shield_queries = [
-        call for call in event_filter.call_args_list
-        if call.kwargs.get("status") == id_mod.EventStatus.SHIELD
-    ]
+    shield_queries = [call for call in event_filter.call_args_list if call.kwargs.get("status") == id_mod.EventStatus.SHIELD]
     assert len(shield_queries) == 1
 
 
@@ -280,6 +290,7 @@ def test_shielded_event_produces_no_instant_alert(source, instant_strategy):
 # --------------------------------------------------------------------------
 # 同步/异步阈值降级
 # --------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 def test_async_branch_when_hits_exceed_threshold(source, instant_strategy):
@@ -302,15 +313,45 @@ def test_sync_branch_at_threshold_boundary(source, instant_strategy):
     assert Alert.objects.count() == INSTANT_SYNC_THRESHOLD
 
 
+@pytest.mark.django_db
+def test_ceiling_chunks_do_not_drop_hits(source, instant_strategy, monkeypatch):
+    """触顶只分块，不截断丢弃后续命中。"""
+    monkeypatch.setattr(id_mod, "INSTANT_HIT_CEILING", 2)
+    monkeypatch.setattr(id_mod, "INSTANT_SYNC_THRESHOLD", 1)
+
+    events = [_make_event(source, event_id=f"E-ceil-{i}") for i in range(5)]
+    with mock.patch.object(id_mod, "current_app") as mock_app:
+        InstantAlertDispatcher.dispatch([events])
+        assert mock_app.send_task.call_count == 3
+        enqueued_hits = []
+        for call in mock_app.send_task.call_args_list:
+            payload = call.kwargs["args"][0]
+            enqueued_hits.extend(payload)
+
+    assert len(enqueued_hits) == 5
+    assert {item["event_id"] for item in enqueued_hits} == {f"E-ceil-{i}" for i in range(5)}
+    assert Alert.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_collect_hit_chunks_splits_at_ceiling(source, instant_strategy, monkeypatch):
+    monkeypatch.setattr(id_mod, "INSTANT_HIT_CEILING", 2)
+    events = [_make_event(source, event_id=f"E-chunk-{i}") for i in range(5)]
+    strategies = InstantStrategyCache.get()
+    chunks = InstantAlertDispatcher._collect_hit_chunks(events, strategies)
+    assert [len(c) for c in chunks] == [2, 2, 1]
+    flat = InstantAlertDispatcher._collect_hits(events, strategies)
+    assert len(flat) == 5
+
+
 # --------------------------------------------------------------------------
 # 异常吞噬：dispatch 永不抛
 # --------------------------------------------------------------------------
 
+
 @pytest.mark.django_db
 def test_dispatch_swallows_internal_exception(source, instant_strategy):
-    with mock.patch.object(
-        InstantAlertDispatcher, "_collect_hits", side_effect=RuntimeError("boom")
-    ):
+    with mock.patch.object(InstantAlertDispatcher, "_collect_hits", side_effect=RuntimeError("boom")):
         # 不应抛出
         InstantAlertDispatcher.dispatch([[_make_event(source)]])
 
@@ -318,6 +359,7 @@ def test_dispatch_swallows_internal_exception(source, instant_strategy):
 # --------------------------------------------------------------------------
 # _bulk_build_instant_alerts 直接调用（Celery 任务路径同样使用）
 # --------------------------------------------------------------------------
+
 
 @pytest.mark.django_db
 def test_bulk_build_returns_created_alert_ids(source, instant_strategy):

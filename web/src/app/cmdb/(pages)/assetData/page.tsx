@@ -79,7 +79,7 @@ import {
 
 const { confirm } = Modal;
 
-const COPY_EXCLUDE_FIELDS = ['_id', 'inst_id', 'id', 'created_at', 'updated_at', 'created_by', 'updated_by'];
+const COPY_EXCLUDE_FIELDS = ['_id', 'inst_id', 'inst_uuid', 'id', 'created_at', 'updated_at', 'created_by', 'updated_by'];
 
 const isGroupKey = (key: string) => getClassificationIdFromGroupKey(key) !== null;
 
@@ -259,9 +259,9 @@ const AssetDataContent = () => {
   } = useFollowedAssets();
   const [followPendingKey, setFollowPendingKey] = useState<string>('');
   const [quickContext, setQuickContext] = useState<{
-    selectedInstanceIds?: number[];
+    selectedInstanceUuids?: string[];
     queryList?: any[];
-    currentInstanceId?: number;
+    currentInstanceUuid?: string;
     currentInstanceName?: string;
   }>({});
   const [proxyOptions, setProxyOptions] = useState<
@@ -366,7 +366,7 @@ const AssetDataContent = () => {
         break;
       case 'currentPage':
         title = `${t('export')}${t('currentPage')}`;
-        selectedKeys = tableData.map((item) => item._id);
+        selectedKeys = tableData.map((item) => item.inst_uuid);
         break;
       case 'all':
         title = `${t('export')}${t('all')}`;
@@ -392,9 +392,9 @@ const AssetDataContent = () => {
   const quickDefaults: QuickSubscribeDefaults = useQuickSubscribeDefaults(subscriptionSource, {
     model_id: modelId,
     model_name: currentModelName,
-    selectedInstanceIds: quickContext.selectedInstanceIds,
+    selectedInstanceUuids: quickContext.selectedInstanceUuids,
     queryList: quickContext.queryList,
-    currentInstanceId: quickContext.currentInstanceId,
+    currentInstanceUuid: quickContext.currentInstanceUuid,
     currentInstanceName: quickContext.currentInstanceName,
     currentUser: Number(userId || userList[0]?.id || 0),
     currentOrganization: Number(selectedGroup?.id || 0),
@@ -403,7 +403,7 @@ const AssetDataContent = () => {
   const openSubscription = (source: QuickSubscribeSource) => {
     setSubscriptionSource(source);
     if (source === 'list_selection') {
-      setQuickContext({ selectedInstanceIds: selectedRowKeys.map((k) => Number(k)) });
+      setQuickContext({ selectedInstanceUuids: selectedRowKeys.map((k) => String(k)) });
     } else if (source === 'list_filter') {
       setQuickContext({ queryList: storeQueryList });
     } else {
@@ -425,19 +425,19 @@ const AssetDataContent = () => {
   const handleFollowToggle = useCallback(
     async (record: any, event: React.MouseEvent<HTMLElement>) => {
       event.stopPropagation();
-      if (!modelId || !record?._id) return;
-      const pendingKey = `${modelId}:${record._id}`;
+      if (!modelId || !record?.inst_uuid) return;
+      const pendingKey = `${modelId}:${record.inst_uuid}`;
       if (followPendingKey) return;
 
       setFollowPendingKey(pendingKey);
       try {
-        if (isFollowed(modelId, record._id)) {
-          await unfollowAsset(modelId, record._id);
+        if (isFollowed(modelId, record.inst_uuid)) {
+          await unfollowAsset(modelId, record.inst_uuid);
           message.success(t('AssetSearch.unfollowSuccess'));
           return;
         }
 
-        await followAsset({ model_id: modelId, inst_id: record._id });
+        await followAsset({ model_id: modelId, inst_uuid: record.inst_uuid });
         message.success(t('AssetSearch.followSuccess'));
       } finally {
         setFollowPendingKey('');
@@ -688,12 +688,12 @@ const AssetDataContent = () => {
     });
   };
 
-  const showDeleteConfirm = (row: { _id: string }) => {
-    handleDeleteWithConfirm(() => deleteInstance(row._id));
+  const showDeleteConfirm = (row: { inst_uuid: string }) => {
+    handleDeleteWithConfirm(() => deleteInstance(row.inst_uuid));
   };
 
   const batchDeleteConfirm = () => {
-    handleDeleteWithConfirm(() => batchDeleteInstances(selectedRowKeys));
+    handleDeleteWithConfirm(() => batchDeleteInstances(selectedRowKeys.map((k) => String(k))));
   };
 
   // 导出菜单项
@@ -738,7 +738,7 @@ const AssetDataContent = () => {
     await fetchData();
     const instCount = await getModelInstanceCount().catch(() => null);
     if (instCount) setModelInstCount(instCount);
-    if (id) showInstanceModal({ _id: id });
+    if (id) showInstanceModal({ inst_uuid: id });
   };
 
   const showAttrModal = (type: 'add' | 'edit' | 'batchEdit', row = {}) => {
@@ -851,11 +851,11 @@ const AssetDataContent = () => {
 
   const handleFilterBarChange = useCallback(() => { }, []);
 
-  const checkDetail = (row = { _id: '', inst_name: '', ip_addr: '' }) => {
+  const checkDetail = (row = { inst_uuid: '', inst_name: '', ip_addr: '' }) => {
     const modelItem = modelList.find((item) => item.key === modelId);
     router.push(
       `/cmdb/assetData/detail/baseInfo?icn=${modelItem?.icn || ''}&model_name=${modelItem?.label || ''
-      }&model_id=${modelId}&classification_id=${groupId}&inst_id=${row._id
+      }&model_id=${modelId}&classification_id=${groupId}&inst_uuid=${row.inst_uuid
       }&${row.inst_name ? `inst_name=${row.inst_name}` : `ip_addr=${row.ip_addr}`}`
     );
   };
@@ -865,12 +865,12 @@ const AssetDataContent = () => {
     setOrganization(orgArray);
   };
 
-  const showInstanceModal = (row = { _id: '' }) => {
+  const showInstanceModal = (row = { inst_uuid: '' }) => {
     instanceRef.current?.showModal({
       title: t('Model.association'),
       model_id: modelId,
       list: [],
-      instId: row._id,
+      instUuid: row.inst_uuid,
     });
   };
 
@@ -1007,8 +1007,8 @@ const AssetDataContent = () => {
         ...column,
         width: Math.max(Number(column.width) || 180, 220),
         render: (value: unknown, record: any) => {
-          const followed = isFollowed(modelId, record._id);
-          const pendingKey = `${modelId}:${record._id}`;
+          const followed = isFollowed(modelId, record.inst_uuid);
+          const pendingKey = `${modelId}:${record.inst_uuid}`;
           const isPending = followPendingKey === pendingKey;
           const content = originRender ? originRender(value, record) : <>{record.inst_name || '--'}</>;
 
@@ -1352,7 +1352,7 @@ const AssetDataContent = () => {
               choosableFields: columns.filter((item) => item.key !== 'action'),
             }}
             onSelectFields={onSelectFields}
-            rowKey="_id"
+            rowKey="inst_uuid"
             onChange={handleTableChange}
           />
           <FieldModal

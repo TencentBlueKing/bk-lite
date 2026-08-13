@@ -100,6 +100,7 @@ export function DashboardInstanceCard({
         {timeSelectorProps ? (
           <div className={styles.toolbarTimeSelector}>
             <TimeSelector
+              appearance="toolbar"
               defaultValue={timeSelectorProps.timeDefaultValue}
               customFrequencyList={timeSelectorProps.frequencyList ?? DEFAULT_REFRESH_FREQUENCY_LIST}
               onChange={timeSelectorProps.onTimeChange}

@@ -13,8 +13,10 @@ import DualSelector from '@/app/patch-manager/components/dual-selector';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
 import PatchSourceDisplay from '@/app/patch-manager/components/patch-source-display';
 import CustomTable from '@/components/custom-table';
-import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
+import BaselineComplianceDetail from '@/app/patch-manager/components/baseline-compliance-detail';
+import FilterToolbar from '@/components/filter-toolbar';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
@@ -41,6 +43,13 @@ export default function BaselineManagementPage() {
   const [bindSaving, setBindSaving] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [bindOpen, setBindOpen] = useState(false);
+  const [complianceBaseline, setComplianceBaseline] = useState<{
+    id: number;
+    name: string;
+    bound_host_count?: number;
+    can_assess?: boolean;
+    assess_disabled_reason?: string;
+  } | null>(null);
   const [patchPickerOpen, setPatchPickerOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [draftOs, setDraftOs] = useState<'win' | 'linux'>('win');
@@ -114,6 +123,17 @@ export default function BaselineManagementPage() {
       );
       if (!baselineRequestCoordinatorRef.current.shouldApply(ticket)) return;
       setData(res.items || []);
+      setComplianceBaseline((current) => {
+        if (!current) return current;
+        const latest = (res.items || []).find((item: { id: number }) => item.id === current.id);
+        return latest ? {
+          id: latest.id,
+          name: latest.name,
+          bound_host_count: latest.bound_host_count,
+          can_assess: latest.can_assess,
+          assess_disabled_reason: latest.assess_disabled_reason,
+        } : current;
+      });
       setPagination((p) => ({ ...p, current: page, pageSize, total: res.count || 0 }));
     } catch {
       if (
@@ -331,11 +351,20 @@ export default function BaselineManagementPage() {
       dataIndex: 'bound_host_count',
       width: 100,
       render: (v: number, r: any) => (
-        <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/target">
-          <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={() => openBindDrawer(r)}>
-            {t('patchManager.dashboard.targetCount', undefined, { count: v || 0 })}
-          </Button>
-        </PermissionWrapper>
+        <Button
+          type="link"
+          size="small"
+          style={{ paddingInline: 0 }}
+          onClick={() => setComplianceBaseline({
+            id: r.id,
+            name: r.name,
+            bound_host_count: r.bound_host_count,
+            can_assess: r.can_assess,
+            assess_disabled_reason: r.assess_disabled_reason,
+          })}
+        >
+          {t('patchManager.dashboard.targetCount', undefined, { count: v || 0 })}
+        </Button>
       ),
     },
     {
@@ -493,7 +522,7 @@ export default function BaselineManagementPage() {
   }, [pickerSelected, patchList, requirements, draftOs]);
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+      <FilterToolbar align="between">
         <Space wrap>
           <Input.Search
             placeholder={t('patchManager.baseline.name')}
@@ -538,7 +567,7 @@ export default function BaselineManagementPage() {
             onRefresh={() => loadData()}
           />
         </Space>
-      </div>
+      </FilterToolbar>
       <div style={{ flex: 1, minHeight: 0 }}>
         <CustomTable
           columns={columns as any}
@@ -637,6 +666,13 @@ export default function BaselineManagementPage() {
         </Form>
         </Spin>
       </OperateDrawer>
+
+      <BaselineComplianceDetail
+        open={Boolean(complianceBaseline)}
+        baseline={complianceBaseline}
+        onClose={() => setComplianceBaseline(null)}
+        onRefresh={() => loadData()}
+      />
 
       <OperateDrawer
         title={t('patchManager.baseline.bindTitle', undefined, { name: bindTarget?.name || '' })}

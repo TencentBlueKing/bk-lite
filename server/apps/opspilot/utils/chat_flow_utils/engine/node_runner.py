@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Set
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 
 from .core.base_executor import BaseNodeExecutor
 from .core.enums import NodeStatus
@@ -280,13 +281,24 @@ class NodeRunnerMixin:
         results = {}
         timeout_per_node = remaining_timeout / len(node_ids)
 
+        def _run_parallel_branch(node_id: str):
+            # 并行分支在独立线程访问 ORM；必须在该线程清理连接，
+            # 外层 database_sync_to_async 的 close_old_connections 清不到这里。
+            return run_with_db_cleanup(
+                self._execute_node_recursive,
+                node_id,
+                input_data,
+                set(),
+                timeout_per_node,
+            )
+
         with ThreadPoolExecutor(max_workers=min(len(node_ids), self.max_parallel_nodes)) as executor:
             # 提交任务
             futures = {}
             for node_id in node_ids:
                 if self._check_interrupt_requested():
                     break
-                future = executor.submit(self._execute_node_recursive, node_id, input_data, set(), timeout_per_node)  # 每个并行分支使用独立的访问集合
+                future = executor.submit(_run_parallel_branch, node_id)  # 每个并行分支使用独立的访问集合
                 futures[future] = node_id
 
             # 收集结果

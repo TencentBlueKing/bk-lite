@@ -17,79 +17,81 @@ export const useInstanceApi = () => {
   const fulltextSearchByModel = (params: any) =>
     post('/cmdb/api/instance/fulltext_search/by_model/', params);
 
-  const topoSearchInstances = (modelId: string, instId: string) =>
-    get(`/cmdb/api/instance/topo_search/${modelId}/${instId}/`);
+  const topoSearchInstances = (modelId: string, instUuid: string) =>
+    get(`/cmdb/api/instance/topo_search/${modelId}/${instUuid}/`);
 
   const getTopoThemes = (modelId: string) =>
     get(`/cmdb/api/instance/topo_themes/${modelId}/`);
 
-  const getNetworkTopo = (modelId: string, instId: string, depth?: number) =>
+  const getNetworkTopo = (modelId: string, instUuid: string, depth?: number) =>
     get(
-      `/cmdb/api/instance/network_topo/${modelId}/${instId}/${
+      `/cmdb/api/instance/network_topo/${modelId}/${instUuid}/${
         depth ? `?depth=${depth}` : ''
       }`
     );
 
-  const getRoomLayout = (modelId: string, instId: string) =>
-    get(`/cmdb/api/instance/room_layout/${modelId}/${instId}/`);
+  const getRoomLayout = (modelId: string, instUuid: string) =>
+    get(`/cmdb/api/instance/room_layout/${modelId}/${instUuid}/`);
 
-  const getRackLayout = (modelId: string, instId: string) =>
-    get(`/cmdb/api/instance/rack_layout/${modelId}/${instId}/`);
+  const getRackLayout = (modelId: string, instUuid: string) =>
+    get(`/cmdb/api/instance/rack_layout/${modelId}/${instUuid}/`);
 
-  const getApplicationResourceApps = (modelId: string, instId: string) =>
-    get(`/cmdb/api/instance/application_resource_apps/${modelId}/${instId}/`);
+  const getApplicationResourceApps = (modelId: string, instUuid: string) =>
+    get(`/cmdb/api/instance/application_resource_apps/${modelId}/${instUuid}/`);
 
   const getApplicationResourceTopology = (
     modelId: string,
-    instId: string,
+    instUuid: string,
     depth = 1
-  ) => get(`/cmdb/api/instance/application_resource_topology/${modelId}/${instId}/?depth=${depth}`);
+  ) => get(`/cmdb/api/instance/application_resource_topology/${modelId}/${instUuid}/?depth=${depth}`);
 
-  const getApplicationResourceResources = (modelId: string, instId: string) =>
-    get(`/cmdb/api/instance/application_resource_resources/${modelId}/${instId}/`);
+  const getApplicationResourceResources = (modelId: string, instUuid: string) =>
+    get(`/cmdb/api/instance/application_resource_resources/${modelId}/${instUuid}/`);
 
   const getApplicationResourceInstances = (
     modelId: string,
-    instId: string,
+    instUuid: string,
     nodeIds: string[]
   ) => post(
-    `/cmdb/api/instance/application_resource_instances/${modelId}/${instId}/`,
+    `/cmdb/api/instance/application_resource_instances/${modelId}/${instUuid}/`,
     { node_ids: nodeIds }
   );
 
   const exportApplicationResourceInstances = (
     modelId: string,
-    instId: string,
+    instUuid: string,
     nodeIds: string[]
   ) => post(
-    `/cmdb/api/instance/application_resource_export/${modelId}/${instId}/`,
+    `/cmdb/api/instance/application_resource_export/${modelId}/${instUuid}/`,
     { node_ids: nodeIds },
     { responseType: 'blob' }
   );
 
   // 获取实例详情
-  const getInstanceDetail = (instanceId: string) =>
-    get(`/cmdb/api/instance/${instanceId}/`);
+  const getInstanceDetail = (instUuid: string) =>
+    get(`/cmdb/api/instance/${instUuid}/`);
 
   // 创建实例
   const createInstance = (params: any) =>
     post('/cmdb/api/instance/', params);
 
   // 更新实例
-  const updateInstance = (instanceId: string, params: any) =>
-    patch(`/cmdb/api/instance/${instanceId}/`, params);
+  const updateInstance = (instUuid: string, params: any) =>
+    patch(`/cmdb/api/instance/${instUuid}/`, params);
 
   // 批量更新实例
-  const batchUpdateInstances = (params: any) =>
-    post('/cmdb/api/instance/batch_update/', params);
+  const batchUpdateInstances = (params: {
+    inst_uuids: string[];
+    update_data: Record<string, unknown>;
+  }) => post('/cmdb/api/instance/batch_update/', params);
 
   // 删除实例
-  const deleteInstance = (instanceId: string) =>
-    del(`/cmdb/api/instance/${instanceId}/`);
+  const deleteInstance = (instUuid: string) =>
+    del(`/cmdb/api/instance/${instUuid}/`);
 
   // 批量删除实例
-  const batchDeleteInstances = (instanceIds: string[]) =>
-    post('/cmdb/api/instance/batch_delete/', instanceIds);
+  const batchDeleteInstances = (instUuids: string[]) =>
+    post('/cmdb/api/instance/batch_delete/', { inst_uuids: instUuids });
 
   // 获取实例代理列表
   const getInstanceProxys = (params?: any) =>
@@ -108,21 +110,37 @@ export const useInstanceApi = () => {
     post(`/cmdb/api/instance/${modelId}/show_field/settings/`, fields);
 
   // 获取关联实例列表
-  const getAssociationInstanceList = (modelId: string, instId: string) =>
-    get(`/cmdb/api/instance/association_instance_list/${modelId}/${instId}/`);
+  const getAssociationInstanceList = (modelId: string, instUuid: string) =>
+    get(`/cmdb/api/instance/association_instance_list/${modelId}/${instUuid}/`);
 
   // 拓扑搜索更多实例
-  const topoSearchMore = (params: { model_id: string, inst_id: string, parent_id: string[] }) =>
-    post('/cmdb/api/instance/topo_search_expand/', params);
+  const topoSearchMore = (params: {
+    model_id: string;
+    inst_uuid: string;
+    parent_uuid: string[];
+  }) => post('/cmdb/api/instance/topo_search_expand/', params);
 
 
   // 创建实例关联
-  const createInstanceAssociation = (params: any) =>
-    post('/cmdb/api/instance/association/', params);
+  const createInstanceAssociation = (params: {
+    model_asst_id: string;
+    src_model_id?: string;
+    dst_model_id?: string;
+    asst_id?: string;
+    src_inst_uuid: string;
+    dst_inst_uuid: string;
+    [key: string]: unknown;
+  }) => post('/cmdb/api/instance/association/', params);
 
-  // 删除实例关联
-  const deleteInstanceAssociation = (associationId: string) =>
-    del(`/cmdb/api/instance/association/${associationId}/`);
+  // 删除实例关联（业务键：源/目标 UUID + model_asst_id）
+  const deleteInstanceAssociation = (
+    srcInstUuid: string,
+    dstInstUuid: string,
+    modelAsstId: string
+  ) =>
+    del(
+      `/cmdb/api/instance/association/${srcInstUuid}/${dstInstUuid}/${modelAsstId}/`
+    );
 
   // 导入实例
   const importInstances = (modelId: string, formData: FormData, options?: any) =>
@@ -152,8 +170,8 @@ export const useInstanceApi = () => {
     get(`/cmdb/api/instance/download_file/${fileId}/${download ? '?download=1' : ''}`);
 
   // 获取 IPAM 子网 IP 视图矩阵数据
-  const getIpamView = (instId: string) =>
-    get(`/cmdb/api/instance/ipam_view/${instId}/`);
+  const getIpamView = (instUuid: string) =>
+    get(`/cmdb/api/instance/ipam_view/${instUuid}/`);
 
   return {
     searchInstances,

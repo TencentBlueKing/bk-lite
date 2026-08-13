@@ -80,8 +80,9 @@ Content-Type: application/json
 | 参数 | 类型 | 说明 |
 |---|---|---|
 | `model_id` | string | 模型 ID，例如 `host`、`app` |
-| `inst_id` | integer | 实例 ID，正整数 |
-| `association_id` | integer | 实例关联边 ID，正整数 |
+| `inst_uuid` | string | 实例业务 UUID（UUIDv4） |
+| `dst_inst_uuid` | string | 关联目标实例业务 UUID（UUIDv4） |
+| `model_asst_id` | string | 模型关联 ID |
 
 ## 2. 接口总览
 
@@ -96,15 +97,15 @@ Content-Type: application/json
 | GET | `/models/{model_id}/associations` | 查询模型关联定义 | 查询指定模型参与的关联类型 |
 | GET | `/models/{model_id}/instances` | 查询实例列表 | 分页、过滤和排序查询实例 |
 | POST | `/models/{model_id}/instances` | 创建实例 | 创建单个实例 |
-| GET | `/models/{model_id}/instances/{inst_id}` | 查询实例详情 | 查询单个实例 |
-| PATCH | `/models/{model_id}/instances/{inst_id}` | 更新实例 | 局部更新单个实例 |
-| DELETE | `/models/{model_id}/instances/{inst_id}` | 删除实例 | 删除单个实例 |
+| GET | `/models/{model_id}/instances/{inst_uuid}` | 查询实例详情 | 查询单个实例 |
+| PATCH | `/models/{model_id}/instances/{inst_uuid}` | 更新实例 | 局部更新单个实例 |
+| DELETE | `/models/{model_id}/instances/{inst_uuid}` | 删除实例 | 删除单个实例 |
 | POST | `/models/{model_id}/instances/batch_create` | 批量创建实例 | 一次创建 1 至 100 个实例 |
 | POST | `/models/{model_id}/instances/batch_update` | 批量更新实例 | 使用相同字段更新 1 至 100 个实例 |
 | POST | `/models/{model_id}/instances/batch_delete` | 批量删除实例 | 一次删除 1 至 100 个实例 |
-| GET | `/models/{model_id}/instances/{inst_id}/associations` | 查询实例关联 | 查询实例已有的关联关系 |
-| POST | `/models/{model_id}/instances/{inst_id}/associations` | 创建实例关联 | 从当前实例连接到目标实例 |
-| DELETE | `/models/{model_id}/instances/{inst_id}/associations/{association_id}` | 删除实例关联 | 删除指定关联边 |
+| GET | `/models/{model_id}/instances/{inst_uuid}/associations` | 查询实例关联 | 查询实例已有的关联关系 |
+| POST | `/models/{model_id}/instances/{inst_uuid}/associations` | 创建实例关联 | 从当前实例连接到目标实例 |
+| DELETE | `/models/{model_id}/instances/{inst_uuid}/associations/{dst_inst_uuid}/{model_asst_id}` | 删除实例关联 | 按业务键删除关联 |
 
 以下章节中的 URL 均省略基础地址 `/api/v1/cmdb/api/open`。
 
@@ -205,7 +206,7 @@ Content-Type: application/json
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `inst_id` | integer | 实例 ID；内部 `_id` 对外统一改名为 `inst_id` |
+| `inst_uuid` | string | 实例业务 UUID；不可修改，创建后由服务端返回 |
 | `model_id` | string | 模型 ID |
 | `creator` | string | 创建人；内部 `_creator` 对外统一改名 |
 | `created_at` | string | 创建时间；内部 `_created_at` 对外统一改名 |
@@ -213,13 +214,13 @@ Content-Type: application/json
 | `organization` | array[integer] | 实例所属团队；创建时由 API Secret 绑定团队自动写入 |
 | `<attr_id>` | 任意 JSON 值 | 模型自定义属性，类型由属性定义决定 |
 
-`_labels` 与 `permission` 不会出现在实例响应中。
+`_id`、`_labels` 与 `permission` 不会出现在实例响应中。
 
 写入限制：
 
 - 请求体必须是非空 JSON 对象。
 - 只能写模型属性接口返回的字段。
-- 创建和更新都不能提交 `_id`、`model_id`、`organization`、`_creator`、`_created_at`、`_updated_at`。
+- 创建和更新都不能提交 `_id`、`inst_id`、`inst_uuid`、`model_id`、`organization`、`_creator`、`_created_at`、`_updated_at`。
 - 更新只能提交 `editable=true` 且 `is_display_field=false` 的字段。
 - 创建时 `organization` 由服务端强制设置为 API Secret 绑定团队。
 
@@ -240,7 +241,7 @@ Query 参数：
 | `order` | string | 否 | 空 | 排序字段；前缀 `-` 表示倒序 |
 | `filters` | string | 否 | `[]` | JSON 编码的过滤条件数组 |
 
-`order` 支持模型属性字段，以及三个别名：`inst_id`、`created_at`、`updated_at`。例如 `-inst_id` 表示按实例 ID 倒序。
+`order` 支持模型属性字段，以及三个别名：`inst_uuid`、`created_at`、`updated_at`。例如 `-inst_uuid` 表示按实例 UUID 倒序。
 
 每个过滤条件必须恰好包含：
 
@@ -289,16 +290,16 @@ Query 参数：
 
 ### 5.3 查询实例详情
 
-- 方法与 URL：`GET /models/{model_id}/instances/{inst_id}`
+- 方法与 URL：`GET /models/{model_id}/instances/{inst_uuid}`
 - 作用：查询单个可见实例。
-- 入参：路径参数 `model_id`、`inst_id`。
+- 入参：路径参数 `model_id`、`inst_uuid`。
 - 成功状态码：200。
 - 返回：`data` 为实例对象。
 - 实例不存在、模型不匹配或跨团队：404，`cmdb.instance.not_found`。
 
 ### 5.4 更新实例
 
-- 方法与 URL：`PATCH /models/{model_id}/instances/{inst_id}`
+- 方法与 URL：`PATCH /models/{model_id}/instances/{inst_uuid}`
 - 作用：局部更新单个实例。
 - 请求体：需要修改的可编辑模型属性，必须为非空对象。
 - 成功状态码：200。
@@ -314,15 +315,15 @@ Query 参数：
 
 ### 5.5 删除实例
 
-- 方法与 URL：`DELETE /models/{model_id}/instances/{inst_id}`
+- 方法与 URL：`DELETE /models/{model_id}/instances/{inst_uuid}`
 - 作用：删除单个实例。
 - 请求体：无。
 - 成功状态码：200。
-- 返回：`data.deleted` 为已删除实例 ID 数组。
+- 返回：`data.deleted` 为已删除实例 UUID 数组。
 
 ```json
 {
-  "deleted": [12]
+  "deleted": ["11111111-1111-4111-8111-111111111111"]
 }
 ```
 
@@ -358,12 +359,12 @@ Query 参数：
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `inst_ids` | array[integer] | 是 | 1 至 100 个正整数实例 ID；重复 ID 会去重 |
+| `inst_uuids` | array[string] | 是 | 1 至 100 个实例 UUID；重复值会去重 |
 | `update_data` | object | 是 | 应用于全部实例的非空、可编辑属性 |
 
 ```json
 {
-  "inst_ids": [11, 12],
+  "inst_uuids": ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"],
   "update_data": {"status": "active"}
 }
 ```
@@ -372,12 +373,12 @@ Query 参数：
 
 - 方法与 URL：`POST /models/{model_id}/instances/batch_delete`
 - 成功状态码：200。
-- 请求体：`inst_ids` 为 1 至 100 个正整数实例 ID；重复 ID 会去重。
-- 返回：`data.deleted` 为已删除实例 ID 数组。
+- 请求体：`inst_uuids` 为 1 至 100 个实例 UUID；重复值会去重。
+- 返回：`data.deleted` 为已删除实例 UUID 数组。
 
 ```json
 {
-  "inst_ids": [11, 12]
+  "inst_uuids": ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"]
 }
 ```
 
@@ -385,7 +386,7 @@ Query 参数：
 
 ### 7.1 查询实例关联
 
-- 方法与 URL：`GET /models/{model_id}/instances/{inst_id}/associations`
+- 方法与 URL：`GET /models/{model_id}/instances/{inst_uuid}/associations`
 - 作用：查询源实例参与的实例关联，并按模型关联定义分组。
 - 请求体：无。
 - 成功状态码：200。
@@ -400,7 +401,7 @@ Query 参数：
 
 ### 7.2 创建实例关联
 
-- 方法与 URL：`POST /models/{model_id}/instances/{inst_id}/associations`
+- 方法与 URL：`POST /models/{model_id}/instances/{inst_uuid}/associations`
 - 作用：以 URL 中实例为源端点，创建到目标实例的关联。
 - 成功状态码：201。
 
@@ -410,13 +411,13 @@ Query 参数：
 |---|---|---|---|
 | `model_asst_id` | string | 是 | 模型关联 ID，最长 255 字符 |
 | `target_model_id` | string | 是 | 目标模型 ID，最长 255 字符 |
-| `target_inst_id` | integer | 是 | 目标实例 ID，正整数 |
+| `target_inst_uuid` | string | 是 | 目标实例业务 UUID |
 
 ```json
 {
   "model_asst_id": "host_run_app",
   "target_model_id": "app",
-  "target_inst_id": 21
+  "target_inst_uuid": "22222222-2222-4222-8222-222222222222"
 }
 ```
 
@@ -424,26 +425,29 @@ Query 参数：
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `association_id` | integer | 新建关联边 ID |
 | `model_asst_id` | string | 模型关联 ID |
+| `src_inst_uuid` | string | 源实例 UUID |
+| `dst_inst_uuid` | string | 目标实例 UUID |
 
 只有 `src_model_id` 等于 URL 的 `model_id`，且 `dst_model_id` 等于 `target_model_id` 的关联定义才允许创建。重复关联返回 409 和 `cmdb.association.conflict`。
 
 ### 7.3 删除实例关联
 
-- 方法与 URL：`DELETE /models/{model_id}/instances/{inst_id}/associations/{association_id}`
-- 作用：删除指定关联边。
+- 方法与 URL：`DELETE /models/{model_id}/instances/{inst_uuid}/associations/{dst_inst_uuid}/{model_asst_id}`
+- 作用：按源实例、目标实例与模型关联 ID 删除关联。
 - 请求体：无。
 - 成功状态码：200。
-- 返回：`data.deleted` 为已删除关联边 ID。
+- 返回：`data` 为已删除关联业务键。
 
 ```json
 {
-  "deleted": 10
+  "model_asst_id": "host_run_app",
+  "src_inst_uuid": "11111111-1111-4111-8111-111111111111",
+  "dst_inst_uuid": "22222222-2222-4222-8222-222222222222"
 }
 ```
 
-URL 中的实例必须与关联边源端点一致，且源、目标实例都必须在当前团队和权限范围内。关联不存在、端点异常或源端点不匹配时返回 404 和 `cmdb.association.not_found`。
+URL 中的实例必须为关联源端点，且源、目标实例都必须在当前团队和权限范围内。关联不存在、端点异常或源端点不匹配时返回 404 和 `cmdb.association.not_found`。
 
 ## 8. 常见状态码与错误码
 
@@ -463,4 +467,4 @@ URL 中的实例必须与关联边源端点一致，且源、目标实例都必�
 | 500 | `cmdb.instance.batch_incomplete` | 批量领域操作没有完整完成 |
 | 500 | `cmdb.request.failed` | 未归类的请求处理失败 |
 
-批量错误的 `data` 可能附带 `index`、`inst_id`、`field`，用于定位失败项。
+批量错误的 `data` 可能附带 `index`、`inst_uuid`、`field`，用于定位失败项。

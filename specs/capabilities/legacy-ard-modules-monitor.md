@@ -54,13 +54,22 @@
 - 接入前采集探测【已实现/已存在】：插件模型新增 `support_collect_detect` 能力标记；`CollectDetectService.create_task()` 创建任务后通过 `run_collect_detect_task.delay(...)` 异步执行一次性探测，结果记录到 `CollectDetectTask`，用于接入向导中的“先探测再落配置”场景。服务层会对超时时间做 1~600 秒钳制，并把请求快照中的敏感值脱敏存档（`models/plugin.py:17`、`services/collect_detect.py:29-69,198-213`、`tasks/collect_detect.py:7`）。
 - 内置网络设备模板增量【已实现/已存在】：SNMP 目录本轮新增 `access_topvision`、`access_icotera`、`switch_ipinfusion`、`transmission_ifotec`、`wireless_xirrus` 五组内置模板；其中 IP Infusion 模板附带电源温度默认告警策略，其余四组提供对象接入模板但不内置策略（`support-files/plugins/Telegraf/snmp/*/policy.json`）。
 
-对应 PRD：[[spec/prd/监控系统/集成.md#3.1 集成（插件管理）]]；对应功能清单：[[spec/fuctionlist/02-监控系统-功能清单.md#7. Integration - 资产管理]]
+对应 PRD：[[legacy-prd-监控系统-集成.md#3.1 集成（插件管理）]]；对应功能清单：[[legacy-fuctionlist-02-监控系统-功能清单.md#7. Integration - 资产管理]]
 > 证据来源：server/apps/monitor/views/collect_detect.py:15-86，server/apps/monitor/services/collect_detect.py:29-69,198-213，server/apps/monitor/support-files/plugins/Telegraf/snmp/access_topvision/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/access_icotera/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/switch_ipinfusion/policy.json:1-18，server/apps/monitor/support-files/plugins/Telegraf/snmp/transmission_ifotec/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/wireless_xirrus/policy.json:1-5　|　同步基线：a9d981aeb　|　【已实现】
 
 ## 5. 数据流【已实现/已存在】
 - 指标采集与告警评估：telegraf 采集 → VictoriaMetrics →（PromQL）scan_policy_task → 阈值/聚合/恢复评估 → MonitorEvent → MonitorAlert（原始快照存 MinIO）。
 - 流量监控接入：网络设备发送 NetFlow v5(2055)、NetFlow v9/默认 NetFlow 接入端点(2056) 或 sFlow(6343) → 采集器按云区域环境变量监听（`flow_env_config.py`） → 采样率归一化（`flow_sampling.py`） → 入 VictoriaMetrics，复用上述告警评估链路。
 - 漏跑补偿机制【已实现/已存在】：`scan_policy_task` 基于策略 `last_run_time` 与当前时间计算 gap，按周期数自动补偿历史扫描点（`tasks/monitor_policy.py:59-77`）。补偿上限：单次最多 `MAX_BACKFILL_COUNT=30` 个周期、最大补偿时间范围 `MAX_BACKFILL_SECONDS=24*3600` 秒，超出范围的历史数据不再补偿（`constants/alert_policy.py:5-7`）。
+
+### 5.1 跨模块实例归并与生命周期【已实现】
+
+- 监控接收来自 CMDB、节点管理的标准化实例变更，优先以节点关联标识、其次以 CMDB 关联标识命中已有监控实例，并回填两侧关联；若两种标识分别命中不同实例，返回冲突结果而不合并。
+- 监控发起的创建与删除通知携带来源链路标识；接收自身发起的回写时仅返回既有实例，避免循环处理。主机监控实例新建后会尽力通知节点管理和 CMDB，任一对端失败不影响监控实例创建；用户也可将既有监控实例显式推送至 CMDB。
+- 节点管理退役通知会停用并软删除对应监控实例；CMDB 或其他来源的解绑通知只清除关联标识，不删除监控资产。节点来源的新实例会创建监控实例并尝试配置默认主机采集；CMDB 发起的自动创建路径当前处于关闭状态，未满足既有创建条件时只做关联处理。
+
+相关架构：[[legacy-ard-modules-cmdb.md#4. 依赖与通信【已实现/已存在】]]、[[legacy-ard-modules-node-mgmt.md#4. 通信机制【已实现/已存在】]]；相关产品能力：[[legacy-prd-监控系统-集成.md#3.2.1 资产协同]]；相关功能清单：[[legacy-fuctionlist-02-监控系统-功能清单.md#7. Integration - 资产管理]]。
+> 证据来源：server/apps/monitor/models/monitor_object.py:122-136，server/apps/monitor/services/module_ingest.py:53-163,523-619,750-898，server/apps/monitor/services/module_push.py:62-178,181-239,291-406，server/apps/monitor/views/monitor_instance.py:397-410，server/apps/monitor/nats/monitor.py:1565-1578　|　同步基线：d2769559　|　【已实现】
 
 ## 6. 风险 / 待确认
 - VM 高基数查询的性能与限流策略【待确认】。

@@ -59,14 +59,22 @@ def test_validate_instance_filter_condition_too_many():
 
 def test_validate_instance_filter_instances_ok():
     ser = _ser(initial_data={"filter_type": "instances"})
-    value = {"instance_ids": [1, 2]}
-    assert ser.validate_instance_filter(value) == value
+    u1 = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    u2 = "c28e467a-501d-426f-a3c3-6e560c7b33cb"
+    value = {"instance_uuids": [u1, u2], "instance_ids": [1, 2]}
+    assert ser.validate_instance_filter(value) == {"instance_uuids": [u1, u2]}
+
+
+def test_validate_instance_filter_instances_rejects_digit_only_write():
+    ser = _ser(initial_data={"filter_type": "instances"})
+    with pytest.raises(serializers.ValidationError):
+        ser.validate_instance_filter({"instance_ids": [1, 2]})
 
 
 def test_validate_instance_filter_instances_empty():
     ser = _ser(initial_data={"filter_type": "instances"})
     with pytest.raises(serializers.ValidationError):
-        ser.validate_instance_filter({"instance_ids": []})
+        ser.validate_instance_filter({"instance_uuids": []})
 
 
 def test_validate_instance_filter_bad_type():
@@ -160,12 +168,14 @@ def test_normalize_relation_change_empty_raises():
 def test_normalize_relation_change_duplicate_models():
     ser = _ser()
     with pytest.raises(serializers.ValidationError):
-        ser._normalize_relation_change_config({
-            "related_models": [
-                {"related_model": "host", "fields": ["a"]},
-                {"related_model": "host", "fields": ["b"]},
-            ]
-        })
+        ser._normalize_relation_change_config(
+            {
+                "related_models": [
+                    {"related_model": "host", "fields": ["a"]},
+                    {"related_model": "host", "fields": ["b"]},
+                ]
+            }
+        )
 
 
 # --------------------------------------------------------------------------

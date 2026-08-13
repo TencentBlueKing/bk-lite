@@ -534,6 +534,7 @@ def test_get_nodes_by_ids_empty():
 def test_process_node_data_marks_active_and_collector_names(setup):
     region, collector, node = setup
     config = CollectorConfiguration.objects.create(name="cfg-process", collector=collector, cloud_region=region)
+    config.nodes.add(node)
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
     node_data = [
         {
@@ -547,7 +548,84 @@ def test_process_node_data_marks_active_and_collector_names(setup):
     assert result[0]["active"] is True
     coll = result[0]["status"]["collectors"][0]
     assert coll["collector_name"] == "Telegraf"
+    assert coll["configuration_id"] == config.id
     assert coll["configuration_name"] == "cfg-process"
+
+
+@pytest.mark.django_db
+def test_process_node_data_allows_missing_configuration_id(setup):
+    """sidecar 心跳里的 collectors 常只有运行态字段，不一定带 configuration_id。"""
+    region, collector, node = setup
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
+    node_data = [
+        {
+            "id": node.id,
+            "name": node.name,
+            "updated_at": now_iso,
+            "status": {
+                "collectors": [
+                    {
+                        "status": 0,
+                        "message": "Running",
+                        "collector_id": collector.id,
+                        "verbose_message": "",
+                    }
+                ]
+            },
+        }
+    ]
+    result = NodeService.process_node_data(node_data)
+    coll = result[0]["status"]["collectors"][0]
+    assert coll["collector_name"] == "Telegraf"
+    assert coll["configuration_name"] is None
+
+
+@pytest.mark.django_db
+def test_process_node_data_fills_configuration_from_assignment_when_status_omits_id(setup):
+    """配置绑定以服务端 assignment 为准，不依赖 sidecar status 是否上报 configuration_id。"""
+    region, collector, node = setup
+    config = CollectorConfiguration.objects.create(name="cfg-bound", collector=collector, cloud_region=region)
+    config.nodes.add(node)
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
+    node_data = [
+        {
+            "id": node.id,
+            "name": node.name,
+            "updated_at": now_iso,
+            "status": {
+                "collectors": [
+                    {
+                        "status": 0,
+                        "message": "Running",
+                        "collector_id": collector.id,
+                        "verbose_message": "",
+                    }
+                ]
+            },
+        }
+    ]
+    result = NodeService.process_node_data(node_data)
+    coll = result[0]["status"]["collectors"][0]
+    assert coll["configuration_id"] == config.id
+    assert coll["configuration_name"] == "cfg-bound"
+
+
+@pytest.mark.django_db
+def test_process_node_data_supports_list_configuration_id(setup):
+    region, collector, node = setup
+    config = CollectorConfiguration.objects.create(name="cfg-list", collector=collector, cloud_region=region)
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
+    node_data = [
+        {
+            "id": node.id,
+            "name": node.name,
+            "updated_at": now_iso,
+            "status": {"collectors": [{"collector_id": collector.id, "configuration_id": [config.id], "status": 0}]},
+        }
+    ]
+    result = NodeService.process_node_data(node_data)
+    coll = result[0]["status"]["collectors"][0]
+    assert coll["configuration_name"] == "cfg-list"
 
 
 @pytest.mark.django_db

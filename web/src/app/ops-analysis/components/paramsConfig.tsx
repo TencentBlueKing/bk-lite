@@ -9,7 +9,7 @@ import type {
   InputOption,
   ParamItem,
 } from '@/app/ops-analysis/types/dataSource';
-import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
 import { getDataSourceFormParamInitialValue } from '@/app/ops-analysis/utils/dataSourceFormParams';
@@ -168,6 +168,16 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           );
         case 'string':
         default:
+          if (param.name === 'query') {
+            return (
+              <Input.TextArea
+                rows={4}
+                placeholder={t('common.inputTip')}
+                style={{ width: '100%' }}
+                disabled={isDisabled}
+              />
+            );
+          }
           return (
             <Input
               placeholder={t('common.inputTip')}

@@ -300,9 +300,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     const requestId = ++previewRequestIdRef.current;
     setDynamicPreviewLoading(true);
     return getSourceDataByApiId(sourceId, {})
-      .then((response) => {
+      .then(({ data }) => {
         if (requestId !== previewRequestIdRef.current) return;
-        setDynamicPreview(extractDataSourceItems(response).slice(0, 5));
+        setDynamicPreview(extractDataSourceItems(data).slice(0, 5));
       })
       .catch((error: any) => {
         if (requestId !== previewRequestIdRef.current) return;
@@ -585,7 +585,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                       style={{ width: '100%' }}
                       options={filteredDataSourceList.map((item) => ({
                         value: item.id,
-                        label: `${item.name}（${item.rest_api}）`,
+                        label: `${item.name}${item.rest_api ? `（${item.rest_api}）` : ''}`,
                       }))}
                       onChange={(sourceId) => {
                         previewRequestIdRef.current += 1;

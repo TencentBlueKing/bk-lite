@@ -1,14 +1,12 @@
 import os
 
-from apps.rpc.base import RpcClient, AppClient
+from apps.rpc.base import AppClient, RpcClient
 
 
 class CMDB(object):
     def __init__(self, is_local_client=False):
         is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
-        self.client = (
-            AppClient("apps.cmdb.nats.nats") if is_local_client else RpcClient()
-        )
+        self.client = AppClient("apps.cmdb.nats.nats") if is_local_client else RpcClient()
 
     def get_module_data(self, **kwargs):
         """
@@ -31,20 +29,23 @@ class CMDB(object):
 
     def search_instances(self, **kwargs):
         """
-        告警丰富查询CMDB接口
-        :return: 模块的枚举值列表
+        告警丰富查询CMDB接口（UUID 定位）
+        :param kwargs/params: {"protocol_version": "2", "model_id": .., "inst_uuid": .., "inst_name": .., "organization_ids": [..]}
         """
         return_data = self.client.run("search_instances", **kwargs)
         return return_data
 
     def search_instances_batch(self, **kwargs):
-        """告警丰富批量查询 CMDB 实例。"""
+        """告警丰富批量查询 CMDB 实例（UUID）。
+        :param kwargs/params: {"protocol_version": "2", "model_id": .., "inst_uuids": [..], "inst_names": [..], "organization_ids": [..]}
+        """
         return self.client.run("search_instances_batch", **kwargs)
 
     def list_instances(self, **kwargs):
         """
-        查询单个模型下的实例列表（分页 + 过滤）
-        :param params: {"model_id": .., "params": [..], "page": .., "page_size": .., "order": "", "format": True}
+        查询单个模型下的实例列表（分页 + 过滤，返回不含图 _id）
+        :param params: {"protocol_version": "2", "model_id": .., "organization_ids": [..],
+                        "params": [..], "page": .., "page_size": .., "order": "", "format": True}
         :return: {"count": .., "items": [..]}
         """
         return self.client.run("list_instances", **kwargs)
@@ -80,21 +81,21 @@ class CMDB(object):
     def search_instance_associations(self, **kwargs):
         """
         查询实例关联列表
-        :param params: {"model_id": .., "inst_id": ..}
+        :param params: {"protocol_version": "2", "model_id": .., "inst_uuid": .., "organization_ids": [..]}
         """
         return self.client.run("search_instance_associations", **kwargs)
 
     def create_instance_association(self, **kwargs):
         """
         创建实例关联
-        :param params: {"src_inst_id": .., "dst_inst_id": .., "model_asst_id": .., "operator": ..}
+        :param params: {"protocol_version": "2", "src_inst_uuid": .., "dst_inst_uuid": .., "model_asst_id": .., "operator": ..}
         """
         return self.client.run("create_instance_association", **kwargs)
 
     def delete_instance_association(self, **kwargs):
         """
-        删除实例关联
-        :param params: {"asso_id": .., "operator": ..}
+        删除实例关联（业务键）
+        :param params: {"protocol_version": "2", "src_inst_uuid": .., "dst_inst_uuid": .., "model_asst_id": .., "operator": ..}
         """
         return self.client.run("delete_instance_association", **kwargs)
 

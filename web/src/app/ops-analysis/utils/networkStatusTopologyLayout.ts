@@ -242,7 +242,7 @@ export const buildPersistedNetworkStatusTopologyConfig = (
 
   const next: NetworkStatusTopologyConfig = {
     modelId: config.modelId || '',
-    instId: config.instId || '',
+    instUuid: config.instUuid || '',
     depth: config.depth || 2,
   };
 
@@ -272,7 +272,7 @@ export const pruneNetworkStatusTopologyLayout = (
   // 先归一成 layoutByMode（含旧扁平迁入），再修剪各桶
   const normalized = buildPersistedNetworkStatusTopologyConfig({
     modelId: '',
-    instId: '',
+    instUuid: '',
     depth: 2,
     layoutMode: layout.layoutMode,
     layoutByMode: layout.layoutByMode,
@@ -314,7 +314,7 @@ export const resetNetworkStatusTopologyLayout = (
 
   const next: NetworkStatusTopologyConfig = {
     modelId: config.modelId || '',
-    instId: config.instId || '',
+    instUuid: config.instUuid || '',
     depth: config.depth || 2,
     layoutMode: normalizeNetworkStatusTopologyLayoutMode(
       config.layoutMode ?? layoutMode,

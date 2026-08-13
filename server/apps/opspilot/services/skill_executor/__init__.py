@@ -9,10 +9,11 @@ Phase 0 引入,NATS worker 上线后可废弃。
 """
 from __future__ import annotations
 
-from .path_rewriting_backend import (
-    PathRewritingBackend,
-    rewrite_sandbox_paths,
-    rewrite_skill_paths,
-)
+from .path_rewriting_backend import PathRewritingBackend, extract_skill_names_from_text, rewrite_sandbox_paths, rewrite_skill_paths
 
-__all__ = ["PathRewritingBackend", "rewrite_sandbox_paths", "rewrite_skill_paths"]
+__all__ = [
+    "PathRewritingBackend",
+    "extract_skill_names_from_text",
+    "rewrite_sandbox_paths",
+    "rewrite_skill_paths",
+]

@@ -222,7 +222,7 @@ def list_kubernetes_deployments(namespace=None, limit=30, offset=0, config: Runn
 
         all_items = deployments.items
         total_count = len(all_items)
-        paged_items = all_items[offset:offset + limit]
+        paged_items = all_items[offset : offset + limit]
 
         result = []
         for deployment in paged_items:
@@ -239,7 +239,22 @@ def list_kubernetes_deployments(namespace=None, limit=30, offset=0, config: Runn
                     "selector": deployment.spec.selector.match_labels if deployment.spec.selector else {},
                 }
             )
-        return json.dumps({"items": result, "total": total_count, "returned": len(result), "offset": offset, "has_more": (offset + len(result)) < total_count})
+        payload = {
+            "items": result,
+            "total": total_count,
+            "returned": len(result),
+            "offset": offset,
+            "has_more": (offset + len(result)) < total_count,
+        }
+        if total_count > 1:
+            scope_hint = f"namespace={namespace}" if namespace else "不传 namespace（覆盖全部命名空间）"
+            payload["_next_step_hint"] = (
+                f"当前范围内共 {total_count} 个 Deployment；列表结果不含 limits/探针等配置。"
+                f"配置检查请调用 analyze_deployment_configurations（{scope_hint}），"
+                "【禁止】仅传 name 抽样单个对象，也禁止擅自改用用户未提及的命名空间（如 kube-system）。"
+                "用户说全部/所有工作负载时，必须分析约定范围内的全部对象。"
+            )
+        return json.dumps(payload, ensure_ascii=False)
     except ApiException as e:
         return json.dumps({"error": f"获取Deployment列表失败: {str(e)}"})
 
@@ -644,33 +659,39 @@ def search_workload_across_namespaces(workload_name: str, config: RunnableConfig
 
             for dep in apps_v1.list_deployment_for_all_namespaces().items:
                 if dep.metadata.name == workload_name:
-                    locations.append({
-                        "cluster": cluster_name,
-                        "namespace": dep.metadata.namespace,
-                        "kind": "Deployment",
-                        "replicas": dep.spec.replicas,
-                        "ready_replicas": dep.status.ready_replicas or 0,
-                    })
+                    locations.append(
+                        {
+                            "cluster": cluster_name,
+                            "namespace": dep.metadata.namespace,
+                            "kind": "Deployment",
+                            "replicas": dep.spec.replicas,
+                            "ready_replicas": dep.status.ready_replicas or 0,
+                        }
+                    )
 
             for sts in apps_v1.list_stateful_set_for_all_namespaces().items:
                 if sts.metadata.name == workload_name:
-                    locations.append({
-                        "cluster": cluster_name,
-                        "namespace": sts.metadata.namespace,
-                        "kind": "StatefulSet",
-                        "replicas": sts.spec.replicas,
-                        "ready_replicas": sts.status.ready_replicas or 0,
-                    })
+                    locations.append(
+                        {
+                            "cluster": cluster_name,
+                            "namespace": sts.metadata.namespace,
+                            "kind": "StatefulSet",
+                            "replicas": sts.spec.replicas,
+                            "ready_replicas": sts.status.ready_replicas or 0,
+                        }
+                    )
 
             for ds in apps_v1.list_daemon_set_for_all_namespaces().items:
                 if ds.metadata.name == workload_name:
-                    locations.append({
-                        "cluster": cluster_name,
-                        "namespace": ds.metadata.namespace,
-                        "kind": "DaemonSet",
-                        "replicas": ds.status.desired_number_scheduled or 0,
-                        "ready_replicas": ds.status.number_ready or 0,
-                    })
+                    locations.append(
+                        {
+                            "cluster": cluster_name,
+                            "namespace": ds.metadata.namespace,
+                            "kind": "DaemonSet",
+                            "replicas": ds.status.desired_number_scheduled or 0,
+                            "ready_replicas": ds.status.number_ready or 0,
+                        }
+                    )
         except ApiException as e:
             logger.warning("搜索集群 %s 中的工作负载失败: %s", cluster_name, str(e))
 
@@ -681,9 +702,11 @@ def search_workload_across_namespaces(workload_name: str, config: RunnableConfig
             try:
                 kubeconfig_data = instance.get("kubeconfig_data", "")
                 if kubeconfig_data:
-                    from kubernetes import config as kube_config
-                    from apps.opspilot.metis.llm.tools.kubernetes.utils import _preprocess_kubeconfig
                     import io as _io
+
+                    from kubernetes import config as kube_config
+
+                    from apps.opspilot.metis.llm.tools.kubernetes.utils import _preprocess_kubeconfig
 
                     if isinstance(kubeconfig_data, str):
                         kubeconfig_data = kubeconfig_data.replace("\\n", "\n")
@@ -709,10 +732,7 @@ def search_workload_across_namespaces(workload_name: str, config: RunnableConfig
 
     if len(locations) > 1:
         # 多个匹配：强制要求 LLM 向用户询问
-        choices_desc = ", ".join(
-            f"{loc['cluster']} / {loc['namespace']} / {loc['kind']}"
-            for loc in locations
-        )
+        choices_desc = ", ".join(f"{loc['cluster']} / {loc['namespace']} / {loc['kind']}" for loc in locations)
         result["_next_step_hint"] = (
             f"找到多个名为 {workload_name} 的工作负载：{choices_desc}。"
             "你【必须】立即调用 request_user_choice 工具，让用户选择要检查哪一个。"
@@ -727,8 +747,6 @@ def search_workload_across_namespaces(workload_name: str, config: RunnableConfig
             f"namespace=\"{loc['namespace']}\"、name=\"{workload_name}\"。"
         )
     else:
-        result["_next_step_hint"] = (
-            f"未找到名为 {workload_name} 的工作负载。请告知用户未找到该工作负载，确认名称是否正确。"
-        )
+        result["_next_step_hint"] = f"未找到名为 {workload_name} 的工作负载。请告知用户未找到该工作负载，确认名称是否正确。"
 
     return json.dumps(result)

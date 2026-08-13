@@ -21,7 +21,7 @@ from apps.operation_analysis.constants.import_export import (
     ImportExportErrorCode,
     ObjectType,
 )
-
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 
 DATE_RANGE_QUICK_TYPES = {
     "today",
@@ -149,6 +149,7 @@ class DatasourceItem(BaseModel):
     source_type: str = Field(default="nats")
     connection_config: dict = Field(default_factory=dict)
     query_config: dict = Field(default_factory=dict)
+    transform_config: dict = Field(default_factory=dict)
     desc: str = Field(default="")
     is_active: bool = Field(default=True)
     params: dict | list | None = Field(default_factory=list)
@@ -173,7 +174,8 @@ class DatasourceItem(BaseModel):
     @field_validator("source_type")
     @classmethod
     def validate_source_type(cls, v: str) -> str:
-        if v not in {"nats", "mysql", "postgresql", "rest_api", "excel"}:
+        allowed = {choice[0] for choice in DataSourceAPIModel.SOURCE_TYPE_CHOICES}
+        if v not in allowed:
             raise ValueError("source_type 不支持")
         return v
 
@@ -442,7 +444,7 @@ DB_ID_FIELD_PATTERN = re.compile(r"(^|_)(id|ids)$", re.IGNORECASE)
 PURE_NUMERIC_PATTERN = re.compile(r"^\d+$")
 
 NETWORK_TOPOLOGY_EXTERNAL_ID_FIELDS = {
-    "bk_inst_id",
+    "bk_inst_uuid",
     "plugin_group_id",
     "plugin_template_id",
     "network_collect_task_id",

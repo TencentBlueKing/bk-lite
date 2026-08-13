@@ -124,6 +124,12 @@ def test_backend_dynamic_status_translation_contracts_exist():
                 assert isinstance(messages.get(f"{prefix}.{value}"), str)
 
 
+def test_unknown_compliance_status_uses_unable_to_determine_copy():
+    messages = _flatten(_load_messages("zh-Hans"))
+
+    assert messages["status.compliance.unknown"] == "无法判定"
+
+
 def test_patch_message_uses_request_user_locale():
     assert patch_message(_request("en"), "error.task_finished_not_cancellable", "fallback") == (
         "The task has finished and cannot be cancelled"

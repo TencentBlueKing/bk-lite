@@ -1,4 +1,7 @@
 import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/dataSource';
+import type { SourceDataRequestOptions } from '@/app/ops-analysis/api/dataSource';
+import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
+import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import {
   extractDataSourceItems,
   mapDynamicItems,
@@ -9,7 +12,7 @@ export type ParamInputOptionsState =
   | { status: 'idle'; options: [] }
   | { status: 'loading'; options: [] }
   | { status: 'success'; options: InputOption[] }
-  | { status: 'error'; options: [] };
+  | { status: 'error'; options: []; errorMessage?: string };
 
 export interface ParamInputOptionsLoad {
   sync: boolean;
@@ -17,9 +20,18 @@ export interface ParamInputOptionsLoad {
   promise: Promise<ParamInputOptionsState | null>;
 }
 
+export interface ParamInputOptionsLoaderOptions {
+  suppressErrorNotification?: boolean;
+  fallbackErrorMessage?: string;
+}
+
 interface OptionsApi {
   getDataSourceList: (params?: unknown) => Promise<unknown>;
-  getSourceDataByApiId: (id: number, params?: unknown) => Promise<unknown>;
+  getSourceDataByApiId: (
+    id: number,
+    params?: unknown,
+    options?: SourceDataRequestOptions,
+  ) => Promise<SourceDataResult>;
 }
 
 const typedOption = (option: InputOption) => [option.label, typeof option.value, option.value];
@@ -66,7 +78,10 @@ export const getParamInputConfigKey = (config?: InputControlConfig): string => {
 const resolved = (options: InputOption[]): ParamInputOptionsState =>
   options.length ? { status: 'success', options } : { status: 'error', options: [] };
 
-export const createParamInputOptionsLoader = (api: OptionsApi) => {
+export const createParamInputOptionsLoader = (
+  api: OptionsApi,
+  getLoaderOptions?: () => ParamInputOptionsLoaderOptions | undefined,
+) => {
   let generation = 0;
   let currentKey: string | undefined;
   let currentLoad: ParamInputOptionsLoad | undefined;
@@ -91,6 +106,12 @@ export const createParamInputOptionsLoader = (api: OptionsApi) => {
     const source = config.optionsSource;
     const initial: ParamInputOptionsState = { status: 'loading', options: [] };
     const promise = (async (): Promise<ParamInputOptionsState | null> => {
+      const loaderOptions = getLoaderOptions?.();
+      const requestOptions: SourceDataRequestOptions | undefined =
+        loaderOptions?.suppressErrorNotification
+          ? { suppressErrorNotification: true }
+          : undefined;
+      const fallbackErrorMessage = loaderOptions?.fallbackErrorMessage ?? '';
       try {
         const response = source.sourceRef
           ? await api.getDataSourceList({ page_size: -1 })
@@ -101,13 +122,19 @@ export const createParamInputOptionsLoader = (api: OptionsApi) => {
         if (requestGeneration !== generation) return null;
         const sourceId = resolveDynamicSourceId(source, sourceItems as Array<{ id: number; rest_api?: string }>);
         if (!sourceId) return requestGeneration === generation ? { status: 'error', options: [] } : null;
-        const data = await api.getSourceDataByApiId(sourceId, {});
+        const { data } = await api.getSourceDataByApiId(sourceId, {}, requestOptions);
         const options = mapDynamicItems(
           extractDataSourceItems(data), source.valueField, source.labelField,
         );
         return requestGeneration === generation ? resolved(options) : null;
-      } catch {
-        return requestGeneration === generation ? { status: 'error', options: [] } : null;
+      } catch (error) {
+        if (requestGeneration !== generation) return null;
+        const errorMessage = getRequestErrorMessage(error, fallbackErrorMessage);
+        return {
+          status: 'error',
+          options: [],
+          ...(errorMessage ? { errorMessage } : {}),
+        };
       }
     })();
     currentLoad = { sync: false, initial, promise };

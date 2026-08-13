@@ -496,10 +496,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return;
     }
     message.info(
-      t('monitor.integrations.collectDetectBatchStarted').replace(
-        '{{count}}',
-        String(runnableRows.length)
-      )
+      t('monitor.integrations.collectDetectBatchStarted', '', {
+        count: runnableRows.length
+      })
     );
     await Promise.all(
       runnableRows.map((row) => handleCollectDetect(row, 'batch'))
@@ -983,7 +982,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       layout="vertical"
       onValuesChange={(changed, all) => {
         clearCollectDetectState();
-        const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(changed);
+        const defaultIfTypeExclude = currentConfig?.form_fields?.find(
+          (field: { name?: string }) => field.name === 'iftype_exclude'
+        )?.default_value;
+        const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(
+          changed,
+          defaultIfTypeExclude
+        );
         const nextValues = Object.keys(interfaceFilterModePatch).length
           ? { ...all, ...interfaceFilterModePatch }
           : all;
@@ -1079,10 +1084,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                     const valueStr = String(value);
                     if (valueSet.has(valueStr)) {
                       const errorMsg = t(
-                        'monitor.integrations.duplicateFieldError'
-                      )
-                        .replace('{{field}}', fieldLabel)
-                        .replace('{{value}}', valueStr);
+                        'monitor.integrations.duplicateFieldError',
+                        '',
+                        {
+                          field: fieldLabel,
+                          value: valueStr
+                        }
+                      );
                       return Promise.reject(new Error(errorMsg));
                     }
                     valueSet.add(valueStr);

@@ -5,7 +5,7 @@ import axios from 'axios';
 import { useSession, signIn } from 'next-auth/react';
 import type { Session } from 'next-auth';
 import { useRouter, usePathname } from 'next/navigation';
-import { Spin, message } from 'antd';
+import { App, Spin } from 'antd';
 import { useLocale } from '@/context/locale';
 import { useThemeMode } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
@@ -79,6 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { data: session, status } = useSession();
   const extendedSession = session as unknown as ExtendedSession | null;
   const { mode } = useThemeMode();
+  const { message } = App.useApp();
   const [token, setToken] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
@@ -384,7 +385,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     recoveryPromiseRef.current = recoveryPromise;
     return recoveryPromise;
-  }, [t]);
+  }, [message, t]);
 
   useEffect(() => subscribeAuthRecovery((event) => {
     void recoverAuthenticatedSession(event);

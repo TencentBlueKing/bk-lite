@@ -334,7 +334,7 @@ export class ChartDataTransformer {
         dateValue.minute() === 0 &&
         dateValue.second() === 0
       ) {
-        return formatOpsDisplayTime(value, 'MM-DD');
+        return formatOpsDisplayTime(value, 'YYYY-MM-DD');
       }
       return formatOpsDisplayTime(value, 'MM-DD HH:mm');
     }

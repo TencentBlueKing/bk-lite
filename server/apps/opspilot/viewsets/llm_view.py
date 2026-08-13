@@ -440,6 +440,8 @@ class LLMViewSet(PinMixin, AuthViewSet):
         # 用户显式选中的全集:不受 substring 匹配限制,用于 backend 物化。
         # 解决"用户在设置里选了 N 个包,但用户消息不含描述关键词 → 后端一个都没物化"的丢包问题。
         params["enabled_skill_packages"] = skill_packages
+        # 报告门禁只看 matched：避免寒暄轮仅因「包已启用」就打开
+        # config_analysis_report / repair_diff_report。物化仍用 enabled 全集。
         params.update(build_skill_package_strategy(matched_skill_packages))
 
 

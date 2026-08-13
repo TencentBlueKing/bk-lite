@@ -10,13 +10,10 @@ from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.services.effective_plugins import MonitorEffectivePluginService
 from apps.monitor.services.metrics import Metrics as MetricsService
+from apps.monitor.services.module_push import MonitorToCmdbPushService, build_monitor_push_actor_scope
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 from apps.monitor.services.monitor_object import MonitorObjectService
-from apps.monitor.services.module_push import (
-    MonitorToCmdbPushService,
-    build_monitor_push_actor_scope,
-)
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.monitor.utils.pagination import parse_page_params
@@ -185,6 +182,14 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             "true",
             "yes",
         )
+        # 可选精确实例 ID：与 name 模糊搜索并存；非法值按无匹配返回，避免 500。
+        raw_instance_id = (request.GET.get("instance_id") or "").strip()
+        instance_id = None
+        if raw_instance_id:
+            try:
+                instance_id = normalize_instance_identity(raw_instance_id)["storage_instance_key"]
+            except ValueError:
+                return WebUtils.response_success({"count": 0, "results": []})
         data = MonitorObjectService.get_monitor_instance(
             int(monitor_object_id),
             page,
@@ -195,6 +200,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             request.GET.get("monitor_plugin_id"),
             visible_organization_ids=scope.data_team_ids,
             vm_params=_extract_vm_params(request),
+            instance_id=instance_id,
         )
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
@@ -402,9 +408,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         _ensure_operate_instances(request, [instance_id], actor_context)
         actor_scope = build_monitor_push_actor_scope(request)
         try:
-            result = MonitorToCmdbPushService.push_instance(
-                str(instance_id), actor_scope=actor_scope
-            )
+            result = MonitorToCmdbPushService.push_instance(str(instance_id), actor_scope=actor_scope)
         except ValueError as exc:
             raise BaseAppException(str(exc)) from exc
         return WebUtils.response_success(result)

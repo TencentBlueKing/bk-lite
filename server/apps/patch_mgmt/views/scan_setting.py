@@ -9,6 +9,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.patch_mgmt.models import ScanSetting
 from apps.patch_mgmt.serializers.scan_setting import ScanSettingSerializer
+from apps.patch_mgmt.services.notification_config import load_notification_candidates
 
 
 class ScanSettingViewSet(AuthViewSet):
@@ -58,3 +59,15 @@ class ScanSettingViewSet(AuthViewSet):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="notification_candidates")
+    @HasPermission("patch_source-View")
+    def notification_candidates(self, request):
+        """返回当前用户在当前组织可选的通知渠道和接收人。"""
+        candidates = load_notification_candidates(request)
+        return Response(
+            {
+                "channels": candidates["channels"],
+                "users": candidates["users"],
+            }
+        )

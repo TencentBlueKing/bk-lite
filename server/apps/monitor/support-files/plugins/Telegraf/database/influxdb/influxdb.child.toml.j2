@@ -16,7 +16,7 @@
     {% if tls_key %}
     tls_key = "{{ tls_key }}"
     {% endif %}
-    insecure_skip_verify = {{ insecure_skip_verify | default(false) | lower }}
+    insecure_skip_verify = {{ insecure_skip_verify | default(false, true) | lower }}
     [inputs.influxdb.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"

@@ -10,6 +10,49 @@ import { MetricExpressionMode } from './formulaExpressionUtils';
 
 export const FORMULA_DEFAULT_RESULT_UNIT = 'percent';
 
+/** 组织变更后，剔除不再属于候选用户列表的已选通知人 */
+export const pruneNoticeUsers = <T extends string | number>(
+  noticeUsers: T[] | undefined,
+  userList: Array<{ id: string | number; username?: string }>
+): T[] => {
+  if (!Array.isArray(noticeUsers) || !noticeUsers.length) {
+    return [];
+  }
+  if (!Array.isArray(userList) || !userList.length) {
+    return [];
+  }
+
+  const allowed = new Set<string>();
+  userList.forEach((user) => {
+    allowed.add(String(user.id));
+    if (user.username) {
+      allowed.add(user.username);
+    }
+  });
+
+  return noticeUsers.filter((item) => allowed.has(String(item)));
+};
+
+/** 开启通知且所选渠道中存在需要通知人的渠道时，通知人必填 */
+export const shouldRequireNoticeUsers = ({
+  notice,
+  noticeTypeIds,
+  channelList
+}: {
+  notice?: boolean;
+  noticeTypeIds?: Array<string | number>;
+  channelList: Array<{ id: string | number; channel_type: string }>;
+}): boolean => {
+  if (!notice) return false;
+  const selectedIds = noticeTypeIds || [];
+  if (!selectedIds.length) return false;
+  const selectedChannels = channelList.filter((channel) =>
+    selectedIds.some((id) => String(id) === String(channel.id))
+  );
+  if (!selectedChannels.length) return false;
+  return selectedChannels.some((channel) => channel.channel_type !== 'nats');
+};
+
 const INVALID_THRESHOLD_UNIT_IDS = new Set(['none', 'short']);
 
 /** 无量纲 / 不参与阈值单位选配的单位（none、short、空） */

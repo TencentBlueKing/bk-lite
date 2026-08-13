@@ -90,12 +90,39 @@ class DataSourceTag(MaintainerInfo, TimeInfo):
         return f"{self.name}({self.tag_id})"
 
 
+class DataConnection(MaintainerInfo, TimeInfo, Groups):
+    TYPE_MYSQL = "mysql"
+    TYPE_POSTGRESQL = "postgresql"
+    TYPE_REST_API = "rest_api"
+
+    TYPE_CHOICES = [
+        (TYPE_MYSQL, "MySQL"),
+        (TYPE_POSTGRESQL, "PostgreSQL"),
+        (TYPE_REST_API, "REST API"),
+    ]
+
+    name = models.CharField(max_length=255, verbose_name="数据连接名称")
+    connection_type = models.CharField(max_length=32, choices=TYPE_CHOICES, verbose_name="连接类型")
+    description = models.TextField(verbose_name="描述", blank=True, null=True)
+    is_active = models.BooleanField(default=True, verbose_name="是否启用")
+    # 敏感字段（密码、Header 值）以加密后的值落库；API 层脱敏回显。
+    config = JSONField(default=dict, blank=True, verbose_name="连接配置")
+
+    class Meta:
+        db_table = "operation_analysis_data_connection"
+        verbose_name = "数据连接"
+
+    def __str__(self):
+        return f"{self.name}({self.connection_type})"
+
+
 class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
     SOURCE_TYPE_NATS = "nats"
     SOURCE_TYPE_MYSQL = "mysql"
     SOURCE_TYPE_POSTGRESQL = "postgresql"
     SOURCE_TYPE_REST_API = "rest_api"
     SOURCE_TYPE_EXCEL = "excel"
+    SOURCE_TYPE_PROMETHEUS = "prometheus"
 
     SOURCE_TYPE_CHOICES = [
         (SOURCE_TYPE_NATS, "NATS"),
@@ -103,14 +130,42 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
         (SOURCE_TYPE_POSTGRESQL, "PostgreSQL"),
         (SOURCE_TYPE_REST_API, "REST API"),
         (SOURCE_TYPE_EXCEL, "Excel"),
+        (SOURCE_TYPE_PROMETHEUS, "Prometheus"),
     ]
 
     name = models.CharField(max_length=255, verbose_name="数据源名称")
     rest_api = models.CharField(max_length=255, verbose_name="REST API URL", blank=True)
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
     source_type = models.CharField(max_length=32, choices=SOURCE_TYPE_CHOICES, default=SOURCE_TYPE_NATS, verbose_name="数据来源类型")
+    connection = models.ForeignKey(
+        DataConnection,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="data_sources",
+        verbose_name="数据连接",
+    )
     connection_config = JSONField(default=dict, blank=True, verbose_name="连接配置")
+    connection_overrides = JSONField(default=dict, blank=True, verbose_name="连接覆盖项")
     query_config = JSONField(default=dict, blank=True, verbose_name="取数配置")
+    transform_config = JSONField(default=dict, blank=True, verbose_name="转换配置")
+    excel_success_slot = models.ForeignKey(
+        "operation_analysis.ExcelMaterializationSlot",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Excel 当前成功槽位",
+    )
+    excel_candidate_slot = models.ForeignKey(
+        "operation_analysis.ExcelMaterializationSlot",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Excel 当前候选槽位",
+    )
+    excel_materialization_generation = models.PositiveIntegerField(default=0, verbose_name="Excel 物化代数")
     # [内部预留] 当前无产品功能依赖，仅用于历史兼容透传（导入导出/内置数据导入）；前端不暴露、运行时不校验
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
     params = JSONField(help_text="API请求参数", verbose_name="请求参数", blank=True, null=True)

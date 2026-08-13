@@ -304,12 +304,17 @@ const Template: React.FC = () => {
           <div className={templateStyle.cardTitle} title={item.name || '--'}>
             {item.name || '--'}
           </div>
-          <Tag className={templateStyle.cardTag}>
-            {item.template_group || item.plugin_display_name || item.plugin_name || '--'}
-          </Tag>
-          <Tag color={item.template_type === 'custom' ? 'blue' : 'default'}>
-            {item.template_type === 'custom' ? '自定义' : '内置'}
-          </Tag>
+          <div className={templateStyle.cardMeta}>
+            <Tag className={templateStyle.cardTag}>
+              {item.template_group || item.plugin_display_name || item.plugin_name || '--'}
+            </Tag>
+            <Tag
+              className={templateStyle.cardTypeTag}
+              color={item.template_type === 'custom' ? 'blue' : 'default'}
+            >
+              {item.template_type === 'custom' ? '自定义' : '内置'}
+            </Tag>
+          </div>
           <div className={templateStyle.cardDescription} title={item.description || '--'}>
             {item.description || '--'}
           </div>

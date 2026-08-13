@@ -394,6 +394,48 @@ func TestInstallWindowsPackageTreatsPreCreatedEmptyDirectoryAsFreshInstall(t *te
 	}
 }
 
+func TestInstallWindowsPackageReportsActualPhaseBoundaries(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	zipPath := writeControllerZip(t, map[string]string{
+		"controller/collector-sidecar.exe": "new-binary",
+	})
+	controller := &observingWindowsServiceController{backupDir: installDir + ".bklite-backup"}
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		OS:         "windows",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+	}
+	events := []string{}
+
+	err := installWindowsPackageWithProgress(
+		cfg,
+		zipPath,
+		controller,
+		func(step, status, _ string) { events = append(events, step+":"+status) },
+	)
+
+	if err != nil {
+		t.Fatalf("install Windows package: %v", err)
+	}
+	want := []string{
+		"extract_package:running",
+		"extract_package:success",
+		"configure_runtime:running",
+		"configure_runtime:success",
+		"run_package_installer:running",
+		"run_package_installer:success",
+	}
+	if strings.Join(events, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected Windows install progress: got %v, want %v", events, want)
+	}
+}
+
 func TestInstallWindowsPackageRestoresExistingInstallationWhenNewServiceFails(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
 	if err := os.MkdirAll(installDir, 0755); err != nil {
@@ -1375,6 +1417,54 @@ func TestLinuxInstallerAPITokenInputsKeepsEmptyTokenOnArgv(t *testing.T) {
 	defer cleanup()
 	if arg != "" || env != "" {
 		t.Fatalf("empty token should not create env/file inputs, got arg=%q env=%q", arg, env)
+	}
+}
+
+func TestRunLinuxInstallerIncludesScriptOutputOnFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test is only for Unix-like systems")
+	}
+
+	installDir := t.TempDir()
+	installScript := filepath.Join(installDir, "install.sh")
+	script := `#!/bin/sh
+echo "用法: install.sh {server_url} ..."
+exit 1
+`
+	if err := os.WriteFile(installScript, []byte(script), 0755); err != nil {
+		t.Fatalf("write install.sh: %v", err)
+	}
+
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "",
+		ZoneID:     "zone-a",
+		GroupID:    "group-a",
+		NodeName:   "node-a",
+		NodeID:     "node-1",
+		InstallDir: installDir,
+		Package: PackageConfig{
+			CPUArchitecture: "x86_64",
+		},
+	}
+
+	err := runLinuxInstaller(cfg)
+	if err == nil {
+		t.Fatal("expected install.sh failure")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "exit status 1") {
+		t.Fatalf("expected exit status in error, got %q", message)
+	}
+	if !strings.Contains(message, "用法: install.sh") {
+		t.Fatalf("expected install.sh stdout in error, got %q", message)
+	}
+}
+
+func TestTruncateInstallerOutputKeepsTail(t *testing.T) {
+	got := truncateInstallerOutput("abcdefghij", 4)
+	if got != "...ghij" {
+		t.Fatalf("unexpected truncation: %q", got)
 	}
 }
 

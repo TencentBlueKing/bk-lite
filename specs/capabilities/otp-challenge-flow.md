@@ -76,10 +76,22 @@ The system SHALL store challenges in a distributed cache with automatic expirati
 ### Requirement: OTP verification rate limiting
 The system SHALL limit OTP verification attempts to prevent brute-force attacks.
 
+OTP login SHALL also limit failed attempts per account after validating the
+challenge. This account-scoped guard is independent of forwarding headers, so
+changing `X-Forwarded-For` cannot distribute guesses across rate-limit keys.
+The existing IP + username counter and proxy forwarding behavior remain
+unchanged for compatibility. Both counters are reconstructable cache entries
+with a five-minute TTL and require no data migration or deployment setting.
+
 #### Scenario: Rate limit exceeded
 - **WHEN** user exceeds 5 failed OTP attempts within 5 minutes (per IP + username)
 - **THEN** system blocks further OTP verification attempts
 - **AND** returns rate limit error with retry-after time
+
+#### Scenario: Forwarding header rotation
+- **WHEN** failed OTP login attempts for one account arrive with different IP attribution
+- **THEN** the shared account counter still blocks attempts after the fifth failure
+- **AND** the existing IP + username counters remain available for source-specific limiting
 
 #### Scenario: Rate limit reset
 - **WHEN** user successfully verifies OTP

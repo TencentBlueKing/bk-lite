@@ -1,0 +1,24 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false,
+    "jsx": "react-jsx",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "outDir": "../packages/webchat-ui/.test-dist/issue-4037",
+    "rootDir": "..",
+    "sourceMap": false
+  },
+  "include": [
+    "webchat-config.issue-4037.test.ts",
+    "../packages/webchat-core/src/config.ts",
+    "../packages/webchat-core/src/types.ts",
+    "../packages/webchat-ui/src/agui.ts",
+    "../packages/webchat-ui/src/legacyMessage.ts",
+    "../packages/webchat-ui/src/floatingButtonCallbacks.ts"
+  ]
+}

@@ -8,12 +8,12 @@ import React, {
   useCallback
 } from 'react';
 import Dashboard, { DashboardRef } from './dashBoard';
-import { LeftOutlined, RightOutlined } from '@ant-design/icons';
-import { Button, Input, Spin } from 'antd';
+import { Input, Spin } from 'antd';
 import { useBuildInDashBoards } from '../../hooks/analysis';
 import useApiClient from '@/utils/request';
 import useLogApi from '@/app/log/api/integration';
 import { useCollectTypeInfo } from '@/app/log/hooks/integration/common/getCollectTypeConfig';
+import ResizableSidebar from '@/components/resizable-sidebar';
 import { TreeItem } from '@/app/log/types';
 import { ObjectItem } from '@/app/log/types/event';
 
@@ -42,7 +42,6 @@ const Analysis: React.FC = () => {
   const { isLoading } = useApiClient();
   const { getCollectTypes, getDisplayCategoryEnum } = useLogApi();
   const { getIcon } = useCollectTypeInfo();
-  const [collapsed, setCollapsed] = useState(false);
   const dashboardRef = useRef<DashboardRef>(null);
   const [dashboardId, setDashboardId] = useState<string>('');
   const [dashboardCollectTypeIdMap, setDashboardCollectTypeIdMap] = useState<
@@ -195,49 +194,39 @@ const Analysis: React.FC = () => {
 
   return (
     <div className="flex w-full h-[calc(100vh-90px)] relative rounded-lg">
-      <div
-        className={`h-full relative transition-all duration-300 ${
-          collapsed ? 'w-0 min-w-0' : 'w-[160px] min-w-[160px]'
-        }`}
-        style={{
-          width: collapsed ? 0 : 160,
-          minWidth: collapsed ? 0 : 160,
-          maxWidth: collapsed ? 0 : 160,
-          flexShrink: 0
-        }}
+      <ResizableSidebar
+        storageKey="log.analysis.sidebar.width"
+        collapseStorageKey="log.analysis.sidebarCollapsed"
+        defaultWidth={160}
+        minWidth={140}
+        maxWidth={320}
       >
-        {!collapsed && (
-          <div
-            className="h-full flex flex-col bg-[var(--color-bg-1)] overflow-hidden"
-            style={{ width: 160, height: 'calc(100vh - 90px)' }}
-          >
-            {/* 搜索框 */}
-            <div className="px-2 pt-4 pb-2 flex-shrink-0">
-              <Search
-                placeholder="搜索..."
-                value={searchValue}
-                onChange={(e) => setSearchValue(e.target.value)}
-                allowClear
-              />
-            </div>
-            {/* 扁平图标列表 */}
-            <div className="flex-1 overflow-y-auto overflow-x-hidden px-1 pb-2">
-              <Spin spinning={treeLoading}>
-                {flatList
-                  .filter((item) =>
-                    searchValue
-                      ? item.title
-                        .toLowerCase()
-                        .includes(searchValue.toLowerCase())
-                      : true
-                  )
-                  .map((item) => {
-                    const isSelected = item.key === dashboardId;
-                    return (
-                      <div
-                        key={item.key}
-                        onClick={() => handleNodeSelect(item.key)}
-                        className={`
+        <div className="flex h-full flex-col overflow-hidden bg-[var(--color-bg-1)]">
+          <div className="flex-shrink-0 px-2 pb-2 pt-4">
+            <Search
+              placeholder="搜索..."
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              allowClear
+            />
+          </div>
+          <div className="flex-1 overflow-x-hidden overflow-y-auto px-1 pb-2">
+            <Spin spinning={treeLoading}>
+              {flatList
+                .filter((item) =>
+                  searchValue
+                    ? item.title
+                      .toLowerCase()
+                      .includes(searchValue.toLowerCase())
+                    : true
+                )
+                .map((item) => {
+                  const isSelected = item.key === dashboardId;
+                  return (
+                    <div
+                      key={item.key}
+                      onClick={() => handleNodeSelect(item.key)}
+                      className={`
                           flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer
                           transition-colors duration-150 mb-0.5
                           ${
@@ -246,49 +235,37 @@ const Analysis: React.FC = () => {
                               : 'text-[var(--color-text-1)] hover:bg-[var(--color-fill-1)]'
                           }
                         `}
+                    >
+                      <span
+                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
+                        style={{ backgroundColor: 'var(--color-fill-2)' }}
                       >
-                        <span
-                          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
-                          style={{ backgroundColor: 'var(--color-fill-2)' }}
-                        >
-                          <img
-                            src={`/assets/icons/${item.icon}.svg`}
-                            alt={item.title}
-                            className="flex-shrink-0"
-                            style={{ width: 14, height: 14 }}
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src =
-                                '/assets/icons/cc-default_默认.svg';
-                            }}
-                          />
-                        </span>
-                        <span
-                          className="text-xs leading-tight break-words min-w-0"
-                          style={{ wordBreak: 'break-all' }}
-                        >
-                          {item.title}
-                        </span>
-                      </div>
-                    );
-                  })}
-              </Spin>
-            </div>
+                        <img
+                          src={`/assets/icons/${item.icon}.svg`}
+                          alt={item.title}
+                          className="flex-shrink-0"
+                          style={{ width: 14, height: 14 }}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src =
+                              '/assets/icons/cc-default_默认.svg';
+                          }}
+                        />
+                      </span>
+                      <span
+                        className="min-w-0 break-words text-xs leading-tight"
+                        style={{ wordBreak: 'break-all' }}
+                      >
+                        {item.title}
+                      </span>
+                    </div>
+                  );
+                })}
+            </Spin>
           </div>
-        )}
-        <Button
-          type="text"
-          onClick={() => setCollapsed(!collapsed)}
-          className={`absolute z-10 w-6 h-6 top-4 p-0 border border-[var(--color-border-3)] bg-[var(--color-bg-1)] flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 ${
-            collapsed
-              ? 'left-0 border-l-0 rounded-tl-none rounded-bl-none'
-              : 'left-[100%] -translate-x-1/2'
-          }`}
-        >
-          {collapsed ? <RightOutlined /> : <LeftOutlined />}
-        </Button>
-      </div>
+        </div>
+      </ResizableSidebar>
       <div
-        className="h-full flex-1 flex border-l border-[var(--color-border-1)]"
+        className="flex h-full flex-1 border-l border-[var(--color-border-1)]"
         style={{ minWidth: 0 }}
       >
         <Dashboard

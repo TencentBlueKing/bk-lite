@@ -4,7 +4,7 @@ import type { NetworkStatusTopologyResponse } from '@/app/ops-analysis/types/sce
 
 interface NetworkStatusTopologyRequest {
   model_id: string;
-  inst_id: string;
+  inst_uuid: string;
   depth?: number;
 }
 
@@ -16,6 +16,7 @@ export const useNetworkStatusTopologyApi = () => {
       post<NetworkStatusTopologyResponse>(
         '/operation_analysis/api/scene_widgets/network_status_topology/',
         params,
+        { suppressErrorNotification: true },
       ),
     [post],
   );

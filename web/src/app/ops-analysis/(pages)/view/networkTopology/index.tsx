@@ -424,7 +424,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         active = false;
       };
       // 故意省略 api/editor 等稳定依赖,避免画布切换以外的因素触发重新拉取。
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+       
     }, [canvasId, shareMode]);
 
     const loadNodeModels = useCallback(
@@ -597,7 +597,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
       },
       // editMode 必须在依赖中,否则进入编辑模式后会读到旧的 false,
       // 抽屉虽能打开但不会请求指标列表。
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+       
       [canvasId, editor.editMode, loadNodeMetrics, nodeById],
     );
 
@@ -637,7 +637,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
           });
       },
       // 故意省略 api/editor/handleSelectNode 等稳定依赖。
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+       
       [canvasId, nodeById],
     );
 
@@ -871,14 +871,6 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
             ...prev,
             [node.id]: mergeNetworkTopologyRuntimeMetrics(prev[node.id] ?? [], runtimeMetrics),
           }));
-          const failedMetric = runtimeMetrics.find((metric) => metric.status === 'error');
-          if (failedMetric) {
-            message.warning(
-              failedMetric.error_message ||
-                failedMetric.error_code ||
-                t('opsAnalysis.networkTopology.node.valueNoData'),
-            );
-          }
         } catch (err) {
           const errorMetrics = metrics.map((metric, index) =>
             toRuntimeMetric(
@@ -1606,7 +1598,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                     </span>
                     <span className={detailColonClassName}>：</span>
                     <span className="min-w-0 truncate font-medium">
-                      {editingNode.bk_inst_id || '--'}
+                      {editingNode.bk_inst_uuid || '--'}
                     </span>
                   </div>
                   <div className={detailSummaryRowClassName}>
@@ -1794,7 +1786,7 @@ export default NetworkTopology;
 function nodeRef(node: NetworkTopologyNode): Record<string, unknown> {
   return {
     bk_obj_id: node.bk_obj_id,
-    bk_inst_id: node.bk_inst_id,
+    bk_inst_uuid: node.bk_inst_uuid,
     network_collect_task_id: node.network_collect_task_id,
     network_collect_instance_id: node.network_collect_instance_id,
     plugin_template_id: node.plugin_template_id,

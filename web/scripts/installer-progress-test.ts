@@ -13,6 +13,9 @@ import {
 } from '../src/app/node-manager/utils/installerProgress.ts';
 
 const translations: Record<string, string> = {
+  'node-manager.cloudregion.node.installerFailureObjectMissing': 'Required installation package was not found in object storage',
+  'node-manager.cloudregion.node.installerFailureFileBusy': 'A running process is blocking the target file from being replaced',
+  'node-manager.cloudregion.node.installerFailureClockSkew': 'The node and Server clocks differ beyond the allowed threshold',
   'node-manager.cloudregion.node.installerSuggestionObjectMissing': 'localized object-missing guidance',
   'node-manager.cloudregion.node.installerSuggestionFileBusy': 'localized file-busy guidance',
   'node-manager.cloudregion.node.installerSuggestionClockSkew': 'localized clock-skew guidance',
@@ -149,6 +152,79 @@ const fallbackResult = normalizeInstallerResult({
 
 const fallbackGuidance = getInstallerFailureGuidance(t, fallbackResult);
 assert.equal(fallbackGuidance.suggestion, 'localized extract fallback');
+assert.equal(fallbackGuidance.reason, 'Extract failed');
+
+const unknownLinuxInstallResult = normalizeInstallerResult({
+  steps: [
+    {
+      action: 'install',
+      status: 'error',
+      message:
+        'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...',
+      timestamp: '2026-08-11T05:17:56Z',
+      details: {
+        installer_event: true,
+        raw_step: 'run_package_installer',
+        error:
+          'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...',
+        failure: {
+          type: 'unknown',
+          message:
+            'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...',
+          summary: 'The installation step failed with an unexpected error',
+          raw_error:
+            'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...',
+          code: 1,
+          context: { exit_code: 1 }
+        }
+      }
+    }
+  ],
+  installer_summary: {
+    state: 'incomplete_installer_events',
+    expected_count: 6,
+    observed_count: 7,
+    completed_count: 5,
+    missing_steps: ['install_complete'],
+    anomalies: ['incomplete_installer_events'],
+    steps: [
+      {
+        action: 'install',
+        status: 'error',
+        message:
+          'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...',
+        details: {
+          installer_event: true,
+          raw_step: 'run_package_installer',
+          failure: {
+            type: 'unknown',
+            message:
+              'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...'
+          }
+        }
+      }
+    ]
+  }
+});
+
+const unknownLinuxInstallGuidance = getInstallerFailureGuidance(
+  t,
+  unknownLinuxInstallResult
+);
+assert.equal(
+  unknownLinuxInstallGuidance.reason,
+  'Linux install failed: exit status 1\n用法: install.sh {server_url} {server_api_token} ...'
+);
+assert.equal(
+  getInstallerSummaryGuidance(t, unknownLinuxInstallResult?.installer_summary, {
+    suppressIncompleteWhenFailedStep: true
+  }),
+  null
+);
+assert.equal(
+  getInstallerSummaryGuidance(t, unknownLinuxInstallResult?.installer_summary),
+  'node-manager.cloudregion.node.installerSummaryIncomplete'
+);
 
 const summaryResult = normalizeInstallerResult({
   steps: [],
@@ -434,6 +510,44 @@ const partialInstallerPhases = deriveControllerInstallPhases({
 assert.equal(partialInstallerPhases[2].status, 'error');
 assert.equal(partialInstallerPhases[2].detailState, 'partial');
 assert.equal(partialInstallerPhases[2].showMissingSteps, true);
+
+const terminalSuccessWithPartialDetail = deriveControllerInstallPhases({
+  overall_status: 'success',
+  steps: [
+    { action: 'credential_check', status: 'success', message: 'Validate credentials', timestamp: '' },
+    { action: 'run', status: 'success', message: 'Installer bootstrap completed', timestamp: '' },
+    { action: 'connectivity_check', status: 'success', message: 'Sidecar connectivity confirmed', timestamp: '' }
+  ],
+  controller_install_display: {
+    state: 'success_with_incomplete_detail',
+    phase: 'node_connectivity',
+    severity: 'success',
+    installer_steps_received: true
+  },
+  installer_summary: {
+    state: 'installer_success_with_incomplete_detail',
+    expected_count: 6,
+    observed_count: 2,
+    completed_count: 2,
+    missing_steps: ['prepare_dirs', 'download', 'write_config', 'install'],
+    steps: [
+      { action: 'fetch_session', status: 'success', message: 'Installer session fetched', timestamp: '' },
+      { action: 'extract', status: 'success', message: 'Controller package staged and activated', timestamp: '' }
+    ]
+  }
+});
+
+assert.deepEqual(
+  terminalSuccessWithPartialDetail.map((phase) => [phase.code, phase.status]),
+  [
+    ['credential_validation', 'success'],
+    ['command_dispatch', 'success'],
+    ['installer_execution', 'success'],
+    ['node_connectivity', 'success']
+  ]
+);
+assert.equal(terminalSuccessWithPartialDetail[2].detailState, 'partial');
+assert.equal(terminalSuccessWithPartialDetail[2].showMissingSteps, false);
 
 assert.equal(
   getControllerInstallPhaseLabel(t, 'installer_execution'),

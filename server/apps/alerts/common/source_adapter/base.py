@@ -3,27 +3,26 @@
 # @Time: 2025/5/13 15:48
 # @Author: windyzhao
 import datetime
-import uuid
 import hashlib
 import json
+import uuid
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from django.db import IntegrityError
 from django.db.models import Prefetch
-
 from django.utils import timezone
 
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.shield import execute_shield_check_for_events
-from apps.alerts.constants.constants import LevelType, EventAction, AlertStatus, SNMP_TRAP_SOURCE_ID, DEFAULT_GROUP_ID
-from apps.alerts.error import AuthenticationSourceError
-from apps.alerts.models.models import Alert, Event, Level
-from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.common.source_adapter import logger
-from apps.alerts.utils.util import decode_team_secret, split_list
-from apps.alerts.utils.permission_scope import normalize_team_ids
+from apps.alerts.constants.constants import DEFAULT_GROUP_ID, SNMP_TRAP_SOURCE_ID, AlertStatus, EventAction, LevelType
 from apps.alerts.enrichment.engine import EnrichmentEngine
+from apps.alerts.error import AuthenticationSourceError
+from apps.alerts.models.alert_source import AlertSource
+from apps.alerts.models.models import Alert, Event, Level
+from apps.alerts.utils.permission_scope import normalize_team_ids
+from apps.alerts.utils.util import decode_team_secret, split_list
 from apps.rpc.cmdb import CMDB
 
 
@@ -71,8 +70,7 @@ class AlertSourceAdapter(ABC):
     @staticmethod
     def get_event_level() -> tuple:
         """获取事件级别"""
-        instance = list(
-            Level.objects.filter(level_type=LevelType.EVENT).order_by("level_id").values_list("level_id", flat=True))
+        instance = list(Level.objects.filter(level_type=LevelType.EVENT).order_by("level_id").values_list("level_id", flat=True))
 
         return str(max(instance)), [str(i) for i in instance]
 
@@ -87,12 +85,18 @@ class AlertSourceAdapter(ABC):
         if not resource_type or not resource_id:
             return
 
-        params = {"model_id": resource_type, "_id": resource_id}
+        authorized_team_ids = list(data.get("_authorized_team_ids") or [])
+        if not authorized_team_ids:
+            logger.warning("[AlertSource] 单事件 CMDB 丰富缺少组织上下文")
+            return
+        params = {
+            "protocol_version": "2",
+            "model_id": resource_type,
+            "inst_uuid": resource_id,
+            "organization_ids": authorized_team_ids,
+        }
         try:
-            try:
-                resource = CMDB().search_instances(**params)
-            except TypeError:
-                resource = CMDB().search_instances(params)
+            resource = CMDB().search_instances(params=params)
         except Exception:
             logger.error("[AlertSource] 单事件 CMDB 丰富失败: %s", params, exc_info=True)
             return
@@ -119,11 +123,7 @@ class AlertSourceAdapter(ABC):
             return True
         # SNMP Trap 暂不参与组织级 secret 路由：bridge 用源级 secret 接入即可，事件统一归默认组织。
         # 后续迭代再做按 trap 内容/节点的精细归属，参考日志模块的 LogGroup 规则模型。
-        if (
-            self.alert_source.source_id == SNMP_TRAP_SOURCE_ID
-            and self.secret
-            and self.secret == self.alert_source.secret
-        ):
+        if self.alert_source.source_id == SNMP_TRAP_SOURCE_ID and self.secret and self.secret == self.alert_source.secret:
             self.resolved_team = [DEFAULT_GROUP_ID]
             return True
         raise AuthenticationSourceError("Authentication failed")
@@ -246,20 +246,31 @@ class AlertSourceAdapter(ABC):
         if skipped_missing or errored:
             logger.warning(
                 "[AlertSource] 接入丢弃统计: source_id=%s received=%s transformed=%s skipped_missing=%s errored=%s",
-                self.alert_source.source_id, len(add_events), len(events), skipped_missing, errored,
+                self.alert_source.source_id,
+                len(add_events),
+                len(events),
+                skipped_missing,
+                errored,
             )
         else:
             logger.info(
                 "[AlertSource] 接入转换完成: source_id=%s received=%s transformed=%s",
-                self.alert_source.source_id, len(add_events), len(events),
+                self.alert_source.source_id,
+                len(add_events),
+                len(events),
             )
         bulk_events = self.bulk_save_events(events)
         accepted = sum(len(batch or []) for batch in (bulk_events or []))
+        rejected = skipped_missing
+        duplicates = max(0, len(add_events) - accepted - rejected - errored)
         self.last_ingestion_result = {
             "received": len(add_events),
             "accepted": accepted,
-            "skipped": max(0, len(add_events) - accepted - errored),
+            # 保留既有 skipped 汇总语义；细分字段供显式 opt-in 的逐事件 ACK 使用。
+            "skipped": rejected + duplicates,
             "errored": errored,
+            "duplicates": duplicates,
+            "rejected": rejected,
         }
         return bulk_events
 
@@ -315,11 +326,7 @@ class AlertSourceAdapter(ABC):
 
         matched_external_ids = []
         for alert in candidate_alerts:
-            created_external_ids = {
-                existing_event.external_id
-                for existing_event in alert._created_events
-                if existing_event.external_id
-            }
+            created_external_ids = {existing_event.external_id for existing_event in alert._created_events if existing_event.external_id}
             if len(created_external_ids) == 1:
                 matched_external_ids.append(next(iter(created_external_ids)))
 
@@ -366,12 +373,7 @@ class AlertSourceAdapter(ABC):
         """添加基础字段"""
 
         event.source = self.alert_source
-        event.push_source_id = (
-            alert.get("push_source_id")
-            or getattr(event, "push_source_id", None)
-            or alert.get("source_id")
-            or "default"
-        )
+        event.push_source_id = alert.get("push_source_id") or getattr(event, "push_source_id", None) or alert.get("source_id") or "default"
         event.raw_data = alert
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
         event.team = self._resolve_event_team(alert)
@@ -385,6 +387,23 @@ class AlertSourceAdapter(ABC):
                 self.alert_source.source_id,
             )
             logger.debug("[AlertSource] 已生成 external_id for event: %s", event.event_id)
+
+        # 逐事件 ACK 的 delivery_id 只用于响应关联，不参与接收幂等身份。
+        # 必须在 external_id 回填后计算，否则缺少上游 ID 的 created/upgraded
+        # 会回退到相同业务 action，丢失生命周期代次隔离。
+        lifecycle_action = alert.get("lifecycle_action")
+        if lifecycle_action not in {"created", "upgraded", "recovered", "closed"}:
+            lifecycle_action = None
+        if self.trusted_internal and lifecycle_action:
+            lifecycle_generation = str(alert.get("lifecycle_generation") or "").strip()
+            lifecycle_identity = f"{lifecycle_action}:{lifecycle_generation}" if lifecycle_generation else lifecycle_action
+            event.ingest_key = Event.build_ingest_key(
+                getattr(event.source, "id", None),
+                event.push_source_id,
+                event.external_id,
+                lifecycle_identity,
+                event.start_time,
+            )
 
     @staticmethod
     def build_ingress_dedup_key(event: Event) -> Optional[str]:
@@ -597,9 +616,7 @@ class AlertSourceAdapter(ABC):
         # 永不阻断主流程；未配置 INSTANT 策略时直接 no-op，零开销。
         # dispatch 内部会跳过已被屏蔽（status=SHIELD）的事件（事件级·不建警）。
         try:
-            from apps.alerts.aggregation.processor.instant_dispatcher import (
-                InstantAlertDispatcher,
-            )
+            from apps.alerts.aggregation.processor.instant_dispatcher import InstantAlertDispatcher
 
             InstantAlertDispatcher.dispatch(bulk_events)
         except Exception:  # noqa
@@ -625,7 +642,7 @@ class AlertSourceAdapter(ABC):
                 try:
                     RecoveryHandler.handle_recovery_events(recovery_events)
                     logger.info("[AlertSource] 处理了 %s 个恢复事件 (RECOVERY/CLOSED)", len(recovery_events))
-                except Exception as err:
+                except Exception:
                     logger.error("[AlertSource] 恢复事件处理失败", exc_info=True)
 
 

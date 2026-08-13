@@ -29,6 +29,8 @@ for (const key of [
   'decisionPageIdentity',
   'decisionCurrentKnowledge',
   'decisionNewKnowledge',
+  'decisionChooseAlternative',
+  'decisionChooseCandidateHint',
   'decisionKeepCurrent',
   'decisionUseNew',
   'decisionEditAccept',

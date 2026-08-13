@@ -33,6 +33,8 @@ path 端点（urls.py:57-63）：`api/test/`（request_test，receiver.py:107）
 - 富化运行时【已实现/已存在】：告警富化仍经 `common/source_adapter/base.py` 的 `enable_rich_event` 开关与 `enrich_event()` 入口控制，并通过 `apps.rpc.cmdb.CMDB` 获取资源元数据；配置层与运行时入口已打通在同一模块内。
 - 声明式富化已落地为 `EnrichmentRule` + 批量引擎：`enrichment/engine.py:21` 执行规则，`common/source_adapter/base.py:26,198` 接入事件处理链路，聚合构建器在 `aggregation/builder/alert_builder.py:122` 写回 Alert/Event enrichment 结果；不再按“源码缺失”处理。
 - 聚合 `aggregation/` 子目录：`processor` / `strategy`（指纹分组）/ `builder` / `recovery`（超时恢复）/ `window` / `core` / `engine` / `query` / `templates`【已实现/已存在，目录均存在】。
+- 聚合查询模板沙箱【已实现】：聚合 SQL 构建器仅从应用内受信任的模板目录加载模板，并使用受限模板环境保留默认值过滤器，避免模板运行时获得不必要的执行能力（`aggregation/query/builder.py:1-27`）。
+> 证据来源：server/apps/alerts/aggregation/query/builder.py:1-27　|　同步基线：d2769559　|　【已实现】
 
 ## 5. 任务与 NATS【已实现/已存在】
 - Celery（`tasks/tasks.py`，均 `@shared_task`）：`event_aggregation_alert`、`beat_close_alert`、`check_and_send_reminders`、`cleanup_reminder_tasks`、`check_and_send_escalations`（升级）、`async_auto_assignment_for_alerts`（自动分派）、`build_instant_alerts`（即时告警构建）、`sync_notify`、`sync_shield`、`sync_no_dispatch_alert_notice_task`。
@@ -40,8 +42,12 @@ path 端点（urls.py:57-63）：`api/test/`（request_test，receiver.py:107）
   - `build_instant_alerts` 配置重试策略 `autoretry_for=(Exception,)`、`retry_backoff=True`、`max_retries=3`（tasks.py:198-202）【已实现/已存在】。
 - 缺失检测告警自动分派【已实现/已存在】：`_trigger_missing_alert()` 创建告警后，通过 `transaction.on_commit(lambda: self._schedule_auto_assignment([alert_id]))` 延迟到事务提交后再触发自动分派（`aggregation_processor.py:419`）。延迟调度原因：该方法在 `select_for_update` 事务内执行，提交前调度可能因回滚造成空跑；`on_commit` 保证仅在事务成功持久化后才将 alert_id 送入分派链路，使缺失检测合成告警与常规聚合/即时告警一致进入自动分派。
 - 告警处理动作任务【已实现/已存在】：`tasks/action_tasks.py:10-22` 新增 `process_alert_actions(alert_id, event_name)`，异步装配 `ActionEngine` 评估动作规则；执行记录落库为 `ActionExecution`，作业结果经 `ActionCallbackView` 的 HMAC-SHA256 签名回调更新状态（`views/action.py:31-97`）。
-- NATS（`nats/nats.py`）：`receive_alert_events` 接收事件（nats.py:532）；测试桩 `alert_test`（nats.py:675）。统计类 handler：`get_alert_trend_data`（:188）、`get_alert_source_event_top`（:265）、`get_alert_source_statistics`（:297）、`get_notification_statistics`（:350）、`get_notification_channel_stats`（:404）、`get_alert_data_quality`（:457）、`get_alert_statistics`（:684）、`get_alert_level_distribution`（:741）、`get_active_alert_top`（:782）供运营分析。
-- 统计口径权限收敛【已实现/已存在】：面向运营分析的告警源统计、通知统计与通知渠道统计会先按当前组织、对象权限与可见告警集合过滤，再反推可见告警源与通知结果；无用户信息时报错，无命中的对象权限时返回空结果，不再把无权查看的对象计入汇总（`nats/nats.py:68-137,403-536`）。
+- NATS（`nats/nats.py`）：`receive_alert_events` 接收事件（nats.py:718）；测试桩 `alert_test`（nats.py:874）。统计类 handler：`get_alert_trend_data`（:322）、`get_alert_source_event_top`（:397）、`get_alert_source_distribution`（:442）、`get_alert_source_statistics`（:468）、`get_notification_statistics`（:524）、`get_notification_channel_stats`（:579）、`get_alert_data_quality`（:633）、`get_alert_statistics`（:883）、`get_alert_today_status_summary`（:1029）、`get_alert_status_distribution`（:1062）、`get_alert_level_trend`（:1091）、`get_alert_level_distribution`（:1133）、`get_active_alert_top`（:1176）供运营分析。
+- 活跃告警状态分布【已实现/已存在】：`get_alert_status_distribution` 在授权告警集合上按未分派 / 待响应 / 处理中聚合计数，供运营分析饼图；聚合前清除模型默认排序，避免部分数据库将排序列并入 GROUP BY 导致同状态拆行、计数被覆盖为 1（`nats/nats.py:1062-1087`，回归 `tests/test_nats_handlers.py:557-591`）。
+- 统计查询契约【已实现】：趋势按开始含、结束不含的时间窗口生成完整周期；告警趋势同时输出告警数、告警关联的原始事件数与已恢复告警数。告警源事件 TOP 必填同一时间窗口，并按原始事件接收时间统计（`nats/nats.py:322-393,397-438`）。
+- 告警源统计口径【已实现】：告警源总数、启用数和启用率来自全部告警源配置；活跃数则仅从当前调用者有权查看的告警关联事件中反推，可按可选时间窗口过滤（`nats/nats.py:468-520`）。
+- 通知与数据质量统计【已实现】：通知统计和渠道统计按调用者可查看的通知结果聚合；当通知样本为空时，成功率和失败率返回空值而非零。数据质量结果分为告警与原始事件两组：前者按告警创建时间、后者按事件接收时间分别筛选和计算缺失数量/比例；无样本时比例返回空值（`nats/nats.py:524-575,579-629,633-714`）。
+> 证据来源：server/apps/alerts/nats/nats.py:322-438，server/apps/alerts/nats/nats.py:468-714，server/apps/alerts/tests/test_nats_handlers.py:797-1027，server/apps/alerts/tests/test_nats_handlers.py:1037-1223　|　同步基线：d2769559　|　【已实现】
 - 通知经 `utils/system_mgmt_util.py:SystemMgmtUtils.send_msg_with_channel()`（委托 system_mgmt 渠道）。
 - 告警动作链路【已实现/已存在】：`tasks/action_tasks.py:10` 注册动作处理任务，`action/engine.py:13` 执行动作规则匹配与派发；动作回调与 job_mgmt 脚本执行入口由 `views/action.py` 与 `urls.py:54-61` 暴露。
 
@@ -56,4 +62,4 @@ path 端点（urls.py:57-63）：`api/test/`（request_test，receiver.py:107）
 - 富化提供方当前仍以现有提供方与投影配置为主，跨外部系统的丰富度与失败补偿策略【待确认】。
 
 ## 7. 证据来源
-`server/apps/alerts/{urls.py:35-63, models/operator_log.py:10, models/sys_setting.py:11, models/models.py, models/alert_source.py, models/alert_operator.py, models/action.py, models/enrichment.py, common/source_adapter/*（base.py:44,48-57,432,434,442,462,552-568,557）, aggregation/processor/aggregation_processor.py:136,419, aggregation/processor/instant_dispatcher.py:273,310,315, aggregation/{strategy,builder,recovery,window,core,engine,query,templates}/, tasks/tasks.py:17,132,154-157,198-202, tasks/action_tasks.py:10-22, nats/nats.py:68-137,188,265,297,350,404,457,532,675,684,741,782, views/action.py:31-246, views/enrichment.py:18-109, views/receiver.py:107, serializers/action.py:6-18, serializers/enrichment.py:7-25, constants/init_data.py:108,124-130, utils/system_mgmt_util.py}`。
+`server/apps/alerts/{urls.py:35-63, models/operator_log.py:10, models/sys_setting.py:11, models/models.py, models/alert_source.py, models/alert_operator.py, models/action.py, models/enrichment.py, common/source_adapter/*（base.py:44,48-57,432,434,442,462,552-568,557）, aggregation/processor/aggregation_processor.py:136,419, aggregation/processor/instant_dispatcher.py:273,310,315, aggregation/{strategy,builder,recovery,window,core,engine,query,templates}/, tasks/tasks.py:17,132,154-157,198-202, tasks/action_tasks.py:10-22, nats/nats.py:68-137,322-718,874,883,1029-1176, views/action.py:31-246, views/enrichment.py:18-109, views/receiver.py:107, serializers/action.py:6-18, serializers/enrichment.py:7-25, constants/init_data.py:108,124-130, utils/system_mgmt_util.py}`。

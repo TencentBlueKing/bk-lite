@@ -1,15 +1,16 @@
 'use client';
 
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {Input, message as antMessage, Select} from 'antd';
-import {ClockCircleOutlined} from '@ant-design/icons';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Input, message as antMessage, Select, Spin} from 'antd';
+import {ClockCircleOutlined, LoadingOutlined} from '@ant-design/icons';
 import {useTranslation} from '@/utils/i18n';
 import {UserChoiceOption, UserChoiceRequest} from '@/app/opspilot/types/global';
+import {postUserChoice} from './submitUserChoice';
 
 interface UserChoiceCardProps {
   request: UserChoiceRequest;
   token: string;
-  onSubmit: (choiceId: string, status: 'submitted' | 'timeout', selected: string[]) => void;
+  onSubmit: (choiceId: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => void;
 }
 
 const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmit }) => {
@@ -19,6 +20,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [textInput, setTextInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [remainingSeconds, setRemainingSeconds] = useState(() => {
     const elapsed = (Date.now() - request.received_at) / 1000;
     return Math.max(0, Math.floor(request.timeout_seconds - elapsed));
@@ -48,26 +50,28 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
       antMessage.warning(t('chat.choiceMinSelect', undefined, { min: request.min_select }));
       return;
     }
+    // 防重复：后台慢时按钮可能仍可见一帧，或输入框路径并发提交
+    if (submittingRef.current || request.status !== 'pending') return;
+    submittingRef.current = true;
     setSubmitting(true);
+
+    // 乐观关闭卡片，避免用户以为没点上而连点
+    onSubmit(request.choice_id, 'submitted', keys);
+    const hideLoading = antMessage.loading(t('chat.choiceSubmitting') || '正在提交选择...', 0);
     try {
-      const response = await fetch('/api/proxy/opspilot/bot_mgmt/submit_choice/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          execution_id: request.execution_id,
-          node_id: request.node_id,
-          choice_id: request.choice_id,
-          selected: keys,
-        }),
+      await postUserChoice(token, {
+        execution_id: request.execution_id,
+        node_id: request.node_id,
+        choice_id: request.choice_id,
+        selected: keys,
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      onSubmit(request.choice_id, 'submitted', keys);
     } catch {
       antMessage.error(t('chat.choiceSubmitFailed'));
+      // 失败后恢复为待选，允许重试
+      onSubmit(request.choice_id, 'pending', []);
     } finally {
+      hideLoading();
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }, [token, request, onSubmit, t]);
@@ -123,8 +127,8 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
         borderRadius: '8px',
         border: isSelected ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border-1)',
         background: isSelected ? 'var(--color-primary-light-1, rgba(22,119,255,0.06))' : 'var(--color-bg-1)',
-        cursor: option.disabled ? 'not-allowed' : 'pointer',
-        opacity: option.disabled ? 0.5 : 1,
+        cursor: option.disabled || submitting ? 'not-allowed' : 'pointer',
+        opacity: option.disabled || submitting ? 0.5 : 1,
         fontSize: '13px',
         color: 'var(--color-text-1)',
         transition: 'all 0.15s ease',
@@ -132,7 +136,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
         width: '100%',
       }}
       onMouseEnter={e => {
-        if (!option.disabled) {
+        if (!option.disabled && !submitting) {
           (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-primary)';
           (e.currentTarget as HTMLElement).style.background = 'var(--color-primary-light-1, rgba(22,119,255,0.04))';
         }
@@ -218,12 +222,19 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
           color: selectedKeys.length >= request.min_select ? '#fff' : 'var(--color-text-3)',
           fontSize: '13px',
           fontWeight: 500,
-          cursor: selectedKeys.length >= request.min_select ? 'pointer' : 'not-allowed',
+          cursor: selectedKeys.length >= request.min_select && !submitting ? 'pointer' : 'not-allowed',
           alignSelf: 'flex-start',
           transition: 'all 0.15s ease',
         }}
       >
-        {t('chat.choiceConfirm')}
+        {submitting ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <LoadingOutlined />
+            {t('chat.choiceSubmitting') || '正在提交选择...'}
+          </span>
+        ) : (
+          t('chat.choiceConfirm')
+        )}
       </button>
     </div>
   );
@@ -250,11 +261,11 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
           color: textInput.trim() ? '#fff' : 'var(--color-text-3)',
           fontSize: '13px',
           fontWeight: 500,
-          cursor: textInput.trim() ? 'pointer' : 'not-allowed',
+          cursor: textInput.trim() && !submitting ? 'pointer' : 'not-allowed',
           transition: 'all 0.15s ease',
         }}
       >
-        {t('chat.choiceConfirm') || '确认'}
+        {submitting ? <LoadingOutlined /> : (t('chat.choiceConfirm') || '确认')}
       </button>
     </div>
   );
@@ -288,8 +299,28 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
         border: '1px solid var(--color-border-1)',
         background: 'var(--color-bg-1)',
         maxWidth: '380px',
+        position: 'relative',
+        opacity: submitting ? 0.72 : 1,
+        pointerEvents: submitting ? 'none' : 'auto',
       }}
     >
+      {submitting && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '12px',
+            background: 'rgba(255,255,255,0.55)',
+            zIndex: 1,
+          }}
+        >
+          <Spin indicator={<LoadingOutlined style={{ fontSize: 18 }} spin />} />
+        </div>
+      )}
+
       {/* Title */}
       <div style={{
         fontSize: '13px',

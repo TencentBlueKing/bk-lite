@@ -152,7 +152,8 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
         application = self.get_object()
         if application.is_builtin:
             return Response({"detail": "内置应用不可修改。"}, status=status.HTTP_409_CONFLICT)
-        serializer = ApplicationMutationSerializer(data=request.data)
+        payload = {key: value for key, value in request.data.items() if key != "application_id"}
+        serializer = ApplicationMutationSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         try:
@@ -203,16 +204,18 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
             "organization_links",
         )
         application = get_object_or_404(applications, application_id=data["application_id"])
+        needs_java_agent_download = data["language"] == "java" and data["runtime"] in ("host", "docker")
         try:
             endpoints = self.service.resolve_region(
                 NodeMgmt(),
                 data["cloud_region_id"],
                 organization_ids=[organization_id],
+                include_java_agent_download=needs_java_agent_download,
             )
         except CloudRegionConfigurationError as exc:
             response_status = (
                 status.HTTP_404_NOT_FOUND
-                if exc.code in {"cloud_region_not_found", "cloud_region_receiver_unavailable"}
+                if exc.code in {"cloud_region_not_found", "cloud_region_receiver_unavailable", "probe_download_unavailable"}
                 else status.HTTP_400_BAD_REQUEST
             )
             return Response({"code": exc.code, "detail": exc.detail}, status=response_status)
@@ -231,6 +234,7 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
                 service_name=data["service_name"],
                 service_version=data.get("service_version", ""),
                 environment=data["environment"],
+                java_agent_download_url=endpoints.java_agent_download_url,
             )
         )
         return Response(

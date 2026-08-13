@@ -468,6 +468,8 @@ Content-Type: application/json
   "proxy_ip": "192.168.1.50",
   "nats_monitor_username": "monitor_1",
   "nats_monitor_password": "monitor-secret",
+  "apm_nats_username": "apm_region_1",
+  "apm_nats_password": "generated-apm-secret",
   "traefik_web_port": "443",
   "install_path": "/opt/bk-lite/proxy"
 }
@@ -489,6 +491,8 @@ Content-Type: application/json
 | proxy_ip | string | 是 | - | Proxy 节点 IP 地址，用于证书 SAN |
 | nats_monitor_username | string | 是 | - | NATS 监控用户名，用于本地 NATS 监控认证 |
 | nats_monitor_password | string | 是 | - | NATS 监控密码 |
+| apm_nats_username | string | 是 | - | 区域 APM Collector 专用 NATS 用户名 |
+| apm_nats_password | string | 是 | - | 区域 APM Collector 专用 NATS 密码 |
 | traefik_web_port | string | 是 | - | Traefik HTTPS 服务端口 |
 | install_path | string | 否 | /opt/bk-lite/proxy | Proxy 安装目录 |
 
@@ -532,6 +536,8 @@ curl -X POST \
     "proxy_ip": "192.168.1.50",
     "nats_monitor_username": "monitor_2",
     "nats_monitor_password": "monitor-secret-789",
+    "apm_nats_username": "apm_region_2",
+    "apm_nats_password": "apm-secret-789",
     "traefik_web_port": "443"
   }' \
   http://localhost:8080/infra/proxy
@@ -555,6 +561,8 @@ curl -s -X POST \
     "proxy_ip": "192.168.1.50",
     "nats_monitor_username": "monitor_2",
     "nats_monitor_password": "monitor-secret",
+    "apm_nats_username": "apm_region_2",
+    "apm_nats_password": "apm-secret",
     "traefik_web_port": "443"
   }' \
   http://localhost:8080/infra/proxy | jq -r '.install_script' > install-proxy.sh
@@ -578,6 +586,8 @@ jq -n \
   --arg proxy_ip "${PROXY_IP}" \
   --arg nats_monitor_username "${NATS_MONITOR_USERNAME}" \
   --arg nats_monitor_password "${NATS_MONITOR_PASSWORD}" \
+  --arg apm_nats_username "${APM_NATS_USERNAME}" \
+  --arg apm_nats_password "${APM_NATS_PASSWORD}" \
   --arg traefik_web_port "${TRAEFIK_WEB_PORT}" \
   '{
     node_id: $node_id,
@@ -592,6 +602,8 @@ jq -n \
     proxy_ip: $proxy_ip,
     nats_monitor_username: $nats_monitor_username,
     nats_monitor_password: $nats_monitor_password,
+    apm_nats_username: $apm_nats_username,
+    apm_nats_password: $apm_nats_password,
     traefik_web_port: $traefik_web_port
   }' | curl -X POST -H "Content-Type: application/json" -d @- \
   http://localhost:8080/infra/proxy
@@ -615,6 +627,8 @@ curl -s -X POST \
     "proxy_ip": "10.0.0.50",
     "nats_monitor_username": "monitor_1",
     "nats_monitor_password": "monitor-pwd",
+    "apm_nats_username": "apm_region_1",
+    "apm_nats_password": "apm-pwd",
     "traefik_web_port": "8443",
     "install_path": "/data/bklite/proxy"
   }' \
@@ -709,5 +723,7 @@ docker compose restart
 10. **proxy_ip**: 必填，Proxy 节点 IP 地址
 11. **nats_monitor_username**: 必填，NATS 监控用户名
 12. **nats_monitor_password**: 必填，NATS 监控密码
-13. **traefik_web_port**: 必填，Traefik HTTPS 服务端口
-14. **install_path**: 可选，默认 `/opt/bk-lite/proxy`
+13. **apm_nats_username**: 必填，只允许发布本区域 `apm.traces.<zone_id>` 并订阅 ACK inbox
+14. **apm_nats_password**: 必填，独立于 NATS 管理员和监控凭据
+15. **traefik_web_port**: 必填，Traefik HTTPS 服务端口
+16. **install_path**: 可选，默认 `/opt/bk-lite/proxy`

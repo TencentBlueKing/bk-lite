@@ -447,15 +447,28 @@ func run(client *http.Client) {
 		emitEventWithOptions("download_package", "success", "Controller package downloaded", intPtr(100), 0, 0, "", downloadEventOptions(cfg))
 		if !isLinux(cfg.OS) {
 			log("[4/6] Staging and validating files...")
-			emitEventWithOptions("extract_package", "running", "Staging controller package", intPtr(0), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
-			installErr := installWindowsPackage(cfg, zipPath, &scWindowsServiceController{})
+			installErr := installWindowsPackageWithProgress(
+				cfg,
+				zipPath,
+				&scWindowsServiceController{},
+				func(step, status, message string) {
+					options := &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}
+					if step == "extract_package" {
+						options.PackageName = firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName)
+					}
+					progress := (*int)(nil)
+					if status == "running" {
+						progress = intPtr(0)
+					} else if status == "success" {
+						progress = intPtr(100)
+					}
+					emitEventWithOptions(step, status, message, progress, 0, 0, "", options)
+				},
+			)
 			_ = os.Remove(zipPath)
 			if installErr != nil {
-				fatalStepWithOptions("run_package_installer", "Transactional Windows installation failed: %v", installErr, eventOptionsForExecError(installErr, &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}))
+				fatalStepWithOptions(windowsInstallErrorStep(installErr), "Transactional Windows installation failed: %v", installErr, eventOptionsForExecError(installErr, &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}))
 			}
-			emitEventWithOptions("extract_package", "success", "Controller package staged and activated", intPtr(100), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
-			emitEvent("configure_runtime", "success", "Installer runtime configured", intPtr(100), 0, 0, "")
-			emitEventWithOptions("run_package_installer", "success", "Package installer finished", intPtr(100), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture})
 			log("")
 			log("Installation complete!")
 			emitEvent("complete", "success", "Installation complete", intPtr(100), 0, 0, "")
@@ -799,6 +812,8 @@ func isLinux(osName string) bool {
 	return strings.EqualFold(strings.TrimSpace(osName), "linux")
 }
 
+const linuxInstallerOutputLimit = 4000
+
 func runLinuxInstaller(cfg *Config) error {
 	installScript := filepath.Join(cfg.InstallDir, "install.sh")
 	if _, err := os.Stat(installScript); err != nil {
@@ -828,9 +843,33 @@ func runLinuxInstaller(cfg *Config) error {
 		cmd.Env = append(os.Environ(), apiTokenEnv)
 	}
 	cmd.Dir = cfg.InstallDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	// Keep console streaming for operators, and capture the same bytes so failed
+	// events can surface install.sh usage/errors instead of bare "exit status 1".
+	var combined bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &combined)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &combined)
+	if err := cmd.Run(); err != nil {
+		return wrapExecErrorWithOutput(err, combined.String(), linuxInstallerOutputLimit)
+	}
+	return nil
+}
+
+func wrapExecErrorWithOutput(err error, output string, maxBytes int) error {
+	if err == nil {
+		return nil
+	}
+	trimmed := truncateInstallerOutput(strings.TrimSpace(output), maxBytes)
+	if trimmed == "" {
+		return err
+	}
+	return fmt.Errorf("%w\n%s", err, trimmed)
+}
+
+func truncateInstallerOutput(output string, maxBytes int) string {
+	if maxBytes <= 0 || len(output) <= maxBytes {
+		return output
+	}
+	return "..." + output[len(output)-maxBytes:]
 }
 
 func linuxInstallerAPITokenInputs(installDir, apiToken string) (string, string, func(), error) {
@@ -1610,7 +1649,51 @@ func discardEmptyWindowsInstallDir(installDir string) error {
 	return nil
 }
 
+type windowsInstallProgressFunc func(step, status, message string)
+
+type windowsInstallPhaseError struct {
+	step string
+	err  error
+}
+
+func (err *windowsInstallPhaseError) Error() string { return err.err.Error() }
+func (err *windowsInstallPhaseError) Unwrap() error { return err.err }
+
+func windowsInstallErrorStep(err error) string {
+	var phaseErr *windowsInstallPhaseError
+	if errors.As(err, &phaseErr) && phaseErr.step != "" {
+		return phaseErr.step
+	}
+	return "run_package_installer"
+}
+
+func reportWindowsInstallProgress(progress windowsInstallProgressFunc, step, status, message string) {
+	if progress != nil {
+		progress(step, status, message)
+	}
+}
+
 func installWindowsPackage(cfg *Config, zipPath string, controller windowsServiceController) error {
+	return installWindowsPackageWithProgress(cfg, zipPath, controller, nil)
+}
+
+func installWindowsPackageWithProgress(
+	cfg *Config,
+	zipPath string,
+	controller windowsServiceController,
+	progress windowsInstallProgressFunc,
+) (returnErr error) {
+	currentStep := "extract_package"
+	defer func() {
+		if returnErr == nil {
+			return
+		}
+		var phaseErr *windowsInstallPhaseError
+		if !errors.As(returnErr, &phaseErr) {
+			returnErr = &windowsInstallPhaseError{step: currentStep, err: returnErr}
+		}
+	}()
+
 	installDir := filepath.Clean(cfg.InstallDir)
 	stagingDir := installDir + ".bklite-staging"
 	backupDir := installDir + ".bklite-backup"
@@ -1659,18 +1742,27 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 		return fmt.Errorf("clean staging directory: %w", err)
 	}
 	defer os.RemoveAll(stagingDir)
+	reportWindowsInstallProgress(progress, "extract_package", "running", "Staging controller package")
 	if err := prepareDirs(stagingDir); err != nil {
 		return fmt.Errorf("prepare staging directory: %w", err)
 	}
 	if _, err := extract(zipPath, stagingDir); err != nil {
 		return fmt.Errorf("extract package to staging directory: %w", err)
 	}
+	reportWindowsInstallProgress(progress, "extract_package", "success", "Controller package staged")
+
+	currentStep = "configure_runtime"
+	reportWindowsInstallProgress(progress, "configure_runtime", "running", "Writing installer runtime configuration")
 	if err := writeConfigTo(cfg, stagingDir); err != nil {
 		return fmt.Errorf("write staged configuration: %w", err)
 	}
 	if _, err := os.Stat(filepath.Join(stagingDir, "collector-sidecar.exe")); err != nil {
 		return fmt.Errorf("staged collector-sidecar.exe validation failed: %w", err)
 	}
+	reportWindowsInstallProgress(progress, "configure_runtime", "success", "Installer runtime configured")
+
+	currentStep = "run_package_installer"
+	reportWindowsInstallProgress(progress, "run_package_installer", "running", "Activating controller and starting service")
 	if err := validateRemoteExecutionDeadline(cfg); err != nil {
 		return err
 	}
@@ -1790,6 +1882,7 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 		}
 		cleanupActivatedWindowsBackup(backupDir)
 	}
+	reportWindowsInstallProgress(progress, "run_package_installer", "success", "Package installer finished")
 	return nil
 }
 

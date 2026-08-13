@@ -8,7 +8,7 @@ import type {
   FilterBindings,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
-import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   getFilterDefinitionId,
   getBindableFilterParams,

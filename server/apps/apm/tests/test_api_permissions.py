@@ -88,6 +88,47 @@ def test_builtin_application_is_visible_but_cannot_be_modified(apm_api_client):
     assert application.name == "未归类应用"
 
 
+def test_application_update_ignores_immutable_application_id_from_stale_payload(apm_api_client):
+    created = apm_api_client.post(
+        "/api/v1/apm/applications/",
+        {
+            "application_id": "shop",
+            "name": "电商主站",
+            "organization_ids": [10],
+        },
+        format="json",
+    )
+    assert created.status_code == 201
+
+    with_current_id = apm_api_client.put(
+        f"/api/v1/apm/applications/{created.data['id']}/",
+        {
+            "application_id": "shop",
+            "name": "电商主站-2",
+            "description": "",
+            "organization_ids": [10],
+        },
+        format="json",
+    )
+    with_blank_id = apm_api_client.put(
+        f"/api/v1/apm/applications/{created.data['id']}/",
+        {
+            "application_id": "",
+            "name": "电商主站-3",
+            "description": "",
+            "organization_ids": [10],
+        },
+        format="json",
+    )
+
+    assert with_current_id.status_code == 200
+    assert with_current_id.data["application_id"] == "shop"
+    assert with_current_id.data["name"] == "电商主站-2"
+    assert with_blank_id.status_code == 200
+    assert with_blank_id.data["application_id"] == "shop"
+    assert with_blank_id.data["name"] == "电商主站-3"
+
+
 def test_application_id_validation_and_uniqueness_are_explicit(apm_api_client):
     invalid = apm_api_client.post(
         "/api/v1/apm/applications/",
@@ -333,6 +374,53 @@ def test_integration_config_falls_back_to_trusted_node_server_url_without_node_o
     assert response.data["environment"]["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://10.10.10.1:4318"
     region.get_cloud_region_proxy_address.assert_called_once_with(7)
     region.get_cloud_region_envconfig.assert_called_once_with(7)
+
+
+def test_integration_config_java_snippet_uses_the_system_probe_download_address(apm_api_client, monkeypatch):
+    create_application("shop", (10,))
+    region = _integration_region(monkeypatch)
+    region.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
+
+    response = apm_api_client.post(
+        "/api/v1/apm/integration-config/",
+        {
+            "application_id": "shop",
+            "cloud_region_id": 7,
+            "language": "java",
+            "runtime": "host",
+            "service_name": "checkout",
+            "service_version": "1.4.0",
+            "environment": "production",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert "http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar" in response.data["code"]
+    assert "github.com" not in response.data["code"]
+    region.get_cloud_region_envconfig.assert_called_once_with(7)
+
+
+def test_integration_config_java_snippet_reports_missing_probe_download_address(apm_api_client, monkeypatch):
+    create_application("shop", (10,))
+    region = _integration_region(monkeypatch)
+    region.get_cloud_region_envconfig.return_value = {}
+
+    response = apm_api_client.post(
+        "/api/v1/apm/integration-config/",
+        {
+            "application_id": "shop",
+            "cloud_region_id": 7,
+            "language": "java",
+            "runtime": "host",
+            "service_name": "checkout",
+            "environment": "production",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 404
+    assert response.data["code"] == "probe_download_unavailable"
 
 
 def test_integration_config_rejects_unknown_or_out_of_scope_application(apm_api_client):

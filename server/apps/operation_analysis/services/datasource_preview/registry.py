@@ -2,6 +2,7 @@ from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.services.datasource_preview.base import BaseConnectorExecutor, ConnectorError
 from apps.operation_analysis.services.datasource_preview.database import DatabaseConnectorExecutor
 from apps.operation_analysis.services.datasource_preview.excel import ExcelConnectorExecutor
+from apps.operation_analysis.services.datasource_preview.prometheus import PrometheusConnectorExecutor
 from apps.operation_analysis.services.datasource_preview.rest_api import RestApiConnectorExecutor
 
 
@@ -10,6 +11,8 @@ def get_preview_executor(source_type: str) -> BaseConnectorExecutor:
         return RestApiConnectorExecutor()
     if source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
         return ExcelConnectorExecutor()
+    if source_type == DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS:
+        return PrometheusConnectorExecutor()
     if source_type in {
         DataSourceAPIModel.SOURCE_TYPE_MYSQL,
         DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,

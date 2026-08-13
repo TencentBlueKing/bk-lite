@@ -12,9 +12,11 @@ import {
   MessageContent,
   MessageType,
   generateId,
+  normalizeWebChatConfig,
 } from '@webchat/core';
 import { AGUIHandler, AGUIConfig, AGUIEvent } from './agui';
 import { createAGUIEventHandler } from './aguiEventHandler';
+import { parseLegacyMessage } from './legacyMessage';
 import { MessageBubble } from './components/MessageBubble';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -51,16 +53,11 @@ const defaultUserAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWd
 export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const {
     sseUrl,
-    // socketUrl,
-    // socketPath,
     customData,
     // theme = 'light',
     title = 'Chat',
     subtitle,
     placeholder = 'Type a message...',
-    // reconnectAttempts = 5,
-    // reconnectDelay = 1000,
-    // enableSSE = true,
     enableStorage = true,
     storageKey = 'webchat_session',
     onStateChange,
@@ -73,7 +70,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     showFullscreenButton = true,
     showClearButton = false,
     apiKey,
-  } = props;
+  } = normalizeWebChatConfig(props) as ChatProps;
 
   // State
   const [messages, setMessages] = useState<Message[]>([]);
@@ -186,21 +183,18 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
 
   // Handle legacy message format (fallback)
   const handleLegacyMessage = (data: unknown) => {
-    if (!data || typeof data !== 'object') {
-      return;
-    }
-    const legacy = data as Partial<Message> & { content?: Message['content'] };
-    if (legacy.content) {
-      const botMsg: Message = {
-        id: legacy.id || generateId(),
-        type: legacy.type || 'text',
-        content: legacy.content,
-        sender: 'bot',
-        timestamp: Date.now(),
-        metadata: legacy.metadata,
-      };
-      addMessage(botMsg);
-    }
+    const legacy = parseLegacyMessage(data);
+    if (!legacy) return;
+
+    const botMsg: Message = {
+      id: legacy.id || generateId(),
+      type: legacy.type,
+      content: legacy.content,
+      sender: 'bot',
+      timestamp: Date.now(),
+      metadata: legacy.metadata,
+    };
+    addMessage(botMsg);
   };
 
   // Handle image upload

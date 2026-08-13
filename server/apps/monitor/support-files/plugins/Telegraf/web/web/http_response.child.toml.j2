@@ -2,7 +2,7 @@
     startup_error_behavior = "retry"
     urls = ["{{ request_url | default(url, true) }}"]
     interval = "{{ interval }}s"
-    insecure_skip_verify = {{ insecure_skip_verify | default(false) | lower }}
+    insecure_skip_verify = {{ insecure_skip_verify | default(false, true) | lower }}
     {% if request_method %}
     method = "{{ request_method }}"
     {% endif %}

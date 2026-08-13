@@ -15,13 +15,7 @@ import pytest
 from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, DataCleanupStrategy
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, DELETE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.services.pc_discovery import (
-    PC_COLLECTED_FIELDS,
-    PCSnapshot,
-    PCSnapshotReconciler,
-    apply_pc_snapshots,
-    filter_pc_payload,
-)
+from apps.cmdb.services.pc_discovery import PC_COLLECTED_FIELDS, PCSnapshot, PCSnapshotReconciler, apply_pc_snapshots, filter_pc_payload
 
 T1 = datetime(2026, 7, 22, 10, 0, 0, tzinfo=timezone.utc)
 
@@ -82,7 +76,9 @@ class InMemoryGraph:
             raise RuntimeError("edge write boom")
         for edge in self.edges:
             if (edge["src_inst_id"], edge["dst_inst_id"], edge["asst_id"]) == (
-                asso_info["src_inst_id"], asso_info["dst_inst_id"], asso_info["asst_id"],
+                asso_info["src_inst_id"],
+                asso_info["dst_inst_id"],
+                asso_info["asst_id"],
             ):
                 raise RuntimeError("edge already exists")
         self.edges.append(dict(asso_info))
@@ -147,9 +143,7 @@ def _snapshot(inst="WIN-ABC", software=(), status="complete", snapshot_id="s1", 
 @pytest.fixture
 def graph(monkeypatch):
     fake = InMemoryGraph()
-    monkeypatch.setattr(
-        "apps.cmdb.services.pc_discovery.GraphClient", lambda *a, **k: fake
-    )
+    monkeypatch.setattr("apps.cmdb.services.pc_discovery.GraphClient", lambda *a, **k: fake)
     return fake
 
 
@@ -163,14 +157,16 @@ def test_filter_pc_payload_drops_unknown_fields():
 
 @pytest.mark.django_db
 def test_filter_pc_payload_keeps_collected_hardware_fields():
-    payload = filter_pc_payload({
-        "inst_name": "WIN-A",
-        "brand": "Dell",
-        "cpu": "Intel Core i7",
-        "men": "17179869184",
-        "disk": "512110190592",
-        "asset_code": "A-1",
-    })
+    payload = filter_pc_payload(
+        {
+            "inst_name": "WIN-A",
+            "brand": "Dell",
+            "cpu": "Intel Core i7",
+            "men": "17179869184",
+            "disk": "512110190592",
+            "asset_code": "A-1",
+        }
+    )
 
     assert payload == {
         "inst_name": "WIN-A",
@@ -244,6 +240,10 @@ def test_create_writes_organization_and_runtime_fields(graph):
     assert created["collect_task"] == task.id
     assert created["last_collect_time"] == T1.isoformat()
     assert created["collect_time"] == T1.isoformat()
+    from uuid import UUID
+
+    assert UUID(created["inst_uuid"]).version == 4
+    assert UUID(graph.store["SW-AAA"]["inst_uuid"]).version == 4
     assert graph.store["SW-AAA"]["last_collect_time"] == T1.isoformat()
     assert graph.store["SW-AAA"]["collect_time"] == T1.isoformat()
 
@@ -338,8 +338,9 @@ def test_software_upgrade_updates_same_instance(graph):
     reconciler.apply(_snapshot(software=[_software(version="126.0")]))
     first = graph.store["SW-AAA"]["_id"]
     reconciler.apply(
-        _snapshot(snapshot_id="s2", collected_at=datetime(2026, 7, 22, 11, tzinfo=timezone.utc),
-                  software=[_software(snapshot_id="s2", version="127.0")])
+        _snapshot(
+            snapshot_id="s2", collected_at=datetime(2026, 7, 22, 11, tzinfo=timezone.utc), software=[_software(snapshot_id="s2", version="127.0")]
+        )
     )
 
     assert graph.store["SW-AAA"]["_id"] == first
@@ -352,10 +353,13 @@ def test_software_upgrade_updates_same_instance(graph):
 def test_software_isolated_across_pcs(graph):
     task = _task()
 
-    apply_pc_snapshots(task, [
-        _snapshot(inst="WIN-AAA", software=[_software(inst="SW-AAA", pc_inst="WIN-AAA")]),
-        _snapshot(inst="WIN-BBB", software=[_software(inst="SW-BBB", pc_inst="WIN-BBB")]),
-    ])
+    apply_pc_snapshots(
+        task,
+        [
+            _snapshot(inst="WIN-AAA", software=[_software(inst="SW-AAA", pc_inst="WIN-AAA")]),
+            _snapshot(inst="WIN-BBB", software=[_software(inst="SW-BBB", pc_inst="WIN-BBB")]),
+        ],
+    )
 
     assert set(_software_of(graph, "WIN-AAA")) == {"SW-AAA"}
     assert set(_software_of(graph, "WIN-BBB")) == {"SW-BBB"}
@@ -401,14 +405,16 @@ def _seed_pc_with_software(graph, pc_inst, sw_insts):
     pc = graph.create_entity("instance", {"model_id": "pc", "inst_name": pc_inst}, {}, [])
     for sw_inst in sw_insts:
         sw = graph.create_entity("instance", {"model_id": "pc_software", "inst_name": sw_inst}, {}, [])
-        graph.edges.append({
-            "model_asst_id": "pc_software_install_on_pc",
-            "src_model_id": "pc_software",
-            "src_inst_id": sw["_id"],
-            "dst_model_id": "pc",
-            "dst_inst_id": pc["_id"],
-            "asst_id": "install_on",
-        })
+        graph.edges.append(
+            {
+                "model_asst_id": "pc_software_install_on_pc",
+                "src_model_id": "pc_software",
+                "src_inst_id": sw["_id"],
+                "dst_model_id": "pc",
+                "dst_inst_id": pc["_id"],
+                "asst_id": "install_on",
+            }
+        )
     return pc
 
 
@@ -448,9 +454,7 @@ def test_partial_snapshot_never_deletes(graph):
     task = _task(strategy=DataCleanupStrategy.IMMEDIATELY)
     _seed_pc_with_software(graph, "WIN-ABC", ["SW-OLD"])
 
-    result = PCSnapshotReconciler(task).apply(
-        _snapshot(software=[], status="partial", snapshot_id="s-p")
-    )
+    result = PCSnapshotReconciler(task).apply(_snapshot(software=[], status="partial", snapshot_id="s-p"))
 
     assert result["allow_delete"] is False
     assert "SW-OLD" in graph.store

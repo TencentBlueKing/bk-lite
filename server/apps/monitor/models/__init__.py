@@ -6,3 +6,4 @@ from apps.monitor.models.collect_config import *
 from apps.monitor.models.collect_detect import *
 from apps.monitor.models.monitor_condition import *
 from apps.monitor.models.view_column_preference import *
+from apps.monitor.models.snmp_ifmib_reconcile import *

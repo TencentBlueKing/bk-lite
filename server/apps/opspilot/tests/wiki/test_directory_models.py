@@ -1,5 +1,5 @@
 import pytest
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, models, transaction
 from django.db.models.deletion import ProtectedError
 
 from apps.opspilot.models import WikiDirectory, WikiGenerationPage
@@ -42,8 +42,11 @@ def test_generation_member_database_constraint_rejects_non_active_page_status(wi
     knowledge_base.refresh_from_db()
     member = knowledge_base.active_generation.page_members.get(page=page)
 
-    with pytest.raises(IntegrityError), transaction.atomic():
+    with pytest.raises(ValueError, match="逐条 save"):
         WikiGenerationPage.objects.filter(pk=member.pk).update(page_status="archived")
+    if connection.features.supports_table_check_constraints:
+        with pytest.raises(IntegrityError), transaction.atomic():
+            models.QuerySet(model=WikiGenerationPage, using="default").filter(pk=member.pk).update(page_status="archived")
 
 
 def test_generation_member_protects_retained_page_version(wiki_factory):

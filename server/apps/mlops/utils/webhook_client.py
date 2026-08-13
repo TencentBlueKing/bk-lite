@@ -61,6 +61,11 @@ class WebhookTimeoutError(WebhookError):
 class WebhookClient:
     """Webhook 客户端,用于构建和管理 webhook URL"""
 
+    DEFAULT_SERVING_STARTUP_TIMEOUT_SECONDS = 120
+    MAX_SERVING_STARTUP_TIMEOUT_SECONDS = 290
+    SERVING_HOOK_GRACE_SECONDS = 5
+    SERVING_REQUEST_GRACE_SECONDS = 5
+
     @staticmethod
     def get_runtime():
         """
@@ -196,7 +201,24 @@ class WebhookClient:
         # )
 
         try:
-            response = requests.post(url, json=payload, timeout=timeout)
+            startup_timeout = (
+                payload.get("startup_timeout_seconds")
+                if endpoint == "serve"
+                else None
+            )
+            if startup_timeout is None:
+                response = requests.post(url, json=payload, timeout=timeout)
+            else:
+                hook_timeout = (
+                    int(startup_timeout)
+                    + WebhookClient.SERVING_HOOK_GRACE_SECONDS
+                )
+                response = requests.post(
+                    url,
+                    json=payload,
+                    timeout=timeout,
+                    headers={"X-Hook-Timeout": str(hook_timeout)},
+                )
 
             # logger.info(
             #     f"Webhookd 响应 - 状态码: {response.status_code}, 内容: {response.text[:500]}"
@@ -278,10 +300,33 @@ class WebhookClient:
                 raise ValueError("timeseries_predict_timeout_seconds must be between 1 and 290")
             payload["timeseries_predict_timeout_seconds"] = timeseries_predict_timeout_seconds
 
+        request_timeout = 30
+        if WebhookClient.get_runtime() == "docker":
+            raw_startup_timeout = os.getenv(
+                "MLOPS_SERVING_STARTUP_TIMEOUT_SECONDS",
+                str(WebhookClient.DEFAULT_SERVING_STARTUP_TIMEOUT_SECONDS),
+            )
+            try:
+                startup_timeout = int(raw_startup_timeout)
+            except ValueError:
+                raise ValueError(
+                    "MLOPS_SERVING_STARTUP_TIMEOUT_SECONDS must be an integer between 1 and 290"
+                ) from None
+            if not 1 <= startup_timeout <= WebhookClient.MAX_SERVING_STARTUP_TIMEOUT_SECONDS:
+                raise ValueError(
+                    "MLOPS_SERVING_STARTUP_TIMEOUT_SECONDS must be an integer between 1 and 290"
+                )
+            payload["startup_timeout_seconds"] = startup_timeout
+            request_timeout = (
+                startup_timeout
+                + WebhookClient.SERVING_REQUEST_GRACE_SECONDS
+                + WebhookClient.SERVING_HOOK_GRACE_SECONDS
+            )
+
         # 添加运行时特定参数
         WebhookClient._add_runtime_params(payload)
 
-        result = WebhookClient._request("serve", payload)
+        result = WebhookClient._request("serve", payload, timeout=request_timeout)
 
         if result.get("status") == "error":
             error_msg = result.get("message", "未知错误")

@@ -396,6 +396,9 @@ def test_get_deploy_script_success_calls_webhook_and_returns_script():
     assert script == "echo hello"
     called_url = post_mock.call_args.args[0]
     assert called_url == "https://webhook.local/infra/proxy"
+    webhook_payload = post_mock.call_args.kwargs["json"]
+    assert webhook_payload["apm_nats_username"] == f"apm_region_{region.id}"
+    assert len(webhook_payload["apm_nats_password"]) == 32
 
 
 @pytest.mark.django_db

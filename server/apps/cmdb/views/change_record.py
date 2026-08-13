@@ -9,11 +9,7 @@ from rest_framework.decorators import action
 
 from apps.cmdb.filters.change_record import ChangeRecordFilter
 from apps.cmdb.language.service import SettingLanguage
-from apps.cmdb.models.change_record import (
-    OPERATE_TYPE_CHOICES,
-    SCENARIO_CHOICES,
-    ChangeRecord,
-)
+from apps.cmdb.models.change_record import OPERATE_TYPE_CHOICES, SCENARIO_CHOICES, ChangeRecord
 from apps.cmdb.serializers.change_record import ChangeRecordSerializer
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
@@ -71,35 +67,41 @@ class ChangeRecordViewSet(viewsets.ReadOnlyModelViewSet):
         wb = Workbook()
         ws = wb.active
         ws.title = "ChangeRecord"
-        ws.append([
-            "ID",
-            "实例ID",
-            "模型ID",
-            "标签",
-            "变更类型",
-            "变更场景",
-            "操作者",
-            "模型对象",
-            "操作信息",
-            "变更前",
-            "变更后",
-            "创建时间",
-        ])
+        ws.append(
+            [
+                "ID",
+                "实例UUID",
+                "实例图ID",
+                "模型ID",
+                "标签",
+                "变更类型",
+                "变更场景",
+                "操作者",
+                "模型对象",
+                "操作信息",
+                "变更前",
+                "变更后",
+                "创建时间",
+            ]
+        )
         for record in queryset.iterator(chunk_size=500):
-            ws.append([
-                record.id,
-                record.inst_id,
-                record.model_id,
-                record.label,
-                lan.get_val("ChangeRecordType", record.type) or type_map.get(record.type, record.type),
-                lan.get_val("ChangeRecordScenario", record.scenario) or scenario_map.get(record.scenario, record.scenario),
-                record.operator,
-                record.model_object,
-                record.message,
-                json.dumps(record.before_data, ensure_ascii=False) if record.before_data else "",
-                json.dumps(record.after_data, ensure_ascii=False) if record.after_data else "",
-                record.created_at.strftime("%Y-%m-%d %H:%M:%S") if record.created_at else "",
-            ])
+            ws.append(
+                [
+                    record.id,
+                    str(record.inst_uuid) if record.inst_uuid else "",
+                    record.inst_id,
+                    record.model_id,
+                    record.label,
+                    lan.get_val("ChangeRecordType", record.type) or type_map.get(record.type, record.type),
+                    lan.get_val("ChangeRecordScenario", record.scenario) or scenario_map.get(record.scenario, record.scenario),
+                    record.operator,
+                    record.model_object,
+                    record.message,
+                    json.dumps(record.before_data, ensure_ascii=False) if record.before_data else "",
+                    json.dumps(record.after_data, ensure_ascii=False) if record.after_data else "",
+                    record.created_at.strftime("%Y-%m-%d %H:%M:%S") if record.created_at else "",
+                ]
+            )
 
         buffer = io.BytesIO()
         wb.save(buffer)

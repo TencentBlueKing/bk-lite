@@ -169,6 +169,7 @@ const Datasource: React.FC = () => {
     postgresql: 'PostgreSQL',
     rest_api: 'REST API',
     excel: 'Excel',
+    prometheus: t('dataSource.sourceTypes.prometheus'),
   };
 
   const renderSourceObject = (_: unknown, row: DatasourceItem) => {
@@ -200,6 +201,10 @@ const Datasource: React.FC = () => {
 
     if (sourceType === 'excel') {
       return connectionConfig.filename || t('dataSource.excelImportedData');
+    }
+
+    if (sourceType === 'prometheus') {
+      return connectionConfig.url || '-';
     }
 
     return '-';

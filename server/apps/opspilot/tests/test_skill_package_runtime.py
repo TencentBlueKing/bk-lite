@@ -157,14 +157,9 @@ triggers:
 
 
 def test_skill_package_runtime_lists_all_enabled_packages():
-    """所有已启用的技能包都进 prompt,让 LLM 看完整列表后挑相关的用。
+    """所有已启用的技能包都进目录,让 LLM 看列表后挑相关的用。
 
-    之前 substring match 只显示 match 上的(导致"都展示误区"或"全不展示")。
-    新行为列全部启用 + prompt 写"挑相关用,不要全用上",LLM 看着上下文
-    决定调哪些。
-
-    这里启用了"修复建议"包,虽然用户消息"输出 RCA 复盘"不匹配它的 trigger,
-    但它仍进 prompt 让 LLM 知道有这工具(LLM 自己判断是否调用)。
+    渐进披露：只注入名称/说明/触发词，不塞完整 skill_markdown 正文。
     """
     from apps.opspilot.services.skill_package.runtime import append_matching_skill_packages_to_prompt
 
@@ -189,11 +184,15 @@ def test_skill_package_runtime_lists_all_enabled_packages():
         available_tool_names={"kubernetes"},
     )
 
-    # 所有已启用的包都进 prompt
+    # 所有已启用的包都进目录
     assert "RCA 复盘" in prompt
-    assert "输出事件概述" in prompt
+    assert "根因分析与复盘报告" in prompt
     assert "修复建议" in prompt
-    assert "只输出修复命令" in prompt
+    assert "生成修复命令" in prompt
+    # 正文不进 system prompt
+    assert "输出事件概述、分析过程、根因结论。" not in prompt
+    assert "只输出修复命令。" not in prompt
+    assert "read_file" in prompt
     assert "缺少依赖工具" not in prompt
 
 
@@ -239,6 +238,7 @@ def test_skill_package_runtime_matches_required_tool_by_display_name():
 
     assert "缺少依赖工具" not in prompt
     assert matched[0]["missing_tools"] == []
+    assert "Use Kubernetes workflow." not in prompt
 
 
 def test_skill_package_runtime_accepts_agui_message_list():
@@ -259,7 +259,44 @@ def test_skill_package_runtime_accepts_agui_message_list():
     )
 
     assert "agent-browser-prompt-only" in prompt
-    assert "已命中 OpsPilot 技能包" in prompt
+    assert "浏览器自动化问答技能" in prompt
+    assert "已命中 OpsPilot 技能包: agent-browser-prompt-only" not in prompt
+
+
+def test_skill_package_runtime_omits_full_markdown_body():
+    """寒暄/无关消息也不应把完整 skill_markdown 灌进 system。"""
+    from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt
+
+    long_body = "完整工作流步骤：" + ("详细说明。" * 200)
+    prompt, matched = build_skill_package_prompt(
+        base_prompt="你是运维助手。",
+        skill_packages=[
+            {
+                "id": "kubernetes-specialist",
+                "name": "Kubernetes Specialist",
+                "description": "K8s 专家",
+                "triggers": ["deployment", "pod"],
+                "skill_markdown": long_body,
+            },
+            {
+                "id": "markitdown",
+                "name": "Markitdown",
+                "description": "文档转 Markdown",
+                "triggers": ["markdown", "pdf"],
+                "skill_markdown": "把 PDF/Word 转成 Markdown 的超长说明" * 50,
+            },
+        ],
+        user_message="你好",
+        available_tool_names=set(),
+    )
+
+    assert matched == []
+    assert "Kubernetes Specialist" in prompt
+    assert "Markitdown" in prompt
+    assert long_body not in prompt
+    assert "把 PDF/Word 转成 Markdown 的超长说明" not in prompt
+    assert "SKILL.md" in prompt
+    assert len(prompt) < 2500
 
 
 def test_skill_package_runtime_adds_visible_hit_marker():
@@ -280,9 +317,11 @@ def test_skill_package_runtime_adds_visible_hit_marker():
         available_tool_names={"kubernetes"},
     )
 
-    # 新文案:"已采用技能包" 替代 "已命中技能包"
-    assert "已采用技能包：Kubernetes Specialist" in prompt
+    # 目录含包名；正文规则要求答复时写明「已采用技能包」
+    assert "Kubernetes Specialist" in prompt
+    assert "已采用技能包:<技能包名称>" in prompt
     assert "必须在思考区或最终答复开头写明" in prompt
+    assert "Use Kubernetes troubleshooting workflow." not in prompt
 
 
 def test_skill_package_runtime_returns_matched_package_summaries():
@@ -436,20 +475,12 @@ def test_manifest_overlay_skill_md_overrides_skill_yaml_and_db_manifest(tmp_path
     extracted.mkdir()
     # skill.yaml 声明旧的 capabilities
     (extracted / "skill.yaml").write_text(
-        "name: k8s-pack\n"
-        "capabilities:\n"
-        "  - browser_steps\n",
+        "name: k8s-pack\n" "capabilities:\n" "  - browser_steps\n",
         encoding="utf-8",
     )
     # SKILL.md 声明新的 capabilities(用户最新编辑)
     (extracted / "SKILL.md").write_text(
-        "---\n"
-        "name: k8s-pack\n"
-        "capabilities:\n"
-        "  - config_analysis_report\n"
-        "  - repair_diff_report\n"
-        "---\n\n"
-        "# body\n",
+        "---\n" "name: k8s-pack\n" "capabilities:\n" "  - config_analysis_report\n" "  - repair_diff_report\n" "---\n\n" "# body\n",
         encoding="utf-8",
     )
 
@@ -473,11 +504,7 @@ def test_manifest_overlay_falls_back_to_db_when_skill_md_lacks_strategy_field(tm
     extracted = tmp_path / "extracted"
     extracted.mkdir()
     (extracted / "SKILL.md").write_text(
-        "---\n"
-        "name: k8s-pack\n"
-        "description: 没声明 capabilities\n"
-        "---\n\n"
-        "# body\n",
+        "---\n" "name: k8s-pack\n" "description: 没声明 capabilities\n" "---\n\n" "# body\n",
         encoding="utf-8",
     )
 
@@ -516,9 +543,7 @@ def test_manifest_overlay_tolerates_malformed_skill_md(tmp_path):
     extracted = tmp_path / "extracted"
     extracted.mkdir()
     (extracted / "SKILL.md").write_text(
-        "---\n"
-        "name: broken\n"
-        "capabilities: [unclosed\n",  # YAML 解析会失败
+        "---\n" "name: broken\n" "capabilities: [unclosed\n",  # YAML 解析会失败
         encoding="utf-8",
     )
 

@@ -8,7 +8,7 @@ export interface ConditionFilter {
 }
 
 export interface InstancesFilter {
-  instance_ids: number[];
+  instance_uuids: string[];
 }
 
 export interface AttributeChangeConfig {

@@ -25,7 +25,12 @@
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -70,11 +75,16 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
+      "query": "device_memory_used{instance_type='switch', __$labels__} / (device_memory_used{instance_type='switch', __$labels__} + device_memory_free{instance_type='switch', __$labels__}) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "Memory pool name"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],

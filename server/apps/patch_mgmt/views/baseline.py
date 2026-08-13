@@ -22,6 +22,8 @@ from apps.patch_mgmt.models import (
     PatchTarget,
 )
 from apps.patch_mgmt.serializers.baseline import (
+    BaselineComplianceDetailsQuerySerializer,
+    BaselineComplianceObjectsQuerySerializer,
     BaselineRequirementSerializer,
     HostBaselineBindingSerializer,
     PatchBaselineDetailSerializer,
@@ -153,6 +155,18 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
         if not target_ids:
             raise DRFValidationError(patch_message(request, "error.target_ids_required", "Select at least one target"))
         require_target_ids(request, target_ids, "Operate")
+        if PatchTarget.objects.filter(id__in=target_ids).exclude(
+            os_type=baseline.os_type
+        ).exists():
+            raise DRFValidationError(
+                {
+                    "detail": patch_message(
+                        request,
+                        "error.baseline_target_os_mismatch",
+                        "Selected targets must use the same operating system as the baseline",
+                    )
+                }
+            )
         operable_target_ids = target_access_scope(request).queryset(
             "Operate"
         ).values("id")
@@ -231,6 +245,46 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
             context=self.get_serializer_context(),
         )
         return Response(serializer.data)
+
+    @action(detail=True, methods=["get"])
+    @HasPermission("patch_baseline-View")
+    def compliance_matrix_objects(self, request, pk=None):
+        """返回当前视角的合规矩阵对象全集。"""
+        from apps.patch_mgmt.services.baseline_compliance_detail import (
+            build_baseline_compliance_objects,
+        )
+
+        query_serializer = BaselineComplianceObjectsQuerySerializer(
+            data=request.query_params
+        )
+        query_serializer.is_valid(raise_exception=True)
+        return Response(
+            build_baseline_compliance_objects(
+                request,
+                self.get_object(),
+                query_serializer.validated_data,
+            )
+        )
+
+    @action(detail=True, methods=["get"], filter_backends=[])
+    @HasPermission("patch_baseline-View")
+    def compliance_matrix_details(self, request, pk=None):
+        """返回当前视角下一个选中对象的分页合规明细。"""
+        from apps.patch_mgmt.services.baseline_compliance_detail import (
+            build_baseline_compliance_details,
+        )
+
+        query_serializer = BaselineComplianceDetailsQuerySerializer(
+            data=request.query_params
+        )
+        query_serializer.is_valid(raise_exception=True)
+        return Response(
+            build_baseline_compliance_details(
+                request,
+                self.get_object(),
+                query_serializer.validated_data,
+            )
+        )
 
     @action(detail=True, methods=["post"])
     @HasPermission("patch_governance-Add")

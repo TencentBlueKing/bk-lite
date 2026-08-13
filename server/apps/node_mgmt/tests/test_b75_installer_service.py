@@ -150,7 +150,9 @@ def test_uninstall_controller_creates_task_and_nodes():
         {
             "ip": "10.0.0.2",
             "node_id": "node-ctrl-uninstall",
+            "node_name": "controller-to-remove",
             "os": "linux",
+            "organizations": [1],
             "port": 22,
             "username": "root",
             "password": "",
@@ -171,6 +173,8 @@ def test_uninstall_controller_creates_task_and_nodes():
     assert task.domain == "example.com"
     node = ControllerTaskNode.objects.get(task=task)
     assert node.node_id == "node-ctrl-uninstall"
+    assert node.node_name == "controller-to-remove"
+    assert node.organizations == [1]
     assert node.private_key != "key"
 
 
@@ -232,6 +236,32 @@ def test_install_controller_nodes_returns_info():
     assert len(result) == 1
     assert result[0]["ip"] == "10.0.0.5"
     assert result[0]["status"] == "waiting"
+
+
+@pytest.mark.django_db
+def test_install_controller_nodes_returns_persisted_winrm_retry_configuration():
+    region = CloudRegion.objects.create(name="cr-ctrl-windows-retry-config")
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="waiting", package_version_id=1)
+    ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.85",
+        os="windows",
+        port=7443,
+        username="Administrator",
+        password="x",
+        node_name="windows-retry",
+        organizations=[1],
+        status="error",
+        winrm_scheme="https",
+        winrm_transport="ntlm",
+        winrm_cert_validation=False,
+    )
+
+    result = InstallerService.install_controller_nodes(task.id)
+
+    assert result[0]["winrm_scheme"] == "https"
+    assert result[0]["winrm_transport"] == "ntlm"
+    assert result[0]["winrm_cert_validation"] is False
 
 
 @pytest.mark.django_db

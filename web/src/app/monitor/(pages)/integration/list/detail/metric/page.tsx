@@ -21,7 +21,6 @@ import CustomTable from '@/components/custom-table';
 import {
   ColumnItem,
   ModalRef,
-  IntegrationItem,
   ObjectItem,
   MetricItem
 } from '@/app/monitor/types';
@@ -29,6 +28,7 @@ import { MetricListItem, DimensionItem } from '@/app/monitor/types/integration';
 import Collapse from '@/components/collapse';
 import GroupModal from './groupModal';
 import MetricModal from './metricModal';
+import ObjectIcon from '@/app/monitor/components/objectIcon';
 import { useSearchParams } from 'next/navigation';
 import Permission from '@/components/permission';
 import {
@@ -37,6 +37,32 @@ import {
 } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 import { buildIfmibMetricView, getDefaultMetricGroupOpenState } from './ifmibMetricView';
+
+type ObjectTabOption = {
+  label: React.ReactNode;
+  value: string;
+  title?: string;
+};
+
+const ObjectTabLabel = ({
+  icon,
+  name,
+  isBase,
+  baseLabel
+}: {
+  icon?: string;
+  name: string;
+  isBase: boolean;
+  baseLabel: string;
+}) => (
+  <span className={metricStyle.objectChip}>
+    <ObjectIcon icon={icon} size={16} />
+    <span className={metricStyle.objectChipName}>{name}</span>
+    {isBase ? (
+      <span className={metricStyle.objectChipMark}>{baseLabel}</span>
+    ) : null}
+  </span>
+);
 
 const Configure = () => {
   const { isLoading } = useApiClient();
@@ -69,14 +95,12 @@ const Configure = () => {
   // 保留接口返回的真实分组供指标编辑使用。
   const [apiGroupList, setApiGroupList] = useState<MetricListItem[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
-  const [items, setItems] = useState<IntegrationItem[]>([]);
+  const [items, setItems] = useState<ObjectTabOption[]>([]);
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [dragOverTargetId, setDragOverTargetId] = useState<string | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [groupConfirmLoading, setGroupConfirmLoading] = useState(false);
   const [showTabs, setShowTabs] = useState<boolean>(false);
-  const metricTableRef = useRef<HTMLDivElement>(null);
-  const manuallyClosedGroupIds = useRef<Set<string>>(new Set());
   const metricCatalogAbortRef = useRef<AbortController | null>(null);
   const canReorderCatalog = metricCount <= 100 && !searchText.trim();
 
@@ -203,11 +227,22 @@ const Configure = () => {
         const _items = data
           .filter((item: ObjectItem) => item.type === objectType)
           .sort((a: ObjectItem, b: ObjectItem) => a.id - b.id)
-          .map((item: ObjectItem) => ({
-            label: item.display_name,
-            value: item.id
-          }));
-        _objId = _items[0]?.value;
+          .map((item: ObjectItem) => {
+            const name = item.display_name || item.name;
+            return {
+              label: (
+                <ObjectTabLabel
+                  icon={item.icon}
+                  name={name}
+                  isBase={item.level === 'base'}
+                  baseLabel={t('monitor.integrations.baseObject')}
+                />
+              ),
+              value: String(item.id),
+              title: name
+            };
+          });
+        _objId = _items[0]?.value || '';
         setItems(_items);
       } else {
         setShowTabs(false);
@@ -264,7 +299,6 @@ const Configure = () => {
 
     if (!preserveState) {
       setSearchText('');
-      manuallyClosedGroupIds.current.clear();
     }
     try {
       // 厂商指标按页分页；IF-MIB 固定约十余条，单独拉全量后置底归并，避免拆页。
@@ -312,8 +346,8 @@ const Configure = () => {
       const groupData = metricView.map((group) => ({
         ...group,
         isOpen: currentOpenState
-          ? (currentOpenState.get(group.id) ?? defaultOpenState.get(group.id))
-          : defaultOpenState.get(group.id)
+          ? (currentOpenState.get(group.id) ?? defaultOpenState.get(group.id) ?? false)
+          : (defaultOpenState.get(group.id) ?? false)
       }));
       setMetrics(groupData.flatMap((group) => group.child));
       setMetricData(groupData);
@@ -381,11 +415,12 @@ const Configure = () => {
     getInitData(activeTab, true);
   };
 
-  const onTabChange = (val: string) => {
+  const onTabChange = (val: string | number) => {
+    const next = String(val);
     setMetricData([]);
-    setActiveTab(val);
+    setActiveTab(next);
     setMetricPage(1);
-    getInitData(val, false, 1);
+    getInitData(next, false, 1);
   };
 
   const onMetricPageChange = (page: number) => {
@@ -487,11 +522,6 @@ const Configure = () => {
   };
 
   const onToggle = (id: string, isOpen: boolean) => {
-    if (isOpen) {
-      manuallyClosedGroupIds.current.delete(id);
-    } else {
-      manuallyClosedGroupIds.current.add(id);
-    }
     setMetricData((prev) =>
       prev.map((item) => (item.id === id ? { ...item, isOpen } : item))
     );
@@ -500,37 +530,22 @@ const Configure = () => {
     );
   };
 
-  const autoExpandVisibleGroups = () => {
-    const container = metricTableRef.current;
-    if (!container || searchText.trim()) return;
-    const containerRect = container.getBoundingClientRect();
-    const visibleGroupIds = Array.from(
-      container.querySelectorAll<HTMLElement>('[data-metric-group-id]')
-    )
-      .filter((element) => {
-        const rect = element.getBoundingClientRect();
-        return rect.top < containerRect.bottom && rect.bottom > containerRect.top;
-      })
-      .map((element) => element.dataset.metricGroupId)
-      .filter((id): id is string => Boolean(id));
+  const allGroupsExpanded =
+    filteredMetricData.length > 0 &&
+    filteredMetricData.every((group) => group.isOpen);
 
-    if (!visibleGroupIds.length) return;
-    const shouldOpen = new Set(
-      visibleGroupIds.filter((id) => !manuallyClosedGroupIds.current.has(id))
-    );
-    if (!shouldOpen.size) return;
-    const openVisibleGroups = (groups: MetricListItem[]) => groups.map((group) => (
-      shouldOpen.has(group.id) && !group.isOpen ? { ...group, isOpen: true } : group
-    ));
-    setMetricData(openVisibleGroups);
-    setFilteredMetricData(openVisibleGroups);
+  const setAllGroupsOpen = (isOpen: boolean) => {
+    const next = (groups: MetricListItem[]) =>
+      groups.map((group) => ({ ...group, isOpen }));
+    setMetricData(next);
+    setFilteredMetricData(next);
   };
 
   return (
     <div className={metricStyle.metric}>
       {showTabs && (
         <Segmented
-          className="mb-[20px] custom-tabs"
+          className={metricStyle.objectSegmented}
           value={activeTab}
           options={items}
           onChange={onTabChange}
@@ -550,6 +565,15 @@ const Configure = () => {
           onClear={onTxtClear}
         />
         <div>
+          <Button
+            className="mr-[8px]"
+            disabled={!filteredMetricData.length}
+            onClick={() => setAllGroupsOpen(!allGroupsExpanded)}
+          >
+            {allGroupsExpanded
+              ? t('common.collapseAll')
+              : t('common.expandAll')}
+          </Button>
           <Permission requiredPermissions={['Add Group']} className="mr-[8px]">
             <Button type="primary" onClick={() => openGroupModal('add')}>
               {t('monitor.integrations.addGroup')}
@@ -564,8 +588,6 @@ const Configure = () => {
       </div>
       <Spin spinning={loading}>
         <div
-          ref={metricTableRef}
-          onScroll={autoExpandVisibleGroups}
           className={metricStyle.metricTable}
           style={{
             height: showTabs ? 'calc(100vh - 396px)' : 'calc(100vh - 346px)'

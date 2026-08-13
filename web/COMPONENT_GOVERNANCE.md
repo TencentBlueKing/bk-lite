@@ -15,14 +15,14 @@ Storybook 是组件行为与变体的契约中心，但 Storybook 引用本身�
 
 | 分类 | 数量 | 判定 |
 | --- | ---: | --- |
-| `shared-cross-app` | 60 | 至少两个真实 app 直接或传递消费 |
-| `shared-primitive` | 52 | 当前消费者不足两个，但具有明确 primitive 理由和 contract story |
+| `shared-cross-app` | 64 | 至少两个真实 app 直接或传递消费 |
+| `shared-primitive` | 48 | 当前消费者不足两个，但具有明确 primitive 理由和 contract story |
 | `app-local` | 0 | 不允许留在 `src/components` |
 | `story-only-review` | 0 | 不允许仅因 Storybook 引用留在 `src/components` |
 | `invalid-reverse-dependency` | 0 | shared 禁止依赖 app |
 | `unused` | 0 | 无消费者实现必须删除或明确归属 |
 
-白名单共记录 65 个 primitive；其中 13 个当前也已获得跨 app 运行证据，因此 manifest 按优先级将其归为 `shared-cross-app`。所有白名单项均包含 `reason` 和存在的 `contractStory`。
+白名单共记录 65 个 primitive；其中 17 个当前也已获得跨 app 运行证据，因此 manifest 按优先级将其归为 `shared-cross-app`。所有白名单项均包含 `reason` 和存在的 `contractStory`。
 
 本轮将 `src/components` 从 229 个一级目录收敛到 112 个：114 个业务目录下沉到 app，3 个平行重复实现删除。
 
@@ -94,9 +94,60 @@ Storybook 是组件行为与变体的契约中心，但 Storybook 引用本身�
 | app | 文件 | 不迁移理由 |
 |---|---|---|
 | opspilot | `(pages)/memory/page.tsx` | 触发器使用 `text-white/80 hover:text-white hover:bg-black/10` 在深色背景图片上,与 primitive 默认 Button 颜色冲突;即使通过 buttonClassName 透传,AntD Button 默认尺寸/padding 仍会破坏布局 |
-| system-manager | `(pages)/application/manage/menu/page.tsx` | `dropdownOps = operations.slice(3)` 恒为 0,**dead code**;建议删除而非迁移 |
 | log | `(pages)/search/fieldList.tsx` | 使用 `CustomPopover` 而非 `Dropdown`,不属于本 primitive 抽象范围 |
-| ops-analysis | `(pages)/view/dashBoard/components/dashboardCanvas.tsx` | 旧 Menu JSX + 自定义 button 触发器,需先重构 menu builder 才能迁移 |
+| alarm | `components/alarm-action` 与 `(pages)/alarms/components/alarmAction` | 主色「操作」按钮 + DownOutlined;作业规则为动态子菜单,不属于 MoreOutlined 行操作菜单 |
+
+### MoreActionsDropdown 本轮增量(2026-08)
+
+- 迁移: `ops-analysis/components/sidebar.tsx` 目录树 More 菜单从旧 `Menu` overlay 收敛到 `MoreActionsDropdown`(含内置对象禁用项与权限守卫)。
+- primitive 增强: `stopPropagation` 同时拦截 `onMouseDown`,避免树节点选中抢占点击。
+- 仍保留: log `fieldList` CustomPopover、system-manager menu dead code、opspilot memory 深色触发器。
+
+### 审计分类修正(2026-08)
+
+- 白名单 primitive 在消费者 < 2 时应归 `shared-primitive`,不得因单 app 消费被误判为 `app-local`。
+- `shared-primitive-ghost` 仅用于白名单且既无 app 消费、也无活跃 Storybook JSX 渲染的条目。
+- Storybook: `notifications.stories.tsx` 补显式 `render`,避免 CSF3 `component` 元数据被当成无契约渲染。
+- 门禁: `pnpm check:component-ownership` 必须在修正后通过。
+
+### OperateDrawer / CompactEmptyState 分叉收敛(2026-08)
+
+- 删除 `log/components/operate-drawer` 与 `patch-manager/components/operate-drawer`,统一到 `@/components/operate-drawer`。
+- shared OperateDrawer 恢复 `bodyStyle` 透传(映射到 `styles.body`),与 SCSS 默认 `padding: 16px` 并存;调用方可覆盖为 `padding: 0`。
+- 删除 `ops-analysis/components/compactEmptyState.tsx` 平行实现,全部改用 `@/components/compact-empty-state`。
+- Storybook: 既有 `content-draw.stories.tsx` / `feedback-family.stories.tsx` 覆盖契约;本轮无新 story 文件。
+
+### MoreActions / 工具栏 / 状态徽章增量(2026-08 Cycle 3)
+
+- 删除死文件 `src/app/(core)/components/top-menu/notifications.tsx`(与 shared `notifications` 平行且未被引用)。
+- MoreActions 迁移: APM `services/page.tsx`、`services/[serviceId]/page.tsx`; system-manager `UserSyncSourceList.tsx`、`application/manage/menu/page.tsx`(原 dropdown 承载第 4 项删除,并非死代码)。
+- 显式不迁: AlarmAction(`alarm-action` / `alarms/components/alarmAction`)——触发器是主色「操作」按钮 + DownOutlined,且含作业规则动态子菜单,不属于 MoreOutlined primitive。
+- SearchActionBar: APM `policies/page.tsx` 接入,为 toolbar 族增加真实 app 消费。
+- ExecutionStatusBadge: Job `job-record/page.tsx` 列表/详情/目标状态首批接入(零消费者 primitive → 有真实消费)。
+
+### FilterToolbar 激活(2026-08 Cycle 4)
+
+- APM `integration/instances/page.tsx` 与 Patch `risk-execution/page.tsx` 接入 `filter-toolbar`,结束该 primitive 零真实消费状态。
+- OpsPilot: 8 个 skill `*ToolEditor` 去掉重复 `statusColorMap`,统一复用 app-local `ToolConnectionStatusTag`(不晋升 shared)。
+- 仍保留 log `fieldList` CustomPopover 为例外。
+
+### 工具栏扩面 + SecretValueDisplay(2026-08 Cycle 5)
+
+- FilterToolbar 继续接入 APM 旧路径 `events/page.tsx`、`errors/page.tsx`、`endpoints/page.tsx`；Patch `baseline/page.tsx`、`risk-pending/page.tsx`。
+- SearchActionBar: Patch `settings/page.tsx` 接入。
+- Alarm `teamSecretsManager.tsx` 接入 `secret-value-display`,替换手写掩码 + CopyOutlined。
+- PageStatus: `not-found.tsx` 与 `no-permission/page.tsx` 收敛到 shared,结束零真实消费。
+
+### Master 合并后路径重挂 + 工具栏扩面(2026-08 Cycle 6)
+
+- 同步 `upstream/master`(`b80524101`)：APM 菜单 IA 调整，旧 `apm/events|errors|endpoints|policies` 变为 redirect。
+- 冲突处理：redirect stub 保留 upstream；工具栏迁移改挂到新路径：
+  - FilterToolbar → `apm/explore/endpoints`、`apm/explore/errors`、`apm/events/alerts`
+  - SearchActionBar → `apm/events/policies`
+- FilterToolbar 继续接入：`apm/explore/traces`、`apm/services/page`、`apm/services/topology`、`apm/integration/applications`。
+- SecretValueDisplay：Alarm `integration/detail/page.tsx` 两处 secret 行收敛(仍属 alarm 单 app；CURL/Python 示例区保留本地 Copy)。
+- 显式不迁：Patch `risk-execution` 状态 Tag——API 驱动 `status_color` + 域状态(`pending_reboot`/`partial_success` 等)，与 `ExecutionStatusBadge` 语义不匹配。
+- 门禁：`node scripts/component-ownership-audit.mjs --check` 通过(112 records)。
 
 ### 已知 Storybook 构建阻塞
 

@@ -16,6 +16,9 @@
 cleanup_expired_workflow_attachments（存储清理）。DB 用真实 Postgres。
 """
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 import pydantic.root_model  # noqa  预热
 import pytest
 
@@ -62,7 +65,7 @@ def _make_space(**kw):
 class TestProcessMemoryWriteNoModel:
     def test_无模型创建个人记忆(self):
         sp = _make_space()
-        tasks.process_memory_write(
+        result = tasks.process_memory_write(
             memory_space_id=sp.id,
             title="T",
             content="第一条",
@@ -70,6 +73,7 @@ class TestProcessMemoryWriteNoModel:
             owner_domain="d.com",
         )
         mem = Memory.objects.get(memory_space=sp, owner_username="alice")
+        assert result is None
         assert mem.content == "第一条"
         assert mem.organization_id is None
 
@@ -91,6 +95,39 @@ class TestProcessMemoryWriteNoModel:
     def test_记忆空间不存在抛错(self):
         with pytest.raises(MemorySpace.DoesNotExist):
             tasks.process_memory_write(memory_space_id=999999, title="T", content="c", owner_username="x", owner_domain="d")
+
+    @pytest.mark.django_db(transaction=True)
+    def test_并发写入同一目标只创建一条并保留两次内容(self, mocker):
+        sp = _make_space()
+        original_get_memory = tasks._get_memory_for_target
+        first_reads_done = Barrier(2)
+
+        def synchronized_get_memory(*args, **kwargs):
+            memory = original_get_memory(*args, **kwargs)
+            if not kwargs.get("for_update", False):
+                first_reads_done.wait(timeout=5)
+            return memory
+
+        mocker.patch.object(tasks, "_get_memory_for_target", side_effect=synchronized_get_memory)
+
+        def write(content):
+            tasks.process_memory_write(
+                memory_space_id=sp.id,
+                title="T",
+                content=content,
+                owner_username="alice",
+                owner_domain="d.com",
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(write, content) for content in ("第一条", "第二条")]
+            for future in futures:
+                future.result(timeout=10)
+
+        memories = list(Memory.objects.filter(memory_space=sp, owner_username="alice", owner_domain="d.com"))
+        assert len(memories) == 1
+        assert "第一条" in memories[0].content
+        assert "第二条" in memories[0].content
 
 
 # ===========================================================================

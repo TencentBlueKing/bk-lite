@@ -50,7 +50,7 @@ from apps.operation_analysis.serializers.network_topology_serializers import (
 from apps.operation_analysis.services.network_topology import canvas_config
 from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
 from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapter, WeOpsTopologyAdapterError
-from apps.operation_analysis.views.view import _create_canvas_share_response
+from apps.operation_analysis.views.view import BuiltinVisibleMixin, _create_canvas_share_response
 
 logger = logging.getLogger("apps.operation_analysis.network_topology")
 
@@ -87,7 +87,7 @@ class NetworkTopologyFeaturePermission(permissions.BasePermission):
         return bool(required.intersection(user_permissions if isinstance(user_permissions, set) else set()))
 
 
-class NetworkTopologyViewSet(AuthViewSet):
+class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
     """DRF view for the canvas CRUD + WeOps-aware actions."""
 
     queryset = NetworkTopology.objects.all()
@@ -95,6 +95,7 @@ class NetworkTopologyViewSet(AuthViewSet):
     permission_key = "directory.networkTopology"
     permission_classes = [permissions.IsAuthenticated, NetworkTopologyFeaturePermission]
     ORGANIZATION_FIELD = "groups"
+
 
     _EDIT_ACTIONS = frozenset(
         {

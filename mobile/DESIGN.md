@@ -62,7 +62,7 @@ Mobile 与 `web/DESIGN.md` 共享品牌和语义体系，Mobile 运行时颜色�
 - 表格、筛选、表单和选择器应根据任务的信息密度与操作方式适配小屏；卡片、列表、局部滚动、筛选面板和独立页面都是可选方案，不规定唯一形态。
 - 轻量确认通常使用 Dialog；需要保留上下文的选择可以使用 Bottom Sheet 或 Action Sheet；信息量较大或步骤较长的任务可以使用独立页面。
 - 操作图标和状态图标应来自统一图标体系；用户内容、资源名称和智能体输出不受此限制。
-- 字号必须使用 `src/styles/variables.css` 中的语义阶梯变量，业务样式不得写死内容字号 px：页面标题 `--font-size-title`（18），分组/列表主文 `--font-size-subtitle`（16），正文 `--font-size-body`（15），次要信息 `--font-size-secondary`（13），辅助信息 `--font-size-caption`（12）且不得更小。底部一级导航使用独立的 `--font-size-tab-nav`，与内容阶梯解耦。整体调字号时只改变量定义；页面标题也可通过 `--mobile-page-title-font-size` 覆盖。
+- 字号必须使用 `src/styles/variables.css` 中的语义阶梯变量，业务样式不得写死内容字号 px：页面标题 `--font-size-title`（18），分组/列表主文 `--font-size-subtitle`（16），正文 `--font-size-body`（15），紧凑目录主文 `--font-size-compact-title`（14），次要信息 `--font-size-secondary`（13），辅助信息 `--font-size-caption`（12）且不得更小。底部一级导航使用独立的 `--font-size-tab-nav`，与内容阶梯解耦。整体调字号时只改变量定义；页面标题也可通过 `--mobile-page-title-font-size` 覆盖。
 - 新建共享抽象前，应先确认已有模块不能覆盖，并以稳定的共同交互和真实消费方为依据；通用 primitive 可以基于明确的复用价值和独立契约提前建立。
 
 ## 6. 内容、国际化与可访问性

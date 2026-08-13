@@ -4,10 +4,14 @@
  */
 
 import { Observable, Subject } from 'rxjs';
+import { parseLegacyMessage, type LegacyMessage } from './legacyMessage';
 import {
   Message,
   ActivityMessage,
+  EventSchemas,
+  EventType,
   TextMessageStartEvent,
+  TextMessageContentEvent,
   TextMessageChunkEvent,
   TextMessageEndEvent,
   ThinkingStartEvent,
@@ -28,6 +32,7 @@ export interface AGUIConfig {
 
 export type AGUIEvent =
   | TextMessageStartEvent
+  | TextMessageContentEvent
   | TextMessageChunkEvent
   | TextMessageEndEvent
   | ThinkingStartEvent
@@ -39,6 +44,74 @@ export type AGUIEvent =
   | ToolCallArgsEvent
   | ToolCallEndEvent
   | ToolCallResultEvent;
+
+export interface AGUIEventResult {
+  type: 'agui-event';
+  event: AGUIEvent;
+}
+
+export interface LegacyMessageResult {
+  type: 'legacy-message';
+  message: LegacyMessage;
+}
+
+export interface IgnoredEventResult {
+  type: 'ignored';
+}
+
+export type AGUIProcessResult = AGUIEventResult | LegacyMessageResult | IgnoredEventResult;
+
+const SUPPORTED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
+  EventType.TEXT_MESSAGE_START,
+  EventType.TEXT_MESSAGE_CONTENT,
+  EventType.TEXT_MESSAGE_CHUNK,
+  EventType.TEXT_MESSAGE_END,
+  EventType.THINKING_START,
+  EventType.THINKING_END,
+  EventType.RUN_STARTED,
+  EventType.RUN_FINISHED,
+  EventType.RUN_ERROR,
+  EventType.TOOL_CALL_START,
+  EventType.TOOL_CALL_ARGS,
+  EventType.TOOL_CALL_END,
+  EventType.TOOL_CALL_RESULT,
+]);
+const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set(Object.values(EventType));
+const LEGACY_RUN_CONTEXT_ID = 'legacy';
+
+function isSupportedAGUIEvent(event: unknown): event is AGUIEvent {
+  return (
+    event !== null &&
+    typeof event === 'object' &&
+    'type' in event &&
+    SUPPORTED_EVENT_TYPES.has((event as { type: EventType }).type)
+  );
+}
+
+function normalizeLegacyEvent(data: Record<string, unknown>): Record<string, unknown> {
+  if (data.type === 'ERROR') {
+    return {
+      type: EventType.RUN_ERROR,
+      message:
+        typeof data.error === 'string'
+          ? data.error
+          : typeof data.message === 'string'
+            ? data.message
+            : 'An error occurred',
+      ...(typeof data.timestamp === 'number' ? { timestamp: data.timestamp } : {}),
+    };
+  }
+
+  if (data.type === EventType.RUN_STARTED || data.type === EventType.RUN_FINISHED) {
+    return {
+      ...data,
+      threadId: data.threadId ?? LEGACY_RUN_CONTEXT_ID,
+      runId: data.runId ?? LEGACY_RUN_CONTEXT_ID,
+    };
+  }
+
+  return data;
+}
 
 /**
  * AG-UI Event Handler
@@ -68,45 +141,44 @@ export class AGUIHandler {
   /**
    * Process SSE data and convert to AG-UI events
    */
-  processSSEData(data: unknown): {
-    type: 'agui-event' | 'legacy-message';
-    event?: AGUIEvent;
-    message?: unknown;
-  } {
+  processSSEData(data: unknown): AGUIProcessResult {
     if (!this.config.enabled) {
-      return { type: 'legacy-message', message: data };
+      return this.processLegacyMessage(data);
     }
 
-    // Check if data follows AG-UI protocol
-    if (this.isAGUIEvent(data)) {
+    if (this.isEventRecord(data)) {
+      const eventType = data.type;
       const event = this.parseAGUIEvent(data);
       if (event) {
         this.events$.next(event);
         return { type: 'agui-event', event };
       }
+      if (
+        typeof eventType === 'string' &&
+        (eventType === 'ERROR' || KNOWN_EVENT_TYPES.has(eventType))
+      ) {
+        return { type: 'ignored' };
+      }
     }
 
-    // Fallback to legacy message format
-    return { type: 'legacy-message', message: data };
+    return this.processLegacyMessage(data);
+  }
+
+  private processLegacyMessage(data: unknown): LegacyMessageResult | IgnoredEventResult {
+    const message = parseLegacyMessage(data);
+    return message ? { type: 'legacy-message', message } : { type: 'ignored' };
   }
 
   /**
    * Check if data follows AG-UI protocol
    */
-  private isAGUIEvent(data: unknown): data is Record<string, unknown> {
+  private isEventRecord(data: unknown): data is Record<string, unknown> {
     return (
-      !!data &&
+      data !== null &&
       typeof data === 'object' &&
+      !Array.isArray(data) &&
       'type' in data &&
-      typeof (data as { type: unknown }).type === 'string' &&
-      (
-        ((data as { type: string }).type).startsWith('TEXT_MESSAGE_') ||
-        ((data as { type: string }).type).startsWith('THINKING_') ||
-        ((data as { type: string }).type).startsWith('RUN_') ||
-        ((data as { type: string }).type).startsWith('TOOL_CALL_') ||
-        (data as { type: string }).type === 'ERROR' ||
-        ((data as { type: string }).type).includes('.')
-      )
+      typeof (data as { type: unknown }).type === 'string'
     );
   }
 
@@ -114,62 +186,17 @@ export class AGUIHandler {
    * Parse AG-UI event from SSE data
    */
   private parseAGUIEvent(data: Record<string, unknown>): AGUIEvent | null {
-    try {
-      const eventType = data.type as string;
+    const candidate = normalizeLegacyEvent(data);
+    const parsed = EventSchemas.safeParse(candidate);
 
-      // Map AG-UI events to our types
-      switch (eventType) {
-        case 'TEXT_MESSAGE_START':
-          return data as unknown as TextMessageStartEvent;
-          
-        case 'TEXT_MESSAGE_CONTENT':
-          return data as unknown as TextMessageChunkEvent;
-          
-        case 'TEXT_MESSAGE_END':
-          return data as unknown as TextMessageEndEvent;
-          
-        case 'THINKING_START':
-          return data as unknown as ThinkingStartEvent;
-          
-        case 'THINKING_END':
-          return data as unknown as ThinkingEndEvent;
-          
-        case 'RUN_STARTED':
-          return data as unknown as RunStartedEvent;
-          
-        case 'RUN_FINISHED':
-          return data as unknown as RunFinishedEvent;
-          
-        case 'RUN_ERROR':
-        case 'ERROR':
-          return {
-            type: 'RUN_ERROR',
-            message: data.error || data.message || 'An error occurred',
-            timestamp: data.timestamp,
-          } as RunErrorEvent;
-          
-        case 'TOOL_CALL_START':
-          return data as unknown as ToolCallStartEvent;
-          
-        case 'TOOL_CALL_ARGS':
-          return data as unknown as ToolCallArgsEvent;
-          
-        case 'TOOL_CALL_END':
-          return data as unknown as ToolCallEndEvent;
-          
-        case 'TOOL_CALL_RESULT':
-          return data as unknown as ToolCallResultEvent;
-          
-        default:
-          if (this.debug) {
-            console.warn('[AG-UI] Unknown event type:', eventType);
-          }
-          return null;
+    if (!parsed.success || !isSupportedAGUIEvent(parsed.data)) {
+      if (this.debug) {
+        console.warn('[AG-UI] Invalid or unsupported event:', data.type);
       }
-    } catch (error) {
-      console.error('[AG-UI] Failed to parse event:', error);
       return null;
     }
+
+    return parsed.data;
   }
 
   /**

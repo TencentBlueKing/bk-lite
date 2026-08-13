@@ -4,10 +4,15 @@
 # @Author: windyzhao
 from rest_framework import serializers
 
+from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.serializers import AuthSerializer
 from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER, is_sensitive_field_name
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
+from apps.operation_analysis.serializers.data_connection_serializers import (
+    validate_datasource_connection_binding,
+    validate_rest_headers,
+)
 
 
 def redact_sensitive_config(value):
@@ -18,6 +23,13 @@ def redact_sensitive_config(value):
 
     redacted = {}
     for key, item in value.items():
+        # Spec: REST Header names are visible; every Header value is sensitive.
+        if key == "headers" and isinstance(item, dict):
+            redacted[key] = {
+                header_key: (SENSITIVE_PLACEHOLDER if header_value not in (None, "") else header_value)
+                for header_key, header_value in item.items()
+            }
+            continue
         if is_sensitive_field_name(key):
             redacted[key] = SENSITIVE_PLACEHOLDER if item not in (None, "") else item
         else:
@@ -35,6 +47,16 @@ def merge_redacted_config(existing, incoming):
     existing_items = existing if isinstance(existing, dict) else {}
     merged = {}
     for key, item in incoming.items():
+        if key == "headers" and isinstance(item, dict):
+            existing_headers = existing_items.get(key) if isinstance(existing_items.get(key), dict) else {}
+            merged_headers = {}
+            for header_key, header_value in item.items():
+                if header_value == SENSITIVE_PLACEHOLDER:
+                    merged_headers[header_key] = existing_headers.get(header_key)
+                else:
+                    merged_headers[header_key] = header_value
+            merged[key] = merged_headers
+            continue
         if item == SENSITIVE_PLACEHOLDER and is_sensitive_field_name(key):
             merged[key] = existing_items.get(key)
         else:
@@ -66,8 +88,11 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             "rest_api",
             "desc",
             "source_type",
+            "connection",
             "connection_config",
+            "connection_overrides",
             "query_config",
+            "transform_config",
             "is_active",
             "params",
             "chart_type",
@@ -80,6 +105,8 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         extra_kwargs = {
             "is_build_in": {"read_only": True},
             "build_in_key": {"read_only": True},
+            "connection": {"required": False, "allow_null": True},
+            "connection_overrides": {"required": False},
         }
 
     def validate_source_type(self, value):
@@ -138,12 +165,105 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
                 raise serializers.ValidationError(f"[{index}].type 仅 string、timeRange、dateRange 支持筛选联动")
         return value
 
+    def validate_transform_config(self, value):
+        if value in (None, ""):
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("transform_config 必须为对象")
+        enabled = bool(value.get("enabled"))
+        language = (value.get("language") or "python").lower()
+        script = value.get("script") or ""
+        if enabled and language != "python":
+            raise serializers.ValidationError("仅支持 language=python")
+        if enabled and (not isinstance(script, str) or not script.strip()):
+            raise serializers.ValidationError("启用转换时 script 不能为空")
+        return {
+            "enabled": enabled,
+            "language": "python",
+            "script": script if isinstance(script, str) else "",
+        }
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        attrs = validate_datasource_connection_binding(attrs, self.instance)
+        source_type = attrs.get("source_type", getattr(self.instance, "source_type", None))
+        transform_config = attrs.get(
+            "transform_config",
+            getattr(self.instance, "transform_config", {}) if self.instance else {},
+        )
+        if isinstance(transform_config, dict) and transform_config.get("enabled"):
+            if source_type not in {
+                DataSourceAPIModel.SOURCE_TYPE_REST_API,
+                DataSourceAPIModel.SOURCE_TYPE_EXCEL,
+            }:
+                raise serializers.ValidationError({"transform_config": "仅 REST/Excel 允许启用 Python 转换"})
+
+        should_validate_headers = self.instance is None or "connection_config" in attrs or "source_type" in attrs
+        if source_type == DataSourceAPIModel.SOURCE_TYPE_REST_API and should_validate_headers:
+            connection_config = attrs.get(
+                "connection_config",
+                getattr(self.instance, "connection_config", {}) if self.instance else {},
+            )
+            if isinstance(connection_config, dict) and "headers" in connection_config:
+                validate_rest_headers(connection_config.get("headers"))
+
+        should_validate_target = (
+            self.instance is None or "connection_config" in attrs or "source_type" in attrs
+        )
+        if source_type != DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS or not should_validate_target:
+            return attrs
+
+        connection_config = attrs.get(
+            "connection_config",
+            getattr(self.instance, "connection_config", {}) or {},
+        )
+        url = connection_config.get("url", "") if isinstance(connection_config, dict) else ""
+        try:
+            SSRFValidator.validate(url)
+        except SSRFError as exc:
+            detail = serializers.ErrorDetail(str(exc), code=exc.code)
+            raise serializers.ValidationError({"connection_config": {"url": [detail]}}) from exc
+
+        return attrs
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data["connection_config"] = redact_sensitive_config(data.get("connection_config"))
         data["query_config"] = redact_sensitive_config(data.get("query_config"))
+        data["connection_id"] = instance.connection_id
+        if instance.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+            from apps.operation_analysis.services.excel_materialize import build_excel_materialization_payload
+
+            data["excel_materialization"] = build_excel_materialization_payload(instance)
         return data
 
+    def update(self, instance, validated_data):
+        previous_transform = instance.transform_config if isinstance(instance.transform_config, dict) else {}
+        updated = super().update(instance, validated_data)
+        if updated.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+            return updated
+
+        new_transform = updated.transform_config if isinstance(updated.transform_config, dict) else {}
+        transform_changed = (
+            bool(previous_transform.get("enabled")) != bool(new_transform.get("enabled"))
+            or (previous_transform.get("script") or "") != (new_transform.get("script") or "")
+        )
+        if not transform_changed:
+            return updated
+
+        has_source = bool(
+            (updated.excel_success_slot and updated.excel_success_slot.source_file)
+            or (updated.excel_candidate_slot and updated.excel_candidate_slot.source_file)
+        )
+        if not has_source:
+            return updated
+
+        from apps.operation_analysis.services.excel_materialize.submit import (
+            schedule_resubmit_excel_from_saved_source,
+        )
+
+        schedule_resubmit_excel_from_saved_source(updated.id)
+        return updated
 
 class DataSourceBriefSerializer(BaseFormatTimeSerializer, AuthSerializer):
     permission_key = "datasource"
@@ -166,6 +286,7 @@ class DataSourceBriefSerializer(BaseFormatTimeSerializer, AuthSerializer):
             "params",
             "field_schema",
             "is_build_in",
+            "connection",
         ]
 
 

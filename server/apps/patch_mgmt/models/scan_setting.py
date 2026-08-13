@@ -31,6 +31,8 @@ class ScanSetting(TimeInfo, MaintainerInfo):
     # daily/weekly 专用：执行时间 HH:MM
     time = models.CharField(max_length=5, default="02:00", verbose_name="执行时间")
     is_enabled = models.BooleanField(default=True, verbose_name="是否启用")
+    notification_enabled = models.BooleanField(default=False, verbose_name="是否启用周期评估通知")
+    notification_rules = models.JSONField(default=list, verbose_name="周期评估通知规则")
 
     class Meta:
         db_table = "patch_scan_setting"

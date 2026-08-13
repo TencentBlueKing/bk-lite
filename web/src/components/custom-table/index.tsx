@@ -118,7 +118,7 @@ const CustomTable = <T extends object>({
 
     if (typeof scrollY === 'string' && scrollY.includes('vh')) {
       window.addEventListener('resize', scheduler.schedule);
-    } else if (scrollY === undefined && hasPagination) {
+    } else if (scrollY === undefined && hasPagination && typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(scheduler.schedule);
       resizeObserver.observe(parentElement);
     }

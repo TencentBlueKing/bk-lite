@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
+import { markFormPristine } from '@/utils/formPristine';
 import {
   ViewConfigProps,
   ViewConfigItem,
@@ -59,6 +60,9 @@ import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
 import { TableSettingsSection } from './widgetConfig/sections/tableSettingsSection';
 import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection';
 import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
+import { RadarSettingsSection } from './widgetConfig/sections/radarSettingsSection';
+import { CardListSettingsSection } from './widgetConfig/sections/cardListSettingsSection';
+import { resolveCardListSettingsRemountKey } from './widgetConfig/utils/cardListSettingsRemountKey';
 import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
@@ -78,6 +82,7 @@ import {
   getDefaultScreenWidgetAppearance,
   resolveScreenWidgetAppearance,
 } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
+import { ensurePrometheusQueryRequired } from '@/app/ops-analysis/utils/dataSourceParamContract';
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
@@ -144,20 +149,16 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   const getFilteredChartTypes = (
     dataSource: DatasourceItem | undefined,
-  ): ChartTypeItem[] => {
-    if (!dataSource?.chart_type?.length) {
-      return [];
-    }
-    return resolveDatasourceChartTypes({
-      chartTypes: dataSource.chart_type,
+  ): ChartTypeItem[] =>
+    resolveDatasourceChartTypes({
+      chartTypes: dataSource?.chart_type || [],
       chartTypeDefinitions: getChartTypeList(),
       surface,
     });
-  };
 
   const getDataSourceChartTypes = useMemo(() => {
     return getFilteredChartTypes(selectedDataSource);
-  }, [selectedDataSource]);
+  }, [selectedDataSource, surface]);
 
   const computePreviewDefinitions = (
     existingDefinitions: UnifiedFilterDefinition[],
@@ -288,7 +289,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           dataSource: undefined,
           networkStatusTopology: {
             modelId: '',
-            instId: '',
+            instUuid: '',
             depth: 2,
           },
           params: {},
@@ -304,6 +305,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           gaugeMin: 0,
           gaugeMax: 100,
           gaugeShape: 'semicircle',
+          eventTimeline: {
+            sortOrder: 'desc',
+          },
+          radar: {
+            min: 0,
+            max: 100,
+            indicators: [],
+          },
+          cardList: {
+            leading: { type: 'none' },
+            layout: 'list',
+          },
           compare: false,
           compareMode: 'percent',
           tableConfig: undefined,
@@ -358,6 +371,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         gaugeMin: 0,
         gaugeMax: 100,
         gaugeShape: 'semicircle',
+        eventTimeline: {
+          sortOrder: 'desc',
+        },
+        radar: {
+          min: 0,
+          max: 100,
+          indicators: [],
+        },
+        cardList: {
+          leading: { type: 'none' },
+          layout: 'list',
+        },
         compare: false,
         compareMode: 'percent',
       });
@@ -493,6 +518,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     const newChartType = e.target.value;
     setChartType(newChartType);
     form.setFieldValue('chartType', newChartType);
+    if (newChartType === 'eventTimeline' && !form.getFieldValue('eventTimeline')) {
+      form.setFieldValue('eventTimeline', { sortOrder: 'desc' });
+    }
+    if (newChartType === 'radar' && !form.getFieldValue('radar')) {
+      form.setFieldValue('radar', { min: 0, max: 100, indicators: [] });
+    }
+    if (newChartType === 'cardList' && !form.getFieldValue('cardList')) {
+      form.setFieldValue('cardList', {
+        leading: { type: 'none' },
+        layout: 'list',
+      });
+    }
     if (surface === 'screen') {
       form.setFieldValue(
         'appearance',
@@ -548,7 +585,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (isSceneWidget) {
       const networkStatusTopology = valueConfig?.networkStatusTopology || {
         modelId: '',
-        instId: '',
+        instUuid: '',
         depth: 2,
       };
       setSelectedDataSource(undefined);
@@ -562,6 +599,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         dataSource: undefined,
         networkStatusTopology,
       });
+      // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
+      markFormPristine(form);
       return;
     }
 
@@ -710,6 +749,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       singleValueConfig.setSelectedFields([]);
     }
 
+    if ((valueConfig as ValueConfig | undefined)?.descriptionField !== undefined) {
+      formValues.descriptionField = (valueConfig as ValueConfig).descriptionField;
+    } else {
+      formValues.descriptionField = undefined;
+    }
+
     if (valueConfig?.topNLabelField !== undefined) {
       formValues.topNLabelField = valueConfig.topNLabelField;
     }
@@ -740,6 +785,24 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (valueConfig?.gaugeShape !== undefined) {
       formValues.gaugeShape = valueConfig.gaugeShape;
     }
+    if (valueConfig?.eventTimeline !== undefined) {
+      formValues.eventTimeline = valueConfig.eventTimeline;
+    }
+    if (valueConfig?.radar !== undefined) {
+      formValues.radar = valueConfig.radar;
+    }
+    if (valueConfig?.cardList !== undefined) {
+      formValues.cardList = {
+        ...valueConfig.cardList,
+        leading: valueConfig.cardList.leading || { type: 'none' },
+        layout: valueConfig.cardList.layout || 'list',
+      };
+    } else {
+      formValues.cardList = {
+        leading: { type: 'none' },
+        layout: 'list',
+      };
+    }
     if (valueConfig?.compare !== undefined) {
       formValues.compare = valueConfig.compare && canEnableCompare({
         config: { chartType: 'single', dataSourceParams: targetDataSource?.params },
@@ -750,7 +813,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
     singleValueConfig.setThresholdColors(initThresholdColors(valueConfig?.thresholdColors));
 
+    // Nested cardList fields are registered individually; reset first so omitted
+    // optional slots from the previous edit target cannot survive setFieldsValue merge.
+    form.resetFields(['cardList']);
     form.setFieldsValue(formValues);
+    // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
+    markFormPristine(form);
   };
 
   const resetForm = (): void => {
@@ -817,10 +885,19 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   // 把组件级 inputConfig 覆盖合并到 selectedDataSource，供参数表渲染。
   const effectiveDataSource = useMemo(() => {
     if (!selectedDataSource) return undefined;
-    if (widgetParamOverrides.length === 0) return selectedDataSource;
+    const sourceParams =
+      selectedDataSource.source_type === 'prometheus'
+        ? ensurePrometheusQueryRequired(selectedDataSource.params)
+        : selectedDataSource.params;
+
+    if (widgetParamOverrides.length === 0) {
+      return sourceParams === selectedDataSource.params
+        ? selectedDataSource
+        : { ...selectedDataSource, params: sourceParams };
+    }
     return {
       ...selectedDataSource,
-      params: selectedDataSource.params.map((p) => {
+      params: sourceParams.map((p) => {
         const override = widgetParamOverrides.find((o) => o.name === p.name);
         return override?.inputConfig !== undefined
           ? { ...p, inputConfig: override.inputConfig }
@@ -847,6 +924,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   useEffect(() => {
     if (open) {
+      if (!widgetItem) {
+        return;
+      }
       const requestId = nextConfigRequestId();
       void initializeItemForm(widgetItem, requestId);
     } else if (!open) {
@@ -878,7 +958,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
       if (
         values.sceneWidgetType !== 'networkStatusTopology' &&
-        selectedDataSource?.params?.length
+        effectiveDataSource?.params?.length
       ) {
         const formParams = values.params || form.getFieldValue('params') || {};
         const reconciledFormParams = { ...formParams };
@@ -897,7 +977,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         }
         const processed = processFormParamsForSubmit(
           reconciledFormParams,
-          selectedDataSource.params,
+          effectiveDataSource.params,
         );
         // 合并组件级 inputConfig 覆盖
         values.dataSourceParams = processed.map((param) => {
@@ -921,7 +1001,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         const formTopology = values.networkStatusTopology;
         values.networkStatusTopology = {
           modelId: formTopology?.modelId || existingTopology?.modelId || '',
-          instId: formTopology?.instId || existingTopology?.instId || '',
+          instUuid: formTopology?.instUuid || existingTopology?.instUuid || '',
           depth: formTopology?.depth || existingTopology?.depth || 2,
           layoutMode: formTopology?.layoutMode ?? existingTopology?.layoutMode,
           layoutByMode:
@@ -961,6 +1041,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         }
         if (submitResult.error === 'multipleComponentSwitchParams') {
           message.error(t('dashboard.multipleComponentSwitchParams'));
+          return;
+        }
+        if (submitResult.error === 'cardListTitleRequired') {
+          message.error(t('dashboard.cardListTitleRequired'));
+          return;
+        }
+        if (submitResult.error === 'cardListLeadingFieldRequired') {
+          message.error(t('dashboard.cardListLeadingFieldRequired'));
           return;
         }
       }
@@ -1036,7 +1124,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               </Form.Item>
               <Form.Item
                 label={t('dashboard.networkTopoInstance')}
-                name={['networkStatusTopology', 'instId']}
+                name={['networkStatusTopology', 'instUuid']}
                 rules={[{ required: true, message: t('dashboard.selectInstance') }]}
                 tooltip={t('dashboard.networkTopoInstanceHelp')}
               >
@@ -1079,7 +1167,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 rules={[{ required: true, message: t('common.selectTip') }]}
                 getValueProps={() => ({
                   value: selectedDataSource
-                    ? `${selectedDataSource.name}（${selectedDataSource.rest_api}）`
+                    ? `${selectedDataSource.name}${
+                        selectedDataSource.rest_api
+                          ? `（${selectedDataSource.rest_api}）`
+                          : ''
+                      }`
                     : '',
                 })}
               >
@@ -1208,6 +1300,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             filterFields={tableConfig.filterFields}
             filterFieldOptions={filterFieldOptions}
             showFilterFields={showTableFilterFields}
+            showColumnCellStyle={chartType === 'table'}
             invalidConfiguredFieldKeys={invalidConfiguredFieldKeys}
             isProbingColumns={tableConfig.isProbingColumns}
             paramsChangedAfterProbe={tableConfig.paramsChangedAfterProbe}
@@ -1231,6 +1324,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               }
             }}
             onDisplayColumnChange={tableConfig.handleDisplayColumnChange}
+            onDisplayColumnStyleChange={
+              tableConfig.handleDisplayColumnStyleChange
+            }
             onDisplayColumnKeyBlur={tableConfig.handleDisplayColumnKeyBlur}
             onDisplayColumnDragEnd={tableConfig.handleDisplayColumnDragEnd}
             onReProbeColumns={tableConfig.handleReProbeColumns}
@@ -1272,6 +1368,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
             compareAvailable={singleValueConfig.compareAvailable}
+            showDescriptionField
           />
         )}
 
@@ -1297,6 +1394,31 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           />
         )}
 
+        {chartType === 'eventTimeline' && (
+          <div className="mb-6">
+            <div className="font-medium mb-4">{t('dashboard.eventTimelineSettings')}</div>
+            <Form.Item
+              label={t('dashboard.eventTimelineSortOrder')}
+              name={['eventTimeline', 'sortOrder']}
+              initialValue="desc"
+            >
+              <Select
+                options={[
+                  { label: t('dashboard.eventTimelineSortDesc'), value: 'desc' },
+                  { label: t('dashboard.eventTimelineSortAsc'), value: 'asc' },
+                ]}
+              />
+            </Form.Item>
+          </div>
+        )}
+
+        {chartType === 'radar' && (
+          <RadarSettingsSection
+            t={t}
+            availableFields={availableFields}
+          />
+        )}
+
         {chartType === 'topN' && (
           <TopNSettingsSection
             t={t}
@@ -1304,6 +1426,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             selectedDataSource={selectedDataSource}
             topNLabelFieldOptions={topNLabelFieldOptions}
             topNValueFieldOptions={topNValueFieldOptions}
+          />
+        )}
+
+        {chartType === 'cardList' && (
+          <CardListSettingsSection
+            key={resolveCardListSettingsRemountKey(widgetItem)}
+            t={t}
+            availableFields={availableFields}
           />
         )}
 

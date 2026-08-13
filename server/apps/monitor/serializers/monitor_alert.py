@@ -6,7 +6,31 @@ from apps.monitor.models.monitor_policy import MonitorAlert, MonitorAlertMetricS
 class MonitorAlertSerializer(serializers.ModelSerializer):
     class Meta:
         model = MonitorAlert
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "policy_id",
+            "monitor_instance_id",
+            "monitor_instance_name",
+            "metric_instance_id",
+            "dimensions",
+            "alert_type",
+            "level",
+            "value",
+            "content",
+            "status",
+            "start_event_time",
+            "end_event_time",
+            "operator",
+            "info_event_count",
+            "operation_logs",
+            "notice_type_ids",
+            "notice_users",
+            "notice_logs",
+            "alert_center_notified",
+            "alert_center_retry_count",
+        ]
         # 告警中心补偿状态机的内部簿记字段，仅由服务端维护，禁止客户端写入
         read_only_fields = ["alert_center_notified", "alert_center_retry_count"]
 

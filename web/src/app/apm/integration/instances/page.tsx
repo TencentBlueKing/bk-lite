@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { EditOutlined, InboxOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons';
-import { Alert, Button, Input, message, Popconfirm, Radio, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
+import { Alert, Button, Input, message, Popconfirm, Radio, Select, Space, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -16,8 +16,11 @@ import ApmStatusTag from '@/app/apm/components/status-tag';
 import { formatRelativeTime } from '@/app/apm/components/metric-format';
 import type { ApmApplication, ApmServiceInstance, CatalogStatus } from '@/app/apm/types';
 import Permission from '@/components/permission';
+import FilterToolbar from '@/components/filter-toolbar';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
+import CustomTable from '@/components/custom-table';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 type PageState = CatalogStateKind | 'ready';
 type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d' | '30d' | 'all';
@@ -58,6 +61,7 @@ export default function ApmIntegrationInstancesPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [organizationInstance, setOrganizationInstance] = useState<ApmServiceInstance | null>(null);
   const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
+  const [mutatingId, setMutatingId] = useState<string | null>(null);
 
   const groupNames = useMemo(
     () => new Map(flatGroups.map((group) => [Number(group.id), group.name])),
@@ -129,9 +133,14 @@ export default function ApmIntegrationInstancesPage() {
   };
 
   const setArchived = async (instance: ApmServiceInstance, archived: boolean) => {
-    await setInstanceArchived(instance.id, archived);
-    message.success(archived ? '实例已归档' : '实例已解档');
-    setRefreshKey((value) => value + 1);
+    setMutatingId(instance.id);
+    try {
+      await setInstanceArchived(instance.id, archived);
+      message.success(archived ? '实例已归档' : '实例已解档');
+      setRefreshKey((value) => value + 1);
+    } finally {
+      setMutatingId(null);
+    }
   };
 
   const applicationOptions = useMemo(() => applications.map((application) => ({
@@ -151,10 +160,10 @@ export default function ApmIntegrationInstancesPage() {
     {
       title: '实例 ID',
       dataIndex: 'instance_id',
-      render: (value) => <Typography.Text ellipsis className="block max-w-56 font-mono text-xs">{value}</Typography.Text>,
+      render: (value) => <EllipsisWithTooltip className="max-w-56 truncate font-mono text-xs" text={value} />,
     },
     { title: '版本', dataIndex: 'version', width: 100, responsive: ['lg'], render: (value) => value || '—' },
-    { title: '应用', dataIndex: 'application_name', width: 140, responsive: ['xl'], render: (value, item) => value || item.application_id || '—' },
+    { title: '应用', dataIndex: 'application_name', width: 140, responsive: ['xl'], render: (value, item) => <EllipsisWithTooltip className="truncate" text={value || item.application_id || '—'} /> },
     {
       title: '接入时间',
       dataIndex: 'first_seen_at',
@@ -188,6 +197,7 @@ export default function ApmIntegrationInstancesPage() {
       key: 'action',
       width: 190,
       align: 'right',
+      fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/instances">
           <Space size={0}>
@@ -205,6 +215,7 @@ export default function ApmIntegrationInstancesPage() {
               title={item.archived_at ? '确认解档实例？' : '确认归档实例？'}
               description={item.archived_at ? '解档后实例将重新出现在默认列表。' : '归档不会删除已经存储的遥测数据。'}
               okText={item.archived_at ? '解档' : '归档'}
+              okButtonProps={{ danger: !item.archived_at, loading: mutatingId === item.id }}
               cancelText="取消"
               onConfirm={() => setArchived(item, !item.archived_at)}
             >
@@ -212,6 +223,7 @@ export default function ApmIntegrationInstancesPage() {
                 type="link"
                 size="small"
                 danger={!item.archived_at}
+                disabled={mutatingId !== null}
                 icon={item.archived_at ? <UndoOutlined aria-hidden="true" /> : <InboxOutlined aria-hidden="true" />}
               >
                 {item.archived_at ? '解档' : '归档'}
@@ -239,11 +251,11 @@ export default function ApmIntegrationInstancesPage() {
       ) : null}
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center gap-3">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input.Search
               allowClear
               aria-label="按服务、应用或实例 ID 搜索"
-              className="min-w-64 flex-1 md:max-w-sm"
+              className="min-w-0 flex-1 md:max-w-sm"
               prefix={<SearchOutlined className="text-[var(--color-text-4)]" aria-hidden="true" />}
               placeholder="搜索服务名 / 应用 / 实例 ID"
               value={keyword}
@@ -316,11 +328,12 @@ export default function ApmIntegrationInstancesPage() {
             <Typography.Text type="secondary" className="basis-full text-xs">
               {t('apm.instances.defaultActiveHelp', '默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。')}
             </Typography.Text>
-          </div>
+          </FilterToolbar>
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">
           {state === 'ready' ? (
-            <Table
+            <CustomTable
+              autoScrollX={false}
               rowKey="id"
               columns={columns}
               dataSource={instances}
@@ -330,15 +343,28 @@ export default function ApmIntegrationInstancesPage() {
                 total,
                 pageSizeOptions: [10, 20, 50, 100],
                 showSizeChanger: true,
-                showTotal: (total) => `共 ${total} 条`,
-              }}
-              onChange={(pagination) => {
-                setPage(pagination.current ?? 1);
-                setPageSize(pagination.pageSize ?? 20);
+                onChange: (nextPage, nextPageSize) => {
+                  setPage(nextPageSize === pageSize ? nextPage : 1);
+                  setPageSize(nextPageSize);
+                },
               }}
             />
+          ) : state === 'empty' ? (
+            <CatalogState
+              kind="empty"
+              description="当前条件下没有接入实例。"
+              action={<Button onClick={() => {
+                setKeyword('');
+                setAppliedKeyword('');
+                setApplicationId('all');
+                setEnvironment('');
+                setStatus('active');
+                setTimeRange('1d');
+                setPage(1);
+              }}>清除筛选</Button>}
+            />
           ) : (
-            <CatalogState kind={state} />
+            <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)} />
           )}
         </ApmSurface>
       </div>

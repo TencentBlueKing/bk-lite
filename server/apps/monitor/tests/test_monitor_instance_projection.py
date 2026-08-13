@@ -1,5 +1,7 @@
 import types
 
+from django.db import connection
+
 from apps.monitor.models import Metric, MetricGroup, MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.monitor_instance import InstanceSearch
@@ -33,26 +35,22 @@ def test_monitor_object_service_projects_flow_asset_fields_for_existing_asset_pr
     queryset = MonitorObjectService._project_instance_identity(MonitorInstance.objects.all())
     sql = str(queryset.query)
 
-    assert '"monitor_monitorinstance"."id"' in sql
-    assert '"monitor_monitorinstance"."name"' in sql
-    assert '"monitor_monitorinstance"."interval"' in sql
-    assert '"monitor_monitorinstance"."cloud_region_id"' in sql
-    assert '"monitor_monitorinstance"."ip"' in sql
-    assert '"monitor_monitorinstance"."fallback_sampling_rate"' in sql
-    assert '"monitor_monitorinstance"."enabled_protocols"' not in sql
+    quote = connection.ops.quote_name
+    table = quote(MonitorInstance._meta.db_table)
+    for field in ("id", "name", "interval", "cloud_region_id", "ip", "fallback_sampling_rate"):
+        assert f"{table}.{quote(field)}" in sql
+    assert f"{table}.{quote('enabled_protocols')}" not in sql
 
 
 def test_instance_search_projects_flow_asset_fields_for_existing_asset_prefill(db):
     queryset = InstanceSearch._project_instance_identity(MonitorInstance.objects.all())
     sql = str(queryset.query)
 
-    assert '"monitor_monitorinstance"."id"' in sql
-    assert '"monitor_monitorinstance"."name"' in sql
-    assert '"monitor_monitorinstance"."interval"' in sql
-    assert '"monitor_monitorinstance"."cloud_region_id"' in sql
-    assert '"monitor_monitorinstance"."ip"' in sql
-    assert '"monitor_monitorinstance"."fallback_sampling_rate"' in sql
-    assert '"monitor_monitorinstance"."enabled_protocols"' not in sql
+    quote = connection.ops.quote_name
+    table = quote(MonitorInstance._meta.db_table)
+    for field in ("id", "name", "interval", "cloud_region_id", "ip", "fallback_sampling_rate"):
+        assert f"{table}.{quote(field)}" in sql
+    assert f"{table}.{quote('enabled_protocols')}" not in sql
 
 
 def test_monitor_instance_list_returns_flow_asset_fields(db, monkeypatch):
@@ -576,3 +574,67 @@ def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promq
     assert captured_queries[1] == (
         "sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', " f'instance_id=~"{logical_id}"}}) by (instance_id)'
     )
+
+
+def test_monitor_instance_list_filters_by_exact_instance_id_when_name_differs(db, monkeypatch):
+    """最近访问恢复场景：存储 ID 与展示名不同，精确 instance_id 仍能命中。"""
+    monitor_object = MonitorObject.objects.create(
+        name="HostExactLookup",
+        default_metric="up",
+        instance_id_keys=["instance_id"],
+    )
+    target = MonitorInstance.objects.create(
+        id="('h1',)",
+        name="主机1",
+        monitor_object=monitor_object,
+    )
+    other = MonitorInstance.objects.create(
+        id="('h2',)",
+        name="主机2",
+        monitor_object=monitor_object,
+    )
+    monkeypatch.setattr(MonitorObjectService, "get_instances_by_metric", lambda *args, **kwargs: {})
+    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result, visible_organization_ids=None: None)
+
+    by_storage_key = MonitorObjectService.get_monitor_instance(
+        monitor_object.id,
+        page=1,
+        page_size=20,
+        name=None,
+        qs=MonitorInstance.objects.all(),
+        instance_id="('h1',)",
+    )
+    by_scalar = MonitorObjectService.get_monitor_instance(
+        monitor_object.id,
+        page=1,
+        page_size=20,
+        name=None,
+        qs=MonitorInstance.objects.all(),
+        instance_id="h1",
+    )
+    # 未归一化的标量在 service 层按原样过滤；归一化由 view 负责。
+    # service 直接传 storage key 与标量两种形态时：storage key 命中，裸 h1 不命中。
+    name_miss = MonitorObjectService.get_monitor_instance(
+        monitor_object.id,
+        page=1,
+        page_size=20,
+        name="h1",
+        qs=MonitorInstance.objects.all(),
+    )
+    scoped_empty = MonitorObjectService.get_monitor_instance(
+        monitor_object.id,
+        page=1,
+        page_size=20,
+        name=None,
+        qs=MonitorInstance.objects.none(),
+        instance_id="('h1',)",
+    )
+
+    assert by_storage_key["count"] == 1
+    assert by_storage_key["results"][0]["instance_id"] == target.id
+    assert by_storage_key["results"][0]["instance_name"] == "主机1"
+    assert {item["instance_id"] for item in by_storage_key["results"]} == {target.id}
+    assert other.id not in {item["instance_id"] for item in by_storage_key["results"]}
+    assert by_scalar["count"] == 0
+    assert name_miss["count"] == 0
+    assert scoped_empty["count"] == 0

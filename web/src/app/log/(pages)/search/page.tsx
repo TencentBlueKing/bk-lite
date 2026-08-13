@@ -23,7 +23,7 @@ import { useTranslation } from '@/utils/i18n';
 import searchStyle from './index.module.scss';
 import Collapse from '@/components/collapse';
 import CustomBarChart from '@/app/log/components/charts/barChart';
-import GrammarExplanation from '@/app/log/components/operate-drawer';
+import GrammarExplanation from '@/components/operate-drawer';
 import SearchTable from './searchTable';
 import FieldList from './fieldList';
 import LogTerminal from './logTerminal';

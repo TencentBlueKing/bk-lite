@@ -51,6 +51,11 @@ export function formatErrorRate(value: number | null, unavailable = false): stri
   return `${pct.toFixed(pct >= 10 ? 1 : 2)}%`;
 }
 
+/** SLO 接口返回百分数本身（例如 99.9），不要再按 0-1 比例放大。 */
+export function formatPercentage(value: number | string, precision = 2): string {
+  return `${Number(value).toFixed(precision)}%`;
+}
+
 export function formatLatency(ms: number | null, unavailable = false): string {
   if (ms === null) return formatMetricEmpty(unavailable);
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`;
@@ -73,3 +78,45 @@ export function formatRelativeTime(iso: string | null | undefined): string {
 export function isErrorRateDanger(value: number | null): boolean {
   return value !== null && value >= 0.01;
 }
+
+/** 将多个服务环境的 RED 时序按时间戳对齐，聚合成应用级吞吐与加权错误率趋势。 */
+export function aggregateApplicationRedTrends(
+  metrics: Array<{ timeseries?: Array<{
+    timestamp: string;
+    request_rate: number | null;
+    error_rate: number | null;
+  }> }>,
+): { requestRateTrend: number[]; errorRateTrend: number[] } {
+  const byTimestamp = new Map<string, {
+    requestRate: number;
+    errorWeighted: number;
+    errorWeight: number;
+  }>();
+
+  metrics.forEach((metric) => {
+    (metric.timeseries ?? []).forEach((point) => {
+      const current = byTimestamp.get(point.timestamp) ?? {
+        requestRate: 0,
+        errorWeighted: 0,
+        errorWeight: 0,
+      };
+      if (point.request_rate !== null && Number.isFinite(point.request_rate)) {
+        current.requestRate += point.request_rate;
+        if (point.error_rate !== null && Number.isFinite(point.error_rate)) {
+          current.errorWeighted += point.request_rate * point.error_rate;
+          current.errorWeight += point.request_rate;
+        }
+      }
+      byTimestamp.set(point.timestamp, current);
+    });
+  });
+
+  const sorted = Array.from(byTimestamp.entries()).sort(([left], [right]) => left.localeCompare(right));
+  return {
+    requestRateTrend: sorted.map(([, point]) => point.requestRate),
+    errorRateTrend: sorted.map(([, point]) => (
+      point.errorWeight > 0 ? point.errorWeighted / point.errorWeight : 0
+    )),
+  };
+}
+

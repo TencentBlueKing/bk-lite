@@ -10,7 +10,51 @@
       "title": "视图",
       "icon": "mulu",
       "url": "/cmdb/assetOverview",
-      "name": "asset_info"
+      "name": "asset_info",
+      "children": [
+        {
+          "title": "资产总览",
+          "icon": "mulu",
+          "url": "/cmdb/assetOverview",
+          "name": "asset_views_overview",
+          "withParentPermission": true
+        },
+        {
+          "title": "应用拓扑",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/application",
+          "name": "asset_views_application",
+          "withParentPermission": true
+        },
+        {
+          "title": "K8S 视图",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/k8s",
+          "name": "asset_views_k8s",
+          "withParentPermission": true
+        },
+        {
+          "title": "网络拓扑",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/network",
+          "name": "asset_views_network",
+          "withParentPermission": true
+        },
+        {
+          "title": "IP 视图",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/ip",
+          "name": "asset_views_ip",
+          "withParentPermission": true
+        },
+        {
+          "title": "机房机柜",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/rack-room",
+          "name": "asset_views_rack_room",
+          "withParentPermission": true
+        }
+      ]
     },
     {
       "title": "资产",
@@ -158,7 +202,51 @@
       "title": "Overview",
       "icon": "mulu",
       "url": "/cmdb/assetOverview",
-      "name": "asset_info"
+      "name": "asset_info",
+      "children": [
+        {
+          "title": "Asset Overview",
+          "icon": "mulu",
+          "url": "/cmdb/assetOverview",
+          "name": "asset_views_overview",
+          "withParentPermission": true
+        },
+        {
+          "title": "Application Topology",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/application",
+          "name": "asset_views_application",
+          "withParentPermission": true
+        },
+        {
+          "title": "K8S View",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/k8s",
+          "name": "asset_views_k8s",
+          "withParentPermission": true
+        },
+        {
+          "title": "Network Topology",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/network",
+          "name": "asset_views_network",
+          "withParentPermission": true
+        },
+        {
+          "title": "IP View",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/ip",
+          "name": "asset_views_ip",
+          "withParentPermission": true
+        },
+        {
+          "title": "Rack & Room",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/rack-room",
+          "name": "asset_views_rack_room",
+          "withParentPermission": true
+        }
+      ]
     },
     {
       "title": "Asset",

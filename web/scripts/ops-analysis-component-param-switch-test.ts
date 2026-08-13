@@ -147,9 +147,10 @@ assert.equal(notifier.notify(resultKey, options, () => { notifications += 1; }),
 assert.equal(notifications, 1);
 
 const testAsyncLoading = async () => {
+const asSourceData = (data: unknown) => ({ data, warnings: [] as string[] });
 const staticLoader = createParamInputOptionsLoader({
   getDataSourceList: async () => [],
-  getSourceDataByApiId: async () => [],
+  getSourceDataByApiId: async () => asSourceData([]),
 });
 const staticResult = staticLoader.load(switchParam.inputConfig);
 assert.equal(staticResult.sync, true);
@@ -177,9 +178,9 @@ assert.equal(requests, 1);
 const second = dynamicLoader.load({ ...dynamicConfig, optionsSource: { ...dynamicConfig.optionsSource, sourceId: 8 } });
 await Promise.resolve();
 assert.equal(requests, 2);
-resolvers[0]({ items: [{ id: 1, name: 'stale' }] });
+resolvers[0](asSourceData({ items: [{ id: 1, name: 'stale' }] }));
 assert.equal(await first.promise, null);
-resolvers[1]({ items: [{ id: 2, name: 'latest' }] });
+resolvers[1](asSourceData({ items: [{ id: 2, name: 'latest' }] }));
 assert.deepEqual(await second.promise, { status: 'success', options: [{ value: 2, label: 'latest' }] });
 
 const sourceListResolvers: Resolver[] = [];
@@ -188,7 +189,7 @@ const sourceRefLoader = createParamInputOptionsLoader({
   getDataSourceList: async () => new Promise((resolve) => sourceListResolvers.push(resolve)),
   getSourceDataByApiId: async () => {
     secondStageRequests += 1;
-    return { items: [{ id: 1, name: 'option' }] };
+    return asSourceData({ items: [{ id: 1, name: 'option' }] });
   },
 });
 const sourceRefConfig = {
@@ -215,14 +216,18 @@ assert.equal(secondStageRequests, 1);
 
 const emptyLoader = createParamInputOptionsLoader({
   getDataSourceList: async () => [],
-  getSourceDataByApiId: async () => ({ items: [] }),
+  getSourceDataByApiId: async () => asSourceData({ items: [] }),
 });
 assert.deepEqual(await emptyLoader.load(dynamicConfig).promise, { status: 'error', options: [] });
 const failingLoader = createParamInputOptionsLoader({
   getDataSourceList: async () => [],
   getSourceDataByApiId: async () => { throw new Error('load failed'); },
 });
-assert.deepEqual(await failingLoader.load(dynamicConfig).promise, { status: 'error', options: [] });
+assert.deepEqual(await failingLoader.load(dynamicConfig).promise, {
+  status: 'error',
+  options: [],
+  errorMessage: 'load failed',
+});
 };
 
 const hookSource = readFileSync(new URL('../src/app/ops-analysis/hooks/useParamInputOptions.ts', import.meta.url), 'utf8');
@@ -248,7 +253,10 @@ assert.match(editorSource, /componentSwitchOccupied/);
 assert.match(widgetConfigSource, /resolvedParamOptionsRef/);
 assert.match(widgetConfigSource, /clearComponentParamSwitch/);
 assert.doesNotMatch(widgetConfigSource, /runtimeParamControl/);
-assert.match(rendererSource, /useParamInputOptions\(componentSwitchParam\?\.inputConfig\)/);
+assert.match(rendererSource, /useParamInputOptions\(\s*componentSwitchParam\?\.inputConfig/);
+assert.match(rendererSource, /suppressErrorNotification:\s*true/);
+assert.match(rendererSource, /optionState\.status === "error"/);
+assert.match(rendererSource, /optionState\.errorMessage/);
 assert.match(rendererSource, /getTypedValueKey\(savedComponentSwitchValue\)/);
 assert.match(rendererSource, /resolveComponentSwitchRuntime/);
 assert.match(rendererSource, /resolveComponentSwitchRequestGate/);
@@ -264,6 +272,8 @@ assert.match(controlSource, /inputConfig/);
 assert.match(controlSource, /<Segmented/);
 assert.match(controlSource, /<Select/);
 assert.match(controlSource, /block=\{block\}/);
+assert.match(paramInputControlSource, /useParamInputOptions\(inputConfig\)/);
+assert.doesNotMatch(paramInputControlSource, /suppressErrorNotification/);
 assert.match(paramInputControlSource, /createParamInputOptionsNotifier/);
 assert.doesNotMatch(paramInputControlSource, /\[[^\]]*onOptionsResolved[^\]]*\]/);
 assert.doesNotMatch(dashboardSource, /runtimeParamControl/);

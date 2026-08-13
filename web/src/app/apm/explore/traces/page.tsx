@@ -16,6 +16,7 @@ import type {
   ApmTraceSearchParams,
   ApmTraceSummary,
 } from '@/app/apm/types';
+import FilterToolbar from '@/components/filter-toolbar';
 
 type PageState = CatalogStateKind | 'ready' | 'idle';
 type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d';
@@ -240,17 +241,16 @@ export default function ApmTracesPage() {
   const [resultMode, setResultMode] = useState<ResultMode>('detail');
   const [aggregateDimension, setAggregateDimension] = useState<AggregateDimension>('service');
   const [state, setState] = useState<PageState>(initialFilters.serviceName ? 'loading' : 'idle');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [queryStartedAt, setQueryStartedAt] = useState<string>();
   const [queryEndedAt, setQueryEndedAt] = useState<string>();
   const autoSearched = useRef(false);
   const entityModeReady = useRef(false);
 
   const {
-    namespace,
     serviceName,
     environment,
-    instanceId,
-    spanName,
     status: queryStatus,
     kind,
     minDurationMs,
@@ -275,9 +275,12 @@ export default function ApmTracesPage() {
     const active = nextFilters ?? filters;
     if (!active.serviceName.trim() || authLoading) {
       setState('idle');
+      setSearching(false);
       return;
     }
-    setState('loading');
+    setSearching(true);
+    if (cursor) setLoadingMore(true);
+    else setState('loading');
     const window = timeWindow(cursor);
     if (entityMode === 'spans') {
       const query: ApmSpanSearchParams = {
@@ -302,7 +305,11 @@ export default function ApmTracesPage() {
           setQueryEndedAt(query.ended_at);
           setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
         })
-        .catch((error) => setState(catalogErrorKind(error)));
+        .catch((error) => setState(catalogErrorKind(error)))
+        .finally(() => {
+          setLoadingMore(false);
+          setSearching(false);
+        });
       return;
     }
     const query: ApmTraceSearchParams = {
@@ -326,7 +333,11 @@ export default function ApmTracesPage() {
         setQueryEndedAt(query.ended_at);
         setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
       })
-      .catch((error) => setState(catalogErrorKind(error)));
+      .catch((error) => setState(catalogErrorKind(error)))
+      .finally(() => {
+        setLoadingMore(false);
+        setSearching(false);
+      });
   }, [authLoading, entityMode, filters, getSpans, getTraces, timeWindow]);
 
   const commitQueryText = useCallback(() => {
@@ -352,12 +363,12 @@ export default function ApmTracesPage() {
   useEffect(() => {
     if (!entityModeReady.current || authLoading || !serviceName.trim()) return;
     search();
-  }, [entityMode]); // eslint-disable-line react-hooks/exhaustive-deps -- 仅在切换 Spans/Traces 时重查
+  }, [entityMode]);
 
   useEffect(() => {
     if (!autoSearched.current || authLoading || !serviceName.trim()) return;
     search();
-  }, [timeRange]); // eslint-disable-line react-hooks/exhaustive-deps -- 时间窗变更后按新窗重查
+  }, [timeRange]);
 
   const traceColumns = useMemo<TableProps<ApmTraceSummary>['columns']>(() => [
     {
@@ -366,9 +377,9 @@ export default function ApmTracesPage() {
         <Space direction="vertical" size={2}>
           <Space size={6}>
             <HealthDot level={item.status === 'error' ? 1 : 5} />
-            <span className="text-[13px] font-medium">{item.service_name}</span>
+            <span className="text-sm font-medium">{item.service_name}</span>
           </Space>
-          <span className="font-mono text-[11px] text-[var(--color-text-3)]">{item.trace_id}</span>
+          <span className="font-mono text-xs text-[var(--color-text-3)]">{item.trace_id}</span>
         </Space>
       ),
     },
@@ -419,7 +430,7 @@ export default function ApmTracesPage() {
       render: (_, item) => (
         <Space size={6}>
           <HealthDot level={item.status === 'error' ? 1 : 5} />
-          <span className="text-[13px] font-medium">{item.service_name}</span>
+          <span className="text-sm font-medium">{item.service_name}</span>
         </Space>
       ),
     },
@@ -588,7 +599,7 @@ export default function ApmTracesPage() {
     >
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center gap-3">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Segmented<EntityMode>
               size="small"
               aria-label="调用链查询粒度"
@@ -610,7 +621,7 @@ export default function ApmTracesPage() {
             <Input
               allowClear
               aria-label="调用链过滤条件"
-              className="min-w-[280px] flex-1"
+              className="min-w-0 flex-1 sm:min-w-[280px]"
               placeholder="按 key:value 过滤，如 service:auth environment:lab status:error duration:>=30ms"
               prefix={<SearchOutlined className="text-[var(--color-text-3)]" aria-hidden="true" />}
               value={queryText}
@@ -634,6 +645,14 @@ export default function ApmTracesPage() {
                 setSpanItems([]);
               }}
             />
+            <Button
+              type="primary"
+              icon={<SearchOutlined aria-hidden="true" />}
+              loading={searching && !loadingMore}
+              onClick={commitQueryText}
+            >
+              查询
+            </Button>
             <Space size={4}>
               <Select
                 size="small"
@@ -656,7 +675,7 @@ export default function ApmTracesPage() {
                 options={[{ value: 'off', label: 'off' }]}
               />
             </Space>
-          </div>
+          </FilterToolbar>
         </ApmSurface>
         {state === 'idle' ? (
           <ApmSurface padding="none">
@@ -815,6 +834,7 @@ export default function ApmTracesPage() {
                   <Button
                     size="small"
                     className="mt-2"
+                    loading={searching}
                     onClick={() => search(undefined, filters)}
                   >
                     应用耗时
@@ -905,7 +925,7 @@ export default function ApmTracesPage() {
                     )}
                     {nextCursor ? (
                       <div className="flex justify-center border-t border-[var(--color-border-1)] p-3">
-                        <Button onClick={() => search(nextCursor)}>加载更多</Button>
+                        <Button loading={loadingMore} disabled={loadingMore} onClick={() => search(nextCursor)}>加载更多</Button>
                       </div>
                     ) : null}
                   </ApmSurface>
@@ -943,6 +963,7 @@ export default function ApmTracesPage() {
               description={state === 'empty'
                 ? (entityMode === 'spans' ? '当前条件下没有可见 Span。' : '当前条件下没有可见 Trace。')
                 : undefined}
+              onRetry={state === 'forbidden' || state === 'empty' ? undefined : () => search(undefined, filters)}
             />
           </ApmSurface>
         )}

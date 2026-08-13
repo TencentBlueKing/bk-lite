@@ -60,6 +60,8 @@ interface SingleValueSettingsSectionProps {
   compareAvailable: boolean;
   /** 是否只读模式 */
   readonly?: boolean;
+  /** 仪表盘单值说明字段；拓扑等复用方保持关闭 */
+  showDescriptionField?: boolean;
 }
 
 export const SingleValueSettingsSection: React.FC<
@@ -80,6 +82,7 @@ export const SingleValueSettingsSection: React.FC<
   onRemoveThreshold,
   compareAvailable,
   readonly = false,
+  showDescriptionField = false,
 }) => {
   const resolvedSectionTitle =
     sectionTitle || t('topology.nodeConfig.dataSettings');
@@ -131,7 +134,19 @@ export const SingleValueSettingsSection: React.FC<
   return (
     <div className="mb-6">
       <div className="mb-6">
-        <div className="font-medium mb-4">{resolvedSectionTitle}</div>
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="font-medium">{resolvedSectionTitle}</div>
+          <Button
+            type="text"
+            icon={<ReloadOutlined aria-hidden />}
+            onClick={onFetchSingleValueDataFields}
+            loading={loadingSingleValueData}
+            disabled={!selectedDataSource || readonly}
+            title={t('topology.nodeConfig.refreshDataFields')}
+            aria-label={t('topology.nodeConfig.refreshDataFields')}
+            className="shrink-0"
+          />
+        </div>
 
         <Form.Item
           label={t('topology.nodeConfig.displayField')}
@@ -150,45 +165,68 @@ export const SingleValueSettingsSection: React.FC<
             },
           ]}
         >
-          <div>
-            <div className="flex items-start gap-3">
-              <TreeSelect
-                value={selectedFields[0]}
-                treeData={buildFieldOptions(singleValueTreeData)}
-                treeDefaultExpandAll
-                allowClear
-                showSearch
-                treeNodeFilterProp="searchText"
-                placeholder={
-                  !selectedDataSource
-                    ? t('topology.nodeConfig.selectDataSourceFirst')
-                    : loadingSingleValueData
-                      ? t('topology.nodeConfig.fetchingDataFields')
-                      : singleValueTreeData.length === 0
-                        ? t('topology.nodeConfig.clickRefreshToGetFields')
-                        : t('topology.nodeConfig.selectDisplayField')
-                }
-                disabled={fieldSelectorDisabled}
-                onChange={(value) =>
-                  handleFieldSelect(value as string | undefined)
-                }
-                className={fieldSelectorClassName}
-                popupClassName={fieldPopupClassName}
-                style={{ width: '100%' }}
-                dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
-              />
-              <Button
-                type="text"
-                icon={<ReloadOutlined />}
-                onClick={onFetchSingleValueDataFields}
-                loading={loadingSingleValueData}
-                disabled={!selectedDataSource || readonly}
-                title={t('topology.nodeConfig.refreshDataFields')}
-                className="shrink-0"
-              />
-            </div>
-          </div>
+          <TreeSelect
+            value={selectedFields[0]}
+            treeData={buildFieldOptions(singleValueTreeData)}
+            treeDefaultExpandAll
+            allowClear
+            showSearch
+            treeNodeFilterProp="searchText"
+            placeholder={
+              !selectedDataSource
+                ? t('topology.nodeConfig.selectDataSourceFirst')
+                : loadingSingleValueData
+                  ? t('topology.nodeConfig.fetchingDataFields')
+                  : singleValueTreeData.length === 0
+                    ? t('topology.nodeConfig.clickRefreshToGetFields')
+                    : t('topology.nodeConfig.selectDisplayField')
+            }
+            disabled={fieldSelectorDisabled}
+            onChange={(value) =>
+              handleFieldSelect(value as string | undefined)
+            }
+            className={fieldSelectorClassName}
+            popupClassName={fieldPopupClassName}
+            style={{ width: '100%' }}
+            dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
+          />
         </Form.Item>
+
+        {showDescriptionField ? (
+          <Form.Item
+            label={
+              <span>
+                {t('dashboard.descriptionField')}
+                <Tooltip title={t('dashboard.descriptionFieldTip')}>
+                  <QuestionCircleOutlined className="ml-1 text-(--color-text-3) cursor-help" />
+                </Tooltip>
+              </span>
+            }
+            name="descriptionField"
+          >
+            <TreeSelect
+              treeData={buildFieldOptions(singleValueTreeData)}
+              treeDefaultExpandAll
+              allowClear
+              showSearch
+              treeNodeFilterProp="searchText"
+              placeholder={
+                !selectedDataSource
+                  ? t('topology.nodeConfig.selectDataSourceFirst')
+                  : loadingSingleValueData
+                    ? t('topology.nodeConfig.fetchingDataFields')
+                    : singleValueTreeData.length === 0
+                      ? t('topology.nodeConfig.clickRefreshToGetFields')
+                      : t('dashboard.selectDescriptionField')
+              }
+              disabled={fieldSelectorDisabled}
+              className={fieldSelectorClassName}
+              popupClassName={fieldPopupClassName}
+              style={{ width: '100%' }}
+              dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
+            />
+          </Form.Item>
+        ) : null}
       </div>
 
       <Form.Item

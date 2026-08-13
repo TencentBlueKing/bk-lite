@@ -66,3 +66,7 @@ server.key
 .env.local
 
 deploy/docker-compose/conf/nats/nats.conf
+
+# Next.js 本机自动生成的 agent 规则文件
+/AGENTS.md
+/CLAUDE.md

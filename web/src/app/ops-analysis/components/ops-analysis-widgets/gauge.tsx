@@ -10,6 +10,7 @@ import {
   toComparableNumber,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
+import { useGaugeResponsiveLayout } from '@/app/ops-analysis/components/widgets/shared/useGaugeResponsiveLayout';
 import ChartSurface from '@/components/chart-surface';
 
 export interface OpsAnalysisGaugeProps {
@@ -92,14 +93,21 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
         config?.unitId,
       );
 
+  const isCircle = config?.gaugeShape === 'circle';
+  const { containerRef, chartRef, layout, geometry, hasValidContainerSize } = useGaugeResponsiveLayout({
+    gaugeShape: config?.gaugeShape,
+    desiredRadiusPercent: isCircle ? 90 : 108,
+    desiredCenterPercent: [50, isCircle ? 56 : 72],
+    axisLineWidth: 14,
+  });
+
   useEffect(() => {
-    if (!loading) {
+    if (!loading && hasValidContainerSize) {
       onReady?.(hasData);
     }
-  }, [hasData, loading, onReady]);
+  }, [hasData, hasValidContainerSize, loading, onReady]);
 
   const option = useMemo(() => {
-    const isCircle = config?.gaugeShape === 'circle';
     const currentValue = clamp(numericValue ?? safeMin, safeMin, safeMax);
 
     return {
@@ -109,10 +117,11 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
           type: 'gauge',
           min: safeMin,
           max: safeMax,
+          splitNumber: layout.splitNumber,
           startAngle: isCircle ? 225 : 180,
           endAngle: isCircle ? -45 : 0,
-          center: ['50%', isCircle ? '56%' : '72%'],
-          radius: isCircle ? '90%' : '108%',
+          center: geometry.center,
+          radius: geometry.radius,
           progress: {
             show: true,
             roundCap: true,
@@ -133,6 +142,7 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
           },
           splitLine: {
             length: 10,
+            // Negative distance keeps white ticks on the colored arc.
             distance: -16,
             lineStyle: {
               width: 2,
@@ -140,7 +150,7 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
             },
           },
           axisLabel: {
-            distance: 18,
+            distance: layout.axisLabelDistance,
             color: '#7A869A',
             fontSize: 11,
           },
@@ -158,8 +168,8 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
           },
           detail: {
             valueAnimation: true,
-            offsetCenter: [0, isCircle ? '66%' : '38%'],
-            fontSize: 26,
+            offsetCenter: [0, layout.detailOffsetCenterY],
+            fontSize: layout.detailFontSize,
             fontWeight: 600,
             color,
             formatter: () => displayValue,
@@ -168,17 +178,36 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
         },
       ],
     };
-  }, [color, config?.gaugeShape, displayValue, numericValue, safeMax, safeMin, thresholds]);
+  }, [
+    color,
+    config?.gaugeShape,
+    displayValue,
+    geometry.center,
+    geometry.radius,
+    layout.axisLabelDistance,
+    layout.detailFontSize,
+    layout.detailOffsetCenterY,
+    layout.splitNumber,
+    numericValue,
+    safeMax,
+    safeMin,
+    thresholds,
+  ]);
 
   return (
     <ChartSurface
+      ref={containerRef}
       loading={loading}
       hasData={hasData}
       containerClassName="flex h-full w-full"
       loadingClassName="flex h-full w-full items-center justify-center"
       emptyClassName="flex h-full w-full items-center justify-center"
     >
-      <ReactEcharts option={option} style={{ height: '100%', width: '100%' }} />
+      <ReactEcharts
+        ref={chartRef}
+        option={option}
+        style={{ height: '100%', width: '100%' }}
+      />
     </ChartSurface>
   );
 };

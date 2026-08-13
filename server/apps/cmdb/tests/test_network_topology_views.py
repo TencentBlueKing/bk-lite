@@ -66,9 +66,7 @@ def _body(response):
 @pytest.mark.django_db
 def test_topo_themes_returns_themes(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.get_topo_themes", lambda model_id: ["network"])
-    response = InstanceViewSet.as_view({"get": "topo_themes"})(
-        _req("get", superuser), model_id="switch"
-    )
+    response = InstanceViewSet.as_view({"get": "topo_themes"})(_req("get", superuser), model_id="switch")
     assert response.status_code == status.HTTP_200_OK
     body = _body(response)
     assert body["data"] == {"themes": ["network"]}
@@ -77,9 +75,7 @@ def test_topo_themes_returns_themes(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_topo_themes_empty_for_non_network_model(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.get_topo_themes", lambda model_id: [])
-    response = InstanceViewSet.as_view({"get": "topo_themes"})(
-        _req("get", superuser), model_id="host"
-    )
+    response = InstanceViewSet.as_view({"get": "topo_themes"})(_req("get", superuser), model_id="host")
     assert response.status_code == status.HTTP_200_OK
     body = _body(response)
     assert body["data"] == {"themes": []}
@@ -92,37 +88,38 @@ def test_topo_themes_empty_for_non_network_model(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_network_topo_ok(superuser, monkeypatch):
+    sample_uuid = "550e8400-e29b-41d4-a716-446655440000"
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_id",
-        lambda pk: {"_id": 123, "model_id": "switch", "inst_name": "sw"},
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+        lambda uid: {"_id": 123, "model_id": "switch", "inst_name": "sw", "inst_uuid": uid},
     )
     captured = {}
 
-    def _fake_network_topology(inst_id, model_id, depth=1, permission_map=None, user=None):
+    def _fake_network_topology_by_uuid(inst_uuid, model_id, depth=1, permission_map=None, user=None, node_limit=None):
         captured["depth"] = depth
-        return {"center": {"id": "123"}, "nodes": [], "links": [], "truncated": False}
+        captured["inst_uuid"] = inst_uuid
+        return {"center": {"id": inst_uuid}, "nodes": [], "links": [], "truncated": False}
 
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.network_topology", _fake_network_topology)
-    response = InstanceViewSet.as_view({"get": "network_topo"})(
-        _req("get", superuser), model_id="switch", inst_id="123"
-    )
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.network_topology_by_uuid", _fake_network_topology_by_uuid)
+    response = InstanceViewSet.as_view({"get": "network_topo"})(_req("get", superuser), model_id="switch", inst_uuid=sample_uuid)
     assert response.status_code == status.HTTP_200_OK
     body = _body(response)
-    assert body["data"]["center"]["id"] == "123"
+    assert body["data"]["center"]["id"] == sample_uuid
     assert body["data"]["nodes"] == []
     assert body["data"]["links"] == []
     # 无 depth 查询参数时回退默认 2 跳
     assert captured["depth"] == 2
+    assert captured["inst_uuid"] == sample_uuid
 
 
 @pytest.mark.django_db
 def test_network_topo_404_when_instance_missing(superuser, monkeypatch):
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_id",
-        lambda pk: None,
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+        lambda uid: None,
     )
     response = InstanceViewSet.as_view({"get": "network_topo"})(
-        _req("get", superuser), model_id="switch", inst_id="999"
+        _req("get", superuser), model_id="switch", inst_uuid="550e8400-e29b-41d4-a716-446655440099"
     )
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -130,10 +127,10 @@ def test_network_topo_404_when_instance_missing(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_network_topo_404_when_instance_empty_dict(superuser, monkeypatch):
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_id",
-        lambda pk: {},
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+        lambda uid: {},
     )
     response = InstanceViewSet.as_view({"get": "network_topo"})(
-        _req("get", superuser), model_id="switch", inst_id="999"
+        _req("get", superuser), model_id="switch", inst_uuid="550e8400-e29b-41d4-a716-446655440099"
     )
     assert response.status_code == status.HTTP_404_NOT_FOUND

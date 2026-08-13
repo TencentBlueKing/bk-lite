@@ -8,7 +8,14 @@ export { StatCard } from './stat-card';
 export type { StatCardProps, StatCardStyles } from './stat-card';
 
 export { CollectionStatusCard } from './collection-status-card';
-export type { CollectionStatusCardProps, CollectionStatusCardStyles } from './collection-status-card';
+export type {
+  CollectionStatusCardProps,
+  CollectionStatusCardStyles
+} from './collection-status-card';
+export type {
+  CollectionStatusTimelineSegment,
+  CollectionStatusTone
+} from '../utils/collection-status';
 
 export { RingChartPanel } from './ring-chart-panel';
 export type { RingChartPanelProps, RingChartPanelStyles, RingChartDataItem, RingChartInfoRow } from './ring-chart-panel';

@@ -179,6 +179,30 @@ def test_request_success_returns_json(monkeypatch):
     assert captured["timeout"] == 15
 
 
+def test_request_forwards_startup_budget_as_per_hook_timeout_header(monkeypatch):
+    _setup_hook(monkeypatch)
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None, headers=None):
+        captured["timeout"] = timeout
+        captured["headers"] = headers
+        return FakeResponse(200, {"status": "success"})
+
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    result = WebhookClient._request(
+        "serve",
+        {"startup_timeout_seconds": 120},
+        timeout=130,
+    )
+
+    assert result == {"status": "success"}
+    assert captured == {
+        "timeout": 130,
+        "headers": {"X-Hook-Timeout": "125"},
+    }
+
+
 def test_request_non200_json_error_with_code_and_detail(monkeypatch):
     _setup_hook(monkeypatch)
 
@@ -252,6 +276,7 @@ def test_serve_builds_payload_and_returns_result(monkeypatch):
     def fake_request(endpoint, payload, timeout=30):
         captured["endpoint"] = endpoint
         captured["payload"] = payload
+        captured["timeout"] = timeout
         return {"status": "success", "port": "3042"}
 
     monkeypatch.setattr(WebhookClient, "_request", staticmethod(fake_request))
@@ -266,6 +291,8 @@ def test_serve_builds_payload_and_returns_result(monkeypatch):
     assert p["port"] == 3042
     assert p["train_image"] == "img"
     assert p["device"] == "gpu"
+    assert p["startup_timeout_seconds"] == 120
+    assert captured["timeout"] == 130
 
 
 def test_serve_error_status_raises(monkeypatch):
@@ -292,6 +319,53 @@ def test_serve_omits_optional_params(monkeypatch):
     assert "port" not in captured
     assert "train_image" not in captured
     assert "device" not in captured
+
+
+def test_serve_uses_configured_docker_startup_budget(monkeypatch):
+    _setup_hook(monkeypatch)
+    monkeypatch.setenv("MLOPS_SERVING_STARTUP_TIMEOUT_SECONDS", "45")
+    captured = {}
+
+    def fake_request(endpoint, payload, timeout=30):
+        captured["payload"] = payload
+        captured["timeout"] = timeout
+        return {"status": "success"}
+
+    monkeypatch.setattr(WebhookClient, "_request", staticmethod(fake_request))
+
+    WebhookClient.serve("Svc_1", "http://mlflow", "models:/m/1")
+
+    assert captured["payload"]["startup_timeout_seconds"] == 45
+    assert captured["timeout"] == 55
+
+
+def test_serve_rejects_invalid_docker_startup_budget(monkeypatch):
+    _setup_hook(monkeypatch)
+    monkeypatch.setenv("MLOPS_SERVING_STARTUP_TIMEOUT_SECONDS", "0")
+
+    with pytest.raises(
+        ValueError,
+        match="MLOPS_SERVING_STARTUP_TIMEOUT_SECONDS",
+    ):
+        WebhookClient.serve("Svc_1", "http://mlflow", "models:/m/1")
+
+
+def test_serve_kubernetes_keeps_async_request_contract(monkeypatch):
+    _setup_hook(monkeypatch)
+    monkeypatch.setenv("MLOPS_RUNTIME", "kubernetes")
+    captured = {}
+
+    def fake_request(endpoint, payload, timeout=30):
+        captured["payload"] = payload
+        captured["timeout"] = timeout
+        return {"status": "success", "state": "pending"}
+
+    monkeypatch.setattr(WebhookClient, "_request", staticmethod(fake_request))
+
+    WebhookClient.serve("Svc_1", "http://mlflow", "models:/m/1")
+
+    assert "startup_timeout_seconds" not in captured["payload"]
+    assert captured["timeout"] == 30
 
 
 def test_train_builds_payload(monkeypatch):

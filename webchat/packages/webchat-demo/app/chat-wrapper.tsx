@@ -1,6 +1,11 @@
 'use client';
 
-import { FloatingButton } from '@webchat/ui';
+import dynamic from 'next/dynamic';
+
+const FloatingButton = dynamic(
+  () => import('@webchat/ui').then((module) => module.FloatingButton),
+  { ssr: false }
+);
 
 export function ChatWrapper() {
   const sseUrl = typeof window !== 'undefined' 

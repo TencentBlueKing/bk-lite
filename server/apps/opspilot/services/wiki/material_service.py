@@ -11,10 +11,12 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import MaterialVersion
 from apps.opspilot.services.wiki.parsed_media_service import persist_embedded_images, rewrite_media_urls_for_display
 from apps.opspilot.services.wiki.parsing import get_parser
+from apps.opspilot.services.wiki.parsing.anthropic_vision_compat import build_anthropic_vision_client
 from apps.opspilot.services.wiki.parsing.markitdown_parser import SUPPORTED_FILE_EXTENSIONS
 from apps.opspilot.services.wiki.parsing.pdf_hybrid_parser import convert_pdf_hybrid, describe_page_with_vision
 
 _PARSED_STORAGE = MinioBackend(bucket_name="munchkin-private")
+_SUPPORTED_VISION_PROTOCOLS = frozenset({"openai", "anthropic"})
 
 
 def _material_file_name(material):
@@ -52,18 +54,40 @@ def _read_file(material):
     return name, data
 
 
+def _vision_vendor_type(vision_model) -> str:
+    vendor = getattr(vision_model, "vendor", None)
+    return (getattr(vendor, "vendor_type", "") or "") if vendor is not None else ""
+
+
 def _vision_options(material):
-    """Return MarkItDown vision options when image enhancement is explicitly enabled."""
+    """Return MarkItDown vision options when image enhancement is explicitly enabled.
+
+    OpenAI 协议直接用 OpenAI 客户端；Anthropic 协议用兼容适配器，对上
+    MarkItDown / PDF 整页描述所需的 ``chat.completions.create`` 接口。
+    """
     if not getattr(material, "ocr_enhance", False):
         return None, None
     vision_model = getattr(material.knowledge_base, "vision_model", None)
     if not vision_model:
         return None, None
-    if getattr(vision_model, "protocol_type", "openai") != "openai":
-        logger.warning("material %s vision_model=%s 非 OpenAI 兼容协议,跳过图片增强", material.id, vision_model.id)
+    protocol = getattr(vision_model, "protocol_type", "openai") or "openai"
+    if protocol not in _SUPPORTED_VISION_PROTOCOLS:
+        logger.warning(
+            "material %s vision_model=%s 协议=%s 不支持图片增强,跳过",
+            material.id,
+            vision_model.id,
+            protocol,
+        )
         return None, None
     try:
-        client = OpenAI(base_url=vision_model.openai_api_base, api_key=vision_model.openai_api_key)
+        if protocol == "anthropic":
+            client = build_anthropic_vision_client(
+                api_base=vision_model.openai_api_base,
+                api_key=vision_model.openai_api_key,
+                vendor_type=_vision_vendor_type(vision_model),
+            )
+        else:
+            client = OpenAI(base_url=vision_model.openai_api_base, api_key=vision_model.openai_api_key)
     except Exception:
         logger.exception("material %s 图片增强客户端初始化失败 vision_model=%s", material.id, vision_model.id)
         return None, None

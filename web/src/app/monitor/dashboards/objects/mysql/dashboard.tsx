@@ -38,6 +38,9 @@ import {
   buildInstanceSearchTokens,
   parseLegacyParamList,
   buildCollectionStatusTimeline,
+  formatCollectionStatusTimelineHint,
+  resolveCollectionStatusRange,
+  freezeTimeValues,
   toMetricSeries,
   buildMetricItem,
   mergeChartSeries,
@@ -66,18 +69,6 @@ interface MysqlInstanceOption {
 }
 
 const MYSQL_REFRESH_FREQUENCY_LIST = DEFAULT_REFRESH_FREQUENCY_LIST;
-const RAW_VALUE_METRICS = new Set([
-  'mysql_uptime',
-  'mysql_innodb_buffer_pool_pages_total',
-  'mysql_innodb_buffer_pool_pages_free',
-  'mysql_innodb_buffer_pool_pages_dirty',
-  // 字节速率(byteps)与字节配置项(bytes):禁用服务端自动换算,避免与前端双重换算
-  'mysql_bytes_received',
-  'mysql_bytes_sent',
-  'mysql_variables_innodb_buffer_pool_size',
-  'mysql_variables_tmp_table_size',
-  'mysql_variables_max_heap_table_size'
-]);
 const METRIC_QUERY_CONCURRENCY = 4;
 const MYSQL_METRIC_GROUPS = [
   {
@@ -284,6 +275,7 @@ export default function MysqlDashboardPage() {
   const [series, setSeries] = useState<Record<string, MetricSeries>>({});
   const [previousSeries, setPreviousSeries] = useState<Record<string, MetricSeries>>({});
   const [collectionStatusMetric, setCollectionStatusMetric] = useState<MetricSeries | null>(null);
+  const [queryTimeRange, setQueryTimeRange] = useState<{ startMs: number; endMs: number } | null>(null);
   const [instanceOptions, setInstanceOptions] = useState<MysqlInstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
@@ -391,7 +383,7 @@ export default function MysqlDashboardPage() {
       metrics,
       METRIC_QUERY_CONCURRENCY,
       async (metric) =>
-        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, RAW_VALUE_METRICS, undefined, currentInstanceInterval))
+        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, undefined, false, currentInstanceInterval))
           .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
           .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
     );
@@ -406,13 +398,16 @@ export default function MysqlDashboardPage() {
 
     try {
       if (isDashboardMode) {
-        const previousTimeValues = buildPreviousPeriodTimeValues(timeValues);
+        const frozenTimeValues = freezeTimeValues(timeValues);
+        const frozenRange = resolveCollectionStatusRange(frozenTimeValues);
+        if (frozenRange) setQueryTimeRange(frozenRange);
+        const previousTimeValues = buildPreviousPeriodTimeValues(frozenTimeValues);
         const compareMetrics = MYSQL_COMPARE_METRICS.map((name) => MYSQL_METRIC_CONFIG_BY_NAME.get(name)).filter(
           (metric): metric is MysqlMetricConfig => Boolean(metric)
         );
-        const summaryResultsPromise = loadMetricGroup(MYSQL_METRIC_GROUPS[0].names, timeValues);
+        const summaryResultsPromise = loadMetricGroup(MYSQL_METRIC_GROUPS[0].names, frozenTimeValues);
 
-        const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(buildSearchParams(MYSQL_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, RAW_VALUE_METRICS, undefined, currentInstanceInterval))
+        const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(buildSearchParams(MYSQL_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, frozenTimeValues, undefined, false, currentInstanceInterval))
           .then((result) =>
             toMetricSeries(
               {
@@ -449,7 +444,7 @@ export default function MysqlDashboardPage() {
             compareMetrics,
             METRIC_QUERY_CONCURRENCY,
             async (metric) =>
-              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, RAW_VALUE_METRICS, undefined, currentInstanceInterval))
+              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, undefined, false, currentInstanceInterval))
                 .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
                 .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
           )
@@ -483,7 +478,7 @@ export default function MysqlDashboardPage() {
         }
 
         MYSQL_METRIC_GROUPS.slice(1).forEach((group) => {
-          loadMetricGroup(group.names, timeValues).then((results) => {
+          loadMetricGroup(group.names, frozenTimeValues).then((results) => {
             if (!loadSequence.isCurrent(loadSeq)) {
               return;
             }
@@ -593,7 +588,16 @@ export default function MysqlDashboardPage() {
   const logSlaveUpdatesValue = getLatest('mysql_variables_log_slave_updates');
   const statusInfo = getCollectionStatus(collectionStatusMetric);
   const metricEmptyText = statusInfo.label === '异常' ? '查询失败' : '暂无采集数据';
-  const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
+  const collectionStatusRange = queryTimeRange ?? resolveCollectionStatusRange(timeValues);
+  const collectionStatusTimeline = buildCollectionStatusTimeline(
+    collectionStatusMetric?.loadState,
+    collectionStatusMetric?.viewData,
+    collectionStatusRange?.startMs ?? Date.now() - 15 * 60_000,
+    collectionStatusRange?.endMs ?? Date.now()
+  );
+  const collectionStatusTimelineHint = collectionStatusRange
+    ? formatCollectionStatusTimelineHint(collectionStatusRange.startMs, collectionStatusRange.endMs)
+    : undefined;
   const qpsDisplay = formatMetricValue(qpsValue, 'cps');
   const connDisplay = formatMetricValue(connValue, 'percent');
   const slowDisplay = formatMetricValue(slowValue, 'cps');
@@ -1001,6 +1005,7 @@ export default function MysqlDashboardPage() {
                       styles={styles}
                       status={statusInfo}
                       timeline={collectionStatusTimeline}
+                      timelineHint={collectionStatusTimelineHint}
                     />
                     <StatCard
                       styles={styles}

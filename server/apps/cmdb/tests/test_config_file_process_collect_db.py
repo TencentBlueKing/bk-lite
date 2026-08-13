@@ -7,13 +7,13 @@
 失败状态（不建版本、任务标记 error）、过期回调忽略、实例不属于任务报错、
 处理异常闭环。
 """
-import pydantic.root_model  # noqa: F401  预热
 import base64
 import importlib
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import pydantic.root_model  # noqa: F401  预热
 import pytest
 from django.db import IntegrityError, OperationalError, close_old_connections, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
@@ -24,7 +24,6 @@ from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
 from apps.cmdb.services.config_file_content_lifecycle import ConfigFileContentLifecycle
 from apps.cmdb.services.config_file_service import ConfigFileService as S
-from apps.core.exceptions.base_app_exception import BaseAppException
 
 
 @pytest.fixture(autouse=True)
@@ -55,7 +54,14 @@ def _make_task(**kw):
         task_type="host",
         model_id="host",
         cycle_value_type="close",
-        instances=[{"_id": "inst-1", "ip_addr": "10.0.0.1", "inst_name": "10.0.0.1"}],
+        instances=[
+            {
+                "_id": "inst-1",
+                "inst_uuid": "123e4567-e89b-42d3-a456-426614174000",
+                "ip_addr": "10.0.0.1",
+                "inst_name": "10.0.0.1",
+            }
+        ],
         params={"config_file_path": "/etc/app.conf", "config_file_name": "app.conf"},
         exec_time=now() - timedelta(hours=1),
         exec_status=CollectRunStatusType.RUNNING,
@@ -69,7 +75,8 @@ def _payload(task, **kw):
     base = dict(
         collect_task_id=task.id,
         execution_id=task.task_id,
-        instance_id="inst-1",
+        protocol_version="2",
+        instance_uuid="123e4567-e89b-42d3-a456-426614174000",
         status="success",
         version=str(int(now().timestamp() * 1000)),
         content_base64=base64.b64encode(b"server { listen 80; }").decode(),
@@ -135,6 +142,8 @@ def test_success_creates_version_and_updates_task(django_capture_on_commit_callb
     version_obj = result["version_obj"]
     assert version_obj is not None
     assert version_obj.status == ConfigFileVersionStatus.SUCCESS
+    assert str(version_obj.instance_uuid) == "123e4567-e89b-42d3-a456-426614174000"
+    assert version_obj.instance_id == "inst-1"
     assert version_obj.content_hash  # 已计算哈希
     assert version_obj.content_key.endswith(".txt")  # 对象键已落到 content
     version_obj.refresh_from_db()
@@ -170,9 +179,7 @@ def test_unchanged_content_does_not_create_new_version():
 @pytest.mark.django_db
 def test_failed_status_marks_task_error_no_version():
     task = _make_task()
-    result = S.process_collect_result(
-        _payload(task, status="file_not_found", content_base64="", error="文件不存在")
-    )
+    result = S.process_collect_result(_payload(task, status="file_not_found", content_base64="", error="文件不存在"))
     assert result["version_obj"] is None
     assert result["changed"] is False
     assert ConfigFileVersion.objects.filter(collect_task=task).count() == 0
@@ -250,8 +257,8 @@ def test_terminal_task_rejects_late_callback(terminal_status):
 @pytest.mark.django_db
 def test_instance_not_in_task_raises_and_closes():
     task = _make_task()
-    # 实例标识不在任务 instances 中 -> _get_task_instance_or_raise 抛错 -> 异常闭环
-    result = S.process_collect_result(_payload(task, instance_id="not-exist"))
+    # 实例 UUID 不在任务 instances 中 -> _get_task_instance_or_raise 抛错 -> 异常闭环
+    result = S.process_collect_result(_payload(task, instance_uuid="223e4567-e89b-42d3-a456-426614174000"))
     assert result["version_obj"] is None
     assert "error" in result
     task.refresh_from_db()
@@ -262,7 +269,28 @@ def test_instance_not_in_task_raises_and_closes():
 def test_missing_instance_identifier_closes_task():
     task = _make_task()
     payload = _payload(task)
-    payload.pop("instance_id")
+    payload.pop("instance_uuid")
+    result = S.process_collect_result(payload)
+    assert result["version_obj"] is None
+    assert "error" in result
+
+
+@pytest.mark.django_db
+def test_legacy_instance_id_callback_is_rejected():
+    task = _make_task()
+    payload = _payload(task)
+    payload["instance_id"] = "inst-1"
+    result = S.process_collect_result(payload)
+    assert result["version_obj"] is None
+    assert "error" in result
+
+
+@pytest.mark.django_db
+def test_hostname_only_callback_is_rejected():
+    task = _make_task()
+    payload = _payload(task)
+    payload.pop("instance_uuid")
+    payload["instance_name"] = "10.0.0.1"
     result = S.process_collect_result(payload)
     assert result["version_obj"] is None
     assert "error" in result
@@ -435,11 +463,14 @@ def test_concurrent_business_key_commits_only_one_row():
     with ThreadPoolExecutor(max_workers=2) as executor:
         outcomes = list(executor.map(lambda _: create_version(), range(2)))
 
-    assert ConfigFileVersion.objects.filter(
-        collect_task=task,
-        instance_id="inst-1",
-        version="1700000000000",
-    ).count() == 1
+    assert (
+        ConfigFileVersion.objects.filter(
+            collect_task=task,
+            instance_id="inst-1",
+            version="1700000000000",
+        ).count()
+        == 1
+    )
     assert "created" in outcomes
 
 
@@ -447,7 +478,6 @@ def test_concurrent_business_key_commits_only_one_row():
 def test_dedupe_migration_keeps_earliest_record():
     executor = MigrationExecutor(connection)
     old_target = [("cmdb", "0031_subscriptiondelivery")]
-    new_target = [("cmdb", "0033_config_file_content_lifecycle")]
     latest_target = [("cmdb", "0042_collectmodels_system_code_unique")]
     executor.migrate(old_target)
     try:

@@ -11,9 +11,11 @@
     "build:browser": "cd packages/webchat-ui && npm run build:browser",
     "sync:web": "node scripts/sync-web-public.mjs",
     "build:demo": "cd packages/webchat-demo && npm run build",
-    "test": "node tests/state-machine.issue-3882.mjs && node --test tests/stream-lifecycle.issue-3556.test.mjs && node --test tests/content-chunks.test.mjs && npm run test:core",
+    "test": "node tests/state-machine.issue-3882.mjs && node --test tests/stream-lifecycle.issue-3556.test.mjs && node --test tests/content-chunks.test.mjs && npm run test:core && npm run test:config",
     "pretest:core": "node -e \"require('node:fs').rmSync('.test-dist', { recursive: true, force: true })\"",
     "test:core": "tsc -p tests/tsconfig.json && node --test .test-dist/tests/core/core.test.js",
+    "pretest:config": "node -e \"require('node:fs').rmSync('packages/webchat-ui/.test-dist/issue-4037', { recursive: true, force: true })\"",
+    "test:config": "tsc -p tests/tsconfig.issue-4037.json && node packages/webchat-ui/.test-dist/issue-4037/tests/webchat-config.issue-4037.test.js",
     "lint": "eslint \"packages/webchat-core/src/**/*.{ts,tsx}\" \"packages/webchat-ui/src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx,mjs}\"",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist packages/*/.next"

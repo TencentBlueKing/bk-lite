@@ -1,6 +1,23 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { useSharedDataSourceQuery } from '@/app/ops-analysis/context/shareDataSource';
+import {
+  parseSourceDataResponse,
+  type SourceDataResult,
+} from '@/app/ops-analysis/utils/sourceDataResponse';
+
+export interface SourceDataRequestOptions {
+  suppressErrorNotification?: boolean;
+}
+
+export const withRuntimeSourceDataErrorSuppression = (
+  getSourceDataByApiId: (
+    id: number,
+    params?: unknown,
+    options?: SourceDataRequestOptions,
+  ) => Promise<SourceDataResult>,
+) => (id: number, params?: unknown) =>
+  getSourceDataByApiId(id, params, { suppressErrorNotification: true });
 
 export const useDataSourceApi = () => {
   const { get, post, put, del } = useApiClient();
@@ -50,20 +67,43 @@ export const useDataSourceApi = () => {
     return put(`/operation_analysis/api/data_source/${id}/`, data);
   }, [put]);
 
-  const deleteDataSource = useCallback(async (id: number) => {
-    return del(`/operation_analysis/api/data_source/${id}/`);
+  const deleteDataSource = useCallback(async (id: number, config?: any) => {
+    return del(`/operation_analysis/api/data_source/${id}/`, config);
   }, [del]);
 
   const getDataSourceDetail = useCallback(async (id: number) => {
     return get(`/operation_analysis/api/data_source/${id}/`);
   }, [get]);
 
-  const getSourceDataByApiId = useCallback(async (id: number, params?: any) => {
-    if (sharedAccess) {
-      return sharedAccess.queryDataSource(id, params);
-    }
-    return post(`/operation_analysis/api/data_source/get_source_data/${id}/`, params);
+  const getSourceDataByApiId = useCallback(async (
+    id: number,
+    params?: unknown,
+    options?: SourceDataRequestOptions,
+  ): Promise<SourceDataResult> => {
+    const requestConfig = options?.suppressErrorNotification
+      ? { suppressErrorNotification: true as const }
+      : undefined;
+    const raw = sharedAccess
+      ? await sharedAccess.queryDataSource(id, params, options)
+      : await post(
+        `/operation_analysis/api/data_source/get_source_data/${id}/`,
+        params,
+        requestConfig,
+      );
+    return parseSourceDataResponse(raw);
   }, [post, sharedAccess]);
+
+  const testDataSourceConnectionConfig = useCallback(async (data: any) => {
+    return post('/operation_analysis/api/data_source/test_connection/', data);
+  }, [post]);
+
+  const testDataSourceConnection = useCallback(async (id: number, data?: any) => {
+    return post(`/operation_analysis/api/data_source/${id}/test_connection/`, data || {});
+  }, [post]);
+
+  const extractDataSourceConnection = useCallback(async (id: number, data?: any) => {
+    return post(`/operation_analysis/api/data_source/${id}/extract_connection/`, data || {});
+  }, [post]);
 
   const previewDataSourceConfig = useCallback(async (data: any) => {
     const isFormData =
@@ -79,6 +119,18 @@ export const useDataSourceApi = () => {
     return post(`/operation_analysis/api/data_source/${id}/preview/`, data);
   }, [post]);
 
+  const submitExcelMaterialization = useCallback(async (id: number, data: FormData) => {
+    return post(
+      `/operation_analysis/api/data_source/${id}/submit_excel/`,
+      data,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+  }, [post]);
+
+  const retryExcelMaterialization = useCallback(async (id: number, data?: any) => {
+    return post(`/operation_analysis/api/data_source/${id}/retry_excel_materialization/`, data || {});
+  }, [post]);
+
   return {
     getDataSourceList,
     getDataSourceBriefList,
@@ -89,6 +141,11 @@ export const useDataSourceApi = () => {
     getDataSourceDetail,
     getSourceDataByApiId,
     previewDataSourceConfig,
-    previewDataSource
+    previewDataSource,
+    submitExcelMaterialization,
+    retryExcelMaterialization,
+    testDataSourceConnectionConfig,
+    testDataSourceConnection,
+    extractDataSourceConnection,
   };
 };

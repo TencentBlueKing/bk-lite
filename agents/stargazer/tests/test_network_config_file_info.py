@@ -1,8 +1,10 @@
+import asyncio
 import base64
 
 import pytest
-
 from plugins.inputs.network_config_file.network_config_file_info import NetworkConfigFileInfo, validate_safe_command
+
+INSTANCE_UUID = "123e4567-e89b-42d3-a456-426614174000"
 
 
 def test_validate_safe_command_allows_display_saved_configuration():
@@ -51,34 +53,45 @@ class FakeNetConnect:
         return f"output for {command}"
 
 
-@pytest.mark.asyncio
-async def test_collect_builds_success_payload(monkeypatch):
+def _base_params(**extra):
+    params = {
+        "host": "10.0.0.1",
+        "username": "admin",
+        "password": "secret",
+        "device_type": "cisco_ios",
+        "commands": "show running-config",
+        "config_name": "running-config",
+        "collect_task_id": "42",
+        "target_model_id": "switch",
+        "protocol_version": "2",
+        "target_instance_uuid": INSTANCE_UUID,
+    }
+    params.update(extra)
+    return params
+
+
+def test_collect_builds_success_payload(monkeypatch):
     fake = FakeNetConnect()
     monkeypatch.setattr(
         "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
         lambda **kwargs: fake,
     )
     plugin = NetworkConfigFileInfo(
-        {
-            "host": "10.0.0.1",
-            "username": "admin",
-            "password": "secret",
-            "enable_password": "enable-secret",
-            "need_enable": "true",
-            "device_type": "cisco_ios",
-            "commands": "show running-config\nshow version",
-            "config_name": "running-config",
-            "collect_task_id": "42",
-            "target_model_id": "switch",
-            "target_instance_id": "101",
-        }
+        _base_params(
+            enable_password="enable-secret",
+            need_enable="true",
+            commands="show running-config\nshow version",
+        )
     )
 
-    result = await plugin.list_all_resources()
+    result = asyncio.run(plugin.list_all_resources())
 
     assert result["success"] is True
     payload = result["result"]
     assert payload["status"] == "success"
+    assert payload["protocol_version"] == "2"
+    assert payload["instance_uuid"] == INSTANCE_UUID
+    assert "instance_id" not in payload
     assert payload["file_name"] == "running-config"
     decoded = base64.b64decode(payload["content_base64"]).decode()
     assert "output for show running-config" in decoded
@@ -86,63 +99,35 @@ async def test_collect_builds_success_payload(monkeypatch):
     assert fake.enabled is True
 
 
-@pytest.mark.asyncio
-async def test_collect_enables_privilege_mode_when_enable_password_is_present(monkeypatch):
+def test_collect_enables_privilege_mode_when_enable_password_is_present(monkeypatch):
     fake = FakeNetConnect()
     monkeypatch.setattr(
         "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
         lambda **kwargs: fake,
     )
-    plugin = NetworkConfigFileInfo(
-        {
-            "host": "10.0.0.1",
-            "username": "admin",
-            "password": "secret",
-            "enable_password": "enable-secret",
-            "device_type": "cisco_ios",
-            "commands": "show running-config",
-            "config_name": "running-config",
-            "collect_task_id": "42",
-            "target_model_id": "switch",
-            "target_instance_id": "101",
-        }
-    )
+    plugin = NetworkConfigFileInfo(_base_params(enable_password="enable-secret"))
 
-    result = await plugin.list_all_resources()
+    result = asyncio.run(plugin.list_all_resources())
 
     assert result["success"] is True
     assert fake.enabled is True
 
 
-@pytest.mark.asyncio
-async def test_collect_skips_privilege_mode_without_enable_password(monkeypatch):
+def test_collect_skips_privilege_mode_without_enable_password(monkeypatch):
     fake = FakeNetConnect()
     monkeypatch.setattr(
         "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
         lambda **kwargs: fake,
     )
-    plugin = NetworkConfigFileInfo(
-        {
-            "host": "10.0.0.1",
-            "username": "admin",
-            "password": "secret",
-            "device_type": "cisco_ios",
-            "commands": "show running-config",
-            "config_name": "running-config",
-            "collect_task_id": "42",
-            "target_model_id": "switch",
-            "target_instance_id": "101",
-        }
-    )
+    plugin = NetworkConfigFileInfo(_base_params())
 
-    result = await plugin.list_all_resources()
+    result = asyncio.run(plugin.list_all_resources())
 
     assert result["success"] is True
     assert fake.enabled is False
 
 
-@pytest.mark.asyncio
-async def test_collect_returns_error_when_one_command_fails(monkeypatch):
+def test_collect_returns_error_when_one_command_fails(monkeypatch):
     class FailingNetConnect(FakeNetConnect):
         def send_command(self, command, **kwargs):
             if command == "show bad":
@@ -154,22 +139,25 @@ async def test_collect_returns_error_when_one_command_fails(monkeypatch):
         "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
         lambda **kwargs: fake,
     )
-    plugin = NetworkConfigFileInfo(
-        {
-            "host": "10.0.0.1",
-            "username": "admin",
-            "password": "secret",
-            "device_type": "cisco_ios",
-            "commands": "show version\nshow bad",
-            "config_name": "running-config",
-            "collect_task_id": "42",
-            "target_model_id": "switch",
-            "target_instance_id": "101",
-        }
-    )
+    plugin = NetworkConfigFileInfo(_base_params(commands="show version\nshow bad"))
 
-    result = await plugin.list_all_resources()
+    result = asyncio.run(plugin.list_all_resources())
 
     assert result["success"] is False
     assert "show bad" in result["result"]["cmdb_collect_error"]
     assert "Invalid input" in result["result"]["cmdb_collect_error"]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"protocol_version": "1", "target_instance_uuid": INSTANCE_UUID},
+        {"protocol_version": "2", "target_instance_id": "101"},
+        {"protocol_version": "2", "target_instance_uuid": "101"},
+    ],
+)
+def test_success_payload_rejects_invalid_identity_protocol(params):
+    plugin = NetworkConfigFileInfo({**params, "config_name": "running-config"})
+
+    with pytest.raises(ValueError):
+        plugin._success_payload("cfg")

@@ -435,6 +435,20 @@ class NatsService:
 
         child_config.save()
 
+    @transaction.atomic
+    def compare_and_swap_child_config_content(self, id, expected_content, content):
+        """锁内比较并更新子配置，冲突时返回 False 且不覆盖当前内容。"""
+        if not content:
+            raise BaseAppException("Content must be provided for compare-and-swap update.")
+        child_config = ChildConfig.objects.select_for_update().filter(id=id).first()
+        if not child_config:
+            raise BaseAppException("Child config not found.")
+        if child_config.content != expected_content:
+            return False
+        child_config.content = content
+        child_config.save(update_fields=["content", "updated_at"])
+        return True
+
     def update_config_content(self, id, content, env_config=None):
         """更新配置内容"""
 
@@ -675,6 +689,15 @@ def update_child_config_content(data: dict):
     content = data.get("content")
     env_config = data.get("env_config")
     NatsService().update_child_config_content(id, content, env_config)
+
+
+def compare_and_swap_child_config_content(data: dict):
+    """同进程运维命令专用：仅当内容仍等于读取快照时更新实例子配置。"""
+    return NatsService().compare_and_swap_child_config_content(
+        data.get("id"),
+        data.get("expected_content"),
+        data.get("content"),
+    )
 
 
 @nats_client.register

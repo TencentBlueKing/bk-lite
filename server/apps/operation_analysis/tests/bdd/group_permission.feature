@@ -45,8 +45,8 @@
     当 我使用 current_team None 执行 apply_group_filter
     那么 结果目录数量应当等于源数量
 
-  场景: 边界 - 指定 user 时叠加 created_by 过滤
+  场景: 边界 - 指定 user 时仍只按组织过滤，不叠加创建人
     假设 存在目录 "mine" 隶属组 [1]，创建人为 "testuser"
     并且 存在目录 "theirs" 隶属组 [1]，创建人为 "someoneelse"
     当 我使用 current_team 1 与用户 "testuser" 执行 apply_group_filter
-    那么 结果目录应当恰好为 ["mine"]
+    那么 结果目录应当恰好为 ["mine", "theirs"]

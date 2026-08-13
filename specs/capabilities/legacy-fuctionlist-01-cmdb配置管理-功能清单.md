@@ -43,8 +43,12 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 | 实例导入 | 下载导入模板，Excel 批量导入 | 按组织权限生效，仅能导入到有权限的组织范围 | GA |
 | 实例导出 | 按字段或关联关系导出实例 | 支持仅导出所选字段与所选关联关系 | GA |
 | 实例关联 | 实例之间建立/解除关联关系 | — | GA |
+| 跨模块主机关联 | 新建主机时尝试与节点管理、监控对象建立关联；支持主动推送至监控 | 创建或通知失败不阻断资产创建；发生删除或退役时仅解除对应关联，不级联删除对端对象；已绑定其他节点的资产不被自动改绑 | GA |
 | 展示字段配置 | 按模型配置列表展示字段 | 按模型与用户分别生效 | GA |
 | 实例总数查看 | 查看模型实例总数，用于资产总览与跳转 | — | GA |
+
+相关 PRD：[[legacy-prd-cmdb-资产.md#3.12 跨模块主机联动]]；相关架构：[[legacy-ard-modules-cmdb.md#5. 核心数据流 / 任务]]。
+> 证据来源：server/apps/cmdb/services/module_push.py:82-152，server/apps/cmdb/services/module_push.py:349-437，server/apps/cmdb/views/instance.py:335-369　|　同步基线：d2769559　|　【已实现】
 
 ### 3. 资产详情
 
@@ -56,7 +60,7 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 | 变更记录查看 | 查看实例相关变更记录 | — | GA |
 | 配置文件版本 | 查看配置文件列表、版本历史、内容与版本差异（Diff） | 仅面向已启用配置采集并采集到的实例；仅可读取内容的版本支持查看与对比 | GA |
 
-相关 PRD：[[spec/prd/CMDB/资产.md#3.8 资产详情 · 应用资源总览]]；相关架构：[[spec/ARD/modules/cmdb.md#3. 接口【已实现/已存在】]]
+相关 PRD：[[legacy-prd-cmdb-资产.md#3.8 资产详情 · 应用资源总览]]；相关架构：[[legacy-ard-modules-cmdb.md#3. 接口【已实现/已存在】]]
 > 证据来源：server/apps/cmdb/views/instance.py:999-1143　|　同步基线：83091efe　|　【已实现】
 
 ### 4. 资产检索与视图
@@ -86,7 +90,7 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 | 实例侧关联任务 | 在实例侧查看可关联的采集任务名称 | — | GA |
 | 部分数据库采集 | MongoDB、Elasticsearch、HBase、TiDB、MSSQL 等数据库对象采集 | 部分对象处于试验阶段 | Beta |
 
-相关 PRD：[[spec/prd/CMDB/自动发现.md#3.2 采集任务]]；相关架构：[[spec/ARD/modules/cmdb.md#5. 核心数据流 / 任务]]
+相关 PRD：[[legacy-prd-cmdb-自动发现.md#3.2 采集任务]]；相关架构：[[legacy-ard-modules-cmdb.md#5. 核心数据流 / 任务]]
 > 证据来源：server/apps/cmdb/constants/constants.py:377-403，server/apps/cmdb/node_configs/network_config_file.py:5-63，server/apps/cmdb/services/ipam_discovery.py:104-175　|　同步基线：83091efe　|　【已实现】
 
 ### 6. SOID 特征库

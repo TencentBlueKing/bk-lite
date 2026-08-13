@@ -11,6 +11,8 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { ImagePreview } from './ImagePreview';
 import { ToolCallDisplay, type ToolCall } from './ToolCallDisplay';
 
+const syntaxHighlightTheme = vscDarkPlus as Record<string, React.CSSProperties>;
+
 const markdownPlugins = {
   remarkPlugins: [remarkGfm],
   rehypePlugins: [rehypeSanitize],
@@ -36,16 +38,17 @@ type CodeBlockProps = ComponentPropsWithoutRef<'code'> & {
 };
 
 // Custom code block renderer with syntax highlighting
-const CodeBlock = ({ inline, className, children, ...props }: CodeBlockProps) => {
+const CodeBlock = ({ inline, className, children, style, ...props }: CodeBlockProps) => {
   const match = /language-(\w+)/.exec(className || '');
   const language = match ? match[1] : '';
   
   return !inline && language ? (
     <SyntaxHighlighter
-      style={vscDarkPlus}
+      style={syntaxHighlightTheme}
       language={language}
       PreTag="div"
       customStyle={{
+        ...style,
         margin: '0.5rem 0',
         borderRadius: '0.375rem',
         fontSize: '0.875rem',
@@ -56,7 +59,7 @@ const CodeBlock = ({ inline, className, children, ...props }: CodeBlockProps) =>
       {String(children).replace(/\n$/, '')}
     </SyntaxHighlighter>
   ) : (
-    <code className={className} {...props}>
+    <code className={className} style={style} {...props}>
       {children}
     </code>
   );
@@ -103,14 +106,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
       return (
         <div className="space-y-2">
           {message.content.map((item: MessageContent, index: number) => {
-            if (item.type === 'image_url' && item.image_url) {
+            const imageUrl = item.image_url;
+            if (item.type === 'image_url' && imageUrl) {
               return (
                 <div key={`img-${index}`} className="max-w-xs">
                   <img 
-                    src={item.image_url} 
+                    src={imageUrl}
                     alt={`Image ${index + 1}`}
                     className="rounded border border-gray-200 w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => setPreviewImage({ src: item.image_url, alt: `Image ${index + 1}` })}
+                    onClick={() => setPreviewImage({ src: imageUrl, alt: `Image ${index + 1}` })}
                   />
                 </div>
               );

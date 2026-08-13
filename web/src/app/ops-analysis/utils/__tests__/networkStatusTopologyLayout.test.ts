@@ -77,7 +77,7 @@ test('widget instance layouts stay isolated by their own valueConfig', () => {
   const sharedTopology = baseLayout();
   const widgetA = buildPersistedNetworkStatusTopologyConfig({
     modelId: 'switch',
-    instId: '1',
+    instUuid: '1',
     depth: 2,
     layoutByMode: {
       hierarchical: { nodePositions: { a: { x: 11, y: 22 } } },
@@ -85,7 +85,7 @@ test('widget instance layouts stay isolated by their own valueConfig', () => {
   });
   const widgetB = buildPersistedNetworkStatusTopologyConfig({
     modelId: 'switch',
-    instId: '1',
+    instUuid: '1',
     depth: 2,
     layoutByMode: {
       hierarchical: { nodePositions: { a: { x: 77, y: 88 } } },
@@ -191,7 +191,7 @@ test('resolveLinkEdgeGeometry prefers manual vertices over parallel offset', () 
 test('buildPersistedNetworkStatusTopologyConfig keeps layoutByMode and drops flat fields', () => {
   const next = buildPersistedNetworkStatusTopologyConfig({
     modelId: 'router',
-    instId: '99',
+    instUuid: '99',
     depth: 3,
     layoutMode: 'force',
     layoutByMode: {
@@ -202,7 +202,7 @@ test('buildPersistedNetworkStatusTopologyConfig keeps layoutByMode and drops fla
   });
   assert.deepEqual(next, {
     modelId: 'router',
-    instId: '99',
+    instUuid: '99',
     depth: 3,
     layoutMode: 'force',
     layoutByMode: {
@@ -217,7 +217,7 @@ test('buildPersistedNetworkStatusTopologyConfig keeps layoutByMode and drops fla
 test('buildPersistedNetworkStatusTopologyConfig migrates legacy flat into layoutMode bucket', () => {
   const next = buildPersistedNetworkStatusTopologyConfig({
     modelId: 'router',
-    instId: '1',
+    instUuid: '1',
     depth: 2,
     layoutMode: 'circular',
     nodePositions: { a: { x: 1, y: 2 } },
@@ -225,7 +225,7 @@ test('buildPersistedNetworkStatusTopologyConfig migrates legacy flat into layout
   });
   assert.deepEqual(next, {
     modelId: 'router',
-    instId: '1',
+    instUuid: '1',
     depth: 2,
     layoutMode: 'circular',
     layoutByMode: {
@@ -240,12 +240,12 @@ test('buildPersistedNetworkStatusTopologyConfig migrates legacy flat into layout
 test('buildPersistedNetworkStatusTopologyConfig omits empty layout fields', () => {
   const next = buildPersistedNetworkStatusTopologyConfig({
     modelId: 'router',
-    instId: '1',
+    instUuid: '1',
     depth: 2,
   });
   assert.deepEqual(next, {
     modelId: 'router',
-    instId: '1',
+    instUuid: '1',
     depth: 2,
   });
 });
@@ -281,7 +281,7 @@ test('pruneNetworkStatusTopologyLayout drops missing node and link geometry acro
 test('layoutByMode mode switch preserves all buckets and only changes layoutMode', () => {
   const topoConfig = {
     modelId: 'router',
-    instId: '1',
+    instUuid: '1',
     depth: 2,
     layoutMode: 'hierarchical' as const,
     layoutByMode: {
@@ -304,13 +304,13 @@ test('layoutByMode mode switch preserves all buckets and only changes layoutMode
   );
   const emitted = buildPersistedNetworkStatusTopologyConfig({
     modelId: topoConfig.modelId,
-    instId: topoConfig.instId,
+    instUuid: topoConfig.instUuid,
     depth: topoConfig.depth,
     ...pruned,
   });
   assert.deepEqual(emitted, {
     modelId: 'router',
-    instId: '1',
+    instUuid: '1',
     depth: 2,
     layoutMode: 'force',
     layoutByMode: {
@@ -328,7 +328,7 @@ test('layoutByMode mode switch preserves all buckets and only changes layoutMode
 test('persisted layoutMode restores geometry for that mode on reopen', () => {
   const saved = buildPersistedNetworkStatusTopologyConfig({
     modelId: 'router',
-    instId: '1',
+    instUuid: '1',
     depth: 2,
     layoutMode: 'circular',
     layoutByMode: {
@@ -353,7 +353,7 @@ test('resetNetworkStatusTopologyLayout clears only the current mode bucket', () 
   const reset = resetNetworkStatusTopologyLayout(
     {
       modelId: 'router',
-      instId: '1',
+      instUuid: '1',
       depth: 2,
       layoutMode: 'force',
       layoutByMode: {
@@ -368,7 +368,7 @@ test('resetNetworkStatusTopologyLayout clears only the current mode bucket', () 
   );
   assert.deepEqual(reset, {
     modelId: 'router',
-    instId: '1',
+    instUuid: '1',
     depth: 2,
     layoutMode: 'force',
     layoutByMode: {
@@ -383,7 +383,7 @@ test('patchLayoutByMode writes into the active mode without touching others', ()
   const next = patchLayoutByMode(
     {
       modelId: 'router',
-      instId: '1',
+      instUuid: '1',
       depth: 2,
       layoutMode: 'hierarchical',
       layoutByMode: {

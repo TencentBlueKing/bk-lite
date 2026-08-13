@@ -172,8 +172,8 @@ export const InitNode: React.FC<TopoDataProps> = ({
       // 获取更多实例的请求数据
       const params = {
         model_id: nodeData.modelId,
-        inst_id: nodeId,
-        parent_id: neighbors.map((item) => item.id),
+        inst_uuid: nodeId,
+        parent_uuid: neighbors.map((item) => item.id),
       };
 
       // 获取更多实例的请求数据
@@ -483,7 +483,7 @@ export const InitNode: React.FC<TopoDataProps> = ({
       model_name: showModelName(row.modelId),
       model_id: row.modelId,
       classification_id: '',
-      inst_id: node.id,
+      inst_uuid: node.id,
       inst_name: row.inst_name || '',
     };
     const queryString = new URLSearchParams(params).toString();

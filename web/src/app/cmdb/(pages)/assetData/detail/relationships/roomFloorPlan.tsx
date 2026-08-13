@@ -15,10 +15,19 @@ import DeviceDetailDrawer from './deviceDetailDrawer';
 
 interface Props {
   modelId: string;
-  instId: string;
+  instUuid: string;
+  /** When set, rack click navigates via callback instead of opening the elevation Drawer. */
+  onRackSelect?: (rack: RoomRack) => void;
+  /** After returning from a rack drill-down, scroll this rack into view and pulse it. */
+  highlightRackId?: string;
 }
 
-const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
+const RoomFloorPlan: React.FC<Props> = ({
+  modelId,
+  instUuid,
+  onRackSelect,
+  highlightRackId,
+}) => {
   const { t } = useTranslation();
   const { mode } = useThemeMode();
   const { getRoomLayout } = useInstanceApi();
@@ -27,19 +36,36 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
   const [rack, setRack] = useState<RoomRack | null>(null);
   const [device, setDevice] = useState<RackDevice | null>(null);
   const [devOpen, setDevOpen] = useState(false);
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const isDark = mode === 'dark';
 
   useEffect(() => {
-    if (!modelId || !instId) return;
+    if (!modelId || !instUuid) return;
     let cancelled = false;
     setLoading(true);
-    getRoomLayout(modelId, instId)
+    getRoomLayout(modelId, instUuid)
       .then((res: RoomLayoutData) => !cancelled && setData(res))
       .catch(() => !cancelled && setData(null))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, instId]);
+     
+  }, [modelId, instUuid]);
+
+  useEffect(() => {
+    if (!highlightRackId || !data || loading) return;
+    const el = document.querySelector(
+      `[data-room-rack-id="${CSS.escape(highlightRackId)}"]`
+    ) as HTMLElement | null;
+    if (!el) return;
+    setActiveHighlightId(highlightRackId);
+    el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+    const timer = window.setTimeout(() => {
+      setActiveHighlightId((current) =>
+        (current === highlightRackId ? null : current)
+      );
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [highlightRackId, data, loading]);
 
   if (loading) return <div style={{ padding: 60, textAlign: 'center' }}><Spin spinning /></div>;
   if (!data) return <Empty description={t('Model.noRoomLayout')} />;
@@ -119,7 +145,10 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
             const { x, y } = cellXY(r.row, r.col);
             const c = rackTypeColor(r.datacenter_type);
             return (
-              <div key={r.inst_id} className="rf-rack"
+              <div
+                key={r.inst_id}
+                className={`rf-rack${activeHighlightId === r.inst_id ? ' rf-rack--highlight' : ''}`}
+                data-room-rack-id={r.inst_id}
                 style={{
                   left: x + GAP / 2, top: y + GAP / 2, width: box, height: box,
                   borderColor: isDark
@@ -130,7 +159,13 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
                     : '0 1px 2px rgba(24, 39, 63, 0.035), 0 6px 14px rgba(31, 51, 82, 0.025)',
                   ['--rack-tone' as string]: c,
                 }}
-                onClick={() => setRack(r)}>
+                onClick={() => {
+                  if (onRackSelect) {
+                    onRackSelect(r);
+                    return;
+                  }
+                  setRack(r);
+                }}>
                 <span className="rf-rack-led" style={{ background: c, boxShadow: `0 0 0 3px ${c}1f` }} />
                 <div className="rf-rack-name-slot">
                   <EllipsisWithTooltip text={r.inst_name} className="rf-rack-name" />
@@ -195,7 +230,7 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
             </div>
             <RackElevation
               modelId="rack"
-              instId={rack.inst_id}
+              instUuid={rack.inst_uuid || rack.inst_id}
               embedded
               onDeviceClick={(d) => { setDevice(d); setDevOpen(true); }}
             />
@@ -309,6 +344,16 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           transform: translateY(-2px);
           border-color: var(--rack-tone);
           box-shadow: ${rackHoverShadow} !important;
+        }
+        .rf-rack--highlight {
+          border-color: var(--rack-tone) !important;
+          box-shadow: ${rackHoverShadow} !important;
+          animation: rf-rack-pulse 1.6s ease-out 1;
+        }
+        @keyframes rf-rack-pulse {
+          0% { transform: scale(1); }
+          35% { transform: scale(1.04); }
+          100% { transform: scale(1); }
         }
         .rf-rack-led {
           position: absolute; top: 7px; right: 6px;

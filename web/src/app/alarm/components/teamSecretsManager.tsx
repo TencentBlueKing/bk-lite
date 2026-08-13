@@ -2,12 +2,13 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Table, Button, message, Popconfirm, Empty, Spin } from 'antd';
-import { PlusOutlined, CopyOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useSourceApi } from '@/app/alarm/api/integration';
 import { TeamSecretItem } from '@/app/alarm/types/integration';
 import GroupTreeSelect from '@/components/group-tree-select';
+import SecretValueDisplay from '@/components/secret-value-display';
 
 interface TeamSecretsManagerProps {
   sourceId: number | string;
@@ -82,11 +83,6 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
     }
   };
 
-  const copySecret = (secret: string) => {
-    navigator.clipboard.writeText(secret);
-    message.success(t('alarmCommon.copied'));
-  };
-
   const existingTeamIds = teamSecrets.map(ts => ts.team_id);
   const displayTeamSecrets = teamSecrets.map((teamSecret) => ({
     ...teamSecret,
@@ -107,15 +103,7 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
       title: t('integration.secret'),
       dataIndex: 'secret',
       key: 'secret',
-      render: (secret: string) => (
-        <div className="flex items-center gap-2">
-          <span className="font-mono">{'******************'}</span>
-          <CopyOutlined
-            className="cursor-pointer hover:text-blue-500"
-            onClick={() => copySecret(secret)}
-          />
-        </div>
-      ),
+      render: (secret: string) => <SecretValueDisplay value={secret} />,
     },
     {
       title: t('common.actions'),

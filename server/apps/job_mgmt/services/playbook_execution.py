@@ -6,7 +6,6 @@ from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus
-from apps.job_mgmt.models import Target
 from apps.job_mgmt.services import ExecutionTaskBaseService
 from apps.job_mgmt.utils.playbook_archive import enforce_archive_limits
 from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
@@ -71,12 +70,13 @@ class PlaybookExecution(ExecutionTaskBaseService):
             execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
             execution.save(update_fields=["execution_results", "updated_at"])
             # 提交失败时立即清理 NATS OS 中转文件
-            if nats_file_key:
+            cleanup_key = nats_file_key or execution.playbook_temp_file_key
+            if cleanup_key:
                 try:
-                    async_to_sync(delete_s3_file)(nats_file_key)
-                    logger.info(f"[{self.task_name}] 已清理 NATS OS 中转文件: {nats_file_key}")
+                    async_to_sync(delete_s3_file)(cleanup_key)
+                    logger.info(f"[{self.task_name}] 已清理 NATS OS 中转文件: {cleanup_key}")
                 except Exception as cleanup_err:
-                    logger.warning(f"[{self.task_name}] 清理 NATS OS 中转文件失败: {nats_file_key}, error={cleanup_err}")
+                    logger.warning(f"[{self.task_name}] 清理 NATS OS 中转文件失败: {cleanup_key}, error={cleanup_err}")
 
     @classmethod
     def _execute_playbook_via_ansible(cls, execution, target_list: list) -> str | None:
@@ -98,7 +98,7 @@ class PlaybookExecution(ExecutionTaskBaseService):
         if not target_ids:
             raise ValueError("未找到有效的目标ID")
 
-        targets = list(Target.objects.filter(id__in=target_ids))
+        targets = cls._load_manual_targets_for_execution(execution, target_ids)
         if not targets:
             raise ValueError("未找到有效的目标记录")
 
@@ -130,10 +130,9 @@ class PlaybookExecution(ExecutionTaskBaseService):
         )
 
         # 构建回调配置
-        callback_config = {
-            "subject": f"{NATS_NAMESPACE}.ansible_task_callback",
-            "timeout": 30,
-        }
+        from apps.job_mgmt.services.ansible_callback_service import build_ansible_callback_config
+
+        callback_config = build_ansible_callback_config(execution, f"{NATS_NAMESPACE}.ansible_task_callback")
 
         # 构建 extra_vars（从 execution.params 和 playbook.params 还原）
         extra_vars = cls._build_extra_vars(execution.params, playbook.params)
@@ -146,6 +145,13 @@ class PlaybookExecution(ExecutionTaskBaseService):
             nats_file_key = f"job-playbooks/{execution.id}/{playbook.file_name}"
             logger.info(f"[{task_name}] 中转 Playbook ZIP: MinIO({playbook.bucket_name}/{playbook.file_key}) -> NATS OS({nats_file_key})")
             try:
+                # 先固定资源边界并预留超时清理，再执行外部上传。这样 worker 在上传后
+                # 任一点硬退出，Beat 都能按持久化意图完成幂等清理。
+                execution.playbook_temp_file_key = nats_file_key
+                execution.save(update_fields=["playbook_temp_file_key", "updated_at"])
+                from apps.job_mgmt.services.completion_outbox_service import reserve_playbook_cleanup
+
+                reserve_playbook_cleanup(execution, nats_file_key)
                 minio_file = playbook.file
                 minio_file.open("rb")
                 archive_info = enforce_archive_limits(minio_file)
@@ -155,7 +161,8 @@ class PlaybookExecution(ExecutionTaskBaseService):
             except Exception as e:
                 raise ValueError(f"Playbook 文件中转失败: {e}") from e
             finally:
-                minio_file.close()
+                if "minio_file" in locals():
+                    minio_file.close()
 
             files.append(
                 {

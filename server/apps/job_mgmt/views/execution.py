@@ -1,8 +1,6 @@
 """作业执行视图"""
 
-from celery import current_app
 from django.http import StreamingHttpResponse
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -20,6 +18,11 @@ from apps.job_mgmt.serializers.execution import (
     QuickExecuteSerializer,
 )
 from apps.job_mgmt.services.execution_service import ExecutionAuthorizationError, ExecutionDispatchError, ExecutionService
+from apps.job_mgmt.services.execution_cancellation_service import (
+    ExecutionCancellationAuthorizationError,
+    ExecutionCancellationError,
+    request_execution_cancel,
+)
 from apps.job_mgmt.services.execution_stream_service import (
     JOB_LOG_MAX_AGE_SECONDS,
     JOB_LOG_MAX_BYTES,
@@ -28,14 +31,9 @@ from apps.job_mgmt.services.execution_stream_service import (
     snapshot_sse_from_results,
     stream_execution_events,
 )
-from apps.job_mgmt.tasks import finalize_cancelling_execution
 from apps.job_mgmt.utils.team_authz import normalize_authorized_team_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from nats_client.clients import ensure_stream_sync
-
-# CANCELLING 兜底收敛任务的额外缓冲（秒）：在 execution.timeout 之后再等一段时间，
-# 给真实结果回写留出余量，仍未回写才强制收敛为 CANCELLED。
-CANCEL_CONVERGE_BUFFER_SECONDS = 60
 
 
 class JobExecutionViewSet(AuthViewSet):
@@ -233,52 +231,17 @@ class JobExecutionViewSet(AuthViewSet):
         L0: 无论 PENDING/RUNNING，都尽力 revoke 队列中尚未取走的 Celery 任务（失败不阻断）。
         """
         execution = self.get_object()
-        status_now = execution.status
-
-        if status_now in ExecutionStatus.TERMINAL_STATES:
-            return Response(
-                {"error": f"任务已处于终态({execution.get_status_display()})，无法取消"},
-                status=status.HTTP_400_BAD_REQUEST,
+        try:
+            execution, message = request_execution_cancel(
+                execution.id,
+                authorized_team_ids=self._get_authorized_team_ids(request),
             )
-        if status_now == ExecutionStatus.CANCELLING:
-            return Response(
-                {"error": "任务正在取消中，请勿重复操作"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # L0: 尽力 revoke Celery 任务（仅对队列中尚未被 worker 取走的任务有效；失败不阻断取消）
-        if execution.celery_task_id:
-            try:
-                current_app.control.revoke(execution.celery_task_id)
-                logger.info(f"[cancel] 已 revoke Celery 任务: execution_id={execution.id}, task_id={execution.celery_task_id}")
-            except Exception as e:
-                logger.warning(f"[cancel] revoke Celery 任务失败: execution_id={execution.id}, error={e}")
-
-        now = timezone.now()
-        if status_now == ExecutionStatus.PENDING:
-            # PENDING→CANCELLED：worker 尚未执行，直接落终态
-            updated = JobExecution.objects.filter(id=pk, status=ExecutionStatus.PENDING).update(
-                status=ExecutionStatus.CANCELLED, finished_at=now, updated_at=now
-            )
-            if updated:
-                logger.info(f"[cancel] 等待中任务已取消: execution_id={execution.id}")
-                log_operation(request, "execute", "job", f"取消执行: {execution.id}")
-                return Response({"message": "已取消执行", "status": ExecutionStatus.CANCELLED})
-        elif status_now == ExecutionStatus.RUNNING:
-            # RUNNING→CANCELLING：已在执行，进入过渡态，等真实结果回写后收敛
-            updated = JobExecution.objects.filter(id=pk, status=ExecutionStatus.RUNNING).update(status=ExecutionStatus.CANCELLING, updated_at=now)
-            if updated:
-                # 兜底收敛任务：execution.timeout + 缓冲后仍滞留 CANCELLING 则强制收敛为 CANCELLED
-                finalize_cancelling_execution.apply_async(args=[execution.id], countdown=execution.timeout + CANCEL_CONVERGE_BUFFER_SECONDS)
-                logger.info(f"[cancel] 执行中任务进入取消中: execution_id={execution.id}")
-                log_operation(request, "execute", "job", f"取消执行: {execution.id}")
-                return Response({"message": "正在取消执行", "status": ExecutionStatus.CANCELLING})
-
-        # CAS 未命中：检查后状态被并发改变，按最新状态拒绝
-        return Response(
-            {"error": "状态已变更，请刷新后重试"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+        except ExecutionCancellationAuthorizationError as error:
+            return Response({"error": str(error)}, status=status.HTTP_403_FORBIDDEN)
+        except ExecutionCancellationError as error:
+            return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        log_operation(request, "execute", "job", f"取消执行: {execution.id}")
+        return Response({"message": message, "status": execution.status})
 
     @action(detail=True, methods=["post"])
     @HasPermission("job_record-Edit")

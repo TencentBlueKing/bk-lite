@@ -1,6 +1,7 @@
 from apps.system_mgmt.providers import loader
 from apps.system_mgmt.providers.adapters.ad import ADBaseConnectionAdapter
 from apps.system_mgmt.providers.adapters.feishu import FeishuBaseConnectionAdapter
+from apps.system_mgmt.providers.adapters.wecom import WeComBaseConnectionAdapter
 from apps.system_mgmt.providers.adapters.wechat import WechatBaseConnectionAdapter
 from apps.system_mgmt.providers.registry import capability_adapter_registry
 
@@ -23,9 +24,7 @@ def test_loader_registers_wechat_base_connection_adapter():
     assert capability_adapter_registry.get("wechat.base_connection") is WechatBaseConnectionAdapter
 
 
-def test_loader_does_not_register_wecom_base_connection_adapter():
+def test_loader_registers_wecom_base_connection_adapter():
     loader.reset_builtin_providers()
 
-    # WeCom does not declare base_connection_adapter_key/path; the runtime should
-    # fall back to capability-level test_connection.
-    assert capability_adapter_registry.get("wecom.base_connection") is None
+    assert capability_adapter_registry.get("wecom.base_connection") is WeComBaseConnectionAdapter

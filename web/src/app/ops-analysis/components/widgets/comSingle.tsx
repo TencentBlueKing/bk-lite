@@ -29,6 +29,7 @@ import {
 } from '@/app/ops-analysis/utils/compareQuery';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import { buildFallbackSparkline } from '@/app/ops-analysis/utils/singleValueSparkline';
+import { resolveSingleDescriptionText } from '@/app/ops-analysis/utils/singleDescription';
 import { useTranslation } from '@/utils/i18n';
 import OpsAnalysisMetricValue from '@/app/ops-analysis/components/ops-analysis-metric-value';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
@@ -176,6 +177,10 @@ const ComSingle: React.FC<ComSingleProps> = ({
 
   const selectedField = config?.selectedFields?.[0];
   const rawValue = extractComparableValue(rawData, selectedField);
+  const descriptionText = resolveSingleDescriptionText(
+    rawData,
+    config?.descriptionField,
+  );
   const baselineRawValue = extractComparableValue(baselineData, selectedField);
   const numericValue =
     rawValue !== null
@@ -424,6 +429,21 @@ const ComSingle: React.FC<ComSingleProps> = ({
             }
           />
         </div>
+
+        {descriptionText ? (
+          <div
+            className="shrink-0"
+            style={{
+              marginTop: compareSpacing,
+              color: chartTheme.singleValueMetaColor,
+              fontSize: compareLabelFontSize,
+              lineHeight: 1.3,
+              wordBreak: 'break-word',
+            }}
+          >
+            {descriptionText}
+          </div>
+        ) : null}
 
         {config?.compare && (
           <div

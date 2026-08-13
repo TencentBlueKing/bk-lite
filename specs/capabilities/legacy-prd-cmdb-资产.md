@@ -65,7 +65,7 @@
 - 资源拓扑支持按层级展开关联节点，查看节点分组后的资源实例明细。
 - 支持将当前选中节点对应的资源实例导出为表格，用于应用资源盘点与交接。
 
-相关架构：[[spec/ARD/modules/cmdb.md#3. 接口【已实现/已存在】]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#3. 资产详情]]
+相关架构：[[legacy-ard-modules-cmdb.md#3. 接口【已实现/已存在】]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#3. 资产详情]]
 > 证据来源：server/apps/cmdb/views/instance.py:999-1143，server/apps/cmdb/constants/constants.py:53-63　|　同步基线：83091efe　|　【已实现】
 
 ### 3.9 资产详情 · 配置文件
@@ -76,7 +76,7 @@
 - 支持手动创建版本快照（采集之外）。
 - 对网络设备配置文件采集产生的版本，统一复用同一版本历史与差异查看入口。
 
-相关架构：[[spec/ARD/modules/cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#3. 资产详情]]
+相关架构：[[legacy-ard-modules-cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#3. 资产详情]]
 > 证据来源：server/apps/cmdb/node_configs/network_config_file.py:33-63　|　同步基线：83091efe　|　【已实现】
 
 ### 3.10 资产详情 · 变更记录
@@ -92,6 +92,16 @@
 - 支持配置接收人与通知渠道。
 - 支持规则启用、停用、编辑、删除。
 - 支持在实例详情一键快捷订阅：以当前实例、模型、组织和当前用户为默认值预填规则，补全后立即生效。
+
+### 3.12 跨模块主机联动
+
+- 新建主机资产后，平台会尝试关联已有的节点与监控对象；当前 CMDB 来源不会在监控侧自动新建实例，任一对端暂不可用也不会阻断资产创建。
+- 对具备该资产操作权限的用户，提供“推送到监控”操作，用于将选定资产主动交由监控侧接入或关联。
+- 联动以三端关联标识保持同一主机的身份；若目标资产已绑定其他节点，系统保留原关联并返回冲突，不自动抢占。
+- 当 CMDB 主机或监控实例删除时，CMDB 侧仅解除相应系统间关联；节点退役时，CMDB 资产保留并解除关联，监控侧会停用并软删除对应监控实例。
+- 相关架构：[[legacy-ard-modules-cmdb.md#5. 核心数据流 / 任务]]；相关功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#2. 资产管理（实例）]]。
+
+> 证据来源：server/apps/cmdb/services/instance.py:821-864，server/apps/cmdb/services/instance.py:1272-1328，server/apps/cmdb/services/module_ingest.py:325-392，server/apps/cmdb/views/instance.py:335-369，server/apps/monitor/services/module_ingest.py:541-589　|　同步基线：d2769559　|　【已实现】
 
 ## 4. 关键规则
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Empty, Modal, Spin } from 'antd';
+import { Empty, Alert, Button, Modal, Spin } from 'antd';
 import type { Graph } from '@antv/x6';
 import {
   NetworkTopologyX6Canvas,
@@ -15,6 +15,7 @@ import type {
 import { useTranslation } from '@/utils/i18n';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import { useNetworkStatusTopologyApi } from '@/app/ops-analysis/api/networkStatusTopology';
+import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import type {
   NetworkStatusTopologyConfig,
   NetworkStatusTopologyLink,
@@ -177,7 +178,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     // 拓扑查询身份变化时清空查看态临时摆放
     setEphemeralPositions({});
     setViewLayoutMode(null);
-  }, [topoConfig?.modelId, topoConfig?.instId, topoConfig?.depth]);
+  }, [topoConfig?.modelId, topoConfig?.instUuid, topoConfig?.depth]);
 
   const emitLayoutChange = useCallback(
     (next: NetworkStatusTopologyConfig) => {
@@ -187,7 +188,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   );
 
   const fetchData = useCallback(async () => {
-    if (!topoConfig?.modelId || !topoConfig?.instId) {
+    if (!topoConfig?.modelId || !topoConfig?.instUuid) {
       setData(null);
       setError(t('dashboard.networkTopoMissingConfig'));
       onReadyRef.current?.(false);
@@ -199,7 +200,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       setError('');
       const result = await getNetworkStatusTopology({
         model_id: topoConfig.modelId,
-        inst_id: topoConfig.instId,
+        inst_uuid: topoConfig.instUuid,
         depth: topoConfig.depth || 2,
       });
       setData(result);
@@ -209,14 +210,13 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     } catch (err) {
       console.error('network status topology fetch failed:', err);
       setData(null);
-      setError(t('dashboard.networkTopoLoadFailed'));
+      setError(getRequestErrorMessage(err, t('dashboard.networkTopoLoadFailed')));
       onReadyRef.current?.(false);
     } finally {
       setLoading(false);
     }
     // API hooks return fresh function references; fetching is driven by widget config.
-     
-  }, [t, topoConfig?.depth, topoConfig?.instId, topoConfig?.modelId]);
+  }, [t, topoConfig?.depth, topoConfig?.instUuid, topoConfig?.modelId]);
 
   useEffect(() => {
     void fetchData();
@@ -305,7 +305,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       const computed = layoutNetworkTopology({
         nodes: canvasNodes,
         links: parallelLinks,
-        centerId: String(data?.center_id || topoConfig?.instId || ''),
+        centerId: String(data?.center_id || topoConfig?.instUuid || ''),
         mode: layoutMode,
         fitToViewport: false,
       });
@@ -325,7 +325,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       ephemeralPositions,
       layoutMode,
       parallelLinks,
-      topoConfig?.instId,
+      topoConfig?.instUuid,
     ],
   );
   const graphData = useMemo(
@@ -345,7 +345,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       return buildStatusTopologyX6GraphData({
         nodes: layout.nodes,
         links: positionedLinks,
-        centerId: String(data?.center_id || topoConfig?.instId || ''),
+        centerId: String(data?.center_id || topoConfig?.instUuid || ''),
         selectedNodeId,
         activeNodeIds: faultNodeIds,
         activeLinkIds: faultLinkIds,
@@ -364,21 +364,21 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       layout.nodes,
       parallelLinks,
       selectedNodeId,
-      topoConfig?.instId,
+      topoConfig?.instUuid,
       topologyPalette,
     ],
   );
   const fitViewKey = useMemo(
     () => [
       layoutMode,
-      data?.center_id || topoConfig?.instId || '',
+      data?.center_id || topoConfig?.instUuid || '',
       canvasNodes.map((node) => node.id).join(','),
       parallelLinks.map((link) => link.id).join(','),
       // 强制在视觉常量 / shape 版本变更后重建画布
       STATUS_TOPOLOGY_NODE_SHAPE,
       `i${STATUS_TOPOLOGY_VISUAL.iconSize}-n${STATUS_TOPOLOGY_VISUAL.nameFontSize}-y${STATUS_TOPOLOGY_VISUAL.labelNameY}`,
     ].join('|'),
-    [canvasNodes, data?.center_id, layoutMode, parallelLinks, topoConfig?.instId],
+    [canvasNodes, data?.center_id, layoutMode, parallelLinks, topoConfig?.instUuid],
   );
 
   useEffect(() => {
@@ -424,7 +424,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       );
       emitLayoutChange({
         modelId: topoConfig.modelId,
-        instId: topoConfig.instId,
+        instUuid: topoConfig.instUuid,
         depth: topoConfig.depth || 2,
         ...pruned,
       });
@@ -588,7 +588,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         closeMenu();
         openUrl(buildInstanceDetailUrl({
           modelId: String(originalNode.model_id),
-          instId: String(originalNode.id),
+          instUuid: String(originalNode.id),
           instName: originalNode.name,
         }));
       };
@@ -623,8 +623,8 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
 
   const hoverCanvasNode = canvasNodes.find((node) => node.id === hoverNodeId);
   const contextCanvasNode = canvasNodes.find((node) => node.id === contextNodeId);
-  const isMissingConfig = !topoConfig?.modelId || !topoConfig?.instId;
-
+  const isMissingConfig = !topoConfig?.modelId || !topoConfig?.instUuid;
+  
   return (
     <div
       ref={canvasRef}
@@ -636,7 +636,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       {graphData.nodes.length ? (
         <NetworkTopologyX6Canvas
           data={graphData}
-          centerId={String(data?.center_id || topoConfig?.instId || '')}
+          centerId={String(data?.center_id || topoConfig?.instUuid || '')}
           graphRef={graphRef}
           nodeMovable
           edgeVerticesEditable={canPersistLayout}

@@ -28,6 +28,14 @@ CASE
   END
 {%- endmacro %}
 
+{# Macro: 全部聚合维度为空时降级到 external_id #}
+{% macro dimension_fallback_flag(dimensions) %}
+CASE
+    WHEN {{ all_dimensions_present(dimensions) }} THEN FALSE
+    ELSE TRUE
+  END
+{%- endmacro %}
+
 {# Macro: Build dimension columns for GROUP BY #}
 {% macro dimension_columns(dimensions) %}
   {%- for dim_name in dimensions -%}

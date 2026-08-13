@@ -6,6 +6,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.log.models.log_group import LogGroup, LogGroupOrganization, SearchCondition
 from apps.log.services.access_scope import LogAccessScopeService
+from apps.log.utils.log_group import LogGroupQueryBuilder
 
 
 class CanonicalOrganizationIdField(serializers.Field):
@@ -102,6 +103,20 @@ class LogGroupSerializer(serializers.ModelSerializer):
                 LogAccessScopeService.validate_organizations(request, value)
             except ValueError as exc:
                 raise serializers.ValidationError(str(exc))
+
+        return value
+
+    def validate_rule(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("日志分组规则必须是对象（object）格式")
+
+        try:
+            LogGroupQueryBuilder.validate_rule(
+                value,
+                require_legacy_safe=LogGroupQueryBuilder._legacy_migration_mode_enabled(),
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
         return value
 

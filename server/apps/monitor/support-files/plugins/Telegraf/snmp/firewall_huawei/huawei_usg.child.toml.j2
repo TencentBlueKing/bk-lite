@@ -1,0 +1,103 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_huawei_usg"
+        config_type = "huawei_usg"
+        brand = "huawei"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Huawei USG CPU (HUAWEI-ENTITY-EXTENT-MIB hwEntityCpuUsage, per entity, 0-100%) ----
+    # 现网核验：USG6390 ...1.1.5.<entPhysicalIndex> 可读；多实体 → Telegraf index + descr 维度（metrics 声明 dimensions=descr）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.5"
+        name = "usage"
+    # ---- Huawei USG Memory (hwEntityMemUsage, USG6000 整机内存%, per entity) ----
+    # 现网核验：...1.1.7.<index>；多实体 → descr 维度。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.7"
+        name = "usage"
+    # ---- Huawei USG Temperature (hwEntityTemperature, °C, per entity) ----
+    # 现网核验：...1.1.11.<index>；多实体 → descr 维度。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11"
+        name = "celsius"
+    # ---- Huawei USG Voltage (hwEntityVoltage, per entity, raw unit mV) ----
+    # Info-Finder USG6390：...1.1.13 存在且 read-only；标准 MIB 单位为 mV → metrics 查询 /1000 得 V。
+    # 多实体 → descr 维度。
+    [[inputs.snmp.table]]
+        name = "device_voltage"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.13"
+        name = "volts"
+# ---- 风扇/电源/光衰（对照 USG6390 Info-Finder，不支持则不建模）：----
+# 风扇运行状态 hwEntityFanState(...10.1.7) / 槽位 hwEntityFanSlot(...10.1.1)：MIB 中不存在。
+#   仅有 hwEntityFanReg(...10.1.3 yes/no 注册)，语义≠运行状态，不可映射 device_fan_state。
+# 电源状态 hwEntityPwrState：MIB 中不存在；仅有 TotalPwrNum/NomalPwrNum 整机计数，无 per-PSU 状态。
+# 光功率 hwEntityOpticalRx/TxPower：MIB 标明仅 USG9500 支持；按产品要求本模板不做光衰。

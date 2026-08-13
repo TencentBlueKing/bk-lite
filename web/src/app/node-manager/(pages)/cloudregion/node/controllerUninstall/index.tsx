@@ -35,9 +35,11 @@ import BatchEditModal from './batchEditModal';
 import { cloneDeep, isNumber } from 'lodash';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import {
+  applyControllerUninstallCertificateValidation,
   buildControllerUninstallRequestNode,
   buildControllerUninstallRow
 } from '@/app/node-manager/utils/nodeOperation';
+import WinrmCertificateValidationField from '@/app/node-manager/components/winrm-certificate-validation-field';
 
 const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess, config }, ref) => {
@@ -52,6 +54,9 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
     const [collectorVisible, setCollectorVisible] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [tableData, setTableData] = useState<TableDataItem[]>([]);
+    const isWindowsUninstall = tableData[0]?.os === 'windows';
+    const winrmCertValidation =
+      isWindowsUninstall && tableData[0]?.winrm_cert_validation === true;
 
     const tableColumns = useMemo(
       () => [
@@ -440,6 +445,16 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
         }
       >
         <Form ref={collectorformRef} layout="vertical" colon={false}>
+          {isWindowsUninstall && (
+            <WinrmCertificateValidationField
+              checked={winrmCertValidation}
+              onChange={(checked) =>
+                setTableData((rows) =>
+                  applyControllerUninstallCertificateValidation(rows, checked)
+                )
+              }
+            />
+          )}
           <Form.Item<ControllerInstallFields>
             name="nodes"
             label={t('node-manager.cloudregion.node.controllerInfo')}

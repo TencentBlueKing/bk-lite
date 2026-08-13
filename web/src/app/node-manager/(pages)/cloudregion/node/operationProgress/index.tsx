@@ -442,15 +442,22 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         const failureGuidance = getInstallerFailureGuidance(t, row.result);
         const summaryGuidance = getInstallerSummaryGuidance(
           t,
-          normalizedResult?.installer_summary
+          normalizedResult?.installer_summary,
+          {
+            suppressNoInstallerEvents: ['command_failed', 'credential_failed'].includes(
+              controllerDisplay?.state || ''
+            ),
+            suppressIncompleteWhenFailedStep: true
+          }
         );
+        const nextActionGuidance = failureGuidance.suggestion || summaryGuidance;
 
         const hasFailureInfo =
           ['error', 'timeout'].includes(normalizedStatus) ||
           ['error', 'warning'].includes(controllerDisplay?.severity || '');
         const hasTooltipContent =
           hasFailureInfo &&
-          (failureGuidance.reason || failureGuidance.suggestion || summaryGuidance);
+          (failureGuidance.reason || nextActionGuidance);
 
         const tooltipContent = hasTooltipContent ? (
           <div className="max-w-[320px] text-[12px]">
@@ -473,18 +480,11 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
                 </div>
               </div>
             )}
-            {failureGuidance.suggestion && (
+            {nextActionGuidance && (
               <div className="mt-[4px]">
                 {t('node-manager.cloudregion.node.nextAction')}:
                 {' '}
-                {failureGuidance.suggestion}
-              </div>
-            )}
-            {summaryGuidance && (
-              <div className="mt-[4px]">
-                {t('node-manager.cloudregion.node.nextAction')}:
-                {' '}
-                {summaryGuidance}
+                {nextActionGuidance}
               </div>
             )}
           </div>

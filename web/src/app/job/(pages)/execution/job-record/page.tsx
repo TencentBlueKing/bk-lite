@@ -34,6 +34,7 @@ import {
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import MarkdownRenderer from '@/components/markdown';
+import ExecutionStatusBadge from '@/components/execution-status-badge';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useAuth } from '@/context/auth';
@@ -390,17 +391,17 @@ const JobRecordPage = () => {
     return `${hours}h ${remainMinutes}m`;
   };
 
-  const getStatusConfig = (status: JobRecordStatus) => {
-    const configs: Record<JobRecordStatus, { color: string; label: string }> = {
-      pending: { color: 'default', label: t('job.statusPending') },
-      running: { color: 'processing', label: t('job.statusRunning') },
-      success: { color: 'success', label: t('job.statusSuccess') },
-      failed: { color: 'error', label: t('job.statusFailed') },
-      timeout: { color: 'error', label: t('job.statusTimeout') },
-      cancelled: { color: 'warning', label: t('job.statusCanceled') },
-      cancelling: { color: 'processing', label: t('job.statusCancelling') },
+  const getStatusLabel = (status: JobRecordStatus | string) => {
+    const labels: Record<JobRecordStatus, string> = {
+      pending: t('job.statusPending'),
+      running: t('job.statusRunning'),
+      success: t('job.statusSuccess'),
+      failed: t('job.statusFailed'),
+      timeout: t('job.statusTimeout'),
+      cancelled: t('job.statusCanceled'),
+      cancelling: t('job.statusCancelling'),
     };
-    return configs[status] || configs.pending;
+    return labels[status as JobRecordStatus] || labels.pending;
   };
 
   const getSourceConfig = (source: JobRecordSource | string | undefined) => {
@@ -504,10 +505,9 @@ const JobRecordPage = () => {
       dataIndex: 'status',
       key: 'status',
       width: 120,
-      render: (value: JobRecordStatus) => {
-        const config = getStatusConfig(value);
-        return <Tag color={config.color}>{config.label}</Tag>;
-      },
+      render: (value: JobRecordStatus) => (
+        <ExecutionStatusBadge status={value} label={getStatusLabel(value)} />
+      ),
     },
     {
       title: t('job.initiator'),
@@ -924,9 +924,10 @@ const JobRecordPage = () => {
               <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
                 #{detail.id}
               </span>
-              <Tag color={getStatusConfig(detail.status).color}>
-                {getStatusConfig(detail.status).label}
-              </Tag>
+              <ExecutionStatusBadge
+                status={detail.status}
+                label={getStatusLabel(detail.status)}
+              />
             </div>
             <div className="flex items-center gap-2">
               {['pending', 'running', 'cancelling'].includes(detail.status) && (
@@ -1086,12 +1087,11 @@ const JobRecordPage = () => {
                         <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
                           {duration !== null ? `${duration}s` : '-'}
                         </span>
-                        <Tag
-                          color={getStatusConfig(target.status).color}
+                        <ExecutionStatusBadge
+                          status={target.status}
+                          label={getStatusLabel(target.status)}
                           className="m-0"
-                        >
-                          {getStatusConfig(target.status).label}
-                        </Tag>
+                        />
                       </div>
                     </div>
                   </div>

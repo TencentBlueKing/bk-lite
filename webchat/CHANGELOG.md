@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `socketUrl` is now normalized to `sseUrl` when the active endpoint is absent.
+- Custom integration options use `extensions: Record<string, unknown>` instead of arbitrary top-level keys.
+- `FloatingButtonProps` exposes the complete `ChatProps` pass-through contract.
+
+### Deprecated
+
+- `socketUrl`, `socketPath`, `enableSSE`, `reconnectAttempts`, and `reconnectDelay` remain source-compatible but are documented
+  as legacy options. Use `sseUrl` for the complete stream endpoint.
+
 ## [1.0.0] - 2025-10-29
 
 ### Added
@@ -104,8 +117,7 @@ window.WebChat.default({
 
 // New WebChat
 window.WebChat.default({
-  socketUrl: "http://rasa:5005/webhooks/rest/webhook",
-  enableSSE: true,
+  sseUrl: "http://rasa:5005/webhooks/rest/webhook",
 });
 ```
 

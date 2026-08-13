@@ -245,6 +245,7 @@ class AgentNode(BaseNodeExecutor):
             "matched_skill_packages": matched_skill_packages,
             # 用户显式选中的全集:用于 backend 物化,绕开 substring 匹配丢包。
             # chat_service 透传到 extra_config,node._resolve_skill_packages 优先使用。
+            # 报告门禁 capabilities 只来自 matched，避免寒暄轮误开报告闭环。
             "enabled_skill_packages": skill_packages,
             **skill_package_strategy,
             "temperature": skill.temperature,

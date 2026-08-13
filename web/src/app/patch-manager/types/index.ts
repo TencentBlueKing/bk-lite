@@ -12,6 +12,136 @@ export type PatchSourceType = 'wsus' | 'yum_repo' | 'dnf_repo' | 'apt_repo';
 export type PatchOriginType = PatchSourceType | 'manual';
 export type PatchTargetSource = 'manual' | 'node_mgmt';
 export type ComplianceStatus = 'compliant' | 'non_compliant' | 'pending' | 'evaluating' | 'failed' | 'unconfigured' | 'unknown' | 'not_applicable';
+export type BaselineCompliancePerspective = 'host' | 'patch';
+export type BaselineComplianceResultStatus = 'satisfied' | 'missing' | 'not_applicable' | 'unknown' | 'pending' | 'evaluating' | 'failed';
+export type BaselineComplianceResultScope = 'requirement' | 'host';
+
+export interface BaselineComplianceDistribution {
+  status: BaselineComplianceResultStatus;
+  count: number;
+}
+
+export interface BaselineComplianceFailure {
+  reason: string;
+  error_code: string;
+  failed_stage: string;
+}
+
+export interface BaselineComplianceHostObject {
+  id: number;
+  binding_id: number;
+  name: string;
+  ip: string;
+  compliance_status: ComplianceStatus;
+  missing_count: number;
+  last_evaluated_at: string | null;
+  distribution: BaselineComplianceDistribution[];
+  failure?: BaselineComplianceFailure | null;
+}
+
+export interface BaselineCompliancePatchObject {
+  id: number;
+  requirement_id: number;
+  patch_id: number;
+  identifier: string;
+  title: string;
+  severity: PatchSeverity;
+  severity_display: string;
+  condition: string;
+  distribution: BaselineComplianceDistribution[];
+}
+
+export interface BaselineComplianceRequirementSummary {
+  requirement_id: number;
+  patch_id: number;
+  identifier: string;
+  title: string;
+  severity: PatchSeverity;
+  severity_display: string;
+  condition: string;
+}
+
+export interface BaselineComplianceResult {
+  status: BaselineComplianceResultStatus;
+  status_scope: BaselineComplianceResultScope;
+  satisfied: boolean;
+  evidence: Record<string, unknown>;
+  reason: string;
+  evaluated_at: string | null;
+}
+
+export interface BaselineComplianceHostDetail extends BaselineComplianceRequirementSummary, BaselineComplianceResult {}
+
+export interface BaselineCompliancePatchDetail extends BaselineComplianceResult {
+  binding_id: number;
+  target_id: number;
+  target_name: string;
+  target_ip: string;
+  compliance_status: ComplianceStatus;
+  failure?: BaselineComplianceFailure | null;
+}
+
+export interface BaselineCompliancePage<T> {
+  count: number;
+  page: number;
+  page_size: number;
+  items: T[];
+}
+
+interface BaselineComplianceResponseBase {
+  baseline: { id: number; name: string; os_type: OSType };
+}
+
+export interface BaselineComplianceObjectsParams {
+  perspective: BaselineCompliancePerspective;
+  page?: number;
+  page_size?: number;
+}
+
+export interface BaselineComplianceHostObjectsResponse extends BaselineComplianceResponseBase {
+  perspective: 'host';
+  count: number;
+  page: number;
+  page_size: number;
+  items: BaselineComplianceHostObject[];
+}
+
+export interface BaselineCompliancePatchObjectsResponse extends BaselineComplianceResponseBase {
+  perspective: 'patch';
+  count: number;
+  page: number;
+  page_size: number;
+  items: BaselineCompliancePatchObject[];
+}
+
+export type BaselineComplianceObjectsResponse =
+  | BaselineComplianceHostObjectsResponse
+  | BaselineCompliancePatchObjectsResponse;
+
+export interface BaselineComplianceDetailsParams {
+  perspective: BaselineCompliancePerspective;
+  selected_id: number;
+  page?: number;
+  page_size?: number;
+  search?: string;
+  status?: BaselineComplianceResultStatus;
+}
+
+export interface BaselineComplianceHostDetailsResponse extends BaselineComplianceResponseBase {
+  perspective: 'host';
+  selected: BaselineComplianceHostObject | null;
+  details: BaselineCompliancePage<BaselineComplianceHostDetail>;
+}
+
+export interface BaselineCompliancePatchDetailsResponse extends BaselineComplianceResponseBase {
+  perspective: 'patch';
+  selected: BaselineCompliancePatchObject | null;
+  details: BaselineCompliancePage<BaselineCompliancePatchDetail>;
+}
+
+export type BaselineComplianceDetailsResponse =
+  | BaselineComplianceHostDetailsResponse
+  | BaselineCompliancePatchDetailsResponse;
 
 // ── 通知配置候选 ──────────────────────────────────────────────────────────────
 
@@ -22,8 +152,34 @@ export interface NoticeChannel {
 }
 
 export interface NoticeUser {
+  id: number;
+  user_id?: string;
   username: string;
   display_name?: string;
+}
+
+export interface NoticeRule {
+  channel_id: number;
+  channel_name: string;
+  channel_type: string;
+  receivers: number[];
+  team_id?: number;
+}
+
+export interface NoticeRuleInput {
+  channel_id: number;
+  receivers: number[];
+}
+
+export interface NoticeRuleDraft {
+  key: string;
+  channel_id?: number;
+  receivers: number[];
+}
+
+export interface NoticeCandidates {
+  channels: NoticeChannel[];
+  users: NoticeUser[];
 }
 
 // ── 通用响应 ──────────────────────────────────────────────────────────────────
@@ -76,6 +232,8 @@ export interface ScanSetting {
   weekday: number;
   time: string;
   is_enabled: boolean;
+  notification_enabled: boolean;
+  notification_rules: NoticeRule[];
   created_at: string;
   updated_at: string;
 }

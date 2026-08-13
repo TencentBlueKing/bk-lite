@@ -490,3 +490,51 @@ def test_stats_counts_alerts_in_time_series(api_client, authenticated_user, mock
     assert data["step_minutes"] == 60
     # 有数据时 time_range 应被填充
     assert data["time_range"]["start"] is not None
+
+
+@pytest.mark.django_db
+def test_stats_active_alerts_include_older_than_default_window(api_client, authenticated_user, mocker):
+    """活跃告警分布图应与列表一致：包含超过默认7天窗口的未关闭告警。
+
+    前端活跃告警 Tab 不传时间范围，列表返回全部 status=new；
+    stats 若仍套默认7天 created_at 窗口，会出现「列表有数据、分布图暂无数据」。
+    """
+    from datetime import timedelta
+
+    policy = _create_policy("stats-old-active", organization=1)
+    alert = _create_alert(policy, "alert-old-active", status_value="new")
+    old_time = timezone.now() - timedelta(days=8)
+    Alert.objects.filter(id=alert.id).update(created_at=old_time, start_event_time=old_time)
+    _mock_policy_permission(mocker, policy_id=policy.id, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+
+    list_resp = api_client.get("/api/v1/log/alert/?status=new")
+    assert list_resp.status_code == status.HTTP_200_OK
+    assert list_resp.json()["data"]["count"] == 1
+
+    stats_resp = api_client.get("/api/v1/log/alert/stats/?status=new&step=60")
+    assert stats_resp.status_code == status.HTTP_200_OK
+    stats = stats_resp.json()["data"]
+    assert stats["total"] == 1
+    assert stats["time_series"]
+    assert sum(bucket["total"] for bucket in stats["time_series"]) == 1
+
+
+@pytest.mark.django_db
+def test_stats_closed_alerts_still_use_default_seven_day_window(api_client, authenticated_user, mocker):
+    """历史（closed）告警在无显式时间参数时仍应用默认7天窗口。"""
+    from datetime import timedelta
+
+    policy = _create_policy("stats-old-closed", organization=1)
+    alert = _create_alert(policy, "alert-old-closed", status_value="closed")
+    old_time = timezone.now() - timedelta(days=8)
+    Alert.objects.filter(id=alert.id).update(created_at=old_time, start_event_time=old_time)
+    _mock_policy_permission(mocker, policy_id=policy.id, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    stats_resp = api_client.get("/api/v1/log/alert/stats/?status=closed&step=60")
+    assert stats_resp.status_code == status.HTTP_200_OK
+    stats = stats_resp.json()["data"]
+    assert stats["total"] == 0
+    assert stats["time_series"] == []

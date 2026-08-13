@@ -4,14 +4,14 @@
  * 拓扑图数据管理核心 Hook，负责数据持久化、序列化和加载功能
  */
 
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { Graph as X6Graph, Node, Edge } from '@antv/x6';
 import { message } from 'antd';
 import { fetchWidgetData, buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import { useTranslation } from '@/utils/i18n';
 import { useTopologyApi } from '@/app/ops-analysis/api/topology';
-import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
+import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from '@/app/ops-analysis/api/dataSource';
 import type {
   EdgeConnectionType,
   EdgeCreationData,
@@ -91,6 +91,10 @@ export const useGraphData = (
   const [loading, setLoading] = useState(false);
   const { saveTopology, getTopologyDetail } = useTopologyApi();
   const { getSourceDataByApiId } = useDataSourceApi();
+  const getRuntimeSourceDataByApiId = useMemo(
+    () => withRuntimeSourceDataErrorSuppression(getSourceDataByApiId),
+    [getSourceDataByApiId],
+  );
   
   const tableQueryParamsRef = useRef<Map<string, TableQueryParams>>(new Map());
 
@@ -218,7 +222,7 @@ export const useGraphData = (
       
       const chartData = await fetchWidgetData({
         config: valueConfig,
-        getSourceDataByApiId,
+        getSourceDataByApiId: getRuntimeSourceDataByApiId,
         unifiedFilterValues,
         filterBindings: effectiveFilterBindings,
         filterDefinitions,
@@ -245,7 +249,7 @@ export const useGraphData = (
         errorMessage: getRequestErrorMessage(error, t('dashboard.dataFetchFailed')),
       }, { overwrite: true });
     }
-  }, [graphInstance, getSourceDataByApiId, t]);
+  }, [graphInstance, getRuntimeSourceDataByApiId, t]);
 
   const handleTableQueryChange = useCallback((
     nodeId: string,

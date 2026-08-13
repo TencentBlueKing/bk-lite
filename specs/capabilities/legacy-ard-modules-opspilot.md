@@ -71,12 +71,16 @@ AI 助手平台：RAG 检索增强、知识库管理、Bot 编排、LLM 厂商�
 
 企业微信智能机器人入口【已实现/已存在】：`execute_chat_flow_enterprise_wechat_aibot/<bot_id>/` 支持 GET 回调校验与 POST 消息接收，消息清洗后转为 ChatFlow 输入，通过异步任务发送 Markdown 回复；非文本消息直接返回固定提示（`urls.py:139-143`、`utils/enterprise_wechat_aibot_chat_flow_utils.py:61-211`）。
 
-对应 PRD：[[spec/prd/OpsPilot/工作台.md#3. 关键能力]]；对应功能清单：[[spec/fuctionlist/10-OpsPilot-功能清单.md#8. 对外接口与触发]]
+对应 PRD：[[legacy-prd-opspilot-工作台.md#3. 关键能力]]；对应功能清单：[[legacy-fuctionlist-10-opspilot-功能清单.md#8. 对外接口与触发]]
 > 证据来源：server/apps/opspilot/urls.py:139-143，server/apps/opspilot/utils/enterprise_wechat_aibot_chat_flow_utils.py:61-211　|　同步基线：83091efe　|　【已实现】
 
 技能包接口 `skill_packages` 支持 ZIP 导入并关联 `LLMSkill.skill_packages`，运行时按命中策略注入提示（证据：`urls.py:41`、`viewsets/llm_view.py:420,628`、`services/skill_package/importer.py:28`、`services/skill_package/runtime.py:56`）。
 
 ## 4. AI / RAG 集成【已实现/已存在】
+- 仓库内提示词模板以最小权限沙箱加载：默认清空模板全局对象、过滤器和测试能力，仅按模板实际需要显式白名单恢复能力；当前 RAG 模板仅恢复字符串转换过滤器，并保留 Jinja 沙箱的属性访问限制。该契约防止模板通过默认辅助对象取得非业务数据，同时保持既有检索提示词可编译、可渲染。
+
+> 证据来源：server/apps/core/utils/safe_template.py:266-297，server/apps/opspilot/metis/utils/template_loader.py:93-100，server/apps/opspilot/tests/test_template_loader_security_service.py:12-46　|　同步基线：d2769559　|　【已实现】
+
 - LangChain（`langchain_core.messages`）；`metis/llm/` 引擎（分块：fixed/semantic/recursive；embedding manager）。
 - LLM 客户端超时策略【已实现/已存在】：所有模型调用默认读取 `LLM_INVOKE_TIMEOUT`，缺省 300 秒；调用方可显式覆盖超时值，用于区分普通对话、通知节点优化和记忆写入等长耗时场景（`metis/llm/common/llm_client_factory.py:24-59`）。
 - 内置工具（`metis/llm/tools/tools_loader.py:31-52` 的 `ToolsLoader.TOOL_MODULES`，约 19 类）：attachment_file、agent_browser、browser_use、current_time（date）、duckduckgo（search）、elasticsearch、fetch、github、jenkins、kubernetes、kubernetes_data_collection、mssql、mysql、oracle、postgres、python、redis、shell、ssh；cmdb 已注释临时关闭（`:35`）。
@@ -95,7 +99,7 @@ AI 助手平台：RAG 检索增强、知识库管理、Bot 编排、LLM 厂商�
 - 通知节点邮件正文优化【已实现/已存在】：通知节点在 `notificationType=email` 且配置 `llmOptimizeModel` 时，会用选定 LLM 将渲染后的正文整理为 HTML 片段，再连同工作流附件一起走既有通知渠道发送；优化失败时记录告警并回退原始正文（`utils/chat_flow_utils/nodes/action/action.py:23-59,255-299`）。
 - 记忆写入超时独立配置【已实现/已存在】：记忆写入相关的 LLM 客户端构建统一单独读取 `MEMORY_WRITE_LLM_TIMEOUT`，默认 600 秒，不再复用通用调用超时；该配置同时服务记忆规范化与缓存批量落库场景（`tasks.py:81-106`）。
 
-对应 PRD：[[spec/prd/OpsPilot/工作台.md#4. 关键规则]]；对应功能清单：[[spec/fuctionlist/10-OpsPilot-功能清单.md#6. 工作台（Studio）与 ChatFlow]]
+对应 PRD：[[legacy-prd-opspilot-工作台.md#4. 关键规则]]；对应功能清单：[[legacy-fuctionlist-10-opspilot-功能清单.md#6. 工作台（Studio）与 ChatFlow]]
 > 证据来源：server/apps/opspilot/tasks.py:81-106,1257-1299，server/apps/opspilot/models/bot_mgmt.py:270-275，server/apps/opspilot/utils/workflow_sensitive_config.py:8-118，server/apps/opspilot/utils/chat_flow_utils/nodes/action/action.py:23-59,255-299　|　同步基线：a9d981aeb　|　【已实现】
 
 ## 6. 风险 / 待确认

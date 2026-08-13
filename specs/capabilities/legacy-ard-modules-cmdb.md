@@ -68,7 +68,7 @@
 | `POST instance/application_resource_export/<model_id>/<inst_id>` | `InstanceViewSet.application_resource_export` | 导出当前选中节点对应的资源实例 Excel |
 | `GET instance/ipam_view/<inst_id>` | `InstanceViewSet.ipam_view` | 返回子网视角的 IP 容量、利用率与地址列表 |
 
-对应 PRD：[[spec/prd/CMDB/自动发现.md#3.1 采集对象树与插件]]、[[spec/prd/CMDB/资产.md#3.8 资产详情 · 应用资源总览]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#3. 资产详情]]
+对应 PRD：[[legacy-prd-cmdb-自动发现.md#3.1 采集对象树与插件]]、[[legacy-prd-cmdb-资产.md#3.8 资产详情 · 应用资源总览]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#3. 资产详情]]
 > 证据来源：server/apps/cmdb/views/collect.py:66-68，server/apps/cmdb/views/instance.py:999-1150　|　同步基线：83091efe　|　【已实现】
 
 ## 4. 依赖与通信【已实现/已存在】
@@ -95,6 +95,10 @@
 - **RPC 客户端**（`apps/rpc/cmdb.py:44-94`）：为上述第五类 NATS handler 中的 8 个新增 RPC 包装方法供跨模块调用：`list_instances`、`search_model_attrs`、`search_models`、`search_classifications`、`search_model_associations`、`search_instance_associations`、`create_instance_association`、`delete_instance_association`；`search_instances`/`search_instances_batch` 为原有包装方法。注意：第五类 NATS handler 中的 `create_instance`、`delete_instance` 暂无对应 RPC 包装方法，仅可经 NATS 主题直接调用【已实现/已存在】。
 - Celery：`tasks/celery_tasks.py` 注册 14 个 `@shared_task`，详见 §5。
 
+**主机跨模块联动**【已实现】：CMDB、监控与节点管理以包含三方关联标识的联动信封进行双向接入。CMDB 接收端优先按节点标识更新，未命中时才认领或新建，并拒绝在存量认领时用另一节点标识覆盖既有关联；监控接收端分别按节点和 CMDB 标识匹配，两类标识命中不同实例时返回冲突。CMDB 主机创建后以尽力而为方式通知节点管理和监控并回填已建立的关联；用户亦可在具备资产编辑权限时显式将单个资产推送至监控。CMDB 主机删除或监控实例删除时，CMDB 侧仅清理相应关联标识；节点退役时，CMDB 侧解除关联，而监控侧会停用并软删除关联监控实例。携带来源链路的回传被抑制，避免循环通知。相关模块：[[legacy-ard-modules-monitor.md#5. 数据流【已实现/已存在】]]、[[legacy-ard-modules-node-mgmt.md#4. 通信机制【已实现/已存在】]]。
+
+> 证据来源：server/apps/cmdb/services/module_ingest.py:254-400，server/apps/cmdb/services/module_ingest.py:403-494，server/apps/cmdb/services/module_push.py:82-152，server/apps/cmdb/services/module_push.py:349-437，server/apps/cmdb/views/instance.py:335-369　|　同步基线：d2769559　|　【已实现】
+
 ## 5. 核心数据流 / 任务
 
 ### 任务（Celery）【已实现/已存在】
@@ -116,6 +120,11 @@
 | `collect_node_mgmt_hosts` | :361 | 采集节点管理主机 |
 | `reconcile_ipam_task` | :372 | 周期执行 IPAM 与 CMDB 自动对账，调用 `services/ipam_reconcile.run_reconciliation` |
 
+### 主机联动与历史同步切换【已实现】
+主机资产联动已改为事件推送：节点管理或监控可将主机状态和关联标识写入 CMDB，CMDB 创建主机后会通知两端并回填其建立的关联；显式推送仅面向监控。联动路径保留组织范围和操作人上下文，且以来源链路抑制回声。原“从节点管理拉取主机”的同步任务由开关固定阻断，并记录为已跳过；紧急回退前不得将其作为正常数据通路。产品行为见 [[legacy-prd-cmdb-资产.md#3.12 跨模块主机联动]]，功能范围见 [[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#2. 资产管理（实例）]]。
+
+> 证据来源：server/apps/cmdb/services/module_push.py:43-79，server/apps/cmdb/services/module_push.py:82-152，server/apps/cmdb/services/node_mgmt_sync_service.py:1956-1975　|　同步基线：d2769559　|　【已实现】
+
 ### 管理命令【已实现/已存在】
 - `management/commands/model_init.py:7`：初始化 CMDB 模型种子。
 - `management/commands/init_oid.py:11`：初始化 SNMP OID 映射。
@@ -136,7 +145,7 @@
 - **IP 地址管理发现回写**【已实现/已存在】：对象树新增 `ip_discovery`；服务层从任务的 `instances/params` 合并读取 `subnet_ids`、`scan_method`、`ports`，再把 VictoriaMetrics 中的 `ip_info` 行按子网回写为在线 / 离线地址，同时重算子网利用率；手工维护地址不被覆盖（`constants/constants.py:391-403`、`services/ipam_discovery.py:8-175`）。
 - **IP 发现采集**（task_type=`ip` 且 `input_method=CollectInputMethod.SUBNET`）：`sync_collect_task` 在 `tasks/celery_tasks.py:72-74` 派发子网扫描任务，由 Stargazer 执行；结果经 Stargazer 回传后由 `services/ipam_discovery.py`（`apply_discovery_result` 在 `:205` 创建/更新在线 IP、标记离线并回写子网利用率；`apply_ip_discovery_vm_rows` 在 `:299` 处理 VictoriaMetrics 离线行）落库。**注：原 NATS `receive_ip_discovery_result` handler 与 `services.ipam_discovery.maybe_dispatch_ip_discovery` 函数在本轮已下线（被 `tests/test_ipam_discovery_task.py:64` 显式断言不存在），功能改由服务层直连 Stargazer 回调完成。**
 
-对应 PRD：[[spec/prd/CMDB/自动发现.md#3.2 采集任务]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#5. 自动发现（采集）]]
+对应 PRD：[[legacy-prd-cmdb-自动发现.md#3.2 采集任务]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#5. 自动发现（采集）]]
 
 ## 6. 风险 / 待确认
 - 双图库后端按 `FALKORDB_HOST` 环境变量在运行期单选（`graph/drivers/graph_client.py:46-52`），非并存；切换条件已明确【已实现/已存在】。

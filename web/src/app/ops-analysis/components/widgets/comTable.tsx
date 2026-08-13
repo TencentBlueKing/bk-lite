@@ -37,6 +37,7 @@ import {
   buildDashboardActionUrl,
   resolveDashboardActionParams,
 } from '@/app/ops-analysis/utils/dashboardActions';
+import { resolveTableCellPresentation } from '@/app/ops-analysis/utils/tableCellStyle';
 import { getScreenWidgetScale } from './shared/screenMetrics';
 import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
 import { useTableBodyScrollY } from './shared/useTableBodyScrollY';
@@ -248,20 +249,40 @@ const ComTable: React.FC<ComTableProps> = ({
             return renderActionButtons(columnActions, record);
           }
 
-          const cellText = text === null || text === undefined ? '' : String(text);
-          const displayText = cellText.trim() ? cellText : '--';
+          const presentation = resolveTableCellPresentation(text, col);
+          if (presentation.mode === 'colorBackground') {
+            return (
+              <Tooltip placement="topLeft" title={presentation.tooltipText}>
+                <div
+                  role="img"
+                  aria-label={presentation.tooltipText}
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 3,
+                    background: presentation.color,
+                  }}
+                >
+                  <span className="sr-only">{presentation.tooltipText}</span>
+                </div>
+              </Tooltip>
+            );
+          }
 
           return (
-            <Tooltip placement="topLeft" title={displayText}>
+            <Tooltip placement="topLeft" title={presentation.displayText}>
               <div
                 style={{
                   maxWidth: DEFAULT_CELL_MAX_WIDTH,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
+                  ...(presentation.color
+                    ? { color: presentation.color, fontWeight: 600 }
+                    : {}),
                 }}
               >
-                {displayText}
+                {presentation.displayText}
               </div>
             </Tooltip>
           );

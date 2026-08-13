@@ -6,6 +6,7 @@ from apps.rpc.base import RpcClient, AppClient
 class NodeMgmt(object):
     def __init__(self, is_local_client=False):
         is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
+        self.is_local_client = is_local_client
 
         self.permission_client = AppClient("apps.node_mgmt.nats.node.permission") if is_local_client else RpcClient()
         self.client = AppClient("apps.node_mgmt.nats.node") if is_local_client else RpcClient()
@@ -150,6 +151,15 @@ class NodeMgmt(object):
             {"id": id, "content": content, "env_config": env_config},
         )
         return return_data
+
+    def compare_and_swap_child_config_content_local(self, id, expected_content, content):
+        """同进程运维专用：仅当子配置内容仍等于读取快照时更新。"""
+        if not self.is_local_client:
+            raise RuntimeError("compare-and-swap child config requires local AppClient")
+        return self.client.run(
+            "compare_and_swap_child_config_content",
+            {"id": id, "expected_content": expected_content, "content": content},
+        )
 
     def update_config_content(self, id, content, env_config=None):
         """

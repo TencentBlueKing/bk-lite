@@ -29,6 +29,8 @@ class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
     description = serializers.CharField(max_length=512, required=False, allow_blank=True)
 
     def validate_application_id(self, value):
+        if not self.context.get("creating"):
+            return value
         if ApmApplication.objects.filter(application_id=value).exists():
             raise serializers.ValidationError("该应用 ID 已存在。")
         return value
@@ -36,6 +38,8 @@ class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
     def validate(self, attrs):
         if self.context.get("creating") and not attrs.get("application_id"):
             raise serializers.ValidationError({"application_id": "该字段必填。"})
+        if not self.context.get("creating"):
+            attrs.pop("application_id", None)
         return attrs
 
 

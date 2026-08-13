@@ -35,12 +35,13 @@ class FakePreviewExecutor:
     def __init__(self):
         self.calls = []
 
-    def preview(self, connection_config, query_config, limit=100):
+    def preview(self, connection_config, query_config, limit=100, **kwargs):
         self.calls.append(
             {
                 "connection_config": connection_config,
                 "query_config": query_config,
                 "limit": limit,
+                **kwargs,
             }
         )
         return PreviewResult(
@@ -306,7 +307,10 @@ def test_get_source_data_executes_inline_datasource(api_client, authenticated_us
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
-    assert payload["data"] == [{"date": "2026-06-01", "channel": "官网", "users": 120}]
+    assert payload["data"] == {
+        "data": [{"date": "2026-06-01", "channel": "官网", "users": 120}],
+        "warnings": [],
+    }
     assert executor.calls[0]["limit"] == 20
 
 
@@ -345,7 +349,10 @@ def test_get_source_data_returns_saved_excel_items(api_client, authenticated_use
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
-    assert payload["data"] == [{"name": "官网", "value": 120}]
+    assert payload["data"] == {
+        "data": [{"name": "官网", "value": 120}],
+        "warnings": [],
+    }
 
 
 def test_preview_rejects_unsupported_source_type(api_client, authenticated_user):

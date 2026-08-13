@@ -32,7 +32,7 @@
         },
         {
           "title": "用户同步",
-          "icon": "yonghu1",
+          "icon": "tongbuyonghu",
           "name": "user_sync",
           "url": "/system-manager/user/user-sync"
         }
@@ -173,7 +173,7 @@
         },
         {
           "title": "User Sync",
-          "icon": "yonghu1",
+          "icon": "tongbuyonghu",
           "name": "user_sync",
           "url": "/system-manager/user/user-sync"
         }

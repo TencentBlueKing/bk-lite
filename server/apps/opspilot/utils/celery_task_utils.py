@@ -6,6 +6,7 @@ from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.opspilot.utils.schedule_utils import CrontabGenerator, ScheduleConfigValidator, convert_legacy_config
 
 
@@ -155,8 +156,7 @@ def _get_or_create_crontab_schedules(task_data_list):
             )
 
     if missing_schedules:
-        # bulk_create returns the created objects with IDs
-        created_schedules = CrontabSchedule.objects.bulk_create(missing_schedules)
+        created_schedules = bulk_create_with_primary_keys(CrontabSchedule.objects, missing_schedules)
         for schedule in created_schedules:
             key = (
                 schedule.minute,

@@ -1,15 +1,18 @@
 'use client';
 
 import { AimOutlined, MinusOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, WarningOutlined } from '@ant-design/icons';
-import { Alert, Button, Empty, Input, Segmented, Select, Typography } from 'antd';
+import { Alert, Button, Grid, Input, Segmented, Select, Tag, Typography, type TableColumnsType } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyHealth, ApmTopologyNode } from '@/app/apm/types';
+import CustomTable from '@/components/custom-table';
+import FilterToolbar from '@/components/filter-toolbar';
 
 type LayoutMode = 'layered' | 'force';
+type ViewMode = 'graph' | 'list';
 type TimeWindow = '15m' | '1h' | '4h' | '1d' | '7d';
 type PageState = CatalogStateKind | 'ready';
 
@@ -26,6 +29,13 @@ const healthColors: Record<ApmTopologyHealth, string> = {
   warning: 'var(--theme-color-status-warning)',
   critical: 'var(--color-fail)',
   unknown: 'var(--color-text-4)',
+};
+
+const healthLabels: Record<ApmTopologyHealth, string> = {
+  healthy: '正常',
+  warning: '警告',
+  critical: '严重',
+  unknown: '未知',
 };
 
 function positioned(nodes: ApmTopologyNode[], layout: LayoutMode) {
@@ -59,7 +69,7 @@ function TopologyCanvas({
   const normalizedKeyword = keyword.trim().toLowerCase();
   const maxSpans = Math.max(...nodes.map((node) => node.sampled_spans), 1);
   return (
-    <svg aria-label="APM 服务调用拓扑" className="block h-[520px] min-w-[960px] w-full" role="img" viewBox="0 0 1030 520">
+    <svg aria-label="APM 服务调用拓扑" className="block h-[520px] w-full" role="img" viewBox="0 0 1030 520">
       <defs>
         {(['healthy', 'warning', 'critical'] as ApmTopologyHealth[]).map((health) => (
           <marker id={`apm-arrow-${health}`} key={health} markerHeight="6" markerWidth="6" orient="auto" refX="9" refY="5" viewBox="0 0 10 10">
@@ -107,10 +117,19 @@ function TopologyCanvas({
           return (
             <g
               key={node.id}
+              aria-label={`${node.service_name}，${healthLabels[node.health]}，采样 ${node.sampled_spans} 个 Span`}
               opacity={matched ? 1 : 0.18}
+              role={onNodeClick ? 'link' : undefined}
+              tabIndex={onNodeClick ? 0 : undefined}
               style={{ cursor: onNodeClick ? 'pointer' : undefined }}
               transform={`translate(${node.x},${node.y})`}
               onClick={() => onNodeClick?.(node)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onNodeClick?.(node);
+                }
+              }}
             >
               <title>{`${node.service_name}\n吞吐采样 ${node.sampled_spans} · 错误 ${node.error_spans}`}</title>
               <circle
@@ -150,10 +169,12 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 
 export default function ApmTopologyPage() {
   const router = useRouter();
+  const screens = Grid.useBreakpoint();
   const { getServices, getTopology } = useApmApi();
   const [graph, setGraph] = useState<ApmTopologyGraph>({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
   const [state, setState] = useState<PageState>('loading');
   const [layout, setLayout] = useState<LayoutMode>('layered');
+  const [viewMode, setViewMode] = useState<ViewMode>('graph');
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('1h');
   const [environment, setEnvironment] = useState<string>();
   const [environmentOptions, setEnvironmentOptions] = useState<{ value: string; label: string }[]>([]);
@@ -187,6 +208,10 @@ export default function ApmTopologyPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (screens.md === false) setViewMode('list');
+  }, [screens.md]);
+
   const visibleNodes = useMemo(() => graph.nodes.filter((node) => !anomalyOnly || node.health === 'warning' || node.health === 'critical'), [anomalyOnly, graph.nodes]);
   const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
   const visibleEdges = useMemo(() => graph.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)), [graph.edges, visibleNodeIds]);
@@ -199,12 +224,69 @@ export default function ApmTopologyPage() {
     router.push(`/apm/services/${serviceId}${query}`);
   };
 
+  const visibleNodeMap = useMemo(
+    () => new Map(visibleNodes.map((node) => [node.id, node])),
+    [visibleNodes],
+  );
+  const dependencyRows = useMemo(() => visibleEdges.flatMap((edge) => {
+    const source = visibleNodeMap.get(edge.source);
+    const target = visibleNodeMap.get(edge.target);
+    return source && target ? [{ ...edge, key: `${edge.source}-${edge.target}`, sourceNode: source, targetNode: target }] : [];
+  }), [visibleEdges, visibleNodeMap]);
+  type DependencyRow = (typeof dependencyRows)[number];
+  const dependencyColumns: TableColumnsType<DependencyRow> = [
+    {
+      title: '上游服务',
+      key: 'source',
+      render: (_, row) => (
+        <Button className="!h-auto !max-w-full !px-0" type="link" onClick={() => openNode(row.sourceNode)}>
+          <span className="truncate">{row.sourceNode.service_name}</span>
+        </Button>
+      ),
+    },
+    {
+      title: '下游服务',
+      key: 'target',
+      render: (_, row) => (
+        <Button className="!h-auto !max-w-full !px-0" type="link" onClick={() => openNode(row.targetNode)}>
+          <span className="truncate">{row.targetNode.service_name}</span>
+        </Button>
+      ),
+    },
+    {
+      title: '健康',
+      dataIndex: 'health',
+      width: 90,
+      render: (health: ApmTopologyHealth) => (
+        <Tag color={health === 'critical' ? 'error' : health === 'warning' ? 'warning' : health === 'healthy' ? 'success' : undefined}>
+          {healthLabels[health]}
+        </Tag>
+      ),
+    },
+    {
+      title: '采样调用',
+      dataIndex: 'sampled_calls',
+      align: 'right',
+      width: 110,
+      className: 'tabular-nums',
+      responsive: ['sm'],
+    },
+    {
+      title: '平均耗时',
+      dataIndex: 'average_duration_ms',
+      align: 'right',
+      width: 110,
+      className: 'tabular-nums',
+      render: (value: number) => `${value.toFixed(0)} ms`,
+    },
+  ];
+
   return (
     <ApmRouteShell dependency="telemetry" description="按近窗 Trace 样本聚合服务依赖；节点大小表示采样吞吐，颜色表示健康。" title="服务拓扑">
       <div className="flex flex-col gap-3">
         {graph.truncated ? <Alert showIcon type="warning" message="当前拓扑按有界 Trace 样本聚合；服务或调用链过多时仅展示最近样本。" /> : null}
         <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center gap-3">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-1.5 text-xs">
               <strong className="tabular-nums text-sm">{graph.nodes.length}</strong><span className="text-[var(--color-text-3)]">服务</span>
               <span className="text-[var(--color-border)]">·</span>
@@ -216,28 +298,24 @@ export default function ApmTopologyPage() {
             </div>
             <Segmented<TimeWindow> aria-label="拓扑时间窗口" options={['15m', '1h', '4h', '1d', '7d']} value={timeWindow} onChange={setTimeWindow} />
             <Select allowClear aria-label="按环境筛选拓扑" className="w-36" placeholder="全部环境" options={environmentOptions} value={environment} onChange={setEnvironment} />
-            <Segmented<LayoutMode> aria-label="拓扑布局" options={[{ value: 'layered', label: '分层' }, { value: 'force', label: '力导向' }]} value={layout} onChange={setLayout} />
+            <Segmented<ViewMode> aria-label="拓扑视图" options={[{ value: 'graph', label: '图形' }, { value: 'list', label: '依赖列表' }]} value={viewMode} onChange={setViewMode} />
+            {viewMode === 'graph' ? <Segmented<LayoutMode> aria-label="拓扑布局" options={[{ value: 'layered', label: '分层' }, { value: 'force', label: '力导向' }]} value={layout} onChange={setLayout} /> : null}
             <Button danger={anomalyOnly} icon={<WarningOutlined aria-hidden="true" />} type={anomalyOnly ? 'primary' : 'default'} onClick={() => setAnomalyOnly((value) => !value)}>只看异常</Button>
-            <Button aria-label="刷新拓扑" icon={<ReloadOutlined aria-hidden="true" />} onClick={() => void load()} />
-          </div>
+            <Button aria-label="刷新拓扑" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
+          </FilterToolbar>
         </ApmSurface>
-        <ApmSurface className="relative min-h-[520px] overflow-hidden" padding="none">
+        <ApmSurface className={viewMode === 'graph' ? 'relative min-h-[520px] overflow-hidden' : 'overflow-hidden'} padding="none">
           {state === 'ready' ? (
-            <>
-              <div className="absolute left-3 top-3 z-10 flex w-52 flex-col gap-2">
-                <Input allowClear aria-label="定位拓扑节点" placeholder="定位节点" prefix={<SearchOutlined aria-hidden="true" />} value={keyword} onChange={(event) => setKeyword(event.target.value)} />
-                <div className="inline-flex w-fit flex-col overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
-                  <Button aria-label="放大拓扑" type="text" size="small" icon={<PlusOutlined aria-hidden="true" />} onClick={() => setZoom((value) => Math.min(1.3, value + 0.1))} />
-                  <Button aria-label="缩小拓扑" type="text" size="small" icon={<MinusOutlined aria-hidden="true" />} onClick={() => setZoom((value) => Math.max(0.7, value - 0.1))} />
-                  <Button aria-label="重置拓扑缩放" type="text" size="small" icon={<AimOutlined aria-hidden="true" />} onClick={() => setZoom(1)} />
+            viewMode === 'graph' ? (
+              <>
+                <div className="absolute left-3 top-3 z-10 flex w-52 max-w-[calc(100%-24px)] flex-col gap-2">
+                  <Input allowClear aria-label="定位拓扑节点" placeholder="定位节点" prefix={<SearchOutlined aria-hidden="true" />} value={keyword} onChange={(event) => setKeyword(event.target.value)} />
+                  <div className="inline-flex w-fit flex-col overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
+                    <Button aria-label="放大拓扑" type="text" size="small" icon={<PlusOutlined aria-hidden="true" />} onClick={() => setZoom((value) => Math.min(1.3, value + 0.1))} />
+                    <Button aria-label="缩小拓扑" type="text" size="small" icon={<MinusOutlined aria-hidden="true" />} onClick={() => setZoom((value) => Math.max(0.7, value - 0.1))} />
+                    <Button aria-label="重置拓扑缩放" type="text" size="small" icon={<AimOutlined aria-hidden="true" />} onClick={() => setZoom(1)} />
+                  </div>
                 </div>
-              </div>
-              <div
-                aria-label="服务拓扑画布滚动区域"
-                className="overflow-x-auto"
-                role="region"
-                tabIndex={0}
-              >
                 <TopologyCanvas
                   edges={visibleEdges}
                   keyword={keyword}
@@ -246,9 +324,28 @@ export default function ApmTopologyPage() {
                   zoom={zoom}
                   onNodeClick={openNode}
                 />
-              </div>
-            </>
-          ) : state === 'empty' ? <Empty className="pt-44" description="当前范围内没有可用于构建拓扑的调用链样本。" /> : <CatalogState kind={state} />}
+              </>
+            ) : (
+              <CustomTable
+                autoScrollX={false}
+                columns={dependencyColumns}
+                dataSource={dependencyRows}
+                rowKey="key"
+                pagination={{
+                  defaultPageSize: 20,
+                  pageSizeOptions: [10, 20, 50, 100],
+                  showSizeChanger: true,
+                  showTotal: (total) => `共 ${total} 条依赖`,
+                }}
+              />
+            )
+          ) : state === 'empty' ? (
+            <CatalogState
+              kind="empty"
+              description="当前范围内没有可用于构建拓扑的调用链样本。"
+              onRetry={() => void load()}
+            />
+          ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />}
         </ApmSurface>
         <ApmSurface padding="compact">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[var(--color-text-3)]">

@@ -4,6 +4,267 @@ metadata:
   name: bk-lite-collector
 ---
 apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+  labels:
+    app.kubernetes.io/component: exporter
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/version: 2.13.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: exporter
+        app.kubernetes.io/name: kube-state-metrics
+        app.kubernetes.io/version: 2.13.0
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8080'
+        prometheus.io/path: '/metrics'
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - name: kube-state-metrics
+        image: bk-lite.tencentcloudcr.com/bklite/kube-state-metrics:2.13.0
+        resources:
+          requests:
+            memory: 64Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 200m
+        args:
+          # 注意：本 KSM 与 agents/webhookd/bk-lite-resource-collector.yaml、
+          # deploy/dist/bk-lite-kubernetes-collector/bk-lite-metric-collector.yaml
+          # 的 KSM 是同名共享实例（bk-lite-collector/kube-state-metrics），同集群任意组合
+          # 共装时后 apply 者覆盖先 apply 者，因此三份文件的 args 必须逐字一致——取两条链路消费
+          # 指标的并集（监控 metrics.json/web dashboard 17 个 + CMDB collection/constants.py
+          # 23 个，重叠 6 个）；各链路的精确过滤在采集侧（vmagent keep / telegraf fieldpass）
+          - '--resources=cronjobs,daemonsets,deployments,jobs,namespaces,nodes,pods,replicasets,statefulsets'
+          - '--metric-allowlist=kube_cronjob_annotations,kube_cronjob_info,kube_daemonset_annotations,kube_daemonset_created,kube_daemonset_status_desired_number_scheduled,kube_daemonset_status_number_available,kube_daemonset_status_number_unavailable,kube_deployment_annotations,kube_deployment_created,kube_deployment_spec_replicas,kube_deployment_status_replicas_available,kube_deployment_status_replicas_unavailable,kube_job_annotations,kube_job_info,kube_namespace_labels,kube_node_info,kube_node_role,kube_node_status_allocatable,kube_node_status_capacity,kube_node_status_condition,kube_pod_container_resource_limits,kube_pod_container_resource_requests,kube_pod_container_status_restarts_total,kube_pod_container_status_waiting_reason,kube_pod_info,kube_pod_status_phase,kube_replicaset_annotations,kube_replicaset_created,kube_replicaset_owner,kube_replicaset_spec_replicas,kube_statefulset_annotations,kube_statefulset_created,kube_statefulset_replicas,kube_statefulset_status_replicas_ready'
+          # annotations 仅 CMDB 解析 last-applied-configuration 一个 key
+          - '--metric-annotations-allowlist=cronjobs=[kubectl.kubernetes.io/last-applied-configuration],daemonsets=[kubectl.kubernetes.io/last-applied-configuration],deployments=[kubectl.kubernetes.io/last-applied-configuration],jobs=[kubectl.kubernetes.io/last-applied-configuration],replicasets=[kubectl.kubernetes.io/last-applied-configuration],statefulsets=[kubectl.kubernetes.io/last-applied-configuration]'
+          # KSM 2.13 在 labels allowlist 为空时 kube_namespace_labels 整族不输出任何样本
+          # （internal/store/namespace.go），而 CMDB namespace 发现依赖该指标，必须保留
+          - '--metric-labels-allowlist=namespaces=[*]'
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: http-metrics
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        ports:
+        - containerPort: 8080
+          name: http-metrics
+        - containerPort: 8081
+          name: telemetry
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: telemetry
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          seccompProfile:
+            type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/os: linux
+      serviceAccountName: kube-state-metrics
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+  labels:
+    app.kubernetes.io/component: exporter
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/version: 2.13.0
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+  labels:
+    app.kubernetes.io/component: exporter
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/version: 2.13.0
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - secrets
+  - nodes
+  - pods
+  - services
+  - serviceaccounts
+  - resourcequotas
+  - replicationcontrollers
+  - limitranges
+  - persistentvolumeclaims
+  - persistentvolumes
+  - namespaces
+  - endpoints
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  - daemonsets
+  - deployments
+  - replicasets
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  - jobs
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+- apiGroups:
+  - policy
+  resources:
+  - poddisruptionbudgets
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - storageclasses
+  - volumeattachments
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  - ingressclasses
+  - ingresses
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolebindings
+  - clusterroles
+  - rolebindings
+  - roles
+  verbs:
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+  labels:
+    app.kubernetes.io/component: exporter
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/version: 2.13.0
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-state-metrics
+subjects:
+- kind: ServiceAccount
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-state-metrics
+  namespace: bk-lite-collector
+  labels:
+    app.kubernetes.io/component: exporter
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/version: 2.13.0
+spec:
+  clusterIP: None
+  ports:
+  - name: http-metrics
+    port: 8080
+    targetPort: http-metrics
+  - name: telemetry
+    port: 8081
+    targetPort: telemetry
+  selector:
+    app.kubernetes.io/name: kube-state-metrics
+---
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: cadvisor
@@ -390,6 +651,45 @@ data:
           action: replace
         # id(cgroup 路径)/name/image 超长且无查询消费；pod_name 已复制为 pod
         - regex: id|name|image|container_label_io_kubernetes_pod_name
+          action: labeldrop
+      - job_name: 'kubernetes-kube-state-metrics'
+        kubernetes_sd_configs:
+        - role: pod
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+          action: keep
+          regex: kube-state-metrics
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          target_label: __address__
+          regex: ([^:]+)(?::\d+)?;(\\d+)
+          replacement: $1:$2
+        - target_label: instance_id
+          replacement: "%{CLUSTER_NAME}"
+        - target_label: instance_type
+          replacement: k8s
+        - target_label: instance_name
+          replacement: "%{CLUSTER_NAME}"
+        metric_relabel_configs:
+        # KSM 为三份模板共享的同名实例（本模板亦自带，暴露两条链路消费
+        # 指标的并集）；监控链路的 K8s 实例发现（Pod/Node 等）与仪表盘
+        # 只消费以下 17 个指标（metrics.json 与 web k8s dashboard），与
+        # deploy/dist/bk-lite-kubernetes-collector/bk-lite-metric-collector.yaml
+        # 保持一致，新增图表指标时需同步扩充
+        - source_labels: [__name__]
+          action: keep
+          regex: kube_daemonset_status_desired_number_scheduled|kube_daemonset_status_number_available|kube_daemonset_status_number_unavailable|kube_deployment_spec_replicas|kube_deployment_status_replicas_available|kube_deployment_status_replicas_unavailable|kube_node_info|kube_node_status_allocatable|kube_node_status_condition|kube_pod_container_resource_limits|kube_pod_container_resource_requests|kube_pod_container_status_restarts_total|kube_pod_container_status_waiting_reason|kube_pod_info|kube_pod_status_phase|kube_statefulset_replicas|kube_statefulset_status_replicas_ready
+        # 监控链路只按 instance_id/node/pod/namespace/container/phase/reason/
+        # condition/status/resource 及工作负载名聚合，其余维度未被任何查询消费，
+        # 抓取时丢弃以削减传输与存储
+        - regex: uid|unit|created_by_kind|created_by_name|host_ip|pod_ip|host_network|priority_class|internal_ip|os_image|kernel_version|kubelet_version|container_runtime_version|kubeproxy_version|pod_cidr|system_uuid|provider_id
           action: labeldrop
 
 ---

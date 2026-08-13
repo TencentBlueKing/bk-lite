@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { InfiniteScroll, Popup } from 'antd-mobile';
 import { CheckOutline, FilterOutline } from 'antd-mobile-icons';
 import MobileSearchBar from '@/components/mobile-search-bar';
@@ -11,7 +11,6 @@ import { MobileResult, MobileSkeleton } from '@/components/mobile-feedback';
 import { useAuth } from '@/context/auth';
 import { listDisplayFieldMetrics, listMonitorInstances, listMonitorObjects } from '@/features/monitor/adapter';
 import {
-  INSTANCE_LIST_SUMMARY_LIMIT,
   MONITOR_PAGE_SIZE,
   buildDisplayMetricUnitIndex,
   displayFieldMetricNames,
@@ -79,7 +78,8 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   const [pickerKeyword, setPickerKeyword] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
-  const touchStart = useRef<{ x: number; y: number; edge: boolean; onTable: boolean } | null>(null);
+  const monitorObjectIdRef = useRef(monitorObject?.id || 0);
+  const snapshotRefreshPending = useRef(Boolean(initialSnapshot.current));
   const statusFilterKey = statusFilters.join(',');
   const lastRequestedKey = useRef<string | null>(
     initialSnapshot.current?.data.monitorObject
@@ -93,13 +93,10 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   const listController = useRef<AbortController | null>(null);
   const metricUnitController = useRef<AbortController | null>(null);
   const preferences = { locale: userInfo?.locale || 'en', timezone: userInfo?.timezone || 'Asia/Shanghai' };
+  monitorObjectIdRef.current = monitorObject?.id || 0;
 
   const orderedObjects = useMemo(() => orderedMonitorObjects(objects), [objects]);
   const objectGroups = useMemo(() => groupMonitorObjects(objects), [objects]);
-  const currentIndex = useMemo(
-    () => orderedObjects.findIndex((item) => item.id === monitorObject?.id),
-    [monitorObject?.id, orderedObjects],
-  );
   const pickerGroups = useMemo(() => {
     const needle = pickerKeyword.trim().toLowerCase();
     if (!needle) return objectGroups;
@@ -121,7 +118,7 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   }, [router]);
 
   const applyObject = useCallback((next: MonitorObject, replaceUrl = true) => {
-    if (monitorObject?.id === next.id) {
+    if (monitorObjectIdRef.current === next.id) {
       setPickerOpen(false);
       return;
     }
@@ -138,26 +135,44 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
     setPickerOpen(false);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
     if (replaceUrl) syncUrl(next);
-  }, [monitorObject?.id, syncUrl]);
+  }, [syncUrl]);
 
-  const loadObjects = useCallback(async () => {
+  const resetObjectSelection = useCallback((next: MonitorObject) => {
+    setMonitorObject(next);
+    setInput('');
+    setKeyword('');
+    setStatusFilters([]);
+    setStatusFilterOpen(false);
+    lastRequestedKey.current = null;
+    setInstances([]);
+    setCount(0);
+    setPage(0);
+    setListStatus('idle');
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, []);
+
+  const loadObjects = useCallback(async (preserveContent = false) => {
     const currentId = ++objectRequestId.current;
     objectController.current?.abort();
     const controller = new AbortController();
     objectController.current = controller;
-    setObjectStatus('loading');
+    if (!preserveContent) setObjectStatus('loading');
     try {
       const nextObjects = await listMonitorObjects(controller.signal);
       if (currentId !== objectRequestId.current) return;
       setObjects(nextObjects);
       const ordered = orderedMonitorObjects(nextObjects);
-      const preferred = (objectId && ordered.find((item) => item.id === objectId)) || ordered[0] || null;
+      const cachedObjectId = initialSnapshot.current?.data.monitorObject?.id;
+      const preferred = (objectId && ordered.find((item) => item.id === objectId))
+        || (cachedObjectId && ordered.find((item) => item.id === cachedObjectId))
+        || ordered[0]
+        || null;
       setMonitorObject(preferred);
       setObjectStatus(preferred ? 'ready' : 'missing');
       if (preferred && preferred.id !== objectId) syncUrl(preferred);
     } catch (error) {
       if (controller.signal.aborted || currentId !== objectRequestId.current) return;
-      setObjectStatus('error');
+      if (!preserveContent) setObjectStatus('error');
       throw error;
     }
   }, [objectId, syncUrl]);
@@ -193,38 +208,39 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   }, [keyword, statusFilters]);
 
   useEffect(() => {
-    if (initialSnapshot.current) return;
-    void loadObjects().catch(() => undefined);
+    const preserveContent = Boolean(initialSnapshot.current);
+    if (preserveContent) lastRequestedKey.current = null;
+    void loadObjects(preserveContent).catch(() => undefined);
     // 仅首屏拉对象树；切换 objectId 由下方 effect 处理，避免重复请求。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 只跟随 URL / 对象树变化。点击轨上项会先改本地再 replace URL；
+  // 若把 monitorObject.id 放进依赖，会在 URL 尚未更新时用旧 objectId 把选中打回去。
   useEffect(() => {
     if (!objects.length) return;
     const ordered = orderedMonitorObjects(objects);
-    const nextObject = (objectId && ordered.find((item) => item.id === objectId))
-      || ordered.find((item) => item.id === monitorObject?.id)
+    const fromUrl = objectId ? ordered.find((item) => item.id === objectId) || null : null;
+    if (fromUrl) {
+      setObjectStatus('ready');
+      if (monitorObjectIdRef.current === fromUrl.id) return;
+      resetObjectSelection(fromUrl);
+      return;
+    }
+    const preferred = ordered.find((item) => item.id === monitorObjectIdRef.current)
       || ordered[0]
       || null;
-    if (!nextObject) {
+    if (!preferred) {
       setMonitorObject(null);
       setObjectStatus('missing');
       return;
     }
     setObjectStatus('ready');
-    if (monitorObject?.id === nextObject.id) return;
-    setMonitorObject(nextObject);
-    setInput('');
-    setKeyword('');
-    setStatusFilters([]);
-    setStatusFilterOpen(false);
-    lastRequestedKey.current = null;
-    setInstances([]);
-    setCount(0);
-    setPage(0);
-    setListStatus('idle');
-    if (nextObject.id !== objectId) syncUrl(nextObject);
-  }, [monitorObject?.id, objectId, objects, syncUrl]);
+    if (monitorObjectIdRef.current !== preferred.id) {
+      resetObjectSelection(preferred);
+    }
+    if (preferred.id !== objectId) syncUrl(preferred);
+  }, [objectId, objects, resetObjectSelection, syncUrl]);
 
   useEffect(() => {
     if (!monitorObject) {
@@ -256,7 +272,9 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
     const requestKey = `${monitorObject.id}:${keyword}:${statusFilterKey}`;
     if (lastRequestedKey.current === requestKey) return;
     lastRequestedKey.current = requestKey;
-    void loadInstances(monitorObject).catch(() => undefined);
+    const preserveContent = snapshotRefreshPending.current;
+    snapshotRefreshPending.current = false;
+    void loadInstances(monitorObject, 1, false, preserveContent).catch(() => undefined);
   }, [keyword, loadInstances, monitorObject, statusFilterKey]);
 
   const submitSearch = (value: string) => {
@@ -302,8 +320,13 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   }, []);
 
   useEffect(() => {
-    const active = railRef.current?.querySelector<HTMLElement>(`[data-object-id="${monitorObject?.id || ''}"]`);
-    active?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    const rail = railRef.current;
+    const active = rail?.querySelector<HTMLElement>(`[data-object-id="${monitorObject?.id || ''}"]`);
+    if (!rail || !active) return;
+    const railRect = rail.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    if (activeRect.left >= railRect.left && activeRect.right <= railRect.right) return;
+    active.scrollIntoView({ behavior: 'auto', inline: 'nearest', block: 'nearest' });
   }, [monitorObject?.id]);
 
   const saveSnapshot = useCallback((scrollTop = scrollRef.current?.scrollTop || 0) => {
@@ -327,40 +350,14 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
     restoreMobileViewScroll(scrollRef.current, initialSnapshot.current?.scrollTop);
   }, []);
 
-  const shiftObject = useCallback((delta: number) => {
-    if (currentIndex < 0) return;
-    const next = orderedObjects[currentIndex + delta];
-    if (next) applyObject(next);
-  }, [applyObject, currentIndex, orderedObjects]);
-
-  const onTouchStart = (event: TouchEvent<HTMLDivElement>) => {
-    const touch = event.changedTouches[0];
-    if (!touch || !scrollRef.current) return;
-    const edge = touch.clientX - scrollRef.current.getBoundingClientRect().left < scrollRef.current.clientWidth * 0.18;
-    const onTable = Boolean((event.target as Element | null)?.closest?.(`[data-instance-table-scroll]`));
-    touchStart.current = { x: touch.clientX, y: touch.clientY, edge, onTable };
-  };
-
-  const onTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
-    const start = touchStart.current;
-    touchStart.current = null;
-    const touch = event.changedTouches[0];
-    if (!start || start.edge || start.onTable || !touch) return;
-    const dx = touch.clientX - start.x;
-    const dy = touch.clientY - start.y;
-    if (Math.abs(dx) < 72 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
-    if (dx < 0) shiftObject(1);
-    else shiftObject(-1);
-  };
-
   const hasMore = listStatus === 'ready' && instances.length < count;
-  const summaryFields = (monitorObject?.displayFields || []).slice(0, INSTANCE_LIST_SUMMARY_LIMIT);
-  // 与 Web viewList 列序一致：名称 → 上报时间 → 上报状态 → display_fields 摘要指标。
+  const summaryFields = monitorObject?.displayFields || [];
+  // 移动端先给出状态判断，再给时间证据：名称 → 上报状态 → 上报时间 → 全部 display_fields。
   // 名称列必须封顶，不能用 1fr——行宽 min-width:100% 时 1fr 会吃掉剩余空间，看起来怎么改都一样大。
   const tableGridColumns = [
     '164px',
-    '96px',
     '88px',
+    '96px',
     ...summaryFields.map(() => 'minmax(68px, 84px)'),
   ].join(' ');
   const hasStatusFilter = statusFilters.length > 0;
@@ -392,7 +389,9 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                     onClick={() => applyObject(object)}
                   >
                     <span>{object.displayName}</span>
-                    <span className={styles.objectChipCount}>{object.instanceCount}</span>
+                    {object.instanceCount > 0 ? (
+                      <span className={styles.objectChipCount}>·{object.instanceCount}</span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -423,8 +422,6 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
         className={styles.scroll}
         ref={scrollRef}
         onScroll={(event) => saveSnapshot(event.currentTarget.scrollTop)}
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
       >
         {objectStatus === 'loading' ? (
           <MobileSkeleton label={t('common.loading')} variant="list" rows={5} />
@@ -451,7 +448,6 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                   <div className={styles.instanceTable}>
                     <div className={styles.instanceTableHead} style={{ gridTemplateColumns: tableGridColumns }}>
                       <span className={styles.colSticky}>{t('monitor.columnName')}</span>
-                      <span className={styles.colRight}>{t('monitor.columnReportTime')}</span>
                       <button
                         type="button"
                         className={`${styles.columnFilter} ${hasStatusFilter ? styles.columnFilterActive : ''}`}
@@ -462,6 +458,7 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                         <span className={styles.columnFilterLabel}>{t('monitor.columnReportingStatus')}</span>
                         <FilterOutline className={styles.columnFilterIcon} aria-hidden />
                       </button>
+                      <span className={styles.colRight}>{t('monitor.columnReportTime')}</span>
                       {summaryFields.map((field) => (
                         <span className={styles.colRight} key={field.key || field.name}>{field.name}</span>
                       ))}
@@ -472,7 +469,7 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                       </div>
                     ) : (
                       instances.map((instance) => {
-                      const summary = instanceListSummaryEntries(monitorObject, instance, INSTANCE_LIST_SUMMARY_LIMIT, metricUnits);
+                      const summary = instanceListSummaryEntries(monitorObject, instance, undefined, metricUnits);
                       const reportingStatus = resolveMonitorReportingStatus(instance.status);
                       const detailParams = new URLSearchParams({
                         objectId: String(monitorObject.id),
@@ -506,22 +503,6 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                               </span>
                             </span>
                           </span>
-                          <span className={styles.colRight}>
-                            {instance.lastReportedAt
-                              ? formatAccountDateTime(
-                                  new Date(
-                                    instance.lastReportedAt * 1000,
-                                  ).toISOString(),
-                                  preferences,
-                                  {
-                                    month: '2-digit',
-                                    day: '2-digit',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  },
-                                )
-                              : '--'}
-                          </span>
                           <span className={styles.statusCell}>
                             {reportingStatus ? (
                               <span
@@ -535,6 +516,15 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                             ) : (
                               <span className={styles.colRight}>--</span>
                             )}
+                          </span>
+                          <span className={styles.colRight}>
+                            {instance.lastReportedAt
+                              ? formatAccountDateTime(
+                                  new Date(instance.lastReportedAt * 1000).toISOString(),
+                                  preferences,
+                                  { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' },
+                                )
+                              : '--'}
                           </span>
                           {summaryFields.map((field, index) => (
                             <span
@@ -623,7 +613,6 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
           </div>
           <div className={styles.pickerSearch}>
             <MobileSearchBar
-              size="page"
               value={pickerKeyword}
               onChange={setPickerKeyword}
               placeholder={t('monitor.searchObjects')}
@@ -645,11 +634,9 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                       onClick={() => applyObject(object)}
                     >
                       <span className={styles.pickerRowCopy}>
-                        <span className={styles.pickerRowName}>
-                          {t('monitor.objectCountLabel', undefined, {
-                            name: object.displayName,
-                            count: object.instanceCount,
-                          })}
+                        <span className={styles.pickerRowName}>{object.displayName}</span>
+                        <span className={styles.pickerRowCount}>
+                          {t('monitor.objectInstanceCount', undefined, { count: object.instanceCount })}
                         </span>
                       </span>
                       {active ? (

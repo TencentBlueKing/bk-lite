@@ -3,6 +3,7 @@
 import bentoml
 from loguru import logger
 import base64
+import os
 from io import BytesIO
 from PIL import Image
 import time
@@ -265,6 +266,7 @@ class MLService:
                 "images": valid_images,
                 "conf": request.config.conf_threshold,
                 "iou": request.config.iou_threshold,
+                "max_det": request.config.max_detections,
             }
 
             # 调用模型预测（返回格式见 YOLOWrapper）
@@ -425,6 +427,7 @@ class MLService:
         health_check_counter.inc()
         return {
             "status": "healthy",
+            "startup_instance_id": os.getenv("SERVING_INSTANCE_ID", ""),
             "model_source": self.config.source,
             "model_version": getattr(self.model, "version", "unknown"),
         }

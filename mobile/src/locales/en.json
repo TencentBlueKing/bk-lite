@@ -122,11 +122,12 @@
         "viewedAtMinutes": "{count}m ago",
         "viewedAtHours": "{count}h ago",
         "viewedAtYesterday": "Yesterday",
-        "objects": "Monitor objects", "instances": "Instances", "searchWithin": "Search in {name}", "resultCount": "{count} instances", "objectCountLabel": "{name} ({count})",
+        "lastReportedLabel": "Last reported {time}",
+        "objects": "Monitor objects", "instances": "Instances", "searchWithin": "Search in {name}", "resultCount": "{count} instances", "objectCountLabel": "{name} ({count})", "objectInstanceCount": "({count} instances)",
         "allObjects": "Select", "selectObjectAction": "Select", "selectObjectTitle": "Select monitor object", "searchObjects": "Search objects", "searchInstances": "Search by instance name", "currentObject": "Current",
         "columnName": "Name", "columnReportTime": "Report time", "columnReportingStatus": "Reporting status", "summaryField": "Summary",
         "filterReportingStatus": "Filter reporting status", "resetFilter": "Reset",
-        "objectLoadFailed": "Unable to load monitor objects", "instanceLoadFailed": "Unable to load instances", "detailLoadFailed": "Unable to load instance metrics", "detailForbidden": "You do not have permission to view this instance", "detailMissing": "This instance does not exist or was deleted", "backToMonitor": "Back to Monitor", "retryHint": "Check the network or your permissions and retry",
+        "objectLoadFailed": "Unable to load monitor objects", "instanceLoadFailed": "Unable to load instances", "detailLoadFailed": "Unable to load instance metrics", "detailForbidden": "You do not have permission to view this instance", "detailMissing": "This instance does not exist or was deleted", "detailUnavailable": "This instance is unavailable, deleted, or not accessible to you", "backToMonitor": "Back to Monitor", "retryHint": "Check the network or your permissions and retry",
         "noObjects": "No visible monitor objects", "noInstances": "No instances for this object", "noSearchResults": "No matching instances", "endOfList": "End of list",
         "noReportTime": "No report time", "detailTitle": "Instance details", "instanceId": "Instance ID", "dataSource": "Data source", "selectPluginTitle": "Select data source", "selectPluginAction": "Select", "currentPlugin": "Current", "timeRange": "Time range",
         "fields": {
@@ -147,7 +148,7 @@
         "resultCount": "{count} items", "shortCount": "{count} items", "catalogSummary": "{assets} assets · {models} models", "categorySummary": "{assets} assets · {models} models", "organization": "Team", "ipAddress": "IP", "noFollowed": "No followed assets", "noFollowedHint": "Follow an asset from its details. The result is shared with Web.", "noModels": "No visible asset models", "noInstances": "No assets in this model", "noInstancesHint": "Switch models above to continue", "endOfList": "End of list",
         "currentModel": "Current model", "changeModel": "Select", "selectModelTitle": "Select model", "searchModels": "Filter model name", "selectModelAction": "Select", "currentModelBadge": "Current", "columnName": "Name",
         "searchModel": "Filter in “{name}”", "searchPlaceholder": "Enter an asset keyword", "searchHint": "Search all assets", "searchHintDescription": "Enter a keyword to see real matches grouped by model", "searchResultsByModel": "Switch search results by model", "searchFailed": "Asset search failed", "noSearchResults": "No matching assets", "exactMatch": "Exact match", "searchForbidden": "You do not have global asset search permission",
-        "detailTitle": "Asset details", "follow": "Follow", "unfollow": "Unfollow", "followUnavailable": "Follow unavailable", "followSuccess": "Asset followed", "unfollowSuccess": "Asset unfollowed", "followFailed": "Unable to save follow state. Try again.", "noFieldGroups": "This model has no displayable fields", "yes": "Yes", "no": "No"
+        "detailTitle": "Asset details", "follow": "Follow", "unfollow": "Unfollow", "followUnavailable": "Follow unavailable", "followSuccess": "Asset followed", "unfollowSuccess": "Asset unfollowed", "followFailed": "Unable to save follow state. Try again.", "noFieldGroups": "This model has no displayable fields", "downloadFile": "Download {name}", "previewFile": "Preview {name}", "fileLoadFailed": "Unable to load the file", "yes": "Yes", "no": "No"
     },
 
     "conversations": {
