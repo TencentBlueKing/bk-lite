@@ -78,7 +78,7 @@ TARGET_TASK_WINDOW=0
 协议预检 / access_probe 外层默认 7 秒（`CONNECT_TIMEOUT`）。`PREFLIGHT_REACHABILITY` 默认
 `off`：TCP/TLS 不再做端口短探，CIDR 通过后直接进入凭据/采集；Job `remote` 仍检查执行通道。
 设为 `on` 时 TCP 协议会先连接实际端口。SNMP/UDP 始终在 CIDR 通过后进入凭据感知 probe
-（SNMP GET 固定 timeout=5、retries=1），云账号检查逻辑端点；ICMP 不作为硬过滤条件。
+（SNMP GET 固定 timeout=5、retries=2），云账号检查逻辑端点；ICMP 不作为硬过滤条件。
 直接 IP 与域名解析后的每个可用地址都必须落在 `OUTBOUND_ALLOWED_CIDRS`；配置
 `OUTBOUND_ALLOWED_DOMAINS` 后，域名还必须同时命中该名单，域名名单不能绕过 CIDR 边界。
 生产环境应按实际采集边界收窄这两项。
