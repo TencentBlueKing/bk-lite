@@ -7,6 +7,7 @@ from asgiref.sync import async_to_sync
 from django.core.files.base import ContentFile
 from nats.js.errors import ObjectNotFoundError
 
+from apps.core.logger import node_logger as logger
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.constants.package import PackageConstants
 from apps.node_mgmt.models.package import PackageVersion
@@ -25,15 +26,20 @@ from apps.node_mgmt.utils.s3 import (
 def _close_and_unlink_tempfile(file):
     """关闭并删除具名临时文件；允许调用方重复清理。"""
     if file is None:
-        return
+        return True
     file_name = file.name
     try:
         file.close()
-    finally:
-        try:
-            os.unlink(file_name)
-        except FileNotFoundError:
-            pass
+    except Exception:
+        logger.exception("Failed to close package temporary file")
+    try:
+        os.unlink(file_name)
+    except FileNotFoundError:
+        return True
+    except Exception:
+        logger.exception("Failed to remove package temporary file")
+        return False
+    return True
 
 
 class _TemporaryFileChunkIterator:
@@ -61,8 +67,8 @@ class _TemporaryFileChunkIterator:
 
     def close(self):
         file = self.file
-        self.file = None
-        _close_and_unlink_tempfile(file)
+        if _close_and_unlink_tempfile(file):
+            self.file = None
 
 
 class PackageService:
@@ -319,27 +325,33 @@ class PackageService:
         from apps.rpc.jetstream import JetStreamService
 
         async def _download_to_tempfile():
-            async with jetstream_connection(JetStreamService()) as jetstream:
-                last_error = None
-                for s3_file_path in PackageService.build_candidate_file_paths(package_obj):
-                    tmp = None
-                    try:
-                        info = await jetstream.object_store.get_info(s3_file_path)
-                        filename = info.description or package_obj.name
-                        tmp = tempfile.NamedTemporaryFile(mode="w+b", delete=False)
-                        await jetstream.object_store.get(s3_file_path, writeinto=tmp)
-                        tmp.seek(0)
-                        return tmp, filename
-                    except ObjectNotFoundError as error:
-                        _close_and_unlink_tempfile(tmp)
-                        last_error = error
-                        continue
-                    except BaseException:
-                        _close_and_unlink_tempfile(tmp)
-                        raise
-                if last_error:
-                    raise last_error
-                raise ObjectNotFoundError
+            tmp = None
+            try:
+                async with jetstream_connection(JetStreamService()) as jetstream:
+                    last_error = None
+                    for s3_file_path in PackageService.build_candidate_file_paths(package_obj):
+                        try:
+                            info = await jetstream.object_store.get_info(s3_file_path)
+                            filename = info.description or package_obj.name
+                            tmp = tempfile.NamedTemporaryFile(mode="w+b", delete=False)
+                            await jetstream.object_store.get(s3_file_path, writeinto=tmp)
+                            tmp.seek(0)
+                            return tmp, filename
+                        except ObjectNotFoundError as error:
+                            _close_and_unlink_tempfile(tmp)
+                            tmp = None
+                            last_error = error
+                            continue
+                        except BaseException:
+                            _close_and_unlink_tempfile(tmp)
+                            tmp = None
+                            raise
+                    if last_error:
+                        raise last_error
+                    raise ObjectNotFoundError
+            except BaseException:
+                _close_and_unlink_tempfile(tmp)
+                raise
 
         tmp_file, filename = async_to_sync(_download_to_tempfile)()
         return _TemporaryFileChunkIterator(tmp_file), filename

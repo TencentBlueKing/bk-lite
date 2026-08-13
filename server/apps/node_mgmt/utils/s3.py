@@ -4,7 +4,7 @@ from typing import AsyncGenerator
 
 from nats.js.errors import ObjectNotFoundError
 
-from apps.core.logger import logger
+from apps.core.logger import node_logger as logger
 from apps.rpc.jetstream import JetStreamService
 
 JETSTREAM_CLOSE_TIMEOUT_SECONDS = 5
