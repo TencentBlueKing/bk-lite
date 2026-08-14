@@ -10,9 +10,9 @@ from core.collection.contracts import (
     AccessProbe,
     AccessProbeResult,
     AccessProbeStatus,
+    CollectionPlugin,
     CollectOutcome,
     CollectOutcomeStatus,
-    CollectionPlugin,
     PreflightProbe,
     PreflightResult,
     PreflightStatus,
@@ -22,9 +22,11 @@ from core.collection.contracts import (
     TargetCollectionResult,
     TargetExecutorSettings,
 )
+from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
+from core.collection.execution_plan import ExecutionPlan
 from core.collection.metrics import CollectionMetrics
 from core.collection.runtime import CollectionRequest, RunLease
-from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
+from core.collection.scheduler import CollectionScheduler
 from core.infra.redis_client import is_credential_state_redis_error
 from core.logger import logger
 
@@ -102,9 +104,7 @@ class TargetWorkerBudget:
             released = min(max(0, count), self.active)
             self.active -= released
             if not self._unlimited:
-                self._available = min(
-                    self._capacity, self._available + released
-                )
+                self._available = min(self._capacity, self._available + released)
             self._condition.notify_all()
 
 
@@ -136,6 +136,8 @@ class TargetCollectionExecutor:
         activity_tracker: TargetActivityTracker | None = None,
         metrics: CollectionMetrics | None = None,
         settings: TargetExecutorSettings | None = None,
+        plan: ExecutionPlan | None = None,
+        scheduler: CollectionScheduler | None = None,
     ) -> None:
         self._preflight = preflight
         # None = 无廉价 AccessProbe，CredentialAttempt 直接 collect
@@ -146,6 +148,15 @@ class TargetCollectionExecutor:
             store=InMemoryCredentialStateStore()
         )
         self._settings = settings or TargetExecutorSettings()
+        self._plan = plan or ExecutionPlan(
+            preflight_enabled=self._settings.access_probe_enabled,
+            preflight_timeout_seconds=self._settings.connect_timeout_seconds,
+            probe_timeout_seconds=self._settings.connect_timeout_seconds,
+            collection_timeout_seconds=self._settings.plugin_timeout_seconds,
+            publish_timeout_seconds=self._settings.publish_guard_seconds,
+            execution_mode="sync",
+            capacity_group="default",
+        )
         if target_semaphore is not None:
             self._target_semaphore = target_semaphore
         elif self._settings.max_active_targets <= 0:
@@ -159,79 +170,110 @@ class TargetCollectionExecutor:
             self._settings.target_task_window
         )
         self._metrics = metrics or CollectionMetrics()
+        self._scheduler = scheduler
 
-    async def execute(
-        self, request: CollectionRequest, lease: RunLease
-    ) -> RunSummary:
+    async def execute(self, request: CollectionRequest, lease: RunLease) -> RunSummary:
         targets = tuple(request.targets)
         results: list[TargetCollectionResult | None] = [None] * len(targets)
+        publish_statuses: list[str | None] = [None] * len(targets)
         skipped = 0
-        next_index = 0
-        iterator_lock = asyncio.Lock()
 
-        async def worker() -> None:
-            nonlocal next_index, skipped
-            while True:
-                async with iterator_lock:
-                    if next_index >= len(targets):
-                        return
-                    index = next_index
-                    next_index += 1
-                # 薄租约：每轮整采；单目标完成后立即发布（失败有限次重试）
-                async with self._target_semaphore:
-                    await self._activity_tracker.enter()
-                    try:
-                        result = await self._execute_target(
-                            request, targets[index], lease
-                        )
-                    finally:
-                        await self._activity_tracker.exit()
-                results[index] = result
-                publish_error: Exception | None = None
-                for _attempt in range(self._settings.publish_max_attempts):
-                    try:
+        async def execute_index(index: int):
+            # 目标槽位只覆盖目标执行与进入发布路径；发布异常在目标内隔离。
+            async with self._target_semaphore:
+                await self._activity_tracker.enter()
+                try:
+                    result = await self._execute_target(request, targets[index], lease)
+                finally:
+                    await self._activity_tracker.exit()
+            publish_error: Exception | None = None
+            publish_status = "failed"
+            for _attempt in range(self._settings.publish_max_attempts):
+                try:
+                    async with asyncio.timeout(self._plan.publish_timeout_seconds):
                         await self._publisher.publish(request, result, lease)
-                        publish_error = None
+                    publish_error = None
+                    break
+                except Exception as error:  # noqa: BLE001 - 单目标有限重试
+                    publish_error = error
+                    self._metrics.increment("result_publish_failure_total")
+                    if bool(getattr(error, "delivery_detected", True)):
+                        publish_status = "unknown"
                         break
-                    except Exception as error:  # noqa: BLE001 - 有限次重试后上抛
-                        publish_error = error
-                        self._metrics.increment("result_publish_failure_total")
-                if publish_error is not None:
-                    raise publish_error
+            if publish_error is not None:
+                logger.warning(
+                    "event=result_publish_%s task_id=%s target=%s " "error_type=%s",
+                    publish_status,
+                    request.task_id,
+                    result.target,
+                    type(publish_error).__name__,
+                )
+            else:
+                publish_status = "succeeded"
+            return index, result, publish_status
 
-        window = self._settings.target_task_window
-        if window <= 0:
-            desired_workers = max(1, len(targets))
-        else:
-            desired_workers = min(len(targets), window) if targets else 1
-        worker_count = await self._worker_budget.reserve(desired_workers)
-        worker_tasks = [
-            asyncio.create_task(
-                worker(),
-                name=f"target-worker:{request.task_id}:{index}",
+        if self._scheduler is not None:
+            scheduled = await self._scheduler.execute(
+                f"{request.task_id}:{lease.fence}",
+                range(len(targets)),
+                execute_index,
             )
-            for index in range(worker_count)
-        ]
-        try:
-            await asyncio.gather(*worker_tasks)
-        except BaseException:
-            for task in worker_tasks:
-                if not task.done():
-                    task.cancel()
-            await asyncio.gather(*worker_tasks, return_exceptions=True)
-            raise
-        finally:
-            await self._worker_budget.release(worker_count)
+            for index, result, publish_status in scheduled:
+                results[index] = result
+                publish_statuses[index] = publish_status
+        else:
+            next_index = 0
+            iterator_lock = asyncio.Lock()
+
+            async def worker() -> None:
+                nonlocal next_index
+                while True:
+                    async with iterator_lock:
+                        if next_index >= len(targets):
+                            return
+                        index = next_index
+                        next_index += 1
+                    result_index, result, publish_status = await execute_index(index)
+                    results[result_index] = result
+                    publish_statuses[result_index] = publish_status
+
+            window = self._settings.target_task_window
+            desired_workers = (
+                max(1, len(targets))
+                if window <= 0
+                else (min(len(targets), window) if targets else 1)
+            )
+            worker_count = await self._worker_budget.reserve(desired_workers)
+            worker_tasks = [
+                asyncio.create_task(
+                    worker(),
+                    name=f"target-worker:{request.task_id}:{index}",
+                )
+                for index in range(worker_count)
+            ]
+            try:
+                await asyncio.gather(*worker_tasks)
+            except BaseException:
+                for task in worker_tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*worker_tasks, return_exceptions=True)
+                raise
+            finally:
+                await self._worker_budget.release(worker_count)
         completed = tuple(result for result in results if result is not None)
         return RunSummary(
             total=len(targets),
-            succeeded=sum(result.status == "success" for result in completed),
-            failed=sum(result.status == "failed" for result in completed),
-            unreachable=sum(
-                result.status == "unreachable" for result in completed
+            collection_succeeded=sum(
+                result.status == "success" for result in completed
             ),
+            collection_failed=sum(result.status == "failed" for result in completed),
+            unreachable=sum(result.status == "unreachable" for result in completed),
             deferred=sum(result.status == "deferred" for result in completed),
             skipped=skipped,
+            publish_succeeded=sum(status == "succeeded" for status in publish_statuses),
+            publish_failed=sum(status == "failed" for status in publish_statuses),
+            publish_unknown=sum(status == "unknown" for status in publish_statuses),
         )
 
     async def _execute_target(
@@ -281,13 +323,9 @@ class TargetCollectionExecutor:
             request, target, credentials, context
         )
 
-    async def _load_eligible_credentials(
-        self, request: CollectionRequest, target: str
-    ):
+    async def _load_eligible_credentials(self, request: CollectionRequest, target: str):
         try:
-            return await self._credential_policy.eligible_credentials(
-                request, target
-            )
+            return await self._credential_policy.eligible_credentials(request, target)
         except Exception as exc:  # noqa: BLE001 - 凭据状态失败隔离为单目标
             if not is_credential_state_redis_error(exc):
                 raise
@@ -309,9 +347,7 @@ class TargetCollectionExecutor:
         credential,
     ) -> None:
         try:
-            await self._credential_policy.record_success(
-                request, target, credential
-            )
+            await self._credential_policy.record_success(request, target, credential)
         except Exception as exc:  # noqa: BLE001 - 写亲和失败不阻断成功结果
             if not is_credential_state_redis_error(exc):
                 raise
@@ -356,13 +392,11 @@ class TargetCollectionExecutor:
     ) -> PreflightResult:
         preflight_started = time.monotonic()
         try:
-            async with asyncio.timeout(
-                self._settings.connect_timeout_seconds
-            ):
+            async with asyncio.timeout(self._plan.preflight_timeout_seconds):
                 return await self._preflight.check(
                     target,
                     request,
-                    timeout_seconds=self._settings.connect_timeout_seconds,
+                    timeout_seconds=self._plan.preflight_timeout_seconds,
                 )
         except TimeoutError:
             return PreflightResult(
@@ -382,9 +416,7 @@ class TargetCollectionExecutor:
         self._metrics.increment("credential_cooldown_total")
         next_retry_at = None
         try:
-            next_retry_at = await self._credential_policy.next_retry_at(
-                request, target
-            )
+            next_retry_at = await self._credential_policy.next_retry_at(request, target)
         except Exception as exc:  # noqa: BLE001 - 读冷冻时间失败不影响结果
             if not is_credential_state_redis_error(exc):
                 raise
@@ -427,9 +459,7 @@ class TargetCollectionExecutor:
             self._metrics.increment("credential_attempt_total")
             credential_id = str(credential.get("credential_id") or "")
 
-            access = await self._run_access_probe(
-                target, credential, context, attempts
-            )
+            access = await self._run_access_probe(target, credential, context, attempts)
             if isinstance(access, TargetCollectionResult):
                 return access
 
@@ -448,9 +478,7 @@ class TargetCollectionExecutor:
                 continue
             no_response_attempts = probe_decision.no_response_attempts
 
-            outcome = await self._run_collect(
-                target, credential, context
-            )
+            outcome = await self._run_collect(target, credential, context)
             collect_decision = await self._apply_collect_outcome(
                 request,
                 target,
@@ -483,19 +511,17 @@ class TargetCollectionExecutor:
         context: TargetCollectionContext,
         attempts: int,
     ) -> AccessProbeResult | TargetCollectionResult:
-        if self._access_probe is None:
+        if not self._plan.preflight_enabled or self._access_probe is None:
             return AccessProbeResult(status=AccessProbeStatus.NOT_SUPPORTED)
 
         access_probe_started = time.monotonic()
         try:
-            async with asyncio.timeout(
-                self._settings.connect_timeout_seconds
-            ):
+            async with asyncio.timeout(self._plan.probe_timeout_seconds):
                 return await self._access_probe.probe(
                     target,
                     credential,
                     context,
-                    timeout_seconds=self._settings.connect_timeout_seconds,
+                    timeout_seconds=self._plan.probe_timeout_seconds,
                 )
         except TimeoutError:
             self._metrics.increment("access_probe_timeout_total")
@@ -545,7 +571,9 @@ class TargetCollectionExecutor:
     ):
         credential_id = str(credential.get("credential_id") or "")
         if access.status == AccessProbeStatus.NOT_SUPPORTED:
-            return _AttemptDecision(action="collect", no_response_attempts=no_response_attempts)
+            return _AttemptDecision(
+                action="collect", no_response_attempts=no_response_attempts
+            )
         if access.status in {
             AccessProbeStatus.AUTH_FAILED,
             AccessProbeStatus.CAPABILITY_DENIED,
@@ -695,9 +723,7 @@ class TargetCollectionExecutor:
     ) -> CollectOutcome:
         plugin_started = time.monotonic()
         try:
-            async with asyncio.timeout(
-                self._settings.plugin_timeout_seconds
-            ):
+            async with asyncio.timeout(self._plan.collection_timeout_seconds):
                 return await self._plugin.collect(
                     target,
                     credential,
@@ -735,9 +761,7 @@ class TargetCollectionExecutor:
         credential_id: str,
     ):
         if outcome.status == CollectOutcomeStatus.SUCCESS:
-            await self._safe_record_success(
-                request, target, credential
-            )
+            await self._safe_record_success(request, target, credential)
             return _AttemptDecision(
                 action="return",
                 result=TargetCollectionResult(

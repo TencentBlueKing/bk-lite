@@ -12,6 +12,8 @@ metadata:
 executors:
   protocol:
     type: protocol
+    execution_mode: sync
+    capacity_group: snmp
     timeout: 60
     collector:
       module: plugins.inputs.network.snmp_facts

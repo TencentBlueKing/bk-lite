@@ -1,15 +1,8 @@
 import pytest
-
-from core.collection.application import (
-    CollectionApplicationSettings,
-    concurrency_limit_from_env,
-)
-from core.collection.constants import (
-    DEFAULT_MAX_ACTIVE_TARGETS,
-    DEFAULT_TARGET_TASK_WINDOW,
-)
-from core.collection.executor import TargetWorkerBudget
+from core.collection.application import CollectionApplicationSettings, concurrency_limit_from_env
+from core.collection.constants import DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
 from core.collection.contracts import TargetExecutorSettings
+from core.collection.executor import TargetWorkerBudget
 
 
 def test_concurrency_limit_from_env_uses_default_and_zero_unlimited(monkeypatch):
@@ -20,10 +13,16 @@ def test_concurrency_limit_from_env_uses_default_and_zero_unlimited(monkeypatch)
     )
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "3500")
-    assert concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS) == 3500
+    assert (
+        concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
+        == 3500
+    )
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "0")
-    assert concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS) == 0
+    assert (
+        concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
+        == 0
+    )
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "-1")
     with pytest.raises(ValueError, match="MAX_ACTIVE_TARGETS"):
@@ -42,6 +41,32 @@ def test_application_settings_from_env_reads_concurrency(monkeypatch):
     settings = CollectionApplicationSettings.from_env()
     assert settings.max_active_targets == DEFAULT_MAX_ACTIVE_TARGETS
     assert settings.target_task_window == DEFAULT_TARGET_TASK_WINDOW
+
+
+def test_application_settings_split_timeouts_and_keep_legacy_fallback(monkeypatch):
+    monkeypatch.setenv("CONNECT_TIMEOUT", "9")
+    monkeypatch.setenv("PLUGIN_TIMEOUT", "70")
+    monkeypatch.delenv("PREFLIGHT_TIMEOUT", raising=False)
+    monkeypatch.delenv("PROBE_TIMEOUT", raising=False)
+    monkeypatch.delenv("COLLECTION_TIMEOUT", raising=False)
+    monkeypatch.setenv("PUBLISH_TIMEOUT", "31")
+
+    legacy = CollectionApplicationSettings.from_env()
+
+    assert legacy.connect_timeout_seconds == 9
+    assert legacy.probe_timeout_seconds == 9
+    assert legacy.plugin_timeout_seconds == 70
+    assert legacy.publish_timeout_seconds == 31
+
+    monkeypatch.setenv("PREFLIGHT_TIMEOUT", "15")
+    monkeypatch.setenv("PROBE_TIMEOUT", "16")
+    monkeypatch.setenv("COLLECTION_TIMEOUT", "80")
+
+    current = CollectionApplicationSettings.from_env()
+
+    assert current.connect_timeout_seconds == 15
+    assert current.probe_timeout_seconds == 16
+    assert current.plugin_timeout_seconds == 80
 
 
 def test_target_executor_settings_allow_zero_unlimited():

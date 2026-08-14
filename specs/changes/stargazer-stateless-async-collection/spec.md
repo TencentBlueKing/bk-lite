@@ -2,6 +2,12 @@
 
 Status: approved for implementation (COMPLETE-PLAN-2026-08-06.md); code converging from superseding digest/fencing/AccessProbe workspace
 
+2026-08-14 补充锁定：以同目录
+`collection-failure-remediation-plan-2026-08-14.md` 为准。关闭
+`PREFLIGHT_REACHABILITY` 时跳过全部采集前探测但保留出站安全检查；全局容量默认
+`MAX_ACTIVE_RUNS=16`、`MAX_ACTIVE_TARGETS=200`、`TARGET_TASK_WINDOW=200`；单目标发布失败不得取消
+同 Run 其他目标，Run 汇总为 `completed_with_errors`。
+
 ## 摘要
 
 Stargazer 移除 ARQ 队列与 Worker，改由 Sanic 承载一个统一的异步采集运行时。
@@ -428,8 +434,10 @@ Stargazer 与 CMDB 凭据命中事件字段对齐，以及 CMDB「查询 VM → 
 | `TARGET_TASK_WINDOW` | 已创建但未完成的目标协程上限 |
 | `MAX_TARGETS_PER_RUN` | 单个请求允许的目标数量上限 |
 | `MAX_CREDENTIALS_PER_RUN` | 单个请求允许的候选凭据数量上限 |
-| `CONNECT_TIMEOUT` | 协议预检默认超时，初始值 5 秒 |
-| `PLUGIN_TIMEOUT` | 插件采集超时，由插件契约提供默认值 |
+| `PREFLIGHT_TIMEOUT` | 协议预检超时，默认 15 秒；兼容期回退 `CONNECT_TIMEOUT` |
+| `PROBE_TIMEOUT` | 插件 AccessProbe 超时，默认 15 秒；兼容期回退 `CONNECT_TIMEOUT` |
+| `COLLECTION_TIMEOUT` | 正式采集缺省 60 秒；插件 YAML executor `timeout` 优先，兼容期回退 `PLUGIN_TIMEOUT` |
+| `PUBLISH_TIMEOUT` | 单目标发布阶段端到端超时，默认 30 秒 |
 | `RUN_DEADLINE` | 整个采集运行的可选截止时间 |
 
 `app.add_task` 只用于每个 `CollectionRun` 的顶层任务。目标并发由运行时 Semaphore 和有界

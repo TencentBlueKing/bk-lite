@@ -3,11 +3,10 @@ import socket
 import ssl
 
 import pytest
-
-from core.collection.runtime import CollectionRequest
-from core.collection.preflight import AsyncProtocolPreflight
-from core.infra.outbound_policy import OutboundTargetPolicy, OutboundTargetRejected
 from core.collection.contracts import PreflightStatus
+from core.collection.preflight import AsyncProtocolPreflight
+from core.collection.runtime import CollectionRequest
+from core.infra.outbound_policy import OutboundTargetPolicy, OutboundTargetRejected
 
 
 class FakeWriter:
@@ -164,9 +163,7 @@ async def test_outbound_rejected_target_is_logged(monkeypatch):
     def capture(message, *args):
         logged.append(message % args if args else message)
 
-    monkeypatch.setattr(
-        "core.collection.preflight.logger.info", capture
-    )
+    monkeypatch.setattr("core.collection.preflight.logger.info", capture)
     request = CollectionRequest(
         task_id="outbound-skip-log",
         plugin_ref="mysql.config",
@@ -240,9 +237,9 @@ async def test_remote_preflight_checks_cidr_then_responder():
         },
     )
 
-    result = await AsyncProtocolPreflight(remote_probe=probe).check(
-        "10.10.24.10", request, timeout_seconds=5
-    )
+    result = await AsyncProtocolPreflight(
+        remote_probe=probe, reachability_enabled=True
+    ).check("10.10.24.10", request, timeout_seconds=5)
 
     assert calls == [("executor-region-a", 5)]
     assert result.status == PreflightStatus.UNREACHABLE
@@ -289,7 +286,7 @@ async def test_tcp_reachability_off_still_rejects_cidr():
 
 
 @pytest.mark.asyncio
-async def test_remote_still_checks_responder_when_reachability_off():
+async def test_remote_skips_responder_but_keeps_outbound_policy_when_reachability_off():
     calls = []
 
     async def probe(node_id, *, timeout_seconds):
@@ -310,9 +307,9 @@ async def test_remote_still_checks_responder_when_reachability_off():
         remote_probe=probe, reachability_enabled=False
     ).check("10.10.24.10", request, timeout_seconds=5)
 
-    assert calls == [("executor-region-a", 5)]
-    assert result.status == PreflightStatus.UNREACHABLE
-    assert result.error_code == "remote_responder_unavailable"
+    assert calls == []
+    assert result.status == PreflightStatus.UNKNOWN
+    assert result.error_code == ""
 
 
 def test_reachability_defaults_off(monkeypatch):

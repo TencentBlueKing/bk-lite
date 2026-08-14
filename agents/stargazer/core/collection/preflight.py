@@ -8,9 +8,9 @@ import socket
 import ssl
 from urllib.parse import urlsplit
 
+from core.collection.contracts import PreflightResult, PreflightStatus
 from core.collection.runtime import CollectionRequest
 from core.infra.outbound_policy import OutboundTargetPolicy, OutboundTargetRejected
-from core.collection.contracts import PreflightResult, PreflightStatus
 from core.logger import logger
 
 _REACHABILITY_OFF = {"", "0", "off", "false", "no"}
@@ -36,7 +36,7 @@ class AsyncProtocolPreflight:
             else bool(reachability_enabled)
         )
 
-    async def check(
+    async def check(  # noqa: C901
         self,
         target: str,
         request: CollectionRequest,
@@ -73,6 +73,17 @@ class AsyncProtocolPreflight:
                     status=PreflightStatus.UNREACHABLE,
                     error_code="outbound_target_rejected",
                 )
+            if not self._reachability_enabled:
+                logger.info(
+                    "event=preflight_reachability_skipped task_id=%s "
+                    "target=%s kind=remote",
+                    request.task_id,
+                    target,
+                )
+                return PreflightResult(
+                    status=PreflightStatus.UNKNOWN,
+                    detail="outbound allowed; remote probe disabled",
+                )
             node_id = str(
                 request.params.get("ansible_node_id")
                 or request.params.get("node_id")
@@ -88,9 +99,7 @@ class AsyncProtocolPreflight:
                         if available
                         else PreflightStatus.UNREACHABLE
                     ),
-                    error_code=(
-                        "" if available else "remote_responder_unavailable"
-                    ),
+                    error_code=("" if available else "remote_responder_unavailable"),
                 )
             try:
                 from core.infra.nats import get_nats
@@ -214,11 +223,7 @@ class AsyncProtocolPreflight:
     ) -> tuple[str, int | None, bool]:
         if kind in {"http", "https"} or "://" in target:
             base_url = str(request.params.get("base_url") or "").strip()
-            endpoint = (
-                target
-                if "://" in target
-                else base_url or f"{kind}://{target}"
-            )
+            endpoint = target if "://" in target else base_url or f"{kind}://{target}"
             parsed = urlsplit(endpoint)
             use_tls = parsed.scheme == "https"
             port = parsed.port or (443 if use_tls else 80)

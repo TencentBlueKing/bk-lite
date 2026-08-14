@@ -13,6 +13,8 @@ metadata:
 executors:
   protocol:
     type: protocol
+    execution_mode: sync
+    capacity_group: sync_sdk
     timeout: 120
     collector:
       module: plugins.inputs.fusioninsight.fusioninsight_info

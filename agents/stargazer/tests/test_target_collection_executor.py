@@ -1,10 +1,6 @@
 import asyncio
 
 import pytest
-
-from core.collection.runtime import CollectionRequest, RunLease
-from core.collection.metrics import CollectionMetrics
-from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
 from core.collection.contracts import (
     AccessProbeResult,
     AccessProbeStatus,
@@ -14,10 +10,10 @@ from core.collection.contracts import (
     PreflightStatus,
     TargetExecutorSettings,
 )
-from core.collection.executor import (
-    TargetCollectionExecutor,
-    TargetWorkerBudget,
-)
+from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
+from core.collection.executor import TargetCollectionExecutor, TargetWorkerBudget
+from core.collection.metrics import CollectionMetrics
+from core.collection.runtime import CollectionRequest, RunLease
 
 
 class UnreachablePreflight:
@@ -45,15 +41,126 @@ class RecordingPublisher:
         self.results.append((request, result, lease))
 
 
+class OneTargetFailingPublisher:
+    def __init__(self, failed_target):
+        self.failed_target = failed_target
+        self.targets = []
+
+    async def publish(self, request, result, lease):
+        self.targets.append(result.target)
+        if result.target == self.failed_target:
+            raise TimeoutError("nats flush timed out")
+
+
+class DefinitelyNotPublishedError(ConnectionError):
+    delivery_detected = False
+
+
+class RecordingReadyAccessProbe:
+    def __init__(self):
+        self.calls = []
+
+    async def probe(self, target, credential, context, *, timeout_seconds):
+        self.calls.append((target, credential, context, timeout_seconds))
+        return AccessProbeResult(status=AccessProbeStatus.READY)
+
+
 class ReachablePreflight:
     async def check(self, target, request, *, timeout_seconds, plan=None):
         return PreflightResult(status=PreflightStatus.REACHABLE)
 
 
+class RecordingReachablePreflight:
+    def __init__(self):
+        self.calls = []
+
+    async def check(self, target, request, *, timeout_seconds, plan=None):
+        self.calls.append((target, request, timeout_seconds))
+        return PreflightResult(status=PreflightStatus.REACHABLE)
+
+
+@pytest.mark.asyncio
+async def test_disabled_reachability_keeps_security_preflight_but_skips_all_access_probes():
+    preflight = RecordingReachablePreflight()
+    access_probe = RecordingReadyAccessProbe()
+    plugin = RecordingPlugin()
+    publisher = RecordingPublisher()
+    executor = TargetCollectionExecutor(
+        preflight=preflight,
+        access_probe=access_probe,
+        plugin=plugin,
+        publisher=publisher,
+        settings=TargetExecutorSettings(
+            max_active_targets=1,
+            target_task_window=1,
+            access_probe_enabled=False,
+        ),
+    )
+    request = CollectionRequest(
+        task_id="preflight-disabled",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        credentials=({"credential_id": "credential-1"},),
+    )
+    lease = RunLease(
+        task_id=request.task_id,
+        request_digest=request.digest,
+        owner_id="pod-a",
+        fence=1,
+        expires_at=999999,
+    )
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.succeeded == 1
+    assert len(preflight.calls) == 1
+    assert access_probe.calls == []
+    assert len(plugin.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_one_target_publish_failure_does_not_cancel_remaining_targets():
+    publisher = OneTargetFailingPublisher("10.10.24.2")
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=RecordingPlugin(),
+        publisher=publisher,
+        settings=TargetExecutorSettings(
+            max_active_targets=1,
+            target_task_window=1,
+            publish_max_attempts=2,
+        ),
+    )
+    request = CollectionRequest(
+        task_id="publish-isolated",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2", "10.10.24.3"),
+        credentials=({"credential_id": "credential-1"},),
+    )
+    lease = RunLease(
+        task_id=request.task_id,
+        request_digest=request.digest,
+        owner_id="pod-a",
+        fence=1,
+        expires_at=999999,
+    )
+
+    summary = await executor.execute(request, lease)
+
+    assert publisher.targets == [
+        "10.10.24.1",
+        "10.10.24.2",
+        "10.10.24.3",
+    ]
+    assert summary.collection_succeeded == 3
+    assert summary.publish_succeeded == 2
+    assert summary.publish_failed == 0
+    assert summary.publish_unknown == 1
+    assert summary.has_errors is True
+
+
 class CredentialProtocolProbe:
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
+    async def probe(self, target, credential, context, *, timeout_seconds):
         if credential["credential_id"] == "credential-1":
             return AccessProbeResult(
                 status=AccessProbeStatus.AUTH_FAILED,
@@ -63,9 +170,7 @@ class CredentialProtocolProbe:
 
 
 class NoResponseThenReadyProbe:
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
+    async def probe(self, target, credential, context, *, timeout_seconds):
         if credential["credential_id"] == "credential-1":
             return AccessProbeResult(
                 status=AccessProbeStatus.NO_RESPONSE,
@@ -83,9 +188,7 @@ class AlwaysNoResponseProbe:
 
 
 class TargetUnreachableAccessProbe:
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
+    async def probe(self, target, credential, context, *, timeout_seconds):
         return AccessProbeResult(
             status=AccessProbeStatus.TARGET_UNREACHABLE,
             error_code="target_unreachable",
@@ -98,16 +201,12 @@ class MustNotCollectPlugin:
 
 
 class BrokenAccessProbe:
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
+    async def probe(self, target, credential, context, *, timeout_seconds):
         raise RuntimeError("secret-do-not-publish")
 
 
 class TimeoutThenReadyAccessProbe:
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
+    async def probe(self, target, credential, context, *, timeout_seconds):
         if credential["credential_id"] == "credential-1":
             await asyncio.sleep(60)
         return AccessProbeResult(status=AccessProbeStatus.READY)
@@ -118,49 +217,7 @@ class FixedAccessProbe:
         self.status = status
         self.error_code = error_code
 
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
-        return AccessProbeResult(
-            status=self.status,
-            error_code=self.error_code,
-        )
-
-
-class RejectsUnverifiedCredentialPlugin:
-    async def collect(self, target, credential, context):
-        if credential["credential_id"] != "credential-2":
-            raise AssertionError("formal collection used an unverified credential")
-        return CollectOutcome(
-            status=CollectOutcomeStatus.SUCCESS,
-            value={"version": "8.0"},
-        )
-
-
-class BrokenAccessProbe:
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
-        raise RuntimeError("secret-do-not-publish")
-
-
-class TimeoutThenReadyAccessProbe:
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
-        if credential["credential_id"] == "credential-1":
-            await asyncio.sleep(60)
-        return AccessProbeResult(status=AccessProbeStatus.READY)
-
-
-class FixedAccessProbe:
-    def __init__(self, status, error_code):
-        self.status = status
-        self.error_code = error_code
-
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
+    async def probe(self, target, credential, context, *, timeout_seconds):
         return AccessProbeResult(
             status=self.status,
             error_code=self.error_code,
@@ -282,9 +339,7 @@ async def test_credentials_rotate_inside_target_and_success_gets_affinity():
     ]
     assert publisher.results[0][1].credential_id == "credential-2"
     assert publisher.results[0][1].attempts == 2
-    eligible = await credential_policy.eligible_credentials(
-        request, "10.10.24.1"
-    )
+    eligible = await credential_policy.eligible_credentials(request, "10.10.24.1")
     assert [item["credential_id"] for item in eligible] == [
         "credential-2",
         "credential-3",
@@ -361,9 +416,7 @@ async def test_protocol_no_response_rotates_without_freezing_credential():
     )
 
     summary = await executor.execute(request, lease)
-    eligible = await credential_policy.eligible_credentials(
-        request, "10.10.24.1"
-    )
+    eligible = await credential_policy.eligible_credentials(request, "10.10.24.1")
 
     assert summary.succeeded == 1
     assert [item["credential_id"] for item in eligible] == [
@@ -454,9 +507,7 @@ async def test_access_probe_failure_logs_target_and_credential_id(monkeypatch):
     def capture(message, *args):
         logged.append(message % args if args else message)
 
-    monkeypatch.setattr(
-        "core.collection.executor.logger.info", capture
-    )
+    monkeypatch.setattr("core.collection.executor.logger.info", capture)
     publisher = RecordingPublisher()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
@@ -469,7 +520,9 @@ async def test_access_probe_failure_logs_target_and_credential_id(monkeypatch):
         task_id="probe-log",
         plugin_ref="network.config",
         targets=("10.10.69.240",),
-        credentials=({"credential_id": "cred-snmp-1", "community": "secret-community"},),
+        credentials=(
+            {"credential_id": "cred-snmp-1", "community": "secret-community"},
+        ),
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -643,9 +696,7 @@ async def test_capability_denied_probe_cools_credential_without_collecting():
 
     assert summary.failed == 1
     assert publisher.results[0][1].error_code == "credentials_exhausted"
-    assert await credential_policy.eligible_credentials(
-        request, "10.10.24.1"
-    ) == ()
+    assert await credential_policy.eligible_credentials(request, "10.10.24.1") == ()
 
 
 @pytest.mark.asyncio
@@ -730,9 +781,7 @@ async def test_without_access_probe_collect_is_the_credential_attempt():
         access_probe=None,
         plugin=plugin,
         publisher=publisher,
-        settings=TargetExecutorSettings(
-            max_active_targets=1, target_task_window=1
-        ),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -816,7 +865,7 @@ async def test_thin_lease_publishes_without_checkpoint_store():
 
 
 @pytest.mark.asyncio
-async def test_publish_failure_retries_once_then_fails_without_recollect():
+async def test_unknown_publish_failure_is_not_retried_or_recollected():
     plugin = RecordingPlugin()
     publish_calls = {"count": 0}
 
@@ -842,11 +891,12 @@ async def test_publish_failure_retries_once_then_fails_without_recollect():
             publish_max_attempts=2,
         ),
     )
-    with pytest.raises(ConnectionError):
-        await executor.execute(request, lease)
+    summary = await executor.execute(request, lease)
 
     assert len(plugin.calls) == 1
-    assert publish_calls["count"] == 2
+    assert publish_calls["count"] == 1
+    assert summary.publish_unknown == 1
+    assert summary.has_errors is True
 
 
 @pytest.mark.asyncio
@@ -859,7 +909,7 @@ async def test_publish_succeeds_on_second_attempt():
         async def publish(self, request, result, lease):
             publish_calls["count"] += 1
             if publish_calls["count"] == 1:
-                raise ConnectionError("nats unavailable")
+                raise DefinitelyNotPublishedError("nats unavailable")
             await publisher.publish(request, result, lease)
 
     request = CollectionRequest(
@@ -902,9 +952,7 @@ async def test_multiple_runs_share_the_same_pod_target_limit():
             return CollectOutcome(status=CollectOutcomeStatus.SUCCESS)
 
     shared_gate = asyncio.Semaphore(2)
-    settings = TargetExecutorSettings(
-        max_active_targets=2, target_task_window=4
-    )
+    settings = TargetExecutorSettings(max_active_targets=2, target_task_window=4)
     executors = [
         TargetCollectionExecutor(
             preflight=ReachablePreflight(),
@@ -953,9 +1001,7 @@ async def test_multiple_runs_share_one_global_target_task_window():
             plugin=BlockingPlugin(),
             publisher=RecordingPublisher(),
             worker_budget=budget,
-            settings=TargetExecutorSettings(
-                max_active_targets=4, target_task_window=4
-            ),
+            settings=TargetExecutorSettings(max_active_targets=4, target_task_window=4),
         )
         for _ in range(2)
     ]
@@ -1006,9 +1052,7 @@ async def test_worker_failure_cancels_siblings_before_releasing_budget():
         plugin=RecordingPlugin(),
         publisher=RecordingPublisher(),
         worker_budget=budget,
-        settings=TargetExecutorSettings(
-            max_active_targets=2, target_task_window=2
-        ),
+        settings=TargetExecutorSettings(max_active_targets=2, target_task_window=2),
     )
     request = CollectionRequest(
         task_id="worker-cancel",

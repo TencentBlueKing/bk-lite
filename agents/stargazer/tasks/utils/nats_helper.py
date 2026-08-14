@@ -7,14 +7,15 @@ NATS 推送辅助工具
 处理指标数据推送到 NATS（InfluxDB Line Protocol 格式）
 """
 
+import asyncio
 import json
 import os
-import asyncio
 import traceback
-from typing import Dict, Any
-from sanic.log import logger
-from influxdb_client import Point, WritePrecision
+from typing import Any, Dict
+
 from core.infra.nats_utils import NatsLinesPublishError, nats_publish, nats_publish_lines
+from influxdb_client import Point, WritePrecision
+from sanic.log import logger
 
 
 class MetricsPublishError(RuntimeError):
@@ -58,7 +59,9 @@ def _has_any_delivery(success_count: int, delivery_detected: bool) -> bool:
     return _has_confirmed_delivery(success_count) or delivery_detected
 
 
-async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_id: str) -> int:
+async def _publish_lines_with_retry(
+    subject: str, influx_lines: list[str], task_id: str
+) -> int:
     total_lines = len(influx_lines)
     max_retries = _metrics_publish_retry_times()
     last_error = ""
@@ -69,7 +72,9 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
         try:
             success_count = await nats_publish_lines(subject, influx_lines)
             best_success_count = max(best_success_count, success_count)
-            delivery_detected = delivery_detected or _has_confirmed_delivery(success_count)
+            delivery_detected = delivery_detected or _has_confirmed_delivery(
+                success_count
+            )
             logger.info(
                 f"[NATS Helper] Metrics publish attempt={attempt} task_id={task_id} "
                 f"subject={subject} success_count={success_count} total_lines={total_lines}"
@@ -225,7 +230,9 @@ async def publish_callback_to_nats(
         raise
 
 
-async def publish_credential_result_to_nats(result: Dict[str, Any], params: Dict[str, Any], task_id: str):
+async def publish_credential_result_to_nats(
+    result: Dict[str, Any], params: Dict[str, Any], task_id: str
+):
     callback_subject = params.get("credential_result_subject")
     if not callback_subject:
         return
@@ -235,7 +242,9 @@ async def publish_credential_result_to_nats(result: Dict[str, Any], params: Dict
     payload = {"args": [], "kwargs": {"data": dict(result or {})}}
     try:
         await nats_publish(subject, payload)
-        logger.info(f"[NATS Helper] Published credential result to {subject} for task {task_id}")
+        logger.info(
+            f"[NATS Helper] Published credential result to {subject} for task {task_id}"
+        )
     except Exception as err:
         logger.error(
             f"[NATS Helper] Failed to publish credential result for task {task_id}: {err}\n{traceback.format_exc()}"
@@ -286,7 +295,32 @@ async def publish_metrics_to_nats(
     return success_count
 
 
-def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> list:
+async def publish_metrics_batch_to_nats(entries) -> int:
+    """把多个目标的指标按 subject 聚合，每个 subject 只 flush 一次。"""
+    grouped_lines: dict[str, list[str]] = {}
+    grouped_tasks: dict[str, list[str]] = {}
+    metric_topic_prefix = os.getenv("NATS_METRIC_TOPIC", "metrics")
+    for _ctx, metrics_data, params, task_id in entries:
+        task_type = params.get("monitor_type") or params.get(
+            "plugin_name", params.get("model_id", "unknown")
+        )
+        subject = f"{metric_topic_prefix}.{task_type}"
+        lines = convert_prometheus_to_influx(metrics_data, params)
+        if not lines:
+            continue
+        grouped_lines.setdefault(subject, []).extend(lines)
+        grouped_tasks.setdefault(subject, []).append(str(task_id))
+
+    total = 0
+    for subject, lines in grouped_lines.items():
+        task_label = ",".join(dict.fromkeys(grouped_tasks[subject]))
+        total += await _publish_lines_with_retry(subject, lines, task_label)
+    return total
+
+
+def convert_prometheus_to_influx(  # noqa: C901
+    prometheus_data: str, params: Dict[str, Any]
+) -> list:
     """
     将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
 
@@ -562,11 +596,7 @@ def _decode_prometheus_value(raw_value: str) -> str:
 
 def _clean_common_tag_value(value) -> str:
     return " ".join(
-        str(value)
-        .replace("\r", " ")
-        .replace("\n", " ")
-        .replace("\t", " ")
-        .split()
+        str(value).replace("\r", " ").replace("\n", " ").replace("\t", " ").split()
     )
 
 

@@ -1,8 +1,82 @@
-import pytest
+import asyncio
 
-from core.collection.runtime import CollectionRequest, RunLease
-from core.collection.result_publisher import NatsResultPublisher
+import pytest
 from core.collection.contracts import TargetCollectionResult
+from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher
+from core.collection.runtime import CollectionRequest, RunLease
+
+
+@pytest.mark.asyncio
+async def test_buffered_publisher_batches_concurrent_target_results():
+    batches = []
+
+    class BatchDelegate:
+        async def publish_batch(self, items):
+            batches.append(tuple(item[1].target for item in items))
+
+    publisher = BufferedResultPublisher(
+        BatchDelegate(), capacity=3, batch_size=10, flush_interval_seconds=0.01
+    )
+    request = CollectionRequest(
+        task_id="batch-results",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2", "10.10.24.3"),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    await asyncio.gather(
+        *(
+            publisher.publish(
+                request,
+                TargetCollectionResult(
+                    target=target, status="success", attempts=1, value="metric 1"
+                ),
+                lease,
+            )
+            for target in request.targets
+        )
+    )
+
+    assert batches == [("10.10.24.1", "10.10.24.2", "10.10.24.3")]
+    assert publisher.peak_queue_depth <= 3
+    await publisher.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_nats_result_publisher_uses_one_metrics_batch_adapter_call():
+    batches = []
+
+    async def publish_metrics_batch(entries):
+        batches.append(entries)
+
+    publisher = NatsResultPublisher(metrics_publish_batch=publish_metrics_batch)
+    request = CollectionRequest(
+        task_id="nats-batch",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2"),
+        params={"plugin_family": "configuration", "model_id": "network"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    await publisher.publish_batch(
+        tuple(
+            (
+                request,
+                TargetCollectionResult(
+                    target=target,
+                    status="success",
+                    attempts=1,
+                    value=f"network_info,host={target} value=1",
+                ),
+                lease,
+            )
+            for target in request.targets
+        )
+    )
+
+    assert len(batches) == 1
+    assert [entry[3] for entry in batches[0]] == ["nats-batch", "nats-batch"]
+    assert all("collection_result_id" in entry[2] for entry in batches[0])
 
 
 @pytest.mark.asyncio

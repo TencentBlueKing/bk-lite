@@ -38,14 +38,16 @@ Token、community 或私钥。移除持久队列后，Pod 故障丢单依赖下�
 ```bash
 MAX_ACTIVE_RUNS=16
 # 配置采集目标并发；设为 0 表示不限制（尽快打满机器、靠监控扩容）
-MAX_ACTIVE_TARGETS=2000
-TARGET_TASK_WINDOW=2000
+MAX_ACTIVE_TARGETS=200
+TARGET_TASK_WINDOW=200
 REDIS_MAX_CONNECTIONS=2560
 REDIS_POOL_TIMEOUT=2
 # 默认 RESP2，兼容不支持 HELLO 的旧 Redis / 代理；仅在确认服务端支持 RESP3 时设为 3
 REDIS_PROTOCOL=2
-CONNECT_TIMEOUT=7
-PLUGIN_TIMEOUT=60
+PREFLIGHT_TIMEOUT=15
+PROBE_TIMEOUT=15
+COLLECTION_TIMEOUT=60
+PUBLISH_TIMEOUT=30
 RUN_LEASE_TTL=600
 RUN_LEASE_HEARTBEAT=30
 COLLECTION_SHUTDOWN_GRACE=30
@@ -56,9 +58,9 @@ OUTBOUND_ALLOWED_DOMAINS=
 PREFLIGHT_REACHABILITY=off
 ```
 
-这些值都是部署参数。未设置时默认 `MAX_ACTIVE_TARGETS=2000`、
-`TARGET_TASK_WINDOW=2000`。二者是单 Pod、跨所有运行共享的配置采集目标并发窗口；
-默认偏大是为了不把压力藏在软上限后面。需要临时去掉目标并发上限时：
+这些值都是部署参数。未设置时默认 `MAX_ACTIVE_TARGETS=200`、
+`TARGET_TASK_WINDOW=200`。二者是单 Pod、跨所有运行共享的配置采集目标并发与任务窗口；
+全局调度器在 Run 之间 round-robin，单个大 Run 不再预占 worker。需要临时去掉目标并发上限时：
 
 ```bash
 MAX_ACTIVE_TARGETS=0
@@ -75,10 +77,11 @@ TARGET_TASK_WINDOW=0
 `REDIS_PROTOCOL` 默认 `2`（RESP2）。`redis-py` 8+ 默认会走 RESP3 并发送 `HELLO`；
 若 Redis 过旧或不支持 `HELLO` 的代理会在启动 `ping` 时直接失败，因此显式钉在 RESP2。
 
-协议预检 / access_probe 外层默认 7 秒（`CONNECT_TIMEOUT`）。`PREFLIGHT_REACHABILITY` 默认
-`off`：TCP/TLS 不再做端口短探，CIDR 通过后直接进入凭据/采集；Job `remote` 仍检查执行通道。
-设为 `on` 时 TCP 协议会先连接实际端口。SNMP/UDP 始终在 CIDR 通过后进入凭据感知 probe
-（SNMP GET 固定 timeout=5、retries=2），云账号检查逻辑端点；ICMP 不作为硬过滤条件。
+`PREFLIGHT_TIMEOUT` 与 `PROBE_TIMEOUT` 分别控制协议预检和插件 AccessProbe，默认均为 15 秒。
+`PREFLIGHT_REACHABILITY` 默认 `off`：保留 CIDR/SSRF 出站安全检查，但跳过 TCP/TLS、SNMP、
+remote/job 及其他所有采集前探测，直接进入正式采集；设为 `on` 时才执行预检和插件 probe。
+`COLLECTION_TIMEOUT` 是正式采集缺省值 60 秒，插件 YAML executor 的 `timeout` 优先；
+`PUBLISH_TIMEOUT` 默认 30 秒，控制单目标结果发布阶段。ICMP 不作为硬过滤条件。
 直接 IP 与域名解析后的每个可用地址都必须落在 `OUTBOUND_ALLOWED_CIDRS`；配置
 `OUTBOUND_ALLOWED_DOMAINS` 后，域名还必须同时命中该名单，域名名单不能绕过 CIDR 边界。
 生产环境应按实际采集边界收窄这两项。
