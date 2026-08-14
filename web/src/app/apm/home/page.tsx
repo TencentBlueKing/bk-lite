@@ -46,9 +46,10 @@ import type {
   ApmTimeWindow,
   ApmTopologyHealth,
 } from '@/app/apm/types';
+import ApmRouteShell from '@/app/apm/components/apm-route-shell';
 import SummaryMetricCard from '@/components/summary-metric-card';
 
-const { Text, Title, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 
 const TIME_WINDOWS: ApmTimeWindow[] = ['15m', '1h', '4h', '1d', '7d'];
 
@@ -187,12 +188,12 @@ function HomeSkeleton() {
 function HomeEmptyState() {
   return (
     <div className="mt-1 rounded-[6px] border border-[var(--color-border)] bg-[var(--color-bg)] px-8 py-20 text-center">
-      <div className="mx-auto mb-5 inline-flex h-14 w-14 items-center justify-center rounded-xl bg-[var(--color-primary-bg-active)]">
-        <RocketOutlined aria-hidden="true" className="text-2xl text-[var(--color-primary)]" />
+      <div className="mx-auto mb-5 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)]">
+        <RocketOutlined aria-hidden="true" className="text-base text-[var(--color-primary)]" />
       </div>
-      <Title level={4} className="!mb-2 !font-semibold">
+      <p className="mb-2 text-base font-semibold leading-6 text-[var(--color-text-1)]">
         还没有接入任何应用
-      </Title>
+      </p>
       <Paragraph type="secondary" className="!mb-6 text-sm">
         前往集成菜单完成首次接入，数分钟内即可在首页看到 6 个 KPI 与 7 段汇总。
       </Paragraph>
@@ -327,7 +328,7 @@ export default function ApmHomePage() {
   const sectionFailed = (section: ApmDashboardSection<unknown> | undefined) => section?.status === 'failed';
 
   return (
-    <div className="h-full min-h-full overflow-auto px-6 pb-10 pt-4 lg:px-8">
+    <ApmRouteShell title="首页" description="查看应用性能总览、健康分布与待处理告警。">
       <div className="mb-3 flex items-center justify-end px-1">
         <Space size={6} align="center">
           <Text type="secondary" className="text-xs">
@@ -374,8 +375,8 @@ export default function ApmHomePage() {
                     label={kpi.label}
                     labelClassName="!text-xs !font-medium"
                     layout="vertical"
-                    maxFontSize={28}
-                    minFontSize={22}
+                    maxFontSize={16}
+                    minFontSize={16}
                     unit={kpi.unit}
                     value={kpi.value}
                     valueClassName="!font-semibold !tracking-tight"
@@ -409,7 +410,7 @@ export default function ApmHomePage() {
                           }))}
                       />
                       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-[32px] font-semibold leading-tight tracking-tight tabular-nums text-[var(--color-text-1)]">
+                        <span className="text-base font-semibold leading-6 tabular-nums text-[var(--color-text-1)]">
                           {healthData.total}
                         </span>
                         <span className="mt-0.5 text-xs text-[var(--color-text-4)]">总服务数</span>
@@ -463,7 +464,7 @@ export default function ApmHomePage() {
                 onRetry={load}
               >
                 {alertItems.length === 0 ? (
-                  <SectionEmpty tone="success">✓ 一切正常，无未恢复告警</SectionEmpty>
+                  <SectionEmpty tone="success">一切正常，无未恢复告警</SectionEmpty>
                 ) : (
                   <div className="flex flex-col">
                     {alertItems.map((alert, index) => {
@@ -579,6 +580,6 @@ export default function ApmHomePage() {
           </Row>
         </>
       )}
-    </div>
+    </ApmRouteShell>
   );
 }

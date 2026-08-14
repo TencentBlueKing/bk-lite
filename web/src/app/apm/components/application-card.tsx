@@ -105,7 +105,7 @@ export default function ApplicationCard({
               href={servicesHref}
               aria-label={`应用内 ${services.length} 个服务，查看服务`}
               title={`应用内 ${services.length} 个服务`}
-              className="inline-flex min-h-6 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium tabular-nums text-[var(--color-text-2)] no-underline transition-colors duration-150 hover:bg-[var(--color-fill-1)] hover:text-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+              className="inline-flex min-h-10 items-center gap-1 rounded px-2 py-1 text-xs font-medium tabular-nums text-[var(--color-text-2)] no-underline transition-colors duration-150 hover:bg-[var(--color-fill-1)] hover:text-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
             >
               <AppstoreOutlined className="text-xs" aria-hidden="true" />
               {services.length}
@@ -114,7 +114,7 @@ export default function ApplicationCard({
               href={eventsHref}
               aria-label={`应用内 ${alertCount} 个活跃告警，查看告警`}
               title={`应用内 ${alertCount} 个活跃告警`}
-              className={`inline-flex min-h-6 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium tabular-nums no-underline transition-colors duration-150 hover:bg-[var(--color-fill-1)] ${
+              className={`inline-flex min-h-10 items-center gap-1 rounded px-2 py-1 text-xs font-medium tabular-nums no-underline transition-colors duration-150 hover:bg-[var(--color-fill-1)] ${
                 alertCount > 0
                   ? 'text-[var(--color-fail)]'
                   : 'text-[var(--color-text-3)] hover:text-[var(--color-primary)]'

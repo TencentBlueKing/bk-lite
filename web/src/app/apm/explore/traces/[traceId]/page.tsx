@@ -73,7 +73,7 @@ function KpiStat({
     <div className="min-w-[96px]">
       <Typography.Text type="secondary" className="!text-xs">{label}</Typography.Text>
       <div
-        className={`mt-1 text-xl font-semibold tabular-nums leading-none ${
+        className={`mt-1 text-base font-semibold tabular-nums leading-6 ${
           danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'
         }`}
       >
@@ -286,10 +286,10 @@ export default function ApmTraceDetailPage() {
                             key={span.span_id}
                             onClick={() => setSelectedSpanId(span.span_id)}
                             aria-pressed={selectedRow}
-                            className={`flex min-h-9 w-full items-center rounded-md border-0 border-l-2 px-2 py-1 text-left transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] ${
+                            className={`flex min-h-10 w-full items-center rounded-md px-2 py-1 text-left transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] ${
                               selectedRow
-                                ? 'border-l-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
-                                : 'border-l-transparent bg-transparent hover:bg-[var(--color-fill-1)]'
+                                ? 'bg-[var(--color-primary-bg-active)]'
+                                : 'bg-transparent hover:bg-[var(--color-fill-1)]'
                             }`}
                           >
                             <div className="flex w-64 shrink-0 items-center gap-1.5 truncate text-xs" style={{ paddingLeft: depth * 12 }}>
@@ -343,10 +343,10 @@ export default function ApmTraceDetailPage() {
                             key={span.span_id}
                             onClick={() => setSelectedSpanId(span.span_id)}
                             aria-pressed={selectedRow}
-                            className={`flex w-full items-center gap-3 border-0 border-b border-b-[var(--color-border)] border-l-2 px-3 py-2 text-left text-sm last:border-b-0 ${
+                            className={`flex min-h-10 w-full items-center gap-3 border-0 border-b border-b-[var(--color-border)] px-3 py-2 text-left text-sm last:border-b-0 ${
                               selectedRow
-                                ? 'border-l-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
-                                : 'border-l-transparent bg-transparent hover:bg-[var(--color-fill-1)]'
+                                ? 'bg-[var(--color-primary-bg-active)]'
+                                : 'bg-transparent hover:bg-[var(--color-fill-1)]'
                             }`}
                           >
                             <span

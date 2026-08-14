@@ -469,8 +469,8 @@ export default function ApmEndpointsPage() {
                   label={metric.label}
                   labelClassName="!text-xs"
                   layout="vertical"
-                  maxFontSize={20}
-                  minFontSize={18}
+                  maxFontSize={16}
+                  minFontSize={16}
                   value={metric.value}
                   valueColor={metric.danger ? 'var(--color-fail)' : undefined}
                 />
@@ -494,8 +494,8 @@ export default function ApmEndpointsPage() {
                   ]}
                   series={[
                     { name: '吞吐量 req/s', type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
-                    { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1 },
-                    { name: 'P95 ms', type: 'line', dataKey: 'p95_ms', color: token.colorWarning, yAxisIndex: 2 },
+                    { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1, lineType: 'dashed', showSymbol: true },
+                    { name: 'P95 ms', type: 'line', dataKey: 'p95_ms', color: token.colorWarning, yAxisIndex: 2, lineType: 'dotted', showSymbol: true },
                   ]}
                   surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无端点趋势' } }}
                 />

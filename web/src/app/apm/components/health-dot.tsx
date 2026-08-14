@@ -20,7 +20,7 @@ export default function HealthDot({
   level,
   status,
   errorRate = null,
-  showLabel = false,
+  showLabel = true,
   className = '',
 }: HealthDotProps) {
   const resolved = level ?? (status ? deriveHealth(status, errorRate) : 5);

@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
+import { formatPercentage } from '@/app/apm/components/metric-format';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type {
   ApmService,
@@ -269,7 +270,7 @@ export default function ApmSloPage() {
       responsive: ['lg'],
       render: (_, row) => (
         <Space direction="vertical" size={2} className="!flex w-full !items-end">
-          <span className="tabular-nums">{Number(row.objective).toFixed(2)}%</span>
+          <span className="tabular-nums">{formatPercentage(row.objective)}</span>
           <Typography.Text type="secondary" className="!text-xs">{windowLabels[row.evaluation_window]}</Typography.Text>
         </Space>
       ),
@@ -280,7 +281,7 @@ export default function ApmSloPage() {
       width: 128,
       align: 'right',
       responsive: ['sm'],
-      render: (value: number | null) => value === null ? '—' : <span className="tabular-nums">{value.toFixed(2)}%</span>,
+      render: (value: number | null) => value === null ? '—' : <span className="tabular-nums">{formatPercentage(value)}</span>,
     },
     {
       title: <SloColumnHeading hint="剩余" label="错误预算" />,

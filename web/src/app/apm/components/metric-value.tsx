@@ -28,7 +28,7 @@ export default function MetricValue({
   const empty = text === '无数据' || text === '查询失败';
   const hint = empty ? metricEmptyHint(unavailable) : undefined;
   const sizeClass = size === 'lg'
-    ? 'text-[22px] font-bold tabular-nums leading-none'
+    ? 'text-base font-semibold tabular-nums leading-6'
     : 'tabular-nums';
   const toneClass = unavailable
     ? 'text-[var(--theme-color-status-warning)]'
@@ -42,7 +42,7 @@ export default function MetricValue({
     <Button
       type="link"
       size="small"
-      className={`!h-auto !p-0 ${size === 'lg' ? '!text-[22px] !font-bold' : '!text-xs'}`}
+      className={`!h-auto !p-0 ${size === 'lg' ? '!text-base !font-semibold' : '!text-xs'}`}
       icon={<ReloadOutlined aria-hidden="true" className="text-xs" />}
       onClick={(event) => {
         event.stopPropagation();

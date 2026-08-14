@@ -636,9 +636,9 @@ export default function ApmTracesPage() {
       description="按服务、环境与时间窗检索 Trace 或 Span，支持明细列表与客户端聚合分析。"
       dependency="telemetry"
     >
-      <div className="flex flex-col gap-3">
-        <ApmSurface padding="compact">
-          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
+        <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Segmented<EntityMode>
               size="small"
               aria-label="调用链查询粒度"
@@ -715,14 +715,11 @@ export default function ApmTracesPage() {
               />
             </Space>
           </FilterToolbar>
-        </ApmSurface>
         {state === 'idle' ? (
-          <ApmSurface padding="none">
-            <CatalogState kind="empty" description="在上方输入 service:... 后回车搜索调用链。" />
-          </ApmSurface>
+          <CatalogState kind="empty" description="在上方输入 service:... 后回车搜索调用链。" />
         ) : state === 'ready' || state === 'empty' ? (
-          <div className="grid min-h-0 grid-cols-1 gap-3 xl:grid-cols-[240px_minmax(0,1fr)]">
-            <ApmSurface className="self-start" padding="compact">
+          <div className="grid min-h-0 grid-cols-1 gap-4 border-t border-[var(--color-border)] pt-4 xl:grid-cols-[240px_minmax(0,1fr)]">
+            <aside className="self-start rounded-lg bg-[var(--color-fill-1)] p-3">
               <Typography.Title level={2} className="!mb-4 !text-sm !font-semibold">快速筛选</Typography.Title>
               <div className="flex flex-col gap-5">
                 <div>
@@ -883,12 +880,12 @@ export default function ApmTracesPage() {
                   </Button>
                 </div>
               </div>
-            </ApmSurface>
-            <div className="flex min-w-0 flex-col gap-3">
+            </aside>
+            <div className="flex min-w-0 flex-col gap-4">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <div className="flex items-baseline gap-2">
-                    <strong className="text-2xl tabular-nums">{hitRate >= 10 ? hitRate.toFixed(1) : hitRate.toFixed(2)}</strong>
+                    <strong className="text-base font-semibold tabular-nums">{hitRate >= 10 ? hitRate.toFixed(1) : hitRate.toFixed(2)}</strong>
                     <Typography.Text type="secondary" className="!text-xs">
                       {entityMode === 'spans' ? 'spans/s' : 'traces/s'}
                     </Typography.Text>
@@ -907,8 +904,8 @@ export default function ApmTracesPage() {
                 />
               </div>
               {resultMode === 'detail' ? (
-                <>
-                  <ApmSurface padding="compact">
+                  <>
+                    <div className="rounded-lg bg-[var(--color-fill-1)] p-3">
                     <div className="mb-1 flex items-center justify-between">
                       <Typography.Text strong>耗时分布</Typography.Text>
                       <Space size={12}>
@@ -920,8 +917,7 @@ export default function ApmTracesPage() {
                       items={distributionItems}
                       unitLabel={entityMode === 'spans' ? 'Span' : 'Trace'}
                     />
-                  </ApmSurface>
-                  <ApmSurface>
+                    </div>
                     {entityMode === 'spans' ? (
                       <ApmDataTable
                         rowKey="span_id"
@@ -968,10 +964,9 @@ export default function ApmTracesPage() {
                         <Button loading={loadingMore} disabled={loadingMore} onClick={() => search(nextCursor)}>加载更多</Button>
                       </div>
                     ) : null}
-                  </ApmSurface>
                 </>
               ) : (
-                <ApmSurface>
+                <div>
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                     <Typography.Text strong>聚合分析</Typography.Text>
                     <Segmented<AggregateDimension>
@@ -991,19 +986,18 @@ export default function ApmTracesPage() {
                     dataSource={aggregateRows}
                     pagination={false}
                   />
-                </ApmSurface>
+                </div>
               )}
             </div>
           </div>
         ) : (
-          <ApmSurface padding="none">
-            <CatalogState
-              kind={state}
-              onRetry={state === 'forbidden' ? undefined : () => search(undefined, filters)}
-            />
-          </ApmSurface>
+          <CatalogState
+            kind={state}
+            onRetry={state === 'forbidden' ? undefined : () => search(undefined, filters)}
+          />
         )}
-      </div>
+        </div>
+      </ApmSurface>
     </ApmRouteShell>
   );
 }

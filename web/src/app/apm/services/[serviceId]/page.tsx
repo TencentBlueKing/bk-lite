@@ -41,6 +41,7 @@ import {
   deriveHealth,
   formatErrorRate,
   formatLatency,
+  formatPercentage,
   formatRelativeTime,
   formatThroughput,
   isErrorRateDanger,
@@ -94,8 +95,8 @@ function ServiceMetricCard({
       label={label}
       labelClassName="!text-xs"
       layout="vertical"
-      maxFontSize={24}
-      minFontSize={20}
+      maxFontSize={16}
+      minFontSize={16}
       unit={suffix}
       value={value}
       valueColor={danger ? 'var(--color-fail)' : undefined}
@@ -400,7 +401,7 @@ export default function ApmServiceDetailPage() {
                 </Link>
                 <div className="min-w-0">
                   <Space size={10} align="center" wrap>
-                    <HealthDot level={health} />
+                    <HealthDot level={health} showLabel={false} />
                     <Typography.Title level={2} className="!mb-0 !text-base !font-semibold">
                       {service.name}
                     </Typography.Title>
@@ -509,7 +510,7 @@ export default function ApmServiceDetailPage() {
                               ]}
                               series={[
                                 { name: '请求速率 req/s', type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
-                                { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1 },
+                                { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1, lineType: 'dashed', showSymbol: true },
                               ]}
                               surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无 RED 趋势点' } }}
                             />
@@ -528,7 +529,7 @@ export default function ApmServiceDetailPage() {
                               yAxes={[{ formatter: (value) => `${value.toFixed(0)} ms` }]}
                               series={[
                                 { name: 'P95', type: 'line', dataKey: 'p95_ms', color: token.colorPrimary, showArea: true },
-                                { name: 'P99', type: 'line', dataKey: 'p99_ms', color: token.colorWarning },
+                                { name: 'P99', type: 'line', dataKey: 'p99_ms', color: token.colorWarning, lineType: 'dotted', showSymbol: true },
                               ]}
                               surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无延迟趋势点' } }}
                             />
@@ -667,11 +668,11 @@ export default function ApmServiceDetailPage() {
                           <Space size={24}>
                             <div className="text-center">
                               <Typography.Text type="secondary" className="!text-xs">跨度数</Typography.Text>
-                              <div className="text-lg font-semibold tabular-nums text-[var(--color-fail)]">{item.span_count}</div>
+                              <div className="text-sm font-semibold tabular-nums text-[var(--color-fail)]">{item.span_count}</div>
                             </div>
                             <div className="text-center">
                               <Typography.Text type="secondary" className="!text-xs">耗时</Typography.Text>
-                              <div className="text-lg font-semibold tabular-nums">{formatLatency(item.duration_ms)}</div>
+                              <div className="text-sm font-semibold tabular-nums">{formatLatency(item.duration_ms)}</div>
                             </div>
                             <div className="text-center">
                               <Typography.Text type="secondary" className="!text-xs">最近出现</Typography.Text>
@@ -727,7 +728,7 @@ export default function ApmServiceDetailPage() {
                           width: 100,
                           align: 'right',
                           responsive: ['sm'],
-                          render: (value) => <span className="tabular-nums">{(Number(value) * 100).toFixed(2)}%</span>,
+                          render: (value) => <span className="tabular-nums">{formatPercentage(value)}</span>,
                         },
                         {
                           title: '当前',
@@ -737,7 +738,7 @@ export default function ApmServiceDetailPage() {
                           responsive: ['md'],
                           render: (value) => value == null
                             ? '—'
-                            : <span className="tabular-nums">{(Number(value) * 100).toFixed(2)}%</span>,
+                            : <span className="tabular-nums">{formatPercentage(value)}</span>,
                         },
                         {
                           title: '错误预算',
@@ -746,7 +747,7 @@ export default function ApmServiceDetailPage() {
                           responsive: ['lg'],
                           render: (value) => value == null
                             ? '—'
-                            : <Progress percent={Math.max(0, Math.min(100, Number(value) * 100))} size="small" />,
+                            : <Progress percent={Math.max(0, Math.min(100, Number(value)))} size="small" />,
                         },
                         {
                           title: '操作',

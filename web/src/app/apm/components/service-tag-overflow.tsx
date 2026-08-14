@@ -19,7 +19,7 @@ const chipClassName = (silent: boolean) => (
 );
 
 const overflowChipClassName = (
-  'inline-flex shrink-0 cursor-pointer items-center rounded border border-[color-mix(in_srgb,var(--color-primary)_28%,var(--color-border))] '
+  'inline-flex min-h-10 shrink-0 cursor-pointer items-center rounded border border-[color-mix(in_srgb,var(--color-primary)_28%,var(--color-border))] '
   + 'bg-[var(--color-primary-bg-active)] px-2 py-0.5 text-xs font-medium tabular-nums text-[var(--color-primary)] '
   + 'transition-colors duration-150 hover:border-[var(--color-primary)] focus-visible:outline-2 '
   + 'focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]'
@@ -156,22 +156,15 @@ export default function ServiceTagOverflow({
           </div>
         )}
       >
-        <span
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
           aria-label={`还有 ${overflowCount} 个服务未展示，查看全部 ${services.length} 个服务`}
           className={overflowChipClassName}
           onClick={stopCardNavigation}
           onMouseDown={stopCardNavigation}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              stopCardNavigation(event);
-              setOpen((prev) => !prev);
-            }
-          }}
         >
           +{overflowCount}
-        </span>
+        </button>
       </Popover>
     );
   }

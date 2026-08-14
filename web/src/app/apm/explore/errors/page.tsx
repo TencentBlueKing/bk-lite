@@ -189,8 +189,8 @@ export default function ApmErrorsPage() {
       description="按服务与环境查看错误调用链，定位故障入口与样本 Trace。"
       dependency="telemetry"
     >
-      <div className="flex flex-col gap-3">
-        <ApmSurface padding="compact">
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Radio.Group
               aria-label="时间范围"
@@ -229,11 +229,9 @@ export default function ApmErrorsPage() {
             />
             <Button aria-label="刷新错误调用链" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} disabled={!selectedService || !environment} onClick={search} />
           </FilterToolbar>
-        </ApmSurface>
 
-        {selectedService ? (
-          <ApmSurface padding="compact">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {selectedService ? (
+            <div className="grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-4 md:grid-cols-4">
               {[
                 { label: '错误分组', value: clusters.length, danger: true },
                 { label: '受影响 Trace', value: affectedTraces },
@@ -242,36 +240,32 @@ export default function ApmErrorsPage() {
               ].map((metric) => (
                 <div key={metric.label} className="border-r border-[var(--color-border-2)] px-3 last:border-r-0">
                   <Typography.Text type="secondary" className="text-xs">{metric.label}</Typography.Text>
-                  <div className={`mt-1 text-xl font-semibold tabular-nums ${metric.danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>
+                  <div className={`mt-1 text-base font-semibold tabular-nums ${metric.danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'}`}>
                     {metric.value}
                   </div>
                 </div>
               ))}
             </div>
-          </ApmSurface>
-        ) : null}
+          ) : null}
 
-        <ApmSurface>
           {state === 'idle' ? (
             <CatalogState kind="empty" description="选择服务与环境后查看错误调用链。" />
           ) : state === 'ready' ? (
             <>
-              <div className="mb-4">
-                <Input
-                  allowClear
-                  aria-label="搜索错误调用链"
-                  className="w-80"
-                  placeholder="搜索入口操作或 Trace ID"
-                  prefix={<SearchOutlined aria-hidden="true" />}
-                  value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
-                />
-              </div>
+              <Input
+                allowClear
+                aria-label="搜索错误调用链"
+                className="w-80"
+                placeholder="搜索入口操作或 Trace ID"
+                prefix={<SearchOutlined aria-hidden="true" />}
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+              />
               {clusters.length ? (
-                <div className="flex flex-col gap-3">
+                <div className="divide-y divide-[var(--color-border)]">
                   {clusters.map((cluster) => (
-                  <article key={cluster.key} className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
-                    <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-start lg:justify-between">
+                  <article key={cluster.key} className="py-4 first:pt-0">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0">
                         <Space size={8} wrap>
                           <BugOutlined className="text-[var(--color-fail)]" aria-hidden="true" />
@@ -336,7 +330,7 @@ export default function ApmErrorsPage() {
                               <button
                                 key={item.trace_id}
                                 type="button"
-                                className="flex flex-col items-start justify-between gap-1 rounded-md bg-[var(--color-fill-1)] px-3 py-2 text-left transition-colors duration-150 hover:bg-[var(--color-primary-bg-active)] sm:flex-row sm:items-center sm:gap-3"
+                                className="flex min-h-10 flex-col items-start justify-between gap-1 rounded-md bg-[var(--color-fill-1)] px-3 py-2 text-left transition-colors duration-150 hover:bg-[var(--color-primary-bg-active)] sm:flex-row sm:items-center sm:gap-3"
                                 onClick={() => router.push(`/apm/explore/traces/${item.trace_id}`)}
                               >
                                 <span className="min-w-0 truncate font-mono text-xs">{item.trace_id}</span>
@@ -368,8 +362,8 @@ export default function ApmErrorsPage() {
               onRetry={state === 'forbidden' || state === 'empty' ? undefined : search}
             />
           )}
-        </ApmSurface>
-      </div>
+        </div>
+      </ApmSurface>
     </ApmRouteShell>
   );
 }

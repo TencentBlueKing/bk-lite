@@ -573,8 +573,8 @@ export default function ApmEventsPage() {
                         ]}
                         series={[
                           { name: '吞吐量 req/s', type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
-                          { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1 },
-                          { name: 'P95 ms', type: 'line', dataKey: 'p95_ms', color: token.colorWarning, yAxisIndex: 2 },
+                          { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1, lineType: 'dashed', showSymbol: true },
+                          { name: 'P95 ms', type: 'line', dataKey: 'p95_ms', color: token.colorWarning, yAxisIndex: 2, lineType: 'dotted', showSymbol: true },
                         ]}
                         surfaceProps={{ emptyStateProps: { description: '告警时间窗内暂无指标趋势' } }}
                       />
@@ -591,23 +591,12 @@ export default function ApmEventsPage() {
                       {dayjs(selectedAlert.start_time).format('YYYY-MM-DD HH:mm:ss')}
                     </Descriptions.Item>
                     <Descriptions.Item label="级别">
-                      <span
-                        className="border-l-4 pl-2 font-semibold"
-                        style={{
-                          borderColor: selectedAlert.severity === 'critical'
-                            ? SEVERITY_CHART.critical
-                            : selectedAlert.severity === 'error'
-                              ? SEVERITY_CHART.error
-                              : SEVERITY_CHART.warning,
-                          color: selectedAlert.severity === 'critical'
-                            ? SEVERITY_CHART.critical
-                            : selectedAlert.severity === 'error'
-                              ? SEVERITY_CHART.error
-                              : SEVERITY_CHART.warning,
-                        }}
+                      <Tag
+                        bordered={false}
+                        color={SEVERITY[selectedAlert.severity].color}
                       >
                         {SEVERITY[selectedAlert.severity].label}
-                      </span>
+                      </Tag>
                     </Descriptions.Item>
                     <Descriptions.Item label="状态">
                       <Tag bordered={false} color={ALERT_STATUS[selectedAlert.status].color}>

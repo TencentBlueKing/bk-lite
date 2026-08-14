@@ -108,7 +108,7 @@ function TopologyCanvas({
                 strokeDasharray={edge.health === 'critical' ? '6 4' : undefined}
                 strokeWidth={strokeWidth}
               />
-              <text fill="var(--color-text-3)" fontSize="9" textAnchor="middle" x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 5}>
+              <text fill="var(--color-text-3)" fontSize="10" textAnchor="middle" x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 5}>
                 {edge.sampled_calls} · {edge.average_duration_ms.toFixed(0)}ms
               </text>
             </g>
@@ -145,7 +145,7 @@ function TopologyCanvas({
                 stroke={healthColors[node.health]}
                 strokeWidth={node.health === 'critical' ? 3 : 2}
               />
-              <text fill="var(--color-text-3)" fontSize="9" fontWeight="600" textAnchor="middle" y="3">服务</text>
+              <text fill="var(--color-text-3)" fontSize="10" fontWeight="600" textAnchor="middle" y="3">服务</text>
               <text
                 fill={node.health === 'critical' ? 'var(--color-fail)' : 'var(--color-text-1)'}
                 fontSize="11"
@@ -155,7 +155,7 @@ function TopologyCanvas({
               >
                 {node.service_name}
               </text>
-              <text fill="var(--color-text-3)" fontSize="9" textAnchor="middle" y={radius + 29}>
+              <text fill="var(--color-text-3)" fontSize="10" textAnchor="middle" y={radius + 29}>
                 {node.service_namespace || '未设置 namespace'} · {node.environment}
               </text>
             </g>
