@@ -318,7 +318,7 @@ export default function ApmSloPage() {
       align: 'right',
       fixed: 'right',
       render: (_, row) => (
-        <Space className="w-full justify-end whitespace-nowrap" size={8}>
+        <Space className="whitespace-nowrap" size={8}>
           <Button className="!px-0" size="small" type="link" onClick={() => openEditDrawer(row)}>{t('common.edit', '编辑')}</Button>
           <Popconfirm
             cancelText={t('common.cancel', '取消')}

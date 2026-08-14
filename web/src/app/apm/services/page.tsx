@@ -732,7 +732,7 @@ export default function ApmServicesPage() {
       fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
-          <Space className="w-full justify-end whitespace-nowrap" size={8}>
+          <Space className="whitespace-nowrap" size={8}>
             <Button
               className="!px-0"
               size="small"

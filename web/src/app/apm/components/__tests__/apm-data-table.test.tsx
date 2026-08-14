@@ -122,7 +122,11 @@ describe('ApmDataTable', () => {
             title: '操作',
             key: 'action',
             align: 'right',
-            render: () => <Space className="w-full justify-end"><span>编辑</span></Space>,
+            render: () => (
+              <div>
+                <Space className="w-full justify-end"><span>编辑</span></Space>
+              </div>
+            ),
           },
         ]}
         dataSource={[{ id: 1, name: 'checkout' }]}
@@ -134,5 +138,9 @@ describe('ApmDataTable', () => {
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '名称' })).textAlign).toBe('left');
     expect(getComputedStyle(screen.getByText('checkout').closest('td')! as HTMLElement).textAlign).toBe('left');
     expect(getComputedStyle(screen.getByText('编辑').closest('td')! as HTMLElement).textAlign).toBe('left');
+
+    const actionSpace = screen.getByText('编辑').closest('.ant-space') as HTMLElement;
+    expect(['flex-end', 'end', 'right']).not.toContain(getComputedStyle(actionSpace).justifyContent);
+    expect(getComputedStyle(actionSpace).width).not.toBe('100%');
   });
 });

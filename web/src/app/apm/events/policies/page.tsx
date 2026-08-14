@@ -300,7 +300,7 @@ export default function ApmPoliciesPage() {
       align: 'right',
       fixed: 'right',
       render: (_, policy) => (
-        <Space className="w-full justify-end whitespace-nowrap" size={8}>
+        <Space className="whitespace-nowrap" size={8}>
           <Button
             className="!px-0"
             disabled={mutatingId !== null}

@@ -136,7 +136,7 @@ export default function ApmApplicationsPage() {
       title: t('apm.common.operation', '操作'), key: 'action', width: 200, align: 'right', fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
-          <Space className="w-full justify-end whitespace-nowrap" size={8}>
+          <Space className="whitespace-nowrap" size={8}>
             <Button
               className="!px-0"
               size="small"
