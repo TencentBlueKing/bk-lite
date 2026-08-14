@@ -44,6 +44,11 @@ const topologyHealthI18n: Record<ApmTopologyHealth, { id: string; fallback: stri
   unknown: { id: 'apm.health.unknown', fallback: '未知' },
 };
 
+function languageGlyph(language?: string) {
+  const normalized = language?.trim().toLowerCase() ?? '';
+  return ({ python: 'Py', java: 'J', go: 'Go', javascript: 'JS', nodejs: 'JS', dotnet: '.N', csharp: '.N' } as Record<string, string>)[normalized] ?? '<>';
+}
+
 export function TopologyCanvas({
   nodes,
   edges,
@@ -186,7 +191,7 @@ export function TopologyCanvas({
                 stroke={healthColors[node.health]}
                 strokeWidth={node.health === 'critical' ? 3 : 2}
               />
-              <text fill="var(--color-text-3)" fontSize="10" fontWeight="600" textAnchor="middle" y="3">{t('apm.common.service', '服务')}</text>
+              <text fill="var(--color-text-2)" fontSize="11" fontWeight="700" textAnchor="middle" y="4">{languageGlyph(node.language)}</text>
               <text
                 fill={node.health === 'critical' ? 'var(--color-fail)' : 'var(--color-text-1)'}
                 fontSize="11"

@@ -190,7 +190,7 @@ class ApmDashboardService:
             .prefetch_related(
                 Prefetch(
                     "instances",
-                    queryset=ApmServiceInstance.objects.filter(archived_at__isnull=True).order_by("-last_seen_at"),
+                    queryset=ApmServiceInstance.objects.order_by("-last_seen_at"),
                 )
             )
             .distinct()

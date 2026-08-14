@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -14,7 +14,6 @@ import {
   JavaScriptOutlined,
   KubernetesOutlined,
   PythonOutlined,
-  RocketOutlined,
 } from '@ant-design/icons';
 import { Alert, Button, Drawer, Form, Input, message, Segmented, Select, Space, Tag, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
@@ -150,6 +149,9 @@ export default function ApmIntegrationAddPage() {
   const [snippet, setSnippet] = useState<ApmIngestSnippet | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [form] = Form.useForm<SnippetForm>();
+  const formValues = Form.useWatch([], form);
+  const requestSequence = useRef(0);
 
   const integrationGroups = useMemo(() => {
     const copy: Record<string, { description: string; badge?: string; title?: string }> = {
@@ -271,8 +273,9 @@ export default function ApmIntegrationAddPage() {
     }
   };
 
-  const generate = async (values: SnippetForm) => {
+  const generate = useCallback(async (values: SnippetForm) => {
     if (!selectedMethod?.language) return;
+    const sequence = ++requestSequence.current;
     setGenerating(true);
     setGenerationError(null);
     try {
@@ -281,15 +284,27 @@ export default function ApmIntegrationAddPage() {
         language: selectedMethod.language,
         runtime: mode === 'agent' ? 'host' : mode,
       });
+      if (sequence !== requestSequence.current) return;
       setSnippet(result);
-      messageApi.success(t('apm.integration.generated', '临时接入配置已生成'));
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       setSnippet(null);
       setGenerationError(requestErrorMessage(error, t));
     } finally {
-      setGenerating(false);
+      if (sequence === requestSequence.current) setGenerating(false);
     }
-  };
+  }, [getIngestSnippet, mode, selectedMethod?.language, t]);
+
+  const watchedFormKey = JSON.stringify(formValues ?? {});
+  useEffect(() => {
+    if (!selectedMethod?.language) return;
+    const timer = window.setTimeout(() => {
+      void form.validateFields({ validateOnly: true })
+        .then((values) => generate(values))
+        .catch(() => undefined);
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [form, generate, mode, selectedMethod?.language, watchedFormKey]);
 
   return (
     <ApmRouteShell title={t('apm.integration.title', '添加接入')} description={t('apm.integration.description', '选择语言与应用，即时生成可复制的 OpenTelemetry 接入配置。')}>
@@ -380,6 +395,7 @@ export default function ApmIntegrationAddPage() {
             <div className="mb-1 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-[var(--color-primary-foreground)]">1</span><Typography.Text strong>{t('apm.integration.configTitle', '接入配置')}</Typography.Text></div>
             <Typography.Text type="secondary" className="mb-4 block text-xs">{t('apm.integration.configHint', '应用 ID、服务名称和版本将映射到标准 OpenTelemetry 资源属性；平台根据所选云区域分配上报端点。')}</Typography.Text>
             <Form<SnippetForm>
+              form={form}
               key={`${selectedMethod?.key ?? 'integration-form'}:${preferredApplicationId ?? ''}`}
               layout="vertical"
               initialValues={{
@@ -389,8 +405,10 @@ export default function ApmIntegrationAddPage() {
                 service_version: '',
                 environment: 'production',
               }}
-              onValuesChange={() => { setSnippet(null); setGenerationError(null); }}
-              onFinish={(values) => void generate(values)}
+              onValuesChange={() => {
+                setSnippet(null);
+                setGenerationError(null);
+              }}
             >
               <div className="grid gap-x-5 md:grid-cols-2">
                 <Form.Item name="application_id" label={t('apm.integration.application', '应用')} rules={[{ required: true, message: t('apm.integration.applicationRequired', '请选择应用') }]}><Select showSearch optionFilterProp="label" options={applicationOptions} /></Form.Item>
@@ -411,10 +429,16 @@ export default function ApmIntegrationAddPage() {
                   ]}
                 />
               </Form.Item>
-              {generationError ? <Alert className="mb-4" showIcon type="error" message={t('apm.integration.generateFailedTitle', '配置生成失败')} description={generationError} /> : null}
-              <div className="flex justify-end">
-                <Button htmlType="submit" type="primary" icon={<RocketOutlined aria-hidden="true" />} loading={generating}>{t('apm.integration.generateTemp', '生成临时配置')}</Button>
-              </div>
+              {generationError ? (
+                <Alert
+                  className="mb-4"
+                  showIcon
+                  type="error"
+                  message={t('apm.integration.generateFailedTitle', '配置生成失败')}
+                  description={generationError}
+                  action={<Button size="small" onClick={() => void form.validateFields().then(generate)}>{t('common.retry', '重试')}</Button>}
+                />
+              ) : generating ? <Typography.Text type="secondary">{t('apm.integration.generating', '正在自动生成配置…')}</Typography.Text> : null}
             </Form>
           </div>
 

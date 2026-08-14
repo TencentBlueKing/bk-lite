@@ -54,7 +54,6 @@ class CatalogReconcileResult:
     discovered_instances: int
     missing_instance_identities: int
     archived_services: int
-    archived_instances: int
     unknown_applications: int = 0
     invalid_activities: int = 0
 
@@ -93,8 +92,8 @@ class TraceSummary:
 class SpanSearchQuery:
     started_at: datetime
     ended_at: datetime
-    service_name: str
-    environment: str
+    service_name: str | None = None
+    environment: str | None = None
     service_namespace: str | None = None
     instance_id: str | None = None
     span_name: str | None = None
@@ -127,6 +126,69 @@ class SpanSummary:
 class SpanPage:
     items: tuple[SpanSummary, ...]
     next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class IssueSearchQuery:
+    started_at: datetime
+    ended_at: datetime
+    service_namespace: str | None = None
+    service_name: str | None = None
+    environment: str | None = None
+    cursor: str | None = None
+    limit: int = 50
+
+    def span_query(self) -> SpanSearchQuery:
+        return SpanSearchQuery(
+            started_at=self.started_at,
+            ended_at=self.ended_at,
+            service_namespace=self.service_namespace,
+            service_name=self.service_name,
+            environment=self.environment,
+            status="error",
+            cursor=self.cursor,
+            limit=self.limit,
+        )
+
+
+@dataclass(frozen=True)
+class IssueDistribution:
+    value: str
+    count: int
+    percent: float
+
+
+@dataclass(frozen=True)
+class IssueSampleTrace:
+    trace_id: str
+    span_id: str
+    endpoint: str
+    started_at: datetime
+    duration_ms: float
+
+
+@dataclass(frozen=True)
+class IssueProjection:
+    fingerprint: str
+    exception_type: str
+    message: str
+    stacktrace: str
+    service_namespace: str
+    service_name: str
+    environment: str
+    occurrences: int
+    affected_traces: int
+    last_seen_at: datetime
+    version_distribution: tuple[IssueDistribution, ...]
+    endpoint_distribution: tuple[IssueDistribution, ...]
+    sample_traces: tuple[IssueSampleTrace, ...]
+
+
+@dataclass(frozen=True)
+class IssuePage:
+    items: tuple[IssueProjection, ...]
+    next_cursor: str | None
+    truncated: bool
 
 
 @dataclass(frozen=True)
@@ -167,6 +229,7 @@ class TopologyTarget:
     service_namespace: str
     service_name: str
     environment: str
+    language: str = ""
 
 
 @dataclass(frozen=True)
@@ -191,6 +254,7 @@ class TopologyNode:
     health: str
     sampled_spans: int
     error_spans: int
+    language: str = ""
 
 
 @dataclass(frozen=True)
@@ -429,9 +493,6 @@ class TelemetryCatalogService(Protocol):
         ...
 
     def restore_service(self, service_id: UUID, *, actor: str) -> ApmService:
-        ...
-
-    def archive_stale_instances(self, *, observed_at: datetime) -> int:
         ...
 
 

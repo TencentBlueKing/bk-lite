@@ -102,7 +102,10 @@ describe('APM 端点详情抽屉', () => {
 
 
     expect(await screen.findByText('端点趋势')).not.toBeNull();
-    expect(screen.getByTestId('endpoint-trend')).not.toBeNull();
+    expect(screen.getAllByTestId('endpoint-trend')).toHaveLength(3);
+    expect(screen.getByText('吞吐量 req/s')).not.toBeNull();
+    expect(screen.getByText('错误率 %')).not.toBeNull();
+    expect(screen.getByText('P95 / P99')).not.toBeNull();
     expect(await screen.findByText('样本调用链')).not.toBeNull();
     await waitFor(() => expect(api.getTraces).toHaveBeenCalled());
     expect(await screen.findByText(/trace-endpoint-1/)).not.toBeNull();

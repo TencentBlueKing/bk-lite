@@ -499,29 +499,41 @@ export default function ApmServiceDetailPage() {
                 children: metricState === 'ready' && red ? (
                   <div className="flex flex-col gap-4">
                     <Row gutter={[16, 16]}>
-                      <Col xs={24} xl={12}>
+                      <Col xs={24} xl={8}>
                         <ApmSurface className="h-[340px]">
-                          <Typography.Text strong className="mb-3 block">{t('apm.serviceDetail.throughputAndError', '吞吐与错误率')}</Typography.Text>
+                          <Typography.Text strong className="mb-3 block">{t('apm.common.throughput', '吞吐量')}</Typography.Text>
                           <div className="h-[280px]">
                             <TimeSeriesComposedChart<RedChartPoint>
                               data={chartData}
                               xDataKey="timestamp"
                               getXLabel={(item) => dayjs(item.timestamp).format('HH:mm')}
                               xAxisBoundaryGap={false}
-                              yAxes={[
-                                { formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)}` },
-                                { formatter: (value) => `${value.toFixed(1)}%`, splitLine: false },
-                              ]}
+                              yAxes={[{ formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)} req/s` }]}
                               series={[
                                 { name: t('apm.serviceDetail.requestRate', '请求速率 req/s'), type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
-                                { name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1, lineType: 'dashed', showSymbol: true },
                               ]}
                               surfaceProps={{ emptyStateProps: { description: t('apm.serviceDetail.noRedTrend', '当前时间窗暂无 RED 趋势点') } }}
                             />
                           </div>
                         </ApmSurface>
                       </Col>
-                      <Col xs={24} xl={12}>
+                      <Col xs={24} xl={8}>
+                        <ApmSurface className="h-[340px]">
+                          <Typography.Text strong className="mb-3 block">{t('apm.common.errorRate', '错误率')}</Typography.Text>
+                          <div className="h-[280px]">
+                            <TimeSeriesComposedChart<RedChartPoint>
+                              data={chartData}
+                              xDataKey="timestamp"
+                              getXLabel={(item) => dayjs(item.timestamp).format('HH:mm')}
+                              xAxisBoundaryGap={false}
+                              yAxes={[{ formatter: (value) => `${value.toFixed(1)}%` }]}
+                              series={[{ name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, showArea: true, showSymbol: true }]}
+                              surfaceProps={{ emptyStateProps: { description: t('apm.serviceDetail.noRedTrend', '当前时间窗暂无 RED 趋势点') } }}
+                            />
+                          </div>
+                        </ApmSurface>
+                      </Col>
+                      <Col xs={24} xl={8}>
                         <ApmSurface className="h-[340px]">
                           <Typography.Text strong className="mb-3 block">{t('apm.serviceDetail.latencyTrend', '延迟趋势')}</Typography.Text>
                           <div className="h-[280px]">

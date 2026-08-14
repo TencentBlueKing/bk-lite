@@ -35,6 +35,7 @@ from apps.apm.serializers import (
     ApplicationMutationSerializer,
     CatalogListQuerySerializer,
     IngestSnippetSerializer,
+    InstanceCatalogListQuerySerializer,
     NotificationDeliveryQuerySerializer,
     NotificationDeliveryRetrySerializer,
     NotificationRecipientQuerySerializer,
@@ -71,7 +72,8 @@ MAX_CATALOG_KEYWORD_TOKENS = 8
 def _catalog_list_params(view) -> dict:
     if view.action != "list":
         return {}
-    serializer = CatalogListQuerySerializer(data=view.request.query_params)
+    serializer_class = getattr(view, "list_query_serializer", CatalogListQuerySerializer)
+    serializer = serializer_class(data=view.request.query_params)
     serializer.is_valid(raise_exception=True)
     return serializer.validated_data
 
@@ -99,6 +101,15 @@ def _filter_catalog_status(queryset, requested_status: str | None, include_archi
         return queryset.filter(archived_at__isnull=False)
     if not include_archived:
         return queryset.filter(archived_at__isnull=True)
+    return queryset
+
+
+def _filter_instance_status(queryset, requested_status: str | None):
+    cutoff = timezone.now() - ACTIVE_WINDOW
+    if requested_status == "active":
+        return queryset.filter(last_seen_at__gte=cutoff)
+    if requested_status == "silent":
+        return queryset.filter(last_seen_at__lt=cutoff)
     return queryset
 
 
@@ -405,6 +416,7 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ApmServiceInstanceSerializer
     catalog = DjangoTelemetryCatalogService()
     pagination_class = ApmCatalogPagination
+    list_query_serializer = InstanceCatalogListQuerySerializer
 
     def get_queryset(self) -> QuerySet[ApmServiceInstance]:
         params = _catalog_list_params(self)
@@ -414,7 +426,7 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
             .prefetch_related("organization_links")
         )
         if self.action == "list":
-            queryset = _filter_catalog_status(queryset, params.get("status"), params["include_archived"])
+            queryset = _filter_instance_status(queryset, params.get("status"))
             if params.get("application"):
                 queryset = queryset.filter(service__application__application_id=params["application"])
             if params.get("environment"):
@@ -437,8 +449,6 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
                         "version",
                     ),
                 )
-        elif self.action != "restore" and self.request.query_params.get("include_archived") != "true":
-            queryset = queryset.filter(archived_at__isnull=True)
         return filter_current_organization(queryset, self.request, "organization_links").order_by("-last_seen_at", "id")
 
     @HasPermission("integration_instances-View")

@@ -111,14 +111,15 @@ describe('APM 调用链探索', () => {
     expect(screen.getAllByText('2').length).toBeGreaterThan(0);
   });
 
-  it('无深链参数时在左侧快速筛选中选中首个服务并自动查询', async () => {
+  it('无深链参数时自动查询当前权限与时间窗内全量结果', async () => {
     search = '';
     renderWithApmIntl(<ApmTracesPage />);
 
     await waitFor(() => expect(api.getSpans).toHaveBeenCalledWith(expect.objectContaining({
-      service_namespace: 'shop',
-      service_name: 'checkout',
-      environment: 'prod',
+      service_namespace: undefined,
+      service_name: undefined,
+      environment: undefined,
+      limit: 50,
     })));
     expect(screen.getByText('快速筛选')).not.toBeNull();
   });

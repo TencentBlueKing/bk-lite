@@ -4,23 +4,16 @@ import pytest
 from django.utils import timezone
 
 from apps.apm.adapters import InMemoryTraceStore, TelemetryStoreUnavailable
-from apps.apm.services import DjangoTelemetryCatalogService, DjangoTelemetryQueryService
-from apps.apm.services.contracts import (
-    CatalogDiscovery,
-    SpanPage,
-    SpanSummary,
-)
+from apps.apm.services import DjangoTelemetryCatalogService
+from apps.apm.services.contracts import CatalogDiscovery, SpanPage, SpanSummary
 from apps.apm.tests.helpers import create_application
-
 
 pytestmark = pytest.mark.django_db
 
 
 def _discover(*, organization_ids, instance_id, application_id):
     create_application(application_id, tuple(organization_ids))
-    return DjangoTelemetryCatalogService().discover(
-        CatalogDiscovery(application_id, "checkout", instance_id, "production")
-    )
+    return DjangoTelemetryCatalogService().discover(CatalogDiscovery(application_id, "checkout", instance_id, "production"))
 
 
 def _span(trace_id, span_id, application_id, instance_id, now, *, status="ok", name="POST /checkout"):
@@ -92,6 +85,25 @@ def test_span_query_rejects_unknown_params_and_maps_degradation(apm_api_client, 
     assert too_wide.status_code == 400
     assert degraded.status_code == 503
     assert degraded.data["code"] == "telemetry_unavailable"
+
+
+def test_empty_span_query_searches_current_time_window_without_service_or_environment(apm_api_client, mocker):
+    now = timezone.now()
+    _discover(organization_ids=[10], instance_id="pod-allowed", application_id="shop")
+    allowed = _span("a" * 32, "1" * 16, "shop", "pod-allowed", now)
+    search = mocker.patch(
+        "apps.apm.views.spans.DjangoTelemetryQueryService.search_spans",
+        return_value=SpanPage((allowed,), None),
+    )
+
+    response = apm_api_client.get("/api/v1/apm/spans/")
+
+    assert response.status_code == 200
+    query = search.call_args.args[0]
+    assert query.service_name is None
+    assert query.environment is None
+    assert query.limit == 20
+    assert query.ended_at - query.started_at == timedelta(hours=1)
 
 
 def test_memory_span_store_filters_controlled_fields():

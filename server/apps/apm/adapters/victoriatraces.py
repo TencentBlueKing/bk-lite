@@ -74,6 +74,26 @@ def _tag_map(tags: object) -> dict[str, object]:
     return result
 
 
+def _exception_event_attributes(logs: object) -> dict[str, object]:
+    """从 Jaeger logs 中提取 OTel exception Span Event 的受控字段。"""
+
+    if not isinstance(logs, list):
+        return {}
+    result: dict[str, object] = {}
+    for log in logs[:32]:
+        if not isinstance(log, dict):
+            continue
+        fields = _tag_map(log.get("fields"))
+        if str(fields.get("event", fields.get("name", ""))).casefold() != "exception" and not any(
+            key in fields for key in ("exception.type", "exception.message", "exception.stacktrace")
+        ):
+            continue
+        for key in ("exception.type", "exception.message", "exception.stacktrace"):
+            if key in fields:
+                result[f"event_attr:{key}"] = fields[key]
+    return result
+
+
 def _status_from_tags(tags: dict[str, object]) -> str:
     value = str(tags.get("otel.status_code", tags.get("status.code", ""))).casefold()
     error_tag = tags.get("error")
@@ -140,10 +160,12 @@ class VictoriaTracesTelemetryStore:
         _validate_window(query.started_at, query.ended_at)
         if not 1 <= query.limit <= 200:
             raise ValueError("Trace 查询 limit 必须在 1 到 200 之间")
+        if query.service_name is None:
+            return self._search_unscoped_traces(query)
         ended_at = min(query.ended_at, _decode_cursor(query.cursor)) if query.cursor else query.ended_at
-        tags: dict[str, str] = {
-            "resource_attr:deployment.environment": query.environment or "",
-        }
+        tags: dict[str, str] = {}
+        if query.environment is not None:
+            tags["resource_attr:deployment.environment"] = query.environment
         if query.service_namespace is not None:
             tags["resource_attr:service.namespace"] = query.service_namespace
         if query.instance_id is not None:
@@ -185,6 +207,52 @@ class VictoriaTracesTelemetryStore:
         next_cursor = _encode_cursor(page_items[-1].started_at) if len(summaries) > query.limit and page_items else None
         return TracePage(items=page_items, next_cursor=next_cursor)
 
+    def _search_unscoped_traces(self, query: TraceSearchQuery) -> TracePage:
+        """空服务检索先按 trace_id 有界聚合，避免同一 Trace 跨页重复。"""
+
+        ended_at = min(query.ended_at, _decode_cursor(query.cursor)) if query.cursor else query.ended_at
+        filters = ["*"]
+        if query.service_namespace is not None:
+            filters.append(f"{_NAMESPACE_FIELD}:={_logsql_string(query.service_namespace)}")
+        if query.environment is not None:
+            filters.append(f"{_ENVIRONMENT_FIELD}:={_logsql_string(query.environment)}")
+        if query.instance_id is not None:
+            filters.append(f"{_INSTANCE_FIELD}:={_logsql_string(query.instance_id)}")
+        if query.span_name:
+            filters.append(f"name:={_logsql_string(query.span_name)}")
+        if query.status is not None:
+            filters.append(f"status_code:={_logsql_string(_STATUS_TO_CODE[query.status])}")
+        if query.min_duration_ms is not None:
+            filters.append(f"duration:>={int(query.min_duration_ms * 1_000_000)}")
+        if query.max_duration_ms is not None:
+            filters.append(f"duration:<={int(query.max_duration_ms * 1_000_000)}")
+        logs_query = (
+            f"{' '.join(filters)} | stats by (trace_id) max(start_time_unix_nano) as matched_at "
+            f"| sort by (matched_at) desc | limit {query.limit + 1}"
+        )
+        rows = self._query_rows(logs_query, query.started_at, ended_at, limit=query.limit + 1)
+        summaries: list[tuple[datetime, TraceSummary]] = []
+        for row in rows:
+            trace_id = str(row.get("trace_id", "")).strip()
+            matched_at_ns = _number(row.get("matched_at"))
+            if not trace_id or matched_at_ns is None:
+                continue
+            try:
+                matched_at = datetime.fromtimestamp(matched_at_ns / 1_000_000_000, tz=UTC)
+            except (OverflowError, OSError, ValueError):
+                continue
+            detail = self.get_trace(trace_id)
+            if detail is None:
+                continue
+            matching_span = self._matching_span(detail, query)
+            if matching_span is not None:
+                summaries.append((matched_at, self._summary(detail, matching_span)))
+        summaries.sort(key=lambda item: (item[0], item[1].trace_id), reverse=True)
+        page_pairs = summaries[: query.limit]
+        page_items = tuple(summary for _, summary in page_pairs)
+        next_cursor = _encode_cursor(page_pairs[-1][0]) if len(summaries) > query.limit and page_pairs else None
+        return TracePage(items=page_items, next_cursor=next_cursor)
+
     def search_spans(self, query: SpanSearchQuery) -> SpanPage:
         _validate_window(query.started_at, query.ended_at)
         if not 1 <= query.limit <= _MAX_SPAN_SEARCH_LIMIT:
@@ -201,11 +269,11 @@ class VictoriaTracesTelemetryStore:
             raise ValueError("min_duration_ms 不能大于 max_duration_ms")
 
         ended_at = min(query.ended_at, _decode_cursor(query.cursor)) if query.cursor else query.ended_at
-        filters = [
-            "*",
-            f"{_SERVICE_FIELD}:={_logsql_string(query.service_name)}",
-            f"{_ENVIRONMENT_FIELD}:={_logsql_string(query.environment or '')}",
-        ]
+        filters = ["*"]
+        if query.service_name is not None:
+            filters.append(f"{_SERVICE_FIELD}:={_logsql_string(query.service_name)}")
+        if query.environment is not None:
+            filters.append(f"{_ENVIRONMENT_FIELD}:={_logsql_string(query.environment)}")
         if query.service_namespace is not None:
             filters.append(f"{_NAMESPACE_FIELD}:={_logsql_string(query.service_namespace)}")
         if query.instance_id is not None:
@@ -645,7 +713,11 @@ class VictoriaTracesTelemetryStore:
             process = process if isinstance(process, dict) else {}
             resource_attributes = _tag_map(process.get("tags"))
             service_name = str(process.get("serviceName") or resource_attributes.get("service.name") or "")
-            attributes = {**resource_attributes, **_tag_map(raw_span.get("tags"))}
+            attributes = {
+                **resource_attributes,
+                **_tag_map(raw_span.get("tags")),
+                **_exception_event_attributes(raw_span.get("logs")),
+            }
             started_at = datetime.fromtimestamp(float(raw_span.get("startTime", 0)) / 1_000_000, tz=UTC)
             references = raw_span.get("references", [])
             parent_span_id = None
@@ -694,8 +766,6 @@ class VictoriaTracesTelemetryStore:
         )
 
     @staticmethod
-    @staticmethod
-    @staticmethod
     def _span_summary_from_row(row: dict[str, Any]) -> SpanSummary | None:
         trace_id = str(row.get("trace_id", "")).strip()
         span_id = str(row.get("span_id", "")).strip()
@@ -740,11 +810,11 @@ class VictoriaTracesTelemetryStore:
     @staticmethod
     def _matching_span(detail: TraceDetail, query: TraceSearchQuery) -> SpanDetail | None:
         for span in detail.spans:
-            if normalize_identity(span.service_name) != normalize_identity(query.service_name or ""):
+            if query.service_name is not None and normalize_identity(span.service_name) != normalize_identity(query.service_name):
                 continue
             if query.service_namespace is not None and normalize_identity(span.service_namespace) != normalize_identity(query.service_namespace):
                 continue
-            if span.environment != query.environment:
+            if query.environment is not None and span.environment != query.environment:
                 continue
             if query.instance_id is not None and span.instance_id != query.instance_id:
                 continue
