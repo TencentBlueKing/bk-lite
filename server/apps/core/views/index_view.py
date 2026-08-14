@@ -266,18 +266,18 @@ def _safe_get_user_id_by_username(client, username):
 
 
 def _check_first_login(user, default_group):
-    """检查是否为首次登录"""
-    group_list = getattr(user, "group_list", [])
+    """仅当用户恰好属于一个组织且该组织为 default_group 时视为首次登录。
 
-    if not group_list:
-        return True
+    空组织不是首登：初始化接口也要求必须已在 OpsPilotGuest，空组织无法完成向导。
+    """
+    group_list = getattr(user, "group_list", None) or []
 
-    if len(group_list) == 1:
-        first_group = group_list[0]
-        group_name = first_group.get("name") if isinstance(first_group, dict) else str(first_group)
-        return group_name == default_group
+    if len(group_list) != 1:
+        return False
 
-    return False
+    first_group = group_list[0]
+    group_name = first_group.get("name") if isinstance(first_group, dict) else str(first_group)
+    return group_name == default_group
 
 
 def index(request):
