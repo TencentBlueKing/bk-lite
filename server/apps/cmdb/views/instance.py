@@ -1447,6 +1447,96 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         self.add_instance_permission(data["ips"], permissions_map, request.user.username)
         return WebUtils.response_success(data)
 
+    @action(detail=False, methods=["post"], url_path="ipam_ip")
+    @HasPermission("asset_info-Add,asset_info-Edit,asset_info-Delete")
+    def ipam_ip(self, request):
+        """IP 视图手工登记：分配状态、IP 类型、使用人、IP 状态、MAC、描述。"""
+        from apps.cmdb.services.ipam_edit import (
+            ACTION_DELETE,
+            ACTION_NOOP,
+            ACTION_UPDATE,
+            IpamEditError,
+            decide_manual_ip_action,
+            execute_manual_ip_action,
+            find_ip_in_subnet,
+            required_asset_permission,
+            user_has_asset_permission,
+            validate_ip_belongs_to_subnet,
+        )
+        from apps.cmdb.services.ipam_view import _query_subnet_ips
+
+        subnet_uuid = str(request.data.get("subnet_inst_uuid") or "").strip()
+        ip_addr = str(request.data.get("ip_addr") or "").strip()
+        if not subnet_uuid or not ip_addr:
+            return WebUtils.response_error("subnet_inst_uuid 与 ip_addr 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+
+        subnet = InstanceManage.query_entity_by_uuid(subnet_uuid)
+        if not subnet or subnet.get("model_id") != "subnet":
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, subnet, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        try:
+            validate_ip_belongs_to_subnet(ip_addr, subnet)
+            existing = find_ip_in_subnet(_query_subnet_ips(subnet.get("_id")), ip_addr)
+            action = decide_manual_ip_action(existing, request.data.get("ip_allocated_status"))
+        except (IpamEditError, BaseAppException) as exc:
+            status_code = getattr(exc, "status_code", status.HTTP_400_BAD_REQUEST)
+            if status_code >= 500:
+                status_code = status.HTTP_400_BAD_REQUEST
+            return WebUtils.response_error(str(exc), status_code=status_code)
+
+        needed = required_asset_permission(action)
+        if needed and not user_has_asset_permission(request.user, needed):
+            return WebUtils.response_error("抱歉！您没有此操作的权限", status_code=status.HTTP_403_FORBIDDEN)
+
+        if action == ACTION_NOOP:
+            return WebUtils.response_success({"action": ACTION_NOOP, "ip": None})
+
+        if action in {ACTION_UPDATE, ACTION_DELETE} and existing:
+            permission_error = self.require_instance_permission(request, existing, operator=OPERATE)
+            if permission_error:
+                return permission_error
+
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            team_ids = get_organization_and_children_ids(tree_data=request.user.group_tree, target_id=current_team)
+            user_groups = format_groups_params(team_ids)
+        else:
+            user_groups = format_group_params(current_team)
+
+        try:
+            allowed_org_ids = self._get_allowed_org_ids(request)
+            result = execute_manual_ip_action(
+                action=action,
+                subnet=subnet,
+                existing=existing,
+                ip_addr=ip_addr,
+                allocated_status=request.data.get("ip_allocated_status"),
+                ip_status=request.data.get("ip_status"),
+                ip_type=request.data.get("ip_type"),
+                ip_user=request.data.get("ip_user"),
+                mac=request.data.get("mac"),
+                description=request.data.get("description") or "",
+                operator=request.user.username,
+                allowed_org_ids=allowed_org_ids,
+                user_groups=user_groups,
+                roles=request.user.roles,
+            )
+        except (IpamEditError, BaseAppException) as exc:
+            status_code = getattr(exc, "status_code", status.HTTP_400_BAD_REQUEST)
+            if status_code >= 500:
+                status_code = status.HTTP_400_BAD_REQUEST
+            return WebUtils.response_error(str(exc), status_code=status_code)
+
+        ip = result.get("ip")
+        if isinstance(ip, dict):
+            result = {**result, "ip": self._transport_instance(ip)}
+        return WebUtils.response_success(result)
+
     @action(
         detail=False,
         methods=["get"],

@@ -173,6 +173,17 @@ export const useInstanceApi = () => {
   const getIpamView = (instUuid: string) =>
     get(`/cmdb/api/instance/ipam_view/${instUuid}/`);
 
+  const saveIpamIp = (params: {
+    subnet_inst_uuid: string;
+    ip_addr: string;
+    ip_allocated_status: string;
+    ip_status?: string;
+    ip_type?: string;
+    ip_user?: string[];
+    mac?: string;
+    description?: string;
+  }) => post('/cmdb/api/instance/ipam_ip/', params);
+
   const saveRackRoomLayout = (params: {
     action: string;
     scope: 'room' | 'rack';
@@ -230,6 +241,7 @@ export const useInstanceApi = () => {
     deleteFile,
     getFileUrl,
     getIpamView,
+    saveIpamIp,
     saveRackRoomLayout,
     getRackRoomLayoutCandidates,
   };
