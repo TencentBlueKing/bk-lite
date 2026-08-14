@@ -169,14 +169,23 @@ test('text after a tool starts a new chunk without repeating the prior segment',
   assert.equal(harness.session.messages[0].content, 'beforeafter');
 });
 
-test('a new run cancels stale pending text from the previous run', () => {
-  const harness = createHarness();
-  harness.dispatch({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
-  harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: 'stale' });
-  harness.dispatch({ type: 'RUN_STARTED' });
-  harness.runFrame();
+test('a new run preserves the partial response equally in both modes', () => {
+  const replay = (batching) => {
+    const harness = createHarness({ batching });
+    harness.dispatch({ type: 'TEXT_MESSAGE_START', role: 'assistant' });
+    harness.dispatch({ type: 'TEXT_MESSAGE_CONTENT', delta: 'partial' });
+    harness.dispatch({ type: 'RUN_STARTED' });
+    const updatesAtBoundary = harness.messageUpdates;
+    harness.runFrame();
+    return {
+      message: harness.messages[0].content,
+      session: harness.session.messages[0].content,
+      updatesAtBoundary,
+      updatesAfterLateFrame: harness.messageUpdates,
+    };
+  };
 
-  assert.equal(harness.messages[0].content, '');
+  assert.deepEqual(replay(true), replay(false));
 });
 
 test('RUN_ERROR flushes the complete error text before persisting', () => {

@@ -117,7 +117,9 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
   const dispatch = (event: AGUIEvent) => {
     switch (event.type) {
       case 'RUN_STARTED':
-        textBatcher.cancel();
+        // Preserve the partial response just like immediate mode, while also
+        // cancelling the queued frame before the new run takes ownership.
+        textBatcher.flush();
         setIsThinking(true);
         stateMachineRef.current?.transitionToChatting();
         streamingContentRef.current = '';
