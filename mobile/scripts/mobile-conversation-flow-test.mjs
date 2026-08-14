@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import test from 'node:test';
+import createDOMPurify from 'dompurify';
+import { JSDOM } from 'jsdom';
+import MarkdownIt from 'markdown-it';
 import ts from 'typescript';
 
 const projectRoot = new URL('../', import.meta.url);
@@ -29,6 +32,39 @@ async function loadConversationManager(aiChatStream) {
     const aiChatStream = (...args) => globalThis.__conversationAiChatStream(...args);
     ${managerDeclaration.getText(sourceFile)}
     export { ConversationManager };
+  `;
+  const compiled = ts.transpileModule(moduleSource, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+
+  return import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}#${Math.random()}`);
+}
+
+async function loadSanitizeMarkdownHtml(domPurify) {
+  const source = await readProjectFile('src/app/conversation/page.tsx');
+  const sourceFile = ts.createSourceFile(
+    'page.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const declaration = sourceFile.statements.find(
+    (statement) => ts.isVariableStatement(statement)
+      && statement.declarationList.declarations.some(
+        (item) => ts.isIdentifier(item.name) && item.name.text === 'sanitizeMarkdownHtml',
+      ),
+  );
+  assert.ok(declaration, 'sanitizeMarkdownHtml declaration must exist');
+
+  globalThis.__conversationDOMPurify = domPurify;
+  const moduleSource = `
+    const DOMPurify = globalThis.__conversationDOMPurify;
+    ${declaration.getText(sourceFile)}
+    export { sanitizeMarkdownHtml };
   `;
   const compiled = ts.transpileModule(moduleSource, {
     compilerOptions: {
@@ -811,8 +847,27 @@ test('AI 长流只在文本段结束时渲染完整 Markdown，流式中间态�
   const continueStream = new Promise((resolve) => {
     releaseStream = resolve;
   });
-  const deltas = ['<img src=x onerror=alert(1)>', '\n```ts\n', ...Array(100).fill('const value = 1;\n'), '```'];
+  const deltas = [
+    '<img src=x onerror=alert(1)>',
+    '\n\n| na',
+    'me | value |\n| ---',
+    ' | --- |\n| item | **ok** |',
+    '\n\n```ts\n',
+    ...Array(100).fill('const value = 1;\n'),
+    '```',
+  ];
   const fullText = deltas.join('');
+  const dom = new JSDOM('');
+  const domPurify = createDOMPurify(dom.window);
+  const { sanitizeMarkdownHtml } = await loadSanitizeMarkdownHtml(domPurify);
+  const md = new MarkdownIt({ html: true, linkify: true, typographer: true, breaks: true });
+  const React = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const renderProductionMarkdown = (text) => React.createElement('div', {
+    className: 'markdown-body',
+    dangerouslySetInnerHTML: { __html: sanitizeMarkdownHtml(md.render(text)) },
+  });
+  const oldFinalMarkup = renderToStaticMarkup(renderProductionMarkdown(fullText));
   const { ConversationManager } = await loadConversationManager(async function* () {
     yield { type: 'RUN_STARTED', timestamp: 1 };
     yield { type: 'TEXT_MESSAGE_START' };
@@ -847,7 +902,7 @@ test('AI 长流只在文本段结束时渲染完整 Markdown，流式中间态�
       'question',
       (text) => {
         renderedInputs.push(text);
-        return `rendered:${text}`;
+        return renderProductionMarkdown(text);
       },
       '响应中断，请重试',
       false,
@@ -863,8 +918,6 @@ test('AI 长流只在文本段结束时渲染完整 Markdown，流式中间态�
     assert.ok(notifications <= 6, `expected batched stream updates, received ${notifications}`);
     assert.match(messageList, /part\.isStreamingText[\s\S]*whitespace-pre-wrap[\s\S]*\{part\.content\}/);
     assert.doesNotMatch(messageList, /dangerouslySetInnerHTML/);
-    const React = await import('react');
-    const { renderToStaticMarkup } = await import('react-dom/server');
     const streamingHtml = renderToStaticMarkup(React.createElement('span', null, streamingPart.content));
     assert.match(streamingHtml, /&lt;img src=x onerror=alert\(1\)&gt;/);
     assert.doesNotMatch(streamingHtml, /<img/);
@@ -874,11 +927,18 @@ test('AI 长流只在文本段结束时渲染完整 Markdown，流式中间态�
 
     const finalPart = manager.getSessionState('session-long-stream')?.messages[0]?.contentParts?.[0];
     assert.deepEqual(renderedInputs, [fullText]);
-    assert.equal(finalPart?.content, `rendered:${fullText}`);
+    const finalMarkup = renderToStaticMarkup(finalPart?.content);
+    assert.equal(finalMarkup, oldFinalMarkup);
+    assert.match(finalMarkup, /<table>/);
+    assert.match(finalMarkup, /<pre><code class="language-ts">/);
+    assert.match(finalMarkup, /<img src="x">/);
+    assert.doesNotMatch(finalMarkup, /onerror|<script/i);
     assert.equal(finalPart?.isStreamingText, false);
   } finally {
     unsubscribe();
     releaseStream?.();
+    dom.window.close();
+    delete globalThis.__conversationDOMPurify;
     delete globalThis.__conversationAiChatStream;
   }
 });
