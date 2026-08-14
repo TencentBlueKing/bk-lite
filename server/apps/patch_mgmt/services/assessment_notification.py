@@ -1,41 +1,27 @@
 """周期评估终态汇总与通知投递意图。"""
 
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from django.db import transaction
 from django.utils import timezone
 
-from apps.patch_mgmt.constants import (
-    ComplianceStatus,
-    GovernanceTaskStatus,
-    GovernanceTaskType,
-)
+from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType
 from apps.patch_mgmt.models import AssessmentNotificationDelivery, HostBaselineBinding
 
 
 def _assessment_summary(task) -> dict:
     host_rows = list(task.host_results.values("target_id", "stage"))
-    task_target_ids = {
-        int(target_id) for target_id in (task.target_list or [])
-    }
+    task_target_ids = {int(target_id) for target_id in (task.target_list or [])}
     host_target_ids = {int(row["target_id"]) for row in host_rows}
     all_target_ids = task_target_ids | host_target_ids
-    failed_target_ids = {
-        int(row["target_id"])
-        for row in host_rows
-        if row["stage"] in {"failed", "reboot_failed"}
-    }
-    completed_target_ids = {
-        int(row["target_id"])
-        for row in host_rows
-        if row["stage"] == "completed"
-    }
+    failed_target_ids = {int(row["target_id"]) for row in host_rows if row["stage"] in {"failed", "reboot_failed"}}
+    completed_target_ids = {int(row["target_id"]) for row in host_rows if row["stage"] == "completed"}
     if task.status in {
         GovernanceTaskStatus.FAILED,
         GovernanceTaskStatus.PARTIAL_SUCCESS,
     }:
         failed_target_ids.update(all_target_ids - completed_target_ids)
-    binding_rows = HostBaselineBinding.objects.filter(
-        target_id__in=completed_target_ids
-    ).values("target_id", "compliance_status")
+    binding_rows = HostBaselineBinding.objects.filter(target_id__in=completed_target_ids).values("target_id", "compliance_status")
     non_compliant_count = 0
     binding_failed_target_ids = set()
     for row in binding_rows:
@@ -54,7 +40,12 @@ def _assessment_summary(task) -> dict:
 
 def _format_notification(task, summary: dict) -> tuple[str, str]:
     finished_at = task.finished_at or timezone.now()
-    local_finished_at = timezone.localtime(finished_at).strftime("%Y-%m-%d %H:%M:%S")
+    timezone_name = (task.notification_snapshot or {}).get("timezone")
+    try:
+        target_timezone = ZoneInfo(timezone_name)
+    except (TypeError, ValueError, ZoneInfoNotFoundError):
+        target_timezone = timezone.get_default_timezone()
+    local_finished_at = timezone.localtime(finished_at, target_timezone).strftime("%Y-%m-%d %H:%M:%S")
     title = "【补丁管理】周期评估发现需关注项"
     content = "\n".join(
         [
@@ -72,12 +63,7 @@ def enqueue_periodic_assessment_notifications(task, *, schedule: bool = True) ->
     """幂等地为周期评估生成每渠道一条投递意图。"""
     snapshot = task.notification_snapshot or {}
     rules = snapshot.get("rules") or []
-    if (
-        task.task_type != GovernanceTaskType.ASSESS
-        or task.trigger_source != "periodic_scan"
-        or not snapshot.get("enabled")
-        or not rules
-    ):
+    if task.task_type != GovernanceTaskType.ASSESS or task.trigger_source != "periodic_scan" or not snapshot.get("enabled") or not rules:
         return []
 
     summary = _assessment_summary(task)
@@ -108,15 +94,11 @@ def enqueue_periodic_assessment_notifications(task, *, schedule: bool = True) ->
                 delivery_ids.append(delivery.id)
 
         if delivery_ids and schedule:
-            transaction.on_commit(
-                lambda ids=tuple(delivery_ids): _dispatch_deliveries(ids)
-            )
+            transaction.on_commit(lambda ids=tuple(delivery_ids): _dispatch_deliveries(ids))
     return delivery_ids
 
 
-def reconcile_periodic_assessment_notification_intent(
-    task, *, schedule: bool = True
-) -> list[int]:
+def reconcile_periodic_assessment_notification_intent(task, *, schedule: bool = True) -> list[int]:
     """生成通知意图并标记已对账；无需通知也应标记，避免重复扫描。"""
     from apps.patch_mgmt.models import GovernanceTask
 
