@@ -52,24 +52,22 @@ const TransformScriptPanel: React.FC<TransformScriptPanelProps> = ({
               className="cursor-help text-[14px] text-[var(--color-text-3)]"
             />
           </Tooltip>
+          <Form.Item
+            name={["transform_config", "enabled"]}
+            valuePropName="checked"
+            getValueFromEvent={(checked: boolean) => {
+              onEnabledChange?.(checked);
+              return checked;
+            }}
+            style={{ marginBottom: 0, marginLeft: 6 }}
+          >
+            <Switch
+              disabled={readOnly}
+              checkedChildren={t("dataSource.transform.enabled")}
+              unCheckedChildren={t("dataSource.transform.disabled")}
+            />
+          </Form.Item>
         </>
-      }
-      extra={
-        <Form.Item
-          name={["transform_config", "enabled"]}
-          valuePropName="checked"
-          getValueFromEvent={(checked: boolean) => {
-            onEnabledChange?.(checked);
-            return checked;
-          }}
-          style={{ marginBottom: 0 }}
-        >
-          <Switch
-            disabled={readOnly}
-            checkedChildren={t("dataSource.transform.enabled")}
-            unCheckedChildren={t("dataSource.transform.disabled")}
-          />
-        </Form.Item>
       }
     >
       {enabled ? (
