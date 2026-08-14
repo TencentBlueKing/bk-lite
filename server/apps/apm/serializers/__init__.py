@@ -1,4 +1,5 @@
 from apps.apm.serializers.control_plane import (
+    ApmAlertQuerySerializer,
     ApmApplicationSerializer,
     ApmDashboardQuerySerializer,
     ApmEventQuerySerializer,
@@ -20,6 +21,7 @@ from apps.apm.serializers.control_plane import (
 
 __all__ = [
     "ApmApplicationSerializer",
+    "ApmAlertQuerySerializer",
     "ApmDashboardQuerySerializer",
     "ApmEventQuerySerializer",
     "ApmPolicySerializer",

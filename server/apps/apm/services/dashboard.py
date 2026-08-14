@@ -9,18 +9,12 @@ from django.db.models import Prefetch, QuerySet
 from django.utils import timezone
 
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
-from apps.apm.models import (
-    ApmAlert,
-    ApmService,
-    ApmServiceInstance,
-    ApmSlo,
-)
+from apps.apm.models import ApmAlert, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.contracts import ServiceMetricQuery, ServiceRed
 from apps.apm.services.reliability import DjangoApmReliabilityService
 from apps.apm.services.status import catalog_status
 from apps.core.logger import apm_logger as logger
 from apps.core.utils.viewset_utils import build_json_membership_query
-
 
 WINDOW_DELTAS: dict[str, timedelta] = {
     "15m": timedelta(minutes=15),
@@ -285,7 +279,7 @@ class ApmDashboardService:
         in_window = [service for service in services if service.last_seen_at >= started_at]
         app_count = len({service.namespace for service in in_window})
         service_count = len({service.name for service in in_window})
-        alert_count = self._firing_alert_queryset(organization_id).count()
+        alert_count = self._active_alert_queryset(organization_id).count()
 
         request_rate = 0.0
         error_rate_sum = 0.0
@@ -322,9 +316,7 @@ class ApmDashboardService:
                 error_series.append(
                     _resample(
                         [
-                            None
-                            if point.request_rate is None or point.error_rate is None
-                            else point.request_rate * point.error_rate
+                            None if point.request_rate is None or point.error_rate is None else point.request_rate * point.error_rate
                             for point in red.timeseries
                         ],
                         points,
@@ -464,7 +456,7 @@ class ApmDashboardService:
         return {"items": rows}
 
     def _build_alerts(self, organization_id: int) -> dict[str, Any]:
-        alerts = list(self._firing_alert_queryset(organization_id).order_by("-last_event_at", "-id")[:MAX_ALERT_ROWS])
+        alerts = list(self._active_alert_queryset(organization_id).order_by("-last_event_at", "-id")[:MAX_ALERT_ROWS])
         if not alerts:
             return _section_empty({"items": []})
         return {
@@ -525,6 +517,6 @@ class ApmDashboardService:
         return {"items": rows}
 
     @staticmethod
-    def _firing_alert_queryset(organization_id: int) -> QuerySet[ApmAlert]:
-        queryset = ApmAlert.objects.filter(status=ApmAlert.Status.FIRING)
+    def _active_alert_queryset(organization_id: int) -> QuerySet[ApmAlert]:
+        queryset = ApmAlert.objects.filter(status=ApmAlert.Status.ACTIVE)
         return queryset.filter(build_json_membership_query(queryset, "organizations", [organization_id]))

@@ -11,8 +11,10 @@ from rest_framework.response import Response
 
 from apps.apm.adapters import SystemMgmtNotificationDispatcher, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
 from apps.apm.models import (
+    ApmAlert,
     ApmAlertOutbox,
     ApmApplication,
+    ApmEventSnapshot,
     ApmPolicy,
     ApmPolicyNotificationTarget,
     ApmPolicyState,
@@ -23,6 +25,7 @@ from apps.apm.models import (
 from apps.apm.pagination import ApmCatalogPagination
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import (
+    ApmAlertQuerySerializer,
     ApmApplicationSerializer,
     ApmEventQuerySerializer,
     ApmPolicySerializer,
@@ -39,7 +42,9 @@ from apps.apm.serializers import (
     ServiceMetricQuerySerializer,
 )
 from apps.apm.services import (
+    ApmEventSnapshotStore,
     DeliveryStateConflict,
+    DjangoApmAlertService,
     DjangoApmApplicationService,
     DjangoApmEventReader,
     DjangoApmPolicyService,
@@ -55,8 +60,8 @@ from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, S
 from apps.apm.services.integration_configuration import CloudRegionConfigurationError
 from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
-from apps.core.logger import apm_logger as logger
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import apm_logger as logger
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -256,9 +261,13 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self) -> QuerySet[ApmService]:
         params = _catalog_list_params(self)
-        queryset = ApmService.objects.filter(application__isnull=False).select_related("application").prefetch_related(
-            "organization_links",
-            Prefetch("instances", queryset=ApmServiceInstance.objects.order_by("environment", "id")),
+        queryset = (
+            ApmService.objects.filter(application__isnull=False)
+            .select_related("application")
+            .prefetch_related(
+                "organization_links",
+                Prefetch("instances", queryset=ApmServiceInstance.objects.order_by("environment", "id")),
+            )
         )
         if self.action == "list":
             queryset = _filter_catalog_status(queryset, params.get("status"), params["include_archived"])
@@ -399,7 +408,11 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self) -> QuerySet[ApmServiceInstance]:
         params = _catalog_list_params(self)
-        queryset = ApmServiceInstance.objects.filter(service__application__isnull=False).select_related("service", "service__application").prefetch_related("organization_links")
+        queryset = (
+            ApmServiceInstance.objects.filter(service__application__isnull=False)
+            .select_related("service", "service__application")
+            .prefetch_related("organization_links")
+        )
         if self.action == "list":
             queryset = _filter_catalog_status(queryset, params.get("status"), params["include_archived"])
             if params.get("application"):
@@ -453,6 +466,7 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
             actor=request.user.username,
         )
         return Response(self.get_serializer(updated).data)
+
 
 class ApmSloViewSet(viewsets.GenericViewSet):
     renderer_classes = (ApmRenderer,)
@@ -725,6 +739,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
             state.consecutive_hits = 0
             state.consecutive_recoveries = 0
             state.save()
+            policy.target_states.all().delete()
         return Response(self.get_serializer(policy).data)
 
     @HasPermission("policies-Operate")
@@ -772,6 +787,57 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
                 "breached": result.breached,
                 "evaluated_at": result.evaluated_at,
                 "data_state": str(result.data_state),
+                "threshold": getattr(result, "threshold", None),
+                "series": [
+                    {
+                        "timestamp": point.timestamp,
+                        "request_rate": point.request_rate,
+                        "error_rate": point.error_rate,
+                        "p95_ms": point.p95_ms,
+                        "p99_ms": point.p99_ms,
+                    }
+                    for point in getattr(result, "series", ())
+                ],
+            }
+        )
+
+    @action(methods=("post",), detail=False)
+    @HasPermission("policies-Operate")
+    def preview(self, request, *args, **kwargs):
+        payload = dict(request.data)
+        payload["notification_targets"] = []
+        payload["notice"] = False
+        serializer = self.get_serializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        values = dict(serializer.validated_data)
+        service_id = values.pop("service_id")
+        for field in ("notification_targets", "notice_type_ids", "notice_users"):
+            values.pop(field, None)
+        policy = ApmPolicy(service=self._visible_service(service_id), **values)
+        try:
+            result = self._service().test_query(policy, evaluated_at=timezone.now())
+        except TelemetryStoreUnavailable as exc:
+            return Response(
+                {"detail": str(exc), "code": "telemetry_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response(
+            {
+                "value": str(result.value) if result.value is not None else None,
+                "breached": result.breached,
+                "evaluated_at": result.evaluated_at,
+                "data_state": str(result.data_state),
+                "threshold": result.threshold,
+                "series": [
+                    {
+                        "timestamp": point.timestamp,
+                        "request_rate": point.request_rate,
+                        "error_rate": point.error_rate,
+                        "p95_ms": point.p95_ms,
+                        "p99_ms": point.p99_ms,
+                    }
+                    for point in result.series
+                ],
             }
         )
 
@@ -788,6 +854,68 @@ class ApmEventViewSet(viewsets.GenericViewSet):
         serializer = ApmEventQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         return Response(self.reader.list(organization_id=organization_id, **serializer.validated_data))
+
+
+class ApmAlertViewSet(viewsets.GenericViewSet):
+    renderer_classes = (ApmRenderer,)
+    alert_service = DjangoApmAlertService()
+
+    def get_queryset(self):
+        organization_id = current_organization_id(self.request)
+        if organization_id is None:
+            return ApmAlert.objects.none()
+        return self.alert_service.queryset(organization_id=organization_id)
+
+    @HasPermission("events-View")
+    def list(self, request, *args, **kwargs):
+        organization_id = current_organization_id(request)
+        if organization_id is None:
+            return Response([])
+        serializer = ApmAlertQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        return Response(self.alert_service.list(organization_id=organization_id, **serializer.validated_data))
+
+    @HasPermission("events-View")
+    def retrieve(self, request, *args, **kwargs):
+        return Response(self.alert_service.serialize(self.get_object()))
+
+    @action(methods=("get",), detail=False)
+    @HasPermission("events-View")
+    def distribution(self, request, *args, **kwargs):
+        organization_id = current_organization_id(request)
+        if organization_id is None:
+            return Response([])
+        serializer = ApmAlertQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        return Response(
+            self.alert_service.distribution(
+                organization_id=organization_id,
+                started_at=data["started_at"],
+                ended_at=data["ended_at"],
+            )
+        )
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("policies-Operate")
+    def close(self, request, *args, **kwargs):
+        alert = self.get_object()
+        closed = self.alert_service.close(
+            alert,
+            actor=request.user.username,
+            occurred_at=timezone.now(),
+        )
+        return Response(self.alert_service.serialize(closed))
+
+    @action(methods=("get",), detail=True)
+    @HasPermission("events-View")
+    def snapshots(self, request, *args, **kwargs):
+        alert = self.get_object()
+        event_id = request.query_params.get("event_id", "").strip()
+        queryset = ApmEventSnapshot.objects.filter(alert=alert).select_related("payload", "event")
+        if event_id:
+            queryset = queryset.filter(source_event_id=event_id)
+        return Response([ApmEventSnapshotStore.serialize(snapshot) for snapshot in queryset.order_by("occurred_at", "id")[:100]])
 
 
 class ApmNotificationChannelViewSet(viewsets.GenericViewSet):

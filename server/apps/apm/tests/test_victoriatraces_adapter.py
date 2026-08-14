@@ -16,6 +16,7 @@ from apps.apm.services.contracts import (
     TraceSearchQuery,
 )
 
+
 def _response(payload, status_code=200, *, raw=None):
     response = Mock()
     response.status_code = status_code
@@ -161,10 +162,7 @@ def _vector(**values):
         "status": "success",
         "data": {
             "resultType": "vector",
-            "result": [
-                {"metric": {"__name__": name}, "value": [1_785_888_000, str(value)]}
-                for name, value in values.items()
-            ],
+            "result": [{"metric": {"__name__": name}, "value": [1_785_888_000, str(value)]} for name, value in values.items()],
         },
     }
 
@@ -209,11 +207,13 @@ def test_red_scopes_every_aggregate_to_the_selected_endpoint():
             started_at=now - timedelta(seconds=60),
             ended_at=now,
             endpoint='POST /checkout" | stats count() as forged',
+            version='v2" | stats count() as forged',
         )
     )
 
     query = session.get.call_args.kwargs["params"]["query"]
     assert 'name:="POST /checkout\\" | stats count() as forged"' in query
+    assert '`resource_attr:service.version`:="v2\\" | stats count() as forged"' in query
 
 
 def test_slo_uses_deduplicated_counts_and_preserves_no_data_semantics():
@@ -272,9 +272,7 @@ def test_all_stats_queries_are_time_bounded_to_vt_retention_contract():
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
     with pytest.raises(ValueError, match="35 天"):
-        store.service_red(
-            ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(days=36), now)
-        )
+        store.service_red(ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(days=36), now))
 
     session.get.assert_not_called()
 
@@ -290,9 +288,7 @@ def test_unique_span_limit_rejects_instead_of_silently_undercounting(monkeypatch
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
     with pytest.raises(TelemetryStoreUnavailable, match="唯一 Span 数"):
-        store.service_red(
-            ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now)
-        )
+        store.service_red(ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now))
 
     assert "| limit 2 | stats" in session.get.call_args_list[0].kwargs["params"]["query"]
     assert "| limit 3 | stats count() as unique_spans" in session.get.call_args_list[1].kwargs["params"]["query"]
@@ -349,7 +345,7 @@ def test_search_spans_builds_controlled_logsql_and_maps_rows():
     assert item.http_status_code == "200"
     assert abs(item.duration_ms - 12.0) < 0.001
     query = session.get.call_args.kwargs["params"]["query"]
-    assert "`resource_attr:service.name`:=\"weops-lite-probe\"" in query
+    assert '`resource_attr:service.name`:="weops-lite-probe"' in query
     assert 'name:="GET /lab/health\\"evil"' in query
     assert 'status_code:="1"' in query
     assert 'kind:="2"' in query

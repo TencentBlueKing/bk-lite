@@ -64,7 +64,6 @@ _HTTP_METHOD_FIELDS = ("span_attr:http.request.method", "span_attr:http.method")
 _HTTP_STATUS_FIELDS = ("span_attr:http.response.status_code", "span_attr:http.status_code")
 
 
-
 def _tag_map(tags: object) -> dict[str, object]:
     if not isinstance(tags, list):
         return {}
@@ -198,11 +197,7 @@ class VictoriaTracesTelemetryStore:
             raise ValueError("min_duration_ms 不能为负数")
         if query.max_duration_ms is not None and query.max_duration_ms < 0:
             raise ValueError("max_duration_ms 不能为负数")
-        if (
-            query.min_duration_ms is not None
-            and query.max_duration_ms is not None
-            and query.min_duration_ms > query.max_duration_ms
-        ):
+        if query.min_duration_ms is not None and query.max_duration_ms is not None and query.min_duration_ms > query.max_duration_ms:
             raise ValueError("min_duration_ms 不能大于 max_duration_ms")
 
         ended_at = min(query.ended_at, _decode_cursor(query.cursor)) if query.cursor else query.ended_at
@@ -235,11 +230,7 @@ class VictoriaTracesTelemetryStore:
                 items.append(summary)
         items.sort(key=lambda item: (item.started_at, item.span_id), reverse=True)
         page_items = tuple(items[: query.limit])
-        next_cursor = (
-            _encode_cursor(page_items[-1].started_at)
-            if len(items) > query.limit and page_items
-            else None
-        )
+        next_cursor = _encode_cursor(page_items[-1].started_at) if len(items) > query.limit and page_items else None
         return SpanPage(items=page_items, next_cursor=next_cursor)
 
     def get_trace(self, trace_id: str) -> TraceDetail | None:
@@ -258,9 +249,10 @@ class VictoriaTracesTelemetryStore:
             query.service_name,
             query.environment,
             endpoint=query.endpoint,
+            version=query.version,
         )
         aggregate = (
-            f"{self._bounded_spans(deduped)} | stats count() as requests, count() if (status_code:=\"2\") as errors, "
+            f'{self._bounded_spans(deduped)} | stats count() as requests, count() if (status_code:="2") as errors, '
             "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
         )
         values = self._ungrouped_values(self._stats(aggregate, query.started_at, query.ended_at))
@@ -274,12 +266,10 @@ class VictoriaTracesTelemetryStore:
         if query.include_breakdown:
             step = max(15, math.ceil(window_seconds / (MAX_RED_POINTS - 1)))
             range_aggregate = (
-                f"{deduped} | stats count() as requests, count() if (status_code:=\"2\") as errors, "
+                f'{deduped} | stats count() as requests, count() if (status_code:="2") as errors, '
                 "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99"
             )
-            ranged = self._range_values(
-                self._stats_range(range_aggregate, query.started_at, query.ended_at, step=step)
-            )
+            ranged = self._range_values(self._stats_range(range_aggregate, query.started_at, query.ended_at, step=step))
             timeseries = tuple(
                 ServiceRedPoint(
                     timestamp=datetime.fromtimestamp(timestamp, tz=UTC),
@@ -290,9 +280,17 @@ class VictoriaTracesTelemetryStore:
                 )
                 for timestamp, count in list(ranged.get("requests", {}).items())[-MAX_RED_POINTS:]
             )
+            endpoint_deduped = self._deduped_entry_query(
+                query.service_namespace,
+                query.service_name,
+                query.environment,
+                endpoint=query.endpoint,
+                version=query.version,
+                keep_name=True,
+            )
             endpoint_query = (
-                f"{self._bounded_spans(self._deduped_entry_query(query.service_namespace, query.service_name, query.environment, endpoint=query.endpoint, keep_name=True))} "
-                "| stats by (endpoint) count() as requests, count() if (status_code:=\"2\") as errors, "
+                f"{self._bounded_spans(endpoint_deduped)} "
+                '| stats by (endpoint) count() as requests, count() if (status_code:="2") as errors, '
                 "quantile(0.95, duration) as p95, quantile(0.99, duration) as p99 "
                 f"| sort by (requests) desc | limit {MAX_TOP_ENDPOINTS}"
             )
@@ -315,7 +313,7 @@ class VictoriaTracesTelemetryStore:
             endpoint=query.endpoint,
         )
         if query.sli_type == "availability":
-            final = "count() as total, count() if (status_code:=\"2\") as bad"
+            final = 'count() as total, count() if (status_code:="2") as bad'
             good_metric = None
         else:
             if query.latency_threshold_ms is None or query.latency_threshold_ms <= 0:
@@ -323,9 +321,7 @@ class VictoriaTracesTelemetryStore:
             threshold_ns = query.latency_threshold_ms * 1_000_000
             final = f"count() as total, count() if (duration:<={threshold_ns}) as good"
             good_metric = "good"
-        values = self._ungrouped_values(
-            self._stats(f"{self._bounded_spans(deduped)} | stats {final}", query.started_at, query.ended_at)
-        )
+        values = self._ungrouped_values(self._stats(f"{self._bounded_spans(deduped)} | stats {final}", query.started_at, query.ended_at))
         total = values.get("total")
         if total is None or total <= 0:
             return SloMeasurement(None, None, None, MetricDataState.NO_DATA)
@@ -405,6 +401,7 @@ class VictoriaTracesTelemetryStore:
         environment: str,
         *,
         endpoint: str = "",
+        version: str = "",
         keep_name: bool = False,
     ) -> str:
         filters = [
@@ -416,6 +413,8 @@ class VictoriaTracesTelemetryStore:
         ]
         if endpoint:
             filters.append(f"name:={_logsql_string(endpoint)}")
+        if version:
+            filters.append(f"{_VERSION_FIELD}:={_logsql_string(version)}")
         fields = "max(duration) as duration, max(status_code) as status_code"
         if keep_name:
             fields += ", max(name) as endpoint"
@@ -434,9 +433,7 @@ class VictoriaTracesTelemetryStore:
     ) -> None:
         if observed_count < MAX_UNIQUE_SPANS:
             return
-        count_query = (
-            f"{deduped_query} | limit {MAX_UNIQUE_SPANS + 1} | stats count() as unique_spans"
-        )
+        count_query = f"{deduped_query} | limit {MAX_UNIQUE_SPANS + 1} | stats count() as unique_spans"
         values = self._ungrouped_values(self._stats(count_query, started_at, ended_at))
         if values.get("unique_spans", 0) > MAX_UNIQUE_SPANS:
             raise TelemetryStoreUnavailable("APM 查询唯一 Span 数超过单次聚合上限")
@@ -761,7 +758,6 @@ class VictoriaTracesTelemetryStore:
                 continue
             return span
         return None
-
 
     @staticmethod
     def _summary(detail: TraceDetail, matching_span: SpanDetail) -> TraceSummary:

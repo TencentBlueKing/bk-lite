@@ -245,7 +245,7 @@ export default function ApmServicesPage() {
         setServices(activeServices);
         setArchivedServices(items.filter((service) => Boolean(service.archived_at)));
         setSlos(sloItems);
-        setFiringEvents(events.filter((event) => event.status === 'firing'));
+        setFiringEvents(events.filter((event) => event.status === 'active'));
         setCatalogDegraded(health.catalog_reconcile.status === 'degraded');
         setState(visibleApplications.length || activeServices.length ? 'ready' : 'empty');
       })
