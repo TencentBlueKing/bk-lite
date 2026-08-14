@@ -160,6 +160,30 @@ afterEach(() => {
 });
 
 describe('WidgetWrapper runtime fetch failure', () => {
+  it('keeps the initial request valid through React StrictMode effect replay', async () => {
+    testState.fetchCompareData.mockResolvedValue({
+      currentData: [{ name: 'strict', value: 1 }],
+      baselineData: null,
+    });
+
+    render(
+      <React.StrictMode>
+        <WidgetWrapper
+          dashboardId="dashboard-1"
+          widgetId="widget-1"
+          chartType="pie"
+          config={{ dataSource: pieDatasource.id }}
+          dataSource={pieDatasource}
+        />
+      </React.StrictMode>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('chart-renderer').textContent).toContain('strict');
+    });
+    expect(testState.fetchCompareData).toHaveBeenCalledTimes(1);
+  });
+
   it('shows business error in widget without global message.error', async () => {
     const businessError = '未找到可用命名空间';
     testState.fetchCompareData.mockRejectedValue(new HandledRequestError(businessError));
@@ -426,6 +450,107 @@ describe('WidgetWrapper runtime fetch failure', () => {
       expect(screen.getByTestId('chart-renderer').textContent).toContain('Manual');
     });
     expect(screen.queryByTestId('chart-loading')).toBeNull();
+  });
+
+  it('starts newer active requests without waiting for stale orchestration to settle', async () => {
+    let resolveA: ((value: {
+      currentData: Array<{ name: string; value: number }>;
+      baselineData: null;
+    }) => void) | undefined;
+    testState.fetchCompareData
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveA = resolve;
+        }),
+      )
+      .mockResolvedValueOnce({
+        currentData: [{ name: 'B', value: 2 }],
+        baselineData: null,
+      })
+      .mockResolvedValueOnce({
+        currentData: [{ name: 'C', value: 3 }],
+        baselineData: null,
+      });
+
+    const { rerender } = render(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="pie"
+        config={{ dataSource: pieDatasource.id }}
+        dataSource={pieDatasource}
+        reloadVersion="0:0"
+        refreshCause="initial"
+      />,
+    );
+    await waitFor(() => expect(testState.fetchCompareData).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="pie"
+        config={{ dataSource: pieDatasource.id }}
+        dataSource={pieDatasource}
+        reloadVersion="1:0"
+        refreshCause="manual"
+      />,
+    );
+    await waitFor(() => expect(testState.fetchCompareData).toHaveBeenCalledTimes(2));
+
+    rerender(
+      <WidgetWrapper
+        dashboardId="dashboard-1"
+        widgetId="widget-1"
+        chartType="pie"
+        config={{ dataSource: pieDatasource.id }}
+        dataSource={pieDatasource}
+        reloadVersion="2:0"
+        refreshCause="manual"
+      />,
+    );
+    await waitFor(() => expect(testState.fetchCompareData).toHaveBeenCalledTimes(3));
+    expect(screen.getByTestId('chart-renderer').textContent).toContain('C');
+
+    resolveA?.({
+      currentData: [{ name: 'A', value: 1 }],
+      baselineData: null,
+    });
+    await Promise.resolve();
+    expect(screen.getByTestId('chart-renderer').textContent).toContain('C');
+  });
+
+  it('waits for activation and refetches only when the required version changed offscreen', async () => {
+    testState.fetchCompareData.mockResolvedValue({
+      currentData: [{ name: 'active', value: 1 }],
+      baselineData: null,
+    });
+    const props = {
+      dashboardId: 'dashboard-1',
+      widgetId: 'widget-1',
+      chartType: 'pie',
+      config: { dataSource: pieDatasource.id },
+      dataSource: pieDatasource,
+      refreshCause: 'initial' as const,
+    };
+    const { rerender } = render(
+      <WidgetWrapper {...props} reloadVersion="0:0" runtimeActive={false} />,
+    );
+    expect(testState.fetchCompareData).not.toHaveBeenCalled();
+
+    rerender(<WidgetWrapper {...props} reloadVersion="0:0" runtimeActive />);
+    await waitFor(() => expect(testState.fetchCompareData).toHaveBeenCalledTimes(1));
+
+    rerender(<WidgetWrapper {...props} reloadVersion="0:0" runtimeActive={false} />);
+    rerender(<WidgetWrapper {...props} reloadVersion="0:0" runtimeActive />);
+    await Promise.resolve();
+    expect(testState.fetchCompareData).toHaveBeenCalledTimes(1);
+
+    rerender(<WidgetWrapper {...props} reloadVersion="1:0" runtimeActive={false} />);
+    await Promise.resolve();
+    expect(testState.fetchCompareData).toHaveBeenCalledTimes(1);
+    rerender(<WidgetWrapper {...props} reloadVersion="1:0" runtimeActive />);
+    await waitFor(() => expect(testState.fetchCompareData).toHaveBeenCalledTimes(2));
   });
 
   it('skips a silent tick while a manual request is in flight and still shows the manual error', async () => {
