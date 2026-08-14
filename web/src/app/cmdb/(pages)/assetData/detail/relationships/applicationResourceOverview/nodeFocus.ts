@@ -26,6 +26,46 @@ export function resolveNeighborhood(
   return { nodeIds, linkIds };
 }
 
+export interface TopologyNodeSearchItem {
+  id: string;
+  name: string;
+  model_id?: string;
+}
+
+export interface TopologyGraphLocator {
+  getCellById: (id: string) => unknown;
+  centerCell: (cell: unknown) => void;
+}
+
+const DEFAULT_NODE_SEARCH_LIMIT = 30;
+
+export function filterTopologyNodes<T extends TopologyNodeSearchItem>(
+  nodes: T[],
+  query: string,
+  limit = DEFAULT_NODE_SEARCH_LIMIT
+): T[] {
+  const needle = normalizeQuery(query);
+  if (!needle) return [];
+  const matched: T[] = [];
+  for (const node of nodes) {
+    if (!node.name.toLowerCase().includes(needle)) continue;
+    matched.push(node);
+    if (matched.length >= limit) break;
+  }
+  return matched;
+}
+
+export function centerTopologyNode(
+  graph: TopologyGraphLocator | null | undefined,
+  nodeId: string
+): boolean {
+  if (!graph || !nodeId) return false;
+  const cell = graph.getCellById(nodeId);
+  if (!cell) return false;
+  graph.centerCell(cell);
+  return true;
+}
+
 export function filterRelationLinks<T extends Pick<ApplicationResourceLink, 'source' | 'target' | 'asst_id' | 'model_asst_id'>>(
   links: T[],
   nodes: Map<string, Pick<ApplicationResourceNode, 'name'>>,

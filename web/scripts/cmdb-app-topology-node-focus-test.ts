@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  centerTopologyNode,
   filterRelationLinks,
+  filterTopologyNodes,
   resolveNeighborhood,
 } from '../src/app/cmdb/(pages)/assetData/detail/relationships/applicationResourceOverview/nodeFocus';
 
@@ -68,6 +70,42 @@ const byReverseType = filterRelationLinks(
 );
 assert.deepEqual(byReverseType.map((link) => link.id), ['l6']);
 
+const topologyNodes = [
+  { id: 'n1', name: 'monitor-platform', model_id: 'application' },
+  { id: 'n2', name: 'host-ops-monitor-30', model_id: 'host' },
+  { id: 'n3', name: 'cmdb-platform', model_id: 'application' },
+  { id: 'n4', name: 'job-platform', model_id: 'application' },
+];
+
+assert.deepEqual(filterTopologyNodes(topologyNodes, ''), []);
+assert.deepEqual(filterTopologyNodes(topologyNodes, '   '), []);
+assert.deepEqual(
+  filterTopologyNodes(topologyNodes, 'monitor').map((node) => node.id),
+  ['n1', 'n2']
+);
+assert.deepEqual(
+  filterTopologyNodes(topologyNodes, 'MONITOR-30').map((node) => node.id),
+  ['n2']
+);
+assert.deepEqual(filterTopologyNodes(topologyNodes, 'no-such-node'), []);
+assert.deepEqual(
+  filterTopologyNodes(topologyNodes, 'platform', 2).map((node) => node.id),
+  ['n1', 'n3']
+);
+
+const centered: string[] = [];
+const graph = {
+  getCellById: (id: string) => (id === 'n2' ? { id } : null),
+  centerCell: (cell: { id: string }) => {
+    centered.push(cell.id);
+  },
+};
+assert.equal(centerTopologyNode(null, 'n2'), false);
+assert.equal(centerTopologyNode(graph, ''), false);
+assert.equal(centerTopologyNode(graph, 'missing'), false);
+assert.equal(centerTopologyNode(graph, 'n2'), true);
+assert.deepEqual(centered, ['n2']);
+
 const overviewSrc = fs.readFileSync(
   path.resolve('src/app/cmdb/(pages)/assetData/detail/relationships/applicationResourceOverview/index.tsx'),
   'utf8'
@@ -80,10 +118,33 @@ assert.match(overviewSrc, /buildBaseInfoPath/);
 assert.match(overviewSrc, /ApplicationResourceOverview\.viewRelations/);
 assert.match(overviewSrc, /ViewsHub\.viewDetail/);
 assert.match(overviewSrc, /relationSearchPlaceholder/);
+assert.doesNotMatch(overviewSrc, /hoveredRelationId/);
+assert.doesNotMatch(overviewSrc, /setHoveredRelationId/);
 assert.match(overviewSrc, /relationFocusNodeId/);
+assert.match(overviewSrc, /nodeSearchPlaceholder/);
+assert.match(overviewSrc, /className=\{styles\.viewToolbar\}/);
+assert.match(overviewSrc, /application-topology-relations/);
+assert.match(overviewSrc, /filterTopologyNodes/);
+
+const stylesSrc = fs.readFileSync(
+  path.resolve('src/app/cmdb/(pages)/assetData/detail/relationships/applicationResourceOverview/index.module.scss'),
+  'utf8'
+);
+assert.match(stylesSrc, /\.relationsPanel[\s\S]*position:\s*absolute/);
+assert.match(stylesSrc, /\.relationsPanel[\s\S]*transform:\s*translateX\(100%\)/);
+assert.match(stylesSrc, /\.relationsPanelOpen[\s\S]*transform:\s*translateX\(0\)/);
+assert.doesNotMatch(stylesSrc, /flex-basis 220ms ease/);
+assert.doesNotMatch(stylesSrc, /relationRowActive/);
+assert.match(overviewSrc, /handleLocateTopologyNode/);
+assert.match(overviewSrc, /centerTopologyNode\(graphInstance, nodeId\)/);
+assert.match(overviewSrc, /handleSelectNode\(nodeId\)/);
 
 const zhSrc = fs.readFileSync(path.resolve('src/app/cmdb/locales/zh.json'), 'utf8');
 assert.match(zhSrc, /"viewRelations": "查看关联"/);
 assert.match(zhSrc, /"relationSearchPlaceholder": "搜索源、目标或关系"/);
+assert.match(zhSrc, /"nodeSearchPlaceholder": "搜索节点名称"/);
+
+const enSrc = fs.readFileSync(path.resolve('src/app/cmdb/locales/en.json'), 'utf8');
+assert.match(enSrc, /"nodeSearchPlaceholder": "Search node name"/);
 
 console.log('cmdb-app-topology-node-focus test passed');

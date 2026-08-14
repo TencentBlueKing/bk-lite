@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  AutoComplete,
   Button,
   Card,
   Empty,
@@ -16,6 +17,7 @@ import {
 import {
   DownloadOutlined,
   DoubleRightOutlined,
+  SearchOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
 import type { Edge, Graph, Node } from '@antv/x6';
@@ -47,7 +49,12 @@ import {
   type LayerBand,
   type LayerKey,
 } from './layerLayout';
-import { filterRelationLinks, resolveNeighborhood } from './nodeFocus';
+import {
+  centerTopologyNode,
+  filterRelationLinks,
+  filterTopologyNodes,
+  resolveNeighborhood,
+} from './nodeFocus';
 import { filterResourceGroups } from './resourceInventory';
 import styles from './index.module.scss';
 
@@ -738,7 +745,8 @@ export default function ApplicationResourceOverview({
   const [relationQuery, setRelationQuery] = useState('');
   const [relationFocusNodeId, setRelationFocusNodeId] = useState<string | null>(null);
   const [resourceQuery, setResourceQuery] = useState('');
-  const [hoveredRelationId, setHoveredRelationId] = useState<string | null>(null);
+  const [nodeSearch, setNodeSearch] = useState('');
+  const [nodeSearchOpen, setNodeSearchOpen] = useState(false);
   const [hoveredGraphNodeId, setHoveredGraphNodeId] = useState<string | null>(null);
   const [hoveredGraphEdgeId, setHoveredGraphEdgeId] = useState<string | null>(null);
   const topologyCardRef = useRef<HTMLDivElement | null>(null);
@@ -772,7 +780,6 @@ export default function ApplicationResourceOverview({
     let cancelled = false;
     async function loadApplicationData() {
       if (!selectedTarget) return;
-      setHoveredRelationId(null);
       setHoveredGraphNodeId(null);
       setHoveredGraphEdgeId(null);
       setLoading(true);
@@ -792,6 +799,8 @@ export default function ApplicationResourceOverview({
         setRelationQuery('');
         setRelationFocusNodeId(null);
         setResourceQuery('');
+        setNodeSearch('');
+        setNodeSearchOpen(false);
         setTopology(topologyData);
         setResources(resourceRes);
       } finally {
@@ -961,20 +970,11 @@ export default function ApplicationResourceOverview({
     };
 
     const persistOn = Boolean(selectedNodeId);
-    const relationActiveNodeIds = new Set<string>();
-    graph.getEdges().forEach((edge) => {
-      const data = edgeData.get(String(edge.id));
-      if (hoveredRelationId && data?.relationshipIds?.includes(hoveredRelationId)) {
-        if (data.sourceNodeId) relationActiveNodeIds.add(String(data.sourceNodeId));
-        if (data.targetNodeId) relationActiveNodeIds.add(String(data.targetNodeId));
-      }
-    });
 
     graph.getNodes().forEach((node) => {
       const nodeId = String(node.id);
       const persistActive = persistOn && neighborhood.nodeIds.has(nodeId);
-      const hoverActive = hoveredGraphNodeId === nodeId
-        || relationActiveNodeIds.has(nodeId);
+      const hoverActive = hoveredGraphNodeId === nodeId;
       const highlighted = persistActive || hoverActive;
       const focused = selectedNodeId === nodeId || hoverActive;
       const dimmed = persistOn && !highlighted;
@@ -1003,14 +1003,10 @@ export default function ApplicationResourceOverview({
 
     graph.getEdges().forEach((edge) => {
       const data = edgeData.get(String(edge.id));
-      const relationActive = Boolean(
-        hoveredRelationId && data?.relationshipIds?.includes(hoveredRelationId)
-      );
       const persistActive = persistOn && Boolean(
         data?.relationshipIds?.some((relationshipId) => neighborhood.linkIds.has(relationshipId))
       );
       const hoverActive = hoveredGraphEdgeId === String(edge.id)
-        || relationActive
         || hoveredGraphNodeId === String(data?.sourceNodeId || '')
         || hoveredGraphNodeId === String(data?.targetNodeId || '');
       const active = persistActive || hoverActive;
@@ -1041,7 +1037,6 @@ export default function ApplicationResourceOverview({
     graphInstance,
     hoveredGraphEdgeId,
     hoveredGraphNodeId,
-    hoveredRelationId,
     neighborhood,
     selectedNodeId,
   ]);
@@ -1050,11 +1045,12 @@ export default function ApplicationResourceOverview({
     if (!selectedTarget) return;
     setHoveredGraphNodeId(null);
     setHoveredGraphEdgeId(null);
-    setHoveredRelationId(null);
     setSelectedNodeId(null);
     setRelationQuery('');
     setRelationFocusNodeId(null);
     setResourceQuery('');
+    setNodeSearch('');
+    setNodeSearchOpen(false);
     setNodeContextMenu((current) => ({ ...current, visible: false }));
     setLoading(true);
     try {
@@ -1073,7 +1069,6 @@ export default function ApplicationResourceOverview({
   };
 
   const handleExpandNode = async (node: ApplicationResourceNode, depth: number) => {
-    setHoveredRelationId(null);
     setHoveredGraphNodeId(null);
     setHoveredGraphEdgeId(null);
     setNodeContextMenu((current) => ({ ...current, visible: false }));
@@ -1101,6 +1096,31 @@ export default function ApplicationResourceOverview({
     closeNodeContextMenu();
     setSelectedNodeId(nodeId);
   };
+
+  const handleLocateTopologyNode = (nodeId: string) => {
+    const node = topologyNodeMap.get(nodeId);
+    if (node) {
+      setNodeSearch(node.name);
+    }
+    setNodeSearchOpen(false);
+    handleSelectNode(nodeId);
+    window.requestAnimationFrame(() => {
+      centerTopologyNode(graphInstance, nodeId);
+    });
+  };
+
+  const nodeSearchOptions = useMemo(
+    () => filterTopologyNodes(topology?.nodes || [], nodeSearch).map((node) => ({
+      value: node.id,
+      label: (
+        <div className={styles.nodeSearchOption}>
+          <span className={styles.nodeSearchName}>{node.name}</span>
+          <span className={styles.nodeSearchMeta}>{node.model_id}</span>
+        </div>
+      ),
+    })),
+    [nodeSearch, topology]
+  );
 
   const handleClearNodeFocus = () => {
     closeNodeContextMenu();
@@ -1192,18 +1212,56 @@ export default function ApplicationResourceOverview({
       wrapperClassName={styles.spinHost}
     >
       <div className={hostClassName}>
-        <Radio.Group
-          className={styles.viewSwitch}
-          value={viewMode}
-          onChange={(event) => setViewMode(event.target.value)}
-          size="small"
-          optionType="button"
-          buttonStyle="solid"
-          options={[
-            { label: t('ApplicationResourceOverview.topologyTab'), value: 'topology' },
-            { label: t('ApplicationResourceOverview.resourcesTab'), value: 'resources' },
-          ]}
-        />
+        <div className={styles.viewToolbar}>
+          <Radio.Group
+            className={styles.viewSwitch}
+            value={viewMode}
+            onChange={(event) => setViewMode(event.target.value)}
+            size="small"
+            optionType="button"
+            buttonStyle="solid"
+            options={[
+              { label: t('ApplicationResourceOverview.topologyTab'), value: 'topology' },
+              { label: t('ApplicationResourceOverview.resourcesTab'), value: 'resources' },
+            ]}
+          />
+
+          {viewMode === 'topology' && (
+            <AutoComplete
+              className={styles.nodeSearch}
+              value={nodeSearch}
+              options={nodeSearchOptions}
+              open={nodeSearchOpen}
+              size="small"
+              filterOption={false}
+              notFoundContent={nodeSearch.trim() ? t('ApplicationResourceOverview.nodeSearchEmpty') : null}
+              popupMatchSelectWidth
+              onOpenChange={(open) => {
+                setNodeSearchOpen(open && Boolean(nodeSearch.trim()));
+              }}
+              onChange={(value) => {
+                const next = typeof value === 'string' ? value : '';
+                const matched = topologyNodeMap.get(next);
+                if (matched && matched.name !== next) {
+                  return;
+                }
+                setNodeSearch(next);
+                setNodeSearchOpen(Boolean(next.trim()));
+              }}
+              onSelect={(nodeId) => {
+                handleLocateTopologyNode(String(nodeId));
+              }}
+            >
+              <Input
+                allowClear
+                size="small"
+                prefix={<SearchOutlined />}
+                placeholder={t('ApplicationResourceOverview.nodeSearchPlaceholder')}
+                aria-label={t('ApplicationResourceOverview.nodeSearchPlaceholder')}
+              />
+            </AutoComplete>
+          )}
+        </div>
 
         {viewMode === 'topology' && (
           <div className={styles.topologyStack}>
@@ -1401,7 +1459,6 @@ export default function ApplicationResourceOverview({
                         icon={<DoubleRightOutlined />}
                         tabIndex={relationsOpen ? 0 : -1}
                         onClick={() => {
-                          setHoveredRelationId(null);
                           setRelationsOpen(false);
                           window.requestAnimationFrame(() => relationsButtonRef.current?.focus());
                         }}
@@ -1417,10 +1474,7 @@ export default function ApplicationResourceOverview({
                         onChange={(event) => setRelationQuery(event.target.value)}
                       />
                     </div>
-                    <div
-                      className={styles.relationsTable}
-                      onMouseLeave={() => setHoveredRelationId(null)}
-                    >
+                    <div className={styles.relationsTable}>
                       {!topology?.links?.length ? (
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -1439,17 +1493,6 @@ export default function ApplicationResourceOverview({
                           tableLayout="fixed"
                           dataSource={filteredRelationLinks}
                           columns={linkColumns}
-                          rowClassName={(record) =>
-                            record.id === hoveredRelationId ? styles.relationRowActive : ''
-                          }
-                          onRow={(record) => ({
-                            onMouseEnter: () => setHoveredRelationId(record.id),
-                            onMouseLeave: () => {
-                              setHoveredRelationId((current) =>
-                                current === record.id ? null : current
-                              );
-                            },
-                          })}
                         />
                       )}
                     </div>
