@@ -188,7 +188,8 @@ def _target_params(
     params.pop("credentials_pool", None)
     params.update(dict(credential))
     if not params.pop("target_is_logical", False):
-        params["host"] = target
+        params["host"] = params.pop("_validated_connect_host", "") or target
+        params.setdefault("target_hostname", target)
     params["collection_task_id"] = context.task_id
     params["collection_fence"] = context.fence
     return params

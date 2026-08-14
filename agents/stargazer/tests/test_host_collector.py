@@ -2554,7 +2554,7 @@ class TestPublishMetricsToNats:
 
         monkeypatch.setattr(
             nats_helper_module,
-            "convert_prometheus_to_influx",
+            "_iter_metrics_to_influx",
             MagicMock(return_value=["metric value=1 1", "metric value=2 2"]),
         )
 

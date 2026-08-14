@@ -200,6 +200,9 @@ stargazer_collection_credential_state_redis_error_total {stats.get("credential_s
 """
         bounded_metric_keys = (
             "target_worker_tasks_peak",
+            "pending_targets",
+            "pending_runs",
+            "sync_calls_in_flight",
             "target_task_window",
             "publish_queue_depth",
             "publish_queue_peak",
@@ -214,6 +217,12 @@ stargazer_collection_credential_state_redis_error_total {stats.get("credential_s
             "publish_flush_duration_seconds_p99",
             "publish_shutdown_timeout_total",
             "result_publish_retry_total",
+            "preflight_timeout_total",
+            "probe_timeout_total",
+            "collection_timeout_total",
+            "publish_timeout_total",
+            "publish_lines_total",
+            "publish_bytes_total",
             "publish_succeeded_total",
             "publish_failed_total",
             "publish_unknown_total",

@@ -116,7 +116,7 @@ class CollectionApplication:
         if publisher is None:
             from core.infra.credential_state_cache import CredentialStateCache
 
-            publisher = NatsResultPublisher(result_event_sink=CredentialStateCache.append_result_event)
+            publisher = NatsResultPublisher(result_event_sink=CredentialStateCache.append_result_event, metrics=self._metrics)
         publish_capacity = self.settings.target_task_window or self.settings.max_active_targets or DEFAULT_TARGET_TASK_WINDOW
         self._publisher = (
             publisher
@@ -227,6 +227,8 @@ class CollectionApplication:
             "active_runs": self.active_runs,
             "active_targets": self._target_activity.active,
             "target_worker_tasks": self._scheduler.active,
+            "pending_targets": self._scheduler.pending,
+            "pending_runs": self._scheduler.pending_runs,
             "target_worker_tasks_peak": self._scheduler.peak,
             "publish_queue_depth": self._publisher.queue_depth,
             "publish_queue_peak": self._publisher.peak_queue_depth,

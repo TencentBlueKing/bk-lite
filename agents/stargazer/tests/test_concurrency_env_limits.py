@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from core.collection.application import CollectionApplicationSettings, concurrency_limit_from_env
 from core.collection.constants import DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
@@ -65,6 +67,18 @@ def test_application_settings_split_timeouts_and_keep_legacy_fallback(monkeypatc
     assert current.connect_timeout_seconds == 15
     assert current.probe_timeout_seconds == 16
     assert current.plugin_timeout_seconds == 80
+
+
+def test_env_example_uses_split_timeout_contract():
+    example = (Path(__file__).parents[1] / ".env.example").read_text(encoding="utf-8")
+    keys = {line.split("=", 1)[0] for line in example.splitlines() if "=" in line and not line.lstrip().startswith("#")}
+
+    assert "PREFLIGHT_TIMEOUT=15" in example
+    assert "PROBE_TIMEOUT=15" in example
+    assert "COLLECTION_TIMEOUT=60" in example
+    assert "PUBLISH_TIMEOUT=30" in example
+    assert "CONNECT_TIMEOUT" not in keys
+    assert "PLUGIN_TIMEOUT" not in keys
 
 
 def test_target_executor_settings_allow_zero_unlimited():

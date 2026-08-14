@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import operator
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ class _RunState(Generic[T, R]):
     exhausted: bool = False
     enqueued_at: float = 0.0
     first_dispatched: bool = False
+    pending: int = 0
     tasks: set[asyncio.Task] = field(default_factory=set)
 
 
@@ -41,6 +43,14 @@ class CollectionScheduler:
         self.active = 0
         self.peak = 0
 
+    @property
+    def pending(self) -> int:
+        return sum(state.pending for state in self._runs.values())
+
+    @property
+    def pending_runs(self) -> int:
+        return len(self._runs)
+
     async def execute(
         self,
         run_id: str,
@@ -54,6 +64,7 @@ class CollectionScheduler:
             results=[],
             done=loop.create_future(),
             enqueued_at=time.monotonic(),
+            pending=max(0, operator.length_hint(items, 0)),
         )
         async with self._condition:
             if self._closing:
@@ -112,6 +123,7 @@ class CollectionScheduler:
                             self._runs.pop(run_id, None)
                         continue
                     index = len(state.results)
+                    state.pending = max(0, state.pending - 1)
                     state.results.append(None)
                     if not state.first_dispatched:
                         state.first_dispatched = True

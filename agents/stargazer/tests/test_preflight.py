@@ -106,12 +106,28 @@ async def test_cloud_and_udp_preflight_do_not_use_icmp_or_tcp(monkeypatch):
         raise AssertionError("TCP must not be used")
 
     monkeypatch.setattr(asyncio, "open_connection", unexpected_open_connection)
-    probe = AsyncProtocolPreflight()
+
+    class Policy:
+        async def resolve_allowed(self, host, port=0):
+            assert host == "10.10.24.20"
+            return host
+
+        def validate_trusted_domains(self, domains):
+            assert domains == ("tencentcloudapi.com",)
+            return domains
+
+    probe = AsyncProtocolPreflight(policy=Policy())
     cloud = CollectionRequest(
         task_id="probe-cloud",
         plugin_ref="qcloud.monitor",
         targets=("qcloud-account",),
-        params={"preflight_kind": "cloud", "target_is_logical": True},
+        params={
+            "preflight_kind": "cloud",
+            "target_is_logical": True,
+            "target_policy_mode": "cloud_endpoint",
+            "trusted_endpoint_domains": ("tencentcloudapi.com",),
+            "_yaml_target_policy_verified": True,
+        },
     )
     snmp = CollectionRequest(
         task_id="probe-snmp",
@@ -122,6 +138,22 @@ async def test_cloud_and_udp_preflight_do_not_use_icmp_or_tcp(monkeypatch):
 
     assert (await probe.check("qcloud-account", cloud, timeout_seconds=5)).status == PreflightStatus.UNKNOWN
     assert (await probe.check("10.10.24.20", snmp, timeout_seconds=5)).status == PreflightStatus.UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_untrusted_logical_flag_cannot_bypass_outbound_policy():
+    request = CollectionRequest(
+        task_id="logical-bypass",
+        plugin_ref="network.config",
+        targets=("8.8.8.8",),
+        params={"preflight_kind": "skip", "target_is_logical": True},
+    )
+    policy = OutboundTargetPolicy(allowed_cidrs=("10.0.0.0/8",))
+
+    result = await AsyncProtocolPreflight(policy=policy).check("8.8.8.8", request, timeout_seconds=1)
+
+    assert result.status == PreflightStatus.UNREACHABLE
+    assert result.error_code == "outbound_target_rejected"
 
 
 @pytest.mark.asyncio
@@ -234,6 +266,24 @@ async def test_allowed_domain_cannot_bypass_cidr_boundary_via_loopback_dns(
 
 
 @pytest.mark.asyncio
+async def test_mixed_allowed_and_rejected_dns_answers_fail_closed(monkeypatch):
+    async def resolve(_host, _port, *, type):
+        return [
+            (socket.AF_INET, type, 6, "", ("10.0.0.8", 3306)),
+            (socket.AF_INET, type, 6, "", ("127.0.0.1", 3306)),
+        ]
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", resolve)
+    policy = OutboundTargetPolicy(
+        allowed_cidrs=("10.0.0.0/8",),
+        allowed_domains=("trusted.example",),
+    )
+
+    with pytest.raises(OutboundTargetRejected):
+        await policy.resolve_allowed("db.trusted.example", 3306)
+
+
+@pytest.mark.asyncio
 async def test_outbound_only_allows_after_cidr_without_tcp(monkeypatch):
     async def unexpected_open(*args, **kwargs):
         raise AssertionError("outbound_only must not dial")
@@ -246,6 +296,8 @@ async def test_outbound_only_allows_after_cidr_without_tcp(monkeypatch):
         params={"preflight_kind": "outbound_only", "port": 161},
     )
     result = await AsyncProtocolPreflight().check("10.10.69.245", request, timeout_seconds=5)
+
+    assert result.connect_host == "10.10.69.245"
     assert result.status == PreflightStatus.UNKNOWN
 
 

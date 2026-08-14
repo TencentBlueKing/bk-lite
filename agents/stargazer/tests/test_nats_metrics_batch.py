@@ -3,6 +3,7 @@ import time
 
 import pytest
 from core.collection.contracts import StructuredMetricsPayload
+from core.collection.metrics import CollectionMetrics
 from core.infra import nats_utils
 from plugins.base_utils import convert_to_prometheus_format
 from tasks.utils import nats_helper
@@ -47,7 +48,7 @@ async def test_metrics_batch_isolates_conversion_failure_to_one_result(monkeypat
         published.append((subject, lines, task_id))
         return len(lines)
 
-    monkeypatch.setattr(nats_helper, "convert_prometheus_to_influx", convert)
+    monkeypatch.setattr(nats_helper, "_iter_metrics_to_influx", convert)
     monkeypatch.setattr(nats_helper, "_publish_lines_with_retry", publish)
     outcomes = await nats_helper.publish_metrics_batch_to_nats(
         (
@@ -81,7 +82,7 @@ async def test_metrics_batch_isolates_subject_failure_from_other_subjects(monkey
             raise TimeoutError("network subject failed")
         return len(lines)
 
-    monkeypatch.setattr(nats_helper, "convert_prometheus_to_influx", convert)
+    monkeypatch.setattr(nats_helper, "_iter_metrics_to_influx", convert)
     monkeypatch.setattr(nats_helper, "_publish_lines_with_retry", publish)
     outcomes = await nats_helper.publish_metrics_batch_to_nats(
         (
@@ -102,6 +103,30 @@ async def test_metrics_batch_isolates_subject_failure_from_other_subjects(monkey
 
     assert isinstance(outcomes["network-1"], TimeoutError)
     assert outcomes["mysql-1"] is None
+
+
+@pytest.mark.asyncio
+async def test_metrics_batch_isolates_transport_failure_to_one_target_with_same_subject(monkeypatch):
+    def convert(_metrics, params):
+        return [f"line-{params['collection_result_id']}"]
+
+    async def publish(_subject, lines, _task_id):
+        if lines == ["line-bad"]:
+            raise TimeoutError("one target failed")
+        return len(lines)
+
+    monkeypatch.setattr(nats_helper, "_iter_metrics_to_influx", convert)
+    monkeypatch.setattr(nats_helper, "_publish_lines_with_retry", publish)
+
+    outcomes = await nats_helper.publish_metrics_batch_to_nats(
+        (
+            ({}, "ok", {"model_id": "network", "collection_result_id": "ok"}, "run-1"),
+            ({}, "bad", {"model_id": "network", "collection_result_id": "bad"}, "run-1"),
+        )
+    )
+
+    assert outcomes["ok"] is None
+    assert isinstance(outcomes["bad"], TimeoutError)
 
 
 def test_line_chunks_are_bounded_by_count_and_utf8_bytes():
@@ -125,7 +150,7 @@ async def test_oversized_metric_line_only_fails_its_target(monkeypatch):
         published.append((subject, lines, task_id))
         return len(lines)
 
-    monkeypatch.setattr(nats_helper, "convert_prometheus_to_influx", convert)
+    monkeypatch.setattr(nats_helper, "_iter_metrics_to_influx", convert)
     monkeypatch.setattr(nats_helper, "_publish_lines_with_retry", publish)
     outcomes = await nats_helper.publish_metrics_batch_to_nats(
         (
@@ -188,7 +213,7 @@ async def test_large_metrics_encoding_does_not_block_event_loop(monkeypatch):
 
     def slow_convert(_metrics, _params):
         time.sleep(0.05)
-        return ["line"]
+        yield "line"
 
     async def publish(_subject, lines, _task_id):
         return len(lines)
@@ -199,7 +224,7 @@ async def test_large_metrics_encoding_does_not_block_event_loop(monkeypatch):
             ticks += 1
             await asyncio.sleep(0.005)
 
-    monkeypatch.setattr(nats_helper, "convert_prometheus_to_influx", slow_convert)
+    monkeypatch.setattr(nats_helper, "_iter_metrics_to_influx", slow_convert)
     monkeypatch.setattr(nats_helper, "_publish_lines_with_retry", publish)
     heartbeat_task = asyncio.create_task(heartbeat())
     try:
@@ -219,3 +244,56 @@ async def test_large_metrics_encoding_does_not_block_event_loop(monkeypatch):
 
     assert outcomes["one"] is None
     assert ticks >= 5
+
+
+@pytest.mark.asyncio
+async def test_metrics_batch_encodes_and_publishes_in_bounded_chunks(monkeypatch):
+    produced = 0
+    produced_at_first_publish = None
+
+    def iter_lines(_metrics, _params):
+        nonlocal produced
+        for index in range(5):
+            produced += 1
+            yield f"line-{index}"
+
+    async def publish(_subject, lines, _task_id):
+        nonlocal produced_at_first_publish
+        if produced_at_first_publish is None:
+            produced_at_first_publish = produced
+        assert len(lines) <= 2
+        return len(lines)
+
+    monkeypatch.setattr(nats_helper, "_iter_metrics_to_influx", iter_lines)
+    monkeypatch.setattr(nats_helper, "_publish_lines_with_retry", publish)
+    monkeypatch.setattr(nats_helper, "MAX_NATS_LINES_PER_FLUSH", 2)
+
+    outcomes = await nats_helper.publish_metrics_batch_to_nats((({}, "metrics", {"model_id": "network", "collection_result_id": "one"}, "run-1"),))
+
+    assert outcomes["one"] is None
+    assert produced_at_first_publish < produced
+
+
+@pytest.mark.asyncio
+async def test_metrics_batch_records_actual_line_and_byte_counts(monkeypatch):
+    metrics = CollectionMetrics()
+
+    def iter_lines(_metrics, _params):
+        yield "a"
+        yield "中"
+
+    async def publish(_subject, lines, _task_id):
+        return len(lines)
+
+    monkeypatch.setattr(nats_helper, "_iter_metrics_to_influx", iter_lines)
+    monkeypatch.setattr(nats_helper, "_publish_lines_with_retry", publish)
+
+    outcomes = await nats_helper.publish_metrics_batch_to_nats(
+        (({}, "metrics", {"model_id": "network", "collection_result_id": "one"}, "run-1"),),
+        metrics=metrics,
+    )
+
+    snapshot = metrics.snapshot()
+    assert outcomes["one"] is None
+    assert snapshot["publish_lines_total"] == 2
+    assert snapshot["publish_bytes_total"] == 4

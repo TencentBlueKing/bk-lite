@@ -520,17 +520,25 @@ TARGET_TASK_WINDOW=150
 
 - 保持 `MAX_ACTIVE_RUNS=16`、`MAX_ACTIVE_TARGETS=150`、`TARGET_TASK_WINDOW=150`，不调整
   Redis 连接池；
-- 出站安全检查与可达性探测解耦：`skip`、cloud、SNMP/UDP 等非拨号模式也必须先通过
-  `OutboundTargetPolicy`，逻辑目标除外；
+- 出站安全检查与可达性探测解耦：`skip`、SNMP/UDP 等非拨号模式也必须先通过
+  `OutboundTargetPolicy`；逻辑云目标只接受 plugin YAML 声明并由框架标记可信的 SDK 域名后缀，
+  外部请求不能注入该可信标记；非 TLS 目标把策略解析后的地址固定传给插件，DNS 返回允许与
+  禁止地址混合时 fail-closed；
 - NATS 重试只保留目标执行器一层，总尝试次数默认 2 次；底层 helper 单次发送并报告
   `delivery_detected`；
-- 发布按目标数、指标行数和 UTF-8 字节数形成有界 flush，超大单行仅使对应目标失败；
+- 发布按单目标流式编码，再按指标行数和 UTF-8 字节数形成有界 flush；不再先汇总同 subject
+  的全部目标，超大单行、编码失败和传输失败仅归因到对应目标；
 - Publisher shutdown 复用应用级 grace deadline，超时后取消 writer 并把未确认回执标记为
   `publish_unknown`；
 - 公平调度器不再把目标 Iterable 转为完整 tuple，只在获得全局槽位后消费下一个目标；
 - 网络配置插件的连接关闭异常不再覆盖主采集结果；
 - 补充调度等待、发布队列等待、批大小、flush、重试、shutdown 以及 execution mode / capacity
-  group 的低基数指标。
+  group 的低基数指标，并增加待调度目标/Run、四阶段超时、发布行数和发布字节数；
+- `PUBLISH_TIMEOUT` 重试复用首次入队生成的绝对 deadline，不因第二次尝试重新获得完整预算；
+- IP 发现复用 `MAX_TARGETS_PER_RUN` 限制 CIDR 展开，探测与 ARP 查询共享固定 worker 边界；
+- `.env.example` 已改为四类独立超时变量；兼容变量只保留在运行时代码的一个发布周期回退中；
+- 当前树不包含真实 SNMP community；旧远端历史中的两个 community 必须由运维轮换，并在维护窗口
+  评估历史清理，仓库修改不代替设备侧凭据轮换。
 - 本轮固定采集、调度、发布、SNMP、VMware、Host Remote、执行元数据及异步契约回归：
   `201 passed, 1 skipped`；修复后关键聚焦回归：`132 passed`；
 - 全量测试的剩余失败来自已删除的旧 task queue/worker 模块、collect fixture 的 MSSQL 基线、

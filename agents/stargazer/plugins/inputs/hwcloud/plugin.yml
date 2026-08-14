@@ -23,4 +23,7 @@ executors:
     target_policy:
       mode: cloud_endpoint
       tls: true
+      trusted_domains:
+      - myhuaweicloud.com
+      - huaweicloud.com
 default_executor: protocol

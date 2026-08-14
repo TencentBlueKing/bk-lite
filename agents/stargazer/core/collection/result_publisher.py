@@ -224,11 +224,13 @@ class NatsResultPublisher:
         metrics_publish_batch: Callable | None = None,
         callback_publish: Callable | None = None,
         result_event_sink: Callable | None = None,
+        metrics=None,
     ) -> None:
         self._metrics_publish = metrics_publish
         self._metrics_publish_batch = metrics_publish_batch
         self._callback_publish = callback_publish
         self._result_event_sink = result_event_sink
+        self._metrics = metrics
 
     async def publish_batch(self, items) -> dict[str, BaseException | None]:
         outcomes: dict[str, BaseException | None] = {}
@@ -255,13 +257,17 @@ class NatsResultPublisher:
 
         if metrics_entries:
             metrics_publish_batch = self._metrics_publish_batch
-            if metrics_publish_batch is None and self._metrics_publish is None:
+            using_default_batch = metrics_publish_batch is None and self._metrics_publish is None
+            if using_default_batch:
                 from tasks.utils.nats_helper import publish_metrics_batch_to_nats
 
                 metrics_publish_batch = publish_metrics_batch_to_nats
             if metrics_publish_batch is not None:
                 try:
-                    batch_outcomes = await metrics_publish_batch(tuple(metrics_entries))
+                    if using_default_batch:
+                        batch_outcomes = await metrics_publish_batch(tuple(metrics_entries), metrics=self._metrics)
+                    else:
+                        batch_outcomes = await metrics_publish_batch(tuple(metrics_entries))
                 except Exception as error:  # noqa: BLE001 - 返回逐目标失败，不抛整批
                     for _request, _result, _lease, result_id in metric_events:
                         outcomes[result_id] = error

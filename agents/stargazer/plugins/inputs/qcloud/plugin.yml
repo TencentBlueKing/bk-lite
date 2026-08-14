@@ -23,4 +23,6 @@ executors:
     target_policy:
       mode: cloud_endpoint
       tls: true
+      trusted_domains:
+      - tencentcloudapi.com
 default_executor: protocol

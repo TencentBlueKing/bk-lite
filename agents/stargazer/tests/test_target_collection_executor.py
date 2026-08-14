@@ -80,6 +80,11 @@ class RecordingReachablePreflight:
         return PreflightResult(status=PreflightStatus.REACHABLE)
 
 
+class PinnedReachablePreflight:
+    async def check(self, target, request, *, timeout_seconds, plan=None):
+        return PreflightResult(status=PreflightStatus.REACHABLE, connect_host="10.0.0.8")
+
+
 class FirstTargetBrokenPreflight:
     async def check(self, target, request, *, timeout_seconds, plan=None):
         if target == "10.10.24.1":
@@ -360,6 +365,29 @@ async def test_unreachable_target_is_filtered_before_any_credential_attempt():
     assert len(publisher.results) == 1
     assert publisher.results[0][1].status == "unreachable"
     assert publisher.results[0][1].attempts == 0
+
+
+@pytest.mark.asyncio
+async def test_preflight_pinned_host_is_forwarded_only_in_internal_context():
+    plugin = RecordingPlugin()
+    executor = TargetCollectionExecutor(
+        preflight=PinnedReachablePreflight(),
+        plugin=plugin,
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="pinned-connect-host",
+        plugin_ref="mysql.config",
+        targets=("db.trusted.example",),
+        credentials=({"credential_id": "credential-1"},),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    await executor.execute(request, lease)
+
+    assert plugin.calls[0][2].params["_validated_connect_host"] == "10.0.0.8"
+    assert "_validated_connect_host" not in request.params
 
 
 @pytest.mark.asyncio
@@ -1003,6 +1031,55 @@ async def test_publish_succeeds_on_second_attempt():
     assert len(plugin.calls) == 1
     assert publish_calls["count"] == 2
     assert len(publisher.results) == 1
+
+
+@pytest.mark.asyncio
+async def test_publish_retry_shares_one_end_to_end_deadline():
+    plugin = RecordingPlugin()
+    publish_started = None
+
+    class SlowRetryPublisher:
+        def __init__(self):
+            self.calls = 0
+
+        async def publish(self, request, result, lease):
+            nonlocal publish_started
+            self.calls += 1
+            if publish_started is None:
+                publish_started = asyncio.get_running_loop().time()
+            await asyncio.sleep(0.035)
+            if self.calls == 1:
+                raise DefinitelyNotPublishedError("not delivered")
+
+    publisher = SlowRetryPublisher()
+    metrics = CollectionMetrics()
+    request = CollectionRequest(
+        task_id="collect-publish-one-deadline",
+        plugin_ref="mysql.config",
+        targets=("10.10.24.1",),
+        credentials=({"credential_id": "c1"},),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=plugin,
+        publisher=publisher,
+        metrics=metrics,
+        settings=TargetExecutorSettings(
+            max_active_targets=1,
+            target_task_window=1,
+            publish_guard_seconds=0.05,
+            publish_max_attempts=2,
+        ),
+    )
+
+    summary = await executor.execute(request, lease)
+    elapsed = asyncio.get_running_loop().time() - publish_started
+
+    assert publisher.calls == 2
+    assert elapsed < 0.065
+    assert summary.publish_unknown == 1
+    assert metrics.snapshot()["publish_timeout_total"] == 1
 
 
 @pytest.mark.asyncio

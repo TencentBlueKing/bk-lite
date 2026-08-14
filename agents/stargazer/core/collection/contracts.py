@@ -41,6 +41,7 @@ class PreflightResult:
     status: PreflightStatus
     error_code: str = ""
     detail: str = ""
+    connect_host: str = ""
 
 
 @dataclass(frozen=True)

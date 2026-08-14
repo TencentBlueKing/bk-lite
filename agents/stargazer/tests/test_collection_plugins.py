@@ -144,6 +144,35 @@ async def test_configuration_plugin_merges_one_target_and_one_credential():
 
 
 @pytest.mark.asyncio
+async def test_configuration_plugin_uses_preflight_pinned_connect_host():
+    captured = {}
+
+    class Service:
+        def __init__(self, params):
+            captured.update(params)
+
+        async def collect(self):
+            return 'mysql_info{collect_status="success"} 1'
+
+    context = TargetCollectionContext(
+        task_id="config-pinned-host",
+        plugin_ref="mysql.config",
+        fence=1,
+        params={"model_id": "mysql", "_validated_connect_host": "10.0.0.8"},
+    )
+
+    await ConfigurationCollectionPlugin(service_factory=Service).collect(
+        "db.trusted.example",
+        {"credential_id": "credential-1"},
+        context,
+    )
+
+    assert captured["host"] == "10.0.0.8"
+    assert captured["target_hostname"] == "db.trusted.example"
+    assert "_validated_connect_host" not in captured
+
+
+@pytest.mark.asyncio
 async def test_configuration_runtime_requests_structured_metrics_output():
     captured = {}
     payload = StructuredMetricsPayload(data={"network": ({"host": "10.10.24.1", "port": 161},)})

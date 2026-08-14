@@ -180,9 +180,9 @@ class TargetCollectionExecutor:
         self._scheduler = scheduler
 
     async def execute(self, request: CollectionRequest, lease: RunLease) -> RunSummary:
-        targets = tuple(request.targets)
-        results: list[TargetCollectionResult | None] = [None] * len(targets)
-        publish_statuses: list[str | None] = [None] * len(targets)
+        targets = request.targets
+        results: dict[int, TargetCollectionResult] = {}
+        publish_statuses: dict[int, str] = {}
         skipped = 0
 
         async def execute_index(index: int) -> _PendingPublish:
@@ -227,6 +227,8 @@ class TargetCollectionExecutor:
                     )
                     return current.index, "succeeded"
                 except Exception as error:  # noqa: BLE001 - 单目标有限重试
+                    if isinstance(error, TimeoutError) and asyncio.get_running_loop().time() >= current.deadline:
+                        self._metrics.increment("publish_timeout_total")
                     self._metrics.observe(
                         "publish_duration_seconds",
                         asyncio.get_running_loop().time() - current.started_at,
@@ -237,7 +239,14 @@ class TargetCollectionExecutor:
                         break
                     if attempt + 1 < self._settings.publish_max_attempts:
                         self._metrics.increment("result_publish_retry_total")
-                        current = await self._enqueue_publish(current.index, request, current.result, lease)
+                        current = await self._enqueue_publish(
+                            current.index,
+                            request,
+                            current.result,
+                            lease,
+                            started_at=current.started_at,
+                            deadline=current.deadline,
+                        )
                         continue
                     publish_status = "failed"
                     break
@@ -298,10 +307,9 @@ class TargetCollectionExecutor:
         for pending in pending_publishes:
             index, publish_status = await finish_publish(pending)
             publish_statuses[index] = publish_status
-        completed = tuple(result for result in results if result is not None)
-        for status in publish_statuses:
-            if status:
-                self._metrics.increment(f"publish_{status}_total")
+        completed = tuple(results.values())
+        for status in publish_statuses.values():
+            self._metrics.increment(f"publish_{status}_total")
         return RunSummary(
             total=len(targets),
             collection_succeeded=sum(result.status == "success" for result in completed),
@@ -309,9 +317,9 @@ class TargetCollectionExecutor:
             unreachable=sum(result.status == "unreachable" for result in completed),
             deferred=sum(result.status == "deferred" for result in completed),
             skipped=skipped,
-            publish_succeeded=sum(status == "succeeded" for status in publish_statuses),
-            publish_failed=sum(status == "failed" for status in publish_statuses),
-            publish_unknown=sum(status == "unknown" for status in publish_statuses),
+            publish_succeeded=sum(status == "succeeded" for status in publish_statuses.values()),
+            publish_failed=sum(status == "failed" for status in publish_statuses.values()),
+            publish_unknown=sum(status == "unknown" for status in publish_statuses.values()),
         )
 
     async def _enqueue_publish(
@@ -320,10 +328,14 @@ class TargetCollectionExecutor:
         request: CollectionRequest,
         result: TargetCollectionResult,
         lease: RunLease,
+        *,
+        started_at: float | None = None,
+        deadline: float | None = None,
     ) -> _PendingPublish:
         loop = asyncio.get_running_loop()
-        started_at = loop.time()
-        deadline = started_at + self._plan.publish_timeout_seconds
+        attempt_started_at = loop.time()
+        started_at = attempt_started_at if started_at is None else started_at
+        deadline = started_at + self._plan.publish_timeout_seconds if deadline is None else deadline
         try:
             async with asyncio.timeout_at(deadline):
                 receipt = await self._publisher.enqueue(request, result, lease)
@@ -331,7 +343,7 @@ class TargetCollectionExecutor:
             completion = loop.create_future()
             completion.set_exception(error)
             receipt = FuturePublishReceipt(completion)
-        self._metrics.observe("publish_enqueue_duration_seconds", loop.time() - started_at)
+        self._metrics.observe("publish_enqueue_duration_seconds", loop.time() - attempt_started_at)
         return _PendingPublish(
             index=index,
             result=result,
@@ -375,11 +387,14 @@ class TargetCollectionExecutor:
         if not credentials:
             return await self._no_credential_result(request, target)
 
+        context_params = dict(request.params)
+        if preflight.connect_host:
+            context_params["_validated_connect_host"] = preflight.connect_host
         context = TargetCollectionContext(
             task_id=request.task_id,
             plugin_ref=request.plugin_ref,
             fence=lease.fence,
-            params=request.params,
+            params=context_params,
             owner_id=lease.owner_id,
         )
         return await self._run_credential_attempts(request, target, credentials, context)
@@ -455,6 +470,7 @@ class TargetCollectionExecutor:
                     timeout_seconds=self._plan.preflight_timeout_seconds,
                 )
         except TimeoutError:
+            self._metrics.increment("preflight_timeout_total")
             return PreflightResult(
                 status=PreflightStatus.UNREACHABLE,
                 error_code="preflight_timeout",
@@ -574,6 +590,7 @@ class TargetCollectionExecutor:
                 )
         except TimeoutError:
             self._metrics.increment("access_probe_timeout_total")
+            self._metrics.increment("probe_timeout_total")
             return AccessProbeResult(
                 status=AccessProbeStatus.NO_RESPONSE,
                 error_code="access_probe_timeout",
@@ -762,6 +779,8 @@ class TargetCollectionExecutor:
         group = self._plan.capacity_group
         self._metrics.increment(f"execution_mode_{mode}_total")
         self._metrics.increment(f"capacity_group_{group}_total")
+        if mode == "sync":
+            self._metrics.add_gauge("sync_calls_in_flight", 1)
         try:
             async with asyncio.timeout(self._plan.collection_timeout_seconds):
                 return await self._plugin.collect(
@@ -771,6 +790,7 @@ class TargetCollectionExecutor:
                 )
         except TimeoutError:
             self._metrics.increment("plugin_timeout_total")
+            self._metrics.increment("collection_timeout_total")
             self._metrics.increment(f"execution_mode_{mode}_timeout_total")
             self._metrics.increment(f"capacity_group_{group}_timeout_total")
             return CollectOutcome(
@@ -786,6 +806,8 @@ class TargetCollectionExecutor:
                 detail=type(error).__name__,
             )
         finally:
+            if mode == "sync":
+                self._metrics.add_gauge("sync_calls_in_flight", -1)
             duration = time.monotonic() - plugin_started
             self._metrics.increment(
                 "plugin_duration_seconds_total",

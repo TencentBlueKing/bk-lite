@@ -21,3 +21,14 @@ def test_collection_metrics_keeps_only_bounded_recent_samples():
 
     assert snapshot["publish_duration_seconds_p95"] == 3.0
     assert snapshot["publish_duration_seconds_p99"] == 3.0
+
+
+def test_collection_metrics_tracks_non_negative_in_flight_gauges():
+    metrics = CollectionMetrics()
+
+    metrics.add_gauge("sync_calls_in_flight", 2)
+    metrics.add_gauge("sync_calls_in_flight", -1)
+    assert metrics.snapshot()["sync_calls_in_flight"] == 1
+
+    metrics.add_gauge("sync_calls_in_flight", -10)
+    assert metrics.snapshot()["sync_calls_in_flight"] == 0

@@ -26,9 +26,16 @@ class CollectionMetrics:
             "lease_takeover_total": 0,
             "credential_state_redis_error_total": 0,
             "target_execution_error_total": 0,
+            "preflight_timeout_total": 0,
+            "probe_timeout_total": 0,
+            "collection_timeout_total": 0,
+            "publish_timeout_total": 0,
+            "publish_lines_total": 0,
+            "publish_bytes_total": 0,
         }
         self._sample_capacity = int(sample_capacity)
         self._samples: dict[str, deque[float]] = {}
+        self._gauges: dict[str, float] = {"sync_calls_in_flight": 0}
 
     def increment(self, name: str, value: float = 1) -> None:
         self._counters[name] = self._counters.get(name, 0) + value
@@ -40,8 +47,12 @@ class CollectionMetrics:
             self._samples[name] = samples
         samples.append(float(value))
 
+    def add_gauge(self, name: str, value: float) -> None:
+        self._gauges[name] = max(0.0, self._gauges.get(name, 0.0) + float(value))
+
     def snapshot(self) -> dict[str, float]:
         snapshot = dict(self._counters)
+        snapshot.update(self._gauges)
         for name, samples in self._samples.items():
             ordered = sorted(samples)
             snapshot[f"{name}_p95"] = _percentile(ordered, 0.95)

@@ -20,6 +20,18 @@ async def _make_true():
 
 
 class TestScanner:
+    def test_拒绝超过运行目标上限的子网(self, monkeypatch):
+        monkeypatch.setenv("MAX_TARGETS_PER_RUN", "2")
+
+        with pytest.raises(ValueError, match="MAX_TARGETS_PER_RUN"):
+            IPDiscoveryScanner(
+                {
+                    "model_id": "ip",
+                    "scan_method": "icmp",
+                    "subnets": [{"subnet_id": 1, "cidr": "10.0.1.0/29"}],
+                }
+            )
+
     def test_tcp_任一端口通即判活(self):
         scanner = IPDiscoveryScanner(
             {
@@ -164,6 +176,32 @@ class TestScanner:
 
         assert result["result"]["ip"][0]["mac"] == "00:0C:29:3A:7B:88"
         assert calls[0][0] == ("arp", "-n", "10.0.1.10")
+
+    @pytest.mark.asyncio
+    async def test_mac查询和探测共享同一并发边界(self, monkeypatch):
+        scanner = IPDiscoveryScanner({"model_id": "ip", "targets": [f"10.0.1.{index}" for index in range(1, 8)]})
+        scanner.concurrency = 2
+        active = 0
+        peak = 0
+
+        async def fake_icmp(_ip, _timeout):
+            return True
+
+        async def fake_read_mac(_ip):
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            await asyncio.sleep(0.01)
+            active -= 1
+            return ""
+
+        monkeypatch.setattr(scanner, "_icmp_probe", fake_icmp)
+        monkeypatch.setattr(scanner, "_read_mac", fake_read_mac)
+
+        result = await scanner.list_all_resources()
+
+        assert len(result["result"]["ip"]) == 7
+        assert peak <= 2
 
 
 def test_plugin_yml_loads_and_points_to_scanner():
