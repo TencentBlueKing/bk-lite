@@ -2,6 +2,8 @@
 # @File: directory_serializers.py
 # @Time: 2025/7/18 10:59
 # @Author: windyzhao
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
@@ -14,9 +16,49 @@ from apps.operation_analysis.services.import_export.view_sets import normalize_c
 class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
     permission_key = "directory"
 
+    @staticmethod
+    def _validate_parent_candidate(instance_pk, parent):
+        candidate = Directory(pk=instance_pk, parent=parent)
+        try:
+            candidate.clean()
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages) from error
+
+    def validate_parent(self, parent):
+        self._validate_parent_candidate(getattr(self.instance, "pk", None), parent)
+        return parent
+
+    def update(self, instance, validated_data):
+        if "parent" not in validated_data:
+            return super().update(instance, validated_data)
+
+        parent_id = getattr(validated_data["parent"], "pk", None)
+        with transaction.atomic():
+            list(Directory.objects.select_for_update().order_by("pk").values_list("pk", flat=True))
+            locked_instance = Directory.objects.get(pk=instance.pk)
+            validated_data["parent"] = Directory.objects.get(pk=parent_id) if parent_id is not None else None
+            self._validate_parent_candidate(locked_instance.pk, validated_data["parent"])
+            return super().update(locked_instance, validated_data)
+
     class Meta:
         model = Directory
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "groups",
+            "name",
+            "parent",
+            "is_active",
+            "desc",
+            "is_build_in",
+            "build_in_key",
+            "permissions",
+        ]
         extra_kwargs = {
             "is_build_in": {"read_only": True},
             "build_in_key": {"read_only": True},
@@ -38,9 +80,12 @@ class DirectoryChainVisibilityMixin:
 
         target_groups = {int(group_id) for group_id in groups if group_id is not None}
         conflicts = []
-        current = directory
+        try:
+            directory_chain = [directory, *directory.get_parent_chain()]
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages) from error
 
-        while current is not None:
+        for current in directory_chain:
             directory_groups = {int(group_id) for group_id in (current.groups or []) if group_id is not None}
             missing_groups = sorted(target_groups - directory_groups)
             if missing_groups:
@@ -54,7 +99,6 @@ class DirectoryChainVisibilityMixin:
                         "missing_groups": missing_groups,
                     }
                 )
-            current = current.parent
 
         if conflicts:
             raise serializers.ValidationError(

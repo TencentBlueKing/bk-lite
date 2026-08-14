@@ -200,6 +200,59 @@ def test_instance_update_ok(fake_graph, patch_side_effects):
 
 
 @pytest.mark.django_db
+def test_instance_update_skip_permission_can_clear_non_editable_node_id(fake_graph, patch_side_effects, monkeypatch):
+    monkeypatch.setattr(
+        f"{MODULE}.InstanceManage._build_unique_rule_check_attr_map",
+        lambda model_id, attrs, for_update=False: {
+            "is_only": {"node_id": "节点ID"},
+            "is_required": {},
+            "editable": {"inst_name": "名称"} if for_update else {},
+            "unique_rules": [],
+            "attrs_by_id": {},
+        },
+    )
+    graph = fake_graph(
+        MODULE,
+        query_entity_by_id={
+            "_id": 1140,
+            "inst_uuid": HOST_UUID,
+            "model_id": "host",
+            "inst_name": "172.16.0.4[default]",
+            "node_id": "7e1bcd3d738c482fa33530b289d1c444",
+            "organization": [1],
+        },
+        query_entity=([], 0),
+        set_entity_properties=[
+            {
+                "_id": 1140,
+                "inst_uuid": HOST_UUID,
+                "model_id": "host",
+                "inst_name": "172.16.0.4[default]",
+                "node_id": "",
+                "organization": [1],
+            }
+        ],
+    )
+
+    InstanceManage.instance_update(
+        [],
+        [],
+        1140,
+        {"node_id": ""},
+        "system",
+        skip_permission_check=True,
+        schedule_post_actions=False,
+        record_change=False,
+    )
+
+    call = next(item for item in graph.calls if item[0] == "set_entity_properties")
+    properties = call[1][2]
+    check_attr_map = call[1][3]
+    assert properties["node_id"] == ""
+    assert "node_id" in check_attr_map.get("editable", {})
+
+
+@pytest.mark.django_db
 def test_instance_update_can_defer_audit_and_auto_relation(fake_graph, patch_side_effects, monkeypatch):
     graph = fake_graph(
         MODULE,

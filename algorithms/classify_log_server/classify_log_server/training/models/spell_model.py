@@ -22,6 +22,8 @@ class SpellModel(BaseLogClusterModel):
     论文："Spell: Online Streaming Parsing of Large Unstructured System Logs"
     """
 
+    ARTIFACT_SCHEMA_VERSION = 2
+
     def __init__(self, **kwargs):
         """
         初始化 Spell 模型。
@@ -153,23 +155,13 @@ class SpellModel(BaseLogClusterModel):
                 # 匹配现有聚类
                 stats['matched'] += 1
                 cluster = self.clusters[best_cluster_id]
-                cluster['log_ids'].append(log_idx)
-                
-                # 更新模板（多数投票）
-                cluster['logs'].append(tokens)
-                cluster['template'] = self._update_template(cluster['logs'])
+                self._append_to_cluster(cluster, log_id=log_idx, tokens=tokens)
                 
             else:
                 # 创建新聚类
                 stats['new_cluster'] += 1
                 cluster_id = len(self.clusters)
-                
-                new_cluster = {
-                    'id': cluster_id,
-                    'template': tokens[:],  # 初始模板就是当前日志
-                    'logs': [tokens],
-                    'log_ids': [log_idx],
-                }
+                new_cluster = self._new_cluster(cluster_id, log_idx, tokens)
                 
                 self.clusters.append(new_cluster)
                 
@@ -557,6 +549,7 @@ class SpellModel(BaseLogClusterModel):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         model_data = {
+            "artifact_schema_version": self.ARTIFACT_SCHEMA_VERSION,
             "config": self.config,
             "templates": self.templates,
             "clusters": self.clusters,
@@ -755,6 +748,10 @@ class SpellModel(BaseLogClusterModel):
         instance.diversity_threshold = model_data.get("diversity_threshold", 3)
         instance.min_cluster_size = model_data.get("min_cluster_size", 5)
         instance.is_trained = model_data["is_trained"]
+        instance.artifact_schema_version = model_data.get("artifact_schema_version", 1)
+
+        for cluster in instance.clusters:
+            instance._ensure_cluster_state(cluster)
         
         # 重建倒排索引
         instance.token_index = defaultdict(set)
@@ -1295,35 +1292,211 @@ class SpellModel(BaseLogClusterModel):
         
         if len(logs) == 1:
             return logs[0]
-        
-        # 计算 LCS 作为基础模板
-        template = logs[0]
-        for log in logs[1:]:
-            template = self._compute_lcs(template, log)
-        
-        # 多数投票：对每个位置，统计最常见的 token
-        max_len = max(len(log) for log in logs)
-        voted_template = []
-        
-        for pos in range(max_len):
-            token_counts = Counter()
-            for log in logs:
-                if pos < len(log):
-                    token_counts[log[pos]] += 1
-            
-            if token_counts:
-                # 检查多样性阈值
-                most_common_token, count = token_counts.most_common(1)[0]
-                diversity = len(token_counts)
-                
-                if diversity >= self.diversity_threshold:
-                    # Token 变化过多，标记为通配符
-                    voted_template.append('<*>')
-                else:
-                    # 使用多数票 token
-                    voted_template.append(most_common_token)
-        
-        return voted_template
+
+        return self._template_from_counts(self._position_counts_from_logs(logs))
+
+    def _position_counts_from_logs(self, logs: List[List[str]]) -> List[Optional[Dict[str, Any]]]:
+        """按位置汇总有界计数；到达多样性阈值后只保留饱和标记。
+
+        Args:
+            logs: 按到达顺序排列的日志 token 序列。
+
+        Returns:
+            每个位置的有界计数状态；已达到多样性阈值的位置为 ``None``。
+        """
+        position_counts: List[Optional[Dict[str, Any]]] = []
+        for tokens in logs:
+            while len(position_counts) < len(tokens):
+                position_counts.append({'counts': Counter(), 'order': {}, 'winner': None, 'winner_count': 0})
+            for position, token in enumerate(tokens):
+                position_state = position_counts[position]
+                if position_state is None:
+                    continue
+                token_counts = position_state['counts']
+                if token not in token_counts:
+                    position_state['order'][token] = len(position_state['order'])
+                token_counts[token] += 1
+                if position_state['winner'] is None:
+                    position_state['winner'] = token
+                winner = position_state['winner']
+                if token_counts[token] > position_state['winner_count'] or (
+                    token_counts[token] == position_state['winner_count']
+                    and position_state['order'][token] < position_state['order'][winner]
+                ):
+                    position_state['winner'] = token
+                    position_state['winner_count'] = token_counts[token]
+                if len(logs) > 1 and len(token_counts) >= self.diversity_threshold:
+                    position_counts[position] = None
+        return position_counts
+
+    def _template_from_counts(self, position_counts: List[Optional[Dict[str, Any]]]) -> List[str]:
+        """从位置计数生成与原多数投票规则一致的模板。
+
+        Args:
+            position_counts: 每个 token 位置的有界计数状态。
+
+        Returns:
+            保持原多数投票和通配符语义的模板 token。
+        """
+        template = []
+        for position_state in position_counts:
+            if position_state is None:
+                template.append('<*>')
+                continue
+            template.append(position_state['winner'])
+        return template
+
+    def _new_cluster(self, cluster_id: int, log_id: int, tokens: List[str]) -> Dict[str, Any]:
+        """创建只保存增量统计量的新聚类。
+
+        Args:
+            cluster_id: 新聚类编号。
+            log_id: 首条日志编号。
+            tokens: 首条日志的 token 序列。
+
+        Returns:
+            可增量更新且兼容旧读取器长度访问的聚类状态。
+        """
+        return {
+            'id': cluster_id,
+            'template': tokens[:],
+            'position_counts': self._position_counts_from_logs([tokens]),
+            'log_length_total': len(tokens),
+            'log_ids': [log_id],
+            # 旧版本读取器会访问该键；保留空兼容槽，但不再保存 token 历史。
+            'logs': [range(len(tokens))],
+        }
+
+    def _ensure_cluster_state(self, cluster: Dict[str, Any]) -> None:
+        """把旧模型的完整日志历史原地迁移为有界增量状态。
+
+        Args:
+            cluster: 当前或旧版本的聚类状态；方法会原地补齐增量字段。
+        """
+        if 'position_counts' in cluster and 'log_length_total' in cluster:
+            if not cluster.get('logs'):
+                cluster['logs'] = [range(0)] * len(cluster.get('log_ids', []))
+            return
+
+        legacy_logs = cluster.get('logs', [])
+        if legacy_logs:
+            cluster['position_counts'] = self._position_counts_from_logs(legacy_logs)
+            cluster['log_length_total'] = sum(len(tokens) for tokens in legacy_logs)
+            cluster['logs'] = [range(len(tokens)) for tokens in legacy_logs]
+            return
+
+        log_count = len(cluster.get('log_ids', []))
+        cluster['position_counts'] = [
+            None
+            if token == '<*>'
+            else {
+                'counts': Counter({token: log_count}),
+                'order': {token: 0},
+                'winner': token,
+                'winner_count': log_count,
+            }
+            for token in cluster.get('template', [])
+        ]
+        cluster['log_length_total'] = len(cluster.get('template', [])) * log_count
+        cluster['logs'] = [range(len(cluster.get('template', [])))] * log_count
+
+    def _append_to_cluster(self, cluster: Dict[str, Any], log_id: int, tokens: List[str]) -> None:
+        """用单条日志增量更新位置计数与模板。
+
+        Args:
+            cluster: 待更新的聚类状态。
+            log_id: 新日志编号。
+            tokens: 新日志的 token 序列。
+        """
+        self._ensure_cluster_state(cluster)
+        position_counts = cluster['position_counts']
+        while len(position_counts) < len(tokens):
+            position_counts.append({'counts': Counter(), 'order': {}, 'winner': None, 'winner_count': 0})
+            cluster['template'].append(tokens[len(position_counts) - 1])
+        if self.diversity_threshold <= 1:
+            # 旧实现对两条及以上日志逐位置投票；阈值为 1 时，只要该位置
+            # 在任意日志中出现就会饱和为通配符，包括较短新日志缺失的尾部。
+            for position in range(len(position_counts)):
+                position_counts[position] = None
+                cluster['template'][position] = '<*>'
+            cluster['log_length_total'] += len(tokens)
+            cluster['log_ids'].append(log_id)
+            cluster['logs'].append(range(len(tokens)))
+            return
+        for position, token in enumerate(tokens):
+            position_state = position_counts[position]
+            if position_state is None:
+                continue
+            token_counts = position_state['counts']
+            if token not in token_counts:
+                position_state['order'][token] = len(position_state['order'])
+            token_counts[token] += 1
+            if len(token_counts) >= self.diversity_threshold:
+                position_counts[position] = None
+                cluster['template'][position] = '<*>'
+            else:
+                if position_state['winner'] is None:
+                    position_state['winner'] = token
+                winner = position_state['winner']
+                if token_counts[token] > position_state['winner_count'] or (
+                    token_counts[token] == position_state['winner_count']
+                    and position_state['order'][token] < position_state['order'][winner]
+                ):
+                    position_state['winner'] = token
+                    position_state['winner_count'] = token_counts[token]
+                cluster['template'][position] = position_state['winner']
+        cluster['log_length_total'] += len(tokens)
+        cluster['log_ids'].append(log_id)
+        cluster['logs'].append(range(len(tokens)))
+
+    def _merge_cluster_state(self, target: Dict[str, Any], source: Dict[str, Any]) -> None:
+        """按原日志拼接顺序合并两个聚类的增量统计量。
+
+        Args:
+            target: 接收合并结果的聚类状态。
+            source: 追加到目标聚类后的来源状态。
+        """
+        self._ensure_cluster_state(target)
+        self._ensure_cluster_state(source)
+        target_counts = target['position_counts']
+        source_counts = source['position_counts']
+        while len(target_counts) < len(source_counts):
+            target_counts.append({'counts': Counter(), 'order': {}, 'winner': None, 'winner_count': 0})
+            target['template'].append(source['template'][len(target_counts) - 1])
+        if self.diversity_threshold <= 1:
+            for position in range(len(target_counts)):
+                target_counts[position] = None
+                target['template'][position] = '<*>'
+            target['log_length_total'] += source['log_length_total']
+            target['log_ids'].extend(source['log_ids'])
+            target['logs'].extend(source['logs'])
+            return
+        for position, source_state in enumerate(source_counts):
+            target_state = target_counts[position]
+            if target_state is None or source_state is None:
+                target_counts[position] = None
+                target['template'][position] = '<*>'
+                continue
+            target_token_counts = target_state['counts']
+            for token, count in source_state['counts'].items():
+                if token not in target_token_counts:
+                    target_state['order'][token] = len(target_state['order'])
+                target_token_counts[token] += count
+                winner = target_state['winner']
+                if target_token_counts[token] > target_state['winner_count'] or (
+                    target_token_counts[token] == target_state['winner_count']
+                    and target_state['order'][token] < target_state['order'][winner]
+                ):
+                    target_state['winner'] = token
+                    target_state['winner_count'] = target_token_counts[token]
+            if len(target_token_counts) >= self.diversity_threshold:
+                target_counts[position] = None
+                target['template'][position] = '<*>'
+            else:
+                target['template'][position] = target_state['winner']
+        target['log_length_total'] += source['log_length_total']
+        target['log_ids'].extend(source['log_ids'])
+        target['logs'].extend(source['logs'])
     
     def _merge_clusters(self):
         """合并相似的聚类
@@ -1360,18 +1533,13 @@ class SpellModel(BaseLogClusterModel):
             if merged_to >= 0:
                 # 合并到现有聚类
                 target = new_clusters[merged_to]
-                target['logs'].extend(cluster['logs'])
-                target['log_ids'].extend(cluster['log_ids'])
-                target['template'] = self._update_template(target['logs'])
+                self._merge_cluster_state(target, cluster)
                 merged[old_idx] = True
             else:
                 # 创建新聚类
-                new_cluster = {
-                    'id': len(new_clusters),
-                    'template': cluster['template'],
-                    'logs': cluster['logs'],
-                    'log_ids': cluster['log_ids'],
-                }
+                self._ensure_cluster_state(cluster)
+                new_cluster = cluster
+                new_cluster['id'] = len(new_clusters)
                 new_clusters.append(new_cluster)
         
         # 更新聚类列表
@@ -1563,6 +1731,7 @@ class SpellModel(BaseLogClusterModel):
             raise ValueError(f"无效的聚类 ID: {cluster_id}")
         
         cluster = self.clusters[cluster_id]
+        self._ensure_cluster_state(cluster)
         template = cluster['template']
         log_ids = cluster['log_ids']
         
@@ -1580,9 +1749,8 @@ class SpellModel(BaseLogClusterModel):
         wildcard_count = sum(1 for token in template if token == '<*>')
         
         avg_log_length = 0.0
-        if cluster['logs']:
-            total_length = sum(len(log) for log in cluster['logs'])
-            avg_log_length = total_length / len(cluster['logs'])
+        if log_ids:
+            avg_log_length = cluster['log_length_total'] / len(log_ids)
         
         summary = {
             'cluster_id': cluster_id,

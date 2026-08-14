@@ -9,6 +9,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 from django.db import transaction
 from django.db.models import Q
 from django.utils.dateparse import parse_datetime
@@ -697,8 +698,8 @@ def sync_collect_credential_results_task():
     }
 
 
-@shared_task
-def sync_cmdb_display_fields_task(data: dict):
+@shared_task(bind=True, max_retries=3, default_retry_delay=5, soft_time_limit=240, time_limit=300)
+def sync_cmdb_display_fields_task(self, data: dict):
     """
     同步 CMDB 实例的 _display 字段（Celery 任务）
 
@@ -718,22 +719,54 @@ def sync_cmdb_display_fields_task(data: dict):
                 "data": {"organizations": 10, "users": 5}
             }
     """
+    from apps.cmdb.display_field import DisplayFieldSynchronizer
+    from apps.cmdb.display_field.sync import refresh_display_sync_data
+    from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
+
+    logger.info(
+        f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, "
+        f"组织数: {len(data.get('organizations', []))}, 用户数: {len(data.get('users', []))}"
+    )
+
     try:
-        from apps.cmdb.display_field import DisplayFieldSynchronizer
-
-        logger.info(f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, 组织数: {len(data.get('organizations', []))}, 用户数: {len(data.get('users', []))}")
-
-        # 执行同步
-        result = DisplayFieldSynchronizer.sync_all(data)
-
-        logger.info(f"[SyncCMDBDisplayFields] 同步完成, 组织更新实例数: {result.get('organizations', 0)}, 用户更新实例数: {result.get('users', 0)}")
-
+        # 同步域使用稳定的数据库租约跨进程串行。租期长于任务硬时限，进程崩溃后可过期接管；
+        # owner token 防止旧任务误释放接管者的租约。后发任务取得租约后才读取权威 ORM，
+        # 因此旧任务不能在新任务之后继续写旧快照，后发变更最终会覆盖全量实例。
+        with UniqueWriteLockService.serialize("cmdb-display-field-sync", lease_seconds=310):
+            # 图写按字段分批提交，瞬时失败前可能已有部分字段落图。全量同步本身幂等，
+            # 因此在同一锁内有界重跑一次，既补齐部分写，又保持既有 Celery 返回结构。
+            for attempt in range(2):
+                try:
+                    result = DisplayFieldSynchronizer.sync_all(refresh_display_sync_data(data))
+                    logger.info(
+                        f"[SyncCMDBDisplayFields] 同步完成, 组织更新实例数: {result.get('organizations', 0)}, "
+                        f"用户更新实例数: {result.get('users', 0)}"
+                    )
+                    return {
+                        "result": True,
+                        "message": "CMDB display fields synced successfully",
+                        "data": result,
+                    }
+                except SoftTimeLimitExceeded:
+                    # 不在剩余硬时限内重扫全量；先退出 context 释放租约，再交给 Celery 有界重试。
+                    raise
+                except Exception as exc:
+                    if attempt == 0:
+                        logger.warning("[SyncCMDBDisplayFields] 同步失败，将从头重试一次: %s", exc)
+                        continue
+                    raise
+    except (TimeoutError, SoftTimeLimitExceeded) as exc:
+        if self.request.retries < self.max_retries:
+            logger.warning("[SyncCMDBDisplayFields] 同步繁忙或超时，任务将有界重试: %s", exc)
+            # 锁竞争的三次等待总跨度需覆盖 310s 租期，确保占锁者即使硬退出，后发任务也能接管；
+            # soft timeout 已释放租约，沿用短延迟即可。
+            countdown = 105 if isinstance(exc, TimeoutError) else self.default_retry_delay
+            raise self.retry(exc=exc, countdown=countdown)
+        logger.error("[SyncCMDBDisplayFields] 同步重试已耗尽: %s", exc, exc_info=True)
         return {
-            "result": True,
-            "message": "CMDB display fields synced successfully",
-            "data": result,
+            "result": False,
+            "message": f"Failed to sync CMDB display fields: {str(exc)}",
         }
-
     except Exception as exc:
         logger.error(f"[SyncCMDBDisplayFields] 同步失败: {str(exc)}", exc_info=True)
         return {

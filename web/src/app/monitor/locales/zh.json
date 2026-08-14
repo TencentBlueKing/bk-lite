@@ -169,6 +169,7 @@
       "processName": "进程名称",
       "nodeId": "节点ID",
       "cmdbId": "CMDB ID",
+      "externalId": "外联ID",
       "processNameRuleHint": "名称列展示接入时的实例名称；进程别名见「进程名称」列，主机见「主机名称」列。",
       "filterProcess": "过滤进程",
       "filterProcessPlaceholder": "选择进程名称（可多选）",

@@ -542,17 +542,6 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
 
   return (
     <div>
-      {showSystemLinkage && (
-        <div className="mb-4 rounded border border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-4 py-3">
-          <div className="mb-1 text-sm font-medium text-[var(--color-text-1)]">
-            {t('Model.systemLinkage')}
-          </div>
-          <div className="mb-3 text-xs text-[var(--color-text-3)]">
-            {t('Model.systemLinkageHint')}
-          </div>
-          <Descriptions bordered size="small" column={1} items={systemLinkageItems} />
-        </div>
-      )}
       {hasEditableField && (
         <div className="flex items-center justify-end mb-2">
           {isBatchEdit ? (
@@ -616,18 +605,14 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
           )}
         </div>
       )}
-      {/* 通过遍历 fieldList，自动添加Collapse折叠面板容器，并设置默认展开 */}
       {displayGroups && displayGroups.length > 0 && (
         <Collapse
           style={{ background: 'var(--color-bg-1) ' }}
           bordered={false}
           className={informationList.list}
-          // accordion // 手风琴效果先不用，看后面需求来决定是否使用
-          // 默认展开的相关逻辑（后端传一个默认展开的id数组）
           defaultActiveKey={displayGroups
             .filter((item: any) => !item.is_collapsed)
             .map((item: any) => String(item.id))}
-          // 折叠面板的展开图标
           expandIcon={({ isActive }) => (
             <CaretRightOutlined rotate={isActive ? 90 : 0} />
           )}
@@ -647,6 +632,17 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
             )
           })}
         </Collapse>
+      )}
+      {showSystemLinkage && (
+        <div className="mt-4 rounded border border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-4 py-3">
+          <div className="mb-1 text-sm font-medium text-[var(--color-text-1)]">
+            {t('Model.systemLinkage')}
+          </div>
+          <div className="mb-3 text-xs text-[var(--color-text-3)]">
+            {t('Model.systemLinkageHint')}
+          </div>
+          <Descriptions bordered size="small" column={1} items={systemLinkageItems} />
+        </div>
       )}
     </div>
   );

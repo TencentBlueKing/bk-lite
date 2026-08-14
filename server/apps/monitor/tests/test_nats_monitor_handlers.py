@@ -3,6 +3,7 @@
 外部权限/VM 边界 mock；DB 走真实模型断言查询结果。
 """
 
+import threading
 import time
 from types import SimpleNamespace
 
@@ -470,6 +471,126 @@ class TestMonitorInstanceMetrics:
         assert out["data"]["count"] == 3
         assert [item["metric"] for item in out["data"]["items"]] == ["cpu"]
         assert vm.return_value.query_range.call_count == 1
+
+    def test_only_with_data_queries_page_concurrently_and_preserves_order(self, mocker):
+        obj = MonitorObject.objects.create(name="MIMObjConcurrent", level="base")
+        plugin = MonitorPlugin.objects.create(name="MIMPluginConcurrent")
+        group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
+        for index in range(10):
+            Metric.objects.create(
+                monitor_object=obj,
+                monitor_plugin=plugin,
+                metric_group=group,
+                name=f"metric_{index}",
+                display_name=f"Metric {index}",
+                query=f'metric_{index % 5}{{instance_id="$instance_id"}}',
+                sort_order=index,
+            )
+        MonitorInstance.objects.create(
+            id="('h1',)",
+            name="h1",
+            monitor_object=obj,
+            is_active=True,
+            is_deleted=False,
+        )
+        mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
+        mocker.patch(
+            "apps.monitor.nats.monitor.permission_filter",
+            side_effect=lambda model, perm, **kw: model.objects.all(),
+        )
+
+        lock = threading.Lock()
+        active = 0
+        peak_active = 0
+
+        def query_range(query, *args):
+            nonlocal active, peak_active
+            with lock:
+                active += 1
+                peak_active = max(peak_active, active)
+            time.sleep(0.03)
+            with lock:
+                active -= 1
+            if query.startswith("metric_4{"):
+                raise RuntimeError("one metric unavailable")
+            return {"status": "success", "data": {"result": [{"values": [[1, "1"]]}]}}
+
+        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
+        vm.return_value.query_range.side_effect = query_range
+
+        out = nm.monitor_instance_metrics(
+            {
+                "monitor_obj_id": obj.id,
+                "instance_id": "('h1',)",
+                "only_with_data": True,
+                "page": 1,
+                "page_size": 10,
+            },
+            user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
+        )
+
+        assert out["result"] is True
+        assert [item["metric"] for item in out["data"]["items"]] == [
+            "metric_0",
+            "metric_1",
+            "metric_2",
+            "metric_3",
+            "metric_5",
+            "metric_6",
+            "metric_7",
+            "metric_8",
+        ]
+        assert vm.return_value.query_range.call_count == 5
+        assert 1 < peak_active <= 8
+
+    def test_only_with_data_isolates_malformed_vm_response(self, mocker):
+        obj = MonitorObject.objects.create(name="MIMObjMalformed", level="base")
+        plugin = MonitorPlugin.objects.create(name="MIMPluginMalformed")
+        group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
+        Metric.objects.create(
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            metric_group=group,
+            name="malformed",
+            query='malformed{instance_id="$instance_id"}',
+            sort_order=1,
+        )
+        Metric.objects.create(
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            metric_group=group,
+            name="healthy",
+            query='healthy{instance_id="$instance_id"}',
+            sort_order=2,
+        )
+        MonitorInstance.objects.create(
+            id="('h1',)",
+            name="h1",
+            monitor_object=obj,
+            is_active=True,
+            is_deleted=False,
+        )
+        mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
+        mocker.patch(
+            "apps.monitor.nats.monitor.permission_filter",
+            side_effect=lambda model, perm, **kw: model.objects.all(),
+        )
+        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
+        vm.return_value.query_range.side_effect = lambda query, *args: (
+            None if query.startswith("malformed{") else {"status": "success", "data": {"result": [{}]}}
+        )
+
+        out = nm.monitor_instance_metrics(
+            {
+                "monitor_obj_id": obj.id,
+                "instance_id": "('h1',)",
+                "only_with_data": True,
+            },
+            user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
+        )
+
+        assert out["result"] is True
+        assert [item["metric"] for item in out["data"]["items"]] == ["healthy"]
 
     def test_instance_not_authorized(self, mocker):
         obj = MonitorObject.objects.create(name="MIMObj2", level="base")

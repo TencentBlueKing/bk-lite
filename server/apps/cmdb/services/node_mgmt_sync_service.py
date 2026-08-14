@@ -23,6 +23,15 @@ from apps.cmdb.models import (
     NodeMgmtSyncSnapshotRow,
 )
 from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.services.host_sync_identity import (
+    build_host_inst_name,
+    host_lookup_key,
+    is_node_mgmt_sidecar_id,
+    is_unique_conflict,
+    normalize_link_id,
+    node_id_to_write,
+    resolve_host_identity,
+)
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.node_mgmt_sync_raw import (
@@ -36,8 +45,8 @@ from apps.cmdb.services.node_mgmt_sync_raw import (
 from apps.core.logger import cmdb_logger as logger
 from apps.rpc.node_mgmt import NodeMgmt
 
-# 推送联动上线后关闭拉取同步；紧急回退时可改为 False 临时恢复拉同步。
-PUSH_LINKAGE_REPLACES_PULL_SYNC = True
+# 推送联动与拉同步共用身份后，默认允许拉取；紧急硬关可改回 True。
+PUSH_LINKAGE_REPLACES_PULL_SYNC = False
 
 
 def _get_positive_int_env(name, default):
@@ -1305,7 +1314,11 @@ class NodeMgmtSyncService:
         cloud_region_id = int(node["cloud_region_id"])
         cloud_region_name = node.get("cloud_region_name") or ""
         ip = str(node.get("ip") or node.get("ip_addr") or "").strip()
-        inst_name = f"{ip}[{cloud_region_name or cloud_region_id}]"
+        inst_name = build_host_inst_name(
+            ip=ip,
+            cloud_name=cloud_region_name,
+            cloud_id=cloud_region_id,
+        )
         return {
             "id": node.get("id"),
             "model_id": "host",
@@ -1322,6 +1335,7 @@ class NodeMgmtSyncService:
             ),
             "collect_task": collect_task_id,
             "node_id": node.get("id"),
+            "cmdb_id": node.get("cmdb_id") or "",
             "source": cls.SYSTEM_SOURCE,
             "_status": node.get("_status") or "success",
             "_error": node.get("_error") or "",
@@ -1333,24 +1347,135 @@ class NodeMgmtSyncService:
 
     @classmethod
     def _host_persistence_payload(cls, payload: dict[str, Any]) -> dict[str, Any]:
-        return {field: payload.get(field) for field in cls.HOST_SYNC_UPDATE_FIELDS if field in payload}
+        result = {field: payload.get(field) for field in cls.HOST_SYNC_UPDATE_FIELDS if field in payload}
+        node_id = normalize_link_id(payload.get("node_id"))
+        if node_id:
+            result["node_id"] = node_id
+        return result
 
     @classmethod
     def _host_display_payload(cls, payload: dict[str, Any]) -> dict[str, Any]:
-        result = cls._host_persistence_payload(payload)
+        result = {field: payload.get(field) for field in cls.HOST_SYNC_UPDATE_FIELDS if field in payload}
         if payload.get("_id") is not None:
             result["_id"] = payload["_id"]
         return result
 
     @staticmethod
     def _host_lookup_key(payload: dict[str, Any]) -> tuple[str, int | None]:
-        ip_addr = str(payload.get("ip_addr") or "").strip()
-        cloud = payload.get("cloud")
+        return host_lookup_key(ip_addr=payload.get("ip_addr"), cloud=payload.get("cloud"))
+
+    @classmethod
+    def _hosts_by_node_id(cls, existing_hosts: dict[Any, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        indexed: dict[str, dict[str, Any]] = {}
+        for host in existing_hosts.values():
+            node_id = normalize_link_id((host or {}).get("node_id"))
+            if node_id:
+                indexed[node_id] = host
+        return indexed
+
+    @classmethod
+    def _match_existing_host(
+        cls,
+        desired: dict[str, Any],
+        *,
+        existing_hosts: dict[Any, dict[str, Any]],
+        by_node_id: dict[str, dict[str, Any]],
+    ):
+        ip_addr, cloud = cls._host_lookup_key(desired)
+
+        def find_by_node_id(node_id: str):
+            return by_node_id.get(node_id)
+
+        def find_by_cmdb_id(cmdb_id: str):
+            for host in existing_hosts.values():
+                if str(host.get("_id")) == str(cmdb_id):
+                    return host
+            return None
+
+        def find_by_ip_cloud(ip: str, cloud_id: int):
+            tuple_key = (ip, cloud_id)
+            if tuple_key in existing_hosts:
+                return existing_hosts[tuple_key]
+            return existing_hosts.get(ip)
+
+        return resolve_host_identity(
+            node_id=desired.get("node_id"),
+            cmdb_id=desired.get("cmdb_id"),
+            ip=ip_addr,
+            cloud=cloud,
+            find_by_node_id=find_by_node_id,
+            find_by_cmdb_id=find_by_cmdb_id,
+            find_by_ip_cloud=find_by_ip_cloud,
+        )
+
+    @classmethod
+    def _remember_host(
+        cls,
+        existing_hosts: dict[Any, dict[str, Any]],
+        by_node_id: dict[str, dict[str, Any]],
+        host: dict[str, Any],
+        *,
+        ip_addr: str,
+        cloud: int | None,
+    ) -> None:
+        if ip_addr and cloud is not None:
+            existing_hosts[(ip_addr, cloud)] = host
+        node_id = normalize_link_id(host.get("node_id"))
+        if node_id:
+            by_node_id[node_id] = host
+
+    @classmethod
+    def _ensure_host_node_id_attr(cls, *, operator: str) -> None:
+        from apps.cmdb.services.module_ingest import ensure_model_node_id_attr
+
         try:
-            normalized_cloud = int(cloud) if cloud not in (None, "") else None
-        except (TypeError, ValueError):
-            normalized_cloud = None
-        return ip_addr, normalized_cloud
+            ensure_model_node_id_attr("host", username=operator or "admin")
+        except Exception:
+            logger.exception("[NodeMgmtSync] ensure host.node_id attr failed")
+
+    @classmethod
+    def _backfill_node_cmdb_id(cls, *, node_id: Any, cmdb_id: Any, ip: Any, cloud: Any) -> None:
+        node_id_str = normalize_link_id(node_id)
+        if not node_id_str or cmdb_id in (None, ""):
+            return
+        try:
+            from apps.node_mgmt.services.module_link import NodeAssociationService
+
+            NodeAssociationService.best_effort_associate_cmdb_host(
+                cmdb_id=cmdb_id,
+                ip=ip,
+                cloud=cloud,
+                existing_node_id=node_id_str,
+            )
+        except Exception:
+            logger.exception(
+                "[NodeMgmtSync] backfill Node.cmdb_id failed node_id=%s cmdb_id=%s",
+                node_id_str,
+                cmdb_id,
+            )
+
+    @classmethod
+    def _recover_host_after_unique_conflict(cls, desired: dict[str, Any]) -> dict[str, Any] | None:
+        node_id = normalize_link_id(desired.get("node_id"))
+        ip_addr, cloud = cls._host_lookup_key(desired)
+        try:
+            if node_id:
+                found = InstanceManage.query_entity_by_identity("host", {"node_id": node_id})
+                if found:
+                    return found
+            if ip_addr and cloud is not None:
+                found = InstanceManage.query_entity_by_identity(
+                    "host",
+                    {"ip_addr": ip_addr, "cloud": cloud},
+                )
+                if found:
+                    existing_node_id = normalize_link_id(found.get("node_id"))
+                    if node_id and existing_node_id and existing_node_id != node_id:
+                        return None
+                    return found
+        except Exception:
+            logger.exception("[NodeMgmtSync] 唯一冲突后回查主机失败")
+        return None
 
     @classmethod
     def _persist_hosts(
@@ -1374,32 +1499,47 @@ class NodeMgmtSyncService:
             "errors": [],
             "changed_instance_ids": [],
         }
+        by_node_id = cls._hosts_by_node_id(existing_hosts)
+        ensured_node_id_attr = False
 
         for desired in desired_hosts:
             if run is not None:
                 cls.heartbeat_run(run)
-            persistence_payload = cls._host_persistence_payload(desired)
             ip_addr, cloud = cls._host_lookup_key(desired)
-            tuple_key = (ip_addr, cloud)
-            lookup_key: Any = tuple_key if tuple_key in existing_hosts else ip_addr
-            existing = existing_hosts.get(lookup_key)
+            match = cls._match_existing_host(
+                desired,
+                existing_hosts=existing_hosts,
+                by_node_id=by_node_id,
+            )
+            if match.conflict:
+                logger.warning(
+                    "[NodeMgmtSync] skip link_conflict incoming_node_id=%s existing_id=%s existing_node_id=%s",
+                    desired.get("node_id"),
+                    (match.instance or {}).get("_id"),
+                    (match.instance or {}).get("node_id"),
+                )
+                continue
+            if match.skipped:
+                logger.info("[NodeMgmtSync] skip host missing ip/cloud node_id=%s", desired.get("node_id"))
+                continue
 
-            if existing:
-                changes = cls._changed_host_attrs(existing, desired)
-                if not changes:
-                    continue
-                result["update"] += 1
+            existing = match.instance
+            incoming_node_id = normalize_link_id(desired.get("node_id"))
+            fill_node_id = node_id_to_write(existing, incoming_node_id)
+            if fill_node_id and not ensured_node_id_attr:
+                cls._ensure_host_node_id_attr(operator=operator)
+                ensured_node_id_attr = True
+
+            if existing is None:
+                persistence_payload = cls._host_persistence_payload(desired)
                 try:
                     if run is not None:
                         cls.heartbeat_run(run)
-                    updated = InstanceManage.instance_update(
-                        user_groups=[],
-                        roles=[],
-                        inst_id=existing["_id"],
-                        update_attr=changes,
+                    created = InstanceManage.instance_create(
+                        "host",
+                        persistence_payload,
                         operator=operator,
-                        allowed_org_ids=None,
-                        skip_permission_check=True,
+                        allowed_org_ids=persistence_payload.get("organization", []),
                         operation_id=operation_id,
                         schedule_post_actions=False,
                     )
@@ -1408,28 +1548,65 @@ class NodeMgmtSyncService:
                 except NodeMgmtSyncError:
                     raise
                 except Exception as exc:
-                    error = {"operation": "update", "error": f"HOST_UPDATE_FAILED: {type(exc).__name__}"}
-                    result["update_error"] += 1
-                    result["errors"].append(error)
-                    logger.error("[NodeMgmtSync] 主机更新失败, error_type=%s", type(exc).__name__)
+                    if is_unique_conflict(exc):
+                        recovered = cls._recover_host_after_unique_conflict(desired)
+                        if recovered:
+                            existing = recovered
+                        else:
+                            error = {"operation": "add", "error": f"HOST_CREATE_FAILED: {type(exc).__name__}"}
+                            result["add_error"] += 1
+                            result["errors"].append(error)
+                            logger.error("[NodeMgmtSync] 主机创建失败, error_type=%s", type(exc).__name__)
+                            continue
+                    else:
+                        error = {"operation": "add", "error": f"HOST_CREATE_FAILED: {type(exc).__name__}"}
+                        result["add_error"] += 1
+                        result["errors"].append(error)
+                        logger.error("[NodeMgmtSync] 主机创建失败, error_type=%s", type(exc).__name__)
+                        continue
+                else:
+                    persisted = created if isinstance(created, dict) else persistence_payload
+                    cls._remember_host(existing_hosts, by_node_id, persisted, ip_addr=ip_addr, cloud=cloud)
+                    result["add"] += 1
+                    result["add_success"] += 1
+                    result["add_data"].append(cls._host_display_payload(persisted))
+                    if persisted.get("_id") is not None:
+                        result["changed_instance_ids"].append(persisted["_id"])
+                    cls._backfill_node_cmdb_id(
+                        node_id=incoming_node_id or persisted.get("node_id"),
+                        cmdb_id=persisted.get("_id"),
+                        ip=ip_addr,
+                        cloud=cloud,
+                    )
                     continue
 
-                persisted = updated if isinstance(updated, dict) else {**existing, **changes}
-                existing_hosts[lookup_key] = persisted
-                result["update_success"] += 1
-                result["update_data"].append(cls._host_display_payload(persisted))
-                if persisted.get("_id") is not None:
-                    result["changed_instance_ids"].append(persisted["_id"])
+            fill_node_id = node_id_to_write(existing, incoming_node_id)
+            changes = cls._changed_host_attrs(existing, desired)
+            if fill_node_id:
+                if not ensured_node_id_attr:
+                    cls._ensure_host_node_id_attr(operator=operator)
+                    ensured_node_id_attr = True
+                changes["node_id"] = fill_node_id
+            if not changes:
+                cls._backfill_node_cmdb_id(
+                    node_id=incoming_node_id or existing.get("node_id"),
+                    cmdb_id=existing.get("_id"),
+                    ip=ip_addr,
+                    cloud=cloud,
+                )
                 continue
-
+            result["update"] += 1
             try:
                 if run is not None:
                     cls.heartbeat_run(run)
-                created = InstanceManage.instance_create(
-                    "host",
-                    persistence_payload,
+                updated = InstanceManage.instance_update(
+                    user_groups=[],
+                    roles=[],
+                    inst_id=existing["_id"],
+                    update_attr=changes,
                     operator=operator,
-                    allowed_org_ids=persistence_payload.get("organization", []),
+                    allowed_org_ids=None,
+                    skip_permission_check=True,
                     operation_id=operation_id,
                     schedule_post_actions=False,
                 )
@@ -1438,20 +1615,74 @@ class NodeMgmtSyncService:
             except NodeMgmtSyncError:
                 raise
             except Exception as exc:
-                error = {"operation": "add", "error": f"HOST_CREATE_FAILED: {type(exc).__name__}"}
-                result["add_error"] += 1
+                error = {"operation": "update", "error": f"HOST_UPDATE_FAILED: {type(exc).__name__}"}
+                result["update_error"] += 1
                 result["errors"].append(error)
-                logger.error("[NodeMgmtSync] 主机创建失败, error_type=%s", type(exc).__name__)
+                logger.error("[NodeMgmtSync] 主机更新失败, error_type=%s", type(exc).__name__)
                 continue
 
-            persisted = created if isinstance(created, dict) else persistence_payload
-            existing_hosts[tuple_key] = persisted
-            result["add"] += 1
-            result["add_success"] += 1
-            result["add_data"].append(cls._host_display_payload(persisted))
+            persisted = updated if isinstance(updated, dict) else {**existing, **changes}
+            cls._remember_host(existing_hosts, by_node_id, persisted, ip_addr=ip_addr, cloud=cloud)
+            result["update_success"] += 1
+            result["update_data"].append(cls._host_display_payload(persisted))
             if persisted.get("_id") is not None:
                 result["changed_instance_ids"].append(persisted["_id"])
+            cls._backfill_node_cmdb_id(
+                node_id=incoming_node_id or persisted.get("node_id"),
+                cmdb_id=persisted.get("_id"),
+                ip=ip_addr,
+                cloud=cloud,
+            )
 
+        return result
+
+    @classmethod
+    def _unlink_stale_host_node_ids(
+        cls,
+        existing_hosts: dict[Any, dict[str, Any]],
+        *,
+        live_node_ids: set[str],
+        operator: str,
+        operation_id: str,
+        run: NodeMgmtSyncRun | None = None,
+    ) -> dict[str, Any]:
+        """源侧已消失的 sidecar node_id 是脏指针：只清字段，不删 CMDB 主机。
+
+        IPMI/RPC 等合成 node_id 不在节点管理源里，不得误清。
+        """
+        result = {"unlink_success": 0, "unlink_error": 0}
+        live = {nid for nid in (normalize_link_id(item) for item in live_node_ids) if nid}
+        seen: set[Any] = set()
+        ensured = False
+        for host in list(existing_hosts.values()):
+            inst_id = (host or {}).get("_id")
+            if inst_id is None or inst_id in seen:
+                continue
+            seen.add(inst_id)
+            nid = normalize_link_id(host.get("node_id"))
+            if not nid or nid in live or not is_node_mgmt_sidecar_id(nid):
+                continue
+            if not ensured:
+                cls._ensure_host_node_id_attr(operator=operator)
+                ensured = True
+            try:
+                if run is not None:
+                    cls.heartbeat_run(run)
+                from apps.cmdb.services.module_ingest import write_system_link_fields
+
+                write_system_link_fields(inst_id, {"node_id": ""})
+            except NodeMgmtSyncError:
+                raise
+            except Exception as exc:
+                result["unlink_error"] += 1
+                logger.error(
+                    "[NodeMgmtSync] 清除悬挂 node_id 失败 inst=%s error_type=%s",
+                    inst_id,
+                    type(exc).__name__,
+                )
+                continue
+            host["node_id"] = ""
+            result["unlink_success"] += 1
         return result
 
     @classmethod
@@ -2050,6 +2281,12 @@ class NodeMgmtSyncService:
         # _persist_hosts 会把本轮新增/更新写回该映射，区域任务因此能立即引用。
         existing_map = cls._load_existing_host_map(task_id=0, run=run)
         logger.debug("[NodeMgmtSync] 加载已有主机映射, existing_count=%d", len(existing_map))
+        live_node_ids = {
+            nid
+            for region_nodes in grouped_nodes.values()
+            for node in region_nodes
+            if (nid := normalize_link_id(node.get("id")))
+        }
 
         for cloud_region_id, region_nodes in grouped_nodes.items():
             cls.heartbeat_run(run)
@@ -2140,6 +2377,21 @@ class NodeMgmtSyncService:
                         "message": f"TODO: region {cloud_region_id} has no container node access point",
                     }
                 )
+
+        unlink = cls._unlink_stale_host_node_ids(
+            existing_map,
+            live_node_ids=live_node_ids,
+            operator="system",
+            operation_id=str(run.generation),
+            run=run,
+        )
+        if unlink["unlink_success"] or unlink["unlink_error"]:
+            detail["unlink_stale_node_id"] = unlink
+            logger.info(
+                "[NodeMgmtSync] 清除悬挂 node_id unlink_success=%d unlink_error=%d",
+                unlink["unlink_success"],
+                unlink["unlink_error"],
+            )
 
         current_config = cls.get_task()
         retired_regions = cls._retire_missing_region_collect_tasks(

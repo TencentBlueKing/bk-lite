@@ -28,7 +28,16 @@ def apply_yaml_target_policy(
 
     一次 run 调用一次即可；yaml 解析有缓存。
     yaml 有声明时覆盖 request_builder 兜底猜测；无声明则保留原 params。
+    监控采集若已显式设置 preflight_kind（或 plugin_family=monitor），
+    不得用同名 CMDB plugin.yml 的 tls/443 覆盖，否则 SNMP 存储会被 HTTPS
+    预检挡死。
     """
+    if str(request.params.get("plugin_family") or "") == "monitor":
+        return request
+    if str(request.params.get("preflight_kind") or "").strip() and request.params.get(
+        "preflight_kind_explicit"
+    ):
+        return request
     plugin_name = _plugin_name(request)
     executor_type = str(request.params.get("executor_type") or "").strip()
     if not executor_type:

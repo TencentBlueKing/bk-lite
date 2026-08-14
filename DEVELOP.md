@@ -27,6 +27,17 @@ make server-init      # batch_init 初始化
 make collect-static   # 收集静态文件
 make init-buckets     # 初始化 MinIO bucket
 ```
+
+运营分析目录父链发布前检查：
+
+```bash
+cd server
+python manage.py audit_directory_cycles
+```
+
+该命令只读列出循环节点，不自动修改存量数据。若发现循环，先备份数据库，再人工把
+循环中的一个目录 `parent` 置空并复跑检查。代码回滚使用 `git revert`；该修复不含
+数据库迁移，回滚代码不会恢复已经拒绝的非法写入。
 单测运行:
 ```bash
 cd server
@@ -99,7 +110,7 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 - 常见失败:缺 `keystore.properties`/keystore;Android SDK/NDK/Java 异常;3001 端口冲突
 
 ### WebChat
-- release:`webchat/.github/workflows/build.yml` 的 publish job(main push);需 `NPM_TOKEN`/`NODE_AUTH_TOKEN`
+- release:手工触发`.github/workflows/webchat-tests.yml`并显式启用publish输入;需 `NPM_TOKEN`/`NODE_AUTH_TOKEN`
 - 常见失败:token 缺失/权限不足;Node matrix 18/20 不满足
 
 ### Stargazer

@@ -41,7 +41,7 @@
 - ui 提供 React Chat 组件与 AG-UI 事件桥接（`webchat-ui/src/Chat.tsx:43`、`agui.ts:47`），支持 Vite library/UMD 构建。
 - demo 为 Next 入口（`webchat-demo/app/page.tsx:9`）。
 - **公开配置兼容契约**：`WebChatConfig` 仅接受具名 TypeScript 字段；集成方私有元数据进入 `extensions` 且不随请求发送，请求元数据仍进入 `customData`。`socketUrl`、`socketPath`、`enableSSE`、`reconnectAttempts`、`reconnectDelay` 在兼容窗口内保留并标记 deprecated；`socketUrl` 仅在 `sseUrl` 缺省时归一化为实际 fetch 端点，显式 `sseUrl` 始终优先。未类型 JavaScript 的未知顶层键在运行时仍保留。
-- **入口一致性**：React `Chat`、`FloatingButton` 与 browser UMD 共享上述配置边界；`FloatingButtonProps` 透传完整 `ChatProps`，`onChatStateChange` 优先于 `onStateChange`，关闭时先通知调用方再隐藏容器。UMD 构建产物同步到 `web/public/webchat`，Next demo 仅在客户端加载 UI 包。
+- **入口一致性**：React `Chat`、`FloatingButton` 与 browser UMD 共享上述配置边界；`FloatingButtonProps` 透传完整 `ChatProps`，`onChatStateChange` 优先于 `onStateChange`，关闭时先通知调用方再隐藏容器。browser UMD 仍由 WebChat 包产出；主 Web 的全局 WebChat 接入暂停期间，不再同步到 `web/public/webchat`。Next demo 仅在客户端加载 UI 包。
 
 > 证据来源：webchat/packages/webchat-core/src/{types.ts,config.ts}、webchat/packages/webchat-ui/src/{Chat.tsx,FloatingButton.tsx,browser-entry.ts,floatingButtonCallbacks.ts}、webchat/packages/webchat-demo/app/chat-wrapper.tsx、webchat/scripts/sync-web-public.mjs、webchat/tests/webchat-config.issue-4037.test.ts　|　同步基线：issue-4037　|　【已实现】
 

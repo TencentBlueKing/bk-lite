@@ -613,6 +613,15 @@ class InstanceManage(object):
         return check_attr_map
 
     @staticmethod
+    def _allow_system_link_attrs_for_internal_write(check_attr_map: dict) -> None:
+        """内部写路径可更新/清空系统联动字段（模型上 editable=False，用户路径仍剔除）。"""
+        from apps.cmdb.services.module_ingest import SYSTEM_LINK_ATTR_IDS
+
+        editable = check_attr_map.setdefault("editable", {})
+        for attr_id in SYSTEM_LINK_ATTR_IDS:
+            editable.setdefault(attr_id, attr_id)
+
+    @staticmethod
     def _unique_candidate_param(field: str, value):
         if value is None or (isinstance(value, str) and not value.strip()):
             return None
@@ -1121,6 +1130,8 @@ class InstanceManage(object):
             attrs,
             for_update=True,
         )
+        if skip_permission_check:
+            InstanceManage._allow_system_link_attrs_for_internal_write(check_attr_map)
 
         InstanceManage._apply_display_fields_to_update(attrs, update_attr)
         if operation_id:

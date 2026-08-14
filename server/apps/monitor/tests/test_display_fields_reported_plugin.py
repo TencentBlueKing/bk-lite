@@ -5,6 +5,9 @@
 一律显示 --;修复后按对象各插件 status_query 反查上报实例,使其命中所属插件并回填列值。
 """
 
+import threading
+import time
+
 import pytest
 
 from apps.monitor.models import CollectConfig, MonitorInstance, MonitorObject, MonitorPlugin
@@ -118,3 +121,60 @@ def test_fill_display_metrics_skips_status_query_when_all_collectconfig_covered(
 
     assert status_calls == []
     assert result[0].get("K8STEST::cluster_pod_count") == "5"
+
+
+@pytest.mark.django_db
+def test_merge_reported_plugin_coverage_deduplicates_queries_with_bounded_concurrency(monkeypatch):
+    obj = MonitorObject.objects.create(
+        name="ReportedPluginBatch",
+        display_name="Reported Plugin Batch",
+        instance_id_keys=["instance_id"],
+    )
+    for index in range(10):
+        plugin = MonitorPlugin.objects.create(
+            name=f"ReportedBatch{index}",
+            status_query=f'any({{kind="{index % 5}"}}) by (instance_id)',
+        )
+        plugin.monitor_object.add(obj)
+
+    lock = threading.Lock()
+    active = 0
+    peak_active = 0
+    calls = []
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, **kwargs):
+            nonlocal active, peak_active
+            with lock:
+                calls.append(query)
+                active += 1
+                peak_active = max(peak_active, active)
+            time.sleep(0.03)
+            with lock:
+                active -= 1
+            if 'kind="4"' in query:
+                raise RuntimeError("one plugin status unavailable")
+            return {"data": {"result": [{"metric": {"instance_id": "host-a"}}]}}
+
+    monkeypatch.setattr(mo, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+    instance_plugin_map = {}
+
+    MonitorObjectService._merge_reported_plugin_coverage(
+        obj.id,
+        [{"instance_id": "('host-a',)"}],
+        instance_plugin_map,
+    )
+
+    assert instance_plugin_map["('host-a',)"] == {
+        "ReportedBatch0",
+        "ReportedBatch1",
+        "ReportedBatch2",
+        "ReportedBatch3",
+        "ReportedBatch5",
+        "ReportedBatch6",
+        "ReportedBatch7",
+        "ReportedBatch8",
+    }
+    assert len(calls) == 5
+    assert len(set(calls)) == 5
+    assert 1 < peak_active <= 8
