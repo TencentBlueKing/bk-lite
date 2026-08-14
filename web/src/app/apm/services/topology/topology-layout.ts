@@ -92,18 +92,6 @@ export const layoutLayeredTopology = async (
   });
 };
 
-export const layoutRadialTopology = (
-  nodes: ApmTopologyNode[],
-): PositionedApmTopologyNode[] => nodes.map((item, index) => {
-  const angle = (index / Math.max(nodes.length, 1)) * Math.PI * 2 - Math.PI / 2;
-  const radius = 175 + (index % 3) * 26;
-  return {
-    ...item,
-    x: roundCoordinate(515 + Math.cos(angle) * radius),
-    y: roundCoordinate(250 + Math.sin(angle) * radius),
-  };
-});
-
 const unitVector = (fromX: number, fromY: number, toX: number, toY: number) => {
   const dx = toX - fromX;
   const dy = toY - fromY;

@@ -12,14 +12,12 @@ import {
   buildTopologyEdgeGeometry,
   hasReciprocalTopologyEdge,
   layoutLayeredTopology,
-  layoutRadialTopology,
   type PositionedApmTopologyNode,
 } from '@/app/apm/services/topology/topology-layout';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyHealth, ApmTopologyNode } from '@/app/apm/types';
 import FilterToolbar from '@/components/filter-toolbar';
 import { useTranslation } from '@/utils/i18n';
 
-type LayoutMode = 'layered' | 'radial';
 type ViewMode = 'graph' | 'list';
 type TimeWindow = '15m' | '1h' | '4h' | '1d' | '7d';
 type PageState = CatalogStateKind | 'ready';
@@ -49,23 +47,20 @@ const topologyHealthI18n: Record<ApmTopologyHealth, { id: string; fallback: stri
 export function TopologyCanvas({
   nodes,
   edges,
-  layout,
   keyword,
   zoom,
   onNodeClick,
 }: {
   nodes: ApmTopologyNode[];
   edges: ApmTopologyEdge[];
-  layout: LayoutMode;
   keyword: string;
   zoom: number;
   onNodeClick?: (node: ApmTopologyNode) => void;
 }) {
   const { t } = useTranslation();
-  const radialNodes = useMemo(() => layoutRadialTopology(nodes), [nodes]);
   const layoutKey = useMemo(
-    () => `${layout}:${nodes.map((node) => node.id).join('|')}:${edges.map((edge) => `${edge.source}>${edge.target}`).join('|')}`,
-    [edges, layout, nodes],
+    () => `${nodes.map((node) => node.id).join('|')}:${edges.map((edge) => `${edge.source}>${edge.target}`).join('|')}`,
+    [edges, nodes],
   );
   const [layoutResult, setLayoutResult] = useState<{ key: string; nodes: PositionedApmTopologyNode[] }>({
     key: '',
@@ -74,27 +69,20 @@ export function TopologyCanvas({
 
   useEffect(() => {
     let active = true;
-    if (layout === 'radial') {
-      setLayoutResult({ key: layoutKey, nodes: radialNodes });
-      return () => {
-        active = false;
-      };
-    }
-
     void layoutLayeredTopology(nodes, edges)
       .then((result) => {
         if (active) setLayoutResult({ key: layoutKey, nodes: result });
       })
       .catch(() => {
-        if (active) setLayoutResult({ key: layoutKey, nodes: radialNodes });
+        if (active) setLayoutResult({ key: layoutKey, nodes: [] });
       });
 
     return () => {
       active = false;
     };
-  }, [edges, layout, layoutKey, nodes, radialNodes]);
+  }, [edges, layoutKey, nodes]);
 
-  const positionedNodes = layoutResult.key === layoutKey ? layoutResult.nodes : radialNodes;
+  const positionedNodes = layoutResult.key === layoutKey ? layoutResult.nodes : [];
   const nodeMap = new Map(positionedNodes.map((node) => [node.id, node]));
   const normalizedKeyword = keyword.trim().toLowerCase();
   const maxSpans = Math.max(...nodes.map((node) => node.sampled_spans), 1);
@@ -230,7 +218,6 @@ export default function ApmTopologyPage() {
   const { getServices, getTopology } = useApmApi();
   const [graph, setGraph] = useState<ApmTopologyGraph>({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
   const [state, setState] = useState<PageState>('loading');
-  const [layout, setLayout] = useState<LayoutMode>('layered');
   const [viewMode, setViewMode] = useState<ViewMode>('graph');
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('1h');
   const [environment, setEnvironment] = useState<string>();
@@ -360,7 +347,6 @@ export default function ApmTopologyPage() {
               <Segmented<TimeWindow> aria-label={t('apm.topology.window', '拓扑时间窗口')} options={['15m', '1h', '4h', '1d', '7d']} value={timeWindow} onChange={setTimeWindow} />
               <Select allowClear aria-label={t('apm.topology.filterEnvironment', '按环境筛选拓扑')} className="w-36" placeholder={t('apm.common.allEnvironments', '全部环境')} options={environmentOptions} value={environment} onChange={setEnvironment} />
               <Segmented<ViewMode> aria-label={t('apm.topology.view', '拓扑视图')} options={[{ value: 'graph', label: t('apm.topology.graph', '图形') }, { value: 'list', label: t('apm.topology.list', '依赖列表') }]} value={viewMode} onChange={setViewMode} />
-              {viewMode === 'graph' ? <Segmented<LayoutMode> aria-label={t('apm.topology.layout', '拓扑布局')} options={[{ value: 'layered', label: t('apm.topology.layered', '分层') }, { value: 'radial', label: t('apm.topology.radial', '环形') }]} value={layout} onChange={setLayout} /> : null}
               <Button danger={anomalyOnly} icon={<WarningOutlined aria-hidden="true" />} type={anomalyOnly ? 'primary' : 'default'} onClick={() => setAnomalyOnly((value) => !value)}>{t('apm.topology.anomalyOnly', '只看异常')}</Button>
               <Button aria-label={t('apm.topology.refresh', '刷新拓扑')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
             </FilterToolbar>
@@ -380,7 +366,6 @@ export default function ApmTopologyPage() {
                   <TopologyCanvas
                     edges={visibleEdges}
                     keyword={keyword}
-                    layout={layout}
                     nodes={visibleNodes}
                     zoom={zoom}
                     onNodeClick={openNode}

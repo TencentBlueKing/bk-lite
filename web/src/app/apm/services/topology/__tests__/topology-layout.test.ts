@@ -3,7 +3,6 @@ import type { ApmTopologyEdge, ApmTopologyNode } from '@/app/apm/types';
 import {
   buildTopologyEdgeGeometry,
   layoutLayeredTopology,
-  layoutRadialTopology,
 } from '../topology-layout';
 
 const node = (id: string): ApmTopologyNode => ({
@@ -62,14 +61,6 @@ describe('APM 服务拓扑布局', () => {
       expect(item.y).toBeGreaterThanOrEqual(80);
       expect(item.y).toBeLessThanOrEqual(420);
     });
-  });
-
-  it('环形布局使用稳定且互不重叠的节点坐标', () => {
-    const first = layoutRadialTopology(demoNodes);
-    const second = layoutRadialTopology(demoNodes);
-
-    expect(first).toEqual(second);
-    expect(new Set(first.map((item) => `${item.x}:${item.y}`)).size).toBe(first.length);
   });
 });
 
