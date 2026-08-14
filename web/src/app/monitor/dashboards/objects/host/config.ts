@@ -3,7 +3,7 @@ import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'host',
   pageTitle: '主机监控仪表盘',
-  objectFallbackName: '主机',
+  objectFallbackName: 'Host',
   instanceType: 'os',
   // 覆盖 Telegraf host / HTTP 远程 / Windows WMI（均为 instance_type=os）
   collectionStatusQuery: "count({instance_type='os', __$labels__}) by (instance_id)",

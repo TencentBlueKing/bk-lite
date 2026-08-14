@@ -9,7 +9,7 @@ const SUCCESS_RATE_EXPR =
 export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'website',
   pageTitle: '网站监控仪表盘',
-  objectFallbackName: '网站',
+  objectFallbackName: 'Website',
   instanceType: 'web',
   // Layer 0：任意 result_type 样本即表示采集在跑；不要求 success，避免失败时误报「无采集」。
   collectionStatusQuery: "count(http_response_result_type{instance_type='web', collect_type='web', __$labels__}) by (instance_id)",

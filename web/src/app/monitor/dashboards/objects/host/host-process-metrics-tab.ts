@@ -14,7 +14,7 @@ export function isHostProcessMetricsTab(tab: string | number | null | undefined)
 export interface HostProcessMetricsTarget {
   processObjectId: string;
   processPluginId: string;
-  /** 与 Process 对象页签一致，如「进程 (Telegraf)」 */
+  /** 与 Process 对象页签一致，如 Process (Telegraf) / 进程（Telegraf） */
   processPluginLabel: string;
 }
 
@@ -58,7 +58,8 @@ export async function resolveHostProcessMetricsTarget(api: {
     return {
       processObjectId,
       processPluginId: String(first.id),
-      processPluginLabel: String(first.display_name || first.name || '进程 (Telegraf)')
+      // 插件 display_name 已按账号语言翻译；缺省用英文技术名，避免英文界面回落到中文。
+      processPluginLabel: String(first.display_name || first.name || 'Process (Telegraf)')
     };
   } catch {
     return null;
@@ -68,7 +69,7 @@ export async function resolveHostProcessMetricsTarget(api: {
 export function withHostProcessMetricsTab<T extends { label: string; value: string }>(
   plugins: T[],
   enabled: boolean,
-  label = '进程 (Telegraf)'
+  label = 'Process (Telegraf)'
 ): T[] {
   if (!enabled) return plugins;
   if (plugins.some((item) => String(item.value) === HOST_PROCESS_METRICS_TAB)) {

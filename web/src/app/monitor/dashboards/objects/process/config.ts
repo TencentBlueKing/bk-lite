@@ -15,7 +15,7 @@ const PROCESS_PORT_ALIVE_ENUM: MetricEnumMap = {
 export const PROCESS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'process',
   pageTitle: '进程监控仪表盘',
-  objectFallbackName: '进程',
+  objectFallbackName: 'Process',
   instanceType: 'process',
   collectionStatusQuery:
     "count({instance_type='process', collect_type='host', __$labels__}) by (instance_id, process_name)",

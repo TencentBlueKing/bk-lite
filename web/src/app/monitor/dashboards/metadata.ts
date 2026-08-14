@@ -33,26 +33,27 @@ const COMMUNITY_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = [
   { key: 'elasticsearch', groupKey: 'database', objectName: 'ElasticSearch', objectDisplayName: 'Elasticsearch', inheritedPermissionPath: '/monitor/view' },
   { key: 'oracle', groupKey: 'database', objectName: 'Oracle', objectDisplayName: 'Oracle', inheritedPermissionPath: '/monitor/view' },
   { key: 'influxdb', groupKey: 'database', objectName: 'InfluxDB', objectDisplayName: 'InfluxDB', inheritedPermissionPath: '/monitor/view' },
-  { key: 'host', aliases: ['os', '主机'], groupKey: 'os', objectName: 'Host', objectDisplayName: '主机', inheritedPermissionPath: '/monitor/view' },
-  { key: 'process', aliases: ['进程'], groupKey: 'os', objectName: 'Process', objectDisplayName: '进程', inheritedPermissionPath: '/monitor/view' },
-  { key: 'website', aliases: ['web', '网站'], groupKey: 'network', objectName: 'Website', objectDisplayName: '网站', inheritedPermissionPath: '/monitor/view' },
+  // objectDisplayName 用英文技术友好名作兜底；中文展示名由 API display_name + aliases 匹配。
+  { key: 'host', aliases: ['os', '主机'], groupKey: 'os', objectName: 'Host', objectDisplayName: 'Host', inheritedPermissionPath: '/monitor/view' },
+  { key: 'process', aliases: ['进程'], groupKey: 'os', objectName: 'Process', objectDisplayName: 'Process', inheritedPermissionPath: '/monitor/view' },
+  { key: 'website', aliases: ['web', '网站'], groupKey: 'network', objectName: 'Website', objectDisplayName: 'Website', inheritedPermissionPath: '/monitor/view' },
   { key: 'ping', groupKey: 'network', objectName: 'Ping', objectDisplayName: 'Ping', inheritedPermissionPath: '/monitor/view' },
   { key: 'tcp', aliases: ['TCPPort', 'TCP端口'], groupKey: 'network', objectName: 'TCPPort', objectDisplayName: 'TCP', inheritedPermissionPath: '/monitor/view' },
-  { key: 'switch', aliases: ['交换机'], groupKey: 'network', objectName: 'Switch', objectDisplayName: '交换机', inheritedPermissionPath: '/monitor/view' },
-  { key: 'firewall', aliases: ['防火墙'], groupKey: 'network', objectName: 'Firewall', objectDisplayName: '防火墙', inheritedPermissionPath: '/monitor/view' },
-  { key: 'loadbalance', aliases: ['负载均衡'], groupKey: 'network', objectName: 'Loadbalance', objectDisplayName: '负载均衡', inheritedPermissionPath: '/monitor/view' },
-  { key: 'router', aliases: ['路由器'], groupKey: 'network', objectName: 'Router', objectDisplayName: '路由器', inheritedPermissionPath: '/monitor/view' },
-  { key: 'wireless', aliases: ['无线设备'], groupKey: 'network', objectName: 'Wireless', objectDisplayName: '无线设备', inheritedPermissionPath: '/monitor/view' },
-  { key: 'transmission', aliases: ['传输设备'], groupKey: 'network', objectName: 'Transmission', objectDisplayName: '传输设备', inheritedPermissionPath: '/monitor/view' },
-  { key: 'access', aliases: ['接入设备'], groupKey: 'network', objectName: 'Access', objectDisplayName: '接入设备', inheritedPermissionPath: '/monitor/view' },
-  { key: 'network_service', aliases: ['网络服务'], groupKey: 'network', objectName: 'NetworkService', objectDisplayName: '网络服务', inheritedPermissionPath: '/monitor/view' },
-  { key: 'console_server', aliases: ['控制台服务器'], groupKey: 'network', objectName: 'ConsoleServer', objectDisplayName: '控制台服务器', inheritedPermissionPath: '/monitor/view' },
-  { key: 'voice_gateway', aliases: ['语音网关'], groupKey: 'network', objectName: 'VoiceGateway', objectDisplayName: '语音网关', inheritedPermissionPath: '/monitor/view' },
-  { key: 'k8s-cluster', aliases: ['cluster'], groupKey: 'container', objectName: 'Cluster', objectDisplayName: '集群', inheritedPermissionPath: '/monitor/view' },
-  { key: 'k8s-node', aliases: ['node'], groupKey: 'container', objectName: 'Node', objectDisplayName: '节点', inheritedPermissionPath: '/monitor/view' },
+  { key: 'switch', aliases: ['交换机'], groupKey: 'network', objectName: 'Switch', objectDisplayName: 'Switch', inheritedPermissionPath: '/monitor/view' },
+  { key: 'firewall', aliases: ['防火墙'], groupKey: 'network', objectName: 'Firewall', objectDisplayName: 'Firewall', inheritedPermissionPath: '/monitor/view' },
+  { key: 'loadbalance', aliases: ['负载均衡'], groupKey: 'network', objectName: 'Loadbalance', objectDisplayName: 'Load Balance', inheritedPermissionPath: '/monitor/view' },
+  { key: 'router', aliases: ['路由器'], groupKey: 'network', objectName: 'Router', objectDisplayName: 'Router', inheritedPermissionPath: '/monitor/view' },
+  { key: 'wireless', aliases: ['无线设备'], groupKey: 'network', objectName: 'Wireless', objectDisplayName: 'Wireless', inheritedPermissionPath: '/monitor/view' },
+  { key: 'transmission', aliases: ['传输设备'], groupKey: 'network', objectName: 'Transmission', objectDisplayName: 'Transmission', inheritedPermissionPath: '/monitor/view' },
+  { key: 'access', aliases: ['接入设备'], groupKey: 'network', objectName: 'Access', objectDisplayName: 'Access', inheritedPermissionPath: '/monitor/view' },
+  { key: 'network_service', aliases: ['网络服务'], groupKey: 'network', objectName: 'NetworkService', objectDisplayName: 'Network Service', inheritedPermissionPath: '/monitor/view' },
+  { key: 'console_server', aliases: ['控制台服务器'], groupKey: 'network', objectName: 'ConsoleServer', objectDisplayName: 'Console Server', inheritedPermissionPath: '/monitor/view' },
+  { key: 'voice_gateway', aliases: ['语音网关'], groupKey: 'network', objectName: 'VoiceGateway', objectDisplayName: 'Voice Gateway', inheritedPermissionPath: '/monitor/view' },
+  { key: 'k8s-cluster', aliases: ['cluster', '集群'], groupKey: 'container', objectName: 'Cluster', objectDisplayName: 'Cluster', inheritedPermissionPath: '/monitor/view' },
+  { key: 'k8s-node', aliases: ['node', '节点'], groupKey: 'container', objectName: 'Node', objectDisplayName: 'Node', inheritedPermissionPath: '/monitor/view' },
   { key: 'k8s-pod', aliases: ['pod'], groupKey: 'container', objectName: 'Pod', objectDisplayName: 'Pod', inheritedPermissionPath: '/monitor/view' },
-  { key: 'k3s-cluster', groupKey: 'container', objectName: 'K3SCluster', objectDisplayName: 'K3S 集群', inheritedPermissionPath: '/monitor/view' },
-  { key: 'k3s-node', groupKey: 'container', objectName: 'K3SNode', objectDisplayName: 'K3S 节点', inheritedPermissionPath: '/monitor/view' },
+  { key: 'k3s-cluster', aliases: ['K3S 集群'], groupKey: 'container', objectName: 'K3SCluster', objectDisplayName: 'K3S Cluster', inheritedPermissionPath: '/monitor/view' },
+  { key: 'k3s-node', aliases: ['K3S 节点'], groupKey: 'container', objectName: 'K3SNode', objectDisplayName: 'K3S Node', inheritedPermissionPath: '/monitor/view' },
   { key: 'k3s-pod', groupKey: 'container', objectName: 'K3SPod', objectDisplayName: 'K3S Pod', inheritedPermissionPath: '/monitor/view' }
 ];
 
@@ -102,8 +103,16 @@ export const getProfessionalDashboardKey = (objectName?: string | null, objectDi
   return findProfessionalDashboardMeta(objectName, objectDisplayName)?.key || '';
 };
 
-/** 侧栏/列表展示名：优先 API display_name；TCPPort 等技术名回退到注册表 objectDisplayName（→ TCP）。 */
-export const getProfessionalObjectDisplayName = (objectName?: string | null, objectDisplayName?: string | null) => {
+/**
+ * 侧栏/列表展示名：优先 API display_name（后端已按账号语言翻译）。
+ * 注册表 objectDisplayName 含中文别名，不得在英文等语言下覆盖 API 译名
+ * （例如 Host→Host 被错盖成「主机」）。
+ * 仅当 API 仍为技术 slug TCPPort 时，回退到友好名 TCP。
+ */
+export const getProfessionalObjectDisplayName = (
+  objectName?: string | null,
+  objectDisplayName?: string | null
+) => {
   const matched = findProfessionalDashboardMeta(objectName, objectDisplayName);
   const apiName = String(objectDisplayName || '').trim();
   const technicalName = String(objectName || '').trim();
@@ -111,10 +120,11 @@ export const getProfessionalObjectDisplayName = (objectName?: string | null, obj
   const techKey = normalizeDashboardKey(technicalName);
 
   if (techKey === 'tcpport' || apiKey === 'tcpport') {
+    if (apiName && apiKey !== 'tcpport') return apiName;
     return matched?.objectDisplayName || 'TCP';
   }
-  if (apiName && apiName !== technicalName) return apiName;
-  return matched?.objectDisplayName || apiName || technicalName || '';
+  if (apiName) return apiName;
+  return technicalName || matched?.objectDisplayName || '';
 };
 
 export const getProfessionalDashboardUrl = (
