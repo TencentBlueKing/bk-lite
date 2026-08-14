@@ -63,6 +63,9 @@ window.WebChat.default(
     maxImageCount: 4,                          // 单条消息图片数量上限
     maxTotalImageBytes: 16 * 1024 * 1024,      // 原始图片总字节上限
     imageReadConcurrency: 2,                   // 图片读取并发数
+    maxImagePixels: 16 * 1024 * 1024,          // 单图解码像素上限（约 64 MiB RGBA）
+    maxTotalImagePixels: 32 * 1024 * 1024,     // 单条消息解码像素上限（约 128 MiB RGBA）
+    allowUnknownImagePreview: false,           // 未知格式仍可发送，默认仅占位；true 恢复旧预览
     customData: {                             // 自定义数据
       userId: "user123",
       sessionId: "session456"

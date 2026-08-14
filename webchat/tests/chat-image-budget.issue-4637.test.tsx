@@ -9,6 +9,7 @@ import { Chat, type ChatProps } from '../packages/webchat-ui/src/Chat';
 import { FloatingButton } from '../packages/webchat-ui/src/FloatingButton';
 
 interface TestFile {
+  arrayBuffer: () => Promise<ArrayBuffer>;
   name: string;
   size: number;
   type: string;
@@ -58,8 +59,20 @@ class ControlledFileReader {
   }
 }
 
-const imageFile = (name: string, size = 1): File =>
-  ({ name, size, type: 'image/png' }) as File;
+const pngHeader = (width: number, height: number): ArrayBuffer => {
+  const bytes = new Uint8Array(24);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes.buffer;
+};
+
+const imageFile = (name: string, size = 1, width = 1, height = 1): File =>
+  ({ arrayBuffer: async () => pngHeader(width, height), name, size, type: 'image/png' }) as File;
+
+const unknownImageFile = (name: string, size = 1): File =>
+  ({ arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer, name, size, type: 'image/avif' }) as File;
 
 const flush = async () => {
   await act(async () => {
@@ -147,6 +160,53 @@ test('Chat 在上传和粘贴入口按累计原始字节拒绝且不启动读取
   assert.equal(ControlledFileReader.pending.length, 0);
   assert.match(errors[1]?.message ?? '', /图片总大小不能超过/);
   renderer.unmount();
+});
+
+test('Chat 在 FileReader 前拒绝解码像素炸弹，正常 PNG 仍可预览', async () => {
+  const errors: Error[] = [];
+  const renderer = renderChat({ maxImagePixels: 4_000_000, onError: (error) => errors.push(error) });
+
+  await selectFiles(renderer.root, [imageFile('bomb.png', 1024, 32768, 32768)]);
+  assert.equal(ControlledFileReader.pending.length, 0);
+  assert.match(errors[0]?.message ?? '', /像素/);
+
+  await selectFiles(renderer.root, [imageFile('normal.png', 1024, 1920, 1080)]);
+  assert.equal(ControlledFileReader.pending.length, 1);
+  await finishReaders([ControlledFileReader.pending[0]]);
+  assert.deepEqual(previews(renderer.root).map((node) => node.props.src), ['data:normal.png']);
+  renderer.unmount();
+});
+
+test('Chat 未知格式默认接受但不解码预览，显式兼容配置可恢复旧预览', async () => {
+  const received: Message[] = [];
+  const strictRenderer = renderChat({ onMessageReceived: (message) => received.push(message) });
+  await selectFiles(strictRenderer.root, [unknownImageFile('legacy.avif')]);
+  assert.equal(ControlledFileReader.pending.length, 1);
+  await finishReaders([ControlledFileReader.pending[0]]);
+  assert.equal(previews(strictRenderer.root).length, 0);
+  assert.match(strictRenderer.root.findByProps({ role: 'status' }).props['aria-label'], /legacy\.avif.*安全占位/);
+  const sender = strictRenderer.root.find((node) => typeof node.props.onSubmit === 'function');
+  await act(async () => {
+    sender.props.onSubmit('未知格式仍发送');
+    await Promise.resolve();
+  });
+  assert.match(
+    strictRenderer.root.findAllByProps({ role: 'status' }).at(-1)?.props['aria-label'] ?? '',
+    /图片已发送.*未在浏览器解码预览/,
+  );
+  assert.deepEqual(received[0]?.content, [
+    { image_url: 'data:legacy.avif', type: 'image_url' },
+    { message: '未知格式仍发送', type: 'message' },
+  ]);
+  assert.deepEqual(received[0]?.metadata, { unpreviewedImageIndexes: [0] });
+  strictRenderer.unmount();
+
+  const compatRenderer = renderChat({ allowUnknownImagePreview: true });
+  await selectFiles(compatRenderer.root, [unknownImageFile('legacy.avif')]);
+  assert.equal(ControlledFileReader.pending.length, 1);
+  await finishReaders([ControlledFileReader.pending[0]]);
+  assert.deepEqual(previews(compatRenderer.root).map((node) => node.props.src), ['data:legacy.avif']);
+  compatRenderer.unmount();
 });
 
 test('Chat 显式放宽后有界读取、乱序完成仍保序，移除后释放累计预算', async () => {
@@ -383,11 +443,21 @@ test('browser initializer 将预算配置原样传给嵌入式 Chat', async () =
   };
   const browser = await import('../packages/webchat-ui/src/browser-entry');
   browser.default.default(
-    { imageReadConcurrency: 3, maxImageCount: 9, maxTotalImageBytes: 99 },
+    {
+      allowUnknownImagePreview: true,
+      imageReadConcurrency: 3,
+      maxImageCount: 9,
+      maxImagePixels: 77,
+      maxTotalImageBytes: 99,
+      maxTotalImagePixels: 88,
+    },
     'target',
   );
 
   assert.equal(globals.__webchatRendered?.props.maxImageCount, 9);
   assert.equal(globals.__webchatRendered?.props.maxTotalImageBytes, 99);
   assert.equal(globals.__webchatRendered?.props.imageReadConcurrency, 3);
+  assert.equal(globals.__webchatRendered?.props.maxImagePixels, 77);
+  assert.equal(globals.__webchatRendered?.props.maxTotalImagePixels, 88);
+  assert.equal(globals.__webchatRendered?.props.allowUnknownImagePreview, true);
 });

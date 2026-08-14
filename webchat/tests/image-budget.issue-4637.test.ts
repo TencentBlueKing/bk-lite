@@ -4,11 +4,15 @@ import test from 'node:test';
 import type { WebChatConfig } from '../packages/webchat-core/src/types';
 import {
   DEFAULT_IMAGE_BUDGET,
+  parseImageDimensions,
   pendingImageBytes,
+  pendingImagePixels,
   pendingImagesReducer,
   readImageBatch,
   resolveImageBudget,
   validateImageBatch,
+  validateImagePixelBudget,
+  type InspectedImageFile,
   type ImageFile,
   type PendingImage,
 } from '../packages/webchat-ui/src/imageBudget';
@@ -21,8 +25,34 @@ const imageFile = (name: string, size: number): ImageFile => ({
 
 const pendingImage = (name: string, size: number): PendingImage => ({
   dataUrl: `data:image/png;base64,${name}`,
+  height: 1,
   name,
+  pixels: 1,
+  previewable: true,
   size,
+  width: 1,
+});
+
+const pngHeader = (width: number, height: number): Uint8Array => {
+  const bytes = new Uint8Array(24);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  new DataView(bytes.buffer).setUint32(16, width);
+  new DataView(bytes.buffer).setUint32(20, height);
+  return bytes;
+};
+
+const animatedPngHeader = (width: number, height: number): Uint8Array => {
+  const bytes = new Uint8Array(32);
+  bytes.set(pngHeader(width, height));
+  bytes.set([0x61, 0x63, 0x54, 0x4c], 28);
+  return bytes;
+};
+
+const inspectedImage = (name: string, width: number, height: number): InspectedImageFile => ({
+  file: imageFile(name, 1),
+  height,
+  pixels: width * height,
+  width,
 });
 
 test('旧调用方默认接受四张共十六 MiB 的图片', () => {
@@ -34,23 +64,78 @@ test('旧调用方默认接受四张共十六 MiB 的图片', () => {
   assert.deepEqual(validateImageBatch([], files, budget), { ok: true });
 });
 
+test('格式头预检读取 PNG 尺寸并拒绝单图或累计解码像素超限', () => {
+  assert.deepEqual(parseImageDimensions(pngHeader(2048, 1024)), {
+    height: 1024,
+    pixels: 2048 * 1024,
+    width: 2048,
+  });
+
+  assert.deepEqual(
+    validateImagePixelBudget([], [inspectedImage('bomb.png', 32768, 32768)], DEFAULT_IMAGE_BUDGET),
+    {
+      limit: DEFAULT_IMAGE_BUDGET.maxImagePixels,
+      ok: false,
+      reason: 'image-pixels',
+    },
+  );
+  const selected = [pendingImage('selected.png', 1)];
+  selected[0].pixels = DEFAULT_IMAGE_BUDGET.maxTotalImagePixels;
+  assert.deepEqual(
+    validateImagePixelBudget(selected, [inspectedImage('next.png', 1, 1)], DEFAULT_IMAGE_BUDGET),
+    {
+      limit: DEFAULT_IMAGE_BUDGET.maxTotalImagePixels,
+      ok: false,
+      reason: 'total-pixels',
+    },
+  );
+  assert.equal(pendingImagePixels(selected), DEFAULT_IMAGE_BUDGET.maxTotalImagePixels);
+});
+
+test('动画格式不按单帧尺寸低估内存，降级为不解码的安全占位', () => {
+  const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0]);
+
+  assert.equal(parseImageDimensions(gif), null);
+  assert.equal(parseImageDimensions(animatedPngHeader(32, 32)), null);
+});
+
+test('未知格式沿用原始字节预算且默认不进入浏览器像素解码', () => {
+  const unknown: InspectedImageFile = {
+    file: imageFile('legacy.avif', 1),
+    height: null,
+    pixels: null,
+    width: null,
+  };
+
+  assert.deepEqual(validateImagePixelBudget([], [unknown], DEFAULT_IMAGE_BUDGET), { ok: true });
+  assert.equal(DEFAULT_IMAGE_BUDGET.allowUnknownImagePreview, false);
+});
+
 test('显式配置可以放宽预算，非法值回落为默认值', () => {
   const relaxedConfig: WebChatConfig = {
+    allowUnknownImagePreview: true,
     imageReadConcurrency: 4,
     maxImageCount: 8,
+    maxImagePixels: 24 * 1024 * 1024,
     maxTotalImageBytes: 32 * 1024 * 1024,
+    maxTotalImagePixels: 48 * 1024 * 1024,
   };
 
   assert.deepEqual(resolveImageBudget(relaxedConfig), {
+    allowUnknownImagePreview: true,
     imageReadConcurrency: 4,
     maxImageCount: 8,
+    maxImagePixels: 24 * 1024 * 1024,
     maxTotalImageBytes: 32 * 1024 * 1024,
+    maxTotalImagePixels: 48 * 1024 * 1024,
   });
   assert.deepEqual(
     resolveImageBudget({
       imageReadConcurrency: 0,
       maxImageCount: Number.NaN,
+      maxImagePixels: 0,
       maxTotalImageBytes: -1,
+      maxTotalImagePixels: Number.NaN,
     }),
     DEFAULT_IMAGE_BUDGET
   );
@@ -103,9 +188,9 @@ test('有界读取保持输入顺序并限制并发峰值', async () => {
 
   assert.equal(peak, 2);
   assert.deepEqual(result, [
-    { dataUrl: 'data:slow.png', name: 'slow.png', size: 3 },
-    { dataUrl: 'data:fast.png', name: 'fast.png', size: 2 },
-    { dataUrl: 'data:last.png', name: 'last.png', size: 1 },
+    { dataUrl: 'data:slow.png', height: null, name: 'slow.png', pixels: null, previewable: false, size: 3, width: null },
+    { dataUrl: 'data:fast.png', height: null, name: 'fast.png', pixels: null, previewable: false, size: 2, width: null },
+    { dataUrl: 'data:last.png', height: null, name: 'last.png', pixels: null, previewable: false, size: 1, width: null },
   ]);
 });
 

@@ -31,8 +31,10 @@ import {
   pendingImagesReducer,
   readFileAsDataUrl,
   readImageBatch,
+  inspectImageBatch,
   resolveImageBudget,
   validateImageBatch,
+  validateImagePixelBudget,
   type ImageBudgetViolation,
   type PendingImage,
   type PendingImageAction,
@@ -91,12 +93,29 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     apiKey,
     streamingTextBatching = true,
     maxImageCount,
+    maxImagePixels,
     maxTotalImageBytes,
+    maxTotalImagePixels,
     imageReadConcurrency,
+    allowUnknownImagePreview,
   } = normalizeWebChatConfig(props) as ChatProps;
   const imageBudget = React.useMemo(
-    () => resolveImageBudget({ imageReadConcurrency, maxImageCount, maxTotalImageBytes }),
-    [imageReadConcurrency, maxImageCount, maxTotalImageBytes],
+    () => resolveImageBudget({
+      allowUnknownImagePreview,
+      imageReadConcurrency,
+      maxImageCount,
+      maxImagePixels,
+      maxTotalImageBytes,
+      maxTotalImagePixels,
+    }),
+    [
+      allowUnknownImagePreview,
+      imageReadConcurrency,
+      maxImageCount,
+      maxImagePixels,
+      maxTotalImageBytes,
+      maxTotalImagePixels,
+    ],
   );
 
   // State
@@ -106,6 +125,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   const [isThinking, setIsThinking] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [imageSelectionError, setImageSelectionError] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<PendingImage[]>([]);
 
   // Refs
@@ -251,14 +271,25 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     setUploadedImages(next);
   }, []);
 
+  const reportImageError = useCallback((error: Error) => {
+    setImageSelectionError(error.message);
+    onError?.(error);
+  }, [onError]);
+
   const reportImageBudgetViolation = useCallback((violation: ImageBudgetViolation) => {
     if (violation.reason === 'count') {
-      onError?.(new Error(`每条消息最多选择 ${violation.limit} 张图片，本批次未添加。`));
+      reportImageError(new Error(`每条消息最多选择 ${violation.limit} 张图片，本批次未添加。`));
       return;
     }
-    const limitMB = violation.limit / (1024 * 1024);
-    onError?.(new Error(`每条消息的图片总大小不能超过 ${limitMB}MB，本批次未添加。`));
-  }, [onError]);
+    if (violation.reason === 'bytes') {
+      const limitMB = violation.limit / (1024 * 1024);
+      reportImageError(new Error(`每条消息的图片总大小不能超过 ${limitMB}MB，本批次未添加。`));
+      return;
+    }
+    const limitMP = Math.round((violation.limit / 1_000_000) * 10) / 10;
+    const scope = violation.reason === 'image-pixels' ? '单张图片' : '每条消息的图片总计';
+    reportImageError(new Error(`${scope}不能超过 ${limitMP} 百万像素，本批次未添加。`));
+  }, [reportImageError]);
 
   const queueImageFiles = useCallback((files: readonly File[]) => {
     if (files.length === 0) return;
@@ -279,7 +310,30 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
       try {
         if (generation !== imageSelectionGenerationRef.current) return;
 
-        const images = await readImageBatch(files, imageBudget.imageReadConcurrency, readFileAsDataUrl, controller.signal);
+        const inspectedFiles = await inspectImageBatch(
+          files,
+          imageBudget.imageReadConcurrency,
+          controller.signal,
+        );
+        const pixelValidation = validateImagePixelBudget(
+          uploadedImagesRef.current,
+          inspectedFiles,
+          imageBudget,
+        );
+        if (!pixelValidation.ok) {
+          reportImageBudgetViolation(pixelValidation);
+          return;
+        }
+
+        const images = (await readImageBatch(
+          inspectedFiles,
+          imageBudget.imageReadConcurrency,
+          readFileAsDataUrl,
+          controller.signal,
+        )).map((image) => ({
+          ...image,
+          previewable: image.previewable || imageBudget.allowUnknownImagePreview,
+        }));
         if (generation !== imageSelectionGenerationRef.current) return;
 
         const latestValidation = validateImageBatch(uploadedImagesRef.current, files, imageBudget);
@@ -287,15 +341,16 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
           reportImageBudgetViolation(latestValidation);
           return;
         }
+        setImageSelectionError(null);
         updateUploadedImages({ images, type: 'append' });
       } catch (error) {
         if (generation !== imageSelectionGenerationRef.current) return;
-        onError?.(toError(error));
+        reportImageError(toError(error));
       } finally {
         pendingImageBatchesRef.current.delete(batchToken);
       }
     });
-  }, [imageBudget, onError, reportImageBudgetViolation, updateUploadedImages]);
+  }, [imageBudget, reportImageBudgetViolation, reportImageError, updateUploadedImages]);
 
   // Handle image upload
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -309,7 +364,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
       if (!file.type.startsWith('image/')) continue;
       if (file.size > MAX_IMAGE_SIZE) {
         const limitMB = MAX_IMAGE_SIZE / (1024 * 1024);
-        onError?.(new Error(`图片"${file.name}"超过 ${limitMB}MB 大小限制，已跳过。`));
+        reportImageError(new Error(`图片"${file.name}"超过 ${limitMB}MB 大小限制，已跳过。`));
         continue;
       }
 
@@ -319,7 +374,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
 
     // Reset input
     e.target.value = '';
-  }, [onError, queueImageFiles]);
+  }, [queueImageFiles, reportImageError]);
 
   // Remove uploaded image
   const handleRemoveImage = useCallback((index: number) => {
@@ -339,7 +394,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
         if (file) {
           if (file.size > MAX_IMAGE_SIZE) {
             const limitMB = MAX_IMAGE_SIZE / (1024 * 1024);
-            onError?.(new Error(`粘贴的图片超过 ${limitMB}MB 大小限制，已跳过。`));
+            reportImageError(new Error(`粘贴的图片超过 ${limitMB}MB 大小限制，已跳过。`));
             continue;
           }
           imageFiles.push(file);
@@ -351,7 +406,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
       e.preventDefault(); // 阻止默认粘贴行为
       queueImageFiles(imageFiles);
     }
-  }, [onError, queueImageFiles]);
+  }, [queueImageFiles, reportImageError]);
 
   // Send message
   const handleSendMessage = useCallback(async (value: string) => {
@@ -380,11 +435,21 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
       content: messageContent,
       sender: 'user',
       timestamp: Date.now(),
+      ...(uploadedImages.some(({ previewable }) => !previewable)
+        ? {
+            metadata: {
+              unpreviewedImageIndexes: uploadedImages.flatMap(({ previewable }, index) =>
+                previewable ? [] : [index],
+              ),
+            },
+          }
+        : {}),
     };
 
     addMessage(userMsg);
     setInputValue('');
     cancelPendingImageBatches();
+    setImageSelectionError(null);
     updateUploadedImages({ type: 'clear' });
     setIsLoading(true);
 
@@ -506,6 +571,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     void streamLifecycleRef.current?.cancel('session-cleared');
     setMessages([]);
     cancelPendingImageBatches();
+    setImageSelectionError(null);
     updateUploadedImages({ type: 'clear' });
     // Clear and reinitialize session
     sessionManagerRef.current?.clearSession();
@@ -651,15 +717,26 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
         )}
         
         {/* Image preview area */}
+        {imageSelectionError && (
+          <p role="alert" className="px-4 pt-2 text-xs" style={{ color: 'var(--color-fail)' }}>
+            {imageSelectionError}
+          </p>
+        )}
         {uploadedImages.length > 0 && (
           <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2">
             {uploadedImages.map((img, index) => (
               <div key={index} className="relative group">
-                <img 
-                  src={img.dataUrl}
-                  alt={`Upload ${index + 1}`}
-                  className="w-16 h-16 object-cover rounded border border-gray-200"
-                />
+                {img.previewable ? (
+                  <img
+                    src={img.dataUrl}
+                    alt={`Upload ${index + 1}`}
+                    className="w-16 h-16 object-cover rounded border border-gray-200"
+                  />
+                ) : (
+                  <div role="status" aria-label={`${img.name} 已添加（安全占位，不在浏览器预览）`}>
+                    <Bubble content={`${img.name} 已添加（安全占位，不在浏览器预览）`} />
+                  </div>
+                )}
                 <button
                   onClick={() => handleRemoveImage(index)}
                   className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
