@@ -1,54 +1,52 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Drawer, Spin, Button, Tag } from 'antd';
+import { Drawer, Spin, Button, Tag, Modal, message } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
+import { useUserInfoContext } from '@/context/userInfo';
+import { useCommon } from '@/app/cmdb/context/common';
 import { useInstanceApi, useModelApi } from '@/app/cmdb/api';
+import { getOrganizationDisplayText } from '@/app/cmdb/components/cmdb-shared';
 import type { RackDevice } from '@/app/cmdb/types/rackRoom';
+import type { UserItem } from '@/app/cmdb/types/assetManage';
 import { deviceColor, deviceTypeName, TECH } from '@/app/cmdb/utils/rackRoomLayout';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import {
+  buildDeviceDrawerRows,
+  buildUnplacePayload,
+  formatDeviceAttrDisplay,
+  normalizeModelAttrList,
+  type DeviceDrawerAttr,
+} from './rackRoomEdit';
 
 interface Props {
   device: RackDevice | null;
   open: boolean;
   onClose: () => void;
+  containerInstUuid?: string;
+  canUnplace?: boolean;
+  onUnplaced?: () => void;
 }
 
-interface AttrDef {
-  attr_id: string;
-  attr_name: string;
-  attr_type?: string;
-  option?: Array<{ id: string | number; name: string }>;
-}
-
-const SKIP = new Set(['inst_name', 'organization', 'rack_u_start', 'u_size']);
-
-const fmtValue = (attr: AttrDef, raw: unknown): string => {
-  if (raw === null || raw === undefined || raw === '') return '--';
-  // 枚举：把存储的 id（可能是列表）映射成中文名
-  if (attr.attr_type === 'enum' && Array.isArray(attr.option)) {
-    const ids = Array.isArray(raw) ? raw : [raw];
-    const names = ids.map((v) => {
-      const hit = attr.option!.find((o) => String(o.id) === String(v));
-      return hit ? hit.name : String(v);
-    });
-    return names.length ? names.join('、') : '--';
-  }
-  if (Array.isArray(raw)) return raw.length ? raw.join('、') : '--';
-  if (typeof raw === 'object') return JSON.stringify(raw);
-  return String(raw);
-};
-
-const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
+const DeviceDetailDrawer: React.FC<Props> = ({
+  device,
+  open,
+  onClose,
+  containerInstUuid,
+  canUnplace,
+  onUnplaced,
+}) => {
   const { t } = useTranslation();
   const router = useRouter();
-  const { getInstanceDetail } = useInstanceApi();
+  const { getInstanceDetail, saveRackRoomLayout } = useInstanceApi();
   const { getModelAttrList } = useModelApi();
+  const { flatGroups } = useUserInfoContext();
+  const userList: UserItem[] = useCommon()?.userList || [];
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
-  const [attrs, setAttrs] = useState<AttrDef[]>([]);
+  const [attrs, setAttrs] = useState<DeviceDrawerAttr[]>([]);
 
   useEffect(() => {
     if (!open || !device) return;
@@ -56,14 +54,15 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
     setLoading(true);
     setDetail(null);
     setAttrs([]);
+    const instUuid = device.inst_uuid;
     Promise.all([
-      getInstanceDetail(device.inst_uuid || device.inst_id).catch(() => null),
+      instUuid ? getInstanceDetail(instUuid).catch(() => null) : Promise.resolve(null),
       getModelAttrList(device.model_id).catch(() => []),
     ])
       .then(([d, a]) => {
         if (cancelled) return;
         setDetail((d as Record<string, unknown>) || null);
-        setAttrs(Array.isArray(a) ? (a as AttrDef[]) : []);
+        setAttrs(normalizeModelAttrList(a));
       })
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
@@ -79,27 +78,59 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
     router.push(`/cmdb/assetData/detail/baseInfo?${params}`);
   };
 
-  const c = device ? deviceColor(device.model_id) : TECH.cyan;
+  const confirmUnplace = () => {
+    if (!device || !containerInstUuid || !canUnplace) return;
+    Modal.confirm({
+      centered: true,
+      title: t('Model.layoutUnplaceConfirmTitle'),
+      content: t('Model.layoutUnplaceDeviceContent'),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await saveRackRoomLayout(
+          buildUnplacePayload({
+            scope: 'rack',
+            containerInstUuid,
+            instUuid: device.inst_uuid || device.inst_id,
+          })
+        );
+        message.success(t('successfullyDisassociated'));
+        onClose();
+        onUnplaced?.();
+      },
+    });
+  };
 
-  // 优先按模型属性顺序渲染（中文名 + 枚举解析）；无属性定义时回退到原始键值
-  const rows: Array<{ k: string; v: string }> = [];
-  if (detail) {
-    if (attrs.length) {
-      attrs.forEach((a) => {
-        if (SKIP.has(a.attr_id)) return;
-        const raw = detail[a.attr_id];
-        if (raw === null || raw === undefined || raw === '' ||
-          (Array.isArray(raw) && raw.length === 0)) return;
-        rows.push({ k: a.attr_name || a.attr_id, v: fmtValue(a, raw) });
-      });
-    } else {
-      Object.entries(detail).forEach(([k, v]) => {
-        if (SKIP.has(k) || k.startsWith('_') || v === null || v === '' ||
-          (Array.isArray(v) && v.length === 0)) return;
-        rows.push({ k, v: fmtValue({ attr_id: k, attr_name: k }, v) });
-      });
+  const c = device ? deviceColor(device.model_id) : TECH.cyan;
+  const displayRecord: Record<string, unknown> = {
+    ...(device as unknown as Record<string, unknown>),
+    ...(detail || {}),
+  };
+  const formatReadonly = (attr: DeviceDrawerAttr, raw: unknown): string => {
+    if (attr.attr_type === 'organization' || attr.attr_id === 'organization') {
+      return getOrganizationDisplayText(
+        raw as string | number | Array<string | number>,
+        flatGroups || []
+      ) || '--';
     }
-  }
+    if (attr.attr_type === 'user') {
+      const ids = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      const names = ids.map((id) => {
+        const user = userList.find((item) => String(item.id) === String(id));
+        return user ? String(user.display_name || user.username || id) : String(id);
+      });
+      return names.filter(Boolean).join('、') || '--';
+    }
+    return formatDeviceAttrDisplay(attr, raw, {
+      empty: '--',
+      yes: t('common.yes', '是'),
+      no: t('common.no', '否'),
+    });
+  };
+  const rows = buildDeviceDrawerRows({
+    attrs,
+    detail: displayRecord,
+    formatValue: formatReadonly,
+  });
 
   return (
     <Drawer
@@ -152,18 +183,23 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
             ) : rows.length ? (
               <div className="dd-grid">
                 {rows.map((row) => (
-                  <div className="dd-row" key={row.k}>
-                    <EllipsisWithTooltip text={row.k} className="dd-k" />
-                    <EllipsisWithTooltip text={row.v} className="dd-v" />
+                  <div className="dd-row" key={row.key}>
+                    <EllipsisWithTooltip text={row.label} className="dd-k" />
+                    <EllipsisWithTooltip text={row.value} className="dd-v" />
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="dd-empty">{t('Model.noRackLayout')}</div>
+              <div className="dd-empty">{t('Model.deviceDrawerLoadFailed')}</div>
             )}
           </div>
 
           <div className="dd-ft">
+            {canUnplace && containerInstUuid && (
+              <Button danger block onClick={confirmUnplace} style={{ marginBottom: 8 }}>
+                {t('Model.layoutUnplace')}
+              </Button>
+            )}
             <Button type="primary" block onClick={jump}>
               {t('Model.viewFullInstance')} <ArrowRightOutlined />
             </Button>

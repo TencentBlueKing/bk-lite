@@ -103,6 +103,7 @@
     "test:session-expiry-trigger": "pnpm exec tsx scripts/session-expiry-trigger-test.ts",
     "test:cmdb-relationships-imports": "node scripts/cmdb-relationships-imports-test.mjs",
     "test:cmdb-ipam-grid-height": "node scripts/cmdb-ipam-grid-height-test.mjs",
+    "test:cmdb-rack-room-layout": "pnpm exec tsx scripts/cmdb-rack-room-layout-test.ts && pnpm exec tsx scripts/cmdb-room-floor-plan-alert-order-test.ts",
     "test:cmdb-network-topo-editing": "pnpm exec tsx scripts/cmdb-network-topo-editing-test.ts",
     "test:cmdb-app-overview-wiring": "node scripts/cmdb-app-overview-wiring-test.mjs",
     "test:cmdb-app-topology-layer-layout": "pnpm exec tsx scripts/cmdb-app-topology-layer-layout-test.ts",

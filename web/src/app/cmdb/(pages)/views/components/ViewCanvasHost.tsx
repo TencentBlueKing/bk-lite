@@ -14,6 +14,13 @@ import type { RackDevice } from '@/app/cmdb/types/rackRoom';
 import type { ViewFocus, ViewType } from '../viewTypes';
 import { resolveRackRoomMode } from '../viewEligibility';
 import { buildBaseInfoPath } from '../viewUrls';
+import type { NetworkTopoHop } from '@/app/cmdb/(pages)/assetData/detail/relationships/networkTopo/hopDepth';
+import usePermissions from '@/hooks/usePermissions';
+import {
+  RACK_ROOM_ASSET_PERMISSION_PATH,
+  canUnplaceFromLayout,
+  hasInstanceOperate,
+} from '@/app/cmdb/(pages)/assetData/detail/relationships/rackRoomEdit';
 
 export interface ViewCanvasHostProps {
   viewType: ViewType;
@@ -33,6 +40,8 @@ export interface ViewCanvasHostProps {
   highlightRackId?: string | null;
   /** Optional override; when set, skips built-in view canvases. */
   children?: React.ReactNode;
+  networkCenterHop?: NetworkTopoHop;
+  onNetworkCenterHopChange?: (hop: NetworkTopoHop) => void;
 }
 
 /**
@@ -46,10 +55,15 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   onRoomRackDrill,
   highlightRackId,
   children,
+  networkCenterHop,
+  onNetworkCenterHopChange,
 }) => {
   const { t } = useTranslation();
   const [device, setDevice] = useState<RackDevice | null>(null);
   const [devOpen, setDevOpen] = useState(false);
+  const [rackNonce, setRackNonce] = useState(0);
+  const { hasPermission } = usePermissions(RACK_ROOM_ASSET_PERMISSION_PATH);
+  const hasEdit = hasPermission(['Edit']);
 
   // Close hub device drawer when switching rack / mode / view.
   useEffect(() => {
@@ -117,9 +131,12 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
       <div className="h-full min-h-0 overflow-hidden">
         <RelationshipsProvider>
           <NetworkTopo
+            key={focus.inst_uuid}
             modelId={focus.model_id}
             instUuid={focus.inst_uuid}
             fillContainer
+            centerHop={networkCenterHop}
+            onCenterHopChange={onNetworkCenterHopChange}
             onRequestFocus={handleNetworkRequestFocus}
             onViewDetail={handleNetworkViewDetail}
           />
@@ -142,7 +159,7 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
 
   if (viewType === 'k8s') {
     return (
-      <div className="h-full min-h-0 overflow-hidden">
+      <div className="h-[calc(100%+2rem)] w-[calc(100%+2rem)] min-h-0 -m-4 overflow-hidden">
         <K8sResourceDetailsContent instUuid={focus.inst_uuid} />
       </div>
     );
@@ -164,6 +181,7 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
       return (
         <div className="h-full min-h-0 overflow-auto">
           <RackElevation
+            key={`${focus.inst_uuid}-${rackNonce}`}
             modelId={focus.model_id}
             instUuid={focus.inst_uuid}
             onDeviceClick={(d) => {
@@ -175,6 +193,12 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
             device={device}
             open={devOpen}
             onClose={() => setDevOpen(false)}
+            containerInstUuid={focus.inst_uuid}
+            canUnplace={canUnplaceFromLayout({
+              hasEdit,
+              instOperate: hasInstanceOperate(device?.permission),
+            })}
+            onUnplaced={() => setRackNonce((n) => n + 1)}
           />
         </div>
       );

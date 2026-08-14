@@ -31,6 +31,7 @@ import SearchFilter from '../../list/searchFilter';
 import CustomTable from '@/components/custom-table';
 import { SelectInstanceProps } from '@/app/cmdb/types/assetData';
 import PermissionWrapper from '@/components/permission';
+import { RACK_ROOM_ASSET_PERMISSION_PATH } from './rackRoomEdit';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
 const { Option } = Select;
@@ -100,9 +101,10 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
               return (
                 <PermissionWrapper
                   requiredPermissions={[
-                    isRelated ? 'Add Associate' : 'Delete Associate',
+                    isRelated ? 'Delete Associate' : 'Add Associate',
                   ]}
-                  instPermissions={record.permission}
+                  permissionPath={RACK_ROOM_ASSET_PERMISSION_PATH}
+                  instPermissions={record.permission || []}
                 >
                   <Button
                     type="link"

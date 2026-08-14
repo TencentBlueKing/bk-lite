@@ -4,6 +4,7 @@ import { Button } from 'antd';
 import { EditOutlined, CheckOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
+import { RACK_ROOM_ASSET_PERMISSION_PATH } from '../rackRoomEdit';
 
 interface EditToolbarProps {
   editing: boolean;
@@ -24,7 +25,10 @@ const EditToolbar: React.FC<EditToolbarProps> = ({
           {t('Model.networkTopoAddDevice')}
         </Button>
       )}
-      <PermissionWrapper requiredPermissions={['Add Associate']}>
+      <PermissionWrapper
+        requiredPermissions={['Add Associate']}
+        permissionPath={RACK_ROOM_ASSET_PERMISSION_PATH}
+      >
         <Button
           type={editing ? 'primary' : 'default'}
           icon={editing ? <CheckOutlined /> : <EditOutlined />}

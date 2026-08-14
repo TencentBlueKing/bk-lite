@@ -1,17 +1,27 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Spin, Empty, Alert, Drawer, Tag } from 'antd';
+import React, { useEffect, useRef, useState } from 'react';
+import { Spin, Empty, Alert, Drawer, Tag, Button, Modal, message, Tooltip } from 'antd';
+import { DisconnectOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useThemeMode } from '@/theme';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
+import usePermissions from '@/hooks/usePermissions';
 import type { RoomLayoutData, RoomRack, RackDevice } from '@/app/cmdb/types/rackRoom';
 import {
   CELL, PAD, GAP, cellXY, roomGridSize, rackTypeColor, rackTypeName, TECH,
 } from '@/app/cmdb/utils/rackRoomLayout';
 import RackElevation from './rackElevation';
 import DeviceDetailDrawer from './deviceDetailDrawer';
+import LayoutPlaceModal, { type LayoutPlaceModalRef } from './layoutPlaceModal';
+import {
+  RACK_ROOM_ASSET_PERMISSION_PATH,
+  buildUnplacePayload,
+  canPlaceOnEmpty,
+  canUnplaceFromLayout,
+  hasInstanceOperate,
+} from './rackRoomEdit';
 
 interface Props {
   modelId: string;
@@ -30,14 +40,51 @@ const RoomFloorPlan: React.FC<Props> = ({
 }) => {
   const { t } = useTranslation();
   const { mode } = useThemeMode();
-  const { getRoomLayout } = useInstanceApi();
+  const { getRoomLayout, saveRackRoomLayout } = useInstanceApi();
+  const { hasPermission } = usePermissions(RACK_ROOM_ASSET_PERMISSION_PATH);
+  const placeRef = useRef<LayoutPlaceModalRef>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<RoomLayoutData | null>(null);
   const [rack, setRack] = useState<RoomRack | null>(null);
   const [device, setDevice] = useState<RackDevice | null>(null);
   const [devOpen, setDevOpen] = useState(false);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const isDark = mode === 'dark';
+  const hasAdd = hasPermission(['Add']);
+  const hasEdit = hasPermission(['Edit']);
+  const canPlace = canPlaceOnEmpty({ hasAdd, hasEdit });
+
+  const reload = () => setReloadNonce((n) => n + 1);
+
+  const confirmUnplaceRack = (target: RoomRack) => {
+    if (
+      !canUnplaceFromLayout({
+        hasEdit,
+        instOperate: hasInstanceOperate(target.permission),
+      })
+    ) {
+      return;
+    }
+    Modal.confirm({
+      centered: true,
+      title: t('Model.layoutUnplaceConfirmTitle'),
+      content: t('Model.layoutUnplaceRackContent'),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await saveRackRoomLayout(
+          buildUnplacePayload({
+            scope: 'room',
+            containerInstUuid: instUuid,
+            instUuid: target.inst_uuid || target.inst_id,
+          })
+        );
+        message.success(t('successfullyDisassociated'));
+        setRack((current) => (current?.inst_id === target.inst_id ? null : current));
+        reload();
+      },
+    });
+  };
 
   useEffect(() => {
     if (!modelId || !instUuid) return;
@@ -49,7 +96,7 @@ const RoomFloorPlan: React.FC<Props> = ({
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
      
-  }, [modelId, instUuid]);
+  }, [modelId, instUuid, reloadNonce]);
 
   useEffect(() => {
     if (!highlightRackId || !data || loading) return;
@@ -69,8 +116,6 @@ const RoomFloorPlan: React.FC<Props> = ({
 
   if (loading) return <div style={{ padding: 60, textAlign: 'center' }}><Spin spinning /></div>;
   if (!data) return <Empty description={t('Model.noRoomLayout')} />;
-  if (!data.racks.length && !data.unplaced.length)
-    return <Empty description={t('Model.emptyRoom')} />;
 
   const missingLocationRacks = data.unplaced.filter(
     (rack) => rack.unplaced_reason === 'missing_location'
@@ -79,6 +124,7 @@ const RoomFloorPlan: React.FC<Props> = ({
     (rack) => rack.unplaced_reason === 'invalid_location'
   );
   const { cols, rows } = roomGridSize(data);
+  const occupiedCells = new Set(data.racks.map((item) => `${item.row}-${item.col}`));
   const width = PAD + cols * CELL + 16;
   const height = PAD + rows * CELL + 16;
   const box = CELL - GAP;
@@ -134,9 +180,22 @@ const RoomFloorPlan: React.FC<Props> = ({
           {Array.from({ length: rows }).flatMap((_, ri) =>
             Array.from({ length: cols }).map((__, ci) => {
               const { x, y } = cellXY(ri + 1, ci + 1);
+              const empty = !occupiedCells.has(`${ri + 1}-${ci + 1}`);
+              const clickable = empty && canPlace;
               return (
-                <div key={`g${ri}-${ci}`} className="rf-cell"
-                  style={{ left: x + GAP / 2, top: y + GAP / 2, width: box, height: box }} />
+                <div
+                  key={`g${ri}-${ci}`}
+                  className={`rf-cell${clickable ? ' rf-cell--empty' : ''}`}
+                  style={{ left: x + GAP / 2, top: y + GAP / 2, width: box, height: box }}
+                  onClick={clickable ? () => {
+                    placeRef.current?.show({
+                      scope: 'room',
+                      containerInstUuid: instUuid,
+                      row: ri + 1,
+                      col: ci + 1,
+                    });
+                  } : undefined}
+                />
               );
             })
           )}
@@ -144,6 +203,10 @@ const RoomFloorPlan: React.FC<Props> = ({
           {data.racks.map((r) => {
             const { x, y } = cellXY(r.row, r.col);
             const c = rackTypeColor(r.datacenter_type);
+            const canUnplace = canUnplaceFromLayout({
+              hasEdit,
+              instOperate: hasInstanceOperate(r.permission),
+            });
             return (
               <div
                 key={r.inst_id}
@@ -167,6 +230,21 @@ const RoomFloorPlan: React.FC<Props> = ({
                   setRack(r);
                 }}>
                 <span className="rf-rack-led" style={{ background: c, boxShadow: `0 0 0 3px ${c}1f` }} />
+                {canUnplace && (
+                  <Tooltip title={t('Model.layoutUnplaceRackContent')}>
+                    <button
+                      type="button"
+                      className="rf-rack-unplace"
+                      aria-label={t('Model.layoutUnplace')}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        confirmUnplaceRack(r);
+                      }}
+                    >
+                      <DisconnectOutlined />
+                    </button>
+                  </Tooltip>
+                )}
                 <div className="rf-rack-name-slot">
                   <EllipsisWithTooltip text={r.inst_name} className="rf-rack-name" />
                 </div>
@@ -227,8 +305,21 @@ const RoomFloorPlan: React.FC<Props> = ({
                   <span className="rd-meta">{rack.col_letter}{rack.row} · {rack.u_count}U · {t('Model.rackUsage')} {rack.usage}%</span>
                 </div>
               </div>
+              {canUnplaceFromLayout({
+                hasEdit,
+                instOperate: hasInstanceOperate(rack.permission),
+              }) && (
+                <Button
+                  danger
+                  className="rd-unplace"
+                  onClick={() => confirmUnplaceRack(rack)}
+                >
+                  {t('Model.layoutUnplace')}
+                </Button>
+              )}
             </div>
             <RackElevation
+              key={`${rack.inst_uuid || rack.inst_id}-${reloadNonce}`}
               modelId="rack"
               instUuid={rack.inst_uuid || rack.inst_id}
               embedded
@@ -238,7 +329,23 @@ const RoomFloorPlan: React.FC<Props> = ({
         )}
       </Drawer>
 
-      <DeviceDetailDrawer device={device} open={devOpen} onClose={() => setDevOpen(false)} />
+      <DeviceDetailDrawer
+        device={device}
+        open={devOpen}
+        onClose={() => setDevOpen(false)}
+        containerInstUuid={rack?.inst_uuid || rack?.inst_id}
+        canUnplace={canUnplaceFromLayout({
+          hasEdit,
+          instOperate: hasInstanceOperate(device?.permission),
+        })}
+        onUnplaced={reload}
+      />
+      <LayoutPlaceModal
+        ref={placeRef}
+        hasAdd={hasAdd}
+        hasEdit={hasEdit}
+        onPlaced={reload}
+      />
 
       <style jsx>{`
         .rf {
@@ -323,6 +430,27 @@ const RoomFloorPlan: React.FC<Props> = ({
           border: 1px solid ${isDark ? 'rgba(148,163,184,0.10)' : 'rgba(75,96,130,0.055)'};
           background: ${cellBg};
         }
+        .rf-cell--empty {
+          cursor: pointer;
+        }
+        .rf-cell--empty:hover {
+          border-color: ${isDark ? 'rgba(122,168,255,0.45)' : 'rgba(43,101,217,0.35)'};
+        }
+        .rf-rack-unplace {
+          position: absolute; top: 6px; left: 6px; z-index: 3;
+          width: 22px; height: 22px; border: 0; border-radius: 6px;
+          background: ${isDark ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.86)'};
+          color: ${TECH.danger}; cursor: pointer; display: flex;
+          align-items: center; justify-content: center; font-size: 12px;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity .15s ease;
+        }
+        .rf-rack:hover .rf-rack-unplace,
+        .rf-rack-unplace:focus-visible {
+          opacity: 1;
+          pointer-events: auto;
+        }
         .rf-rack {
           position: absolute; z-index: 2; border-radius: 10px; cursor: pointer;
           border: 1px solid; overflow: hidden;
@@ -399,6 +527,14 @@ const RoomFloorPlan: React.FC<Props> = ({
           min-height: 100%; background: ${isDark ? '#141820' : '#f7fbff'}; }
         .rd-hd { display: flex; align-items: center; gap: 12px; padding: 18px 20px; }
         .rd-led { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+        :global(.rd-unplace) {
+          opacity: 0;
+          transition: opacity .15s ease;
+        }
+        .rd-hd:hover :global(.rd-unplace),
+        :global(.rd-unplace:focus-visible) {
+          opacity: 1;
+        }
         :global(.rd-name) {
           font-size: 17px; font-weight: 600; color: ${isDark ? '#e5edf8' : TECH.text};
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
