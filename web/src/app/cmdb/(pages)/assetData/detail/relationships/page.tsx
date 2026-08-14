@@ -110,9 +110,20 @@ const Ralationships = () => {
     assoListRef.current?.showRelateModal();
   };
 
+  const isCanvasTab = [
+    'network',
+    'ipam',
+    'appOverview',
+    'rackView',
+    'roomView',
+  ].includes(activeTab);
+
   return (
-    <Spin spinning={loading}>
-      <header className={relationshipsStyle.header}>
+    <Spin spinning={loading} wrapperClassName={isCanvasTab ? relationshipsStyle.pageSpin : undefined}>
+      <div className={isCanvasTab ? relationshipsStyle.pageFill : undefined}>
+      <header
+        className={`${relationshipsStyle.header}${isCanvasTab ? ` ${relationshipsStyle.headerCanvas}` : ''}`}
+      >
         <Segmented
           className="mb-0"
           value={activeTab}
@@ -144,6 +155,7 @@ const Ralationships = () => {
           </div>
         )}
       </header>
+      <div className={isCanvasTab ? relationshipsStyle.canvasBody : undefined}>
       {activeTab === 'list' && (
         <AssoList
           ref={assoListRef}
@@ -161,28 +173,35 @@ const Ralationships = () => {
         />
       )}
       {activeTab === 'network' && (
-        <NetworkTopo key={instUuid} modelId={modelId} instUuid={instUuid} />
+        <NetworkTopo key={instUuid} modelId={modelId} instUuid={instUuid} fillContainer />
       )}
       {activeTab === 'ipam' && (
-        <IpamMatrix instUuid={instUuid} />
+        <div className={relationshipsStyle.scrollCanvas}>
+          <IpamMatrix instUuid={instUuid} />
+        </div>
       )}
       {activeTab === 'appOverview' && (
-        <ApplicationResourceOverview modelId={modelId} instUuid={instUuid} />
+        <ApplicationResourceOverview modelId={modelId} instUuid={instUuid} fillContainer />
       )}
       {activeTab === 'rackView' && (
-        <RackElevation
-          key={`${instUuid}-${rackNonce}`}
-          modelId={modelId}
-          instUuid={instUuid}
-          onDeviceClick={(d) => {
-            setDevice(d);
-            setDevOpen(true);
-          }}
-        />
+        <div className={relationshipsStyle.scrollCanvas}>
+          <RackElevation
+            key={`${instUuid}-${rackNonce}`}
+            modelId={modelId}
+            instUuid={instUuid}
+            onDeviceClick={(d) => {
+              setDevice(d);
+              setDevOpen(true);
+            }}
+          />
+        </div>
       )}
       {activeTab === 'roomView' && (
-        <RoomFloorPlan modelId={modelId} instUuid={instUuid} />
+        <div className={relationshipsStyle.scrollCanvas}>
+          <RoomFloorPlan modelId={modelId} instUuid={instUuid} />
+        </div>
       )}
+      </div>
       <DeviceDetailDrawer
         device={device}
         open={devOpen}
@@ -194,6 +213,7 @@ const Ralationships = () => {
         })}
         onUnplaced={() => setRackNonce((n) => n + 1)}
       />
+      </div>
     </Spin>
   );
 };

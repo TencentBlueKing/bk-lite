@@ -22,6 +22,7 @@ import {
 } from '@antv/xflow';
 import { NETWORK_TOPO_VISUAL, NETWORK_TOPO_CARD_VISUAL } from './x6Visual';
 import { normalizeManualEdgeVertices } from './edgeGeometry';
+import { startAlignTranslateX, type FitViewOptions } from './x6FitView';
 
 export interface NetworkTopologyX6GraphData {
   nodes: any[];
@@ -67,11 +68,7 @@ interface NetworkTopologyX6CanvasProps {
     height: number;
     style?: React.CSSProperties;
   };
-  fitViewOptions?: {
-    padding?: number;
-    maxScale?: number;
-    minScale?: number;
-  };
+  fitViewOptions?: FitViewOptions;
   fitViewKey?: string | number;
   toolbar?: NetworkTopologyToolbarConfig;
   onGraphReady?: (graph: Graph | null) => void;
@@ -230,11 +227,28 @@ const fitGraphToView = (
   graph: Graph,
   options?: NetworkTopologyX6CanvasProps['fitViewOptions']
 ) => {
+  const padding = options?.padding ?? 112;
   graph.zoomToFit({
-    padding: options?.padding ?? 112,
+    padding,
     maxScale: options?.maxScale ?? 1.12,
     minScale: options?.minScale,
   });
+  if (options?.align !== 'start') return;
+  if (typeof (graph as any).positionContent === 'function') {
+    (graph as any).positionContent('top-left', { padding });
+    return;
+  }
+  const cells = typeof graph.getCells === 'function' ? graph.getCells() : [];
+  const bbox = cells.length ? graph.getCellsBBox(cells) : null;
+  if (!bbox) return;
+  const matrix = graph.matrix();
+  const nextTx = startAlignTranslateX({
+    contentX: bbox.x,
+    scale: matrix.a,
+    translateX: matrix.e,
+    padding,
+  });
+  graph.translate(nextTx, matrix.f);
 };
 
 const applyGraphInteracting = (
@@ -686,6 +700,7 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     fitViewOptions?.maxScale,
     fitViewOptions?.minScale,
     fitViewOptions?.padding,
+    fitViewOptions?.align,
   ]);
 
   useEffect(() => {

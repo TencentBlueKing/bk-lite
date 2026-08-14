@@ -76,8 +76,8 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   };
 
   return (
-    <div className={`flex flex-col ${attrLayoutStyle.attrLayout}`}>
-      <Spin spinning={pageLoading}>
+    <div className={`flex flex-col h-full min-h-0 w-full min-w-0 ${attrLayoutStyle.attrLayout}`}>
+      <Spin spinning={pageLoading} wrapperClassName="h-full min-h-0 [&_.ant-spin-container]:h-full">
         <SideMenuLayout {...layoutProps} />
       </Spin>
     </div>

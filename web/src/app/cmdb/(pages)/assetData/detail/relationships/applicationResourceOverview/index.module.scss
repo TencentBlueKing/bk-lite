@@ -10,6 +10,12 @@
 
 .overviewFill {
   height: 100%;
+  min-width: 0;
+}
+
+.overviewFill .canvasCard,
+.overviewFill .canvasShell {
+  min-width: 0;
 }
 
 .overviewStandalone {
@@ -127,6 +133,7 @@
   min-width: 0;
   overflow: hidden;
   background: var(--color-bg);
+  --cmdb-layer-label-rail: 132px;
 }
 
 .graphEmpty {
@@ -142,7 +149,7 @@
   top: 0;
   right: 0;
   bottom: 0;
-  left: 132px;
+  left: var(--cmdb-layer-label-rail, 132px);
   z-index: 0;
   pointer-events: none;
 }
@@ -169,7 +176,7 @@
   top: 0;
   right: 0;
   bottom: 0;
-  left: 132px;
+  left: var(--cmdb-layer-label-rail, 132px);
   z-index: 1;
 }
 
@@ -179,7 +186,7 @@
   top: 0;
   bottom: 0;
   left: 0;
-  width: 132px;
+  width: var(--cmdb-layer-label-rail, 132px);
   border-right: 1px solid
     color-mix(in srgb, var(--color-border-2) 58%, transparent);
   background: var(--color-bg);

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import {
+  CANVAS_PAD_X,
   COL_STRIDE,
   DEFAULT_LANE_WIDTH,
   LAYER_KEYS,
+  LAYOUT_NODE,
   ORIGIN_X,
   columnsForLaneWidth,
   packLayeredNodes,
@@ -12,6 +14,7 @@ import {
 assert.equal(columnsForLaneWidth(200), 1);
 assert.equal(columnsForLaneWidth(576), 2);
 assert.equal(columnsForLaneWidth(848), 3);
+assert.equal(ORIGIN_X - LAYOUT_NODE.width / 2, CANVAS_PAD_X);
 assert.ok(columnsForLaneWidth(DEFAULT_LANE_WIDTH) >= 3);
 
 const twoCol = packLayeredNodes({

@@ -25,7 +25,9 @@ export const COL_STRIDE = 272;
 export const ROW_STRIDE = 88;
 export const BAND_PAD_Y = 28;
 export const LAYER_GAP = 32;
-export const ORIGIN_X = 160;
+export const CANVAS_PAD_X = 24;
+export const LAYER_LABEL_RAIL_PX = 132;
+export const ORIGIN_X = LAYOUT_NODE.width / 2 + CANVAS_PAD_X;
 export const START_Y = 24;
 export const DEFAULT_LANE_WIDTH = 1100;
 

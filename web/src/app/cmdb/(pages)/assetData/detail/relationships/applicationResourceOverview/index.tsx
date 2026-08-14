@@ -42,6 +42,7 @@ import { buildBaseInfoPath } from '@/app/cmdb/(pages)/views/viewUrls';
 import {
   DEFAULT_LANE_WIDTH,
   LAYER_KEYS,
+  LAYER_LABEL_RAIL_PX,
   LAYER_TITLE_KEYS,
   ROW_STRIDE,
   packLayeredNodes,
@@ -870,7 +871,7 @@ export default function ApplicationResourceOverview({
     const pane = topologyCardRef.current;
     if (!pane || viewMode !== 'topology') return undefined;
     const updateLaneWidth = () => {
-      const next = Math.max(480, pane.clientWidth - 132);
+      const next = Math.max(480, pane.clientWidth - LAYER_LABEL_RAIL_PX);
       setLaneWidth((current) => (Math.abs(current - next) < 8 ? current : next));
     };
     updateLaneWidth();
@@ -1278,6 +1279,7 @@ export default function ApplicationResourceOverview({
                 <div
                   ref={topologyCardRef}
                   className={styles.graphPane}
+                  style={{ ['--cmdb-layer-label-rail' as string]: `${LAYER_LABEL_RAIL_PX}px` }}
                   onMouseLeave={() => {
                     setHoveredGraphNodeId(null);
                     setHoveredGraphEdgeId(null);
@@ -1318,7 +1320,7 @@ export default function ApplicationResourceOverview({
                           nodeMovable={false}
                           minimap={{ width: 160, height: 96 }}
                           fitViewKey={`app-topology-${graphData.nodes.length}-${graphData.edges.length}-${laneWidth}`}
-                          fitViewOptions={{ padding: 48, maxScale: 1, minScale: 0.85 }}
+                          fitViewOptions={{ padding: 48, maxScale: 1, minScale: 0.5, align: 'start' }}
                           onGraphReady={setGraphInstance}
                           onNodeClick={handleSelectNode}
                           onNodeContextMenu={(nodeId, event) => {
