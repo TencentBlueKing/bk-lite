@@ -40,10 +40,10 @@
 - core 提供会话持久化、SSE/自定义 header fetch 与状态机能力（`webchat-core/src/sessionManager.ts:6`、`sse.ts:6`、`stateMachine.ts:6`）。
 - ui 提供 React Chat 组件与 AG-UI 事件桥接（`webchat-ui/src/Chat.tsx:43`、`agui.ts:47`），支持 Vite library/UMD 构建。
 - demo 为 Next 入口（`webchat-demo/app/page.tsx:9`）。
-- **公开配置兼容契约**：`WebChatConfig` 仅接受具名 TypeScript 字段；集成方私有元数据进入 `extensions` 且不随请求发送，请求元数据仍进入 `customData`。`socketUrl`、`socketPath`、`enableSSE`、`reconnectAttempts`、`reconnectDelay` 在兼容窗口内保留并标记 deprecated；`socketUrl` 仅在 `sseUrl` 缺省时归一化为实际 fetch 端点，显式 `sseUrl` 始终优先。未类型 JavaScript 的未知顶层键在运行时仍保留。
+- **公开配置兼容契约**：`WebChatConfig` 仅接受具名 TypeScript 字段；集成方私有元数据进入 `extensions` 且不随请求发送，请求元数据仍进入 `customData`。`socketUrl`、`socketPath`、`enableSSE`、`reconnectAttempts`、`reconnectDelay` 在兼容窗口内保留并标记 deprecated；`socketUrl` 仅在 `sseUrl` 缺省时归一化为实际 fetch 端点，显式 `sseUrl` 始终优先。未类型 JavaScript 的未知顶层键在运行时仍保留。图片消息默认限制为 4 张、原始总计 16 MiB、并发读取 2、单图 16 Mi pixels（约 64 MiB RGBA）、单条消息 32 Mi pixels（约 128 MiB RGBA）；`maxImageCount`、`maxTotalImageBytes`、`imageReadConcurrency`、`maxImagePixels`、`maxTotalImagePixels` 可用正整数显式调整，非法值回落默认。静态 PNG/JPEG/BMP 在 Data URL/预览解码前读取格式头；动画 PNG/GIF/WebP 与未知尺寸格式仍按旧行为接受和发送，但默认只显示安全占位，不交给浏览器像素解码，集成方可显式设置 `allowUnknownImagePreview: true` 恢复旧预览，同时继续受数量、原始字节和读取并发约束。超预算批次在读取前整批拒绝，既有待发图片不变；错误同时进入输入区可见状态和可选 `onError` 回调，消息请求内容不变，回滚无需改变 SSE 或会话持久化基础结构。
 - **入口一致性**：React `Chat`、`FloatingButton` 与 browser UMD 共享上述配置边界；`FloatingButtonProps` 透传完整 `ChatProps`，`onChatStateChange` 优先于 `onStateChange`，关闭时先通知调用方再隐藏容器。browser UMD 仍由 WebChat 包产出；主 Web 的全局 WebChat 接入暂停期间，不再同步到 `web/public/webchat`。Next demo 仅在客户端加载 UI 包。
 
-> 证据来源：webchat/packages/webchat-core/src/{types.ts,config.ts}、webchat/packages/webchat-ui/src/{Chat.tsx,FloatingButton.tsx,browser-entry.ts,floatingButtonCallbacks.ts}、webchat/packages/webchat-demo/app/chat-wrapper.tsx、webchat/scripts/sync-web-public.mjs、webchat/tests/webchat-config.issue-4037.test.ts　|　同步基线：issue-4037　|　【已实现】
+> 证据来源：webchat/packages/webchat-core/src/{types.ts,config.ts}、webchat/packages/webchat-ui/src/{Chat.tsx,FloatingButton.tsx,browser-entry.ts,floatingButtonCallbacks.ts,imageBudget.ts}、webchat/packages/webchat-demo/app/chat-wrapper.tsx、webchat/scripts/sync-web-public.mjs、webchat/tests/{webchat-config.issue-4037.test.ts,image-budget.issue-4637.test.ts,chat-image-budget.issue-4637.test.tsx}　|　同步基线：issue-4637　|　【已实现】
 
 ## 风险 / 待确认
 - web 模块按 `NEXTAPI_INSTALL_APP` 启用已实际落地【已实现】：运行期解析该配置（为空时回退到目录发现）；工作区裁剪须通过显式生成流程执行，普通构建不会自动改变工作区范围。其与后端 `INSTALL_APPS` 的对齐/同步策略【待确认】。

@@ -68,6 +68,22 @@ test('preserves unknown top-level keys passed by untyped JavaScript integrations
   assert.equal(normalized.pluginMode, 'compact');
 });
 
+test('preserves named image decode budgets and the explicit legacy-preview escape hatch', () => {
+  const normalized = normalizeWebChatConfig({
+    allowUnknownImagePreview: true,
+    maxImageCount: 6,
+    maxImagePixels: 12_000_000,
+    maxTotalImageBytes: 20_000_000,
+    maxTotalImagePixels: 24_000_000,
+  });
+
+  assert.equal(normalized.allowUnknownImagePreview, true);
+  assert.equal(normalized.maxImageCount, 6);
+  assert.equal(normalized.maxImagePixels, 12_000_000);
+  assert.equal(normalized.maxTotalImageBytes, 20_000_000);
+  assert.equal(normalized.maxTotalImagePixels, 24_000_000);
+});
+
 test('forwards floating-button callbacks without hiding Chat callbacks', () => {
   const states: string[] = [];
   const closeOrder: string[] = [];
