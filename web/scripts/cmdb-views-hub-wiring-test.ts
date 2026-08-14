@@ -58,6 +58,10 @@ if (!/<ApplicationResourceOverview[\s\S]*?fillContainer/.test(hostSrc)) {
   failures.push('[ViewCanvasHost.tsx] application canvas should fill the hub workspace');
 }
 
+if (!/viewType === 'k8s'[\s\S]*?-m-4/.test(hostSrc)) {
+  failures.push('[ViewCanvasHost.tsx] k8s canvas should fill the hub workspace');
+}
+
 if (!/<RoomFloorPlan[\s\S]*?onRackSelect\s*=/.test(hostSrc)) {
   failures.push('[ViewCanvasHost.tsx] RoomFloorPlan missing onRackSelect wiring');
 }
