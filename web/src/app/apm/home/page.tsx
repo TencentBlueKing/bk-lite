@@ -50,8 +50,6 @@ import ApmRouteShell from '@/app/apm/components/apm-route-shell';
 import SummaryMetricCard from '@/components/summary-metric-card';
 import { useTranslation } from '@/utils/i18n';
 
-import { useTranslation } from '@/utils/i18n';
-
 const { Text, Paragraph } = Typography;
 
 const TIME_WINDOWS: ApmTimeWindow[] = ['15m', '1h', '4h', '1d', '7d'];
