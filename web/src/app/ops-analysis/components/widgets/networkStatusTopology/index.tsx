@@ -25,6 +25,15 @@ import type {
 } from '@/app/ops-analysis/types/sceneWidget';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import {
+  beginOwnerRequest,
+  finishOwnerRequest,
+  isSilentCanvasRuntimeRefresh,
+  isStartedOwnerRequest,
+  shouldKeepWidgetRuntimeDataOnError,
+  shouldShowWidgetRuntimeLoading,
+  type CanvasRuntimeRefreshCause,
+} from '@/app/ops-analysis/utils/canvasRefreshTimer';
+import {
   isScreenChartThemeMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
@@ -65,6 +74,7 @@ import styles from './networkStatusTopology.module.scss';
 interface NetworkStatusTopologyProps {
   config?: ValueConfig;
   refreshKey?: string | number;
+  refreshCause?: CanvasRuntimeRefreshCause;
   onReady?: (ready?: boolean) => void;
   /** 父级画布可编辑且非分享时为 true */
   layoutEditable?: boolean;
@@ -127,6 +137,7 @@ const toCanvasLink = (
 const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   config,
   refreshKey,
+  refreshCause = 'manual',
   onReady,
   layoutEditable = false,
   onTopologyLayoutChange,
@@ -146,6 +157,8 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const graphRef = useRef<Graph | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const fetchIdRef = useRef(0);
+  const inflightCountRef = useRef(0);
   const [hoverNodeId, setHoverNodeId] = useState('');
   const [hoverPoint, setHoverPoint] = useState({ x: 0, y: 0 });
   const hoverNodeIdRef = useRef('');
@@ -166,6 +179,10 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   // 父级 onReady 常随 layout 草稿更新换新引用；不得进入 fetch 依赖，否则拖点会重取数出 loading
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const refreshCauseRef = useRef(refreshCause);
+  refreshCauseRef.current = refreshCause;
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   useEffect(() => {
     if (canPersistLayout) {
@@ -195,24 +212,55 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       return;
     }
 
+    const cause = refreshCauseRef.current;
+    const silent = isSilentCanvasRuntimeRefresh(cause);
+    const gate = beginOwnerRequest({
+      silent,
+      latestGeneration: fetchIdRef.current,
+      inflightCount: inflightCountRef.current,
+    });
+    if (!isStartedOwnerRequest(gate)) {
+      return;
+    }
+    const currentFetchId = gate.generation;
+    fetchIdRef.current = currentFetchId;
+    inflightCountRef.current += 1;
+    const hasSuccessfulPayload = dataRef.current !== null;
     try {
-      setLoading(true);
-      setError('');
+      if (shouldShowWidgetRuntimeLoading(cause)) {
+        setLoading(true);
+        setError('');
+      }
       const result = await getNetworkStatusTopology({
         model_id: topoConfig.modelId,
         inst_uuid: topoConfig.instUuid,
         depth: topoConfig.depth || 2,
       });
+      if (currentFetchId !== fetchIdRef.current) return;
       setData(result);
-      setSelectedNodeId('');
-      setEphemeralPositions({});
+      if (shouldShowWidgetRuntimeLoading(cause)) {
+        setSelectedNodeId('');
+        setEphemeralPositions({});
+      }
       onReadyRef.current?.((result.nodes || []).length > 0);
     } catch (err) {
+      if (currentFetchId !== fetchIdRef.current) return;
       console.error('network status topology fetch failed:', err);
-      setData(null);
-      setError(getRequestErrorMessage(err, t('dashboard.networkTopoLoadFailed')));
-      onReadyRef.current?.(false);
+      if (
+        !shouldKeepWidgetRuntimeDataOnError({
+          cause,
+          hasSuccessfulPayload,
+        })
+      ) {
+        setData(null);
+        setError(getRequestErrorMessage(err, t('dashboard.networkTopoLoadFailed')));
+        onReadyRef.current?.(false);
+      }
     } finally {
+      inflightCountRef.current = finishOwnerRequest({
+        inflightCount: inflightCountRef.current,
+      }).inflightCount;
+      if (currentFetchId !== fetchIdRef.current) return;
       setLoading(false);
     }
     // API hooks return fresh function references; fetching is driven by widget config.

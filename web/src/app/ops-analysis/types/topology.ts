@@ -317,6 +317,7 @@ export interface ToolbarProps {
   canRedo?: boolean;
   onRefresh?: () => void;
   onFrequencyChange?: (frequency: number) => void;
+  frequenceValue?: number;
   onCancel?: () => void;
   onFilterConfig?: () => void;
 }

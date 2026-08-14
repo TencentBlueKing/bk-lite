@@ -7,10 +7,17 @@ from django.db import transaction
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
+from apps.operation_analysis.constants.canvas_refresh import CANVAS_REFRESH_INTERVAL_MS
 from apps.operation_analysis.constants.import_export import ObjectType
 from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Report, Screen, Topology
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
 from apps.operation_analysis.services.import_export.view_sets import normalize_canvas_view_sets_for_storage
+
+CANVAS_REFRESH_INTERVAL_KWARGS = {"required": False, "default": serializers.empty}
+
+
+def with_canvas_refresh_interval_kwargs(extra_kwargs: dict) -> dict:
+    return {**extra_kwargs, "refresh_interval": CANVAS_REFRESH_INTERVAL_KWARGS}
 
 
 class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
@@ -118,6 +125,13 @@ class BuiltinPermissionMixin:
         return super().get_permissions(instance)
 
 
+class CanvasRefreshIntervalSerializerMixin:
+    def validate_refresh_interval(self, value):
+        if value not in CANVAS_REFRESH_INTERVAL_MS:
+            raise serializers.ValidationError("refresh_interval 必须是 0、60000、300000 或 600000")
+        return value
+
+
 class CanvasObjectSerializer(DirectoryChainVisibilityMixin, BuiltinPermissionMixin, BaseFormatTimeSerializer, AuthSerializer):
     class Meta:
         fields = "__all__"
@@ -135,18 +149,20 @@ class CanvasObjectSerializer(DirectoryChainVisibilityMixin, BuiltinPermissionMix
         return super().create(validated_data)
 
 
-class DashboardModelSerializer(CanvasObjectSerializer):
+class DashboardModelSerializer(CanvasRefreshIntervalSerializerMixin, CanvasObjectSerializer):
     permission_key = "directory.dashboard"
 
     class Meta(CanvasObjectSerializer.Meta):
         model = Dashboard
+        extra_kwargs = with_canvas_refresh_interval_kwargs(CanvasObjectSerializer.Meta.extra_kwargs)
 
 
-class TopologyModelSerializer(CanvasObjectSerializer):
+class TopologyModelSerializer(CanvasRefreshIntervalSerializerMixin, CanvasObjectSerializer):
     permission_key = "directory.topology"
 
     class Meta(CanvasObjectSerializer.Meta):
         model = Topology
+        extra_kwargs = with_canvas_refresh_interval_kwargs(CanvasObjectSerializer.Meta.extra_kwargs)
 
 
 class ArchitectureModelSerializer(CanvasObjectSerializer):
@@ -156,11 +172,12 @@ class ArchitectureModelSerializer(CanvasObjectSerializer):
         model = Architecture
 
 
-class ScreenModelSerializer(CanvasObjectSerializer):
+class ScreenModelSerializer(CanvasRefreshIntervalSerializerMixin, CanvasObjectSerializer):
     permission_key = "directory.screen"
 
     class Meta(CanvasObjectSerializer.Meta):
         model = Screen
+        extra_kwargs = with_canvas_refresh_interval_kwargs(CanvasObjectSerializer.Meta.extra_kwargs)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
