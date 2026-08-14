@@ -4,8 +4,9 @@ import type {
   ScreenRenderContext,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
-import { getWidgetComponent } from './widgetRegistry';
+import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { supportsComponentSwitch } from '@/app/ops-analysis/utils/componentParamSwitch';
+import { getWidgetComponent } from './widgetRegistry';
 
 interface WidgetRendererProps {
   chartType?: string;
@@ -14,6 +15,7 @@ interface WidgetRendererProps {
   loading?: boolean;
   config?: ValueConfig;
   refreshKey?: string | number;
+  refreshCause?: CanvasRuntimeRefreshCause;
   dataSource?: DatasourceItem;
   screenRenderContext?: ScreenRenderContext;
   onReady?: (ready?: boolean) => void;
@@ -35,6 +37,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   loading = false,
   config,
   refreshKey,
+  refreshCause,
   dataSource,
   screenRenderContext,
   onReady,
@@ -58,6 +61,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       loading={loading}
       config={config}
       refreshKey={refreshKey}
+      refreshCause={refreshCause}
       dataSource={dataSource}
       screenRenderContext={screenRenderContext}
       onReady={onReady}

@@ -25,6 +25,16 @@ import {
   shouldShowInitialWidgetLoading,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
 import {
+  beginOwnerRequest,
+  finishOwnerRequest,
+  isSilentCanvasRuntimeRefresh,
+  isStartedOwnerRequest,
+  resolveWidgetFetchCause,
+  shouldKeepWidgetRuntimeDataOnError,
+  shouldShowWidgetRuntimeLoading,
+  type CanvasRuntimeRefreshCause,
+} from "@/app/ops-analysis/utils/canvasRefreshTimer";
+import {
   findComponentSwitchParams,
   getTypedValueKey,
   reconcileComponentSwitchValue,
@@ -252,6 +262,7 @@ export interface WidgetWrapperProps {
   filterSearchVersion?: number;
   namespaceSearchVersion?: number;
   reloadVersion?: string;
+  refreshCause?: CanvasRuntimeRefreshCause;
   builtinNamespaceId?: number;
   screenRenderContext?: ScreenRenderContext;
   onRenderStatus?: (result: DashboardWidgetRenderResult) => void;
@@ -272,6 +283,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   filterSearchVersion = 0,
   namespaceSearchVersion = 0,
   reloadVersion = "0:0",
+  refreshCause = "manual",
   builtinNamespaceId,
   screenRenderContext,
   widgetId,
@@ -432,6 +444,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     : headerRuntimeSlot ? null : componentSwitchControl;
 
   const fetchIdRef = useRef(0);
+  const inflightCountRef = useRef(0);
+  const rawDataRef = useRef<unknown>(null);
+  rawDataRef.current = rawData;
   const tableQueryKey = useMemo(
     () => JSON.stringify(tableQueryParams),
     [tableQueryParams],
@@ -702,21 +717,38 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     [config, t],
   );
 
-  const fetchDataRef = useRef<(key: string) => Promise<void>>(undefined!);
-  fetchDataRef.current = async (requestKey: string) => {
+  const fetchDataRef = useRef<
+    (key: string, cause: CanvasRuntimeRefreshCause) => Promise<void>
+      >(undefined!);
+  fetchDataRef.current = async (requestKey: string, cause: CanvasRuntimeRefreshCause) => {
     if (!normalizedDataSourceId) {
       return;
     }
 
-    const currentFetchId = ++fetchIdRef.current;
+    const silent = isSilentCanvasRuntimeRefresh(cause);
+    const gate = beginOwnerRequest({
+      silent,
+      latestGeneration: fetchIdRef.current,
+      inflightCount: inflightCountRef.current,
+    });
+    if (!isStartedOwnerRequest(gate)) {
+      return;
+    }
+    const currentFetchId = gate.generation;
+    fetchIdRef.current = currentFetchId;
+    inflightCountRef.current += 1;
+    const hasSuccessfulPayload =
+      rawDataRef.current !== null && rawDataRef.current !== undefined;
 
     try {
-      if (isTableLikeChart) {
-        setTableLoading(true);
-      } else {
-        setLoading(true);
+      if (shouldShowWidgetRuntimeLoading(cause)) {
+        if (isTableLikeChart) {
+          setTableLoading(true);
+        } else {
+          setLoading(true);
+        }
+        setDataValidation(null);
       }
-      setDataValidation(null);
 
       const data = await getOrCreateInflightWidgetRequest(requestKey, () =>
         fetchCompareData({
@@ -747,19 +779,29 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     } catch (err) {
       if (currentFetchId !== fetchIdRef.current) return;
       console.error("获取数据失败:", err);
-      setRawData(null);
-      setBaselineData(null);
-      const message = getRequestErrorMessage(
-        err,
-        t("dashboard.dataFetchFailed"),
-      );
-      const errorCode = classifyWidgetQueryError(err);
-      setDataValidation({
-        isValid: false,
-        message,
-        ...(errorCode ? { errorCode } : {}),
-      });
+      if (
+        !shouldKeepWidgetRuntimeDataOnError({
+          cause,
+          hasSuccessfulPayload,
+        })
+      ) {
+        setRawData(null);
+        setBaselineData(null);
+        const errorMessage = getRequestErrorMessage(
+          err,
+          t("dashboard.dataFetchFailed"),
+        );
+        const errorCode = classifyWidgetQueryError(err);
+        setDataValidation({
+          isValid: false,
+          message: errorMessage,
+          ...(errorCode ? { errorCode } : {}),
+        });
+      }
     } finally {
+      inflightCountRef.current = finishOwnerRequest({
+        inflightCount: inflightCountRef.current,
+      }).inflightCount;
       if (currentFetchId !== fetchIdRef.current) return;
       hasSettledRequestRef.current = true;
       setHasSettledRequest(true);
@@ -882,21 +924,23 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
 
   useEffect(() => {
+    const current = {
+      requestEnabled,
+      requestSignature,
+      hasRequestParams: Boolean(requestParams),
+      hasRequestKey: Boolean(requestKey),
+      filterSearchVersion,
+      namespaceSearchVersion,
+      reloadVersion,
+      tableQueryKey,
+      hasEnabledFilterBindings,
+      widgetUsesNamespace,
+      isTableLikeChart,
+    };
+    const history = previousRequestRef.current;
     const decision = decideWidgetRequest({
-      history: previousRequestRef.current,
-      current: {
-        requestEnabled,
-        requestSignature,
-        hasRequestParams: Boolean(requestParams),
-        hasRequestKey: Boolean(requestKey),
-        filterSearchVersion,
-        namespaceSearchVersion,
-        reloadVersion,
-        tableQueryKey,
-        hasEnabledFilterBindings,
-        widgetUsesNamespace,
-        isTableLikeChart,
-      },
+      history,
+      current,
     });
     previousRequestRef.current = decision.nextHistory;
 
@@ -904,7 +948,20 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       return;
     }
 
-    fetchDataRef.current(requestKey);
+    const cause = resolveWidgetFetchCause({
+      hasRequested: history.hasRequested,
+      filterSearchChanged:
+        history.filterSearchVersion !== current.filterSearchVersion &&
+        current.hasEnabledFilterBindings,
+      namespaceSearchChanged:
+        history.namespaceSearchVersion !== current.namespaceSearchVersion &&
+        current.widgetUsesNamespace,
+      signatureChanged: history.signature !== current.requestSignature,
+      reloadVersionChanged: history.reloadVersion !== current.reloadVersion,
+      tableQueryChanged: history.tableQueryKey !== current.tableQueryKey,
+      reloadCause: refreshCause,
+    });
+    fetchDataRef.current(requestKey, cause);
   }, [
     requestEnabled,
     requestKey,
@@ -913,6 +970,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     filterSearchVersion,
     namespaceSearchVersion,
     reloadVersion,
+    refreshCause,
     tableQueryKey,
     chartType,
     isTableLikeChart,
@@ -1024,6 +1082,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
             loading={false}
             config={config}
             refreshKey={reloadVersion}
+            refreshCause={refreshCause}
             screenRenderContext={screenRenderContext}
             onReady={handleRendererReady}
             onError={handleRendererError}
@@ -1094,6 +1153,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           loading={isTableLikeChart ? tableLoading : loading}
           config={config}
           refreshKey={reloadVersion}
+          refreshCause={refreshCause}
           dataSource={dataSource}
           screenRenderContext={screenRenderContext}
           onReady={handleRendererReady}

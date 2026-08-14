@@ -37,8 +37,9 @@ import {
 } from '@/app/ops-analysis/utils/dashboardWidgetHosts';
 
 import GroupHeader from './groupHeader';
-import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
+import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
+import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
 
 import 'gridstack/dist/gridstack.min.css';
 import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
@@ -78,6 +79,7 @@ interface DashboardCanvasProps {
   filterSearchVersion: number;
   namespaceSearchVersion: number;
   dashboardReloadVersion: number;
+  refreshCause?: CanvasRuntimeRefreshCause;
   widgetReloadVersions: Record<string, number>;
   dataSourceResolver: (
     dataSource?: string | number,
@@ -115,6 +117,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   filterSearchVersion,
   namespaceSearchVersion,
   dashboardReloadVersion,
+  refreshCause = 'manual',
   widgetReloadVersions,
   dataSourceResolver,
   appliedFilterValues,
@@ -564,6 +567,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
                   filterSearchVersion={filterSearchVersion}
                   namespaceSearchVersion={namespaceSearchVersion}
                   reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersions[item.i] || 0}`}
+                  refreshCause={refreshCause}
                   dataSource={dataSourceResolver(item.valueConfig?.dataSource)}
                   unifiedFilterValues={appliedFilterValues}
                   filterDefinitions={appliedFilterDefinitions}
@@ -589,6 +593,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       chartTheme.panelBg,
       chartTheme.panelBorderColor,
       dashboardReloadVersion,
+      refreshCause,
       dataSourceResolver,
       filterSearchVersion,
       isEditMode,
