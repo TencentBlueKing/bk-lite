@@ -30,7 +30,7 @@ import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, {
   catalogErrorKind,
@@ -332,7 +332,7 @@ export default function ApmServiceDetailPage() {
     {
       title: t('apm.explore.totalDuration', '总耗时'),
       dataIndex: 'duration_ms',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['sm'],
@@ -341,7 +341,7 @@ export default function ApmServiceDetailPage() {
     {
       title: t('apm.explore.spanCount', '跨度数'),
       dataIndex: 'span_count',
-      width: 90,
+      width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['lg'],
@@ -349,7 +349,7 @@ export default function ApmServiceDetailPage() {
     {
       title: t('apm.common.status', '状态'),
       dataIndex: 'status',
-      width: 90,
+      width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'center',
       render: (status: ApmTraceSummary['status']) => (
         status === 'error'
@@ -360,7 +360,7 @@ export default function ApmServiceDetailPage() {
     {
       title: t('apm.common.time', '时间'),
       dataIndex: 'started_at',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
@@ -734,7 +734,7 @@ export default function ApmServiceDetailPage() {
                         {
                           title: t('apm.serviceDetail.target', '目标'),
                           dataIndex: 'objective',
-                          width: 100,
+                          width: APM_TABLE_COLUMN_WIDTHS.metric,
                           align: 'right',
                           responsive: ['sm'],
                           render: (value) => <span className="tabular-nums">{formatPercentage(value)}</span>,
@@ -742,7 +742,7 @@ export default function ApmServiceDetailPage() {
                         {
                           title: t('apm.serviceDetail.current', '当前'),
                           dataIndex: 'current_rate',
-                          width: 100,
+                          width: APM_TABLE_COLUMN_WIDTHS.metric,
                           align: 'right',
                           responsive: ['md'],
                           render: (value) => value == null
@@ -752,7 +752,7 @@ export default function ApmServiceDetailPage() {
                         {
                           title: t('apm.serviceDetail.errorBudget', '错误预算'),
                           dataIndex: 'budget_remaining',
-                          width: 140,
+                          width: APM_TABLE_COLUMN_WIDTHS.progress,
                           responsive: ['lg'],
                           render: (value) => value == null
                             ? '—'
@@ -760,7 +760,7 @@ export default function ApmServiceDetailPage() {
                         },
                         {
                           title: t('apm.common.operation', '操作'),
-                          width: 100,
+                          width: APM_TABLE_COLUMN_WIDTHS.status,
                           align: 'right',
                           fixed: 'right',
                           render: () => <Link href="/apm/services/slo"><Button className="!px-0" type="link" size="small">{t('apm.serviceDetail.manage', '管理')}</Button></Link>,

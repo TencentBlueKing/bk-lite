@@ -7,7 +7,7 @@ import { AppstoreAddOutlined, PlusOutlined, SearchOutlined } from '@ant-design/i
 import { Button, Drawer, Form, Input, message, Space, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmApplication, ApmApplicationInput } from '@/app/apm/types';
@@ -121,9 +121,9 @@ export default function ApmApplicationsPage() {
       ),
     },
     { title: t('apm.applications.note', '说明'), dataIndex: 'description', responsive: ['lg'], render: (value) => <EllipsisWithTooltip className="truncate" text={value || '—'} /> },
-    { title: t('apm.applications.serviceCount', '服务数'), dataIndex: 'service_count', width: 100, align: 'right', className: 'tabular-nums', responsive: ['md'] },
+    { title: t('apm.applications.serviceCount', '服务数'), dataIndex: 'service_count', width: APM_TABLE_COLUMN_WIDTHS.status, align: 'right', className: 'tabular-nums', responsive: ['md'] },
     {
-      title: t('apm.common.organization', '组织'), dataIndex: 'organization_ids', width: 180, responsive: ['xl'],
+      title: t('apm.common.organization', '组织'), dataIndex: 'organization_ids', width: APM_TABLE_COLUMN_WIDTHS.organization, responsive: ['xl'],
       render: (values: number[]) => (
         <EllipsisWithTooltip
           className="truncate"
@@ -131,9 +131,9 @@ export default function ApmApplicationsPage() {
         />
       ),
     },
-    { title: t('apm.applications.updatedAt', '更新时间'), dataIndex: 'updated_at', width: 170, responsive: ['xxl'], className: 'tabular-nums', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
+    { title: t('apm.applications.updatedAt', '更新时间'), dataIndex: 'updated_at', width: APM_TABLE_COLUMN_WIDTHS.timestamp, responsive: ['xxl'], className: 'tabular-nums', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
     {
-      title: t('apm.common.operation', '操作'), key: 'action', width: 200, align: 'right', fixed: 'right',
+      title: t('apm.common.operation', '操作'), key: 'action', width: APM_TABLE_COLUMN_WIDTHS.actionGroup, align: 'right', fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
           <Space className="whitespace-nowrap" size={8}>

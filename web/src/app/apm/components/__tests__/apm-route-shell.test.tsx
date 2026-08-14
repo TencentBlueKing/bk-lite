@@ -38,4 +38,18 @@ describe('ApmRouteShell', () => {
     expect(shell?.classList.contains('p-4')).toBe(false);
     expect(Array.from(shell?.classList ?? []).some((className) => className.startsWith('pt-'))).toBe(false);
   });
+
+  it('在超宽屏限制工作区宽度，同时保留窄屏自适应', () => {
+    const { container } = renderWithApmIntl(
+      <ApmRouteShell title="服务" description="服务目录">
+        <div>服务工作面</div>
+      </ApmRouteShell>,
+    );
+
+    const workArea = container.firstElementChild?.firstElementChild;
+
+    expect(workArea?.classList.contains('w-full')).toBe(true);
+    expect(workArea?.classList.contains('mx-auto')).toBe(true);
+    expect(workArea?.classList.contains('max-w-[1920px]')).toBe(true);
+  });
 });

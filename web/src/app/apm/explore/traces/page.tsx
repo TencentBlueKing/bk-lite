@@ -6,7 +6,7 @@ import { SearchOutlined } from '@ant-design/icons';
 import { Button, Checkbox, Input, InputNumber, Segmented, Select, Space, Tag, Typography } from 'antd';
 import type { TableProps } from 'antd';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import HealthDot from '@/app/apm/components/health-dot';
@@ -426,7 +426,7 @@ export default function ApmTracesPage() {
     {
       title: t('apm.explore.totalDuration', '总耗时'),
       dataIndex: 'duration_ms',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['sm'],
@@ -435,7 +435,7 @@ export default function ApmTracesPage() {
     {
       title: t('apm.explore.spanCount', '跨度数'),
       dataIndex: 'span_count',
-      width: 90,
+      width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['lg'],
@@ -443,7 +443,7 @@ export default function ApmTracesPage() {
     {
       title: t('apm.common.status', '状态'),
       dataIndex: 'status',
-      width: 90,
+      width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'center',
       render: (value) => (
         value === 'error'
@@ -454,7 +454,7 @@ export default function ApmTracesPage() {
     {
       title: t('apm.common.time', '时间'),
       dataIndex: 'started_at',
-      width: 110,
+      width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
@@ -480,7 +480,7 @@ export default function ApmTracesPage() {
     },
     {
       title: 'HTTP',
-      width: 120,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       responsive: ['lg'],
       render: (_, item) => {
         if (!item.http_method && !item.http_status_code) {
@@ -496,7 +496,7 @@ export default function ApmTracesPage() {
     {
       title: t('apm.common.latency', '耗时'),
       dataIndex: 'duration_ms',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
@@ -505,7 +505,7 @@ export default function ApmTracesPage() {
     {
       title: t('apm.common.time', '时间'),
       dataIndex: 'started_at',
-      width: 110,
+      width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
       render: (value: string) => (
         <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
@@ -603,11 +603,11 @@ export default function ApmTracesPage() {
 
   const aggregateColumns: TableProps<AggregateRow>['columns'] = [
     { title: t('apm.explore.group', '分组'), dataIndex: 'label' },
-    { title: t('apm.explore.count', '数量'), dataIndex: 'count', width: 90, align: 'right', className: 'tabular-nums' },
+    { title: t('apm.explore.count', '数量'), dataIndex: 'count', width: APM_TABLE_COLUMN_WIDTHS.status, align: 'right', className: 'tabular-nums' },
     {
       title: t('apm.common.errorRate', '错误率'),
       dataIndex: 'errorRate',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['sm'],
@@ -616,7 +616,7 @@ export default function ApmTracesPage() {
     {
       title: t('apm.explore.avgDuration', '平均耗时'),
       dataIndex: 'avgMs',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
@@ -625,7 +625,7 @@ export default function ApmTracesPage() {
     {
       title: t('apm.common.p95', 'P95'),
       dataIndex: 'p95Ms',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.compact,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['lg'],
@@ -634,7 +634,7 @@ export default function ApmTracesPage() {
     {
       title: t('apm.explore.maxDuration', '最大耗时'),
       dataIndex: 'maxMs',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['lg'],

@@ -17,6 +17,7 @@ import {
   Button,
   Drawer,
   Empty,
+  Grid,
   Input,
   List,
   Modal,
@@ -49,7 +50,7 @@ import MiniTrend from '@/app/apm/components/mini-trend';
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import ApplicationCard from '@/app/apm/components/application-card';
 import type { ActiveAlertStatus } from '@/app/apm/components/application-card';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ServiceLanguage from '@/app/apm/components/service-language';
 import type {
   ApmApplication,
@@ -61,6 +62,7 @@ import type {
   CatalogStatus,
 } from '@/app/apm/types';
 import Permission from '@/components/permission';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 
@@ -139,6 +141,7 @@ const alertStatusMeta: Record<ActiveAlertStatus, { id: string; fallback: string;
 
 export default function ApmServicesPage() {
   const { t } = useTranslation();
+  const screens = Grid.useBreakpoint();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -541,7 +544,7 @@ export default function ApmServicesPage() {
     {
       title: t('apm.common.status', '状态'),
       key: 'status',
-      width: 96,
+      width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'center',
       render: (_, item) => {
         const status = alertStatusFromLevel(alertCounts.get(alertKey(item.serviceName, item.environment))?.level);
@@ -562,7 +565,7 @@ export default function ApmServicesPage() {
     {
       title: t('apm.services.activeAlerts', '活跃告警'),
       key: 'alerts',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.compact,
       align: 'center',
       responsive: ['md'],
       render: (_, item) => {
@@ -593,7 +596,7 @@ export default function ApmServicesPage() {
     {
       title: t('apm.common.throughputPerSec', '吞吐量(/s)'),
       key: 'throughput',
-      width: 120,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
@@ -613,7 +616,7 @@ export default function ApmServicesPage() {
     {
       title: t('apm.common.errorRate', '错误率'),
       key: 'errorRate',
-      width: 110,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
@@ -633,7 +636,7 @@ export default function ApmServicesPage() {
     {
       title: t('apm.common.p99', 'P99'),
       key: 'p99',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.compact,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['lg'],
@@ -652,7 +655,7 @@ export default function ApmServicesPage() {
     {
       title: t('apm.services.trend', '趋势'),
       key: 'trend',
-      width: 90,
+      width: APM_TABLE_COLUMN_WIDTHS.trend,
       responsive: ['xl'],
       render: (_, item) => {
         const metric = redMetrics[metricKey(item.serviceId, item.environment)];
@@ -668,14 +671,14 @@ export default function ApmServicesPage() {
     {
       title: t('apm.common.environment', '环境'),
       dataIndex: 'environment',
-      width: 110,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       responsive: ['lg'],
       render: (value) => <Tag bordered={false}>{value || t('apm.common.unset', '未设置')}</Tag>,
     },
     {
       title: t('apm.slo.title', 'SLO'),
       key: 'slo',
-      width: 110,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       responsive: ['xl'],
       render: (_, item) => {
         const slo = sloByServiceEnv.get(metricKey(item.serviceId, item.environment));
@@ -701,7 +704,7 @@ export default function ApmServicesPage() {
     {
       title: t('apm.common.lastSeen', '最近活跃'),
       dataIndex: 'last_seen_at',
-      width: 150,
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
       responsive: ['xl'],
       render: (value) => (
         <time
@@ -716,7 +719,7 @@ export default function ApmServicesPage() {
     {
       title: t('apm.common.organization', '组织'),
       dataIndex: 'serviceOrganizationIds',
-      width: 120,
+      width: APM_TABLE_COLUMN_WIDTHS.organization,
       responsive: ['xxl'],
       render: (value: number[]) => value.length
         ? value.map((id) => (
@@ -727,38 +730,65 @@ export default function ApmServicesPage() {
     {
       title: t('apm.common.operation', '操作'),
       key: 'action',
-      width: 152,
+      width: screens.sm ? APM_TABLE_COLUMN_WIDTHS.actionPair : APM_TABLE_COLUMN_WIDTHS.singleAction,
       align: 'right',
       fixed: 'right',
-      render: (_, item) => (
-        <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
-          <Space className="whitespace-nowrap" size={8}>
-            <Button
-              className="!px-0"
-              size="small"
-              type="link"
-              onClick={(event) => {
-                event.stopPropagation();
-                setOrganizationService(services.find((service) => service.id === item.serviceId) ?? null);
-              }}
-            >
-              {t('apm.services.adjustOrgAction', '调整组织')}
-            </Button>
-            <Button
-              className="!px-0"
-              danger
-              size="small"
-              type="link"
-              onClick={(event) => {
-                event.stopPropagation();
-                confirmArchive(item.serviceId, true);
-              }}
-            >
-              {t('apm.services.archive', '归档')}
-            </Button>
-          </Space>
-        </Permission>
-      ),
+      render: (_, item) => {
+        const openOrganization = () => {
+          setOrganizationService(services.find((service) => service.id === item.serviceId) ?? null);
+        };
+
+        return (
+          <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
+            {screens.sm ? (
+              <Space className="whitespace-nowrap" size={8}>
+                <Button
+                  className="!px-0"
+                  size="small"
+                  type="link"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openOrganization();
+                  }}
+                >
+                  {t('apm.services.adjustOrgAction', '调整组织')}
+                </Button>
+                <Button
+                  className="!px-0"
+                  danger
+                  size="small"
+                  type="link"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    confirmArchive(item.serviceId, true);
+                  }}
+                >
+                  {t('apm.services.archive', '归档')}
+                </Button>
+              </Space>
+            ) : (
+              <MoreActionsDropdown
+                ariaLabel={t('apm.serviceDetail.moreActions', '更多操作')}
+                buttonType="link"
+                items={[
+                  {
+                    key: 'organization',
+                    label: t('apm.services.adjustOrgAction', '调整组织'),
+                    onClick: openOrganization,
+                  },
+                  {
+                    key: 'archive',
+                    danger: true,
+                    label: t('apm.services.archive', '归档'),
+                    onClick: () => confirmArchive(item.serviceId, true),
+                  },
+                ]}
+                stopPropagation
+              />
+            )}
+          </Permission>
+        );
+      },
     },
   ];
 

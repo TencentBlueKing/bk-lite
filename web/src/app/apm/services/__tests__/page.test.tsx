@@ -257,6 +257,32 @@ describe('APM 服务目录服务视角与归档', () => {
     );
   });
 
+  it('在手机宽度把服务治理操作收进更多菜单', async () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmServicesPage />);
+
+    const servicePerspective = await screen.findByRole('radio', { name: '服务' });
+    await user.click(servicePerspective.closest('label')!);
+
+    const moreActions = await screen.findByRole('button', { name: '更多操作' });
+    expect(screen.queryByRole('button', { name: '调整组织' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '归档' })).toBeNull();
+
+    await user.click(moreActions);
+    expect(await screen.findByText('调整组织')).not.toBeNull();
+    expect(screen.getByText('归档')).not.toBeNull();
+  });
+
   it('已归档入口打开抽屉并列出归档服务', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmServicesPage />);

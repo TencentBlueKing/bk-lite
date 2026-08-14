@@ -20,7 +20,7 @@ import {
 import dayjs from 'dayjs';
 import FilterToolbar from '@/components/filter-toolbar';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import HealthDot from '@/app/apm/components/health-dot';
@@ -242,7 +242,6 @@ export default function ApmEndpointsPage() {
   const columns: TableColumnsType<EndpointRow> = [
     {
       title: t('apm.common.endpoint', '端点'),
-      width: '29%',
       render: (_, row) => (
         <span className="inline-flex min-w-0 items-center gap-2">
           <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-xs font-medium ${
@@ -259,7 +258,6 @@ export default function ApmEndpointsPage() {
     },
     {
       title: t('apm.explore.ownerService', '所属服务'),
-      width: '22%',
       responsive: ['sm'],
       render: (_, row) => (
         <Space direction="vertical" size={0} className="min-w-0">
@@ -272,7 +270,7 @@ export default function ApmEndpointsPage() {
       title: t('apm.common.throughput', '吞吐量'),
       dataIndex: 'requestRate',
       align: 'right',
-      width: '14%',
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       sorter: true,
       sortOrder: sortKey === 'request_rate' ? sortOrder : null,
       responsive: ['md'],
@@ -288,7 +286,7 @@ export default function ApmEndpointsPage() {
       title: t('apm.common.errorRate', '错误率'),
       dataIndex: 'errorRate',
       align: 'right',
-      width: '11%',
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       sorter: true,
       sortOrder: sortKey === 'error_rate' ? sortOrder : null,
       responsive: ['md'],
@@ -300,7 +298,7 @@ export default function ApmEndpointsPage() {
       title: t('apm.common.p95', 'P95'),
       dataIndex: 'p95Ms',
       align: 'right',
-      width: '10%',
+      width: APM_TABLE_COLUMN_WIDTHS.compact,
       sorter: true,
       sortOrder: sortKey === 'p95_ms' ? sortOrder : null,
       responsive: ['lg'],
@@ -310,14 +308,14 @@ export default function ApmEndpointsPage() {
       title: t('apm.common.lastSeen', '最近活跃'),
       dataIndex: 'lastSeenAt',
       align: 'right',
-      width: '9%',
+      width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
       render: (value) => <Typography.Text type="secondary" className="text-xs">{formatRelativeTime(value)}</Typography.Text>,
     },
     {
       title: t('apm.common.operation', '操作'),
       key: 'actions',
-      width: 88,
+      width: APM_TABLE_COLUMN_WIDTHS.singleAction,
       align: 'right',
       fixed: 'right',
       render: (_, row) => <Button className="!px-0" size="small" type="link" onClick={() => setSelected(row)}>{t('apm.common.view', '查看')}</Button>,
@@ -544,13 +542,13 @@ export default function ApmEndpointsPage() {
                     {
                       title: t('apm.common.latency', '耗时'),
                       dataIndex: 'duration_ms',
-                      width: 90,
+                      width: APM_TABLE_COLUMN_WIDTHS.metric,
                       render: (value: number) => <span className="tabular-nums">{formatLatency(value)}</span>,
                     },
                     {
                       title: t('apm.common.time', '时间'),
                       dataIndex: 'started_at',
-                      width: 100,
+                      width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
                       render: (value: string) => (
                         <span className="text-xs text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
                       ),

@@ -5,7 +5,7 @@ import { SearchOutlined } from '@ant-design/icons';
 import { Alert, Button, Input, message, Radio, Select, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, {
   catalogErrorKind,
@@ -141,25 +141,23 @@ export default function ApmIntegrationInstancesPage() {
     {
       title: t('apm.instances.instanceId', '实例 ID'),
       dataIndex: 'instance_id',
-      width: '13%',
       render: (value) => <EllipsisWithTooltip className="max-w-52 truncate font-mono text-xs" text={value} />,
     },
     {
       title: t('apm.common.service', '服务'),
       key: 'service',
-      width: '18%',
       responsive: ['sm'],
       render: (_, item) => (
         <ServiceIdentity namespace={item.service_namespace} name={item.service_name} />
       ),
     },
-    { title: t('apm.instances.ownerApplication', '所属应用'), dataIndex: 'application_name', width: '12%', responsive: ['xl'], render: (value, item) => <EllipsisWithTooltip className="truncate" text={value || item.application_id || '—'} /> },
-    { title: t('apm.common.environment', '环境'), dataIndex: 'environment', width: '7%', responsive: ['md'], render: (value) => <Tag bordered={false}>{value || t('apm.common.unset', '未设置')}</Tag> },
-    { title: t('apm.instances.version', '版本'), dataIndex: 'version', width: '6%', responsive: ['lg'], render: (value) => value || '—' },
+    { title: t('apm.instances.ownerApplication', '所属应用'), dataIndex: 'application_name', responsive: ['xl'], render: (value, item) => <EllipsisWithTooltip className="truncate" text={value || item.application_id || '—'} /> },
+    { title: t('apm.common.environment', '环境'), dataIndex: 'environment', width: APM_TABLE_COLUMN_WIDTHS.metric, responsive: ['md'], render: (value) => <Tag bordered={false}>{value || t('apm.common.unset', '未设置')}</Tag> },
+    { title: t('apm.instances.version', '版本'), dataIndex: 'version', width: APM_TABLE_COLUMN_WIDTHS.metric, responsive: ['lg'], render: (value) => value || '—' },
     {
       title: t('apm.instances.firstSeen', '首次接入'),
       dataIndex: 'first_seen_at',
-      width: '11%',
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
       responsive: ['xxl'],
       render: (value) => (
         <time className="whitespace-nowrap tabular-nums" dateTime={value}>
@@ -170,7 +168,7 @@ export default function ApmIntegrationInstancesPage() {
     {
       title: t('apm.instances.lastReport', '最近上报'),
       dataIndex: 'last_seen_at',
-      width: '12%',
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
       responsive: ['md'],
       render: (value) => (
         <time
@@ -182,11 +180,11 @@ export default function ApmIntegrationInstancesPage() {
         </time>
       ),
     },
-    { title: t('apm.instances.instanceStatus', '实例状态'), dataIndex: 'status', width: '8%', align: 'center', render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
+    { title: t('apm.instances.instanceStatus', '实例状态'), dataIndex: 'status', width: APM_TABLE_COLUMN_WIDTHS.status, align: 'center', render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
     {
       title: t('apm.instances.ownerOrg', '所属组织'),
       dataIndex: 'organization_ids',
-      width: '7%',
+      width: APM_TABLE_COLUMN_WIDTHS.organization,
       responsive: ['xxl'],
       render: (value: number[]) => (
         <EllipsisWithTooltip
@@ -198,7 +196,7 @@ export default function ApmIntegrationInstancesPage() {
     {
       title: t('apm.common.operation', '操作'),
       key: 'action',
-      width: 112,
+      width: APM_TABLE_COLUMN_WIDTHS.singleAction,
       align: 'right',
       fixed: 'right',
       render: (_, item) => (

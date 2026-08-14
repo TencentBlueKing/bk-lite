@@ -119,14 +119,14 @@ describe('APM 端点详情抽屉', () => {
     expect(screen.getByRole('columnheader', { name: /P95/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
   });
 
-  it('按容器比例平衡主信息列与指标列', async () => {
+  it('让主信息列自适应剩余空间，并固定指标与操作列宽度', async () => {
     renderWithApmIntl(<ApmEndpointsPage />);
 
     await screen.findByText('/pay');
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['29%', '22%', '14%', '11%', '10%', '9%', '88px']);
+    expect(columnWidths).toEqual(['', '', '120px', '112px', '104px', '112px', '88px']);
     expect(screen.queryByRole('columnheader', { name: '方法' })).toBeNull();
     expect(getComputedStyle(screen.getByRole('columnheader', { name: /吞吐量/ })).textAlign).toBe('left');
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });

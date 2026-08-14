@@ -7,6 +7,7 @@ import {
   Alert,
   Button,
   Form,
+  Grid,
   Input,
   InputNumber,
   message,
@@ -20,7 +21,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import dayjs from 'dayjs';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
@@ -37,6 +38,7 @@ import type {
 } from '@/app/apm/types';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import FilterToolbar from '@/components/filter-toolbar';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
@@ -79,6 +81,7 @@ const DEFAULT_POLICY_VALUES: ApmPolicyInput = {
 
 export default function ApmPoliciesPage() {
   const { t } = useTranslation();
+  const screens = Grid.useBreakpoint();
   const {
     createPolicy,
     deletePolicy,
@@ -243,26 +246,25 @@ export default function ApmPoliciesPage() {
     {
       title: t('apm.policies.name', '策略名称'),
       dataIndex: 'name',
-      width: '38%',
       render: (value) => <EllipsisWithTooltip className="truncate font-medium" text={value} />,
     },
     {
       title: t('apm.policies.creator', '创建者'),
       dataIndex: 'created_by',
-      width: '12%',
+      width: 144,
       responsive: ['lg'],
       render: (value) => value || '—',
     },
     {
       title: t('apm.policies.createdAt', '创建时间'),
       dataIndex: 'created_at',
-      width: '16%',
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
       responsive: ['xl'],
       render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm')}</span>,
     },
     {
       title: t('apm.policies.lastRun', '最近执行'),
-      width: '16%',
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
       responsive: ['xxl'],
       render: (_, policy) => policy.state?.last_succeeded_at
         ? <span className="tabular-nums">{dayjs(policy.state.last_succeeded_at).format('YYYY-MM-DD HH:mm')}</span>
@@ -270,7 +272,7 @@ export default function ApmPoliciesPage() {
     },
     {
       title: t('apm.policies.enabled', '启用状态'),
-      width: '8%',
+      width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'center',
       render: (_, policy) => (
         <Switch
@@ -296,10 +298,10 @@ export default function ApmPoliciesPage() {
     {
       title: t('apm.common.operation', '操作'),
       key: 'action',
-      width: 120,
+      width: screens.sm ? APM_TABLE_COLUMN_WIDTHS.metricWide : APM_TABLE_COLUMN_WIDTHS.singleAction,
       align: 'right',
       fixed: 'right',
-      render: (_, policy) => (
+      render: (_, policy) => screens.sm ? (
         <Space className="whitespace-nowrap" size={8}>
           <Button
             className="!px-0"
@@ -323,6 +325,33 @@ export default function ApmPoliciesPage() {
             </Button>
           </Popconfirm>
         </Space>
+      ) : (
+        <MoreActionsDropdown
+          ariaLabel={t('apm.serviceDetail.moreActions', '更多操作')}
+          buttonType="link"
+          items={[
+            {
+              key: 'edit',
+              disabled: mutatingId !== null,
+              label: t('common.edit', '编辑'),
+              onClick: () => openEdit(policy),
+            },
+            {
+              key: 'delete',
+              danger: true,
+              disabled: mutatingId !== null,
+              label: t('common.delete', '删除'),
+              confirm: {
+                title: t('apm.policies.deleteConfirm', '确认删除这个策略？'),
+                content: t('apm.policies.deleteHint', '删除后不再评估该策略，且无法恢复。'),
+                okText: t('common.delete', '删除'),
+                cancelText: t('common.cancel', '取消'),
+              },
+              onClick: () => removePolicy(policy),
+            },
+          ]}
+          stopPropagation
+        />
       ),
     },
   ];

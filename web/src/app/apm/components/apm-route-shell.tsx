@@ -20,7 +20,7 @@ export default function ApmRouteShell({
   const { t } = useTranslation();
   return (
     <div className="h-full overflow-auto px-4 pb-4 lg:px-5 lg:pb-5">
-      <div className="mx-auto w-full min-w-0">
+      <div className="mx-auto w-full min-w-0 max-w-[1920px]">
         <h1 className="sr-only">{title}</h1>
         <div className="min-w-0">
           {children ?? (

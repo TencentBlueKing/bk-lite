@@ -16,6 +16,12 @@ const api = {
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
 vi.mock('@/app/apm/components/apm-data-table', () => ({
+  APM_TABLE_COLUMN_WIDTHS: {
+    actionGroup: 168,
+    organization: 160,
+    status: 96,
+    timestamp: 168,
+  },
   default: ({ columns, dataSource }: {
     columns: Array<{ key?: string; fixed?: string; render?: (_: unknown, item: { id: string; name: string; application_id: string }) => React.ReactNode }>;
     dataSource: Array<{ id: string; name: string; application_id: string }>;

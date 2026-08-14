@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Descriptions, Space, Tag, Typography, type TableColumnsType } from 'antd';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import ServiceLanguage from '@/app/apm/components/service-language';
@@ -54,7 +54,6 @@ export default function ApmApplicationDetailPage() {
     },
     {
       title: t('apm.common.environment', '环境'),
-      width: 240,
       responsive: ['sm'],
       render: (_, service) => (
         <div className="flex flex-wrap gap-1">
@@ -64,11 +63,11 @@ export default function ApmApplicationDetailPage() {
         </div>
       ),
     },
-    { title: t('apm.common.status', '状态'), dataIndex: 'status', width: 100, align: 'center', render: (value) => <ApmStatusTag status={value} /> },
+    { title: t('apm.common.status', '状态'), dataIndex: 'status', width: APM_TABLE_COLUMN_WIDTHS.status, align: 'center', render: (value) => <ApmStatusTag status={value} /> },
     {
       title: t('apm.instances.lastReport', '最近上报'),
       dataIndex: 'last_seen_at',
-      width: 190,
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
       responsive: ['lg'],
       render: (value) => <EllipsisWithTooltip text={new Date(value).toLocaleString()} />,
     },

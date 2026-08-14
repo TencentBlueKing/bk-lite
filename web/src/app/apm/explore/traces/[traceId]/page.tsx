@@ -183,7 +183,7 @@ export default function ApmTraceDetailPage() {
     }))
     : [];
   const attributeColumns: TableProps<{ key: string; value: string }>['columns'] = [
-    { title: t('apm.trace.attribute', '属性'), dataIndex: 'key', width: '40%', render: (value) => <Typography.Text code>{value}</Typography.Text> },
+    { title: t('apm.trace.attribute', '属性'), dataIndex: 'key', width: '32%', render: (value) => <Typography.Text code>{value}</Typography.Text> },
     { title: t('apm.trace.value', '值'), dataIndex: 'value', render: (value) => <Typography.Text className="break-all">{value}</Typography.Text> },
   ];
 

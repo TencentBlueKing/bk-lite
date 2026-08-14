@@ -22,7 +22,7 @@ import {
 } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import FilterToolbar from '@/components/filter-toolbar';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
@@ -331,7 +331,7 @@ export default function ApmEventsPage() {
     {
       title: t('apm.alerts.level', '级别'),
       dataIndex: 'severity',
-      width: 90,
+      width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'center',
       responsive: ['sm'],
       render: (severity: ApmEvent['severity']) => (
@@ -341,20 +341,20 @@ export default function ApmEventsPage() {
     {
       title: t('apm.common.service', '服务'),
       dataIndex: 'service',
-      width: 180,
+      width: 200,
       responsive: ['md'],
       render: (value) => <EllipsisWithTooltip className="truncate" text={value || '—'} />,
     },
     {
       title: t('apm.common.endpoint', '端点'),
       key: 'endpoint',
-      width: 200,
+      width: 144,
       responsive: ['lg'],
       render: () => <Typography.Text type="secondary">{t('apm.alerts.serviceLevel', '服务级')}</Typography.Text>,
     },
     {
       title: t('apm.alerts.notification', '通知'),
-      width: 130,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       responsive: ['xl'],
       render: (_, event) => {
         const deliveries = event.notification_deliveries ?? [];
@@ -371,14 +371,14 @@ export default function ApmEventsPage() {
     {
       title: t('apm.alerts.occurredAt', '发生时间'),
       dataIndex: 'start_time',
-      width: 180,
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
       responsive: ['md'],
       render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm:ss')}</span>,
     },
     {
       title: t('apm.common.operation', '操作'),
       key: 'action',
-      width: 90,
+      width: APM_TABLE_COLUMN_WIDTHS.singleAction,
       align: 'right',
       fixed: 'right',
       render: (_, event) => (

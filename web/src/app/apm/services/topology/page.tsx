@@ -5,7 +5,7 @@ import { Alert, Button, Grid, Input, Segmented, Select, Tag, Typography, type Ta
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyHealth, ApmTopologyNode } from '@/app/apm/types';
@@ -270,7 +270,7 @@ export default function ApmTopologyPage() {
     {
       title: t('apm.topology.health', '健康'),
       dataIndex: 'health',
-      width: 90,
+      width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'center',
       responsive: ['sm'],
       render: (health: ApmTopologyHealth) => (
@@ -283,7 +283,7 @@ export default function ApmTopologyPage() {
       title: t('apm.topology.observedCalls', '观测调用'),
       dataIndex: 'sampled_calls',
       align: 'right',
-      width: 110,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       className: 'tabular-nums',
       responsive: ['lg'],
     },
@@ -291,7 +291,7 @@ export default function ApmTopologyPage() {
       title: t('apm.topology.avgDuration', '平均耗时'),
       dataIndex: 'average_duration_ms',
       align: 'right',
-      width: 110,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       className: 'tabular-nums',
       responsive: ['md'],
       render: (value: number) => `${value.toFixed(0)} ms`,

@@ -109,7 +109,7 @@ describe('APM 告警策略列表', () => {
 
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
-    expect(columnWidths).toEqual(['38%', '12%', '16%', '16%', '8%', '120px']);
+    expect(columnWidths).toEqual(['', '144px', '168px', '168px', '96px', '120px']);
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '启用状态' })).textAlign).toBe('left');
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });
     expect(getComputedStyle(actionHeader).textAlign).toBe('left');

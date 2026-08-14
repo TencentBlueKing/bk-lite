@@ -5,6 +5,7 @@ import {
   Button,
   Drawer,
   Form,
+  Grid,
   Input,
   InputNumber,
   message,
@@ -19,7 +20,7 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import { formatPercentage } from '@/app/apm/components/metric-format';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
@@ -31,6 +32,7 @@ import type {
   ApmSloInput,
 } from '@/app/apm/types';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
@@ -108,6 +110,7 @@ function EvaluationTag({ row }: { row: ApmSlo }) {
 
 export default function ApmSloPage() {
   const { t } = useTranslation();
+  const screens = Grid.useBreakpoint();
   const { createSlo, deleteSlo, getServices, getSlos, setSloEnabled, updateSlo } = useApmApi();
   const [form] = Form.useForm<SloFormValues>();
   const [rows, setRows] = useState<ApmSlo[]>([]);
@@ -268,7 +271,7 @@ export default function ApmSloPage() {
     },
     {
       title: <SloColumnHeading align="right" hint={t('apm.slo.objectiveHint', '评估窗口')} label={t('apm.slo.objective', '目标值')} />,
-      width: 128,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       align: 'right',
       responsive: ['lg'],
       render: (_, row) => (
@@ -281,7 +284,7 @@ export default function ApmSloPage() {
     {
       title: <SloColumnHeading align="right" hint={t('apm.slo.currentHint', '达标率')} label={t('apm.slo.current', '当前表现')} />,
       dataIndex: 'current_rate',
-      width: 128,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       align: 'right',
       responsive: ['sm'],
       render: (value: number | null) => value === null ? '—' : <span className="tabular-nums">{formatPercentage(value)}</span>,
@@ -289,14 +292,14 @@ export default function ApmSloPage() {
     {
       title: <SloColumnHeading hint={t('apm.slo.budgetHint', '剩余')} label={t('apm.slo.budget', '错误预算')} />,
       dataIndex: 'budget_remaining',
-      width: 200,
+      width: APM_TABLE_COLUMN_WIDTHS.progress,
       responsive: ['xxl'],
       render: (value: number | null) => <BudgetProgress value={value} />,
     },
     {
       title: <SloColumnHeading align="center" hint={t('apm.slo.enabledHint', '状态')} label={t('apm.slo.enabledCol', '启用')} />,
       dataIndex: 'is_enabled',
-      width: 96,
+      width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'center',
       render: (_, row) => (
         <Switch
@@ -314,10 +317,10 @@ export default function ApmSloPage() {
     {
       title: t('apm.common.operation', '操作'),
       key: 'actions',
-      width: 120,
+      width: screens.sm ? APM_TABLE_COLUMN_WIDTHS.metricWide : APM_TABLE_COLUMN_WIDTHS.singleAction,
       align: 'right',
       fixed: 'right',
-      render: (_, row) => (
+      render: (_, row) => screens.sm ? (
         <Space className="whitespace-nowrap" size={8}>
           <Button className="!px-0" size="small" type="link" onClick={() => openEditDrawer(row)}>{t('common.edit', '编辑')}</Button>
           <Popconfirm
@@ -331,6 +334,32 @@ export default function ApmSloPage() {
             <Button className="!px-0" danger disabled={mutatingId !== null && mutatingId !== row.id} size="small" type="link">{t('common.delete', '删除')}</Button>
           </Popconfirm>
         </Space>
+      ) : (
+        <MoreActionsDropdown
+          ariaLabel={t('apm.serviceDetail.moreActions', '更多操作')}
+          buttonType="link"
+          items={[
+            {
+              key: 'edit',
+              label: t('common.edit', '编辑'),
+              onClick: () => openEditDrawer(row),
+            },
+            {
+              key: 'delete',
+              danger: true,
+              disabled: mutatingId !== null && mutatingId !== row.id,
+              label: t('common.delete', '删除'),
+              confirm: {
+                title: t('apm.slo.deleteConfirm', '确认删除这个 SLO？'),
+                content: t('apm.slo.deleteHint', '删除后将停止目标评估，且无法恢复。'),
+                okText: t('common.delete', '删除'),
+                cancelText: t('common.cancel', '取消'),
+              },
+              onClick: () => remove(row),
+            },
+          ]}
+          stopPropagation
+        />
       ),
     },
   ];
