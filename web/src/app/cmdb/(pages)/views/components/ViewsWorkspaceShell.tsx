@@ -28,6 +28,11 @@ import {
 } from '../viewMemory';
 import ViewInstancePicker from './ViewInstancePicker';
 import ViewCanvasHost from './ViewCanvasHost';
+import HopDepthControl from '@/app/cmdb/(pages)/assetData/detail/relationships/networkTopo/HopDepthControl';
+import {
+  NETWORK_TOPO_DEFAULT_CENTER_HOP,
+  type NetworkTopoHop,
+} from '@/app/cmdb/(pages)/assetData/detail/relationships/networkTopo/hopDepth';
 
 export interface ViewsWorkspaceShellProps {
   viewType: ViewType;
@@ -64,6 +69,9 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
     rackId: string;
   } | null>(null);
   const [highlightRackId, setHighlightRackId] = useState<string | null>(null);
+  const [networkHop, setNetworkHop] = useState<NetworkTopoHop>(
+    NETWORK_TOPO_DEFAULT_CENTER_HOP
+  );
 
   const hydratedRef = useRef(false);
   const lastSyncedKeyRef = useRef('');
@@ -254,9 +262,12 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
     setRoomReturn(null);
     setHighlightRackId(null);
 
-    setFocus((prev) =>
-      (focusKey(prev) === focusKey(urlFocus) ? prev : urlFocus)
-    );
+    setFocus((prev) => {
+      if (viewType === 'network' && prev?.inst_uuid !== urlFocus?.inst_uuid) {
+        setNetworkHop(NETWORK_TOPO_DEFAULT_CENTER_HOP);
+      }
+      return focusKey(prev) === focusKey(urlFocus) ? prev : urlFocus;
+    });
   }, [ready, searchParams, focusFromParsed, viewType]);
 
   const persistAndSync = useCallback(
@@ -316,6 +327,7 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
       setRoomReturn(null);
       setHighlightRackId(null);
       setFocus(null);
+      setNetworkHop(NETWORK_TOPO_DEFAULT_CENTER_HOP);
       return;
     }
     const enriched = enrichFocus(next);
@@ -336,6 +348,9 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
       setMode(enriched.mode);
     }
     setFocus((prev) => {
+      if (viewType === 'network' && prev?.inst_uuid !== enriched.inst_uuid) {
+        setNetworkHop(NETWORK_TOPO_DEFAULT_CENTER_HOP);
+      }
       if (focusKey(prev) === focusKey(enriched)) {
         // Same identity — avoid a new object so persist/URL effects do not re-fire.
         const mergedName = enriched.inst_name || prev?.inst_name;
@@ -476,6 +491,9 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
         {networkDiscovering && viewType === 'network' && (
           <Spin size="small" />
         )}
+        {viewType === 'network' && focus && (
+          <HopDepthControl value={networkHop} onChange={setNetworkHop} />
+        )}
         <div className="ml-auto shrink-0">
           {focus && (
             <Button type="default" onClick={handleViewDetail}>
@@ -500,6 +518,10 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
             }
             highlightRackId={
               viewType === 'rack-room' ? highlightRackId : undefined
+            }
+            networkCenterHop={viewType === 'network' ? networkHop : undefined}
+            onNetworkCenterHopChange={
+              viewType === 'network' ? setNetworkHop : undefined
             }
           >
             {children}

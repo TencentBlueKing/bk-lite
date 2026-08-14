@@ -1,10 +1,10 @@
 .page {
-  --k8s-blue: #1768ff;
+  --k8s-blue: var(--color-primary);
   display: flex;
   min-width: 0;
   height: 100%;
   overflow: hidden;
-  background: #f5f7fb;
+  background: var(--color-bg);
 }
 
 .secondaryNav {
@@ -15,8 +15,8 @@
   height: 100%;
   padding: 12px 10px;
   overflow: auto;
-  border-right: 1px solid #e5eaf2;
-  background: #fff;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg);
   transition: width .2s ease, flex-basis .2s ease;
 
   &.collapsed {
@@ -69,71 +69,92 @@
 }
 
 .content {
+  display: flex;
   min-width: 0;
   flex: 1;
+  flex-direction: column;
   height: 100%;
   box-sizing: border-box;
-  padding: 16px;
-  overflow: auto;
+  padding: 12px 16px;
+  overflow: hidden;
 }
 
+.overviewContent,
 .listContent {
-  display: flex;
-  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 
 .pageTitle {
-  margin: 0 0 14px;
-  color: #172b4d;
+  margin: 0;
+  color: var(--color-text-1);
   font-size: 14px;
   font-weight: 650;
+  line-height: 32px;
+}
+
+.overviewStage {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .metricGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
+  flex-shrink: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .metricCard {
-  position: relative;
-  min-height: 98px;
-  padding: 18px 20px;
-  overflow: hidden;
-  border: 1px solid #e6ebf3;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 4px 16px rgb(39 78 126 / 4%);
-
-  &::after {
-    position: absolute;
-    right: -14px;
-    bottom: -28px;
-    width: 76px;
-    height: 76px;
-    border-radius: 50%;
-    background: #edf4ff;
-    content: '';
-  }
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary-bg-active) 72%, var(--color-bg));
 }
 
-.metricLabel { color: #60708a; font-size: 12px; }
-.metricValue { margin-top: 8px; color: #101828; font-size: 14px; font-weight: 650; line-height: 1.5; font-variant-numeric: tabular-nums; }
-.metricDetail { margin-top: 7px; color: #7b8ba3; font-size: 12px; }
+.metricLabel {
+  color: color-mix(in srgb, var(--color-primary) 46%, var(--color-text-3));
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.metricValue {
+  color: var(--color-text-1);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.metricDetail {
+  color: var(--color-text-4);
+  font-size: 12px;
+  line-height: 18px;
+}
 
 .topologyCard {
+  display: flex;
   min-width: 0;
-  padding: 14px;
-  border: 1px solid #e6ebf3;
-  border-radius: 10px;
-  background: #fff;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .topologyShell {
   position: relative;
+  display: flex;
   min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
   overflow: hidden;
   outline: none;
 }
@@ -146,31 +167,29 @@
 
 .layerHeaders {
   display: grid;
+  flex-shrink: 0;
   grid-template-columns: repeat(5, minmax(120px, 1fr));
-  gap: 24px;
-  margin-bottom: 8px;
-  padding: 0 12px;
+  gap: 16px;
+  margin-bottom: 6px;
 
   > div {
-    padding: 9px;
-    border-radius: 6px;
-    color: #354764;
+    padding: 4px 8px;
+    color: var(--color-text-2);
     text-align: center;
+    font-size: 12px;
     font-weight: 600;
-    background: linear-gradient(180deg, #f2f6ff, #f7f9fd);
   }
 }
 
 .topologyViewport {
   position: relative;
-  height: 520px;
+  min-height: 0;
+  flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  border: 1px solid #edf0f5;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background:
-    linear-gradient(90deg, rgb(241 246 255 / 55%) 1px, transparent 1px) 0 0 / 20% 100%,
-    #fbfcfe;
+  background: var(--color-fill-1);
 }
 
 .topologyContent {
@@ -184,15 +203,15 @@
   z-index: 2;
   display: grid;
   grid-template-columns: repeat(5, minmax(120px, 1fr));
-  gap: 24px;
-  min-height: 488px;
+  gap: 16px;
+  min-height: 100%;
 }
 
 .topologyColumn {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 .topologyEdges {
@@ -225,15 +244,15 @@
 .topologyNode {
   position: relative;
   display: flex;
-  min-height: 64px;
+  min-height: 52px;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   overflow: hidden;
-  border: 1px solid #dce4ef;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  color: #263a57;
-  background: #fff;
+  color: var(--color-text-1);
+  background: var(--color-bg);
   box-shadow: 0 3px 10px rgb(32 66 112 / 5%);
   cursor: pointer;
   transition: border-color .16s ease, box-shadow .16s ease, opacity .16s ease, transform .16s ease;
@@ -349,7 +368,24 @@
   }
 }
 
-.toolbar { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.toolbarLeading {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
 .listSpin {
   display: flex;
   min-height: 0;
@@ -370,15 +406,28 @@
   flex: 1;
   flex-direction: column;
   overflow: hidden;
-  background: var(--color-bg-1);
+  background: var(--color-bg);
 }
 
 .tableShell {
   min-height: 0;
   flex: 1;
   overflow: hidden;
+
+  :global(.ant-table),
+  :global(.ant-table-container),
+  :global(.ant-table-content),
+  :global(.ant-table-tbody > tr > td) {
+    background: var(--color-bg);
+  }
+
+  :global(.ant-table-thead > tr > th) {
+    background: var(--color-fill-1);
+  }
 }
 
-@media (max-width: 1500px) {
-  .metricGrid { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+@media (max-width: 1100px) {
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
