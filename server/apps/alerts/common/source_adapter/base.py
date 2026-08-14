@@ -208,30 +208,39 @@ class AlertSourceAdapter(ABC):
         event_dicts = []
         skipped_missing = 0  # 预期内丢弃：缺必填字段
         errored = 0  # 非预期错误：转换异常
-        for add_event in add_events:
+        for event_index, add_event in enumerate(add_events):
             try:
                 data = self.mapping_fields_to_event(add_event)
                 if not data:
                     # 缺少必填字段（如 title）→ 丢弃，避免构造出 start_time=None 的空事件，
                     # 否则会在 bulk_create 时因 NOT NULL 约束令整批写入失败。
                     skipped_missing += 1
-                    logger.warning("[AlertSource] 事件缺少必填字段，已跳过: %s", add_event)
+                    logger.warning(
+                        "[AlertSource] 事件缺少必填字段，已跳过: source_id=%s event_index=%s",
+                        self.alert_source.source_id,
+                        event_index,
+                    )
                     continue
                 data["team"] = self._resolve_event_team(add_event)
                 data.setdefault("enrichment", {})
-                event_dicts.append((data, add_event))
+                event_dicts.append((data, add_event, event_index))
             except Exception as e:
                 errored += 1
-                logger.error("[AlertSource] 事件映射失败: %s, error: %s", add_event, e, exc_info=True)
+                logger.error(
+                    "[AlertSource] 事件映射失败: source_id=%s event_index=%s error_type=%s",
+                    self.alert_source.source_id,
+                    event_index,
+                    type(e).__name__,
+                )
 
         # 整批丰富（尽力而为，内部已隔离异常）
         try:
-            EnrichmentEngine().enrich_batch([d for d, _ in event_dicts])
+            EnrichmentEngine().enrich_batch([data for data, _, _ in event_dicts])
         except Exception:
             logger.error("[AlertSource] 批量丰富失败，跳过", exc_info=True)
 
         events = []
-        for data, add_event in event_dicts:
+        for data, add_event, event_index in event_dicts:
             try:
                 # 取出"系统补全 start_time"标记（非模型字段，不能传入 Event(**data)）
                 synthesized = data.pop("_start_time_synthesized", False)
@@ -241,7 +250,12 @@ class AlertSourceAdapter(ABC):
                 events.append(event)
             except Exception as e:
                 errored += 1
-                logger.error("[AlertSource] 事件转换失败: %s, error: %s", add_event, e, exc_info=True)
+                logger.error(
+                    "[AlertSource] 事件转换失败: source_id=%s event_index=%s error_type=%s",
+                    self.alert_source.source_id,
+                    event_index,
+                    type(e).__name__,
+                )
         # D3：让接入过程中的丢弃可观测，区分"预期跳过"与"非预期错误"，避免静默丢数据。
         if skipped_missing or errored:
             logger.warning(
