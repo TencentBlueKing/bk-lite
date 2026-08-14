@@ -43,7 +43,7 @@ def _use_executor_for_windows(settings):
     本地 ``.env`` 可显式启用 ``direct_winrm`` 跑真实闭环，但不应让
     开发者的私有配置改变测试路由或触发真实 WinRM 连接。
     """
-    settings.PATCH_MGMT_WINDOWS_EXECUTION_MODE = 'executor'
+    settings.PATCH_MGMT_WINDOWS_EXECUTION_MODE = "executor"
 
 
 @pytest.fixture
@@ -55,6 +55,7 @@ def su_client(api_client, authenticated_user, monkeypatch):
     设为实例属性即可被请求内的 request.user 读取，无需落库。
     """
     authenticated_user.is_superuser = True
+    authenticated_user.timezone = "Asia/Shanghai"
     api_client.cookies["current_team"] = "1"
     monkeypatch.setattr(
         "apps.core.utils.viewset_utils.get_permission_rules",
