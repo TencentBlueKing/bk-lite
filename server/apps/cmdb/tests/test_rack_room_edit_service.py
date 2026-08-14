@@ -196,6 +196,10 @@ def test_execute_unplace_rack_clears_location_keeps_instance(monkeypatch):
 
     class InstanceManage:
         @staticmethod
+        def instance_association_map(model_id, inst_ids, related_model=None):
+            return {8: [1]}
+
+        @staticmethod
         def instance_association_delete_by_key(**kwargs):
             captured["delete"] = kwargs
 
@@ -239,6 +243,10 @@ def test_execute_unplace_device_clears_start_keeps_u_size(monkeypatch):
 
     class InstanceManage:
         @staticmethod
+        def instance_association_map(model_id, inst_ids, related_model=None):
+            return {11: [9]}
+
+        @staticmethod
         def instance_association_delete_by_key(**kwargs):
             captured["delete"] = kwargs
 
@@ -266,6 +274,87 @@ def test_execute_unplace_device_clears_start_keeps_u_size(monkeypatch):
     assert captured["update"] == {"rack_u_start": ""}
     assert "u_size" not in captured["update"]
     assert captured["delete"]["model_asst_id"] == "rack_contains_switch"
+
+
+def test_execute_unplace_rack_rejects_other_room(monkeypatch):
+    from apps.cmdb.services import rack_room_edit as svc
+
+    existing = {
+        "_id": 8,
+        "inst_uuid": "rack-8",
+        "model_id": "rack",
+        "location": "A02",
+    }
+    captured = {}
+
+    class InstanceManage:
+        @staticmethod
+        def instance_association_map(model_id, inst_ids, related_model=None):
+            return {8: [99]}
+
+        @staticmethod
+        def instance_association_delete_by_key(**kwargs):
+            captured["delete"] = kwargs
+
+        @staticmethod
+        def instance_update(*args, **kwargs):
+            captured["update"] = True
+
+    monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage", InstanceManage)
+    with pytest.raises(RackRoomEditError, match="当前机房"):
+        svc.execute_layout_action(
+            action=ACTION_UNPLACE,
+            scope="room",
+            container={"_id": 1, "model_id": "server_room", "inst_uuid": "room-1"},
+            operator="bob",
+            allowed_org_ids=[1],
+            user_groups=[],
+            roles=[],
+            existing=existing,
+        )
+    assert "delete" not in captured
+    assert "update" not in captured
+
+
+def test_execute_unplace_device_rejects_other_rack(monkeypatch):
+    from apps.cmdb.services import rack_room_edit as svc
+
+    existing = {
+        "_id": 11,
+        "inst_uuid": "sw-1",
+        "model_id": "switch",
+        "rack_u_start": 10,
+        "u_size": 2,
+    }
+    captured = {}
+
+    class InstanceManage:
+        @staticmethod
+        def instance_association_map(model_id, inst_ids, related_model=None):
+            return {11: [8]}
+
+        @staticmethod
+        def instance_association_delete_by_key(**kwargs):
+            captured["delete"] = kwargs
+
+        @staticmethod
+        def instance_update(*args, **kwargs):
+            captured["update"] = True
+
+    monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage", InstanceManage)
+    with pytest.raises(RackRoomEditError, match="当前机柜"):
+        svc.execute_layout_action(
+            action=ACTION_UNPLACE,
+            scope="rack",
+            container={"_id": 9, "model_id": "rack", "inst_uuid": "rack-9", "u_count": 42},
+            operator="bob",
+            allowed_org_ids=[1],
+            user_groups=[],
+            roles=[],
+            existing=existing,
+        )
+    assert "delete" not in captured
+    assert "update" not in captured
 
 
 def test_execute_place_device_rejects_host(monkeypatch):

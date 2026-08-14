@@ -216,6 +216,12 @@ def _related_ids(model_id: str, inst_id: int, related_model: str) -> list[int]:
     return relation_map.get(int(inst_id)) or []
 
 
+def _require_layout_membership(*, existing: dict, container: dict, related_model: str, message: str) -> None:
+    related = _related_ids(existing["model_id"], existing["_id"], related_model)
+    if _safe_int(container.get("_id")) not in _id_set(related):
+        raise RackRoomEditError(message)
+
+
 def execute_layout_action(
     *,
     action: str,
@@ -294,10 +300,15 @@ def _execute_room_action(
     get_room_layout,
     InstanceManage,
 ):
-    layout = get_room_layout(room["_id"])
     if action == ACTION_UNPLACE:
         if not existing:
             raise RackRoomEditError("机柜实例不存在")
+        _require_layout_membership(
+            existing=existing,
+            container=room,
+            related_model="server_room",
+            message="该机柜不在当前机房中",
+        )
         _delete_association(room, existing, ROOM_RACK_ASST_ID, operator)
         updated = InstanceManage.instance_update(
             user_groups,
@@ -309,6 +320,7 @@ def _execute_room_action(
         )
         return {"action": ACTION_UNPLACE, "instance": updated}
 
+    layout = get_room_layout(room["_id"])
     row = _safe_int(row)
     col = _safe_int(col)
     if row is None or col is None:
@@ -362,11 +374,15 @@ def _execute_rack_action(
     get_rack_layout,
     InstanceManage,
 ):
-    layout = get_rack_layout(rack["_id"])
-    u_count = _safe_int((layout.get("rack") or {}).get("u_count") or rack.get("u_count")) or 0
     if action == ACTION_UNPLACE:
         if not existing:
             raise RackRoomEditError("设备实例不存在")
+        _require_layout_membership(
+            existing=existing,
+            container=rack,
+            related_model="rack",
+            message="该设备不在当前机柜中",
+        )
         _delete_association(rack, existing, RACK_DEVICE_ASST_ID, operator)
         updated = InstanceManage.instance_update(
             user_groups,
@@ -378,6 +394,8 @@ def _execute_rack_action(
         )
         return {"action": ACTION_UNPLACE, "instance": updated}
 
+    layout = get_rack_layout(rack["_id"])
+    u_count = _safe_int((layout.get("rack") or {}).get("u_count") or rack.get("u_count")) or 0
     start = _safe_int(u_start)
     size = normalize_device_u_size(u_size if u_size not in (None, "") else (existing or {}).get("u_size"))
     conflict = device_u_conflict(

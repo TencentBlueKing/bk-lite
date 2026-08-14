@@ -130,6 +130,78 @@ def test_execute_create_marks_manual_and_unknown_status(monkeypatch):
     assert captured["operator"] == "bob"
 
 
+def test_execute_create_rolls_back_when_association_fails(monkeypatch):
+    from apps.cmdb.services import ipam_edit as svc
+
+    created = {"_id": 4, "inst_uuid": "new-ip", "ip_addr": "10.11.27.10"}
+    captured = {}
+
+    class InstanceManage:
+        @staticmethod
+        def instance_create(model_id, payload, operator, allowed_org_ids=None):
+            return created
+
+        @staticmethod
+        def instance_batch_delete_by_uuids(user_groups, roles, uuids, operator):
+            captured["deleted"] = uuids
+
+    monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage", InstanceManage)
+    monkeypatch.setattr(
+        "apps.cmdb.services.ipam_discovery._ensure_subnet_ip_association",
+        lambda *a, **k: {"success": [], "failed": [{"error": "graph down"}]},
+    )
+    monkeypatch.setattr(svc, "_safe_writeback", lambda *a, **k: captured.setdefault("writeback", True))
+
+    with pytest.raises(IpamEditError, match="graph down"):
+        svc.execute_manual_ip_action(
+            action="create",
+            subnet=SUBNET,
+            existing=None,
+            ip_addr="10.11.27.10",
+            allocated_status="allocated",
+            operator="bob",
+            allowed_org_ids=[1],
+            user_groups=[],
+            roles=[],
+        )
+    assert captured["deleted"] == ["new-ip"]
+    assert "writeback" not in captured
+
+
+def test_execute_update_raises_when_association_fails(monkeypatch):
+    from apps.cmdb.services import ipam_edit as svc
+
+    existing = {"_id": 7, "inst_uuid": "ip-7", "ip_addr": "10.11.27.10"}
+
+    class InstanceManage:
+        @staticmethod
+        def instance_update(user_groups, roles, inst_id, update_attr, operator, allowed_org_ids=None):
+            return {**existing, **update_attr}
+
+        @staticmethod
+        def instance_batch_delete_by_uuids(*args, **kwargs):
+            raise AssertionError("update 失败不应删除已有 IP")
+
+    monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage", InstanceManage)
+    monkeypatch.setattr(
+        "apps.cmdb.services.ipam_discovery._ensure_subnet_ip_association",
+        lambda *a, **k: {"success": [], "failed": [{"error": "assoc failed"}]},
+    )
+
+    with pytest.raises(IpamEditError, match="assoc failed"):
+        svc.execute_manual_ip_action(
+            action="update",
+            subnet=SUBNET,
+            existing=existing,
+            ip_addr="10.11.27.10",
+            allocated_status="reserved",
+            operator="bob",
+            allowed_org_ids=[1],
+            user_groups=[],
+            roles=[],
+        )
+
+
 def test_build_editable_ip_attrs_defaults_unknown_on_create():
     from apps.cmdb.services.ipam_edit import build_editable_ip_attrs
 

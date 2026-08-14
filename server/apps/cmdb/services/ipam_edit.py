@@ -149,7 +149,6 @@ def execute_manual_ip_action(
 ) -> dict:
     """执行已鉴权的手工登记。调用方必须先完成菜单权限与实例 Operate 校验。"""
     from apps.cmdb.services.instance import InstanceManage
-    from apps.cmdb.services.ipam_discovery import _ensure_subnet_ip_association
 
     allocated_status = normalize_allocated_status(allocated_status)
     subnet_id = subnet.get("_id")
@@ -180,7 +179,20 @@ def execute_manual_ip_action(
             operator,
             allowed_org_ids=allowed_org_ids,
         )
-        _ensure_subnet_ip_association(subnet_id, created["_id"])
+        try:
+            _require_subnet_ip_association(subnet_id, created["_id"])
+        except Exception:
+            inst_uuid = created.get("inst_uuid")
+            if inst_uuid:
+                try:
+                    InstanceManage.instance_batch_delete_by_uuids(user_groups, roles, [inst_uuid], operator)
+                except Exception:
+                    logger.exception(
+                        "[IPAM] 手工登记关联失败后回滚 IP 失败 subnet_id=%s ip_id=%s",
+                        subnet_id,
+                        created.get("_id"),
+                    )
+            raise
         _safe_writeback(subnet_id)
         return {"action": ACTION_CREATE, "ip": created}
 
@@ -198,7 +210,7 @@ def execute_manual_ip_action(
             operator,
             allowed_org_ids=allowed_org_ids,
         )
-        _ensure_subnet_ip_association(subnet_id, existing["_id"])
+        _require_subnet_ip_association(subnet_id, existing["_id"])
         return {"action": ACTION_UPDATE, "ip": updated}
 
     if action == ACTION_DELETE:
@@ -212,6 +224,18 @@ def execute_manual_ip_action(
         return {"action": ACTION_DELETE, "ip": None}
 
     raise IpamEditError(f"未知操作: {action}")
+
+
+def _require_subnet_ip_association(subnet_id, ip_id) -> None:
+    from apps.cmdb.services.ipam_discovery import _ensure_subnet_ip_association
+
+    result = _ensure_subnet_ip_association(subnet_id, ip_id) or {}
+    failed = result.get("failed") or []
+    if not failed:
+        return
+    first = failed[0]
+    detail = first.get("error") if isinstance(first, dict) else first
+    raise IpamEditError(str(detail) or "无法建立子网与 IP 的关联")
 
 
 def _safe_writeback(subnet_id):
