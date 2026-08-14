@@ -54,7 +54,6 @@ class CatalogReconcileResult:
     discovered_instances: int
     missing_instance_identities: int
     archived_services: int
-    archived_instances: int
     unknown_applications: int = 0
     invalid_activities: int = 0
 
@@ -93,8 +92,8 @@ class TraceSummary:
 class SpanSearchQuery:
     started_at: datetime
     ended_at: datetime
-    service_name: str
-    environment: str
+    service_name: str | None = None
+    environment: str | None = None
     service_namespace: str | None = None
     instance_id: str | None = None
     span_name: str | None = None
@@ -127,6 +126,69 @@ class SpanSummary:
 class SpanPage:
     items: tuple[SpanSummary, ...]
     next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class IssueSearchQuery:
+    started_at: datetime
+    ended_at: datetime
+    service_namespace: str | None = None
+    service_name: str | None = None
+    environment: str | None = None
+    cursor: str | None = None
+    limit: int = 50
+
+    def span_query(self) -> SpanSearchQuery:
+        return SpanSearchQuery(
+            started_at=self.started_at,
+            ended_at=self.ended_at,
+            service_namespace=self.service_namespace,
+            service_name=self.service_name,
+            environment=self.environment,
+            status="error",
+            cursor=self.cursor,
+            limit=self.limit,
+        )
+
+
+@dataclass(frozen=True)
+class IssueDistribution:
+    value: str
+    count: int
+    percent: float
+
+
+@dataclass(frozen=True)
+class IssueSampleTrace:
+    trace_id: str
+    span_id: str
+    endpoint: str
+    started_at: datetime
+    duration_ms: float
+
+
+@dataclass(frozen=True)
+class IssueProjection:
+    fingerprint: str
+    exception_type: str
+    message: str
+    stacktrace: str
+    service_namespace: str
+    service_name: str
+    environment: str
+    occurrences: int
+    affected_traces: int
+    last_seen_at: datetime
+    version_distribution: tuple[IssueDistribution, ...]
+    endpoint_distribution: tuple[IssueDistribution, ...]
+    sample_traces: tuple[IssueSampleTrace, ...]
+
+
+@dataclass(frozen=True)
+class IssuePage:
+    items: tuple[IssueProjection, ...]
+    next_cursor: str | None
+    truncated: bool
 
 
 @dataclass(frozen=True)
@@ -167,6 +229,7 @@ class TopologyTarget:
     service_namespace: str
     service_name: str
     environment: str
+    language: str = ""
 
 
 @dataclass(frozen=True)
@@ -191,6 +254,7 @@ class TopologyNode:
     health: str
     sampled_spans: int
     error_spans: int
+    language: str = ""
 
 
 @dataclass(frozen=True)
@@ -357,26 +421,33 @@ class NotificationDeliveryResult:
 
 
 class TraceStore(Protocol):
-    def search(self, query: TraceSearchQuery) -> TracePage: ...
+    def search(self, query: TraceSearchQuery) -> TracePage:
+        ...
 
-    def search_spans(self, query: SpanSearchQuery) -> SpanPage: ...
+    def search_spans(self, query: SpanSearchQuery) -> SpanPage:
+        ...
 
-    def get_trace(self, trace_id: str) -> TraceDetail | None: ...
+    def get_trace(self, trace_id: str) -> TraceDetail | None:
+        ...
 
 
 class MetricStore(Protocol):
-    def service_red(self, query: ServiceMetricQuery) -> ServiceRed: ...
+    def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
+        ...
 
-    def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement: ...
+    def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:
+        ...
 
-    def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]: ...
+    def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]:
+        ...
 
 
 class TopologyStore(Protocol):
     def service_dependencies(
         self,
         query: TopologyDependencyQuery,
-    ) -> tuple[ServiceDependency, ...]: ...
+    ) -> tuple[ServiceDependency, ...]:
+        ...
 
 
 class TelemetryStore(TraceStore, MetricStore, TopologyStore, Protocol):
@@ -384,15 +455,18 @@ class TelemetryStore(TraceStore, MetricStore, TopologyStore, Protocol):
 
 
 class NotificationDispatcher(Protocol):
-    def dispatch(self, delivery: NotificationDelivery) -> NotificationDeliveryResult: ...
+    def dispatch(self, delivery: NotificationDelivery) -> NotificationDeliveryResult:
+        ...
 
 
 class IntegrationConfigurationService(Protocol):
-    def render_snippet(self, request: IngestSnippetRequest) -> IngestSnippet: ...
+    def render_snippet(self, request: IngestSnippetRequest) -> IngestSnippet:
+        ...
 
 
 class TelemetryCatalogService(Protocol):
-    def discover(self, discovery: CatalogDiscovery) -> CatalogDiscoveryResult: ...
+    def discover(self, discovery: CatalogDiscovery) -> CatalogDiscoveryResult:
+        ...
 
     def set_service_organizations(
         self,
@@ -400,7 +474,8 @@ class TelemetryCatalogService(Protocol):
         organization_ids: Sequence[int],
         *,
         actor: str,
-    ) -> ApmService: ...
+    ) -> ApmService:
+        ...
 
     def set_instance_organizations(
         self,
@@ -408,28 +483,36 @@ class TelemetryCatalogService(Protocol):
         organization_ids: Sequence[int],
         *,
         actor: str,
-    ) -> ApmServiceInstance: ...
+    ) -> ApmServiceInstance:
+        ...
 
-    def archive_service(self, service_id: UUID, *, reason: str, actor: str) -> ApmService: ...
+    def archive_service(self, service_id: UUID, *, reason: str, actor: str) -> ApmService:
+        ...
 
-    def restore_service(self, service_id: UUID, *, actor: str) -> ApmService: ...
-
-    def archive_stale_instances(self, *, observed_at: datetime) -> int: ...
+    def restore_service(self, service_id: UUID, *, actor: str) -> ApmService:
+        ...
 
 
 class TelemetryQueryService(Protocol):
-    def service_red(self, query: ServiceMetricQuery) -> ServiceRed: ...
+    def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
+        ...
 
-    def search_traces(self, query: TraceSearchQuery) -> TracePage: ...
+    def search_traces(self, query: TraceSearchQuery) -> TracePage:
+        ...
 
-    def get_trace(self, trace_id: str) -> TraceDetail | None: ...
+    def get_trace(self, trace_id: str) -> TraceDetail | None:
+        ...
 
 
 class ApmPolicyService(Protocol):
-    def save_policy(self, policy: ApmPolicy) -> ApmPolicy: ...
+    def save_policy(self, policy: ApmPolicy) -> ApmPolicy:
+        ...
 
-    def evaluate(self, policy_id: UUID, *, evaluated_at: datetime) -> None: ...
+    def evaluate(self, policy_id: UUID, *, evaluated_at: datetime) -> None:
+        ...
 
-    def test_query(self, policy: ApmPolicy, *, evaluated_at: datetime) -> PolicyQueryResult: ...
+    def test_query(self, policy: ApmPolicy, *, evaluated_at: datetime) -> PolicyQueryResult:
+        ...
 
-    def retry_pending_events(self, *, limit: int = 100) -> PublishResult: ...
+    def retry_pending_events(self, *, limit: int = 100) -> PublishResult:
+        ...

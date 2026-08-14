@@ -9,18 +9,12 @@ from django.db.models import Prefetch, QuerySet
 from django.utils import timezone
 
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
-from apps.apm.models import (
-    ApmAlert,
-    ApmService,
-    ApmServiceInstance,
-    ApmSlo,
-)
+from apps.apm.models import ApmAlert, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.contracts import ServiceMetricQuery, ServiceRed
 from apps.apm.services.reliability import DjangoApmReliabilityService
 from apps.apm.services.status import catalog_status
 from apps.core.logger import apm_logger as logger
 from apps.core.utils.viewset_utils import build_json_membership_query
-
 
 WINDOW_DELTAS: dict[str, timedelta] = {
     "15m": timedelta(minutes=15),
@@ -196,7 +190,7 @@ class ApmDashboardService:
             .prefetch_related(
                 Prefetch(
                     "instances",
-                    queryset=ApmServiceInstance.objects.filter(archived_at__isnull=True).order_by("-last_seen_at"),
+                    queryset=ApmServiceInstance.objects.order_by("-last_seen_at"),
                 )
             )
             .distinct()
@@ -322,9 +316,7 @@ class ApmDashboardService:
                 error_series.append(
                     _resample(
                         [
-                            None
-                            if point.request_rate is None or point.error_rate is None
-                            else point.request_rate * point.error_rate
+                            None if point.request_rate is None or point.error_rate is None else point.request_rate * point.error_rate
                             for point in red.timeseries
                         ],
                         points,

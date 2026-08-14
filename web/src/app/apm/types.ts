@@ -1,4 +1,5 @@
 export type CatalogStatus = 'active' | 'silent' | 'archived';
+export type InstanceStatus = 'active' | 'silent';
 
 export interface ApmPage<T> {
   count: number;
@@ -39,9 +40,7 @@ export interface ApmServiceInstance {
   permission_mode: 'inherited' | 'custom';
   first_seen_at: string;
   last_seen_at: string;
-  archived_at: string | null;
-  archive_reason: string;
-  status: CatalogStatus;
+  status: InstanceStatus;
   organization_ids: number[];
 }
 
@@ -195,6 +194,7 @@ export interface ApmTopologyNode {
   health: ApmTopologyHealth;
   sampled_spans: number;
   error_spans: number;
+  language?: string;
 }
 
 export interface ApmTopologyEdge {
@@ -338,8 +338,8 @@ export interface ApmTraceDetail {
 
 export interface ApmTraceSearchParams {
   service_namespace?: string;
-  service_name: string;
-  environment: string;
+  service_name?: string;
+  environment?: string;
   instance_id?: string;
   span_name?: string;
   status?: 'ok' | 'error';
@@ -372,10 +372,56 @@ export interface ApmSpanPage {
   next_cursor: string | null;
 }
 
-export interface ApmSpanSearchParams {
-  service_namespace?: string;
+export interface ApmIssueDistribution {
+  value: string;
+  count: number;
+  percent: number;
+}
+
+export interface ApmIssueSampleTrace {
+  trace_id: string;
+  span_id: string;
+  endpoint: string;
+  started_at: string;
+  duration_ms: number;
+}
+
+export interface ApmIssue {
+  fingerprint: string;
+  exception_type: string;
+  message: string;
+  stacktrace: string;
+  service_namespace: string;
   service_name: string;
   environment: string;
+  occurrences: number;
+  affected_traces: number;
+  last_seen_at: string;
+  version_distribution: ApmIssueDistribution[];
+  endpoint_distribution: ApmIssueDistribution[];
+  sample_traces: ApmIssueSampleTrace[];
+}
+
+export interface ApmIssuePage {
+  items: ApmIssue[];
+  next_cursor: string | null;
+  truncated: boolean;
+}
+
+export interface ApmIssueSearchParams {
+  service_namespace?: string;
+  service_name?: string;
+  environment?: string;
+  started_at?: string;
+  ended_at?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface ApmSpanSearchParams {
+  service_namespace?: string;
+  service_name?: string;
+  environment?: string;
   instance_id?: string;
   span_name?: string;
   status?: 'ok' | 'error';

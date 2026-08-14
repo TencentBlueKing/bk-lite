@@ -59,7 +59,6 @@ class TelemetryCatalogReconciler:
                 continue
             instance_ids.add(result.instance.id)
 
-        archived_instances = self.catalog.archive_stale_instances(observed_at=observed_at)
         if unknown_applications:
             logger.warning(
                 "APM telemetry ignored unknown applications",
@@ -81,7 +80,6 @@ class TelemetryCatalogReconciler:
             discovered_instances=len(instance_ids),
             missing_instance_identities=missing_identities,
             archived_services=0,
-            archived_instances=archived_instances,
             unknown_applications=len(unknown_applications),
             invalid_activities=invalid_activities,
         )

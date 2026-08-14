@@ -1,6 +1,5 @@
 import React from 'react';
 import { cleanup, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import dayjs from 'dayjs';
 
@@ -35,8 +34,6 @@ const activeInstance = {
   permission_mode: 'inherited' as const,
   first_seen_at: '2026-08-05T00:00:00Z',
   last_seen_at: '2026-08-05T01:00:00Z',
-  archived_at: null,
-  archive_reason: '',
   status: 'active' as const,
   organization_ids: [10],
 };
@@ -81,7 +78,6 @@ describe('APM 接入实例目录', () => {
       page: 1,
       page_size: 20,
       status: 'active',
-      include_archived: false,
       started_at: expect.any(String),
       ended_at: expect.any(String),
     })));
@@ -132,19 +128,12 @@ describe('APM 接入实例目录', () => {
     expect(screen.getByRole('button', { name: '调整组织' })).not.toBeNull();
   });
 
-  it('可显式切换到归档实例并交由服务端过滤', async () => {
-    const user = userEvent.setup();
+  it('实例状态只保留活跃和静默，不再暴露归档产品概念', async () => {
     renderPage();
     await screen.findByText('pod-a');
 
-    await user.click(screen.getByRole('combobox', { name: '按实例状态筛选' }));
-    await user.click(await screen.findByText('已归档'));
-
-    await waitFor(() => expect(api.getInstancePage).toHaveBeenLastCalledWith(expect.objectContaining({
-      page: 1,
-      status: 'archived',
-      include_archived: true,
-    })));
+    expect(screen.queryByText('已归档')).toBeNull();
+    expect(api.getInstancePage).not.toHaveBeenCalledWith(expect.objectContaining({ include_archived: expect.anything() }));
     expect(screen.queryByRole('button', { name: /归档|恢复/ })).toBeNull();
   });
 });

@@ -7,7 +7,7 @@ import ApmErrorsPage from '../page';
 
 const api = {
   getServices: vi.fn(),
-  getTraces: vi.fn(),
+  getIssues: vi.fn(),
   isLoading: false,
 };
 
@@ -46,7 +46,7 @@ beforeEach(() => {
     environment_views: [{ environment: 'prod', last_seen_at: '2026-08-06T02:00:00Z', status: 'active' }],
     organization_ids: [1],
   }]);
-  api.getTraces.mockResolvedValue({ items: [] });
+  api.getIssues.mockResolvedValue({ items: [], next_cursor: null, truncated: false });
 });
 
 afterEach(() => {
@@ -55,58 +55,40 @@ afterEach(() => {
 });
 
 describe('APM 错误页信息层级', () => {
-  it('只保留任务所需说明，不重复展示能力规划与遥测依赖文案', async () => {
+  it('空筛选默认查询当前时间窗内全部可见错误', async () => {
     renderWithApmIntl(<ApmErrorsPage />);
 
-    await waitFor(() => expect(api.getTraces).toHaveBeenCalled());
-    expect(screen.queryByText(/当前版本按错误调用链展示/)).toBeNull();
-    expect(screen.queryByText(/以下卡片按入口操作做了客户端归并/)).toBeNull();
-    expect(screen.queryByText(/遥测存储不可用/)).toBeNull();
-  });
-
-  it('首次进入自动选中可用服务并只查询错误调用链', async () => {
-    renderWithApmIntl(<ApmErrorsPage />);
-
-    await waitFor(() => expect(api.getTraces).toHaveBeenCalledWith(expect.objectContaining({
-      service_namespace: 'shop',
-      service_name: 'checkout',
-      environment: 'prod',
-      status: 'error',
+    await waitFor(() => expect(api.getIssues).toHaveBeenCalledWith(expect.objectContaining({
+      service_name: undefined,
+      environment: undefined,
+      limit: 50,
     })));
+    expect(screen.queryByText('入口归并')).toBeNull();
   });
 
-  it('默认服务没有错误时自动切换到首个存在错误样本的服务', async () => {
-    api.getServices.mockResolvedValue([
-      {
-        id: 'svc-empty', namespace: 'shop', name: 'catalog',
-        environment_views: [{ environment: 'prod' }],
-      },
-      {
-        id: 'svc-error', namespace: 'shop', name: 'checkout',
-        environment_views: [{ environment: 'prod' }],
-      },
-    ]);
-    api.getTraces.mockImplementation(async ({ service_name }: { service_name: string }) => ({
-      items: service_name === 'checkout' ? [{
-        trace_id: 'trace-error-1',
-        root_span_name: 'POST /checkout',
-        started_at: '2026-08-06T02:00:00Z',
-        span_count: 3,
-        service_namespace: 'shop',
-        service_name: 'checkout',
-      }] : [],
-    }));
+  it('展示真实异常语义、完整堆栈、分布与 Trace 下钻', async () => {
+    api.getIssues.mockResolvedValue({ items: [{
+      fingerprint: 'issue-1', exception_type: 'PaymentError', message: 'card declined',
+      stacktrace: 'PaymentError\n at charge(payment.py:42)', service_namespace: 'shop', service_name: 'checkout',
+      environment: 'prod', occurrences: 2, affected_traces: 2, last_seen_at: '2026-08-06T02:00:00Z',
+      version_distribution: [{ value: 'v2', count: 2, percent: 100 }],
+      endpoint_distribution: [{ value: 'POST /checkout', count: 2, percent: 100 }],
+      sample_traces: [{ trace_id: 'a'.repeat(32), span_id: '1'.repeat(16), endpoint: 'POST /checkout', started_at: '2026-08-06T02:00:00Z', duration_ms: 120 }],
+    }], next_cursor: null, truncated: false });
 
     renderWithApmIntl(<ApmErrorsPage />);
 
-    expect(await screen.findByText('POST /checkout')).not.toBeNull();
-    expect(api.getTraces).toHaveBeenCalledWith(expect.objectContaining({
-      service_name: 'catalog',
-      status: 'error',
-    }));
-    expect(api.getTraces).toHaveBeenCalledWith(expect.objectContaining({
-      service_name: 'checkout',
-      status: 'error',
-    }));
+    expect(await screen.findByText('PaymentError')).not.toBeNull();
+    expect(screen.getByText('card declined')).not.toBeNull();
+    expect(screen.getByText('完整堆栈与分布')).not.toBeNull();
+  });
+
+  it('权限过滤造成当前页为空时仍保留游标入口', async () => {
+    api.getIssues.mockResolvedValue({ items: [], next_cursor: 'older-page', truncated: true });
+
+    renderWithApmIntl(<ApmErrorsPage />);
+
+    expect(await screen.findByText('当前游标页没有可见 Issue，可继续加载更早样本。')).not.toBeNull();
+    expect(screen.getByRole('button', { name: '加载更多' })).not.toBeNull();
   });
 });

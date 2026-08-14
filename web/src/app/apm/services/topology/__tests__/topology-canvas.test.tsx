@@ -27,6 +27,7 @@ const node = (id: string): ApmTopologyNode => ({
   health: 'healthy',
   sampled_spans: 100,
   error_spans: 0,
+  language: id === 'catalog' ? 'python' : 'go',
 });
 
 const edge = (source: string, target: string): ApmTopologyEdge => ({
@@ -81,6 +82,24 @@ describe('APM 服务拓扑画布', () => {
       expect(edgePairs(result.container)).toEqual(['catalog>inventory', 'storefront>catalog']);
     });
     result.container.querySelectorAll<SVGPathElement>('g[data-source] > path').forEach((path) => {
+      expect(path.getAttribute('marker-end')).toBe('url(#apm-arrow-healthy)');
+      expect(path.getAttribute('marker-start')).toBeNull();
+    });
+    expect(screen.getByText('Py')).not.toBeNull();
+    expect(screen.getAllByText('Go')).toHaveLength(2);
+  });
+
+  it('双向调用使用两条分离曲线且每条只有终点箭头', async () => {
+    const reciprocalEdges = [edge('catalog', 'inventory'), edge('inventory', 'catalog')];
+    const result = renderWithApmIntl(
+      <TopologyCanvas edges={reciprocalEdges} keyword="" nodes={nodes.slice(0, 2)} zoom={1} />,
+    );
+
+    await waitFor(() => expect(edgePairs(result.container)).toEqual(['catalog>inventory', 'inventory>catalog']));
+    const paths = Array.from(result.container.querySelectorAll<SVGPathElement>('g[data-source] > path'));
+    expect(paths).toHaveLength(2);
+    expect(new Set(paths.map((path) => path.getAttribute('d'))).size).toBe(2);
+    paths.forEach((path) => {
       expect(path.getAttribute('marker-end')).toBe('url(#apm-arrow-healthy)');
       expect(path.getAttribute('marker-start')).toBeNull();
     });

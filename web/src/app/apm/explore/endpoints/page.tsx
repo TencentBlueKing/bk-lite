@@ -478,7 +478,8 @@ export default function ApmEndpointsPage() {
             </div>
             <div>
               <Typography.Text strong className="mb-2 block">{t('apm.explore.endpointTrend', '端点趋势')}</Typography.Text>
-              <div className="h-64">
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.throughput', '吞吐量')}</Typography.Text>
                 <TimeSeriesComposedChart
                   data={(endpointRed?.timeseries ?? []).map((point) => ({
                     ...point,
@@ -487,18 +488,13 @@ export default function ApmEndpointsPage() {
                   xDataKey="timestamp"
                   getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')}
                   xAxisBoundaryGap={false}
-                  yAxes={[
-                    { formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)}` },
-                    { formatter: (value) => `${value.toFixed(1)}%`, splitLine: false },
-                    { formatter: (value) => `${value.toFixed(0)} ms`, splitLine: false },
-                  ]}
-                  series={[
-                    { name: t('apm.common.throughputReq', '吞吐量 req/s'), type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
-                    { name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1, lineType: 'dashed', showSymbol: true },
-                    { name: 'P95 ms', type: 'line', dataKey: 'p95_ms', color: token.colorWarning, yAxisIndex: 2, lineType: 'dotted', showSymbol: true },
-                  ]}
+                  yAxes={[{ formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)} req/s` }]}
+                  series={[{ name: t('apm.common.throughputReq', '吞吐量 req/s'), type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true }]}
                   surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }}
                 />
+                </div>
+                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.errorRate', '错误率')}</Typography.Text><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point, error_rate_percent: point.error_rate === null ? null : point.error_rate * 100 }))} xDataKey="timestamp" getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => `${value.toFixed(1)}%` }]} series={[{ name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, showArea: true, showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></div>
+                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.latency', '时延')}</Typography.Text><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point }))} xDataKey="timestamp" getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => `${value.toFixed(0)} ms` }]} series={[{ name: 'P95', type: 'line', dataKey: 'p95_ms', color: token.colorPrimary, showArea: true }, { name: 'P99', type: 'line', dataKey: 'p99_ms', color: token.colorWarning, lineType: 'dotted', showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></div>
               </div>
             </div>
             <div>

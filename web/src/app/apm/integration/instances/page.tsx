@@ -14,7 +14,7 @@ import CatalogState, {
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import ServiceIdentity from '@/app/apm/components/service-identity';
 import ApmStatusTag from '@/app/apm/components/status-tag';
-import type { ApmApplication, ApmServiceInstance, CatalogStatus } from '@/app/apm/types';
+import type { ApmApplication, ApmServiceInstance, InstanceStatus } from '@/app/apm/types';
 import Permission from '@/components/permission';
 import FilterToolbar from '@/components/filter-toolbar';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -47,7 +47,7 @@ export default function ApmIntegrationInstancesPage() {
   const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [total, setTotal] = useState(0);
   const [catalogDegraded, setCatalogDegraded] = useState(false);
-  const [status, setStatus] = useState<CatalogStatus | undefined>('active');
+  const [status, setStatus] = useState<InstanceStatus | undefined>('active');
   const [keyword, setKeyword] = useState('');
   const [appliedKeyword, setAppliedKeyword] = useState('');
   const [applicationId, setApplicationId] = useState('all');
@@ -79,7 +79,6 @@ export default function ApmIntegrationInstancesPage() {
         application: applicationId === 'all' ? undefined : applicationId,
         environment: environment.trim() || undefined,
         status,
-        include_archived: status === 'archived',
         started_at: startedAt?.toISOString(),
         ended_at: startedAt ? endedAt.toISOString() : undefined,
         keyword: appliedKeyword.trim() || undefined,
@@ -180,7 +179,7 @@ export default function ApmIntegrationInstancesPage() {
         </time>
       ),
     },
-    { title: t('apm.instances.instanceStatus', '实例状态'), dataIndex: 'status', width: APM_TABLE_COLUMN_WIDTHS.status, align: 'center', render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
+    { title: t('apm.instances.instanceStatus', '实例状态'), dataIndex: 'status', width: APM_TABLE_COLUMN_WIDTHS.status, align: 'center', render: (value: InstanceStatus) => <ApmStatusTag status={value} /> },
     {
       title: t('apm.instances.ownerOrg', '所属组织'),
       dataIndex: 'organization_ids',
@@ -201,9 +200,7 @@ export default function ApmIntegrationInstancesPage() {
       fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/instances">
-          {!item.archived_at ? (
-            <Button className="!px-0" type="link" size="small" onClick={() => setOrganizationInstance(item)}>{t('apm.common.adjustOrg', '调整组织')}</Button>
-          ) : <Typography.Text type="secondary" className="!text-xs">{t('apm.common.readOnly', '只读')}</Typography.Text>}
+          <Button className="!px-0" type="link" size="small" onClick={() => setOrganizationInstance(item)}>{t('apm.common.adjustOrg', '调整组织')}</Button>
         </Permission>
       ),
     },
@@ -266,7 +263,7 @@ export default function ApmIntegrationInstancesPage() {
                 setPage(1);
               }}
             />
-            <Select<CatalogStatus>
+            <Select<InstanceStatus>
               className="w-40"
               allowClear
               aria-label={t('apm.instances.filterStatus', '按实例状态筛选')}
@@ -279,7 +276,6 @@ export default function ApmIntegrationInstancesPage() {
               options={[
                 { value: 'active', label: t('apm.status.active', '活跃') },
                 { value: 'silent', label: t('apm.status.silent', '静默') },
-                { value: 'archived', label: t('apm.status.archived', '已归档') },
               ]}
             />
             <Typography.Text type="secondary" className="ml-auto text-xs tabular-nums">

@@ -30,14 +30,15 @@ import type {
   ApmSpanPage,
   ApmSpanSearchParams,
   ApmTopologyGraph,
-  CatalogStatus,
+  ApmIssuePage,
+  ApmIssueSearchParams,
+  InstanceStatus,
 } from '@/app/apm/types';
 
 interface InstanceQuery {
   application?: string;
   environment?: string;
-  status?: CatalogStatus;
-  include_archived?: boolean;
+  status?: InstanceStatus;
   started_at?: string;
   ended_at?: string;
   keyword?: string;
@@ -175,6 +176,11 @@ const useApmApi = () => {
     [get]
   );
 
+  const getIssues = useCallback(
+    (params: ApmIssueSearchParams = {}) => get<ApmIssuePage>('/apm/issues/', { params }),
+    [get]
+  );
+
   const getTrace = useCallback(
     (traceId: string) => get<ApmTraceDetail>(`/apm/traces/${traceId}/`),
     [get]
@@ -268,6 +274,7 @@ const useApmApi = () => {
     setSloEnabled,
     getTraces,
     getSpans,
+    getIssues,
     getTrace,
     getTopology,
     getPolicies,

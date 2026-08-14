@@ -74,7 +74,7 @@ function parseDurationToken(raw: string): { op: 'min' | 'max'; value: number } |
   return { op: 'max', value };
 }
 
-function parseFilters(text: string, fallback: TraceFilters): TraceFilters {
+function parseFilters(text: string): TraceFilters {
   const next: TraceFilters = {
     namespace: '',
     serviceName: '',
@@ -108,8 +108,6 @@ function parseFilters(text: string, fallback: TraceFilters): TraceFilters {
       else next.maxDurationMs = parsed.value;
     }
   });
-  if (!next.serviceName && fallback.serviceName) next.serviceName = fallback.serviceName;
-  if (!next.environment && fallback.environment) next.environment = fallback.environment;
   return next;
 }
 
@@ -249,7 +247,7 @@ export default function ApmTracesPage() {
   const [serviceFilter, setServiceFilter] = useState<string>();
   const [resultMode, setResultMode] = useState<ResultMode>('detail');
   const [aggregateDimension, setAggregateDimension] = useState<AggregateDimension>('service');
-  const [state, setState] = useState<PageState>(initialFilters.serviceName ? 'loading' : 'idle');
+  const [state, setState] = useState<PageState>('loading');
   const [loadingMore, setLoadingMore] = useState(false);
   const [searching, setSearching] = useState(false);
   const [services, setServices] = useState<ApmService[]>([]);
@@ -258,6 +256,7 @@ export default function ApmTracesPage() {
   const autoSearched = useRef(false);
   const entityModeReady = useRef(false);
   const servicesLoaded = useRef(false);
+  const durationTimer = useRef<number | undefined>(undefined);
 
   const {
     serviceName,
@@ -284,11 +283,7 @@ export default function ApmTracesPage() {
 
   const search = useCallback((cursor?: string, nextFilters?: TraceFilters) => {
     const active = nextFilters ?? filters;
-    if (!active.serviceName.trim() || authLoading) {
-      setState('idle');
-      setSearching(false);
-      return;
-    }
+    if (authLoading) return;
     setSearching(true);
     if (cursor) setLoadingMore(true);
     else setState('loading');
@@ -296,8 +291,8 @@ export default function ApmTracesPage() {
     if (entityMode === 'spans') {
       const query: ApmSpanSearchParams = {
         service_namespace: active.namespace || undefined,
-        service_name: active.serviceName,
-        environment: active.environment,
+        service_name: active.serviceName || undefined,
+        environment: active.environment || undefined,
         instance_id: active.instanceId || undefined,
         span_name: active.spanName || undefined,
         status: active.status === 'all' ? undefined : active.status,
@@ -325,8 +320,8 @@ export default function ApmTracesPage() {
     }
     const query: ApmTraceSearchParams = {
       service_namespace: active.namespace || undefined,
-      service_name: active.serviceName,
-      environment: active.environment,
+      service_name: active.serviceName || undefined,
+      environment: active.environment || undefined,
       instance_id: active.instanceId || undefined,
       span_name: active.spanName || undefined,
       status: active.status === 'all' ? undefined : active.status,
@@ -352,15 +347,24 @@ export default function ApmTracesPage() {
   }, [authLoading, entityMode, filters, getSpans, getTraces, timeWindow]);
 
   const commitQueryText = useCallback(() => {
-    const next = parseFilters(queryText, filters);
+    const next = parseFilters(queryText);
     applyFilters(next);
     search(undefined, next);
-  }, [applyFilters, filters, queryText, search]);
+  }, [applyFilters, queryText, search]);
 
   const patchFilters = useCallback((patch: Partial<TraceFilters>) => {
     const next = { ...filters, ...patch };
     applyFilters(next);
     search(undefined, next);
+  }, [applyFilters, filters, search]);
+
+  const updateDuration = useCallback((patch: Partial<TraceFilters>, immediate = false) => {
+    const next = { ...filters, ...patch };
+    applyFilters(next, { search: false });
+    if (durationTimer.current) window.clearTimeout(durationTimer.current);
+    if (next.minDurationMs != null && next.maxDurationMs != null && next.minDurationMs > next.maxDurationMs) return;
+    if (immediate) search(undefined, next);
+    else durationTimer.current = window.setTimeout(() => search(undefined, next), 400);
   }, [applyFilters, filters, search]);
 
   useEffect(() => {
@@ -369,38 +373,36 @@ export default function ApmTracesPage() {
     getServices()
       .then((items) => {
         setServices(items);
-        if (initialFilters.serviceName || autoSearched.current) return;
-        const first = items.find((item) => item.environment_views.length > 0) || items[0];
-        if (!first) return;
-        const next: TraceFilters = {
-          ...initialFilters,
-          namespace: first.namespace,
-          serviceName: first.name,
-          environment: first.environment_views[0]?.environment ?? '',
-        };
+        if (autoSearched.current) return;
         autoSearched.current = true;
         entityModeReady.current = true;
-        applyFilters(next);
-        search(undefined, next);
+        search(undefined, initialFilters);
       })
-      .catch(() => setServices([]));
-  }, [applyFilters, authLoading, getServices, initialFilters, search]);
+      .catch(() => {
+        setServices([]);
+        if (!autoSearched.current) {
+          autoSearched.current = true;
+          entityModeReady.current = true;
+          search(undefined, initialFilters);
+        }
+      });
+  }, [authLoading, getServices, initialFilters, search]);
 
   useEffect(() => {
-    if (!authLoading && serviceName && !autoSearched.current) {
+    if (!authLoading && !servicesLoaded.current && !autoSearched.current) {
       autoSearched.current = true;
       entityModeReady.current = true;
       search();
     }
-  }, [authLoading, search, serviceName]);
+  }, [authLoading, search]);
 
   useEffect(() => {
-    if (!entityModeReady.current || authLoading || !serviceName.trim()) return;
+    if (!entityModeReady.current || authLoading) return;
     search();
   }, [entityMode]);
 
   useEffect(() => {
-    if (!autoSearched.current || authLoading || !serviceName.trim()) return;
+    if (!autoSearched.current || authLoading) return;
     search();
   }, [timeRange]);
 
@@ -863,10 +865,11 @@ export default function ApmTracesPage() {
                       className="w-full"
                       placeholder="min"
                       value={minDurationMs}
-                      onChange={(value) => applyFilters({
-                        ...filters,
+                      onChange={(value) => updateDuration({
                         minDurationMs: typeof value === 'number' ? value : null,
-                      }, { search: false })}
+                      })}
+                      onBlur={() => updateDuration({}, true)}
+                      onPressEnter={() => updateDuration({}, true)}
                     />
                     <span className="text-xs text-[var(--color-text-3)]">-</span>
                     <InputNumber
@@ -875,21 +878,17 @@ export default function ApmTracesPage() {
                       className="w-full"
                       placeholder="max"
                       value={maxDurationMs}
-                      onChange={(value) => applyFilters({
-                        ...filters,
+                      onChange={(value) => updateDuration({
                         maxDurationMs: typeof value === 'number' ? value : null,
-                      }, { search: false })}
+                      })}
+                      onBlur={() => updateDuration({}, true)}
+                      onPressEnter={() => updateDuration({}, true)}
                     />
                     <span className="shrink-0 text-xs text-[var(--color-text-3)]">ms</span>
                   </div>
-                  <Button
-                    size="small"
-                    className="mt-2"
-                    loading={searching}
-                    onClick={() => search(undefined, filters)}
-                  >
-                    {t('apm.explore.applyDuration', '应用耗时')}
-                  </Button>
+                  {minDurationMs != null && maxDurationMs != null && minDurationMs > maxDurationMs ? (
+                    <Typography.Text type="danger" className="mt-2 block !text-xs">{t('apm.explore.durationInvalid', '最小耗时不能大于最大耗时')}</Typography.Text>
+                  ) : null}
                 </div>
               </div>
             </aside>

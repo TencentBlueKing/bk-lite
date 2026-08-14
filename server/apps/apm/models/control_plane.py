@@ -136,8 +136,6 @@ class ApmServiceInstance(AuditedModel):
     )
     first_seen_at = models.DateTimeField(db_index=True)
     last_seen_at = models.DateTimeField(db_index=True)
-    archived_at = models.DateTimeField(null=True, blank=True, db_index=True)
-    archive_reason = models.CharField(max_length=256, blank=True, default="")
 
     objects = ApmConstraintQuerySet.as_manager()
 

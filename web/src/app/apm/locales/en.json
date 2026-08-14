@@ -580,7 +580,7 @@
       "legendHint": "Observed data is a bounded query result within the time window. Click a node to open service details."
     },
     "instances": {
-      "defaultActiveHelp": "Active instances are shown by default. Change the status or time range to view silent, archived, and historical instances.",
+      "defaultActiveHelp": "Active instances are shown by default. Change the status or time range to view silent and historical instances.",
       "title": "Reporting instances",
       "description": "View reporting status and organization ownership by running instance. For logical service health, go to the service catalog.",
       "orgUpdated": "Instance organization updated",

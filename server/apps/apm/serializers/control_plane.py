@@ -76,6 +76,27 @@ class CatalogListQuerySerializer(serializers.Serializer):
         return attrs
 
 
+class InstanceCatalogListQuerySerializer(serializers.Serializer):
+    page = serializers.IntegerField(min_value=1, required=False)
+    page_size = serializers.IntegerField(min_value=1, required=False)
+    application = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    environment = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=("active", "silent"), required=False)
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    keyword = serializers.CharField(max_length=256, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        unsupported = sorted(set(self.initial_data) - set(self.fields))
+        if unsupported:
+            raise serializers.ValidationError(f"不支持的实例查询参数: {', '.join(unsupported)}")
+        started_at = attrs.get("started_at")
+        ended_at = attrs.get("ended_at")
+        if started_at is not None and ended_at is not None and started_at >= ended_at:
+            raise serializers.ValidationError("started_at 必须早于 ended_at。")
+        return attrs
+
+
 class ApmApplicationSerializer(serializers.ModelSerializer):
     organization_ids = serializers.SerializerMethodField()
     service_count = serializers.IntegerField(read_only=True, default=0)
@@ -143,14 +164,12 @@ class ApmServiceSerializer(serializers.ModelSerializer):
                     "last_seen_at": instance.last_seen_at,
                     "status": catalog_status(
                         last_seen_at=instance.last_seen_at,
-                        archived_at=instance.archived_at,
                         observed_at=observed_at,
                     ),
                 }
-            elif current["status"] != "active" and instance.archived_at is None:
+            elif current["status"] != "active":
                 current["status"] = catalog_status(
                     last_seen_at=instance.last_seen_at,
-                    archived_at=instance.archived_at,
                     observed_at=observed_at,
                 )
         return [views[key] for key in sorted(views)]
@@ -178,8 +197,6 @@ class ApmServiceInstanceSerializer(serializers.ModelSerializer):
             "permission_mode",
             "first_seen_at",
             "last_seen_at",
-            "archived_at",
-            "archive_reason",
             "status",
             "organization_ids",
         )
@@ -188,7 +205,7 @@ class ApmServiceInstanceSerializer(serializers.ModelSerializer):
         return list(obj.organization_links.order_by("organization").values_list("organization", flat=True))
 
     def get_status(self, obj):
-        return catalog_status(last_seen_at=obj.last_seen_at, archived_at=obj.archived_at)
+        return catalog_status(last_seen_at=obj.last_seen_at)
 
 
 class ApmSloSerializer(serializers.ModelSerializer):
@@ -258,8 +275,8 @@ class ServiceMetricQuerySerializer(serializers.Serializer):
 
 class TraceSearchSerializer(serializers.Serializer):
     service_namespace = serializers.CharField(max_length=256, required=False, allow_blank=True)
-    service_name = serializers.CharField(max_length=256)
-    environment = serializers.CharField(max_length=256, allow_blank=True)
+    service_name = serializers.CharField(max_length=256, required=False, allow_blank=False)
+    environment = serializers.CharField(max_length=256, required=False, allow_blank=True)
     instance_id = serializers.CharField(max_length=512, required=False)
     span_name = serializers.CharField(max_length=512, required=False, allow_blank=True)
     status = serializers.ChoiceField(choices=("ok", "error"), required=False)
@@ -289,8 +306,8 @@ class TraceSearchSerializer(serializers.Serializer):
 
 class SpanSearchSerializer(serializers.Serializer):
     service_namespace = serializers.CharField(max_length=256, required=False, allow_blank=True)
-    service_name = serializers.CharField(max_length=256)
-    environment = serializers.CharField(max_length=256, allow_blank=True)
+    service_name = serializers.CharField(max_length=256, required=False, allow_blank=False)
+    environment = serializers.CharField(max_length=256, required=False, allow_blank=True)
     instance_id = serializers.CharField(max_length=512, required=False)
     span_name = serializers.CharField(max_length=512, required=False, allow_blank=True)
     status = serializers.ChoiceField(choices=("ok", "error"), required=False)
@@ -319,6 +336,29 @@ class SpanSearchSerializer(serializers.Serializer):
             raise serializers.ValidationError("min_duration_ms 不能大于 max_duration_ms")
         if attrs.get("span_name") == "":
             attrs.pop("span_name", None)
+        return attrs
+
+
+class IssueSearchSerializer(serializers.Serializer):
+    service_namespace = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    service_name = serializers.CharField(max_length=256, required=False, allow_blank=False)
+    environment = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    cursor = serializers.CharField(max_length=512, required=False)
+    limit = serializers.IntegerField(min_value=1, max_value=100, default=50)
+
+    def validate(self, attrs):
+        unsupported = sorted(set(self.initial_data) - set(self.fields))
+        if unsupported:
+            raise serializers.ValidationError(f"不支持的 Issue 查询参数: {', '.join(unsupported)}")
+        ended_at = attrs.get("ended_at") or timezone.now()
+        started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
+        if ended_at <= started_at:
+            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+        if ended_at - started_at > timedelta(days=7):
+            raise serializers.ValidationError("Issue 查询时间窗不能超过 7 天")
+        attrs.update(started_at=started_at, ended_at=ended_at)
         return attrs
 
 

@@ -16,6 +16,7 @@ from apps.apm.services.contracts import (
     TraceSearchQuery,
 )
 
+
 def _response(payload, status_code=200, *, raw=None):
     response = Mock()
     response.status_code = status_code
@@ -101,10 +102,57 @@ def test_search_builds_controlled_resource_filters_and_maps_jaeger_trace():
     }
 
 
+def test_empty_trace_search_uses_bounded_trace_id_aggregation_and_cursor():
+    now = timezone.now()
+    first = _jaeger_trace(now)
+    second = _jaeger_trace(now - timedelta(seconds=1))
+    second["traceID"] = "b" * 32
+    rows = "\n".join(
+        json.dumps({"trace_id": trace_id, "matched_at": str(int(at.timestamp() * 1_000_000_000))})
+        for trace_id, at in (("a" * 32, now), ("b" * 32, now - timedelta(seconds=1)))
+    )
+    session = Mock()
+    session.get.side_effect = [
+        _response({}, raw=rows.encode()),
+        _response({"data": [first]}),
+        _response({"data": [second]}),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    page = store.search(
+        TraceSearchQuery(
+            started_at=now - timedelta(hours=1),
+            ended_at=now + timedelta(minutes=1),
+            service_name=None,
+            environment=None,
+            limit=1,
+        )
+    )
+
+    assert [item.trace_id for item in page.items] == ["a" * 32]
+    assert page.next_cursor is not None
+    params = session.get.call_args_list[0].kwargs["params"]
+    assert "stats by (trace_id) max(start_time_unix_nano) as matched_at" in params["query"]
+    assert "resource_attr:service.name" not in params["query"]
+    assert "resource_attr:deployment.environment" not in params["query"]
+    assert params["limit"] == 2
+
+
 def test_detail_preserves_waterfall_identity_for_server_side_authorization():
     now = timezone.now()
+    raw_trace = _jaeger_trace(now)
+    raw_trace["spans"][0]["logs"] = [
+        {
+            "fields": [
+                {"key": "event", "value": "exception"},
+                {"key": "exception.type", "value": "PaymentDeclinedError"},
+                {"key": "exception.message", "value": "card declined"},
+                {"key": "exception.stacktrace", "value": "at charge (payment.py:42)"},
+            ]
+        }
+    ]
     session = Mock()
-    session.get.return_value = _response({"data": [_jaeger_trace(now)]})
+    session.get.return_value = _response({"data": [raw_trace]})
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
     detail = store.get_trace("a" * 32)
@@ -114,6 +162,9 @@ def test_detail_preserves_waterfall_identity_for_server_side_authorization():
     assert detail.spans[1].parent_span_id == "1" * 16
     assert detail.spans[0].kind == "server"
     assert detail.spans[0].attributes["Authorization"] == "Bearer secret"
+    assert detail.spans[0].attributes["event_attr:exception.type"] == "PaymentDeclinedError"
+    assert detail.spans[0].attributes["event_attr:exception.message"] == "card declined"
+    assert detail.spans[0].attributes["event_attr:exception.stacktrace"] == "at charge (payment.py:42)"
 
 
 def test_detail_deduplicates_replayed_spans_by_trace_and_span_identity():
@@ -161,10 +212,7 @@ def _vector(**values):
         "status": "success",
         "data": {
             "resultType": "vector",
-            "result": [
-                {"metric": {"__name__": name}, "value": [1_785_888_000, str(value)]}
-                for name, value in values.items()
-            ],
+            "result": [{"metric": {"__name__": name}, "value": [1_785_888_000, str(value)]} for name, value in values.items()],
         },
     }
 
@@ -272,9 +320,7 @@ def test_all_stats_queries_are_time_bounded_to_vt_retention_contract():
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
     with pytest.raises(ValueError, match="35 天"):
-        store.service_red(
-            ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(days=36), now)
-        )
+        store.service_red(ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(days=36), now))
 
     session.get.assert_not_called()
 
@@ -290,9 +336,7 @@ def test_unique_span_limit_rejects_instead_of_silently_undercounting(monkeypatch
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
 
     with pytest.raises(TelemetryStoreUnavailable, match="唯一 Span 数"):
-        store.service_red(
-            ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now)
-        )
+        store.service_red(ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now))
 
     assert "| limit 2 | stats" in session.get.call_args_list[0].kwargs["params"]["query"]
     assert "| limit 3 | stats count() as unique_spans" in session.get.call_args_list[1].kwargs["params"]["query"]
@@ -349,7 +393,7 @@ def test_search_spans_builds_controlled_logsql_and_maps_rows():
     assert item.http_status_code == "200"
     assert abs(item.duration_ms - 12.0) < 0.001
     query = session.get.call_args.kwargs["params"]["query"]
-    assert "`resource_attr:service.name`:=\"weops-lite-probe\"" in query
+    assert '`resource_attr:service.name`:="weops-lite-probe"' in query
     assert 'name:="GET /lab/health\\"evil"' in query
     assert 'status_code:="1"' in query
     assert 'kind:="2"' in query
