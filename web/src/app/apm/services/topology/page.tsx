@@ -8,11 +8,18 @@ import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
+import {
+  buildTopologyEdgeGeometry,
+  hasReciprocalTopologyEdge,
+  layoutLayeredTopology,
+  layoutRadialTopology,
+  type PositionedApmTopologyNode,
+} from '@/app/apm/services/topology/topology-layout';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyHealth, ApmTopologyNode } from '@/app/apm/types';
 import FilterToolbar from '@/components/filter-toolbar';
 import { useTranslation } from '@/utils/i18n';
 
-type LayoutMode = 'layered' | 'force';
+type LayoutMode = 'layered' | 'radial';
 type ViewMode = 'graph' | 'list';
 type TimeWindow = '15m' | '1h' | '4h' | '1d' | '7d';
 type PageState = CatalogStateKind | 'ready';
@@ -39,18 +46,7 @@ const topologyHealthI18n: Record<ApmTopologyHealth, { id: string; fallback: stri
   unknown: { id: 'apm.health.unknown', fallback: '未知' },
 };
 
-function positioned(nodes: ApmTopologyNode[], layout: LayoutMode) {
-  return nodes.map((node, index) => {
-    if (layout === 'layered') {
-      return { ...node, x: 130 + (index % 5) * 190, y: 105 + Math.floor(index / 5) * 145 };
-    }
-    const angle = (index / Math.max(nodes.length, 1)) * Math.PI * 2;
-    const radius = 150 + (index % 3) * 45;
-    return { ...node, x: 515 + Math.cos(angle) * radius, y: 260 + Math.sin(angle) * radius };
-  });
-}
-
-function TopologyCanvas({
+export function TopologyCanvas({
   nodes,
   edges,
   layout,
@@ -66,10 +62,44 @@ function TopologyCanvas({
   onNodeClick?: (node: ApmTopologyNode) => void;
 }) {
   const { t } = useTranslation();
-  const positionedNodes = positioned(nodes, layout);
+  const radialNodes = useMemo(() => layoutRadialTopology(nodes), [nodes]);
+  const layoutKey = useMemo(
+    () => `${layout}:${nodes.map((node) => node.id).join('|')}:${edges.map((edge) => `${edge.source}>${edge.target}`).join('|')}`,
+    [edges, layout, nodes],
+  );
+  const [layoutResult, setLayoutResult] = useState<{ key: string; nodes: PositionedApmTopologyNode[] }>({
+    key: '',
+    nodes: [],
+  });
+
+  useEffect(() => {
+    let active = true;
+    if (layout === 'radial') {
+      setLayoutResult({ key: layoutKey, nodes: radialNodes });
+      return () => {
+        active = false;
+      };
+    }
+
+    void layoutLayeredTopology(nodes, edges)
+      .then((result) => {
+        if (active) setLayoutResult({ key: layoutKey, nodes: result });
+      })
+      .catch(() => {
+        if (active) setLayoutResult({ key: layoutKey, nodes: radialNodes });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [edges, layout, layoutKey, nodes, radialNodes]);
+
+  const positionedNodes = layoutResult.key === layoutKey ? layoutResult.nodes : radialNodes;
   const nodeMap = new Map(positionedNodes.map((node) => [node.id, node]));
   const normalizedKeyword = keyword.trim().toLowerCase();
   const maxSpans = Math.max(...nodes.map((node) => node.sampled_spans), 1);
+  const maxCalls = Math.max(...edges.map((edge) => edge.sampled_calls), 1);
+  const edgePairs = new Set(edges.map((edge) => `${edge.source}\u0000${edge.target}`));
   return (
     <svg aria-label={t('apm.topology.chartAria', 'APM 服务调用拓扑')} className="block h-[520px] w-full" role="img" viewBox="0 0 1030 520">
       <defs>
@@ -84,33 +114,46 @@ function TopologyCanvas({
           const source = nodeMap.get(edge.source);
           const target = nodeMap.get(edge.target);
           if (!source || !target) return null;
-          const dx = target.x - source.x;
-          const dy = target.y - source.y;
-          const length = Math.sqrt(dx * dx + dy * dy) || 1;
           const targetRadius = 18 + (target.sampled_spans / maxSpans) * 14;
           const sourceRadius = 18 + (source.sampled_spans / maxSpans) * 14;
-          const startX = source.x + (dx * (sourceRadius + 4)) / length;
-          const startY = source.y + (dy * (sourceRadius + 4)) / length;
-          const endX = target.x - (dx * (targetRadius + 9)) / length;
-          const endY = target.y - (dy * (targetRadius + 9)) / length;
+          const geometry = buildTopologyEdgeGeometry(
+            { x: source.x, y: source.y, radius: sourceRadius },
+            { x: target.x, y: target.y, radius: targetRadius },
+            hasReciprocalTopologyEdge(edge, edgePairs),
+          );
           const color = edge.health === 'healthy' || edge.health === 'unknown'
             ? 'var(--color-border-4)'
             : healthColors[edge.health];
           const marker = edge.health === 'unknown' ? 'healthy' : edge.health;
-          const strokeWidth = Math.max(1.2, Math.min(3.2, 1 + (edge.sampled_calls / Math.max(...edges.map((item) => item.sampled_calls), 1)) * 2));
+          const strokeWidth = Math.max(1.2, Math.min(3.2, 1 + (edge.sampled_calls / maxCalls) * 2));
           return (
-            <g key={`${edge.source}-${edge.target}`}>
-              <line
-                x1={startX}
-                y1={startY}
-                x2={endX}
-                y2={endY}
+            <g data-source={edge.source} data-target={edge.target} key={`${edge.source}-${edge.target}`}>
+              <title>{t('apm.topology.edgeTitle', '{source} 调用 {target}，观测调用 {calls} 次，平均耗时 {duration}ms', {
+                source: source.service_name,
+                target: target.service_name,
+                calls: edge.sampled_calls,
+                duration: edge.average_duration_ms.toFixed(0),
+              })}</title>
+              <path
+                d={geometry.path}
+                fill="none"
                 markerEnd={`url(#apm-arrow-${marker})`}
                 stroke={color}
                 strokeDasharray={edge.health === 'critical' ? '6 4' : undefined}
+                strokeLinecap="round"
                 strokeWidth={strokeWidth}
               />
-              <text fill="var(--color-text-3)" fontSize="10" textAnchor="middle" x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 5}>
+              <text
+                fill="var(--color-text-3)"
+                fontSize="10"
+                paintOrder="stroke"
+                stroke="var(--color-bg)"
+                strokeLinejoin="round"
+                strokeWidth="4"
+                textAnchor="middle"
+                x={geometry.labelX}
+                y={geometry.labelY - 5}
+              >
                 {edge.sampled_calls} · {edge.average_duration_ms.toFixed(0)}ms
               </text>
             </g>
@@ -317,7 +360,7 @@ export default function ApmTopologyPage() {
               <Segmented<TimeWindow> aria-label={t('apm.topology.window', '拓扑时间窗口')} options={['15m', '1h', '4h', '1d', '7d']} value={timeWindow} onChange={setTimeWindow} />
               <Select allowClear aria-label={t('apm.topology.filterEnvironment', '按环境筛选拓扑')} className="w-36" placeholder={t('apm.common.allEnvironments', '全部环境')} options={environmentOptions} value={environment} onChange={setEnvironment} />
               <Segmented<ViewMode> aria-label={t('apm.topology.view', '拓扑视图')} options={[{ value: 'graph', label: t('apm.topology.graph', '图形') }, { value: 'list', label: t('apm.topology.list', '依赖列表') }]} value={viewMode} onChange={setViewMode} />
-              {viewMode === 'graph' ? <Segmented<LayoutMode> aria-label={t('apm.topology.layout', '拓扑布局')} options={[{ value: 'layered', label: t('apm.topology.layered', '分层') }, { value: 'force', label: t('apm.topology.force', '力导向') }]} value={layout} onChange={setLayout} /> : null}
+              {viewMode === 'graph' ? <Segmented<LayoutMode> aria-label={t('apm.topology.layout', '拓扑布局')} options={[{ value: 'layered', label: t('apm.topology.layered', '分层') }, { value: 'radial', label: t('apm.topology.radial', '环形') }]} value={layout} onChange={setLayout} /> : null}
               <Button danger={anomalyOnly} icon={<WarningOutlined aria-hidden="true" />} type={anomalyOnly ? 'primary' : 'default'} onClick={() => setAnomalyOnly((value) => !value)}>{t('apm.topology.anomalyOnly', '只看异常')}</Button>
               <Button aria-label={t('apm.topology.refresh', '刷新拓扑')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
             </FilterToolbar>

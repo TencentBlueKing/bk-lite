@@ -569,6 +569,8 @@
       "layout": "Topology layout",
       "layered": "Layered",
       "force": "Force-directed",
+      "radial": "Circular",
+      "edgeTitle": "{source} calls {target}. {calls} observed calls, {duration}ms average duration",
       "refresh": "Refresh topology",
       "locate": "Locate topology node",
       "locatePlaceholder": "Locate node",
