@@ -81,7 +81,7 @@ export default function ApmPolicyListPage() {
         item.state?.status === 'active' ? <Tag color="red">告警中</Tag> : <Tag color="green">正常</Tag>,
     },
     {
-      title: t('common.operation', '操作'),
+      title: t('apm.common.operation', '操作'),
       fixed: 'right',
       width: 220,
       render: (_, item) => (

@@ -327,6 +327,9 @@
     "policies": {
       "title": "Alert policies",
       "description": "Configure service metric thresholds and notification channels. Enable or disable policies directly in the list.",
+      "scope": "Endpoint / Version",
+      "condition": "Alert condition",
+      "status": "Status",
       "search": "Search policies",
       "searchName": "Search policy name",
       "empty": "There are no APM policies for the current organization.",

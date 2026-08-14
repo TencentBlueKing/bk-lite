@@ -327,6 +327,9 @@
     "policies": {
       "title": "告警策略",
       "description": "配置服务指标阈值与通知渠道，列表内可直接启停。",
+      "scope": "端点 / 版本",
+      "condition": "告警条件",
+      "status": "状态",
       "search": "搜索策略",
       "searchName": "搜索策略名称",
       "empty": "当前组织暂无 APM 策略。",

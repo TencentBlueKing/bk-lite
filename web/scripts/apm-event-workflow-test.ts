@@ -10,6 +10,8 @@ const events = read('src/app/apm/events/alerts/page.tsx');
 const policies = read('src/app/apm/events/policies/page.tsx');
 const legacyEvents = read('src/app/apm/events/page.tsx');
 const legacyPolicies = read('src/app/apm/policies/page.tsx');
+const zhLocale = JSON.parse(read('src/app/apm/locales/zh.json'));
+const enLocale = JSON.parse(read('src/app/apm/locales/en.json'));
 
 assert.match(events, /活跃告警/);
 assert.match(events, /历史告警/);
@@ -37,6 +39,11 @@ assert.match(policies, /events\/policies\/new/, '新建策略必须进入独立�
 assert.match(policies, /events\/policies\/\$\{item\.id\}/, '编辑策略必须进入独立编辑页面');
 assert.doesNotMatch(policies, /MoreActionsDropdown/, '策略的编辑与删除必须直接可见，不应收进更多菜单');
 assert.match(policies, /fixed: 'right'/, '策略操作列必须固定在表格右侧');
+for (const key of ['scope', 'condition', 'status']) {
+  assert.ok(zhLocale.apm.policies[key], `APM 策略中文 locale 缺少 ${key}`);
+  assert.ok(enLocale.apm.policies[key], `APM 策略英文 locale 缺少 ${key}`);
+}
+assert.match(policies, /apm\.common\.operation/, '策略列表必须复用 APM 公共操作文案');
 assert.match(legacyEvents, /\/apm\/events\/alerts/, '旧 /apm/events 必须兼容跳转到告警列表');
 assert.match(legacyPolicies, /\/apm\/events\/policies/, '旧 /apm/policies 必须兼容跳转到事件策略');
 
