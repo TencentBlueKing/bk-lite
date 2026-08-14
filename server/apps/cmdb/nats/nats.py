@@ -7,6 +7,7 @@ from functools import reduce
 from operator import or_
 from types import SimpleNamespace
 from typing import Optional
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
@@ -1014,13 +1015,18 @@ def _room3d_error(message, code=400):
     return {"result": False, "data": {}, "message": message, "code": code}
 
 
-def _parse_room3d_server_room_id(value):
+def _parse_room3d_server_room_locator(value):
     if value in (None, ""):
         return None
+    if str(value).isdigit():
+        return "id", int(value)
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        inst_uuid = UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
         return None
+    if inst_uuid.version != 4:
+        return None
+    return "uuid", str(inst_uuid)
 
 
 def _format_room3d_location_label(row, col):
@@ -1032,7 +1038,7 @@ def _parse_room3d_rack_location(value):
 
 
 def _room3d_rack_identity(rack):
-    rack_id = rack.get("inst_id")
+    rack_id = rack.get("inst_uuid") or rack.get("inst_id")
     return str(rack_id or ""), rack.get("inst_name") or str(rack_id or "")
 
 
@@ -1066,7 +1072,7 @@ def _format_room3d_invalid_location_notice(invalid_racks, locale="zh-CN"):
 
 def _format_room3d_device(device):
     return {
-        "device_id": str(device.get("inst_id") or device.get("_id") or ""),
+        "device_id": str(device.get("inst_uuid") or device.get("inst_id") or device.get("_id") or ""),
         "device_name": device.get("inst_name") or "",
         "model_id": device.get("model_id"),
         "rack_u_start": device.get("rack_u_start"),
@@ -1114,11 +1120,12 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
     一个 room3D 组件只展示一个 server_room；机柜列表复用 rack_room.get_room_layout，
     因此机柜权限、U 位统计、位置解析和位置冲突口径与 CMDB 机房视图保持一致。
     """
-    room_id = _parse_room3d_server_room_id(server_room_id)
-    if room_id is None:
-        return _room3d_error("server_room_id 参数必填且必须为整数")
+    room_locator = _parse_room3d_server_room_locator(server_room_id)
+    if room_locator is None:
+        return _room3d_error("server_room_id 参数必填且必须为 UUIDv4")
 
-    room = InstanceManage.query_entity_by_id(room_id)
+    locator_type, locator = room_locator
+    room = InstanceManage.query_entity_by_uuid(locator) if locator_type == "uuid" else InstanceManage.query_entity_by_id(locator)
     if not room:
         return _room3d_error("机房实例不存在", code=404)
     if room.get("model_id") != "server_room":
@@ -1133,6 +1140,7 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
     if not InstanceManage._has_topology_view_permission(room, permission_map, user=user):
         return _room3d_error("无权限查看当前机房", code=403)
 
+    room_id = int(room["_id"])
     layout = rack_room.get_room_layout(room_id, permission_map=permission_map, user=user)
     visible_layout_racks = (layout.get("racks") or []) + (layout.get("unplaced") or [])
     candidate_racks = []
@@ -1205,7 +1213,7 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
         racks.append(rack_payload)
 
     data = {
-        "room": {"id": str(room_id), "name": room.get("inst_name") or ""},
+        "room": {"id": str(room.get("inst_uuid") or room_id), "name": room.get("inst_name") or ""},
         "racks": racks,
     }
     notice = _format_room3d_invalid_location_notice(
@@ -1309,7 +1317,9 @@ def get_room_list(user_info=None, **kwargs):
     的现成权限过滤自动按当前用户可见范围过滤。
     """
     permission_map = _build_nats_permission_map(user_info) or {}
-    items = rack_room.list_server_rooms(permission_map=permission_map, user_info=user_info)
+    # 新数据源以 inst_uuid 作为选项值；暂时保留 _id，兼容尚未执行
+    # init_source_api_data --force-update 的存量数据源配置。
+    items = [item for item in rack_room.list_server_rooms(permission_map=permission_map, user_info=user_info) if item.get("inst_uuid")]
     return {"items": items}
 
 

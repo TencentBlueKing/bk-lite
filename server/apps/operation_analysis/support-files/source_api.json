@@ -464,7 +464,7 @@
                         "type": "rest_api",
                         "value": "cmdb/get_room_list"
                     },
-                    "valueField": "_id",
+                    "valueField": "inst_uuid",
                     "labelField": "inst_name"
                 }
             }

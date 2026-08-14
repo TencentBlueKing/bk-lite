@@ -1,8 +1,7 @@
 "use client";
 
 import React from "react";
-import { Alert, Button, Empty, Tabs, Tooltip } from "antd";
-import { QuestionCircleOutlined } from "@ant-design/icons";
+import { Alert, Empty, Tabs } from "antd";
 import CustomTable from "@/components/custom-table";
 import { useTranslation } from "@/utils/i18n";
 import {
@@ -16,10 +15,6 @@ interface PreviewPanelProps {
   transformPreviewError?: string | null;
   previewActionError?: string | null;
   showTransformTabs?: boolean;
-  previewLoading: boolean;
-  onPreview: () => void;
-  onApplyPreviewFields: () => void;
-  readOnly?: boolean;
 }
 
 function buildColumns(previewData: DataSourcePreviewResult | null) {
@@ -86,10 +81,6 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   transformPreviewError = null,
   previewActionError = null,
   showTransformTabs = false,
-  previewLoading,
-  onPreview,
-  onApplyPreviewFields,
-  readOnly = false,
 }) => {
   const { t } = useTranslation();
   const warnings = previewData?.warnings?.length
@@ -99,46 +90,6 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
 
   return (
     <div>
-      <div className="mb-3 flex min-h-[22px] items-center justify-between gap-3">
-        <h4 className="m-0 text-sm font-semibold leading-[22px] text-[var(--color-text-1)]">
-          {t("dataSource.previewData")}
-        </h4>
-        {readOnly ? null : (
-          <div className="flex shrink-0 items-center gap-3">
-            {previewData?.fields?.length ? (
-              <span className="inline-flex items-center gap-1">
-                <Button
-                  type="link"
-                  size="small"
-                  onClick={onApplyPreviewFields}
-                  className="!px-0"
-                >
-                  {t("dataSource.applyPreviewFields")}
-                </Button>
-                <Tooltip
-                  placement="top"
-                  overlayStyle={{ maxWidth: 420 }}
-                  overlayInnerStyle={{ maxWidth: 420 }}
-                  title={t("dataSource.applyPreviewFieldsTooltip")}
-                >
-                  <QuestionCircleOutlined
-                    aria-label={t("dataSource.applyPreviewFieldsTooltip")}
-                    className="cursor-help text-[14px] text-[var(--color-text-3)]"
-                  />
-                </Tooltip>
-              </span>
-            ) : null}
-            <Button
-              type="primary"
-              size="small"
-              loading={previewLoading}
-              onClick={onPreview}
-            >
-              {t("dataSource.samplePreview")}
-            </Button>
-          </div>
-        )}
-      </div>
       {warnings.length ? (
         <Alert
           type="warning"

@@ -332,12 +332,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
     const connectionFields = isRestApiSource
       ? [["connection_config", "url"]]
       : [
-          ["connection_config", "host"],
-          ["connection_config", "port"],
-          ["connection_config", "database"],
-          ["connection_config", "username"],
-          ["connection_config", "password"],
-        ];
+        ["connection_config", "host"],
+        ["connection_config", "port"],
+        ["connection_config", "database"],
+        ["connection_config", "username"],
+        ["connection_config", "password"],
+      ];
 
     try {
       await form.validateFields(connectionFields);
@@ -384,9 +384,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
       let nextOverrides = built.connectionOverrides;
       let nextConnectionConfig: Record<string, unknown> = isRestApiSource
         ? {
-            method: values.connection_config?.method || "GET",
-            timeout: values.connection_config?.timeout || 10,
-          }
+          method: values.connection_config?.method || "GET",
+          timeout: values.connection_config?.timeout || 10,
+        }
         : {};
 
       if (currentRow?.id) {
@@ -1287,6 +1287,44 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
   };
 
+  const previewActions = readOnly ? null : (
+    <div
+      className={`flex items-center justify-end gap-3${supportsTransform ? " mb-3" : ""}`}
+    >
+      {previewData?.fields?.length ? (
+        <span className="inline-flex items-center gap-1">
+          <Button
+            type="link"
+            size="small"
+            onClick={handleApplyPreviewFields}
+            className="!px-0"
+          >
+            {t("dataSource.applyPreviewFields")}
+          </Button>
+          <Tooltip
+            placement="top"
+            overlayStyle={{ maxWidth: 420 }}
+            overlayInnerStyle={{ maxWidth: 420 }}
+            title={t("dataSource.applyPreviewFieldsTooltip")}
+          >
+            <QuestionCircleOutlined
+              aria-label={t("dataSource.applyPreviewFieldsTooltip")}
+              className="cursor-help text-[14px] text-[var(--color-text-3)]"
+            />
+          </Tooltip>
+        </span>
+      ) : null}
+      <Button
+        type="primary"
+        size="small"
+        loading={previewLoading}
+        onClick={handlePreview}
+      >
+        {t("dataSource.samplePreview")}
+      </Button>
+    </div>
+  );
+
   return (
     <>
     <Drawer
@@ -1589,7 +1627,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           }
         >
         {isRestApiSource && (
-          <Form.Item label={t("dataSource.connectionConfig")}>
+          <Form.Item>
             <div className="rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-2)] px-4 pb-1 pt-4">
               <Form.Item
                 name="connection_mode"
@@ -1706,7 +1744,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           </Form.Item>
         )}
         {isDatabaseSource && (
-          <Form.Item label={t("dataSource.connectionConfig")}>
+          <Form.Item>
             <div className="rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-2)] px-4 pb-1 pt-4">
               <Form.Item
                 name="connection_mode"
@@ -1824,7 +1862,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           </Form.Item>
         )}
         {isPrometheusSource && (
-          <Form.Item label={t("dataSource.connectionConfig")}>
+          <Form.Item>
             <div className="rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-2)] px-4 pb-1 pt-4">
               <div className="grid grid-cols-2 gap-x-3">
                 <Form.Item
@@ -2062,6 +2100,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           <FormSubsection
             id="preview"
             title={previewSubsectionTitle}
+            extra={supportsTransform ? null : previewActions}
           >
             {supportsTransform ? (
               <TransformScriptPanel
@@ -2071,16 +2110,13 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 onScriptChange={clearPreviewState}
               />
             ) : null}
+            {supportsTransform ? previewActions : null}
             <PreviewPanel
               previewData={previewData}
               rawPreviewData={rawPreviewData}
               transformPreviewError={transformPreviewError}
               previewActionError={previewInlineError}
               showTransformTabs={supportsTransform && transformEnabled}
-              previewLoading={previewLoading}
-              onPreview={handlePreview}
-              onApplyPreviewFields={handleApplyPreviewFields}
-              readOnly={readOnly}
             />
           </FormSubsection>
         )}

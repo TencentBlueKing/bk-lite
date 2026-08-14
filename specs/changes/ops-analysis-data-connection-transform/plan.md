@@ -6,6 +6,8 @@ Status: ready
 
 原始需求存档：[`references/original-requirement.md`](./references/original-requirement.md)（只读对照，不作为实施依据）
 
+Runner 运维上下文：[`runner-deployment-context.md`](./runner-deployment-context.md)（服务依赖、环境变量、安全边界与验收要求）
+
 ## 1. 结论与交付边界
 
 本期补齐运营分析的 E（连接复用）与最小 T（数据转换），不建设通用 BI/ETL 平台：

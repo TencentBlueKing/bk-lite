@@ -8,11 +8,7 @@ from apps.operation_analysis.services.data_connection.config_crypto import (
     merge_connection_config,
     redact_connection_config,
 )
-from apps.operation_analysis.services.data_connection.groups import (
-    find_groups_outside_connection,
-    is_groups_subset,
-    normalize_group_ids,
-)
+from apps.operation_analysis.services.data_connection.groups import find_groups_outside_connection, is_groups_subset, normalize_group_ids
 
 CONTROLLED_REST_HEADERS = {
     "connection",
@@ -32,11 +28,7 @@ def validate_rest_headers(headers):
         return {}
     if not isinstance(headers, dict):
         raise serializers.ValidationError("headers 必须为对象")
-    controlled = sorted(
-        str(name)
-        for name in headers
-        if str(name).strip().lower() in CONTROLLED_REST_HEADERS
-    )
+    controlled = sorted(str(name) for name in headers if str(name).strip().lower() in CONTROLLED_REST_HEADERS)
     if controlled:
         raise serializers.ValidationError(f"不允许设置受控 Header: {', '.join(controlled)}")
     return headers
@@ -166,6 +158,18 @@ class DataConnectionSerializer(BaseFormatTimeSerializer, AuthSerializer):
         return data
 
 
+class DataConnectionTestSerializer(serializers.Serializer):
+    connection_type = serializers.ChoiceField(choices=DataConnection.TYPE_CHOICES)
+    config = serializers.DictField()
+
+    def validate(self, attrs):
+        attrs["config"] = _validate_connection_config_shape(
+            attrs["connection_type"],
+            dict(attrs["config"]),
+        )
+        return attrs
+
+
 class DataConnectionReferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = DataSourceAPIModel
@@ -204,9 +208,7 @@ def validate_datasource_connection_binding(attrs, instance=None):
 
     if not is_groups_subset(groups, connection.groups):
         outside = find_groups_outside_connection(groups, connection.groups)
-        raise serializers.ValidationError(
-            {"groups": f"数据源组织必须是连接授权组织的子集，越界组织: {outside}"}
-        )
+        raise serializers.ValidationError({"groups": f"数据源组织必须是连接授权组织的子集，越界组织: {outside}"})
 
     if source_type in {DataSourceAPIModel.SOURCE_TYPE_MYSQL, DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL}:
         allowed = {"database"}
@@ -218,11 +220,7 @@ def validate_datasource_connection_binding(attrs, instance=None):
 
     if source_type == DataSourceAPIModel.SOURCE_TYPE_REST_API:
         path = overrides.get("path")
-        if path not in (None, "") and (
-            str(path).startswith("http://")
-            or str(path).startswith("https://")
-            or str(path).startswith("//")
-        ):
+        if path not in (None, "") and (str(path).startswith("http://") or str(path).startswith("https://") or str(path).startswith("//")):
             raise serializers.ValidationError({"connection_overrides": "path 必须为相对路径"})
 
     attrs["connection_overrides"] = overrides
@@ -236,11 +234,7 @@ def validate_datasource_connection_binding(attrs, instance=None):
         attrs["connection_config"] = {}
     else:
         # REST：请求方法/超时可保留在 connection_config，path 走 overrides；禁止 url/headers。
-        cleaned = {
-            key: value
-            for key, value in (connection_config or {}).items()
-            if key in {"method", "timeout", "path"}
-        }
+        cleaned = {key: value for key, value in (connection_config or {}).items() if key in {"method", "timeout", "path"}}
         if "path" in cleaned and "path" not in overrides:
             overrides = {**overrides, "path": cleaned.pop("path")}
             attrs["connection_overrides"] = overrides
