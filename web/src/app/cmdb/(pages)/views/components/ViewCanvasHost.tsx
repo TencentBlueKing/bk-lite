@@ -134,6 +134,7 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
         <ApplicationResourceOverview
           modelId={focus.model_id}
           instUuid={focus.inst_uuid}
+          fillContainer
         />
       </div>
     );

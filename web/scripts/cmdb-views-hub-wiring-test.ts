@@ -54,6 +54,10 @@ for (const { name, pattern } of requiredImports) {
   }
 }
 
+if (!/<ApplicationResourceOverview[\s\S]*?fillContainer/.test(hostSrc)) {
+  failures.push('[ViewCanvasHost.tsx] application canvas should fill the hub workspace');
+}
+
 if (!/<RoomFloorPlan[\s\S]*?onRackSelect\s*=/.test(hostSrc)) {
   failures.push('[ViewCanvasHost.tsx] RoomFloorPlan missing onRackSelect wiring');
 }

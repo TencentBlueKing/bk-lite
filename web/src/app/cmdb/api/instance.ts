@@ -51,19 +51,19 @@ export const useInstanceApi = () => {
   const getApplicationResourceInstances = (
     modelId: string,
     instUuid: string,
-    nodeIds: string[]
+    nodeUuids: string[]
   ) => post(
     `/cmdb/api/instance/application_resource_instances/${modelId}/${instUuid}/`,
-    { node_ids: nodeIds }
+    { node_uuids: nodeUuids }
   );
 
   const exportApplicationResourceInstances = (
     modelId: string,
     instUuid: string,
-    nodeIds: string[]
+    nodeUuids: string[]
   ) => post(
     `/cmdb/api/instance/application_resource_export/${modelId}/${instUuid}/`,
-    { node_ids: nodeIds },
+    { node_uuids: nodeUuids },
     { responseType: 'blob' }
   );
 

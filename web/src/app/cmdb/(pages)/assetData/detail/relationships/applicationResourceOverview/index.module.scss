@@ -1,17 +1,62 @@
 .overview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   width: 100%;
-  padding-top: 6px;
+  min-width: 640px;
+  min-height: 420px;
+  overflow: hidden;
+}
+
+.overviewFill {
+  height: 100%;
+}
+
+.overviewStandalone {
+  height: calc(100vh - 260px);
+}
+
+.fillState {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 420px;
+}
+
+.spinHost {
+  height: 100%;
+}
+
+.spinHost :global(.ant-spin-nested-loading),
+.spinHost :global(.ant-spin-container) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 .viewSwitch {
+  flex: none;
   align-self: flex-start;
 }
 
 .topologyStack {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
   width: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
 .canvasCard {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 640px;
+  min-height: 420px;
   overflow: hidden;
   border-color: var(--color-border-3);
   border-radius: 8px;
@@ -19,13 +64,21 @@
 }
 
 .canvasCard :global(.ant-card-body) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
   padding: 0 !important;
 }
 
 .canvasShell {
   position: relative;
   display: flex;
-  height: calc(100vh - 224px);
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 640px;
+  min-height: 420px;
   overflow: hidden;
   background: var(--color-bg);
 }
@@ -239,6 +292,7 @@
 .relationsTable {
   min-height: 0;
   flex: 1;
+  overflow: auto;
 }
 
 .relationsTable :global(.ant-table) {
@@ -323,8 +377,36 @@
   background: var(--color-bg-active);
 }
 
+.contextMenuDivider {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--color-border-2);
+}
+
+.relationsFilter {
+  flex: none;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border-2);
+}
+
 .resourceStack {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
   width: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.resourceSearch {
+  width: min(360px, 100%);
+}
+
+.instanceNameLink {
+  height: auto;
+  padding: 0;
+  line-height: 22px;
 }
 
 .resourceCell {

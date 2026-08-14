@@ -1270,7 +1270,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return permission_error
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
-        # 应用资源服务尚未切 UUID：桥接图内部 ID
+        # 图遍历仍用内部 _id；对外节点身份已由 overview service 输出为 inst_uuid
         applications = ApplicationResourceOverviewService.list_system_applications(instance["_id"], permission_map=permissions_map, user=request.user)
         return WebUtils.response_success({"applications": applications})
 

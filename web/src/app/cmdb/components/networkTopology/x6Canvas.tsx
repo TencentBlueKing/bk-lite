@@ -70,6 +70,7 @@ interface NetworkTopologyX6CanvasProps {
   fitViewOptions?: {
     padding?: number;
     maxScale?: number;
+    minScale?: number;
   };
   fitViewKey?: string | number;
   toolbar?: NetworkTopologyToolbarConfig;
@@ -232,6 +233,7 @@ const fitGraphToView = (
   graph.zoomToFit({
     padding: options?.padding ?? 112,
     maxScale: options?.maxScale ?? 1.12,
+    minScale: options?.minScale,
   });
 };
 
@@ -682,6 +684,7 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     fitViewKey,
     structureKey,
     fitViewOptions?.maxScale,
+    fitViewOptions?.minScale,
     fitViewOptions?.padding,
   ]);
 
