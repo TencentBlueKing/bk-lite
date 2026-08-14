@@ -1,5 +1,4 @@
 import pytest
-
 from core.collection.request_builder import build_collection_request
 
 
@@ -99,6 +98,25 @@ def test_builder_deduplicates_targets_without_changing_order():
     )
 
     assert request.targets == ("10.10.24.2", "10.10.24.1")
+
+
+def test_builder_strips_internal_yaml_policy_trust_markers():
+    request = build_collection_request(
+        task_id="untrusted-policy-marker",
+        params={
+            "model_id": "mysql",
+            "host": "10.10.24.1",
+            "target_policy_mode": "cloud_endpoint",
+            "trusted_endpoint_domains": ["example.com"],
+            "_yaml_target_policy_verified": True,
+            "_validated_connect_host": "127.0.0.1",
+        },
+    )
+
+    assert "target_policy_mode" not in request.params
+    assert "trusted_endpoint_domains" not in request.params
+    assert "_yaml_target_policy_verified" not in request.params
+    assert "_validated_connect_host" not in request.params
 
 
 def test_job_plugin_uses_ssh_preflight_before_collection():

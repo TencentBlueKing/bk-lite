@@ -2,6 +2,12 @@
 
 Status: approved for implementation (COMPLETE-PLAN-2026-08-06.md); code converging from superseding digest/fencing/AccessProbe workspace
 
+2026-08-14 补充锁定：以同目录
+`collection-failure-remediation-plan-2026-08-14.md` 为准。关闭
+`PREFLIGHT_REACHABILITY` 时跳过全部采集前探测但保留出站安全检查；全局容量默认
+`MAX_ACTIVE_RUNS=16`、`MAX_ACTIVE_TARGETS=150`、`TARGET_TASK_WINDOW=150`；单目标发布失败不得取消
+同 Run 其他目标，Run 汇总为 `completed_with_errors`。
+
 ## 摘要
 
 Stargazer 移除 ARQ 队列与 Worker，改由 Sanic 承载一个统一的异步采集运行时。
@@ -116,7 +122,8 @@ flowchart TB
     PF --> CP["CredentialPolicy<br/>筛选目标凭据并串行轮询"]
     CP --> AP["CredentialAttempt<br/>结构化尝试 / 可选廉价检查"]
     AP --> PR["CollectionPlugin"]
-    PR --> RP["ResultPublisher"]
+    PR --> RP["ResultPublishQueue"]
+    RP --> RS["ResultSink"]
     RP --> MN["监控指标 → NATS"]
     RP --> CN["配置结果 → NATS / Callback"]
 ```
@@ -164,7 +171,8 @@ CollectionRequest(
 - `TargetPolicy`：无凭据政策与可选 TCP 短探，只判断是否允许继续尝试凭据；
 - `CredentialAttempt`：插件返回结构化尝试结果；可选内部廉价检查，不强制公开 probe；
 - `CollectionPlugin`：不同插件实现；
-- `ResultPublisher`：监控指标、配置数据、callback。
+- `ResultPublishQueue`：向有界队列提交单目标结果并返回 receipt；
+- `ResultSink`：由队列调用，负责监控指标、配置数据和 callback 的最终批量投递。
 
 ### 3. 统一异步插件契约
 
@@ -425,22 +433,25 @@ Stargazer 与 CMDB 凭据命中事件字段对齐，以及 CMDB「查询 VM → 
 | --- | --- |
 | `MAX_ACTIVE_RUNS` | 单 Pod 同时运行的 `CollectionRun` 数量 |
 | `MAX_ACTIVE_TARGETS` | 单 Pod 同时活跃的 `TargetCollection` 数量 |
-| `TARGET_TASK_WINDOW` | 已创建但未完成的目标协程上限 |
+| `TARGET_TASK_WINDOW` | 已创建但未完成的目标协程上限，并复用为有界发布队列容量 |
 | `MAX_TARGETS_PER_RUN` | 单个请求允许的目标数量上限 |
 | `MAX_CREDENTIALS_PER_RUN` | 单个请求允许的候选凭据数量上限 |
-| `CONNECT_TIMEOUT` | 协议预检默认超时，初始值 5 秒 |
-| `PLUGIN_TIMEOUT` | 插件采集超时，由插件契约提供默认值 |
+| `PREFLIGHT_TIMEOUT` | 协议预检超时，默认 15 秒；兼容期回退 `CONNECT_TIMEOUT` |
+| `PROBE_TIMEOUT` | 插件 AccessProbe 超时，默认 15 秒；兼容期回退 `CONNECT_TIMEOUT` |
+| `COLLECTION_TIMEOUT` | 正式采集缺省 60 秒；插件 YAML executor `timeout` 优先，兼容期回退 `PLUGIN_TIMEOUT` |
+| `PUBLISH_TIMEOUT` | 单目标发布阶段端到端超时，默认 30 秒 |
 | `RUN_DEADLINE` | 整个采集运行的可选截止时间 |
 
-`app.add_task` 只用于每个 `CollectionRun` 的顶层任务。目标并发由运行时 Semaphore 和有界
-窗口控制。等待 Semaphore 的协程数量也必须受 `TARGET_TASK_WINDOW` 限制，不能把内存中的大量
-等待协程当成免费队列。
+`app.add_task` 只用于每个 `CollectionRun` 的顶层任务。生产路径的目标并发由全局公平调度器
+统一控制；无调度器的兼容执行路径才使用本地 Semaphore/worker budget。结果进入容量为
+`TARGET_TASK_WINDOW` 的发布队列后释放目标调度槽位，Run 通过发布回执等待最终状态。队列满时
+入队等待形成有界背压，不能把内存中的大量等待协程当成免费队列。
 
-验证示例：255 个 IP、5 个凭据、`MAX_ACTIVE_TARGETS=200`、预检超时 5 秒。
+验证示例：255 个 IP、5 个凭据、`MAX_ACTIVE_TARGETS=150`、预检超时 5 秒。
 
-- 最多 200 个目标处于执行或等待插件状态；
+- 最多 150 个目标处于执行或等待插件状态；
 - 不可达 IP 只做一次协议预检，不尝试 5 个凭据；
-- 全部不可达时约为两轮预检，理论下限约 `ceil(255/200) × 5 ≈ 10` 秒，加调度开销；
+- 全部不可达时约为两轮预检，理论下限约 `ceil(255/150) × 5 ≈ 10` 秒，加调度开销；
 - 可达但 5 个凭据全部各自超时，一个 IP 最坏约 25 秒，两批目标约 50 秒；
 - 首个凭据成功后立即停止后续尝试。
 

@@ -16,6 +16,8 @@ import {
 import { K8sTopology } from './topology';
 import styles from './styles.module.scss';
 import { useTranslation } from '@/utils/i18n';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
+import { message } from 'antd';
 import { K8sResourceTable } from './resourceTable';
 
 const branchQueue = new PodBranchQueue(4);
@@ -357,9 +359,24 @@ const K8sResourceList: React.FC<{ clusterId: string; kind: K8sResourceKind; api:
           ? t('K8sResourceOverview.states.noData')
           : String(value);
       }
+      const instUuid = resolveCmdbInstUuid(record.inst_uuid || record.id);
+      if (!instUuid) {
+        return (
+          <a
+            href="#"
+            onClick={(event) => {
+              event.preventDefault();
+              message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+            }}
+          >
+            {String(value || t('K8sResourceOverview.states.noData'))}
+          </a>
+        );
+      }
       const params = new URLSearchParams(searchParams);
       params.set('model_id', modelId);
-      params.set('inst_id', String(record.id));
+      params.set('inst_uuid', instUuid);
+      params.delete('inst_id');
       params.set('inst_name', String(value || ''));
       const detailUrl = `/cmdb/assetData/detail/baseInfo?${params.toString()}`;
       return <a href={detailUrl} target="_blank" rel="noopener noreferrer">

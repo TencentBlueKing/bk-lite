@@ -23,8 +23,8 @@ class Command(BaseCommand):
     help = (
         "清洗 operation_analysis 画布/组件 JSON 中的 CMDB 实例引用："
         "bk_inst_id→bk_inst_uuid、instId→instUuid。"
-        "可与 migrate_cmdb_instance_uuid_refs 并行执行；依赖图侧已有 _id→uuid 映射。"
-        "不进 batch_init。"
+        "可与 migrate_cmdb_instance_uuid_refs 并行或手动执行；依赖图侧已有 _id→uuid 映射。"
+        "部署后由 Celery 运行期任务自动幂等收敛；不进 batch_init 硬门禁。"
     )
 
     def add_arguments(self, parser):

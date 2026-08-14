@@ -9,7 +9,7 @@ import time
 import traceback
 from typing import Any, Dict, Optional
 
-from core.collection.contracts import AccessProbeResult
+from core.collection.contracts import AccessProbeResult, StructuredMetricsPayload
 from core.infra.nats_utils import nats_request
 from core.logger import logger
 from core.plugin.executor import PluginExecutor
@@ -165,7 +165,10 @@ class CollectionService:
                             "version": "",
                             "status": "error",
                             "size": 0,
-                            "error": result.get("result", {}).get("cmdb_collect_error", result.get("error", "Unknown error")),
+                            "error": result.get("result", {}).get(
+                                "cmdb_collect_error",
+                                result.get("error", "Unknown error"),
+                            ),
                             "content_base64": "",
                         }
                         if self._is_config_file_callback()
@@ -179,14 +182,24 @@ class CollectionService:
                             "version": "",
                             "status": "error",
                             "size": 0,
-                            "error": result.get("result", {}).get("cmdb_collect_error", result.get("error", "Unknown error")),
+                            "error": result.get("result", {}).get(
+                                "cmdb_collect_error",
+                                result.get("error", "Unknown error"),
+                            ),
                             "content_base64": "",
                         }
                     )
                 )
 
-            # 处理结果并转换为 Prometheus 格式
-            final_result = await asyncio.to_thread(self._format_result, result)
+            processed = await asyncio.to_thread(self._process_result, result)
+            if self.params.get("_runtime_structured_metrics"):
+                result_data = result.get("result", {})
+                error = ""
+                if not result.get("success", True):
+                    error = str(result_data.get("cmdb_collect_error", result.get("error", "Unknown error")))
+                final_result = StructuredMetricsPayload(data=processed, error=error)
+            else:
+                final_result = await asyncio.to_thread(convert_to_prometheus_format, processed)
 
             logger.info("✅ Collection completed successfully")
             logger.info("=" * 60)

@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Spin, Empty, Alert } from 'antd';
+import { Spin, Empty, Alert, message } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useThemeMode } from '@/theme';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import type { RackLayoutData, RackDevice } from '@/app/cmdb/types/rackRoom';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import { RACK_TOP, deviceColor, deviceTypeName, TECH } from '@/app/cmdb/utils/rackRoomLayout';
 
 interface Props {
@@ -67,9 +68,14 @@ const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceC
 
   const onDevice = (d: RackDevice) => {
     if (onDeviceClick) { onDeviceClick(d); return; }
+    const deviceUuid = resolveCmdbInstUuid(d.inst_uuid);
+    if (!deviceUuid) {
+      message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+      return;
+    }
     const params = new URLSearchParams({
       icn: '', model_name: d.model_id, model_id: d.model_id,
-      classification_id: '', inst_uuid: d.inst_uuid || d.inst_id, inst_name: d.inst_name,
+      classification_id: '', inst_uuid: deviceUuid, inst_name: d.inst_name,
     }).toString();
     router.push(`/cmdb/assetData/detail/baseInfo?${params}`);
   };
