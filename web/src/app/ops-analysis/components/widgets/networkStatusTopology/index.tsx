@@ -16,6 +16,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import { useNetworkStatusTopologyApi } from '@/app/ops-analysis/api/networkStatusTopology';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
+import { isValidCmdbInstanceUuid } from '@/app/ops-analysis/utils/cmdbInstanceUuid';
 import type {
   NetworkStatusTopologyConfig,
   NetworkStatusTopologyLink,
@@ -166,6 +167,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const [contextPoint, setContextPoint] = useState({ x: 0, y: 0 });
 
   const topoConfig = config?.networkStatusTopology;
+  const hasValidInstanceUuid = isValidCmdbInstanceUuid(topoConfig?.instUuid);
   /** 画布编辑态且非分享：几何写回草稿，随页面保存落库 */
   const canPersistLayout = canPersistNetworkStatusTopologyLayout({
     layoutEditable,
@@ -205,7 +207,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   );
 
   const fetchData = useCallback(async () => {
-    if (!topoConfig?.modelId || !topoConfig?.instUuid) {
+    if (!topoConfig?.modelId || !hasValidInstanceUuid) {
       setData(null);
       setError(t('dashboard.networkTopoMissingConfig'));
       onReadyRef.current?.(false);
@@ -264,7 +266,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       setLoading(false);
     }
     // API hooks return fresh function references; fetching is driven by widget config.
-  }, [t, topoConfig?.depth, topoConfig?.instUuid, topoConfig?.modelId]);
+  }, [hasValidInstanceUuid, t, topoConfig?.depth, topoConfig?.instUuid, topoConfig?.modelId]);
 
   useEffect(() => {
     void fetchData();
@@ -671,7 +673,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
 
   const hoverCanvasNode = canvasNodes.find((node) => node.id === hoverNodeId);
   const contextCanvasNode = canvasNodes.find((node) => node.id === contextNodeId);
-  const isMissingConfig = !topoConfig?.modelId || !topoConfig?.instUuid;
+  const isMissingConfig = !topoConfig?.modelId || !hasValidInstanceUuid;
   
   return (
     <div

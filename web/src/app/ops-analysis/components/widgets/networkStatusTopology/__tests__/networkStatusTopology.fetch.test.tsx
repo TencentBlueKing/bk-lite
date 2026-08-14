@@ -81,7 +81,7 @@ import NetworkStatusTopology from '../index';
 const widgetConfig = {
   networkStatusTopology: {
     modelId: 'switch',
-    instId: 'core-1',
+    instUuid: '123e4567-e89b-42d3-a456-426614174000',
     depth: 2,
   },
 };
@@ -98,6 +98,37 @@ afterEach(() => {
 });
 
 describe('networkStatusTopology owner requests', () => {
+  it.each([
+    undefined,
+    '',
+    'undefined',
+    'legacy-id',
+    '123e4567-e89b-12d3-a456-426614174000',
+    '123E4567-E89B-42D3-A456-426614174000',
+  ])(
+    'does not request topology for invalid instUuid %s',
+    async (instUuid) => {
+      render(
+        <NetworkStatusTopology
+          config={{
+            networkStatusTopology: {
+              modelId: 'switch',
+              instUuid,
+              depth: 2,
+            },
+          }}
+          refreshKey="0"
+          refreshCause="initial"
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('dashboard.networkTopoMissingConfig')).toBeTruthy();
+      });
+      expect(testState.getNetworkStatusTopology).not.toHaveBeenCalled();
+    },
+  );
+
   it('skips a silent tick while a manual request is in flight and still accepts the manual success', async () => {
     let resolveManual: ((value: typeof successPayload) => void) | undefined;
     testState.getNetworkStatusTopology
