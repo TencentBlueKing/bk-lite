@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import type { Node, Graph as X6Graph } from '@antv/x6';
 import { v4 as uuidv4 } from 'uuid';
 import { buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
@@ -31,6 +31,11 @@ import {
   formatDisplayValue,
 } from '../utils/topologyUtils';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
+import {
+  beginMappedOwnerRequest,
+  finishMappedOwnerRequest,
+  isStartedOwnerRequest,
+} from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import {
   clearSingleValueFetchError,
   resetSingleValueFetchErrorVisual,
@@ -110,6 +115,8 @@ export const useGraphNodeOperations = ({
     () => withRuntimeSourceDataErrorSuppression(getSourceDataByApiId),
     [getSourceDataByApiId],
   );
+  const singleValueFetchGenerationRef = useRef<Map<string, number>>(new Map());
+  const singleValueInflightCountRef = useRef<Map<string, number>>(new Map());
 
   const startLoadingAnimation = useCallback((node: Node) => {
     const loadingStates = ['○ ○ ○', '● ○ ○', '○ ● ○', '○ ○ ●', '○ ○ ○'];
@@ -140,6 +147,7 @@ export const useGraphNodeOperations = ({
       unifiedFilterValues?: Record<string, FilterValue>,
       filterDefinitions?: UnifiedFilterDefinition[],
       namespaceId?: number,
+      options?: { silent?: boolean },
     ) => {
       if (!nodeConfig || !graphInstance || !nodeConfig.id) return;
 
@@ -155,19 +163,37 @@ export const useGraphNodeOperations = ({
         return;
       }
 
-      node.setData(
-        {
-          ...node.getData(),
-          isLoading: true,
-          hasError: false,
-          errorMessage: undefined,
-          fetchError: false,
-        },
-        { overwrite: true },
+      const nodeId = nodeConfig.id;
+      const silent = options?.silent === true;
+      const gate = beginMappedOwnerRequest(
+        singleValueFetchGenerationRef.current,
+        singleValueInflightCountRef.current,
+        nodeId,
+        silent,
       );
-      resetSingleValueFetchErrorVisual(node as Node);
-      if (node.isNode()) {
-        startLoadingAnimation(node as Node);
+      if (!isStartedOwnerRequest(gate)) {
+        return;
+      }
+      const generation = gate.generation;
+      const isCurrent = () =>
+        singleValueFetchGenerationRef.current.get(nodeId) === generation;
+      const previousData = node.getData();
+
+      if (!silent) {
+        node.setData(
+          {
+            ...previousData,
+            isLoading: true,
+            hasError: false,
+            errorMessage: undefined,
+            fetchError: false,
+          },
+          { overwrite: true },
+        );
+        resetSingleValueFetchErrorVisual(node as Node);
+        if (node.isNode()) {
+          startLoadingAnimation(node as Node);
+        }
       }
 
       try {
@@ -192,6 +218,7 @@ export const useGraphNodeOperations = ({
           filterBindings: effectiveFilterBindings,
           filterDefinitions,
         });
+        if (!isCurrent()) return;
 
         const dataToExtract = compareResult.currentData;
         if (!dataToExtract) {
@@ -298,7 +325,18 @@ export const useGraphNodeOperations = ({
           adjustSingleValueNodeSize(node as Node, nodeText);
         }
       } catch (error) {
+        if (!isCurrent()) return;
         console.error('更新单值节点数据失败:', error);
+        if (silent) {
+          node.setData(
+            {
+              ...node.getData(),
+              isLoading: false,
+            },
+            { overwrite: true },
+          );
+          return;
+        }
         const noDataLabel = t('topology.noData');
         if (error instanceof Error && error.message === noDataLabel) {
           node.setData(
@@ -328,6 +366,13 @@ export const useGraphNodeOperations = ({
         if (node.isNode()) {
           adjustSingleValueNodeSize(node as Node, SINGLE_VALUE_ERROR_PLACEHOLDER);
         }
+      } finally {
+        finishMappedOwnerRequest(
+          singleValueFetchGenerationRef.current,
+          singleValueInflightCountRef.current,
+          nodeId,
+          generation,
+        );
       }
     },
     [graphInstance, getRuntimeSourceDataByApiId, startLoadingAnimation, t],
@@ -545,6 +590,7 @@ export const useGraphNodeOperations = ({
         nodeData: TopologyNodeData,
         dataSource?: DatasourceItem,
       ) => boolean,
+      options?: { silent?: boolean },
     ) => {
       if (!graphInstance) return;
 
@@ -567,6 +613,7 @@ export const useGraphNodeOperations = ({
             unifiedFilterValues,
             filterDefinitions,
             namespaceId,
+            options,
           );
         }
       });

@@ -1,10 +1,11 @@
 import React from 'react';
 import { Button, ColorPicker, Input, InputNumber, Select } from 'antd';
 import { MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons';
-import type {
-  ValueMapping,
-  ValueMappingType,
-  SpecialMatch,
+import {
+  normalizeValueMappingResult,
+  type SpecialMatch,
+  type ValueMapping,
+  type ValueMappingType,
 } from '@/app/ops-analysis/utils/valueMapping';
 
 interface ValueMappingsConfigSectionProps {
@@ -13,9 +14,6 @@ interface ValueMappingsConfigSectionProps {
   onChange?: (next: ValueMapping[]) => void;
   readonly?: boolean;
 }
-
-/** ColorPicker 展示默认色；新增规则时必须写入 result.color，否则只显示不落盘。 */
-export const DEFAULT_VALUE_MAPPING_COLOR = '#366ce4';
 
 const TYPE_OPTIONS: { value: ValueMappingType; label: string }[] = [
   { value: 'value', label: '精确值' },
@@ -54,9 +52,13 @@ export const ValueMappingsConfigSection: React.FC<
     patch: Partial<ValueMapping['result']>,
   ) => {
     emit(
-      mappings.map((m, i) =>
-        i === index ? { ...m, result: { ...m.result, ...patch } } : m,
-      ),
+      mappings.map((m, i) => {
+        if (i !== index) return m;
+        return {
+          ...m,
+          result: normalizeValueMappingResult({ ...m.result, ...patch }),
+        };
+      }),
     );
   };
 
@@ -66,7 +68,7 @@ export const ValueMappingsConfigSection: React.FC<
       {
         type: 'value',
         value: '',
-        result: { text: '', color: DEFAULT_VALUE_MAPPING_COLOR },
+        result: {},
       },
     ]);
   };
@@ -156,7 +158,7 @@ export const ValueMappingsConfigSection: React.FC<
 
             <span className="text-sm text-gray-500">→</span>
             <Input
-              value={m.result?.text}
+              value={m.result?.text ?? ''}
               onChange={(e) => updateResult(index, { text: e.target.value })}
               placeholder={t('topology.nodeConfig.valueMappingsResultText')}
               size="small"
@@ -164,8 +166,13 @@ export const ValueMappingsConfigSection: React.FC<
               disabled={readonly}
             />
             <ColorPicker
-              value={m.result?.color || DEFAULT_VALUE_MAPPING_COLOR}
-              onChange={(c) => updateResult(index, { color: c.toHexString() })}
+              value={m.result?.color ?? null}
+              allowClear
+              onChange={(c) =>
+                updateResult(index, {
+                  color: c.cleared ? undefined : c.toHexString(),
+                })
+              }
               size="small"
               showText
               disabled={readonly}

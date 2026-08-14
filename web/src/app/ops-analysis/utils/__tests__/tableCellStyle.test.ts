@@ -45,6 +45,20 @@ test('colorBackground without color falls back to plain text', () => {
   });
 });
 
+test('text-only mapping changes label without applying a mapping color', () => {
+  const presentation = resolveTableCellPresentation('关注', {
+    cellType: 'text',
+    valueMappings: [
+      { type: 'value', value: '关注', result: { text: '关注中' } },
+    ],
+  });
+
+  assert.deepEqual(presentation, {
+    mode: 'text',
+    displayText: '关注中',
+  });
+});
+
 test('unconfigured column stays plain text without color', () => {
   const presentation = resolveTableCellPresentation('CAS01', {});
   assert.deepEqual(presentation, {
