@@ -41,9 +41,13 @@ def _post(data=None, cookies=None, user=None):
 
 
 class TestCheckFirstLogin:
-    def test_empty_group_list_is_first_login(self):
+    def test_empty_group_list_is_not_first_login(self):
         user = MagicMock(group_list=[])
-        assert index_view._check_first_login(user, "Default") is True
+        assert index_view._check_first_login(user, "Default") is False
+
+    def test_missing_group_list_is_not_first_login(self):
+        user = MagicMock(spec=[])
+        assert index_view._check_first_login(user, "Default") is False
 
     def test_single_group_matching_default_is_first_login(self):
         user = MagicMock(group_list=[{"name": "Default"}])
