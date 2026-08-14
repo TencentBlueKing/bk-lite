@@ -1360,6 +1360,54 @@ def test_receive_alert_events_reports_partial_ingestion(monkeypatch):
     assert result["data"]["ingestion"]["skipped"] == 1
 
 
+@pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log", "lite-apm"])
+@pytest.mark.django_db
+def test_receive_alert_events_real_adapter_preserves_partial_contract_and_safe_log(pusher, caplog):
+    from apps.alerts.models.alert_source import AlertSource
+
+    for level_id in (0, 1, 2, 3):
+        Level.objects.create(
+            level_id=level_id,
+            level_name=f"L{level_id}",
+            level_display_name=f"等级{level_id}",
+            level_type=LevelType.EVENT,
+        )
+    AlertSource.objects.create(
+        name="NATS 兼容源",
+        source_id="nats-real-partial",
+        source_type="nats",
+        secret="source-secret",
+        team_secrets={},
+        is_active=True,
+        is_effective=True,
+        config={"event_fields_mapping": {"title": "title", "level": "level"}},
+    )
+    marker = f"SECRET-NATS-{pusher}-4671"
+    events = [
+        {"title": f"{pusher} 正常事件", "level": "0", "organizations": [3]},
+        {"description": marker, "secret": marker, "organizations": [3]},
+    ]
+
+    result = N.receive_alert_events(
+        source_id="nats-real-partial",
+        events=events,
+        pusher=pusher,
+    )
+
+    assert result["result"] is False
+    assert result["data"]["processed_events"] == 1
+    assert result["data"]["ingestion"] == {
+        "received": 2,
+        "accepted": 1,
+        "skipped": 1,
+        "errored": 0,
+        "duplicates": 0,
+        "rejected": 1,
+    }
+    assert Event.objects.get(title=f"{pusher} 正常事件").team == [3]
+    assert marker not in caplog.text
+
+
 @pytest.mark.django_db
 @pytest.mark.integration
 def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(monkeypatch):
