@@ -263,28 +263,31 @@ async def test_host_collection_preparation_and_formatting_do_not_stall_event_loo
 @pytest.mark.asyncio
 async def test_mysql_credential_probe_does_not_stall_event_loop(monkeypatch):
     class Cursor:
-        def execute(self, query):
+        async def execute(self, query):
             if query != "SHOW GLOBAL VARIABLES LIKE 'version'":
                 raise AssertionError("probe used a non-minimal capability query")
+            await asyncio.sleep(0.05)
 
-        def fetchall(self):
+        async def fetchall(self):
             return [{"Variable_name": "version", "Value": "8.0.36"}]
 
-        def close(self):
+        async def close(self):
             return None
 
     class Connection:
-        def cursor(self):
+        async def cursor(self, *_args, **_kwargs):
             return Cursor()
 
         def close(self):
             return None
 
-    def connect(**_kwargs):
-        time.sleep(0.05)
+    async def connect(**_kwargs):
+        await asyncio.sleep(0.05)
         return Connection()
 
-    monkeypatch.setattr("plugins.inputs.mysql.mysql_info.pymysql.connect", connect)
+    monkeypatch.setattr(
+        "plugins.inputs.mysql.mysql_info.aiomysql.connect", connect
+    )
     plugin = MysqlInfo(
         {
             "host": "10.0.0.8",
@@ -303,15 +306,15 @@ async def test_mysql_credential_probe_does_not_stall_event_loop(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mysql_probe_returns_stable_auth_failure_without_secret(monkeypatch):
-    import pymysql
+    from pymysql.err import OperationalError
 
-    def rejected(**_kwargs):
-        raise pymysql.err.OperationalError(
+    async def rejected(**_kwargs):
+        raise OperationalError(
             1045, "Access denied for password secret-do-not-return"
         )
 
     monkeypatch.setattr(
-        "plugins.inputs.mysql.mysql_info.pymysql.connect", rejected
+        "plugins.inputs.mysql.mysql_info.aiomysql.connect", rejected
     )
     plugin = MysqlInfo(
         {
@@ -332,29 +335,31 @@ async def test_mysql_probe_returns_stable_auth_failure_without_secret(monkeypatc
 @pytest.mark.asyncio
 async def test_postgresql_credential_probe_does_not_stall_event_loop(monkeypatch):
     class Cursor:
-        def execute(self, query):
+        async def execute(self, query):
             if query != "SHOW server_version":
                 raise AssertionError("probe used a non-minimal capability query")
+            await asyncio.sleep(0.05)
 
-        def fetchall(self):
+        async def fetchall(self):
             return [{"server_version": "16.2"}]
 
-        def close(self):
+        async def close(self):
             return None
 
     class Connection:
         def cursor(self, **_kwargs):
             return Cursor()
 
-        def close(self):
+        async def close(self):
             return None
 
-    def connect(**_kwargs):
-        time.sleep(0.05)
+    async def connect(**_kwargs):
+        await asyncio.sleep(0.05)
         return Connection()
 
     monkeypatch.setattr(
-        "plugins.inputs.postgresql.postgresql_info.psycopg2.connect", connect
+        "plugins.inputs.postgresql.postgresql_info.psycopg.AsyncConnection.connect",
+        connect,
     )
     plugin = PostgresqlInfo(
         {
