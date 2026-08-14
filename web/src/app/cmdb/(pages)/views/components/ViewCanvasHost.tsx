@@ -14,6 +14,8 @@ import type { RackDevice } from '@/app/cmdb/types/rackRoom';
 import type { ViewFocus, ViewType } from '../viewTypes';
 import { resolveRackRoomMode } from '../viewEligibility';
 import { buildBaseInfoPath } from '../viewUrls';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
+import { message } from 'antd';
 
 export interface ViewCanvasHostProps {
   viewType: ViewType;
@@ -85,7 +87,11 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
 
   const handleRackSelect = useCallback(
     (rack: { inst_uuid?: string; inst_id?: string; inst_name?: string }) => {
-      const rackUuid = rack.inst_uuid || rack.inst_id || '';
+      const rackUuid = resolveCmdbInstUuid(rack.inst_uuid);
+      if (!rackUuid) {
+        message.warning('机柜缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+        return;
+      }
       onRoomRackDrill?.({
         inst_uuid: rackUuid,
         inst_name: rack.inst_name,

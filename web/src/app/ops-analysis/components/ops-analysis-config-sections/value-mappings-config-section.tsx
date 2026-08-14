@@ -6,7 +6,7 @@ import type {
   ValueMapping,
   ValueMappingType,
 } from '@/app/ops-analysis/components/ops-analysis-config-sections/types';
-import { DEFAULT_VALUE_MAPPING_COLOR } from '@/app/ops-analysis/components/valueMappingsConfigSection';
+import { normalizeValueMappingResult } from '@/app/ops-analysis/utils/valueMapping';
 
 interface ValueMappingsConfigSectionProps {
   t: (key: string, defaultMessage?: string) => string;
@@ -48,9 +48,13 @@ export const ValueMappingsConfigSection: React.FC<
     patch: Partial<ValueMapping['result']>,
   ) => {
     emit(
-      mappings.map((m, i) =>
-        i === index ? { ...m, result: { ...m.result, ...patch } } : m,
-      ),
+      mappings.map((m, i) => {
+        if (i !== index) return m;
+        return {
+          ...m,
+          result: normalizeValueMappingResult({ ...m.result, ...patch }),
+        };
+      }),
     );
   };
 
@@ -60,7 +64,7 @@ export const ValueMappingsConfigSection: React.FC<
       {
         type: 'value',
         value: '',
-        result: { text: '', color: DEFAULT_VALUE_MAPPING_COLOR },
+        result: {},
       },
     ]);
   };
@@ -150,7 +154,7 @@ export const ValueMappingsConfigSection: React.FC<
 
           <span className="text-sm text-gray-500">→</span>
           <Input
-            value={m.result?.text}
+            value={m.result?.text ?? ''}
             onChange={(e) => updateResult(index, { text: e.target.value })}
             placeholder={t('topology.nodeConfig.valueMappingsResultText')}
             size="small"
@@ -158,8 +162,13 @@ export const ValueMappingsConfigSection: React.FC<
             disabled={readonly}
           />
           <ColorPicker
-            value={m.result?.color || DEFAULT_VALUE_MAPPING_COLOR}
-            onChange={(c) => updateResult(index, { color: c.toHexString() })}
+            value={m.result?.color ?? null}
+            allowClear
+            onChange={(c) =>
+              updateResult(index, {
+                color: c.cleared ? undefined : c.toHexString(),
+              })
+            }
             size="small"
             showText
             disabled={readonly}

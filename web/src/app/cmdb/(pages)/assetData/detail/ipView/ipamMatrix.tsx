@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Spin, Tooltip, Drawer, Button, Tag, Empty } from 'antd';
+import { Spin, Tooltip, Drawer, Button, Tag, Empty, message } from 'antd';
 import { ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
@@ -11,11 +11,13 @@ import { getFieldItem } from '@/app/cmdb/utils/common';
 import { useUserInfoContext } from '@/context/userInfo';
 import type { AttrFieldType, UserItem } from '@/app/cmdb/types/assetManage';
 import { useRouter } from 'next/navigation';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface IpInstance {
-  _id: number | string;
+  _id?: number | string;
+  inst_uuid?: string;
   ip_addr: string;
   ip_status?: string[];
   ip_allocated_status?: string[];
@@ -216,12 +218,17 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({ ip, open, onClose }) =>
 
   const jump = useCallback(() => {
     if (!ip) return;
+    const instUuid = resolveCmdbInstUuid(ip.inst_uuid);
+    if (!instUuid) {
+      message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+      return;
+    }
     const params = new URLSearchParams({
       icn: '',
       model_name: 'ip',
       model_id: 'ip',
       classification_id: '',
-      inst_uuid: String(ip.inst_uuid || ip._id),
+      inst_uuid: instUuid,
       inst_name: ip.ip_addr,
     }).toString();
     router.push(`/cmdb/assetData/detail/baseInfo?${params}`);

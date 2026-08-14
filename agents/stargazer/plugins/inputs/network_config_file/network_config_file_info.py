@@ -1,21 +1,19 @@
-import asyncio
 import base64
 import re
 import time
 import uuid
 
-try:
-    from netmiko import ConnectHandler
-except Exception:
-    ConnectHandler = None
-
+from core.logger import logger
 from plugins.inputs.network_config_file.constants import (
     COMMAND_ERROR_PATTERNS,
     DANGEROUS_COMMAND_PREFIXES,
     DANGEROUS_EXACT_COMMANDS,
     DEVICE_TYPE_DISABLE_PAGING,
+    SCRAPLI_PLATFORM_BY_DEVICE_TYPE,
     SUPPORTED_DEVICE_TYPES,
 )
+from scrapli import AsyncScrapli
+from scrapli.driver.generic.async_driver import AsyncGenericDriver
 
 
 def validate_safe_command(command: str) -> str:
@@ -53,19 +51,29 @@ class NetworkConfigFileInfo:
     def _connect_params(self) -> dict:
         device_type = str(self.params.get("device_type") or "").strip()
         if device_type not in SUPPORTED_DEVICE_TYPES:
-            raise ValueError(f"不支持的 Netmiko 驱动: {device_type}")
+            raise ValueError(f"不支持的异步网络驱动: {device_type}")
         return {
-            "device_type": device_type,
-            "ip": self.params.get("host") or self.params.get("connect_ip"),
-            "username": self.params.get("username"),
-            "password": self.params.get("password"),
-            "secret": self.params.get("enable_password") or "",
+            "platform": SCRAPLI_PLATFORM_BY_DEVICE_TYPE[device_type],
+            "host": self.params.get("host") or self.params.get("connect_ip"),
+            "auth_username": self.params.get("username"),
+            "auth_password": self.params.get("password"),
+            "auth_secondary": self.params.get("enable_password") or "",
             "port": int(self.params.get("port") or 22),
-            "allow_agent": False,
-            "use_keys": False,
-            "conn_timeout": int(self.params.get("conn_timeout") or 30),
-            "timeout": int(self.params.get("timeout") or 60),
+            "auth_strict_key": True,
+            "transport": "asyncssh",
+            "timeout_socket": float(self.params.get("conn_timeout") or 30),
+            "timeout_transport": float(self.params.get("conn_timeout") or 30),
+            "timeout_ops": float(self.params.get("timeout") or 60),
         }
+
+    @staticmethod
+    def _create_connection(connect_params: dict):
+        if connect_params["platform"] != "f5_tmsh":
+            return AsyncScrapli(**connect_params)
+        generic_params = dict(connect_params)
+        generic_params.pop("platform", None)
+        generic_params.pop("auth_secondary", None)
+        return AsyncGenericDriver(**generic_params)
 
     def _success_payload(self, merged_output: str) -> dict:
         if str(self.params.get("protocol_version") or "") != "2":
@@ -96,42 +104,80 @@ class NetworkConfigFileInfo:
         }
 
     async def list_all_resources(self, need_raw=False):
-        return await asyncio.to_thread(self._list_all_resources_sync, need_raw)
-
-    def _list_all_resources_sync(self, need_raw=False):
         del need_raw
         command_results = []
         failures = []
+        connection = None
         try:
             commands = self._commands()
             connect_params = self._connect_params()
-            if ConnectHandler is None:
-                raise RuntimeError("netmiko is required for network config file collection")
+            connection = self._create_connection(connect_params)
+            await connection.open()
+            if self.params.get("enable_password"):
+                await connection.acquire_priv("privilege_exec")
+            device_type = str(self.params.get("device_type") or "")
+            paging_command = DEVICE_TYPE_DISABLE_PAGING.get(device_type)
+            if paging_command:
+                await connection.send_command(paging_command)
 
-            with ConnectHandler(**connect_params) as net_connect:
-                if self.params.get("enable_password"):
-                    net_connect.enable()
-                paging_command = DEVICE_TYPE_DISABLE_PAGING.get(connect_params["device_type"])
-                if paging_command:
-                    net_connect.disable_paging(command=paging_command)
-
-                for command in commands:
-                    started = time.monotonic()
-                    try:
-                        output = net_connect.send_command(command)
-                        duration_ms = int((time.monotonic() - started) * 1000)
-                        if self._has_command_error(output):
-                            failures.append(f"{command}: {output[:200]}")
-                            command_results.append({"command": command, "status": "error", "error": output[:200], "duration_ms": duration_ms})
-                            continue
-                        command_results.append({"command": command, "status": "success", "output": output, "duration_ms": duration_ms})
-                    except Exception as err:
-                        duration_ms = int((time.monotonic() - started) * 1000)
-                        failures.append(f"{command}: {err}")
-                        command_results.append({"command": command, "status": "error", "error": str(err), "duration_ms": duration_ms})
+            for command in commands:
+                started = time.monotonic()
+                try:
+                    response = await connection.send_command(command)
+                    output = str(response.result or "")
+                    duration_ms = int((time.monotonic() - started) * 1000)
+                    if bool(response.failed) or self._has_command_error(output):
+                        failures.append(f"{command}: {output[:200]}")
+                        command_results.append(
+                            {
+                                "command": command,
+                                "status": "error",
+                                "error": output[:200],
+                                "duration_ms": duration_ms,
+                            }
+                        )
+                        continue
+                    command_results.append(
+                        {
+                            "command": command,
+                            "status": "success",
+                            "output": output,
+                            "duration_ms": duration_ms,
+                        }
+                    )
+                except Exception as err:
+                    duration_ms = int((time.monotonic() - started) * 1000)
+                    failures.append(f"{command}: {type(err).__name__}")
+                    command_results.append(
+                        {
+                            "command": command,
+                            "status": "error",
+                            "error": type(err).__name__,
+                            "duration_ms": duration_ms,
+                        }
+                    )
 
             if failures:
-                return {"success": False, "result": {"cmdb_collect_error": "; ".join(failures)[:2000]}}
-            return {"success": True, "result": self._success_payload(self.merge_command_outputs(command_results))}
+                return {
+                    "success": False,
+                    "result": {"cmdb_collect_error": "; ".join(failures)[:2000]},
+                }
+            return {
+                "success": True,
+                "result": self._success_payload(self.merge_command_outputs(command_results)),
+            }
         except Exception as err:
-            return {"success": False, "result": {"cmdb_collect_error": str(err)[:2000]}}
+            return {
+                "success": False,
+                "result": {"cmdb_collect_error": type(err).__name__},
+            }
+        finally:
+            if connection is not None:
+                try:
+                    await connection.close()
+                except Exception as close_error:  # 关闭失败不得覆盖主采集结果
+                    logger.warning(
+                        "event=network_config_close_failed target=%s error_type=%s",
+                        self.params.get("host") or self.params.get("connect_ip") or "-",
+                        type(close_error).__name__,
+                    )

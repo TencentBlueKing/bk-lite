@@ -90,9 +90,17 @@ Baseline: `local_codex/cmdb-instance-uuid` + [BASELINE_INVENTORY.md](./BASELINE_
 
 ## Q6. 迁移窗口与启动编排
 
-**推荐**：发版短暂停写 + management command（dry-run / apply / verify）幂等转换；**不**长期双写/懒回填。转换是维护步骤，**不**塞进 `batch_init` 当普通初始化。流量恢复前失败可协调恢复 PG+图备份；恢复后只前向修复。
+**推荐（已修订）**：
 
-**状态**：假设采纳（符合启动依赖文档）。
+- **部署默认**：`batch_init` 只注册 Celery 周期任务并 `delay` 一次；Worker 起来后
+  幂等 `--apply`，失败下轮重试，**不**同步扫图、**不**阻断 `supervisord`。
+- **大流量切换**：仍可用短暂停写 + 人工 `migrate_*_uuid_refs --dry-run/--apply/--verify`
+  留证据；流量恢复前失败可协调恢复 PG+图备份；恢复后只前向修复。
+- **不做**请求路径懒回填；**不**把同步 `--apply` 塞进 `batch_init`。
+- 运行期同一命令继续补 PG 残留：订阅 `snapshot_data`、采集 instances/结果快照、
+  Operation snapshot 与未成功 Outbox；孤儿不阻断 verify。变更历史 JSON 与操作日志不迁。
+
+**状态**：已锁定（部署自动收敛 + 维护窗口可选）。
 
 ---
 

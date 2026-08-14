@@ -7,6 +7,7 @@ import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
+import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { buildScreenWidgetConfig } from '../utils/widgetConfig';
 import ScreenWidgetFrame from './screenWidgetFrame';
 import { WidgetViewportProvider } from '@/app/ops-analysis/components/widget-viewport';
@@ -16,6 +17,7 @@ interface ScreenWidgetRendererProps {
   selected?: boolean;
   editMode?: boolean;
   refreshVersion: number;
+  refreshCause?: CanvasRuntimeRefreshCause;
   screenId?: string | number;
   fitScale: number;
   screenDensity: number;
@@ -45,6 +47,7 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
   selected = false,
   editMode = false,
   refreshVersion,
+  refreshCause = 'manual',
   screenId,
   fitScale,
   screenDensity,
@@ -100,6 +103,7 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
           filterSearchVersion={filterSearchVersion}
           namespaceSearchVersion={namespaceSearchVersion}
           reloadVersion={`screen:${refreshVersion}`}
+          refreshCause={refreshCause}
           unifiedFilterValues={unifiedFilterValues}
           filterDefinitions={filterDefinitions}
           builtinNamespaceId={builtinNamespaceId}

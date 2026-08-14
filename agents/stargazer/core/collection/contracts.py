@@ -9,11 +9,8 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
-from core.collection.enums import (
-    AccessProbeStatus,
-    CollectOutcomeStatus,
-    PreflightStatus,
-)
+from core.collection.constants import DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
+from core.collection.enums import AccessProbeStatus, CollectOutcomeStatus, PreflightStatus
 from core.collection.runtime import CollectionRequest, RunLease
 
 # 兼容：历史调用方从 contracts 导入枚举
@@ -28,8 +25,11 @@ __all__ = [
     "PreflightProbe",
     "PreflightResult",
     "PreflightStatus",
+    "PublishReceipt",
     "ResultPublisher",
+    "ResultSink",
     "RunSummary",
+    "StructuredMetricsPayload",
     "TargetCollectionContext",
     "TargetCollectionResult",
     "TargetExecutorSettings",
@@ -42,6 +42,7 @@ class PreflightResult:
     status: PreflightStatus
     error_code: str = ""
     detail: str = ""
+    connect_host: str = ""
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,14 @@ class CollectOutcome:
     value: Any = None
     error_code: str = ""
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class StructuredMetricsPayload:
+    """统一运行时内部的结构化配置采集指标，避免中间文本往返转换。"""
+
+    data: Mapping[str, Any]
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -90,34 +99,48 @@ class TargetCollectionResult:
 @dataclass(frozen=True)
 class RunSummary:
     total: int
-    succeeded: int
-    failed: int
+    collection_succeeded: int
+    collection_failed: int
     unreachable: int
     deferred: int
     skipped: int
+    publish_succeeded: int = 0
+    publish_failed: int = 0
+    publish_unknown: int = 0
+
+    @property
+    def succeeded(self) -> int:
+        """兼容旧调用方。"""
+        return self.collection_succeeded
+
+    @property
+    def failed(self) -> int:
+        """兼容旧调用方。"""
+        return self.collection_failed
+
+    @property
+    def has_errors(self) -> bool:
+        return bool(self.collection_failed or self.unreachable or self.publish_failed or self.publish_unknown)
 
 
 @dataclass(frozen=True)
 class TargetExecutorSettings:
     # 0 = 不限制；默认与环境变量 DEFAULT 对齐，运行时由 ApplicationSettings.from_env 注入
-    max_active_targets: int = 2000
-    target_task_window: int = 2000
-    connect_timeout_seconds: float = 7.0
+    max_active_targets: int = DEFAULT_MAX_ACTIVE_TARGETS
+    target_task_window: int = DEFAULT_TARGET_TASK_WINDOW
+    connect_timeout_seconds: float = 15.0
     plugin_timeout_seconds: float = 60.0
     publish_guard_seconds: float = 30.0
+    access_probe_enabled: bool = True
     # 0 = 不限制；默认 3 = 连续 protocol_no_response 最多尝试次数
     max_no_response_attempts: int = 3
     publish_max_attempts: int = 2
 
     def __post_init__(self) -> None:
         if self.max_active_targets < 0:
-            raise ValueError(
-                "max_active_targets must be >= 0 (0 means unlimited)"
-            )
+            raise ValueError("max_active_targets must be >= 0 (0 means unlimited)")
         if self.target_task_window < 0:
-            raise ValueError(
-                "target_task_window must be >= 0 (0 means unlimited)"
-            )
+            raise ValueError("target_task_window must be >= 0 (0 means unlimited)")
         if self.connect_timeout_seconds <= 0:
             raise ValueError("connect_timeout_seconds must be greater than zero")
         if self.plugin_timeout_seconds <= 0:
@@ -174,12 +197,32 @@ class AccessProbe(Protocol):
 
 
 class ResultPublisher(Protocol):
-    async def publish(
+    """执行器依赖的有界发布队列 interface。"""
+
+    async def enqueue(
         self,
         request: CollectionRequest,
         result: TargetCollectionResult,
         lease: RunLease,
-    ) -> None:
+    ) -> PublishReceipt:
+        ...
+
+
+class ResultSink(Protocol):
+    """发布队列内部依赖的最终投递 interface。"""
+
+    async def publish_batch(
+        self,
+        items,
+    ) -> Mapping[str, BaseException | None]:
+        ...
+
+
+class PublishReceipt(Protocol):
+    def done(self) -> bool:
+        ...
+
+    async def wait(self) -> None:
         ...
 
 
@@ -192,7 +235,5 @@ def build_collection_result_id(
     attempt_id: str = "",
 ) -> str:
     """单次运行内稳定的目标结果幂等 ID。"""
-    identity = "\0".join(
-        (task_id, plugin_ref, target, str(fence), str(attempt_id or ""))
-    )
+    identity = "\0".join((task_id, plugin_ref, target, str(fence), str(attempt_id or "")))
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()

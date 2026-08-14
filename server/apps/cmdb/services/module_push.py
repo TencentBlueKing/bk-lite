@@ -6,17 +6,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from apps.cmdb.services.instance import InstanceManage
+from apps.cmdb.services.instance_identity import cmdb_link_identity, optional_inst_uuid
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope
-from apps.node_mgmt.services.module_push_contract import (
-    EVENT_LIFECYCLE,
-    EVENT_UPSERT,
-    IngestEnvelope,
-)
+from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE, EVENT_UPSERT, IngestEnvelope
 from apps.rpc.monitor import Monitor
 from apps.rpc.node_mgmt import NodeMgmt
-
 
 MODULE_NAME = "cmdb"
 TARGET_MONITOR = "monitor"
@@ -46,17 +42,17 @@ class CmdbToMonitorPushService:
     @classmethod
     def push_instance(
         cls,
-        inst_id: int | str,
+        inst_ref: int | str,
         *,
         actor_scope: dict[str, Any],
     ) -> dict[str, Any]:
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
-        if not instance:
-            raise ValueError(f"CMDB instance not found: {inst_id}")
+        instance = cls._resolve_cmdb_instance(inst_ref)
+        cmdb_id, aliases = cmdb_link_identity(instance)
+        if not cmdb_id:
+            raise ValueError(f"CMDB instance missing inst_uuid: {inst_ref}")
 
-        cmdb_id = str(instance.get("_id"))
         node_id = cls._normalize_optional_str(instance.get("node_id"))
-        envelope = cls._build_envelope(instance, cmdb_id=cmdb_id, node_id=node_id)
+        envelope = cls._build_envelope(instance, cmdb_id=cmdb_id, aliases=aliases, node_id=node_id)
         allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])
         operator = actor_scope.get("operator") or ""
 
@@ -92,8 +88,12 @@ class CmdbToMonitorPushService:
         """
         try:
             result = dict(instance)
-            cmdb_id = result.get("_id")
-            if cmdb_id in (None, ""):
+            cmdb_id, aliases = cmdb_link_identity(result)
+            if not cmdb_id:
+                logger.warning(
+                    "[CmdbIoC] skip notify: instance missing inst_uuid graph_id=%s",
+                    result.get("_id"),
+                )
                 return result
 
             scope = {
@@ -102,18 +102,12 @@ class CmdbToMonitorPushService:
             }
             # 1) 节点：只关联
             try:
-                node_result = cls._notify_node(result, actor_scope=scope)
-                linked = cls._normalize_optional_str(
-                    (node_result or {}).get("id") if isinstance(node_result, dict) else None
-                )
+                node_result = cls._notify_node(result, cmdb_id=cmdb_id, aliases=aliases, actor_scope=scope)
+                linked = cls._normalize_optional_str((node_result or {}).get("id") if isinstance(node_result, dict) else None)
                 if linked and str(result.get("node_id") or "").strip() != linked:
-                    result = cls._backfill_node_id(
-                        result, linked, operator=operator, allowed_org_ids=allowed_org_ids
-                    )
+                    result = cls._backfill_node_id(result, linked, operator=operator, allowed_org_ids=allowed_org_ids)
             except Exception:
-                logger.exception(
-                    "[CmdbIoC] notify node failed cmdb_id=%s", cmdb_id
-                )
+                logger.exception("[CmdbIoC] notify node failed cmdb_id=%s", cmdb_id)
 
             # 2) 监控：无凭据，有则关联 / 无则 ignored
             try:
@@ -121,7 +115,8 @@ class CmdbToMonitorPushService:
 
                 envelope = cls._build_envelope(
                     result,
-                    cmdb_id=str(cmdb_id),
+                    cmdb_id=cmdb_id,
+                    aliases=aliases,
                     node_id=cls._normalize_optional_str(result.get("node_id")),
                 )
                 monitor_result = MonitorModuleIngestService.ingest(
@@ -134,11 +129,7 @@ class CmdbToMonitorPushService:
                 if not isinstance(monitor_result, dict):
                     monitor_result = {"id": monitor_result}
                 monitor_id = monitor_result.get("id")
-                if (
-                    monitor_id is not None
-                    and not monitor_result.get("ignored")
-                    and not monitor_result.get("conflict")
-                ):
+                if monitor_id is not None and not monitor_result.get("ignored") and not monitor_result.get("conflict"):
                     result = cls._backfill_monitor_id(
                         result,
                         str(monitor_id),
@@ -146,14 +137,12 @@ class CmdbToMonitorPushService:
                         allowed_org_ids=allowed_org_ids,
                     )
             except Exception:
-                logger.exception(
-                    "[CmdbIoC] notify monitor failed cmdb_id=%s", cmdb_id
-                )
+                logger.exception("[CmdbIoC] notify monitor failed cmdb_id=%s", cmdb_id)
             return result
         except Exception:
             logger.exception(
                 "[CmdbIoC] best_effort_notify_on_host_create failed cmdb_id=%s",
-                (instance or {}).get("_id"),
+                (instance or {}).get("inst_uuid") or (instance or {}).get("_id"),
             )
             return dict(instance or {})
 
@@ -162,11 +151,15 @@ class CmdbToMonitorPushService:
         cls,
         instance: dict[str, Any],
         *,
+        cmdb_id: str,
+        aliases: list[str],
         actor_scope: dict[str, Any],
     ) -> dict[str, Any]:
-        cmdb_id = str(instance.get("_id"))
         raw = cls._instance_to_raw(instance)
         link_ids: dict[str, Any] = {"cmdb_id": cmdb_id}
+        legacy_aliases = [item for item in aliases if item != cmdb_id]
+        if legacy_aliases:
+            link_ids["cmdb_id_aliases"] = legacy_aliases
         node_id = cls._normalize_optional_str(instance.get("node_id"))
         if node_id:
             link_ids["node_id"] = node_id
@@ -240,7 +233,7 @@ class CmdbToMonitorPushService:
         except Exception:
             logger.exception(
                 "[CmdbIoC] backfill node_id failed cmdb_id=%s node_id=%s",
-                result.get("_id"),
+                result.get("inst_uuid") or result.get("_id"),
                 linked,
             )
             result = dict(result)
@@ -282,7 +275,7 @@ class CmdbToMonitorPushService:
         except Exception:
             logger.exception(
                 "[CmdbIoC] backfill monitor_id failed cmdb_id=%s monitor_id=%s",
-                result.get("_id"),
+                result.get("inst_uuid") or result.get("_id"),
                 monitor_id,
             )
             return result
@@ -293,10 +286,14 @@ class CmdbToMonitorPushService:
         instance: dict[str, Any],
         *,
         cmdb_id: str,
+        aliases: list[str],
         node_id: str | None,
     ) -> dict[str, Any]:
         raw = cls._instance_to_raw(instance)
         link_ids: dict[str, Any] = {"cmdb_id": cmdb_id}
+        legacy_aliases = [item for item in aliases if item != cmdb_id]
+        if legacy_aliases:
+            link_ids["cmdb_id_aliases"] = legacy_aliases
         if node_id:
             link_ids["node_id"] = node_id
 
@@ -346,6 +343,20 @@ class CmdbToMonitorPushService:
         return text or None
 
     @classmethod
+    def _resolve_cmdb_instance(cls, inst_ref: int | str) -> dict[str, Any]:
+        text = str(inst_ref).strip()
+        inst_uuid = optional_inst_uuid(text)
+        if inst_uuid:
+            instance = InstanceManage.query_entity_by_uuid(inst_uuid)
+        elif text.isdigit():
+            instance = InstanceManage.query_entity_by_id(int(text))
+        else:
+            instance = None
+        if not instance:
+            raise ValueError(f"CMDB instance not found: {inst_ref}")
+        return instance
+
+    @classmethod
     def best_effort_notify_on_delete(
         cls,
         instances: list[dict[str, Any]],
@@ -365,7 +376,7 @@ class CmdbToMonitorPushService:
                 except Exception:
                     logger.exception(
                         "[CmdbIoC] delete notify one failed cmdb_id=%s",
-                        (instance or {}).get("_id"),
+                        (instance or {}).get("inst_uuid") or (instance or {}).get("_id"),
                     )
         except Exception:
             logger.exception("[CmdbIoC] best_effort_notify_on_delete failed")
@@ -377,7 +388,7 @@ class CmdbToMonitorPushService:
         *,
         actor_scope: dict[str, Any],
     ) -> None:
-        cmdb_id = str(instance.get("_id") or "").strip()
+        cmdb_id, aliases = cmdb_link_identity(instance)
         if not cmdb_id:
             return
         node_id = cls._normalize_optional_str(instance.get("node_id"))
@@ -388,6 +399,9 @@ class CmdbToMonitorPushService:
         raw = cls._instance_to_raw(instance)
         raw["action"] = "unlink"
         link_ids: dict[str, Any] = {"cmdb_id": cmdb_id}
+        legacy_aliases = [item for item in aliases if item != cmdb_id]
+        if legacy_aliases:
+            link_ids["cmdb_id_aliases"] = legacy_aliases
         if node_id:
             link_ids["node_id"] = node_id
         if monitor_id:
@@ -417,9 +431,7 @@ class CmdbToMonitorPushService:
             except Exception:
                 NodeMgmt().ingest_from_source(**payload)
         except Exception:
-            logger.exception(
-                "[CmdbIoC] delete notify node failed cmdb_id=%s", cmdb_id
-            )
+            logger.exception("[CmdbIoC] delete notify node failed cmdb_id=%s", cmdb_id)
 
         try:
             from apps.monitor.services.module_ingest import MonitorModuleIngestService
@@ -433,6 +445,4 @@ class CmdbToMonitorPushService:
             except Exception:
                 Monitor().ingest_from_source(**payload)
         except Exception:
-            logger.exception(
-                "[CmdbIoC] delete notify monitor failed cmdb_id=%s", cmdb_id
-            )
+            logger.exception("[CmdbIoC] delete notify monitor failed cmdb_id=%s", cmdb_id)

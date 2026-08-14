@@ -169,8 +169,49 @@ def test_resolve_task_instance_by_uuid():
         ]
     )
     rid, inst = S._resolve_task_instance(task, "123e4567-e89b-42d3-a456-426614174000")
-    assert rid == "10"
+    assert rid == "123e4567-e89b-42d3-a456-426614174000"
     assert inst["inst_uuid"] == "123e4567-e89b-42d3-a456-426614174000"
+
+
+def test_expected_instance_ids_prefer_uuid():
+    task = _task(
+        instances=[
+            {
+                "_id": "10",
+                "inst_uuid": "123e4567-e89b-42d3-a456-426614174000",
+            }
+        ]
+    )
+    assert S._get_expected_instance_ids(task) == ["123e4567-e89b-42d3-a456-426614174000"]
+
+
+def test_normalize_item_map_maps_legacy_graph_id_to_uuid():
+    uuid_value = "123e4567-e89b-42d3-a456-426614174000"
+    task = _task(instances=[{"_id": "10", "inst_uuid": uuid_value}])
+    items = {
+        "10": {"instance_id": "10", "status": ConfigFileVersionStatus.SUCCESS, "changed": True, "version": "100"},
+        "orphan": {"instance_id": "orphan", "status": ConfigFileVersionStatus.ERROR, "changed": False, "version": "90"},
+    }
+    normalized = S._normalize_item_map(task, items)
+    assert set(normalized.keys()) == {uuid_value}
+    assert normalized[uuid_value]["instance_id"] == uuid_value
+    assert normalized[uuid_value]["status"] == ConfigFileVersionStatus.SUCCESS
+
+
+def test_build_summary_pending_ignores_duplicate_legacy_keys():
+    uuid_value = "123e4567-e89b-42d3-a456-426614174000"
+    task = _task(instances=[{"_id": "1", "inst_uuid": uuid_value}, {"_id": "2", "inst_uuid": "223e4567-e89b-42d3-a456-426614174000"}])
+    summary = S._build_summary(
+        task,
+        items={
+            "1": {"instance_id": "1", "status": ConfigFileVersionStatus.SUCCESS, "changed": True, "version": "100"},
+        },
+    )
+    assert summary["config_file_data"]["status"] == "pending"
+    assert summary["config_file_data"]["pending_count"] == 1
+    assert summary["config_file_data"]["success_count"] == 1
+    assert uuid_value in summary["config_file_data"]["items"]
+    assert "1" not in summary["config_file_data"]["items"]
 
 
 def test_resolve_task_instance_rejects_hostname_only():
@@ -267,6 +308,21 @@ def test_get_file_list_by_uuid_includes_unmigrated_numeric_rows():
     file_list = S.get_file_list(instance_id="5", instance_uuid="550e8400-e29b-41d4-a716-446655440000")
     assert len(file_list) == 1
     assert file_list[0]["file_path"] == "/a"
+
+
+@pytest.mark.django_db
+def test_version_identity_q_matches_legacy_graph_id():
+    uuid_value = "123e4567-e89b-42d3-a456-426614174000"
+    row = ConfigFileVersion.objects.create(
+        instance_id="10",
+        model_id="host",
+        version="100",
+        file_path="/a",
+        file_name="a",
+        status="success",
+    )
+    lookup = S._version_identity_q(uuid_value, uuid_value, {"_id": "10", "inst_uuid": uuid_value})
+    assert ConfigFileVersion.objects.filter(lookup).get().id == row.id
 
 
 @pytest.mark.django_db

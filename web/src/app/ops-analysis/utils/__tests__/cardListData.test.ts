@@ -287,3 +287,14 @@ test('resolveCardListAccentPresentation maps text, soft background and color dot
     { mode: 'plain', displayText: 'P2' },
   );
 });
+
+test('text-only mapping changes label without coloring', () => {
+  assert.deepEqual(
+    resolveCardListAccentPresentation('P1', {
+      valueMappings: [
+        { type: 'value', value: 'P1', result: { text: '紧急' } },
+      ],
+    }),
+    { mode: 'plain', displayText: '紧急' },
+  );
+});

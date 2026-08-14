@@ -1,16 +1,17 @@
 # -- coding: utf-8 --
 """IP 发现 collector：按子网范围 ICMP/TCP 探活，返回活跃 IP（含 best-effort MAC）。"""
+
 import asyncio
 import ipaddress
 import json
+import os
+import re
 
-from core.collection.contracts import (
-    AccessProbeResult,
-    AccessProbeStatus,
-)
+from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 
 DEFAULT_PORTS = [22, 80, 443, 3389]
 CONCURRENCY = 50
+MAX_PORTS = 64
 
 
 class IPDiscoveryScanner:
@@ -18,7 +19,13 @@ class IPDiscoveryScanner:
         self.model_id = kwargs.get("model_id", "ip")
         self.scan_method = (kwargs.get("scan_method") or "icmp").lower()
         self.ports = self._normalize_ports(kwargs.get("ports") or DEFAULT_PORTS)
+        if len(self.ports) > MAX_PORTS:
+            raise ValueError(f"port count exceeds {MAX_PORTS}")
         self.subnets = self._normalize_json_list(kwargs.get("subnets") or [])
+        self.max_targets = int(os.getenv("MAX_TARGETS_PER_RUN", "10000"))
+        if self.max_targets <= 0:
+            raise ValueError("MAX_TARGETS_PER_RUN must be greater than zero")
+        self.concurrency = CONCURRENCY
         self.targets = self._build_targets(kwargs.get("targets") or [])
         self.timeout = float(kwargs.get("timeout", 5))
 
@@ -51,8 +58,14 @@ class IPDiscoveryScanner:
 
     def _build_targets(self, explicit_targets) -> list[dict]:
         targets = []
-        for ip in self._normalize_json_list(explicit_targets) if isinstance(explicit_targets, str) else explicit_targets:
-            targets.append({"ip": str(ip), "subnet_id": "", "subnet_cidr": ""})
+
+        def append(target: dict) -> None:
+            if len(targets) >= self.max_targets:
+                raise ValueError(f"target count exceeds MAX_TARGETS_PER_RUN={self.max_targets}")
+            targets.append(target)
+
+        for ip in (self._normalize_json_list(explicit_targets) if isinstance(explicit_targets, str) else explicit_targets):
+            append({"ip": str(ip), "subnet_id": "", "subnet_cidr": ""})
 
         for subnet in self.subnets:
             if not isinstance(subnet, dict):
@@ -62,11 +75,7 @@ class IPDiscoveryScanner:
                 network = ipaddress.ip_network(cidr, strict=False)
             except ValueError:
                 continue
-            reserved = {
-                str(item).strip()
-                for item in subnet.get("reserved_addresses", [])
-                if str(item).strip()
-            }
+            reserved = {str(item).strip() for item in subnet.get("reserved_addresses", []) if str(item).strip()}
             gateway = str(subnet.get("gateway") or "").strip()
             if gateway:
                 reserved.add(gateway)
@@ -74,7 +83,7 @@ class IPDiscoveryScanner:
                 ip_text = str(ip)
                 if ip_text in reserved:
                     continue
-                targets.append(
+                append(
                     {
                         "ip": ip_text,
                         "subnet_id": str(subnet.get("subnet_id") or ""),
@@ -104,31 +113,44 @@ class IPDiscoveryScanner:
 
     async def _icmp_probe(self, ip: str, timeout: float) -> bool:
         from icmplib import async_ping
+
         try:
             host = await async_ping(ip, count=1, timeout=timeout, privileged=True)
             return host.is_alive
         except Exception:
             return False
 
-    def _read_mac(self, ip: str) -> str:
+    async def _read_mac(self, ip: str) -> str:
         """best-effort：仅同二层可得（读 ARP 表）。跨三层返回空。规格 §13.3。"""
+        process = None
         try:
-            import subprocess
-            out = subprocess.run(["arp", "-n", ip], capture_output=True, text=True, timeout=2).stdout
-            for tok in out.split():
-                if ":" in tok and len(tok) == 17:
-                    return tok
+            process = await asyncio.create_subprocess_exec(
+                "arp",
+                "-n",
+                ip,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _stderr = await asyncio.wait_for(process.communicate(), timeout=2)
+            if process.returncode not in (None, 0):
+                return ""
+            match = re.search(rb"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", stdout)
+            return match.group(0).decode("ascii") if match else ""
+        except TimeoutError:
+            if process is not None:
+                process.kill()
+                await process.communicate()
         except Exception:
-            pass
+            return ""
         return ""
 
     async def _probe_one(self, target: dict, sem: asyncio.Semaphore):
         ip = target["ip"]
         async with sem:
             alive = (await self._tcp_alive(ip)) if self.scan_method == "tcp" else (await self._icmp_probe(ip, self.timeout))
-        if not alive:
-            return None
-        mac = await asyncio.to_thread(self._read_mac, ip)
+            if not alive:
+                return None
+            mac = await self._read_mac(ip)
         if not target.get("subnet_id"):
             return {"ip": ip, "mac": mac}
         return {
@@ -142,7 +164,24 @@ class IPDiscoveryScanner:
         }
 
     async def list_all_resources(self) -> dict:
-        sem = asyncio.Semaphore(CONCURRENCY)
-        results = await asyncio.gather(*[self._probe_one(target, sem) for target in self.targets])
+        if not self.targets:
+            return {"success": True, "result": {self.model_id: []}}
+        sem = asyncio.Semaphore(self.concurrency)
+        results = [None] * len(self.targets)
+        next_index = 0
+        index_lock = asyncio.Lock()
+
+        async def worker() -> None:
+            nonlocal next_index
+            while True:
+                async with index_lock:
+                    if next_index >= len(self.targets):
+                        return
+                    index = next_index
+                    next_index += 1
+                results[index] = await self._probe_one(self.targets[index], sem)
+
+        workers = [asyncio.create_task(worker()) for _ in range(min(self.concurrency, len(self.targets)))]
+        await asyncio.gather(*workers)
         alive = [r for r in results if r]
         return {"success": True, "result": {self.model_id: alive}}

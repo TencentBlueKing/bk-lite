@@ -9,11 +9,12 @@
 
     .venv/bin/pytest -q -o addopts='' -s tests/test_snmp_four_hosts_connectivity.py
 
-注意：本文件含本地联调凭据，不要提交到远端。
+community 必须通过 STARGAZER_TEST_SNMP_COMMUNITY_DEFAULT / _246 环境变量注入。
 """
 
 from __future__ import annotations
 
+import os
 import socket
 import time
 
@@ -22,12 +23,12 @@ from pysnmp.entity.rfc3413.oneliner import cmdgen
 
 SYS_NAME_OID = "1.3.6.1.2.1.1.5.0"
 
-# 用户提供的本地联调目标（勿入库/勿推远程）
+# 本地联调目标；凭据禁止写入仓库。
 TARGETS = (
     {
         "host": "10.10.69.247",
         "version": "v2",
-        "community": "WeOps2024",
+        "community_env": "STARGAZER_TEST_SNMP_COMMUNITY_DEFAULT",
         "snmp_port": 161,
         "timeout": 20,
         "retries": 3,
@@ -35,7 +36,7 @@ TARGETS = (
     {
         "host": "10.10.69.245",
         "version": "v2",
-        "community": "WeOps2024",
+        "community_env": "STARGAZER_TEST_SNMP_COMMUNITY_DEFAULT",
         "snmp_port": 161,
         "timeout": 5,
         "retries": 1,
@@ -43,7 +44,7 @@ TARGETS = (
     {
         "host": "10.10.69.248",
         "version": "v2",
-        "community": "WeOps2024",
+        "community_env": "STARGAZER_TEST_SNMP_COMMUNITY_DEFAULT",
         "snmp_port": 161,
         "timeout": 5,
         "retries": 1,
@@ -51,7 +52,7 @@ TARGETS = (
     {
         "host": "10.10.69.246",
         "version": "v2",
-        "community": "WeCis@2024",
+        "community_env": "STARGAZER_TEST_SNMP_COMMUNITY_246",
         "snmp_port": 161,
         "timeout": 5,
         "retries": 1,
@@ -135,26 +136,29 @@ def _snmp_sysname_get(params: dict) -> dict:
     }
 
 
+def _configured_target(params: dict) -> dict:
+    community = os.getenv(str(params["community_env"]), "")
+    if not community:
+        pytest.skip(f"missing {params['community_env']}")
+    return {**params, "community": community}
+
+
 @pytest.mark.parametrize("params", TARGETS, ids=lambda item: item["host"])
 def test_snmp_host_is_reachable(params):
+    params = _configured_target(params)
     host = params["host"]
     port = int(params["snmp_port"])
     udp = _udp_probe(host, port)
     snmp = _snmp_sysname_get(params)
-    print(
-        f"\n[{host}:{port}] udp={udp} snmp={snmp} "
-        f"community_len={len(str(params['community']))}"
-    )
-    assert snmp["ok"], (
-        f"{host} SNMP 不通: detail={snmp['detail']} elapsed={snmp['elapsed']}s "
-        f"udp={udp}"
-    )
+    print(f"\n[{host}:{port}] udp={udp} snmp={snmp} " f"community_len={len(str(params['community']))}")
+    assert snmp["ok"], f"{host} SNMP 不通: detail={snmp['detail']} elapsed={snmp['elapsed']}s " f"udp={udp}"
 
 
 def test_all_four_hosts_report():
     """汇总跑一遍，便于一眼看通断。"""
     rows = []
     for params in TARGETS:
+        params = _configured_target(params)
         snmp = _snmp_sysname_get(params)
         rows.append(
             {
@@ -168,9 +172,6 @@ def test_all_four_hosts_report():
     print("\n=== SNMP four-host summary ===")
     for row in rows:
         status = "PASS" if row["ok"] else "FAIL"
-        print(
-            f"{status} {row['host']} elapsed={row['elapsed']}s "
-            f"sysName={row['sys_name']!r} detail={row['detail']}"
-        )
+        print(f"{status} {row['host']} elapsed={row['elapsed']}s " f"sysName={row['sys_name']!r} detail={row['detail']}")
     failed = [row["host"] for row in rows if not row["ok"]]
     assert not failed, f"不通的主机: {failed}"

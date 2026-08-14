@@ -38,6 +38,7 @@ import {
   ensureCollectTaskMap,
 } from '@/app/cmdb/utils/collectTask';
 import { useCommon } from '@/app/cmdb/context/common';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import { useAssetDataStore, type FilterItem } from '@/app/cmdb/store';
 import { useModelApi, useClassificationApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import {
@@ -852,10 +853,15 @@ const AssetDataContent = () => {
   const handleFilterBarChange = useCallback(() => { }, []);
 
   const checkDetail = (row = { inst_uuid: '', inst_name: '', ip_addr: '' }) => {
+    const instUuid = resolveCmdbInstUuid(row.inst_uuid);
+    if (!instUuid) {
+      message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+      return;
+    }
     const modelItem = modelList.find((item) => item.key === modelId);
     router.push(
       `/cmdb/assetData/detail/baseInfo?icn=${modelItem?.icn || ''}&model_name=${modelItem?.label || ''
-      }&model_id=${modelId}&classification_id=${groupId}&inst_uuid=${row.inst_uuid
+      }&model_id=${modelId}&classification_id=${groupId}&inst_uuid=${instUuid
       }&${row.inst_name ? `inst_name=${row.inst_name}` : `ip_addr=${row.ip_addr}`}`
     );
   };

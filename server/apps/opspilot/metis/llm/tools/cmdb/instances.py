@@ -128,7 +128,7 @@ def cmdb_create_instance(
             user.username,
             allowed_org_ids=allowed_org_ids,
         )
-        return wrap_success(result)
+        return wrap_success(_serialize_instance(result))
     except Exception as e:
         logger.exception("cmdb_create_instance failed: %s", e)
         return wrap_error(str(e))
