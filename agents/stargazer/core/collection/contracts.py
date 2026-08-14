@@ -24,6 +24,7 @@ __all__ = [
     "CollectOutcome",
     "CollectOutcomeStatus",
     "CollectionPlugin",
+    "CredentialFailureResult",
     "PreflightProbe",
     "PreflightResult",
     "PreflightStatus",
@@ -66,6 +67,13 @@ class TargetCollectionContext:
     fence: int
     params: Mapping[str, Any]
     owner_id: str = ""
+    attempt_id: str = ""
+
+
+@dataclass(frozen=True)
+class CredentialFailureResult:
+    credential_id: str
+    error_code: str
 
 
 @dataclass(frozen=True)
@@ -76,6 +84,7 @@ class TargetCollectionResult:
     credential_id: str = ""
     error_code: str = ""
     value: Any = None
+    credential_failures: tuple[CredentialFailureResult, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -128,7 +137,8 @@ class PreflightProbe(Protocol):
         request: CollectionRequest,
         *,
         timeout_seconds: float,
-    ) -> PreflightResult: ...
+    ) -> PreflightResult:
+        ...
 
 
 class CollectionPlugin(Protocol):
@@ -139,14 +149,16 @@ class CollectionPlugin(Protocol):
         context: TargetCollectionContext,
         *,
         timeout_seconds: float,
-    ) -> AccessProbeResult: ...
+    ) -> AccessProbeResult:
+        ...
 
     async def collect(
         self,
         target: str,
         credential: Mapping[str, Any],
         context: TargetCollectionContext,
-    ) -> CollectOutcome: ...
+    ) -> CollectOutcome:
+        ...
 
 
 class AccessProbe(Protocol):
@@ -157,7 +169,8 @@ class AccessProbe(Protocol):
         context: TargetCollectionContext,
         *,
         timeout_seconds: float,
-    ) -> AccessProbeResult: ...
+    ) -> AccessProbeResult:
+        ...
 
 
 class ResultPublisher(Protocol):
@@ -166,7 +179,8 @@ class ResultPublisher(Protocol):
         request: CollectionRequest,
         result: TargetCollectionResult,
         lease: RunLease,
-    ) -> None: ...
+    ) -> None:
+        ...
 
 
 def build_collection_result_id(
@@ -175,7 +189,10 @@ def build_collection_result_id(
     plugin_ref: str,
     target: str,
     fence: int,
+    attempt_id: str = "",
 ) -> str:
-    """单目标结果幂等 ID：task_id + plugin_ref + target + fence。"""
-    identity = "\0".join((task_id, plugin_ref, target, str(fence)))
+    """单次运行内稳定的目标结果幂等 ID。"""
+    identity = "\0".join(
+        (task_id, plugin_ref, target, str(fence), str(attempt_id or ""))
+    )
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()

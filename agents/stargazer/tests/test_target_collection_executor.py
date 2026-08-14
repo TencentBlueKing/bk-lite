@@ -137,46 +137,6 @@ class RejectsUnverifiedCredentialPlugin:
         )
 
 
-class BrokenAccessProbe:
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
-        raise RuntimeError("secret-do-not-publish")
-
-
-class TimeoutThenReadyAccessProbe:
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
-        if credential["credential_id"] == "credential-1":
-            await asyncio.sleep(60)
-        return AccessProbeResult(status=AccessProbeStatus.READY)
-
-
-class FixedAccessProbe:
-    def __init__(self, status, error_code):
-        self.status = status
-        self.error_code = error_code
-
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
-        return AccessProbeResult(
-            status=self.status,
-            error_code=self.error_code,
-        )
-
-
-class RejectsUnverifiedCredentialPlugin:
-    async def collect(self, target, credential, context):
-        if credential["credential_id"] != "credential-2":
-            raise AssertionError("formal collection used an unverified credential")
-        return CollectOutcome(
-            status=CollectOutcomeStatus.SUCCESS,
-            value={"version": "8.0"},
-        )
-
-
 class ScriptedPlugin:
     def __init__(self, outcomes):
         self.outcomes = list(outcomes)
@@ -240,6 +200,10 @@ async def test_credentials_rotate_inside_target_and_success_gets_affinity():
                 error_code="unauthorized",
             ),
             CollectOutcome(
+                status=CollectOutcomeStatus.AUTH_FAILED,
+                error_code="authentication_failed",
+            ),
+            CollectOutcome(
                 status=CollectOutcomeStatus.SUCCESS,
                 value={"version": "8.0"},
             ),
@@ -279,14 +243,21 @@ async def test_credentials_rotate_inside_target_and_success_gets_affinity():
     assert plugin.calls == [
         ("10.10.24.1", "credential-1"),
         ("10.10.24.1", "credential-2"),
+        ("10.10.24.1", "credential-3"),
     ]
-    assert publisher.results[0][1].credential_id == "credential-2"
-    assert publisher.results[0][1].attempts == 2
+    assert publisher.results[0][1].credential_id == "credential-3"
+    assert publisher.results[0][1].attempts == 3
+    assert [
+        (failure.credential_id, failure.error_code)
+        for failure in publisher.results[0][1].credential_failures
+    ] == [
+        ("credential-1", "unauthorized"),
+        ("credential-2", "authentication_failed"),
+    ]
     eligible = await credential_policy.eligible_credentials(
         request, "10.10.24.1"
     )
     assert [item["credential_id"] for item in eligible] == [
-        "credential-2",
         "credential-3",
     ]
 
@@ -444,7 +415,44 @@ async def test_access_probe_target_unreachable_stops_credential_rotation():
     assert summary.unreachable == 1
     assert publisher.results[0][1].status == "unreachable"
     assert publisher.results[0][1].attempts == 1
+    assert publisher.results[0][1].credential_id == "credential-1"
     assert publisher.results[0][1].error_code == "target_unreachable"
+
+
+@pytest.mark.asyncio
+async def test_collect_unreachable_keeps_selected_credential_identity():
+    publisher = RecordingPublisher()
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=ScriptedPlugin(
+            [
+                CollectOutcome(
+                    status=CollectOutcomeStatus.UNREACHABLE,
+                    error_code="target_unreachable",
+                )
+            ]
+        ),
+        publisher=publisher,
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="collect-unreachable-after-selection",
+        plugin_ref="mysql.config",
+        targets=("10.10.24.1",),
+        credentials=({"credential_id": "credential-1"},),
+    )
+    lease = RunLease(
+        task_id=request.task_id,
+        request_digest=request.digest,
+        owner_id="pod-a",
+        fence=1,
+        expires_at=999999,
+    )
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.unreachable == 1
+    assert publisher.results[0][1].credential_id == "credential-1"
 
 
 @pytest.mark.asyncio
@@ -643,6 +651,10 @@ async def test_capability_denied_probe_cools_credential_without_collecting():
 
     assert summary.failed == 1
     assert publisher.results[0][1].error_code == "credentials_exhausted"
+    assert [
+        (failure.credential_id, failure.error_code)
+        for failure in publisher.results[0][1].credential_failures
+    ] == [("credential-1", "capability_denied")]
     assert await credential_policy.eligible_credentials(
         request, "10.10.24.1"
     ) == ()
