@@ -68,6 +68,8 @@ interface HoverNotification {
 
 const READABLE_RACK_CAMERA_DISTANCE = 6.4;
 const HOVER_POSITION_EPSILON = 0.5;
+const ROOM3D_VIEW_CENTERING_ITERATIONS = 6;
+const ROOM3D_VIEW_CENTERING_EPSILON = 0.001;
 const RACK_DEVICE_VIEW_CAMERA_OFFSET = new THREE.Vector3(-2.35, 1.62, 3.25);
 const RACK_DEVICE_VIEW_TARGET_OFFSET = new THREE.Vector3(-0.08, 0.88, 0.18);
 
@@ -146,6 +148,7 @@ export const resolveRoomObjectClickState = (
 
 const ROOM3D_ROOM_RECT_ASPECT = 1.38;
 const ROOM3D_MIN_ROOM_RECT_ASPECT = 1.08;
+const ROOM3D_MAX_DEPTH_TO_WIDTH_RATIO = 2.8;
 const ROOM3D_FLOOR_SIDE_PADDING = 5.0;
 const ROOM3D_MIN_FLOOR_WIDTH = 6.0;
 const ROOM3D_MIN_FLOOR_DEPTH = 5.0;
@@ -191,9 +194,11 @@ export const buildRoomFloorSize = (maxRow: number, maxCol: number) => {
     maxRow > maxCol && rackMatrixDepth > rackMatrixWidth * 1.35;
 
   if (rowDominant) {
-    const stretchRatio = getRoomFloorStretchRatio(maxRow, maxCol);
     return {
-      floorWidth: Math.max(baseWidth, baseDepth * stretchRatio),
+      floorWidth: Math.max(
+        baseWidth,
+        baseDepth / ROOM3D_MAX_DEPTH_TO_WIDTH_RATIO,
+      ),
       floorDepth: baseDepth,
     };
   }
@@ -211,10 +216,49 @@ const buildInitialCameraPosition = (
   floorWidth: number,
   floorDepth: number,
 ) => {
+  if (floorDepth > floorWidth * 1.35) {
+    const span = Math.max(floorDepth * 0.68, floorWidth * 1.25, 9);
+    return new THREE.Vector3(span * 0.915, span * 0.335 + 2.5, span * 0.86);
+  }
+
   const rackSpan = Math.max(maxRow * ROOM3D_ROW_GAP, maxCol * ROOM3D_COL_GAP);
   const roomSpan = Math.max(floorWidth, floorDepth) * 0.72;
   const span = Math.max(rackSpan, roomSpan, 9);
   return new THREE.Vector3(span * 0.95, span * 0.5 + 2.5, span * 1.05);
+};
+
+const buildFramingCameraPosition = (
+  floorWidth: number,
+  floorDepth: number,
+  initialCameraPosition: THREE.Vector3,
+) => {
+  if (floorDepth <= floorWidth * 1.35) {
+    return initialCameraPosition.clone();
+  }
+
+  const span = Math.max(floorDepth * 0.68, floorWidth * 1.25, 9);
+  return new THREE.Vector3(span * 1.05, span * 0.52 + 2.5, span * 0.45);
+};
+
+export const buildRoom3DSceneLayout = (
+  racks: Array<Pick<Room3DRack, "row" | "col">>,
+) => {
+  const maxRow = Math.max(...racks.map((rack) => rack.row), 1);
+  const maxCol = Math.max(...racks.map((rack) => rack.col), 1);
+  const { floorWidth, floorDepth } = buildRoomFloorSize(maxRow, maxCol);
+
+  return {
+    maxRow,
+    maxCol,
+    floorWidth,
+    floorDepth,
+    initialCameraPosition: buildInitialCameraPosition(
+      maxRow,
+      maxCol,
+      floorWidth,
+      floorDepth,
+    ),
+  };
 };
 
 const getResponsiveCameraPosition = (
@@ -231,6 +275,79 @@ const getResponsiveCameraPosition = (
   }
 
   return basePosition.clone();
+};
+
+export const buildRoom3DInitialView = (
+  layout: Pick<
+    ReturnType<typeof buildRoom3DSceneLayout>,
+    "floorWidth" | "floorDepth" | "initialCameraPosition"
+  >,
+  aspect: number,
+) => {
+  const safeAspect = Math.max(aspect, 0.1);
+  const cameraPosition = getResponsiveCameraPosition(
+    layout.initialCameraPosition,
+    safeAspect,
+  );
+  // Preserve the established framing target while presenting long rooms from a clearer angle.
+  const framingCameraPosition = getResponsiveCameraPosition(
+    buildFramingCameraPosition(
+      layout.floorWidth,
+      layout.floorDepth,
+      layout.initialCameraPosition,
+    ),
+    safeAspect,
+  );
+  const camera = new THREE.PerspectiveCamera(42, safeAspect, 0.1, 1000);
+  camera.position.copy(framingCameraPosition);
+  const target = new THREE.Vector3(0, 0, 0);
+
+  for (
+    let iteration = 0;
+    iteration < ROOM3D_VIEW_CENTERING_ITERATIONS;
+    iteration += 1
+  ) {
+    camera.lookAt(target);
+    camera.updateMatrixWorld(true);
+    const projectedBounds = [-1, 1].flatMap((xDirection) =>
+      [0, ROOM3D_RACK_HEIGHT].flatMap((height) =>
+        [-1, 1].map((zDirection) =>
+          new THREE.Vector3(
+            (xDirection * layout.floorWidth) / 2,
+            height,
+            (zDirection * layout.floorDepth) / 2,
+          ).project(camera),
+        ),
+      ),
+    );
+    const projectedX = projectedBounds.map((point) => point.x);
+    const projectedY = projectedBounds.map((point) => point.y);
+    const centerX = (Math.min(...projectedX) + Math.max(...projectedX)) / 2;
+    const centerY = (Math.min(...projectedY) + Math.max(...projectedY)) / 2;
+
+    if (
+      Math.abs(centerX) <= ROOM3D_VIEW_CENTERING_EPSILON &&
+      Math.abs(centerY) <= ROOM3D_VIEW_CENTERING_EPSILON
+    ) {
+      break;
+    }
+
+    const targetDistance = camera.position.distanceTo(target);
+    const halfHeightAtTarget =
+      Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * targetDistance;
+    const halfWidthAtTarget = halfHeightAtTarget * safeAspect;
+    const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(
+      camera.quaternion,
+    );
+    const cameraUp = new THREE.Vector3(0, 1, 0).applyQuaternion(
+      camera.quaternion,
+    );
+    target
+      .addScaledVector(cameraRight, centerX * halfWidthAtTarget)
+      .addScaledVector(cameraUp, centerY * halfHeightAtTarget);
+  }
+
+  return { cameraPosition, target };
 };
 
 export const getRoom3DRackScenePosition = (
@@ -253,20 +370,14 @@ export const createRoom3DScene = (
   callbacks: Room3DSceneCallbacks,
 ): Room3DSceneController => {
   const sceneRacks = getRoom3DSceneRacks(roomData);
-  const maxRow = Math.max(...sceneRacks.map((rack) => rack.row), 1);
-  const maxCol = Math.max(...sceneRacks.map((rack) => rack.col), 1);
-  const { floorWidth, floorDepth } = buildRoomFloorSize(maxRow, maxCol);
+  const sceneLayout = buildRoom3DSceneLayout(sceneRacks);
+  const { maxRow, maxCol, floorWidth, floorDepth } = sceneLayout;
   const scene = new THREE.Scene();
 
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1000);
-  const initialCameraPosition = buildInitialCameraPosition(
-    maxRow,
-    maxCol,
-    floorWidth,
-    floorDepth,
-  );
-  camera.position.copy(initialCameraPosition);
-  camera.lookAt(0, 0, 0);
+  const initialView = buildRoom3DInitialView(sceneLayout, camera.aspect);
+  camera.position.copy(initialView.cameraPosition);
+  camera.lookAt(initialView.target);
 
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -285,7 +396,7 @@ export const createRoom3DScene = (
   controls.dampingFactor = 0.08;
   controls.minDistance = 1.25;
   controls.maxDistance = Math.max(floorWidth, floorDepth, 10) * 2.8;
-  controls.target.set(0, 0, 0);
+  controls.target.copy(initialView.target);
   controls.update();
 
   const ambientLight = new THREE.AmbientLight("#dfe9f8", 0.86);
@@ -678,10 +789,12 @@ export const createRoom3DScene = (
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
       if (!hasUserInteracted && !desiredCameraPosition) {
-        camera.position.copy(
-          getResponsiveCameraPosition(initialCameraPosition, camera.aspect),
+        const responsiveView = buildRoom3DInitialView(
+          sceneLayout,
+          camera.aspect,
         );
-        controls.target.set(0, 0, 0);
+        camera.position.copy(responsiveView.cameraPosition);
+        controls.target.copy(responsiveView.target);
         controls.update();
       }
     }
@@ -711,11 +824,9 @@ export const createRoom3DScene = (
     hoveredRackId = "";
     selectedDeviceId = "";
     hasUserInteracted = false;
-    desiredCameraPosition = getResponsiveCameraPosition(
-      initialCameraPosition,
-      camera.aspect,
-    );
-    desiredTarget = new THREE.Vector3(0, 0, 0);
+    const initialView = buildRoom3DInitialView(sceneLayout, camera.aspect);
+    desiredCameraPosition = initialView.cameraPosition;
+    desiredTarget = initialView.target;
     hoverNotification = null;
     callbacks.onHover(null);
     callbacks.onSelect(null);

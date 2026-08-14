@@ -162,14 +162,20 @@ export const getRoom3DColumnLabel = (col: number) => {
   return label;
 };
 
-export const getRoom3DRowLabel = (row: number) => getRoom3DColumnLabel(row);
-
-export const getRoom3DStandardLocation = (row: number, col: number) => {
-  const rowLabel = getRoom3DRowLabel(row);
-  if (!rowLabel || !Number.isInteger(col) || col < 1) {
+export const getRoom3DRowLabel = (row: number) => {
+  if (!Number.isInteger(row) || row < 1) {
     return '';
   }
-  return `${rowLabel}${String(col).padStart(2, '0')}`;
+  return String(row);
+};
+
+export const getRoom3DStandardLocation = (row: number, col: number) => {
+  // 与 CMDB 机房约定一致：字母=列（横轴），数字=行（纵轴）
+  const colLabel = getRoom3DColumnLabel(col);
+  if (!colLabel || !Number.isInteger(row) || row < 1) {
+    return '';
+  }
+  return `${colLabel}${String(row).padStart(2, '0')}`;
 };
 
 export const getRoom3DPositionLabel = (rack: Pick<Room3DRack, 'row' | 'col' | 'location'>) =>
