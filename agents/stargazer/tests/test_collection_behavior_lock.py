@@ -140,7 +140,15 @@ def test_collection_result_id_is_stable_and_shared():
     other = build_collection_result_id(
         task_id="t1", plugin_ref="mysql.config", target="10.0.0.1", fence=4
     )
+    next_cycle = build_collection_result_id(
+        task_id="t1",
+        plugin_ref="mysql.config",
+        target="10.0.0.1",
+        fence=3,
+        attempt_id="next-cycle",
+    )
     assert first == second
     assert len(first) == 64
     assert first != other
+    assert first != next_cycle
     assert first.startswith(first[:24])  # host remote callback_task_id 前缀同源

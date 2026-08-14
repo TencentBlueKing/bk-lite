@@ -925,6 +925,15 @@ def receive_collect_credential_result(data: dict):
     payload = data or {}
     events = payload.get("events") if isinstance(payload, dict) else None
 
+    if not isinstance(payload, dict):
+        logger.warning(
+            "Received invalid collect credential result event, type=%s",
+            type(payload).__name__,
+        )
+        return CollectCredentialResultService.process_result(
+            payload, parse_datetime=_parse_nats_datetime
+        )
+
     if isinstance(events, list):
         logger.info(
             "Received pushed collect credential result batch, count=%s next_since=%s",
@@ -932,12 +941,15 @@ def receive_collect_credential_result(data: dict):
             payload.get("next_since") or "",
         )
     else:
+        status = payload.get("status")
+        if not status:
+            status = "success" if bool(payload.get("success")) else "failed"
         logger.info(
-            "Received pushed collect credential result event, task_id=%s host=%s credential_id=%s success=%s",
+            "Received pushed collect credential result event, task_id=%s host=%s credential_id=%s status=%s",
             payload.get("collect_task_id") or payload.get("task_id") or "",
             payload.get("host") or "",
             payload.get("credential_id") or "",
-            bool(payload.get("success")),
+            status,
         )
 
     result = CollectCredentialResultService.process_batch(payload, parse_datetime=_parse_nats_datetime)
