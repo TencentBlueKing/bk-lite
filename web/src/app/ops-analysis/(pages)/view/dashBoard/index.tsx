@@ -165,6 +165,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [filterSearchVersion, setFilterSearchVersion] = useState(0);
     const [namespaceSearchVersion, setNamespaceSearchVersion] = useState(0);
     const exportRef = useRef<HTMLDivElement>(null);
+    const canvasScrollRef = useRef<HTMLDivElement>(null);
     const getDashboardDetailRef = useRef(getDashboardDetailOverride ?? getDashboardDetail);
     const collapsedGroupsHydratedKeyRef = useRef<string | null>(null);
     const skipCollapsedGroupsPersistRef = useRef(false);
@@ -1282,6 +1283,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     const dashboardCanvas = (
       <div
+        ref={canvasScrollRef}
         className={
           renderMode ? 'w-full overflow-visible' : 'h-full overflow-auto'
         }
@@ -1318,6 +1320,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             isEditMode && !shareMode ? handleTopologyLayoutChange : undefined
           }
           renderMode={renderMode}
+          scrollRootRef={canvasScrollRef}
           onWidgetRenderStatus={handleWidgetRenderStatus}
         />
       </div>

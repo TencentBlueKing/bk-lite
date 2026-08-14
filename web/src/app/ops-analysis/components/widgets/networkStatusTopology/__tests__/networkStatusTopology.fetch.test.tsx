@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HandledRequestError } from '@/utils/request';
 
@@ -48,9 +48,22 @@ vi.mock('@/app/ops-analysis/api/networkStatusTopology', () => ({
 }));
 
 vi.mock('@/app/cmdb/components/networkTopology', () => ({
-  NetworkTopologyX6Canvas: ({ data }: { data: { nodes?: Array<{ id: string }> } }) => (
+  NetworkTopologyX6Canvas: ({
+    data,
+    toolbar,
+  }: {
+    data: { nodes?: Array<{ id: string }> };
+    toolbar?: { onRefresh?: () => void };
+  }) => (
     <div data-testid="status-topo-canvas">
       {(data.nodes || []).map((node) => node.id).join(',')}
+      <button
+        type="button"
+        data-testid="status-topo-refresh"
+        onClick={toolbar?.onRefresh}
+      >
+        refresh
+      </button>
     </div>
   ),
   layoutNetworkTopology: ({ nodes }: { nodes: Array<{ id: string }> }) => ({
@@ -98,6 +111,77 @@ afterEach(() => {
 });
 
 describe('networkStatusTopology owner requests', () => {
+  it('does not refetch when scrolling only changes runtime priority', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    const { rerender } = render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+        runtimePriority={{ cause: 1, visibility: 1, distance: 300, order: 2 }}
+      />,
+    );
+    await waitFor(() => {
+      expect(testState.getNetworkStatusTopology).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+        runtimePriority={{ cause: 1, visibility: 0, distance: 0, order: 2 }}
+      />,
+    );
+    await Promise.resolve();
+    expect(testState.getNetworkStatusTopology).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches when the toolbar refresh is clicked after a successful load', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+    await waitFor(() => {
+      expect(testState.getNetworkStatusTopology).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByTestId('status-topo-refresh'));
+    await waitFor(() => {
+      expect(testState.getNetworkStatusTopology).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('retries when refresh is clicked after a failed load', async () => {
+    testState.getNetworkStatusTopology
+      .mockRejectedValueOnce(new HandledRequestError('拓扑刷新失败'))
+      .mockResolvedValueOnce(successPayload);
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('拓扑刷新失败')).toBeTruthy();
+    });
+    expect(testState.getNetworkStatusTopology).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText('dashboard.networkTopoRefresh'));
+    await waitFor(() => {
+      expect(testState.getNetworkStatusTopology).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-canvas').textContent).toContain('core-1');
+    });
+  });
+
   it.each([
     undefined,
     '',

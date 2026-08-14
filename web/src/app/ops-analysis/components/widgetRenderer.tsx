@@ -5,6 +5,7 @@ import type {
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
+import type { RuntimeRequestPriority } from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
 import { supportsComponentSwitch } from '@/app/ops-analysis/utils/componentParamSwitch';
 import { getWidgetComponent } from './widgetRegistry';
 
@@ -27,6 +28,9 @@ interface WidgetRendererProps {
   ) => void;
   componentSwitchControl?: React.ReactNode;
   errorMessage?: string;
+  runtimeOwnerId?: string;
+  runtimeActive?: boolean;
+  runtimePriority?: RuntimeRequestPriority;
   fallback?: React.ReactNode;
 }
 
@@ -47,6 +51,9 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   onTopologyLayoutChange,
   componentSwitchControl,
   errorMessage,
+  runtimeOwnerId,
+  runtimeActive,
+  runtimePriority,
   fallback = null,
 }) => {
   const Component = getWidgetComponent(chartType);
@@ -69,6 +76,9 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       onQueryChange={onQueryChange}
       layoutEditable={layoutEditable}
       onTopologyLayoutChange={onTopologyLayoutChange}
+      runtimeOwnerId={runtimeOwnerId}
+      runtimeActive={runtimeActive}
+      runtimePriority={runtimePriority}
       {...(supportsComponentSwitch(chartType) ? { componentSwitchControl, errorMessage } : {})}
     />
   );

@@ -71,6 +71,11 @@ import type { StatusTopologyPositionedLink } from './statusTopologyGraph';
 import { resolveNodePopoverPosition } from './popoverPosition';
 import { useWidgetViewport } from '@/app/ops-analysis/components/widget-viewport';
 import styles from './networkStatusTopology.module.scss';
+import { useDashboardRuntimeScheduler } from '@/app/ops-analysis/context/dashboardRuntimeScheduler';
+import {
+  RuntimeRequestCancelledError,
+  type RuntimeRequestPriority,
+} from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
 
 interface NetworkStatusTopologyProps {
   config?: ValueConfig;
@@ -81,7 +86,17 @@ interface NetworkStatusTopologyProps {
   layoutEditable?: boolean;
   /** 几何相关改动写回组件实例草稿配置 */
   onTopologyLayoutChange?: (next: NetworkStatusTopologyConfig) => void;
+  runtimeOwnerId?: string;
+  runtimeActive?: boolean;
+  runtimePriority?: RuntimeRequestPriority;
 }
+
+const DEFAULT_RUNTIME_PRIORITY: RuntimeRequestPriority = {
+  cause: 1,
+  visibility: 0,
+  distance: 0,
+  order: 0,
+};
 
 const stripDevicePrefix = (value?: string, deviceName?: string) => {
   if (!value) return '';
@@ -142,11 +157,19 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   onReady,
   layoutEditable = false,
   onTopologyLayoutChange,
+  runtimeOwnerId = 'network-status-topology',
+  runtimeActive = true,
+  runtimePriority = DEFAULT_RUNTIME_PRIORITY,
 }) => {
   const { t } = useTranslation();
   const shareMode = useShareMode();
   const { scale: viewportScale } = useWidgetViewport();
   const { getNetworkStatusTopology } = useNetworkStatusTopologyApi();
+  // API hooks may expose a fresh function on every render. Keep the latest
+  // implementation without turning it into a fetch trigger.
+  const getNetworkStatusTopologyRef = useRef(getNetworkStatusTopology);
+  getNetworkStatusTopologyRef.current = getNetworkStatusTopology;
+  const runtimeScheduler = useDashboardRuntimeScheduler();
   const [data, setData] = useState<NetworkStatusTopologyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -160,6 +183,14 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const fetchIdRef = useRef(0);
   const inflightCountRef = useRef(0);
+  const physicalSequenceRef = useRef(0);
+  const fulfilledRequestKeyRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+  const lifecycleRef = useRef(0);
+  const runtimeActiveRef = useRef(runtimeActive);
+  runtimeActiveRef.current = runtimeActive;
+  const runtimePriorityRef = useRef(runtimePriority);
+  runtimePriorityRef.current = runtimePriority;
   const [hoverNodeId, setHoverNodeId] = useState('');
   const [hoverPoint, setHoverPoint] = useState({ x: 0, y: 0 });
   const hoverNodeIdRef = useRef('');
@@ -206,13 +237,21 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     [onTopologyLayoutChange],
   );
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (options?: { force?: boolean }) => {
+    if (!runtimeActiveRef.current) return;
     if (!topoConfig?.modelId || !hasValidInstanceUuid) {
       setData(null);
       setError(t('dashboard.networkTopoMissingConfig'));
       onReadyRef.current?.(false);
       return;
     }
+    const request = {
+      model_id: topoConfig.modelId,
+      inst_uuid: topoConfig.instUuid,
+      depth: topoConfig.depth || 2,
+    };
+    const physicalKey = `scene:${refreshKey ?? '0'}:${JSON.stringify(request)}`;
+    if (!options?.force && fulfilledRequestKeyRef.current === physicalKey) return;
 
     const cause = refreshCauseRef.current;
     const silent = isSilentCanvasRuntimeRefresh(cause);
@@ -227,18 +266,27 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     const currentFetchId = gate.generation;
     fetchIdRef.current = currentFetchId;
     inflightCountRef.current += 1;
+    runtimeScheduler?.cancelQueuedForOwner(runtimeOwnerId);
     const hasSuccessfulPayload = dataRef.current !== null;
     try {
       if (shouldShowWidgetRuntimeLoading(cause)) {
         setLoading(true);
         setError('');
       }
-      const result = await getNetworkStatusTopology({
-        model_id: topoConfig.modelId,
-        inst_uuid: topoConfig.instUuid,
-        depth: topoConfig.depth || 2,
-      });
-      if (currentFetchId !== fetchIdRef.current) return;
+      const result = runtimeScheduler
+        ? await runtimeScheduler.schedule({
+          consumerId: `${runtimeOwnerId}:${currentFetchId}:${++physicalSequenceRef.current}`,
+          ownerId: runtimeOwnerId,
+          physicalKey,
+          priority: {
+            ...runtimePriorityRef.current,
+            cause: silent ? 2 : cause === 'initial' ? 1 : 0,
+          },
+          start: () => getNetworkStatusTopologyRef.current(request),
+        })
+        : await getNetworkStatusTopologyRef.current(request);
+      if (!mountedRef.current || currentFetchId !== fetchIdRef.current) return;
+      fulfilledRequestKeyRef.current = physicalKey;
       setData(result);
       if (shouldShowWidgetRuntimeLoading(cause)) {
         setSelectedNodeId('');
@@ -246,7 +294,9 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       }
       onReadyRef.current?.((result.nodes || []).length > 0);
     } catch (err) {
-      if (currentFetchId !== fetchIdRef.current) return;
+      if (err instanceof RuntimeRequestCancelledError) return;
+      if (!mountedRef.current || currentFetchId !== fetchIdRef.current) return;
+      fulfilledRequestKeyRef.current = physicalKey;
       console.error('network status topology fetch failed:', err);
       if (
         !shouldKeepWidgetRuntimeDataOnError({
@@ -262,15 +312,49 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       inflightCountRef.current = finishOwnerRequest({
         inflightCount: inflightCountRef.current,
       }).inflightCount;
-      if (currentFetchId !== fetchIdRef.current) return;
+      if (!mountedRef.current || currentFetchId !== fetchIdRef.current) return;
       setLoading(false);
     }
     // API hooks return fresh function references; fetching is driven by widget config.
-  }, [hasValidInstanceUuid, t, topoConfig?.depth, topoConfig?.instUuid, topoConfig?.modelId]);
+  }, [
+    hasValidInstanceUuid,
+    refreshKey,
+    runtimeOwnerId,
+    runtimeScheduler,
+    t,
+    topoConfig?.depth,
+    topoConfig?.instUuid,
+    topoConfig?.modelId,
+  ]);
+
+  const handleExplicitRefresh = useCallback(() => {
+    void fetchData({ force: true });
+  }, [fetchData]);
 
   useEffect(() => {
     void fetchData();
-  }, [fetchData, refreshKey]);
+  }, [fetchData, refreshKey, runtimeActive]);
+
+  useEffect(() => {
+    if (runtimeActive) {
+      runtimeScheduler?.updateOwnerPriority(runtimeOwnerId, runtimePriority);
+      return;
+    }
+    runtimeScheduler?.cancelQueuedForOwner(runtimeOwnerId);
+  }, [runtimeActive, runtimeOwnerId, runtimePriority, runtimeScheduler]);
+
+  useEffect(() => {
+    const lifecycle = ++lifecycleRef.current;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      queueMicrotask(() => {
+        if (lifecycleRef.current === lifecycle) {
+          runtimeScheduler?.cancelQueuedForOwner(runtimeOwnerId);
+        }
+      });
+    };
+  }, [runtimeOwnerId, runtimeScheduler]);
 
   useEffect(() => {
     ensureStatusTopologyNodeRegistered();
@@ -718,7 +802,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
             },
             exportFileName: 'network-status-topology',
             refreshLoading: loading,
-            onRefresh: fetchData,
+            onRefresh: handleExplicitRefresh,
           }}
           minimap={{
             width: 96,
@@ -769,7 +853,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
                 showIcon
                 message={error}
                 action={(
-                  <Button size="small" onClick={fetchData}>
+                  <Button size="small" onClick={handleExplicitRefresh}>
                     {t('dashboard.networkTopoRefresh')}
                   </Button>
                 )}

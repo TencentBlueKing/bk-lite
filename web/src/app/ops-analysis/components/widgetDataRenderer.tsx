@@ -48,10 +48,12 @@ import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from "@/app/o
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
 import { getRequestErrorMessage, classifyWidgetQueryError } from "@/app/ops-analysis/utils/requestError";
 import { getValueByPath } from "@/app/ops-analysis/utils/objectPath";
+import { buildWidgetRequestCacheKey } from "@/app/ops-analysis/utils/widgetRequestCache";
+import { useDashboardRuntimeScheduler } from "@/app/ops-analysis/context/dashboardRuntimeScheduler";
 import {
-  buildWidgetRequestCacheKey,
-  getOrCreateInflightWidgetRequest,
-} from "@/app/ops-analysis/utils/widgetRequestCache";
+  RuntimeRequestCancelledError,
+  type RuntimeRequestPriority,
+} from "@/app/ops-analysis/utils/dashboardRuntimeScheduler";
 import {
   buildWidgetRequestVersionKey,
   resolveWidgetDataSourceState,
@@ -115,6 +117,13 @@ const validateTopNData = (
   return hasValidData
     ? { isValid: true }
     : { isValid: false, message: errorMessage || "数据格式不匹配" };
+};
+
+const DEFAULT_RUNTIME_PRIORITY: RuntimeRequestPriority = {
+  cause: 1,
+  visibility: 0,
+  distance: 0,
+  order: 0,
 };
 
 const validateGaugeData = (
@@ -267,6 +276,8 @@ export interface WidgetWrapperProps {
   screenRenderContext?: ScreenRenderContext;
   onRenderStatus?: (result: DashboardWidgetRenderResult) => void;
   layoutEditable?: boolean;
+  runtimeActive?: boolean;
+  runtimePriority?: RuntimeRequestPriority;
   onTopologyLayoutChange?: (
     next: NonNullable<ValueConfig['networkStatusTopology']>,
   ) => void;
@@ -289,6 +300,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   widgetId,
   onRenderStatus,
   layoutEditable,
+  runtimeActive = true,
+  runtimePriority = DEFAULT_RUNTIME_PRIORITY,
   onTopologyLayoutChange,
 }) => {
   const { t } = useTranslation();
@@ -308,7 +321,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     {},
   );
   const { canvasDataSourceLookupStatus } = useOpsAnalysis();
+  const runtimeScheduler = useDashboardRuntimeScheduler();
   const { getSourceDataByApiId } = useDataSourceApi();
+  const optionConsumerSequenceRef = useRef(0);
   const getRuntimeSourceDataByApiId = useMemo(
     () => withRuntimeSourceDataErrorSuppression(getSourceDataByApiId),
     [getSourceDataByApiId],
@@ -333,9 +348,42 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     }),
     [t],
   );
+  const scheduleOptionsPhysical = useCallback(
+    <T,>(physicalKey: string, start: () => Promise<T>) => {
+      if (!runtimeActiveRef.current) {
+        return Promise.reject(new RuntimeRequestCancelledError());
+      }
+      if (!runtimeScheduler) return start();
+      return runtimeScheduler.schedule({
+        consumerId: `${widgetId}:options:${++optionConsumerSequenceRef.current}`,
+        ownerId: widgetId,
+        physicalKey,
+        priority: { ...runtimePriority, cause: 1 },
+        start,
+      });
+    },
+    [runtimePriority, runtimeScheduler, widgetId],
+  );
+  const scheduledOptionsSourceData = useCallback(
+    (id: number, params?: unknown, options?: { suppressErrorNotification?: boolean }) => {
+      return scheduleOptionsPhysical(
+        `options:source:${JSON.stringify(componentSwitchParam?.inputConfig)}:${id}:${JSON.stringify(params ?? {})}`,
+        () => getSourceDataByApiId(id, params, options),
+      );
+    },
+    [
+      componentSwitchParam?.inputConfig,
+      getSourceDataByApiId,
+      scheduleOptionsPhysical,
+    ],
+  );
   const optionState = useParamInputOptions(
     componentSwitchParam?.inputConfig,
     componentSwitchOptionsLoaderOptions,
+    {
+      enabled: runtimeActive,
+      getSourceDataByApiId: scheduledOptionsSourceData,
+    },
   );
   const rawSavedComponentSwitchValue = componentSwitchParam
     ? config?.params?.[componentSwitchParam.name] ?? componentSwitchParam.value
@@ -445,6 +493,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
   const fetchIdRef = useRef(0);
   const inflightCountRef = useRef(0);
+  const mountedRef = useRef(true);
+  const lifecycleRef = useRef(0);
+  const physicalConsumerSequenceRef = useRef(0);
+  const runtimeActiveRef = useRef(runtimeActive);
+  runtimeActiveRef.current = runtimeActive;
   const rawDataRef = useRef<unknown>(null);
   rawDataRef.current = rawData;
   const tableQueryKey = useMemo(
@@ -737,8 +790,34 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     const currentFetchId = gate.generation;
     fetchIdRef.current = currentFetchId;
     inflightCountRef.current += 1;
+    runtimeScheduler?.cancelQueuedForOwner(widgetId);
     const hasSuccessfulPayload =
       rawDataRef.current !== null && rawDataRef.current !== undefined;
+    const causePriority = isSilentCanvasRuntimeRefresh(cause)
+      ? 2
+      : cause === "initial"
+        ? 1
+        : 0;
+    const scheduledSourceData = (id: number, params?: unknown) => {
+      if (
+        !mountedRef.current
+        || currentFetchId !== fetchIdRef.current
+        || !runtimeActiveRef.current
+      ) {
+        return Promise.reject(new RuntimeRequestCancelledError());
+      }
+      if (!runtimeScheduler) {
+        return getRuntimeSourceDataByApiId(id, params);
+      }
+      const consumerId = `${widgetId}:${currentFetchId}:${++physicalConsumerSequenceRef.current}`;
+      return runtimeScheduler.schedule({
+        consumerId,
+        ownerId: widgetId,
+        physicalKey: `${requestKey}:source:${id}:${JSON.stringify(params ?? {})}`,
+        priority: { ...runtimePriority, cause: causePriority },
+        start: () => getRuntimeSourceDataByApiId(id, params),
+      });
+    };
 
     try {
       if (shouldShowWidgetRuntimeLoading(cause)) {
@@ -750,22 +829,20 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         setDataValidation(null);
       }
 
-      const data = await getOrCreateInflightWidgetRequest(requestKey, () =>
-        fetchCompareData({
-          dataSourceId: normalizedDataSourceId,
-          getSourceDataByApiId: getRuntimeSourceDataByApiId,
-          config,
-          dataSource,
-          extraParams: requestExtraParams,
-          unifiedFilterValues,
-          filterBindings: config?.filterBindings,
-          filterDefinitions,
-          resolutionContext: dateRangeResolutionContext,
-        }),
-      );
+      const data = await fetchCompareData({
+        dataSourceId: normalizedDataSourceId,
+        getSourceDataByApiId: scheduledSourceData,
+        config,
+        dataSource,
+        extraParams: requestExtraParams,
+        unifiedFilterValues,
+        filterBindings: config?.filterBindings,
+        filterDefinitions,
+        resolutionContext: dateRangeResolutionContext,
+      });
 
       // Discard stale response if a newer fetch has started
-      if (currentFetchId !== fetchIdRef.current) return;
+      if (!mountedRef.current || currentFetchId !== fetchIdRef.current) return;
 
       setRawData(data.currentData);
       setBaselineData(data.baselineData);
@@ -777,7 +854,16 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       const validation = validateChartData(data.currentData, chartType);
       setDataValidation(validation);
     } catch (err) {
-      if (currentFetchId !== fetchIdRef.current) return;
+      if (err instanceof RuntimeRequestCancelledError) {
+        if (currentFetchId === fetchIdRef.current) {
+          previousRequestRef.current = {
+            ...previousRequestRef.current,
+            hasRequested: false,
+          };
+        }
+        return;
+      }
+      if (!mountedRef.current || currentFetchId !== fetchIdRef.current) return;
       console.error("获取数据失败:", err);
       if (
         !shouldKeepWidgetRuntimeDataOnError({
@@ -802,7 +888,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       inflightCountRef.current = finishOwnerRequest({
         inflightCount: inflightCountRef.current,
       }).inflightCount;
-      if (currentFetchId !== fetchIdRef.current) return;
+      if (!mountedRef.current || currentFetchId !== fetchIdRef.current) return;
       hasSettledRequestRef.current = true;
       setHasSettledRequest(true);
       if (isTableLikeChart) {
@@ -812,6 +898,27 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       }
     }
   };
+
+  useEffect(() => {
+    if (runtimeActive) {
+      runtimeScheduler?.updateOwnerPriority(widgetId, runtimePriority);
+      return;
+    }
+    runtimeScheduler?.cancelQueuedForOwner(widgetId);
+  }, [runtimeActive, runtimePriority, runtimeScheduler, widgetId]);
+
+  useEffect(() => {
+    const lifecycle = ++lifecycleRef.current;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      queueMicrotask(() => {
+        if (lifecycleRef.current === lifecycle) {
+          runtimeScheduler?.cancelQueuedForOwner(widgetId);
+        }
+      });
+    };
+  }, [runtimeScheduler, widgetId]);
 
   useEffect(() => {
     if (isSceneWidget) {
@@ -924,6 +1031,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
 
   useEffect(() => {
+    if (!runtimeActive) {
+      return;
+    }
     const current = {
       requestEnabled,
       requestSignature,
@@ -976,6 +1086,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     isTableLikeChart,
     hasEnabledFilterBindings,
     widgetUsesNamespace,
+    runtimeActive,
   ]);
 
   const renderError = (message: string) => (
@@ -1088,6 +1199,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
             onError={handleRendererError}
             layoutEditable={layoutEditable}
             onTopologyLayoutChange={onTopologyLayoutChange}
+            runtimeOwnerId={widgetId}
+            runtimeActive={runtimeActive}
+            runtimePriority={runtimePriority}
             fallback={renderError(
               `${t("dashboard.unknownComponentType")}: ${chartType}`,
             )}
@@ -1165,6 +1279,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
               ? dataValidation.message || t("dashboard.dataCannotRenderAsChart")
               : undefined
           }
+          runtimeOwnerId={widgetId}
+          runtimeActive={runtimeActive}
+          runtimePriority={runtimePriority}
           fallback={renderError(
             `${t("dashboard.unknownComponentType")}: ${chartType}`,
           )}
