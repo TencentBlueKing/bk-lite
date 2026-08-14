@@ -2,6 +2,7 @@
 
 import { Empty } from 'antd';
 import type { ReactNode } from 'react';
+import { useTranslation } from '@/utils/i18n';
 
 interface ApmRouteShellProps {
   title: string;
@@ -16,6 +17,7 @@ export default function ApmRouteShell({
   title,
   children,
 }: ApmRouteShellProps) {
+  const { t } = useTranslation();
   return (
     <div className="h-full overflow-auto px-4 pb-4 lg:px-5 lg:pb-5">
       <div className="mx-auto w-full min-w-0">
@@ -25,7 +27,7 @@ export default function ApmRouteShell({
             <ApmSurface className="py-12">
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="路由与权限壳已就绪，业务数据将在后续切片接入。"
+                description={t('apm.common.routeShellEmpty', '路由与权限壳已就绪，业务数据将在后续切片接入。')}
               />
             </ApmSurface>
           )}

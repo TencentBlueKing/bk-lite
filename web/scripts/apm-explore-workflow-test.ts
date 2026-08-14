@@ -12,7 +12,7 @@ const errors = read('src/app/apm/explore/errors/page.tsx');
 const traceDetail = read('src/app/apm/explore/traces/[traceId]/page.tsx');
 const legacyTraces = read('src/app/apm/traces/page.tsx');
 
-assert.match(traces, /title="调用链"/, 'Trace 搜索页应使用产品术语“调用链”');
+assert.match(traces, /调用链/, 'Trace 搜索页应使用产品术语“调用链”');
 assert.match(traces, /TraceDistribution/, '调用链页应提供与原型一致的耗时分布视图');
 assert.match(traces, /快速筛选/, '调用链页应提供真实数据驱动的快速筛选');
 assert.match(traces, /ResultMode = 'detail' \| 'aggregate'/, '调用链页必须支持明细与聚合切换');

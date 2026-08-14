@@ -1,8 +1,9 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApmApplicationsPage from '../page';
 
 const api = {
@@ -82,7 +83,7 @@ afterEach(() => {
 
 describe('APM 应用管理', () => {
   it('移除重复总数并将创建应用作为右侧主操作', async () => {
-    render(<ApmApplicationsPage />);
+    renderWithApmIntl(<ApmApplicationsPage />);
 
     await screen.findByText('演示应用');
     expect(screen.queryByText('共 1 个应用')).toBeNull();
@@ -92,7 +93,7 @@ describe('APM 应用管理', () => {
   });
 
   it('直接展示高频行操作并固定在表格右侧', async () => {
-    render(<ApmApplicationsPage />);
+    renderWithApmIntl(<ApmApplicationsPage />);
 
     await screen.findByText('演示应用');
     expect(screen.getByRole('button', { name: '添加接入' })).not.toBeNull();
@@ -104,7 +105,7 @@ describe('APM 应用管理', () => {
 
   it('使用抽屉承载创建应用表单', async () => {
     const user = userEvent.setup();
-    render(<ApmApplicationsPage />);
+    renderWithApmIntl(<ApmApplicationsPage />);
     await screen.findByText('演示应用');
 
     await user.click(screen.getByRole('button', { name: '创建应用' }));

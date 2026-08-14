@@ -1,9 +1,9 @@
 import React from 'react';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { IntlProvider } from 'react-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApmIntegrationAddPage from '../page';
 
 const api = {
@@ -20,18 +20,7 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
 }));
 
 function renderPage() {
-  return render(
-    <IntlProvider locale="zh" messages={{
-      'apm.integration.copyEndpoint': '复制 HTTP 上报端点',
-      'apm.integration.copyEndpointSuccess': 'HTTP 上报端点已复制',
-      'apm.integration.copyFailure': '复制失败，请手动选择并复制',
-      'apm.integration.copyShellSnippet': '复制 Shell 接入片段',
-      'apm.integration.copyShellSnippetSuccess': 'Shell 接入片段已复制',
-      'apm.integration.instanceIdentityHelp': '实例 ID 在应用进程启动时生成，每个副本唯一。',
-    }}>
-      <ApmIntegrationAddPage />
-    </IntlProvider>
-  );
+  return renderWithApmIntl(<ApmIntegrationAddPage />);
 }
 
 async function generateSnippet(code = 'export FIRST=1\nexport SECOND=2') {

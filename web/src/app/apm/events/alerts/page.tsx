@@ -29,6 +29,7 @@ import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm
 import type { ApmEvent, ApmEventQuery, ApmNotificationDelivery, ApmPolicyMetric, ApmPolicySeverity, ApmServiceRed } from '@/app/apm/types';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
+import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
 type AlertTab = 'active' | 'history';
@@ -41,11 +42,11 @@ const RANGE_MS: Record<TimeRange, number> = {
   '7d': 7 * 24 * 60 * 60 * 1000,
 };
 
-const SEVERITY = {
-  critical: { label: '严重', color: 'red' },
-  error: { label: '错误', color: 'orange' },
-  warning: { label: '警告', color: 'gold' },
-  info: { label: '提醒', color: 'blue' },
+const SEVERITY_COLORS = {
+  critical: 'red',
+  error: 'orange',
+  warning: 'gold',
+  info: 'blue',
 } as const;
 
 const SEVERITY_CHART: Record<'critical' | 'error' | 'warning', string> = {
@@ -54,31 +55,32 @@ const SEVERITY_CHART: Record<'critical' | 'error' | 'warning', string> = {
   warning: 'var(--color-warning, var(--theme-color-status-warning))',
 };
 
-const ALERT_STATUS = {
-  firing: { label: '告警中', color: 'error' },
-  recovered: { label: '已恢复', color: 'success' },
+const ALERT_STATUS_COLORS = {
+  firing: 'error',
+  recovered: 'success',
 } as const;
 
-const METRIC_LABELS: Record<ApmPolicyMetric, string> = {
-  error_rate: '错误率',
-  p95: 'P95 延迟',
-  p99: 'P99 延迟',
-  throughput: '吞吐',
-  no_traffic: '无流量',
+const METRIC_LABEL_KEYS: Record<ApmPolicyMetric, string> = {
+  error_rate: 'apm.common.errorRate',
+  p95: 'apm.common.p95Latency',
+  p99: 'apm.common.p99Latency',
+  throughput: 'apm.explore.throughputShort',
+  no_traffic: 'apm.alerts.noTraffic',
 };
 
-const ACTION_LABELS: Record<ApmEvent['action'], string> = {
-  created: '触发',
-  recovery: '恢复',
+const ACTION_LABEL_KEYS: Record<ApmEvent['action'], string> = {
+  created: 'apm.alerts.trigger',
+  recovery: 'apm.alerts.recover',
 };
 
-const DELIVERY_STATUS: Record<ApmNotificationDelivery['status'], { label: string; color: string }> = {
-  pending: { label: '待投递', color: 'processing' },
-  delivered: { label: '已送达', color: 'success' },
-  failed: { label: '终止失败', color: 'error' },
+const DELIVERY_STATUS_COLORS: Record<ApmNotificationDelivery['status'], string> = {
+  pending: 'processing',
+  delivered: 'success',
+  failed: 'error',
 };
 
 export default function ApmEventsPage() {
+  const { t } = useTranslation();
   const { token } = theme.useToken();
   const searchParams = useSearchParams();
   const { getEvents, getServiceRed, isLoading: authLoading, retryNotificationDelivery } = useApmApi();
@@ -100,6 +102,33 @@ export default function ApmEventsPage() {
   const [alertRed, setAlertRed] = useState<ApmServiceRed | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+
+  const severityLabels: Record<ApmEvent['severity'], string> = {
+    critical: t('apm.severity.critical', '严重'),
+    error: t('apm.severity.error', '错误'),
+    warning: t('apm.severity.warning', '警告'),
+    info: t('apm.severity.reminder', '提醒'),
+  };
+  const alertStatusLabels: Record<ApmEvent['status'], string> = {
+    firing: t('apm.status.firing', '告警中'),
+    recovered: t('apm.status.recovered', '已恢复'),
+  };
+  const metricLabels: Record<ApmPolicyMetric, string> = {
+    error_rate: t(METRIC_LABEL_KEYS.error_rate, '错误率'),
+    p95: t(METRIC_LABEL_KEYS.p95, 'P95 延迟'),
+    p99: t(METRIC_LABEL_KEYS.p99, 'P99 延迟'),
+    throughput: t(METRIC_LABEL_KEYS.throughput, '吞吐'),
+    no_traffic: t(METRIC_LABEL_KEYS.no_traffic, '无流量'),
+  };
+  const actionLabels: Record<ApmEvent['action'], string> = {
+    created: t(ACTION_LABEL_KEYS.created, '触发'),
+    recovery: t(ACTION_LABEL_KEYS.recovery, '恢复'),
+  };
+  const deliveryStatusLabels: Record<ApmNotificationDelivery['status'], string> = {
+    pending: t('apm.alerts.queued', '待投递'),
+    delivered: t('apm.alerts.delivered', '已送达'),
+    failed: t('apm.alerts.terminated', '终止失败'),
+  };
 
   const load = useCallback(() => {
     if (authLoading) return;
@@ -234,16 +263,16 @@ export default function ApmEventsPage() {
           )),
         };
       });
-      message.success('通知已进入重投队列');
+      message.success(t('apm.alerts.requeued', '通知已进入重投队列'));
     } finally {
       setRetryingId(null);
     }
-  }, [retryNotificationDelivery]);
+  }, [retryNotificationDelivery, t]);
 
   const renderDeliveries = (event: ApmEvent) => {
     const deliveries = event.notification_deliveries ?? [];
     if (!deliveries.length) {
-      return <Typography.Text type="secondary">未配置通知渠道</Typography.Text>;
+      return <Typography.Text type="secondary">{t('apm.alerts.noChannel', '未配置通知渠道')}</Typography.Text>;
     }
     return (
       <div className="flex flex-col gap-2">
@@ -254,18 +283,22 @@ export default function ApmEventsPage() {
           >
             <Space direction="vertical" size={0}>
               <Space wrap>
-                <Typography.Text strong>{delivery.channel_name || `渠道 ${delivery.channel_id ?? '未知'}`}</Typography.Text>
-                <Tag bordered={false}>{delivery.channel_type || '未知类型'}</Tag>
+                <Typography.Text strong>
+                  {delivery.channel_name || t('apm.alerts.channel', '渠道 {id}', { id: delivery.channel_id ?? t('apm.health.unknown', '未知') })}
+                </Typography.Text>
+                <Tag bordered={false}>{delivery.channel_type || t('apm.alerts.unknownType', '未知类型')}</Tag>
                 <Tag bordered={false} color={delivery.delivery_mode === 'alert_event_copy' ? 'purple' : 'blue'}>
-                  {delivery.delivery_mode === 'alert_event_copy' ? '告警中心事件副本' : '普通通知'}
+                  {delivery.delivery_mode === 'alert_event_copy'
+                    ? t('apm.alerts.alertCopy', '告警中心事件副本')
+                    : t('apm.alerts.plainNotice', '普通通知')}
                 </Tag>
-                <Tag bordered={false} color={DELIVERY_STATUS[delivery.status].color}>
-                  {DELIVERY_STATUS[delivery.status].label}
+                <Tag bordered={false} color={DELIVERY_STATUS_COLORS[delivery.status]}>
+                  {deliveryStatusLabels[delivery.status]}
                 </Tag>
               </Space>
               <Typography.Text type="secondary" className="text-xs">
-                尝试 {delivery.attempts} 次
-                {delivery.recipients.length ? ` · 接收人 ${delivery.recipients.join('、')}` : ''}
+                {t('apm.alerts.attempts', '尝试 {count} 次', { count: delivery.attempts })}
+                {delivery.recipients.length ? ` ${t('apm.alerts.recipients', '· 接收人 {names}', { names: delivery.recipients.join('、') })}` : ''}
                 {delivery.last_error_message ? ` · ${delivery.last_error_code || 'delivery_failed'}：${delivery.last_error_message}` : ''}
               </Typography.Text>
             </Space>
@@ -275,7 +308,7 @@ export default function ApmEventsPage() {
                 loading={retryingId === delivery.id}
                 onClick={() => handleRetry(event, delivery)}
               >
-                人工重投
+                {t('apm.alerts.manualRetry', '人工重投')}
               </Button>
             ) : null}
           </div>
@@ -286,64 +319,64 @@ export default function ApmEventsPage() {
 
   const columns: TableColumnsType<ApmEvent> = [
     {
-      title: '告警',
+      title: t('apm.alerts.title', '告警'),
       dataIndex: 'title',
       render: (title, event) => (
         <Space direction="vertical" size={0} className="min-w-0">
           <EllipsisWithTooltip className="truncate font-medium" text={title} />
-          <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={`${event.resource_name || event.service} · ${event.environment || '未设置环境'}`} />
+          <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={`${event.resource_name || event.service} · ${event.environment || t('apm.common.unsetEnvironment', '未设置环境')}`} />
         </Space>
       ),
     },
     {
-      title: '级别',
+      title: t('apm.alerts.level', '级别'),
       dataIndex: 'severity',
       width: 90,
       align: 'center',
       responsive: ['sm'],
       render: (severity: ApmEvent['severity']) => (
-        <Tag bordered={false} color={SEVERITY[severity].color}>{SEVERITY[severity].label}</Tag>
+        <Tag bordered={false} color={SEVERITY_COLORS[severity]}>{severityLabels[severity]}</Tag>
       ),
     },
     {
-      title: '服务',
+      title: t('apm.common.service', '服务'),
       dataIndex: 'service',
       width: 180,
       responsive: ['md'],
       render: (value) => <EllipsisWithTooltip className="truncate" text={value || '—'} />,
     },
     {
-      title: '端点',
+      title: t('apm.common.endpoint', '端点'),
       key: 'endpoint',
       width: 200,
       responsive: ['lg'],
-      render: () => <Typography.Text type="secondary">服务级</Typography.Text>,
+      render: () => <Typography.Text type="secondary">{t('apm.alerts.serviceLevel', '服务级')}</Typography.Text>,
     },
     {
-      title: '通知',
+      title: t('apm.alerts.notification', '通知'),
       width: 130,
       responsive: ['xl'],
       render: (_, event) => {
         const deliveries = event.notification_deliveries ?? [];
-        if (!deliveries.length) return <Typography.Text type="secondary">未配置</Typography.Text>;
+        if (!deliveries.length) return <Typography.Text type="secondary">{t('apm.alerts.notConfigured', '未配置')}</Typography.Text>;
         const failed = deliveries.filter((delivery) => delivery.status === 'failed').length;
         const pending = deliveries.filter((delivery) => delivery.status === 'pending').length;
         return failed
-          ? <Tag bordered={false} color="error">{failed} 个失败</Tag>
+          ? <Tag bordered={false} color="error">{t('apm.alerts.failedCount', '{count} 个失败', { count: failed })}</Tag>
           : pending
-            ? <Tag bordered={false} color="processing">{pending} 个处理中</Tag>
-            : <Tag bordered={false} color="success">全部送达</Tag>;
+            ? <Tag bordered={false} color="processing">{t('apm.alerts.pendingCount', '{count} 个处理中', { count: pending })}</Tag>
+            : <Tag bordered={false} color="success">{t('apm.alerts.allDelivered', '全部送达')}</Tag>;
       },
     },
     {
-      title: '发生时间',
+      title: t('apm.alerts.occurredAt', '发生时间'),
       dataIndex: 'start_time',
       width: 180,
       responsive: ['md'],
       render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm:ss')}</span>,
     },
     {
-      title: '操作',
+      title: t('apm.common.operation', '操作'),
       key: 'action',
       width: 90,
       align: 'right',
@@ -357,7 +390,7 @@ export default function ApmEventsPage() {
             openDrawer(event);
           }}
         >
-          详情
+          {t('common.detail', '详情')}
         </Button>
       ),
     },
@@ -365,8 +398,8 @@ export default function ApmEventsPage() {
 
   return (
     <ApmRouteShell
-      title="告警"
-      description="集中查看当前告警与已恢复的历史告警，并追踪每次通知投递结果。"
+      title={t('apm.alerts.title', '告警')}
+      description={t('apm.alerts.description', '集中查看当前告警与已恢复的历史告警，并追踪每次通知投递结果。')}
       dependency="control"
     >
       <ApmSurface padding="none" className="overflow-hidden">
@@ -374,17 +407,17 @@ export default function ApmEventsPage() {
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input.Search
               allowClear
-              aria-label="搜索告警标题、服务或规则"
+              aria-label={t('apm.alerts.searchAria', '搜索告警标题、服务或规则')}
               className="w-80"
-              placeholder="搜索告警标题 / 服务 / 规则"
+              placeholder={t('apm.alerts.searchPlaceholder', '搜索告警标题 / 服务 / 规则')}
               value={keyword}
               onChange={(event) => { setKeyword(event.target.value); setPage(1); }}
             />
             <Select
               allowClear
-              aria-label="按环境筛选告警"
+              aria-label={t('apm.alerts.filterEnvironment', '按环境筛选告警')}
               className="w-40"
-              placeholder="全部环境"
+              placeholder={t('apm.common.allEnvironments', '全部环境')}
               value={environmentFilter || undefined}
               options={Array.from(new Set(events.map((event) => event.environment).filter(Boolean)))
                 .sort()
@@ -392,9 +425,9 @@ export default function ApmEventsPage() {
               onChange={(value) => { setEnvironmentFilter(value ?? ''); setPage(1); }}
             />
             <div className="flex-1" />
-            <Typography.Text type="secondary" className="text-xs">时间范围</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs">{t('apm.common.timeRange', '时间范围')}</Typography.Text>
             <Radio.Group
-              aria-label="告警时间范围"
+              aria-label={t('apm.alerts.timeRangeAria', '告警时间范围')}
               buttonStyle="solid"
               size="small"
               value={timeRange}
@@ -404,21 +437,21 @@ export default function ApmEventsPage() {
                 <Radio.Button key={value} value={value}>{value}</Radio.Button>
               ))}
             </Radio.Group>
-            <Button icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load}>刷新</Button>
+            <Button icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load}>{t('common.refresh', '刷新')}</Button>
           </FilterToolbar>
         </div>
         <div className="border-b border-[var(--color-border-2)] px-3 py-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <Typography.Text strong>告警分布（近 {timeRange}）</Typography.Text>
+            <Typography.Text strong>{t('apm.alerts.distribution', '告警分布（近 {range}）', { range: timeRange })}</Typography.Text>
             <Space size="middle">
-              <Typography.Text type="secondary" className="text-xs">严重 {events.filter((event) => event.severity === 'critical').length}</Typography.Text>
-              <Typography.Text type="secondary" className="text-xs">错误 {events.filter((event) => event.severity === 'error').length}</Typography.Text>
-              <Typography.Text type="secondary" className="text-xs">警告 {events.filter((event) => event.severity === 'warning').length}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs">{t('apm.severity.critical', '严重')} {events.filter((event) => event.severity === 'critical').length}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs">{t('apm.severity.error', '错误')} {events.filter((event) => event.severity === 'error').length}</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs">{t('apm.severity.warning', '警告')} {events.filter((event) => event.severity === 'warning').length}</Typography.Text>
             </Space>
           </div>
-          <div className="relative flex h-16 items-end gap-1 border-b border-[var(--color-border-2)]" role="img" aria-label={`近 ${timeRange} 告警分布`}>
+          <div className="relative flex h-16 items-end gap-1 border-b border-[var(--color-border-2)]" role="img" aria-label={t('apm.alerts.distributionAria', '近 {range} 告警分布', { range: timeRange })}>
             {distribution.map((bucket, index) => (
-              <div key={index} className="flex h-full min-w-1 flex-1 flex-col justify-end overflow-hidden rounded-t-sm" title={`第 ${index + 1} 时间段：${bucket.critical + bucket.error + bucket.warning} 条`}>
+              <div key={index} className="flex h-full min-w-1 flex-1 flex-col justify-end overflow-hidden rounded-t-sm" title={t('apm.alerts.bucketAria', '第 {index} 时间段：{count} 条', { index: index + 1, count: bucket.critical + bucket.error + bucket.warning })}>
                 <span className="block" style={{ height: `${(bucket.critical / maxDistribution) * 100}%`, background: SEVERITY_CHART.critical }} />
                 <span className="block" style={{ height: `${(bucket.error / maxDistribution) * 100}%`, background: SEVERITY_CHART.error }} />
                 <span className="block" style={{ height: `${(bucket.warning / maxDistribution) * 100}%`, background: SEVERITY_CHART.warning }} />
@@ -433,11 +466,11 @@ export default function ApmEventsPage() {
             items={[
               {
                 key: 'active',
-                label: <Space size={6}>活跃告警<Badge count={activeAlerts.length} showZero color="var(--color-fail)" /></Space>,
+                label: <Space size={6}>{t('apm.alerts.active', '活跃告警')}<Badge count={activeAlerts.length} showZero color="var(--color-fail)" /></Space>,
               },
               {
                 key: 'history',
-                label: <Space size={6}>历史告警<Badge count={historicalAlerts.length} showZero /></Space>,
+                label: <Space size={6}>{t('apm.alerts.history', '历史告警')}<Badge count={historicalAlerts.length} showZero /></Space>,
               },
             ]}
             onChange={(key) => { setActiveTab(key as AlertTab); setPage(1); }}
@@ -447,13 +480,13 @@ export default function ApmEventsPage() {
           <Space wrap size="middle">
             <Select
               allowClear
-              aria-label="按告警级别筛选"
+              aria-label={t('apm.alerts.filterSeverity', '按告警级别筛选')}
               className="w-36"
-              placeholder="全部级别"
+              placeholder={t('apm.alerts.allSeverities', '全部级别')}
               value={query.severity}
-              options={(Object.entries(SEVERITY) as [ApmEvent['severity'], typeof SEVERITY[keyof typeof SEVERITY]][])
+              options={(Object.entries(SEVERITY_COLORS) as [ApmEvent['severity'], string][])
                 .filter(([value]) => value !== 'info')
-                .map(([value, config]) => ({ value: value as ApmPolicySeverity, label: config.label }))}
+                .map(([value]) => ({ value: value as ApmPolicySeverity, label: severityLabels[value] }))}
               onChange={(severity) => { setQuery((current) => ({ ...current, severity })); setPage(1); }}
             />
           </Space>
@@ -483,8 +516,8 @@ export default function ApmEventsPage() {
               kind={visibleState}
               description={visibleState === 'empty'
                 ? activeTab === 'active'
-                  ? '当前组织没有活跃 APM 告警。'
-                  : '最近 7 天当前组织没有历史 APM 告警。'
+                  ? t('apm.alerts.emptyActive', '当前组织没有活跃 APM 告警。')
+                  : t('apm.alerts.emptyHistory', '最近 7 天当前组织没有历史 APM 告警。')
                 : undefined}
               onRetry={visibleState === 'forbidden' ? undefined : load}
             />
@@ -498,19 +531,19 @@ export default function ApmEventsPage() {
         width="min(880px, 100vw)"
         title={selectedAlert ? (
           <Space size={8} wrap align="center">
-            <Tag bordered={false} color={ALERT_STATUS[selectedAlert.status].color}>
-              {ALERT_STATUS[selectedAlert.status].label}
+            <Tag bordered={false} color={ALERT_STATUS_COLORS[selectedAlert.status]}>
+              {alertStatusLabels[selectedAlert.status]}
             </Tag>
-            <Tag bordered={false} color={SEVERITY[selectedAlert.severity].color}>
-              {SEVERITY[selectedAlert.severity].label}
+            <Tag bordered={false} color={SEVERITY_COLORS[selectedAlert.severity]}>
+              {severityLabels[selectedAlert.severity]}
             </Tag>
-            <Tag bordered={false}>{METRIC_LABELS[selectedAlert.item] ?? selectedAlert.item}</Tag>
+            <Tag bordered={false}>{metricLabels[selectedAlert.item] ?? selectedAlert.item}</Tag>
             <span className="text-base font-semibold">{selectedAlert.title}</span>
           </Space>
-        ) : '告警详情'}
+        ) : t('apm.alerts.detail', '告警详情')}
         footer={(
           <div className="flex justify-end">
-            <Button onClick={closeDrawer}>关闭</Button>
+            <Button onClick={closeDrawer}>{t('common.close', '关闭')}</Button>
           </div>
         )}
         styles={{
@@ -521,21 +554,21 @@ export default function ApmEventsPage() {
           <div className="flex h-full flex-col">
             <div className="flex flex-wrap gap-x-4 gap-y-2 border-b border-[var(--color-border)] py-3 text-xs text-[var(--color-text-3)]">
               <span>
-                所属服务{' '}
+                {t('apm.alerts.ownerService', '所属服务')}{' '}
                 <Typography.Text className="!text-xs !text-[var(--color-primary)]">{selectedAlert.service}</Typography.Text>
               </span>
               {selectedAlert.resource_name ? (
                 <span>
-                  资源{' '}
+                  {t('apm.alerts.resource', '资源')}{' '}
                   <Typography.Text className="!text-xs">{selectedAlert.resource_name}</Typography.Text>
                 </span>
               ) : null}
               <span>
-                环境{' '}
-                <Typography.Text className="!text-xs">{selectedAlert.environment || '未设置环境'}</Typography.Text>
+                {t('apm.common.environment', '环境')}{' '}
+                <Typography.Text className="!text-xs">{selectedAlert.environment || t('apm.common.unsetEnvironment', '未设置环境')}</Typography.Text>
               </span>
               <span>
-                触发时间{' '}
+                {t('apm.alerts.triggeredAt', '触发时间')}{' '}
                 <Typography.Text className="!text-xs tabular-nums">
                   {dayjs(selectedAlert.start_time).format('YYYY-MM-DD HH:mm:ss')}
                 </Typography.Text>
@@ -547,8 +580,8 @@ export default function ApmEventsPage() {
               className="mt-2"
               onChange={(key) => setDrawerTab(key as DrawerTab)}
               items={[
-                { key: 'alert', label: '告警' },
-                { key: 'event', label: `事件 (${relatedEvents.length})` },
+                { key: 'alert', label: t('apm.alerts.title', '告警') },
+                { key: 'event', label: `${t('apm.common.events', '事件')} (${relatedEvents.length})` },
               ]}
             />
 
@@ -556,7 +589,7 @@ export default function ApmEventsPage() {
               {drawerTab === 'alert' ? (
                 <div className="flex flex-col gap-4">
                   <div>
-                    <Typography.Text strong className="mb-2 block">告警趋势</Typography.Text>
+                    <Typography.Text strong className="mb-2 block">{t('apm.alerts.trend', '告警趋势')}</Typography.Text>
                     <div className="h-64 rounded-lg border border-[var(--color-border)] p-2">
                       <TimeSeriesComposedChart
                         data={(alertRed?.timeseries ?? []).map((point) => ({
@@ -572,41 +605,41 @@ export default function ApmEventsPage() {
                           { formatter: (value) => `${value.toFixed(0)} ms`, splitLine: false },
                         ]}
                         series={[
-                          { name: '吞吐量 req/s', type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
-                          { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1, lineType: 'dashed', showSymbol: true },
+                          { name: t('apm.common.throughputReq', '吞吐量 req/s'), type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
+                          { name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1, lineType: 'dashed', showSymbol: true },
                           { name: 'P95 ms', type: 'line', dataKey: 'p95_ms', color: token.colorWarning, yAxisIndex: 2, lineType: 'dotted', showSymbol: true },
                         ]}
-                        surfaceProps={{ emptyStateProps: { description: '告警时间窗内暂无指标趋势' } }}
+                        surfaceProps={{ emptyStateProps: { description: t('apm.alerts.noTrend', '告警时间窗内暂无指标趋势') } }}
                       />
                     </div>
                   </div>
                   <Descriptions
-                    title="告警信息"
+                    title={t('apm.alerts.info', '告警信息')}
                     bordered
                     size="small"
                     column={2}
                     labelStyle={{ width: 110, color: 'var(--color-text-3)' }}
                   >
-                    <Descriptions.Item label="时间">
+                    <Descriptions.Item label={t('apm.common.time', '时间')}>
                       {dayjs(selectedAlert.start_time).format('YYYY-MM-DD HH:mm:ss')}
                     </Descriptions.Item>
-                    <Descriptions.Item label="级别">
+                    <Descriptions.Item label={t('apm.alerts.level', '级别')}>
                       <Tag
                         bordered={false}
-                        color={SEVERITY[selectedAlert.severity].color}
+                        color={SEVERITY_COLORS[selectedAlert.severity]}
                       >
-                        {SEVERITY[selectedAlert.severity].label}
+                        {severityLabels[selectedAlert.severity]}
                       </Tag>
                     </Descriptions.Item>
-                    <Descriptions.Item label="状态">
-                      <Tag bordered={false} color={ALERT_STATUS[selectedAlert.status].color}>
-                        {ALERT_STATUS[selectedAlert.status].label}
+                    <Descriptions.Item label={t('apm.common.status', '状态')}>
+                      <Tag bordered={false} color={ALERT_STATUS_COLORS[selectedAlert.status]}>
+                        {alertStatusLabels[selectedAlert.status]}
                       </Tag>
                     </Descriptions.Item>
-                    <Descriptions.Item label="度量">
-                      {METRIC_LABELS[selectedAlert.item] ?? selectedAlert.item}
+                    <Descriptions.Item label={t('apm.alerts.metric', '度量')}>
+                      {metricLabels[selectedAlert.item] ?? selectedAlert.item}
                     </Descriptions.Item>
-                    <Descriptions.Item label="所属对象" span={2}>
+                    <Descriptions.Item label={t('apm.alerts.object', '所属对象')} span={2}>
                       <Space direction="vertical" size={0}>
                         <Typography.Text>{selectedAlert.service}</Typography.Text>
                         {selectedAlert.resource_name ? (
@@ -616,34 +649,34 @@ export default function ApmEventsPage() {
                         ) : null}
                       </Space>
                     </Descriptions.Item>
-                    <Descriptions.Item label="环境">
-                      {selectedAlert.environment || '未设置环境'}
+                    <Descriptions.Item label={t('apm.common.environment', '环境')}>
+                      {selectedAlert.environment || t('apm.common.unsetEnvironment', '未设置环境')}
                     </Descriptions.Item>
-                    <Descriptions.Item label="当前值">
+                    <Descriptions.Item label={t('apm.alerts.currentValue', '当前值')}>
                       <span className="tabular-nums">{selectedAlert.value ?? '—'}</span>
                     </Descriptions.Item>
-                    <Descriptions.Item label="描述" span={2}>
+                    <Descriptions.Item label={t('apm.alerts.descriptionLabel', '描述')} span={2}>
                       {selectedAlert.description || '—'}
                     </Descriptions.Item>
                     {selectedAlert.end_time ? (
-                      <Descriptions.Item label="结束时间" span={2}>
+                      <Descriptions.Item label={t('apm.alerts.endTime', '结束时间')} span={2}>
                         {dayjs(selectedAlert.end_time).format('YYYY-MM-DD HH:mm:ss')}
                       </Descriptions.Item>
                     ) : null}
-                    <Descriptions.Item label="策略 ID" span={2}>
+                    <Descriptions.Item label={t('apm.alerts.policyId', '策略 ID')} span={2}>
                       {selectedAlert.policy_id || '—'}
                     </Descriptions.Item>
                   </Descriptions>
 
                   <div>
-                    <Typography.Text strong className="mb-2 block">通知投递</Typography.Text>
+                    <Typography.Text strong className="mb-2 block">{t('apm.alerts.delivery', '通知投递')}</Typography.Text>
                     {renderDeliveries(selectedAlert)}
                   </div>
                 </div>
               ) : (
                 <div>
                   <Typography.Text type="secondary" className="mb-3 block text-xs">
-                    同一 external_id 关联的事件时间线
+                    {t('apm.alerts.timelineHint', '同一 external_id 关联的事件时间线')}
                   </Typography.Text>
                   {relatedEvents.length ? (
                     <Timeline
@@ -660,17 +693,17 @@ export default function ApmEventsPage() {
                                 <Typography.Text strong className="tabular-nums">
                                   {dayjs(event.start_time).format('YYYY-MM-DD HH:mm:ss')}
                                 </Typography.Text>
-                                <Tag bordered={false}>{ACTION_LABELS[event.action]}</Tag>
-                                <Tag bordered={false} color={SEVERITY[event.severity].color}>
-                                  {SEVERITY[event.severity].label}
+                                <Tag bordered={false}>{actionLabels[event.action]}</Tag>
+                                <Tag bordered={false} color={SEVERITY_COLORS[event.severity]}>
+                                  {severityLabels[event.severity]}
                                 </Tag>
-                                <Tag bordered={false} color={ALERT_STATUS[event.status].color}>
-                                  {ALERT_STATUS[event.status].label}
+                                <Tag bordered={false} color={ALERT_STATUS_COLORS[event.status]}>
+                                  {alertStatusLabels[event.status]}
                                 </Tag>
                               </Space>
                               <Typography.Text>{event.title}</Typography.Text>
                               <Typography.Text type="secondary" className="text-xs">
-                                {METRIC_LABELS[event.item] ?? event.item}
+                                {metricLabels[event.item] ?? event.item}
                                 {event.value !== null ? ` · ${event.value}` : ''}
                                 {event.description ? ` · ${event.description}` : ''}
                               </Typography.Text>
@@ -680,7 +713,7 @@ export default function ApmEventsPage() {
                       }))}
                     />
                   ) : (
-                    <Typography.Text type="secondary">暂无关联事件</Typography.Text>
+                    <Typography.Text type="secondary">{t('apm.alerts.noRelated', '暂无关联事件')}</Typography.Text>
                   )}
                 </div>
               )}

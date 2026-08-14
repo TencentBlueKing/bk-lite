@@ -35,6 +35,7 @@ import type { ApmService, ApmServiceRed, ApmTraceSummary } from '@/app/apm/types
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import SummaryMetricCard from '@/components/summary-metric-card';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
+import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
 type MetricRange = '15m' | '1h' | '4h' | '1d' | '7d';
@@ -77,6 +78,7 @@ const errorRateColor = (value: number | null) => {
 };
 
 export default function ApmEndpointsPage() {
+  const { t } = useTranslation();
   const { token } = theme.useToken();
   const { getServiceRed, getServices, getTraces, isLoading: authLoading } = useApmApi();
   const [services, setServices] = useState<ApmService[]>([]);
@@ -239,7 +241,7 @@ export default function ApmEndpointsPage() {
 
   const columns: TableColumnsType<EndpointRow> = [
     {
-      title: '端点',
+      title: t('apm.common.endpoint', '端点'),
       width: '29%',
       render: (_, row) => (
         <span className="inline-flex min-w-0 items-center gap-2">
@@ -256,18 +258,18 @@ export default function ApmEndpointsPage() {
       ),
     },
     {
-      title: '所属服务',
+      title: t('apm.explore.ownerService', '所属服务'),
       width: '22%',
       responsive: ['sm'],
       render: (_, row) => (
         <Space direction="vertical" size={0} className="min-w-0">
           <EllipsisWithTooltip className="truncate" text={row.serviceName} />
-          <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={`${row.namespace || '未设置 namespace'} · ${row.environment}`} />
+          <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={`${row.namespace || t('apm.common.unsetNamespace', '未设置 namespace')} · ${row.environment}`} />
         </Space>
       ),
     },
     {
-      title: '吞吐量',
+      title: t('apm.common.throughput', '吞吐量'),
       dataIndex: 'requestRate',
       align: 'right',
       width: '14%',
@@ -283,7 +285,7 @@ export default function ApmEndpointsPage() {
       ),
     },
     {
-      title: '错误率',
+      title: t('apm.common.errorRate', '错误率'),
       dataIndex: 'errorRate',
       align: 'right',
       width: '11%',
@@ -295,7 +297,7 @@ export default function ApmEndpointsPage() {
         : <Tag bordered={false} color={errorRateColor(value)}>{formatErrorRate(value)}</Tag>,
     },
     {
-      title: 'P95',
+      title: t('apm.common.p95', 'P95'),
       dataIndex: 'p95Ms',
       align: 'right',
       width: '10%',
@@ -305,7 +307,7 @@ export default function ApmEndpointsPage() {
       render: (value: number | null) => <span className="tabular-nums">{formatLatency(value)}</span>,
     },
     {
-      title: '最近活跃',
+      title: t('apm.common.lastSeen', '最近活跃'),
       dataIndex: 'lastSeenAt',
       align: 'right',
       width: '9%',
@@ -313,27 +315,27 @@ export default function ApmEndpointsPage() {
       render: (value) => <Typography.Text type="secondary" className="text-xs">{formatRelativeTime(value)}</Typography.Text>,
     },
     {
-      title: '操作',
+      title: t('apm.common.operation', '操作'),
       key: 'actions',
       width: 88,
       align: 'right',
       fixed: 'right',
-      render: (_, row) => <Button className="!px-0" size="small" type="link" onClick={() => setSelected(row)}>查看</Button>,
+      render: (_, row) => <Button className="!px-0" size="small" type="link" onClick={() => setSelected(row)}>{t('apm.common.view', '查看')}</Button>,
     },
   ];
 
   return (
     <ApmRouteShell
-      title="端点"
-      description="按服务端点查看吞吐量、错误率与时延，通过查看操作打开详情与样本调用链。"
+      title={t('apm.explore.endpointsTitle', '端点')}
+      description={t('apm.explore.endpointsDescription', '按服务端点查看吞吐量、错误率与时延，通过查看操作打开详情与样本调用链。')}
       dependency="telemetry"
     >
       <div className="flex flex-col gap-3">
         {metricFailureCount ? (
           <Alert
-            action={<Button icon={<ReloadOutlined aria-hidden="true" />} size="small" onClick={load}>重试</Button>}
-            description="部分服务暂未返回端点指标，请稍后重试。"
-            message={`部分服务的端点指标查询失败（${metricFailureCount} 项）`}
+            action={<Button icon={<ReloadOutlined aria-hidden="true" />} size="small" onClick={load}>{t('apm.common.retry', '重试')}</Button>}
+            description={t('apm.explore.partialEndpointMetrics', '部分服务暂未返回端点指标，请稍后重试。')}
+            message={t('apm.explore.metricFailureCount', '部分服务的端点指标查询失败（{count} 项）', { count: metricFailureCount })}
             showIcon
             type="warning"
           />
@@ -343,25 +345,25 @@ export default function ApmEndpointsPage() {
             <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
               <Input
                 allowClear
-                aria-label="搜索路径模板或服务"
+                aria-label={t('apm.explore.searchEndpoint', '搜索路径模板或服务')}
                 className="w-72"
-                placeholder="搜索路径模板 / 服务"
+                placeholder={t('apm.explore.searchEndpointPlaceholder', '搜索路径模板 / 服务')}
                 prefix={<SearchOutlined aria-hidden="true" />}
                 value={keyword}
                 onChange={(event) => { setKeyword(event.target.value); setPage(1); }}
               />
               <Select
-                aria-label="服务"
+                aria-label={t('apm.common.service', '服务')}
                 className="w-40"
                 value={serviceId}
-                options={[{ value: 'all', label: '全部服务' }, ...serviceOptions]}
+                options={[{ value: 'all', label: t('apm.common.allServices', '全部服务') }, ...serviceOptions]}
                 onChange={(value) => { setServiceId(value); setPage(1); }}
               />
               <Select
-                aria-label="环境"
+                aria-label={t('apm.common.environment', '环境')}
                 className="w-36"
                 value={environment || undefined}
-                placeholder="选择环境"
+                placeholder={t('apm.common.selectEnvironment', '选择环境')}
                 options={environmentOptions}
                 onChange={(value) => {
                   setEnvironment(value);
@@ -371,7 +373,7 @@ export default function ApmEndpointsPage() {
               />
               <div className="flex-1" />
               <Radio.Group
-                aria-label="时间范围"
+                aria-label={t('apm.common.timeRange', '时间范围')}
                 buttonStyle="solid"
                 size="small"
                 value={timeRange}
@@ -381,7 +383,7 @@ export default function ApmEndpointsPage() {
                   <Radio.Button key={value} value={value}>{value}</Radio.Button>
                 ))}
               </Radio.Group>
-              <Button aria-label="刷新端点" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load} />
+              <Button aria-label={t('apm.explore.refreshEndpoints', '刷新端点')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load} />
             </FilterToolbar>
             {state === 'ready' || (state === 'loading' && rows.length > 0) ? (
               <ApmDataTable
@@ -420,7 +422,7 @@ export default function ApmEndpointsPage() {
             ) : (
               <CatalogState
                 kind={state}
-                description={state === 'empty' ? '当前环境和时间范围内没有端点指标。' : undefined}
+                description={state === 'empty' ? t('apm.explore.noEndpoints', '当前环境和时间范围内没有端点指标。') : undefined}
                 onRetry={state === 'forbidden' ? undefined : load}
               />
             )}
@@ -454,14 +456,14 @@ export default function ApmEndpointsPage() {
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {[
-                { label: '吞吐', value: `${formatThroughput(selected.requestRate)}/s` },
+                { label: t('apm.explore.throughputShort', '吞吐'), value: `${formatThroughput(selected.requestRate)}/s` },
                 {
-                  label: '错误率',
+                  label: t('apm.common.errorRate', '错误率'),
                   value: formatErrorRate(selected.errorRate),
                   danger: isErrorRateDanger(selected.errorRate),
                 },
-                { label: 'P95', value: formatLatency(selected.p95Ms) },
-                { label: 'P99', value: formatLatency(selected.p99Ms) },
+                { label: t('apm.common.p95', 'P95'), value: formatLatency(selected.p95Ms) },
+                { label: t('apm.common.p99', 'P99'), value: formatLatency(selected.p99Ms) },
               ].map((metric) => (
                 <SummaryMetricCard
                   key={metric.label}
@@ -477,7 +479,7 @@ export default function ApmEndpointsPage() {
               ))}
             </div>
             <div>
-              <Typography.Text strong className="mb-2 block">端点趋势</Typography.Text>
+              <Typography.Text strong className="mb-2 block">{t('apm.explore.endpointTrend', '端点趋势')}</Typography.Text>
               <div className="h-64">
                 <TimeSeriesComposedChart
                   data={(endpointRed?.timeseries ?? []).map((point) => ({
@@ -493,17 +495,17 @@ export default function ApmEndpointsPage() {
                     { formatter: (value) => `${value.toFixed(0)} ms`, splitLine: false },
                   ]}
                   series={[
-                    { name: '吞吐量 req/s', type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
-                    { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1, lineType: 'dashed', showSymbol: true },
+                    { name: t('apm.common.throughputReq', '吞吐量 req/s'), type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
+                    { name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, yAxisIndex: 1, lineType: 'dashed', showSymbol: true },
                     { name: 'P95 ms', type: 'line', dataKey: 'p95_ms', color: token.colorWarning, yAxisIndex: 2, lineType: 'dotted', showSymbol: true },
                   ]}
-                  surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无端点趋势' } }}
+                  surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }}
                 />
               </div>
             </div>
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <Typography.Text strong>样本调用链</Typography.Text>
+                <Typography.Text strong>{t('apm.explore.sampleTraces', '样本调用链')}</Typography.Text>
                 <Link
                   href={`/apm/explore/traces?${new URLSearchParams({
                     service_namespace: selected.namespace,
@@ -511,7 +513,7 @@ export default function ApmEndpointsPage() {
                     environment: selected.environment,
                   }).toString()}`}
                 >
-                  <Button type="link" size="small">在探索中打开</Button>
+                  <Button type="link" size="small">{t('apm.explore.openInExplore', '在探索中打开')}</Button>
                 </Link>
               </div>
               {samplesLoading ? (
@@ -535,18 +537,18 @@ export default function ApmEndpointsPage() {
                       ),
                     },
                     {
-                      title: '资源',
+                      title: t('apm.explore.resource', '资源'),
                       dataIndex: 'root_span_name',
                       render: (value) => <span className="font-mono text-xs">{value}</span>,
                     },
                     {
-                      title: '耗时',
+                      title: t('apm.common.latency', '耗时'),
                       dataIndex: 'duration_ms',
                       width: 90,
                       render: (value: number) => <span className="tabular-nums">{formatLatency(value)}</span>,
                     },
                     {
-                      title: '时间',
+                      title: t('apm.common.time', '时间'),
                       dataIndex: 'started_at',
                       width: 100,
                       render: (value: string) => (
@@ -556,11 +558,11 @@ export default function ApmEndpointsPage() {
                   ]}
                 />
               ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无匹配样本 Trace" />
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('apm.explore.noSampleTraces', '暂无匹配样本 Trace')} />
               )}
             </div>
             <Typography.Text type="secondary" className="!text-xs">
-              端点指标来自服务 RED Top endpoint 聚合；最近活跃参考服务发现时间 {dayjs(selected.lastSeenAt).format('YYYY-MM-DD HH:mm:ss')}。
+              {t('apm.explore.endpointSourceHint', '端点指标来自服务 RED Top endpoint 聚合；最近活跃参考服务发现时间 {time}。', { time: dayjs(selected.lastSeenAt).format('YYYY-MM-DD HH:mm:ss') })}
             </Typography.Text>
           </div>
         ) : null}

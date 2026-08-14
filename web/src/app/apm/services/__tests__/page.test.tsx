@@ -1,9 +1,10 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import dayjs from 'dayjs';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApmServicesPage from '../page';
 
 const api = {
@@ -185,14 +186,14 @@ afterEach(() => {
 describe('APM 服务目录应用视角', () => {
   it('不展示已移除的内置未归类应用', async () => {
     api.getServices.mockResolvedValue([]);
-    render(<ApmServicesPage />);
+    renderWithApmIntl(<ApmServicesPage />);
 
     await waitFor(() => expect(api.getApplications).toHaveBeenCalled());
     expect(screen.queryByText('未归类应用')).toBeNull();
   });
 
   it('应用卡展示吞吐、最高活跃告警、应用详情与服务下钻入口', async () => {
-    render(<ApmServicesPage />);
+    renderWithApmIntl(<ApmServicesPage />);
 
     const card = await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
     expect(card.getAttribute('href')).toBe('/apm/integration/applications/bklite');
@@ -220,7 +221,7 @@ describe('APM 服务目录应用视角', () => {
 describe('APM 服务目录服务视角与归档', () => {
   it('切换到服务视角后展示 RED、语言与最高活跃告警', async () => {
     const user = userEvent.setup();
-    render(<ApmServicesPage />);
+    renderWithApmIntl(<ApmServicesPage />);
 
     const servicePerspective = await screen.findByRole('radio', { name: '服务' });
     await user.click(servicePerspective.closest('label')!);
@@ -258,7 +259,7 @@ describe('APM 服务目录服务视角与归档', () => {
 
   it('已归档入口打开抽屉并列出归档服务', async () => {
     const user = userEvent.setup();
-    render(<ApmServicesPage />);
+    renderWithApmIntl(<ApmServicesPage />);
 
     await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
     await user.click(screen.getByRole('button', { name: /已归档/ }));

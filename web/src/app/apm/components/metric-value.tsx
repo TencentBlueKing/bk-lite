@@ -3,6 +3,7 @@
 import { ReloadOutlined } from '@ant-design/icons';
 import { Button, Tooltip, Typography } from 'antd';
 import { metricEmptyHint } from '@/app/apm/components/metric-format';
+import { useTranslation } from '@/utils/i18n';
 
 interface MetricValueProps {
   text: string;
@@ -25,7 +26,10 @@ export default function MetricValue({
   className = '',
   size = 'sm',
 }: MetricValueProps) {
-  const empty = text === '无数据' || text === '查询失败';
+  const { t } = useTranslation();
+  const noData = t('apm.common.noData', '无数据');
+  const queryFailed = t('apm.common.queryFailed', '查询失败');
+  const empty = text === noData || text === queryFailed || text === '无数据' || text === '查询失败';
   const hint = empty ? metricEmptyHint(unavailable) : undefined;
   const sizeClass = size === 'lg'
     ? 'text-base font-semibold tabular-nums leading-6'
@@ -34,7 +38,7 @@ export default function MetricValue({
     ? 'text-[var(--theme-color-status-warning)]'
     : danger
       ? 'font-semibold text-[var(--color-fail)]'
-      : muted || text === '无数据'
+      : muted || text === noData || text === '无数据'
         ? 'text-[var(--color-text-3)]'
         : 'text-[var(--color-text-1)]';
 
@@ -48,9 +52,9 @@ export default function MetricValue({
         event.stopPropagation();
         onRetry();
       }}
-      aria-label="重试 RED 指标"
+      aria-label={t('apm.common.retryRed', '重试 RED 指标')}
     >
-      查询失败
+      {queryFailed}
     </Button>
   ) : (
     <span className={`${sizeClass} ${toneClass} ${className}`}>{text}</span>
@@ -63,7 +67,7 @@ export default function MetricValue({
       <span className="inline-flex items-center gap-1">
         {content}
         {unavailable && !onRetry ? (
-          <Typography.Text type="secondary" className="!text-[10px]">可重试</Typography.Text>
+          <Typography.Text type="secondary" className="!text-[10px]">{t('apm.common.retryable', '可重试')}</Typography.Text>
         ) : null}
       </span>
     </Tooltip>

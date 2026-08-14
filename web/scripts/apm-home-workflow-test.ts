@@ -14,7 +14,7 @@ assert.match(apiIndex, /\/apm\/dashboard\//, 'getDashboard 必须请求 /apm/das
 assert.match(homePage, /还没有接入任何应用/, 'APM 首页必须展示空态文案');
 assert.match(homePage, /Segmented/, '首页工具栏必须提供时间窗 Segmented');
 assert.match(homePage, /ApmRouteShell/, '首页应复用 ApmRouteShell 以对齐模块留白');
-assert.match(homePage, /title="首页"/, '首页 RouteShell 标题仅供辅助技术读取');
+assert.match(homePage, /apm\.home\.title/, '首页 RouteShell 标题仅供辅助技术读取');
 assert.doesNotMatch(homePage, /<header/, '首页不得再渲染可见页头介绍卡');
 assert.match(rootRedirect, /\/apm\/home/, 'APM 根路径必须兼容跳转到首页');
 assert.match(homePage, /\/apm\/services\/slo/, '首页 SLO 入口必须指向目录化路径');

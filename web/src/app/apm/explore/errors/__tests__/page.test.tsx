@@ -1,7 +1,8 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApmErrorsPage from '../page';
 
 const api = {
@@ -55,7 +56,7 @@ afterEach(() => {
 
 describe('APM 错误页信息层级', () => {
   it('只保留任务所需说明，不重复展示能力规划与遥测依赖文案', async () => {
-    render(<ApmErrorsPage />);
+    renderWithApmIntl(<ApmErrorsPage />);
 
     await waitFor(() => expect(api.getTraces).toHaveBeenCalled());
     expect(screen.queryByText(/当前版本按错误调用链展示/)).toBeNull();
@@ -64,7 +65,7 @@ describe('APM 错误页信息层级', () => {
   });
 
   it('首次进入自动选中可用服务并只查询错误调用链', async () => {
-    render(<ApmErrorsPage />);
+    renderWithApmIntl(<ApmErrorsPage />);
 
     await waitFor(() => expect(api.getTraces).toHaveBeenCalledWith(expect.objectContaining({
       service_namespace: 'shop',
@@ -96,7 +97,7 @@ describe('APM 错误页信息层级', () => {
       }] : [],
     }));
 
-    render(<ApmErrorsPage />);
+    renderWithApmIntl(<ApmErrorsPage />);
 
     expect(await screen.findByText('POST /checkout')).not.toBeNull();
     expect(api.getTraces).toHaveBeenCalledWith(expect.objectContaining({

@@ -48,25 +48,20 @@ import type {
 } from '@/app/apm/types';
 import ApmRouteShell from '@/app/apm/components/apm-route-shell';
 import SummaryMetricCard from '@/components/summary-metric-card';
+import { useTranslation } from '@/utils/i18n';
+
+import { useTranslation } from '@/utils/i18n';
 
 const { Text, Paragraph } = Typography;
 
 const TIME_WINDOWS: ApmTimeWindow[] = ['15m', '1h', '4h', '1d', '7d'];
 
-const WINDOW_LABEL: Record<ApmTimeWindow, string> = {
-  '15m': '近窗 15 分钟',
-  '1h': '近窗 1 小时',
-  '4h': '近窗 4 小时',
-  '1d': '近窗 1 天',
-  '7d': '近窗 7 天',
-};
-
-const ALERT_SEVERITY: Record<
-  ApmDashboardAlertRow['severity'],
-  { label: string; tone: 'danger' | 'warning' }
-> = {
-  critical: { label: '严重', tone: 'danger' },
-  warning: { label: '警告', tone: 'warning' },
+const WINDOW_LABEL_KEYS: Record<ApmTimeWindow, string> = {
+  '15m': 'apm.home.window15m',
+  '1h': 'apm.home.window1h',
+  '4h': 'apm.home.window4h',
+  '1d': 'apm.home.window1d',
+  '7d': 'apm.home.window7d',
 };
 
 const HEALTH_LINK: Record<ApmTopologyHealth, string> = {
@@ -92,12 +87,15 @@ function softBg(token: string, pct = 12): string {
   return `color-mix(in srgb, ${token} ${pct}%, var(--color-bg))`;
 }
 
-function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
+function buildKpiCards(
+  data: ApmDashboardKpiData,
+  t: (id: string, defaultMessage?: string) => string,
+): KpiCardConfig[] {
   const spark = data.sparklines;
   return [
     {
       key: 'apps',
-      label: '应用数量',
+      label: t('apm.home.kpiApps', '应用数量'),
       icon: <ApartmentOutlined aria-hidden="true" />,
       iconBg: 'var(--color-primary-bg-active)',
       iconColor: 'var(--color-primary)',
@@ -107,7 +105,7 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
     },
     {
       key: 'services',
-      label: '服务数量',
+      label: t('apm.home.kpiServices', '服务数量'),
       icon: <AppstoreOutlined aria-hidden="true" />,
       iconBg: 'var(--color-primary-bg-active)',
       iconColor: 'var(--color-primary)',
@@ -117,7 +115,7 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
     },
     {
       key: 'alerts',
-      label: '活跃告警数',
+      label: t('apm.home.kpiAlerts', '活跃告警数'),
       icon: <BellOutlined aria-hidden="true" />,
       iconBg: softBg('var(--color-fail)', 10),
       iconColor: 'var(--color-fail)',
@@ -127,7 +125,7 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
     },
     {
       key: 'requests',
-      label: '请求量',
+      label: t('apm.home.kpiRequests', '请求量'),
       icon: <ApiOutlined aria-hidden="true" />,
       iconBg: 'var(--color-primary-bg-active)',
       iconColor: 'var(--color-primary)',
@@ -138,7 +136,7 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
     },
     {
       key: 'errors',
-      label: '错误请求数',
+      label: t('apm.home.kpiErrors', '错误请求数'),
       icon: <WarningOutlined aria-hidden="true" />,
       iconBg: softBg('var(--color-fail)', 10),
       iconColor: 'var(--color-fail)',
@@ -149,7 +147,7 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
     },
     {
       key: 'p95',
-      label: 'P95 延迟',
+      label: t('apm.home.kpiP95', 'P95 延迟'),
       icon: <FieldTimeOutlined aria-hidden="true" />,
       iconBg: softBg('var(--theme-color-status-warning)', 12),
       iconColor: 'var(--theme-color-status-warning)',
@@ -161,8 +159,9 @@ function buildKpiCards(data: ApmDashboardKpiData): KpiCardConfig[] {
 }
 
 function HomeSkeleton() {
+  const { t } = useTranslation();
   return (
-    <div aria-label="加载 APM 首页数据" aria-busy="true">
+    <div aria-label={t('apm.home.loading', '加载 APM 首页数据')} aria-busy="true">
       <Row gutter={[12, 12]} className="!mb-4">
         {Array.from({ length: 6 }, (_, index) => (
           <Col key={index} xs={24} sm={12} md={8} lg={4}>
@@ -186,29 +185,31 @@ function HomeSkeleton() {
 }
 
 function HomeEmptyState() {
+  const { t } = useTranslation();
   return (
     <div className="mt-1 rounded-[6px] border border-[var(--color-border)] bg-[var(--color-bg)] px-8 py-20 text-center">
       <div className="mx-auto mb-5 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)]">
         <RocketOutlined aria-hidden="true" className="text-base text-[var(--color-primary)]" />
       </div>
       <p className="mb-2 text-base font-semibold leading-6 text-[var(--color-text-1)]">
-        还没有接入任何应用
+        {t('apm.home.emptyTitle', '还没有接入任何应用')}
       </p>
       <Paragraph type="secondary" className="!mb-6 text-sm">
-        前往集成菜单完成首次接入，数分钟内即可在首页看到 6 个 KPI 与 7 段汇总。
+        {t('apm.home.emptyDescription', '前往集成菜单完成首次接入，数分钟内即可在首页看到 6 个 KPI 与 7 段汇总。')}
       </Paragraph>
       <Button type="primary" href="/apm/integration/add">
-        前往集成菜单
+        {t('apm.home.emptyAction', '前往集成菜单')}
       </Button>
     </div>
   );
 }
 
 function FailedSection({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-[6px] border border-[var(--color-border)] bg-[var(--color-bg)] px-6 py-10 text-center">
       <Button type="link" onClick={onRetry}>
-        加载失败，点击重试
+        {t('apm.common.loadFailedRetry', '加载失败，点击重试')}
       </Button>
     </div>
   );
@@ -233,13 +234,14 @@ function HealthLegendRow({ bucket, total }: { bucket: ApmDashboardHealthBucket; 
 }
 
 function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col">
       <div className="mb-1 grid grid-cols-[minmax(0,1fr)_88px_72px_64px] gap-2 border-b border-[var(--color-border)] pb-2 text-[12px] text-[var(--color-text-4)]">
-        <span>服务</span>
-        <span className="text-right">可用性目标</span>
-        <span className="text-right">达成率</span>
-        <span className="text-center">状态</span>
+        <span>{t('apm.home.sloService', '服务')}</span>
+        <span className="text-right">{t('apm.home.sloObjective', '可用性目标')}</span>
+        <span className="text-right">{t('apm.home.sloRate', '达成率')}</span>
+        <span className="text-center">{t('apm.home.sloStatus', '状态')}</span>
       </div>
       {items.map((row, index) => (
         <div
@@ -265,7 +267,7 @@ function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
             {row.current_rate.toFixed(2)}%
           </span>
           <span className="flex justify-center">
-            <StatusPill label={row.met ? '达成' : '未达成'} tone={row.met ? 'success' : 'danger'} />
+            <StatusPill label={row.met ? t('apm.home.sloMet', '达成') : t('apm.home.sloUnmet', '未达成')} tone={row.met ? 'success' : 'danger'} />
           </span>
         </div>
       ))}
@@ -274,6 +276,7 @@ function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
 }
 
 export default function ApmHomePage() {
+  const { t } = useTranslation();
   const { getDashboard, isLoading: authLoading } = useApmApi();
   const [timeWindow, setTimeWindow] = useState<ApmTimeWindow>('1h');
   const [dashboard, setDashboard] = useState<ApmDashboard | null>(null);
@@ -301,8 +304,8 @@ export default function ApmHomePage() {
   }, [load]);
 
   const kpiCards = useMemo(
-    () => (dashboard?.kpis.status === 'ok' && dashboard.kpis.data ? buildKpiCards(dashboard.kpis.data) : []),
-    [dashboard],
+    () => (dashboard?.kpis.status === 'ok' && dashboard.kpis.data ? buildKpiCards(dashboard.kpis.data, t) : []),
+    [dashboard, t],
   );
 
   const healthData = dashboard?.health.status === 'ok' ? dashboard.health.data : undefined;
@@ -328,11 +331,11 @@ export default function ApmHomePage() {
   const sectionFailed = (section: ApmDashboardSection<unknown> | undefined) => section?.status === 'failed';
 
   return (
-    <ApmRouteShell title="首页" description="查看应用性能总览、健康分布与待处理告警。">
+    <ApmRouteShell title={t('apm.home.title', '首页')} description={t('apm.home.description', '查看应用性能总览、健康分布与待处理告警。')}>
       <div className="mb-3 flex items-center justify-end px-1">
         <Space size={6} align="center">
           <Text type="secondary" className="text-xs">
-            时间窗
+            {t('apm.common.timeWindow', '时间窗')}
           </Text>
           <Segmented
             size="small"
@@ -390,8 +393,8 @@ export default function ApmHomePage() {
             <Col xs={24} lg={8}>
               <SectionCard
                 icon={<DashboardOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
-                title="服务健康度分布"
-                subtitle={WINDOW_LABEL[timeWindow]}
+                title={t('apm.home.healthTitle', '服务健康度分布')}
+                subtitle={t(WINDOW_LABEL_KEYS[timeWindow])}
                 viewAllHref="/apm/services"
                 failed={sectionFailed(dashboard?.health)}
                 onRetry={load}
@@ -413,7 +416,7 @@ export default function ApmHomePage() {
                         <span className="text-base font-semibold leading-6 tabular-nums text-[var(--color-text-1)]">
                           {healthData.total}
                         </span>
-                        <span className="mt-0.5 text-xs text-[var(--color-text-4)]">总服务数</span>
+                        <span className="mt-0.5 text-xs text-[var(--color-text-4)]">{t('apm.home.healthTotal', '总服务数')}</span>
                       </div>
                     </div>
                     <div className="flex flex-col gap-2.5">
@@ -423,7 +426,7 @@ export default function ApmHomePage() {
                     </div>
                   </div>
                 ) : (
-                  <SectionEmpty>暂无服务数据</SectionEmpty>
+                  <SectionEmpty>{t('apm.home.healthEmpty', '暂无服务数据')}</SectionEmpty>
                 )}
               </SectionCard>
             </Col>
@@ -431,8 +434,8 @@ export default function ApmHomePage() {
             <Col xs={24} lg={8}>
               <SectionCard
                 icon={<DashboardOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
-                title="SLO 概览"
-                subtitle="已配置 SLO"
+                title={t('apm.home.sloTitle', 'SLO 概览')}
+                subtitle={t('apm.home.sloSubtitle', '已配置 SLO')}
                 viewAllHref="/apm/services/slo"
                 failed={sectionFailed(dashboard?.slos)}
                 onRetry={load}
@@ -440,10 +443,10 @@ export default function ApmHomePage() {
                 {sloItems.length === 0 ? (
                   <SectionEmpty>
                     <div>
-                      暂无 SLO 配置
+                      {t('apm.home.sloEmpty', '暂无 SLO 配置')}
                       <div className="mt-2">
                         <Link href="/apm/services/slo" className="text-[var(--color-primary)] hover:underline">
-                          前往配置 →
+                          {t('apm.home.sloConfigure', '前往配置 →')}
                         </Link>
                       </div>
                     </div>
@@ -457,18 +460,24 @@ export default function ApmHomePage() {
             <Col xs={24} lg={8}>
               <SectionCard
                 icon={<BellOutlined aria-hidden="true" className="text-[var(--color-fail)]" />}
-                title="实时告警"
-                subtitle="未恢复"
+                title={t('apm.home.alertsTitle', '实时告警')}
+                subtitle={t('apm.home.alertsSubtitle', '未恢复')}
                 viewAllHref="/apm/events/alerts"
                 failed={sectionFailed(dashboard?.alerts)}
                 onRetry={load}
               >
                 {alertItems.length === 0 ? (
-                  <SectionEmpty tone="success">一切正常，无未恢复告警</SectionEmpty>
+                  <SectionEmpty tone="success">{t('apm.home.alertsEmpty', '一切正常，无未恢复告警')}</SectionEmpty>
                 ) : (
                   <div className="flex flex-col">
                     {alertItems.map((alert, index) => {
-                      const severity = ALERT_SEVERITY[alert.severity];
+                      const severity = {
+                        label: t(
+                          alert.severity === 'critical' ? 'apm.severity.critical' : 'apm.severity.warning',
+                          alert.severity === 'critical' ? '严重' : '警告',
+                        ),
+                        tone: (alert.severity === 'critical' ? 'danger' : 'warning') as 'danger' | 'warning',
+                      };
                       return (
                         <div
                           key={alert.id}
@@ -512,13 +521,13 @@ export default function ApmHomePage() {
             <Col xs={24} lg={8}>
               <SectionCard
                 icon={<FireOutlined aria-hidden="true" className="text-[var(--color-fail)]" />}
-                title="服务 TOP5 (按错误率)"
+                title={t('apm.home.topErrorTitle', '服务 TOP5 (按错误率)')}
                 viewAllHref="/apm/services"
                 failed={sectionFailed(dashboard?.top_error_rate)}
                 onRetry={load}
               >
                 {topErrorItems.length === 0 ? (
-                  <SectionEmpty>暂无错误率数据</SectionEmpty>
+                  <SectionEmpty>{t('apm.home.topErrorEmpty', '暂无错误率数据')}</SectionEmpty>
                 ) : (
                   <Top5BarChart
                     window={timeWindow}
@@ -540,13 +549,13 @@ export default function ApmHomePage() {
             <Col xs={24} lg={8}>
               <SectionCard
                 icon={<ThunderboltOutlined aria-hidden="true" className="text-[var(--theme-color-status-warning)]" />}
-                title="P95 响应时间 TOP5"
+                title={t('apm.home.topP95Title', 'P95 响应时间 TOP5')}
                 viewAllHref="/apm/services"
                 failed={sectionFailed(dashboard?.top_p95)}
                 onRetry={load}
               >
                 {topP95Items.length === 0 ? (
-                  <SectionEmpty>暂无 P95 数据</SectionEmpty>
+                  <SectionEmpty>{t('apm.home.topP95Empty', '暂无 P95 数据')}</SectionEmpty>
                 ) : (
                   <Top5BarChart
                     window={timeWindow}
@@ -559,7 +568,7 @@ export default function ApmHomePage() {
                     }))}
                     valueFormatter={(value) => `${Math.round(value)}ms`}
                     colorOf={p95BarColor}
-                    subField="吞吐"
+                    subField={t('apm.home.topP95Sub', '吞吐')}
                   />
                 )}
               </SectionCard>
@@ -568,13 +577,13 @@ export default function ApmHomePage() {
             <Col xs={24} lg={8}>
               <SectionCard
                 icon={<TagsOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
-                title="版本发布变更"
-                subtitle="近 7 天"
+                title={t('apm.home.releasesTitle', '版本发布变更')}
+                subtitle={t('apm.home.releasesSubtitle', '近 7 天')}
                 viewAllHref="/apm/services"
                 failed={sectionFailed(dashboard?.releases)}
                 onRetry={load}
               >
-                <SectionEmpty>近 7 天无发布</SectionEmpty>
+                <SectionEmpty>{t('apm.home.releasesEmpty', '近 7 天无发布')}</SectionEmpty>
               </SectionCard>
             </Col>
           </Row>

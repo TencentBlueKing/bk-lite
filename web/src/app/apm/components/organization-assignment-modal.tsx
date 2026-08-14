@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { Alert, Form, Modal } from 'antd';
 import GroupTreeSelect from '@/components/group-tree-select';
+import { useTranslation } from '@/utils/i18n';
 
 interface OrganizationAssignmentModalProps {
   open: boolean;
@@ -28,6 +29,7 @@ function OpenOrganizationAssignmentModal({
   onCancel,
   onSubmit,
 }: OrganizationAssignmentModalProps) {
+  const { t } = useTranslation();
   const [form] = Form.useForm<{ organization_ids: number[] }>();
   const organizationKey = organizationIds.join(',');
 
@@ -39,8 +41,8 @@ function OpenOrganizationAssignmentModal({
     <Modal
       title={title}
       open={open}
-      okText="保存"
-      cancelText="取消"
+      okText={t('common.save', '保存')}
+      cancelText={t('common.cancel', '取消')}
       confirmLoading={submitting}
       styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }}
       afterOpenChange={(visible) => {
@@ -59,8 +61,8 @@ function OpenOrganizationAssignmentModal({
         preserve={false}
         onFinish={(values) => onSubmit(values.organization_ids)}
       >
-        <Form.Item name="organization_ids" label="可用组织" rules={[{ required: true, message: '请至少选择一个组织' }]}>
-          <GroupTreeSelect multiple mode="ownership" showSearch placeholder="选择组织" />
+        <Form.Item name="organization_ids" label={t('apm.common.organizations', '可用组织')} rules={[{ required: true, message: t('apm.common.organizationRequired', '请至少选择一个组织') }]}>
+          <GroupTreeSelect multiple mode="ownership" showSearch placeholder={t('apm.common.selectOrganization', '选择组织')} />
         </Form.Item>
         {description ? <Alert type="info" showIcon message={description} /> : null}
       </Form>

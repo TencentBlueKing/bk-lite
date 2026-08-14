@@ -1,11 +1,12 @@
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import ApmRouteShell from '../apm-route-shell';
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 
 describe('ApmRouteShell', () => {
   it('不重复渲染二级页面介绍卡，同时保留无障碍页面标题', () => {
-    const { container } = render(
+    const { container } = renderWithApmIntl(
       <ApmRouteShell
         title="服务"
         description="按应用与服务浏览最高活跃告警状态和 RED 指标。"
@@ -24,7 +25,7 @@ describe('ApmRouteShell', () => {
   });
 
   it('复用二级导航内容区的顶部留白，不再叠加页面壳顶部内边距', () => {
-    const { container } = render(
+    const { container } = renderWithApmIntl(
       <ApmRouteShell title="服务" description="服务目录">
         <div>服务工作面</div>
       </ApmRouteShell>,

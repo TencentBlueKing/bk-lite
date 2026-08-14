@@ -10,6 +10,7 @@ import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm
 import { formatLatency, formatRelativeTime } from '@/app/apm/components/metric-format';
 import type { ApmService, ApmTraceSummary } from '@/app/apm/types';
 import FilterToolbar from '@/components/filter-toolbar';
+import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready' | 'idle';
 type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d';
@@ -31,10 +32,10 @@ const RANGE_MS: Record<TimeRange, number> = {
   '7d': 7 * 24 * 60 * 60 * 1000,
 };
 
-function clusterErrors(items: ApmTraceSummary[]): ErrorCluster[] {
+function clusterErrors(items: ApmTraceSummary[], unnamedError: string): ErrorCluster[] {
   const groups = new Map<string, ApmTraceSummary[]>();
   items.forEach((item) => {
-    const key = item.root_span_name || '未命名错误操作';
+    const key = item.root_span_name || unnamedError;
     const list = groups.get(key) ?? [];
     list.push(item);
     groups.set(key, list);
@@ -55,6 +56,7 @@ function clusterErrors(items: ApmTraceSummary[]): ErrorCluster[] {
 }
 
 export default function ApmErrorsPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedServiceId = searchParams.get('service_id') ?? '';
@@ -162,14 +164,14 @@ export default function ApmErrorsPage() {
   }, [search]);
 
   const clusters = useMemo(() => {
-    const grouped = clusterErrors(items);
+    const grouped = clusterErrors(items, t('apm.explore.unnamedError', '未命名错误操作'));
     const normalized = keyword.trim().toLocaleLowerCase();
     if (!normalized) return grouped;
     return grouped.filter((cluster) => (
       cluster.name.toLocaleLowerCase().includes(normalized)
       || cluster.samples.some((item) => item.trace_id.toLocaleLowerCase().includes(normalized))
     ));
-  }, [items, keyword]);
+  }, [items, keyword, t]);
 
   const affectedServices = new Set(items.map((item) => `${item.service_namespace}:${item.service_name}`)).size;
   const affectedTraces = items.length;
@@ -180,20 +182,20 @@ export default function ApmErrorsPage() {
   }));
   const environmentOptions = selectedService?.environment_views.map((view) => ({
     value: view.environment,
-    label: view.environment || '未设置环境',
+    label: view.environment || t('apm.common.unsetEnvironment', '未设置环境'),
   })) ?? [];
 
   return (
     <ApmRouteShell
-      title="错误"
-      description="按服务与环境查看错误调用链，定位故障入口与样本 Trace。"
+      title={t('apm.explore.errorsTitle', '错误')}
+      description={t('apm.explore.errorsDescription', '按服务与环境查看错误调用链，定位故障入口与样本 Trace。')}
       dependency="telemetry"
     >
       <ApmSurface>
         <div className="flex flex-col gap-4">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Radio.Group
-              aria-label="时间范围"
+              aria-label={t('apm.common.timeRange', '时间范围')}
               buttonStyle="solid"
               size="small"
               value={timeRange}
@@ -205,9 +207,9 @@ export default function ApmErrorsPage() {
             </Radio.Group>
             <Select
               showSearch
-              aria-label="服务"
+              aria-label={t('apm.common.service', '服务')}
               className="w-64"
-              placeholder="选择服务"
+              placeholder={t('apm.common.selectService', '选择服务')}
               optionFilterProp="label"
               value={selectedService?.id || undefined}
               options={serviceOptions}
@@ -219,24 +221,24 @@ export default function ApmErrorsPage() {
               }}
             />
             <Select
-              aria-label="环境"
+              aria-label={t('apm.common.environment', '环境')}
               className="w-36"
               disabled={!selectedService}
-              placeholder="选择环境"
+              placeholder={t('apm.common.selectEnvironment', '选择环境')}
               value={environment || undefined}
               options={environmentOptions}
               onChange={setEnvironment}
             />
-            <Button aria-label="刷新错误调用链" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} disabled={!selectedService || !environment} onClick={search} />
+            <Button aria-label={t('apm.explore.refreshErrors', '刷新错误调用链')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} disabled={!selectedService || !environment} onClick={search} />
           </FilterToolbar>
 
           {selectedService ? (
             <div className="grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-4 md:grid-cols-4">
               {[
-                { label: '错误分组', value: clusters.length, danger: true },
-                { label: '受影响 Trace', value: affectedTraces },
-                { label: '受影响服务', value: affectedServices },
-                { label: '出现次数', value: items.length },
+                { label: t('apm.explore.errorGroups', '错误分组'), value: clusters.length, danger: true },
+                { label: t('apm.explore.affectedTraces', '受影响 Trace'), value: affectedTraces },
+                { label: t('apm.explore.affectedServices', '受影响服务'), value: affectedServices },
+                { label: t('apm.explore.occurrences', '出现次数'), value: items.length },
               ].map((metric) => (
                 <div key={metric.label} className="border-r border-[var(--color-border-2)] px-3 last:border-r-0">
                   <Typography.Text type="secondary" className="text-xs">{metric.label}</Typography.Text>
@@ -249,14 +251,14 @@ export default function ApmErrorsPage() {
           ) : null}
 
           {state === 'idle' ? (
-            <CatalogState kind="empty" description="选择服务与环境后查看错误调用链。" />
+            <CatalogState kind="empty" description={t('apm.explore.selectToView', '选择服务与环境后查看错误调用链。')} />
           ) : state === 'ready' ? (
             <>
               <Input
                 allowClear
-                aria-label="搜索错误调用链"
+                aria-label={t('apm.explore.searchErrors', '搜索错误调用链')}
                 className="w-80"
-                placeholder="搜索入口操作或 Trace ID"
+                placeholder={t('apm.explore.searchErrorsPlaceholder', '搜索入口操作或 Trace ID')}
                 prefix={<SearchOutlined aria-hidden="true" />}
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
@@ -272,13 +274,13 @@ export default function ApmErrorsPage() {
                           <Typography.Text strong className="font-mono text-sm">
                             {cluster.name}
                           </Typography.Text>
-                          <Tag bordered={false} color="blue">入口归并</Tag>
+                          <Tag bordered={false} color="blue">{t('apm.explore.entryMerge', '入口归并')}</Tag>
                           <Typography.Text type="secondary" className="!text-xs">
-                            {selectedService?.name} · {environment || '未设置'}
+                            {selectedService?.name} · {environment || t('apm.common.unset', '未设置')}
                           </Typography.Text>
                         </Space>
                         <Typography.Text type="secondary" className="mt-2 block !text-xs">
-                          最近样本 Trace {cluster.samples[0]?.trace_id}
+                          {t('apm.explore.sampleTrace', '最近样本 Trace {id}', { id: cluster.samples[0]?.trace_id })}
                         </Typography.Text>
                         <div className="mt-2 flex flex-wrap gap-3">
                           <Button
@@ -287,7 +289,7 @@ export default function ApmErrorsPage() {
                             className="!px-0"
                             onClick={() => router.push(`/apm/explore/traces/${cluster.samples[0].trace_id}`)}
                           >
-                            查看样本 Trace →
+                            {t('apm.explore.viewSampleTrace', '查看样本 Trace →')}
                           </Button>
                           <Button
                             type="link"
@@ -299,22 +301,22 @@ export default function ApmErrorsPage() {
                               environment,
                             }).toString()}`)}
                           >
-                            查看相关调用链 →
+                            {t('apm.explore.viewRelatedTraces', '查看相关调用链 →')}
                           </Button>
                         </div>
                       </div>
                       <div className="grid shrink-0 grid-cols-3 gap-3 text-center sm:gap-6 lg:text-right">
                         <div>
                           <div className="font-semibold tabular-nums text-[var(--color-fail)]">{cluster.samples.length}</div>
-                          <Typography.Text type="secondary" className="text-xs">受影响 Trace</Typography.Text>
+                          <Typography.Text type="secondary" className="text-xs">{t('apm.explore.affectedTraces', '受影响 Trace')}</Typography.Text>
                         </div>
                         <div>
                           <div className="font-semibold tabular-nums text-[var(--color-fail)]">{cluster.samples.length}</div>
-                          <Typography.Text type="secondary" className="text-xs">出现次数</Typography.Text>
+                          <Typography.Text type="secondary" className="text-xs">{t('apm.explore.occurrences', '出现次数')}</Typography.Text>
                         </div>
                         <div>
                           <div className="text-sm tabular-nums">{formatRelativeTime(cluster.lastSeenAt)}</div>
-                          <Typography.Text type="secondary" className="text-xs">最近出现</Typography.Text>
+                          <Typography.Text type="secondary" className="text-xs">{t('apm.explore.lastSeen', '最近出现')}</Typography.Text>
                         </div>
                       </div>
                     </div>
@@ -323,7 +325,7 @@ export default function ApmErrorsPage() {
                       size="small"
                       items={[{
                         key: 'samples',
-                        label: `样本列表（${cluster.samples.length}）`,
+                        label: t('apm.explore.sampleList', '样本列表（{count}）', { count: cluster.samples.length }),
                         children: (
                           <div className="flex flex-col gap-2">
                             {cluster.samples.slice(0, 8).map((item) => (
@@ -350,15 +352,15 @@ export default function ApmErrorsPage() {
                 <CatalogState
                   compact
                   kind="empty"
-                  description="没有匹配的错误调用链。"
-                  action={<Button onClick={() => setKeyword('')}>清除搜索</Button>}
+                  description={t('apm.explore.noMatchingErrors', '没有匹配的错误调用链。')}
+                  action={<Button onClick={() => setKeyword('')}>{t('apm.explore.clearSearch', '清除搜索')}</Button>}
                 />
               )}
             </>
           ) : (
             <CatalogState
               kind={state}
-              description={state === 'empty' ? '当前条件下没有错误调用链。' : undefined}
+              description={state === 'empty' ? t('apm.explore.noErrorTraces', '当前条件下没有错误调用链。') : undefined}
               onRetry={state === 'forbidden' || state === 'empty' ? undefined : search}
             />
           )}

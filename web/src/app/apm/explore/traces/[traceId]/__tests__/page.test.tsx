@@ -1,8 +1,9 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApmTraceDetailPage from '../page';
 
 const api = {
@@ -82,7 +83,7 @@ afterEach(() => {
 describe('APM Trace 详情', () => {
   it('默认选中首个错误 Span，并支持跳到首个错误', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    render(<ApmTraceDetailPage />);
+    renderWithApmIntl(<ApmTraceDetailPage />);
 
     expect(await screen.findByText('服务耗时分解')).not.toBeNull();
     expect(screen.getByText('跳到首个错误')).not.toBeNull();

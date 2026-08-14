@@ -1,26 +1,10 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { IntlProvider } from 'react-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ApmPoliciesPage from '../page';
-
-const tableMessages = {
-  'common.total': '共',
-  'common.items': '条',
-  'common.checked': '已选',
-  'common.confirm': '确认',
-  'common.cancel': '取消',
-  'common.searchPlaceHolder': '搜索字段',
-  'common.selectAll': '全选',
-  'common.selected': '已选',
-  'common.clear': '清空',
-  'common.pin': '固定',
-  'common.unpin': '取消固定',
-  'cutomTable.fieldSetting': '字段设置',
-  'cutomTable.pinHint': '固定字段会显示在表格左侧',
-};
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 
 const api = {
   createPolicy: vi.fn(),
@@ -53,7 +37,6 @@ beforeEach(() => {
     addListener: vi.fn(),
     removeListener: vi.fn(),
     addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
   }));
   api.getNotificationChannels.mockResolvedValue([]);
@@ -108,11 +91,7 @@ afterEach(() => {
 
 describe('APM 告警策略列表', () => {
   it('与应用管理统一工具栏、分页和可见操作入口', async () => {
-    render(
-      <IntlProvider locale="zh" messages={tableMessages}>
-        <ApmPoliciesPage />
-      </IntlProvider>,
-    );
+    renderWithApmIntl(<ApmPoliciesPage />);
 
     expect(await screen.findByText('结账接口 P95 过慢')).not.toBeNull();
     expect(screen.queryByText('策略列表')).toBeNull();
@@ -143,11 +122,7 @@ describe('APM 告警策略列表', () => {
 
   it('通过弹窗新建策略而不是跳转独立页面', async () => {
     const user = userEvent.setup();
-    render(
-      <IntlProvider locale="zh" messages={tableMessages}>
-        <ApmPoliciesPage />
-      </IntlProvider>,
-    );
+    renderWithApmIntl(<ApmPoliciesPage />);
     await screen.findByText('结账接口 P95 过慢');
 
     const createButton = screen.getByRole('button', { name: '新建策略' });

@@ -2,6 +2,7 @@
 
 import { Table } from 'antd';
 import type { TableColumnsType, TablePaginationConfig, TableProps } from 'antd';
+import { useTranslation } from '@/utils/i18n';
 
 import styles from './apm-data-table.module.scss';
 
@@ -44,9 +45,16 @@ function alignColumnsLeft<RecordType extends object>(
   });
 }
 
-const defaultShowTotal = (total: number) => (
-  <span className={styles.paginationTotal}>共 {total} 条</span>
-);
+function ApmDataTablePaginationTotal({ total }: { total: number }) {
+  const { t } = useTranslation();
+  return (
+    <span className={styles.paginationTotal}>
+      {t('apm.common.paginationTotal', '共 {total} 条', { total })}
+    </span>
+  );
+}
+
+const defaultShowTotal = (total: number) => <ApmDataTablePaginationTotal total={total} />;
 
 function normalizePagination(
   pagination: TableProps<never>['pagination'],
