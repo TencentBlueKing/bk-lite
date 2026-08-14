@@ -47,6 +47,7 @@ from apps.monitor.services.network_device_resource_top import NetworkDeviceResou
 from apps.monitor.services.network_device_resource_top import validate_metric_type as validate_network_metric_type
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
+from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 from apps.rpc.system_mgmt import SystemMgmt
@@ -675,6 +676,12 @@ def monitor_metrics(monitor_obj_id: str, *args, **kwargs):
         lan_key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{monitor_obj.name}.{result['name']}"
         result["display_name"] = lan.get(f"{lan_key}.name") or result.get("display_name") or result["name"]
         result["display_description"] = lan.get(f"{lan_key}.desc") or result.get("description")
+        if (result.get("data_type") or "").lower() == "enum":
+            result["unit"] = localize_metric_enum_unit(
+                result.get("unit") or "",
+                locale,
+                enum_translations=lan.get(f"{lan_key}.enum"),
+            )
     return {"result": True, "data": results, "message": ""}
 
 
