@@ -17,6 +17,11 @@ from .metrics import (
     prediction_duration,
 )
 from .models import load_model
+from .prediction_budget import (
+    RecursiveFeatureEngineeringBudgetExceeded,
+    enforce_recursive_feature_engineering_budget,
+    get_max_recursive_feature_engineering_work,
+)
 from .schemas.api_schema import MAX_INPUT_DATA_POINTS, MAX_PREDICTION_STEPS, PredictRequest, PredictResponse
 
 
@@ -35,6 +40,9 @@ def get_timeseries_predict_timeout_seconds() -> int:
 
 
 TIMESERIES_PREDICT_TIMEOUT_SECONDS = get_timeseries_predict_timeout_seconds()
+MAX_RECURSIVE_FEATURE_ENGINEERING_WORK = (
+    get_max_recursive_feature_engineering_work()
+)
 
 
 @bentoml.service(
@@ -265,6 +273,13 @@ class MLService:
             logger.info(f"🤖 Model info: {model_info}")
             logger.info(f"🔮 Starting recursive prediction: steps={steps}")
 
+            enforce_recursive_feature_engineering_budget(
+                self.model,
+                history_points=len(history),
+                steps=steps,
+                limit=MAX_RECURSIVE_FEATURE_ENGINEERING_WORK,
+            )
+
             predict_start = time.time()
             prediction_values = self.model.predict({"history": history, "steps": steps})
             predict_time = time.time() - predict_start
@@ -324,9 +339,27 @@ class MLService:
                     execution_time_ms=(time.time() - request_start) * 1000,
                 ),
                 error=ErrorDetail(
-                    code="E1001",
+                    code=(
+                        "E1002"
+                        if isinstance(
+                            e, RecursiveFeatureEngineeringBudgetExceeded
+                        )
+                        else "E1001"
+                    ),
                     message=str(e),
-                    details={"error_type": "ValidationError"},
+                    details=(
+                        {
+                            "error_type": type(e).__name__,
+                            "history_points": e.history_points,
+                            "steps": e.steps,
+                            "estimated_work": e.estimated_work,
+                            "limit": e.limit,
+                        }
+                        if isinstance(
+                            e, RecursiveFeatureEngineeringBudgetExceeded
+                        )
+                        else {"error_type": "ValidationError"}
+                    ),
                 ),
             )
 

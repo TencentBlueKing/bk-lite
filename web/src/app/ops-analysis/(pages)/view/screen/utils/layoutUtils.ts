@@ -26,6 +26,7 @@ import {
 } from "@/app/ops-analysis/utils/widgetDataTransform";
 import { validateDateRangeValue } from "@/app/ops-analysis/utils/dateRange";
 import { getScreenWidgetDefinition } from "../constants/widgets";
+import { omitForeignChartTypeFields } from "@/app/ops-analysis/components/widgetConfig/utils/submitConfig";
 
 const DEFAULT_INSERT_X = 48;
 const DEFAULT_INSERT_Y = 96;
@@ -304,18 +305,21 @@ export const addConfiguredScreenWidget = (
       {
         ...item,
         title: values.name || item.title,
-        valueConfig: {
-          ...item.valueConfig,
-          ...values,
-          chartType,
-          appearance: resolveScreenWidgetAppearance(
+        valueConfig: omitForeignChartTypeFields(
+          {
+            ...item.valueConfig,
+            ...values,
             chartType,
-            values.appearance,
-          ),
-          ...(chartType === "networkStatusTopology"
-            ? { sceneWidgetType: "networkStatusTopology" as const }
-            : {}),
-        },
+            appearance: resolveScreenWidgetAppearance(
+              chartType,
+              values.appearance,
+            ),
+            ...(chartType === "networkStatusTopology"
+              ? { sceneWidgetType: "networkStatusTopology" as const }
+              : {}),
+          },
+          chartType,
+        ),
       },
     ],
   };

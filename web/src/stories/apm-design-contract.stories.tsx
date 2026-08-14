@@ -1,8 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import { Button } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
+import { Button, Input, Tag, Typography, type TableColumnsType } from 'antd';
 import ApplicationCard from '@/app/apm/components/application-card';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState from '@/app/apm/components/catalog-state';
+import FilterToolbar from '@/components/filter-toolbar';
 
 const meta = {
   title: 'APM/Design Contract',
@@ -15,7 +18,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const RouteAndSurfaceHierarchy: Story = {
-  name: '页面壳与承载面',
+  name: '紧凑页面壳与承载面',
   render: () => (
     <ApmRouteShell
       title="服务"
@@ -24,7 +27,7 @@ export const RouteAndSurfaceHierarchy: Story = {
     >
       <ApmSurface>
         <div className="text-sm text-[var(--color-text-2)]">
-          APM 子布局不覆盖全局画布；筛选、表格和业务卡片在这一层内组合。
+          二级导航已表达当前页面，页面壳不再重复渲染介绍卡；筛选、表格和业务卡片直接进入内容工作面。
         </div>
       </ApmSurface>
     </ApmRouteShell>
@@ -63,8 +66,7 @@ export const ApplicationCardStates: Story = {
     <div className="grid gap-4 bg-[var(--color-background-body)] p-4 lg:grid-cols-2">
       <ApplicationCard
         label="交易清结算 / production 🚦"
-        isBuiltin={false}
-        status="active"
+        status="critical"
         services={services}
         requestRate={1284.4}
         errorRate={0.023}
@@ -73,13 +75,13 @@ export const ApplicationCardStates: Story = {
         metricUnavailable={false}
         alertCount={3}
         timeWindow="1h"
+        servicesHref="/apm/services?perspective=service&namespace=checkout"
         eventsHref="/apm/events/alerts"
-        onOpen={() => undefined}
+        href="/apm/integration/applications/checkout"
       />
       <ApplicationCard
-        label="未归类应用"
-        isBuiltin
-        status="silent"
+        label="支付应用"
+        status="normal"
         services={services}
         requestRate={null}
         errorRate={null}
@@ -88,8 +90,9 @@ export const ApplicationCardStates: Story = {
         metricUnavailable
         alertCount={0}
         timeWindow="1h"
+        servicesHref="/apm/services?perspective=service&namespace=payment"
         eventsHref="/apm/events/alerts"
-        onOpen={() => undefined}
+        href="/apm/integration/applications/payment"
         onRetryMetrics={() => undefined}
       />
     </div>
@@ -105,8 +108,7 @@ export const NarrowApplicationCard: Story = {
     <div className="w-[320px] max-w-full bg-[var(--color-background-body)] p-2">
       <ApplicationCard
         label="a-very-long-service-namespace-with-emoji-🚀"
-        isBuiltin={false}
-        status="active"
+        status="warning"
         services={services}
         requestRate={12.5}
         errorRate={0.001}
@@ -115,9 +117,73 @@ export const NarrowApplicationCard: Story = {
         metricUnavailable={false}
         alertCount={0}
         timeWindow="15m"
+        servicesHref="/apm/services?perspective=service&namespace=checkout"
         eventsHref="/apm/events/alerts"
-        onOpen={() => undefined}
+        href="/apm/integration/applications/long-name"
       />
+    </div>
+  ),
+};
+
+interface TableContractRow {
+  id: number;
+  name: string;
+  service: string;
+  status: string;
+  throughput: string;
+}
+
+const tableColumns: TableColumnsType<TableContractRow> = [
+  { title: '名称', dataIndex: 'name' },
+  { title: '服务', dataIndex: 'service', responsive: ['sm'] },
+  {
+    title: '吞吐量',
+    dataIndex: 'throughput',
+    width: 120,
+    align: 'right',
+    responsive: ['md'],
+    className: 'tabular-nums',
+  },
+  {
+    title: '状态',
+    dataIndex: 'status',
+    width: 88,
+    align: 'center',
+    render: (value) => <Tag bordered={false} color="success">{value}</Tag>,
+  },
+];
+
+const tableRows: TableContractRow[] = [
+  { id: 1, name: 'checkout-api-production-with-long-name', service: 'checkout', status: '正常', throughput: '1,284.4/s' },
+  { id: 2, name: 'payment-worker', service: 'payment', status: '正常', throughput: '862.1/s' },
+];
+
+export const DataTableDensityAndResponsive: Story = {
+  name: '单层承载与统一左对齐',
+  render: () => (
+    <div className="grid gap-4 bg-[var(--color-background-body)] p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+            <Input allowClear className="min-w-0 flex-1" prefix={<SearchOutlined aria-hidden="true" />} placeholder="搜索服务" />
+            <Typography.Text type="secondary" className="text-xs">共 42 条</Typography.Text>
+          </FilterToolbar>
+          <ApmDataTable<TableContractRow>
+            columns={tableColumns}
+            dataSource={tableRows}
+            pagination={{ current: 1, pageSize: 20, total: 42 }}
+            rowKey="id"
+          />
+        </div>
+      </ApmSurface>
+      <ApmSurface>
+        <ApmDataTable<TableContractRow>
+          columns={tableColumns}
+          dataSource={tableRows}
+          pagination={false}
+          rowKey="id"
+        />
+      </ApmSurface>
     </div>
   ),
 };

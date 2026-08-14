@@ -37,7 +37,7 @@ const useNodeApi = () => {
     return await post(url, bodyParams);
   };
 
-  // 删除节点；retire_linked=true 时一并退役已关联 CMDB/监控对象
+  // 删除节点必清 CMDB 悬挂 node_id（实例保留）。retire_linked=true 时额外退役监控。
   const delNode = async (
     id: React.Key,
     options?: { retire_linked?: boolean }

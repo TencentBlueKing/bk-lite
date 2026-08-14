@@ -169,6 +169,7 @@
       "processName": "Process Name",
       "nodeId": "Node ID",
       "cmdbId": "CMDB ID",
+      "externalId": "External ID",
       "processNameRuleHint": "The name column shows the integration instance name; process alias is in Process Name, host is in Host Name.",
       "filterProcess": "Filter processes",
       "filterProcessPlaceholder": "Select process names (multi-select)",

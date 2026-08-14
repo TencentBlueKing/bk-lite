@@ -2,7 +2,7 @@ from uuid import UUID
 
 from django.apps import apps as django_apps
 from django.core.management.base import BaseCommand, CommandError
-from django.db import connection
+from django.db import connection, models, transaction
 
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -18,6 +18,8 @@ def _canonical_uuid(value):
 
 
 class Command(BaseCommand):
+    _RENDER_SNAPSHOT_MIGRATION_FIELDS = frozenset({"view_sets", "filters", "other"})
+
     help = (
         "清洗 operation_analysis 画布/组件 JSON 中的 CMDB 实例引用："
         "bk_inst_id→bk_inst_uuid、instId→instUuid。"
@@ -179,6 +181,19 @@ class Command(BaseCommand):
                 changed = True
         return result, changed, False
 
+    @classmethod
+    def _bulk_update_render_snapshots(cls, model, rows, fields):
+        """仅在本维护命令内修订不可变渲染快照的实例身份引用。"""
+        unexpected_fields = set(fields) - cls._RENDER_SNAPSHOT_MIGRATION_FIELDS
+        if unexpected_fields:
+            raise CommandError("渲染快照身份迁移只允许修改 view_sets/filters/other")
+        with transaction.atomic():
+            updated = 0
+            for row in rows:
+                values = {field: getattr(row, field) for field in fields}
+                updated += models.QuerySet.update(model.objects.filter(pk=row.pk), **values)
+        return updated
+
     def _clean_operation_analysis_refs(self, batch_size, dry_run, stats):
         self._dry_run = dry_run
         model_fields = {
@@ -227,5 +242,8 @@ class Command(BaseCommand):
                         changed_rows.append(row)
                 stats["operation_analysis_record_updated"] += len(changed_rows)
                 if changed_rows and not dry_run:
-                    model.objects.bulk_update(changed_rows, list(fields))
+                    if model_name == "DashboardReportRenderSnapshot":
+                        self._bulk_update_render_snapshots(model, changed_rows, list(fields))
+                    else:
+                        model.objects.bulk_update(changed_rows, list(fields))
                 self._save_stage(stage, cursor)

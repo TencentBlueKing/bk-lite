@@ -8,10 +8,11 @@ YAML导入导出契约校验模块
 
 import re
 from datetime import date
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 
+from apps.operation_analysis.constants.canvas_refresh import normalize_canvas_refresh_interval
 from apps.operation_analysis.constants.import_export import (
     BUSINESS_KEY_SEPARATOR,
     CANVAS_TYPES,
@@ -35,6 +36,9 @@ DATE_RANGE_QUICK_TYPES = {
     "last_90_days",
 }
 DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+CanvasRefreshIntervalField = Annotated[int, BeforeValidator(normalize_canvas_refresh_interval)]
 
 
 def _is_valid_date_only(value: Any) -> bool:
@@ -202,6 +206,7 @@ class DashboardItem(BaseModel):
     filters: list = Field(default_factory=list)
     other: dict = Field(default_factory=dict)
     view_sets: list = Field(default_factory=list)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")
@@ -234,6 +239,7 @@ class TopologyItem(BaseModel):
     desc: str = Field(default="")
     other: dict = Field(default_factory=dict)
     view_sets: dict = Field(default_factory=dict)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")
@@ -296,6 +302,7 @@ class ScreenItem(BaseModel):
     desc: str = Field(default="")
     other: dict = Field(default_factory=dict)
     view_sets: dict
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")
@@ -359,6 +366,7 @@ class NetworkTopologyItem(BaseModel):
     base_url: str
     token: str = Field(default="")
     view_sets: dict = Field(default_factory=dict)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name", "base_url")

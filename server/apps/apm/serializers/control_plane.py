@@ -115,6 +115,7 @@ class ApmServiceSerializer(serializers.ModelSerializer):
             "application_name",
             "namespace",
             "name",
+            "language",
             "first_seen_at",
             "last_seen_at",
             "archived_at",
@@ -240,6 +241,7 @@ class ApmSloSerializer(serializers.ModelSerializer):
 
 class ServiceMetricQuerySerializer(serializers.Serializer):
     environment = serializers.CharField(max_length=256, allow_blank=True)
+    endpoint = serializers.CharField(max_length=512, required=False, allow_blank=True, default="")
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
 

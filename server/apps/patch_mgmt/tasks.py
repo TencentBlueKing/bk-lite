@@ -9,6 +9,7 @@
   - 流式结果回调的完整解析逻辑
 """
 
+import os
 from copy import deepcopy
 from datetime import timedelta
 from uuid import uuid4
@@ -21,6 +22,8 @@ from django.utils import timezone
 
 from apps.core.logger import patch_mgmt_logger as logger
 from apps.rpc.system_mgmt import SystemMgmt
+
+ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 
 
 @shared_task(max_retries=0)
@@ -42,9 +45,7 @@ def check_patch_source_connectivity(source_id: int) -> None:
     try:
         source = PatchSource.objects.get(pk=source_id)
     except PatchSource.DoesNotExist:
-        logger.error(
-            "[check_patch_source_connectivity] 补丁源不存在: source_id=%s", source_id
-        )
+        logger.error("[check_patch_source_connectivity] 补丁源不存在: source_id=%s", source_id)
         return
 
     result = probe_source(source)
@@ -53,14 +54,17 @@ def check_patch_source_connectivity(source_id: int) -> None:
         SourceSyncService.trigger_connectivity_check(source)
         logger.info(
             "[check_patch_source_connectivity] 无 URL 跳过探测: source_id=%s name=%s",
-            source_id, source.name,
+            source_id,
+            source.name,
         )
         return
 
     SourceSyncService.record_connectivity_result(source, reachable=result.reachable)
     logger.info(
         "[check_patch_source_connectivity] 探测完成: source_id=%s name=%s %s",
-        source_id, source.name, result.detail,
+        source_id,
+        source.name,
+        result.detail,
     )
 
 
@@ -96,17 +100,27 @@ def run_periodic_compliance_scan() -> None:
         notification_snapshot={
             "enabled": bool(setting.notification_enabled),
             "rules": deepcopy(setting.notification_rules),
+            "timezone": setting.timezone,
         },
     )
     execute_governance_task.delay(task.id)
     logger.info(
         "[run_periodic_compliance_scan] 已创建并触发评估任务: task_id=%s targets=%s",
-        task.id, len(target_ids),
+        task.id,
+        len(target_ids),
     )
 
 
-def _channel_delivery_succeeded(result) -> bool:
+def _channel_delivery_succeeded(result, *, delivery_key: str | None = None) -> bool:
     if not isinstance(result, dict):
+        return False
+    if result.get("code") == "not_applicable":
+        return False
+    event_results = (result.get("data") or {}).get("event_results") or []
+    if delivery_key and event_results:
+        for item in event_results:
+            if isinstance(item, dict) and item.get("delivery_id") == delivery_key:
+                return item.get("status") in {"accepted", "duplicate"}
         return False
     if result.get("result") is True:
         return True
@@ -126,21 +140,13 @@ def send_assessment_notification_delivery(delivery_id: int) -> None:
 
     claim_token = uuid4().hex
     with transaction.atomic():
-        delivery = (
-            AssessmentNotificationDelivery.objects.select_for_update()
-            .filter(pk=delivery_id)
-            .first()
-        )
+        delivery = AssessmentNotificationDelivery.objects.select_for_update().filter(pk=delivery_id).first()
         if delivery is None or delivery.status not in {
             AssessmentNotificationDelivery.Status.PENDING,
             AssessmentNotificationDelivery.Status.RETRY,
         }:
             return
-        if (
-            delivery.status == AssessmentNotificationDelivery.Status.RETRY
-            and delivery.next_retry_at
-            and delivery.next_retry_at > timezone.now()
-        ):
+        if delivery.status == AssessmentNotificationDelivery.Status.RETRY and delivery.next_retry_at and delivery.next_retry_at > timezone.now():
             return
         delivery.status = AssessmentNotificationDelivery.Status.SENDING
         delivery.attempts += 1
@@ -156,24 +162,77 @@ def send_assessment_notification_delivery(delivery_id: int) -> None:
             ]
         )
 
-    content = delivery.content
-    if delivery.channel_type == "nats":
-        content = {
-            "message": delivery.content,
-            "team": delivery.team_id,
-            "user_ids": [],
-        }
     try:
-        result = SystemMgmt().send_msg_with_channel(
-            channel_id=delivery.channel_id,
-            title=delivery.title,
-            content=content,
-            receivers=delivery.receivers,
-        )
-        if not _channel_delivery_succeeded(result):
-            raise RuntimeError(
-                str((result or {}).get("message") or "通知渠道返回失败")
+        client = SystemMgmt()
+        capability = None
+        event_delivery_key = None
+        if delivery.channel_type == "nats":
+            capability = client.probe_notification_channel(
+                delivery.channel_id,
+                capability_only=True,
             )
+            if not _channel_delivery_succeeded(capability):
+                raise RuntimeError(str((capability or {}).get("message") or "无法识别 NATS 渠道能力"))
+
+        if capability and capability.get("delivery_mode") == "alert_event_copy":
+            finished_at = delivery.task.finished_at or timezone.now()
+            delivery_key = f"patch-periodic-assessment:{delivery.id}"
+            event_delivery_key = delivery_key
+            attention_count = int(delivery.summary.get("non_compliant_count", 0)) + int(delivery.summary.get("failed_count", 0))
+            event_payload = {
+                "title": delivery.title,
+                "description": delivery.content,
+                "level": "1",
+                "item": "patch_periodic_assessment",
+                "value": attention_count,
+                "start_time": str(int(finished_at.timestamp())),
+                "action": "created",
+                "external_id": f"patch-periodic-assessment-{delivery.task_id}",
+                "service": "patch_mgmt",
+                "organizations": [delivery.team_id],
+                "delivery_id": delivery_key,
+                "labels": {
+                    "resource_id": str(delivery.task_id),
+                    "resource_type": "patch_assessment",
+                    "resource_name": delivery.task.name,
+                },
+            }
+            dispatch_kwargs = {
+                "delivery_key": delivery_key,
+                "channel_id": delivery.channel_id,
+                "organization_ids": [delivery.team_id],
+                "recipients": [],
+                "title": delivery.title,
+                "body": delivery.content,
+                "event_payload": event_payload,
+                "required_delivery_mode": "alert_event_copy",
+                "producer": "lite-monitor",
+            }
+            if ALERT_CENTER_ACK_TOKEN:
+                dispatch_kwargs.update(
+                    ack_mode="per_event_v1",
+                    ack_token=ALERT_CENTER_ACK_TOKEN,
+                )
+            result = client.dispatch_notification(**dispatch_kwargs)
+        else:
+            content = delivery.content
+            if delivery.channel_type == "nats":
+                content = {
+                    "message": delivery.content,
+                    "team": delivery.team_id,
+                    "user_ids": [],
+                }
+            result = client.send_msg_with_channel(
+                channel_id=delivery.channel_id,
+                title=delivery.title,
+                content=content,
+                receivers=delivery.receivers,
+            )
+        if not _channel_delivery_succeeded(
+            result,
+            delivery_key=event_delivery_key,
+        ):
+            raise RuntimeError(str((result or {}).get("message") or "通知渠道返回失败"))
     except Exception as exc:  # noqa: BLE001
         failed = delivery.attempts >= delivery.max_attempts
         next_retry_at = None
@@ -185,11 +244,7 @@ def send_assessment_notification_delivery(delivery_id: int) -> None:
             status=AssessmentNotificationDelivery.Status.SENDING,
             claim_token=claim_token,
         ).update(
-            status=(
-                AssessmentNotificationDelivery.Status.FAILED
-                if failed
-                else AssessmentNotificationDelivery.Status.RETRY
-            ),
+            status=(AssessmentNotificationDelivery.Status.FAILED if failed else AssessmentNotificationDelivery.Status.RETRY),
             next_retry_at=next_retry_at,
             last_error=str(exc)[:2000],
             updated_at=timezone.now(),
@@ -223,9 +278,7 @@ def reconcile_assessment_notification_deliveries() -> None:
     """运行期补偿终态任务的缺失意图、到期重试和过期投递租约。"""
     from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
     from apps.patch_mgmt.models import AssessmentNotificationDelivery, GovernanceTask
-    from apps.patch_mgmt.services.assessment_notification import (
-        reconcile_periodic_assessment_notification_intent,
-    )
+    from apps.patch_mgmt.services.assessment_notification import reconcile_periodic_assessment_notification_intent
 
     now = timezone.now()
     unreconciled_tasks = GovernanceTask.objects.filter(
@@ -300,7 +353,8 @@ def execute_governance_task(task_id: int) -> None:
     if task.status not in (GovernanceTaskStatus.PENDING,):
         logger.info(
             "[execute_governance_task] 任务非待执行状态: task_id=%s status=%s",
-            task_id, task.status,
+            task_id,
+            task.status,
         )
         return
 
@@ -315,17 +369,13 @@ def execute_governance_task(task_id: int) -> None:
     task.save(update_fields=["status", "started_at", *chain_fields, "updated_at"])
     logger.info(
         "[execute_governance_task] 已切到 running: task_id=%s type=%s targets=%s",
-        task_id, task.task_type, len(task.target_list or []),
+        task_id,
+        task.task_type,
+        len(task.target_list or []),
     )
 
-    targets = {
-        target.id: target
-        for target in PatchTarget.objects.filter(pk__in=task.target_list or [])
-    }
-    existing_hosts = {
-        host.target_id: host
-        for host in GovernanceTaskHost.objects.filter(task=task)
-    }
+    targets = {target.id: target for target in PatchTarget.objects.filter(pk__in=task.target_list or [])}
+    existing_hosts = {host.target_id: host for host in GovernanceTaskHost.objects.filter(task=task)}
     soft_limit, hard_limit = get_host_task_limits(task.task_type)
     dispatched = 0
 
@@ -366,7 +416,8 @@ def execute_governance_task(task_id: int) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.exception(
                 "[execute_governance_task] 主机子任务投递失败: task_id=%s target_id=%s",
-                task.id, target_id,
+                task.id,
+                target_id,
             )
             GovernanceTaskHost.objects.filter(pk=host.pk, stage="waiting").update(
                 stage="failed",
@@ -386,30 +437,21 @@ def execute_governance_host(task_id: int, target_id: int) -> None:
     """执行治理任务中的一台主机；不自动重试有副作用的操作。"""
     from apps.patch_mgmt.constants import GovernanceTaskStatus
     from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
-    from apps.patch_mgmt.services.patch_execution_service import (
-        finalize_governance_task,
-        handle_host_execution_timeout,
-        run_governance_host,
-    )
+    from apps.patch_mgmt.services.patch_execution_service import finalize_governance_task, handle_host_execution_timeout, run_governance_host
 
     try:
         task = GovernanceTask.objects.get(pk=task_id)
     except GovernanceTask.DoesNotExist:
         logger.error(
             "[execute_governance_host] 任务不存在: task_id=%s target_id=%s",
-            task_id, target_id,
+            task_id,
+            target_id,
         )
         return
 
     try:
-        if (
-            task.execution_mode == "window"
-            and task.execution_window_end
-            and timezone.now() > task.execution_window_end
-        ):
-            GovernanceTaskHost.objects.filter(
-                task=task, target_id=target_id, stage="waiting"
-            ).update(
+        if task.execution_mode == "window" and task.execution_window_end and timezone.now() > task.execution_window_end:
+            GovernanceTaskHost.objects.filter(task=task, target_id=target_id, stage="waiting").update(
                 stage="failed",
                 stage_color="error",
                 failed_stage="dispatch",
@@ -420,38 +462,35 @@ def execute_governance_host(task_id: int, target_id: int) -> None:
             )
             return
 
-        blocking = GovernanceTaskHost.objects.filter(
-            target_id=target_id,
-            task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
-        ).exclude(task_id=task.id).exclude(
-            stage__in=(
-                "completed",
-                "failed",
-                "cancelled",
-                "pending_reboot",
-                "reboot_failed",
-                "pending_confirmation",
+        blocking = (
+            GovernanceTaskHost.objects.filter(
+                target_id=target_id,
+                task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
             )
-        ).filter(
-            Q(task__created_at__lt=task.created_at)
-            | Q(task__created_at=task.created_at, task_id__lt=task.id)
-        ).exists()
-        if blocking:
-            if task.execution_mode == "window" and (
-                not task.execution_window_end or timezone.now() <= task.execution_window_end
-            ):
-                execute_governance_host.apply_async(
-                    args=[task.id, target_id], countdown=10
+            .exclude(task_id=task.id)
+            .exclude(
+                stage__in=(
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    "pending_reboot",
+                    "reboot_failed",
+                    "pending_confirmation",
                 )
+            )
+            .filter(Q(task__created_at__lt=task.created_at) | Q(task__created_at=task.created_at, task_id__lt=task.id))
+            .exists()
+        )
+        if blocking:
+            if task.execution_mode == "window" and (not task.execution_window_end or timezone.now() <= task.execution_window_end):
+                execute_governance_host.apply_async(args=[task.id, target_id], countdown=10)
                 logger.info(
                     "[execute_governance_host] 主机忙，窗口任务稍后重试 task_id=%s target_id=%s",
                     task.id,
                     target_id,
                 )
                 return
-            GovernanceTaskHost.objects.filter(
-                task=task, target_id=target_id, stage="waiting"
-            ).update(
+            GovernanceTaskHost.objects.filter(task=task, target_id=target_id, stage="waiting").update(
                 stage="failed",
                 stage_color="error",
                 failed_stage="dispatch",
@@ -465,7 +504,8 @@ def execute_governance_host(task_id: int, target_id: int) -> None:
     except SoftTimeLimitExceeded:
         logger.warning(
             "[execute_governance_host] 主机子任务触发 soft time limit: task_id=%s target_id=%s",
-            task_id, target_id,
+            task_id,
+            target_id,
         )
         handle_host_execution_timeout(task_id, target_id)
     finally:
@@ -505,10 +545,12 @@ def watch_governance_timeouts() -> None:
             stage="waiting",
             task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
             created_at__lt=now - timedelta(seconds=DISPATCH_TIMEOUT),
-        ).exclude(
+        )
+        .exclude(
             task__execution_mode="window",
             task__execution_window_end__gt=now,
-        ).values_list("id", flat=True)
+        )
+        .values_list("id", flat=True)
     )
     for host_id in waiting_ids:
         with transaction.atomic():
@@ -522,10 +564,18 @@ def watch_governance_timeouts() -> None:
             host.reason = "主机任务超过 5 分钟未被执行器领取"
             host.timeout_reason = host.reason
             host.can_retry = True
-            host.save(update_fields=[
-                "stage", "stage_color", "failed_stage", "error_code", "reason",
-                "timeout_reason", "can_retry", "updated_at",
-            ])
+            host.save(
+                update_fields=[
+                    "stage",
+                    "stage_color",
+                    "failed_stage",
+                    "error_code",
+                    "reason",
+                    "timeout_reason",
+                    "can_retry",
+                    "updated_at",
+                ]
+            )
             changed_task_ids.add(host.task_id)
 
     expired_ids = list(
@@ -559,11 +609,20 @@ def watch_governance_timeouts() -> None:
                 host.failed_stage = task_type
                 host.can_retry = True
             host.last_heartbeat_at = now
-            host.save(update_fields=[
-                "stage", "stage_color", "error_code", "failed_stage", "reason",
-                "timeout_reason", "reconcile_deadline_at", "can_retry",
-                "last_heartbeat_at", "updated_at",
-            ])
+            host.save(
+                update_fields=[
+                    "stage",
+                    "stage_color",
+                    "error_code",
+                    "failed_stage",
+                    "reason",
+                    "timeout_reason",
+                    "reconcile_deadline_at",
+                    "can_retry",
+                    "last_heartbeat_at",
+                    "updated_at",
+                ]
+            )
             changed_task_ids.add(host.task_id)
             task_id = host.task_id
             target_id = host.target_id
@@ -639,14 +698,14 @@ def probe_target_connectivity(target_id: int) -> None:
         return
 
     result = probe_target(target)
-    target.connectivity_status = (
-        ConnectivityStatus.CONNECTED if result.reachable else ConnectivityStatus.FAILED
-    )
+    target.connectivity_status = ConnectivityStatus.CONNECTED if result.reachable else ConnectivityStatus.FAILED
     target.last_checked_at = timezone.now()
     target.save(update_fields=["connectivity_status", "last_checked_at", "updated_at"])
     logger.info(
         "[probe_target_connectivity] target_id=%s reachable=%s detail=%s",
-        target_id, result.reachable, result.detail,
+        target_id,
+        result.reachable,
+        result.detail,
     )
 
 
@@ -662,11 +721,7 @@ def verify_pending_reboot_hosts() -> None:
     from apps.patch_mgmt.config import REBOOT_VERIFY_MAX_WAIT
     from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
     from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, PatchTarget
-    from apps.patch_mgmt.services.patch_execution_service import (
-        _check_host_reachable,
-        _finalize_task_status,
-        _read_boot_marker,
-    )
+    from apps.patch_mgmt.services.patch_execution_service import _check_host_reachable, _finalize_task_status, _read_boot_marker
 
     pending_hosts = GovernanceTaskHost.objects.filter(
         stage="pending_reboot",
@@ -698,10 +753,16 @@ def verify_pending_reboot_hosts() -> None:
             host.reason = f"重启后主机超过 {REBOOT_VERIFY_MAX_WAIT // 60} 分钟未恢复"
             host.can_retry = True
             host.failed_stage = "reboot"
-            host.save(update_fields=[
-                "stage", "stage_color", "reason",
-                "can_retry", "failed_stage", "updated_at",
-            ])
+            host.save(
+                update_fields=[
+                    "stage",
+                    "stage_color",
+                    "reason",
+                    "can_retry",
+                    "failed_stage",
+                    "updated_at",
+                ]
+            )
             logger.warning(
                 "[verify_pending_reboot_hosts] 主机 %s 超时未恢复，标记失败",
                 host.target_name,
@@ -748,15 +809,10 @@ def verify_pending_reboot_hosts() -> None:
                 dict.fromkeys(
                     int(item["patch_id"])
                     for item in (host.task.risk_snapshot or [])
-                    if int(item.get("host_id") or 0) == host.target_id
-                    and item.get("patch_id")
+                    if int(item.get("host_id") or 0) == host.target_id and item.get("patch_id")
                 )
             ),
-            risk_snapshot=[
-                item
-                for item in (host.task.risk_snapshot or [])
-                if int(item.get("host_id") or 0) == host.target_id
-            ],
+            risk_snapshot=[item for item in (host.task.risk_snapshot or []) if int(item.get("host_id") or 0) == host.target_id],
             team=host.task.team or [],
             created_by=host.task.created_by,
             timeout=host.task.timeout or 3600,
@@ -782,5 +838,6 @@ def verify_pending_reboot_hosts() -> None:
         execute_governance_task.delay(verify_task.id)
         logger.info(
             "[verify_pending_reboot_hosts] 主机 %s 已恢复，创建验证任务 %s",
-            host.target_name, verify_task.id,
+            host.target_name,
+            verify_task.id,
         )

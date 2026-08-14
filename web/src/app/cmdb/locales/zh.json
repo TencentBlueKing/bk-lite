@@ -743,8 +743,8 @@
         "nodeMgmtSync": {
             "entry": "节点管理同步",
             "title": "节点管理同步",
-            "pullReplacedNotice": "节点管理拉取同步已由节点侧「推送到 CMDB」替代。请在节点管理安装或详情中勾选/补推；此处仅保留历史状态查看，自动同步开关已失效。",
-            "autoSyncDisabledHint": "拉取同步已关闭",
+            "pullReplacedNotice": "节点管理同步负责把节点镜像成 CMDB 主机库存；节点侧「推送到 CMDB」仍控制即时推送。两边按同一套身份认同一台主机。",
+            "autoSyncDisabledHint": "自动同步已关闭",
             "lastSyncTime": "最新同步时间",
             "lastCollectTime": "最新采集时间",
             "autoSync": "自动同步",

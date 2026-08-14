@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from core.collection.contracts import (
     AccessProbe,
@@ -13,6 +13,7 @@ from core.collection.contracts import (
     CollectionPlugin,
     CollectOutcome,
     CollectOutcomeStatus,
+    CredentialFailureResult,
     PreflightProbe,
     PreflightResult,
     PreflightStatus,
@@ -396,6 +397,7 @@ class TargetCollectionExecutor:
             fence=lease.fence,
             params=context_params,
             owner_id=lease.owner_id,
+            attempt_id=lease.attempt_id,
         )
         return await self._run_credential_attempts(request, target, credentials, context)
 
@@ -519,6 +521,7 @@ class TargetCollectionExecutor:
     ) -> TargetCollectionResult:
         attempts = 0
         no_response_attempts = 0
+        credential_failures = []
         for credential in credentials:
             attempts += 1
             self._metrics.increment("credential_attempt_total")
@@ -526,7 +529,7 @@ class TargetCollectionExecutor:
 
             access = await self._run_access_probe(target, credential, context, attempts)
             if isinstance(access, TargetCollectionResult):
-                return access
+                return replace(access, credential_failures=tuple(credential_failures))
 
             probe_decision = await self._apply_access_probe(
                 request,
@@ -536,8 +539,13 @@ class TargetCollectionExecutor:
                 attempts=attempts,
                 no_response_attempts=no_response_attempts,
             )
+            if probe_decision.credential_failure:
+                credential_failures.append(probe_decision.credential_failure)
             if probe_decision.action == "return":
-                return probe_decision.result
+                return replace(
+                    probe_decision.result,
+                    credential_failures=tuple(credential_failures),
+                )
             if probe_decision.action == "continue":
                 no_response_attempts = probe_decision.no_response_attempts
                 continue
@@ -552,8 +560,13 @@ class TargetCollectionExecutor:
                 attempts=attempts,
                 credential_id=credential_id,
             )
+            if collect_decision.credential_failure:
+                credential_failures.append(collect_decision.credential_failure)
             if collect_decision.action == "return":
-                return collect_decision.result
+                return replace(
+                    collect_decision.result,
+                    credential_failures=tuple(credential_failures),
+                )
             # continue → 下一凭据
 
         logger.info(
@@ -567,6 +580,7 @@ class TargetCollectionExecutor:
             status="failed",
             attempts=attempts,
             error_code="credentials_exhausted",
+            credential_failures=tuple(credential_failures),
         )
 
     async def _run_access_probe(
@@ -644,11 +658,12 @@ class TargetCollectionExecutor:
             AccessProbeStatus.AUTH_FAILED,
             AccessProbeStatus.CAPABILITY_DENIED,
         }:
+            error_code = access.error_code or access.status.value
             await self._safe_record_auth_failure(
                 request,
                 target,
                 credential,
-                error_code=access.error_code or access.status.value,
+                error_code=error_code,
             )
             logger.info(
                 "🚫 event=access_probe_failed task_id=%s target=%s " "credential_id=%s probe_status=%s error_code=%s action=rotate",
@@ -656,9 +671,16 @@ class TargetCollectionExecutor:
                 target,
                 credential_id or "-",
                 access.status.value,
-                access.error_code or access.status.value,
+                error_code,
             )
-            return _AttemptDecision(action="continue", no_response_attempts=no_response_attempts)
+            return _AttemptDecision(
+                action="continue",
+                no_response_attempts=no_response_attempts,
+                credential_failure=CredentialFailureResult(
+                    credential_id=credential_id,
+                    error_code=error_code,
+                ),
+            )
         if access.status == AccessProbeStatus.NO_RESPONSE:
             no_response_attempts += 1
             logger.info(
@@ -698,6 +720,7 @@ class TargetCollectionExecutor:
                     target=target,
                     status="unreachable",
                     attempts=attempts,
+                    credential_id=credential_id,
                     error_code=access.error_code or "target_unreachable",
                 ),
                 no_response_attempts=no_response_attempts,
@@ -852,13 +875,20 @@ class TargetCollectionExecutor:
                 ),
             )
         if outcome.status == CollectOutcomeStatus.AUTH_FAILED:
+            error_code = outcome.error_code or "authentication_failed"
             await self._safe_record_auth_failure(
                 request,
                 target,
                 credential,
-                error_code=outcome.error_code or "authentication_failed",
+                error_code=error_code,
             )
-            return _AttemptDecision(action="continue")
+            return _AttemptDecision(
+                action="continue",
+                credential_failure=CredentialFailureResult(
+                    credential_id=credential_id,
+                    error_code=error_code,
+                ),
+            )
         if outcome.status == CollectOutcomeStatus.RETRY_CREDENTIAL:
             return _AttemptDecision(action="continue")
         if outcome.status == CollectOutcomeStatus.UNREACHABLE:
@@ -868,6 +898,7 @@ class TargetCollectionExecutor:
                     target=target,
                     status="unreachable",
                     attempts=attempts,
+                    credential_id=credential_id,
                     error_code=outcome.error_code or "target_unreachable",
                 ),
             )
@@ -889,3 +920,4 @@ class _AttemptDecision:
     action: str  # collect | continue | return
     result: TargetCollectionResult | None = None
     no_response_attempts: int = 0
+    credential_failure: CredentialFailureResult | None = None

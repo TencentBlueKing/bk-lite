@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Message, SessionManager } from '@webchat/core';
 
 interface UseMessageHandlersProps {
@@ -14,19 +14,28 @@ export const useMessageHandlers = ({
   sessionManagerRef,
   handleSendMessage,
 }: UseMessageHandlersProps) => {
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   // Handle message regeneration
   const handleRegenerate = useCallback(
     (messageId: string) => {
-      const messageIndex = messages.findIndex((msg) => msg.id === messageId);
+      const currentMessages = messagesRef.current;
+      const messageIndex = currentMessages.findIndex((msg) => msg.id === messageId);
       if (messageIndex === -1) return;
 
-      const currentMessage = messages[messageIndex];
+      const currentMessage = currentMessages[messageIndex];
       let userMessageIndex = -1;
 
       // If current message is a bot message, find the user message before it
       if (currentMessage.sender === 'bot') {
         userMessageIndex = messageIndex - 1;
-        while (userMessageIndex >= 0 && messages[userMessageIndex].sender !== 'user') {
+        while (
+          userMessageIndex >= 0 &&
+          currentMessages[userMessageIndex].sender !== 'user'
+        ) {
           userMessageIndex--;
         }
       }
@@ -36,13 +45,13 @@ export const useMessageHandlers = ({
       }
 
       if (userMessageIndex >= 0) {
-        const userMessage = messages[userMessageIndex];
+        const userMessage = currentMessages[userMessageIndex];
         // Keep all messages before the user message, remove the user message and everything after
         setMessages((prev) => prev.slice(0, userMessageIndex));
 
         // Update session storage
         if (sessionManagerRef.current) {
-          const newMessages = messages.slice(0, userMessageIndex);
+          const newMessages = currentMessages.slice(0, userMessageIndex);
           const session = sessionManagerRef.current.getSession();
           if (session) {
             session.messages = newMessages;
@@ -59,7 +68,7 @@ export const useMessageHandlers = ({
         setTimeout(() => handleSendMessage(contentToSend), 100);
       }
     },
-    [messages, handleSendMessage, setMessages, sessionManagerRef]
+    [handleSendMessage, setMessages, sessionManagerRef]
   );
 
   // Handle message copy

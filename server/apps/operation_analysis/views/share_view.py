@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.core.utils.open_base import login_exempt
+from apps.operation_analysis.constants.canvas_refresh import normalize_canvas_refresh_interval
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.serializers.share_serializers import (
     ShareExchangeSerializer,
@@ -15,6 +16,8 @@ from apps.operation_analysis.serializers.share_serializers import (
     ShareNetworkTopologyMetricValuesSerializer,
     SharePrepareSerializer,
 )
+from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
+from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapterError
 from apps.operation_analysis.services.share_audit import log_share_access
 from apps.operation_analysis.services.share_network_topology import (
     ShareNetworkTopologyRuntimeDenied,
@@ -40,11 +43,8 @@ from apps.operation_analysis.services.share_throttle import (
     DashboardShareInvalidTokenThrottle,
     DashboardSharePrepareThrottle,
 )
-from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
-from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapterError
 from apps.operation_analysis.views.datasource_view import DataSourceAPIModelViewSet
 from apps.system_mgmt.nats.auth import build_user_authorization_context
-
 
 INVALID_SHARE_RESPONSE = {"detail": "分享链接无效或已失效"}
 
@@ -74,7 +74,7 @@ def _serialize_shared_resource(principal):
             "desc": getattr(resource, "desc", "") or "",
             "view_sets": getattr(resource, "view_sets", None) or {},
             "is_build_in": bool(getattr(resource, "is_build_in", False)),
-            "refresh_interval": getattr(resource, "refresh_interval", 60),
+            "refresh_interval": normalize_canvas_refresh_interval(getattr(resource, "refresh_interval", 0)),
             "status": getattr(resource, "status", "") or "",
         }
     payload = {
@@ -89,6 +89,8 @@ def _serialize_shared_resource(principal):
         payload["filters"] = resource.filters
     if hasattr(resource, "other"):
         payload["other"] = resource.other
+    if hasattr(resource, "refresh_interval"):
+        payload["refresh_interval"] = normalize_canvas_refresh_interval(resource.refresh_interval)
     return payload
 
 
@@ -96,10 +98,7 @@ def _delegated_sharer_user(user):
     """Restore the runtime attributes normally attached by token authentication."""
     context = build_user_authorization_context(user)
     user.is_authenticated = True
-    user.permission = {
-        app: set(permissions)
-        for app, permissions in (context.get("permission") or {}).items()
-    }
+    user.permission = {app: set(permissions) for app, permissions in (context.get("permission") or {}).items()}
     user.group_tree = context.get("group_tree") or []
     user.is_superuser = bool(context.get("is_superuser", False))
     user.timezone = context.get("timezone") or getattr(user, "timezone", None)
@@ -370,9 +369,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         url_path=r"session/(?P<session_id>[^/.]+)/network_topology/metric_values",
     )
     def network_topology_metric_values(self, request, session_id=None):
-        principal, error = self._resolve_network_topology_principal(
-            request, session_id, action_name="nt_metric_values"
-        )
+        principal, error = self._resolve_network_topology_principal(request, session_id, action_name="nt_metric_values")
         if error is not None:
             return error
 
@@ -384,10 +381,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
                 view_sets=getattr(principal.resource, "view_sets", None),
                 items=serializer.validated_data.get("items") or [],
             )
-            from apps.operation_analysis.views.network_topology_view import (
-                NetworkTopologyViewSet,
-                _adapter_for,
-            )
+            from apps.operation_analysis.views.network_topology_view import NetworkTopologyViewSet, _adapter_for
 
             adapter = _adapter_for(principal.resource)
             payload = adapter.batch_metric_values(items)
@@ -429,9 +423,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         url_path=r"session/(?P<session_id>[^/.]+)/network_topology/link_runtime",
     )
     def network_topology_link_runtime(self, request, session_id=None):
-        principal, error = self._resolve_network_topology_principal(
-            request, session_id, action_name="nt_link_runtime"
-        )
+        principal, error = self._resolve_network_topology_principal(request, session_id, action_name="nt_link_runtime")
         if error is not None:
             return error
 
@@ -444,10 +436,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
                 link_payload=serializer.validated_data.get("link"),
                 nodes_payload=serializer.validated_data.get("nodes"),
             )
-            from apps.operation_analysis.views.network_topology_view import (
-                NetworkTopologyViewSet,
-                _adapter_for,
-            )
+            from apps.operation_analysis.views.network_topology_view import NetworkTopologyViewSet, _adapter_for
 
             adapter = _adapter_for(principal.resource)
             response = NetworkTopologyRuntimeService.build_link_runtime_preview(

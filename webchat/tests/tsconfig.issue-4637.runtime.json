@@ -1,0 +1,23 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "declaration": false,
+    "declarationMap": false,
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "paths": {
+      "@webchat/core": ["packages/webchat-core/src/index.ts"],
+      "react": ["packages/webchat-ui/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["packages/webchat-ui/node_modules/@types/react/jsx-runtime.d.ts"],
+      "react-test-renderer": [
+        "packages/webchat-ui/node_modules/@types/react-test-renderer/index.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "ant-design-x.issue-4637.stub.tsx",
+    "chat-image-budget.issue-4637.test.tsx",
+    "react-dom-client.issue-4637.stub.ts"
+  ]
+}

@@ -14,6 +14,7 @@ import type {
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
 import type { DashboardWidgetRenderResult } from "@/app/ops-analysis/renderContract";
+import type { CanvasRuntimeRefreshCause } from "@/app/ops-analysis/utils/canvasRefreshTimer";
 import {
   formatScreenClock,
   getScreenRndNodeClassName,
@@ -31,6 +32,7 @@ interface ScreenCanvasProps {
   shareMode?: boolean;
   selectedItemId?: string | null;
   refreshVersion?: number;
+  refreshCause?: CanvasRuntimeRefreshCause;
   screenId?: string | number;
   filterDefinitions?: UnifiedFilterDefinition[];
   unifiedFilterValues?: Record<string, FilterValue>;
@@ -416,6 +418,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   shareMode = false,
   selectedItemId = null,
   refreshVersion = 0,
+  refreshCause = "manual",
   screenId,
   filterDefinitions,
   unifiedFilterValues,
@@ -503,6 +506,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         selected={editable && selected}
         editMode={editable}
         refreshVersion={refreshVersion}
+        refreshCause={refreshCause}
         screenId={screenId}
         fitScale={scale}
         screenDensity={screenMetrics.screenDensity}

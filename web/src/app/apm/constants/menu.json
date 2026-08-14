@@ -20,7 +20,7 @@
         },
         {
           "title": "服务拓扑",
-          "icon": "guanlian",
+          "icon": "tuoputu",
           "url": "/apm/services/topology",
           "name": "services"
         },
@@ -87,20 +87,25 @@
           "icon": "mulu",
           "url": "/apm/events/policies",
           "name": "policies"
+        },
+        {
+          "url": "/apm/events/policies/new",
+          "name": "policy_create",
+          "isNotMenuItem": true
         }
       ]
     },
     {
       "title": "集成",
       "icon": "zichan-quanbushebei",
-      "url": "/apm/integration/add",
+      "url": "/apm/integration/applications",
       "name": "Integration",
       "children": [
         {
-          "title": "添加接入",
-          "icon": "settings-fill",
-          "url": "/apm/integration/add",
-          "name": "integration_add"
+          "title": "应用管理",
+          "icon": "mulu",
+          "url": "/apm/integration/applications",
+          "name": "applications"
         },
         {
           "title": "接入实例",
@@ -109,10 +114,14 @@
           "name": "integration_instances"
         },
         {
-          "title": "应用管理",
-          "icon": "mulu",
-          "url": "/apm/integration/applications",
-          "name": "applications"
+          "url": "/apm/integration/add",
+          "name": "integration_add",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/apm/integration/applications/[applicationId]",
+          "name": "application_detail",
+          "isNotMenuItem": true
         },
         {
           "url": "/apm/integration",
@@ -143,7 +152,7 @@
         },
         {
           "title": "Service topology",
-          "icon": "guanlian",
+          "icon": "tuoputu",
           "url": "/apm/services/topology",
           "name": "services"
         },
@@ -210,20 +219,25 @@
           "icon": "mulu",
           "url": "/apm/events/policies",
           "name": "policies"
+        },
+        {
+          "url": "/apm/events/policies/new",
+          "name": "policy_create",
+          "isNotMenuItem": true
         }
       ]
     },
     {
       "title": "Integration",
       "icon": "zichan-quanbushebei",
-      "url": "/apm/integration/add",
+      "url": "/apm/integration/applications",
       "name": "Integration",
       "children": [
         {
-          "title": "Add integration",
-          "icon": "settings-fill",
-          "url": "/apm/integration/add",
-          "name": "integration_add"
+          "title": "Applications",
+          "icon": "mulu",
+          "url": "/apm/integration/applications",
+          "name": "applications"
         },
         {
           "title": "Reporting instances",
@@ -232,10 +246,14 @@
           "name": "integration_instances"
         },
         {
-          "title": "Applications",
-          "icon": "mulu",
-          "url": "/apm/integration/applications",
-          "name": "applications"
+          "url": "/apm/integration/add",
+          "name": "integration_add",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/apm/integration/applications/[applicationId]",
+          "name": "application_detail",
+          "isNotMenuItem": true
         },
         {
           "url": "/apm/integration",

@@ -96,7 +96,6 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
     permission_classes = [permissions.IsAuthenticated, NetworkTopologyFeaturePermission]
     ORGANIZATION_FIELD = "groups"
 
-
     _EDIT_ACTIONS = frozenset(
         {
             "update",
@@ -113,16 +112,12 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
             return {"view-AddChart"}
         if self.action == "test_connection":
             return {"view-AddChart", "view-EditChart"}
-        if self.action in self._EDIT_ACTIONS or (
-            self.action == "config" and request.method == "PUT"
-        ):
+        if self.action in self._EDIT_ACTIONS or (self.action == "config" and request.method == "PUT"):
             return {"view-EditChart"}
         return {"view-View"}
 
     def _is_instance_write(self, request):
-        return self.action in self._EDIT_ACTIONS or self.action == "destroy" or (
-            self.action == "config" and request.method == "PUT"
-        )
+        return self.action in self._EDIT_ACTIONS or self.action == "destroy" or (self.action == "config" and request.method == "PUT")
 
     def check_object_permissions(self, request, obj):
         """所有正式 detail/action 统一执行空间与实例规则校验。"""
@@ -329,7 +324,7 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
         """Proxy: list the interfaces of a WeOps node.
 
         ``node_ref`` comes URL-encoded from the frontend (a JSON dict of
-        ``bk_obj_id`` / ``bk_inst_id`` / ``network_collect_*`` /
+        ``bk_obj_id`` / ``bk_inst_uuid`` / ``network_collect_*`` /
         ``plugin_*`` fields). We decode it back into a dict before
         handing it to the adapter, which re-encodes it for the upstream
         path segment.

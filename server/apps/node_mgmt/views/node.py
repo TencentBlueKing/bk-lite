@@ -299,9 +299,11 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         if error_response:
             return error_response
         instance = nodes[0]
-        # retire_linked 默认 false：仅删节点；true 时 best-effort 退役已关联 CMDB/监控
+        # 删除节点必须清 CMDB 上悬挂的 node_id（实例保留）。
+        # retire_linked 另退役监控等已关联对象；失败都不阻断删除。
+        actor_scope = build_module_push_actor_scope(request)
+        ModulePushService.best_effort_unlink_cmdb(instance, actor_scope=actor_scope)
         if parse_retire_linked_flag(request):
-            actor_scope = build_module_push_actor_scope(request)
             ModulePushService.best_effort_retire_linked(instance, actor_scope=actor_scope)
         self.perform_destroy(instance)
         return WebUtils.response_success()

@@ -18,7 +18,9 @@ type RefreshScope =
   | 'filter-search'
   | 'namespace-search'
   | 'combined-search'
-  | 'reload';
+  | 'reload'
+  | 'periodic'
+  | 'visibility';
 
 interface NamespaceOption {
   value: number;
@@ -59,6 +61,7 @@ interface UseTopologyRefreshControllerParams {
       nodeData: TopologyNodeData,
       dataSource?: DatasourceItem,
     ) => boolean,
+    options?: { silent?: boolean },
   ) => void;
   refreshAllChartNodes: (
     values?: Record<string, FilterValue>,
@@ -69,6 +72,7 @@ interface UseTopologyRefreshControllerParams {
       nodeData: TopologyNodeData,
       dataSource?: DatasourceItem,
     ) => boolean,
+    options?: { silent?: boolean },
   ) => void;
   updateDefinitions: (definitions: UnifiedFilterDefinition[]) => void;
 }
@@ -105,7 +109,7 @@ export const useTopologyRefresh = ({
         | ((nodeData: TopologyNodeData, dataSource?: DatasourceItem) => boolean)
         | undefined;
 
-      if (scope !== 'reload') {
+      if (scope !== 'reload' && scope !== 'periodic' && scope !== 'visibility') {
         shouldRefreshNode = (
           nodeData: TopologyNodeData,
           dataSource?: DatasourceItem,
@@ -136,12 +140,14 @@ export const useTopologyRefresh = ({
         };
       }
 
+      const silent = scope === 'periodic' || scope === 'visibility';
       refreshAllSingleValueNodes(
         nextValues,
         nextDefinitions,
         nextNamespaceId,
         dataSources,
         shouldRefreshNode,
+        silent ? { silent: true } : undefined,
       );
       refreshAllChartNodes(
         nextValues,
@@ -149,6 +155,7 @@ export const useTopologyRefresh = ({
         dataSources,
         nextNamespaceId,
         shouldRefreshNode,
+        silent ? { silent: true } : undefined,
       );
     },
     [
@@ -196,19 +203,6 @@ export const useTopologyRefresh = ({
       refreshTimerRef.current = null;
     }
   }, [refreshTimerRef]);
-
-  const handleFrequencyChange = useCallback(
-    (frequency: number) => {
-      clearRefreshTimer();
-
-      if (frequency > 0) {
-        refreshTimerRef.current = setInterval(() => {
-          refreshTopologyNodes('reload');
-        }, frequency);
-      }
-    },
-    [clearRefreshTimer, refreshTimerRef, refreshTopologyNodes],
-  );
 
   const handleRefresh = useCallback(() => {
     setAppliedFilterValues(filterValues);
@@ -335,7 +329,6 @@ export const useTopologyRefresh = ({
     clearRefreshTimer,
     handleFilterConfigConfirm,
     handleFilterSearch,
-    handleFrequencyChange,
     handleRefresh,
     rebuildFiltersFromNodes,
     refreshTopologyNodes,

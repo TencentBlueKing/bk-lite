@@ -24,6 +24,10 @@ class CollectTaskCredentialHit(TimeInfo):
     last_failure_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True, default="")
     object_snapshot = models.JSONField(default=dict)
+    recent_result_event_ids = models.JSONField(default=list)
+    last_result_at = models.DateTimeField(null=True, blank=True)
+    last_result_id = models.CharField(max_length=64, blank=True, default="")
+    last_result_event_index = models.IntegerField(default=-1)
 
     class Meta:
         verbose_name = "采集任务凭据命中状态"

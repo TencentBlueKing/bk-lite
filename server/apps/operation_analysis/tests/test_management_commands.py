@@ -234,6 +234,7 @@ def test_init_source_api_data_creates_room3d_datasource(settings):
     }
     assert server_room_param["inputConfig"]["componentSwitch"] is True
     assert server_room_param["inputConfig"]["control"] == "select"
+    assert server_room_param["inputConfig"]["optionsSource"]["valueField"] == "inst_uuid"
     assert list(source.tag.values_list("tag_id", flat=True)) == ["cmdb"]
 
 
@@ -309,9 +310,7 @@ class _MigrationApps:
 def _distribution_migration():
     import importlib
 
-    return importlib.import_module(
-        "apps.operation_analysis.migrations.0019_set_cloud_cost_distribution_field_schema"
-    )
+    return importlib.import_module("apps.operation_analysis.migrations.0019_set_cloud_cost_distribution_field_schema")
 
 
 def test_cloud_cost_distribution_migration_updates_existing_group_by_and_is_idempotent():
@@ -406,9 +405,17 @@ def test_init_source_api_data_force_update_is_idempotent(settings):
     call_command("init_default_namespace")
     call_command("init_source_api_data")
     count_before = DataSourceAPIModel.objects.count()
+    room3d_source = DataSourceAPIModel.objects.get(rest_api="cmdb/get_room3d_layout")
+    legacy_params = room3d_source.params
+    legacy_params[0]["inputConfig"]["optionsSource"]["valueField"] = "_id"
+    room3d_source.params = legacy_params
+    room3d_source.save(update_fields=["params"])
+
     # 强制更新模式再次运行 → 覆盖 force_update 分支，不应新增
     call_command("init_source_api_data", "--force-update")
     assert DataSourceAPIModel.objects.count() == count_before
+    room3d_source.refresh_from_db()
+    assert room3d_source.params[0]["inputConfig"]["optionsSource"]["valueField"] == "inst_uuid"
 
 
 @pytest.mark.django_db

@@ -1,5 +1,10 @@
 export type DataConnectionType = 'mysql' | 'postgresql' | 'rest_api';
 
+export interface DataConnectionTestPayload {
+  connection_type: DataConnectionType;
+  config: Record<string, unknown>;
+}
+
 export interface DataConnectionItem {
   id: number;
   name: string;

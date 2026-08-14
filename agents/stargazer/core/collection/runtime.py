@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import time
+import uuid
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Awaitable, Callable, Mapping, Protocol, Sequence
 
@@ -81,6 +82,7 @@ class RunLease:
     owner_id: str
     fence: int
     expires_at: float
+    attempt_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -186,6 +188,7 @@ class InMemoryRunStateStore:
                 owner_id=owner_id,
                 fence=1,
                 expires_at=now + ttl_seconds,
+                attempt_id=uuid.uuid4().hex,
             )
             self._records[task_id] = _InMemoryRunRecord(
                 request_digest=request_digest,
@@ -207,6 +210,7 @@ class InMemoryRunStateStore:
             if (
                 record.lease.owner_id != lease.owner_id
                 or record.lease.fence != lease.fence
+                or record.lease.attempt_id != lease.attempt_id
             ):
                 return False
             # 结束后释放，允许同 task_id 下周期重新接纳
@@ -221,6 +225,7 @@ class InMemoryRunStateStore:
             if (
                 record.lease.owner_id != lease.owner_id
                 or record.lease.fence != lease.fence
+                or record.lease.attempt_id != lease.attempt_id
             ):
                 return False
             record.lease = RunLease(
@@ -229,6 +234,7 @@ class InMemoryRunStateStore:
                 owner_id=lease.owner_id,
                 fence=lease.fence,
                 expires_at=time.monotonic() + ttl_seconds,
+                attempt_id=lease.attempt_id,
             )
             return True
 

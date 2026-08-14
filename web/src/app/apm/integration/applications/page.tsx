@@ -1,10 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppstoreAddOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Form, Input, message, Modal, Tag, Typography, type TableColumnsType } from 'antd';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { AppstoreAddOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { Button, Drawer, Form, Input, message, Space, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmApplication, ApmApplicationInput } from '@/app/apm/types';
@@ -12,19 +15,19 @@ import FilterToolbar from '@/components/filter-toolbar';
 import GroupTreeSelect from '@/components/group-tree-select';
 import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
-import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 type PageState = CatalogStateKind | 'ready';
 
 export default function ApmApplicationsPage() {
+  const router = useRouter();
   const [messageApi, messageContextHolder] = message.useMessage();
   const { getApplications, createApplication, updateApplication, isLoading } = useApmApi();
   const { flatGroups } = useUserInfoContext();
   const [form] = Form.useForm<ApmApplicationInput>();
   const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [editing, setEditing] = useState<ApmApplication | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
@@ -41,8 +44,9 @@ export default function ApmApplicationsPage() {
     setState('loading');
     try {
       const items = await getApplications();
-      setApplications(items);
-      setState(items.length ? 'ready' : 'empty');
+      const visible = items.filter((item) => !item.is_builtin);
+      setApplications(visible);
+      setState(visible.length ? 'ready' : 'empty');
     } catch (error) {
       setState(catalogErrorKind(error));
     }
@@ -54,7 +58,7 @@ export default function ApmApplicationsPage() {
     setEditing(null);
     form.resetFields();
     form.setFieldsValue({ name: '', application_id: '', description: '', organization_ids: [] });
-    setModalOpen(true);
+    setDrawerOpen(true);
   };
 
   const openEdit = (application: ApmApplication) => {
@@ -65,11 +69,10 @@ export default function ApmApplicationsPage() {
       description: application.description,
       organization_ids: application.organization_ids,
     });
-    setModalOpen(true);
+    setDrawerOpen(true);
   };
 
-  const submit = async () => {
-    const values = await form.validateFields();
+  const submit = async (values: ApmApplicationInput) => {
     setSubmitting(true);
     try {
       if (editing) {
@@ -79,7 +82,7 @@ export default function ApmApplicationsPage() {
         await createApplication(values);
         messageApi.success('应用已创建');
       }
-      setModalOpen(false);
+      setDrawerOpen(false);
       await load();
     } finally {
       setSubmitting(false);
@@ -107,16 +110,18 @@ export default function ApmApplicationsPage() {
             <AppstoreAddOutlined aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <EllipsisWithTooltip className="truncate font-medium" text={item.name} />
-            <EllipsisWithTooltip className="truncate font-mono text-xs text-[var(--color-text-3)]" text={item.is_builtin ? '空 namespace' : item.application_id} />
+            <Link href={`/apm/integration/applications/${item.id}`} className="font-medium text-[var(--color-primary)] hover:underline">
+              {item.name}
+            </Link>
+            <EllipsisWithTooltip className="truncate font-mono text-xs text-[var(--color-text-3)]" text={item.application_id} />
           </div>
         </div>
       ),
     },
-    { title: '说明', dataIndex: 'description', responsive: ['md'], render: (value) => <EllipsisWithTooltip className="truncate" text={value || '—'} /> },
-    { title: '服务数', dataIndex: 'service_count', width: 100, align: 'right', className: 'tabular-nums' },
+    { title: '说明', dataIndex: 'description', responsive: ['lg'], render: (value) => <EllipsisWithTooltip className="truncate" text={value || '—'} /> },
+    { title: '服务数', dataIndex: 'service_count', width: 100, align: 'right', className: 'tabular-nums', responsive: ['md'] },
     {
-      title: '组织', dataIndex: 'organization_ids', width: 180, responsive: ['lg'],
+      title: '组织', dataIndex: 'organization_ids', width: 180, responsive: ['xl'],
       render: (values: number[]) => (
         <EllipsisWithTooltip
           className="truncate"
@@ -124,43 +129,54 @@ export default function ApmApplicationsPage() {
         />
       ),
     },
+    { title: '更新时间', dataIndex: 'updated_at', width: 170, responsive: ['xxl'], className: 'tabular-nums', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
     {
-      title: '类型', key: 'type', width: 100,
-      render: (_, item) => <Tag color={item.is_builtin ? 'blue' : undefined}>{item.is_builtin ? '内置' : '自定义'}</Tag>,
-    },
-    { title: '更新时间', dataIndex: 'updated_at', width: 170, responsive: ['xl'], className: 'tabular-nums', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
-    {
-      title: '操作', key: 'action', width: 90, align: 'right', fixed: 'right',
-      render: (_, item) => item.is_builtin
-        ? <Typography.Text type="secondary">系统维护</Typography.Text>
-        : (
-          <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
-            <Button type="link" size="small" icon={<EditOutlined aria-hidden="true" />} onClick={() => openEdit(item)}>编辑</Button>
-          </Permission>
-        ),
+      title: '操作', key: 'action', width: 200, align: 'right', fixed: 'right',
+      render: (_, item) => (
+        <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
+          <Space className="w-full justify-end whitespace-nowrap" size={8}>
+            <Button
+              className="!px-0"
+              size="small"
+              type="link"
+              onClick={() => router.push(`/apm/integration/add?application_id=${encodeURIComponent(item.application_id)}`)}
+            >
+              添加接入
+            </Button>
+            <Button
+              className="!px-0"
+              size="small"
+              type="link"
+              onClick={() => router.push(`/apm/integration/applications/${item.id}`)}
+            >
+              查看详情
+            </Button>
+            <Button className="!px-0" size="small" type="link" onClick={() => openEdit(item)}>
+              编辑
+            </Button>
+          </Space>
+        </Permission>
+      ),
     },
   ];
 
   return (
-    <ApmRouteShell title="应用管理" description="维护 APM 应用边界；空 namespace 的服务自动归入内置未归类应用。">
+    <ApmRouteShell title="应用管理" description="维护 APM 应用边界，并从对应应用发起遥测接入。">
       {messageContextHolder}
-      <div className="flex flex-col gap-3">
-        <ApmSurface padding="compact">
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input allowClear className="min-w-0 flex-1 md:max-w-sm" prefix={<SearchOutlined aria-hidden="true" />} placeholder="搜索应用 ID / 名称" value={keyword} onChange={(event) => { setKeyword(event.target.value); setPage(1); }} />
-            <Typography.Text type="secondary" className="text-xs">共 {filtered.length} 个应用</Typography.Text>
-            <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
+            <Permission className="ml-auto" requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
               <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreate}>创建应用</Button>
             </Permission>
           </FilterToolbar>
-        </ApmSurface>
-        <ApmSurface padding="none" className="overflow-hidden">
           {state === 'ready' ? (
-            <CustomTable
-              autoScrollX={false}
+            <ApmDataTable
               rowKey="id"
               columns={columns}
               dataSource={pageRows}
+              headerAlignment="column"
               pagination={{
                 current: page,
                 pageSize,
@@ -174,11 +190,33 @@ export default function ApmApplicationsPage() {
               }}
             />
           ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />}
-        </ApmSurface>
-      </div>
+        </div>
+      </ApmSurface>
 
-      <Modal title={editing ? '编辑应用' : '创建应用'} open={modalOpen} confirmLoading={submitting} okText={editing ? '保存' : '创建'} cancelText="取消" styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }} onOk={() => void submit()} onCancel={() => setModalOpen(false)} forceRender>
-        <Form form={form} layout="vertical" preserve={false} className="pt-3">
+      <Drawer
+        destroyOnHidden
+        open={drawerOpen}
+        title={editing ? '编辑应用' : '创建应用'}
+        width="min(480px, 100vw)"
+        styles={{ body: { maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' } }}
+        extra={(
+          <Space>
+            <Button disabled={submitting} onClick={() => setDrawerOpen(false)}>取消</Button>
+            <Button form="apm-application-form" htmlType="submit" loading={submitting} type="primary">
+              {editing ? '保存' : '创建'}
+            </Button>
+          </Space>
+        )}
+        onClose={() => setDrawerOpen(false)}
+      >
+        <Form<ApmApplicationInput>
+          form={form}
+          id="apm-application-form"
+          layout="vertical"
+          preserve={false}
+          requiredMark="optional"
+          onFinish={(values) => void submit(values)}
+        >
           <Form.Item name="application_id" label="应用 ID" extra="创建后不可修改，将作为 service.namespace。" rules={editing ? [] : [{ required: true, message: '请输入应用 ID' }, { pattern: /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/, message: '仅支持字母、数字、点、下划线和连字符' }]} hidden={Boolean(editing)}>
             <Input placeholder="例如 shop" autoComplete="off" />
           </Form.Item>
@@ -192,7 +230,7 @@ export default function ApmApplicationsPage() {
             <GroupTreeSelect multiple mode="ownership" showSearch placeholder="选择可管理此应用的组织" />
           </Form.Item>
         </Form>
-      </Modal>
+      </Drawer>
     </ApmRouteShell>
   );
 }

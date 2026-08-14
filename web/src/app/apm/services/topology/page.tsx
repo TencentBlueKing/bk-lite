@@ -5,10 +5,10 @@ import { Alert, Button, Grid, Input, Segmented, Select, Tag, Typography, type Ta
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyHealth, ApmTopologyNode } from '@/app/apm/types';
-import CustomTable from '@/components/custom-table';
 import FilterToolbar from '@/components/filter-toolbar';
 
 type LayoutMode = 'layered' | 'force';
@@ -72,8 +72,8 @@ function TopologyCanvas({
     <svg aria-label="APM 服务调用拓扑" className="block h-[520px] w-full" role="img" viewBox="0 0 1030 520">
       <defs>
         {(['healthy', 'warning', 'critical'] as ApmTopologyHealth[]).map((health) => (
-          <marker id={`apm-arrow-${health}`} key={health} markerHeight="6" markerWidth="6" orient="auto" refX="9" refY="5" viewBox="0 0 10 10">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
+          <marker id={`apm-arrow-${health}`} key={health} markerHeight="8" markerUnits="userSpaceOnUse" markerWidth="8" orient="auto" refX="7" refY="4" viewBox="0 0 8 8">
+            <path d="M 0 0 L 8 4 L 0 8 Z" fill="context-stroke" />
           </marker>
         ))}
       </defs>
@@ -86,8 +86,11 @@ function TopologyCanvas({
           const dy = target.y - source.y;
           const length = Math.sqrt(dx * dx + dy * dy) || 1;
           const targetRadius = 18 + (target.sampled_spans / maxSpans) * 14;
-          const endX = target.x - (dx * (targetRadius + 4)) / length;
-          const endY = target.y - (dy * (targetRadius + 4)) / length;
+          const sourceRadius = 18 + (source.sampled_spans / maxSpans) * 14;
+          const startX = source.x + (dx * (sourceRadius + 4)) / length;
+          const startY = source.y + (dy * (sourceRadius + 4)) / length;
+          const endX = target.x - (dx * (targetRadius + 9)) / length;
+          const endY = target.y - (dy * (targetRadius + 9)) / length;
           const color = edge.health === 'healthy' || edge.health === 'unknown'
             ? 'var(--color-border-4)'
             : healthColors[edge.health];
@@ -96,8 +99,8 @@ function TopologyCanvas({
           return (
             <g key={`${edge.source}-${edge.target}`}>
               <line
-                x1={source.x}
-                y1={source.y}
+                x1={startX}
+                y1={startY}
                 x2={endX}
                 y2={endY}
                 markerEnd={`url(#apm-arrow-${marker})`}
@@ -117,7 +120,7 @@ function TopologyCanvas({
           return (
             <g
               key={node.id}
-              aria-label={`${node.service_name}，${healthLabels[node.health]}，采样 ${node.sampled_spans} 个 Span`}
+              aria-label={`${node.service_name}，${healthLabels[node.health]}，时间窗内观测 ${node.sampled_spans} 个 Span`}
               opacity={matched ? 1 : 0.18}
               role={onNodeClick ? 'link' : undefined}
               tabIndex={onNodeClick ? 0 : undefined}
@@ -131,7 +134,7 @@ function TopologyCanvas({
                 }
               }}
             >
-              <title>{`${node.service_name}\n吞吐采样 ${node.sampled_spans} · 错误 ${node.error_spans}`}</title>
+              <title>{`${node.service_name}\n观测 Span ${node.sampled_spans} · 错误 ${node.error_spans}`}</title>
               <circle
                 fill={node.health === 'critical'
                   ? 'color-mix(in srgb, var(--color-fail) 12%, var(--color-bg))'
@@ -142,7 +145,7 @@ function TopologyCanvas({
                 stroke={healthColors[node.health]}
                 strokeWidth={node.health === 'critical' ? 3 : 2}
               />
-              <text fill="var(--color-text-3)" fontSize="9" fontWeight="600" textAnchor="middle" y="3">SVC</text>
+              <text fill="var(--color-text-3)" fontSize="9" fontWeight="600" textAnchor="middle" y="3">服务</text>
               <text
                 fill={node.health === 'critical' ? 'var(--color-fail)' : 'var(--color-text-1)'}
                 fontSize="11"
@@ -153,7 +156,7 @@ function TopologyCanvas({
                 {node.service_name}
               </text>
               <text fill="var(--color-text-3)" fontSize="9" textAnchor="middle" y={radius + 29}>
-                {node.service_namespace || '未归类'} · {node.environment}
+                {node.service_namespace || '未设置 namespace'} · {node.environment}
               </text>
             </g>
           );
@@ -257,6 +260,8 @@ export default function ApmTopologyPage() {
       title: '健康',
       dataIndex: 'health',
       width: 90,
+      align: 'center',
+      responsive: ['sm'],
       render: (health: ApmTopologyHealth) => (
         <Tag color={health === 'critical' ? 'error' : health === 'warning' ? 'warning' : health === 'healthy' ? 'success' : undefined}>
           {healthLabels[health]}
@@ -264,12 +269,12 @@ export default function ApmTopologyPage() {
       ),
     },
     {
-      title: '采样调用',
+      title: '观测调用',
       dataIndex: 'sampled_calls',
       align: 'right',
       width: 110,
       className: 'tabular-nums',
-      responsive: ['sm'],
+      responsive: ['lg'],
     },
     {
       title: '平均耗时',
@@ -277,82 +282,86 @@ export default function ApmTopologyPage() {
       align: 'right',
       width: 110,
       className: 'tabular-nums',
+      responsive: ['md'],
       render: (value: number) => `${value.toFixed(0)} ms`,
     },
   ];
 
   return (
-    <ApmRouteShell dependency="telemetry" description="按近窗 Trace 样本聚合服务依赖；节点大小表示采样吞吐，颜色表示健康。" title="服务拓扑">
+    <ApmRouteShell dependency="telemetry" description="按时间窗内观测到的 Trace 聚合服务依赖；节点大小表示观测调用量，颜色表示状态。" title="服务拓扑">
       <div className="flex flex-col gap-3">
-        {graph.truncated ? <Alert showIcon type="warning" message="当前拓扑按有界 Trace 样本聚合；服务或调用链过多时仅展示最近样本。" /> : null}
-        <ApmSurface padding="compact">
-          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-1.5 text-xs">
-              <strong className="tabular-nums text-sm">{graph.nodes.length}</strong><span className="text-[var(--color-text-3)]">服务</span>
-              <span className="text-[var(--color-border)]">·</span>
-              <strong className="tabular-nums text-sm">{graph.edges.length}</strong><span className="text-[var(--color-text-3)]">依赖</span>
-              <span className="text-[var(--color-border)]">·</span>
-              <strong className="tabular-nums text-sm text-[var(--color-fail)]">{anomalyCount}</strong><span className="text-[var(--color-text-3)]">异常</span>
-              <span className="text-[var(--color-border)]">·</span>
-              <strong className="tabular-nums text-sm">{graph.sampled_traces}</strong><span className="text-[var(--color-text-3)]">样本</span>
-            </div>
-            <Segmented<TimeWindow> aria-label="拓扑时间窗口" options={['15m', '1h', '4h', '1d', '7d']} value={timeWindow} onChange={setTimeWindow} />
-            <Select allowClear aria-label="按环境筛选拓扑" className="w-36" placeholder="全部环境" options={environmentOptions} value={environment} onChange={setEnvironment} />
-            <Segmented<ViewMode> aria-label="拓扑视图" options={[{ value: 'graph', label: '图形' }, { value: 'list', label: '依赖列表' }]} value={viewMode} onChange={setViewMode} />
-            {viewMode === 'graph' ? <Segmented<LayoutMode> aria-label="拓扑布局" options={[{ value: 'layered', label: '分层' }, { value: 'force', label: '力导向' }]} value={layout} onChange={setLayout} /> : null}
-            <Button danger={anomalyOnly} icon={<WarningOutlined aria-hidden="true" />} type={anomalyOnly ? 'primary' : 'default'} onClick={() => setAnomalyOnly((value) => !value)}>只看异常</Button>
-            <Button aria-label="刷新拓扑" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
-          </FilterToolbar>
-        </ApmSurface>
-        <ApmSurface className={viewMode === 'graph' ? 'relative min-h-[520px] overflow-hidden' : 'overflow-hidden'} padding="none">
-          {state === 'ready' ? (
-            viewMode === 'graph' ? (
-              <>
-                <div className="absolute left-3 top-3 z-10 flex w-52 max-w-[calc(100%-24px)] flex-col gap-2">
-                  <Input allowClear aria-label="定位拓扑节点" placeholder="定位节点" prefix={<SearchOutlined aria-hidden="true" />} value={keyword} onChange={(event) => setKeyword(event.target.value)} />
-                  <div className="inline-flex w-fit flex-col overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
-                    <Button aria-label="放大拓扑" type="text" size="small" icon={<PlusOutlined aria-hidden="true" />} onClick={() => setZoom((value) => Math.min(1.3, value + 0.1))} />
-                    <Button aria-label="缩小拓扑" type="text" size="small" icon={<MinusOutlined aria-hidden="true" />} onClick={() => setZoom((value) => Math.max(0.7, value - 0.1))} />
-                    <Button aria-label="重置拓扑缩放" type="text" size="small" icon={<AimOutlined aria-hidden="true" />} onClick={() => setZoom(1)} />
+        {graph.truncated ? <Alert showIcon type="warning" message="当前拓扑仅聚合查询上限内的最近 Trace，调用量不代表全量流量。" /> : null}
+        <ApmSurface className="overflow-hidden" padding="none">
+          <div className="border-b border-[var(--color-border)] p-4">
+            <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-1.5 text-xs">
+                <strong className="tabular-nums text-sm">{graph.nodes.length}</strong><span className="text-[var(--color-text-3)]">服务</span>
+                <span className="text-[var(--color-border)]">·</span>
+                <strong className="tabular-nums text-sm">{graph.edges.length}</strong><span className="text-[var(--color-text-3)]">依赖</span>
+                <span className="text-[var(--color-border)]">·</span>
+                <strong className="tabular-nums text-sm text-[var(--color-fail)]">{anomalyCount}</strong><span className="text-[var(--color-text-3)]">异常</span>
+                <span className="text-[var(--color-border)]">·</span>
+                <strong className="tabular-nums text-sm">{graph.sampled_traces}</strong><span className="text-[var(--color-text-3)]">观测 Trace</span>
+              </div>
+              <Segmented<TimeWindow> aria-label="拓扑时间窗口" options={['15m', '1h', '4h', '1d', '7d']} value={timeWindow} onChange={setTimeWindow} />
+              <Select allowClear aria-label="按环境筛选拓扑" className="w-36" placeholder="全部环境" options={environmentOptions} value={environment} onChange={setEnvironment} />
+              <Segmented<ViewMode> aria-label="拓扑视图" options={[{ value: 'graph', label: '图形' }, { value: 'list', label: '依赖列表' }]} value={viewMode} onChange={setViewMode} />
+              {viewMode === 'graph' ? <Segmented<LayoutMode> aria-label="拓扑布局" options={[{ value: 'layered', label: '分层' }, { value: 'force', label: '力导向' }]} value={layout} onChange={setLayout} /> : null}
+              <Button danger={anomalyOnly} icon={<WarningOutlined aria-hidden="true" />} type={anomalyOnly ? 'primary' : 'default'} onClick={() => setAnomalyOnly((value) => !value)}>只看异常</Button>
+              <Button aria-label="刷新拓扑" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
+            </FilterToolbar>
+          </div>
+          <div className={viewMode === 'graph' ? 'relative min-h-[520px]' : ''}>
+            {state === 'ready' ? (
+              viewMode === 'graph' ? (
+                <>
+                  <div className="absolute left-3 top-3 z-10 flex w-52 max-w-[calc(100%-24px)] flex-col gap-2">
+                    <Input allowClear aria-label="定位拓扑节点" placeholder="定位节点" prefix={<SearchOutlined aria-hidden="true" />} value={keyword} onChange={(event) => setKeyword(event.target.value)} />
+                    <div className="inline-flex w-fit flex-col overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
+                      <Button aria-label="放大拓扑" type="text" size="small" icon={<PlusOutlined aria-hidden="true" />} onClick={() => setZoom((value) => Math.min(1.3, value + 0.1))} />
+                      <Button aria-label="缩小拓扑" type="text" size="small" icon={<MinusOutlined aria-hidden="true" />} onClick={() => setZoom((value) => Math.max(0.7, value - 0.1))} />
+                      <Button aria-label="重置拓扑缩放" type="text" size="small" icon={<AimOutlined aria-hidden="true" />} onClick={() => setZoom(1)} />
+                    </div>
                   </div>
+                  <TopologyCanvas
+                    edges={visibleEdges}
+                    keyword={keyword}
+                    layout={layout}
+                    nodes={visibleNodes}
+                    zoom={zoom}
+                    onNodeClick={openNode}
+                  />
+                </>
+              ) : (
+                <div className="p-4">
+                  <ApmDataTable
+                    columns={dependencyColumns}
+                    dataSource={dependencyRows}
+                    rowKey="key"
+                    pagination={{
+                      defaultPageSize: 20,
+                      pageSizeOptions: [10, 20, 50, 100],
+                      showSizeChanger: true,
+                      showTotal: (total) => `共 ${total} 条依赖`,
+                    }}
+                  />
                 </div>
-                <TopologyCanvas
-                  edges={visibleEdges}
-                  keyword={keyword}
-                  layout={layout}
-                  nodes={visibleNodes}
-                  zoom={zoom}
-                  onNodeClick={openNode}
-                />
-              </>
-            ) : (
-              <CustomTable
-                autoScrollX={false}
-                columns={dependencyColumns}
-                dataSource={dependencyRows}
-                rowKey="key"
-                pagination={{
-                  defaultPageSize: 20,
-                  pageSizeOptions: [10, 20, 50, 100],
-                  showSizeChanger: true,
-                  showTotal: (total) => `共 ${total} 条依赖`,
-                }}
+              )
+            ) : state === 'empty' ? (
+              <CatalogState
+                kind="empty"
+                description="当前范围内没有观测到可用于构建拓扑的调用链。"
+                onRetry={() => void load()}
               />
-            )
-          ) : state === 'empty' ? (
-            <CatalogState
-              kind="empty"
-              description="当前范围内没有可用于构建拓扑的调用链样本。"
-              onRetry={() => void load()}
-            />
-          ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />}
+            ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />}
+          </div>
         </ApmSurface>
         <ApmSurface padding="compact">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[var(--color-text-3)]">
             <LegendDot color={healthColors.healthy} label="正常" />
             <LegendDot color={healthColors.warning} label="警告" />
             <LegendDot color={healthColors.critical} label="严重" />
-            <Typography.Text type="secondary" className="!text-xs">节点大小按采样吞吐缩放；点击节点进入服务详情。</Typography.Text>
+            <Typography.Text type="secondary" className="!text-xs">观测数据是时间窗内有界查询结果；点击节点进入服务详情。</Typography.Text>
           </div>
         </ApmSurface>
       </div>

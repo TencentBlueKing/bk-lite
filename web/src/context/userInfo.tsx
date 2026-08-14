@@ -26,13 +26,16 @@ export const UserInfoProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [userId, setUserId] = useState<string>('');
   const [username, setUsername] = useState<string>('');
   const [displayName, setDisplayName] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
+  // login_info 返回前保持 loading，且不把用户当成首次登录。
+  // 若 isFirstLogin 默认 true、loading 默认 false，控制台首页会在 useEffect
+  // 拉完 /core/api/login_info/ 之前画出「初始化用户配置」弹窗。
+  const [loading, setLoading] = useState<boolean>(true);
   const [roles, setRoles] = useState<string[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [flatGroups, setFlatGroups] = useState<Group[]>([]);
   const [groupTree, setGroupTree] = useState<Group[]>([]);
   const [isSuperUser, setIsSuperUser] = useState<boolean>(true);
-  const [isFirstLogin, setIsFirstLogin] = useState<boolean>(true);
+  const [isFirstLogin, setIsFirstLogin] = useState<boolean>(false);
 
   const fetchLoginInfo = async () => {
     setLoading(true);
