@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Col, Drawer, Form, Input, Row, Select, Spin, Tag } from 'antd';
+import { Button, Col, Drawer, Form, Input, Row, Select, Spin, Tag, message } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useLocale } from '@/context/locale';
@@ -11,6 +11,7 @@ import { useInstanceApi, useModelApi } from '@/app/cmdb/api';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useCommon } from '@/app/cmdb/context/common';
 import { getOrganizationDisplayText } from '@/app/cmdb/components/cmdb-shared';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import { KIND_COLOR, ipToCellKind, type CellKind, type IpInstance } from './ipamCells';
 import {
   IPAM_ALLOC_ATTR_ID,
@@ -128,7 +129,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
       setDetail(null);
       return;
     }
-    const instUuid = String(ip.inst_uuid || '');
+    const instUuid = resolveCmdbInstUuid(ip.inst_uuid);
     if (!instUuid) {
       setDetail(ip as Record<string, unknown>);
       return;
@@ -282,8 +283,11 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
   };
 
   const jump = () => {
-    const instUuid = String(ip.inst_uuid || ip._id || '');
-    if (!instUuid) return;
+    const instUuid = resolveCmdbInstUuid(ip.inst_uuid);
+    if (!instUuid) {
+      message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+      return;
+    }
     const params = new URLSearchParams({
       icn: '',
       model_name: 'ip',

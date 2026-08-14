@@ -4,11 +4,13 @@ import React, { useEffect } from 'react';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { Drawer, Form, Input, InputNumber, Button, message, Modal, Radio, Switch } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import { HandledRequestError } from '@/utils/request';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { useUserInfoContext } from '@/context/userInfo';
 import {
   DataConnectionOperateModalProps,
   DataConnectionType,
+  DataConnectionTestPayload,
 } from '@/app/ops-analysis/types/dataConnection';
 import { useDataConnectionApi } from '@/app/ops-analysis/api/dataConnection';
 import {
@@ -27,11 +29,14 @@ const OperateModal: React.FC<DataConnectionOperateModalProps> = ({
   const guardClose = useUnsavedConfirm();
   const [form] = Form.useForm();
   const [loading, setLoading] = React.useState(false);
+  const [testConnectionLoading, setTestConnectionLoading] = React.useState(false);
   const { selectedGroup } = useUserInfoContext();
   const {
     createDataConnection,
     updateDataConnection,
     getDataConnectionReferences,
+    testDataConnectionConfig,
+    testDataConnectionDraft,
   } = useDataConnectionApi();
   const connectionType = (Form.useWatch('connection_type', form) ||
     'mysql') as DataConnectionType;
@@ -119,6 +124,70 @@ const OperateModal: React.FC<DataConnectionOperateModalProps> = ({
     }
     onClose();
     onSuccess?.();
+  };
+
+  const handleTestConnection = async () => {
+    try {
+      setTestConnectionLoading(true);
+      const connectionFields =
+        connectionType === 'rest_api'
+          ? ['connection_type', 'base_url', 'headersText']
+          : [
+            'connection_type',
+            'host',
+            'port',
+            'database',
+            'username',
+            'password',
+          ];
+      await form.validateFields(connectionFields);
+      const values = form.getFieldsValue(true);
+      const config: Record<string, unknown> =
+        connectionType === 'rest_api'
+          ? {
+            base_url: values.base_url,
+            headers: parseJsonObject(
+              values.headersText,
+              `${t('dataSource.headers')}${t('dataSource.jsonObjectRequired')}`,
+            ),
+          }
+          : {
+            host: values.host,
+            port: values.port,
+            database: values.database,
+            username: values.username,
+            password: values.password,
+          };
+      const payload: DataConnectionTestPayload = {
+        connection_type: connectionType,
+        config,
+      };
+
+      if (currentRow) {
+        await testDataConnectionDraft(currentRow.id, payload);
+      } else {
+        await testDataConnectionConfig(payload);
+      }
+      message.success(t('dataSource.testConnectionSuccess'));
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'errorFields' in error
+      ) {
+        return;
+      }
+      if (error instanceof HandledRequestError && error.status !== undefined) {
+        return;
+      }
+      message.error(
+        error instanceof Error
+          ? error.message
+          : t('dataSource.testConnectionFailed'),
+      );
+    } finally {
+      setTestConnectionLoading(false);
+    }
   };
 
   const onFinish = async (values: any) => {
@@ -217,7 +286,20 @@ const OperateModal: React.FC<DataConnectionOperateModalProps> = ({
       destroyOnClose
       footer={
         <div style={{ textAlign: 'right' }}>
-          <Button type="primary" loading={loading} onClick={() => form.submit()}>
+          <Button
+            loading={testConnectionLoading}
+            disabled={loading}
+            onClick={handleTestConnection}
+          >
+            {t('dataSource.testConnection')}
+          </Button>
+          <Button
+            type="primary"
+            loading={loading}
+            disabled={testConnectionLoading}
+            style={{ marginLeft: 8 }}
+            onClick={() => form.submit()}
+          >
             {t('common.confirm')}
           </Button>
           <Button style={{ marginLeft: 8 }} onClick={handleClose}>

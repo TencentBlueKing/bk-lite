@@ -15,6 +15,7 @@ from core.infra.credential_state_cache import CredentialStateCache
 from core.logger import logger
 from plugins.base_utils import expand_ip_range
 from sanic import Blueprint, response
+from service.collect_credential_result_push_service import CollectCredentialResultPushService
 from tasks.collectors.host_collector import _escape_prometheus_label_value
 
 # 兼容旧测试/调用方私有名
@@ -146,12 +147,7 @@ def _parse_hosts(hosts_param: str) -> List[str]:
 
 
 def _build_credential_results_payload(events: List[dict]) -> dict:
-    next_since = ""
-    for item in events or []:
-        finished_at = str((item or {}).get("finished_at") or "")
-        if finished_at and finished_at > next_since:
-            next_since = finished_at
-    return {"results": events or [], "next_since": next_since}
+    return CollectCredentialResultPushService.build_results_payload(events)
 
 
 @collect_router.get("/credential_results")

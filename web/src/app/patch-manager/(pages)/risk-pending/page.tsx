@@ -7,6 +7,7 @@ import { ToolOutlined, ExportOutlined, ReloadOutlined, DownOutlined, CloseOutlin
 import useApiClient from '@/utils/request';
 import usePatchManagerApi from '@/app/patch-manager/api';
 import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
+import { buildInternalWorksheetHyperlinkFormula } from '@/app/patch-manager/utils/worksheet-hyperlink';
 import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
 import RemediationTag from '@/app/patch-manager/components/remediation-tag';
 import ExcelJS from 'exceljs';
@@ -630,9 +631,9 @@ export default function RiskPendingPage() {
       const detailRow = keyToFirstRow[row.key];
       if (detailRow) {
         const linkCell = summaryRow.getCell(headers.length);
-        const linkText = String(firstColumnName(row)).replace(/"/g, '\'\'');
+        const linkText = String(firstColumnName(row));
         linkCell.value = {
-          formula: `HYPERLINK("#Detail!A${detailRow}", "${linkText}")`,
+          formula: buildInternalWorksheetHyperlinkFormula(detailSheet.name, `A${detailRow}`, linkText),
         };
       }
     });

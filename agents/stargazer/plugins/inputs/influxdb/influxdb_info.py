@@ -4,19 +4,13 @@
 2.x：GET /health 取版本；GET /api/v2/config（operator token）取运行配置。
 1.x：GET /ping 响应头取版本；配置类字段 API 不暴露，留空。
 """
-import asyncio
-import requests
+import httpx
 from sanic.log import logger
 
 from core.collection.contracts import (
     AccessProbeResult,
     AccessProbeStatus,
 )
-
-try:  # 关闭自签证书告警
-    requests.packages.urllib3.disable_warnings()
-except Exception:  # noqa
-    pass
 
 
 class InfluxdbInfo:
@@ -33,77 +27,86 @@ class InfluxdbInfo:
         scheme = "https" if self.ssl else "http"
         self.base_url = f"{scheme}://{self.host}:{self.port}"
 
-    def _get(self, path, headers=None):
-        return requests.get(
-            f"{self.base_url}{path}",
-            headers=headers or {},
+    def _client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
             timeout=self.timeout,
             verify=self.verify_tls,
         )
 
-    async def probe(self) -> AccessProbeResult:
-        return await asyncio.to_thread(self._probe_sync)
+    async def _get(self, client: httpx.AsyncClient, path, headers=None):
+        return await client.get(
+            f"{self.base_url}{path}",
+            headers=headers or {},
+        )
 
-    def _probe_sync(self) -> AccessProbeResult:
+    async def probe(self) -> AccessProbeResult:
         try:
-            response = self._get("/health")
-            body = response.json() or {}
-            if response.status_code == 200 and body.get("version"):
-                version = str(body["version"])
-            else:
-                response = self._get("/ping")
-                version = str(
-                    response.headers.get("X-Influxdb-Version") or ""
+            async with self._client() as client:
+                response = await self._get(client, "/health")
+                body = response.json() if response.content else {}
+                if response.status_code == 200 and body.get("version"):
+                    version = str(body["version"])
+                else:
+                    response = await self._get(client, "/ping")
+                    version = str(
+                        response.headers.get("X-Influxdb-Version") or ""
+                    )
+                    if response.status_code not in {200, 204} or not version:
+                        return AccessProbeResult(
+                            status=AccessProbeStatus.PROTOCOL_MISMATCH,
+                            error_code="influxdb_protocol_mismatch",
+                        )
+                if not self.token:
+                    return AccessProbeResult(
+                        status=AccessProbeStatus.READY,
+                        evidence={"server_version": version},
+                    )
+                config = await self._get(
+                    client,
+                    "/api/v2/config",
+                    headers={"Authorization": f"Token {self.token}"},
                 )
-                if response.status_code not in {200, 204} or not version:
+                if config.status_code == 401:
+                    return AccessProbeResult(
+                        status=AccessProbeStatus.AUTH_FAILED,
+                        error_code="authentication_failed",
+                    )
+                if config.status_code == 403:
+                    return AccessProbeResult(
+                        status=AccessProbeStatus.CAPABILITY_DENIED,
+                        error_code="capability_denied",
+                    )
+                if config.status_code == 429:
+                    return AccessProbeResult(
+                        status=AccessProbeStatus.RATE_LIMITED,
+                        error_code="rate_limited",
+                    )
+                if config.status_code >= 500:
+                    return AccessProbeResult(
+                        status=AccessProbeStatus.SERVICE_UNAVAILABLE,
+                        error_code="service_unavailable",
+                    )
+                if config.status_code != 200:
                     return AccessProbeResult(
                         status=AccessProbeStatus.PROTOCOL_MISMATCH,
                         error_code="influxdb_protocol_mismatch",
                     )
-            if not self.token:
                 return AccessProbeResult(
                     status=AccessProbeStatus.READY,
                     evidence={"server_version": version},
                 )
-            config = self._get(
-                "/api/v2/config",
-                headers={"Authorization": f"Token {self.token}"},
-            )
-            if config.status_code == 401:
-                return AccessProbeResult(
-                    status=AccessProbeStatus.AUTH_FAILED,
-                    error_code="authentication_failed",
-                )
-            if config.status_code == 403:
-                return AccessProbeResult(
-                    status=AccessProbeStatus.CAPABILITY_DENIED,
-                    error_code="capability_denied",
-                )
-            if config.status_code == 429:
-                return AccessProbeResult(
-                    status=AccessProbeStatus.RATE_LIMITED,
-                    error_code="rate_limited",
-                )
-            if config.status_code >= 500:
-                return AccessProbeResult(
-                    status=AccessProbeStatus.SERVICE_UNAVAILABLE,
-                    error_code="service_unavailable",
-                )
-            if config.status_code != 200:
-                return AccessProbeResult(
-                    status=AccessProbeStatus.PROTOCOL_MISMATCH,
-                    error_code="influxdb_protocol_mismatch",
-                )
+        except httpx.TimeoutException:
             return AccessProbeResult(
-                status=AccessProbeStatus.READY,
-                evidence={"server_version": version},
+                status=AccessProbeStatus.NO_RESPONSE,
+                error_code="protocol_probe_no_response",
             )
-        except requests.exceptions.SSLError:
-            return AccessProbeResult(
-                status=AccessProbeStatus.TLS_VALIDATION_FAILED,
-                error_code="tls_validation_failed",
-            )
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+        except httpx.HTTPError as err:
+            message = str(err).lower()
+            if "certificate" in message or "ssl" in message or "tls" in message:
+                return AccessProbeResult(
+                    status=AccessProbeStatus.TLS_VALIDATION_FAILED,
+                    error_code="tls_validation_failed",
+                )
             return AccessProbeResult(
                 status=AccessProbeStatus.NO_RESPONSE,
                 error_code="protocol_probe_no_response",
@@ -117,7 +120,7 @@ class InfluxdbInfo:
             return value
         return str(value).strip().lower() in ("1", "true", "yes", "on")
 
-    def _collect_v2(self, health):
+    async def _collect_v2(self, client: httpx.AsyncClient, health):
         """2.x：健康信息始终可采；仅在用户提供 Token 后读取运行配置。"""
         model = {"version": (health or {}).get("version", "")}
         model["auth_enabled"] = "true"  # 2.x 强制开启认证
@@ -126,7 +129,8 @@ class InfluxdbInfo:
             return model, warning
 
         try:
-            resp = self._get(
+            resp = await self._get(
+                client,
                 "/api/v2/config",
                 headers={"Authorization": f"Token {self.token}"},
             )
@@ -138,7 +142,7 @@ class InfluxdbInfo:
                 )
                 return model, warning
 
-            body = resp.json() or {}
+            body = resp.json() if resp.content else {}
             cfg = body.get("config", body)
             model.update(
                 data_dir=cfg.get("engine-path", ""),
@@ -152,46 +156,42 @@ class InfluxdbInfo:
             warning = "无法读取 InfluxDB 运行配置，请检查 Operator Token 与网络连接"
         return model, warning
 
-    def _collect_v1(self):
+    async def _collect_v1(self, client: httpx.AsyncClient):
         """1.x：/ping 头取版本；路径类配置 API 不暴露，留空。"""
-        resp = self._get("/ping")
+        resp = await self._get(client, "/ping")
         return {"version": resp.headers.get("X-Influxdb-Version", "")}
 
     async def list_all_resources(self):
-        return await asyncio.to_thread(self._list_all_resources_sync)
-
-    def _list_all_resources_sync(self):
         """返回标准格式：{"result": {"influxdb": [model_data]}, "success": True}。"""
         try:
-            try:
-                health_response = self._get("/health")
-                health = health_response.json() or {}
-                if health_response.status_code == 200 and "version" in health:
-                    model_data, warning = self._collect_v2(health)
-                else:
-                    model_data = self._collect_v1()
+            async with self._client() as client:
+                try:
+                    health_response = await self._get(client, "/health")
+                    health = health_response.json() if health_response.content else {}
+                    if health_response.status_code == 200 and "version" in health:
+                        model_data, warning = await self._collect_v2(client, health)
+                    else:
+                        model_data = await self._collect_v1(client)
+                        warning = ""
+                except Exception:  # noqa  health 不存在 → 走 1.x
+                    model_data = await self._collect_v1(client)
                     warning = ""
-            except Exception:  # noqa  health 不存在 → 走 1.x
-                model_data = self._collect_v1()
-                warning = ""
 
-            model_data["ip_addr"] = self.host
-            model_data["port"] = self.port
-            model_data["https_enabled"] = "true" if self.ssl else "false"
-            rows = [model_data]
-            if warning:
-                rows.append(
-                    {
-                        "ip_addr": self.host,
-                        "port": self.port,
-                        "collect_status": "failed",
-                        "collect_error": warning,
-                    }
-                )
-            inst_data = {"result": {"influxdb": rows}, "success": True}
+                model_data["ip_addr"] = self.host
+                model_data["port"] = self.port
+                model_data["https_enabled"] = "true" if self.ssl else "false"
+                rows = [model_data]
+                if warning:
+                    rows.append(
+                        {
+                            "ip_addr": self.host,
+                            "port": self.port,
+                            "collect_status": "failed",
+                            "collect_error": warning,
+                        }
+                    )
+                return {"result": {"influxdb": rows}, "success": True}
         except Exception as err:  # noqa
             import traceback
             logger.error(f"influxdb_info main error! {traceback.format_exc()}")
-            inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
-
-        return inst_data
+            return {"result": {"cmdb_collect_error": str(err)}, "success": False}

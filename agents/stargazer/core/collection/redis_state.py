@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+import uuid
 
 from core.collection.runtime import (
     LeaseAcquisition,
@@ -22,14 +23,16 @@ local request_digest = ARGV[1]
 local owner_id = ARGV[2]
 local ttl_ms = tonumber(ARGV[3])
 local now_ms = tonumber(ARGV[4])
+local attempt_id = ARGV[5]
 
 local existing_owner = redis.call('HGET', run_key, 'owner_id') or ''
 local existing_expires = tonumber(redis.call('HGET', run_key, 'expires_at_ms') or '0')
 local existing_status = redis.call('HGET', run_key, 'status') or ''
 local existing_fence = tonumber(redis.call('HGET', run_key, 'fence') or '1')
+local existing_attempt_id = redis.call('HGET', run_key, 'attempt_id') or ''
 
 if existing_status == 'running' and existing_expires > now_ms then
-    return {'duplicate_active', existing_owner, existing_fence, existing_expires, ''}
+    return {'duplicate_active', existing_owner, existing_fence, existing_expires, '', existing_attempt_id}
 end
 
 local expires_at_ms = now_ms + ttl_ms
@@ -39,12 +42,13 @@ redis.call(
     'request_digest', request_digest,
     'owner_id', owner_id,
     'fence', 1,
+    'attempt_id', attempt_id,
     'expires_at_ms', expires_at_ms,
     'status', 'running'
 )
 redis.call('HDEL', run_key, 'summary')
 redis.call('PEXPIRE', run_key, ttl_ms * 2)
-return {'acquired', owner_id, 1, expires_at_ms, ''}
+return {'acquired', owner_id, 1, expires_at_ms, '', attempt_id}
 """
 
 
@@ -52,14 +56,18 @@ _FINISH_RUN_LUA = """
 local run_key = KEYS[1]
 local owner_id = ARGV[1]
 local fence = tostring(ARGV[2])
-local status = ARGV[3]
-local retention_ms = tonumber(ARGV[4])
-local summary = ARGV[5]
+local attempt_id = ARGV[3]
+local status = ARGV[4]
+local retention_ms = tonumber(ARGV[5])
+local summary = ARGV[6]
 
 if redis.call('HGET', run_key, 'owner_id') ~= owner_id then
     return 0
 end
 if redis.call('HGET', run_key, 'fence') ~= fence then
+    return 0
+end
+if redis.call('HGET', run_key, 'attempt_id') ~= attempt_id then
     return 0
 end
 -- 薄模型：结束后删除租约，下周期整轮重采；不保留 completed 汇总供同 task_id 回读
@@ -72,13 +80,17 @@ _HEARTBEAT_RUN_LUA = """
 local run_key = KEYS[1]
 local owner_id = ARGV[1]
 local fence = tostring(ARGV[2])
-local ttl_ms = tonumber(ARGV[3])
-local now_ms = tonumber(ARGV[4])
+local attempt_id = ARGV[3]
+local ttl_ms = tonumber(ARGV[4])
+local now_ms = tonumber(ARGV[5])
 
 if redis.call('HGET', run_key, 'owner_id') ~= owner_id then
     return 0
 end
 if redis.call('HGET', run_key, 'fence') ~= fence then
+    return 0
+end
+if redis.call('HGET', run_key, 'attempt_id') ~= attempt_id then
     return 0
 end
 if redis.call('HGET', run_key, 'status') ~= 'running' then
@@ -124,8 +136,9 @@ class RedisRunStateStore:
             owner_id,
             ttl_ms,
             now_ms,
+            uuid.uuid4().hex,
         )
-        status_value, lease_owner, fence, expires_at_ms, summary_value = raw
+        status_value, lease_owner, fence, expires_at_ms, summary_value, attempt_id = raw
         status = LeaseAcquireStatus(self._text(status_value))
         lease = RunLease(
             task_id=task_id,
@@ -133,6 +146,7 @@ class RedisRunStateStore:
             owner_id=self._text(lease_owner),
             fence=int(fence),
             expires_at=int(expires_at_ms) / 1000,
+            attempt_id=self._text(attempt_id),
         )
         summary_text = self._text(summary_value)
         summary = json.loads(summary_text) if summary_text else {}
@@ -150,6 +164,7 @@ class RedisRunStateStore:
             self._run_key(lease.task_id),
             lease.owner_id,
             lease.fence,
+            lease.attempt_id,
             status.value,
             self._completed_retention_ms,
             json.dumps(summary or {}, separators=(",", ":"), default=str),
@@ -166,6 +181,7 @@ class RedisRunStateStore:
             self._run_key(lease.task_id),
             lease.owner_id,
             lease.fence,
+            lease.attempt_id,
             ttl_ms,
             int(self._now() * 1000),
         )
@@ -328,4 +344,3 @@ class RedisCredentialStateStore:
         if isinstance(value, bytes):
             return value.decode("utf-8")
         return str(value)
-

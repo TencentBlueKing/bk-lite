@@ -80,7 +80,7 @@ def test_builtin_room3d_screen_yaml_uses_dynamic_room_switch():
         "optionsSource": {
             "type": "dynamic",
             "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
-            "valueField": "_id",
+            "valueField": "inst_uuid",
             "labelField": "inst_name",
         },
     }
@@ -364,7 +364,7 @@ def _configure_minimal_builtin_dashboard(monkeypatch, tmp_path, *, name="Issue 4
                         "desc": desc,
                         "view_sets": [],
                     }
-                ]
+                ],
             },
             allow_unicode=True,
         ),

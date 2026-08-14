@@ -3,18 +3,27 @@
   "version": "1.0.0",
   "description": "A web chat library with SSE support, similar to Rasa-web",
   "private": true,
+  "workspaces": [
+    "packages/webchat-core",
+    "packages/webchat-ui",
+    "packages/webchat-demo"
+  ],
   "scripts": {
-    "dev": "cd packages/webchat-demo && npm run dev",
+    "dev": "npm run dev --workspace @webchat/demo",
     "build": "npm run build:core && npm run build:ui && npm run build:browser && npm run build:demo",
-    "build:core": "cd packages/webchat-core && npm run build",
-    "build:ui": "cd packages/webchat-ui && npm run build",
-    "build:browser": "cd packages/webchat-ui && npm run build:browser",
-    "build:demo": "cd packages/webchat-demo && npm run build",
-    "test": "node tests/state-machine.issue-3882.mjs && node --test tests/stream-lifecycle.issue-3556.test.mjs && node --test tests/content-chunks.test.mjs && npm run test:core && npm run test:config",
+    "build:core": "npm run build --workspace @webchat/core",
+    "build:ui": "npm run build --workspace @webchat/ui",
+    "build:browser": "npm run build:browser --workspace @webchat/ui",
+    "build:demo": "npm run build --workspace @webchat/demo",
+    "test": "node tests/state-machine.issue-3882.mjs && node --test tests/stream-lifecycle.issue-3556.test.mjs && node --test tests/agui-event-batching.test.mjs tests/chat-streaming-boundaries.test.mjs tests/content-chunks.test.mjs tests/streaming-frame-batcher.test.mjs tests/workspace-install.test.mjs tests/publish-workspaces.test.mjs tests/workflow-registration.test.mjs && npm run test:core && npm run test:config && npm run test:issue-4636 && npm run test:image-budget",
     "pretest:core": "node -e \"require('node:fs').rmSync('.test-dist', { recursive: true, force: true })\"",
     "test:core": "tsc -p tests/tsconfig.json && node --test .test-dist/tests/core/core.test.js",
     "pretest:config": "node -e \"require('node:fs').rmSync('packages/webchat-ui/.test-dist/issue-4037', { recursive: true, force: true })\"",
     "test:config": "tsc -p tests/tsconfig.issue-4037.json && node packages/webchat-ui/.test-dist/issue-4037/tests/webchat-config.issue-4037.test.js",
+    "pretest:issue-4636": "node -e \"require('node:fs').rmSync('.test-dist/issue-4636', { recursive: true, force: true })\"",
+    "test:issue-4636": "npm run test:issue-4636 --workspace @webchat/ui && node --test .test-dist/issue-4636/chat-state-callback.issue-4636.test.mjs",
+    "pretest:image-budget": "node -e \"require('node:fs').rmSync('packages/webchat-ui/.test-dist/issue-4637', { recursive: true, force: true })\"",
+    "test:image-budget": "tsc -p tests/tsconfig.issue-4637.json && tsc -p tests/tsconfig.issue-4637.runtime.json && node --test packages/webchat-ui/.test-dist/issue-4637/tests/image-budget.issue-4637.test.js && npm exec --workspace @webchat/ui -- esbuild ../../tests/chat-image-budget.issue-4637.test.tsx --bundle --platform=node --format=cjs --loader:.css=empty --alias:@ant-design/x=../../tests/ant-design-x.issue-4637.stub.tsx --alias:react-dom/client=../../tests/react-dom-client.issue-4637.stub.ts --external:react --external:react/jsx-runtime --external:react-test-renderer --outfile=.test-dist/issue-4637/chat-image-budget.issue-4637.test.cjs && node --test packages/webchat-ui/.test-dist/issue-4637/chat-image-budget.issue-4637.test.cjs",
     "lint": "eslint \"packages/webchat-core/src/**/*.{ts,tsx}\" \"packages/webchat-ui/src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx,mjs}\"",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist packages/*/.next"
@@ -23,16 +32,19 @@
     "@types/node": "^20.0.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
+    "@types/react-test-renderer": "^18.3.1",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.57.1",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^4.6.2",
     "prettier": "^3.0.0",
+    "react": "^18.3.1",
+    "react-test-renderer": "^18.3.1",
     "turbo": "^1.13.0",
     "typescript": "^5.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.18.0"
   }
 }

@@ -1,6 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from 'react';
 import { Bubble, Sender } from '@ant-design/x';
 import {
   SessionManager,
@@ -21,6 +28,18 @@ import { MessageBubble } from './components/MessageBubble';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import {
+  pendingImagesReducer,
+  readFileAsDataUrl,
+  readImageBatch,
+  inspectImageBatch,
+  resolveImageBudget,
+  validateImageBatch,
+  validateImagePixelBudget,
+  type ImageBudgetViolation,
+  type PendingImage,
+  type PendingImageAction,
+} from './imageBudget';
+import {
   isAbortError,
   runOwnedStream,
   StreamLifecycle,
@@ -39,6 +58,8 @@ export interface ChatProps extends WebChatConfig {
   showFullscreenButton?: boolean;
   showClearButton?: boolean;
   apiKey?: string;
+  /** @inheritdoc WebChatConfig.streamingTextBatching */
+  streamingTextBatching?: WebChatConfig['streamingTextBatching'];
 }
 
 // 图片大小上限（字节），默认 4MB，可通过 NEXT_PUBLIC_MAX_IMAGE_SIZE 环境变量覆盖
@@ -70,7 +91,32 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     showFullscreenButton = true,
     showClearButton = false,
     apiKey,
+    streamingTextBatching = true,
+    maxImageCount,
+    maxImagePixels,
+    maxTotalImageBytes,
+    maxTotalImagePixels,
+    imageReadConcurrency,
+    allowUnknownImagePreview,
   } = normalizeWebChatConfig(props) as ChatProps;
+  const imageBudget = React.useMemo(
+    () => resolveImageBudget({
+      allowUnknownImagePreview,
+      imageReadConcurrency,
+      maxImageCount,
+      maxImagePixels,
+      maxTotalImageBytes,
+      maxTotalImagePixels,
+    }),
+    [
+      allowUnknownImagePreview,
+      imageReadConcurrency,
+      maxImageCount,
+      maxImagePixels,
+      maxTotalImageBytes,
+      maxTotalImagePixels,
+    ],
+  );
 
   // State
   const [messages, setMessages] = useState<Message[]>([]);
@@ -79,7 +125,8 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   const [isThinking, setIsThinking] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [imageSelectionError, setImageSelectionError] = useState<string | null>(null);
+  const [uploadedImages, setUploadedImages] = useState<PendingImage[]>([]);
 
   // Refs
   const sessionManagerRef = useRef<SessionManager | null>(null);
@@ -88,10 +135,25 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
+  const streamingTextBatchingRef = useRef(streamingTextBatching);
+  streamingTextBatchingRef.current = streamingTextBatching;
   const streamLifecycleRef = useRef<StreamLifecycle | null>(null);
+  const uploadedImagesRef = useRef<PendingImage[]>([]);
+  const pendingImageBatchesRef = useRef(new Map<symbol, { controller: AbortController; files: readonly File[] }>());
+  const imageBatchQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const imageSelectionGenerationRef = useRef(0);
   if (!streamLifecycleRef.current) {
     streamLifecycleRef.current = new StreamLifecycle();
   }
+  const cancelPendingImageBatches = useCallback(() => {
+    imageSelectionGenerationRef.current += 1;
+    pendingImageBatchesRef.current.forEach(({ controller }) => controller.abort());
+    pendingImageBatchesRef.current.clear();
+  }, []);
+  const onStateChangeRef = useRef(onStateChange);
+  useLayoutEffect(() => {
+    onStateChangeRef.current = onStateChange;
+  }, [onStateChange]);
   // 保持 onMessageReceived 最新引用，避免 useEffect 空 deps 闭包固化旧 prop
   const onMessageReceivedRef = useRef(onMessageReceived);
   useEffect(() => {
@@ -124,14 +186,13 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     // Initialize StateMachine
     stateMachineRef.current = new StateMachine('idle');
     const unsubscribeState = stateMachineRef.current.on((event) => {
-      onStateChange?.(event.to);
+      onStateChangeRef.current?.(event.to);
     });
 
     // Initialize SSEHandler - 不再需要，我们用 fetch 直接处理
     // Initialize AGUIHandler (默认启用)
     aguiHandlerRef.current = new AGUIHandler(agui || { enabled: true, debug: false });
     const aguiSubscription = setupAGUIEventHandlers();
-
     // Load previous session
     const session = sessionManagerRef.current.initSession();
     if (session && session.messages.length > 0) {
@@ -139,13 +200,15 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     }
 
     return () => {
+      handleAGUIEvent.cancelPendingText();
+      cancelPendingImageBatches();
       void streamLifecycle?.dispose();
       aguiSubscription?.unsubscribe();
       aguiHandlerRef.current?.destroy();
       unsubscribeState();
       stateMachineRef.current?.destroy();
     };
-  }, []);
+  }, [cancelPendingImageBatches]);
 
   // Setup AG-UI event handlers
   const setupAGUIEventHandlers = () => {
@@ -169,17 +232,22 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     onMessageReceivedRef.current?.(message);
   }, []);
 
-  const handleAGUIEvent = createAGUIEventHandler({
-    currentMessageIdRef,
-    streamingContentRef,
-    sessionManagerRef,
-    stateMachineRef,
-    onMessageReceivedRef,
-    setMessages,
-    setIsLoading,
-    setIsThinking,
-    addMessage,
-  });
+  const handleAGUIEvent = useMemo(
+    () =>
+      createAGUIEventHandler({
+        currentMessageIdRef,
+        streamingContentRef,
+        sessionManagerRef,
+        stateMachineRef,
+        onMessageReceivedRef,
+        setMessages,
+        setIsLoading,
+        setIsThinking,
+        addMessage,
+        streamingTextBatchingRef,
+      }),
+    [addMessage]
+  );
 
   // Handle legacy message format (fallback)
   const handleLegacyMessage = (data: unknown) => {
@@ -197,45 +265,121 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     addMessage(botMsg);
   };
 
+  const updateUploadedImages = useCallback((action: PendingImageAction) => {
+    const next = pendingImagesReducer(uploadedImagesRef.current, action);
+    uploadedImagesRef.current = next;
+    setUploadedImages(next);
+  }, []);
+
+  const reportImageError = useCallback((error: Error) => {
+    setImageSelectionError(error.message);
+    onError?.(error);
+  }, [onError]);
+
+  const reportImageBudgetViolation = useCallback((violation: ImageBudgetViolation) => {
+    if (violation.reason === 'count') {
+      reportImageError(new Error(`每条消息最多选择 ${violation.limit} 张图片，本批次未添加。`));
+      return;
+    }
+    if (violation.reason === 'bytes') {
+      const limitMB = violation.limit / (1024 * 1024);
+      reportImageError(new Error(`每条消息的图片总大小不能超过 ${limitMB}MB，本批次未添加。`));
+      return;
+    }
+    const limitMP = Math.round((violation.limit / 1_000_000) * 10) / 10;
+    const scope = violation.reason === 'image-pixels' ? '单张图片' : '每条消息的图片总计';
+    reportImageError(new Error(`${scope}不能超过 ${limitMP} 百万像素，本批次未添加。`));
+  }, [reportImageError]);
+
+  const queueImageFiles = useCallback((files: readonly File[]) => {
+    if (files.length === 0) return;
+
+    const pendingFiles = Array.from(pendingImageBatchesRef.current.values()).flatMap(({ files }) => files);
+    const accountedImages = [...uploadedImagesRef.current, ...pendingFiles];
+    const validation = validateImageBatch(accountedImages, files, imageBudget);
+    if (!validation.ok) {
+      reportImageBudgetViolation(validation);
+      return;
+    }
+
+    const batchToken = Symbol('pending-image-batch');
+    const controller = new AbortController();
+    pendingImageBatchesRef.current.set(batchToken, { controller, files });
+    const generation = imageSelectionGenerationRef.current;
+    imageBatchQueueRef.current = imageBatchQueueRef.current.then(async () => {
+      try {
+        if (generation !== imageSelectionGenerationRef.current) return;
+
+        const inspectedFiles = await inspectImageBatch(
+          files,
+          imageBudget.imageReadConcurrency,
+          controller.signal,
+        );
+        const pixelValidation = validateImagePixelBudget(
+          uploadedImagesRef.current,
+          inspectedFiles,
+          imageBudget,
+        );
+        if (!pixelValidation.ok) {
+          reportImageBudgetViolation(pixelValidation);
+          return;
+        }
+
+        const images = (await readImageBatch(
+          inspectedFiles,
+          imageBudget.imageReadConcurrency,
+          readFileAsDataUrl,
+          controller.signal,
+        )).map((image) => ({
+          ...image,
+          previewable: image.previewable || imageBudget.allowUnknownImagePreview,
+        }));
+        if (generation !== imageSelectionGenerationRef.current) return;
+
+        const latestValidation = validateImageBatch(uploadedImagesRef.current, files, imageBudget);
+        if (!latestValidation.ok) {
+          reportImageBudgetViolation(latestValidation);
+          return;
+        }
+        setImageSelectionError(null);
+        updateUploadedImages({ images, type: 'append' });
+      } catch (error) {
+        if (generation !== imageSelectionGenerationRef.current) return;
+        reportImageError(toError(error));
+      } finally {
+        pendingImageBatchesRef.current.delete(batchToken);
+      }
+    });
+  }, [imageBudget, reportImageBudgetViolation, reportImageError, updateUploadedImages]);
+
   // Handle image upload
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const readers: Promise<string>[] = [];
+    const imageFiles: File[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!file.type.startsWith('image/')) continue;
       if (file.size > MAX_IMAGE_SIZE) {
         const limitMB = MAX_IMAGE_SIZE / (1024 * 1024);
-        onError?.(new Error(`图片"${file.name}"超过 ${limitMB}MB 大小限制，已跳过。`));
+        reportImageError(new Error(`图片"${file.name}"超过 ${limitMB}MB 大小限制，已跳过。`));
         continue;
       }
 
-      const reader = new FileReader();
-      const promise = new Promise<string>((resolve) => {
-        reader.onload = (event) => {
-          const base64 = event.target?.result as string;
-          resolve(base64);
-        };
-        reader.readAsDataURL(file);
-      });
-      readers.push(promise);
+      imageFiles.push(file);
     }
-
-    Promise.all(readers).then((results) => {
-      setUploadedImages((prev) => [...prev, ...results]);
-    });
+    queueImageFiles(imageFiles);
 
     // Reset input
     e.target.value = '';
-  }, [onError]);
+  }, [queueImageFiles, reportImageError]);
 
   // Remove uploaded image
   const handleRemoveImage = useCallback((index: number) => {
-    setUploadedImages((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+    updateUploadedImages({ index, type: 'remove' });
+  }, [updateUploadedImages]);
 
   // Handle paste event for images
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
@@ -250,7 +394,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
         if (file) {
           if (file.size > MAX_IMAGE_SIZE) {
             const limitMB = MAX_IMAGE_SIZE / (1024 * 1024);
-            onError?.(new Error(`粘贴的图片超过 ${limitMB}MB 大小限制，已跳过。`));
+            reportImageError(new Error(`粘贴的图片超过 ${limitMB}MB 大小限制，已跳过。`));
             continue;
           }
           imageFiles.push(file);
@@ -260,23 +404,9 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
 
     if (imageFiles.length > 0) {
       e.preventDefault(); // 阻止默认粘贴行为
-      
-      const readers: Promise<string>[] = imageFiles.map(file => {
-        return new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const base64 = event.target?.result as string;
-            resolve(base64);
-          };
-          reader.readAsDataURL(file);
-        });
-      });
-
-      Promise.all(readers).then((results) => {
-        setUploadedImages((prev) => [...prev, ...results]);
-      });
+      queueImageFiles(imageFiles);
     }
-  }, [onError]);
+  }, [queueImageFiles, reportImageError]);
 
   // Send message
   const handleSendMessage = useCallback(async (value: string) => {
@@ -289,7 +419,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     if (uploadedImages.length > 0) {
       // Multimodal message with images and text
       messageContent = [
-        ...uploadedImages.map((url) => ({ type: 'image_url' as const, image_url: url })),
+        ...uploadedImages.map(({ dataUrl }) => ({ type: 'image_url' as const, image_url: dataUrl })),
         ...(value.trim() ? [{ type: 'message' as const, message: value.trim() }] : []),
       ];
       messageType = 'multimodal';
@@ -305,11 +435,22 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
       content: messageContent,
       sender: 'user',
       timestamp: Date.now(),
+      ...(uploadedImages.some(({ previewable }) => !previewable)
+        ? {
+            metadata: {
+              unpreviewedImageIndexes: uploadedImages.flatMap(({ previewable }, index) =>
+                previewable ? [] : [index],
+              ),
+            },
+          }
+        : {}),
     };
 
     addMessage(userMsg);
     setInputValue('');
-    setUploadedImages([]);
+    cancelPendingImageBatches();
+    setImageSelectionError(null);
+    updateUploadedImages({ type: 'clear' });
     setIsLoading(true);
 
     try {
@@ -372,10 +513,12 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
             }
           },
           onError: (error) => {
+            handleAGUIEvent.flushPendingText();
             console.error('Error reading stream:', error);
             onError?.(error);
           },
           onComplete: () => {
+            handleAGUIEvent.flushPendingText();
             setIsLoading(false);
             setIsThinking(false);
           },
@@ -395,6 +538,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
         }, 1000);
       }
     } catch (error) {
+      handleAGUIEvent.flushPendingText();
       if (isAbortError(error)) {
         return;
       }
@@ -402,18 +546,33 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
       onError?.(toError(error));
       setIsLoading(false);
     }
-  }, [isLoading, sseUrl, customData, addMessage, onError, uploadedImages]);
+  }, [
+    isLoading,
+    sseUrl,
+    customData,
+    addMessage,
+    onError,
+    uploadedImages,
+    handleAGUIEvent,
+    updateUploadedImages,
+    cancelPendingImageBatches,
+  ]);
 
   const handleStopStreaming = useCallback(() => {
+    handleAGUIEvent.flushPendingText();
     void streamLifecycleRef.current?.cancel('user-stopped');
     setIsLoading(false);
     setIsThinking(false);
-  }, []);
+  }, [handleAGUIEvent]);
 
   // Clear messages
   const handleClear = useCallback(() => {
+    handleAGUIEvent.cancelPendingText();
     void streamLifecycleRef.current?.cancel('session-cleared');
     setMessages([]);
+    cancelPendingImageBatches();
+    setImageSelectionError(null);
+    updateUploadedImages({ type: 'clear' });
     // Clear and reinitialize session
     sessionManagerRef.current?.clearSession();
     sessionManagerRef.current?.initSession();
@@ -426,7 +585,7 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
     stateMachineRef.current?.transition('idle');
     // Close the confirmation dialog
     setShowClearConfirm(false);
-  }, []);
+  }, [cancelPendingImageBatches, handleAGUIEvent, updateUploadedImages]);
 
   // Use message handlers hook
   const { handleRegenerate, handleCopy, handleDelete } = useMessageHandlers({
@@ -495,17 +654,15 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
           <div className="flex items-center justify-center h-full text-gray-400">
             <p className="text-sm">No messages yet. Start a conversation!</p>
           </div>
-        ) : (
-          messages.map((msg, index) => {
-            // Find the last bot message in the conversation
-            let lastBotMessageIndex = -1;
-            for (let i = messages.length - 1; i >= 0; i--) {
-              if (messages[i].sender === 'bot') {
-                lastBotMessageIndex = i;
-                break;
-              }
+        ) : (() => {
+          let lastBotMessageIndex = -1;
+          for (let index = messages.length - 1; index >= 0; index -= 1) {
+            if (messages[index].sender === 'bot') {
+              lastBotMessageIndex = index;
+              break;
             }
-            
+          }
+          return messages.map((msg, index) => {
             // Check if this message is part of the last Q&A pair
             // A message is part of last Q&A if:
             // - It's the last bot message, OR
@@ -528,8 +685,8 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
                 onDelete={handleDelete}
               />
             );
-          })
-        )}
+          });
+        })()}
         
         {/* Show loading/thinking state */}
         {(isLoading || isThinking) && (
@@ -560,15 +717,26 @@ export const Chat = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => 
         )}
         
         {/* Image preview area */}
+        {imageSelectionError && (
+          <p role="alert" className="px-4 pt-2 text-xs" style={{ color: 'var(--color-fail)' }}>
+            {imageSelectionError}
+          </p>
+        )}
         {uploadedImages.length > 0 && (
           <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2">
             {uploadedImages.map((img, index) => (
               <div key={index} className="relative group">
-                <img 
-                  src={img} 
-                  alt={`Upload ${index + 1}`}
-                  className="w-16 h-16 object-cover rounded border border-gray-200"
-                />
+                {img.previewable ? (
+                  <img
+                    src={img.dataUrl}
+                    alt={`Upload ${index + 1}`}
+                    className="w-16 h-16 object-cover rounded border border-gray-200"
+                  />
+                ) : (
+                  <div role="status" aria-label={`${img.name} 已添加（安全占位，不在浏览器预览）`}>
+                    <Bubble content={`${img.name} 已添加（安全占位，不在浏览器预览）`} />
+                  </div>
+                )}
                 <button
                   onClick={() => handleRemoveImage(index)}
                   className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"

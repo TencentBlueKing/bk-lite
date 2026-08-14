@@ -1,10 +1,9 @@
 from types import SimpleNamespace
 
-import pytest
-
 import api.collect as collect_api
 import api.health as health_api
 import api.monitor as monitor_api
+import pytest
 from core.collection.request_identity import build_request_task_id
 from core.collection.runtime import Submission, SubmissionStatus
 
@@ -17,9 +16,7 @@ class Application:
 
     async def submit(self, request):
         self.requests.append(request)
-        return Submission(
-            task_id=request.task_id, status=self.status, fence=self.fence
-        )
+        return Submission(task_id=request.task_id, status=self.status, fence=self.fence)
 
 
 def _request(*, path="/api/collect/collect_info", query="", headers=None):
@@ -40,9 +37,7 @@ def _request(*, path="/api/collect/collect_info", query="", headers=None):
         (SubmissionStatus.BUSY, 429),
     ],
 )
-async def test_configuration_http_maps_runtime_admission_status(
-    monkeypatch, submission_status, http_status
-):
+async def test_configuration_http_maps_runtime_admission_status(monkeypatch, submission_status, http_status):
     app = Application(submission_status, fence=4)
     monkeypatch.setattr(collect_api, "get_collection_application", lambda: app)
 
@@ -52,9 +47,7 @@ async def test_configuration_http_maps_runtime_admission_status(
         "cmdbhosts": "10.10.24.1,10.10.24.2",
     }
     request = _request(headers=headers)
-    expected_task_id = build_request_task_id(
-        "GET", "/api/collect/collect_info", "", headers
-    )
+    expected_task_id = build_request_task_id("GET", "/api/collect/collect_info", "", headers)
 
     result = await collect_api._submit_collection_run(
         request,
@@ -82,9 +75,7 @@ async def test_monitor_http_uses_request_fingerprint_as_task_id(monkeypatch):
         "password": "secret",
     }
     request = _request(path="/api/monitor/windows_wmi/metrics", headers=headers)
-    expected_task_id = build_request_task_id(
-        "GET", "/api/monitor/windows_wmi/metrics", "", headers
-    )
+    expected_task_id = build_request_task_id("GET", "/api/monitor/windows_wmi/metrics", "", headers)
 
     result = await monitor_api._submit_monitor_request(
         request,
@@ -116,9 +107,19 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
                 "active_targets": 120,
                 "target_worker_tasks": 180,
                 "max_active_runs": 16,
-                "max_active_targets": 200,
+                "max_active_targets": 150,
+                "target_task_window": 150,
+                "publish_queue_depth": 12,
+                "publish_batch_size_p99": 50,
+                "run_first_schedule_wait_seconds_p99": 0.02,
+                "execution_mode_async_success_total": 119,
                 "event_loop_lag_seconds": 0.004,
                 "event_loop_lag_p99_seconds": 0.009,
+                "plugin_duration_seconds_p99": 0.45,
+                "publish_duration_seconds_p99": 0.12,
+                "publish_enqueue_duration_seconds_p99": 0.03,
+                "thread_count": 24,
+                "open_file_descriptors": 88,
                 "submissions": {"busy": 2, "conflict": 1},
                 "plugin_timeout_total": 4,
                 "result_publish_failure_total": 2,
@@ -137,7 +138,17 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
     assert "stargazer_collection_active_targets 120" in body
     assert "stargazer_collection_target_worker_tasks 180" in body
     assert "stargazer_event_loop_lag_p99_seconds 0.009" in body
+    assert "stargazer_collection_plugin_duration_seconds_p99 0.45" in body
+    assert "stargazer_collection_publish_duration_seconds_p99 0.12" in body
+    assert "stargazer_collection_publish_enqueue_duration_seconds_p99 0.03" in body
+    assert "stargazer_process_threads 24" in body
+    assert "stargazer_process_open_file_descriptors 88" in body
     assert "stargazer_collection_submission_rejected_total 3" in body
     assert "stargazer_collection_plugin_timeout_total 4" in body
     assert "stargazer_collection_result_publish_failure_total 2" in body
     assert "stargazer_collection_lease_takeover_total 1" in body
+    assert "stargazer_collection_target_task_window 150" in body
+    assert "stargazer_collection_publish_queue_depth 12" in body
+    assert "stargazer_collection_publish_batch_size_p99 50" in body
+    assert "stargazer_collection_run_first_schedule_wait_seconds_p99 0.02" in body
+    assert 'stargazer_collection_execution_mode_success_total{execution_mode="async"} 119' in body

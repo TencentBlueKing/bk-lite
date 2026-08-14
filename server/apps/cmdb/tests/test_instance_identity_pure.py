@@ -3,9 +3,14 @@ from uuid import UUID
 import pytest
 
 from apps.cmdb.services.instance_identity import (
+    cmdb_link_identity,
+    collect_cmdb_id_candidates,
     ensure_graph_instance_identity,
     ensure_instance_identity_immutable,
+    expand_cmdb_id_lookup_candidates,
     normalize_inst_uuid,
+    optional_graph_id,
+    optional_inst_uuid,
     prepare_edge_endpoint_properties,
     prepare_new_instance_identity,
 )
@@ -87,3 +92,40 @@ def test_edge_write_persists_uuid_endpoints_and_strips_numeric_ids():
 def test_edge_write_rejects_missing_uuid_endpoints():
     with pytest.raises(BaseAppException, match="边端点必须包含"):
         prepare_edge_endpoint_properties({"model_asst_id": "x", "src_inst_id": 1})
+
+
+def test_optional_inst_uuid_and_graph_id():
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    assert optional_inst_uuid(inst_uuid) == inst_uuid
+    assert optional_inst_uuid("42") is None
+    assert optional_graph_id(42) == "42"
+    assert optional_graph_id(inst_uuid) is None
+
+
+def test_cmdb_link_identity_prefers_uuid_and_keeps_graph_alias():
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    canonical, aliases = cmdb_link_identity({"_id": 7, "inst_uuid": inst_uuid})
+    assert canonical == inst_uuid
+    assert aliases == [inst_uuid, "7"]
+
+
+def test_collect_cmdb_id_candidates_dedupes_nested_values():
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    assert collect_cmdb_id_candidates(inst_uuid, ["7", inst_uuid], None) == [inst_uuid, "7"]
+
+
+def test_expand_cmdb_id_lookup_candidates_adds_graph_id(monkeypatch):
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+
+    class _InstanceManage:
+        @staticmethod
+        def query_entity_by_uuid(value):
+            assert value == inst_uuid
+            return {"_id": 7, "inst_uuid": inst_uuid}
+
+        @staticmethod
+        def query_entity_by_id(_value):
+            raise AssertionError("should not query by graph id")
+
+    monkeypatch.setattr("apps.cmdb.services.instance.InstanceManage", _InstanceManage)
+    assert expand_cmdb_id_lookup_candidates(inst_uuid) == [inst_uuid, "7"]

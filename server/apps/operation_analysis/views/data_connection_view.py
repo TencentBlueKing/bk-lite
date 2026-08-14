@@ -11,6 +11,7 @@ from apps.operation_analysis.models.datasource_models import DataConnection, Dat
 from apps.operation_analysis.serializers.data_connection_serializers import (
     DataConnectionReferenceSerializer,
     DataConnectionSerializer,
+    DataConnectionTestSerializer,
 )
 from apps.operation_analysis.services.data_connection.config_crypto import (
     decrypt_connection_config,
@@ -92,6 +93,47 @@ class DataConnectionViewSet(AuthViewSet):
         queryset = visible_connection_references(instance, current_team)[:REFERENCE_SUMMARY_LIMIT]
         return Response(DataConnectionReferenceSerializer(queryset, many=True).data)
 
+    def _execute_connection_test(self, connection_type, config, *, connection_id=None):
+        try:
+            connection_config = decrypt_connection_config(config)
+            if connection_type == DataConnection.TYPE_REST_API:
+                connection_config = {
+                    "url": connection_config.get("base_url") or connection_config.get("url"),
+                    "method": "GET",
+                    "timeout": connection_config.get("timeout") or 10,
+                    "headers": connection_config.get("headers") or {},
+                }
+            executor = get_preview_executor(connection_type)
+            executor.test_connection(connection_config)
+        except ConnectorError as exc:
+            return Response(
+                {"result": False, "message": exc.message, "data": {"code": exc.code}},
+                status=exc.status_code,
+            )
+        except Exception as exc:
+            logger.error(
+                "[DataConnection] 测试连接失败 id=%s type=%s: %s",
+                connection_id,
+                connection_type,
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"result": False, "message": "测试连接失败"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response({"result": True, "message": "连接成功"})
+
+    @action(detail=False, methods=["post"], url_path="test_connection")
+    @HasPermission("data_source-Edit")
+    def test_connection_config(self, request, *args, **kwargs):
+        serializer = DataConnectionTestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return self._execute_connection_test(
+            serializer.validated_data["connection_type"],
+            serializer.validated_data["config"],
+        )
+
     @action(detail=True, methods=["post"], url_path="test_connection")
     @HasPermission("data_source-Edit")
     def test_connection(self, request, *args, **kwargs):
@@ -102,29 +144,30 @@ class DataConnectionViewSet(AuthViewSet):
         if not instance.is_active:
             return Response({"detail": "数据连接已停用"}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            connection_config = decrypt_connection_config(instance.config or {})
-            if instance.connection_type == DataConnection.TYPE_REST_API:
-                connection_config = {
-                    "url": connection_config.get("base_url") or connection_config.get("url"),
-                    "method": "GET",
-                    "timeout": connection_config.get("timeout") or 10,
-                    "headers": connection_config.get("headers") or {},
-                }
-            executor = get_preview_executor(instance.connection_type)
-            executor.test_connection(connection_config)
-        except ConnectorError as exc:
-            return Response(
-                {"result": False, "message": exc.message, "data": {"code": exc.code}},
-                status=exc.status_code,
-            )
-        except Exception as exc:
-            logger.error("[DataConnection] 测试连接失败 id=%s: %s", instance.id, exc, exc_info=True)
-            return Response(
-                {"result": False, "message": "测试连接失败"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-        return Response({"result": True, "message": "连接成功"})
+        requested_type = request.data.get("connection_type")
+        if requested_type not in (None, instance.connection_type):
+            return Response({"detail": "连接类型创建后不可修改"}, status=status.HTTP_400_BAD_REQUEST)
+
+        incoming_config = request.data.get("config")
+        if incoming_config is None:
+            config = instance.config or {}
+        elif isinstance(incoming_config, dict):
+            config = merge_connection_config(instance.config or {}, incoming_config)
+        else:
+            config = incoming_config
+
+        serializer = DataConnectionTestSerializer(
+            data={
+                "connection_type": instance.connection_type,
+                "config": config,
+            }
+        )
+        serializer.is_valid(raise_exception=True)
+        return self._execute_connection_test(
+            serializer.validated_data["connection_type"],
+            serializer.validated_data["config"],
+            connection_id=instance.id,
+        )
 
 
 def extract_inline_connection(datasource, *, name=None, description=None, created_by="", connection_config=None):
@@ -201,7 +244,5 @@ def extract_inline_connection(datasource, *, name=None, description=None, create
         datasource.connection = connection
         datasource.connection_config = cleaned_connection_config
         datasource.connection_overrides = overrides
-        datasource.save(
-            update_fields=["connection", "connection_config", "connection_overrides", "updated_at", "updated_by"]
-        )
+        datasource.save(update_fields=["connection", "connection_config", "connection_overrides", "updated_at", "updated_by"])
     return connection

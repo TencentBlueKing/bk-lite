@@ -12,6 +12,7 @@ import type { RoomLayoutData, RoomRack, RackDevice } from '@/app/cmdb/types/rack
 import {
   CELL, PAD, GAP, cellXY, roomGridSize, rackTypeColor, rackTypeName, TECH,
 } from '@/app/cmdb/utils/rackRoomLayout';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import RackElevation from './rackElevation';
 import DeviceDetailDrawer from './deviceDetailDrawer';
 import LayoutPlaceModal, { type LayoutPlaceModalRef } from './layoutPlaceModal';
@@ -72,11 +73,16 @@ const RoomFloorPlan: React.FC<Props> = ({
       content: t('Model.layoutUnplaceRackContent'),
       okButtonProps: { danger: true },
       onOk: async () => {
+        const targetUuid = resolveCmdbInstUuid(target.inst_uuid);
+        if (!targetUuid) {
+          message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+          return;
+        }
         await saveRackRoomLayout(
           buildUnplacePayload({
             scope: 'room',
             containerInstUuid: instUuid,
-            instUuid: target.inst_uuid || target.inst_id,
+            instUuid: targetUuid,
           })
         );
         message.success(t('successfullyDisassociated'));
@@ -318,13 +324,21 @@ const RoomFloorPlan: React.FC<Props> = ({
                 </Button>
               )}
             </div>
-            <RackElevation
-              key={`${rack.inst_uuid || rack.inst_id}-${reloadNonce}`}
-              modelId="rack"
-              instUuid={rack.inst_uuid || rack.inst_id}
-              embedded
-              onDeviceClick={(d) => { setDevice(d); setDevOpen(true); }}
-            />
+            {(() => {
+              const rackUuid = resolveCmdbInstUuid(rack.inst_uuid);
+              if (!rackUuid) {
+                return <Empty description="机柜缺少合法 inst_uuid，请先完成 UUID 存量清洗" />;
+              }
+              return (
+                <RackElevation
+                  key={`${rackUuid}-${reloadNonce}`}
+                  modelId="rack"
+                  instUuid={rackUuid}
+                  embedded
+                  onDeviceClick={(d) => { setDevice(d); setDevOpen(true); }}
+                />
+              );
+            })()}
           </div>
         )}
       </Drawer>
@@ -333,7 +347,7 @@ const RoomFloorPlan: React.FC<Props> = ({
         device={device}
         open={devOpen}
         onClose={() => setDevOpen(false)}
-        containerInstUuid={rack?.inst_uuid || rack?.inst_id}
+        containerInstUuid={resolveCmdbInstUuid(rack?.inst_uuid) || undefined}
         canUnplace={canUnplaceFromLayout({
           hasEdit,
           instOperate: hasInstanceOperate(device?.permission),

@@ -1,3 +1,5 @@
+import { isCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
+
 export const FOLLOWED_ASSETS_CONFIG_KEY = 'cmdb_followed_assets';
 export const MAX_FOLLOWED_ASSETS = 100;
 
@@ -7,7 +9,7 @@ export interface FollowedAssetItem {
   followed_at: string;
 }
 
-/** 兼容读取旧配置中的 inst_id 字段。 */
+/** 兼容读取旧配置中的 inst_id 字段；仅当其本身已是 UUIDv4 时才接受。 */
 type FollowedAssetItemRaw = Partial<FollowedAssetItem> & {
   inst_id?: string | number;
 };
@@ -28,9 +30,8 @@ export interface ResolvedFollowedAsset<T extends FollowedAssetInstance> {
 
 const resolveInstUuid = (item: FollowedAssetItemRaw): string | null => {
   const value = item.inst_uuid ?? item.inst_id;
-  if (value === undefined || value === null) return null;
-  const text = String(value).trim();
-  return text.length > 0 ? text : null;
+  if (!isCmdbInstUuid(value)) return null;
+  return String(value).trim().toLowerCase();
 };
 
 const isSameAsset = (

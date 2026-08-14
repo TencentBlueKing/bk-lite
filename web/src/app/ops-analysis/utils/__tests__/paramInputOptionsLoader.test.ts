@@ -73,4 +73,22 @@ describe('paramInputOptionsLoader runtime errors', () => {
     }).promise;
     assert.equal(getSourceDataByApiId.mock.calls[0]?.[2], undefined);
   });
+
+  it('invalidates an unfinished options load when its owner leaves the activation window', async () => {
+    let resolveOptions!: (value: ReturnType<typeof asSourceData>) => void;
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList: async () => [],
+      getSourceDataByApiId: () => new Promise((resolve) => {
+        resolveOptions = resolve;
+      }),
+    });
+
+    const first = loader.load(dynamicConfig);
+    loader.reset();
+    resolveOptions(asSourceData([{ id: 1, name: 'stale' }]));
+    assert.equal(await first.promise, null);
+
+    const second = loader.load(dynamicConfig);
+    assert.notEqual(second, first);
+  });
 });

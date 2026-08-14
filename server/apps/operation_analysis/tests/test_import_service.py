@@ -222,15 +222,11 @@ def test_import_datasource_relation_queries_do_not_grow_with_datasource_count():
     relation_selects = [
         query["sql"]
         for query in queries.captured_queries
-        if " INNER JOIN " not in query["sql"]
-        and any(f"FROM {table}" in query["sql"] for table in relation_tables)
+        if " INNER JOIN " not in query["sql"] and any(f"FROM {table}" in query["sql"] for table in relation_tables)
     ]
     assert result["success"] is True
     assert len(relation_selects) == 2, relation_selects
-    assert (
-        DataSourceAPIModel.objects.filter(namespaces__name="shared-ns", tag__name="Shared").distinct().count()
-        == 2
-    )
+    assert DataSourceAPIModel.objects.filter(namespaces__name="shared-ns", tag__name="Shared").distinct().count() == 2
 
 
 @pytest.mark.django_db
@@ -394,6 +390,29 @@ def test_import_dashboard_into_target_directory():
     assert result["success"] is True
     db = Dashboard.objects.get(name="db-a")
     assert db.directory_id == directory.id
+    assert db.refresh_interval == 0
+
+
+@pytest.mark.django_db
+def test_import_dashboard_illegal_refresh_interval_becomes_off():
+    directory = Directory.objects.create(name="目标目录", groups=[1], created_by="s")
+    doc = _doc(dashboards=[_dashboard_section(refresh_interval=60)])
+    result = _service(doc, target_directory_id=directory.id).execute()
+
+    assert result["success"] is True
+    db = Dashboard.objects.get(name="db-a")
+    assert db.refresh_interval == 0
+
+
+@pytest.mark.django_db
+def test_import_dashboard_keeps_legal_refresh_interval():
+    directory = Directory.objects.create(name="目标目录", groups=[1], created_by="s")
+    doc = _doc(dashboards=[_dashboard_section(refresh_interval=60000)])
+    result = _service(doc, target_directory_id=directory.id).execute()
+
+    assert result["success"] is True
+    db = Dashboard.objects.get(name="db-a")
+    assert db.refresh_interval == 60000
 
 
 @pytest.mark.django_db
