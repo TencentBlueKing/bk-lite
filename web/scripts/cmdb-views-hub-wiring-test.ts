@@ -90,6 +90,15 @@ const shellSrc = fs.readFileSync(shellPath, 'utf8');
 if (!/backToRoom|handleBackToRoom/.test(shellSrc)) {
   failures.push('[ViewsWorkspaceShell.tsx] missing back-to-room control');
 }
+if (!/HopDepthControl/.test(shellSrc)) {
+  failures.push('[ViewsWorkspaceShell.tsx] network hop control missing in hub bar');
+}
+if (!/networkCenterHop/.test(shellSrc)) {
+  failures.push('[ViewsWorkspaceShell.tsx] must pass networkCenterHop into the canvas host');
+}
+if (!/centerHop=\{networkCenterHop\}/.test(hostSrc)) {
+  failures.push('[ViewCanvasHost.tsx] NetworkTopo must receive hub-controlled centerHop');
+}
 if (!/getModelAssociations/.test(shellSrc)) {
   failures.push(
     '[ViewsWorkspaceShell.tsx] network discovery should use getModelAssociations (not N× topo_themes)'

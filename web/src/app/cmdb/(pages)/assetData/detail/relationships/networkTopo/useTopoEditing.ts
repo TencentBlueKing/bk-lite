@@ -20,6 +20,7 @@ interface UseTopoEditingArgs {
   editing: boolean;
   // 已选「连线起点」（右键菜单点「新增连线」后设置）；非空时点击节点即选目标
   linkingSourceId: string | null;
+  selectedNodeId?: string | null;
   // 图数据版本：rebuild 后变化，用于对新渲染的边重应用光标、对起点重画高亮
   revision: number;
   onContextMenu: (info: ContextMenuInfo) => void;
@@ -48,6 +49,7 @@ export const useTopoEditing = ({
   graph,
   editing,
   linkingSourceId,
+  selectedNodeId,
   revision,
   onContextMenu,
   onPickTarget,
@@ -66,11 +68,11 @@ export const useTopoEditing = ({
   useEffect(() => {
     if (!graph) return;
     graph.getNodes().forEach((n) => {
-      const active = n.id === linkingSourceId;
+      const active = n.id === linkingSourceId || n.id === selectedNodeId;
       const isCenter = Boolean(n.getData()?.isCenter);
       setNodeGlow(n, active || isCenter);
     });
-  }, [graph, linkingSourceId, revision]);
+  }, [graph, linkingSourceId, selectedNodeId, revision]);
 
   // 右键节点/边 -> 通知父级在点击位置弹上下文菜单
   useEffect(() => {
