@@ -217,11 +217,12 @@ async def qcloud_metrics(request):
 @monitor_router.get("/oceanstor/metrics")
 async def oceanstor_metrics(request):
     def build_params(req):
-        # Do not use the incoming HTTP Host header here. Telegraf sets it to the
-        # Stargazer service address, while OceanStor collection needs the target
-        # device endpoint carried in base_url.
-        base_url = req.headers.get("base_url")
-        host = base_url
+        # Prefer base_url (REST templates). Host-only templates overwrite HTTP
+        # Host with the device address, so Host remains a valid fallback.
+        base_url = (req.headers.get("base_url") or "").strip()
+        device_host = (req.headers.get("device_host") or "").strip()
+        http_host = (req.headers.get("host") or "").strip()
+        host = base_url or device_host or http_host
         instance_id = req.headers.get("instance_id", "")
         logger.info("Request: Host=%s, instance_id=%s", host, instance_id)
         return {
@@ -229,7 +230,9 @@ async def oceanstor_metrics(request):
             "username": req.headers.get("username"),
             "password": req.headers.get("password"),
             "host": host,
-            "base_url": base_url,
+            "base_url": base_url or host,
+            "preflight_kind": "https",
+            "preflight_kind_explicit": True,
             "instance_id": instance_id,
             "tags": _standard_tags(
                 req,
@@ -322,6 +325,10 @@ async def host_metrics(request):
     os_type = request.headers.get("os_type", "linux")
     username = request.headers.get("username")
     password = request.headers.get("password")
+    auth_type = request.headers.get("auth_type", "password")
+    private_key_content = request.headers.get("private_key_content", "")
+    private_key_passphrase = request.headers.get("private_key_passphrase", "")
+    credential_encoding = request.headers.get("credential_encoding", "url")
     port = request.headers.get("port", "22" if os_type == "linux" else "5986")
     metrics_modules = request.headers.get(
         "metrics_modules", "cpu,mem,disk,diskio,net,processes,system"
@@ -332,8 +339,24 @@ async def host_metrics(request):
         "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32",
     )
     ansible_node_id = request.headers.get("ansible_node_id", "")
+    winrm_scheme = request.headers.get("winrm_scheme", "https")
+    winrm_transport = request.headers.get("winrm_transport", "ntlm")
+    winrm_cert_validation = request.headers.get("winrm_cert_validation", "false")
 
-    if not host or not username or not password:
+    if not host or not username:
+        return _monitor_error_response(
+            "host",
+            "missing required headers: host, username",
+            status=400,
+        )
+    if auth_type == "private_key":
+        if not private_key_content:
+            return _monitor_error_response(
+                "host",
+                "missing required headers: private_key_content",
+                status=400,
+            )
+    elif not password:
         return _monitor_error_response(
             "host",
             "missing required headers: host, username, password",
@@ -365,6 +388,13 @@ async def host_metrics(request):
             "disk_include_fstypes": disk_include_fstypes,
             "disk_exclude_fstypes": disk_exclude_fstypes,
             "ansible_node_id": ansible_node_id,
+            "auth_type": auth_type,
+            "private_key_content": private_key_content,
+            "private_key_passphrase": private_key_passphrase,
+            "credential_encoding": credential_encoding,
+            "winrm_scheme": winrm_scheme,
+            "winrm_transport": winrm_transport,
+            "winrm_cert_validation": winrm_cert_validation,
             "tags": _standard_tags(
                 req,
                 defaults={
