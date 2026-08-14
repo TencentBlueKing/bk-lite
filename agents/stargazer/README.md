@@ -38,8 +38,8 @@ Token、community 或私钥。移除持久队列后，Pod 故障丢单依赖下�
 ```bash
 MAX_ACTIVE_RUNS=16
 # 配置采集目标并发；设为 0 表示不限制（尽快打满机器、靠监控扩容）
-MAX_ACTIVE_TARGETS=200
-TARGET_TASK_WINDOW=200
+MAX_ACTIVE_TARGETS=150
+TARGET_TASK_WINDOW=150
 REDIS_MAX_CONNECTIONS=2560
 REDIS_POOL_TIMEOUT=2
 # 默认 RESP2，兼容不支持 HELLO 的旧 Redis / 代理；仅在确认服务端支持 RESP3 时设为 3
@@ -58,8 +58,8 @@ OUTBOUND_ALLOWED_DOMAINS=
 PREFLIGHT_REACHABILITY=off
 ```
 
-这些值都是部署参数。未设置时默认 `MAX_ACTIVE_TARGETS=200`、
-`TARGET_TASK_WINDOW=200`。二者是单 Pod、跨所有运行共享的配置采集目标并发与任务窗口；
+这些值都是部署参数。未设置时默认 `MAX_ACTIVE_TARGETS=150`、
+`TARGET_TASK_WINDOW=150`。二者是单 Pod、跨所有运行共享的配置采集目标并发与任务窗口；
 全局调度器在 Run 之间 round-robin，单个大 Run 不再预占 worker。需要临时去掉目标并发上限时：
 
 ```bash
@@ -89,6 +89,9 @@ remote/job 及其他所有采集前探测，直接进入正式采集；设为 `o
 所有注册插件必须暴露异步入口。原生异步实现直接 `await`；同步 SDK 由插件自身在异步入口中
 显式调用 `asyncio.to_thread(self._sync_collect)`，并必须给 SDK 配置真实连接/读取超时。
 运行时没有同步插件 Adapter 和专用线程池。
+
+各配置采集插件的真实 I/O 模型、异步依赖与兼容路径见
+[`docs/configuration-plugin-async-matrix.md`](docs/configuration-plugin-async-matrix.md)。
 
 ## 健康与观测
 

@@ -14,8 +14,8 @@ metadata:
 executors:
   protocol:
     type: protocol
-    execution_mode: sync
-    capacity_group: sync_sdk
+    execution_mode: async
+    capacity_group: default
     timeout: 600
     collector:
       module: plugins.inputs.ip.ip_discovery_scanner

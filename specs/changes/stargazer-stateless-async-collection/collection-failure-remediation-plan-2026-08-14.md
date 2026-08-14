@@ -1,4 +1,4 @@
-# Stargazer 大批量采集失败治理方案（待确认）
+# Stargazer 大批量采集失败治理方案
 
 更新日期：2026-08-14
 适用变更：`stargazer-stateless-async-collection`
@@ -41,6 +41,8 @@
 8. 发布采用内存有界队列和批量 flush，暂时不做磁盘持久队列。
 9. 单台设备发布失败只影响该设备，Run 汇总为 `completed_with_errors`，不得取消剩余设备。
 10. `PREFLIGHT_TIMEOUT` 和 `PROBE_TIMEOUT` 默认均为 15 秒。
+11. 配置采集运行时在插件到 Publisher 之间保留结构化结果，由 Publisher 直接编码 Influx Line
+    Protocol；旧的直接调用接口继续返回 Prometheus 文本，避免破坏兼容性。
 
 ## 3. 总体执行流程
 
@@ -66,7 +68,7 @@ HTTP 请求
 | --- | --- | --- |
 | `ExecutionPlan` | 给定请求和插件配置，返回不可变执行计划 | 预检开关、四类超时、YAML 缺省值、执行模式与容量分类 |
 | `CollectionScheduler` | 注册 Run、产出可执行目标、回收目标槽位 | 跨 Run 公平性、全局并发、窗口背压、取消与关闭 |
-| `ResultPublisher` | 提交单目标结果并返回发布结论 | 有界队列、批量 flush、有限重试、失败隔离、结果不确定性 |
+| `ResultPublishQueue` / `ResultSink` | 入队回执与最终投递分别建模 | 有界队列、批量 flush、有限重试、失败隔离、结果不确定性 |
 
 调用方只依赖上述 interface，不直接操作 semaphore、worker 预算、NATS flush 或超时优先级。
 
@@ -175,21 +177,21 @@ REMOTE_JOB_MAX_CONCURRENCY
 
 ```env
 MAX_ACTIVE_RUNS=16
-MAX_ACTIVE_TARGETS=200
-TARGET_TASK_WINDOW=200
+MAX_ACTIVE_TARGETS=150
+TARGET_TASK_WINDOW=150
 ```
 
 理由：
 
 - 客户会同时下发十多个任务，`MAX_ACTIVE_RUNS` 暂时保持 16，避免入口直接拒绝正常任务；
-- `MAX_ACTIVE_TARGETS` 从 2000 降到 200，限制同步 SDK、线程池等待、连接数、Redis 和 NATS 的瞬时压力，同时保留较高采集吞吐；
-- `TARGET_TASK_WINDOW=200` 限制已物化工作和发布队列规模，不允许把数千台设备全部创建成协程；
-- 200/200 是同步插件向全异步迁移期间的起点，不是长期性能上限；SNMP 全异步化并完成压测后，只调整这三个现有值。
+- `MAX_ACTIVE_TARGETS` 从 2000 降到 150，限制同步 SDK、SNMP engine、连接数、Redis 和 NATS 的瞬时压力；
+- `TARGET_TASK_WINDOW=150` 限制已物化工作和发布队列规模，不允许把数千台设备全部创建成协程；
+- 150/150 是当前实机压测候选值，不是长期性能上限；后续优化 SNMP engine 生命周期并完成压测后，只调整这三个现有值。
 
 调整原则：
 
 1. 先观测事件循环延迟、CPU、内存、线程数、NATS flush 延迟、目标 P95/P99 耗时；
-2. 每次只增加一个档位，例如目标并发 `200 → 300 → 500 → 1000`；
+2. 每次只增加一个档位，例如目标并发 `100 → 150 → 200`；
 3. 任一容量指标明显恶化或失败率上升时回退上一档；
 4. 不以“协程数量能创建成功”作为容量通过标准。
 
@@ -217,7 +219,7 @@ TARGET_TASK_WINDOW=200
 
 本阶段不建设按插件拆分的线程池或独立容量组限流。为避免同步 SDK 在默认线程池中无界堆积：
 
-- 全局目标并发先从 2000 降到 200；
+- 全局目标并发先从 2000 降到 150；
 - 调度排队发生在超时计时之前；
 - 不允许提前为全部目标调用 `to_thread()`；
 - 插件内部仍必须配置真实 socket/read/SDK timeout；
@@ -267,7 +269,8 @@ capacity_group: snmp
 
 ### 6.1 发布队列
 
-`ResultPublisher` 内部使用内存有界队列：
+`BufferedResultPublisher` 作为 `ResultPublishQueue` 使用内存有界队列，内部通过 `ResultSink`
+执行最终投递：
 
 - 队列容量复用 `TARGET_TASK_WINDOW`，不增加新的容量环境变量；
 - 采集 worker 提交结果时获得一个完成句柄；结果被队列接受后释放目标槽位，由 Run 的结果账本异步等待该句柄，不继续占用 active target；
@@ -414,7 +417,7 @@ HTTP 已接受的 Run 不应因为一个目标异常改变为整轮取消。
 - 删除 Run 级 worker 预占；
 - 引入全局 round-robin 调度；
 - 目标完成即释放槽位；
-- 默认部署建议改为 16/200/200；
+- 默认部署建议改为 16/150/150；
 - 增加跨 Run 公平性、取消、关闭和窗口测试。
 
 ### Slice E：有界批量发布
@@ -468,7 +471,7 @@ HTTP 已接受的 Run 不应因为一个目标异常改变为整轮取消。
 - 公平调度器上线前保留一次发布周期的旧调度回滚路径，不长期双轨；
 - 批量发布异常时可退回逐条发布，但必须保留“目标级失败隔离”；
 - 新超时变量异常时可通过兼容期旧变量回退；
-- 并发值通过部署配置回退，优先回退到 16/200/200；若压测证明同步线程排队仍不可接受，再继续下调两个目标参数；
+- 并发值通过部署配置回退，优先回退到 16/150/150；若压测证明事件循环延迟仍不可接受，可回退到 16/100/100；
 - 数据契约如新增字段必须保持下游对旧字段的兼容，回滚不得造成结果无法解析。
 
 ## 12. 已确认的生产过渡值
@@ -477,8 +480,8 @@ HTTP 已接受的 Run 不应因为一个目标异常改变为整轮取消。
 
 ```env
 MAX_ACTIVE_RUNS=16
-MAX_ACTIVE_TARGETS=200
-TARGET_TASK_WINDOW=200
+MAX_ACTIVE_TARGETS=150
+TARGET_TASK_WINDOW=150
 ```
 
 上述值已获确认并写入代码默认值与 README。Redis 连接池保持既有
@@ -489,12 +492,46 @@ TARGET_TASK_WINDOW=200
 - 已实现关闭预检时跳过所有 AccessProbe/remote responder 探测，并保留出站安全策略；
 - 已实现目标级发布失败/不确定状态隔离和 `completed_with_errors`；
 - 已实现 `ExecutionPlan`、四类超时及旧变量兼容；
-- 已实现跨 Run round-robin 公平调度，默认容量为 16/200/200；
-- 已实现容量 200 的内存发布队列、目标结果批处理及同 subject 批量 flush；
+- 已实现跨 Run round-robin 公平调度，默认容量为 16/150/150；
+- 已实现容量 150 的内存发布队列、目标结果批处理及同 subject 批量 flush；
 - 已为 57 份插件 YAML 补充 `execution_mode`、`capacity_group`，全部 YAML 解析成功；
-- 相关采集、调度、超时、发布、E2E 测试：114 passed、1 skipped；
-- 3000 目标容量门禁：active/peak 均为 200，3000 个目标全部完成；
+- 2026-08-14 原生异步插件合入后复核：`network`、`network_topo`、MySQL、PostgreSQL、
+  Oracle、InfluxDB、FusionInsight、OceanStor 的 protocol executor 已标记为 `async`；MSSQL 仍为
+  `sync_sdk`，通过同步适配路径隔离；
+- 发布器新增 `enqueue → receipt` interface：队列接收结果后释放目标调度槽位，Run 账本继续等待
+  最终发布结果，队列满时仍保持有界背压；
+- 批量发布按 `collection_result_id` 返回逐目标结果；转换失败和 subject 级发布失败不再抛出并
+  取消其他 subject，失败目标进入 `failed/unknown` 汇总；
+- 配置采集运行时新增结构化指标载荷，Publisher 直接生成既有 Influx Line Protocol，避免
+  `dict → Prometheus 文本 → Influx` 往返解析；旧入口仍返回 Prometheus 文本；
+- 未预期的单目标框架异常收敛为 `target_execution_error`，不取消同 Run 其他目标；
+- 生产路径由 `CollectionScheduler` 统一执行目标准入，不再叠加第二套 semaphore/worker budget；
+- 增加采集、入队、发布 P95/P99、线程数、文件描述符和目标框架异常指标；
+- SNMP GET/GETNEXT/GETBULK 的 engine transport dispatcher 在成功、异常和取消路径显式关闭；
+- 本轮核心采集、调度、发布、SNMP 与兼容性回归：119 passed；E2E 回归：6 passed、1 skipped；
+  SNMP 256 目标超时
+  压测首次受本机调度抖动超过 200ms，独立重跑通过，256/256 结果均发布；
+- 3000 目标容量门禁使用当前 150 上限，目标仅在获得槽位后从迭代器取出并创建 Task；
 - 全仓 `pytest` 仍被任务外历史测试的缺失模块阻断：`home_application`、`core.task_queue`、
   `core.nats`，以及 collect fixture 中未注册的 mssql 基线；
-- `make lint` 因当前环境没有 `pre-commit` 可执行文件无法运行；改动文件 Black 检查通过，
-  Flake8 在忽略存量 `E203/F811` 后通过。
+- 本轮改动文件 Black、isort、Flake8 检查以最终交付时的新鲜命令结果为准。
+
+### 13.1 2026-08-14 复审修复补充
+
+- 保持 `MAX_ACTIVE_RUNS=16`、`MAX_ACTIVE_TARGETS=150`、`TARGET_TASK_WINDOW=150`，不调整
+  Redis 连接池；
+- 出站安全检查与可达性探测解耦：`skip`、cloud、SNMP/UDP 等非拨号模式也必须先通过
+  `OutboundTargetPolicy`，逻辑目标除外；
+- NATS 重试只保留目标执行器一层，总尝试次数默认 2 次；底层 helper 单次发送并报告
+  `delivery_detected`；
+- 发布按目标数、指标行数和 UTF-8 字节数形成有界 flush，超大单行仅使对应目标失败；
+- Publisher shutdown 复用应用级 grace deadline，超时后取消 writer 并把未确认回执标记为
+  `publish_unknown`；
+- 公平调度器不再把目标 Iterable 转为完整 tuple，只在获得全局槽位后消费下一个目标；
+- 网络配置插件的连接关闭异常不再覆盖主采集结果；
+- 补充调度等待、发布队列等待、批大小、flush、重试、shutdown 以及 execution mode / capacity
+  group 的低基数指标。
+- 本轮固定采集、调度、发布、SNMP、VMware、Host Remote、执行元数据及异步契约回归：
+  `201 passed, 1 skipped`；修复后关键聚焦回归：`132 passed`；
+- 全量测试的剩余失败来自已删除的旧 task queue/worker 模块、collect fixture 的 MSSQL 基线、
+  外部 SNMP 连通性及任务外 WMI 配置断言；真实 SNMP community 已改为环境变量注入。

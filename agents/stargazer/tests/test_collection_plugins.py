@@ -1,17 +1,7 @@
 import pytest
-
+from core.collection.contracts import AccessProbeResult, AccessProbeStatus, CollectOutcomeStatus, StructuredMetricsPayload, TargetCollectionContext
+from core.collection.plugins import ConfigurationCollectionPlugin, MonitorCollectionPlugin, UnifiedPluginFactory
 from core.collection.runtime import CollectionRequest
-from core.collection.plugins import (
-    ConfigurationCollectionPlugin,
-    MonitorCollectionPlugin,
-    UnifiedPluginFactory,
-)
-from core.collection.contracts import (
-    AccessProbeResult,
-    AccessProbeStatus,
-    CollectOutcomeStatus,
-    TargetCollectionContext,
-)
 
 
 @pytest.mark.asyncio
@@ -25,9 +15,7 @@ async def test_configuration_plugin_exposes_credential_protocol_probe():
         async def probe(self):
             return AccessProbeResult(status=AccessProbeStatus.READY)
 
-    result = await ConfigurationCollectionPlugin(
-        service_factory=Service
-    ).probe(
+    result = await ConfigurationCollectionPlugin(service_factory=Service).probe(
         "10.10.24.1",
         {
             "credential_id": "credential-1",
@@ -64,9 +52,7 @@ async def test_monitor_plugin_exposes_same_credential_protocol_probe():
             assert self.params["timeout"] == 5
             return AccessProbeResult(status=AccessProbeStatus.READY)
 
-    result = await MonitorCollectionPlugin(
-        {"database": MonitorCollector}
-    ).probe(
+    result = await MonitorCollectionPlugin({"database": MonitorCollector}).probe(
         "10.10.24.2",
         {"credential_id": "credential-1"},
         TargetCollectionContext(
@@ -103,9 +89,7 @@ async def test_monitor_plugin_without_collector_probe_returns_not_supported():
         def __init__(self, params):
             self.params = params
 
-    result = await MonitorCollectionPlugin(
-        {"database": MonitorCollector}
-    ).probe(
+    result = await MonitorCollectionPlugin({"database": MonitorCollector}).probe(
         "10.10.24.2",
         {"credential_id": "credential-1"},
         TargetCollectionContext(
@@ -160,20 +144,43 @@ async def test_configuration_plugin_merges_one_target_and_one_credential():
 
 
 @pytest.mark.asyncio
+async def test_configuration_runtime_requests_structured_metrics_output():
+    captured = {}
+    payload = StructuredMetricsPayload(data={"network": ({"host": "10.10.24.1", "port": 161},)})
+
+    class Service:
+        def __init__(self, params):
+            captured.update(params)
+
+        async def collect(self):
+            return payload
+
+    outcome = await ConfigurationCollectionPlugin(service_factory=Service).collect(
+        "10.10.24.1",
+        {"credential_id": "credential-1"},
+        TargetCollectionContext(
+            task_id="structured-config",
+            plugin_ref="network.config",
+            fence=1,
+            params={"model_id": "network", "executor_type": "protocol"},
+        ),
+    )
+
+    assert captured["_runtime_structured_metrics"] is True
+    assert outcome.status == CollectOutcomeStatus.SUCCESS
+    assert outcome.value is payload
+
+
+@pytest.mark.asyncio
 async def test_configuration_plugin_classifies_auth_failure_for_internal_rotation():
     class Service:
         def __init__(self, params):
             pass
 
         async def collect(self):
-            return (
-                'mysql_info{collect_status="failed",'
-                'collect_error="authentication failed"} 1'
-            )
+            return 'mysql_info{collect_status="failed",' 'collect_error="authentication failed"} 1'
 
-    outcome = await ConfigurationCollectionPlugin(
-        service_factory=Service
-    ).collect(
+    outcome = await ConfigurationCollectionPlugin(service_factory=Service).collect(
         "10.10.24.1",
         {"credential_id": "credential-1"},
         TargetCollectionContext(
@@ -195,14 +202,9 @@ async def test_snmp_no_response_rotates_without_auth_cooldown():
             pass
 
         async def collect(self):
-            return (
-                'network{collect_status="failed",'
-                'collect_error="No SNMP response received before timeout"} 1'
-            )
+            return 'network{collect_status="failed",' 'collect_error="No SNMP response received before timeout"} 1'
 
-    outcome = await ConfigurationCollectionPlugin(
-        service_factory=Service
-    ).collect(
+    outcome = await ConfigurationCollectionPlugin(service_factory=Service).collect(
         "10.10.24.1",
         {"credential_id": "credential-1"},
         TargetCollectionContext(
@@ -217,9 +219,7 @@ async def test_snmp_no_response_rotates_without_auth_cooldown():
 
 
 def test_factory_routes_configuration_and_monitor_to_one_contract():
-    factory = UnifiedPluginFactory(
-        configuration_service_factory=lambda params: params
-    )
+    factory = UnifiedPluginFactory(configuration_service_factory=lambda params: params)
     configuration = CollectionRequest(
         task_id="config",
         plugin_ref="mysql.config",

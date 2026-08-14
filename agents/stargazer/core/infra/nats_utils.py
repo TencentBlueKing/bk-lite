@@ -22,15 +22,14 @@ NATS 通用工具方法
         - 连接由 nats-py 在后台维护并无限自动重连；
         - 即使事件循环被阻塞数十秒，已建立的连接也不会像 2s 握手那样被打断。
 """
+
 import asyncio
 import json
 from typing import Any, List, Optional
 
-from nats.aio.client import Client as NATS
-from core.logger import logger
-
 from core.infra.nats import NATSConfig
-
+from core.logger import logger
+from nats.aio.client import Client as NATS
 
 # 进程级共享连接与连接锁
 _shared_nc: Optional[NATS] = None
@@ -120,10 +119,7 @@ async def get_shared_nats() -> NATS:
         new_nc = NATS()
         await new_nc.connect(**options)
         _shared_nc = new_nc
-        logger.info(
-            f"[NATS] shared connection established: servers={config.servers}, "
-            f"tls={config.tls_enabled}, user={config.user}"
-        )
+        logger.info(f"[NATS] shared connection established: servers={config.servers}, " f"tls={config.tls_enabled}, user={config.user}")
         return new_nc
 
 
@@ -217,9 +213,9 @@ async def nats_publish_lines(subject: str, lines: List[str]) -> int:
     if not lines:
         return 0
 
-    nc = await get_shared_nats()
     count = 0
     try:
+        nc = await get_shared_nats()
         for line in lines:
             await nc.publish(subject, line.encode("utf-8"))
             count += 1

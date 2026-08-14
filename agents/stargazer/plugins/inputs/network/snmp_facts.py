@@ -5,6 +5,7 @@
 
 import socket
 
+from plugins.inputs.network_topo.snmp_topo import SnmpTopo
 from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
@@ -23,8 +24,6 @@ from pysnmp.hlapi.asyncio import (
 from pysnmp.proto.rfc1902 import Null
 from pysnmp.proto.rfc1905 import EndOfMibView, endOfMibView
 from sanic.log import logger
-
-from plugins.inputs.network_topo.snmp_topo import SnmpTopo
 
 
 class DefineOid:
@@ -69,6 +68,13 @@ def _as_object_types(oids):
     return [ObjectType(ObjectIdentity(str(oid).lstrip("."))) for oid in oids]
 
 
+def _close_snmp_engine(engine) -> None:
+    dispatcher = getattr(engine, "transportDispatcher", None)
+    close = getattr(dispatcher, "closeDispatcher", None)
+    if callable(close):
+        close()
+
+
 class SnmpFacts:
     """
     SNMP 数据采集类，支持 SNMP v2 和 v3 协议。
@@ -90,8 +96,7 @@ class SnmpFacts:
         self.retries = int(kwargs.get("retries", 2))
         self.snmp_port = int(kwargs.get("snmp_port", 161))  # 默认 SNMP 端口为 161
         # 支持 has_network_topo 和 topo 两个参数名，保持向后兼容
-        self.has_network_topo = kwargs.get("has_network_topo", "False") == "True" or kwargs.get("topo",
-                                                                                                "False") == "true"
+        self.has_network_topo = kwargs.get("has_network_topo", "False") == "True" or kwargs.get("topo", "False") == "true"
         self.topology_protocols = self._normalize_topology_protocols(kwargs.get("topology_protocols"))
 
         # 校验参数
@@ -128,9 +133,7 @@ class SnmpFacts:
             if self.level == "authPriv" and not self.privacy:
                 raise ValueError("Privacy algorithm is required for authPriv level.")
             if len(self.authkey) < 8 or len(self.privkey) < 8:
-                raise ValueError(
-                    "authkey and privkey must be at least 8 characters long."
-                )
+                raise ValueError("authkey and privkey must be at least 8 characters long.")
         if not (1 <= self.snmp_port <= 65535):
             raise ValueError("Invalid SNMP port. Must be between 1 and 65535.")
 
@@ -195,45 +198,53 @@ class SnmpFacts:
         initial_roots = [str(oid).lstrip(".") for oid in oids]
         var_bind_table = []
 
-        while var_binds:
-            previous_var_binds = var_binds
-            error_indication, error_status, error_index, response_table = await nextCmd(
-                engine,
-                auth,
-                target,
-                context,
-                *var_binds,
-                lookupMib=False,
-            )
-            if error_indication:
-                return error_indication, error_status, error_index, var_bind_table
-            if error_status:
-                return error_indication, error_status, error_index, var_bind_table
+        try:
+            while var_binds:
+                previous_var_binds = var_binds
+                (
+                    error_indication,
+                    error_status,
+                    error_index,
+                    response_table,
+                ) = await nextCmd(
+                    engine,
+                    auth,
+                    target,
+                    context,
+                    *var_binds,
+                    lookupMib=False,
+                )
+                if error_indication:
+                    return error_indication, error_status, error_index, var_bind_table
+                if error_status:
+                    return error_indication, error_status, error_index, var_bind_table
 
-            row = list(response_table[0]) if response_table else []
-            if not row:
-                break
+                row = list(response_table[0]) if response_table else []
+                if not row:
+                    break
 
-            stop_flag = True
-            for col, var_bind in enumerate(row):
-                name, val = var_bind
-                if isinstance(val, Null):
-                    row[col] = (previous_var_binds[col][0], endOfMibView)
-                elif not lexicographic_mode and not _is_prefix_of(initial_roots[col], name):
-                    row[col] = (previous_var_binds[col][0], endOfMibView)
-                cell_val = row[col][1]
-                if cell_val is not endOfMibView and not isinstance(cell_val, EndOfMibView):
-                    stop_flag = False
+                stop_flag = True
+                for col, var_bind in enumerate(row):
+                    name, val = var_bind
+                    if isinstance(val, Null):
+                        row[col] = (previous_var_binds[col][0], endOfMibView)
+                    elif not lexicographic_mode and not _is_prefix_of(initial_roots[col], name):
+                        row[col] = (previous_var_binds[col][0], endOfMibView)
+                    cell_val = row[col][1]
+                    if cell_val is not endOfMibView and not isinstance(cell_val, EndOfMibView):
+                        stop_flag = False
 
-            if stop_flag:
-                break
+                if stop_flag:
+                    break
 
-            var_bind_table.append(row)
-            var_binds = row
+                var_bind_table.append(row)
+                var_binds = row
 
-        return None, 0, 0, var_bind_table
+            return None, 0, 0, var_bind_table
+        finally:
+            _close_snmp_engine(engine)
 
-    async def collect(self):
+    async def collect(self):  # noqa: C901
         """
         采集 SNMP 数据，包括系统信息、接口信息和 IP 信息。
         """
@@ -290,9 +301,9 @@ class SnmpFacts:
             results["system"]["ip_addr"] = self.host
             results["system"]["port"] = self.snmp_port
         except Exception as e:
-            raise RuntimeError(
-                f"Error during SNMP system information collection: {str(e)}"
-            )
+            raise RuntimeError(f"Error during SNMP system information collection: {str(e)}")
+        finally:
+            _close_snmp_engine(engine)
 
         # 采集接口和 IP 信息
         try:
@@ -338,24 +349,20 @@ class SnmpFacts:
                 if interface:
                     results["interfaces"].append(interface)
         except Exception as e:
-            raise RuntimeError(
-                f"Error during SNMP interface information collection: {str(e)}"
-            )
+            raise RuntimeError(f"Error during SNMP interface information collection: {str(e)}")
 
         return results
 
     async def probe(self):
         """最小只读 SNMP GET（sysName），用于 CredentialAttempt。"""
-        from core.collection.contracts import (
-            AccessProbeResult,
-            AccessProbeStatus,
-        )
+        from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 
         oid = DefineOid(dotprefix=True)
         # access_probe：固定 5 秒超时、重试 2 次（与正式采集 timeout 解耦）
+        engine = SnmpEngine()
         try:
             error_indication, error_status, _error_index, var_binds = await getCmd(
-                SnmpEngine(),
+                engine,
                 self._get_snmp_auth(),
                 self._transport_target(timeout=5, retries=2),
                 ContextData(),
@@ -367,6 +374,8 @@ class SnmpFacts:
                 status=AccessProbeStatus.NO_RESPONSE,
                 error_code="snmp_probe_error",
             )
+        finally:
+            _close_snmp_engine(engine)
         if error_indication:
             indication = str(error_indication).lower()
             if "timeout" in indication or "no response" in indication:
@@ -374,10 +383,7 @@ class SnmpFacts:
                     status=AccessProbeStatus.NO_RESPONSE,
                     error_code="protocol_no_response",
                 )
-            if any(
-                token in indication
-                for token in ("authorization", "authentication", "community")
-            ):
+            if any(token in indication for token in ("authorization", "authentication", "community")):
                 return AccessProbeResult(
                     status=AccessProbeStatus.AUTH_FAILED,
                     error_code="snmp_authorization_failed",
@@ -426,18 +432,13 @@ class SnmpFacts:
                     except Exception:  # noqa
                         import traceback
 
-                        logger.error(
-                            f"Network topology fact build failed: {traceback.format_exc()}"
-                        )
+                        logger.error(f"Network topology fact build failed: {traceback.format_exc()}")
                         model_data["network_topology_facts"] = []
-                    logger.info(
-                        f"Network topo collection completed, {len(topo_data)} records collected"
-                    )
+                    logger.info(f"Network topo collection completed, {len(topo_data)} records collected")
                 except Exception as topo_err:  # noqa
                     import traceback
-                    logger.error(
-                        f"Network topo collection failed: {traceback.format_exc()}"
-                    )
+
+                    logger.error(f"Network topo collection failed: {traceback.format_exc()}")
                     # 拓扑采集失败不影响设备采集结果，返回空列表
                     model_data["network_topo"] = []
                     model_data["network_topology_facts"] = []

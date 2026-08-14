@@ -62,8 +62,35 @@ async def test_scheduler_never_creates_more_than_global_window():
 
 
 @pytest.mark.asyncio
-async def test_three_thousand_targets_remain_bounded_by_two_hundred_window():
-    scheduler = CollectionScheduler(max_in_flight=200)
+async def test_scheduler_consumes_targets_only_after_a_slot_is_available():
+    scheduler = CollectionScheduler(max_in_flight=3)
+    release = asyncio.Event()
+    consumed = 0
+
+    def targets():
+        nonlocal consumed
+        for item in range(100):
+            consumed += 1
+            yield item
+
+    async def handle(item):
+        await release.wait()
+        return item
+
+    run = asyncio.create_task(scheduler.execute("lazy-targets", targets(), handle))
+    await asyncio.sleep(0.01)
+
+    assert consumed == 3
+    assert scheduler.active == 3
+
+    release.set()
+    assert await run == tuple(range(100))
+    await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_three_thousand_targets_remain_bounded_by_one_hundred_fifty_window():
+    scheduler = CollectionScheduler(max_in_flight=150)
     release = asyncio.Event()
 
     async def handle(item):
@@ -73,8 +100,8 @@ async def test_three_thousand_targets_remain_bounded_by_two_hundred_window():
     run = asyncio.create_task(scheduler.execute("three-thousand", range(3000), handle))
     await asyncio.sleep(0.05)
 
-    assert scheduler.active == 200
-    assert scheduler.peak == 200
+    assert scheduler.active == 150
+    assert scheduler.peak == 150
 
     release.set()
     results = await run

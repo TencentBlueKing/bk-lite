@@ -5,24 +5,22 @@ from core.collection.contracts import TargetExecutorSettings
 from core.collection.executor import TargetWorkerBudget
 
 
+def test_default_concurrency_matches_production_baseline():
+    assert DEFAULT_MAX_ACTIVE_TARGETS == 150
+    assert DEFAULT_TARGET_TASK_WINDOW == 150
+    assert TargetExecutorSettings().max_active_targets == 150
+    assert TargetExecutorSettings().target_task_window == 150
+
+
 def test_concurrency_limit_from_env_uses_default_and_zero_unlimited(monkeypatch):
     monkeypatch.delenv("MAX_ACTIVE_TARGETS", raising=False)
-    assert (
-        concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
-        == DEFAULT_MAX_ACTIVE_TARGETS
-    )
+    assert concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS) == DEFAULT_MAX_ACTIVE_TARGETS
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "3500")
-    assert (
-        concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
-        == 3500
-    )
+    assert concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS) == 3500
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "0")
-    assert (
-        concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
-        == 0
-    )
+    assert concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS) == 0
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "-1")
     with pytest.raises(ValueError, match="MAX_ACTIVE_TARGETS"):

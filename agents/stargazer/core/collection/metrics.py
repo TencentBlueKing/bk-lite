@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from collections import deque
+
 
 class CollectionMetrics:
-    def __init__(self) -> None:
+    def __init__(self, *, sample_capacity: int = 500) -> None:
+        if sample_capacity <= 0:
+            raise ValueError("sample_capacity must be greater than zero")
         self._counters: dict[str, float] = {
             "preflight_duration_seconds_total": 0.0,
             "preflight_total": 0,
@@ -21,10 +25,32 @@ class CollectionMetrics:
             "result_publish_failure_total": 0,
             "lease_takeover_total": 0,
             "credential_state_redis_error_total": 0,
+            "target_execution_error_total": 0,
         }
+        self._sample_capacity = int(sample_capacity)
+        self._samples: dict[str, deque[float]] = {}
 
     def increment(self, name: str, value: float = 1) -> None:
         self._counters[name] = self._counters.get(name, 0) + value
 
+    def observe(self, name: str, value: float) -> None:
+        samples = self._samples.get(name)
+        if samples is None:
+            samples = deque(maxlen=self._sample_capacity)
+            self._samples[name] = samples
+        samples.append(float(value))
+
     def snapshot(self) -> dict[str, float]:
-        return dict(self._counters)
+        snapshot = dict(self._counters)
+        for name, samples in self._samples.items():
+            ordered = sorted(samples)
+            snapshot[f"{name}_p95"] = _percentile(ordered, 0.95)
+            snapshot[f"{name}_p99"] = _percentile(ordered, 0.99)
+        return snapshot
+
+
+def _percentile(ordered: list[float], fraction: float) -> float:
+    if not ordered:
+        return 0.0
+    index = int((len(ordered) - 1) * fraction)
+    return ordered[index]

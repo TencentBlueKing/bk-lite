@@ -6,20 +6,17 @@ import importlib
 import re
 from typing import Any, Callable, Mapping
 
-from core.collection.runtime import CollectionRequest
-from core.collection.constants import (
-    AUTH_ERROR_WORDS,
-    SNMP_NO_RESPONSE_WORDS,
-    UNREACHABLE_ERROR_WORDS,
-)
+from core.collection.constants import AUTH_ERROR_WORDS, SNMP_NO_RESPONSE_WORDS, UNREACHABLE_ERROR_WORDS
 from core.collection.contracts import (
     AccessProbeResult,
     AccessProbeStatus,
+    CollectionPlugin,
     CollectOutcome,
     CollectOutcomeStatus,
-    CollectionPlugin,
+    StructuredMetricsPayload,
     TargetCollectionContext,
 )
+from core.collection.runtime import CollectionRequest
 
 
 class ConfigurationCollectionPlugin:
@@ -29,10 +26,7 @@ class ConfigurationCollectionPlugin:
 
     def __init__(self, service_factory: Callable | None = None) -> None:
         if service_factory is None:
-            raise ValueError(
-                "configuration plugin requires service_factory "
-                "(inject at composition root; core must not import service)"
-            )
+            raise ValueError("configuration plugin requires service_factory " "(inject at composition root; core must not import service)")
         self._service_factory = service_factory
 
     async def probe(
@@ -58,6 +52,7 @@ class ConfigurationCollectionPlugin:
         context: TargetCollectionContext,
     ) -> CollectOutcome:
         params = _target_params(target, credential, context)
+        params["_runtime_structured_metrics"] = True
         metrics = await self._service_factory(params).collect()
         error = _extract_collection_error(metrics)
         if not error:
@@ -66,6 +61,7 @@ class ConfigurationCollectionPlugin:
                 value=metrics,
             )
         return _failure_outcome(error, value=metrics)
+
 
 class MonitorCollectionPlugin:
     """业务监控插件；host remote 不做假 AccessProbe，由 Responder 回调裁决。"""
@@ -116,9 +112,7 @@ class MonitorCollectionPlugin:
     ) -> CollectOutcome:
         monitor_type = str(context.params.get("monitor_type") or "")
         if monitor_type == "host":
-            return await self._collect_host_remote(
-                target, credential, context
-            )
+            return await self._collect_host_remote(target, credential, context)
         factory = self._collector_factories.get(monitor_type)
         if factory is None:
             factory = _load_monitor_collector(monitor_type)
@@ -146,9 +140,7 @@ class MonitorCollectionPlugin:
         from core.collection.host_remote.adapter import submit_host_remote_collection
 
         params = _target_params(target, credential, context)
-        return await submit_host_remote_collection(
-            target, credential, context, params=params
-        )
+        return await submit_host_remote_collection(target, credential, context, params=params)
 
 
 class UnifiedPluginFactory:
@@ -161,9 +153,7 @@ class UnifiedPluginFactory:
     ) -> None:
         if monitor_collector_factories is None:
             monitor_collector_factories = _load_enterprise_collector_factories()
-        self._monitor_collector_factories = dict(
-            monitor_collector_factories or {}
-        )
+        self._monitor_collector_factories = dict(monitor_collector_factories or {})
         self._configuration_service_factory = configuration_service_factory
 
     def resolve(self, request: CollectionRequest) -> CollectionPlugin:
@@ -171,9 +161,7 @@ class UnifiedPluginFactory:
         if family == "monitor":
             return MonitorCollectionPlugin(self._monitor_collector_factories)
         if family == "configuration":
-            return ConfigurationCollectionPlugin(
-                self._configuration_service_factory
-            )
+            return ConfigurationCollectionPlugin(self._configuration_service_factory)
         raise ValueError(f"unsupported plugin_family: {family}")
 
 
@@ -207,20 +195,15 @@ def _target_params(
 
 
 def _extract_collection_error(value: Any) -> str:
+    if isinstance(value, StructuredMetricsPayload):
+        return value.error
     if value is None:
         return "empty collection result"
     if isinstance(value, dict):
-        status = str(
-            value.get("status") or value.get("collect_status") or ""
-        ).lower()
+        status = str(value.get("status") or value.get("collect_status") or "").lower()
         if status not in {"failed", "error"}:
             return ""
-        return str(
-            value.get("error")
-            or value.get("collect_error")
-            or value.get("cmdb_collect_error")
-            or "collection failed"
-        )
+        return str(value.get("error") or value.get("collect_error") or value.get("cmdb_collect_error") or "collection failed")
     text = str(value)
     if not any(
         marker in text

@@ -13,6 +13,7 @@ from core.collection.contracts import (
 from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
 from core.collection.executor import TargetCollectionExecutor, TargetWorkerBudget
 from core.collection.metrics import CollectionMetrics
+from core.collection.result_publisher import BufferedResultPublisher
 from core.collection.runtime import CollectionRequest, RunLease
 
 
@@ -76,6 +77,13 @@ class RecordingReachablePreflight:
 
     async def check(self, target, request, *, timeout_seconds, plan=None):
         self.calls.append((target, request, timeout_seconds))
+        return PreflightResult(status=PreflightStatus.REACHABLE)
+
+
+class FirstTargetBrokenPreflight:
+    async def check(self, target, request, *, timeout_seconds, plan=None):
+        if target == "10.10.24.1":
+            raise RuntimeError("unexpected target failure")
         return PreflightResult(status=PreflightStatus.REACHABLE)
 
 
@@ -157,6 +165,72 @@ async def test_one_target_publish_failure_does_not_cancel_remaining_targets():
     assert summary.publish_failed == 0
     assert summary.publish_unknown == 1
     assert summary.has_errors is True
+
+
+@pytest.mark.asyncio
+async def test_unexpected_target_failure_is_reported_without_cancelling_run():
+    publisher = RecordingPublisher()
+    executor = TargetCollectionExecutor(
+        preflight=FirstTargetBrokenPreflight(),
+        plugin=RecordingPlugin(),
+        publisher=publisher,
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="target-error-isolated",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2"),
+        credentials=({"credential_id": "credential-1"},),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.collection_failed == 1
+    assert summary.collection_succeeded == 1
+    assert [item[1].target for item in publisher.results] == [
+        "10.10.24.1",
+        "10.10.24.2",
+    ]
+    assert publisher.results[0][1].error_code == "target_execution_error"
+
+
+@pytest.mark.asyncio
+async def test_slow_publish_does_not_hold_target_collection_window():
+    release = asyncio.Event()
+
+    class SlowDelegate:
+        async def publish_batch(self, items):
+            await release.wait()
+
+    plugin = RecordingPlugin()
+    publisher = BufferedResultPublisher(SlowDelegate(), capacity=2, batch_size=2, flush_interval_seconds=0.01)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=plugin,
+        publisher=publisher,
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="publish-does-not-hold-target-window",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2"),
+        credentials=({"credential_id": "credential-1"},),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    run = asyncio.create_task(executor.execute(request, lease))
+    for _ in range(100):
+        if len(plugin.calls) == 2:
+            break
+        await asyncio.sleep(0.001)
+
+    assert len(plugin.calls) == 2
+    assert run.done() is False
+    release.set()
+    summary = await run
+    assert summary.publish_succeeded == 2
+    await publisher.shutdown()
 
 
 class CredentialProtocolProbe:
@@ -445,9 +519,7 @@ async def test_protocol_no_response_stops_after_default_attempt_limit():
         task_id="collect-no-response-limit",
         plugin_ref="snmp.config",
         targets=("10.10.24.1",),
-        credentials=tuple(
-            {"credential_id": f"credential-{index}"} for index in range(1, 6)
-        ),
+        credentials=tuple({"credential_id": f"credential-{index}"} for index in range(1, 6)),
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -520,9 +592,7 @@ async def test_access_probe_failure_logs_target_and_credential_id(monkeypatch):
         task_id="probe-log",
         plugin_ref="network.config",
         targets=("10.10.69.240",),
-        credentials=(
-            {"credential_id": "cred-snmp-1", "community": "secret-community"},
-        ),
+        credentials=({"credential_id": "cred-snmp-1", "community": "secret-community"},),
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -624,9 +694,7 @@ async def test_access_probe_timeout_rotates_to_next_credential():
         (AccessProbeStatus.RATE_LIMITED, "rate_limited", "deferred"),
     ],
 )
-async def test_target_scoped_access_probe_result_stops_credential_rotation(
-    probe_status, error_code, result_status
-):
+async def test_target_scoped_access_probe_result_stops_credential_rotation(probe_status, error_code, result_status):
     publisher = RecordingPublisher()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
@@ -1033,19 +1101,18 @@ async def test_multiple_runs_share_one_global_target_task_window():
 
 
 @pytest.mark.asyncio
-async def test_worker_failure_cancels_siblings_before_releasing_budget():
-    cancelled = asyncio.Event()
+async def test_target_failure_keeps_siblings_running_and_releases_budget_after_run():
+    sibling_started = asyncio.Event()
+    release_sibling = asyncio.Event()
     budget = TargetWorkerBudget(2)
 
     class FailingPreflight:
         async def check(self, target, request, *, timeout_seconds, plan=None):
             if target.endswith("1"):
                 raise RuntimeError("probe failed")
-            try:
-                await asyncio.Event().wait()
-            except asyncio.CancelledError:
-                cancelled.set()
-                raise
+            sibling_started.set()
+            await release_sibling.wait()
+            return PreflightResult(status=PreflightStatus.REACHABLE)
 
     executor = TargetCollectionExecutor(
         preflight=FailingPreflight(),
@@ -1067,10 +1134,14 @@ async def test_worker_failure_cancels_siblings_before_releasing_budget():
         expires_at=999999,
     )
 
-    with pytest.raises(RuntimeError, match="probe failed"):
-        await executor.execute(request, lease)
+    run = asyncio.create_task(executor.execute(request, lease))
+    await sibling_started.wait()
+    assert run.done() is False
+    release_sibling.set()
+    summary = await run
 
-    assert cancelled.is_set()
+    assert summary.collection_failed == 1
+    assert summary.collection_succeeded == 1
     assert budget.active == 0
 
 

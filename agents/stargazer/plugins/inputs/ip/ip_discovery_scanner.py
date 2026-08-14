@@ -1,13 +1,12 @@
 # -- coding: utf-8 --
 """IP 发现 collector：按子网范围 ICMP/TCP 探活，返回活跃 IP（含 best-effort MAC）。"""
+
 import asyncio
 import ipaddress
 import json
+import re
 
-from core.collection.contracts import (
-    AccessProbeResult,
-    AccessProbeStatus,
-)
+from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 
 DEFAULT_PORTS = [22, 80, 443, 3389]
 CONCURRENCY = 50
@@ -51,7 +50,7 @@ class IPDiscoveryScanner:
 
     def _build_targets(self, explicit_targets) -> list[dict]:
         targets = []
-        for ip in self._normalize_json_list(explicit_targets) if isinstance(explicit_targets, str) else explicit_targets:
+        for ip in (self._normalize_json_list(explicit_targets) if isinstance(explicit_targets, str) else explicit_targets):
             targets.append({"ip": str(ip), "subnet_id": "", "subnet_cidr": ""})
 
         for subnet in self.subnets:
@@ -62,11 +61,7 @@ class IPDiscoveryScanner:
                 network = ipaddress.ip_network(cidr, strict=False)
             except ValueError:
                 continue
-            reserved = {
-                str(item).strip()
-                for item in subnet.get("reserved_addresses", [])
-                if str(item).strip()
-            }
+            reserved = {str(item).strip() for item in subnet.get("reserved_addresses", []) if str(item).strip()}
             gateway = str(subnet.get("gateway") or "").strip()
             if gateway:
                 reserved.add(gateway)
@@ -104,22 +99,35 @@ class IPDiscoveryScanner:
 
     async def _icmp_probe(self, ip: str, timeout: float) -> bool:
         from icmplib import async_ping
+
         try:
             host = await async_ping(ip, count=1, timeout=timeout, privileged=True)
             return host.is_alive
         except Exception:
             return False
 
-    def _read_mac(self, ip: str) -> str:
+    async def _read_mac(self, ip: str) -> str:
         """best-effort：仅同二层可得（读 ARP 表）。跨三层返回空。规格 §13.3。"""
+        process = None
         try:
-            import subprocess
-            out = subprocess.run(["arp", "-n", ip], capture_output=True, text=True, timeout=2).stdout
-            for tok in out.split():
-                if ":" in tok and len(tok) == 17:
-                    return tok
+            process = await asyncio.create_subprocess_exec(
+                "arp",
+                "-n",
+                ip,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _stderr = await asyncio.wait_for(process.communicate(), timeout=2)
+            if process.returncode not in (None, 0):
+                return ""
+            match = re.search(rb"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", stdout)
+            return match.group(0).decode("ascii") if match else ""
+        except TimeoutError:
+            if process is not None:
+                process.kill()
+                await process.communicate()
         except Exception:
-            pass
+            return ""
         return ""
 
     async def _probe_one(self, target: dict, sem: asyncio.Semaphore):
@@ -128,7 +136,7 @@ class IPDiscoveryScanner:
             alive = (await self._tcp_alive(ip)) if self.scan_method == "tcp" else (await self._icmp_probe(ip, self.timeout))
         if not alive:
             return None
-        mac = await asyncio.to_thread(self._read_mac, ip)
+        mac = await self._read_mac(ip)
         if not target.get("subnet_id"):
             return {"ip": ip, "mac": mac}
         return {

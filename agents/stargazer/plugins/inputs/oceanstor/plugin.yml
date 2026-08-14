@@ -15,8 +15,8 @@ metadata:
 executors:
   protocol:
     type: protocol
-    execution_mode: sync
-    capacity_group: sync_sdk
+    execution_mode: async
+    capacity_group: default
     timeout: 120
     collector:
       module: plugins.inputs.oceanstor.oceanstor_info

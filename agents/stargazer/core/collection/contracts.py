@@ -9,6 +9,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
+from core.collection.constants import DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
 from core.collection.enums import AccessProbeStatus, CollectOutcomeStatus, PreflightStatus
 from core.collection.runtime import CollectionRequest, RunLease
 
@@ -23,8 +24,11 @@ __all__ = [
     "PreflightProbe",
     "PreflightResult",
     "PreflightStatus",
+    "PublishReceipt",
     "ResultPublisher",
+    "ResultSink",
     "RunSummary",
+    "StructuredMetricsPayload",
     "TargetCollectionContext",
     "TargetCollectionResult",
     "TargetExecutorSettings",
@@ -53,6 +57,14 @@ class CollectOutcome:
     value: Any = None
     error_code: str = ""
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class StructuredMetricsPayload:
+    """统一运行时内部的结构化配置采集指标，避免中间文本往返转换。"""
+
+    data: Mapping[str, Any]
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -98,19 +110,14 @@ class RunSummary:
 
     @property
     def has_errors(self) -> bool:
-        return bool(
-            self.collection_failed
-            or self.unreachable
-            or self.publish_failed
-            or self.publish_unknown
-        )
+        return bool(self.collection_failed or self.unreachable or self.publish_failed or self.publish_unknown)
 
 
 @dataclass(frozen=True)
 class TargetExecutorSettings:
     # 0 = 不限制；默认与环境变量 DEFAULT 对齐，运行时由 ApplicationSettings.from_env 注入
-    max_active_targets: int = 200
-    target_task_window: int = 200
+    max_active_targets: int = DEFAULT_MAX_ACTIVE_TARGETS
+    target_task_window: int = DEFAULT_TARGET_TASK_WINDOW
     connect_timeout_seconds: float = 15.0
     plugin_timeout_seconds: float = 60.0
     publish_guard_seconds: float = 30.0
@@ -144,7 +151,7 @@ class PreflightProbe(Protocol):
         *,
         timeout_seconds: float,
     ) -> PreflightResult:
-        ...
+        raise NotImplementedError
 
 
 class CollectionPlugin(Protocol):
@@ -156,7 +163,7 @@ class CollectionPlugin(Protocol):
         *,
         timeout_seconds: float,
     ) -> AccessProbeResult:
-        ...
+        raise NotImplementedError
 
     async def collect(
         self,
@@ -164,7 +171,7 @@ class CollectionPlugin(Protocol):
         credential: Mapping[str, Any],
         context: TargetCollectionContext,
     ) -> CollectOutcome:
-        ...
+        raise NotImplementedError
 
 
 class AccessProbe(Protocol):
@@ -176,17 +183,37 @@ class AccessProbe(Protocol):
         *,
         timeout_seconds: float,
     ) -> AccessProbeResult:
-        ...
+        raise NotImplementedError
 
 
 class ResultPublisher(Protocol):
-    async def publish(
+    """执行器依赖的有界发布队列 interface。"""
+
+    async def enqueue(
         self,
         request: CollectionRequest,
         result: TargetCollectionResult,
         lease: RunLease,
-    ) -> None:
-        ...
+    ) -> PublishReceipt:
+        raise NotImplementedError
+
+
+class ResultSink(Protocol):
+    """发布队列内部依赖的最终投递 interface。"""
+
+    async def publish_batch(
+        self,
+        items,
+    ) -> Mapping[str, BaseException | None]:
+        raise NotImplementedError
+
+
+class PublishReceipt(Protocol):
+    def done(self) -> bool:
+        raise NotImplementedError
+
+    async def wait(self) -> None:
+        raise NotImplementedError
 
 
 def build_collection_result_id(

@@ -14,13 +14,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-
-from core.collection.contracts import (
-    AccessProbeResult,
-    AccessProbeStatus,
-    CollectOutcomeStatus,
-    TargetCollectionContext,
-)
+from core.collection.contracts import AccessProbeResult, AccessProbeStatus, CollectOutcomeStatus, TargetCollectionContext
 from core.collection.plugins import ConfigurationCollectionPlugin
 from core.plugin.executor import PluginExecutor
 from core.plugin.yaml_reader import ExecutorConfig
@@ -48,25 +42,17 @@ async def _heartbeat_during(awaitable, minimum_ticks: int = 5):
         assert ticks >= minimum_ticks, "event_loop_stalled"
 
 
-NATIVE_PROTOCOL_MODULES = {
-    "mysql": "plugins.inputs.mysql.mysql_info",
-    "postgresql": "plugins.inputs.postgresql.postgresql_info",
-    "oracle": "plugins.inputs.oracle.oracle_info",
-    "mssql": "plugins.inputs.mssql.mssql_info",
-    "influxdb": "plugins.inputs.influxdb.influxdb_info",
-    "oceanstor": "plugins.inputs.oceanstor.oceanstor_info",
-    "fusioninsight": "plugins.inputs.fusioninsight.fusioninsight_info",
-    "network": "plugins.inputs.network.snmp_facts",
-    "network_topo": "plugins.inputs.network_topo.snmp_topo",
-}
+PLUGIN_ROOT = Path(__file__).parents[1] / "plugins" / "inputs"
 
-WRAPPED_PROTOCOL_MODULES = {
-    "aliyun": "plugins.inputs.aliyun.aliyun_info",
-    "qcloud": "plugins.inputs.qcloud.qcloud_info",
-    "hwcloud": "plugins.inputs.hwcloud.huaweicloud_info",
-    "vmware_vc": "plugins.inputs.vmware_vc.vmware_info",
-    "network_config_file": "plugins.inputs.network_config_file.network_config_file_info",
-}
+
+def _async_protocol_collectors():
+    for config_path in sorted(PLUGIN_ROOT.glob("*/plugin.yml")):
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        protocol = (config.get("executors") or {}).get("protocol") or {}
+        if protocol.get("execution_mode") != "async":
+            continue
+        collector = protocol.get("collector") or {}
+        yield config_path.parent.name, collector.get("module"), collector.get("class")
 
 
 @pytest.mark.asyncio
@@ -187,91 +173,15 @@ async def test_configuration_plugin_probe_flow_with_native_postgresql(monkeypatc
     assert result.evidence == {"server_version": "16.2"}
 
 
-def test_native_protocol_plugins_have_no_to_thread_wrappers():
-    missing = []
-    still_wrapped = []
-    for model, module_name in NATIVE_PROTOCOL_MODULES.items():
-        try:
-            module = importlib.import_module(module_name)
-        except ModuleNotFoundError:
-            missing.append(model)
-            continue
-        source = inspect.getsource(module)
-        if "asyncio.to_thread" in source:
-            still_wrapped.append(model)
-    assert missing == []
-    assert still_wrapped == [], f"still using to_thread: {still_wrapped}"
+def test_native_protocol_plugins_expose_coroutine_collection_interface():
+    violations = []
+    discovered = []
+    for model, module_name, class_name in _async_protocol_collectors():
+        discovered.append(model)
+        module = importlib.import_module(module_name)
+        collector_class = getattr(module, class_name)
+        if not inspect.iscoroutinefunction(collector_class.list_all_resources):
+            violations.append(model)
 
-
-def test_wrapped_protocol_plugins_still_use_explicit_to_thread():
-    """云/VMware/netmiko 短期保留合规包装异步。"""
-    missing_wrapper = []
-    for model, module_name in WRAPPED_PROTOCOL_MODULES.items():
-        try:
-            module = importlib.import_module(module_name)
-        except ModuleNotFoundError:
-            # 精简环境可能缺厂商 SDK；跳过
-            continue
-        source = inspect.getsource(module)
-        if "asyncio.to_thread" not in source:
-            missing_wrapper.append(model)
-    assert missing_wrapper == []
-
-
-def test_registered_async_matrix_snapshot():
-    """盘点注册插件：原生 / 包装 / job(NATS)。"""
-    plugin_root = Path(__file__).parents[1] / "plugins" / "inputs"
-    native, wrapped, job, unknown = [], [], [], []
-
-    for config_path in sorted(plugin_root.glob("*/plugin.yml")):
-        model = config_path.parent.name
-        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-        default = config.get("default_executor") or "protocol"
-        executors = config.get("executors") or {}
-        executor = executors.get(default) or next(iter(executors.values()), {})
-        executor_type = (executor or {}).get("type")
-        collector = (executor or {}).get("collector") or {}
-        module_name = collector.get("module")
-        if executor_type == "job" or module_name == "plugins.script_executor":
-            job.append(model)
-            continue
-        if not module_name:
-            unknown.append(model)
-            continue
-        try:
-            module = importlib.import_module(module_name)
-            source = inspect.getsource(module)
-        except Exception:
-            unknown.append(model)
-            continue
-        if "asyncio.to_thread" in source:
-            wrapped.append(model)
-        else:
-            native.append(model)
-
-    # 本轮改造目标至少进入 native
-    for expected in (
-        "mysql",
-        "postgresql",
-        "oracle",
-        "mssql",
-        "influxdb",
-        "oceanstor",
-        "fusioninsight",
-        "network",
-        "network_topo",
-        "gbase8a",
-        "greenplum",
-        "kingbase",
-        "opengauss",
-        "vastbase",
-    ):
-        assert expected in native or expected in job, f"{expected} not native yet: native={native}"
-
-    # 合规包装残留
-    for expected in ("aliyun", "qcloud", "hwcloud", "vmware_vc", "network_config_file"):
-        assert expected in wrapped or expected in unknown, f"{expected} should remain wrapped"
-
-    # 产出可人工验收的摘要（断言侧也保留结构）
-    assert len(job) >= 30
-    assert len(native) >= 10
+    assert discovered
+    assert violations == []

@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import os
 import socket
+import threading
 from dataclasses import dataclass
 
 from core.collection.constants import DEFAULT_COLLECTION_REDIS_PREFIX, DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
 from core.collection.contracts import TargetExecutorSettings
 from core.collection.credential_policy import CredentialPolicy
 from core.collection.execution_plan import ExecutionPlanResolver, TimeoutDefaults
-from core.collection.executor import TargetActivityTracker, TargetCollectionExecutor, TargetWorkerBudget, unlimited_target_gate
+from core.collection.executor import TargetActivityTracker, TargetCollectionExecutor
 from core.collection.metrics import CollectionMetrics
 from core.collection.plugins import UnifiedPluginFactory
 from core.collection.preflight import AsyncProtocolPreflight, reachability_enabled_from_env
@@ -33,6 +34,15 @@ def concurrency_limit_from_env(name: str, default: int) -> int:
     if value < 0:
         raise ValueError(f"{name} must be >= 0 (0 means unlimited)")
     return value
+
+
+def _open_file_descriptor_count() -> int:
+    for path in ("/proc/self/fd", "/dev/fd"):
+        try:
+            return len(os.listdir(path))
+        except OSError:
+            continue
+    return -1
 
 
 @dataclass(frozen=True)
@@ -65,21 +75,11 @@ class CollectionApplicationSettings:
     def from_env(cls) -> CollectionApplicationSettings:
         return cls(
             max_active_runs=int(os.getenv("MAX_ACTIVE_RUNS", "16")),
-            max_active_targets=concurrency_limit_from_env(
-                "MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS
-            ),
-            target_task_window=concurrency_limit_from_env(
-                "TARGET_TASK_WINDOW", DEFAULT_TARGET_TASK_WINDOW
-            ),
-            connect_timeout_seconds=float(
-                os.getenv("PREFLIGHT_TIMEOUT", os.getenv("CONNECT_TIMEOUT", "15"))
-            ),
-            probe_timeout_seconds=float(
-                os.getenv("PROBE_TIMEOUT", os.getenv("CONNECT_TIMEOUT", "15"))
-            ),
-            plugin_timeout_seconds=float(
-                os.getenv("COLLECTION_TIMEOUT", os.getenv("PLUGIN_TIMEOUT", "60"))
-            ),
+            max_active_targets=concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS),
+            target_task_window=concurrency_limit_from_env("TARGET_TASK_WINDOW", DEFAULT_TARGET_TASK_WINDOW),
+            connect_timeout_seconds=float(os.getenv("PREFLIGHT_TIMEOUT", os.getenv("CONNECT_TIMEOUT", "15"))),
+            probe_timeout_seconds=float(os.getenv("PROBE_TIMEOUT", os.getenv("CONNECT_TIMEOUT", "15"))),
+            plugin_timeout_seconds=float(os.getenv("COLLECTION_TIMEOUT", os.getenv("PLUGIN_TIMEOUT", "60"))),
             publish_timeout_seconds=float(os.getenv("PUBLISH_TIMEOUT", "30")),
             lease_ttl_seconds=float(os.getenv("RUN_LEASE_TTL", "600")),
             lease_heartbeat_seconds=float(os.getenv("RUN_LEASE_HEARTBEAT", "30")),
@@ -109,43 +109,28 @@ class CollectionApplication:
         if plugin_factory is None:
             from service.collection_service import CollectionService
 
-            plugin_factory = UnifiedPluginFactory(
-                configuration_service_factory=CollectionService
-            )
+            plugin_factory = UnifiedPluginFactory(configuration_service_factory=CollectionService)
         self._plugin_factory = plugin_factory
         self._preflight = preflight or AsyncProtocolPreflight()
+        self._metrics = CollectionMetrics()
         if publisher is None:
             from core.infra.credential_state_cache import CredentialStateCache
 
-            publisher = NatsResultPublisher(
-                result_event_sink=CredentialStateCache.append_result_event
-            )
-        publish_capacity = (
-            self.settings.target_task_window
-            or self.settings.max_active_targets
-            or DEFAULT_TARGET_TASK_WINDOW
-        )
+            publisher = NatsResultPublisher(result_event_sink=CredentialStateCache.append_result_event)
+        publish_capacity = self.settings.target_task_window or self.settings.max_active_targets or DEFAULT_TARGET_TASK_WINDOW
         self._publisher = (
             publisher
             if isinstance(publisher, BufferedResultPublisher)
-            else BufferedResultPublisher(publisher, capacity=publish_capacity)
+            else BufferedResultPublisher(publisher, capacity=publish_capacity, metrics=self._metrics)
         )
-        self._execution_plan_resolver = (
-            execution_plan_resolver
-            or ExecutionPlanResolver(
-                defaults=TimeoutDefaults(
-                    preflight_seconds=self.settings.connect_timeout_seconds,
-                    probe_seconds=self.settings.probe_timeout_seconds,
-                    collection_seconds=self.settings.plugin_timeout_seconds,
-                    publish_seconds=self.settings.publish_timeout_seconds,
-                ),
-                preflight_enabled=self.settings.access_probe_enabled,
-            )
-        )
-        self._target_semaphore = (
-            unlimited_target_gate()
-            if self.settings.max_active_targets <= 0
-            else asyncio.Semaphore(self.settings.max_active_targets)
+        self._execution_plan_resolver = execution_plan_resolver or ExecutionPlanResolver(
+            defaults=TimeoutDefaults(
+                preflight_seconds=self.settings.connect_timeout_seconds,
+                probe_seconds=self.settings.probe_timeout_seconds,
+                collection_seconds=self.settings.plugin_timeout_seconds,
+                publish_seconds=self.settings.publish_timeout_seconds,
+            ),
+            preflight_enabled=self.settings.access_probe_enabled,
         )
         self._target_activity = TargetActivityTracker()
         scheduler_limits = tuple(
@@ -157,18 +142,13 @@ class CollectionApplication:
             if limit > 0
         )
         self._scheduler = CollectionScheduler(
-            max_in_flight=min(scheduler_limits) if scheduler_limits else 1_000_000
+            max_in_flight=min(scheduler_limits) if scheduler_limits else 1_000_000,
+            metrics=self._metrics,
         )
-        self._worker_budget = TargetWorkerBudget(self.settings.target_task_window)
-        self._metrics = CollectionMetrics()
         self._submission_counts: dict[str, int] = {}
-        self._loop_lag = EventLoopLagMonitor(
-            interval_seconds=float(os.getenv("EVENT_LOOP_LAG_INTERVAL", "1"))
-        )
+        self._loop_lag = EventLoopLagMonitor(interval_seconds=float(os.getenv("EVENT_LOOP_LAG_INTERVAL", "1")))
         prefix = os.getenv("COLLECTION_REDIS_PREFIX", DEFAULT_COLLECTION_REDIS_PREFIX)
-        self._credentials = RedisCredentialStateStore(
-            redis_client, key_prefix=f"{prefix}:credential"
-        )
+        self._credentials = RedisCredentialStateStore(redis_client, key_prefix=f"{prefix}:credential")
         self._credential_policy = CredentialPolicy(store=self._credentials)
         self._target_executor_settings = TargetExecutorSettings(
             max_active_targets=self.settings.max_active_targets,
@@ -203,9 +183,11 @@ class CollectionApplication:
         return submission
 
     async def shutdown(self) -> None:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.settings.shutdown_grace_seconds
         await self.runtime.shutdown(grace_seconds=self.settings.shutdown_grace_seconds)
         await self._scheduler.shutdown()
-        await self._publisher.shutdown()
+        await self._publisher.shutdown(grace_seconds=max(0.0, deadline - loop.time()))
         await self._loop_lag.stop()
 
     def start_observability(self) -> None:
@@ -218,9 +200,7 @@ class CollectionApplication:
         plan = self._execution_plan_resolver.resolve(request)
         # 有 probe 且未显式关闭时启用廉价 AccessProbe；否则 CredentialAttempt=collect
         access_probe = None
-        if callable(getattr(plugin, "probe", None)) and getattr(
-            plugin, "supports_access_probe", True
-        ):
+        if callable(getattr(plugin, "probe", None)) and getattr(plugin, "supports_access_probe", True):
             access_probe = plugin
         executor = TargetCollectionExecutor(
             preflight=self._preflight,
@@ -228,8 +208,6 @@ class CollectionApplication:
             plugin=plugin,
             publisher=self._publisher,
             credential_policy=self._credential_policy,
-            target_semaphore=self._target_semaphore,
-            worker_budget=self._worker_budget,
             activity_tracker=self._target_activity,
             metrics=self._metrics,
             settings=self._target_executor_settings,
@@ -258,16 +236,12 @@ class CollectionApplication:
             "target_task_window": self.settings.target_task_window,
             "event_loop_lag_seconds": self._loop_lag.latest_seconds,
             "event_loop_lag_p99_seconds": self._loop_lag.p99_seconds,
+            "thread_count": threading.active_count(),
+            "open_file_descriptors": _open_file_descriptor_count(),
             "submissions": dict(self._submission_counts),
-            "redis_pool_wait_seconds_total": float(
-                getattr(self._redis, "pool_wait_seconds_total", 0.0) or 0.0
-            ),
-            "redis_pool_timeout_total": float(
-                getattr(self._redis, "pool_timeout_total", 0) or 0
-            ),
-            "redis_pool_exhaustion_total": float(
-                getattr(self._redis, "pool_exhaustion_total", 0) or 0
-            ),
+            "redis_pool_wait_seconds_total": float(getattr(self._redis, "pool_wait_seconds_total", 0.0) or 0.0),
+            "redis_pool_timeout_total": float(getattr(self._redis, "pool_timeout_total", 0) or 0),
+            "redis_pool_exhaustion_total": float(getattr(self._redis, "pool_exhaustion_total", 0) or 0),
             **self._metrics.snapshot(),
         }
 

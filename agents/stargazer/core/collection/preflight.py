@@ -30,11 +30,7 @@ class AsyncProtocolPreflight:
     ) -> None:
         self._policy = policy or OutboundTargetPolicy()
         self._remote_probe = remote_probe
-        self._reachability_enabled = (
-            reachability_enabled_from_env()
-            if reachability_enabled is None
-            else bool(reachability_enabled)
-        )
+        self._reachability_enabled = reachability_enabled_from_env() if reachability_enabled is None else bool(reachability_enabled)
 
     async def check(  # noqa: C901
         self,
@@ -44,6 +40,17 @@ class AsyncProtocolPreflight:
         timeout_seconds: float,
     ) -> PreflightResult:
         kind = str(request.params.get("preflight_kind") or "").lower()
+        host, port, use_tls = self._endpoint(target, request, kind)
+        connect_host = host
+        if not request.params.get("target_is_logical"):
+            try:
+                connect_host = await self._policy.resolve_allowed(host, port or 0)
+            except (OutboundTargetRejected, socket.gaierror) as error:
+                self._log_outbound_skip(request, target, error)
+                return PreflightResult(
+                    status=PreflightStatus.UNREACHABLE,
+                    error_code="outbound_target_rejected",
+                )
         if kind == "cloud":
             return PreflightResult(
                 status=PreflightStatus.UNKNOWN,
@@ -52,31 +59,14 @@ class AsyncProtocolPreflight:
         if kind == "skip":
             return PreflightResult(status=PreflightStatus.REACHABLE)
         if kind == "outbound_only":
-            try:
-                await self._policy.resolve_allowed(target)
-            except (OutboundTargetRejected, socket.gaierror) as error:
-                self._log_outbound_skip(request, target, error)
-                return PreflightResult(
-                    status=PreflightStatus.UNREACHABLE,
-                    error_code="outbound_target_rejected",
-                )
             return PreflightResult(
                 status=PreflightStatus.UNKNOWN,
                 detail="outbound allowed; reachability deferred to credential attempt",
             )
         if kind == "remote":
-            try:
-                await self._policy.resolve_allowed(target)
-            except (OutboundTargetRejected, socket.gaierror) as error:
-                self._log_outbound_skip(request, target, error)
-                return PreflightResult(
-                    status=PreflightStatus.UNREACHABLE,
-                    error_code="outbound_target_rejected",
-                )
             if not self._reachability_enabled:
                 logger.info(
-                    "event=preflight_reachability_skipped task_id=%s "
-                    "target=%s kind=remote",
+                    "event=preflight_reachability_skipped task_id=%s " "target=%s kind=remote",
                     request.task_id,
                     target,
                 )
@@ -84,21 +74,11 @@ class AsyncProtocolPreflight:
                     status=PreflightStatus.UNKNOWN,
                     detail="outbound allowed; remote probe disabled",
                 )
-            node_id = str(
-                request.params.get("ansible_node_id")
-                or request.params.get("node_id")
-                or ""
-            ).strip()
+            node_id = str(request.params.get("ansible_node_id") or request.params.get("node_id") or "").strip()
             if self._remote_probe is not None and node_id:
-                available = await self._remote_probe(
-                    node_id, timeout_seconds=timeout_seconds
-                )
+                available = await self._remote_probe(node_id, timeout_seconds=timeout_seconds)
                 return PreflightResult(
-                    status=(
-                        PreflightStatus.UNKNOWN
-                        if available
-                        else PreflightStatus.UNREACHABLE
-                    ),
+                    status=(PreflightStatus.UNKNOWN if available else PreflightStatus.UNREACHABLE),
                     error_code=("" if available else "remote_responder_unavailable"),
                 )
             try:
@@ -108,24 +88,10 @@ class AsyncProtocolPreflight:
             except Exception:
                 connected = False
             return PreflightResult(
-                status=(
-                    PreflightStatus.UNKNOWN
-                    if connected
-                    else PreflightStatus.UNREACHABLE
-                ),
+                status=(PreflightStatus.UNKNOWN if connected else PreflightStatus.UNREACHABLE),
                 error_code="" if connected else "remote_responder_unavailable",
             )
         if kind == "none":
-            if request.params.get("target_is_logical"):
-                return PreflightResult(status=PreflightStatus.REACHABLE)
-            try:
-                await self._policy.resolve_allowed(target)
-            except (OutboundTargetRejected, socket.gaierror) as error:
-                self._log_outbound_skip(request, target, error)
-                return PreflightResult(
-                    status=PreflightStatus.UNREACHABLE,
-                    error_code="outbound_target_rejected",
-                )
             return PreflightResult(status=PreflightStatus.REACHABLE)
         if kind in {"udp", "snmp"}:
             return PreflightResult(
@@ -133,17 +99,14 @@ class AsyncProtocolPreflight:
                 detail="UDP reachability requires a credential-aware probe",
             )
 
-        host, port, use_tls = self._endpoint(target, request, kind)
         if port is None:
             return PreflightResult(status=PreflightStatus.REACHABLE)
 
         writer = None
         try:
-            connect_host = await self._policy.resolve_allowed(host, port)
             if not self._reachability_enabled:
                 logger.info(
-                    "event=preflight_reachability_skipped task_id=%s "
-                    "target=%s kind=%s",
+                    "event=preflight_reachability_skipped task_id=%s " "target=%s kind=%s",
                     request.task_id,
                     target,
                     kind,
@@ -159,9 +122,7 @@ class AsyncProtocolPreflight:
                     "server_hostname": host,
                 }
             async with asyncio.timeout(timeout_seconds):
-                _reader, writer = await asyncio.open_connection(
-                    connect_host, port, **connect_options
-                )
+                _reader, writer = await asyncio.open_connection(connect_host, port, **connect_options)
             return PreflightResult(status=PreflightStatus.REACHABLE)
         except TimeoutError:
             return PreflightResult(
@@ -206,9 +167,7 @@ class AsyncProtocolPreflight:
                 await writer.wait_closed()
 
     @staticmethod
-    def _log_outbound_skip(
-        request: CollectionRequest, target: str, error: BaseException
-    ) -> None:
+    def _log_outbound_skip(request: CollectionRequest, target: str, error: BaseException) -> None:
         reason = str(error).strip() or type(error).__name__
         logger.info(
             "🚫 event=outbound_target_skipped task_id=%s target=%s reason=%s",
@@ -218,10 +177,8 @@ class AsyncProtocolPreflight:
         )
 
     @staticmethod
-    def _endpoint(
-        target: str, request: CollectionRequest, kind: str
-    ) -> tuple[str, int | None, bool]:
-        if kind in {"http", "https"} or "://" in target:
+    def _endpoint(target: str, request: CollectionRequest, kind: str) -> tuple[str, int | None, bool]:
+        if kind in {"http", "https"} or "://" in target or request.params.get("base_url"):
             base_url = str(request.params.get("base_url") or "").strip()
             endpoint = target if "://" in target else base_url or f"{kind}://{target}"
             parsed = urlsplit(endpoint)

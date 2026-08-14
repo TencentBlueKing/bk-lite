@@ -4,22 +4,11 @@
 # @Author: windyzhao
 
 try:
-    from pysnmp.hlapi.asyncio import (
-        CommunityData,
-        ContextData,
-        ObjectIdentity,
-        ObjectType,
-        SnmpEngine,
-        UdpTransportTarget,
-        UsmUserData,
-        bulkCmd as hlapi_bulk_cmd,
-        getCmd as hlapi_get_cmd,
-        nextCmd as hlapi_next_cmd,
-        usmAesCfb128Protocol,
-        usmDESPrivProtocol,
-        usmHMACMD5AuthProtocol,
-        usmHMACSHAAuthProtocol,
-    )
+    from pysnmp.hlapi.asyncio import CommunityData, ContextData, ObjectIdentity, ObjectType, SnmpEngine, UdpTransportTarget, UsmUserData
+    from pysnmp.hlapi.asyncio import bulkCmd as hlapi_bulk_cmd
+    from pysnmp.hlapi.asyncio import getCmd as hlapi_get_cmd
+    from pysnmp.hlapi.asyncio import nextCmd as hlapi_next_cmd
+    from pysnmp.hlapi.asyncio import usmAesCfb128Protocol, usmDESPrivProtocol, usmHMACMD5AuthProtocol, usmHMACSHAAuthProtocol
     from pysnmp.proto import errind
     from pysnmp.proto.rfc1902 import Null
     from pysnmp.proto.rfc1905 import EndOfMibView, endOfMibView
@@ -39,18 +28,12 @@ except ModuleNotFoundError:  # pragma: no cover - exercised in environments with
     class EndOfMibView:  # type: ignore[no-redef]
         pass
 
-from sanic.log import logger
 
-from plugins.inputs.network_topo.protocol_oids import (
-    PROTOCOL_OID_GROUPS,
-    flatten_oid_registry,
-    get_oid_meta,
-    get_root_oid as lookup_root_oid,
-)
-from plugins.inputs.network_topo.topology_facts import (
-    build_topology_fact as build_protocol_topology_fact,
-    merge_topology_facts,
-)
+from plugins.inputs.network_topo.protocol_oids import PROTOCOL_OID_GROUPS, flatten_oid_registry, get_oid_meta
+from plugins.inputs.network_topo.protocol_oids import get_root_oid as lookup_root_oid
+from plugins.inputs.network_topo.topology_facts import build_topology_fact as build_protocol_topology_fact
+from plugins.inputs.network_topo.topology_facts import merge_topology_facts
+from sanic.log import logger
 
 ROOT = "root"  # 根oid
 KEY = "key"  # oid
@@ -156,20 +139,27 @@ def _is_ended_value(val) -> bool:
     return val is endOfMibView or isinstance(val, EndOfMibView)
 
 
+def _close_snmp_engine(engine) -> None:
+    dispatcher = getattr(engine, "transportDispatcher", None)
+    close = getattr(dispatcher, "closeDispatcher", None)
+    if callable(close):
+        close()
+
+
 class SnmpAuth(object):
     def __init__(
-            self,
-            cmdGen=None,
-            version: str = "v2",
-            community: str = None,
-            username: str = "",
-            level: str = "",
-            integrity: str = None,
-            privacy: str = None,
-            authkey: str = None,
-            privkey: str = None,
-            timeout: int = 5,
-            retries: int = 2,
+        self,
+        cmdGen=None,
+        version: str = "v2",
+        community: str = None,
+        username: str = "",
+        level: str = "",
+        integrity: str = None,
+        privacy: str = None,
+        authkey: str = None,
+        privkey: str = None,
+        timeout: int = 5,
+        retries: int = 2,
     ):
         self.cmdGen = cmdGen  # 保留兼容参数；原生 asyncio 路径不再使用
         self.version = version
@@ -185,7 +175,6 @@ class SnmpAuth(object):
         self.validate()
 
     def validate(self):
-
         if self.version in ("v2", "v2c"):
             if self.community is None:
                 raise Exception("Community not set when using network version 2")
@@ -197,7 +186,6 @@ class SnmpAuth(object):
             raise Exception("Privacy algorithm not set when using authPriv")
 
     def auth(self):  # Use SNMP Version 2
-
         if self.version in ("v2", "v2c"):
             snmp_auth = CommunityData(self.community)
 
@@ -247,23 +235,32 @@ class SnmpTopo:
         if not _PYSNMP_AVAILABLE:
             raise ModuleNotFoundError("pysnmp is required for SNMP topology collection")
         self.kwargs = kwargs
-        self.host = kwargs.get('host')
-        self.version = kwargs.get('version')
-        self.community = kwargs.get('community')
-        self.username = kwargs.get('username')
-        self.level = kwargs.get('level')
-        self.integrity = kwargs.get('integrity')
-        self.privacy = kwargs.get('privacy')
-        self.authkey = kwargs.get('authkey')
-        self.privkey = kwargs.get('privkey')
-        self.timeout = int(kwargs.get('timeout', 5))
-        self.retries = int(kwargs.get('retries', 2))
-        self.snmp_port = int(kwargs.get('snmp_port', 161))  # 默认 SNMP 端口为 161
+        self.host = kwargs.get("host")
+        self.version = kwargs.get("version")
+        self.community = kwargs.get("community")
+        self.username = kwargs.get("username")
+        self.level = kwargs.get("level")
+        self.integrity = kwargs.get("integrity")
+        self.privacy = kwargs.get("privacy")
+        self.authkey = kwargs.get("authkey")
+        self.privkey = kwargs.get("privkey")
+        self.timeout = int(kwargs.get("timeout", 5))
+        self.retries = int(kwargs.get("retries", 2))
+        self.snmp_port = int(kwargs.get("snmp_port", 161))  # 默认 SNMP 端口为 161
         self.topology_protocols = kwargs.get("topology_protocols")
         self.oids = self._build_oids(self.topology_protocols)
         self.snmp_auth_obj = SnmpAuth(
-            None, self.version, self.community, self.username, self.level, self.integrity, self.privacy,
-            self.authkey, self.privkey, self.timeout, self.retries
+            None,
+            self.version,
+            self.community,
+            self.username,
+            self.level,
+            self.integrity,
+            self.privacy,
+            self.authkey,
+            self.privkey,
+            self.timeout,
+            self.retries,
         )
         self.auth = self.snmp_auth_obj.auth()
         self.transport_opts = self.snmp_auth_obj.get_transport_opts()
@@ -274,6 +271,7 @@ class SnmpTopo:
             timeout=self.transport_opts["timeout"],
             retries=self.transport_opts["retries"],
         )
+
     @classmethod
     def _normalize_protocols(cls, enabled_protocols=None, allowed_protocols=None):
         if enabled_protocols is None:
@@ -310,7 +308,10 @@ class SnmpTopo:
     @classmethod
     def _build_oids(cls, enabled_protocols=None):
         group_names = []
-        for protocol in [*cls.BASE_COLLECTION_PROTOCOLS, *cls.normalize_collection_protocols(enabled_protocols)]:
+        for protocol in [
+            *cls.BASE_COLLECTION_PROTOCOLS,
+            *cls.normalize_collection_protocols(enabled_protocols),
+        ]:
             if protocol not in group_names:
                 group_names.append(protocol)
         registry = flatten_oid_registry(group_names)
@@ -342,13 +343,19 @@ class SnmpTopo:
         return result
 
     async def _bulk_walk_all(self):
+        engine = SnmpEngine()
+        try:
+            return await self._bulk_walk_all_with_engine(engine)
+        finally:
+            _close_snmp_engine(engine)
+
+    async def _bulk_walk_all_with_engine(self, engine):
         """
         批量获取 OID 数据（原生 asyncio GETBULK 遍历）
         """
         eval_oids = self.oids
         var_binds = self._format_oids(self.oids)
         initial_roots = [str(oid).lstrip(".") for oid in self.oids]
-        engine = SnmpEngine()
         target = self._transport_target()
         context = ContextData()
         var_bind_table = []
@@ -357,7 +364,12 @@ class SnmpTopo:
 
         while not stop_flag and var_binds:
             previous_var_binds = var_binds
-            errorIndication, errorStatus, errorIndex, response_table = await hlapi_bulk_cmd(
+            (
+                errorIndication,
+                errorStatus,
+                errorIndex,
+                response_table,
+            ) = await hlapi_bulk_cmd(
                 engine,
                 self.auth,
                 target,
@@ -417,9 +429,7 @@ class SnmpTopo:
         except RuntimeError as err:
             if not self._is_retryable_fallback_error(err):
                 raise
-            logger.warning(
-                f"bulkCmd retryable error host={self.host}, falling back to per-OID walk: {err}"
-            )
+            logger.warning(f"bulkCmd retryable error host={self.host}, falling back to per-OID walk: {err}")
             return await self._fallback_walk_cmd()
 
     @staticmethod
@@ -428,6 +438,16 @@ class SnmpTopo:
 
     async def _next_walk_oid(self, oid, *, ignore_non_increasing_oid=True):
         engine = SnmpEngine()
+        try:
+            return await self._next_walk_oid_with_engine(
+                oid,
+                engine,
+                ignore_non_increasing_oid=ignore_non_increasing_oid,
+            )
+        finally:
+            _close_snmp_engine(engine)
+
+    async def _next_walk_oid_with_engine(self, oid, engine, *, ignore_non_increasing_oid=True):
         target = self._transport_target()
         context = ContextData()
         var_binds = self._format_oids([oid])
@@ -436,7 +456,12 @@ class SnmpTopo:
 
         while var_binds:
             previous_var_binds = var_binds
-            errorIndication, errorStatus, errorIndex, response_table = await hlapi_next_cmd(
+            (
+                errorIndication,
+                errorStatus,
+                errorIndex,
+                response_table,
+            ) = await hlapi_next_cmd(
                 engine,
                 self.auth,
                 target,
@@ -444,11 +469,7 @@ class SnmpTopo:
                 *var_binds,
                 lookupMib=False,
             )
-            if (
-                ignore_non_increasing_oid
-                and errorIndication
-                and isinstance(errorIndication, errind.OidNotIncreasing)
-            ):
+            if ignore_non_increasing_oid and errorIndication and isinstance(errorIndication, errind.OidNotIncreasing):
                 errorIndication = None
 
             if errorIndication:
@@ -480,7 +501,12 @@ class SnmpTopo:
         return None, 0, 0, var_bind_table
 
     async def _walk_oid_with_next_cmd(self, oid):
-        errorIndication, errorStatus, errorIndex, varBindTable = await self._next_walk_oid(oid)
+        (
+            errorIndication,
+            errorStatus,
+            errorIndex,
+            varBindTable,
+        ) = await self._next_walk_oid(oid)
         if errorIndication:
             if self._is_retryable_fallback_error(errorIndication):
                 logger.warning(f"Skipping OID subtree host={self.host} oid={oid}: {errorIndication}")
@@ -494,14 +520,18 @@ class SnmpTopo:
         return FallbackOidResult(records=self._format_result(varBindTable, [oid]))
 
     async def _get_scalar_oid(self, oid):
-        errorIndication, errorStatus, errorIndex, varBinds = await hlapi_get_cmd(
-            SnmpEngine(),
-            self.auth,
-            self._transport_target(),
-            ContextData(),
-            *self._format_oids([f"{oid}.0"]),
-            lookupMib=False,
-        )
+        engine = SnmpEngine()
+        try:
+            errorIndication, errorStatus, errorIndex, varBinds = await hlapi_get_cmd(
+                engine,
+                self.auth,
+                self._transport_target(),
+                ContextData(),
+                *self._format_oids([f"{oid}.0"]),
+                lookupMib=False,
+            )
+        finally:
+            _close_snmp_engine(engine)
         if errorIndication:
             if self._is_retryable_fallback_error(errorIndication):
                 return FallbackOidResult(records=[], skipped=True)
@@ -530,15 +560,10 @@ class SnmpTopo:
                 continue
             records.extend(oid_result.records)
         if skipped_required_oids:
-            raise IncompleteFallbackError(
-                "Fallback walk skipped required OIDs: " + ", ".join(skipped_required_oids)
-            )
+            raise IncompleteFallbackError("Fallback walk skipped required OIDs: " + ", ".join(skipped_required_oids))
         if records:
             return records
-        raise RuntimeError(
-            "SNMP fallback collection returned no data: "
-            "device did not respond with any requested MIB subtree"
-        )
+        raise RuntimeError("SNMP fallback collection returned no data: " "device did not respond with any requested MIB subtree")
 
     @staticmethod
     def build_topology_fact(protocol, observation, raw_evidence=None, confidence=None):
@@ -566,15 +591,9 @@ class SnmpTopo:
 
     @classmethod
     def _build_lldp_topology_facts(cls, snmp_rows):
-        local_ports = {
-            str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "LLDP-LocPortId" and row.get(IF_INDEX)
-        }
-        remote_ports = {
-            str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "LLDP-RemPortId" and row.get(IF_INDEX)
-        }
-        remote_systems = [
-            row for row in snmp_rows if row.get(TAG) == "LLDP-RemSysName" and row.get(IF_INDEX)
-        ]
+        local_ports = {str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "LLDP-LocPortId" and row.get(IF_INDEX)}
+        remote_ports = {str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "LLDP-RemPortId" and row.get(IF_INDEX)}
+        remote_systems = [row for row in snmp_rows if row.get(TAG) == "LLDP-RemSysName" and row.get(IF_INDEX)]
 
         facts = []
         for remote_system in remote_systems:
@@ -610,12 +629,8 @@ class SnmpTopo:
     @classmethod
     def _build_cdp_topology_facts(cls, snmp_rows):
         interface_names = cls._build_interface_names(snmp_rows)
-        remote_ports = {
-            str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "CDP-DevicePort" and row.get(IF_INDEX)
-        }
-        remote_devices = [
-            row for row in snmp_rows if row.get(TAG) == "CDP-DeviceId" and row.get(IF_INDEX)
-        ]
+        remote_ports = {str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "CDP-DevicePort" and row.get(IF_INDEX)}
+        remote_devices = [row for row in snmp_rows if row.get(TAG) == "CDP-DeviceId" and row.get(IF_INDEX)]
 
         facts = []
         for remote_device in remote_devices:
@@ -662,20 +677,12 @@ class SnmpTopo:
     @classmethod
     def _build_fdb_topology_facts(cls, snmp_rows):
         interface_names = cls._build_interface_names(snmp_rows)
-        interface_rows = {
-            str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "IFTable-IfDescr" and row.get(IF_INDEX)
-        }
-        interface_alias_rows = {
-            str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "IFTable-IfAlias" and row.get(IF_INDEX)
-        }
+        interface_rows = {str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "IFTable-IfDescr" and row.get(IF_INDEX)}
+        interface_alias_rows = {str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "IFTable-IfAlias" and row.get(IF_INDEX)}
         bridge_ports = {
-            str(row.get(IF_INDEX)): row
-            for row in snmp_rows
-            if row.get(TAG) == "BRIDGE-BasePortIfIndex" and row.get(IF_INDEX) and row.get(VAL)
+            str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "BRIDGE-BasePortIfIndex" and row.get(IF_INDEX) and row.get(VAL)
         }
-        fdb_macs = {
-            str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "FDB-MacAddress" and row.get(IF_INDEX)
-        }
+        fdb_macs = {str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "FDB-MacAddress" and row.get(IF_INDEX)}
         fdb_ports = [row for row in snmp_rows if row.get(TAG) == "FDB-Port" and row.get(IF_INDEX) and row.get(VAL)]
 
         facts = []
@@ -742,9 +749,10 @@ class SnmpTopo:
             inst_data = {"result": model_data, "success": True}
         except Exception as err:
             import traceback
+
             logger.error(f"snmp_topo collect error! {traceback.format_exc()}")
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
-        
+
         return inst_data
 
     async def find_interface_relationships(self):
@@ -789,12 +797,14 @@ class SnmpTopo:
             if ip in ip_interface_mapping:
                 interface_id = ip_interface_mapping[ip]
                 interface_name = interface_names.get(interface_id, f"Interface-{interface_id}")  # 默认值为接口 ID
-                relationships.append({
-                    "mac_address": mac,
-                    "ip_address": ip,
-                    "interface_id": interface_id,
-                    "interface_name": interface_name,
-                })
+                relationships.append(
+                    {
+                        "mac_address": mac,
+                        "ip_address": ip,
+                        "interface_id": interface_id,
+                        "interface_name": interface_name,
+                    }
+                )
 
         # Step 7: 返回结果
         return relationships

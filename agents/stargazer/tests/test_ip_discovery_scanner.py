@@ -1,10 +1,11 @@
 # -- coding: utf-8 --
 """IP 发现 collector：TCP 判活、ICMP 判活、并发聚合、best-effort MAC。规格 §13.2/§13.3。"""
+
 import asyncio
 import importlib
-import time
-import pytest
 from unittest.mock import patch
+
+import pytest
 from plugins.inputs.ip.ip_discovery_scanner import IPDiscoveryScanner
 
 pytestmark = pytest.mark.unit
@@ -20,10 +21,14 @@ async def _make_true():
 
 class TestScanner:
     def test_tcp_任一端口通即判活(self):
-        scanner = IPDiscoveryScanner({
-            "model_id": "ip", "scan_method": "tcp", "ports": [22, 80],
-            "targets": ["10.0.1.10", "10.0.1.11"],
-        })
+        scanner = IPDiscoveryScanner(
+            {
+                "model_id": "ip",
+                "scan_method": "tcp",
+                "ports": [22, 80],
+                "targets": ["10.0.1.10", "10.0.1.11"],
+            }
+        )
 
         async def fake_tcp(ip, port, timeout):
             return ip == "10.0.1.10" and port == 22
@@ -35,9 +40,13 @@ class TestScanner:
         assert out["success"] is True
 
     def test_icmp_判活(self):
-        scanner = IPDiscoveryScanner({
-            "model_id": "ip", "scan_method": "icmp", "targets": ["10.0.1.10", "10.0.1.99"],
-        })
+        scanner = IPDiscoveryScanner(
+            {
+                "model_id": "ip",
+                "scan_method": "icmp",
+                "targets": ["10.0.1.10", "10.0.1.99"],
+            }
+        )
 
         async def fake_icmp(ip, timeout):
             return ip == "10.0.1.10"
@@ -52,30 +61,36 @@ class TestScanner:
         async def fake_icmp(ip, timeout):
             return True
 
-        with patch.object(scanner, "_icmp_probe", side_effect=fake_icmp), \
-             patch.object(scanner, "_read_mac", side_effect=lambda ip: "00:0C:29:3A:7B:88"):
+        async def fake_read_mac(_ip):
+            return "00:0C:29:3A:7B:88"
+
+        with patch.object(scanner, "_icmp_probe", side_effect=fake_icmp), patch.object(scanner, "_read_mac", side_effect=fake_read_mac):
             out = _run(scanner.list_all_resources())
         assert out["result"]["ip"][0]["mac"] == "00:0C:29:3A:7B:88"
 
     def test_从子网推导目标并输出ipam字段(self):
-        scanner = IPDiscoveryScanner({
-            "model_id": "ip",
-            "scan_method": "icmp",
-            "subnets": [
-                {
-                    "subnet_id": 101,
-                    "cidr": "10.0.1.0/30",
-                    "gateway": "10.0.1.1",
-                    "reserved_addresses": [],
-                }
-            ],
-        })
+        scanner = IPDiscoveryScanner(
+            {
+                "model_id": "ip",
+                "scan_method": "icmp",
+                "subnets": [
+                    {
+                        "subnet_id": 101,
+                        "cidr": "10.0.1.0/30",
+                        "gateway": "10.0.1.1",
+                        "reserved_addresses": [],
+                    }
+                ],
+            }
+        )
 
         async def fake_icmp(ip, timeout):
             return ip == "10.0.1.2"
 
-        with patch.object(scanner, "_icmp_probe", side_effect=fake_icmp), \
-             patch.object(scanner, "_read_mac", side_effect=lambda ip: "00:0C:29:3A:7B:88"):
+        async def fake_read_mac(_ip):
+            return "00:0C:29:3A:7B:88"
+
+        with patch.object(scanner, "_icmp_probe", side_effect=fake_icmp), patch.object(scanner, "_read_mac", side_effect=fake_read_mac):
             out = _run(scanner.list_all_resources())
 
         assert out["success"] is True
@@ -93,18 +108,20 @@ class TestScanner:
 
     @pytest.mark.asyncio
     async def test_mac查询不阻塞事件循环(self):
-        scanner = IPDiscoveryScanner({
-            "model_id": "ip",
-            "scan_method": "icmp",
-            "targets": ["10.0.1.10", "10.0.1.11"],
-        })
+        scanner = IPDiscoveryScanner(
+            {
+                "model_id": "ip",
+                "scan_method": "icmp",
+                "targets": ["10.0.1.10", "10.0.1.11"],
+            }
+        )
         ticks = 0
 
         async def fake_icmp(_ip, _timeout):
             return True
 
-        def slow_read_mac(_ip):
-            time.sleep(0.05)
+        async def slow_read_mac(_ip):
+            await asyncio.sleep(0.05)
             return "00:0C:29:3A:7B:88"
 
         async def heartbeat():
@@ -115,8 +132,7 @@ class TestScanner:
 
         heartbeat_task = asyncio.create_task(heartbeat())
         try:
-            with patch.object(scanner, "_icmp_probe", side_effect=fake_icmp), \
-                 patch.object(scanner, "_read_mac", side_effect=slow_read_mac):
+            with patch.object(scanner, "_icmp_probe", side_effect=fake_icmp), patch.object(scanner, "_read_mac", side_effect=slow_read_mac):
                 result = await scanner.list_all_resources()
         finally:
             heartbeat_task.cancel()
@@ -126,9 +142,35 @@ class TestScanner:
         assert len(result["result"]["ip"]) == 2
         assert ticks >= 5
 
+    @pytest.mark.asyncio
+    async def test_mac查询使用异步子进程(self, monkeypatch):
+        scanner = IPDiscoveryScanner({"model_id": "ip", "targets": ["10.0.1.10"]})
+        calls = []
+
+        class Process:
+            returncode = 0
+
+            async def communicate(self):
+                return b"10.0.1.10 ether 00:0C:29:3A:7B:88 C eth0\n", b""
+
+        async def create_subprocess(*args, **kwargs):
+            calls.append((args, kwargs))
+            return Process()
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", create_subprocess)
+        monkeypatch.setattr(scanner, "_icmp_probe", lambda *_args: _make_true())
+
+        result = await scanner.list_all_resources()
+
+        assert result["result"]["ip"][0]["mac"] == "00:0C:29:3A:7B:88"
+        assert calls[0][0] == ("arp", "-n", "10.0.1.10")
+
 
 def test_plugin_yml_loads_and_points_to_scanner():
-    import os, yaml
+    import os
+
+    import yaml
+
     path = os.path.join(os.path.dirname(__file__), "..", "plugins", "inputs", "ip", "plugin.yml")
     cfg = yaml.safe_load(open(os.path.abspath(path), encoding="utf-8"))
     assert cfg["metadata"]["model_id"] == "ip"

@@ -25,6 +25,7 @@ from core.collection.contracts import (
 from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
 from core.collection.execution_plan import ExecutionPlan
 from core.collection.metrics import CollectionMetrics
+from core.collection.result_publisher import FuturePublishReceipt, ImmediateResultPublishQueue
 from core.collection.runtime import CollectionRequest, RunLease
 from core.collection.scheduler import CollectionScheduler
 from core.infra.redis_client import is_credential_state_redis_error
@@ -120,6 +121,15 @@ def unlimited_target_gate() -> _UnlimitedTargetGate:
     return _UnlimitedTargetGate()
 
 
+@dataclass(frozen=True)
+class _PendingPublish:
+    index: int
+    result: TargetCollectionResult
+    receipt: object
+    started_at: float
+    deadline: float
+
+
 class TargetCollectionExecutor:
     """以固定数量 worker 流式消费目标，避免为所有目标创建 Task。"""
 
@@ -143,10 +153,8 @@ class TargetCollectionExecutor:
         # None = 无廉价 AccessProbe，CredentialAttempt 直接 collect
         self._access_probe = access_probe
         self._plugin = plugin
-        self._publisher = publisher
-        self._credential_policy = credential_policy or CredentialPolicy(
-            store=InMemoryCredentialStateStore()
-        )
+        self._publisher = publisher if callable(getattr(publisher, "enqueue", None)) else ImmediateResultPublishQueue(publisher)
+        self._credential_policy = credential_policy or CredentialPolicy(store=InMemoryCredentialStateStore())
         self._settings = settings or TargetExecutorSettings()
         self._plan = plan or ExecutionPlan(
             preflight_enabled=self._settings.access_probe_enabled,
@@ -159,16 +167,15 @@ class TargetCollectionExecutor:
         )
         if target_semaphore is not None:
             self._target_semaphore = target_semaphore
+        elif scheduler is not None:
+            # 全局调度器是生产路径的唯一目标准入；避免重复 semaphore 形成双重容量语义。
+            self._target_semaphore = unlimited_target_gate()
         elif self._settings.max_active_targets <= 0:
             self._target_semaphore = unlimited_target_gate()
         else:
-            self._target_semaphore = asyncio.Semaphore(
-                self._settings.max_active_targets
-            )
+            self._target_semaphore = asyncio.Semaphore(self._settings.max_active_targets)
         self._activity_tracker = activity_tracker or TargetActivityTracker()
-        self._worker_budget = worker_budget or TargetWorkerBudget(
-            self._settings.target_task_window
-        )
+        self._worker_budget = worker_budget or TargetWorkerBudget(self._settings.target_task_window)
         self._metrics = metrics or CollectionMetrics()
         self._scheduler = scheduler
 
@@ -178,39 +185,69 @@ class TargetCollectionExecutor:
         publish_statuses: list[str | None] = [None] * len(targets)
         skipped = 0
 
-        async def execute_index(index: int):
+        async def execute_index(index: int) -> _PendingPublish:
             # 目标槽位只覆盖目标执行与进入发布路径；发布异常在目标内隔离。
-            async with self._target_semaphore:
-                await self._activity_tracker.enter()
-                try:
-                    result = await self._execute_target(request, targets[index], lease)
-                finally:
-                    await self._activity_tracker.exit()
-            publish_error: Exception | None = None
+            try:
+                async with self._target_semaphore:
+                    await self._activity_tracker.enter()
+                    try:
+                        result = await self._execute_target(request, targets[index], lease)
+                    finally:
+                        await self._activity_tracker.exit()
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - 单目标框架异常不得取消 Run
+                self._metrics.increment("target_execution_error_total")
+                logger.error(
+                    "event=target_execution_failed task_id=%s target=%s " "error_type=%s",
+                    request.task_id,
+                    targets[index],
+                    type(error).__name__,
+                )
+                result = TargetCollectionResult(
+                    target=targets[index],
+                    status="failed",
+                    attempts=0,
+                    error_code="target_execution_error",
+                )
+            self._metrics.increment(f"execution_mode_{self._plan.execution_mode}_{result.status}_total")
+            self._metrics.increment(f"capacity_group_{self._plan.capacity_group}_{result.status}_total")
+            return await self._enqueue_publish(index, request, result, lease)
+
+        async def finish_publish(pending: _PendingPublish) -> tuple[int, str]:
+            current = pending
             publish_status = "failed"
-            for _attempt in range(self._settings.publish_max_attempts):
+            for attempt in range(self._settings.publish_max_attempts):
                 try:
-                    async with asyncio.timeout(self._plan.publish_timeout_seconds):
-                        await self._publisher.publish(request, result, lease)
-                    publish_error = None
-                    break
+                    async with asyncio.timeout_at(current.deadline):
+                        await current.receipt.wait()
+                    self._metrics.observe(
+                        "publish_duration_seconds",
+                        asyncio.get_running_loop().time() - current.started_at,
+                    )
+                    return current.index, "succeeded"
                 except Exception as error:  # noqa: BLE001 - 单目标有限重试
-                    publish_error = error
+                    self._metrics.observe(
+                        "publish_duration_seconds",
+                        asyncio.get_running_loop().time() - current.started_at,
+                    )
                     self._metrics.increment("result_publish_failure_total")
                     if bool(getattr(error, "delivery_detected", True)):
                         publish_status = "unknown"
                         break
-            if publish_error is not None:
-                logger.warning(
-                    "event=result_publish_%s task_id=%s target=%s " "error_type=%s",
-                    publish_status,
-                    request.task_id,
-                    result.target,
-                    type(publish_error).__name__,
-                )
-            else:
-                publish_status = "succeeded"
-            return index, result, publish_status
+                    if attempt + 1 < self._settings.publish_max_attempts:
+                        self._metrics.increment("result_publish_retry_total")
+                        current = await self._enqueue_publish(current.index, request, current.result, lease)
+                        continue
+                    publish_status = "failed"
+                    break
+            logger.warning(
+                "event=result_publish_%s task_id=%s target=%s",
+                publish_status,
+                request.task_id,
+                current.result.target,
+            )
+            return current.index, publish_status
 
         if self._scheduler is not None:
             scheduled = await self._scheduler.execute(
@@ -218,9 +255,9 @@ class TargetCollectionExecutor:
                 range(len(targets)),
                 execute_index,
             )
-            for index, result, publish_status in scheduled:
-                results[index] = result
-                publish_statuses[index] = publish_status
+            pending_publishes = scheduled
+            for pending in scheduled:
+                results[pending.index] = pending.result
         else:
             next_index = 0
             iterator_lock = asyncio.Lock()
@@ -233,17 +270,14 @@ class TargetCollectionExecutor:
                             return
                         index = next_index
                         next_index += 1
-                    result_index, result, publish_status = await execute_index(index)
-                    results[result_index] = result
-                    publish_statuses[result_index] = publish_status
+                    pending = await execute_index(index)
+                    results[pending.index] = pending.result
+                    pending_publishes.append(pending)
 
             window = self._settings.target_task_window
-            desired_workers = (
-                max(1, len(targets))
-                if window <= 0
-                else (min(len(targets), window) if targets else 1)
-            )
+            desired_workers = max(1, len(targets)) if window <= 0 else (min(len(targets), window) if targets else 1)
             worker_count = await self._worker_budget.reserve(desired_workers)
+            pending_publishes = []
             worker_tasks = [
                 asyncio.create_task(
                     worker(),
@@ -261,12 +295,16 @@ class TargetCollectionExecutor:
                 raise
             finally:
                 await self._worker_budget.release(worker_count)
+        for pending in pending_publishes:
+            index, publish_status = await finish_publish(pending)
+            publish_statuses[index] = publish_status
         completed = tuple(result for result in results if result is not None)
+        for status in publish_statuses:
+            if status:
+                self._metrics.increment(f"publish_{status}_total")
         return RunSummary(
             total=len(targets),
-            collection_succeeded=sum(
-                result.status == "success" for result in completed
-            ),
+            collection_succeeded=sum(result.status == "success" for result in completed),
             collection_failed=sum(result.status == "failed" for result in completed),
             unreachable=sum(result.status == "unreachable" for result in completed),
             deferred=sum(result.status == "deferred" for result in completed),
@@ -274,6 +312,32 @@ class TargetCollectionExecutor:
             publish_succeeded=sum(status == "succeeded" for status in publish_statuses),
             publish_failed=sum(status == "failed" for status in publish_statuses),
             publish_unknown=sum(status == "unknown" for status in publish_statuses),
+        )
+
+    async def _enqueue_publish(
+        self,
+        index: int,
+        request: CollectionRequest,
+        result: TargetCollectionResult,
+        lease: RunLease,
+    ) -> _PendingPublish:
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        deadline = started_at + self._plan.publish_timeout_seconds
+        try:
+            async with asyncio.timeout_at(deadline):
+                receipt = await self._publisher.enqueue(request, result, lease)
+        except Exception as error:  # noqa: BLE001 - 交由统一发布重试处理
+            completion = loop.create_future()
+            completion.set_exception(error)
+            receipt = FuturePublishReceipt(completion)
+        self._metrics.observe("publish_enqueue_duration_seconds", loop.time() - started_at)
+        return _PendingPublish(
+            index=index,
+            result=result,
+            receipt=receipt,
+            started_at=started_at,
+            deadline=deadline,
         )
 
     async def _execute_target(
@@ -287,8 +351,7 @@ class TargetCollectionExecutor:
             self._metrics.increment("target_unreachable_total")
             error_code = preflight.error_code or "target_unreachable"
             logger.info(
-                "🚫 event=target_unreachable task_id=%s target=%s "
-                "reason=%s detail=%s",
+                "🚫 event=target_unreachable task_id=%s target=%s " "reason=%s detail=%s",
                 request.task_id,
                 target,
                 error_code,
@@ -319,9 +382,7 @@ class TargetCollectionExecutor:
             params=request.params,
             owner_id=lease.owner_id,
         )
-        return await self._run_credential_attempts(
-            request, target, credentials, context
-        )
+        return await self._run_credential_attempts(request, target, credentials, context)
 
     async def _load_eligible_credentials(self, request: CollectionRequest, target: str):
         try:
@@ -331,8 +392,7 @@ class TargetCollectionExecutor:
                 raise
             self._metrics.increment("credential_state_redis_error_total")
             logger.warning(
-                "event=credential_state_unavailable task_id=%s target=%s "
-                "error_type=%s detail=%s",
+                "event=credential_state_unavailable task_id=%s target=%s " "error_type=%s detail=%s",
                 request.task_id,
                 target,
                 type(exc).__name__,
@@ -353,8 +413,7 @@ class TargetCollectionExecutor:
                 raise
             self._metrics.increment("credential_state_redis_error_total")
             logger.warning(
-                "event=credential_success_persist_failed task_id=%s target=%s "
-                "error_type=%s",
+                "event=credential_success_persist_failed task_id=%s target=%s " "error_type=%s",
                 request.task_id,
                 target,
                 type(exc).__name__,
@@ -380,16 +439,13 @@ class TargetCollectionExecutor:
                 raise
             self._metrics.increment("credential_state_redis_error_total")
             logger.warning(
-                "event=credential_failure_persist_failed task_id=%s target=%s "
-                "error_type=%s",
+                "event=credential_failure_persist_failed task_id=%s target=%s " "error_type=%s",
                 request.task_id,
                 target,
                 type(exc).__name__,
             )
 
-    async def _run_preflight(
-        self, request: CollectionRequest, target: str
-    ) -> PreflightResult:
+    async def _run_preflight(self, request: CollectionRequest, target: str) -> PreflightResult:
         preflight_started = time.monotonic()
         try:
             async with asyncio.timeout(self._plan.preflight_timeout_seconds):
@@ -404,15 +460,15 @@ class TargetCollectionExecutor:
                 error_code="preflight_timeout",
             )
         finally:
+            duration = time.monotonic() - preflight_started
             self._metrics.increment(
                 "preflight_duration_seconds_total",
-                time.monotonic() - preflight_started,
+                duration,
             )
+            self._metrics.observe("preflight_duration_seconds", duration)
             self._metrics.increment("preflight_total")
 
-    async def _no_credential_result(
-        self, request: CollectionRequest, target: str
-    ) -> TargetCollectionResult:
+    async def _no_credential_result(self, request: CollectionRequest, target: str) -> TargetCollectionResult:
         self._metrics.increment("credential_cooldown_total")
         next_retry_at = None
         try:
@@ -421,17 +477,10 @@ class TargetCollectionExecutor:
             if not is_credential_state_redis_error(exc):
                 raise
             self._metrics.increment("credential_state_redis_error_total")
-        has_matching_credential = bool(
-            self._credential_policy.matching_credentials(request, target)
-        )
-        error_code = (
-            "no_valid_credential"
-            if has_matching_credential
-            else "no_matching_credential"
-        )
+        has_matching_credential = bool(self._credential_policy.matching_credentials(request, target))
+        error_code = "no_valid_credential" if has_matching_credential else "no_matching_credential"
         logger.info(
-            "🚫 event=target_no_credential task_id=%s target=%s error_code=%s "
-            "next_retry_at=%s",
+            "🚫 event=target_no_credential task_id=%s target=%s error_code=%s " "next_retry_at=%s",
             request.task_id,
             target,
             error_code,
@@ -553,10 +602,12 @@ class TargetCollectionExecutor:
                 error_code="access_probe_error",
             )
         finally:
+            duration = time.monotonic() - access_probe_started
             self._metrics.increment(
                 "access_probe_duration_seconds_total",
-                time.monotonic() - access_probe_started,
+                duration,
             )
+            self._metrics.observe("access_probe_duration_seconds", duration)
             self._metrics.increment("access_probe_total")
 
     async def _apply_access_probe(
@@ -571,9 +622,7 @@ class TargetCollectionExecutor:
     ):
         credential_id = str(credential.get("credential_id") or "")
         if access.status == AccessProbeStatus.NOT_SUPPORTED:
-            return _AttemptDecision(
-                action="collect", no_response_attempts=no_response_attempts
-            )
+            return _AttemptDecision(action="collect", no_response_attempts=no_response_attempts)
         if access.status in {
             AccessProbeStatus.AUTH_FAILED,
             AccessProbeStatus.CAPABILITY_DENIED,
@@ -585,23 +634,18 @@ class TargetCollectionExecutor:
                 error_code=access.error_code or access.status.value,
             )
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s "
-                "credential_id=%s probe_status=%s error_code=%s action=rotate",
+                "🚫 event=access_probe_failed task_id=%s target=%s " "credential_id=%s probe_status=%s error_code=%s action=rotate",
                 request.task_id,
                 target,
                 credential_id or "-",
                 access.status.value,
                 access.error_code or access.status.value,
             )
-            return _AttemptDecision(
-                action="continue", no_response_attempts=no_response_attempts
-            )
+            return _AttemptDecision(action="continue", no_response_attempts=no_response_attempts)
         if access.status == AccessProbeStatus.NO_RESPONSE:
             no_response_attempts += 1
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s "
-                "credential_id=%s probe_status=%s error_code=%s "
-                "no_response_attempts=%s",
+                "🚫 event=access_probe_failed task_id=%s target=%s " "credential_id=%s probe_status=%s error_code=%s " "no_response_attempts=%s",
                 request.task_id,
                 target,
                 credential_id or "-",
@@ -622,13 +666,10 @@ class TargetCollectionExecutor:
                     ),
                     no_response_attempts=no_response_attempts,
                 )
-            return _AttemptDecision(
-                action="continue", no_response_attempts=no_response_attempts
-            )
+            return _AttemptDecision(action="continue", no_response_attempts=no_response_attempts)
         if access.status == AccessProbeStatus.TARGET_UNREACHABLE:
             logger.info(
-                "🚫 event=target_unreachable task_id=%s target=%s "
-                "credential_id=%s reason=%s",
+                "🚫 event=target_unreachable task_id=%s target=%s " "credential_id=%s reason=%s",
                 request.task_id,
                 target,
                 credential_id or "-",
@@ -646,8 +687,7 @@ class TargetCollectionExecutor:
             )
         if access.status == AccessProbeStatus.RATE_LIMITED:
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s "
-                "credential_id=%s probe_status=%s error_code=%s action=defer",
+                "🚫 event=access_probe_failed task_id=%s target=%s " "credential_id=%s probe_status=%s error_code=%s action=defer",
                 request.task_id,
                 target,
                 credential_id or "-",
@@ -672,8 +712,7 @@ class TargetCollectionExecutor:
             AccessProbeStatus.MISCONFIGURED,
         }:
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s "
-                "credential_id=%s probe_status=%s error_code=%s action=stop",
+                "🚫 event=access_probe_failed task_id=%s target=%s " "credential_id=%s probe_status=%s error_code=%s action=stop",
                 request.task_id,
                 target,
                 credential_id or "-",
@@ -693,8 +732,7 @@ class TargetCollectionExecutor:
             )
         if access.status != AccessProbeStatus.READY:
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s "
-                "credential_id=%s probe_status=%s error_code=access_probe_misconfigured",
+                "🚫 event=access_probe_failed task_id=%s target=%s " "credential_id=%s probe_status=%s error_code=access_probe_misconfigured",
                 request.task_id,
                 target,
                 credential_id or "-",
@@ -711,9 +749,7 @@ class TargetCollectionExecutor:
                 ),
                 no_response_attempts=no_response_attempts,
             )
-        return _AttemptDecision(
-            action="collect", no_response_attempts=no_response_attempts
-        )
+        return _AttemptDecision(action="collect", no_response_attempts=no_response_attempts)
 
     async def _run_collect(
         self,
@@ -722,6 +758,10 @@ class TargetCollectionExecutor:
         context: TargetCollectionContext,
     ) -> CollectOutcome:
         plugin_started = time.monotonic()
+        mode = self._plan.execution_mode
+        group = self._plan.capacity_group
+        self._metrics.increment(f"execution_mode_{mode}_total")
+        self._metrics.increment(f"capacity_group_{group}_total")
         try:
             async with asyncio.timeout(self._plan.collection_timeout_seconds):
                 return await self._plugin.collect(
@@ -731,6 +771,8 @@ class TargetCollectionExecutor:
                 )
         except TimeoutError:
             self._metrics.increment("plugin_timeout_total")
+            self._metrics.increment(f"execution_mode_{mode}_timeout_total")
+            self._metrics.increment(f"capacity_group_{group}_timeout_total")
             return CollectOutcome(
                 status=CollectOutcomeStatus.FAILED,
                 error_code="plugin_timeout",
@@ -744,10 +786,14 @@ class TargetCollectionExecutor:
                 detail=type(error).__name__,
             )
         finally:
+            duration = time.monotonic() - plugin_started
             self._metrics.increment(
                 "plugin_duration_seconds_total",
-                time.monotonic() - plugin_started,
+                duration,
             )
+            self._metrics.observe("plugin_duration_seconds", duration)
+            self._metrics.observe(f"execution_mode_{mode}_duration_seconds", duration)
+            self._metrics.observe(f"capacity_group_{group}_duration_seconds", duration)
             self._metrics.increment("plugin_total")
 
     async def _apply_collect_outcome(

@@ -26,8 +26,8 @@ executors:
       mode: remote_channel
   protocol:
     type: protocol
-    execution_mode: sync
-    capacity_group: sync_sdk
+    execution_mode: async
+    capacity_group: default
     timeout: 30
     collector:
       module: plugins.inputs.postgresql.postgresql_info

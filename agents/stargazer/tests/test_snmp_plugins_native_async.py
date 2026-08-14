@@ -7,7 +7,6 @@ import asyncio
 import inspect
 
 import pytest
-
 from core.collection.contracts import AccessProbeStatus
 from plugins.inputs.network.snmp_facts import SnmpFacts
 from plugins.inputs.network_topo.snmp_topo import SnmpTopo
@@ -34,6 +33,16 @@ async def _heartbeat_during(awaitable, minimum_ticks: int = 5):
 
 @pytest.mark.asyncio
 async def test_snmp_facts_probe_does_not_stall(monkeypatch):
+    closed = []
+
+    class FakeDispatcher:
+        def closeDispatcher(self):
+            closed.append(True)
+
+    class FakeEngine:
+        def __init__(self):
+            self.transportDispatcher = FakeDispatcher()
+
     facts = SnmpFacts(
         {
             "host": "127.0.0.1",
@@ -48,12 +57,24 @@ async def test_snmp_facts_probe_does_not_stall(monkeypatch):
         return (None, 0, 0, [("1.3.6.1.2.1.1.5.0", "sw")])
 
     monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", slow_get)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.SnmpEngine", FakeEngine)
     result = await _heartbeat_during(facts.probe())
     assert result.status == AccessProbeStatus.READY
+    assert closed == [True]
 
 
 @pytest.mark.asyncio
 async def test_snmp_facts_collect_does_not_stall(monkeypatch):
+    closed = []
+
+    class FakeDispatcher:
+        def closeDispatcher(self):
+            closed.append(True)
+
+    class FakeEngine:
+        def __init__(self):
+            self.transportDispatcher = FakeDispatcher()
+
     facts = SnmpFacts(
         {
             "host": "127.0.0.1",
@@ -114,11 +135,13 @@ async def test_snmp_facts_collect_does_not_stall(monkeypatch):
         )
 
     monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.SnmpEngine", FakeEngine)
     monkeypatch.setattr(facts, "_next_walk", fake_next)
     result = await _heartbeat_during(facts.list_all_resources())
     assert result["success"] is True
     assert result["result"]["network_system"][0]["sysname"] == "sw"
     assert result["result"]["network_interfaces"][0]["description"] == "eth0"
+    assert closed == [True]
 
 
 @pytest.mark.asyncio

@@ -513,8 +513,18 @@ class TestParseMetricsToPrometheus:
     def test_disk_metrics_with_dimensions(self):
         data = {
             "disk": [
-                {"mount": "/", "total_bytes": 100000, "used_bytes": 50000, "used_percent": 50.0},
-                {"mount": "/data", "total_bytes": 200000, "used_bytes": 100000, "used_percent": 50.0},
+                {
+                    "mount": "/",
+                    "total_bytes": 100000,
+                    "used_bytes": 50000,
+                    "used_percent": 50.0,
+                },
+                {
+                    "mount": "/data",
+                    "total_bytes": 200000,
+                    "used_bytes": 100000,
+                    "used_percent": 50.0,
+                },
             ]
         }
         result = parse_metrics_to_prometheus(data, "inst1", "linux")
@@ -525,9 +535,30 @@ class TestParseMetricsToPrometheus:
     def test_disk_metrics_filter_by_fstype_and_keep_path_labels(self):
         data = {
             "disk": [
-                {"mount": "/", "path": "/", "fstype": "ext4", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
-                {"mount": "/media/usb", "path": "/media/usb", "fstype": "vfat", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
-                {"mount": "/data", "path": "/data", "fstype": "xfs", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
+                {
+                    "mount": "/",
+                    "path": "/",
+                    "fstype": "ext4",
+                    "total_bytes": 100,
+                    "used_bytes": 50,
+                    "used_percent": 50,
+                },
+                {
+                    "mount": "/media/usb",
+                    "path": "/media/usb",
+                    "fstype": "vfat",
+                    "total_bytes": 100,
+                    "used_bytes": 50,
+                    "used_percent": 50,
+                },
+                {
+                    "mount": "/data",
+                    "path": "/data",
+                    "fstype": "xfs",
+                    "total_bytes": 100,
+                    "used_bytes": 50,
+                    "used_percent": 50,
+                },
             ]
         }
 
@@ -563,7 +594,13 @@ class TestParseMetricsToPrometheus:
     def test_network_metrics_with_interface(self):
         data = {
             "net": [
-                {"interface": "eth0", "rx_bytes": 1000, "tx_bytes": 2000, "rx_errors": 0, "tx_errors": 0},
+                {
+                    "interface": "eth0",
+                    "rx_bytes": 1000,
+                    "tx_bytes": 2000,
+                    "rx_errors": 0,
+                    "tx_errors": 0,
+                },
             ]
         }
         result = parse_metrics_to_prometheus(data, "inst1", "windows")
@@ -726,10 +763,30 @@ class TestParseMetricsToPrometheus:
 
     def test_all_modules_combined(self):
         data = {
-            "cpu": {"usage_percent": 10, "core_count": 2, "load_1m": 0.5, "load_5m": 0.3, "load_15m": 0.1},
-            "mem": {"total_bytes": 1000, "used_bytes": 500, "available_bytes": 500, "swap_total_bytes": 0, "swap_used_bytes": 0},
+            "cpu": {
+                "usage_percent": 10,
+                "core_count": 2,
+                "load_1m": 0.5,
+                "load_5m": 0.3,
+                "load_15m": 0.1,
+            },
+            "mem": {
+                "total_bytes": 1000,
+                "used_bytes": 500,
+                "available_bytes": 500,
+                "swap_total_bytes": 0,
+                "swap_used_bytes": 0,
+            },
             "disk": [{"mount": "/", "total_bytes": 100, "used_bytes": 50, "used_percent": 50}],
-            "net": [{"interface": "lo", "rx_bytes": 0, "tx_bytes": 0, "rx_errors": 0, "tx_errors": 0}],
+            "net": [
+                {
+                    "interface": "lo",
+                    "rx_bytes": 0,
+                    "tx_bytes": 0,
+                    "rx_errors": 0,
+                    "tx_errors": 0,
+                }
+            ],
         }
         result = parse_metrics_to_prometheus(data, "full_test", "linux")
         assert "host_cpu" in result
@@ -894,7 +951,9 @@ class TestHostCollectorCredentialDecoding:
 
         assert config["host_credentials"][0]["password"] == "simplepass123"
 
-    def test_plain_credential_encoding_skips_url_decode_for_literal_percent_sequences(self):
+    def test_plain_credential_encoding_skips_url_decode_for_literal_percent_sequences(
+        self,
+    ):
         collector = HostCollector(
             {
                 "host": "10.11.27.147",
@@ -1331,7 +1390,10 @@ class TestHostCollectorCollect:
 
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_submit_collection_uses_configured_callback_timeout(self, mock_adhoc):
-        mock_adhoc.return_value = {"success": True, "result": {"accepted": True, "status": "queued"}}
+        mock_adhoc.return_value = {
+            "success": True,
+            "result": {"accepted": True, "status": "queued"},
+        }
 
         collector = HostCollector(
             {
@@ -1573,7 +1635,13 @@ class TestHostCollectorCollect:
                     "10.0.0.1": {
                         "stdout": json.dumps(
                             {
-                                "cpu": {"usage_percent": 25.0, "core_count": 4, "load_1m": 0.5, "load_5m": 0.3, "load_15m": 0.1},
+                                "cpu": {
+                                    "usage_percent": 25.0,
+                                    "core_count": 4,
+                                    "load_1m": 0.5,
+                                    "load_5m": 0.3,
+                                    "load_15m": 0.1,
+                                },
                                 "mem": {
                                     "total_bytes": 8000000000,
                                     "used_bytes": 4000000000,
@@ -1623,7 +1691,13 @@ class TestHostCollectorCollect:
                     "10.0.0.2": {
                         "stdout": json.dumps(
                             {
-                                "cpu": {"usage_percent": 60.0, "core_count": 8, "load_1m": 0, "load_5m": 0, "load_15m": 0},
+                                "cpu": {
+                                    "usage_percent": 60.0,
+                                    "core_count": 8,
+                                    "load_1m": 0,
+                                    "load_5m": 0,
+                                    "load_15m": 0,
+                                },
                             }
                         ),
                         "rc": 0,
@@ -1665,7 +1739,13 @@ class TestHostCollectorCollect:
                     "10.0.0.2": {
                         "stdout": json.dumps(
                             {
-                                "cpu": {"usage_percent": 60.0, "core_count": 8, "load_1m": 0, "load_5m": 0, "load_15m": 0},
+                                "cpu": {
+                                    "usage_percent": 60.0,
+                                    "core_count": 8,
+                                    "load_1m": 0,
+                                    "load_5m": 0,
+                                    "load_15m": 0,
+                                },
                             }
                         ),
                         "rc": 0,
@@ -1707,7 +1787,13 @@ class TestHostCollectorCollect:
                     "10.0.0.1": {
                         "stdout": json.dumps(
                             {
-                                "cpu": {"usage_percent": 25.0, "core_count": 4, "load_1m": 0.5, "load_5m": 0.3, "load_15m": 0.1},
+                                "cpu": {
+                                    "usage_percent": 25.0,
+                                    "core_count": 4,
+                                    "load_1m": 0.5,
+                                    "load_5m": 0.3,
+                                    "load_15m": 0.1,
+                                },
                             }
                         ),
                         "rc": 0,
@@ -1823,7 +1909,13 @@ class TestHostCollectorCollect:
                     "10.0.0.1": {
                         "stdout": json.dumps(
                             {
-                                "cpu": {"usage_percent": 25.0, "core_count": 4, "load_1m": 0.5, "load_5m": 0.3, "load_15m": 0.1},
+                                "cpu": {
+                                    "usage_percent": 25.0,
+                                    "core_count": 4,
+                                    "load_1m": 0.5,
+                                    "load_5m": 0.3,
+                                    "load_15m": 0.1,
+                                },
                             }
                         ),
                         "rc": 0,
@@ -1857,7 +1949,10 @@ class TestHostCollectorCollect:
             "success": True,
             "result": {
                 "contacted": {
-                    "10.0.0.1": {"stdout": '{"cpu": {"usage_percent": 1, "core_count": 1, "load_1m": 0, "load_5m": 0, "load_15m": 0}}', "rc": 0}
+                    "10.0.0.1": {
+                        "stdout": '{"cpu": {"usage_percent": 1, "core_count": 1, "load_1m": 0, "load_5m": 0, "load_15m": 0}}',
+                        "rc": 0,
+                    }
                 }
             },
         }
@@ -1995,7 +2090,13 @@ class TestHostRemoteCallbackHandler:
         load_context = AsyncMock(return_value={"ctx": {}, "params": params})
         record_callback_payload = AsyncMock(return_value={"ctx": {}, "params": params, "raw_callback": callback_payload})
         mark_processing_enqueued = AsyncMock()
-        enqueue_processing = AsyncMock(return_value={"task_id": "task-122", "job_id": "process_host_remote_callback:task-122", "status": "queued"})
+        enqueue_processing = AsyncMock(
+            return_value={
+                "task_id": "task-122",
+                "job_id": "process_host_remote_callback:task-122",
+                "status": "queued",
+            }
+        )
         monkeypatch.setattr(
             nats_server.host_remote_callback,
             "load_host_remote_callback_context",
@@ -2017,7 +2118,11 @@ class TestHostRemoteCallbackHandler:
             "clear_host_remote_running_flag",
             clear_running_flag,
         )
-        monkeypatch.setattr(nats_server, "get_task_queue", lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing))
+        monkeypatch.setattr(
+            nats_server,
+            "get_task_queue",
+            lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing),
+        )
 
         result = await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
 
@@ -2056,8 +2161,18 @@ class TestHostRemoteCallbackHandler:
             ],
         }
         clear_running_flag = AsyncMock()
-        enqueue_processing = AsyncMock(return_value={"task_id": "task-123", "job_id": "process_host_remote_callback:task-123", "status": "queued"})
-        monkeypatch.setattr(nats_server, "get_task_queue", lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing))
+        enqueue_processing = AsyncMock(
+            return_value={
+                "task_id": "task-123",
+                "job_id": "process_host_remote_callback:task-123",
+                "status": "queued",
+            }
+        )
+        monkeypatch.setattr(
+            nats_server,
+            "get_task_queue",
+            lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing),
+        )
         monkeypatch.setattr(
             nats_server.host_remote_callback,
             "clear_host_remote_running_flag",
@@ -2079,10 +2194,18 @@ class TestHostRemoteCallbackHandler:
         nats_server = _load_nats_server_module(monkeypatch)
         _, callback_contexts = _install_fake_host_remote_callback_store(monkeypatch)
         params = _build_host_params()
-        callback_payload = {"task_id": "task-456", "success": False, "error": "Connection refused"}
+        callback_payload = {
+            "task_id": "task-456",
+            "success": False,
+            "error": "Connection refused",
+        }
         clear_running_flag = AsyncMock()
         enqueue_processing = AsyncMock(side_effect=RuntimeError("enqueue failed"))
-        monkeypatch.setattr(nats_server, "get_task_queue", lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing))
+        monkeypatch.setattr(
+            nats_server,
+            "get_task_queue",
+            lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing),
+        )
         monkeypatch.setattr(
             nats_server.host_remote_callback,
             "clear_host_remote_running_flag",
@@ -2102,8 +2225,16 @@ class TestHostRemoteCallbackHandler:
         nats_server = _load_nats_server_module(monkeypatch)
         _install_fake_host_remote_callback_store(monkeypatch)
 
-        with pytest.raises(RuntimeError, match="Missing Host Remote callback context for task_id=task-missing"):
-            await nats_server.handle_host_remote_callback({"args": [{"task_id": "task-missing", "success": True, "result": []}], "kwargs": {}})
+        with pytest.raises(
+            RuntimeError,
+            match="Missing Host Remote callback context for task_id=task-missing",
+        ):
+            await nats_server.handle_host_remote_callback(
+                {
+                    "args": [{"task_id": "task-missing", "success": True, "result": []}],
+                    "kwargs": {},
+                }
+            )
 
 
 @pytest.mark.asyncio
@@ -2176,7 +2307,11 @@ class TestHostRemoteProcessWorker:
         callback_contexts["task-process-2"] = {
             "ctx": {},
             "params": params,
-            "raw_callback": {"task_id": "task-process-2", "success": False, "error": "Connection refused"},
+            "raw_callback": {
+                "task_id": "task-process-2",
+                "success": False,
+                "error": "Connection refused",
+            },
             "status": {"execution": "execution_finished", "delivery": "processing"},
         }
         publish_metrics = AsyncMock()
@@ -2236,7 +2371,11 @@ class TestHostRemoteProcessWorker:
             "raw_callback": callback_payload,
             "status": {"execution": "execution_finished", "delivery": "processing"},
         }
-        monkeypatch.setattr(nats_helper_module, "publish_metrics_to_nats", AsyncMock(side_effect=RuntimeError("publish failed")))
+        monkeypatch.setattr(
+            nats_helper_module,
+            "publish_metrics_to_nats",
+            AsyncMock(side_effect=RuntimeError("publish failed")),
+        )
 
         result = await handler.process_host_remote_callback_task({}, {}, "task-process-3")
 
@@ -2288,7 +2427,10 @@ class TestHostRemoteRuntime:
             "task_id": "task-retry",
             "ctx": {},
             "params": _build_host_params(),
-            "status": {"execution": "execution_finished", "delivery": "publish_pending"},
+            "status": {
+                "execution": "execution_finished",
+                "delivery": "publish_pending",
+            },
             "next_retry_at": 1,
         }
         monkeypatch.setattr(
@@ -2297,8 +2439,17 @@ class TestHostRemoteRuntime:
             AsyncMock(return_value=[callback_contexts["task-retry"]]),
         )
         monkeypatch.setattr(runtime_module.host_remote_callback, "_now_ms", lambda: 100)
-        enqueue_processing = AsyncMock(return_value={"task_id": "task-retry", "job_id": "process_host_remote_callback:task-retry"})
-        monkeypatch.setattr(runtime_module, "get_task_queue", lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing))
+        enqueue_processing = AsyncMock(
+            return_value={
+                "task_id": "task-retry",
+                "job_id": "process_host_remote_callback:task-retry",
+            }
+        )
+        monkeypatch.setattr(
+            runtime_module,
+            "get_task_queue",
+            lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing),
+        )
 
         await runtime_module.sweep_host_remote_callback_contexts()
 
@@ -2324,7 +2475,11 @@ class TestHostRemoteRuntime:
         warnings = []
         monkeypatch.setenv("TASK_JOB_TIMEOUT", "300")
         monkeypatch.setattr(runtime_module.logger, "warning", lambda message: warnings.append(message))
-        monkeypatch.setattr(runtime_module.host_remote_callback, "HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", 300)
+        monkeypatch.setattr(
+            runtime_module.host_remote_callback,
+            "HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS",
+            300,
+        )
 
         runtime_module.validate_host_remote_runtime_config()
 
@@ -2348,7 +2503,11 @@ class TestHostRemoteRuntime:
             AsyncMock(return_value=[callback_contexts["task-submit-timeout"]]),
         )
         monkeypatch.setattr(runtime_module.host_remote_callback, "_now_ms", lambda: 400_000)
-        monkeypatch.setattr(runtime_module.host_remote_callback, "HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", 300)
+        monkeypatch.setattr(
+            runtime_module.host_remote_callback,
+            "HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS",
+            300,
+        )
         clear_running_flag = AsyncMock()
         monkeypatch.setattr(
             runtime_module.host_remote_callback,
@@ -2406,7 +2565,7 @@ class TestPublishMetricsToNats:
 
         monkeypatch.setattr(nats_helper_module, "nats_publish_lines", fake_publish_lines)
 
-        with pytest.raises(nats_helper_module.MetricsPublishError, match="line publish failed"):
+        with pytest.raises(nats_helper_module.MetricsPublishError, match="RuntimeError"):
             await nats_helper_module.publish_metrics_to_nats({}, "ignored", {"monitor_type": "host"}, "task-900")
 
         assert len(published) == 2
@@ -2503,7 +2662,11 @@ class TestWorkerRunningFlag:
         handler = AsyncMock(return_value={"task_id": "task-worker-2", "status": "success"})
         host_remote_handler_module = types.ModuleType("tasks.handlers.host_remote_handler")
         host_remote_handler_module.process_host_remote_callback_task = handler
-        monkeypatch.setitem(sys.modules, "tasks.handlers.host_remote_handler", host_remote_handler_module)
+        monkeypatch.setitem(
+            sys.modules,
+            "tasks.handlers.host_remote_handler",
+            host_remote_handler_module,
+        )
 
         result = await worker.process_host_remote_callback_task({}, {}, "task-worker-2")
 

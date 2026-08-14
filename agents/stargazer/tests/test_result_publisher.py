@@ -1,8 +1,8 @@
 import asyncio
 
 import pytest
-from core.collection.contracts import TargetCollectionResult
-from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher
+from core.collection.contracts import TargetCollectionResult, build_collection_result_id
+from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher, PublishShutdownError
 from core.collection.runtime import CollectionRequest, RunLease
 
 
@@ -14,9 +14,7 @@ async def test_buffered_publisher_batches_concurrent_target_results():
         async def publish_batch(self, items):
             batches.append(tuple(item[1].target for item in items))
 
-    publisher = BufferedResultPublisher(
-        BatchDelegate(), capacity=3, batch_size=10, flush_interval_seconds=0.01
-    )
+    publisher = BufferedResultPublisher(BatchDelegate(), capacity=3, batch_size=10, flush_interval_seconds=0.01)
     request = CollectionRequest(
         task_id="batch-results",
         plugin_ref="network.config",
@@ -28,9 +26,7 @@ async def test_buffered_publisher_batches_concurrent_target_results():
         *(
             publisher.publish(
                 request,
-                TargetCollectionResult(
-                    target=target, status="success", attempts=1, value="metric 1"
-                ),
+                TargetCollectionResult(target=target, status="success", attempts=1, value="metric 1"),
                 lease,
             )
             for target in request.targets
@@ -39,6 +35,101 @@ async def test_buffered_publisher_batches_concurrent_target_results():
 
     assert batches == [("10.10.24.1", "10.10.24.2", "10.10.24.3")]
     assert publisher.peak_queue_depth <= 3
+    await publisher.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_enqueue_returns_receipt_before_slow_delivery_finishes():
+    release = asyncio.Event()
+
+    class SlowDelegate:
+        async def publish_batch(self, items):
+            await release.wait()
+
+    publisher = BufferedResultPublisher(SlowDelegate(), capacity=1, batch_size=1, flush_interval_seconds=0.01)
+    request = CollectionRequest(
+        task_id="publish-receipt",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    receipt = await publisher.enqueue(
+        request,
+        TargetCollectionResult(target="10.10.24.1", status="success", attempts=1, value="metric 1"),
+        lease,
+    )
+
+    assert receipt.done() is False
+    release.set()
+    await receipt.wait()
+    assert receipt.done() is True
+    await publisher.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_grace_cancels_hung_writer_and_resolves_receipt():
+    blocked = asyncio.Event()
+
+    class HungDelegate:
+        async def publish_batch(self, _items):
+            await blocked.wait()
+
+    publisher = BufferedResultPublisher(HungDelegate(), capacity=1, batch_size=1, flush_interval_seconds=0.01)
+    request = CollectionRequest(
+        task_id="publisher-shutdown-grace",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    receipt = await publisher.enqueue(
+        request,
+        TargetCollectionResult(target="10.10.24.1", status="success", attempts=1, value="metric 1"),
+        lease,
+    )
+
+    await publisher.shutdown(grace_seconds=0.01)
+    outcome = await asyncio.gather(receipt.wait(), return_exceptions=True)
+
+    assert isinstance(outcome[0], PublishShutdownError)
+    assert receipt.done() is True
+
+
+@pytest.mark.asyncio
+async def test_batch_delegate_can_report_one_failed_result_without_poisoning_peers():
+    request = CollectionRequest(
+        task_id="batch-partial-result",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2", "10.10.24.3"),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 7, 999999)
+    failed_id = build_collection_result_id(
+        task_id=request.task_id,
+        plugin_ref=request.plugin_ref,
+        target="10.10.24.2",
+        fence=lease.fence,
+    )
+
+    class PartialDelegate:
+        async def publish_batch(self, items):
+            return {failed_id: TimeoutError("target publish failed")}
+
+    publisher = BufferedResultPublisher(PartialDelegate(), capacity=3, batch_size=3, flush_interval_seconds=0.01)
+    receipts = await asyncio.gather(
+        *(
+            publisher.enqueue(
+                request,
+                TargetCollectionResult(target=target, status="success", attempts=1, value="metric 1"),
+                lease,
+            )
+            for target in request.targets
+        )
+    )
+    outcomes = await asyncio.gather(*(receipt.wait() for receipt in receipts), return_exceptions=True)
+
+    assert outcomes[0] is None
+    assert isinstance(outcomes[1], TimeoutError)
+    assert outcomes[2] is None
     await publisher.shutdown()
 
 
@@ -77,6 +168,53 @@ async def test_nats_result_publisher_uses_one_metrics_batch_adapter_call():
     assert len(batches) == 1
     assert [entry[3] for entry in batches[0]] == ["nats-batch", "nats-batch"]
     assert all("collection_result_id" in entry[2] for entry in batches[0])
+
+
+@pytest.mark.asyncio
+async def test_nats_batch_returns_per_target_adapter_outcomes():
+    request = CollectionRequest(
+        task_id="nats-partial-batch",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2"),
+        params={"plugin_family": "configuration", "model_id": "network"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 3, 999999)
+    failed_id = build_collection_result_id(
+        task_id=request.task_id,
+        plugin_ref=request.plugin_ref,
+        target="10.10.24.2",
+        fence=lease.fence,
+    )
+
+    async def publish_metrics_batch(entries):
+        assert len(entries) == 2
+        return {failed_id: TimeoutError("second target failed")}
+
+    publisher = NatsResultPublisher(metrics_publish_batch=publish_metrics_batch)
+    outcomes = await publisher.publish_batch(
+        tuple(
+            (
+                request,
+                TargetCollectionResult(
+                    target=target,
+                    status="success",
+                    attempts=1,
+                    value=f"network_info,host={target} value=1",
+                ),
+                lease,
+            )
+            for target in request.targets
+        )
+    )
+
+    succeeded_id = build_collection_result_id(
+        task_id=request.task_id,
+        plugin_ref=request.plugin_ref,
+        target="10.10.24.1",
+        fence=lease.fence,
+    )
+    assert outcomes[succeeded_id] is None
+    assert isinstance(outcomes[failed_id], TimeoutError)
 
 
 @pytest.mark.asyncio
