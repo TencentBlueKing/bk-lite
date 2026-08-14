@@ -28,6 +28,7 @@ from apps.node_mgmt.services.module_push import (
     parse_retire_linked_flag,
 )
 from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.sidecar_cache import invalidate_node_configuration_etags
 from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar
 from apps.node_mgmt.utils.permission import (
     add_node_permissions,
@@ -322,9 +323,12 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         if error_response:
             return error_response
 
+        name_changed = name is not None and name != node.name
         if name is not None:
             node.name = name
             node.save()
+            if name_changed:
+                invalidate_node_configuration_etags([node.id])
 
         if organizations is not None:
             NodeOrganization.objects.filter(node=node).delete()

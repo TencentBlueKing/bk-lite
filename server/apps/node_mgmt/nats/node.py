@@ -558,7 +558,7 @@ class NatsService:
 
     def get_child_configs_by_ids(self, ids: list):
         """根据子配置ID列表获取子配置对象"""
-        child_configs = ChildConfig.objects.filter(id__in=ids)
+        child_configs = ChildConfig.objects.filter(id__in=ids).select_related("collector_config__collector")
         return [
             {
                 "id": config.id,
@@ -566,6 +566,8 @@ class NatsService:
                 "config_type": config.config_type,
                 "content": config.content,
                 "env_config": config.env_config,
+                "collector_config_id": config.collector_config_id,
+                "collector_name": config.collector_config.collector.name,
             }
             for config in child_configs
         ]
