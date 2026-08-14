@@ -32,6 +32,7 @@ class NodeModuleIngestService:
         source_module = str(params.get("source_module") or "").strip()
         node_id = cls._normalize_str(link_ids.get("node_id"))
         cmdb_id = cls._normalize_str(link_ids.get("cmdb_id"))
+        cmdb_aliases = link_ids.get("cmdb_id_aliases") or []
         monitor_id = cls._normalize_str(link_ids.get("monitor_id"))
         if not node_id and source_module == RECEIVING_MODULE:
             node_id = cls._normalize_str(params.get("source_id"))
@@ -45,6 +46,7 @@ class NodeModuleIngestService:
                 source_module=source_module,
                 node_id=node_id,
                 cmdb_id=cmdb_id,
+                cmdb_aliases=cmdb_aliases,
                 monitor_id=monitor_id,
                 raw=raw,
             )
@@ -59,6 +61,7 @@ class NodeModuleIngestService:
                 ip=ip,
                 cloud=cloud,
                 existing_node_id=node_id,
+                cmdb_id_aliases=cmdb_aliases,
             )
         elif source_module == "monitor" or monitor_id:
             linked = NodeAssociationService.best_effort_associate_monitor_host(
@@ -85,6 +88,7 @@ class NodeModuleIngestService:
         source_module: str,
         node_id: str | None,
         cmdb_id: str | None,
+        cmdb_aliases: list[str] | None,
         monitor_id: str | None,
         raw: dict[str, Any],
     ) -> dict[str, Any]:
@@ -97,7 +101,7 @@ class NodeModuleIngestService:
         if node_id:
             node = Node.objects.filter(id=node_id).first()
         if not node and source_module == "cmdb" and cmdb_id:
-            node = Node.objects.filter(cmdb_id=cmdb_id).first()
+            node = cls._find_node_by_cmdb_id(cmdb_id, aliases=cmdb_aliases)
         if not node and source_module == "monitor" and monitor_id:
             node = Node.objects.filter(monitor_id=monitor_id).first()
 
@@ -133,6 +137,20 @@ class NodeModuleIngestService:
             source_module,
         )
         return IngestResult(id=node.id, updated=True).as_dict()
+
+    @classmethod
+    def _find_node_by_cmdb_id(
+        cls,
+        cmdb_id: str,
+        *,
+        aliases: list[str] | None = None,
+    ) -> Node | None:
+        from apps.cmdb.services.instance_identity import expand_cmdb_id_lookup_candidates
+
+        candidates = expand_cmdb_id_lookup_candidates(cmdb_id, aliases)
+        if not candidates:
+            return None
+        return Node.objects.filter(cmdb_id__in=candidates).first()
 
     @classmethod
     def _is_echo(cls, params: dict[str, Any]) -> bool:

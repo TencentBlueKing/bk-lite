@@ -10,6 +10,7 @@ import type { RoomLayoutData, RoomRack, RackDevice } from '@/app/cmdb/types/rack
 import {
   CELL, PAD, GAP, cellXY, roomGridSize, rackTypeColor, rackTypeName, TECH,
 } from '@/app/cmdb/utils/rackRoomLayout';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import RackElevation from './rackElevation';
 import DeviceDetailDrawer from './deviceDetailDrawer';
 
@@ -228,12 +229,20 @@ const RoomFloorPlan: React.FC<Props> = ({
                 </div>
               </div>
             </div>
-            <RackElevation
-              modelId="rack"
-              instUuid={rack.inst_uuid || rack.inst_id}
-              embedded
-              onDeviceClick={(d) => { setDevice(d); setDevOpen(true); }}
-            />
+            {(() => {
+              const rackUuid = resolveCmdbInstUuid(rack.inst_uuid);
+              if (!rackUuid) {
+                return <Empty description="机柜缺少合法 inst_uuid，请先完成 UUID 存量清洗" />;
+              }
+              return (
+                <RackElevation
+                  modelId="rack"
+                  instUuid={rackUuid}
+                  embedded
+                  onDeviceClick={(d) => { setDevice(d); setDevOpen(true); }}
+                />
+              );
+            })()}
           </div>
         )}
       </Drawer>

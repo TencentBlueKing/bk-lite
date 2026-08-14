@@ -317,7 +317,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(methods=["post"], detail=True, url_path="push_to_monitor")
     def push_to_monitor(self, request, pk=None):
         """显式推送到监控：无级联，带 causation。"""
-        instance = InstanceManage.query_entity_by_id(int(pk))
+        if str(pk).isdigit():
+            return WebUtils.response_error("请使用 inst_uuid 定位实例，不再支持数字 ID", status_code=status.HTTP_400_BAD_REQUEST)
+        instance = InstanceManage.query_entity_by_uuid(pk)
         if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -331,11 +333,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         actor_scope = build_cmdb_push_actor_scope(request)
         try:
-            result = CmdbToMonitorPushService.push_instance(int(pk), actor_scope=actor_scope)
+            result = CmdbToMonitorPushService.push_instance(pk, actor_scope=actor_scope)
         except ValueError as exc:
             return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
         except Exception:
-            logger.exception("[push_to_monitor] failed inst_id=%s", pk)
+            logger.exception("[push_to_monitor] failed inst_uuid=%s", pk)
             return WebUtils.response_error("推送到监控失败", status_code=status.HTTP_502_BAD_GATEWAY)
         return WebUtils.response_success(result)
 

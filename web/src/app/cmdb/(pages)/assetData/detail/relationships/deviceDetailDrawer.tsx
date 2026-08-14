@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Drawer, Spin, Button, Tag } from 'antd';
+import { Drawer, Spin, Button, Tag, message } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useInstanceApi, useModelApi } from '@/app/cmdb/api';
 import type { RackDevice } from '@/app/cmdb/types/rackRoom';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import { deviceColor, deviceTypeName, TECH } from '@/app/cmdb/utils/rackRoomLayout';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
@@ -56,8 +57,9 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
     setLoading(true);
     setDetail(null);
     setAttrs([]);
+    const instUuid = resolveCmdbInstUuid(device.inst_uuid);
     Promise.all([
-      getInstanceDetail(device.inst_uuid || device.inst_id).catch(() => null),
+      instUuid ? getInstanceDetail(instUuid).catch(() => null) : Promise.resolve(null),
       getModelAttrList(device.model_id).catch(() => []),
     ])
       .then(([d, a]) => {
@@ -72,9 +74,14 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
 
   const jump = () => {
     if (!device) return;
+    const instUuid = resolveCmdbInstUuid(device.inst_uuid);
+    if (!instUuid) {
+      message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+      return;
+    }
     const params = new URLSearchParams({
       icn: '', model_name: device.model_id, model_id: device.model_id,
-      classification_id: '', inst_uuid: device.inst_uuid || device.inst_id, inst_name: device.inst_name,
+      classification_id: '', inst_uuid: instUuid, inst_name: device.inst_name,
     }).toString();
     router.push(`/cmdb/assetData/detail/baseInfo?${params}`);
   };
