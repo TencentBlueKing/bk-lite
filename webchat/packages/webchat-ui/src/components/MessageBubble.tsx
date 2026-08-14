@@ -65,7 +65,7 @@ const CodeBlock = ({ inline, className, children, style, ...props }: CodeBlockPr
   );
 };
 
-export const MessageBubble: React.FC<MessageBubbleProps> = (
+export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
   ({ message, botAvatar, userAvatar, isLastBotMessage, onRegenerate, onCopy, onDelete }) => {
     const isBot = message.sender === 'bot';
     const [showActions, setShowActions] = useState(false);
