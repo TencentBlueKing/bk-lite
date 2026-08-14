@@ -189,6 +189,9 @@ interface WebChatConfig {
   // 存储配置
   enableStorage?: boolean;          // 启用会话持久化，默认：true
   storageKey?: string;              // localStorage 存储键，默认：'webchat_session'
+
+  // 流式性能与回滚
+  streamingTextBatching?: boolean;  // 每动画帧合并文本提交，默认：true；设为 false 即时回滚
   
   // 回调函数
   onStateChange?: (state: ChatState) => void;

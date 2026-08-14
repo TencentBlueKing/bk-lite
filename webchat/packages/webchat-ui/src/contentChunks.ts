@@ -85,6 +85,17 @@ export function mapMessageChunks(
   if (!messageId) {
     return messages;
   }
+  const trailingIndex = messages.length - 1;
+  const trailingMessage = messages[trailingIndex];
+  if (trailingMessage?.id === messageId) {
+    const nextChunks = transform(getContentChunks(trailingMessage), trailingMessage);
+    if (nextChunks === null) {
+      return messages;
+    }
+    const nextMessages = [...messages];
+    nextMessages[trailingIndex] = withUpdatedChunks(trailingMessage, nextChunks, content);
+    return nextMessages;
+  }
   return messages.map((msg) => {
     if (msg.id !== messageId) {
       return msg;
@@ -107,7 +118,11 @@ export function syncSessionChunks(
   if (!session || !messageId) {
     return;
   }
-  const msgIndex = session.messages.findIndex((message) => message.id === messageId);
+  const trailingIndex = session.messages.length - 1;
+  const msgIndex =
+    session.messages[trailingIndex]?.id === messageId
+      ? trailingIndex
+      : session.messages.findIndex((message) => message.id === messageId);
   if (msgIndex === -1) {
     return;
   }
