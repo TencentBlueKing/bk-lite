@@ -298,6 +298,7 @@ export const useConfigRenderer = () => {
             <Password
               {...widget_props}
               clickToEdit={mode === 'edit' && editable !== false}
+              trimOuterWhitespace
               placeholder={widget_props.placeholder || label}
               className={`${FORM_WIDGET_WIDTH_CLASS} mr-[10px]`}
             />
@@ -778,6 +779,8 @@ export const useConfigRenderer = () => {
               <Password
                 value={text}
                 clickToEdit={false}
+                trimOuterWhitespace
+                trimmedHintMode="tooltip"
                 onChange={(value) => handleChange(value, record, index)}
                 placeholder={componentProps.placeholder || label}
                 status={errorMsg ? 'error' : ''}

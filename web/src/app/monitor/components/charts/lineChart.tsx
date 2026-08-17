@@ -64,16 +64,21 @@ interface LineChartProps {
   syncId?: string;
   onXRangeChange?: (arr: [Dayjs, Dayjs]) => void;
   seriesStyles?: Array<{
+    dataKey?: string;
     color?: string;
     strokeDasharray?: string;
     fillOpacity?: number;
     strokeOpacity?: number;
     strokeWidth?: number;
     unit?: string;
+    name?: string;
+    dotStyle?: 'solid' | 'hollow';
   }>;
   xAxisTimeFormat?: string;
   leftAxisWidthOverride?: number;
   xAxisDomain?: [number, number];
+  /** 默认 samples：仪表盘/阈值告警的采样中点空窗。plot：无数据告警贴边铺满。 */
+  gapFit?: 'samples' | 'plot';
 }
 
 const getChartAreaKeys = (arr: ChartData[]): string[] => {
@@ -101,7 +106,35 @@ interface ResolvedSeriesStyle {
   strokeOpacity: number;
   strokeWidth: number;
   unit?: string;
+  name?: string;
+  dotStyle?: 'solid' | 'hollow';
 }
+
+const resolveSeriesStyleInput = (
+  seriesStyles: LineChartProps['seriesStyles'] = [],
+  dataKey: string,
+  index: number
+) => seriesStyles.find((item) => item.dataKey === dataKey) || seriesStyles[index] || {};
+
+const resolveSeriesDot = (style: ResolvedSeriesStyle, active = false) => {
+  if (style.dotStyle === 'solid') {
+    return {
+      r: active ? 4 : 3,
+      fill: style.color,
+      stroke: style.color,
+      strokeWidth: active ? 2 : 1
+    };
+  }
+  if (style.dotStyle === 'hollow') {
+    return {
+      r: active ? 4.5 : 3.5,
+      fill: 'var(--color-bg-1)',
+      stroke: style.color,
+      strokeWidth: active ? 2 : 1.5
+    };
+  }
+  return active ? { r: 4, strokeWidth: 2, fill: style.color } : false;
+};
 
 const getNiceStep = (rawStep: number) => {
   if (!Number.isFinite(rawStep) || rawStep <= 0) {
@@ -203,7 +236,8 @@ const LineChart: React.FC<LineChartProps> = memo(
     seriesStyles = [],
     xAxisTimeFormat,
     leftAxisWidthOverride,
-    xAxisDomain
+    xAxisDomain,
+    gapFit = 'samples'
   }) => {
     const { formatTime } = useFormatTime();
     const levelList = useLevelList();
@@ -238,17 +272,22 @@ const LineChart: React.FC<LineChartProps> = memo(
 
     const resolvedSeriesStyles = useMemo<ResolvedSeriesStyle[]>(
       () =>
-        chartAreaKeys.map((_, index) => ({
-          color:
-            seriesStyles[index]?.color ||
-            (index === 0 && metric && typeof metric.color === 'string' ? metric.color : '') ||
-            CHART_COLORS[index % CHART_COLORS.length],
-          strokeDasharray: seriesStyles[index]?.strokeDasharray,
-          fillOpacity: seriesStyles[index]?.fillOpacity ?? DEFAULT_FILL_OPACITY,
-          strokeOpacity: seriesStyles[index]?.strokeOpacity ?? 1,
-          strokeWidth: seriesStyles[index]?.strokeWidth ?? DEFAULT_STROKE_WIDTH,
-          unit: seriesStyles[index]?.unit
-        })),
+        chartAreaKeys.map((key, index) => {
+          const matched = resolveSeriesStyleInput(seriesStyles, key, index);
+          return {
+            color:
+              matched.color ||
+              (index === 0 && metric && typeof metric.color === 'string' ? metric.color : '') ||
+              CHART_COLORS[index % CHART_COLORS.length],
+            strokeDasharray: matched.strokeDasharray,
+            fillOpacity: matched.fillOpacity ?? DEFAULT_FILL_OPACITY,
+            strokeOpacity: matched.strokeOpacity ?? 1,
+            strokeWidth: matched.strokeWidth ?? DEFAULT_STROKE_WIDTH,
+            unit: matched.unit,
+            name: matched.name,
+            dotStyle: matched.dotStyle
+          };
+        }),
       [chartAreaKeys, metric, seriesStyles]
     );
 
@@ -333,9 +372,13 @@ const LineChart: React.FC<LineChartProps> = memo(
       () => Array.from(new Set(
         renderedGapIntervals
           .flatMap((gap) => [gap.start, gap.end])
-          .filter((time) => time > minTime && time < maxTime)
+          .filter((time) =>
+            gapFit === 'plot'
+              ? time >= minTime && time <= maxTime
+              : time > minTime && time < maxTime
+          )
       )),
-      [maxTime, minTime, renderedGapIntervals]
+      [gapFit, maxTime, minTime, renderedGapIntervals]
     );
 
     // 计算 Y 轴范围，确保阈值线能显示
@@ -756,9 +799,15 @@ const LineChart: React.FC<LineChartProps> = memo(
                     key={`gap-${gap.start}-${gap.end}`}
                     x1={gap.start}
                     x2={gap.end}
+                    {...(gapFit === 'plot'
+                      ? {
+                          y1: niceYAxis.domain[0],
+                          y2: niceYAxis.domain[1],
+                        }
+                      : {})}
                     yAxisId="left"
                     {...GAP_INTERVAL_AREA_STYLE}
-                    ifOverflow="hidden"
+                    ifOverflow={gapFit === 'plot' ? 'visible' : 'hidden'}
                   />
                 ))}
                 {gapBoundaryTimes.map((time) => (
@@ -772,6 +821,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                 ))}
                 <Tooltip
                   offset={-1}
+                  filterNull={gapFit !== 'plot'}
                   cursor={{
                     stroke: 'var(--color-text-3)',
                     strokeWidth: 1,
@@ -819,6 +869,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                       key={key}
                       type="linear"
                       dataKey={key}
+                      name={resolvedSeriesStyles[index]?.name || key}
                       yAxisId="left"
                       stroke={resolvedSeriesStyles[index]?.color}
                       strokeDasharray={resolvedSeriesStyles[index]?.strokeDasharray}
@@ -826,10 +877,11 @@ const LineChart: React.FC<LineChartProps> = memo(
                     fillOpacity={1}
                     fill={`url(#${gradientId}-${index})`}
                     strokeWidth={resolvedSeriesStyles[index]?.strokeWidth ?? DEFAULT_STROKE_WIDTH}
-                    dot={false}
-                    activeDot={{ r: 4, strokeWidth: 2, fill: resolvedSeriesStyles[index]?.color }}
+                    dot={resolveSeriesDot(resolvedSeriesStyles[index])}
+                    activeDot={resolveSeriesDot(resolvedSeriesStyles[index], true)}
+                    connectNulls={false}
                     isAnimationActive={false}
-                    strokeLinecap="round"
+                    strokeLinecap={resolvedSeriesStyles[index]?.dotStyle === 'hollow' ? 'butt' : 'round'}
                     strokeLinejoin="round"
                     hide={!visibleAreas.includes(key)}
                   />

@@ -48,6 +48,7 @@ import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
 import CollectorDetailDrawer from './collectorDetail';
 import EditNode from './editNode';
+import BatchEditOrganizations from './batchEditOrganizations';
 import { useCommon } from '@/app/node-manager/context/common';
 import {
   getCollectorOperationSelection,
@@ -76,6 +77,7 @@ const Node = () => {
   const controllerRef = useRef<ModalRef>(null);
   const collectorDetailRef = useRef<any>(null);
   const editNodeRef = useRef<ModalRef>(null);
+  const batchEditOrganizationsRef = useRef<ModalRef>(null);
   const [nodeList, setNodeList] = useState<TableDataItem[]>();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -739,6 +741,23 @@ const Node = () => {
                         </Space>
                       </Button>
                     </Dropdown>
+                    <PermissionWrapper requiredPermissions={['Edit']}>
+                      <Button
+                        className="mr-[8px]"
+                        disabled={!selectedRowKeys.length}
+                        onClick={() => {
+                          batchEditOrganizationsRef.current?.showModal({
+                            type: 'batchEditOrganizations',
+                            ids: selectedRowKeys.map(String)
+                          });
+                        }}
+                      >
+                        {t(
+                          'node-manager.cloudregion.node.batchEdit',
+                          '批量编辑'
+                        )}
+                      </Button>
+                    </PermissionWrapper>
                     <ReloadOutlined onClick={() => getNodes(searchFilters)} />
                   </div>
                 </div>
@@ -777,6 +796,13 @@ const Node = () => {
                 <EditNode
                   ref={editNodeRef}
                   onSuccess={() => getNodes(searchFilters)}
+                />
+                <BatchEditOrganizations
+                  ref={batchEditOrganizationsRef}
+                  onSuccess={() => {
+                    setSelectedRowKeys([]);
+                    getNodes(searchFilters);
+                  }}
                 />
               </div>
             </div>

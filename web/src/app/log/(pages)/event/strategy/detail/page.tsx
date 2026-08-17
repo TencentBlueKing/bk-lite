@@ -18,6 +18,7 @@ import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
 import AlertNameVariables from './alertNameVariables';
 import LogPreview from './logPreview';
+import usePolicyFieldCatalog from './usePolicyFieldCatalog';
 import {
   buildStrategyPayload,
   getDefaultShowFields,
@@ -33,7 +34,7 @@ const StrategyOperation = () => {
   const { isLoading } = useApiClient();
   const { getSystemChannelList, getPolicy, createPolicy, updatePolicy } =
     useLogEventApi();
-  const { getLogStreams, getFields } = useLogIntegrationApi();
+  const { getLogStreams } = useLogIntegrationApi();
   const commonContext = useCommon();
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
@@ -54,12 +55,13 @@ const StrategyOperation = () => {
   const [term, setTerm] = useState<string | null>(null);
   const [formData, setFormData] = useState<StrategyFields>({});
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
-  const [fieldList, setFieldList] = useState<string[]>([]);
   const [streamList, setStreamList] = useState<ListItem[]>([]);
   const previewQuery = Form.useWatch('query', form);
   const previewLogGroups = Form.useWatch('log_groups', form);
   const previewShowFields = Form.useWatch('show_fields', form);
   const alertGroupBy = Form.useWatch('group_by', form);
+  const { fields: fieldList, loading: fieldListLoading } =
+    usePolicyFieldCatalog(previewLogGroups);
 
   const isEdit = useMemo(() => type === 'edit', [type]);
   const createAlertType = useMemo(
@@ -93,7 +95,6 @@ const StrategyOperation = () => {
       }
       setPageLoading(true);
       Promise.all([
-        getAllFields(),
         getChannelList(),
         getGroups(),
         detailId && getStragyDetail()
@@ -129,14 +130,6 @@ const StrategyOperation = () => {
   const getChannelList = async () => {
     const data = await getSystemChannelList();
     setChannelList(data);
-  };
-
-  const getAllFields = async () => {
-    const data = await getFields({
-      query: form.getFieldValue('query') || '*',
-      log_groups: form.getFieldValue('log_groups') || []
-    });
-    setFieldList(data || []);
   };
 
   const getGroups = async () => {
@@ -301,6 +294,8 @@ const StrategyOperation = () => {
                         conditions={conditions}
                         term={term}
                         fieldList={fieldList}
+                        fieldListLoading={fieldListLoading}
+                        logGroups={previewLogGroups || []}
                         streamList={streamList}
                         onUnitChange={handleUnitChange}
                         onPeriodUnitChange={handlePeriodUnitChange}
