@@ -325,6 +325,69 @@ assert.deepEqual(
   ]
 );
 
+// 阈值告警持续触发时，后续扫描的 raw_data.values 可能停在同一个汇聚窗口，
+// 但 event_time 仍在前进。详情图必须跟扫描时间轴，不能停在第一段窗口末尾。
+const stalledThresholdSnapshots = [
+  {
+    type: 'pre_alert',
+    snapshot_time: '2026-08-17T07:11:01Z',
+    raw_data: {
+      values: [[unix('2026-08-17T07:11:01Z'), '1']],
+    },
+  },
+  {
+    type: 'event',
+    event_time: '2026-08-17T07:11:01Z',
+    snapshot_time: '2026-08-17T07:11:01Z',
+    raw_data: {
+      values: [
+        [unix('2026-08-17T07:11:01Z'), '1'],
+        [unix('2026-08-17T07:16:02Z'), '1'],
+      ],
+    },
+  },
+  {
+    type: 'event',
+    event_time: '2026-08-17T07:22:02Z',
+    snapshot_time: '2026-08-17T07:22:02Z',
+    raw_data: {
+      values: [[unix('2026-08-17T07:16:02Z'), '1']],
+    },
+  },
+  {
+    type: 'event',
+    event_time: '2026-08-17T07:23:00Z',
+    snapshot_time: '2026-08-17T07:23:00Z',
+    raw_data: {
+      values: [[unix('2026-08-17T07:16:02Z'), '1']],
+    },
+  },
+];
+const stalledThresholdChart = buildAlertSnapshotChartModel(
+  stalledThresholdSnapshots,
+  { alertType: 'alert' }
+);
+assert.deepEqual(stalledThresholdChart.dataValues, [
+  [unix('2026-08-17T07:11:01Z'), '1'],
+  [unix('2026-08-17T07:16:02Z'), '1'],
+  [unix('2026-08-17T07:22:02Z'), '1'],
+  [unix('2026-08-17T07:23:00Z'), '1'],
+]);
+assert.deepEqual(stalledThresholdChart.xAxisDomain, [
+  unix('2026-08-17T07:11:01Z'),
+  unix('2026-08-17T07:23:00Z'),
+]);
+assert.equal(stalledThresholdChart.gapIntervals.length, 0);
+assert.deepEqual(
+  buildAlertSnapshotChartModel(stalledThresholdSnapshots, {
+    alertType: 'no_data',
+  }).dataValues,
+  [
+    [unix('2026-08-17T07:11:01Z'), '1'],
+    [unix('2026-08-17T07:16:02Z'), '1'],
+  ]
+);
+
 const decoratedEmptyChart = decorateAlertSnapshotChartData(
   [],
   onlyNoDataChart.gapIntervals,

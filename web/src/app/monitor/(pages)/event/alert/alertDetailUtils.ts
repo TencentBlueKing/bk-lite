@@ -44,8 +44,8 @@ const readSnapshotPoints = (snapshot: AlertSnapshot): AlertSnapshotPoint[] => {
   const points: AlertSnapshotPoint[] = [];
   (snapshot.raw_data?.values || []).forEach((point) => {
     if (!Array.isArray(point) || point.length < 2) return;
-    const timestamp = Number(point[0]);
-    if (!Number.isFinite(timestamp)) return;
+    const timestamp = toUnixSeconds(Number(point[0]));
+    if (timestamp == null) return;
     points.push([timestamp, String(point[1])]);
   });
   return points;
@@ -122,9 +122,20 @@ export const buildAlertSnapshotChartModel = (
     }
 
     const target = snapshot.type === 'pre_alert' ? preAlertPoints : otherPoints;
-    readSnapshotPoints(snapshot).forEach(([timestamp, value]) => {
+    const points = readSnapshotPoints(snapshot);
+    points.forEach(([timestamp, value]) => {
       target.set(timestamp, value);
     });
+    // 阈值告警详情跟扫描时间轴：汇聚窗口的 values 时间戳可能不再前进，
+    // 但 event_time 仍表示这一轮评估仍在触发。无数据告警不走这条路径。
+    if (!isNoDataAlert && points.length) {
+      const scanTime = toUnixSeconds(
+        snapshot.event_time || snapshot.snapshot_time
+      );
+      if (scanTime != null) {
+        target.set(scanTime, points[points.length - 1][1]);
+      }
+    }
   });
 
   const lastNoDataTime = noDataTimes.length ? Math.max(...noDataTimes) : null;
