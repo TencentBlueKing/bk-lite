@@ -16,7 +16,6 @@ from django.core.management import CommandError, call_command
 
 from apps.core.utils.permission_cache import get_user_permission_version
 from apps.system_mgmt.models import App, CustomMenuGroup, Group, LoginModule, Menu, Role, SystemSettings, User
-from apps.system_mgmt.nats.login import get_user_login_token
 from apps.system_mgmt.services.role_manage import RoleManage
 
 pytestmark = pytest.mark.django_db
@@ -87,11 +86,11 @@ def test_create_user_already_exists():
 def test_create_user_explicit_migration_updates_existing_password():
     existing_user = User.objects.create(username="migrate-admin", password=make_password("password"), display_name="admin", email="admin@x.com")
 
-    call_command("create_user", "migrate-admin", "Managed-Secret-1!", "--temporary_password", "--update_existing_password")
+    call_command("create_user", "migrate-admin", "Managed-Secret-1!", "--update_existing_password")
 
     existing_user.refresh_from_db()
     assert check_password("Managed-Secret-1!", existing_user.password)
-    assert existing_user.temporary_pwd is True
+    assert existing_user.temporary_pwd is False
 
 
 def test_create_user_explicit_migration_is_idempotent():
@@ -101,11 +100,11 @@ def test_create_user_explicit_migration_is_idempotent():
         display_name="admin",
         email="admin-idempotent@x.com",
     )
-    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--temporary_password", "--update_existing_password")
+    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--update_existing_password")
     existing_user.refresh_from_db()
     migrated_password = existing_user.password
 
-    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--temporary_password", "--update_existing_password")
+    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--update_existing_password")
 
     existing_user.refresh_from_db()
     assert existing_user.password == migrated_password
@@ -118,13 +117,13 @@ def test_create_user_migration_survives_rollback_to_legacy_invocation():
         display_name="admin",
         email="admin-rollback@x.com",
     )
-    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--temporary_password", "--update_existing_password")
+    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--update_existing_password")
 
     call_command("create_user", existing_user.username, "password")
 
     existing_user.refresh_from_db()
     assert check_password("Managed-Secret-1!", existing_user.password)
-    assert existing_user.temporary_pwd is True
+    assert existing_user.temporary_pwd is False
 
 
 def test_create_user_migration_preserves_password_after_first_rotation():
@@ -135,7 +134,7 @@ def test_create_user_migration_preserves_password_after_first_rotation():
         email="rotated-admin@x.com",
     )
 
-    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--temporary_password", "--update_existing_password")
+    call_command("create_user", existing_user.username, "Managed-Secret-1!", "--update_existing_password")
 
     existing_user.refresh_from_db()
     assert check_password("User-Rotated-1!", existing_user.password)
@@ -157,7 +156,6 @@ def test_create_user_preserves_cross_domain_same_name_noop():
         "Managed-Secret-1!",
         "--email",
         "default-admin@x.com",
-        "--temporary_password",
         "--update_existing_password",
     )
 
@@ -186,35 +184,15 @@ def test_create_user_migration_targets_default_domain_only():
         "create_user",
         "shared-admin",
         "Managed-Secret-1!",
-        "--temporary_password",
         "--update_existing_password",
     )
 
     default_user.refresh_from_db()
     non_default_user.refresh_from_db()
     assert check_password("Managed-Secret-1!", default_user.password)
-    assert default_user.temporary_pwd is True
+    assert default_user.temporary_pwd is False
     assert check_password("password", non_default_user.password)
     assert non_default_user.temporary_pwd is False
-
-
-def test_temporary_admin_password_still_issues_normal_jwt(monkeypatch):
-    """记录当前服务端契约：temporary_pwd 只是响应提示，不阻止普通 JWT 签发。"""
-    monkeypatch.setenv("SECRET_KEY", "test-secret-key")
-    user = User.objects.create(
-        username="temporary-admin",
-        domain="domain.com",
-        password=make_password("Managed-Secret-1!"),
-        display_name="admin",
-        email="temporary-admin@x.com",
-        temporary_pwd=True,
-    )
-
-    result = get_user_login_token(user, user.username)
-
-    assert result["result"] is True
-    assert result["data"]["temporary_pwd"] is True
-    assert result["data"]["token"]
 
 
 # ---------------------------------------------------------------------------

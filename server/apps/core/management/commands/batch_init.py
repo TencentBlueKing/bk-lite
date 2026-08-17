@@ -14,6 +14,7 @@ from django.core.management.base import BaseCommand, CommandError
 from apps.core.utils.loader import preload_language_cache
 
 logger = logging.getLogger("app")
+_ADMIN_PASSWORD_FILE_MAX_CHARS = 4096
 
 
 class Command(BaseCommand):
@@ -110,24 +111,21 @@ class Command(BaseCommand):
         """系统管理资源初始化"""
         self.stdout.write("系统管理资源初始化...")
         migrate_existing_password = self._should_migrate_admin_password()
-        managed_password_configured = self._has_managed_admin_password()
-        if self._admin_exists() and not migrate_existing_password:
-            # create_user 对存量用户是 no-op；不读取可选 Secret，避免坏挂载扩大启动失败面。
-            admin_password = "password"
-        else:
+        should_bootstrap_password = not self._admin_exists() or migrate_existing_password
+        if should_bootstrap_password:
             admin_password = self._get_admin_password()
         call_command("cleanup_opspilot_legacy_knowledge_menus")
         call_command("init_realm_resource")
         call_command("init_login_settings")
-        call_command(
-            "create_user",
-            "admin",
-            admin_password,
-            email="admin@bklite.net",
-            is_superuser=True,
-            temporary_password=managed_password_configured,
-            update_existing_password=migrate_existing_password,
-        )
+        if should_bootstrap_password:
+            call_command(
+                "create_user",
+                "admin",
+                admin_password,
+                email="admin@bklite.net",
+                is_superuser=True,
+                update_existing_password=migrate_existing_password,
+            )
         call_command("init_custom_menu")
         call_command("init_bk_login_settings")
         call_command("clean_group_data")
@@ -149,12 +147,15 @@ class Command(BaseCommand):
 
         password_file = os.getenv("BK_INIT_ADMIN_PASSWORD_FILE", "").strip()
         if not password_file:
-            # 保留未迁移部署的既有行为；生产部署应先挂载 Secret 文件，再显式启用迁移。
-            return "password"
+            raise CommandError("初始化管理员必须配置 BK_INIT_ADMIN_PASSWORD 或 BK_INIT_ADMIN_PASSWORD_FILE")
         try:
-            password = Path(password_file).read_text(encoding="utf-8").strip()
-        except OSError as error:
+            with Path(password_file).open(encoding="utf-8") as file:
+                password = file.read(_ADMIN_PASSWORD_FILE_MAX_CHARS + 1)
+        except (OSError, UnicodeError) as error:
             raise CommandError(f"无法读取管理员密码 Secret 文件: {type(error).__name__}") from error
+        if len(password) > _ADMIN_PASSWORD_FILE_MAX_CHARS:
+            raise CommandError("管理员密码 Secret 文件内容过大")
+        password = password.strip()
         if not password:
             raise CommandError("管理员密码 Secret 文件不能为空")
         return password

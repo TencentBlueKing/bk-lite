@@ -21,7 +21,6 @@ class Command(BaseCommand):
         parser.add_argument("--email", type=str, help="邮箱地址")
         parser.add_argument("--display_name", type=str, help="显示名称")
         parser.add_argument("--is_superuser", action="store_true", help="是否为超级用户")
-        parser.add_argument("--temporary_password", action="store_true", help="要求用户首次登录后轮换初始密码")
         parser.add_argument(
             "--update_existing_password",
             action="store_true",
@@ -34,7 +33,6 @@ class Command(BaseCommand):
         email = options.get("email", "test@domain.com")
         display_name = options.get("display_name") or username
         is_superuser = options.get("is_superuser", False)
-        temporary_password = options.get("temporary_password", False)
         update_existing_password = options.get("update_existing_password", False)
 
         # 保留既有命令的全域同名 no-op 语义；受控密码迁移只允许命中默认域用户。
@@ -50,7 +48,6 @@ class Command(BaseCommand):
                         self.stdout.write(self.style.SUCCESS(f"用户密码已完成轮换，不执行迁移: {username}"))
                         return
                     migration_user.password = make_password(password)
-                    migration_user.temporary_pwd = temporary_password
                     migration_user.save()
                     self.stdout.write(self.style.SUCCESS(f"成功迁移用户密码: {username}"))
                     return
@@ -67,7 +64,6 @@ class Command(BaseCommand):
                     password=make_password(password),  # 加密密码
                     email=email,
                     display_name=display_name,
-                    temporary_pwd=temporary_password,
                     # 根据您的User模型设置其他字段
                 )
 
