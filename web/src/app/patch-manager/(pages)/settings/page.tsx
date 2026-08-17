@@ -290,12 +290,12 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
     {
       title: t('patchManager.settingsPage.type'),
       dataIndex: 'source_type',
-      minWidth: 100,
+      width: 110,
       render: (_: unknown, r: PatchSource) => (
         <Tag style={{ whiteSpace: 'nowrap' }}>{r.source_type_display || r.source_type}</Tag>
       ),
     },
-    { title: 'URL', dataIndex: 'url', ellipsis: true },
+    { title: 'URL', dataIndex: 'url', width: 190, ellipsis: true },
     {
       title: t('patchManager.settingsPage.proxy'),
       width: 140,
@@ -388,6 +388,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
             rowKey="id"
             rowSelection={{
               type: 'checkbox',
+              fixed: true,
               selectedRowKeys: selectedSources,
               onChange: setSelectedSources,
             }}
@@ -608,8 +609,14 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
     }
   };
 
-  const triggerText =
-    freq === 'hourly'
+  const triggerText = !isEnabled
+    ? (
+      <Space size={8}>
+        <span>{t('patchManager.settingsPage.scheduledAssessmentTrigger')}</span>
+        <Tag style={{ marginInlineEnd: 0 }}>{t('patchManager.settingsPage.notEnabled')}</Tag>
+      </Space>
+    )
+    : freq === 'hourly'
       ? t('patchManager.settingsPage.hourlyTrigger', undefined, { count: hourInterval })
       : freq === 'daily'
         ? t('patchManager.settingsPage.dailyTrigger', undefined, { time: time?.format('HH:mm') || '--:--' })

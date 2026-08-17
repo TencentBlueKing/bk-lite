@@ -547,9 +547,9 @@ export default function RiskExecutionPage() {
   };
 
   const columns = [
-    { title: t('patchManager.execution.taskName'), dataIndex: 'name' },
+    { title: t('patchManager.execution.taskName'), dataIndex: 'name', width: 260, ellipsis: true },
     { title: t('patchManager.execution.type'), dataIndex: 'type', width: 90, render: (value: string) => <Tag>{value}</Tag> },
-    { title: t('patchManager.risk.executionMode'), dataIndex: 'exec', width: 230 },
+    { title: t('patchManager.risk.executionMode'), dataIndex: 'exec', width: 120 },
     { title: t('patchManager.execution.status'), dataIndex: 'status', width: 120, render: (_: unknown, row: TaskRow) => <Tag color={row.statusColor}>{row.status}</Tag> },
     { title: t('patchManager.createTime'), dataIndex: 'createdAt', width: 180 },
     {
@@ -597,7 +597,7 @@ export default function RiskExecutionPage() {
       <CustomTable<TaskRow>
         loading={loading}
         rowKey="key"
-        rowSelection={{ selectedRowKeys: selectedTasks, onChange: setSelectedTasks }}
+        rowSelection={{ fixed: true, selectedRowKeys: selectedTasks, onChange: setSelectedTasks }}
         columns={columns}
         dataSource={tasks}
         pagination={{
