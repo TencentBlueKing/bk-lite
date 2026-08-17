@@ -492,7 +492,6 @@ const FamilyOverview = () => {
               activeTab="activeAlarms"
               tabs={eventAlertTabs}
               onTabChange={() => undefined}
-              chartCollapseStorageKey="log.event.alert.chartExpanded"
               filterPanel={(
                 <FilterToolbar spacing="flush" contentClassName="gap-4" align="between">
                   <div className="flex items-center">
@@ -528,7 +527,6 @@ const FamilyOverview = () => {
               activeTab="activeAlarms"
               tabs={eventAlertTabs}
               onTabChange={() => undefined}
-              chartCollapseStorageKey="monitor.event.alert.chartExpanded"
               filterPanel={(
                 <>
                   <div className="mb-[10px]">Search criteria</div>

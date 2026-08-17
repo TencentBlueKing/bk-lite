@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import TimeSelector from '@/components/time-selector';
 import { ListItem, TimeSelectorDefaultValue, TimeSelectorRef } from '@/types';
 import { useSearchParams } from 'next/navigation';
@@ -21,7 +21,7 @@ import {
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import searchStyle from './index.module.scss';
-import Collapse, { usePersistedCollapseOpen } from '@/components/collapse';
+import Collapse from '@/components/collapse';
 import CustomBarChart from '@/app/log/components/charts/barChart';
 import GrammarExplanation from '@/components/operate-drawer';
 import SearchTable from './searchTable';
@@ -39,6 +39,10 @@ import {
 import useApiClient from '@/utils/request';
 import useSearchApi from '@/app/log/api/search';
 import useIntegrationApi from '@/app/log/api/integration';
+import useLogUserHabitApi, {
+  LOG_SEARCH_HISTOGRAM_HABIT_KEY
+} from '@/app/log/api/userHabit';
+import { useHabitExpanded } from '@/hooks/useHabitExpanded';
 import {
   SearchParams,
   LogTerminalRef,
@@ -55,7 +59,6 @@ import ConditionList from './conditionList';
 const { Option } = Select;
 const PAGE_LIMIT = 100;
 const DEFAULT_DISPLAY_FIELDS = ['timestamp', 'message'];
-const HISTOGRAM_EXPAND_STORAGE_KEY = 'log.search.histogramExpanded';
 
 const getStoredDisplayFields = () => {
   if (typeof window === 'undefined') {
@@ -106,6 +109,7 @@ const SearchView: React.FC = () => {
   const { isLoading } = useApiClient();
   const { getLogStreams, getFields } = useIntegrationApi();
   const { getHits, getLogs } = useSearchApi();
+  const { getUserHabit, saveUserHabit } = useLogUserHabitApi();
   const { convertToLocalizedTime } = useLocalizedTime();
   const queryText = searchParams.get('query') || '';
   const startTime = searchParams.get('startTime') || '';
@@ -134,9 +138,20 @@ const SearchView: React.FC = () => {
     total: 0,
     pageSize: PAGE_LIMIT
   });
-  const [expand, setExpand] = usePersistedCollapseOpen(
-    HISTOGRAM_EXPAND_STORAGE_KEY
+  const loadHistogramHabit = useCallback(
+    () => getUserHabit(LOG_SEARCH_HISTOGRAM_HABIT_KEY),
+    [getUserHabit]
   );
+  const saveHistogramHabit = useCallback(
+    (value: { expanded: boolean }) =>
+      saveUserHabit(LOG_SEARCH_HISTOGRAM_HABIT_KEY, value),
+    [saveUserHabit]
+  );
+  const [expand, setExpand] = useHabitExpanded({
+    enabled: !isLoading,
+    load: loadHistogramHabit,
+    save: saveHistogramHabit
+  });
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [visible, setVisible] = useState<boolean>(false);
   const [activeMenu, setActiveMenu] = useState<string>('list');

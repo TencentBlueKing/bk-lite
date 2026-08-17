@@ -3,7 +3,9 @@ from django.db.models import Count, Q
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.core.logger import monitor_logger as logger
+from apps.core.user_habit import column_preference_habit_key
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
     get_permissions_rules,
@@ -17,15 +19,14 @@ from apps.monitor.models import (
     MonitorInstance,
     MonitorInstanceOrganization,
     MonitorPolicy,
-    MonitorViewColumnPreference,
     PolicyOrganization,
 )
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
+from apps.monitor.models.user_habit import UserHabit
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.view_column_preference import MonitorViewColumnPreferenceSerializer
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.monitor_object_cleanup import MonitorObjectCleanupPolicyService
-from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.monitor.utils.display_fields import build_display_column_key, validate_display_fields
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from config.drf.pagination import CustomPageNumberPagination
@@ -308,20 +309,10 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
     def view_column_preference(self, request, pk=None):
         """读取或保存当前用户在当前监控对象下的列表列配置。"""
         monitor_object = self.get_object()
+        habit_key = column_preference_habit_key(monitor_object.id)
         if request.method == "GET":
-            preference = MonitorViewColumnPreference.objects.filter(
-                user=request.user,
-                monitor_object=monitor_object,
-            ).first()
-            data = (
-                {
-                    "field_keys": preference.field_keys,
-                    "fixed_field_keys": preference.fixed_field_keys or [],
-                }
-                if preference
-                else None
-            )
-            return WebUtils.response_success(data)
+            habit = UserHabit.objects.filter(user=request.user, habit_key=habit_key).first()
+            return WebUtils.response_success(self._column_preference_from_habit(habit))
 
         serializer = MonitorViewColumnPreferenceSerializer(data=request.data)
         if not serializer.is_valid():
@@ -331,17 +322,25 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             )
         field_keys = serializer.validated_data["field_keys"]
         fixed_field_keys = serializer.validated_data.get("fixed_field_keys") or []
-        MonitorViewColumnPreference.objects.update_or_create(
+        payload = {"field_keys": field_keys, "fixed_field_keys": fixed_field_keys}
+        UserHabit.objects.update_or_create(
             user=request.user,
-            monitor_object=monitor_object,
-            defaults={
-                "field_keys": field_keys,
-                "fixed_field_keys": fixed_field_keys,
-            },
+            habit_key=habit_key,
+            defaults={"habit_value": payload},
         )
-        return WebUtils.response_success(
-            {"field_keys": field_keys, "fixed_field_keys": fixed_field_keys}
-        )
+        return WebUtils.response_success(payload)
+
+    @staticmethod
+    def _column_preference_from_habit(habit):
+        if habit is None or type(habit.habit_value) is not dict:
+            return None
+        field_keys = habit.habit_value.get("field_keys")
+        if type(field_keys) is not list:
+            return None
+        fixed_field_keys = habit.habit_value.get("fixed_field_keys") or []
+        if type(fixed_field_keys) is not list:
+            fixed_field_keys = []
+        return {"field_keys": field_keys, "fixed_field_keys": fixed_field_keys}
 
     def create(self, request, *args, **kwargs):
         """创建监控对象，支持同时创建子对象"""

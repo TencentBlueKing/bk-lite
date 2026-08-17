@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Input,
   Button,
@@ -32,7 +32,7 @@ import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import TimeSelector from '@/components/time-selector';
 import Permission from '@/components/permission';
-import Collapse, { usePersistedCollapseOpen } from '@/components/collapse';
+import Collapse from '@/components/collapse';
 import StackedBarChart from '@/app/log/components/charts/stackedBarChart';
 import AlertDetail from './alertDetail';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -47,14 +47,18 @@ import useLogIntegrationApi from '@/app/log/api/integration';
 import { cloneDeep } from 'lodash';
 import UserAvatar from '@/components/user-avatar';
 import { formatUserDisplayName } from '@/utils/userDisplay';
+import { useHabitExpanded } from '@/hooks/useHabitExpanded';
+import useLogUserHabitApi, {
+  LOG_ALERT_CHART_HABIT_KEY
+} from '@/app/log/api/userHabit';
 const { Search } = Input;
 const { Option } = Select;
-const CHART_EXPAND_STORAGE_KEY = 'log.event.alert.chartExpanded';
 
 const Alert: React.FC = () => {
   const { isLoading } = useApiClient();
   const { getLogAlert, patchLogAlert, getLogAlertStats } = useLogEventApi();
   const { getCollectTypes } = useLogIntegrationApi();
+  const { getUserHabit, saveUserHabit } = useLogUserHabitApi();
   const { t } = useTranslation();
   const STATE_MAP = useStateMap();
   const LEVEL_LIST = useLevelList();
@@ -92,9 +96,20 @@ const Alert: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
-  const [chartExpanded, onChartToggle] = usePersistedCollapseOpen(
-    CHART_EXPAND_STORAGE_KEY
+  const loadChartHabit = useCallback(
+    () => getUserHabit(LOG_ALERT_CHART_HABIT_KEY),
+    [getUserHabit]
   );
+  const saveChartHabit = useCallback(
+    (value: { expanded: boolean }) =>
+      saveUserHabit(LOG_ALERT_CHART_HABIT_KEY, value),
+    [saveUserHabit]
+  );
+  const [chartExpanded, onChartToggle] = useHabitExpanded({
+    enabled: !isLoading,
+    load: loadChartHabit,
+    save: saveChartHabit
+  });
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
 

@@ -7,40 +7,6 @@ import {
   HolderOutlined
 } from '@ant-design/icons';
 
-const readStoredOpen = (storageKey: string, fallback: boolean): boolean => {
-  if (typeof window === 'undefined') return fallback;
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    if (raw === '0') return false;
-    if (raw === '1') return true;
-    return fallback;
-  } catch {
-    return fallback;
-  }
-};
-
-const persistOpen = (storageKey: string, open: boolean) => {
-  try {
-    window.localStorage.setItem(storageKey, open ? '1' : '0');
-  } catch {
-    // private mode / quota
-  }
-};
-
-export const usePersistedCollapseOpen = (
-  storageKey: string,
-  defaultOpen = true
-): [boolean, (open: boolean) => void] => {
-  const [open, setOpen] = useState(() => readStoredOpen(storageKey, defaultOpen));
-
-  const onToggle = (next: boolean) => {
-    setOpen(next);
-    persistOpen(storageKey, next);
-  };
-
-  return [open, onToggle];
-};
-
 interface AccordionProps {
   title: string | ReactNode;
   children: ReactNode;

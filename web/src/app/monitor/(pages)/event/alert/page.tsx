@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Input,
   Button,
@@ -32,7 +32,7 @@ import { FiltersConfig } from '@/app/monitor/types/event';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import Permission from '@/components/permission';
-import Collapse, { usePersistedCollapseOpen } from '@/components/collapse';
+import Collapse from '@/components/collapse';
 import StackedBarChart from '@/app/monitor/components/charts/stackedBarChart';
 import AlertDetail from './alertDetail';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -52,14 +52,18 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import UserAvatar from '@/components/user-avatar';
 import { formatUserDisplayName } from '@/utils/userDisplay';
+import { useHabitExpanded } from '@/hooks/useHabitExpanded';
+import useMonitorUserHabitApi, {
+  MONITOR_ALERT_CHART_HABIT_KEY
+} from '@/app/monitor/api/userHabit';
 const { Search } = Input;
 const { Option } = Select;
-const CHART_EXPAND_STORAGE_KEY = 'monitor.event.alert.chartExpanded';
 
 const Alert: React.FC = () => {
   const { isLoading } = useApiClient();
   const { getMonitorAlert, getMonitorObject, patchMonitorAlert } =
     useMonitorApi();
+  const { getUserHabit, saveUserHabit } = useMonitorUserHabitApi();
   const { t } = useTranslation();
   const STATE_MAP = useStateMap();
   const ALERT_TYPE_MAP = useAlertTypeMap();
@@ -99,9 +103,20 @@ const Alert: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
-  const [chartExpanded, onChartToggle] = usePersistedCollapseOpen(
-    CHART_EXPAND_STORAGE_KEY
+  const loadChartHabit = useCallback(
+    () => getUserHabit(MONITOR_ALERT_CHART_HABIT_KEY),
+    [getUserHabit]
   );
+  const saveChartHabit = useCallback(
+    (value: { expanded: boolean }) =>
+      saveUserHabit(MONITOR_ALERT_CHART_HABIT_KEY, value),
+    [saveUserHabit]
+  );
+  const [chartExpanded, onChartToggle] = useHabitExpanded({
+    enabled: !isLoading,
+    load: loadChartHabit,
+    save: saveChartHabit
+  });
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);

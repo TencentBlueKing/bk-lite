@@ -1,9 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Spin, Tabs } from 'antd';
 import type { TabsProps } from 'antd';
-import Collapse, { usePersistedCollapseOpen } from '@/components/collapse';
+import Collapse from '@/components/collapse';
 import ManagementTableShell from '@/components/management-table-shell';
 
 type ManagementTableShellProps = React.ComponentProps<typeof ManagementTableShell>;
@@ -17,7 +17,6 @@ export interface EventAlertWorkspaceShellProps {
   chartHint?: React.ReactNode;
   chartLoading?: boolean;
   chartContent: React.ReactNode;
-  chartCollapseStorageKey?: string;
   searchProps: ManagementTableShellProps['searchProps'];
   columns: ManagementTableShellProps['columns'];
   dataSource: ManagementTableShellProps['dataSource'];
@@ -41,7 +40,6 @@ const EventAlertWorkspaceShell: React.FC<EventAlertWorkspaceShellProps> = ({
   chartHint,
   chartLoading = false,
   chartContent,
-  chartCollapseStorageKey = 'event.alert.chartExpanded',
   searchProps,
   columns,
   dataSource,
@@ -55,9 +53,7 @@ const EventAlertWorkspaceShell: React.FC<EventAlertWorkspaceShellProps> = ({
   filterPanelClassName = 'mb-[10px] bg-[var(--color-bg-1)] px-5 py-[10px]',
   tableContainerClassName = 'w-full bg-[var(--color-bg-1)] px-5 pb-5 pt-[10px]',
 }) => {
-  const [chartExpanded, onChartToggle] = usePersistedCollapseOpen(
-    chartCollapseStorageKey
-  );
+  const [chartExpanded, setChartExpanded] = useState(true);
 
   return (
     <div className={containerClassName}>
@@ -73,7 +69,7 @@ const EventAlertWorkspaceShell: React.FC<EventAlertWorkspaceShellProps> = ({
             title={chartTitle}
             icon={chartHint ? <span>{chartHint}</span> : undefined}
             isOpen={chartExpanded}
-            onToggle={onChartToggle}
+            onToggle={setChartExpanded}
           >
             <div className={chartClassName}>
               {chartContent}
