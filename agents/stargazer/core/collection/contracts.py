@@ -105,6 +105,7 @@ class TargetCollectionResult:
     value: Any = None
     credential_failures: tuple[CredentialFailureResult, ...] = ()
     publish_timestamp_ms: int = 0
+    detail: str = ""
 
 
 class PublishStatus(str, Enum):

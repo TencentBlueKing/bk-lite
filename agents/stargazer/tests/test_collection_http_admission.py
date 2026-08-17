@@ -6,6 +6,7 @@ import api.monitor as monitor_api
 import pytest
 from core.collection.request_identity import build_request_task_id
 from core.collection.runtime import Submission, SubmissionStatus
+from core.collection.yaml_target_policy import apply_yaml_target_policy
 
 
 class Application:
@@ -28,6 +29,20 @@ def _request(*, path="/api/collect/collect_info", query="", headers=None):
     )
 
 
+def _collect_request(headers):
+    async def receive_body():
+        return None
+
+    return SimpleNamespace(
+        method="GET",
+        path="/api/collect/collect_info",
+        query_string="",
+        query_args=[],
+        headers=headers,
+        receive_body=receive_body,
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("submission_status", "http_status"),
@@ -37,7 +52,9 @@ def _request(*, path="/api/collect/collect_info", query="", headers=None):
         (SubmissionStatus.BUSY, 429),
     ],
 )
-async def test_configuration_http_maps_runtime_admission_status(monkeypatch, submission_status, http_status):
+async def test_configuration_http_maps_runtime_admission_status(
+    monkeypatch, submission_status, http_status
+):
     app = Application(submission_status, fence=4)
     monkeypatch.setattr(collect_api, "get_collection_application", lambda: app)
 
@@ -47,7 +64,9 @@ async def test_configuration_http_maps_runtime_admission_status(monkeypatch, sub
         "cmdbhosts": "10.10.24.1,10.10.24.2",
     }
     request = _request(headers=headers)
-    expected_task_id = build_request_task_id("GET", "/api/collect/collect_info", "", headers)
+    expected_task_id = build_request_task_id(
+        "GET", "/api/collect/collect_info", "", headers
+    )
 
     result = await collect_api._submit_collection_run(
         request,
@@ -64,6 +83,74 @@ async def test_configuration_http_maps_runtime_admission_status(monkeypatch, sub
 
 
 @pytest.mark.asyncio
+async def test_vmware_legacy_http_headers_use_hostname_not_instance_id(monkeypatch):
+    app = Application(SubmissionStatus.ACCEPTED, fence=1)
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: app)
+
+    result = await collect_api.collect(
+        _collect_request(
+            {
+                "cmdbmodel_id": "vmware_vc",
+                "cmdbplugin_name": "vmware_info",
+                "cmdbexecutor_type": "protocol",
+                "cmdbhostname": "10.10.16.254",
+                "cmdbport": "443",
+                "cmdbssl": "false",
+                "cmdbusername": "readonly",
+                "cmdbpassword": "not-a-real-secret",
+                "instance_id": "cmdb_6",
+            }
+        )
+    )
+
+    request = app.requests[0]
+    enriched = apply_yaml_target_policy(request)
+    assert result.status == 202
+    assert request.targets == ("10.10.16.254",)
+    assert request.params["target_is_logical"] is False
+    assert enriched.params["preflight_kind"] == "https"
+    assert request.credentials[0]["password"] == "not-a-real-secret"
+    assert "password" not in request.params
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model_id", "plugin_name", "instance_id"),
+    (
+        ("qcloud", "qcloud_info", "cmdb_8"),
+        ("aliyun", "aliyun_info", "cmdb_7"),
+    ),
+)
+async def test_cloud_http_headers_keep_instance_id_as_logical_target(
+    monkeypatch, model_id, plugin_name, instance_id
+):
+    app = Application(SubmissionStatus.ACCEPTED, fence=1)
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: app)
+
+    result = await collect_api.collect(
+        _collect_request(
+            {
+                "cmdbmodel_id": model_id,
+                "cmdbplugin_name": plugin_name,
+                "cmdbexecutor_type": "protocol",
+                "cmdbhosts": "",
+                "cmdbsecret_id": "test-id",
+                "cmdbsecret_key": "not-a-real-secret",
+                "instance_id": instance_id,
+            }
+        )
+    )
+
+    request = app.requests[0]
+    assert result.status == 202
+    assert request.targets == (instance_id,)
+    assert request.params["target_is_logical"] is True
+    assert request.params["preflight_kind"] == "cloud"
+    assert "secret_id" not in request.params
+    assert "secret_key" not in request.params
+
+
+@pytest.mark.asyncio
 async def test_monitor_http_uses_request_fingerprint_as_task_id(monkeypatch):
     app = Application(SubmissionStatus.DUPLICATE_ACTIVE, fence=7)
     monkeypatch.setattr(monitor_api, "get_collection_application", lambda: app)
@@ -75,7 +162,9 @@ async def test_monitor_http_uses_request_fingerprint_as_task_id(monkeypatch):
         "password": "secret",
     }
     request = _request(path="/api/monitor/windows_wmi/metrics", headers=headers)
-    expected_task_id = build_request_task_id("GET", "/api/monitor/windows_wmi/metrics", "", headers)
+    expected_task_id = build_request_task_id(
+        "GET", "/api/monitor/windows_wmi/metrics", "", headers
+    )
 
     result = await monitor_api._submit_monitor_request(
         request,
@@ -151,4 +240,7 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
     assert "stargazer_collection_publish_queue_depth 12" in body
     assert "stargazer_collection_publish_batch_size_p99 50" in body
     assert "stargazer_collection_run_first_schedule_wait_seconds_p99 0.02" in body
-    assert 'stargazer_collection_execution_mode_success_total{execution_mode="async"} 119' in body
+    assert (
+        'stargazer_collection_execution_mode_success_total{execution_mode="async"} 119'
+        in body
+    )

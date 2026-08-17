@@ -229,9 +229,11 @@ class TargetCollectionExecutor:
             except Exception as error:  # noqa: BLE001 - 单目标框架异常不得取消 Run
                 self._metrics.increment("target_execution_error_total")
                 logger.error(
-                    "event=target_execution_failed task_id=%s target=%s "
-                    "error_type=%s",
+                    "event=target_execution_failed task_id=%s plugin_ref=%s "
+                    "model_id=%s target=%s error_type=%s",
                     request.task_id,
+                    request.plugin_ref,
+                    request.params.get("model_id") or "-",
                     targets[index],
                     type(error).__name__,
                 )
@@ -314,8 +316,11 @@ class TargetCollectionExecutor:
                 publish_status = "failed"
                 break
             logger.warning(
-                "event=result_publish_terminal task_id=%s target=%s status=%s attempts=%s error_code=%s",
+                "event=result_publish_terminal task_id=%s plugin_ref=%s "
+                "model_id=%s target=%s status=%s attempts=%s error_code=%s",
                 request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
                 current.result.target,
                 "confirmed" if publish_status == "succeeded" else publish_status,
                 attempts,
@@ -410,11 +415,32 @@ class TargetCollectionExecutor:
                 status == "permanent_failed" for status in publish_statuses.values()
             ),
         )
+        first_failure = next(
+            (result for result in completed if result.status == "failed"),
+            None,
+        )
+        if first_failure is not None:
+            logger.warning(
+                "event=plugin_collection_failed task_id=%s plugin_ref=%s "
+                "model_id=%s target=%s credential_id=%s error_code=%s "
+                "detail=%s failed_targets=%s",
+                request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
+                first_failure.target,
+                first_failure.credential_id or "-",
+                first_failure.error_code or "collection_failed",
+                first_failure.detail or "-",
+                summary.collection_failed,
+            )
         logger.info(
-            "event=collection_run_summary task_id=%s total=%s succeeded=%s failed=%s "
+            "event=collection_run_summary task_id=%s plugin_ref=%s model_id=%s "
+            "total=%s succeeded=%s failed=%s "
             "unreachable=%s deferred=%s publish_succeeded=%s publish_failed=%s "
             "publish_unknown=%s target_failure_detail_limit=%s",
             request.task_id,
+            request.plugin_ref,
+            request.params.get("model_id") or "-",
             summary.total,
             summary.collection_succeeded,
             summary.collection_failed,
@@ -490,10 +516,13 @@ class TargetCollectionExecutor:
             self._metrics.increment("target_unreachable_total")
             error_code = preflight.error_code or "target_unreachable"
             if log_failure_detail:
-                logger.info(
-                    "🚫 event=target_unreachable task_id=%s target=%s "
+                logger.warning(
+                    "🚫 event=target_unreachable task_id=%s plugin_ref=%s "
+                    "model_id=%s target=%s "
                     "reason=%s detail=%s",
                     request.task_id,
+                    request.plugin_ref,
+                    request.params.get("model_id") or "-",
                     target,
                     error_code,
                     preflight.detail or "-",
@@ -528,7 +557,10 @@ class TargetCollectionExecutor:
             attempt_id=lease.attempt_id,
         )
         return await self._run_credential_attempts(
-            request, target, credentials, context
+            request,
+            target,
+            credentials,
+            context,
         )
 
     async def _load_eligible_credentials(self, request: CollectionRequest, target: str):
@@ -758,16 +790,18 @@ class TargetCollectionExecutor:
         except Exception as exc:  # noqa: BLE001 - 不把 Adapter 异常正文写入结果
             self._metrics.increment("access_probe_error_total")
             credential_id = str(credential.get("credential_id") or "")
-            # 只记异常类型与短消息，便于排障；凭据值不应出现在异常文本中
+            # 只记异常类型，避免 SDK 异常正文携带凭据或签名参数。
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s "
+                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "model_id=%s target=%s "
                 "credential_id=%s probe_status=error error_code=access_probe_error "
-                "error_type=%s error=%s",
+                "error_type=%s",
                 context.task_id,
+                context.plugin_ref,
+                context.params.get("model_id") or "-",
                 target,
                 credential_id or "-",
                 type(exc).__name__,
-                str(exc)[:200] or "-",
             )
             return TargetCollectionResult(
                 target=target,
@@ -812,9 +846,12 @@ class TargetCollectionExecutor:
                 error_code=error_code,
             )
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s "
+                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s action=rotate",
                 request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
                 target,
                 credential_id or "-",
                 access.status.value,
@@ -831,10 +868,13 @@ class TargetCollectionExecutor:
         if access.status == AccessProbeStatus.NO_RESPONSE:
             no_response_attempts += 1
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s "
+                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s "
                 "no_response_attempts=%s",
                 request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
                 target,
                 credential_id or "-",
                 access.status.value,
@@ -859,9 +899,12 @@ class TargetCollectionExecutor:
             )
         if access.status == AccessProbeStatus.TARGET_UNREACHABLE:
             logger.info(
-                "🚫 event=target_unreachable task_id=%s target=%s "
+                "🚫 event=target_unreachable task_id=%s plugin_ref=%s "
+                "model_id=%s target=%s "
                 "credential_id=%s reason=%s",
                 request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
                 target,
                 credential_id or "-",
                 access.error_code or "target_unreachable",
@@ -879,9 +922,12 @@ class TargetCollectionExecutor:
             )
         if access.status == AccessProbeStatus.RATE_LIMITED:
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s "
+                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s action=defer",
                 request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
                 target,
                 credential_id or "-",
                 access.status.value,
@@ -905,9 +951,12 @@ class TargetCollectionExecutor:
             AccessProbeStatus.MISCONFIGURED,
         }:
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s "
+                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s action=stop",
                 request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
                 target,
                 credential_id or "-",
                 access.status.value,
@@ -926,9 +975,12 @@ class TargetCollectionExecutor:
             )
         if access.status != AccessProbeStatus.READY:
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s "
+                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=access_probe_misconfigured",
                 request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
                 target,
                 credential_id or "-",
                 access.status.value,
@@ -1057,6 +1109,7 @@ class TargetCollectionExecutor:
                     attempts=attempts,
                     credential_id=credential_id,
                     error_code=outcome.error_code or "target_unreachable",
+                    detail=outcome.detail,
                 ),
             )
         return _AttemptDecision(
@@ -1067,6 +1120,7 @@ class TargetCollectionExecutor:
                 attempts=attempts,
                 credential_id=credential_id,
                 error_code=outcome.error_code or "collection_failed",
+                detail=outcome.detail,
                 value=outcome.value,
             ),
         )

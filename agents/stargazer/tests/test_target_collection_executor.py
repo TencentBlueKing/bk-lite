@@ -108,6 +108,7 @@ async def test_preflight_failure_detail_logs_are_bounded_per_run(monkeypatch):
     def capture(message, *args):
         logged.append(message % args if args else message)
 
+    monkeypatch.setattr("core.collection.executor.logger.warning", capture)
     monkeypatch.setattr("core.collection.executor.logger.info", capture)
     executor = TargetCollectionExecutor(
         preflight=UnreachablePreflight(),
@@ -120,6 +121,7 @@ async def test_preflight_failure_detail_logs_are_bounded_per_run(monkeypatch):
         plugin_ref="network.config",
         targets=tuple(f"10.10.69.{index}" for index in range(25)),
         credentials=(),
+        params={"model_id": "network"},
     )
     lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
 
@@ -129,8 +131,91 @@ async def test_preflight_failure_detail_logs_are_bounded_per_run(monkeypatch):
     run_summaries = [item for item in logged if "event=collection_run_summary" in item]
     assert summary.unreachable == 25
     assert len(target_details) == 20
+    assert all("plugin_ref=network.config" in item for item in target_details)
+    assert all("model_id=network" in item for item in target_details)
     assert len(run_summaries) == 1
     assert "unreachable=25" in run_summaries[0]
+
+
+@pytest.mark.asyncio
+async def test_plugin_failure_has_central_searchable_log_without_secret(monkeypatch):
+    logged = []
+
+    def capture(message, *args):
+        logged.append(message % args if args else message)
+
+    class BrokenPlugin:
+        async def collect(self, target, credential, context):
+            raise RuntimeError("password=must-not-be-logged")
+
+    monkeypatch.setattr("core.collection.executor.logger.warning", capture)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=BrokenPlugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="vmware-plugin-failure-log",
+        plugin_ref="vmware_vc.config",
+        targets=("10.10.16.254",),
+        credentials=({"credential_id": "credential-1", "password": "secret"},),
+        params={"model_id": "vmware_vc"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    failures = [item for item in logged if "event=plugin_collection_failed" in item]
+    assert summary.failed == 1
+    assert len(failures) == 1
+    assert "task_id=vmware-plugin-failure-log" in failures[0]
+    assert "plugin_ref=vmware_vc.config" in failures[0]
+    assert "model_id=vmware_vc" in failures[0]
+    assert "target=10.10.16.254" in failures[0]
+    assert "credential_id=credential-1" in failures[0]
+    assert "error_code=plugin_error" in failures[0]
+    assert "detail=RuntimeError" in failures[0]
+    assert "must-not-be-logged" not in failures[0]
+    assert "secret" not in failures[0]
+
+
+@pytest.mark.asyncio
+async def test_plugin_failure_detail_logs_are_bounded_per_run(monkeypatch):
+    logged = []
+
+    def capture(message, *args):
+        logged.append(message % args if args else message)
+
+    class FailingPlugin:
+        async def collect(self, target, credential, context):
+            return CollectOutcome(
+                status=CollectOutcomeStatus.FAILED,
+                error_code="plugin_timeout",
+            )
+
+    monkeypatch.setattr("core.collection.executor.logger.warning", capture)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=FailingPlugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=25, target_task_window=25),
+    )
+    request = CollectionRequest(
+        task_id="bounded-plugin-failure-logs",
+        plugin_ref="network.config",
+        targets=tuple(f"10.10.69.{index}" for index in range(25)),
+        credentials=({"credential_id": "credential-1"},),
+        params={"model_id": "network"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    failures = [item for item in logged if "event=plugin_collection_failed" in item]
+    assert summary.failed == 25
+    assert len(failures) == 1
+    assert "failed_targets=25" in failures[0]
 
 
 @pytest.mark.asyncio
