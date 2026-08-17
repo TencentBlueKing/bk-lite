@@ -1,11 +1,83 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Form, Input, Radio } from 'antd';
+import { Alert, Button, Form, Input, Radio, Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 
 export const K8S_SETTING_FORM_WIDTH = 300;
 const PATTERN_WHITELIST = /^[a-z0-9.*?-]+$/;
+
+export const FieldHint: React.FC<{ hint: string }> = ({ hint }) => (
+  <div className="flex-1 text-[var(--color-text-3)]">{hint}</div>
+);
+
+const FieldGuideTip: React.FC<{ detail?: string }> = ({ detail }) => {
+  const { t } = useTranslation();
+
+  if (!detail) {
+    return null;
+  }
+
+  return (
+    <Tooltip
+      placement="top"
+      mouseEnterDelay={0.15}
+      color="var(--color-bg)"
+      overlayInnerStyle={{
+        maxWidth: 420,
+        padding: '10px 12px',
+        color: 'var(--color-text-1)',
+        border: '1px solid var(--color-border-1)',
+        boxShadow: '0 6px 16px rgba(0, 0, 0, 0.08)',
+        borderRadius: 8
+      }}
+      title={
+        <div>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--color-text-1)',
+              marginBottom: 4
+            }}
+          >
+            {t('log.integration.k8s.fieldGuideTip')}
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              lineHeight: '20px',
+              color: 'var(--color-text-2)',
+              whiteSpace: 'pre-line'
+            }}
+          >
+            {detail}
+          </div>
+        </div>
+      }
+    >
+      <button
+        type="button"
+        aria-label={t('log.integration.k8s.fieldGuideTip')}
+        className="inline-flex items-center justify-center ml-[4px] align-middle w-[18px] h-[18px] rounded-full text-[var(--color-text-3)] hover:text-[var(--color-primary)] hover:bg-[var(--color-fill-2)] transition-colors duration-150 cursor-help border-0 bg-transparent p-0"
+        onClick={(e) => e.preventDefault()}
+      >
+        <QuestionCircleOutlined className="text-[13px]" />
+      </button>
+    </Tooltip>
+  );
+};
+
+export const FieldLabel: React.FC<{ label: string; detail?: string }> = ({
+  label,
+  detail
+}) => (
+  <span className="inline-flex items-center">
+    {label}
+    <FieldGuideTip detail={detail} />
+  </span>
+);
 
 export const validateK8sCollectPatterns = (
   value: unknown,
@@ -73,7 +145,15 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
         />
       ) : null}
 
-      <Form.Item label={t('log.integration.k8s.runtimeProfile')} required>
+      <Form.Item
+        label={
+          <FieldLabel
+            label={t('log.integration.k8s.runtimeProfile')}
+            detail={t('log.integration.k8s.runtimeProfileDesc')}
+          />
+        }
+        required
+      >
         <div className="flex items-start gap-4">
           <Form.Item
             name="runtime_profile"
@@ -92,9 +172,7 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
               </Radio>
             </Radio.Group>
           </Form.Item>
-          <div className="text-[var(--color-text-3)] flex-1">
-            {t('log.integration.k8s.runtimeProfileDesc')}
-          </div>
+          <FieldHint hint={t('log.integration.k8s.runtimeProfileHint')} />
         </div>
       </Form.Item>
 
@@ -108,7 +186,12 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
           getFieldValue('runtime_profile') === 'custom' ? (
             <>
               <Form.Item
-                label={t('log.integration.k8s.hostLogPath')}
+                label={
+                  <FieldLabel
+                    label={t('log.integration.k8s.hostLogPath')}
+                    detail={t('log.integration.k8s.hostLogPathDesc')}
+                  />
+                }
                 required
               >
                 <div className="flex items-start gap-4">
@@ -138,9 +221,7 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
                       style={{ width: K8S_SETTING_FORM_WIDTH }}
                     />
                   </Form.Item>
-                  <div className="text-[var(--color-text-3)] flex-1">
-                    {t('log.integration.k8s.hostLogPathDesc')}
-                  </div>
+                  <FieldHint hint={t('log.integration.k8s.hostLogPathHint')} />
                 </div>
               </Form.Item>
 
@@ -156,7 +237,14 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
 
               {showDockerAdvanced ? (
                 <Form.Item
-                  label={t('log.integration.k8s.dockerContainerLogPath')}
+                  label={
+                    <FieldLabel
+                      label={t('log.integration.k8s.dockerContainerLogPath')}
+                      detail={t(
+                        'log.integration.k8s.dockerContainerLogPathDesc'
+                      )}
+                    />
+                  }
                 >
                   <div className="flex items-start gap-4">
                     <Form.Item
@@ -184,9 +272,9 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
                         style={{ width: K8S_SETTING_FORM_WIDTH }}
                       />
                     </Form.Item>
-                    <div className="text-[var(--color-text-3)] flex-1">
-                      {t('log.integration.k8s.dockerContainerLogPathDesc')}
-                    </div>
+                    <FieldHint
+                      hint={t('log.integration.k8s.dockerContainerLogPathHint')}
+                    />
                   </div>
                 </Form.Item>
               ) : null}
@@ -195,7 +283,14 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
         }
       </Form.Item>
 
-      <Form.Item label={t('log.integration.k8s.collectNamespace')}>
+      <Form.Item
+        label={
+          <FieldLabel
+            label={t('log.integration.k8s.collectNamespace')}
+            detail={t('log.integration.k8s.collectNamespaceDesc')}
+          />
+        }
+      >
         <div className="flex items-start gap-4">
           <Form.Item
             name="namespace_patterns"
@@ -214,13 +309,18 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
               style={{ width: K8S_SETTING_FORM_WIDTH }}
             />
           </Form.Item>
-          <div className="text-[var(--color-text-3)] flex-1">
-            {t('log.integration.k8s.collectNamespaceDesc')}
-          </div>
+          <FieldHint hint={t('log.integration.k8s.collectNamespaceHint')} />
         </div>
       </Form.Item>
 
-      <Form.Item label={t('log.integration.k8s.collectPod')}>
+      <Form.Item
+        label={
+          <FieldLabel
+            label={t('log.integration.k8s.collectPod')}
+            detail={t('log.integration.k8s.collectPodDesc')}
+          />
+        }
+      >
         <div className="flex items-start gap-4">
           <Form.Item
             name="pod_patterns"
@@ -237,9 +337,7 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
               style={{ width: K8S_SETTING_FORM_WIDTH }}
             />
           </Form.Item>
-          <div className="text-[var(--color-text-3)] flex-1">
-            {t('log.integration.k8s.collectPodDesc')}
-          </div>
+          <FieldHint hint={t('log.integration.k8s.collectPodHint')} />
         </div>
       </Form.Item>
     </>

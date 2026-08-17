@@ -10,6 +10,8 @@ import GroupTreeSelector from '@/components/group-tree-select';
 import Icon from '@/components/icon';
 import { K8sCommandData } from './k8sConfiguration';
 import CollectSettingFields, {
+  FieldHint,
+  FieldLabel,
   K8S_SETTING_FORM_WIDTH
 } from './collectSettingFields';
 import IntegrationStepCallout, {
@@ -201,7 +203,15 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
           </h3>
         </div>
 
-        <Form.Item label={t('log.integration.k8s.accessAsset')} required>
+        <Form.Item
+          label={
+            <FieldLabel
+              label={t('log.integration.k8s.accessAsset')}
+              detail={t('log.integration.k8s.accessAssetDesc')}
+            />
+          }
+          required
+        >
           <div className="flex items-start gap-4">
             <Form.Item
               name="accessType"
@@ -223,9 +233,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                 </Radio>
               </Radio.Group>
             </Form.Item>
-            <div className="text-[var(--color-text-3)] flex-1">
-              {t('log.integration.k8s.accessAssetDesc')}
-            </div>
+            <FieldHint hint={t('log.integration.k8s.accessAssetHint')} />
           </div>
         </Form.Item>
 
@@ -239,7 +247,12 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
             getFieldValue('accessType') === 'new' ? (
               <>
                 <Form.Item
-                  label={t('log.integration.k8s.clusterName')}
+                  label={
+                    <FieldLabel
+                      label={t('log.integration.k8s.clusterName')}
+                      detail={t('log.integration.k8s.clusterNameDesc')}
+                    />
+                  }
                   required
                 >
                   <div className="flex items-start gap-4">
@@ -257,14 +270,17 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                         style={{ width: K8S_SETTING_FORM_WIDTH }}
                       />
                     </Form.Item>
-                    <div className="text-[var(--color-text-3)] flex-1">
-                      {t('log.integration.k8s.clusterNameDesc')}
-                    </div>
+                    <FieldHint hint={t('log.integration.k8s.clusterNameHint')} />
                   </div>
                 </Form.Item>
 
                 <Form.Item
-                  label={t('log.integration.k8s.organization')}
+                  label={
+                    <FieldLabel
+                      label={t('log.integration.k8s.organization')}
+                      detail={t('log.integration.k8s.organizationDesc')}
+                    />
+                  }
                   required
                 >
                   <div className="flex items-start gap-4">
@@ -280,14 +296,22 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                         placeholder={t('common.selectTip')}
                       />
                     </Form.Item>
-                    <div className="text-[var(--color-text-3)] flex-1">
-                      {t('log.integration.k8s.organizationDesc')}
-                    </div>
+                    <FieldHint
+                      hint={t('log.integration.k8s.organizationHint')}
+                    />
                   </div>
                 </Form.Item>
               </>
             ) : (
-              <Form.Item label={t('log.integration.k8s.k8sCluster')} required>
+              <Form.Item
+                label={
+                  <FieldLabel
+                    label={t('log.integration.k8s.k8sCluster')}
+                    detail={t('log.integration.k8s.k8sClusterDesc')}
+                  />
+                }
+                required
+              >
                 <div className="flex items-start gap-4">
                   <Form.Item
                     name="k8sCluster"
@@ -310,16 +334,22 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                       }}
                     />
                   </Form.Item>
-                  <div className="text-[var(--color-text-3)] flex-1">
-                    {t('log.integration.k8s.k8sClusterDesc')}
-                  </div>
+                  <FieldHint hint={t('log.integration.k8s.k8sClusterHint')} />
                 </div>
               </Form.Item>
             )
           }
         </Form.Item>
 
-        <Form.Item label={t('log.integration.k8s.cloudRegion')} required>
+        <Form.Item
+          label={
+            <FieldLabel
+              label={t('log.integration.k8s.cloudRegion')}
+              detail={t('log.integration.k8s.cloudRegionDesc')}
+            />
+          }
+          required
+        >
           <div className="flex items-start gap-4">
             <Form.Item
               name="cloud_region_id"
@@ -336,9 +366,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                 }))}
               />
             </Form.Item>
-            <div className="text-[var(--color-text-3)] flex-1">
-              {t('log.integration.k8s.cloudRegionDesc')}
-            </div>
+            <FieldHint hint={t('log.integration.k8s.cloudRegionHint')} />
           </div>
         </Form.Item>
 
