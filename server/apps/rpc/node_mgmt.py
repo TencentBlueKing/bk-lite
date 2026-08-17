@@ -1,5 +1,6 @@
 import os
 
+from apps.node_mgmt.utils.config_write_scope import build_config_write_scope
 from apps.rpc.base import AppClient, RpcClient
 
 
@@ -169,15 +170,17 @@ class NodeMgmt(object):
             {"id": id, "expected_content": expected_content, "content": content},
         )
 
-    def update_config_content(self, id, content, env_config=None):
+    def update_config_content(self, id, content, env_config=None, source_app=None):
         """
         :param id: 配置ID
         :param content: 配置内容
         """
-        return_data = self.client.run(
-            "update_config_content",
-            {"id": id, "content": content, "env_config": env_config},
-        )
+        payload = {"id": id, "content": content, "env_config": env_config}
+        if source_app:
+            scope = build_config_write_scope(source_app, "update", payload)
+            return_data = self.client.run("update_config_content_scoped", scope)
+        else:
+            return_data = self.client.run("update_config_content", payload)
         return return_data
 
     def delete_child_configs(self, ids):
@@ -187,11 +190,15 @@ class NodeMgmt(object):
         return_data = self.client.run("delete_child_configs", ids)
         return return_data
 
-    def delete_configs(self, ids):
+    def delete_configs(self, ids, source_app=None):
         """
         :param ids: 配置ID列表
         """
-        return_data = self.client.run("delete_configs", ids)
+        if source_app:
+            scope = build_config_write_scope(source_app, "delete", {"ids": ids})
+            return_data = self.client.run("delete_configs_scoped", scope)
+        else:
+            return_data = self.client.run("delete_configs", ids)
         return return_data
 
     def collectors_import(self, collectors: list):

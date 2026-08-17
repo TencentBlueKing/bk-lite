@@ -101,7 +101,7 @@ class MonitorInstanceRemovalService:
                     if child_config_ids:
                         node_mgmt.delete_child_configs(child_config_ids)
                     if base_config_ids:
-                        node_mgmt.delete_configs(base_config_ids)
+                        node_mgmt.delete_configs(base_config_ids, source_app="monitor")
 
                 closed_alert_count, closed_at = cls._close_active_alerts(
                     removed_ids,

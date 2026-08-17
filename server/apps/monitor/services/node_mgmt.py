@@ -1008,7 +1008,7 @@ class InstanceConfigService:
                     from apps.monitor.utils.kafka_sasl import ensure_kafka_sasl_mechanism_in_env
 
                     ensure_kafka_sasl_mechanism_in_env(env_config)
-                NodeMgmt().update_config_content(base_info["id"], content, env_config)
+                NodeMgmt().update_config_content(base_info["id"], content, env_config, source_app="monitor")
 
         if child_info:
             config_obj = config_map.get(child_info["id"])

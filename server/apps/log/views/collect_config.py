@@ -645,7 +645,7 @@ class CollectInstanceViewSet(ViewSet):
             NodeMgmt().delete_child_configs(child_configs)
         # 删除配置
         if configs:
-            NodeMgmt().delete_configs(configs)
+            NodeMgmt().delete_configs(configs, source_app="log")
         # 删除配置与实例；若实例存在提取器，级联删除与一次全局发布标脏必须处于同一事务。
         with transaction.atomic():
             # 与规则创建使用相同实例行锁，避免“检查后并发创建”留下已发布但未标脏的规则。

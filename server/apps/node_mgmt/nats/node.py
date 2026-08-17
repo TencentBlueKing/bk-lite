@@ -31,6 +31,11 @@ from apps.node_mgmt.services.node import NodeService
 from apps.node_mgmt.services.sidecar_cache import invalidate_bulk_child_config_etags, invalidate_bulk_config_node_etags
 from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+from apps.node_mgmt.utils.config_write_scope import (
+    assert_config_ids_unmanaged,
+    assert_managed_config_owner,
+    verify_config_write_scope,
+)
 
 LEGACY_NODE_LIST_CALLSITES = frozenset(
     {
@@ -996,7 +1001,17 @@ def update_config_content(data: dict):
     id = data.get("id")
     content = data.get("content")
     env_config = data.get("env_config")
+    assert_config_ids_unmanaged([id])
     NatsService().update_config_content(id, content, env_config)
+
+
+@nats_client.register
+def update_config_content_scoped(token: str):
+    """按经过签名的调用范围更新 Log/Monitor 托管配置。"""
+    source_app, data = verify_config_write_scope(token, "update")
+    id = data.get("id")
+    assert_managed_config_owner([id], source_app)
+    NatsService().update_config_content(id, data.get("content"), data.get("env_config"))
 
 
 @nats_client.register
@@ -1008,6 +1023,16 @@ def delete_child_configs(ids: list):
 @nats_client.register
 def delete_configs(ids: list):
     """删除实例子配置"""
+    assert_config_ids_unmanaged(ids)
+    NatsService().delete_configs(ids)
+
+
+@nats_client.register
+def delete_configs_scoped(token: str):
+    """按经过签名的调用范围删除 Log/Monitor 托管配置。"""
+    source_app, data = verify_config_write_scope(token, "delete")
+    ids = data.get("ids") or []
+    assert_managed_config_owner(ids, source_app)
     NatsService().delete_configs(ids)
 
 
