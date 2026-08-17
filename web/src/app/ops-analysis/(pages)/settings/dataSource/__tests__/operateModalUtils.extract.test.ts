@@ -72,6 +72,43 @@ describe('buildConnectorPayload type-specific transform', () => {
     assert.equal(payload.transform_config.enabled, true);
     assert.equal(payload.transform_config.script, leftoverTransform.script);
   });
+
+  it('clears leftover shared connection when saving excel/nats/prometheus', () => {
+    const leftoverConnection = {
+      connection: 9,
+      connection_overrides: { path: 'orders', method: 'GET', timeout: 10 },
+    };
+    const excelPayload = buildConnectorPayload(
+      {
+        ...leftoverConnection,
+        source_type: 'excel',
+        connection_config: { filename: 'demo.xlsx' },
+        query_config: {},
+      },
+      { t },
+    );
+    assert.equal(excelPayload.connection, null);
+    assert.deepEqual(excelPayload.connection_overrides, {});
+
+    const natsPayload = buildConnectorPayload(
+      { ...leftoverConnection, source_type: 'nats' },
+      { t },
+    );
+    assert.equal(natsPayload.connection, null);
+    assert.deepEqual(natsPayload.connection_overrides, {});
+
+    const prometheusPayload = buildConnectorPayload(
+      {
+        ...leftoverConnection,
+        source_type: 'prometheus',
+        connection_config: { url: 'http://prom.example', auth_type: 'none' },
+        query_config: { query: 'up', query_type: 'instant' },
+      },
+      { t },
+    );
+    assert.equal(prometheusPayload.connection, null);
+    assert.deepEqual(prometheusPayload.connection_overrides, {});
+  });
 });
 
 describe('shouldCreateLibraryConnectionFromForm', () => {

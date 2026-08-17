@@ -416,6 +416,60 @@ def test_datasource_serializer_keeps_rest_transform_when_type_unchanged(authenti
     assert serializer.validated_data["transform_config"]["enabled"] is True
 
 
+@pytest.mark.django_db
+def test_datasource_serializer_clears_connection_when_switching_rest_to_excel(authenticated_user):
+    from apps.operation_analysis.models.datasource_models import DataConnection
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+    from apps.operation_analysis.services.data_connection.config_crypto import encrypt_connection_config
+
+    connection = DataConnection.objects.create(
+        name="rest-shared",
+        connection_type=DataConnection.TYPE_REST_API,
+        groups=[1],
+        config=encrypt_connection_config({"base_url": "https://api.example.com", "headers": {}}),
+    )
+    datasource = DataSourceAPIModel.objects.create(
+        name="rest-bound",
+        rest_api="",
+        source_type="rest_api",
+        connection=connection,
+        connection_overrides={"path": "orders", "method": "GET", "timeout": 10},
+        connection_config={"method": "GET", "timeout": 10},
+        query_config={"response_path": "data.items"},
+        transform_config={"enabled": True, "language": "python", "script": "def transform(rows, params): return rows"},
+        params=[],
+        chart_type=["table"],
+        field_schema=[],
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data={
+            "name": "rest-bound",
+            "rest_api": "",
+            "source_type": "excel",
+            "connection_config": {"filename": "demo.xlsx"},
+            "query_config": {},
+            "params": [],
+            "chart_type": ["table"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+        },
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    updated = serializer.save()
+    assert updated.source_type == "excel"
+    assert updated.connection_id is None
+    assert updated.connection_overrides == {}
+
+
 # --------------------------------------------------------------------------
 # schema 校验工具函数
 # --------------------------------------------------------------------------

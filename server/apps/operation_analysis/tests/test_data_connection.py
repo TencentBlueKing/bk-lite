@@ -214,6 +214,31 @@ def test_datasource_groups_must_be_subset_of_connection():
         )
 
 
+def test_binding_clears_connection_when_source_type_forbids_it():
+    connection = DataConnection.objects.create(
+        name="rest-shared",
+        connection_type=DataConnection.TYPE_REST_API,
+        groups=[1],
+        config=encrypt_connection_config({"base_url": "https://api.example.com", "headers": {}}),
+    )
+    attrs = validate_datasource_connection_binding(
+        {
+            "source_type": DataSourceAPIModel.SOURCE_TYPE_EXCEL,
+            "groups": [1],
+            "connection": connection,
+            "connection_overrides": {"path": "orders", "method": "GET", "timeout": 10},
+        }
+    )
+    assert attrs["connection"] is None
+    assert attrs["connection_overrides"] == {}
+
+    nats_attrs = validate_datasource_connection_binding(
+        {"source_type": DataSourceAPIModel.SOURCE_TYPE_NATS, "groups": [1], "connection": connection}
+    )
+    assert nats_attrs["connection"] is None
+    assert nats_attrs["connection_overrides"] == {}
+
+
 def test_resolve_rest_rejects_path_traversal():
     connection = DataConnection.objects.create(
         name="rest-base",

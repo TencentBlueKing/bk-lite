@@ -457,6 +457,8 @@ export const buildConnectorPayload = (
     const hasLegacy = legacyItems.length > 0;
     return {
       source_type: currentSourceType,
+      connection: null,
+      connection_overrides: {},
       connection_config: {
         filename: options.excelFileName || connectionConfig.filename || "",
       },
@@ -511,6 +513,8 @@ export const buildConnectorPayload = (
     }
     return {
       source_type: currentSourceType,
+      connection: null,
+      connection_overrides: {},
       connection_config: prometheusConnectionConfig,
       query_config: normalizedQueryConfig,
       transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
@@ -519,6 +523,8 @@ export const buildConnectorPayload = (
 
   return {
     source_type: currentSourceType,
+    connection: null,
+    connection_overrides: {},
     connection_config: {},
     query_config: {},
     transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
