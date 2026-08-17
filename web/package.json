@@ -68,6 +68,7 @@
     "test:apm-notification-closure": "pnpm exec tsx scripts/apm-notification-closure-test.ts",
     "test:log-winlogbeat-node-os-filter": "pnpm exec tsx scripts/log-winlogbeat-node-os-filter-test.ts",
     "test:log-policy-form": "pnpm exec tsx scripts/log-policy-form-state-test.ts",
+    "test:log-query-input": "pnpm exec vitest run 'src/app/log/components/log-query-input/__tests__/interaction.test.tsx' 'src/app/log/(pages)/event/strategy/detail/__tests__/usePolicyFieldCatalog.test.tsx'",
     "test:log-vector-config": "pnpm exec tsx scripts/log-vector-config-test.ts",
     "test:log-extractor-interaction": "pnpm exec tsx scripts/log-extractor-interaction-test.ts",
     "test:monitor-search-plugin-scope": "pnpm exec tsx scripts/monitor-search-plugin-scope-test.ts",
