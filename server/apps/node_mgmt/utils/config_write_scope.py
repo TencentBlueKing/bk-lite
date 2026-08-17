@@ -70,7 +70,10 @@ def _owners_by_config_id(ids):
     normalized_ids = {str(config_id) for config_id in ids if config_id is not None}
     owners = {config_id: set() for config_id in normalized_ids}
     for source_app, (app_label, model_name) in MANAGED_CONFIG_OWNER_MODELS.items():
-        model = apps.get_model(app_label, model_name)
+        try:
+            model = apps.get_model(app_label, model_name)
+        except LookupError:
+            continue
         owned_ids = model.objects.filter(id__in=normalized_ids).values_list("id", flat=True)
         for config_id in owned_ids:
             owners.setdefault(str(config_id), set()).add(source_app)

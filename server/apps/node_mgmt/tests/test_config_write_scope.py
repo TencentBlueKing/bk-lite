@@ -8,6 +8,7 @@ from apps.monitor.models import CollectConfig as MonitorCollectConfig
 from apps.monitor.models import MonitorInstance, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.node_mgmt.nats import node as node_nats
+from apps.node_mgmt.utils import config_write_scope
 from apps.rpc.node_mgmt import NodeMgmt
 
 pytestmark = pytest.mark.django_db
@@ -95,6 +96,24 @@ def test_legacy_update_rejects_managed_config_before_write(monkeypatch):
         node_nats.update_config_content({"id": config.id, "content": "content"})
 
     assert calls == []
+
+
+def test_legacy_native_update_tolerates_uninstalled_owner_apps(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        config_write_scope.apps,
+        "get_model",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(LookupError("app not installed")),
+    )
+    monkeypatch.setattr(
+        node_nats.NatsService,
+        "update_config_content",
+        lambda _self, config_id, content, env_config: calls.append((config_id, content, env_config)),
+    )
+
+    node_nats.update_config_content({"id": "node-native", "content": "content"})
+
+    assert calls == [("node-native", "content", None)]
 
 
 def test_scoped_delete_accepts_matching_monitor_mirror(monkeypatch):
