@@ -146,6 +146,7 @@ export interface GapInterval {
   start: number;
   end: number;
   duration?: number;
+  align?: 'exact';
   series?: Array<{
     metric?: Record<string, string>;
     missing_points?: number;
