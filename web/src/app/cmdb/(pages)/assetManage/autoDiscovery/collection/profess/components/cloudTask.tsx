@@ -92,7 +92,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       });
 
       const instance = baseRef.current?.instOptions?.find(
-        (item: any) => item.value === values.instId
+        (item) => item.value === values.instUuid
       );
 
       const credential = buildCloudCredential(
@@ -124,7 +124,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       ],
       organization: values.team || [],
       timeout: values.timeout,
-      instId: values.instances?.[0]?._id,
+      instUuid: values.instances?.[0]?.inst_uuid,
       accessPointId: values.access_point?.[0]?.id,
     };
   };
@@ -230,9 +230,10 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     );
     const cloudRegion = selectedAccessPoint?.origin?.cloud_region || '';
 
-    const instId = form.getFieldValue('instId');
-    const instOption = baseRef.current?.instOptions?.find((item: any) => item.value === instId);
-    const host = instOption?.origin?.endpoint || undefined;
+    const instUuid = form.getFieldValue('instUuid');
+    const instOption = baseRef.current?.instOptions?.find((item) => item.value === instUuid);
+    const endpoint = instOption?.origin?.endpoint;
+    const host = typeof endpoint === 'string' ? endpoint : undefined;
 
     await fetchRegions(
       values.accessKey,

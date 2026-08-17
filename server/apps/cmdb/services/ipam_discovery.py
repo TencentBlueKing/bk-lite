@@ -4,6 +4,7 @@ from datetime import datetime
 
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.services.instance_identity import optional_inst_uuid
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
@@ -22,7 +23,7 @@ def _empty_summary(**extra) -> dict:
 def extract_subnet_discovery_params(task) -> tuple:
     """从采集任务提取 (subnet_refs, scan_method, ports)。
 
-    subnet_refs 优先为 UUID 字符串列表（subnet_uuids）；过渡期可回退 subnet_ids。
+    subnet_refs 优先为 UUID；仅对存量任务内部只读回退 subnet_ids。
     """
     if hasattr(task, "instances"):
         raw_instances = task.instances
@@ -45,22 +46,20 @@ def extract_subnet_discovery_params(task) -> tuple:
     if not isinstance(subnet_ids, list):
         subnet_ids = list(subnet_ids) if subnet_ids else []
 
-    subnet_refs = subnet_uuids or subnet_ids
-
     scan_method = raw_instances.get("scan_method", "icmp") or "icmp"
     ports = raw_instances.get("ports", None)
     if ports is not None and not isinstance(ports, list):
         ports = list(ports)
 
-    return subnet_refs, scan_method, ports
+    return subnet_uuids or subnet_ids, scan_method, ports
 
 
 def _load_subnets_by_ids(subnet_refs: list) -> list:
-    """按 UUID 优先加载子网；数字 ID 仅作过渡期回退。"""
+    """按 UUID 加载子网；数字仅用于存量任务的内部只读映射。"""
     from apps.cmdb.services.instance_identity import normalize_inst_uuid
 
     uuids = []
-    ids = []
+    legacy_ids = []
     for item in subnet_refs or []:
         if isinstance(item, bool):
             continue
@@ -69,27 +68,19 @@ def _load_subnets_by_ids(subnet_refs: list) -> list:
             continue
         except Exception:
             pass
-        try:
-            ids.append(int(item))
-        except (TypeError, ValueError):
+        if str(item).isdigit():
+            legacy_ids.append(int(item))
+        else:
             logger.warning("[IPDiscovery] 忽略非法 subnet_ref=%r", item)
-    if not uuids and not ids:
+    if not uuids and not legacy_ids:
         return []
+    identity_filter = {"field": "inst_uuid", "type": "str[]", "value": uuids} if uuids else {"field": "id", "type": "id[]", "value": legacy_ids}
     with GraphClient() as ag:
-        if uuids:
-            rows, _ = ag.query_entity(
-                INSTANCE,
-                [
-                    {"field": "model_id", "type": "str=", "value": "subnet"},
-                    {"field": "inst_uuid", "type": "str[]", "value": uuids},
-                ],
-            )
-            return rows or []
         rows, _ = ag.query_entity(
             INSTANCE,
             [
                 {"field": "model_id", "type": "str=", "value": "subnet"},
-                {"field": "id", "type": "id[]", "value": ids},
+                identity_filter,
             ],
         )
     return rows or []
@@ -248,9 +239,15 @@ def _writeback_subnet_utilization(subnet_ids):
 
 def apply_discovery_result(subnet_id, alive: list) -> dict:
     """活跃 IP 回写台账。规格 §13.4。"""
-    subnet_rows = _load_subnets_by_ids([subnet_id])
+    # 保留参数名兼容后端内部调用；该边界传入值的语义已统一为 subnet UUID。
+    subnet_uuid = subnet_id
+    subnet_rows = _load_subnets_by_ids([subnet_uuid])
     if not subnet_rows:
-        logger.warning("[IPDiscovery] 子网不存在,跳过 subnet_id=%s alive_count=%s", subnet_id, len(alive))
+        logger.warning("[IPDiscovery] 子网不存在,跳过 subnet_uuid=%s alive_count=%s", subnet_uuid, len(alive))
+        return _empty_summary(skipped=True)
+    subnet_id = subnet_rows[0].get("_id")
+    if subnet_id is None:
+        logger.warning("[IPDiscovery] 子网缺少内部图 ID,跳过 subnet_uuid=%s", subnet_uuid)
         return _empty_summary(skipped=True)
     organization = subnet_rows[0].get("organization") or []
     if not organization:
@@ -351,9 +348,14 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
 
 def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
     """把 VM 中的 ip_info 指标行回写到 IPAM 台账。"""
-    selected_subnet_ids, _, _ = extract_subnet_discovery_params(task)
-    selected_subnet_ids = [str(item) for item in selected_subnet_ids]
-    if not selected_subnet_ids:
+    selected_subnet_refs, _, _ = extract_subnet_discovery_params(task)
+    selected_subnet_uuids = []
+    for item in selected_subnet_refs:
+        if inst_uuid := optional_inst_uuid(item):
+            selected_subnet_uuids.append(inst_uuid)
+    if not selected_subnet_uuids and selected_subnet_refs:
+        selected_subnet_uuids = [item["inst_uuid"] for item in _load_subnets_by_ids(selected_subnet_refs) if item.get("inst_uuid")]
+    if not selected_subnet_uuids:
         logger.warning("[IPDiscovery] 任务未勾选子网,跳过 VM 指标处理,行数=%s", len(rows or []))
         return _empty_summary()
 
@@ -361,17 +363,17 @@ def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
     for row in rows or []:
         if row.get("collect_status", "success") == "failed":
             continue
-        subnet_id = str(row.get("subnet_id") or "").strip()
+        subnet_uuid = str(row.get("subnet_uuid") or "").strip()
         ip_addr = str(row.get("ip_addr") or row.get("ip") or "").strip()
-        if not subnet_id or not ip_addr:
+        if not subnet_uuid or not ip_addr:
             continue
-        if subnet_id not in selected_subnet_ids:
+        if subnet_uuid not in selected_subnet_uuids:
             continue
-        alive_by_subnet.setdefault(subnet_id, []).append({"ip": ip_addr, "mac": row.get("mac", "")})
+        alive_by_subnet.setdefault(subnet_uuid, []).append({"ip": ip_addr, "mac": row.get("mac", "")})
 
     summary = _empty_summary()
-    for subnet_id in selected_subnet_ids:
-        result = apply_discovery_result(subnet_id, alive_by_subnet.get(subnet_id, []))
+    for subnet_uuid in selected_subnet_uuids:
+        result = apply_discovery_result(subnet_uuid, alive_by_subnet.get(subnet_uuid, []))
         for key in ("created", "updated", "offline", "failed"):
             summary[key] += int(result.get(key, 0))
         result_format_data = result.get("format_data") or {}

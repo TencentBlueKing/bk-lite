@@ -1,6 +1,5 @@
 export interface RoomRack {
-  inst_id: string;
-  inst_uuid?: string;
+  inst_uuid: string;
   inst_name: string;
   row: number;
   col: number;
@@ -22,13 +21,12 @@ export interface RoomLayoutData {
       unplaced_reason: 'missing_location' | 'invalid_location';
     }
   >;
-  conflicts: Array<{ row: number; col: number; inst_ids: string[] }>;
+  conflicts: Array<{ row: number; col: number; inst_uuids: string[] }>;
   grid: { max_row: number; max_col: number };
 }
 
 export interface RackDevice {
-  inst_id: string;
-  inst_uuid?: string;
+  inst_uuid: string;
   inst_name: string;
   model_id: string;
   rack_u_start: number;
@@ -41,8 +39,8 @@ export interface RackLayoutData {
   u_count: number;
   free_u: number;
   max_free_u: number;
-  rack: { inst_id: string; inst_uuid?: string; inst_name: string; u_count: number };
+  rack: { inst_uuid: string; inst_name: string; u_count: number };
   placed: RackDevice[];
-  unplaced: Array<Pick<RackDevice, 'inst_id' | 'inst_uuid' | 'inst_name' | 'model_id'>>;
+  unplaced: Array<Pick<RackDevice, 'inst_uuid' | 'inst_name' | 'model_id'>>;
   overlaps: string[][];
 }

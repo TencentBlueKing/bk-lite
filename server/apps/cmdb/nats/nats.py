@@ -931,9 +931,7 @@ def receive_collect_credential_result(data: dict):
             "Received invalid collect credential result event, type=%s",
             type(payload).__name__,
         )
-        return CollectCredentialResultService.process_result(
-            payload, parse_datetime=_parse_nats_datetime
-        )
+        return CollectCredentialResultService.process_result(payload, parse_datetime=_parse_nats_datetime)
 
     if isinstance(events, list):
         logger.info(
@@ -1085,7 +1083,7 @@ def _parse_room3d_rack_location(value):
 
 
 def _room3d_rack_identity(rack):
-    rack_id = rack.get("inst_uuid") or rack.get("inst_id")
+    rack_id = rack.get("inst_uuid")
     return str(rack_id or ""), rack.get("inst_name") or str(rack_id or "")
 
 
@@ -1118,8 +1116,11 @@ def _format_room3d_invalid_location_notice(invalid_racks, locale="zh-CN"):
 
 
 def _format_room3d_device(device):
+    locator = _parse_room3d_server_room_locator(device.get("inst_uuid"))
+    if not locator or locator[0] != "uuid":
+        return None
     return {
-        "device_id": str(device.get("inst_uuid") or device.get("inst_id") or device.get("_id") or ""),
+        "device_id": locator[1],
         "device_name": device.get("inst_name") or "",
         "model_id": device.get("model_id"),
         "rack_u_start": device.get("rack_u_start"),
@@ -1132,10 +1133,12 @@ def _get_room3d_rack_device_summary(rack_id, permission_map=None, user=None):
     rack_layout = rack_room.get_rack_layout(rack_id, permission_map=permission_map, user=user)
     placed_devices = rack_layout.get("placed") or []
     unplaced_devices = rack_layout.get("unplaced") or []
+    formatted_placed = [formatted for device in placed_devices if (formatted := _format_room3d_device(device)) is not None]
+    formatted_unplaced = [formatted for device in unplaced_devices if (formatted := _format_room3d_device(device)) is not None]
     return {
-        "devices": [_format_room3d_device(device) for device in placed_devices],
-        "device_count": len(placed_devices) + len(unplaced_devices),
-        "unplaced_device_count": len(unplaced_devices),
+        "devices": formatted_placed,
+        "device_count": len(formatted_placed) + len(formatted_unplaced),
+        "unplaced_device_count": len(formatted_unplaced),
     }
 
 
@@ -1177,6 +1180,9 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
         return _room3d_error("机房实例不存在", code=404)
     if room.get("model_id") != "server_room":
         return _room3d_error("server_room_id 必须指向 server_room 实例")
+    room_uuid_locator = _parse_room3d_server_room_locator(room.get("inst_uuid"))
+    if not room_uuid_locator or room_uuid_locator[0] != "uuid":
+        return _room3d_error("机房实例缺少合法 inst_uuid", code=409)
 
     permission_map = _build_nats_permission_map(user_info)
     if permission_map is None:
@@ -1211,34 +1217,27 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
         }
         candidate_racks.append(candidate)
 
-    rack_ids = [
-        rack_id_int for rack_id_int in (_room3d_rack_id_as_int(item["rack"].get("inst_id")) for item in candidate_racks) if rack_id_int is not None
-    ]
+    rack_uuids = [item["rack_id"] for item in candidate_racks if item["rack_id"]]
     if hasattr(rack_room, "get_room3d_rack_device_summaries"):
         device_summaries = rack_room.get_room3d_rack_device_summaries(
-            rack_ids,
+            rack_uuids,
             permission_map=permission_map,
             user=user,
         )
     else:
         device_summaries = {}
-        for item in candidate_racks:
-            raw_rack_id = item["rack"].get("inst_id")
-            rack_id_int = _room3d_rack_id_as_int(raw_rack_id)
-            if rack_id_int is not None:
-                device_summaries[rack_id_int] = _get_room3d_rack_device_summary(
-                    raw_rack_id,
-                    permission_map=permission_map,
-                    user=user,
-                )
+        rack_instances = InstanceManage.query_entity_by_uuids(rack_uuids) if rack_uuids else []
+        rack_id_by_uuid = {item.get("inst_uuid"): item.get("_id") for item in rack_instances}
+        for rack_uuid in rack_uuids:
+            rack_id = rack_id_by_uuid.get(rack_uuid)
+            if rack_id is not None:
+                device_summaries[rack_uuid] = _get_room3d_rack_device_summary(rack_id, permission_map=permission_map, user=user)
 
     rack_type_name_map = _get_room3d_rack_type_name_map()
     racks = []
     for item in candidate_racks:
         rack = item["rack"]
-        rack_id = rack.get("inst_id")
-        rack_id_int = _room3d_rack_id_as_int(rack_id)
-        device_summary = device_summaries.get(rack_id_int, _empty_room3d_device_summary())
+        device_summary = device_summaries.get(item["rack_id"], _empty_room3d_device_summary())
         rack_type = rack.get("datacenter_type")
         rack_type_name = rack_type_name_map.get(str(rack_type)) if rack_type not in (None, "") else None
         rack_payload = {
@@ -1260,7 +1259,7 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
         racks.append(rack_payload)
 
     data = {
-        "room": {"id": str(room.get("inst_uuid") or room_id), "name": room.get("inst_name") or ""},
+        "room": {"id": room_uuid_locator[1], "name": room.get("inst_name") or ""},
         "racks": racks,
     }
     notice = _format_room3d_invalid_location_notice(

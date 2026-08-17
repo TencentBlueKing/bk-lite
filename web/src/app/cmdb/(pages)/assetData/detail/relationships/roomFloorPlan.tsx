@@ -147,9 +147,9 @@ const RoomFloorPlan: React.FC<Props> = ({
             const c = rackTypeColor(r.datacenter_type);
             return (
               <div
-                key={r.inst_id}
-                className={`rf-rack${activeHighlightId === r.inst_id ? ' rf-rack--highlight' : ''}`}
-                data-room-rack-id={r.inst_id}
+                key={r.inst_uuid}
+                className={`rf-rack${activeHighlightId === r.inst_uuid ? ' rf-rack--highlight' : ''}`}
+                data-room-rack-id={r.inst_uuid}
                 style={{
                   left: x + GAP / 2, top: y + GAP / 2, width: box, height: box,
                   borderColor: isDark

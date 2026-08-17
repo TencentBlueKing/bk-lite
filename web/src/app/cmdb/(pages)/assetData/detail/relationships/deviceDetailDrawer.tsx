@@ -70,7 +70,7 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
      
-  }, [open, device?.inst_uuid, device?.inst_id]);
+  }, [open, device?.inst_uuid]);
 
   const jump = () => {
     if (!device) return;
