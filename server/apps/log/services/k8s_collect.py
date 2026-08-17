@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
-from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, K8sInstallToken
+from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, K8sCollectSetting, K8sInstallToken
 from apps.log.services.search import SearchService
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -22,6 +22,10 @@ class K8sLogCollectService:
     REQUEST_TIMEOUT = 30
     RUNTIME_PROFILES = {"standard", "docker", "custom"}
     PATH_UNSAFE_PATTERN = re.compile(r"[\r\n']")
+    PATTERN_WHITELIST = re.compile(r"^[a-z0-9.*?-]+$")
+    MAX_PATTERNS_PER_DIMENSION = 50
+    MAX_INCLUDE_PATTERNS = 200
+    SETTING_MISSING_MESSAGE = "接入配置未知，请先保存采集配置"
 
     @staticmethod
     def _hash_token(token: str) -> str:
@@ -115,6 +119,123 @@ class K8sLogCollectService:
             "host_log_path": normalized_host_log_path,
             "docker_container_log_path": normalized_docker_container_log_path,
         }
+
+    @classmethod
+    def validate_patterns(cls, raw_value, field_name: str) -> list[str]:
+        if raw_value in (None, ""):
+            items = []
+        elif isinstance(raw_value, str):
+            items = raw_value.splitlines()
+        elif isinstance(raw_value, list):
+            items = raw_value
+        else:
+            raise BaseAppException(f"{field_name} 格式不正确")
+
+        normalized = []
+        seen = set()
+        for item in items:
+            if item is None:
+                continue
+            if not isinstance(item, str):
+                raise BaseAppException(f"{field_name} 格式不正确")
+            value = item.strip()
+            if not value or value in seen:
+                continue
+            if "_" in value:
+                raise BaseAppException(f"{field_name} 不能包含下划线，Kubernetes 名称不含 '_'")
+            if "**" in value:
+                raise BaseAppException(f"{field_name} 不支持 '**'，请使用 '*' 匹配任意长度")
+            if any(ch.isupper() for ch in value):
+                raise BaseAppException(f"{field_name} 不能包含大写字母")
+            if not cls.PATTERN_WHITELIST.fullmatch(value):
+                raise BaseAppException(f"{field_name} 仅允许小写字母、数字、'-'、'.'、'*'、'?'")
+            seen.add(value)
+            normalized.append(value)
+
+        if len(normalized) > cls.MAX_PATTERNS_PER_DIMENSION:
+            raise BaseAppException(f"{field_name} 最多 {cls.MAX_PATTERNS_PER_DIMENSION} 项，请改用更宽的通配")
+        return normalized
+
+    @classmethod
+    def build_include_patterns(cls, namespace_patterns: list[str], pod_patterns: list[str]) -> list[str]:
+        if not namespace_patterns and not pod_patterns:
+            return []
+
+        namespace_globs = namespace_patterns or ["*"]
+        pod_globs = pod_patterns or ["*"]
+        patterns = [f"/var/log/pods/{namespace}_{pod}_*/**" for namespace in namespace_globs for pod in pod_globs]
+        if len(patterns) > cls.MAX_INCLUDE_PATTERNS:
+            raise BaseAppException(f"采集范围展开后超过 {cls.MAX_INCLUDE_PATTERNS} 条，请改用更宽的通配")
+        return patterns
+
+    @staticmethod
+    def get_k8s_instance(instance_id: str) -> CollectInstance:
+        instance = CollectInstance.objects.filter(id=instance_id, collect_type__name="kubernetes").first()
+        if not instance:
+            raise BaseAppException("Kubernetes 日志接入实例不存在")
+        return instance
+
+    @classmethod
+    def serialize_setting(cls, instance: CollectInstance, setting: K8sCollectSetting | None) -> dict:
+        if setting is None:
+            return {"instance_id": instance.id, "unknown": True}
+        return {
+            "instance_id": instance.id,
+            "unknown": False,
+            "runtime_profile": setting.runtime_profile,
+            "host_log_path": setting.host_log_path or None,
+            "docker_container_log_path": setting.docker_container_log_path or None,
+            "namespace_patterns": setting.namespace_patterns or [],
+            "pod_patterns": setting.pod_patterns or [],
+        }
+
+    @classmethod
+    def get_setting(cls, instance_id: str) -> dict:
+        instance = cls.get_k8s_instance(instance_id)
+        setting = K8sCollectSetting.objects.filter(collect_instance_id=instance.id).first()
+        return cls.serialize_setting(instance, setting)
+
+    @classmethod
+    def save_setting(cls, instance_id: str, data: dict) -> dict:
+        instance = cls.get_k8s_instance(instance_id)
+        render_options = cls.normalize_render_options(
+            data.get("runtime_profile"),
+            data.get("host_log_path"),
+            data.get("docker_container_log_path"),
+        )
+        namespace_patterns = cls.validate_patterns(data.get("namespace_patterns"), "采集 Namespace")
+        pod_patterns = cls.validate_patterns(data.get("pod_patterns"), "采集 Pod")
+        cls.build_include_patterns(namespace_patterns, pod_patterns)
+
+        with transaction.atomic():
+            setting, _created = K8sCollectSetting.objects.update_or_create(
+                collect_instance_id=instance.id,
+                defaults={
+                    "runtime_profile": render_options["runtime_profile"],
+                    "host_log_path": render_options["host_log_path"] or "",
+                    "docker_container_log_path": render_options["docker_container_log_path"] or "",
+                    "namespace_patterns": namespace_patterns,
+                    "pod_patterns": pod_patterns,
+                },
+            )
+        return cls.serialize_setting(instance, setting)
+
+    @classmethod
+    def load_setting_render_options(cls, instance_id: str) -> dict:
+        instance = cls.get_k8s_instance(instance_id)
+        setting = K8sCollectSetting.objects.filter(collect_instance_id=instance.id).first()
+        if setting is None:
+            raise BaseAppException(cls.SETTING_MISSING_MESSAGE)
+        render_options = cls.normalize_render_options(
+            setting.runtime_profile,
+            setting.host_log_path or None,
+            setting.docker_container_log_path or None,
+        )
+        namespace_patterns = cls.validate_patterns(setting.namespace_patterns, "采集 Namespace")
+        pod_patterns = cls.validate_patterns(setting.pod_patterns, "采集 Pod")
+        render_options["namespace_patterns"] = namespace_patterns
+        render_options["pod_patterns"] = pod_patterns
+        return render_options
 
     @staticmethod
     def get_collect_type(collect_type_id):
@@ -215,30 +336,15 @@ class K8sLogCollectService:
         cls,
         instance_id: str,
         cloud_region_id: str,
-        runtime_profile: str | None = None,
-        host_log_path: str | None = None,
-        docker_container_log_path: str | None = None,
     ) -> str:
-        instance = CollectInstance.objects.filter(id=instance_id, collect_type__name="kubernetes").first()
-        if not instance:
-            raise BaseAppException("Kubernetes 日志接入实例不存在")
+        instance = cls.get_k8s_instance(instance_id)
+        cls.load_setting_render_options(instance.id)
 
         env_vars = cls.get_cloud_region_envconfig(cloud_region_id)
         server_url = env_vars.get("NODE_SERVER_URL")
         token = cls.generate_install_token(instance.id, str(cloud_region_id))
-        render_options = cls.normalize_render_options(
-            runtime_profile,
-            host_log_path,
-            docker_container_log_path,
-        )
         api_url = f"{server_url.rstrip('/')}/api/v1/log/open_api/k8s/render/"
-        payload = json.dumps(
-            {
-                "token": token,
-                **render_options,
-            },
-            ensure_ascii=False,
-        )
+        payload = json.dumps({"token": token}, ensure_ascii=False)
         return f"curl -sSLk -X POST -H 'Content-Type: application/json' {api_url} -d '{payload}' | kubectl apply -f -"
 
     @classmethod
@@ -246,18 +352,11 @@ class K8sLogCollectService:
         cls,
         cluster_name: str,
         cloud_region_id: str,
-        runtime_profile: str | None = None,
-        host_log_path: str | None = None,
-        docker_container_log_path: str | None = None,
     ) -> str:
+        render_options = cls.load_setting_render_options(cluster_name)
         env_vars = cls.get_cloud_region_envconfig(cloud_region_id)
         webhook_server_url = env_vars.get("WEBHOOK_SERVER_URL")
         api_url = f"{webhook_server_url.rstrip('/')}/infra/kubernetes"
-        render_options = cls.normalize_render_options(
-            runtime_profile,
-            host_log_path,
-            docker_container_log_path,
-        )
 
         try:
             response = requests.post(
@@ -292,9 +391,7 @@ class K8sLogCollectService:
 
     @staticmethod
     def check_collect_status(instance_id: str) -> bool:
-        instance = CollectInstance.objects.filter(id=instance_id, collect_type__name="kubernetes").first()
-        if not instance:
-            raise BaseAppException("Kubernetes 日志接入实例不存在")
+        instance = K8sLogCollectService.get_k8s_instance(instance_id)
 
         end_time = timezone.now()
         start_time = end_time - timedelta(minutes=10)

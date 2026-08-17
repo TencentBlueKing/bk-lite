@@ -16,6 +16,8 @@ spec:
     metadata:
       labels:
         app: vector-daemonset
+      annotations:
+        bklite.io/log-collect-config: "default"
     spec:
       serviceAccount: vector-daemonset
       containers:
