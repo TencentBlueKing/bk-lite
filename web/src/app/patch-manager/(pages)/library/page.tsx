@@ -668,6 +668,7 @@ export default function LibraryPage() {
           loading={loading}
           scroll={{ x: 1300 }}
           rowSelection={{
+            fixed: true,
             selectedRowKeys: selectedPatchIds,
             onChange: (keys) => setSelectedPatchIds(keys.map(Number)),
           }}
@@ -767,7 +768,7 @@ export default function LibraryPage() {
         title={t('patchManager.libraryPage.syncIngest')}
         open={importOpen}
         onClose={closeImportDrawer}
-        width={900}
+        width="min(1100px, calc(100vw - 48px))"
         bodyStyle={{ padding: 0, overflow: 'hidden' }}
         footer={
           <Space>
@@ -802,6 +803,7 @@ export default function LibraryPage() {
                 rowKey="key"
                 loading={candidateLoading || candidateActionLoading}
                 rowSelection={{
+                  fixed: true,
                   selectedRowKeys: candidateSelection.keys,
                   preserveSelectedRowKeys: true,
                   onChange: (selectedRowKeys) => setCandidateSelection((previous) =>

@@ -325,7 +325,7 @@
       "distroRequired": "请输入发行版", "distroPlaceholder": "如 Ubuntu / Rocky Linux",
       "osVersionPlaceholder": "如 22.04 / 9（apt 源必填，用于映射代号）", "archPlaceholder": "请选择 CPU 架构",
       "connectivityPassed": "连通性测试通过", "connectivityFailed": "连通性测试失败", "scanSaved": "扫描设置已保存",
-      "hourlyTrigger": "全局周期到达（每 {count} 小时）自动评估所有主机", "dailyTrigger": "全局周期到达（每天 {time}）自动评估所有主机",
+      "scheduledAssessmentTrigger": "全局周期评估", "notEnabled": "未开启", "hourlyTrigger": "全局周期到达（每 {count} 小时）自动评估所有主机", "dailyTrigger": "全局周期到达（每天 {time}）自动评估所有主机",
       "weeklyTrigger": "全局周期到达（{weekday} {time}）自动评估所有主机",
       "triggerBaselineBound": "主机首次绑定基线后进入待评估", "triggerBaselineChanged": "主机更换基线或基线补丁要求变更后重置为待评估",
       "triggerManual": "页面点击「立即评估」立即执行", "triggerPostRemediation": "安装或重启完成后自动验证",
