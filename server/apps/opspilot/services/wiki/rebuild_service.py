@@ -8,10 +8,9 @@
 只有真实知识结论冲突进入决策；归档页的关系与向量由级联维护自动清理。
 """
 
-import logging
-
 from django.db import transaction
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import BuildRecord, KnowledgePage, Material, MaterialVersion
 from apps.opspilot.services.wiki.build_service import (
     _canonical_title,
@@ -34,12 +33,11 @@ from apps.opspilot.services.wiki.build_service import (
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.conflict_candidate_routing_service import route_material_conflicts
 from apps.opspilot.services.wiki.decision_service import compute_schema_fingerprint
+from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
 from apps.opspilot.services.wiki.wiki_budget_service import new_material_call_budget
 from apps.opspilot.services.wiki.wikilink_enrichment_service import enrich_pages_wikilinks
-
-logger = logging.getLogger("opspilot")
 
 _MAINTENANCE_METRIC_KEYS = (
     "relations",
@@ -354,7 +352,7 @@ def _pending_rebuild_maintenance(page_ids, event, **metadata):
 
 
 def _failed_rebuild_maintenance(page_ids, event, exc, **metadata):
-    error = str(exc)
+    error = humanize_maintenance_error(exc)
     return {
         "status": "partial",
         "event": event,
@@ -392,14 +390,15 @@ def _run_rebuild_cascade(kb, page_ids, event, **kwargs):
 
 
 def _add_maintenance_failure(maintenance, stage, exc, page_ids, event):
+    error = humanize_maintenance_error(exc)
     result = dict(maintenance or {})
     result.setdefault("event", event)
     result.setdefault("affected_page_ids", list(page_ids))
     stages = dict(result.get("stages") or {})
-    stages[stage] = {"status": "failed", "error": str(exc)}
+    stages[stage] = {"status": "failed", "error": error}
     result["stages"] = stages
     result["status"] = "partial"
-    result.setdefault("error", str(exc))
+    result.setdefault("error", error)
     return result
 
 
