@@ -1,3 +1,4 @@
+import threading
 import uuid
 
 from django.db import connection, transaction
@@ -31,6 +32,30 @@ from apps.node_mgmt.services.sidecar_cache import (
     invalidate_bulk_config_node_etags,
 )
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+
+LEGACY_NODE_LIST_CALLSITES = frozenset(
+    {
+        "alerts.target_resolver",
+        "cmdb.node_sync",
+        "job_mgmt.connection_test",
+        "job_mgmt.execution",
+        "stargazer.node_info",
+    }
+)
+_observed_legacy_node_list_callsites: set[str] = set()
+_legacy_node_list_observation_lock = threading.Lock()
+
+
+def _observe_legacy_node_list_callsite(declared_callsite: str) -> None:
+    with _legacy_node_list_observation_lock:
+        if declared_callsite in _observed_legacy_node_list_callsites:
+            return
+        _observed_legacy_node_list_callsites.add(declared_callsite)
+
+    logger.warning(
+        "legacy node_list skip_permission used; declared_callsite=%s authorization_source=untrusted_payload",
+        declared_callsite,
+    )
 
 
 class NatsService:
@@ -769,6 +794,14 @@ def node_list(query_data: dict):
     is_container = query_data.get("is_container")
     permission_data = query_data.get("permission_data", {})
     skip_permission = query_data.get("skip_permission", False)
+    if skip_permission:
+        declared_callsite = query_data.get("legacy_callsite")
+        if (
+            not isinstance(declared_callsite, str)
+            or declared_callsite not in LEGACY_NODE_LIST_CALLSITES
+        ):
+            declared_callsite = "unknown"
+        _observe_legacy_node_list_callsite(declared_callsite)
     return NodeService.get_node_list(
         organization_ids,
         cloud_region_id,

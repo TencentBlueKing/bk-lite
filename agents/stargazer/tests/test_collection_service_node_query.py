@@ -39,8 +39,10 @@ async def test_set_node_info_scopes_query_and_filters_ip(
     if organization_id:
         assert query["organization_ids"] == [organization_id]
         assert "skip_permission" not in query
+        assert "legacy_callsite" not in query
     else:
         assert query["skip_permission"] is True
+        assert query["legacy_callsite"] == "stargazer.node_info"
 
 
 @pytest.mark.asyncio

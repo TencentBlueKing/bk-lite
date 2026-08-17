@@ -229,10 +229,22 @@ class TestRpcWrappers:
         assert node["model_id"] == "host"
         assert rpc.node_list.call_args_list == [
             mocker.call(
-                {"is_container": False, "skip_permission": True, "page": 1, "page_size": 2}
+                {
+                    "is_container": False,
+                    "skip_permission": True,
+                    "legacy_callsite": "cmdb.node_sync",
+                    "page": 1,
+                    "page_size": 2,
+                }
             ),
             mocker.call(
-                {"is_container": False, "skip_permission": True, "page": 2, "page_size": 2}
+                {
+                    "is_container": False,
+                    "skip_permission": True,
+                    "legacy_callsite": "cmdb.node_sync",
+                    "page": 2,
+                    "page_size": 2,
+                }
             ),
         ]
 
@@ -251,13 +263,31 @@ class TestRpcWrappers:
         assert len(nodes) == 1200
         assert rpc.node_list.call_args_list == [
             mocker.call(
-                {"is_container": False, "skip_permission": True, "page": 1, "page_size": 500}
+                {
+                    "is_container": False,
+                    "skip_permission": True,
+                    "legacy_callsite": "cmdb.node_sync",
+                    "page": 1,
+                    "page_size": 500,
+                }
             ),
             mocker.call(
-                {"is_container": False, "skip_permission": True, "page": 2, "page_size": 500}
+                {
+                    "is_container": False,
+                    "skip_permission": True,
+                    "legacy_callsite": "cmdb.node_sync",
+                    "page": 2,
+                    "page_size": 500,
+                }
             ),
             mocker.call(
-                {"is_container": False, "skip_permission": True, "page": 3, "page_size": 500}
+                {
+                    "is_container": False,
+                    "skip_permission": True,
+                    "legacy_callsite": "cmdb.node_sync",
+                    "page": 3,
+                    "page_size": 500,
+                }
             ),
         ]
 
@@ -269,7 +299,12 @@ class TestRpcWrappers:
         S._fetch_node_mgmt_pages({"skip_permission": False, "page_size": 999999})
 
         assert rpc.node_list.call_args == mocker.call(
-            {"skip_permission": True, "page_size": 500, "page": 1}
+            {
+                "skip_permission": True,
+                "legacy_callsite": "cmdb.node_sync",
+                "page_size": 500,
+                "page": 1,
+            }
         )
 
     def test_fetch_node_mgmt_pages_非法页大小回退到硬上限(self, mocker):
@@ -280,7 +315,12 @@ class TestRpcWrappers:
         S._fetch_node_mgmt_pages({"page_size": "invalid"})
 
         assert rpc.node_list.call_args == mocker.call(
-            {"page_size": 500, "skip_permission": True, "page": 1}
+            {
+                "page_size": 500,
+                "skip_permission": True,
+                "legacy_callsite": "cmdb.node_sync",
+                "page": 1,
+            }
         )
 
     @pytest.mark.parametrize(
@@ -472,6 +512,7 @@ class TestRpcWrappers:
                     "cloud_region_id": 1,
                     "is_container": True,
                     "skip_permission": True,
+                    "legacy_callsite": "cmdb.node_sync",
                     "page": 1,
                     "page_size": 2,
                 }
@@ -481,6 +522,7 @@ class TestRpcWrappers:
                     "cloud_region_id": 1,
                     "is_container": True,
                     "skip_permission": True,
+                    "legacy_callsite": "cmdb.node_sync",
                     "page": 2,
                     "page_size": 2,
                 }
