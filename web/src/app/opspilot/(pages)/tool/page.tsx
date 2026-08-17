@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented, Empty, Upload, Skeleton } from 'antd';
+import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented,  Upload, Skeleton } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { Store } from 'antd/lib/form/interface';
 import { useTranslation } from '@/utils/i18n';
@@ -605,7 +606,7 @@ const ToolListPage: React.FC = () => {
           })}
         </div>
       ) : (
-        <Empty description="没有匹配的技能" />
+        <CompactEmptyState description="没有匹配的技能" />
       )}
     </div>
   );

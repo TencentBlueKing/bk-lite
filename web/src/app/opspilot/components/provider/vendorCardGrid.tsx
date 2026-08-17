@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Empty, Modal, Switch, Tag, Tooltip, message } from 'antd';
+import { Modal, Switch, Tag, Tooltip, message } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import Image from 'next/image';
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -79,7 +80,7 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
   }
 
   if (!loading && vendors.length === 0) {
-    return <Empty description={t('provider.vendor.empty')} />;
+    return <CompactEmptyState description={t('provider.vendor.empty')} />;
   }
 
   return (

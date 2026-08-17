@@ -412,7 +412,7 @@ const ScriptLibraryPage = () => {
       key: 'script_type',
       width: 120,
       render: (_: unknown, record: Script) => (
-        <Tag color={SCRIPT_TYPE_COLOR[record.script_type] || 'default'} style={{ margin: 0 }}>
+        <Tag color={SCRIPT_TYPE_COLOR[record.script_type] || 'default'} className="m-0">
           {record.script_type_display || record.script_type?.toUpperCase()}
         </Tag>
       ),
@@ -493,30 +493,21 @@ const ScriptLibraryPage = () => {
     <div className="w-full h-full flex flex-col overflow-hidden">
       {/* Header */}
       <div
-        className="rounded-lg px-6 py-4 mb-4 flex-shrink-0"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
+        className="rounded-lg px-6 py-4 mb-4 flex-shrink-0 bg-[var(--color-bg-1)] border border-[var(--color-border-1)]"
       >
         <h2
-          className="text-base font-medium m-0 mb-1"
-          style={{ color: 'var(--color-text-1)' }}
+          className="text-base font-medium m-0 mb-1 text-[var(--color-text-1)]"
         >
           {t('job.scriptLibraryTitle')}
         </h2>
-        <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
+        <p className="text-sm m-0 text-[var(--color-text-3)]">
           {t('job.scriptLibraryDesc')}
         </p>
       </div>
 
       {/* Table Section */}
       <div
-        className="rounded-lg px-6 py-6 flex-1 min-h-0 flex flex-col"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
+        className="rounded-lg px-6 py-6 flex-1 min-h-0 flex flex-col bg-[var(--color-bg-1)] border border-[var(--color-border-1)]"
       >
         {/* Toolbar */}
         <div className="flex justify-between mb-4 flex-shrink-0">
@@ -619,7 +610,7 @@ const ScriptLibraryPage = () => {
         {/* Parameter Definition（置于主表单之外，内联表单使用独立的 paramForm 实例，避免 Form 嵌套） */}
         <div className="mb-2">
           <div className="mb-2">
-            <span className="text-sm font-medium" style={{ color: 'var(--color-text-1)' }}>
+            <span className="text-sm font-medium text-[var(--color-text-1)]">
               {t('job.paramDefinition')}
             </span>
           </div>
@@ -648,10 +639,9 @@ const ScriptLibraryPage = () => {
 
           {!isViewMode && paramFormVisible && (
             <div
-              className="mt-2 rounded-md p-4"
-              style={{ border: '1px solid var(--color-border-1)', background: 'var(--color-fill-1)' }}
+              className="mt-2 rounded-md border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-4"
             >
-              <div className="mb-3 text-sm font-medium" style={{ color: 'var(--color-text-1)' }}>
+              <div className="mb-3 text-sm font-medium text-[var(--color-text-1)]">
                 {editingParamIndex !== null ? t('job.editParam') : t('job.addParamTitle')}
               </div>
               <Form form={paramForm} layout="vertical" colon={false}>

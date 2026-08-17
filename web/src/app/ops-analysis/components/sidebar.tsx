@@ -17,7 +17,6 @@ import useBtnPermissions from '@/hooks/usePermissions';
 import type { DataNode } from 'antd/lib/tree';
 import {
   Button,
-  Empty,
   Form,
   Input,
   message,
@@ -25,6 +24,7 @@ import {
   Spin,
   Tree,
 } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import { useDirectoryApi } from '@/app/ops-analysis/api/index';
@@ -697,7 +697,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 style={{ overflow: 'hidden' }}
               />
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <CompactEmptyState description={t('common.noData')} />
             )}
           </Spin>
         </div>

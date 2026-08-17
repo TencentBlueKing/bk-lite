@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Drawer, Input, Modal, Space } from 'antd';
+import { Button, Drawer, Modal, Space } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { useSubscriptionList, useSubscriptionMutation } from '@/app/cmdb/hooks/useSubscription';
 import SubscriptionRuleList from './subscriptionRuleList';
 import SubscriptionRuleForm, { type SubscriptionRuleFormRef } from './subscriptionRuleForm';
+import SearchActionBar from '@/components/search-action-bar';
 import type { QuickSubscribeDefaults, SubscriptionRule } from '@/app/cmdb/types/subscription';
 
 interface SubscriptionDrawerProps {
@@ -91,25 +92,29 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
       title={t('subscription.ruleManagement')}
       destroyOnHidden
     >
-      <div className="flex items-center justify-between gap-2 mb-4">
-        <Input.Search
-          placeholder={t('common.search')}
-          allowClear
-          style={{ width: 240 }}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onSearch={handleSearch}
-        />
-        <Button
-          type="primary"
-          onClick={() => {
-            setEditingRule(undefined);
-            setFormOpen(true);
-          }}
-        >
-          {t('subscription.createRule')}
-        </Button>
-      </div>
+      <SearchActionBar
+        spacing="flush"
+        className="mb-4"
+        searchClassName="!w-60"
+        searchProps={{
+          placeholder: t('common.search'),
+          allowClear: true,
+          value: search,
+          onChange: (e) => setSearch(e.target.value),
+          onSearch: handleSearch,
+        }}
+        actions={(
+          <Button
+            type="primary"
+            onClick={() => {
+              setEditingRule(undefined);
+              setFormOpen(true);
+            }}
+          >
+            {t('subscription.createRule')}
+          </Button>
+        )}
+      />
 
       <SubscriptionRuleList
         rules={rules}

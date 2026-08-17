@@ -285,14 +285,14 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       align: 'center',
       render: (isBuiltin: boolean) => isBuiltin
         ? <SourceOriginBadge kind="builtin" label={t('patchManager.yes')} />
-        : <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{t('patchManager.no')}</span>,
+        : <span className="text-[var(--color-text-3)]">{t('patchManager.no')}</span>,
     },
     {
       title: t('patchManager.settingsPage.type'),
       dataIndex: 'source_type',
       minWidth: 100,
       render: (_: unknown, r: PatchSource) => (
-        <Tag style={{ whiteSpace: 'nowrap' }}>{r.source_type_display || r.source_type}</Tag>
+        <Tag className="whitespace-nowrap">{r.source_type_display || r.source_type}</Tag>
       ),
     },
     { title: 'URL', dataIndex: 'url', ellipsis: true },
@@ -301,7 +301,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       width: 140,
       render: (_: unknown, r: PatchSource) => {
         const proxy = r.proxy_host ? `http://${r.proxy_host}${r.proxy_port ? ':' + r.proxy_port : ''}` : '';
-        return <span style={{ color: proxy ? 'var(--color-text-1, #1f1f1f)' : 'var(--color-text-3, #8c8c8c)' }}>{proxy || '-'}</span>;
+        return <span className={proxy ? 'text-[var(--color-text-1)]' : 'text-[var(--color-text-3)]'}>{proxy || '-'}</span>;
       },
     },
     {
@@ -339,19 +339,19 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       fixed: 'right',
       render: (_: unknown, r: PatchSource) => (
         <Space size={10}>
-          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => openSourceModal(r)}>{t('patchManager.edit')}</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => runConnectionTest([r.id])}>{t('patchManager.testConnection')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']}><a className="cursor-pointer text-[var(--color-primary)]" onClick={() => openSourceModal(r)}>{t('patchManager.edit')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']}><a className="cursor-pointer text-[var(--color-primary)]" onClick={() => runConnectionTest([r.id])}>{t('patchManager.testConnection')}</a></PermissionWrapper>
           {r.is_builtin ? (
             <Tooltip title={t('patchManager.settingsPage.builtinDeleteDisabled')}>
               <span>
-                <Button type="link" danger disabled size="small" style={{ padding: 0, height: 'auto' }}>
+                <Button type="link" danger disabled size="small" className="!h-auto !p-0">
                   {t('patchManager.delete')}
                 </Button>
               </span>
             </Tooltip>
           ) : (
             <PermissionWrapper requiredPermissions={['Delete']}><PatchDeletePopconfirm title={t('patchManager.settingsPage.confirmDeleteSource', undefined, { name: r.name })} description={t('patchManager.settingsPage.deleteSourceDescription')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')} okButtonProps={{ danger: true }}>
-              <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
+              <a className="cursor-pointer text-[var(--color-fail)]">{t('patchManager.delete')}</a>
             </PatchDeletePopconfirm></PermissionWrapper>
           )}
         </Space>
@@ -361,7 +361,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div className="flex h-full flex-col">
         <SearchActionBar
           className='mb-[12px]'
           spacing="default"
@@ -381,7 +381,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
             </PermissionWrapper>
           )}
         />
-        <div style={{ flex: 1, minHeight: 0 }}>
+        <div className="min-h-0 flex-1">
           <CustomTable
             loading={listLoading || actionLoading}
             size="middle"
@@ -411,7 +411,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
         onCancel={() => setSourceModalOpen(false)}
         styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }}
         footer={
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+          <Space className="w-full justify-end">
             <Button onClick={() => setSourceModalOpen(false)}>{t('patchManager.cancel')}</Button>
             <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']}>
               <Button loading={testingConnectivity} onClick={handleSourceFormTest}>{t('patchManager.testConnection')}</Button>
@@ -422,7 +422,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
           </Space>
         }
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 8 }}>
+        <Form form={form} layout="vertical" className="mt-2">
           <Form.Item label={t('patchManager.pluginName')} name="name" rules={[{ required: true, message: t('patchManager.settingsPage.nameRequired') }]}>
             <Input placeholder={t('patchManager.settingsPage.namePlaceholder')} />
           </Form.Item>
@@ -489,7 +489,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
               key={connectivityResult.checkedAt}
               closable
               showIcon
-              style={{ marginBottom: 16 }}
+              className="mb-4"
               type={connectivityResult.status === 'connected' ? 'success' : 'error'}
               message={t(connectivityResult.status === 'connected' ? 'patchManager.settingsPage.connectivityPassed' : 'patchManager.settingsPage.connectivityFailed')}
               description={`${connectivityResult.detail} · ${convertToLocalizedTime(connectivityResult.checkedAt)}`}
@@ -673,7 +673,7 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
                   rules={[{ required: true, message: t('patchManager.settingsPage.frequencyRequired') }]}
                 >
                   <Select
-                    style={{ width: 120 }}
+                    className="w-[120px]"
                     options={['hourly', 'daily', 'weekly'].map((value) => ({
                       label: t(`patchManager.settingsPage.frequency.${value}`),
                       value,
@@ -690,7 +690,7 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
                         { type: 'number', min: 1, max: 24, message: t('patchManager.settingsPage.hourIntervalRange') },
                       ]}
                     >
-                      <InputNumber min={1} max={24} style={{ width: 70 }} />
+                      <InputNumber min={1} max={24} className="w-[70px]" />
                     </Form.Item>
                     <span className={styles.scheduleAffix}>{t('patchManager.settingsPage.hoursOnce')}</span>
                   </>
@@ -703,7 +703,7 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
                         rules={[{ required: true, message: t('patchManager.settingsPage.weekdayRequired') }]}
                       >
                         <Select
-                          style={{ width: 100 }}
+                          className="w-[100px]"
                           options={[1, 2, 3, 4, 5, 6, 7].map((value) => ({
                             label: t(`patchManager.settingsPage.weekday.${value}`),
                             value,
@@ -739,16 +739,19 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
           </div>
         )}
 
-        <div style={{ fontWeight: 500, marginBottom: 8 }}>{t('patchManager.settingsPage.triggerTitle')}</div>
-        <div style={{ background: 'var(--color-fill-1, #f4f6f9)', borderRadius: 8, padding: '4px 14px', marginBottom: 16 }}>
+        <div className="mb-2 font-medium">{t('patchManager.settingsPage.triggerTitle')}</div>
+        <div className="mb-4 rounded-lg bg-[var(--color-fill-1)] px-3.5 py-1">
           {triggers.map((t, i) => (
-            <div key={i} style={{ padding: '9px 0', borderBottom: i < triggers.length - 1 ? '1px solid var(--color-border-1, #e8e8e8)' : 'none', fontSize: 13 }}>
-              <span style={{ color: 'var(--color-primary, #1677ff)', marginRight: 8 }}>{t.icon}</span>{t.text}
+            <div
+              key={i}
+              className={`py-[9px] text-[13px] ${i < triggers.length - 1 ? 'border-b border-[var(--color-border-1)]' : ''}`}
+            >
+              <span className="mr-2 text-[var(--color-primary)]">{t.icon}</span>{t.text}
             </div>
           ))}
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div className="flex justify-end">
           <PermissionWrapper requiredPermissions={['Edit']}><Button type="primary" loading={saving} onClick={handleSave}>{t('patchManager.settingsPage.saveSettings')}</Button></PermissionWrapper>
         </div>
       </div>

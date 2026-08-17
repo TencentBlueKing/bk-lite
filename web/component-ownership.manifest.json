@@ -143,6 +143,7 @@
   {
     "component": "chart-empty-state",
     "directApps": [
+      "log",
       "monitor",
       "ops-analysis"
     ],
@@ -370,16 +371,20 @@
     "component": "compact-empty-state",
     "directApps": [
       "alarm",
+      "cmdb",
       "job",
       "monitor",
+      "node-manager",
       "ops-analysis",
       "opspilot",
       "patch-manager"
     ],
     "transitiveApps": [
       "alarm",
+      "cmdb",
       "job",
       "monitor",
+      "node-manager",
       "ops-analysis",
       "opspilot",
       "patch-manager"
@@ -394,7 +399,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 6 apps",
+    "reason": "consumed transitively by 8 apps",
     "activeStories": [
       "cmdb-family.stories.tsx",
       "feedback-family.stories.tsx",
@@ -2022,15 +2027,19 @@
     "directApps": [
       "cmdb",
       "mlops",
+      "monitor",
+      "node-manager",
       "ops-analysis",
       "opspilot",
-      "patch-manager"
+      "patch-manager",
+      "system-manager"
     ],
     "transitiveApps": [
       "alarm",
       "cmdb",
       "mlops",
       "monitor",
+      "node-manager",
       "ops-analysis",
       "opspilot",
       "patch-manager",
@@ -2044,7 +2053,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 8 apps",
+    "reason": "consumed transitively by 9 apps",
     "activeStories": [
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
@@ -2683,6 +2692,7 @@
       "job",
       "mlops",
       "monitor",
+      "node-manager",
       "ops-analysis",
       "opspilot",
       "patch-manager",
@@ -2697,7 +2707,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 9 apps",
+    "reason": "consumed transitively by 10 apps",
     "activeStories": [
       "integrations-family.stories.tsx",
       "job-family.stories.tsx",
@@ -2846,17 +2856,19 @@
   {
     "component": "version-badge",
     "directApps": [
-      "job"
+      "job",
+      "mlops"
     ],
     "transitiveApps": [
-      "job"
+      "job",
+      "mlops"
     ],
     "stories": [
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "shared-primitive",
-    "reason": "primitive allowlist: 通用版本标签展示",
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps",
     "activeStories": [
       "data-display-family.stories.tsx"
     ]

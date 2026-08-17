@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Drawer, Button, Select, Space, Popconfirm, Empty, Spin } from 'antd';
+import { Drawer, Button, Select, Space, Popconfirm, Spin } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type {
   NetworkInterfaceRef,
@@ -8,6 +8,7 @@ import type {
   NetworkTopologyNode,
 } from '@/app/ops-analysis/types/networkTopology';
 import { useTranslation } from '@/utils/i18n';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   DEFAULT_LINK_INTERFACE_METRICS,
   PORT_VIEW_INTERFACE_METRIC_FIELDS,
@@ -55,30 +56,14 @@ const findInterface = (
 ): NetworkInterfaceRef | undefined =>
   list.find((item) => String(item.bk_inst_uuid) === String(instId));
 
-const drawerFooterStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'flex-end',
-};
-const drawerInfoCardStyle: React.CSSProperties = {
-  border: '1px solid var(--color-border-1,#dce5ed)',
-  borderRadius: 8,
-  overflow: 'hidden',
-  background: 'var(--color-bg-1,#fff)',
-  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
-};
-const drawerPanelStyle: React.CSSProperties = {
-  padding: 12,
-  border: '1px solid var(--color-border-1,#dce5ed)',
-  borderRadius: 8,
-  background: 'var(--color-fill-1,#f8fafc)',
-};
-const drawerConfigRowStyle: React.CSSProperties = {
-  padding: 10,
-  border: '1px solid var(--color-border-1,#dce5ed)',
-  borderRadius: 8,
-  background: 'var(--color-bg-1,#fff)',
-  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
-};
+const drawerFooterClassName = 'flex justify-end';
+const drawerInfoCardClassName =
+  'overflow-hidden rounded-lg border border-[var(--color-border-1,#dce5ed)] bg-[var(--color-bg-1,#fff)] shadow-[0_1px_2px_rgba(15,23,42,0.04)]';
+const drawerPanelClassName =
+  'rounded-lg border border-[var(--color-border-1,#dce5ed)] bg-[var(--color-fill-1,#f8fafc)] p-3';
+const drawerConfigRowClassName =
+  'rounded-lg border border-[var(--color-border-1,#dce5ed)] bg-[var(--color-bg-1,#fff)] p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]';
+
 
 /**
  * 连线配置 Drawer(design.md §7.5):
@@ -151,7 +136,9 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
         destroyOnClose
         data-testid={testId ?? 'network-edge-drawer'}
       >
-        <Empty description={t('opsAnalysis.networkTopology.link.emptySelection')} />
+        <CompactEmptyState
+          description={t('opsAnalysis.networkTopology.link.emptySelection')}
+        />
       </Drawer>
     );
   }
@@ -251,11 +238,11 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
       data-testid={testId ?? 'network-edge-drawer'}
       footer={
         readonly ? (
-          <div style={drawerFooterStyle}>
+          <div className={drawerFooterClassName}>
             <Button onClick={onClose}>{t('opsAnalysis.networkTopology.actions.close')}</Button>
           </div>
         ) : (
-          <div style={drawerFooterStyle}>
+          <div className={drawerFooterClassName}>
             <Space>
               <Button onClick={onClose}>{t('opsAnalysis.networkTopology.actions.cancel')}</Button>
               <Button
@@ -282,15 +269,8 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
         )
       }
     >
-      <div
-        style={drawerInfoCardStyle}
-      >
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '104px minmax(0, 1fr) 104px minmax(0, 1fr)',
-          }}
-        >
+      <div className={drawerInfoCardClassName}>
+        <div className="grid grid-cols-[104px_minmax(0,1fr)_104px_minmax(0,1fr)]">
           {infoRows.map((row, index) => (
             <React.Fragment key={`${row.label}-${index}`}>
               <div style={infoLabelStyle}>{row.label}</div>
@@ -300,24 +280,15 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
         </div>
       </div>
 
-      <Space direction="vertical" size={8} style={{ marginTop: 12, width: '100%' }}>
-        <div
-          style={drawerPanelStyle}
-        >
-          <div
-            style={{
-              marginBottom: 8,
-              color: 'var(--color-text-1,#1f2937)',
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
+      <Space direction="vertical" size={8} className="mt-3 w-full">
+        <div className={drawerPanelClassName}>
+          <div className="mb-2 text-[13px] font-semibold text-[var(--color-text-1,#1f2937)]">
             {t('opsAnalysis.networkTopology.link.interfaceMetricsTitle')}
           </div>
           <Select
             mode="multiple"
             allowClear
-            style={{ width: '100%' }}
+            className="w-full"
             placeholder={t('opsAnalysis.networkTopology.link.interfaceMetricsPlaceholder')}
             options={interfaceMetricOptions}
             value={draftInterfaceMetrics}
@@ -331,15 +302,7 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
         </div>
         {loading && (
           <div
-            style={{
-              ...drawerPanelStyle,
-              padding: '18px 12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              color: 'var(--color-text-3,#64748b)',
-            }}
+            className={`${drawerPanelClassName} flex items-center justify-center gap-2 px-3 py-[18px] text-[var(--color-text-3,#64748b)]`}
             data-testid="network-edge-drawer-loading"
           >
             <Spin size="small" />
@@ -347,25 +310,18 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
           </div>
         )}
         {!loading && draftPairs.length === 0 && (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          <CompactEmptyState
             description={t('opsAnalysis.networkTopology.link.noPortPairs')}
           />
         )}
         {draftPairs.map((pair, index) => (
           <div
             key={`pair-${index}`}
-            style={{
-              ...drawerConfigRowStyle,
-              display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1fr) 18px minmax(0, 1fr) 28px',
-              gap: 8,
-              alignItems: 'center',
-            }}
+            className={`${drawerConfigRowClassName} grid grid-cols-[minmax(0,1fr)_18px_minmax(0,1fr)_28px] items-center gap-2`}
             data-testid="network-edge-drawer-pair-row"
           >
             <Select
-              style={{ width: '100%' }}
+              className="w-full"
               placeholder={t('opsAnalysis.networkTopology.link.labelSourcePort')}
               options={interfaceOptions(sourceInterfaces)}
               getPopupContainer={(trigger) =>
@@ -379,9 +335,9 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
               disabled={readonly || loading}
               data-testid={`network-edge-drawer-source-select-${index}`}
             />
-            <span style={{ color: 'var(--color-text-3,#94a3b8)' }}>→</span>
+            <span className="text-[var(--color-text-3,#94a3b8)]">→</span>
             <Select
-              style={{ width: '100%' }}
+              className="w-full"
               placeholder={t('opsAnalysis.networkTopology.link.labelTargetPort')}
               options={interfaceOptions(targetInterfaces)}
               getPopupContainer={(trigger) =>
@@ -413,7 +369,7 @@ const NetworkEdgeDrawer: React.FC<NetworkEdgeDrawerProps> = ({
         <Button
           icon={<PlusOutlined />}
           type="dashed"
-          style={{ marginTop: 12, width: '100%' }}
+          className="mt-3 w-full"
           onClick={addPair}
           disabled={loading}
           data-testid="network-edge-drawer-add-pair"

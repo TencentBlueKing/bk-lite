@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Empty, Tooltip } from 'antd';
+import { Tooltip } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import { GuideItem } from '../types';
 import { ChartData } from '@/app/monitor/types';
 import { TitleWithGuide, GuideTooltipStyles } from './guide-tooltip';
@@ -172,7 +173,7 @@ export const HorizontalBarPanel = ({
       </div>
       {isEmpty ? (
         <div style={{ minHeight: 176, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Empty description={emptyDescription} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <ChartEmptyState description={emptyDescription} compact />
         </div>
       ) : (
         <BarList items={items} emphasizeTop={emphasizeTop} tiered={tiered} styles={styles} />

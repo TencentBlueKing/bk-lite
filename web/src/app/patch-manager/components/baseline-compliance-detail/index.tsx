@@ -21,6 +21,7 @@ import OperateDrawer from '@/components/operate-drawer';
 import CustomTable from '@/components/custom-table';
 import CompactEmptyState from '@/components/compact-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import FilterToolbar from '@/components/filter-toolbar';
 import PermissionWrapper from '@/components/permission';
 import ComplianceTag from '@/app/patch-manager/components/compliance-tag';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
@@ -554,7 +555,12 @@ export default function BaselineComplianceDetail({
                   )}
                   {perspective === 'patch' && selectedPatch && <SeverityTag severity={selectedPatch.severity} />}
                 </div>
-                <div className={styles.toolbar}>
+                <FilterToolbar
+                  align="start"
+                  spacing="flush"
+                  className={styles.toolbar}
+                  contentClassName="flex w-full flex-wrap items-center gap-2"
+                >
                   <Input.Search
                     aria-label={perspective === 'host'
                       ? t('patchManager.baseline.complianceDetail.detailSearch')
@@ -582,7 +588,7 @@ export default function BaselineComplianceDetail({
                       setDetailPage(1);
                     }}
                   />
-                </div>
+                </FilterToolbar>
               </div>
               <div className={styles.tableRegion}>
                 <CustomTable<ComplianceDetailRow>

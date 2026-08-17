@@ -21,11 +21,11 @@ import {
   Input,
   Tabs,
   Button,
-  Empty,
   Pagination,
   Checkbox,
   message,
 } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/cmdb/context/common';
 import { deepClone, getFieldItem } from '@/app/cmdb/utils/common';
@@ -35,7 +35,7 @@ import {
   useModelApi,
   useInstanceApi,
 } from '@/app/cmdb/api';
-import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
+import TagCapsuleGroup from '@/components/tag-capsule-group';
 import { normalizeTagValues } from '@/app/cmdb/utils/tag';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import { useRouter } from 'next/navigation';
@@ -933,7 +933,7 @@ const AssetSearch = () => {
                   onChange={onTabChange}
                 />
               ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                <CompactEmptyState description={t('common.noData')} />
               )}
             </div>
           </div>

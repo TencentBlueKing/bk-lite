@@ -123,9 +123,7 @@ const useCommonColumns = () => {
           render: (_: unknown, record: TableDataItem, index: number) => {
             const errorMsg = record.node_ids_error;
             return (
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
+              <div className="flex items-center gap-2">
                 <Select
                   showSearch
                   value={record.node_ids}
@@ -140,13 +138,11 @@ const useCommonColumns = () => {
                     label: `${item.name}（${item.ip}）`
                   }))}
                   status={errorMsg ? 'error' : ''}
-                  style={{ flex: 1 }}
+                  className="flex-1"
                 />
                 {errorMsg && (
                   <Tooltip title={errorMsg}>
-                    <ExclamationCircleFilled
-                      style={{ color: 'var(--color-fail)', fontSize: '14px' }}
-                    />
+                    <ExclamationCircleFilled className="text-sm text-[var(--color-fail)]" />
                   </Tooltip>
                 )}
               </div>
@@ -161,9 +157,7 @@ const useCommonColumns = () => {
           render: (_: unknown, record: TableDataItem, index: number) => {
             const errorMsg = record.instance_name_error;
             return (
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
+              <div className="flex items-center gap-2">
                 <Input
                   value={record.instance_name}
                   onChange={(e) =>
@@ -173,13 +167,11 @@ const useCommonColumns = () => {
                     })
                   }
                   status={errorMsg ? 'error' : ''}
-                  style={{ flex: 1 }}
+                  className="flex-1"
                 />
                 {errorMsg && (
                   <Tooltip title={errorMsg}>
-                    <ExclamationCircleFilled
-                      style={{ color: 'var(--color-fail)', fontSize: '14px' }}
-                    />
+                    <ExclamationCircleFilled className="text-sm text-[var(--color-fail)]" />
                   </Tooltip>
                 )}
               </div>
@@ -190,10 +182,7 @@ const useCommonColumns = () => {
           title: (
             <Tooltip title={t('log.integration.belongingGroupTips')}>
               {
-                <span
-                  className="pb-[2px]"
-                  style={{ borderBottom: '1px dashed var(--color-border-4)' }}
-                >
+                <span className="border-b border-dashed border-[var(--color-border-4)] pb-[2px]">
                   {t('common.belongingGroup')}
                 </span>
               }
@@ -205,20 +194,12 @@ const useCommonColumns = () => {
           render: (_: unknown, record: TableDataItem, index: number) => {
             const errorMsg = record.group_ids_error;
             return (
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
+              <div className="flex items-center gap-2">
                 <div
-                  style={{
-                    flex: 1,
-                    ...(errorMsg
-                      ? ({
-                        '--group-border-color': 'var(--color-fail)'
-                      } as React.CSSProperties)
-                      : {})
-                  }}
                   className={
-                    errorMsg ? '[&>div>div]:!border-[var(--color-fail)]' : ''
+                    errorMsg
+                      ? 'flex-1 [&>div>div]:!border-[var(--color-fail)]'
+                      : 'flex-1'
                   }
                 >
                   <GroupTreeSelector
@@ -230,9 +211,7 @@ const useCommonColumns = () => {
                 </div>
                 {errorMsg && (
                   <Tooltip title={errorMsg}>
-                    <ExclamationCircleFilled
-                      style={{ color: 'var(--color-fail)', fontSize: '14px' }}
-                    />
+                    <ExclamationCircleFilled className="text-sm text-[var(--color-fail)]" />
                   </Tooltip>
                 )}
               </div>

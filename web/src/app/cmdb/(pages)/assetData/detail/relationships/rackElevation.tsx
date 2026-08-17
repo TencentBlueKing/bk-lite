@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Spin, Empty, Alert, message } from 'antd';
+import { Spin, Alert, message } from 'antd';
 import { useRouter } from 'next/navigation';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { useThemeMode } from '@/theme';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
@@ -75,12 +76,17 @@ const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceC
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', background: isDark ? '#141820' : TECH.bg1 }}>
+      <div
+        className="p-10 text-center"
+        style={{ background: isDark ? '#141820' : TECH.bg1 }}
+      >
         <Spin spinning />
       </div>
     );
   }
-  if (!data || !data.u_count) return <Empty description={t('Model.noRackLayout')} />;
+  if (!data || !data.u_count) {
+    return <CompactEmptyState description={t('Model.noRackLayout')} />;
+  }
 
   const u = data.u_count;
   const uPx = U_PX;

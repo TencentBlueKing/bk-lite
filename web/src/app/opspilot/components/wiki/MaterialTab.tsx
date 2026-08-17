@@ -6,7 +6,6 @@ import {
   App,
   Button,
   Descriptions,
-  Empty,
   Form,
   Input,
   InputNumber,
@@ -24,6 +23,7 @@ import type { UploadFile } from "antd/es/upload/interface";
 import { LoadingOutlined, UploadOutlined } from "@ant-design/icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import CustomTable from "@/components/custom-table";
+import CompactEmptyState from "@/components/compact-empty-state";
 import {
   buildWikiMaterialDetailPath,
   buildWikiMaterialListPath,
@@ -856,7 +856,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           {detail ? (
             <MaterialDetailPanel detail={detail} onBack={backToList} />
           ) : (
-            !detailLoading && <Empty description={t("wiki.empty")} />
+            !detailLoading && <CompactEmptyState description={t("wiki.empty")} />
           )}
         </Spin>
       </div>

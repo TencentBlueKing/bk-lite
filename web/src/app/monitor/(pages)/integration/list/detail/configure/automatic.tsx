@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Form, Button, message, Spin, Empty, Dropdown, Modal, Tag } from 'antd';
+import { Form, Button, message, Spin, Dropdown, Modal, Tag } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   CheckCircleOutlined,
@@ -9,6 +9,7 @@ import {
   UploadOutlined
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import CompactEmptyState from '@/components/compact-empty-state';
 import CustomTable from '@/components/custom-table';
 import { v4 as uuidv4 } from 'uuid';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -973,7 +974,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       className="flex items-center justify-center"
       style={{ minHeight: '400px' }}
     >
-      <Empty description={t('monitor.integrations.noConfigData')} />
+      <CompactEmptyState description={t('monitor.integrations.noConfigData')} />
     </div>
   ) : (
     <Form

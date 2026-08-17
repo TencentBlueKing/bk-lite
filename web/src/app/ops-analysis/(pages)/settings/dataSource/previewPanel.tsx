@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
-import { Alert, Empty, Tabs } from "antd";
+import { Alert, Tabs } from "antd";
 import CustomTable from "@/components/custom-table";
+import CompactEmptyState from "@/components/compact-empty-state";
 import { useTranslation } from "@/utils/i18n";
 import {
   DataSourcePreviewResult,
@@ -52,12 +53,7 @@ function PreviewTable({
   if (!previewData?.items?.length) {
     return (
       <div className="grid min-h-[72px] place-items-center rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)] py-2">
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={emptyText}
-          className="!my-0"
-          styles={{ image: { height: 36 } }}
-        />
+        <CompactEmptyState description={emptyText} />
       </div>
     );
   }

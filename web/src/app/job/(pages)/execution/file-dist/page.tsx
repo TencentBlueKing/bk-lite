@@ -255,7 +255,7 @@ const FileDistPage = () => {
         // Confirm: show confirmation modal
         Modal.confirm({
           title: t('job.dangerousPathWarning'),
-          icon: <ExclamationCircleOutlined style={{ color: '#faad14' }} />,
+          icon: <ExclamationCircleOutlined className="text-[var(--color-warning)]" />,
           content: (
             <div>
               <p>{t('job.confirmPathMessage')}</p>
@@ -298,29 +298,17 @@ const FileDistPage = () => {
   return (
     <div className="w-full h-full overflow-auto p-0">
       {/* Header */}
-      <div
-        className="rounded-lg px-6 py-4 mb-4"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
-        <h2 className="text-base font-medium m-0 mb-1" style={{ color: 'var(--color-text-1)' }}>
+      <div className="mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-4">
+        <h2 className="m-0 mb-1 text-base font-medium text-[var(--color-text-1)]">
           {t('job.fileDistTitle')}
         </h2>
-        <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
+        <p className="m-0 text-sm text-[var(--color-text-3)]">
           {t('job.fileDistDesc')}
         </p>
       </div>
 
       {/* Form */}
-      <div
-        className="rounded-lg px-6 py-6"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
+      <div className="rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-6">
         <Form
           form={form}
           layout="vertical"
@@ -381,26 +369,21 @@ const FileDistPage = () => {
                 {localFiles.map((file, index) => (
                   <div
                     key={`${file.name}-${index}`}
-                    className="flex items-center justify-between px-4 py-3 rounded-md"
-                    style={{
-                      border: '1px solid var(--color-border-1)',
-                      background: 'var(--color-bg-2)',
-                    }}
+                    className="flex items-center justify-between rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)] px-4 py-3"
                   >
                     <div className="flex items-center gap-3">
-                      <FileOutlined style={{ color: 'var(--color-text-3)', fontSize: 16 }} />
+                      <FileOutlined className="text-[16px] text-[var(--color-text-3)]" />
                       <div>
-                        <div className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+                        <div className="text-sm text-[var(--color-text-1)]">
                           {file.name}
                         </div>
-                        <div className="text-xs" style={{ color: 'var(--color-text-3)' }}>
+                        <div className="text-xs text-[var(--color-text-3)]">
                           {formatFileSize(file.size)}
                         </div>
                       </div>
                     </div>
                     <CloseOutlined
-                      className="cursor-pointer text-xs"
-                      style={{ color: 'var(--color-text-3)' }}
+                      className="cursor-pointer text-xs text-[var(--color-text-3)]"
                       onClick={() => handleRemoveFile(index)}
                     />
                   </div>
@@ -413,29 +396,25 @@ const FileDistPage = () => {
                 {historyFiles.map((file, index) => (
                   <div
                     key={`${file.file_key}-${index}`}
-                    className="flex items-center justify-between px-4 py-3 rounded-md"
-                    style={{
-                      border: '1px solid var(--color-border-1)',
-                      background: 'var(--color-bg-2)',
-                    }}
+                    className="flex items-center justify-between rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)] px-4 py-3"
                   >
                     <div className="flex items-center gap-3">
-                      <FileOutlined style={{ color: 'var(--color-text-3)', fontSize: 16 }} />
+                      <FileOutlined className="text-[16px] text-[var(--color-text-3)]" />
                       <div>
-                        <div className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+                        <div className="text-sm text-[var(--color-text-1)]">
                           {file.name}
                         </div>
-                        <div className="text-xs" style={{ color: 'var(--color-text-3)' }}>
+                        <div className="text-xs text-[var(--color-text-3)]">
                           {formatFileSize(file.size)}
                         </div>
                       </div>
                     </div>
-                    <div className="text-xs" style={{ color: 'var(--color-text-3)' }}>
+                    <div className="text-xs text-[var(--color-text-3)]">
                       {t('job.reuploadRequired')}
                     </div>
                   </div>
                 ))}
-                <div className="text-xs" style={{ color: 'var(--color-text-3)' }}>
+                <div className="text-xs text-[var(--color-text-3)]">
                   {t('job.reuploadFileHint')}
                 </div>
               </div>
@@ -454,7 +433,7 @@ const FileDistPage = () => {
           >
             <Input placeholder={t('job.fileDistTargetPathPlaceholder')} />
           </Form.Item>
-          <p className="text-xs -mt-4 mb-6" style={{ color: 'var(--color-text-3)' }}>
+          <p className="-mt-4 mb-6 text-xs text-[var(--color-text-3)]">
             {t('job.fileDistTargetPathHint')}
           </p>
 
@@ -473,7 +452,7 @@ const FileDistPage = () => {
           <Form.Item label={t('job.timeout')} name="timeout">
             <Input className="w-full" />
           </Form.Item>
-          <p className="text-xs -mt-4 mb-6" style={{ color: 'var(--color-text-3)' }}>
+          <p className="-mt-4 mb-6 text-xs text-[var(--color-text-3)]">
             {t('job.fileDistTimeoutHint')}
           </p>
 

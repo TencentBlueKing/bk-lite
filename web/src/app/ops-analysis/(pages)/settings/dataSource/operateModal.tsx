@@ -1355,7 +1355,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         },
       }}
       footer={
-        <div style={{ textAlign: "right" }}>
+        <div className="text-right">
           {readOnly ? null : (
             <Button
               type="primary"
@@ -1366,7 +1366,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             </Button>
           )}
           <Button
-            style={{ marginLeft: readOnly ? 0 : 8 }}
+            className={readOnly ? undefined : "ml-2"}
             onClick={handleClose}
           >
             {readOnly ? t("common.close") : t("common.cancel")}
@@ -1491,16 +1491,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
               ]}
             >
               {namespacesLoading ? (
-                <div style={{ textAlign: "center", padding: "8px 0" }}>
+                <div className="py-2 text-center">
                   <Spin size="small" />
                 </div>
               ) : namespaceList.length === 0 ? (
-                <div
-                  style={{
-                    color: "var(--color-text-4)",
-                    fontSize: "13px",
-                  }}
-                >
+                <div className="text-[13px] text-[var(--color-text-4)]">
                   {t("common.noData")}
                 </div>
               ) : (
@@ -1537,16 +1532,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
           ]}
         >
           {tagsLoading ? (
-            <div style={{ textAlign: "center", padding: "8px 0" }}>
+            <div className="py-2 text-center">
               <Spin size="small" />
             </div>
           ) : tagList.length === 0 ? (
-            <div
-              style={{
-                color: "var(--color-text-4)",
-                fontSize: "13px",
-              }}
-            >
+            <div className="text-[13px] text-[var(--color-text-4)]">
               {t("common.noData")}
             </div>
           ) : (
@@ -1702,7 +1692,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   initialValue={10}
                 >
-                  <InputNumber min={1} max={30} style={{ width: "100%" }} disabled={readOnly} />
+                  <InputNumber min={1} max={30} className="w-full" disabled={readOnly} />
                 </Form.Item>
                 <Form.Item
                   name={["query_config", "response_path"]}
@@ -1804,7 +1794,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
-                  <InputNumber min={1} max={65535} style={{ width: "100%" }} disabled={readOnly} />
+                  <InputNumber min={1} max={65535} className="w-full" disabled={readOnly} />
                 </Form.Item>
                 <Form.Item
                   name={["connection_config", "database"]}
@@ -1942,7 +1932,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   initialValue={30}
                 >
-                  <InputNumber min={1} max={120} style={{ width: "100%" }} />
+                  <InputNumber min={1} max={120} className="w-full" />
                 </Form.Item>
               </div>
               {readOnly ? null : (
@@ -2007,7 +1997,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                               <InputNumber
                                 min={1}
                                 max={44640}
-                                style={{ width: "100%" }}
+                                className="w-full"
                               />
                             </Form.Item>
                             <Form.Item
@@ -2029,7 +2019,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                           <InputNumber
                             min={1}
                             max={50}
-                            style={{ width: "100%" }}
+                            className="w-full"
                           />
                         </Form.Item>
                       </div>

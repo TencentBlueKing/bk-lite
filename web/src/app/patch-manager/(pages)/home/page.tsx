@@ -45,16 +45,7 @@ function Kpi({ label, value, color, arrow, icon, onClick }: KpiProps) {
   return (
     <div
       onClick={onClick}
-      style={{
-        background: 'var(--color-bg-1, #fff)',
-        border: '1px solid var(--color-border-1, #e8e8e8)',
-        borderRadius: 10,
-        padding: '14px 16px',
-        minWidth: 130,
-        flex: 1,
-        cursor: onClick ? 'pointer' : 'default',
-        transition: 'box-shadow 0.2s',
-      }}
+      className={`min-w-[130px] flex-1 rounded-[10px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3.5 transition-shadow ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
       onMouseEnter={(e) => {
         if (onClick) e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
       }}
@@ -62,13 +53,13 @@ function Kpi({ label, value, color, arrow, icon, onClick }: KpiProps) {
         if (onClick) e.currentTarget.style.boxShadow = 'none';
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-        <div style={{ fontSize: 13, color: 'var(--color-text-2, #595959)', display: 'flex', alignItems: 'center', gap: 4 }}>
-          {label}{arrow && <ArrowRightOutlined style={{ fontSize: 12 }} />}
+      <div className="mb-1.5 flex items-start justify-between">
+        <div className="flex items-center gap-1 text-[13px] text-[var(--color-text-2)]">
+          {label}{arrow && <ArrowRightOutlined className="text-xs" />}
         </div>
-        {icon && <span style={{ color: color || 'var(--color-primary, #1677ff)', fontSize: 18 }}>{icon}</span>}
+        {icon && <span className="text-lg" style={{ color: color || 'var(--color-primary)' }}>{icon}</span>}
       </div>
-      <div style={{ fontSize: 26, fontWeight: 500, color: color || 'var(--color-text-1, #1f1f1f)' }}>{value}</div>
+      <div className="text-[26px] font-medium" style={{ color: color || 'var(--color-text-1)' }}>{value}</div>
     </div>
   );
 }
@@ -198,44 +189,36 @@ export default function HomePage() {
   }), [dist, distTotal, t]);
 
   return (
-    <div style={{ position: 'relative', overflowX: 'hidden' }}>
+    <div className="relative overflow-x-hidden">
       {pageLoading && (
-        <div style={{
-          position: 'absolute',
-          top: 0, left: 0, right: 0, bottom: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'rgba(255, 255, 255, 0.5)',
-          zIndex: 10,
-        }}>
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50">
           <Spin />
         </div>
       )}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+      <div className="mb-3.5 flex flex-wrap gap-3">
         {kpis.map((kpi) => (
           <Kpi key={kpi.label} label={kpi.label} value={kpi.value} color={kpi.color} icon={kpi.icon} />
         ))}
       </div>
       {/* 第2行：主机合规分布 */}
-      <div style={{ display: 'flex', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
-        <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '12px 16px', flex: '1 1 100%', minWidth: 0, maxWidth: '100%', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ fontWeight: 500, marginBottom: 10 }}>{t('patchManager.dashboard.complianceDistribution')}</div>
-          <div style={{ height: 16, borderRadius: 8, overflow: 'hidden' }}>
+      <div className="mb-3.5 flex flex-wrap gap-3.5">
+        <div className="flex min-h-0 min-w-0 max-w-full flex-[1_1_100%] flex-col overflow-hidden rounded-[10px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3">
+          <div className="mb-2.5 font-medium">{t('patchManager.dashboard.complianceDistribution')}</div>
+          <div className="h-4 overflow-hidden rounded-lg">
             <ReactECharts
               option={distributionOption}
-              style={{ height: '100%', width: '100%' }}
+              className="h-full w-full"
               opts={{ renderer: 'svg' }}
             />
           </div>
-          <Space size={16} wrap style={{ marginTop: 10 }}>
+          <Space size={16} wrap className="mt-2.5">
             {dist.map((d) => (
-              <span key={d.label} style={{ fontSize: 12, color: 'var(--color-text-2, #595959)' }}>
-                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: FILTER_COLORS[d.filter || ''] || '#A4A19E', marginRight: 5 }} />{d.label} {d.count}
+              <span key={d.label} className="text-xs text-[var(--color-text-2)]">
+                <span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: FILTER_COLORS[d.filter || ''] || '#A4A19E' }} />{d.label} {d.count}
               </span>
             ))}
           </Space>
-          <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-text-3, #8c8c8c)' }}>
+          <div className="mt-2.5 text-xs text-[var(--color-text-3)]">
             {t('patchManager.dashboard.rateHelp', undefined, { rateHint, coverageHint })}
           </div>
         </div>
@@ -243,17 +226,17 @@ export default function HomePage() {
 
       {/* 快捷操作 */}
       <Card
-        title={<span><PlayCircleOutlined style={{ marginRight: 6 }} />{t('patchManager.dashboard.quickActions')}</span>}
-        style={{ borderRadius: 10, marginBottom: 14 }}
+        title={<span><PlayCircleOutlined className="mr-1.5" />{t('patchManager.dashboard.quickActions')}</span>}
+        className="mb-3.5 rounded-[10px]"
         styles={{ body: { padding: '12px 16px' } }}
       >
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <Card size="small" style={{ flex: '1 1 200px', borderRadius: 8 }} styles={{ body: { padding: 14 } }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-fill-2, #f0f2f5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary, #1677ff)' }}><PlayCircleOutlined /></div>
-              <div style={{ fontWeight: 500 }}>{t('patchManager.dashboard.assessNow')}</div>
+        <div className="flex flex-wrap gap-3">
+          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
+            <div className="mb-2 flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><PlayCircleOutlined /></div>
+              <div className="font-medium">{t('patchManager.dashboard.assessNow')}</div>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>{t('patchManager.dashboard.assessNowDescription')}</div>
+            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.assessNowDescription')}</div>
             <PermissionWrapper
               requiredPermissions={['Add']}
               permissionPath="/patch-manager/risk-execution"
@@ -264,38 +247,38 @@ export default function HomePage() {
               </Popconfirm>
             </PermissionWrapper>
           </Card>
-          <Card size="small" style={{ flex: '1 1 200px', borderRadius: 8 }} styles={{ body: { padding: 14 } }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-fill-2, #f0f2f5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary, #1677ff)' }}><PlusOutlined /></div>
-              <div style={{ fontWeight: 500 }}>{t('patchManager.dashboard.addTarget')}</div>
+          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
+            <div className="mb-2 flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><PlusOutlined /></div>
+              <div className="font-medium">{t('patchManager.dashboard.addTarget')}</div>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>{t('patchManager.dashboard.addTargetDescription')}</div>
+            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.addTargetDescription')}</div>
             <Button type="primary" block icon={<PlusOutlined />} onClick={() => router.push('/patch-manager/target')}>{t('patchManager.dashboard.addTarget')}</Button>
           </Card>
-          <Card size="small" style={{ flex: '1 1 200px', borderRadius: 8 }} styles={{ body: { padding: 14 } }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-fill-2, #f0f2f5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary, #1677ff)' }}><PlusOutlined /></div>
-              <div style={{ fontWeight: 500 }}>{t('patchManager.dashboard.createBaseline')}</div>
+          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
+            <div className="mb-2 flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><PlusOutlined /></div>
+              <div className="font-medium">{t('patchManager.dashboard.createBaseline')}</div>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>{t('patchManager.dashboard.createBaselineDescription')}</div>
+            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.createBaselineDescription')}</div>
             <Button type="primary" block icon={<PlusOutlined />} onClick={() => router.push('/patch-manager/baseline')}>{t('patchManager.dashboard.createBaseline')}</Button>
           </Card>
-          <Card size="small" style={{ flex: '1 1 200px', borderRadius: 8 }} styles={{ body: { padding: 14 } }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-fill-2, #f0f2f5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary, #1677ff)' }}><FileTextOutlined /></div>
-              <div style={{ fontWeight: 500 }}>{t('patchManager.dashboard.executionRecords')}</div>
+          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
+            <div className="mb-2 flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><FileTextOutlined /></div>
+              <div className="font-medium">{t('patchManager.dashboard.executionRecords')}</div>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12, minHeight: 34 }}>{t('patchManager.dashboard.executionRecordsDescription')}</div>
+            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.executionRecordsDescription')}</div>
             <Button type="primary" block icon={<FileTextOutlined />} onClick={() => router.push('/patch-manager/risk-execution')}>{t('patchManager.dashboard.viewRecords')}</Button>
           </Card>
         </div>
       </Card>
 
       {/* 第3行：最近执行 + TOP风险 */}
-      <div ref={bottomRef} style={{ display: 'flex', gap: 14, flexWrap: 'nowrap', height: tableHeight }}>
+      <div ref={bottomRef} className="flex flex-nowrap gap-3.5" style={{ height: tableHeight }}>
         <Card
-          title={<span><FileTextOutlined style={{ marginRight: 6 }} />{t('patchManager.dashboard.recentExecutions')}</span>}
-          style={{ flex: '2 1 0', minWidth: 0, borderRadius: 10, height: '100%', display: 'flex', flexDirection: 'column' }}
+          title={<span><FileTextOutlined className="mr-1.5" />{t('patchManager.dashboard.recentExecutions')}</span>}
+          className="flex h-full min-w-0 flex-[2_1_0] flex-col rounded-[10px]"
           styles={{ body: { padding: '10px 10px', flex: 1, overflow: 'hidden' } }}
           extra={<Button type="link" size="small" onClick={() => router.push('/patch-manager/risk-execution')}>{t('patchManager.dashboard.viewMore')}</Button>}
         >
@@ -311,15 +294,15 @@ export default function HomePage() {
                 { title: t('patchManager.execution.type'), dataIndex: 'task_type_display', width: 90, render: (value: string) => <Tag>{value}</Tag> },
                 { title: t('patchManager.risk.executionMode'), dataIndex: 'execution_mode', width: 210, render: (_: unknown, r: RecentTaskItem) => recentExecutionText(r) },
                 { title: t('patchManager.execution.status'), dataIndex: 'status', width: 110, render: (_: unknown, r: RecentTaskItem) => <Tag color={r.status_color}>{t(`patchManager.execution.statuses.${r.status_code}`, r.status)}</Tag> },
-                { title: t('patchManager.createTime'), dataIndex: 'created_at', width: 170, render: (_: string, r: RecentTaskItem) => <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{convertToLocalizedTime(r.created_at) || '—'}</span> },
+                { title: t('patchManager.createTime'), dataIndex: 'created_at', width: 170, render: (_: string, r: RecentTaskItem) => <span className="text-[var(--color-text-3)]">{convertToLocalizedTime(r.created_at) || '—'}</span> },
               ]}
             />
           </div>
         </Card>
 
         <Card
-          title={<span><ArrowRightOutlined style={{ marginRight: 6 }} />{t('patchManager.dashboard.topRiskPatches')}</span>}
-          style={{ flex: '1 1 0', minWidth: 0, borderRadius: 10, height: '100%', display: 'flex', flexDirection: 'column' }}
+          title={<span><ArrowRightOutlined className="mr-1.5" />{t('patchManager.dashboard.topRiskPatches')}</span>}
+          className="flex h-full min-w-0 flex-[1_1_0] flex-col rounded-[10px]"
           styles={{ body: { padding: '10px 10px', flex: 1, overflow: 'hidden' } }}
           extra={<Button type="link" size="small" onClick={() => router.push('/patch-manager/risk-pending')}>{t('patchManager.dashboard.viewAll')}</Button>}
         >
