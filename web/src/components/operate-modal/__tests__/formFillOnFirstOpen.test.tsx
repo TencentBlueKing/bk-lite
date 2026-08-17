@@ -28,6 +28,32 @@ afterEach(() => {
   cleanup();
 });
 
+function InitialValuesFormModalHarness() {
+  const [open, setOpen] = useState(false);
+  const [formData, setFormData] = useState<{ name: string }>({ name: '' });
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setFormData({ name: 'packetbeat-main' });
+          setOpen(true);
+        }}
+      >
+        edit-config
+      </button>
+      <OperateModal destroyOnHidden footer={null} open={open} title="编辑">
+        <Form initialValues={formData} layout="vertical">
+          <Form.Item label="名称" name="name">
+            <Input placeholder="请输入" />
+          </Form.Item>
+        </Form>
+      </OperateModal>
+    </>
+  );
+}
+
 function EditFormModalHarness() {
   const formRef = useRef<FormInstance>(null);
   const [open, setOpen] = useState(false);
@@ -74,6 +100,19 @@ describe('OperateModal form fill on first open', () => {
       expect(
         (screen.getByLabelText('名称') as HTMLInputElement).value
       ).toBe('NATS_ADMIN_PASSWORD');
+    });
+  });
+
+  it('用 initialValues 的配置编辑弹窗首次打开也能回填', async () => {
+    const user = userEvent.setup();
+    render(<InitialValuesFormModalHarness />);
+
+    await user.click(screen.getByRole('button', { name: 'edit-config' }));
+
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText('名称') as HTMLInputElement).value
+      ).toBe('packetbeat-main');
     });
   });
 });
