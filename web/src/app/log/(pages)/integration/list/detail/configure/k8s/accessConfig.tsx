@@ -30,8 +30,6 @@ interface InstanceItem {
 
 type RuntimeProfile = 'standard' | 'docker' | 'custom';
 
-const FORM_CONTROL_WIDTH = 300;
-
 const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
@@ -188,7 +186,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
               noStyle
               rules={[{ required: true, message: t('common.required') }]}
             >
-              <Radio.Group style={{ width: FORM_CONTROL_WIDTH }}>
+              <Radio.Group className="w-[300px]">
                 <Radio value="new">{t('log.integration.k8s.newAsset')}</Radio>
                 <Radio value="existing">
                   {t('log.integration.k8s.existingAsset')}
@@ -226,7 +224,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                         placeholder={t(
                           'log.integration.k8s.clusterNamePlaceholder'
                         )}
-                        style={{ width: FORM_CONTROL_WIDTH }}
+                        className="w-[300px]"
                       />
                     </Form.Item>
                     <div className="text-[var(--color-text-3)] flex-1">
@@ -248,7 +246,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                       ]}
                     >
                       <GroupTreeSelector
-                        style={{ width: FORM_CONTROL_WIDTH }}
+                        style={{ width: 300 }}
                         placeholder={t('common.selectTip')}
                       />
                     </Form.Item>
@@ -270,7 +268,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                       showSearch
                       loading={k8sClusterLoading}
                       placeholder={t('log.integration.k8s.selectK8sCluster')}
-                      style={{ width: FORM_CONTROL_WIDTH }}
+                      className="w-[300px]"
                       options={k8sClusterList.map((item) => ({
                         label: item.name,
                         value: item.id
@@ -296,7 +294,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
               <Select
                 loading={cloudRegionLoading}
                 placeholder={t('log.integration.k8s.selectCloudRegion')}
-                style={{ width: FORM_CONTROL_WIDTH }}
+                className="w-[300px]"
                 options={cloudRegionList.map((item) => ({
                   label: item.name || item.id,
                   value: item.id
@@ -316,7 +314,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
               noStyle
               rules={[{ required: true, message: t('common.required') }]}
             >
-              <Radio.Group style={{ width: FORM_CONTROL_WIDTH }}>
+              <Radio.Group className="w-[300px]">
                 <Radio value="standard">
                   {t('log.integration.k8s.runtimeProfileStandard')}
                 </Radio>
@@ -371,7 +369,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                         placeholder={t(
                           'log.integration.k8s.hostLogPathPlaceholder'
                         )}
-                        style={{ width: FORM_CONTROL_WIDTH }}
+                        className="w-[300px]"
                       />
                     </Form.Item>
                     <div className="text-[var(--color-text-3)] flex-1">
@@ -417,7 +415,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                           placeholder={t(
                             'log.integration.k8s.dockerContainerLogPathPlaceholder'
                           )}
-                          style={{ width: FORM_CONTROL_WIDTH }}
+                          className="w-[300px]"
                         />
                       </Form.Item>
                       <div className="text-[var(--color-text-3)] flex-1">

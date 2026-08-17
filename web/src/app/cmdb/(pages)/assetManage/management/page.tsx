@@ -4,7 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/auth';
 import { useSession } from 'next-auth/react';
 import Introduction from '@/components/introduction';
-import { Input, Button, Modal, message, Spin, Empty, Tooltip, Dropdown, Space, Switch, Tag } from 'antd';
+import SearchActionBar from '@/components/search-action-bar';
+import { Button, Modal, message, Spin, Tooltip, Dropdown, Space, Switch, Tag } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import {
@@ -477,14 +479,12 @@ const AssetManage = () => {
           style={{ opacity: record.is_visible ? 1 : 0.5 }}
         >
           <div
-            className="flex flex-shrink-0 items-center justify-center rounded-[6px]"
-            style={{ width: 30, height: 30, background: 'var(--color-fill-1)' }}
+            className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[6px] bg-[var(--color-fill-1)]"
           >
             <ModelIcon
               icon={record.icn}
               modelId={record.model_id}
-              className="block object-contain"
-              style={{ width: 24, height: 24 }}
+              className="block h-6 w-6 object-contain"
               alt={t('picture')}
               width={24}
               height={24}
@@ -563,103 +563,96 @@ const AssetManage = () => {
     <div className={assetManageStyle.container}>
       <Introduction title={t('Model.title')} message={t('Model.message')} />
       <div className={assetManageStyle.modelSetting}>
-        <div className="nav-box flex justify-between mb-[10px]">
-          <div className="left-side w-[320px] max-w-full">
-            <Input.Search
-              placeholder={t('common.search')}
-              allowClear
-              onSearch={onSearch}
-              onClear={() => setSearchText('')}
-            />
-          </div>
-          <div className="right-side">
-            <PermissionWrapper requiredPermissions={['Add Model']}>
-              <Button
-                type="primary"
-                className="mr-[8px]"
-                onClick={() => showModelModal('add')}
-              >
-                {t('Model.addModel')}
-              </Button>
-            </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={['Add Group']}>
-              <Button onClick={() => showGroupModal('add')}>
-                {t('Model.addGroup')}
-              </Button>
-            </PermissionWrapper>
-            {showConfigButtons ? (
-              <Dropdown
-                menu={{
-                  items: [
-                    {
-                      key: 'publicEnumLibrary',
-                      icon: <SettingOutlined />,
-                      label: t('PublicEnumLibrary.manage'),
-                      onClick: showPublicEnumLibraryModal,
-                    },
-                    {
-                      key: 'exportConfig',
-                      icon: <DownloadOutlined />,
-                      label: t('Model.exportModelConfig'),
-                      onClick: handleExportConfig,
-                    },
-                    {
-                      key: 'importConfig',
-                      icon: <UploadOutlined />,
-                      label: t('Model.importModelConfig'),
-                      onClick: showImportModelConfigModal,
-                    },
-                  ] as MenuProps['items'],
-                }}
-                placement="bottomRight"
-              >
-                <Button className="ml-[8px]">
-                  <Space>
-                    {t('seeMore')}
-                    <DownOutlined />
-                  </Space>
+        <SearchActionBar
+          className="mb-[10px]"
+          spacing="flush"
+          searchClassName="!w-[320px] max-w-full"
+          searchProps={{
+            placeholder: t('common.search'),
+            allowClear: true,
+            onSearch,
+            onClear: () => setSearchText(''),
+          }}
+          actions={(
+            <div className="flex flex-wrap items-center gap-2">
+              <PermissionWrapper requiredPermissions={['Add Model']}>
+                <Button type="primary" onClick={() => showModelModal('add')}>
+                  {t('Model.addModel')}
                 </Button>
-              </Dropdown>
-            ) : (
-              <Button
-                className="ml-[8px]"
-                icon={<SettingOutlined />}
-                onClick={showPublicEnumLibraryModal}
-              >
-                {t('PublicEnumLibrary.manage')}
-              </Button>
-            )}
-            {showConfigButtons && (
-              <ManageToolbar
-                manageMode={manageMode}
-                dirty={layoutDirty}
-                saving={savingLayout}
-                onEnter={() => setManageMode(true)}
-                onCancel={handleCancelLayout}
-                onSave={handleSaveLayout}
-              />
-            )}
-          </div>
-        </div>
+              </PermissionWrapper>
+              <PermissionWrapper requiredPermissions={['Add Group']}>
+                <Button onClick={() => showGroupModal('add')}>
+                  {t('Model.addGroup')}
+                </Button>
+              </PermissionWrapper>
+              {showConfigButtons ? (
+                <Dropdown
+                  menu={{
+                    items: [
+                      {
+                        key: 'publicEnumLibrary',
+                        icon: <SettingOutlined />,
+                        label: t('PublicEnumLibrary.manage'),
+                        onClick: showPublicEnumLibraryModal,
+                      },
+                      {
+                        key: 'exportConfig',
+                        icon: <DownloadOutlined />,
+                        label: t('Model.exportModelConfig'),
+                        onClick: handleExportConfig,
+                      },
+                      {
+                        key: 'importConfig',
+                        icon: <UploadOutlined />,
+                        label: t('Model.importModelConfig'),
+                        onClick: showImportModelConfigModal,
+                      },
+                    ] as MenuProps['items'],
+                  }}
+                  placement="bottomRight"
+                >
+                  <Button>
+                    <Space>
+                      {t('seeMore')}
+                      <DownOutlined />
+                    </Space>
+                  </Button>
+                </Dropdown>
+              ) : (
+                <Button
+                  icon={<SettingOutlined />}
+                  onClick={showPublicEnumLibraryModal}
+                >
+                  {t('PublicEnumLibrary.manage')}
+                </Button>
+              )}
+              {showConfigButtons && (
+                <ManageToolbar
+                  manageMode={manageMode}
+                  dirty={layoutDirty}
+                  saving={savingLayout}
+                  onEnter={() => setManageMode(true)}
+                  onCancel={handleCancelLayout}
+                  onSave={handleSaveLayout}
+                />
+              )}
+            </div>
+          )}
+        />
         <Spin spinning={loading}>
           {manageMode ? (
-            <div
-              className={assetManageStyle.managementLayout}
-              style={{ marginTop: 6 }}
-            >
+            <div className={`${assetManageStyle.managementLayout} mt-1.5`}>
               {/* 左栏：分类（可拖拽 + 选中 + 可见性），独立滚动 */}
               <div className={assetManageStyle.managementSidebar}>
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
                   <SortableContext items={draftLayout.map(g => g.classification_id)} strategy={verticalListSortingStrategy}>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    <ul className="m-0 list-none p-0">
                       {draftLayout.map((group, gi) => (
                         <SortableItem key={group.classification_id} id={group.classification_id} index={gi}>
                           <div
                             onClick={() => setSelectedClassificationId(group.classification_id)}
-                            className={`${assetManageStyle.managementGroupRow} text-[13px] font-[400] leading-[20px]`}
+                            className={`${assetManageStyle.managementGroupRow} min-h-9 px-2 py-[5px] text-[13px] font-[400] leading-[20px]`}
                             style={{
-                              minHeight: 36,
-                              padding: '5px 8px',
                               opacity: group.is_visible ? 1 : 0.5,
                               ...(group.classification_id === selectedClassificationId
                                 ? {
@@ -713,7 +706,7 @@ const AssetManage = () => {
                     onRowDragEnd={(newData) => handleModelRowDragEnd(newData as DraftClassification['models'])}
                   />
                 ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  <CompactEmptyState description={t('common.noData')} />
                 )}
               </div>
             </div>
@@ -888,7 +881,7 @@ const AssetManage = () => {
                   );
                 })
               ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                <CompactEmptyState description={t('common.noData')} />
               )}
             </div>
           )}

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Button, message, Popconfirm, Empty, Spin } from 'antd';
+import { Table, Button, message, Popconfirm, Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { PlusOutlined, ReloadOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -162,7 +163,7 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
 
       <Spin spinning={loading}>
         {teamSecrets.length === 0 && !loading ? (
-          <Empty description={t('integration.noTeamSecrets')} />
+          <CompactEmptyState description={t('integration.noTeamSecrets')} />
         ) : (
           <Table
             dataSource={displayTeamSecrets}

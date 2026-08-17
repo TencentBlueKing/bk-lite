@@ -74,14 +74,14 @@ const InstallImpactColumnTitle = () => {
   return <Tooltip
     title={(
       <div>
-        <div style={{ fontWeight: 500, marginBottom: 4 }}>{t('patchManager.risk.installImpactSource')}</div>
+        <div className="mb-1 font-medium">{t('patchManager.risk.installImpactSource')}</div>
         <div>{t('patchManager.risk.installImpactHelp')}</div>
       </div>
     )}
   >
     <span
       tabIndex={0}
-      style={{ borderBottom: '1px dashed currentColor', cursor: 'help' }}
+      className="cursor-help border-b border-dashed border-current"
     >
       {t('patchManager.risk.installImpact')}
     </span>
@@ -322,7 +322,7 @@ export default function RiskPendingPage() {
           type="link"
           size="small"
           aria-label={`${t('patchManager.risk.missingPatchCount')} ${v}`}
-          style={{ height: 'auto', paddingInline: 0, fontVariantNumeric: 'tabular-nums' }}
+          className="!px-0 h-auto tabular-nums"
           onClick={() => setDetailRecord({ name: getRowName(r), items: r.items || [] })}
         >
           {v}
@@ -352,11 +352,11 @@ export default function RiskPendingPage() {
     return <RemediationTag status={v} />;
   };
   const renderInstallImpact = (v: RiskItem['install_impact'], osType?: string) => {
-    if (osType === 'windows') return <span style={{ color: '#bfbfbf' }}>--</span>;
-    if (!v || (!v.summary && !v.error)) return <span style={{ color: '#bfbfbf' }}>--</span>;
+    if (osType === 'windows') return <span className="text-[var(--color-text-4)]">--</span>;
+    if (!v || (!v.summary && !v.error)) return <span className="text-[var(--color-text-4)]">--</span>;
     if (v.error) return <Tooltip title={v.error}><Tag color="error">{t('patchManager.risk.previewFailed')}</Tag></Tooltip>;
     const content = <div>
-      <div style={{ marginBottom: 6, color: 'var(--color-text-2, #595959)' }}>{t('patchManager.risk.installImpactBatch')}</div>
+      <div className="mb-1.5 text-[var(--color-text-2)]">{t('patchManager.risk.installImpactBatch')}</div>
       <div>{t('patchManager.risk.upgrade')}：{v.upgrade?.length ? v.upgrade.join('、') : t('patchManager.risk.none')}</div>
       <div>{t('patchManager.risk.additionalInstall')}：{v.install?.length ? v.install.join('、') : t('patchManager.risk.none')}</div>
       <div>{t('patchManager.risk.remove')}：{v.remove?.length ? v.remove.join('、') : t('patchManager.risk.none')}</div>
@@ -366,16 +366,7 @@ export default function RiskPendingPage() {
         <Button
           type="link"
           size="small"
-          className="install-impact-summary"
-          style={{
-            display: 'block',
-            maxWidth: '100%',
-            paddingInline: 0,
-            overflow: 'hidden',
-            textAlign: 'left',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
+          className="install-impact-summary block max-w-full !px-0 overflow-hidden text-left text-ellipsis whitespace-nowrap"
         >
           {v.summary}
         </Button>
@@ -683,7 +674,7 @@ export default function RiskPendingPage() {
   const SCOPE_RISKS = scopeCandidates;
 
   return (
-    <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <div className="flex min-h-0 flex-1 flex-col rounded-[10px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
       <FilterToolbar align="between">
         <Space wrap size={12}>
           <Segmented options={(['host', 'patch', 'baseline'] as const).map((value) => ({ label: t(`patchManager.risk.view.${value}`), value }))} value={view} onChange={(v) => { setView(v as typeof view); setSelected([]); setFilters({}); setSearchInputs({}); }} />
@@ -705,11 +696,11 @@ export default function RiskPendingPage() {
                   setHostIdFilter(undefined);
                   setFilters((f) => ({ ...f, host_name: v || undefined }));
                 }}
-                style={{ width: 180 }}
+                className="w-[180px]"
               />
               <Select
                 placeholder={t('patchManager.osType')}
-                style={{ width: 120 }}
+                className="w-[120px]"
                 allowClear
                 value={filters.os_type}
                 onChange={(v) => setFilters((f) => ({ ...f, os_type: v }))}
@@ -731,11 +722,11 @@ export default function RiskPendingPage() {
                   }
                 }}
                 onSearch={(v) => { setFilters((f) => ({ ...f, patch_name: v || undefined })); }}
-                style={{ width: 200 }}
+                className="w-[200px]"
               />
               <Select
                 placeholder={t('patchManager.severity')}
-                style={{ width: 120 }}
+                className="w-[120px]"
                 allowClear
                 value={filters.severity}
                 onChange={(v) => setFilters((f) => ({ ...f, severity: v }))}
@@ -756,12 +747,12 @@ export default function RiskPendingPage() {
                 }
               }}
               onSearch={(v) => { setFilters((f) => ({ ...f, baseline_name: v || undefined })); }}
-              style={{ width: 200 }}
+              className="w-[200px]"
             />
           )}
           <Select
             placeholder={t('patchManager.risk.remediationStatus')}
-            style={{ width: 130 }}
+            className="w-[130px]"
             allowClear
             value={filters.remediation}
             onChange={(v) => setFilters((f) => ({ ...f, remediation: v }))}
@@ -789,7 +780,7 @@ export default function RiskPendingPage() {
                       title={!batchCanReboot ? t('patchManager.risk.rebootSelectionBlocked') : undefined}
                       zIndex={10001}
                     >
-                      <PermissionWrapper requiredPermissions={['Add']} instPermissions={batchCanReboot ? ['Operate'] : []}><span style={{ display: 'block' }}>{t('patchManager.risk.oneClickReboot')}</span></PermissionWrapper>
+                      <PermissionWrapper requiredPermissions={['Add']} instPermissions={batchCanReboot ? ['Operate'] : []}><span className="block">{t('patchManager.risk.oneClickReboot')}</span></PermissionWrapper>
                     </Tooltip>
                   ),
                   icon: <ReloadOutlined />,
@@ -805,7 +796,7 @@ export default function RiskPendingPage() {
           </Dropdown>
         </Space>
       </FilterToolbar>
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div className="min-h-0 flex-1">
         <CustomTable
           rowKey="key"
           loading={loading}
@@ -872,7 +863,7 @@ export default function RiskPendingPage() {
                   description={<div>
                     <div>{t('patchManager.risk.createRemediationConfirm', undefined, { count: scopeSelected.length, reboot: autoReboot ? t('patchManager.risk.onlyRequiredReboot') : t('patchManager.risk.noAutomaticReboot') })}</div>
                     {previewFailedItems.length > 0 && (
-                      <div style={{ color: 'var(--color-error, #ff4d4f)', marginTop: 6, maxWidth: 500, whiteSpace: 'normal' }}>
+                      <div className="mt-1.5 max-w-[500px] whitespace-normal text-[var(--color-fail)]">
                         {t('patchManager.risk.previewFailureConfirm', undefined, { items: previewFailedLabels })}
                       </div>
                     )}
@@ -888,18 +879,18 @@ export default function RiskPendingPage() {
           </Space>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 16, boxSizing: 'border-box' }}>
+        <div className="box-border flex h-full flex-col p-4">
           <Steps
             current={currentStep}
             size="small"
-            style={{ marginBottom: 16, flexShrink: 0 }}
+            className="mb-4 shrink-0"
             items={[{ title: t('patchManager.risk.confirmRiskItems') }, { title: t('patchManager.risk.executionSettings') }]}
           />
 
           {currentStep === 0 && (
-            <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0 }}>
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{ flex: 1, minHeight: 0 }}>
+            <div className="flex min-h-0 flex-1 gap-4">
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                <div className="min-h-0 flex-1">
                   <CustomTable
                     size="small"
                     rowKey="key"
@@ -922,37 +913,42 @@ export default function RiskPendingPage() {
                   />
                 </div>
               </div>
-              <div style={{ width: 200, display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--color-border-1, #e8e8e8)', paddingLeft: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <span style={{ fontWeight: 500 }}>{t('patchManager.common.selectedItems', undefined, { count: scopeSelectedObjs.length })}</span>
+              <div className="flex w-[200px] flex-col border-l border-[var(--color-border-1)] pl-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="font-medium">{t('patchManager.common.selectedItems', undefined, { count: scopeSelectedObjs.length })}</span>
                   {scopeSelectedObjs.length > 0 && (
-                    <Button type="link" size="small" danger style={{ paddingInline: 0 }} onClick={() => setScopeSelected([])}>{t('patchManager.common.clearAll')}</Button>
+                    <Button type="link" size="small" danger className="!px-0" onClick={() => setScopeSelected([])}>{t('patchManager.common.clearAll')}</Button>
                   )}
                 </div>
-                <div style={{ flex: 1, overflowY: 'auto' }}>
+                <div className="flex-1 overflow-y-auto">
                   {scopeSelectedObjs.map((r) => (
-                    <div key={r.key} className="scope-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', borderRadius: 6, marginBottom: 4, background: 'var(--color-fill-1, #f4f6f9)', fontSize: 13 }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.host} - {r.patch}</span>
-                      <CloseOutlined className="scope-remove-btn" style={{ color: '#bfbfbf', fontSize: 12, cursor: 'pointer', opacity: 0, transition: 'opacity 0.2s' }} onClick={() => setScopeSelected((prev) => prev.filter((k) => k !== r.key))} />
+                    <div
+                      key={r.key}
+                      className="group mb-1 flex items-center justify-between rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-[13px]"
+                    >
+                      <span className="truncate">{r.host} - {r.patch}</span>
+                      <CloseOutlined
+                        className="cursor-pointer text-xs text-[var(--color-text-4)] opacity-0 transition-opacity group-hover:opacity-100"
+                        onClick={() => setScopeSelected((prev) => prev.filter((k) => k !== r.key))}
+                      />
                     </div>
                   ))}
                   {scopeSelectedObjs.length === 0 && (
-                    <div style={{ color: 'var(--color-text-3, #8c8c8c)', fontSize: 13, textAlign: 'center', marginTop: 40 }}>{t('patchManager.common.noSelection')}</div>
+                    <div className="mt-10 text-center text-[13px] text-[var(--color-text-3)]">{t('patchManager.common.noSelection')}</div>
                   )}
                 </div>
               </div>
             </div>
           )}
-          <style>{`.scope-item:hover .scope-remove-btn { opacity: 1 !important; }`}</style>
 
           {currentStep === 1 && (
-          <div style={{ width: '100%', flex: 1, overflowY: 'auto' }}>
+          <div className="w-full flex-1 overflow-y-auto">
             <Form layout="vertical" component={false}>
               <Form.Item
                 label={t('patchManager.risk.taskName')}
                 required
                 colon={false}
-                style={{ marginBottom: 14 }}
+                className="mb-3.5"
               >
                 <Input
                   value={taskName}
@@ -964,28 +960,28 @@ export default function RiskPendingPage() {
                 />
               </Form.Item>
             </Form>
-            <div style={{ fontWeight: 500, marginBottom: 6 }}>{t('patchManager.risk.executionMode')}</div>
-            <Radio.Group value={execMode} onChange={(e) => setExecMode(e.target.value)} style={{ marginBottom: 10 }}>
+            <div className="mb-1.5 font-medium">{t('patchManager.risk.executionMode')}</div>
+            <Radio.Group value={execMode} onChange={(e) => setExecMode(e.target.value)} className="mb-2.5">
               <Radio value="now">{t('patchManager.risk.executeNow')}</Radio>
               <Radio value="window">{t('patchManager.risk.executionWindow')}</Radio>
             </Radio.Group>
             {execMode === 'window' && (
-              <div style={{ marginBottom: 12 }}>
-                <RangePicker showTime style={{ width: '100%' }} placeholder={[t('patchManager.risk.windowStart'), t('patchManager.risk.windowEnd')]} value={windowRange} onChange={(v) => setWindowRange(v as any)} />
+              <div className="mb-3">
+                <RangePicker showTime className="w-full" placeholder={[t('patchManager.risk.windowStart'), t('patchManager.risk.windowEnd')]} value={windowRange} onChange={(v) => setWindowRange(v as any)} />
               </div>
             )}
 
-            <div style={{ fontWeight: 500, marginBottom: 6 }}>
+            <div className="mb-1.5 font-medium">
               {t('patchManager.risk.autoReboot')}
             </div>
             <Alert
-              style={{ width: '100%', marginBottom: 12 }}
+              className="mb-3 w-full"
               type="warning"
               showIcon
               message={t('patchManager.risk.autoRebootTitle')}
               description={t('patchManager.risk.autoRebootHelp')}
             />
-            <div style={{ marginBottom: 14 }}>
+            <div className="mb-3.5">
               <Switch
                 aria-label={t('patchManager.risk.autoReboot')}
                 checked={autoReboot}
@@ -1033,7 +1029,7 @@ export default function RiskPendingPage() {
             colon={false}
             validateStatus={rebootValidation.taskName ? 'error' : undefined}
             help={rebootValidation.taskName}
-            style={{ marginBottom: 14 }}
+            className="mb-3.5"
           >
             <Input
               value={rebootTaskName}
@@ -1049,13 +1045,13 @@ export default function RiskPendingPage() {
               placeholder={t('patchManager.risk.taskNamePlaceholder')}
             />
           </Form.Item>
-          <div style={{ fontWeight: 500, marginBottom: 6 }}>{t('patchManager.risk.pendingRebootHosts')}</div>
+          <div className="mb-1.5 font-medium">{t('patchManager.risk.pendingRebootHosts')}</div>
           <Table
             loading={rebootScopeLoading}
             size="small"
             rowKey="key"
             pagination={false}
-            style={{ marginBottom: 14 }}
+            className="mb-3.5"
             dataSource={rebootHosts}
             columns={[
               { title: t('patchManager.risk.host'), dataIndex: 'host', width: 120 },
@@ -1063,18 +1059,18 @@ export default function RiskPendingPage() {
               { title: t('patchManager.severity'), dataIndex: 'sev', width: 80, render: (v: string) => <SeverityTag severity={v} /> },
             ]}
           />
-          <Alert style={{ marginBottom: 12 }} type="info" showIcon message={t('patchManager.risk.rebootWindowHelp')} />
+          <Alert className="mb-3" type="info" showIcon message={t('patchManager.risk.rebootWindowHelp')} />
           <Form.Item
             label={t('patchManager.risk.executionWindow')}
             required
             colon={false}
             validateStatus={rebootValidation.window ? 'error' : undefined}
             help={rebootValidation.window}
-            style={{ marginBottom: 12 }}
+            className="mb-3"
           >
             <RangePicker
               showTime
-              style={{ width: '100%' }}
+              className="w-full"
               placeholder={[t('patchManager.risk.windowStart'), t('patchManager.risk.windowEnd')]}
               value={rebootRange}
               onChange={(value) => {

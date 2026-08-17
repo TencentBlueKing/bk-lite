@@ -4,6 +4,7 @@ import { Button, Form, Input } from 'antd';
 import EntityList from '@/components/entity-list';
 import Icon from '@/components/icon';
 import OperateModal from '@/components/operate-modal';
+import SearchActionBar from '@/components/search-action-bar';
 import type { ProviderManifest } from '@/app/system-manager/types/integration-center';
 import {
   filterIntegrationProvidersByQuery,
@@ -164,12 +165,15 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
     >
       {mode === 'create' && step === 'provider' ? (
         <div className="space-y-4 min-h-[60vh]">
-          <Input.Search
-            allowClear
-            value={providerSearch}
-            placeholder={t('system.integrationCenter.searchProviders')}
-            onChange={(event) => setProviderSearch(event.target.value)}
-            onSearch={setProviderSearch}
+          <SearchActionBar
+            spacing="flush"
+            searchProps={{
+              allowClear: true,
+              value: providerSearch,
+              placeholder: t('system.integrationCenter.searchProviders'),
+              onChange: (event) => setProviderSearch(event.target.value),
+              onSearch: setProviderSearch,
+            }}
           />
           <EntityList
             data={providerCards}

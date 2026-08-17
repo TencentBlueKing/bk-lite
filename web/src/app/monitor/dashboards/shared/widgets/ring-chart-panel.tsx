@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Empty } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import { GuideItem } from '../types';
 import { TitleWithGuide, GuideTooltipStyles } from './guide-tooltip';
 import { useECharts } from './useECharts';
@@ -137,7 +137,7 @@ export const RingChartPanel = ({
               className={styles.ringChartCanvas}
               style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
             />
-            <Empty description={emptyDescription} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <ChartEmptyState description={emptyDescription} compact />
           </div>
         ) : (
           <>

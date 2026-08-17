@@ -50,13 +50,11 @@ const OpspilotProviderModelSection: React.FC<OpspilotProviderModelSectionProps> 
 
   return (
     <section
-      className="relative flex flex-col overflow-hidden rounded-2xl border"
+      className="relative flex h-[calc((100vh-360px)/2)] min-h-[240px] flex-col overflow-hidden rounded-2xl border"
       style={{
         borderColor: style.borderColor,
         background: style.sectionBg,
         boxShadow: style.shadow,
-        height: 'calc((100vh - 360px) / 2)',
-        minHeight: 240,
       }}
     >
       <div
@@ -69,12 +67,12 @@ const OpspilotProviderModelSection: React.FC<OpspilotProviderModelSectionProps> 
       />
 
       <div
-        className="relative flex items-center justify-between border-b px-4 py-3"
-        style={{ borderColor: 'rgba(191, 219, 254, 0.55)', background: style.headerBg }}
+        className="relative flex items-center justify-between border-b border-[rgba(191,219,254,0.55)] px-4 py-3"
+        style={{ background: style.headerBg }}
       >
         <div className="flex items-center gap-2">
-          <h3 className="text-base font-semibold" style={{ color: 'var(--color-text-1)' }}>{title}</h3>
-          <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>
+          <h3 className="text-base font-semibold text-[var(--color-text-1)]">{title}</h3>
+          <span className="text-xs text-[var(--color-text-3)]">
             {t('provider.model.totalCount', undefined, { count })}
           </span>
         </div>
@@ -90,10 +88,7 @@ const OpspilotProviderModelSection: React.FC<OpspilotProviderModelSectionProps> 
       ) : (
         <div className="relative flex-1 overflow-auto backdrop-blur-[2px]" style={{ background: style.tableBg }}>
           <div className="min-w-160">
-            <div
-              className="grid grid-cols-[1.2fr_1.4fr_1fr_88px_100px] border-b px-4 py-3 text-xs font-medium"
-              style={{ borderColor: 'var(--color-border-2)', color: 'var(--color-text-3)' }}
-            >
+            <div className="grid grid-cols-[1.2fr_1.4fr_1fr_88px_100px] border-b border-[var(--color-border-2)] px-4 py-3 text-xs font-medium text-[var(--color-text-3)]">
               <span>{t('provider.model.modelName')}</span>
               <span>{t('provider.model.modelId')}</span>
               <span>{t('provider.model.availableGroups')}</span>
@@ -104,8 +99,7 @@ const OpspilotProviderModelSection: React.FC<OpspilotProviderModelSectionProps> 
             {models.map((model) => (
               <div
                 key={`${type}-${model.id}`}
-                className="grid grid-cols-[1.2fr_1.4fr_1fr_88px_100px] items-center border-b px-4 py-3 text-sm"
-                style={{ borderColor: 'var(--color-border-2)', color: 'var(--color-text-2)' }}
+                className="grid grid-cols-[1.2fr_1.4fr_1fr_88px_100px] items-center border-b border-[var(--color-border-2)] px-4 py-3 text-sm text-[var(--color-text-2)]"
               >
                 <span className="truncate pr-3">{model.name || '--'}</span>
                 <span className="truncate pr-3">{getModelIdentifier(model, type) || '--'}</span>

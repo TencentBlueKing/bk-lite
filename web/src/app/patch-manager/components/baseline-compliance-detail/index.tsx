@@ -3,8 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
-  Dropdown,
-  Empty,
   Input,
   message,
   Pagination,
@@ -21,7 +19,9 @@ import { DownOutlined, ExportOutlined, ReloadOutlined } from '@ant-design/icons'
 
 import OperateDrawer from '@/components/operate-drawer';
 import CustomTable from '@/components/custom-table';
+import CompactEmptyState from '@/components/compact-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import FilterToolbar from '@/components/filter-toolbar';
 import PermissionWrapper from '@/components/permission';
 import ComplianceTag from '@/app/patch-manager/components/compliance-tag';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
@@ -573,8 +573,7 @@ export default function BaselineComplianceDetail({
                     </button>
                   );
                 }) : (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  <CompactEmptyState
                     description={objectsLoading
                       ? t('patchManager.baseline.complianceDetail.loading')
                       : normalizedObjectSearch
@@ -609,7 +608,12 @@ export default function BaselineComplianceDetail({
                   )}
                   {perspective === 'patch' && selectedPatch && <SeverityTag severity={selectedPatch.severity} />}
                 </div>
-                <div className={styles.toolbar}>
+                <FilterToolbar
+                  align="start"
+                  spacing="flush"
+                  className={styles.toolbar}
+                  contentClassName="flex w-full flex-wrap items-center gap-2"
+                >
                   <Input.Search
                     aria-label={perspective === 'host'
                       ? t('patchManager.baseline.complianceDetail.detailSearch')
@@ -637,26 +641,7 @@ export default function BaselineComplianceDetail({
                       setDetailPage(1);
                     }}
                   />
-                  <div className={styles.batchActions}>
-                    <Dropdown
-                      disabled={!selectedDetailRows.length || exporting}
-                      menu={{
-                        items: [{
-                          key: 'export-selected',
-                          icon: <ExportOutlined />,
-                          label: t('patchManager.risk.exportSelected'),
-                          onClick: () => void exportSelectedDetails(),
-                        }],
-                      }}
-                    >
-                      <Button type="primary" loading={exporting}>
-                        {t('patchManager.risk.batchActions')}
-                        {selectedDetailRows.length ? `(${selectedDetailRows.length})` : ''}
-                        {' '}<DownOutlined />
-                      </Button>
-                    </Dropdown>
-                  </div>
-                </div>
+                </FilterToolbar>
               </div>
               <div className={styles.tableRegion}>
                 <CustomTable<ComplianceDetailRow>
@@ -672,7 +657,7 @@ export default function BaselineComplianceDetail({
                   }}
                   scroll={{ x: perspective === 'host' ? 1330 : 965, y: 'calc(100vh - 430px)' }}
                   pagination={false}
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('patchManager.baseline.complianceDetail.noDetails')} /> }}
+                  locale={{ emptyText: <CompactEmptyState description={t('patchManager.baseline.complianceDetail.noDetails')} /> }}
                 />
               </div>
               <div className={styles.detailPagination}>
@@ -691,7 +676,7 @@ export default function BaselineComplianceDetail({
             </>
             ) : (
               <Spin spinning={objectsLoading || detailsLoading} style={{ margin: 'auto' }}>
-                <Empty description={t('patchManager.baseline.complianceDetail.noSelection')} />
+                <CompactEmptyState description={t('patchManager.baseline.complianceDetail.noSelection')} />
               </Spin>
             )}
           </section>

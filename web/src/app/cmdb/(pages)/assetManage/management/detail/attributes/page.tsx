@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Input, Button, Modal, message, Space, Form, Spin } from 'antd';
+import { Button, Modal, message, Space, Form, Spin, Input } from 'antd';
 import {
   EditOutlined,
   ArrowUpOutlined,
@@ -13,6 +13,7 @@ import PublicEnumLibraryModal, { PublicEnumLibraryModalRef } from '../../list/pu
 import { Tag } from 'antd';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
+import SearchActionBar from '@/components/search-action-bar';
 import type { ColumnItem } from '@/types';
 import { ATTR_TYPE_LIST } from '@/app/cmdb/constants/asset';
 import { useTranslation } from '@/utils/i18n';
@@ -530,30 +531,34 @@ const attrRef = useRef<any>(null);
 
   return (
     <div className="h-full flex flex-col">
-      <div className="nav-box flex justify-between mb-[16px]">
-        <div className="flex gap-2">
-          <Input.Search
-            placeholder={t('common.search')}
-            value={searchText}
-            allowClear
-            className="w-[240px]"
-            onChange={onSearchTxtChange}
-            onSearch={onSearch}
-            onClear={onTxtClear}
-          />
+      <SearchActionBar
+        className="mb-4"
+        spacing="flush"
+        searchClassName="!w-[240px]"
+        searchProps={{
+          placeholder: t('common.search'),
+          value: searchText,
+          allowClear: true,
+          onChange: onSearchTxtChange,
+          onSearch,
+          onClear: onTxtClear,
+        }}
+        actions={(
           <PermissionWrapper
             requiredPermissions={['Edit Model']}
             instPermissions={modelPermission}
           >
-            <Button className="mr-2" onClick={() => showGroupModal()}>
-              {t('Model.addAttrGroup')}
-            </Button>
-            <Button type="primary" onClick={() => showAttrModal('add')}>
-              {t('Model.addAttribute')}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => showGroupModal()}>
+                {t('Model.addAttrGroup')}
+              </Button>
+              <Button type="primary" onClick={() => showAttrModal('add')}>
+                {t('Model.addAttribute')}
+              </Button>
+            </div>
           </PermissionWrapper>
-        </div>
-      </div>
+        )}
+      />
 
       <div className="flex-1 overflow-y-auto">
         <Spin spinning={loading && groups.length === 0} className="mt-30">

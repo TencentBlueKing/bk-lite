@@ -30,7 +30,7 @@ import {
 import { useInstanceApi } from '@/app/cmdb/api';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { useUserInfoContext } from '@/context/userInfo';
-import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
+import TagCapsuleGroup from '@/components/tag-capsule-group';
 
 const { Panel } = Collapse;
 const InfoList: React.FC<AssetDataFieldProps> = ({

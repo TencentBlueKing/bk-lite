@@ -16,6 +16,7 @@ import {
   Tag,
   Tooltip,
 } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import type { MenuProps } from 'antd';
 import {
   DownOutlined,
@@ -1204,10 +1205,7 @@ const AssetDataContent = () => {
               />
             ) : (
               <div className="flex justify-center items-center h-full">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={t('common.noData')}
-                />
+                <CompactEmptyState description={t('common.noData')} />
               </div>
             )}
           </div>

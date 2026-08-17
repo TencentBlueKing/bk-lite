@@ -29,7 +29,8 @@ import { AlertSourceIntegrationGuide, K8sMeta, SourceItem, TeamSecretItem } from
 import { useAlarmApi } from '@/app/alarm/api/alarms';
 import { EventItem } from '@/app/alarm/types/alarms';
 import { useSourceApi } from '@/app/alarm/api/integration';
-import { Alert, Button, Empty, Descriptions, message, Select, Tabs, DatePicker, Spin } from 'antd';
+import { Alert, Button, Descriptions, message, Select, Tabs, DatePicker, Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 
 const IntegrationDetail: FC = () => {
   const { t } = useTranslation();
@@ -586,7 +587,7 @@ const IntegrationDetail: FC = () => {
                   </div>
                 </>
               ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('common.noData')} />
+                <CompactEmptyState description={t('common.noData')} />
               )}
             </div>
           </div>
@@ -848,7 +849,7 @@ const IntegrationDetail: FC = () => {
   );
 
   if (!sourceItemId) {
-    return <Empty description={t('common.noData')} />;
+    return <CompactEmptyState description={t('common.noData')} />;
   }
 
   const renderEventFilters = () => (
@@ -884,7 +885,7 @@ const IntegrationDetail: FC = () => {
       <Spin spinning={loading}>
         {!source ? (
           <div className="mt-[24vh]">
-            {!loading && <Empty description={t('common.noData')} />}
+            {!loading && <CompactEmptyState description={t('common.noData')} />}
           </div>
         ) : (
           <>

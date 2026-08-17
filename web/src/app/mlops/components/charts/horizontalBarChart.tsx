@@ -9,7 +9,7 @@ import {
   CartesianGrid,
   LabelList,
 } from 'recharts';
-import { Empty } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import chartLineStyle from './index.module.scss';
 
 interface DataItem {
@@ -181,7 +181,7 @@ const HorizontalBarChart: React.FC<HorizontalBarChartProps> = ({
         </ResponsiveContainer>
       ) : (
         <div className={`${chartLineStyle.chart} ${chartLineStyle.noData}`}>
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <ChartEmptyState compact />
         </div>
       )}
     </div>
