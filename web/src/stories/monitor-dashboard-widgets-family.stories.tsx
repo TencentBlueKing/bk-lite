@@ -44,6 +44,7 @@ import {
   type TrendChartPanelStyles,
 } from '@/app/monitor/components/monitor-dashboard-widgets';
 import type { ChartData, MetricItem } from '@/app/monitor/components/monitor-dashboard-widgets/types';
+import { useThemeMode } from '@/theme';
 
 const statStyles: StatCardStyles = {
   statCard:
@@ -427,14 +428,14 @@ const dashboardGuideItems = [
 
 const selectorOptions = [
   {
-    label: 'mysql-prod-01 / 10.10.1.21',
+    label: 'mysql-prod-01 / mysql-prod-01.example.test',
     value: 'mysql-prod-01',
-    searchTokens: ['mysql-prod-01', 'mysql', '10.10.1.21', 'production'],
+    searchTokens: ['mysql-prod-01', 'mysql', 'mysql-prod-01.example.test', 'production'],
   },
   {
-    label: 'mysql-report-02 / 10.10.1.34',
+    label: 'mysql-report-02 / mysql-report-02.example.test',
     value: 'mysql-report-02',
-    searchTokens: ['mysql-report-02', 'mysql', '10.10.1.34', 'reporting'],
+    searchTokens: ['mysql-report-02', 'mysql', 'mysql-report-02.example.test', 'reporting'],
   },
   {
     label: 'redis-cache-01 / cache-shanghai-a',
@@ -592,7 +593,7 @@ const FamilyOverview = () => {
       <DashboardInstanceCard
         styles={instanceStyles}
         instanceName="mysql-prod-01"
-        metaItems={['MySQL', '10.0.0.21', 'Production']}
+        metaItems={['MySQL', 'mysql-prod.example.test', 'Production']}
         icon={<DatabaseOutlined />}
         selectorOptions={[
           { label: 'mysql-prod-01', value: 'mysql-prod-01' },
@@ -845,7 +846,7 @@ const FamilyOverview = () => {
         <div className="grid gap-4 xl:grid-cols-2">
           <DashboardInstanceCard
             instanceName="mysql-report-02"
-            metaItems={['MySQL 8.0.36', '10.0.0.22', '报表库']}
+            metaItems={['MySQL 8.0.36', 'mysql-report.example.test', '报表库']}
             icon={<DatabaseOutlined />}
             selectorOptions={[
               { label: 'db-prod-01', value: 'db-prod-01' },
@@ -860,7 +861,7 @@ const FamilyOverview = () => {
 
           <DashboardInstanceCard
             instanceName="mysql-primary-01"
-            metaItems={['MySQL 8.0.36', '10.0.0.21', '主库']}
+            metaItems={['MySQL 8.0.36', 'mysql-primary.example.test', '主库']}
             icon={<DatabaseOutlined />}
             selectorOptions={[
               { label: 'db-prod-01', value: 'db-prod-01' },
@@ -1148,7 +1149,7 @@ const FamilyOverview = () => {
           guide={rankingGuideItems}
           styles={horizontalBarStyles}
           items={[
-            { label: 'db-prod-01', value: 82, display: '82%', color: '#2563eb', max: 100 },
+            { label: '/var/lib/kubelet/pods/checkout-production-7f8b9c6d5/volumes/data', value: 82, display: '82%', color: '#2563eb', max: 100 },
             { label: 'db-prod-02', value: 68, display: '68%', color: '#14b8a6', max: 100 },
             { label: 'db-report-01', value: 54, display: '54%', color: '#f59e0b', max: 100 },
           ]}
@@ -1161,7 +1162,7 @@ const FamilyOverview = () => {
           styles={horizontalBarStyles}
           items={[
             {
-              label: 'node-a',
+              label: 'checkout-production-payment-reconciliation-worker-container',
               value: 0,
               display: '182 MiB/s',
               color: '#2563eb',
@@ -1186,12 +1187,25 @@ const FamilyOverview = () => {
           styles={horizontalBarStyles}
           tiered
           items={[
-            { label: 'payments/api-7f6c9', value: 910, display: '910m', color: '#ef4444', max: 1000, rank: 1 },
+            { label: 'payments/checkout-production-api-7f6c9d877b-x9k2m', value: 910, display: '910m', color: '#ef4444', max: 1000, rank: 1 },
             { label: 'checkout/worker-5d4aa', value: 740, display: '740m', color: '#f59e0b', max: 1000, rank: 2 },
             { label: 'search/indexer-66fb2', value: 620, display: '620m', color: '#2563eb', max: 1000, rank: 3 },
             { label: 'report/scheduler-21aaf', value: 410, display: '410m', color: '#14b8a6', max: 1000, rank: 4 },
           ]}
         />
+
+        <div className="w-full max-w-[360px]">
+          <HorizontalBarPanel
+            title="窄容器数据库排行"
+            subtitle="用于验证数据库名不会挤压进度条和数值列"
+            guide={rankingGuideItems}
+            styles={horizontalBarStyles}
+            items={[
+              { label: 'customer_order_archive_production_database_2026', value: 76, display: '76%', color: '#2563eb', max: 100 },
+              { label: 'billing', value: 51, display: '51%', color: '#14b8a6', max: 100 },
+            ]}
+          />
+        </div>
 
         <StackedBarPanel
           title="容量配比"
@@ -1319,9 +1333,94 @@ const FamilyOverview = () => {
   );
 };
 
+const HorizontalBarOverflowContract = () => {
+  const { mode, setMode } = useThemeMode();
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-semibold text-[var(--color-text-1)]">长标签溢出契约</div>
+        <div className="inline-flex rounded-lg bg-[var(--color-fill-1)] p-1">
+          <button
+            type="button"
+            aria-pressed={mode === 'light'}
+            className="rounded-md px-3 py-1 text-sm text-[var(--color-text-1)]"
+            onClick={() => setMode('light')}
+          >
+            亮色
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === 'dark'}
+            className="rounded-md px-3 py-1 text-sm text-[var(--color-text-1)]"
+            onClick={() => setMode('dark')}
+          >
+            暗色
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <HorizontalBarPanel
+          title="挂载路径 Top"
+          styles={horizontalBarStyles}
+          items={[
+            { label: '/var/lib/kubelet/pods/checkout-production-7f8b9c6d5/volumes/data', value: 82, display: '82%', color: '#2563eb', max: 100 },
+            { label: '/data', value: 54, display: '54%', color: '#14b8a6', max: 100 },
+          ]}
+        />
+        <HorizontalBarPanel
+          title="容器网络趋势"
+          styles={horizontalBarStyles}
+          items={[
+            {
+              label: 'checkout-production-payment-reconciliation-worker-container',
+              value: 0,
+              display: '182 MiB/s',
+              color: '#2563eb',
+              max: 1,
+              trend: makeRankingTrend([110, 124, 132, 141, 154, 149, 160, 171, 176, 182]),
+            },
+          ]}
+        />
+        <HorizontalBarPanel
+          title="Pod CPU 排行"
+          styles={horizontalBarStyles}
+          tiered
+          items={[
+            { label: 'payments/checkout-production-api-7f6c9d877b-x9k2m', value: 910, display: '910m', color: '#ef4444', max: 1000, rank: 1 },
+            { label: 'checkout/worker-5d4aa', value: 740, display: '740m', color: '#f59e0b', max: 1000, rank: 2 },
+          ]}
+        />
+        <HorizontalBarPanel
+          title="数据库连接使用率"
+          styles={horizontalBarStyles}
+          items={[
+            { label: 'customer_order_archive_production_database_2026', value: 76, display: '76%', color: '#2563eb', max: 100 },
+            { label: 'billing', value: 51, display: '51%', color: '#14b8a6', max: 100 },
+          ]}
+        />
+        <HorizontalBarPanel
+          title="空态"
+          styles={horizontalBarStyles}
+          items={[]}
+          isEmpty
+          emptyDescription="No ranking data"
+        />
+      </div>
+    </div>
+  );
+};
+
 const meta = {
   title: 'Business/Monitor/Widgets/FamilyOverview',
   component: FamilyOverview,
+  parameters: {
+    nextjs: {
+      appDirectory: true,
+      navigation: { pathname: '/ops-analysis/render/execution/1' },
+    },
+  },
   decorators: [
     (Story) => (
       <div style={{ maxWidth: 1180, padding: 24, background: 'var(--color-bg-2)' }}>
@@ -1336,3 +1435,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = {};
+
+export const HorizontalBarOverflow: Story = {
+  render: () => <HorizontalBarOverflowContract />,
+};

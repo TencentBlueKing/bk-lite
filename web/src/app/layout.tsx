@@ -167,8 +167,8 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
-  const isResponsiveAppRoute = pathname?.startsWith('/apm');
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);
+  const isResponsiveAppRoute = pathname?.startsWith('/apm') || isDashboardRoute;
   const isDashboardShareRoute = pathname?.startsWith('/ops-analysis/share/');
   const isDashboardRenderRoute = pathname?.startsWith(
     '/ops-analysis/render/execution/',
