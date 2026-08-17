@@ -10,16 +10,16 @@ NATS 统一模块 - 简洁高效的 NATS 集成
 2. Sanic 集成：用于 Web 服务
 """
 
+import asyncio
+import json
 import os
 import ssl
-import json
-from typing import Optional, List, Callable, Dict, Any, Awaitable
 from dataclasses import dataclass, field
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
 from nats.aio.client import Client as NATS
 from sanic import Sanic
 from sanic.log import logger
-import asyncio
-
 
 # ==================== 配置类 ====================
 
@@ -81,7 +81,7 @@ class NATSConfig:
                 cleaned_servers.append(url)
 
         logger.info(
-            f"Parsed NATS servers: {cleaned_servers}, user: {user}, has_password: {bool(password)}"
+            f"Parsed NATS servers: {cleaned_servers}, authentication_configured: {bool(user or password)}"
         )
 
         return cls(
@@ -184,7 +184,10 @@ class NATSClient:
                 f"[NATSClient] Connection timeout: {self.config.connect_timeout}s"
             )
             logger.info(f"[NATSClient] TLS enabled: {self.config.tls_enabled}")
-            logger.info(f"[NATSClient] User: {self.config.user}")
+            logger.info(
+                "[NATSClient] Authentication configured: "
+                f"{bool(self.config.user or self.config.password)}"
+            )
 
             # 尝试DNS解析检查
             try:
@@ -196,10 +199,8 @@ class NATSClient:
                         host_part = server.split("://")[1]
                         if ":" in host_part:
                             host = host_part.split(":")[0]
-                            port = host_part.split(":")[1]
                         else:
                             host = host_part
-                            port = "4222"
 
                         logger.info(f"[NATSClient] Resolving DNS for {host}...")
                         ip = socket.gethostbyname(host)
@@ -239,20 +240,20 @@ class NATSClient:
                     f"[NATSClient] Connection status - is_connected: {self.nc.is_connected}, is_closed: {self.nc.is_closed}"
                 )
             else:
-                logger.error(f"[NATSClient] Connection failed - not connected!")
+                logger.error("[NATSClient] Connection failed - not connected!")
                 raise ConnectionError("NATS connection failed")
 
         except asyncio.TimeoutError as te:
             logger.error(f"[NATSClient] Connection timeout: {te}")
-            logger.error(f"[NATSClient] This usually means:")
+            logger.error("[NATSClient] This usually means:")
             logger.error(
-                f"[NATSClient]   1. NATS server is not reachable (network issue)"
+                "[NATSClient]   1. NATS server is not reachable (network issue)"
             )
             logger.error(
                 f"[NATSClient]   2. NATS server is not running on {self.config.servers}"
             )
-            logger.error(f"[NATSClient]   3. Firewall is blocking the connection")
-            logger.error(f"[NATSClient]   4. DNS resolution failed")
+            logger.error("[NATSClient]   3. Firewall is blocking the connection")
+            logger.error("[NATSClient]   4. DNS resolution failed")
             self.nc = None
             raise ConnectionError(f"NATS connection timeout to {self.config.servers}")
         except Exception as e:

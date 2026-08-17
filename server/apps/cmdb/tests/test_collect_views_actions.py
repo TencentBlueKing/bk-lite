@@ -320,7 +320,7 @@ def test_task_overview_counts(superuser, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_model_instances_filters_empty_instances(superuser, monkeypatch):
+def test_model_instances_skips_legacy_targets_without_inst_uuid(superuser, monkeypatch):
     _bypass_permission(monkeypatch)
     CollectModels.objects.create(
         name="mi1",
@@ -342,7 +342,7 @@ def test_model_instances_filters_empty_instances(superuser, monkeypatch):
     request = _req("get", superuser, query={"task_type": CollectPluginTypes.HOST}, current_team="1")
     resp = CollectModelViewSet.as_view({"get": "model_instances"})(request)
     body = _body(resp)["data"]
-    assert body == [{"id": "h1", "inst_name": "10.0.0.1"}]
+    assert body == []
 
 
 @pytest.mark.django_db
