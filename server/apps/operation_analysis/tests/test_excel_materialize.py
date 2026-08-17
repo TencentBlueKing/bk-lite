@@ -429,3 +429,126 @@ def test_resubmit_task_loads_script_from_database(monkeypatch):
     assert captured["datasource_id"] == ds.id
     assert captured["transform_config"] == ds.transform_config
     assert captured["schedule"] is True
+
+
+@pytest.mark.django_db
+def test_abandon_excel_materialization_deletes_slots_and_files(django_capture_on_commit_callbacks):
+    from apps.operation_analysis.services.excel_materialize import abandon_excel_materialization
+
+    ds = _excel_datasource(query_config={"sheet_name": "Sheet1", "imported_items": [{"a": 1}]})
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    storage = slot.source_file.storage
+    source_name = slot.source_file.name
+    ds_id = ds.id
+
+    with django_capture_on_commit_callbacks(execute=True):
+        result = abandon_excel_materialization(ds)
+
+    ds.refresh_from_db()
+    assert result["deleted_slots"] >= 1
+    assert ds.excel_success_slot_id is None
+    assert ds.excel_candidate_slot_id is None
+    assert ds.excel_materialization_generation == 0
+    assert "imported_items" not in (ds.query_config or {})
+    assert "sheet_name" not in (ds.query_config or {})
+    assert not ExcelMaterializationSlot.objects.filter(datasource_id=ds_id).exists()
+    assert storage.exists(source_name) is False
+    assert abandon_excel_materialization(ds)["deleted_slots"] == 0
+
+
+@pytest.mark.django_db
+def test_deleting_datasource_deletes_slot_files(django_capture_on_commit_callbacks):
+    ds = _excel_datasource()
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    storage = slot.source_file.storage
+    source_name = slot.source_file.name
+
+    with django_capture_on_commit_callbacks(execute=True):
+        ds.delete()
+
+    assert storage.exists(source_name) is False
+
+
+@pytest.mark.django_db
+def test_materialize_refuses_after_source_type_leaves_excel():
+    ds = _excel_datasource()
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(source_type=DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL)
+
+    result = ExcelMaterializer().materialize_candidate(slot.id)
+
+    assert result["ok"] is False
+    assert result["code"] == "not_excel"
+    assert ExcelMaterializationSlot.objects.filter(pk=slot.id).exists()
+
+
+@pytest.mark.django_db
+def test_sweep_abandons_slots_left_on_non_excel_datasource(django_capture_on_commit_callbacks):
+    from apps.operation_analysis.services.excel_materialize import sweep_abandoned_excel_materializations
+
+    ds = _excel_datasource()
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    storage = slot.source_file.storage
+    source_name = slot.source_file.name
+    DataSourceAPIModel.objects.filter(pk=ds.id).update(source_type=DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        stats = sweep_abandoned_excel_materializations()
+
+    ds.refresh_from_db()
+    assert stats["cleaned"] == 1
+    assert ds.excel_candidate_slot_id is None
+    assert not ExcelMaterializationSlot.objects.filter(datasource_id=ds.id).exists()
+    assert storage.exists(source_name) is False
+
+
+@pytest.mark.django_db
+def test_serializer_switch_from_excel_to_postgresql_abandons_slots(authenticated_user, django_capture_on_commit_callbacks):
+    from rest_framework.test import APIRequestFactory, force_authenticate
+
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    ds = _excel_datasource(name="excel-1")
+    slot = submit_excel_candidate(ds, uploaded_file=_uploaded([["a", 1]]), schedule=False)
+    storage = slot.source_file.storage
+    source_name = slot.source_file.name
+
+    request = APIRequestFactory().put("/operation_analysis/api/data_source/1/", data={}, format="json")
+    request.COOKIES["current_team"] = "1"
+    request.COOKIES["include_children"] = "0"
+    request.user = authenticated_user
+    force_authenticate(request, user=authenticated_user)
+
+    serializer = DataSourceAPIModelSerializer(
+        ds,
+        context={"request": request},
+        data={
+            "name": "excel-1",
+            "rest_api": "",
+            "source_type": "postgresql",
+            "connection": None,
+            "connection_config": {
+                "host": "127.0.0.1",
+                "port": 5432,
+                "database": "bklite",
+                "username": "bklite",
+                "password": "secret",
+            },
+            "query_config": {"sql": "SELECT 1", "table": ""},
+            "params": [],
+            "chart_type": ["table"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+        },
+    )
+    assert serializer.is_valid(), serializer.errors
+    with django_capture_on_commit_callbacks(execute=True):
+        updated = serializer.save()
+
+    assert updated.source_type == "postgresql"
+    assert updated.excel_candidate_slot_id is None
+    assert updated.excel_success_slot_id is None
+    assert not ExcelMaterializationSlot.objects.filter(datasource_id=updated.id).exists()
+    assert storage.exists(source_name) is False
