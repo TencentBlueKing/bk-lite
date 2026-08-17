@@ -95,6 +95,7 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
         <Button
           type="link"
           size="small"
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() => onVariableSelect?.(record.variable)}
         >
           {t('monitor.events.useVariable')}
