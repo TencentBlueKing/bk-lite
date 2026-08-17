@@ -1,8 +1,14 @@
 from pathlib import Path
 
 import pytest
-from core.collection.application import CollectionApplicationSettings, concurrency_limit_from_env
-from core.collection.constants import DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
+from core.collection.application import (
+    CollectionApplicationSettings,
+    concurrency_limit_from_env,
+)
+from core.collection.constants import (
+    DEFAULT_MAX_ACTIVE_TARGETS,
+    DEFAULT_TARGET_TASK_WINDOW,
+)
 from core.collection.contracts import TargetExecutorSettings
 from core.collection.executor import TargetWorkerBudget
 
@@ -16,13 +22,22 @@ def test_default_concurrency_matches_production_baseline():
 
 def test_concurrency_limit_from_env_uses_default_and_zero_unlimited(monkeypatch):
     monkeypatch.delenv("MAX_ACTIVE_TARGETS", raising=False)
-    assert concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS) == DEFAULT_MAX_ACTIVE_TARGETS
+    assert (
+        concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
+        == DEFAULT_MAX_ACTIVE_TARGETS
+    )
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "3500")
-    assert concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS) == 3500
+    assert (
+        concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
+        == 3500
+    )
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "0")
-    assert concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS) == 0
+    assert (
+        concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
+        == 0
+    )
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "-1")
     with pytest.raises(ValueError, match="MAX_ACTIVE_TARGETS"):
@@ -41,6 +56,11 @@ def test_application_settings_from_env_reads_concurrency(monkeypatch):
     settings = CollectionApplicationSettings.from_env()
     assert settings.max_active_targets == DEFAULT_MAX_ACTIVE_TARGETS
     assert settings.target_task_window == DEFAULT_TARGET_TASK_WINDOW
+    monkeypatch.delenv("CAPACITY_LOG_INTERVAL", raising=False)
+    assert CollectionApplicationSettings.from_env().capacity_log_interval_seconds == 180
+
+    monkeypatch.setenv("CAPACITY_LOG_INTERVAL", "45")
+    assert CollectionApplicationSettings.from_env().capacity_log_interval_seconds == 45
 
 
 def test_application_settings_split_timeouts_and_keep_legacy_fallback(monkeypatch):
@@ -50,6 +70,9 @@ def test_application_settings_split_timeouts_and_keep_legacy_fallback(monkeypatc
     monkeypatch.delenv("PROBE_TIMEOUT", raising=False)
     monkeypatch.delenv("COLLECTION_TIMEOUT", raising=False)
     monkeypatch.setenv("PUBLISH_TIMEOUT", "31")
+    monkeypatch.delenv("PUBLISH_DELIVERY_TIMEOUT", raising=False)
+    monkeypatch.setenv("PUBLISH_QUEUE_TIMEOUT", "61")
+    monkeypatch.setenv("PUBLISH_TOTAL_TIMEOUT", "121")
 
     legacy = CollectionApplicationSettings.from_env()
 
@@ -57,6 +80,8 @@ def test_application_settings_split_timeouts_and_keep_legacy_fallback(monkeypatc
     assert legacy.probe_timeout_seconds == 9
     assert legacy.plugin_timeout_seconds == 70
     assert legacy.publish_timeout_seconds == 31
+    assert legacy.publish_queue_timeout_seconds == 61
+    assert legacy.publish_total_timeout_seconds == 121
 
     monkeypatch.setenv("PREFLIGHT_TIMEOUT", "15")
     monkeypatch.setenv("PROBE_TIMEOUT", "16")
@@ -71,14 +96,22 @@ def test_application_settings_split_timeouts_and_keep_legacy_fallback(monkeypatc
 
 def test_env_example_uses_split_timeout_contract():
     example = (Path(__file__).parents[1] / ".env.example").read_text(encoding="utf-8")
-    keys = {line.split("=", 1)[0] for line in example.splitlines() if "=" in line and not line.lstrip().startswith("#")}
+    keys = {
+        line.split("=", 1)[0]
+        for line in example.splitlines()
+        if "=" in line and not line.lstrip().startswith("#")
+    }
 
     assert "PREFLIGHT_TIMEOUT=15" in example
     assert "PROBE_TIMEOUT=15" in example
     assert "COLLECTION_TIMEOUT=60" in example
-    assert "PUBLISH_TIMEOUT=30" in example
+    assert "PUBLISH_QUEUE_TIMEOUT=60" in example
+    assert "PUBLISH_DELIVERY_TIMEOUT=30" in example
+    assert "PUBLISH_TOTAL_TIMEOUT=120" in example
+    assert "CAPACITY_LOG_INTERVAL=180" in example
     assert "CONNECT_TIMEOUT" not in keys
     assert "PLUGIN_TIMEOUT" not in keys
+    assert "PUBLISH_TIMEOUT" not in keys
 
 
 def test_target_executor_settings_allow_zero_unlimited():

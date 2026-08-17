@@ -7,10 +7,18 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Mapping, Protocol
 
-from core.collection.constants import DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
-from core.collection.enums import AccessProbeStatus, CollectOutcomeStatus, PreflightStatus
+from core.collection.constants import (
+    DEFAULT_MAX_ACTIVE_TARGETS,
+    DEFAULT_TARGET_TASK_WINDOW,
+)
+from core.collection.enums import (
+    AccessProbeStatus,
+    CollectOutcomeStatus,
+    PreflightStatus,
+)
 from core.collection.runtime import CollectionRequest, RunLease
 
 # 兼容：历史调用方从 contracts 导入枚举
@@ -25,7 +33,9 @@ __all__ = [
     "PreflightProbe",
     "PreflightResult",
     "PreflightStatus",
+    "PublishOutcome",
     "PublishReceipt",
+    "PublishStatus",
     "ResultPublisher",
     "ResultSink",
     "RunSummary",
@@ -94,6 +104,26 @@ class TargetCollectionResult:
     error_code: str = ""
     value: Any = None
     credential_failures: tuple[CredentialFailureResult, ...] = ()
+    publish_timestamp_ms: int = 0
+
+
+class PublishStatus(str, Enum):
+    CONFIRMED = "confirmed"
+    RETRYABLE_FAILED = "retryable_failed"
+    DELIVERY_UNKNOWN = "delivery_unknown"
+    EVENT_FAILED = "event_failed"
+    PERMANENT_FAILED = "permanent_failed"
+
+
+@dataclass(frozen=True)
+class PublishOutcome:
+    status: PublishStatus
+    attempts: int = 1
+    error_code: str = ""
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status == PublishStatus.CONFIRMED
 
 
 @dataclass(frozen=True)
@@ -107,6 +137,8 @@ class RunSummary:
     publish_succeeded: int = 0
     publish_failed: int = 0
     publish_unknown: int = 0
+    publish_event_failed: int = 0
+    publish_permanent_failed: int = 0
 
     @property
     def succeeded(self) -> int:
@@ -120,7 +152,14 @@ class RunSummary:
 
     @property
     def has_errors(self) -> bool:
-        return bool(self.collection_failed or self.unreachable or self.publish_failed or self.publish_unknown)
+        return bool(
+            self.collection_failed
+            or self.unreachable
+            or self.publish_failed
+            or self.publish_unknown
+            or self.publish_event_failed
+            or self.publish_permanent_failed
+        )
 
 
 @dataclass(frozen=True)
@@ -131,6 +170,8 @@ class TargetExecutorSettings:
     connect_timeout_seconds: float = 15.0
     plugin_timeout_seconds: float = 60.0
     publish_guard_seconds: float = 30.0
+    publish_queue_timeout_seconds: float = 60.0
+    publish_total_timeout_seconds: float = 120.0
     access_probe_enabled: bool = True
     # 0 = 不限制；默认 3 = 连续 protocol_no_response 最多尝试次数
     max_no_response_attempts: int = 3
@@ -147,6 +188,10 @@ class TargetExecutorSettings:
             raise ValueError("plugin_timeout_seconds must be greater than zero")
         if self.publish_guard_seconds <= 0:
             raise ValueError("publish_guard_seconds must be greater than zero")
+        if self.publish_queue_timeout_seconds <= 0:
+            raise ValueError("publish_queue_timeout_seconds must be greater than zero")
+        if self.publish_total_timeout_seconds <= 0:
+            raise ValueError("publish_total_timeout_seconds must be greater than zero")
         if self.max_no_response_attempts < 0:
             raise ValueError("max_no_response_attempts must be >= 0")
         if self.publish_max_attempts <= 0:
@@ -214,7 +259,7 @@ class ResultSink(Protocol):
     async def publish_batch(
         self,
         items,
-    ) -> Mapping[str, BaseException | None]:
+    ) -> Mapping[str, BaseException | PublishOutcome | None]:
         ...
 
 
@@ -222,7 +267,10 @@ class PublishReceipt(Protocol):
     def done(self) -> bool:
         ...
 
-    async def wait(self) -> None:
+    async def wait(self) -> PublishOutcome | None:
+        ...
+
+    def cancel_if_unattempted(self) -> bool:
         ...
 
 
@@ -235,5 +283,7 @@ def build_collection_result_id(
     attempt_id: str = "",
 ) -> str:
     """单次运行内稳定的目标结果幂等 ID。"""
-    identity = "\0".join((task_id, plugin_ref, target, str(fence), str(attempt_id or "")))
+    identity = "\0".join(
+        (task_id, plugin_ref, target, str(fence), str(attempt_id or ""))
+    )
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()

@@ -17,20 +17,30 @@ from core.collection.contracts import (
     PreflightProbe,
     PreflightResult,
     PreflightStatus,
+    PublishOutcome,
+    PublishStatus,
     ResultPublisher,
     RunSummary,
     TargetCollectionContext,
     TargetCollectionResult,
     TargetExecutorSettings,
 )
-from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
+from core.collection.credential_policy import (
+    CredentialPolicy,
+    InMemoryCredentialStateStore,
+)
 from core.collection.execution_plan import ExecutionPlan
 from core.collection.metrics import CollectionMetrics
-from core.collection.result_publisher import FuturePublishReceipt, ImmediateResultPublishQueue
+from core.collection.result_publisher import (
+    FuturePublishReceipt,
+    ImmediateResultPublishQueue,
+)
 from core.collection.runtime import CollectionRequest, RunLease
 from core.collection.scheduler import CollectionScheduler
 from core.infra.redis_client import is_credential_state_redis_error
 from core.logger import logger
+
+_TARGET_FAILURE_DETAIL_LOG_LIMIT = 20
 
 # 兼容旧 import：执行器专属符号仍由此导出；领域类型请优先 from core.collection.contracts
 __all__ = [
@@ -154,8 +164,14 @@ class TargetCollectionExecutor:
         # None = 无廉价 AccessProbe，CredentialAttempt 直接 collect
         self._access_probe = access_probe
         self._plugin = plugin
-        self._publisher = publisher if callable(getattr(publisher, "enqueue", None)) else ImmediateResultPublishQueue(publisher)
-        self._credential_policy = credential_policy or CredentialPolicy(store=InMemoryCredentialStateStore())
+        self._publisher = (
+            publisher
+            if callable(getattr(publisher, "enqueue", None))
+            else ImmediateResultPublishQueue(publisher)
+        )
+        self._credential_policy = credential_policy or CredentialPolicy(
+            store=InMemoryCredentialStateStore()
+        )
         self._settings = settings or TargetExecutorSettings()
         self._plan = plan or ExecutionPlan(
             preflight_enabled=self._settings.access_probe_enabled,
@@ -174,13 +190,21 @@ class TargetCollectionExecutor:
         elif self._settings.max_active_targets <= 0:
             self._target_semaphore = unlimited_target_gate()
         else:
-            self._target_semaphore = asyncio.Semaphore(self._settings.max_active_targets)
+            self._target_semaphore = asyncio.Semaphore(
+                self._settings.max_active_targets
+            )
         self._activity_tracker = activity_tracker or TargetActivityTracker()
-        self._worker_budget = worker_budget or TargetWorkerBudget(self._settings.target_task_window)
+        self._worker_budget = worker_budget or TargetWorkerBudget(
+            self._settings.target_task_window
+        )
         self._metrics = metrics or CollectionMetrics()
         self._scheduler = scheduler
 
-    async def execute(self, request: CollectionRequest, lease: RunLease) -> RunSummary:
+    # fmt: off
+    async def execute(  # noqa: C901
+        self, request: CollectionRequest, lease: RunLease
+    ) -> RunSummary:
+        # fmt: on
         targets = request.targets
         results: dict[int, TargetCollectionResult] = {}
         publish_statuses: dict[int, str] = {}
@@ -192,7 +216,12 @@ class TargetCollectionExecutor:
                 async with self._target_semaphore:
                     await self._activity_tracker.enter()
                     try:
-                        result = await self._execute_target(request, targets[index], lease)
+                        result = await self._execute_target(
+                            request,
+                            targets[index],
+                            lease,
+                            log_failure_detail=index < _TARGET_FAILURE_DETAIL_LOG_LIMIT,
+                        )
                     finally:
                         await self._activity_tracker.exit()
             except asyncio.CancelledError:
@@ -200,7 +229,8 @@ class TargetCollectionExecutor:
             except Exception as error:  # noqa: BLE001 - 单目标框架异常不得取消 Run
                 self._metrics.increment("target_execution_error_total")
                 logger.error(
-                    "event=target_execution_failed task_id=%s target=%s " "error_type=%s",
+                    "event=target_execution_failed task_id=%s target=%s "
+                    "error_type=%s",
                     request.task_id,
                     targets[index],
                     type(error).__name__,
@@ -211,25 +241,57 @@ class TargetCollectionExecutor:
                     attempts=0,
                     error_code="target_execution_error",
                 )
-            self._metrics.increment(f"execution_mode_{self._plan.execution_mode}_{result.status}_total")
-            self._metrics.increment(f"capacity_group_{self._plan.capacity_group}_{result.status}_total")
+            self._metrics.increment(
+                f"execution_mode_{self._plan.execution_mode}_{result.status}_total"
+            )
+            self._metrics.increment(
+                f"capacity_group_{self._plan.capacity_group}_{result.status}_total"
+            )
             return await self._enqueue_publish(index, request, result, lease)
 
         async def finish_publish(pending: _PendingPublish) -> tuple[int, str]:
             current = pending
             publish_status = "failed"
+            error_code = ""
+            attempts = 0
             for attempt in range(self._settings.publish_max_attempts):
+                attempts = attempt + 1
                 try:
                     async with asyncio.timeout_at(current.deadline):
-                        await current.receipt.wait()
+                        outcome = await current.receipt.wait()
                     self._metrics.observe(
                         "publish_duration_seconds",
                         asyncio.get_running_loop().time() - current.started_at,
                     )
-                    return current.index, "succeeded"
+                    if outcome is None or outcome.status == PublishStatus.CONFIRMED:
+                        return current.index, "succeeded"
+                    if outcome.status == PublishStatus.EVENT_FAILED:
+                        publish_status = "event_failed"
+                        error_code = outcome.error_code
+                        break
+                    if outcome.status == PublishStatus.PERMANENT_FAILED:
+                        publish_status = "permanent_failed"
+                        error_code = outcome.error_code
+                        break
+                    if outcome.status == PublishStatus.DELIVERY_UNKNOWN:
+                        publish_status = "unknown"
+                        error_code = outcome.error_code
+                        break
+                    error_code = outcome.error_code or "publish_retryable_failed"
                 except Exception as error:  # noqa: BLE001 - 单目标有限重试
-                    if isinstance(error, TimeoutError) and asyncio.get_running_loop().time() >= current.deadline:
+                    error_code = type(error).__name__
+                    if (
+                        isinstance(error, TimeoutError)
+                        and asyncio.get_running_loop().time() >= current.deadline
+                    ):
                         self._metrics.increment("publish_timeout_total")
+                        cancel_if_unattempted = getattr(
+                            current.receipt, "cancel_if_unattempted", None
+                        )
+                        if callable(cancel_if_unattempted) and cancel_if_unattempted():
+                            publish_status = "failed"
+                            error_code = "publish_total_timeout_before_delivery"
+                            break
                     self._metrics.observe(
                         "publish_duration_seconds",
                         asyncio.get_running_loop().time() - current.started_at,
@@ -238,24 +300,26 @@ class TargetCollectionExecutor:
                     if bool(getattr(error, "delivery_detected", True)):
                         publish_status = "unknown"
                         break
-                    if attempt + 1 < self._settings.publish_max_attempts:
-                        self._metrics.increment("result_publish_retry_total")
-                        current = await self._enqueue_publish(
-                            current.index,
-                            request,
-                            current.result,
-                            lease,
-                            started_at=current.started_at,
-                            deadline=current.deadline,
-                        )
-                        continue
-                    publish_status = "failed"
-                    break
+                if attempt + 1 < self._settings.publish_max_attempts:
+                    self._metrics.increment("result_publish_retry_total")
+                    current = await self._enqueue_publish(
+                        current.index,
+                        request,
+                        current.result,
+                        lease,
+                        started_at=current.started_at,
+                        deadline=current.deadline,
+                    )
+                    continue
+                publish_status = "failed"
+                break
             logger.warning(
-                "event=result_publish_%s task_id=%s target=%s",
-                publish_status,
+                "event=result_publish_terminal task_id=%s target=%s status=%s attempts=%s error_code=%s",
                 request.task_id,
                 current.result.target,
+                "confirmed" if publish_status == "succeeded" else publish_status,
+                attempts,
+                error_code or "-",
             )
             return current.index, publish_status
 
@@ -285,7 +349,11 @@ class TargetCollectionExecutor:
                     pending_publishes.append(pending)
 
             window = self._settings.target_task_window
-            desired_workers = max(1, len(targets)) if window <= 0 else (min(len(targets), window) if targets else 1)
+            desired_workers = (
+                max(1, len(targets))
+                if window <= 0
+                else (min(len(targets), window) if targets else 1)
+            )
             worker_count = await self._worker_budget.reserve(desired_workers)
             pending_publishes = []
             worker_tasks = [
@@ -311,17 +379,53 @@ class TargetCollectionExecutor:
         completed = tuple(results.values())
         for status in publish_statuses.values():
             self._metrics.increment(f"publish_{status}_total")
-        return RunSummary(
+            if status == "succeeded":
+                self._metrics.increment("publish_confirmed_total")
+            elif status == "unknown":
+                self._metrics.increment("publish_delivery_unknown_total")
+            elif status == "failed":
+                self._metrics.increment("publish_retryable_failed_total")
+        summary = RunSummary(
             total=len(targets),
-            collection_succeeded=sum(result.status == "success" for result in completed),
+            collection_succeeded=sum(
+                result.status == "success" for result in completed
+            ),
             collection_failed=sum(result.status == "failed" for result in completed),
             unreachable=sum(result.status == "unreachable" for result in completed),
             deferred=sum(result.status == "deferred" for result in completed),
             skipped=skipped,
-            publish_succeeded=sum(status == "succeeded" for status in publish_statuses.values()),
-            publish_failed=sum(status == "failed" for status in publish_statuses.values()),
-            publish_unknown=sum(status == "unknown" for status in publish_statuses.values()),
+            publish_succeeded=sum(
+                status == "succeeded" for status in publish_statuses.values()
+            ),
+            publish_failed=sum(
+                status == "failed" for status in publish_statuses.values()
+            ),
+            publish_unknown=sum(
+                status == "unknown" for status in publish_statuses.values()
+            ),
+            publish_event_failed=sum(
+                status == "event_failed" for status in publish_statuses.values()
+            ),
+            publish_permanent_failed=sum(
+                status == "permanent_failed" for status in publish_statuses.values()
+            ),
         )
+        logger.info(
+            "event=collection_run_summary task_id=%s total=%s succeeded=%s failed=%s "
+            "unreachable=%s deferred=%s publish_succeeded=%s publish_failed=%s "
+            "publish_unknown=%s target_failure_detail_limit=%s",
+            request.task_id,
+            summary.total,
+            summary.collection_succeeded,
+            summary.collection_failed,
+            summary.unreachable,
+            summary.deferred,
+            summary.publish_succeeded,
+            summary.publish_failed,
+            summary.publish_unknown,
+            _TARGET_FAILURE_DETAIL_LOG_LIMIT,
+        )
+        return summary
 
     async def _enqueue_publish(
         self,
@@ -334,17 +438,37 @@ class TargetCollectionExecutor:
         deadline: float | None = None,
     ) -> _PendingPublish:
         loop = asyncio.get_running_loop()
+        if result.publish_timestamp_ms <= 0:
+            result = replace(result, publish_timestamp_ms=int(time.time() * 1000))
         attempt_started_at = loop.time()
         started_at = attempt_started_at if started_at is None else started_at
-        deadline = started_at + self._plan.publish_timeout_seconds if deadline is None else deadline
+        deadline = (
+            started_at + self._settings.publish_total_timeout_seconds
+            if deadline is None
+            else deadline
+        )
+        queue_deadline = min(
+            deadline, attempt_started_at + self._settings.publish_queue_timeout_seconds
+        )
         try:
-            async with asyncio.timeout_at(deadline):
+            async with asyncio.timeout_at(queue_deadline):
                 receipt = await self._publisher.enqueue(request, result, lease)
         except Exception as error:  # noqa: BLE001 - 交由统一发布重试处理
             completion = loop.create_future()
-            completion.set_exception(error)
+            if isinstance(error, TimeoutError):
+                self._metrics.increment("publish_queue_timeout_total")
+                completion.set_result(
+                    PublishOutcome(
+                        status=PublishStatus.RETRYABLE_FAILED,
+                        error_code="publish_queue_timeout",
+                    )
+                )
+            else:
+                completion.set_exception(error)
             receipt = FuturePublishReceipt(completion)
-        self._metrics.observe("publish_enqueue_duration_seconds", loop.time() - attempt_started_at)
+        self._metrics.observe(
+            "publish_enqueue_duration_seconds", loop.time() - attempt_started_at
+        )
         return _PendingPublish(
             index=index,
             result=result,
@@ -358,18 +482,22 @@ class TargetCollectionExecutor:
         request: CollectionRequest,
         target: str,
         lease: RunLease,
+        *,
+        log_failure_detail: bool = True,
     ) -> TargetCollectionResult:
         preflight = await self._run_preflight(request, target)
         if preflight.status == PreflightStatus.UNREACHABLE:
             self._metrics.increment("target_unreachable_total")
             error_code = preflight.error_code or "target_unreachable"
-            logger.info(
-                "🚫 event=target_unreachable task_id=%s target=%s " "reason=%s detail=%s",
-                request.task_id,
-                target,
-                error_code,
-                preflight.detail or "-",
-            )
+            if log_failure_detail:
+                logger.info(
+                    "🚫 event=target_unreachable task_id=%s target=%s "
+                    "reason=%s detail=%s",
+                    request.task_id,
+                    target,
+                    error_code,
+                    preflight.detail or "-",
+                )
             return TargetCollectionResult(
                 target=target,
                 status="unreachable",
@@ -399,7 +527,9 @@ class TargetCollectionExecutor:
             owner_id=lease.owner_id,
             attempt_id=lease.attempt_id,
         )
-        return await self._run_credential_attempts(request, target, credentials, context)
+        return await self._run_credential_attempts(
+            request, target, credentials, context
+        )
 
     async def _load_eligible_credentials(self, request: CollectionRequest, target: str):
         try:
@@ -409,7 +539,8 @@ class TargetCollectionExecutor:
                 raise
             self._metrics.increment("credential_state_redis_error_total")
             logger.warning(
-                "event=credential_state_unavailable task_id=%s target=%s " "error_type=%s detail=%s",
+                "event=credential_state_unavailable task_id=%s target=%s "
+                "error_type=%s detail=%s",
                 request.task_id,
                 target,
                 type(exc).__name__,
@@ -430,7 +561,8 @@ class TargetCollectionExecutor:
                 raise
             self._metrics.increment("credential_state_redis_error_total")
             logger.warning(
-                "event=credential_success_persist_failed task_id=%s target=%s " "error_type=%s",
+                "event=credential_success_persist_failed task_id=%s target=%s "
+                "error_type=%s",
                 request.task_id,
                 target,
                 type(exc).__name__,
@@ -456,13 +588,16 @@ class TargetCollectionExecutor:
                 raise
             self._metrics.increment("credential_state_redis_error_total")
             logger.warning(
-                "event=credential_failure_persist_failed task_id=%s target=%s " "error_type=%s",
+                "event=credential_failure_persist_failed task_id=%s target=%s "
+                "error_type=%s",
                 request.task_id,
                 target,
                 type(exc).__name__,
             )
 
-    async def _run_preflight(self, request: CollectionRequest, target: str) -> PreflightResult:
+    async def _run_preflight(
+        self, request: CollectionRequest, target: str
+    ) -> PreflightResult:
         preflight_started = time.monotonic()
         try:
             async with asyncio.timeout(self._plan.preflight_timeout_seconds):
@@ -486,7 +621,9 @@ class TargetCollectionExecutor:
             self._metrics.observe("preflight_duration_seconds", duration)
             self._metrics.increment("preflight_total")
 
-    async def _no_credential_result(self, request: CollectionRequest, target: str) -> TargetCollectionResult:
+    async def _no_credential_result(
+        self, request: CollectionRequest, target: str
+    ) -> TargetCollectionResult:
         self._metrics.increment("credential_cooldown_total")
         next_retry_at = None
         try:
@@ -495,10 +632,17 @@ class TargetCollectionExecutor:
             if not is_credential_state_redis_error(exc):
                 raise
             self._metrics.increment("credential_state_redis_error_total")
-        has_matching_credential = bool(self._credential_policy.matching_credentials(request, target))
-        error_code = "no_valid_credential" if has_matching_credential else "no_matching_credential"
+        has_matching_credential = bool(
+            self._credential_policy.matching_credentials(request, target)
+        )
+        error_code = (
+            "no_valid_credential"
+            if has_matching_credential
+            else "no_matching_credential"
+        )
         logger.info(
-            "🚫 event=target_no_credential task_id=%s target=%s error_code=%s " "next_retry_at=%s",
+            "🚫 event=target_no_credential task_id=%s target=%s error_code=%s "
+            "next_retry_at=%s",
             request.task_id,
             target,
             error_code,
@@ -653,7 +797,9 @@ class TargetCollectionExecutor:
     ):
         credential_id = str(credential.get("credential_id") or "")
         if access.status == AccessProbeStatus.NOT_SUPPORTED:
-            return _AttemptDecision(action="collect", no_response_attempts=no_response_attempts)
+            return _AttemptDecision(
+                action="collect", no_response_attempts=no_response_attempts
+            )
         if access.status in {
             AccessProbeStatus.AUTH_FAILED,
             AccessProbeStatus.CAPABILITY_DENIED,
@@ -666,7 +812,8 @@ class TargetCollectionExecutor:
                 error_code=error_code,
             )
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s " "credential_id=%s probe_status=%s error_code=%s action=rotate",
+                "🚫 event=access_probe_failed task_id=%s target=%s "
+                "credential_id=%s probe_status=%s error_code=%s action=rotate",
                 request.task_id,
                 target,
                 credential_id or "-",
@@ -684,7 +831,9 @@ class TargetCollectionExecutor:
         if access.status == AccessProbeStatus.NO_RESPONSE:
             no_response_attempts += 1
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s " "credential_id=%s probe_status=%s error_code=%s " "no_response_attempts=%s",
+                "🚫 event=access_probe_failed task_id=%s target=%s "
+                "credential_id=%s probe_status=%s error_code=%s "
+                "no_response_attempts=%s",
                 request.task_id,
                 target,
                 credential_id or "-",
@@ -705,10 +854,13 @@ class TargetCollectionExecutor:
                     ),
                     no_response_attempts=no_response_attempts,
                 )
-            return _AttemptDecision(action="continue", no_response_attempts=no_response_attempts)
+            return _AttemptDecision(
+                action="continue", no_response_attempts=no_response_attempts
+            )
         if access.status == AccessProbeStatus.TARGET_UNREACHABLE:
             logger.info(
-                "🚫 event=target_unreachable task_id=%s target=%s " "credential_id=%s reason=%s",
+                "🚫 event=target_unreachable task_id=%s target=%s "
+                "credential_id=%s reason=%s",
                 request.task_id,
                 target,
                 credential_id or "-",
@@ -727,7 +879,8 @@ class TargetCollectionExecutor:
             )
         if access.status == AccessProbeStatus.RATE_LIMITED:
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s " "credential_id=%s probe_status=%s error_code=%s action=defer",
+                "🚫 event=access_probe_failed task_id=%s target=%s "
+                "credential_id=%s probe_status=%s error_code=%s action=defer",
                 request.task_id,
                 target,
                 credential_id or "-",
@@ -752,7 +905,8 @@ class TargetCollectionExecutor:
             AccessProbeStatus.MISCONFIGURED,
         }:
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s " "credential_id=%s probe_status=%s error_code=%s action=stop",
+                "🚫 event=access_probe_failed task_id=%s target=%s "
+                "credential_id=%s probe_status=%s error_code=%s action=stop",
                 request.task_id,
                 target,
                 credential_id or "-",
@@ -772,7 +926,8 @@ class TargetCollectionExecutor:
             )
         if access.status != AccessProbeStatus.READY:
             logger.info(
-                "🚫 event=access_probe_failed task_id=%s target=%s " "credential_id=%s probe_status=%s error_code=access_probe_misconfigured",
+                "🚫 event=access_probe_failed task_id=%s target=%s "
+                "credential_id=%s probe_status=%s error_code=access_probe_misconfigured",
                 request.task_id,
                 target,
                 credential_id or "-",
@@ -789,7 +944,9 @@ class TargetCollectionExecutor:
                 ),
                 no_response_attempts=no_response_attempts,
             )
-        return _AttemptDecision(action="collect", no_response_attempts=no_response_attempts)
+        return _AttemptDecision(
+            action="collect", no_response_attempts=no_response_attempts
+        )
 
     async def _run_collect(
         self,

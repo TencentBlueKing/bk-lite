@@ -368,6 +368,13 @@ class CollectionRuntime:
             except asyncio.CancelledError:
                 pass
             await self._state_store.finish(lease, status, summary)
+            logger.info(
+                "event=collection_run_terminal task_id=%s fence=%s status=%s summary=%s",
+                request.task_id,
+                lease.fence,
+                status.value,
+                summary,
+            )
             await self._release_admission()
 
     async def shutdown(self, *, grace_seconds: float = 30.0) -> None:
@@ -446,5 +453,7 @@ def _summary_has_errors(summary: Mapping[str, Any]) -> bool:
             "unreachable",
             "publish_failed",
             "publish_unknown",
+            "publish_event_failed",
+            "publish_permanent_failed",
         )
     )
