@@ -283,6 +283,8 @@ def get_rack_layout(rack_id, permission_map=None, user=None) -> dict:
             "rack_u_start": _safe_int(d.get("rack_u_start")),
             "u_size": _safe_int(d.get("u_size")),
             "status": _scalar(d.get("status") or d.get("datacenter_state")),
+            "organization": d.get("organization") or [],
+            "_creator": d.get("_creator"),
         }
         for d in _rack_device_instances(rack_id, permission_map, user)
     ]
@@ -326,6 +328,7 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
                     "inst_id": str(rid),
                     "inst_uuid": r.get("inst_uuid"),
                     "inst_name": r.get("inst_name"),
+                    "model_id": r.get("model_id") or "rack",
                     "row": row,
                     "col": col,
                     "location": r.get("location"),
@@ -335,6 +338,8 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
                     "used_u": used_u,
                     "free_u": free_u,
                     "max_free_u": max_free_u,
+                    "organization": r.get("organization") or [],
+                    "_creator": r.get("_creator"),
                 }
             )
     return build_room_layout(racks)

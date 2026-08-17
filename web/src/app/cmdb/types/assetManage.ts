@@ -290,6 +290,8 @@ export interface FieldConfig {
   model_id: string;
   list: Array<any>;
   source?: 'create' | 'copy' | 'edit' | 'batchEdit';
+  lockedAttrIds?: string[];
+  hideAssociate?: boolean;
 }
 
 export interface FieldModalRef {
