@@ -1,6 +1,7 @@
 from io import StringIO
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command
 
 from apps.core.utils.crypto.password_crypto import PasswordCrypto
@@ -36,6 +37,32 @@ def test_decrypt_password_returns_plaintext_for_current_key():
     namespace.set_password("plain-secret")
 
     assert namespace.decrypt_password == "plain-secret"
+
+
+def test_new_password_write_rejects_blank_secret_key(monkeypatch):
+    monkeypatch.setattr(datasource_models, "SECRET_KEY", "")
+    monkeypatch.delenv("OPERATION_ANALYSIS_ALLOW_INSECURE_CREDENTIAL_WRITES", raising=False)
+
+    with pytest.raises(ImproperlyConfigured, match="SECRET_KEY 未配置"):
+        _namespace().set_password("plain-secret")
+
+
+def test_blank_key_legacy_ciphertext_remains_readable(monkeypatch):
+    monkeypatch.setattr(datasource_models, "SECRET_KEY", "")
+    stored_value = PasswordCrypto("").encrypt("plain-secret")
+
+    assert _namespace(password=stored_value).decrypt_password == "plain-secret"
+
+
+def test_explicit_legacy_write_switch_is_reversible(monkeypatch, caplog):
+    monkeypatch.setattr(datasource_models, "SECRET_KEY", "")
+    monkeypatch.setenv("OPERATION_ANALYSIS_ALLOW_INSECURE_CREDENTIAL_WRITES", "true")
+    namespace = _namespace()
+
+    namespace.set_password("plain-secret")
+
+    assert namespace.decrypt_password == "plain-secret"
+    assert "临时兼容开关" in caplog.text
 
 
 def test_decrypt_password_rejects_unreadable_value_without_exposing_credentials():
@@ -160,9 +187,7 @@ def test_create_still_encrypts_password():
 @pytest.mark.django_db
 def test_default_namespace_init_survives_unreadable_password_and_recovers_after_rerecord(settings, monkeypatch):
     settings.NATS_SERVERS = "nats://admin:current-password@nats.example.com:4222"
-    namespace = NameSpace.objects.create(
-        name="默认命名空间", account="admin", password="initial-password", domain="nats.example.com:4222"
-    )
+    namespace = NameSpace.objects.create(name="默认命名空间", account="admin", password="initial-password", domain="nats.example.com:4222")
     stored_value = PasswordCrypto("old-key").encrypt("plain-secret")
     NameSpace.objects.filter(pk=namespace.pk).update(password=stored_value)
     logged_errors = []
