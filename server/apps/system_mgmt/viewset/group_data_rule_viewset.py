@@ -1,24 +1,24 @@
-from django.http import JsonResponse
 from django.db import transaction
+from django.http import JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.permission_cache import clear_users_permission_cache
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
 from apps.rpc.job_mgmt import JobMgmt
-from apps.rpc.patch_mgmt import PatchMgmt
 from apps.rpc.log import Log
 from apps.rpc.mlops import MLOps
 from apps.rpc.monitor import Monitor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.operation_analysis import OperationAnalysisRPC
 from apps.rpc.opspilot import OpsPilot
+from apps.rpc.patch_mgmt import PatchMgmt
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import GroupDataRule, UserRule
 from apps.system_mgmt.serializers import GroupDataRuleSerializer
@@ -27,9 +27,7 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 def _build_actor_context(request, loader=None):
-    loader = loader or LanguageLoader(
-        app="system_mgmt", default_lang=getattr(getattr(request, "user", None), "locale", "en") or "en"
-    )
+    loader = loader or LanguageLoader(app="system_mgmt", default_lang=getattr(getattr(request, "user", None), "locale", "en") or "en")
     current_team = get_current_team(request)
     if current_team in (None, ""):
         message = loader.get("error.current_team_required")
@@ -221,7 +219,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
         params = request.GET.dict()
         # 记录 app 值（get_client 会从 params 中弹出），用于后续判断是否注入上下文
         app = params.get("app", "")
-        if app in {"job", "log", "mlops", "patch"}:
+        if app in {"job", "log", "mlops", "ops-analysis", "patch"}:
             try:
                 group_id = int(params.get("group_id"))
             except (TypeError, ValueError):

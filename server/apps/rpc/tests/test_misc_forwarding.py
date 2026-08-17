@@ -439,8 +439,16 @@ def op_ana():
 
 
 def test_op_ana_get_module_data(op_ana):
-    op_ana.get_module_data(module="x")
-    assert _last(op_ana.client) == ("run", "get_operation_analysis_module_data", (), {"module": "x"})
+    from apps.operation_analysis.nats.auth import verify_module_data_request
+
+    params = {"module": "directory", "child_module": "dashboard", "page": 1, "page_size": 100, "group_id": 7}
+
+    op_ana.get_module_data(**params, _internal_auth="caller-controlled")
+
+    call_type, method_name, args, kwargs = _last(op_ana.client)
+    token = kwargs.pop("_internal_auth")
+    assert (call_type, method_name, args, kwargs) == ("run", "get_operation_analysis_module_data", (), params)
+    verify_module_data_request(token, **params)
 
 
 def test_op_ana_get_module_list(op_ana):
