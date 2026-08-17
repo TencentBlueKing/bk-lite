@@ -24,6 +24,15 @@ export interface PlannedExecutionStepValue {
   tools?: string[];
 }
 
+/** DeepAgent 规划阶段状态（非思考内容，仅告诉用户「正在规划」） */
+export interface PlannedExecutionStatusValue {
+  phase: 'planning' | 'replanning' | 'planned' | 'idle' | string;
+  step_count?: number;
+  goal?: string;
+  replan_count?: number;
+  reason?: string;
+}
+
 export interface SkillViewValue {
   items: SkillViewItem[];
 }
