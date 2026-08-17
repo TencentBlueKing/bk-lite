@@ -173,6 +173,19 @@ def test_legacy_native_update_tolerates_uninstalled_owner_apps(monkeypatch):
     assert calls == [("node-native", "content", None)]
 
 
+def test_legacy_native_delete_is_preserved_when_owner_apps_are_installed(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        node_nats.NatsService,
+        "delete_configs",
+        lambda _self, ids: calls.append(list(ids)),
+    )
+
+    node_nats.delete_configs(["node-native"])
+
+    assert calls == [["node-native"]]
+
+
 def test_scoped_delete_accepts_matching_monitor_mirror(monkeypatch):
     config = _monitor_config("monitor-delete")
     calls = []

@@ -242,7 +242,7 @@ def test_remove_notifies_closed_alerts_with_their_policy_context(
         def __init__(self, policy=None):
             self.policy = policy
 
-        def enqueue_alert_center_deliveries(self, alerts, action, **kwargs):
+        def notify_alerts(self, alerts, action, **kwargs):
             notify_calls.append(
                 (
                     self.policy.id if self.policy else None,

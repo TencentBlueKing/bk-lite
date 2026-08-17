@@ -141,6 +141,7 @@ class TestRollbackPropagation:
         calls = []
 
         def fake_update(cid, content, source_app=None):
+            assert source_app == "monitor"
             calls.append((cid, content))
             if cid == "b":
                 raise RuntimeError("rollback fail")
@@ -168,6 +169,7 @@ class TestPropagateCollectTemplate:
 
         class FakeNodeMgmt:
             def update_child_config_content(self, cid, content, source_app=None):
+                assert source_app == "monitor"
                 calls.append((cid, content))
                 if content == "boom":
                     raise RuntimeError("apply fail")
