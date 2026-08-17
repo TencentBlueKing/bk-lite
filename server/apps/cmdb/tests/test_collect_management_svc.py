@@ -12,6 +12,7 @@
 企业扩展这些真实边界打桩。
 """
 import pydantic.root_model  # noqa: F401
+import pytest
 
 from apps.cmdb.collection import common as mod
 from apps.cmdb.collection.common import Management
@@ -25,6 +26,7 @@ class FakeGraph:
         self.created_edges = []
         self.deleted = []
         self.set_props = []
+        self.set_exist_items = []
         self.queries = []
 
     def __enter__(self):
@@ -51,6 +53,10 @@ class FakeGraph:
     def set_entity_properties(self, label, ids, info, check_attr_map, exist_items):
         ent = dict(info)
         self.set_props.append(ent)
+        self.set_exist_items.append([dict(item) for item in exist_items])
+        cb = self.returns.get("set_entity_properties")
+        if callable(cb):
+            return cb(label, ids, info, check_attr_map, exist_items)
         return [ent]
 
     def detach_delete_entity(self, label, _id):
@@ -95,7 +101,7 @@ def _mgmt(monkeypatch, fake, old_data, new_data, **kw):
         new_data=new_data,
         unique_keys=["inst_name"],
         collect_time="2026-06-24",
-        task_id=1,
+        task_id=kw.get("task_id", 1),
         collect_plugin=kw.get("collect_plugin"),
         data_cleanup_strategy=kw.get("data_cleanup_strategy"),
     )
@@ -316,7 +322,7 @@ def test_update_inst_queries_only_unique_candidates(monkeypatch):
     ]
 
 
-def test_refresh_heartbeat_updates_only_runtime_metadata(monkeypatch):
+def test_refresh_heartbeat_updates_only_runtime_metadata_without_querying_instances(monkeypatch):
     fake = FakeGraph(query_entity=lambda _label, c: ([{"_id": 7, "inst_name": "a"}], 1))
     m = _mgmt(monkeypatch, fake, [], [])
     scheduled = []
@@ -335,7 +341,94 @@ def test_refresh_heartbeat_updates_only_runtime_metadata(monkeypatch):
             "collect_time": "2026-06-24",
         }
     ]
+    assert fake.queries == []
+    assert fake.set_exist_items == [[]]
     assert scheduled == []
+
+
+@pytest.mark.parametrize("driver_name", ["falkordb", "neo4j"])
+def test_refresh_heartbeat_rejects_conflicting_runtime_unique_candidate(monkeypatch, driver_name):
+    from apps.cmdb.graph.falkordb import FalkorDBClient
+    from apps.cmdb.graph.neo4j import Neo4jClient
+
+    unique_checker = {
+        "falkordb": FalkorDBClient.check_unique_attr,
+        "neo4j": Neo4jClient.check_unique_attr,
+    }[driver_name]
+
+    def validate_with_real_unique_check(label, ids, info, check_attr_map, exist_items):
+        unique_checker(
+            info,
+            check_attr_map["is_only"],
+            exist_items,
+            is_update=True,
+        )
+        return [dict(info)]
+
+    fake = FakeGraph(
+        query_entity=lambda _label, c: (
+            [
+                {"_id": 7, "collect_task": "task-1"},
+                {"_id": 8, "collect_task": "task-1"},
+            ],
+            2,
+        ),
+        set_entity_properties=validate_with_real_unique_check,
+    )
+    attrs = [{"attr_id": "collect_task", "attr_name": "采集任务", "is_only": True, "editable": True}]
+    m = _mgmt(monkeypatch, fake, [], [], attrs=attrs, task_id="task-1")
+
+    result = m.refresh_heartbeat([{"_id": 7, "inst_name": "a"}])
+
+    assert fake.queries == [
+        (
+            "instance",
+            [
+                {"field": "model_id", "type": "str=", "value": "host"},
+                {"field": "collect_task", "type": "str[]", "value": ["task-1"]},
+            ],
+        )
+    ]
+    assert fake.set_exist_items == [[{"_id": 8, "collect_task": "task-1"}]]
+    assert result["success"] == []
+    assert len(result["failed"]) == 1
+    assert "采集任务 exist" in str(result["failed"][0]["error"])
+
+
+def test_refresh_heartbeat_isolates_each_write_failure(monkeypatch):
+    def fail_first_write(label, ids, info, check_attr_map, exist_items):
+        if ids == [7]:
+            raise RuntimeError("write failed")
+        return [dict(info)]
+
+    fake = FakeGraph(set_entity_properties=fail_first_write)
+    m = _mgmt(monkeypatch, fake, [], [])
+
+    result = m.refresh_heartbeat([{"_id": 7}, {"_id": 8}])
+
+    assert [item["inst_info"]["_id"] for item in result["success"]] == [8]
+    assert [item["instance_info"]["_id"] for item in result["failed"]] == [7]
+    assert "write failed" in str(result["failed"][0]["error"])
+
+
+def test_refresh_heartbeat_keeps_candidate_query_failure_batch_scoped(monkeypatch):
+    def fail_query(label, conditions):
+        raise RuntimeError("query failed")
+
+    fake = FakeGraph(query_entity=fail_query)
+    attrs = [{"attr_id": "collect_task", "attr_name": "采集任务", "is_only": True, "editable": True}]
+    m = _mgmt(monkeypatch, fake, [], [], attrs=attrs, task_id="task-1")
+
+    with pytest.raises(RuntimeError, match="query failed"):
+        m.refresh_heartbeat([{"_id": 7}])
+
+
+def test_refresh_heartbeat_keeps_missing_id_as_batch_error(monkeypatch):
+    fake = FakeGraph()
+    m = _mgmt(monkeypatch, fake, [], [])
+
+    with pytest.raises(KeyError, match="_id"):
+        m.refresh_heartbeat([{"inst_name": "missing-id"}])
 
 
 def test_controller_heartbeat_is_reported_but_excluded_from_audit(monkeypatch):
@@ -446,7 +539,7 @@ def test_controller_runs_delete_add_update(monkeypatch):
     assert len(result["add"]["success"]) == 1
 
 
-def test_controller_add_and_update_query_unique_candidates(monkeypatch):
+def test_controller_queries_only_unique_candidates_for_business_changes(monkeypatch):
     fake = FakeGraph(query_entity=lambda _label, c: ([{"_id": 1, "inst_name": "a"}], 1))
     attrs = [{"attr_id": "inst_name", "attr_name": "名称", "is_only": True, "editable": True}]
     old = [{"inst_name": "a", "_id": 1}]
@@ -461,12 +554,6 @@ def test_controller_add_and_update_query_unique_candidates(monkeypatch):
             [
                 {"field": "model_id", "type": "str=", "value": "host"},
                 {"field": "inst_name", "type": "str[]", "value": ["b"]},
-            ],
-        ),
-        (
-            "instance",
-            [
-                {"field": "model_id", "type": "str=", "value": "host"},
             ],
         ),
     ]
