@@ -5,14 +5,13 @@ import { useAuth } from '@/context/auth';
 import { listMonitorObjects, resolveRecentViews } from '@/features/monitor/adapter';
 import type { ResolvedMonitorRecentView } from '@/features/monitor/model';
 import { readRecentViews } from '@/features/monitor/recent-views-storage';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 
 export type RecentViewsStatus = 'loading' | 'ready' | 'error';
 
 export function useRecentViews() {
-  const { userInfo } = useAuth();
+  const { userInfo, currentTeamId } = useAuth();
   const userId = userInfo?.id || 0;
-  const teamId = getCurrentTeamCookie() || 'none';
+  const teamId = currentTeamId || 'none';
   const [entries, setEntries] = useState<ResolvedMonitorRecentView[]>([]);
   const [status, setStatus] = useState<RecentViewsStatus>('loading');
   const requestId = useRef(0);
