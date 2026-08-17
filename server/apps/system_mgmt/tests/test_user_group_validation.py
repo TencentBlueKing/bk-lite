@@ -46,6 +46,28 @@ def test_validate_selected_groups_accepts_selection_with_normal_group():
 
 
 @pytest.mark.django_db
+def test_validate_selected_groups_rejects_archived_group():
+    loader = LanguageLoader(app="system_mgmt", default_lang="en")
+    archived = Group.objects.create(name="Archived Group", parent_id=0, is_delete=True)
+
+    message = user_viewset._validate_selected_groups([archived.id], loader)
+
+    assert message is not None
+    assert "Invalid group IDs" in message
+
+
+@pytest.mark.django_db
+def test_merge_retained_archived_groups_keeps_existing_archived_ids():
+    active = Group.objects.create(name="Merge Active", parent_id=0)
+    archived = Group.objects.create(name="Merge Archived", parent_id=0, is_delete=True)
+    extra = Group.objects.create(name="Merge Extra", parent_id=0)
+
+    merged = user_viewset._merge_retained_archived_groups([active.id, extra.id], [active.id, archived.id])
+
+    assert merged == [active.id, extra.id, archived.id]
+
+
+@pytest.mark.django_db
 def test_system_mgmt_exports_provider_and_integration_instance_models():
     from apps.system_mgmt.models import IntegrationInstance
     from apps.system_mgmt.providers import get_provider_registry

@@ -4,16 +4,18 @@ import { Button, Form, Input } from 'antd';
 import EntityList from '@/components/entity-list';
 import Icon from '@/components/icon';
 import OperateModal from '@/components/operate-modal';
-import SearchActionBar from '@/components/search-action-bar';
 import type { ProviderManifest } from '@/app/system-manager/types/integration-center';
 import {
   filterIntegrationProvidersByQuery,
+  collectIntegrationCapabilityFilterOptions,
   resolveIntegrationProviderIcon,
   getIntegrationCapabilityLabel,
   canEnterCreateInfoStep,
   getCreateModalFooterMode,
-  getIntegrationProviderDisplayName
+  getIntegrationProviderDisplayName,
+  getIntegrationProviderDescription
 } from '@/app/system-manager/utils/integrationCenter';
+import ProviderCapabilityTags from './ProviderCapabilityTags';
 
 interface IntegrationCreateFormValues {
   name: string;
@@ -51,13 +53,13 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
 }) => {
   const [form] = Form.useForm<IntegrationCreateFormValues>();
   const [step, setStep] = useState<'provider' | 'basic_info'>('provider');
-  const [providerSearch, setProviderSearch] = useState('');
+  const [capabilityFilters, setCapabilityFilters] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<ProviderManifest | null>(null);
 
   useEffect(() => {
     if (!open) {
       setStep('provider');
-      setProviderSearch('');
+      setCapabilityFilters([]);
       setSelectedProvider(null);
       form.resetFields();
       return;
@@ -74,29 +76,29 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
     }
 
     setStep('provider');
-    setProviderSearch('');
+    setCapabilityFilters([]);
     setSelectedProvider(null);
     form.resetFields();
   }, [form, initialProvider, initialValues, mode, open]);
 
-  const filteredProviders = useMemo(
-    () => filterIntegrationProvidersByQuery(providers, providerSearch),
-    [providerSearch, providers],
+  const capabilityFilterOptions = useMemo(
+    () => collectIntegrationCapabilityFilterOptions(providers, t),
+    [providers, t],
   );
 
   const providerCards = useMemo(
-    () => filteredProviders.map((provider) => ({
-      id: provider.key,
-      name: getIntegrationProviderDisplayName(provider.key, t),
-      icon: resolveIntegrationProviderIcon(provider.key),
-      description: provider.description || '',
-      tagList: provider.capabilities.map((capability) => ({
-        name: getIntegrationCapabilityLabel(capability.key, t),
-        color: 'processing'
-      })),
-      raw: provider,
-    })),
-    [filteredProviders, t],
+    () => {
+      const cards = providers.map((provider) => ({
+        id: provider.key,
+        name: getIntegrationProviderDisplayName(provider.key, t),
+        icon: resolveIntegrationProviderIcon(provider.key),
+        description: getIntegrationProviderDescription(provider.key, t, provider.description),
+        tagList: [],
+        raw: provider,
+      }));
+      return filterIntegrationProvidersByQuery(cards, '', capabilityFilters, t);
+    },
+    [capabilityFilters, providers, t],
   );
 
   const footerMode = getCreateModalFooterMode({
@@ -165,21 +167,22 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
     >
       {mode === 'create' && step === 'provider' ? (
         <div className="space-y-4 min-h-[60vh]">
-          <SearchActionBar
-            spacing="flush"
-            searchProps={{
-              allowClear: true,
-              value: providerSearch,
-              placeholder: t('system.integrationCenter.searchProviders'),
-              onChange: (event) => setProviderSearch(event.target.value),
-              onSearch: setProviderSearch,
-            }}
-          />
           <EntityList
             data={providerCards}
             loading={providersLoading}
-            search={false}
+            filter
+            filterOptions={capabilityFilterOptions}
+            changeFilter={(keys) => setCapabilityFilters(keys || [])}
+            showBuiltinTag={false}
             onCardClick={(item: { raw: ProviderManifest }) => onSelectProvider(item.raw)}
+            descSlot={(item: { raw: ProviderManifest }) => (
+              <ProviderCapabilityTags
+                tags={(item.raw.capabilities || []).map((capability) => ({
+                  key: capability.key,
+                  label: getIntegrationCapabilityLabel(capability.key, t),
+                }))}
+              />
+            )}
           />
         </div>
       ) : (
@@ -193,7 +196,7 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
                 <div className="min-w-0 flex-1">
                   <div className="text-base font-semibold text-[var(--color-text)]">{getIntegrationProviderDisplayName(selectedProvider.key, t)}</div>
                   <div className="mt-1 text-sm text-[var(--color-text-3)]">
-                    {selectedProvider.description || '--'}
+                    {getIntegrationProviderDescription(selectedProvider.key, t, selectedProvider.description) || '--'}
                   </div>
                 </div>
               </div>

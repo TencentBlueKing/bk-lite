@@ -356,7 +356,7 @@ def resolve_model_uri(model_name: str, version: str = "latest") -> str:
             if not versions:
                 error_msg = f"模型不存在或无可用版本 [model: {model_name}]"
                 logger.error(error_msg)
-                raise ValueError(error_msg)
+                raise ValueError("error.model_not_available")
 
             latest_version = versions[0].version
             model_uri = f"models:/{model_name}/{latest_version}"

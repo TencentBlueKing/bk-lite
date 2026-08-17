@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { message, Modal } from 'antd';
+import { isSilentRequestError } from '@/utils/request';
 import type {
   ChangeUserStatusAction,
   UserDataType,
@@ -25,7 +26,7 @@ interface UseTreeDataResult {
   treeLoading: boolean;
   treeSearchValue: string;
   selectedTreeKeys: React.Key[];
-  fetchTreeData: () => Promise<void>;
+  fetchTreeData: () => Promise<ExtendedTreeDataNode[]>;
   handleTreeSearchChange: (value: string) => void;
   handleTreeSelect: (selectedKeys: React.Key[], fetchUsersCallback: (params: any) => void, searchValue: string, pageSize: number) => void;
   setSelectedTreeKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
@@ -46,13 +47,15 @@ export function useTreeData(t: (key: string) => string): UseTreeDataResult {
       const res = await getOrgTree();
       const convertedData = convertGroupsToTreeData(res);
       setTreeData(convertedData);
-      setFilteredTreeData(convertedData);
+      setFilteredTreeData(filterTreeBySearch(convertedData, treeSearchValue));
+      return convertedData;
     } catch {
       message.error(t('common.fetchFailed'));
+      return [];
     } finally {
       setTreeLoading(false);
     }
-  }, [getOrgTree, t]);
+  }, [getOrgTree, t, treeSearchValue]);
 
   const handleTreeSearchChange = useCallback((value: string) => {
     setTreeSearchValue(value);
@@ -302,7 +305,7 @@ export function useGroupManagement(
   searchValue: string,
   currentPage: number,
   pageSize: number,
-  fetchTreeData: () => Promise<void>,
+  fetchTreeData: () => Promise<ExtendedTreeDataNode[]>,
   fetchUsers: (params: any) => Promise<void>,
   setSelectedTreeKeys: React.Dispatch<React.SetStateAction<React.Key[]>>,
   setSelectedRowKeys: React.Dispatch<React.SetStateAction<React.Key[]>>,
@@ -323,6 +326,31 @@ export function useGroupManagement(
     setAddGroupModalOpen(true);
   }, []);
 
+  const clearSelectionIfMissing = useCallback((nextTree: ExtendedTreeDataNode[]) => {
+    if (selectedTreeKeys.length === 0) {
+      return;
+    }
+    if (nodeExistsInTree(nextTree, selectedTreeKeys[0])) {
+      return;
+    }
+    setSelectedTreeKeys([]);
+    setSelectedRowKeys([]);
+    fetchUsers({
+      search: searchValue,
+      page: currentPage,
+      page_size: pageSize,
+      group_id: undefined,
+    });
+  }, [
+    selectedTreeKeys,
+    setSelectedTreeKeys,
+    setSelectedRowKeys,
+    fetchUsers,
+    searchValue,
+    currentPage,
+    pageSize,
+  ]);
+
   const handleGroupAction = useCallback(async (action: string, groupKey: number) => {
     const node = findNodeByKey(treeData, groupKey);
     if (node && node.hasAuth === false) {
@@ -334,7 +362,7 @@ export function useGroupManagement(
         setCurrentParentGroupKey(groupKey);
         setAddSubGroupModalOpen(true);
         break;
-      case 'edit':
+      case 'edit': {
         const editGroup = findNodeByKey(treeData, groupKey);
         if (editGroup) {
           groupEditModalRef.current?.showModal({
@@ -346,7 +374,8 @@ export function useGroupManagement(
           });
         }
         break;
-      case 'delete':
+      }
+      case 'delete': {
         const targetGroup = findNodeByKey(treeData, groupKey);
         if (targetGroup?.syncSource != null) {
           return;
@@ -354,11 +383,11 @@ export function useGroupManagement(
         if (targetGroup) {
           const groupHasChildren = hasChildren(targetGroup);
           const confirmContent = groupHasChildren
-            ? t('system.group.deleteWithChildrenWarning') + '' + t('common.delConfirmCxt')
-            : t('common.delConfirmCxt');
+            ? `${t('system.group.archiveWithChildrenWarning')}${t('system.group.archiveConfirmCxt')}`
+            : t('system.group.archiveConfirmCxt');
 
           confirm({
-            title: t('common.delConfirm'),
+            title: t('system.group.archiveConfirm'),
             content: confirmContent,
             centered: true,
             okText: t('common.confirm'),
@@ -366,31 +395,36 @@ export function useGroupManagement(
             async onOk() {
               try {
                 await deleteTeam({ id: groupKey });
-                message.success(t('common.delSuccess'));
+                message.success(t('system.group.archiveSuccess'));
 
-                const isSelectedDeleted = selectedTreeKeys.includes(groupKey);
-                await fetchTreeData();
+                const nextTree = await fetchTreeData();
                 await refreshUserInfo();
-
-                if (isSelectedDeleted) {
-                  setSelectedTreeKeys([]);
-                  setSelectedRowKeys([]);
-                  fetchUsers({
-                    search: searchValue,
-                    page: currentPage,
-                    page_size: pageSize,
-                    group_id: undefined,
-                  });
+                clearSelectionIfMissing(nextTree);
+              } catch (err) {
+                if (isSilentRequestError(err)) {
+                  return;
                 }
-              } catch {
-                message.error(t('common.delFailed'));
+                const msg = err instanceof Error && err.message
+                  ? err.message
+                  : t('system.group.archiveFailed');
+                message.error(msg);
               }
             },
           });
         }
         break;
+      }
     }
-  }, [treeData, groupEditModalRef, confirm, deleteTeam, selectedTreeKeys, fetchTreeData, refreshUserInfo, setSelectedTreeKeys, setSelectedRowKeys, fetchUsers, searchValue, currentPage, pageSize, t]);
+  }, [
+    treeData,
+    groupEditModalRef,
+    confirm,
+    deleteTeam,
+    fetchTreeData,
+    refreshUserInfo,
+    clearSelectionIfMissing,
+    t,
+  ]);
 
   const onAddGroup = useCallback(async () => {
     try {

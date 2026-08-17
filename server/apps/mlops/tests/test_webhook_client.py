@@ -3,6 +3,12 @@ import pydantic.root_model  # noqa
 import pytest
 import requests
 
+from apps.mlops.utils.i18n import (
+    WEBHOOK_CONNECTION_FAILED,
+    WEBHOOK_REQUEST_FAILED,
+    WEBHOOK_SERVER_URL_NOT_CONFIGURED,
+    WEBHOOK_TIMEOUT,
+)
 from apps.mlops.utils.webhook_client import (
     WebhookClient,
     WebhookConnectionError,
@@ -89,7 +95,7 @@ def test_validate_config_invalid(monkeypatch):
     monkeypatch.delenv("WEBHOOK_SERVER_URL", raising=False)
     ok, msg = WebhookClient.validate_config()
     assert ok is False
-    assert "WEBHOOK_SERVER_URL" in msg
+    assert msg == WEBHOOK_SERVER_URL_NOT_CONFIGURED
 
 
 def test_validate_config_valid(monkeypatch):
@@ -158,7 +164,7 @@ def test_request_no_url_raises(monkeypatch):
     monkeypatch.delenv("WEBHOOK_SERVER_URL", raising=False)
     with pytest.raises(WebhookError) as exc:
         WebhookClient._request("train", {})
-    assert "WEBHOOK_SERVER_URL" in str(exc.value)
+    assert str(exc.value) == WEBHOOK_SERVER_URL_NOT_CONFIGURED
 
 
 def test_request_success_returns_json(monkeypatch):
@@ -240,8 +246,10 @@ def test_request_timeout_raises_timeout_error(monkeypatch):
         raise requests.exceptions.Timeout()
 
     monkeypatch.setattr(requests, "post", fake_post)
-    with pytest.raises(WebhookTimeoutError):
+    with pytest.raises(WebhookTimeoutError) as exc:
         WebhookClient._request("train", {})
+    assert str(exc.value) == WEBHOOK_TIMEOUT
+    assert not any("\u4e00" <= ch <= "\u9fff" for ch in str(exc.value))
 
 
 def test_request_connection_error(monkeypatch):
@@ -251,8 +259,10 @@ def test_request_connection_error(monkeypatch):
         raise requests.exceptions.ConnectionError("refused")
 
     monkeypatch.setattr(requests, "post", fake_post)
-    with pytest.raises(WebhookConnectionError):
+    with pytest.raises(WebhookConnectionError) as exc:
         WebhookClient._request("train", {})
+    assert str(exc.value) == WEBHOOK_CONNECTION_FAILED
+    assert "refused" not in str(exc.value)
 
 
 def test_request_generic_request_exception(monkeypatch):
@@ -262,8 +272,10 @@ def test_request_generic_request_exception(monkeypatch):
         raise requests.exceptions.RequestException("weird")
 
     monkeypatch.setattr(requests, "post", fake_post)
-    with pytest.raises(WebhookError):
+    with pytest.raises(WebhookError) as exc:
         WebhookClient._request("train", {})
+    assert str(exc.value) == WEBHOOK_REQUEST_FAILED
+    assert "weird" not in str(exc.value)
 
 
 # ---------------- high level wrappers ----------------
