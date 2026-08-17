@@ -13,7 +13,6 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.field_group import FieldGroup
-from apps.cmdb.services.model import ModelManage
 from apps.cmdb.views.model import ModelViewSet
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -478,6 +477,35 @@ def test_model_attr_update_enum(superuser, monkeypatch):
     )
     assert response.status_code == status.HTTP_200_OK
     assert called.get("hit") is True
+
+
+@pytest.mark.django_db
+def test_model_attr_update_enum_propagates_display_refresh_failure(superuser, monkeypatch, fake_graph):
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]})
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.update_model_attr", lambda *a, **k: {"attr_id": "status"})
+
+    def _raise(*_args, **_kwargs):
+        raise RuntimeError("graph unavailable")
+
+    pages = iter([([{"_id": 1, "status": "1"}], 1), ([], 0)])
+    fake_graph(
+        "apps.cmdb.services.model",
+        query_entity=lambda *_args, **_kwargs: next(pages),
+        batch_update_node_property_values=_raise,
+    )
+
+    with pytest.raises(
+        BaseAppException,
+        match="枚举属性已更新，但实例展示字段刷新失败，请重试保存",
+    ):
+        ModelViewSet.as_view({"put": "model_attr_update"})(
+            _req(
+                "put",
+                superuser,
+                data={"attr_id": "status", "attr_type": "enum", "option": [{"id": "1", "name": "运行"}]},
+            ),
+            model_id="host",
+        )
 
 
 @pytest.mark.django_db
