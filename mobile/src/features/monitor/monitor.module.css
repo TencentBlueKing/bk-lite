@@ -962,6 +962,8 @@
 .chartPoint { fill: currentcolor; stroke: none; }
 .recentPanel { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .recentList { display: flex; flex-direction: column; background: var(--color-bg); }
+.recentPartialNotice { display: flex; gap: var(--mobile-notice-spacing); align-items: center; justify-content: space-between; margin: var(--mobile-notice-spacing) var(--mobile-table-row-padding-block); padding: var(--mobile-notice-spacing) var(--mobile-notice-padding-inline); font-size: var(--font-size-secondary); line-height: 1.5; color: var(--color-text-1); background: color-mix(in srgb, var(--color-warning) 10%, var(--color-bg)); border-radius: var(--mobile-notice-radius); }
+.recentNoticeAction { flex: 0 0 auto; min-width: 64px; min-height: 44px; padding: 0 var(--mobile-notice-padding-inline); font-size: var(--font-size-secondary); color: var(--color-primary); cursor: pointer; background: var(--color-primary-bg); border: 1px solid var(--color-primary-border); border-radius: var(--mobile-notice-radius); }
 .recentRow {
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr);
