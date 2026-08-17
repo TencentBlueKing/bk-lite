@@ -166,7 +166,7 @@ def test_datasource_serializer_rejects_new_raw_monitor_query_routes(authenticate
     )
 
     assert not serializer.is_valid()
-    assert serializer.errors["rest_api"] == ["该监控裸查询接口已停止新增，请改用带监控对象和实例权限的受控数据源"]
+    assert serializer.errors["rest_api"] == ["该监控裸查询接口已停止新增，仅保留存量数据源兼容"]
 
 
 @pytest.mark.django_db
@@ -181,7 +181,7 @@ def test_datasource_serializer_rejects_raw_monitor_query_with_default_source_typ
     )
 
     assert not serializer.is_valid()
-    assert serializer.errors["rest_api"] == ["该监控裸查询接口已停止新增，请改用带监控对象和实例权限的受控数据源"]
+    assert serializer.errors["rest_api"] == ["该监控裸查询接口已停止新增，仅保留存量数据源兼容"]
 
 
 @pytest.mark.django_db
