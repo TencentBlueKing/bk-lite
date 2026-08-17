@@ -342,7 +342,7 @@ class CollectModelViewSet(AuthViewSet):
             instance_data = instance[0]
             if not isinstance(instance_data, dict):
                 continue
-            instance_id = instance_data.get("_id")
+            instance_id = instance_data.get("inst_uuid") or instance_data.get("_id")
             instance_name = instance_data.get("inst_name")
             if instance_id is None or instance_name is None:
                 continue

@@ -231,6 +231,7 @@ def test_directory_partial_update_normal_superuser(authenticated_user):
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["data"]["desc"] == "新描述"
+    assert payload["data"]["permissions"] == ["View", "Operate"]
 
 
 # --------------------------------------------------------------------------

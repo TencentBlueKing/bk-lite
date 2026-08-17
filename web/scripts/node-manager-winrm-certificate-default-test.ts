@@ -15,12 +15,15 @@ const uninstallSource = readSource(
 const certificateFieldSource = readSource(
   'src/app/node-manager/components/winrm-certificate-validation-field/index.tsx'
 );
-const zhLocale = JSON.parse(
-  readSource('src/app/node-manager/locales/zh.json')
-) as {
-  'node-manager': { cloudregion: { node: Record<string, string> } };
-};
-const zhNodeMessages = zhLocale['node-manager'].cloudregion.node;
+const readNodeMessages = (relativePath: string) =>
+  (
+    JSON.parse(readSource(relativePath)) as {
+      'node-manager': { cloudregion: { node: Record<string, string> } };
+    }
+  )['node-manager'].cloudregion.node;
+
+const zhNodeMessages = readNodeMessages('src/app/node-manager/locales/zh.json');
+const enNodeMessages = readNodeMessages('src/app/node-manager/locales/en.json');
 
 assert.doesNotMatch(
   installSource,
@@ -41,6 +44,21 @@ assert.doesNotMatch(
   zhNodeMessages.windowsRemoteInstallDes,
   /默认校验证书/,
   'Windows 远程安装说明必须与默认关闭证书校验保持一致'
+);
+assert.doesNotMatch(
+  `${zhNodeMessages.windowsRemoteInstallDes}\n${enNodeMessages.windowsRemoteInstallDes}`,
+  /Windows 10|Win10|win10/i,
+  'Windows 远程安装说明不得出现 Windows 10 商业系统名称'
+);
+assert.match(
+  zhNodeMessages.windowsRemoteInstallDes,
+  /Server 2016/,
+  '中文远程安装说明须标明 Server 2016 基线'
+);
+assert.match(
+  enNodeMessages.windowsRemoteInstallDes,
+  /Server 2016/,
+  '英文远程安装说明须标明 Server 2016 基线'
 );
 
 console.log('Node Manager WinRM certificate defaults and UI contract passed.');

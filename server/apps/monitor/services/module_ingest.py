@@ -1,6 +1,6 @@
-"""跨模块推送写入监控：按 link_ids.node_id / cmdb_id 归并 upsert。
+"""跨模块推送写入监控：按 node_id → cmdb_id → ip+cloud 归并 upsert。
 
-一期：最小实例 upsert + ID 归并，不开采集配置流水线。
+节点来源创建/补采集必须命中 Host + Telegraf 主机模板；找不到或套用失败则整次失败。
 """
 
 from __future__ import annotations
@@ -11,22 +11,13 @@ from typing import Any
 from django.db import transaction
 
 from apps.core.logger import monitor_logger as logger
-from apps.monitor.models import (
-    CollectConfig,
-    MonitorInstance,
-    MonitorInstanceOrganization,
-    MonitorObject,
-)
+from apps.monitor.models import CollectConfig, MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.utils.dimension import normalize_instance_identity
-from apps.node_mgmt.services.module_push_contract import (
-    EVENT_LIFECYCLE,
-    EVENT_UPSERT,
-    LINK_CONFLICT,
-    IngestResult,
-)
+from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE, EVENT_UPSERT, LINK_CONFLICT, IngestResult
 from apps.rpc.node_mgmt import NodeMgmt
 
 HOST_OBJECT_NAME = "Host"
+HOST_PLUGIN_NAME = "Host"
 RECEIVING_MODULE = "monitor"
 
 # CMDB → 监控：允许「有凭据则创建资产并自动监控」的对象范围（按 CMDB model_id）。
@@ -41,9 +32,7 @@ HOST_AGENT_COLLECTOR = "Telegraf"
 HOST_AGENT_COLLECT_TYPE = "host"
 DEFAULT_HOST_COLLECT_MODULES = ("cpu", "disk", "diskio", "mem", "net", "processes", "system")
 DEFAULT_COLLECT_INTERVAL = 60
-DEFAULT_DISK_EXCLUDE_FSTYPES = (
-    "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32"
-)
+DEFAULT_DISK_EXCLUDE_FSTYPES = "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32"
 
 # CMDB 带凭据创建场景：套用 Host Remote（远程采集）模板
 HOST_REMOTE_COLLECT_TYPE = "http"
@@ -69,6 +58,7 @@ class MonitorModuleIngestService:
 
         node_id = cls._normalize_optional_str(link_ids.get("node_id"))
         cmdb_id = cls._normalize_optional_str(link_ids.get("cmdb_id"))
+        cmdb_aliases = link_ids.get("cmdb_id_aliases") or []
         monitor_id = cls._normalize_optional_str(link_ids.get("monitor_id"))
         # node_mgmt 信封常把节点 ID 放在 source_id；勿把 CMDB source_id 误当作 node_id
         if not node_id and params.get("source_module") == "node_mgmt":
@@ -82,7 +72,7 @@ class MonitorModuleIngestService:
             if not existing and node_id:
                 existing = cls._find_by_node_id(node_id)
             if not existing and cmdb_id:
-                existing = cls._find_by_cmdb_id(cmdb_id)
+                existing = cls._find_by_cmdb_id(cmdb_id, aliases=cmdb_aliases)
             return IngestResult(
                 id=existing.id if existing else None,
                 ignored=True,
@@ -97,18 +87,18 @@ class MonitorModuleIngestService:
                 cmdb_id=cmdb_id,
                 monitor_id=monitor_id,
                 operator=str(params.get("operator") or ""),
+                cmdb_aliases=cmdb_aliases,
             )
 
         operator = str(params.get("operator") or "")
         allowed = [int(x) for x in allowed_org_ids]
 
         by_node = cls._find_by_node_id(node_id) if node_id else None
-        by_cmdb = cls._find_by_cmdb_id(cmdb_id) if cmdb_id else None
+        by_cmdb = cls._find_by_cmdb_id(cmdb_id, aliases=cmdb_aliases) if cmdb_id else None
 
         if by_node and by_cmdb and by_node.id != by_cmdb.id:
             logger.warning(
-                "[MonitorModuleIngest] link_conflict node_id=%s cmdb_id=%s "
-                "by_node=%s by_cmdb=%s",
+                "[MonitorModuleIngest] link_conflict node_id=%s cmdb_id=%s " "by_node=%s by_cmdb=%s",
                 node_id,
                 cmdb_id,
                 by_node.id,
@@ -123,35 +113,60 @@ class MonitorModuleIngestService:
             ).as_dict()
 
         existing = by_node or by_cmdb
+        if not existing:
+            ip = cls._extract_ip(raw)
+            cloud = cls._extract_cloud_region_id(raw)
+            if ip and cloud is not None:
+                by_ip = cls._find_by_ip_cloud(ip, cloud)
+                if by_ip:
+                    bound_node_id = cls._normalize_optional_str(by_ip.node_id)
+                    if node_id and bound_node_id and bound_node_id != node_id:
+                        logger.warning(
+                            "[MonitorModuleIngest] link_conflict ip=%s cloud=%s " "existing_node_id=%s incoming_node_id=%s",
+                            ip,
+                            cloud,
+                            bound_node_id,
+                            node_id,
+                        )
+                        return IngestResult(
+                            id=by_ip.id,
+                            conflict=LINK_CONFLICT,
+                            created=False,
+                            updated=False,
+                            claimed=False,
+                        ).as_dict()
+                    existing = by_ip
+
         if existing:
-            updated = cls._update_instance(
-                existing,
-                raw=raw,
-                node_id=node_id,
-                cmdb_id=cmdb_id,
-                operator=operator,
-                allowed_org_ids=allowed,
-            )
-            result = IngestResult(id=updated.id, updated=True).as_dict()
-            # 节点推送超时重试会走更新分支：若尚无 Telegraf/host 采集配置则补套
-            if (
-                str(params.get("source_module") or "") == "node_mgmt"
-                and node_id
+            source_module = str(params.get("source_module") or "")
+            needs_collect = (
+                source_module == "node_mgmt"
+                and bool(node_id)
                 and not CollectConfig.objects.filter(
-                    monitor_instance_id=updated.id,
+                    monitor_instance_id=existing.id,
                     collector=HOST_AGENT_COLLECTOR,
                     collect_type=HOST_AGENT_COLLECT_TYPE,
                 ).exists()
-            ):
-                collect_error = cls._apply_agent_host_collect(
-                    updated,
-                    node_id=node_id,
+            )
+            plugin = cls._require_host_agent_plugin() if needs_collect else None
+            with transaction.atomic():
+                updated = cls._update_instance(
+                    existing,
                     raw=raw,
+                    node_id=node_id,
+                    cmdb_id=cmdb_id,
+                    operator=operator,
                     allowed_org_ids=allowed,
                 )
-                if collect_error:
-                    result["collect_error"] = collect_error
-            return result
+                if needs_collect:
+                    cls._apply_agent_host_collect(
+                        updated,
+                        node_id=node_id,
+                        raw=raw,
+                        allowed_org_ids=allowed,
+                        plugin=plugin,
+                    )
+            return IngestResult(id=updated.id, updated=True).as_dict()
 
         return cls._create_for_source(
             source_module=str(params.get("source_module") or ""),
@@ -184,20 +199,14 @@ class MonitorModuleIngestService:
 
         当前适配范围：CMDB model_id ∈ CMDB_CREATE_ADAPTED_MODEL_IDS（先只含 host）。
 
-        节点管理推送创建：创建实例并默认套用 Telegraf 主机模板（采集节点=该节点）。
+        节点管理推送创建：必须命中 Host + Telegraf 主机模板后再创建；套用失败则整次失败。
         """
         if source_module == "cmdb":
             credential = cls._extract_credential(raw)
             model_id = cls._resolve_cmdb_model_id(raw)
-            if (
-                not CMDB_CREDENTIAL_CREATE_ENABLED
-                or not credential
-                or model_id not in CMDB_CREATE_ADAPTED_MODEL_IDS
-            ):
+            if not CMDB_CREDENTIAL_CREATE_ENABLED or not credential or model_id not in CMDB_CREATE_ADAPTED_MODEL_IDS:
                 logger.info(
-                    "[MonitorModuleIngest] cmdb push skip create "
-                    "(enabled=%s credential=%s adapted=%s model_id=%s) "
-                    "cmdb_id=%s node_id=%s",
+                    "[MonitorModuleIngest] cmdb push skip create " "(enabled=%s credential=%s adapted=%s model_id=%s) " "cmdb_id=%s node_id=%s",
                     CMDB_CREDENTIAL_CREATE_ENABLED,
                     bool(credential),
                     model_id in CMDB_CREATE_ADAPTED_MODEL_IDS,
@@ -221,23 +230,25 @@ class MonitorModuleIngestService:
             return result
 
         if source_module == "node_mgmt" and node_id:
-            created = cls._create_instance(
-                raw=raw,
-                node_id=node_id,
-                cmdb_id=cmdb_id,
-                operator=operator,
-                allowed_org_ids=allowed_org_ids,
-            )
-            collect_error = cls._apply_agent_host_collect(
-                created,
-                node_id=node_id,
-                raw=raw,
-                allowed_org_ids=allowed_org_ids,
-            )
-            result = IngestResult(id=created.id, created=True).as_dict()
-            if collect_error:
-                result["collect_error"] = collect_error
-            return result
+            if not cls._extract_ip(raw) or cls._extract_cloud_region_id(raw) is None:
+                raise ValueError("host ingest from node_mgmt requires ip and cloud")
+            plugin = cls._require_host_agent_plugin()
+            with transaction.atomic():
+                created = cls._create_instance(
+                    raw=raw,
+                    node_id=node_id,
+                    cmdb_id=cmdb_id,
+                    operator=operator,
+                    allowed_org_ids=allowed_org_ids,
+                )
+                cls._apply_agent_host_collect(
+                    created,
+                    node_id=node_id,
+                    raw=raw,
+                    allowed_org_ids=allowed_org_ids,
+                    plugin=plugin,
+                )
+            return IngestResult(id=created.id, created=True).as_dict()
 
         created = cls._create_instance(
             raw=raw,
@@ -269,6 +280,24 @@ class MonitorModuleIngestService:
         return credential
 
     @classmethod
+    def _require_host_agent_plugin(cls):
+        """节点推送必须命中 Host + Telegraf/host 插件及其默认模块模板。"""
+        from apps.monitor.models import MonitorPlugin, MonitorPluginConfigTemplate
+
+        plugin = MonitorPlugin.objects.filter(
+            name=HOST_PLUGIN_NAME,
+            collector=HOST_AGENT_COLLECTOR,
+            collect_type=HOST_AGENT_COLLECT_TYPE,
+        ).first()
+        if not plugin:
+            raise ValueError(f"host monitor plugin {HOST_PLUGIN_NAME!r} " f"({HOST_AGENT_COLLECTOR}/{HOST_AGENT_COLLECT_TYPE}) not found")
+        existing_types = set(MonitorPluginConfigTemplate.objects.filter(plugin=plugin).values_list("type", flat=True))
+        missing = [module for module in DEFAULT_HOST_COLLECT_MODULES if module not in existing_types]
+        if missing:
+            raise ValueError(f"host monitor plugin {HOST_PLUGIN_NAME!r} missing templates: {missing}")
+        return plugin
+
+    @classmethod
     def _apply_agent_host_collect(
         cls,
         instance: MonitorInstance,
@@ -276,45 +305,34 @@ class MonitorModuleIngestService:
         node_id: str,
         raw: dict[str, Any],
         allowed_org_ids: list[int],
-    ) -> str | None:
-        """为节点推送创建的实例套用默认 Telegraf 主机模板（采集节点=该节点）。
+        plugin,
+    ) -> None:
+        """为节点推送实例套用 Host + Telegraf 主机模板。失败必须抛出，由调用方回滚。"""
+        from apps.monitor.services.node_mgmt import InstanceConfigService
 
-        best-effort：失败不回滚实例创建，返回错误描述供 push_status 观察。
-        """
-        try:
-            from apps.monitor.models import MonitorPlugin
-            from apps.monitor.services.node_mgmt import InstanceConfigService
+        logical_id = normalize_instance_identity(instance.id)["logical_instance_value"]
+        configs: list[dict[str, Any]] = []
+        for module in DEFAULT_HOST_COLLECT_MODULES:
+            config: dict[str, Any] = {
+                "type": module,
+                "interval": DEFAULT_COLLECT_INTERVAL,
+                "instance_type": "os",
+            }
+            if module == "disk":
+                config["disk_include_fstypes"] = ""
+                config["disk_exclude_fstypes"] = DEFAULT_DISK_EXCLUDE_FSTYPES
+            configs.append(config)
 
-            plugin = (
-                MonitorPlugin.objects.filter(
-                    monitor_object=instance.monitor_object_id,
-                    collector=HOST_AGENT_COLLECTOR,
-                    collect_type=HOST_AGENT_COLLECT_TYPE,
-                )
-                .order_by("id")
-                .first()
-            )
-
-            configs: list[dict[str, Any]] = []
-            for module in DEFAULT_HOST_COLLECT_MODULES:
-                config: dict[str, Any] = {
-                    "type": module,
-                    "interval": DEFAULT_COLLECT_INTERVAL,
-                    "instance_type": "os",
-                }
-                if module == "disk":
-                    config["disk_include_fstypes"] = ""
-                    config["disk_exclude_fstypes"] = DEFAULT_DISK_EXCLUDE_FSTYPES
-                configs.append(config)
-
-            payload: dict[str, Any] = {
+        InstanceConfigService.create_monitor_instance_by_node_mgmt(
+            {
                 "monitor_object_id": instance.monitor_object_id,
                 "collector": HOST_AGENT_COLLECTOR,
                 "collect_type": HOST_AGENT_COLLECT_TYPE,
+                "monitor_plugin_id": plugin.id,
                 "configs": configs,
                 "instances": [
                     {
-                        "instance_id": node_id,
+                        "instance_id": logical_id,
                         "instance_name": instance.name,
                         "node_ids": [node_id],
                         "group_ids": cls._normalize_org_ids(raw, allowed_org_ids),
@@ -322,20 +340,7 @@ class MonitorModuleIngestService:
                     }
                 ],
             }
-            if plugin:
-                payload["monitor_plugin_id"] = plugin.id
-
-            InstanceConfigService.create_monitor_instance_by_node_mgmt(payload)
-            return None
-        except Exception as exc:
-            logger.warning(
-                "[MonitorModuleIngest] apply agent host collect failed "
-                "instance_id=%s node_id=%s: %s",
-                instance.id,
-                node_id,
-                exc,
-            )
-            return str(exc)
+        )
 
     @classmethod
     def _create_remote_host_instance(
@@ -390,9 +395,7 @@ class MonitorModuleIngestService:
                         ],
                     }
                 )
-                storage_key = normalize_instance_identity(raw_instance_id)[
-                    "storage_instance_key"
-                ]
+                storage_key = normalize_instance_identity(raw_instance_id)["storage_instance_key"]
                 instance = cls._find_by_pk(storage_key)
                 if instance is None:
                     error = "remote onboarding did not create instance"
@@ -400,9 +403,7 @@ class MonitorModuleIngestService:
                     update_fields: list[str] = []
                     linked = node_id
                     if not linked:
-                        linked = cls._best_effort_auto_link_node(
-                            monitor_id=instance.id, ip=ip, cloud=cloud
-                        )
+                        linked = cls._best_effort_auto_link_node(monitor_id=instance.id, ip=ip, cloud=cloud)
                     if linked and instance.node_id != linked:
                         instance.node_id = linked
                         update_fields.append("node_id")
@@ -417,8 +418,7 @@ class MonitorModuleIngestService:
                     return instance, None
             except Exception as exc:
                 logger.warning(
-                    "[MonitorModuleIngest] remote host onboarding failed "
-                    "cmdb_id=%s ip=%s: %s",
+                    "[MonitorModuleIngest] remote host onboarding failed " "cmdb_id=%s ip=%s: %s",
                     cmdb_id,
                     ip,
                     exc,
@@ -493,9 +493,7 @@ class MonitorModuleIngestService:
             try:
                 data = NodeMgmt().node_list(query) or {}
             except Exception as exc:
-                logger.warning(
-                    "[MonitorModuleIngest] container node lookup failed: %s", exc
-                )
+                logger.warning("[MonitorModuleIngest] container node lookup failed: %s", exc)
                 return None
             nodes = data.get("nodes") or []
             return nodes[0] if nodes else None
@@ -537,6 +535,7 @@ class MonitorModuleIngestService:
         cmdb_id: str | None,
         monitor_id: str | None,
         operator: str,
+        cmdb_aliases: list[str] | None = None,
     ) -> dict[str, Any]:
         """跨模块删除通知。
 
@@ -558,12 +557,11 @@ class MonitorModuleIngestService:
         if not existing and node_id:
             existing = cls._find_by_node_id(node_id)
         if not existing and cmdb_id:
-            existing = cls._find_by_cmdb_id(cmdb_id)
+            existing = cls._find_by_cmdb_id(cmdb_id, aliases=cmdb_aliases)
 
         if not existing:
             logger.info(
-                "[MonitorModuleIngest] lifecycle no-op: instance not found "
-                "monitor_id=%s node_id=%s cmdb_id=%s",
+                "[MonitorModuleIngest] lifecycle no-op: instance not found " "monitor_id=%s node_id=%s cmdb_id=%s",
                 monitor_id,
                 node_id,
                 cmdb_id,
@@ -620,24 +618,35 @@ class MonitorModuleIngestService:
 
     @classmethod
     def _find_by_pk(cls, instance_id: str) -> MonitorInstance | None:
-        return (
-            MonitorInstance.objects.filter(id=instance_id)
-            .select_related("monitor_object")
-            .first()
-        )
+        return MonitorInstance.objects.filter(id=instance_id).select_related("monitor_object").first()
 
     @classmethod
     def _find_by_node_id(cls, node_id: str) -> MonitorInstance | None:
-        return (
-            MonitorInstance.objects.filter(node_id=node_id, is_deleted=False)
-            .select_related("monitor_object")
-            .first()
-        )
+        return MonitorInstance.objects.filter(node_id=node_id, is_deleted=False).select_related("monitor_object").first()
 
     @classmethod
-    def _find_by_cmdb_id(cls, cmdb_id: str) -> MonitorInstance | None:
+    def _find_by_cmdb_id(
+        cls,
+        cmdb_id: str,
+        *,
+        aliases: list[str] | None = None,
+    ) -> MonitorInstance | None:
+        from apps.cmdb.services.instance_identity import expand_cmdb_id_lookup_candidates
+
+        candidates = expand_cmdb_id_lookup_candidates(cmdb_id, aliases)
+        if not candidates:
+            return None
+        return MonitorInstance.objects.filter(cmdb_id__in=candidates, is_deleted=False).select_related("monitor_object").first()
+
+    @classmethod
+    def _find_by_ip_cloud(cls, ip: str, cloud: int) -> MonitorInstance | None:
         return (
-            MonitorInstance.objects.filter(cmdb_id=cmdb_id, is_deleted=False)
+            MonitorInstance.objects.filter(
+                ip=ip,
+                cloud_region_id=cloud,
+                is_deleted=False,
+                monitor_object__name=HOST_OBJECT_NAME,
+            )
             .select_related("monitor_object")
             .first()
         )
@@ -654,10 +663,7 @@ class MonitorModuleIngestService:
         obj = MonitorObject.objects.filter(name=HOST_OBJECT_NAME).first()
         if obj:
             return obj
-        raise ValueError(
-            f"monitor object {HOST_OBJECT_NAME!r} not found; "
-            "provide raw.monitor_object_id or create Host monitor object"
-        )
+        raise ValueError(f"monitor object {HOST_OBJECT_NAME!r} not found; " "provide raw.monitor_object_id or create Host monitor object")
 
     @classmethod
     def _extract_ip(cls, raw: dict[str, Any]) -> str | None:
@@ -706,19 +712,16 @@ class MonitorModuleIngestService:
 
     @classmethod
     def _new_instance_id(cls, *, node_id: str | None, raw: dict[str, Any]) -> str:
-        if node_id:
-            try:
-                return normalize_instance_identity(node_id)["storage_instance_key"]
-            except ValueError:
-                pass
         cloud = cls._extract_cloud_region_id(raw)
         ip = cls._extract_ip(raw)
         if cloud is not None and ip:
             try:
-                from apps.monitor.utils.dimension import build_safe_instance_id, extract_monitor_instance_id
-
-                logical = build_safe_instance_id(cloud, ip)
-                return extract_monitor_instance_id((logical,))
+                return normalize_instance_identity(f"{cloud}_os_{ip}")["storage_instance_key"]
+            except ValueError:
+                pass
+        if node_id:
+            try:
+                return normalize_instance_identity(node_id)["storage_instance_key"]
             except ValueError:
                 pass
         return uuid.uuid4().hex
@@ -731,11 +734,7 @@ class MonitorModuleIngestService:
         *,
         operator: str,
     ) -> None:
-        existing = set(
-            MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list(
-                "organization", flat=True
-            )
-        )
+        existing = set(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True))
         for org_id in org_ids:
             if org_id in existing:
                 continue

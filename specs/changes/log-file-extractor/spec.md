@@ -252,6 +252,7 @@ Status: implemented
 - 上线前管理命令生成初始 no-op 快照，因此即使没有规则，中心系统 Vector 也能得到完整拓扑。非关键快照重建失败不得加入 Server 通用启动必经路径；部署探测负责阻止中心 Vector 在无快照时启动。
 - 回滚应用版本时，最后成功快照仍保留在数据库；回退中心 Vector 部署可恢复原静态配置。删除新表前必须先停止 HTTP provider 并恢复静态中心配置，避免运行端在下一次重启时没有初始拓扑。
 - 第一版发布是新增能力，不改变既有采集模板的 `instance_id`、区域转发、日志查询和 VictoriaLogs 存量数据；历史日志不重新处理。
+- 正则预览的 Python 执行必须始终保留在可强制终止的隔离进程内，应用回滚不得恢复为请求 worker 内直接执行。紧急降级只允许通过 `LOG_EXTRACTOR_PREVIEW_TIMEOUT_SECONDS`、`LOG_EXTRACTOR_PREVIEW_MAX_CONCURRENCY`、`LOG_EXTRACTOR_PREVIEW_MAX_FIELD_BYTES` 与 `LOG_EXTRACTOR_PREVIEW_MAX_EVENT_BYTES` 调整有界参数，非法或非正数配置回退到安全默认值，不提供关闭隔离的开关。默认字段上限 10 MiB，与现有 Packetbeat HTTP 消息上限兼容；默认事件上限 12 MiB。纯非正则预览不经过该隔离与大小边界，保持旧调用路径；正则预览超时和超限继续返回 400，并分别携带稳定的 `log_extractor_preview_timeout`、`log_extractor_preview_too_large` 错误标识，容量满返回 429 与 `Retry-After`。
 
 ## Testing Decisions
 

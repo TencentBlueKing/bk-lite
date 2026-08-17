@@ -22,7 +22,11 @@ from django.conf import settings
 from rest_framework import serializers
 
 from apps.operation_analysis.models.models import NetworkTopology
-from apps.operation_analysis.serializers.directory_serializers import DirectoryChainVisibilityMixin
+from apps.operation_analysis.serializers.directory_serializers import (
+    CanvasRefreshIntervalSerializerMixin,
+    DirectoryChainVisibilityMixin,
+    with_canvas_refresh_interval_kwargs,
+)
 
 # --------------------------------------------------------------------------- #
 # Token encryption                                                              #
@@ -68,6 +72,7 @@ def decrypt_token(cipher: str) -> str:
 
 
 class NetworkTopologySerializer(
+    CanvasRefreshIntervalSerializerMixin,
     DirectoryChainVisibilityMixin,
     serializers.ModelSerializer,
 ):
@@ -125,13 +130,15 @@ class NetworkTopologySerializer(
             "updated_by",
         )
         read_only_fields = ("id", "created_at", "updated_at")
-        extra_kwargs = {
-            # 创建时仍必填(由 ``NetworkTopologySerializer.create`` 兜底),
-            # 但 PATCH / PUT 时允许「只改 token 不重传 base_url」之类的局部更新。
-            "base_url": {"required": False},
-            "name": {"required": False},
-            "directory": {"required": False},
-        }
+        extra_kwargs = with_canvas_refresh_interval_kwargs(
+            {
+                # 创建时仍必填(由 ``NetworkTopologySerializer.create`` 兜底),
+                # 但 PATCH / PUT 时允许「只改 token 不重传 base_url」之类的局部更新。
+                "base_url": {"required": False},
+                "name": {"required": False},
+                "directory": {"required": False},
+            }
+        )
 
     # ---- token round-trip ------------------------------------------------- #
 

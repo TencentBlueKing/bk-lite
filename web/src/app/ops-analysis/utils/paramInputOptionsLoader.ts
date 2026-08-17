@@ -141,5 +141,11 @@ export const createParamInputOptionsLoader = (
     return currentLoad;
   };
 
-  return { load };
+  const reset = () => {
+    generation += 1;
+    currentKey = undefined;
+    currentLoad = undefined;
+  };
+
+  return { load, reset };
 };

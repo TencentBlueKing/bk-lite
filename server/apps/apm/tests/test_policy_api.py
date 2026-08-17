@@ -7,17 +7,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.apm.adapters import InMemoryNotificationDispatcher
-from apps.apm.models import (
-    ApmAlertOutbox,
-    ApmNotificationDeliveryRetry,
-    ApmPolicy,
-    ApmPolicyNotificationTarget,
-    ApmService,
-    ApmServiceOrganization,
-)
+from apps.apm.models import ApmAlertOutbox, ApmNotificationDeliveryRetry, ApmPolicy, ApmPolicyNotificationTarget, ApmService, ApmServiceOrganization
 from apps.apm.services import DjangoApmPolicyService
 from apps.apm.services.contracts import NotificationChannel, NotificationRecipient, ServiceRed
-
 
 pytestmark = pytest.mark.django_db
 
@@ -102,7 +94,7 @@ def test_error_rate_threshold_is_bounded(apm_api_client):
     response = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
 
     assert response.status_code == 400
-    assert "threshold" in response.data
+    assert "thresholds" in response.data
 
 
 def test_policy_notification_requires_an_explicit_channel(apm_api_client):
@@ -129,9 +121,11 @@ def test_policy_notification_channel_is_revalidated_in_current_scope(apm_api_cli
         )
     ]
     payload = _payload(_service(10))
-    payload.update({
-        "notification_targets": [{"channel_id": 99, "recipients": ["42"]}],
-    })
+    payload.update(
+        {
+            "notification_targets": [{"channel_id": 99, "recipients": ["42"]}],
+        }
+    )
 
     denied = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
     payload["notification_targets"] = [{"channel_id": 23, "recipients": ["42"]}]
@@ -234,26 +228,26 @@ def test_event_view_uses_current_organization_and_apm_reader(apm_api_client, moc
         "event_id": "EVENT-1",
         "title": "APM 生产错误率触发",
         "severity": "error",
-        "action": "created",
+        "action": "triggered",
     }
     reader = mocker.patch("apps.apm.views.control_plane.ApmEventViewSet.reader")
     reader.list.return_value = [event]
 
-    response = apm_api_client.get("/api/v1/apm/events/?action=created&severity=error&limit=20")
+    response = apm_api_client.get("/api/v1/apm/events/?action=triggered&severity=error&limit=20")
 
     assert response.status_code == 200
     assert response.data == [event]
     call = reader.list.call_args.kwargs
     assert call["organization_id"] == 10
-    assert call["action"] == "created"
+    assert call["action"] == "triggered"
     assert call["severity"] == "error"
     assert call["limit"] == 20
 
 
-def test_event_view_rejects_alert_center_only_actions(apm_api_client, mocker):
+def test_event_view_rejects_unknown_actions(apm_api_client, mocker):
     reader = mocker.patch("apps.apm.views.control_plane.ApmEventViewSet.reader")
 
-    response = apm_api_client.get("/api/v1/apm/events/?action=closed")
+    response = apm_api_client.get("/api/v1/apm/events/?action=acknowledged")
 
     assert response.status_code == 400
     reader.list.assert_not_called()
@@ -262,11 +256,7 @@ def test_event_view_rejects_alert_center_only_actions(apm_api_client, mocker):
 def test_policy_trigger_is_queryable_from_apm_owned_event_api(apm_api_client):
     service = _service(10)
     policy = ApmPolicy.objects.create(
-        **{
-            key: value
-            for key, value in _payload(service).items()
-            if key not in {"service_id", "is_enabled", "duration_window"}
-        },
+        **{key: value for key, value in _payload(service).items() if key not in {"service_id", "is_enabled", "duration_window"}},
         service=service,
         duration_window=1,
     )
@@ -291,7 +281,7 @@ def test_policy_trigger_is_queryable_from_apm_owned_event_api(apm_api_client):
     assert len(response.data) == 1
     assert response.data[0]["policy_id"] == str(policy.id)
     assert response.data[0]["service"] == "checkout"
-    assert response.data[0]["action"] == "created"
+    assert response.data[0]["action"] == "triggered"
 
 
 def test_notification_channel_view_uses_current_organization_scope(apm_api_client, mocker):
@@ -319,9 +309,7 @@ def test_notification_channel_view_uses_current_organization_scope(apm_api_clien
 
 def test_notification_recipient_view_returns_scoped_stable_user_options(apm_api_client, mocker):
     directory = mocker.patch("apps.apm.views.control_plane.ApmNotificationRecipientViewSet.directory")
-    directory.search_recipients.return_value = [
-        NotificationRecipient(id=42, username="alice", display_name="Alice On-call")
-    ]
+    directory.search_recipients.return_value = [NotificationRecipient(id=42, username="alice", display_name="Alice On-call")]
 
     response = apm_api_client.get("/api/v1/apm/notification-recipients/?search=ali&limit=20")
 
@@ -336,11 +324,7 @@ def test_notification_recipient_view_returns_scoped_stable_user_options(apm_api_
 def test_notification_delivery_status_and_manual_retry_are_real_and_scoped(apm_api_client, apm_user):
     service = _service(10)
     policy = ApmPolicy.objects.create(
-        **{
-            key: value
-            for key, value in _payload(service).items()
-            if key not in {"service_id", "is_enabled", "duration_window"}
-        },
+        **{key: value for key, value in _payload(service).items() if key not in {"service_id", "is_enabled", "duration_window"}},
         service=service,
         duration_window=1,
         notice=True,

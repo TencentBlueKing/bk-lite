@@ -18,6 +18,7 @@ from copy import deepcopy
 from django.db import transaction
 
 from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.constants.canvas_refresh import CANVAS_REFRESH_OBJECT_TYPES, normalize_canvas_refresh_interval
 from apps.operation_analysis.constants.import_export import (
     RENAME_SUFFIX,
     SENSITIVE_PLACEHOLDER,
@@ -206,10 +207,7 @@ class ImportService:
         """
         name_max_length = model._meta.get_field("name").max_length
         max_suffixes = (name_max_length - len(original_name)) // len(RENAME_SUFFIX)
-        candidates = [
-            f"{original_name}{RENAME_SUFFIX * count}"
-            for count in range(1, max_suffixes + 1)
-        ]
+        candidates = [f"{original_name}{RENAME_SUFFIX * count}" for count in range(1, max_suffixes + 1)]
         existing_names = set(model.objects.filter(name__in=candidates).values_list("name", flat=True))
 
         for candidate in candidates:
@@ -365,11 +363,7 @@ class ImportService:
         action = self._get_conflict_action(ds_item.key)
 
         # 解析关联的命名空间ID
-        namespace_ids = [
-            self.namespace_key_to_id[ns_key]
-            for ns_key in ds_item.namespace_keys
-            if ns_key in self.namespace_key_to_id
-        ]
+        namespace_ids = [self.namespace_key_to_id[ns_key] for ns_key in ds_item.namespace_keys if ns_key in self.namespace_key_to_id]
 
         # 解析tags
         tag_ids = [self.tag_name_to_id[tag_name] for tag_name in ds_item.tags if tag_name in self.tag_name_to_id]
@@ -576,6 +570,9 @@ class ImportService:
         if object_type == ObjectType.DASHBOARD and hasattr(canvas_item, "filters"):
             canvas_data["filters"] = canvas_item.filters
 
+        if object_type in CANVAS_REFRESH_OBJECT_TYPES:
+            canvas_data["refresh_interval"] = normalize_canvas_refresh_interval(getattr(canvas_item, "refresh_interval", 0))
+
         if existing:
             if action == ConflictAction.SKIP.value:
                 self._record_result(
@@ -676,18 +673,11 @@ class ImportService:
 
             # Step 2: 导入数据源
             namespace_keys = {
-                ns_key
-                for ds_item in self.doc.datasources
-                for ns_key in ds_item.namespace_keys
-                if ns_key not in self.namespace_key_to_id
+                ns_key for ds_item in self.doc.datasources for ns_key in ds_item.namespace_keys if ns_key not in self.namespace_key_to_id
             }
-            self.namespace_key_to_id.update(
-                NameSpace.objects.filter(name__in=namespace_keys).values_list("name", "id")
-            )
+            self.namespace_key_to_id.update(NameSpace.objects.filter(name__in=namespace_keys).values_list("name", "id"))
             tag_names = {tag_name for ds_item in self.doc.datasources for tag_name in ds_item.tags}
-            self.tag_name_to_id.update(
-                DataSourceTag.objects.filter(name__in=tag_names).values_list("name", "id")
-            )
+            self.tag_name_to_id.update(DataSourceTag.objects.filter(name__in=tag_names).values_list("name", "id"))
             for ds_item in self.doc.datasources:
                 ds_id = self._import_datasource(ds_item)
                 if ds_id:

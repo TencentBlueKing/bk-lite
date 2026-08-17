@@ -133,6 +133,20 @@ class Command(BaseCommand):
         call_command("cmdb_migrate_scalar_to_list")
         call_command("migrate_field_constraints")
         call_command("reconcile_node_mgmt_sync")
+        # UUID 存量清洗：只注册运行期任务并投递一次；禁止在此同步 --apply（避免挡 supervisord）。
+        try:
+            from apps.cmdb.tasks.uuid_migration import ensure_uuid_migration_periodic_task, migrate_cmdb_instance_uuid_runtime
+
+            ensure_uuid_migration_periodic_task()
+            try:
+                migrate_cmdb_instance_uuid_runtime.delay()
+            except Exception as exc:
+                # Broker 暂不可达时不阻断启动；周期任务会在 Beat/Worker 就绪后收敛。
+                logger.warning("投递 CMDB UUID 运行期清洗任务失败（将由周期任务重试）: %s", exc)
+            self.stdout.write("已注册 CMDB UUID 运行期清洗任务（异步收敛，不阻断启动）")
+        except Exception as exc:
+            logger.warning("注册 CMDB UUID 运行期清洗失败（不阻断启动）: %s", exc)
+            self.stdout.write(self.style.WARNING(f"CMDB UUID 运行期清洗注册跳过: {exc}"))
 
     def _init_console_mgmt(self):
         """控制台管理资源初始化"""

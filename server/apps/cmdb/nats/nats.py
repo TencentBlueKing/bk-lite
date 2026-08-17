@@ -3,7 +3,7 @@ import os
 from datetime import date
 from datetime import datetime as _datetime
 from datetime import timezone as _timezone
-from functools import reduce
+from functools import reduce, wraps
 from operator import or_
 from types import SimpleNamespace
 from typing import Optional
@@ -63,6 +63,31 @@ _CHANGE_TREND_MAX_SPAN_SECONDS = {
     "day": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_DAY", str(730 * 24 * 3600))),
     "month": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MONTH", str(10 * 365 * 24 * 3600))),
 }
+
+_RPC_TRANSPORT_KEYS = {"_timeout", "_raw"}
+
+
+def _accept_legacy_rpc_kwargs(func):
+    """迁移期同时接收 params envelope 与旧版顶层 RPC kwargs。"""
+
+    @wraps(func)
+    def wrapper(params=None, **legacy_kwargs):
+        legacy_kwargs = {key: value for key, value in legacy_kwargs.items() if key not in _RPC_TRANSPORT_KEYS}
+        if params is None:
+            normalized = legacy_kwargs
+        elif isinstance(params, dict):
+            conflicts = sorted(set(params).intersection(legacy_kwargs))
+            if conflicts:
+                raise ValueError(f"CMDB RPC params conflict: {conflicts}")
+            normalized = {**params, **legacy_kwargs}
+        elif legacy_kwargs:
+            # list_instances 的业务查询条件也名为 params；旧顶层调用会绑定到该形参。
+            normalized = {"params": params, **legacy_kwargs}
+        else:
+            raise ValueError("CMDB RPC params must be an object")
+        return func(normalized)
+
+    return wrapper
 
 
 def _normalize_to_list(value):
@@ -408,6 +433,7 @@ def get_cmdb_module_list():
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_instances(params):
     """
     根据参数查询实例
@@ -429,6 +455,7 @@ def search_instances(params):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_instances_batch(params):
     """批量查询实例。params={"model_id":..,"inst_uuids":[..],"inst_names":[..]}。"""
     _require_uuid_protocol(params)
@@ -648,6 +675,7 @@ def delete_instance(params):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def list_instances(params):
     """
     查询单个模型下的实例列表（分页 + 过滤）
@@ -698,6 +726,7 @@ def list_instances(params):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_model_attrs(params):
     """
     查询模型属性列表
@@ -712,6 +741,7 @@ def search_model_attrs(params):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_models(params=None):
     """
     查询模型列表
@@ -731,6 +761,7 @@ def search_models(params=None):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_classifications(params=None):
     """
     查询模型分类列表
@@ -742,6 +773,7 @@ def search_classifications(params=None):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_model_associations(params):
     """
     查询模型关联定义（作为源或目标的所有关联）
@@ -756,6 +788,7 @@ def search_model_associations(params):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_instance_associations(params):
     """
     查询实例关联列表（某实例关联到的其它实例，按 model_asst_id 分组）
@@ -796,6 +829,7 @@ def search_instance_associations(params):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def create_instance_association(params):
     """
     创建实例关联（写）
@@ -832,6 +866,7 @@ def create_instance_association(params):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def delete_instance_association(params):
     """
     删除实例关联（写）
@@ -891,6 +926,15 @@ def receive_collect_credential_result(data: dict):
     payload = data or {}
     events = payload.get("events") if isinstance(payload, dict) else None
 
+    if not isinstance(payload, dict):
+        logger.warning(
+            "Received invalid collect credential result event, type=%s",
+            type(payload).__name__,
+        )
+        return CollectCredentialResultService.process_result(
+            payload, parse_datetime=_parse_nats_datetime
+        )
+
     if isinstance(events, list):
         logger.info(
             "Received pushed collect credential result batch, count=%s next_since=%s",
@@ -898,12 +942,15 @@ def receive_collect_credential_result(data: dict):
             payload.get("next_since") or "",
         )
     else:
+        status = payload.get("status")
+        if not status:
+            status = "success" if bool(payload.get("success")) else "failed"
         logger.info(
-            "Received pushed collect credential result event, task_id=%s host=%s credential_id=%s success=%s",
+            "Received pushed collect credential result event, task_id=%s host=%s credential_id=%s status=%s",
             payload.get("collect_task_id") or payload.get("task_id") or "",
             payload.get("host") or "",
             payload.get("credential_id") or "",
-            bool(payload.get("success")),
+            status,
         )
 
     result = CollectCredentialResultService.process_batch(payload, parse_datetime=_parse_nats_datetime)

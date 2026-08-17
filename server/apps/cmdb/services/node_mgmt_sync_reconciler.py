@@ -218,7 +218,7 @@ class NodeMgmtSyncReconciler:
             current = config.__class__.objects.select_for_update().filter(pk=config.pk, version=config.version).first()
             if current is None:
                 return False
-            # 推送联动接管后硬关闭拉取周期任务；DB 中旧的 auto_sync_enabled=True 也被门闩覆盖。
+            # 拉同步默认打开；门闩关闭时才真正注册拉取周期任务。
             sync_enabled = bool(current.auto_sync_enabled) and not node_mgmt_sync_service_mod.PUSH_LINKAGE_REPLACES_PULL_SYNC
             cls._reconcile_periodic_task(
                 enabled=sync_enabled,

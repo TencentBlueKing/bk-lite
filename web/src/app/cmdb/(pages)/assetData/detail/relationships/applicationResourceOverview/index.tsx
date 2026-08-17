@@ -3,10 +3,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  AutoComplete,
   Button,
   Card,
   Empty,
   Flex,
+  Input,
   Radio,
   Space,
   Spin,
@@ -15,6 +17,7 @@ import {
 import {
   DownloadOutlined,
   DoubleRightOutlined,
+  SearchOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
 import type { Edge, Graph, Node } from '@antv/x6';
@@ -35,11 +38,31 @@ import type {
   ApplicationResourceNode,
   ApplicationResourceTopologyData,
 } from '@/app/cmdb/types/applicationResourceOverview';
+import { buildBaseInfoPath } from '@/app/cmdb/(pages)/views/viewUrls';
+import {
+  DEFAULT_LANE_WIDTH,
+  LAYER_KEYS,
+  LAYER_LABEL_RAIL_PX,
+  LAYER_TITLE_KEYS,
+  ROW_STRIDE,
+  packLayeredNodes,
+  resolveBandIndex,
+  type LayerBand,
+  type LayerKey,
+} from './layerLayout';
+import {
+  centerTopologyNode,
+  filterRelationLinks,
+  filterTopologyNodes,
+  resolveNeighborhood,
+} from './nodeFocus';
+import { filterResourceGroups } from './resourceInventory';
 import styles from './index.module.scss';
 
 interface Props {
   modelId: string;
   instUuid: string;
+  fillContainer?: boolean;
 }
 
 type ViewMode = 'topology' | 'resources';
@@ -73,34 +96,6 @@ const GROUP_LABELS: Record<string, string> = {
   rack_room: 'ApplicationResourceOverview.groupRackRoom',
   other: 'ApplicationResourceOverview.groupOther',
 };
-
-const LAYER_START_Y = 88;
-const LAYER_GAP = 168;
-
-const LAYER_META = {
-  root: {
-    titleKey: 'ApplicationResourceOverview.layerSystem',
-    y: LAYER_START_Y,
-  },
-  service: {
-    titleKey: 'ApplicationResourceOverview.layerServiceTier',
-    y: LAYER_START_Y + LAYER_GAP,
-  },
-  host: {
-    titleKey: 'ApplicationResourceOverview.layerHost',
-    y: LAYER_START_Y + LAYER_GAP * 2,
-  },
-  appService: {
-    titleKey: 'ApplicationResourceOverview.layerAppService',
-    y: LAYER_START_Y + LAYER_GAP * 3,
-  },
-  infrastructure: {
-    titleKey: 'ApplicationResourceOverview.layerInfrastructure',
-    y: LAYER_START_Y + LAYER_GAP * 4,
-  },
-} as const;
-
-type LayerKey = keyof typeof LAYER_META;
 
 const COMPACT_NODE = {
   width: 248,
@@ -214,13 +209,10 @@ const resolveGraphNodeCenter = (node: ReturnType<typeof buildNetworkTopologyX6Gr
   y: Number(node.y) + Number(node.height) / 2,
 });
 
-const resolveGraphLayerIndex = (node: ReturnType<typeof buildNetworkTopologyX6GraphData>['nodes'][number]) => {
-  const centerY = resolveGraphNodeCenter(node).y;
-  return (Object.keys(LAYER_META) as LayerKey[]).reduce((nearestIndex, key, index, keys) => {
-    const nearestDistance = Math.abs(centerY - LAYER_META[keys[nearestIndex]].y);
-    return Math.abs(centerY - LAYER_META[key].y) < nearestDistance ? index : nearestIndex;
-  }, 0);
-};
+const resolveGraphLayerIndex = (
+  node: ReturnType<typeof buildNetworkTopologyX6GraphData>['nodes'][number],
+  bands: LayerBand[],
+) => resolveBandIndex(resolveGraphNodeCenter(node).y, bands);
 
 const buildCrossLayerVertices = (
   sourceCenter: { x: number; y: number },
@@ -280,10 +272,13 @@ const buildCrossLayerVertices = (
 };
 
 function getLayerTitle(key: LayerKey, t: (id: string, defaultMessage?: string, values?: Record<string, string | number>) => string) {
-  return t(LAYER_META[key].titleKey);
+  return t(LAYER_TITLE_KEYS[key]);
 }
 
-function buildCompactGraphData(graphData: ReturnType<typeof buildNetworkTopologyX6GraphData>) {
+function buildCompactGraphData(
+  graphData: ReturnType<typeof buildNetworkTopologyX6GraphData>,
+  bands: LayerBand[],
+) {
   const nodeMap = new Map(graphData.nodes.map((node) => [String(node.id), node]));
   const edgeGroups = new Map<string, {
     edge: (typeof graphData.edges)[number];
@@ -477,9 +472,10 @@ function buildCompactGraphData(graphData: ReturnType<typeof buildNetworkTopology
       const sourceCenter = resolveGraphNodeCenter(group.visualSourceNode);
       const targetCenter = resolveGraphNodeCenter(group.visualTargetNode);
       const vertical = sourceCenter.y !== targetCenter.y;
-      const sourceLayerIndex = resolveGraphLayerIndex(group.visualSourceNode);
-      const targetLayerIndex = resolveGraphLayerIndex(group.visualTargetNode);
-      const crossesLayer = Math.abs(targetLayerIndex - sourceLayerIndex) > 1;
+      const sourceLayerIndex = resolveGraphLayerIndex(group.visualSourceNode, bands);
+      const targetLayerIndex = resolveGraphLayerIndex(group.visualTargetNode, bands);
+      const farApart = Math.abs(targetCenter.y - sourceCenter.y) > ROW_STRIDE * 2;
+      const crossesLayer = Math.abs(targetLayerIndex - sourceLayerIndex) > 1 || farApart;
       const forwardRelationships = Array.from(group.forwardRelationships);
       const reverseRelationships = Array.from(group.reverseRelationships);
       const hasForward = group.hasForwardEdge;
@@ -580,13 +576,15 @@ function resolveLayer(
 function buildLayeredGraphData(params: {
   topology: ApplicationResourceTopologyData;
   t: (id: string, defaultMessage?: string, values?: Record<string, string | number>) => string;
+  laneWidth: number;
 }) {
-  const { topology, t } = params;
+  const { topology, t, laneWidth } = params;
   const rootNode = resolveRootNode(topology);
   const orderedNodes = [...topology.nodes].sort(
     (a, b) => a.hop - b.hop || a.name.localeCompare(b.name)
   );
   const byLayer = new Map<LayerKey, ApplicationResourceNode[]>();
+  LAYER_KEYS.forEach((key) => byLayer.set(key, []));
   orderedNodes.forEach((node) => {
     const layer = resolveLayer(topology, node, rootNode);
     const list = byLayer.get(layer) || [];
@@ -594,31 +592,16 @@ function buildLayeredGraphData(params: {
     byLayer.set(layer, list);
   });
 
-  const layerSpacing: Record<LayerKey, number> = {
-    root: 0,
-    service: 320,
-    host: 300,
-    appService: 300,
-    infrastructure: 300,
-  };
-
-  const resolveLaneX = (layer: LayerKey, index: number) => {
-    if (layer === 'root') return 0;
-    return 220 + index * layerSpacing[layer];
-  };
-
-  const serviceNodes = byLayer.get('service') || [];
-  const serviceCenterX = serviceNodes.length
-    ? serviceNodes
-      .map((item, index) => resolveLaneX('service', index))
-      .reduce((sum, value) => sum + value, 0) / serviceNodes.length
-    : 620;
+  const packed = packLayeredNodes({
+    layers: Object.fromEntries(
+      LAYER_KEYS.map((key) => [key, (byLayer.get(key) || []).map((node) => ({ id: node.id }))])
+    ) as Record<LayerKey, Array<{ id: string }>>,
+    laneWidth,
+  });
+  const positionById = new Map(packed.positions.map((item) => [item.id, item]));
 
   const positionedNodes = orderedNodes.map((node) => {
-    const layer = resolveLayer(topology, node, rootNode);
-    const laneNodes = byLayer.get(layer) || [];
-    const index = laneNodes.findIndex((item) => item.id === node.id);
-    const x = layer === 'root' ? serviceCenterX : resolveLaneX(layer, index);
+    const packedPosition = positionById.get(node.id);
     return {
       id: node.id,
       modelId: node.model_id,
@@ -626,8 +609,8 @@ function buildLayeredGraphData(params: {
       subtitle: `${node.model_id} · ${t(GROUP_LABELS[node.category] || GROUP_LABELS.other)}`,
       hop: node.hop,
       status: 'normal' as NetworkTopologyNodeStatus,
-      x,
-      y: LAYER_META[layer].y,
+      x: packedPosition?.x ?? 0,
+      y: packedPosition?.y ?? packed.bands[0]?.labelY ?? 0,
     };
   });
 
@@ -640,16 +623,19 @@ function buildLayeredGraphData(params: {
     curveOffset: 0,
   }));
 
-  return buildNetworkTopologyX6GraphData({
-    nodes: positionedNodes,
-    links,
-    centerId: undefined,
-    selectedNodeId: undefined,
-    activeNodeIds: new Set(),
-    activeLinkIds: new Set(),
-    dimInactive: false,
-    showStatusDot: false,
-  });
+  return {
+    graphData: buildNetworkTopologyX6GraphData({
+      nodes: positionedNodes,
+      links,
+      centerId: undefined,
+      selectedNodeId: undefined,
+      activeNodeIds: new Set(),
+      activeLinkIds: new Set(),
+      dimInactive: false,
+      showStatusDot: false,
+    }),
+    bands: packed.bands,
+  };
 }
 
 function mergeTopology(
@@ -733,7 +719,11 @@ function withLocalRelationshipScenarios(
   };
 }
 
-export default function ApplicationResourceOverview({ modelId, instUuid }: Props) {
+export default function ApplicationResourceOverview({
+  modelId,
+  instUuid,
+  fillContainer = false,
+}: Props) {
   const { t } = useTranslation();
   const {
     getApplicationResourceTopology,
@@ -752,7 +742,12 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
     nodeId: '',
   });
   const [relationsOpen, setRelationsOpen] = useState(false);
-  const [hoveredRelationId, setHoveredRelationId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [relationQuery, setRelationQuery] = useState('');
+  const [relationFocusNodeId, setRelationFocusNodeId] = useState<string | null>(null);
+  const [resourceQuery, setResourceQuery] = useState('');
+  const [nodeSearch, setNodeSearch] = useState('');
+  const [nodeSearchOpen, setNodeSearchOpen] = useState(false);
   const [hoveredGraphNodeId, setHoveredGraphNodeId] = useState<string | null>(null);
   const [hoveredGraphEdgeId, setHoveredGraphEdgeId] = useState<string | null>(null);
   const topologyCardRef = useRef<HTMLDivElement | null>(null);
@@ -760,6 +755,7 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
   const graphViewportFrameRef = useRef<number | null>(null);
   const [graphInstance, setGraphInstance] = useState<Graph | null>(null);
   const [graphViewport, setGraphViewport] = useState({ scaleY: 1, translateY: 0 });
+  const [laneWidth, setLaneWidth] = useState(DEFAULT_LANE_WIDTH);
   const initialDepth = modelId === 'system' ? 2 : 1;
 
   useEffect(() => {
@@ -785,7 +781,6 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
     let cancelled = false;
     async function loadApplicationData() {
       if (!selectedTarget) return;
-      setHoveredRelationId(null);
       setHoveredGraphNodeId(null);
       setHoveredGraphEdgeId(null);
       setLoading(true);
@@ -801,6 +796,12 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
         setSelectedTarget((current) =>
           current ? { ...current, name: topologyData?.center?.name || current.name } : current
         );
+        setSelectedNodeId(null);
+        setRelationQuery('');
+        setRelationFocusNodeId(null);
+        setResourceQuery('');
+        setNodeSearch('');
+        setNodeSearchOpen(false);
         setTopology(topologyData);
         setResources(resourceRes);
       } finally {
@@ -818,6 +819,26 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
     return new Map((topology?.nodes || []).map((node) => [node.id, node]));
   }, [topology]);
 
+  const neighborhood = useMemo(
+    () => resolveNeighborhood(topology?.links || [], selectedNodeId),
+    [selectedNodeId, topology]
+  );
+
+  const filteredRelationLinks = useMemo(
+    () => filterRelationLinks(
+      topology?.links || [],
+      topologyNodeMap,
+      relationQuery,
+      relationFocusNodeId
+    ),
+    [relationFocusNodeId, relationQuery, topology, topologyNodeMap]
+  );
+
+  const filteredResourceGroups = useMemo(
+    () => filterResourceGroups(resources?.groups || [], resourceQuery),
+    [resourceQuery, resources]
+  );
+
   const topologyNodesForCanvas = useMemo<VisualNode[]>(() => {
     return (topology?.nodes || []).map((node) => ({
       id: node.id,
@@ -829,18 +850,35 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
     }));
   }, [t, topology]);
 
-  const graphData = useMemo(() => {
-    if (!topologyNodesForCanvas.length) return { nodes: [], edges: [] };
-    return buildCompactGraphData(
-      buildLayeredGraphData({
-        topology: topology as ApplicationResourceTopologyData,
-        t,
-      })
-    );
-  }, [
-    topology,
-    topologyNodesForCanvas,
-  ]);
+  const graphLayout = useMemo(() => {
+    if (!topologyNodesForCanvas.length) {
+      return { graphData: { nodes: [], edges: [] }, bands: [] as LayerBand[] };
+    }
+    const layered = buildLayeredGraphData({
+      topology: topology as ApplicationResourceTopologyData,
+      t,
+      laneWidth,
+    });
+    return {
+      graphData: buildCompactGraphData(layered.graphData, layered.bands),
+      bands: layered.bands,
+    };
+  }, [laneWidth, t, topology, topologyNodesForCanvas]);
+  const graphData = graphLayout.graphData;
+  const layerBands = graphLayout.bands;
+
+  useEffect(() => {
+    const pane = topologyCardRef.current;
+    if (!pane || viewMode !== 'topology') return undefined;
+    const updateLaneWidth = () => {
+      const next = Math.max(480, pane.clientWidth - LAYER_LABEL_RAIL_PX);
+      setLaneWidth((current) => (Math.abs(current - next) < 8 ? current : next));
+    };
+    updateLaneWidth();
+    const observer = new ResizeObserver(updateLaneWidth);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [viewMode, topology?.nodes?.length]);
 
   useEffect(() => {
     const graph = graphInstance;
@@ -932,49 +970,53 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
       };
     };
 
-    const relationActiveNodeIds = new Set<string>();
-    graph.getEdges().forEach((edge) => {
-      const data = edgeData.get(String(edge.id));
-      if (hoveredRelationId && data?.relationshipIds?.includes(hoveredRelationId)) {
-        if (data.sourceNodeId) relationActiveNodeIds.add(String(data.sourceNodeId));
-        if (data.targetNodeId) relationActiveNodeIds.add(String(data.targetNodeId));
-      }
-    });
+    const persistOn = Boolean(selectedNodeId);
 
     graph.getNodes().forEach((node) => {
-      const active = hoveredGraphNodeId === String(node.id)
-        || relationActiveNodeIds.has(String(node.id));
-      const original = nodeAttrs.get(String(node.id));
+      const nodeId = String(node.id);
+      const persistActive = persistOn && neighborhood.nodeIds.has(nodeId);
+      const hoverActive = hoveredGraphNodeId === nodeId;
+      const highlighted = persistActive || hoverActive;
+      const focused = selectedNodeId === nodeId || hoverActive;
+      const dimmed = persistOn && !highlighted;
+      const original = nodeAttrs.get(nodeId);
       node.attr({
         body: {
-          stroke: active ? HOVER_COLOR : original?.body?.stroke,
-          strokeWidth: active ? 1.6 : original?.body?.strokeWidth,
-          filter: active
+          stroke: highlighted ? HOVER_COLOR : original?.body?.stroke,
+          strokeWidth: focused ? 1.6 : original?.body?.strokeWidth,
+          opacity: dimmed ? 0.22 : 1,
+          filter: highlighted
             ? 'drop-shadow(0 4px 8px var(--color-portal-card-shadow))'
             : original?.body?.filter,
         },
         iconColumn: {
-          fill: active
+          fill: focused
             ? 'var(--color-primary-bg-active)'
             : original?.iconColumn?.fill,
+          opacity: dimmed ? 0.22 : 1,
         },
+        divider: { opacity: dimmed ? 0.22 : 1 },
+        img: { opacity: dimmed ? 0.22 : 1 },
+        lbl: { opacity: dimmed ? 0.22 : 1 },
+        subLbl: { opacity: dimmed ? 0.22 : 1 },
       });
     });
 
     graph.getEdges().forEach((edge) => {
       const data = edgeData.get(String(edge.id));
-      const relationActive = Boolean(
-        hoveredRelationId && data?.relationshipIds?.includes(hoveredRelationId)
+      const persistActive = persistOn && Boolean(
+        data?.relationshipIds?.some((relationshipId) => neighborhood.linkIds.has(relationshipId))
       );
-      const active = hoveredGraphEdgeId === String(edge.id)
-        || relationActive
+      const hoverActive = hoveredGraphEdgeId === String(edge.id)
         || hoveredGraphNodeId === String(data?.sourceNodeId || '')
         || hoveredGraphNodeId === String(data?.targetNodeId || '');
+      const active = persistActive || hoverActive;
+      const dimmed = persistOn && !active;
       const original = edgeAttrs.get(String(edge.id));
       (edge as Edge & { attr: (attrs: unknown) => void }).attr({
         line: {
           stroke: active ? HOVER_COLOR : original?.line?.stroke,
-          strokeOpacity: active ? 0.88 : original?.line?.strokeOpacity,
+          strokeOpacity: dimmed ? 0.16 : (active ? 0.88 : original?.line?.strokeOpacity),
           strokeWidth: active ? 2.1 : original?.line?.strokeWidth,
           sourceMarker: active
             ? withActiveMarker(original?.line?.sourceMarker)
@@ -996,14 +1038,20 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
     graphInstance,
     hoveredGraphEdgeId,
     hoveredGraphNodeId,
-    hoveredRelationId,
+    neighborhood,
+    selectedNodeId,
   ]);
 
   const handleReset = async () => {
     if (!selectedTarget) return;
     setHoveredGraphNodeId(null);
     setHoveredGraphEdgeId(null);
-    setHoveredRelationId(null);
+    setSelectedNodeId(null);
+    setRelationQuery('');
+    setRelationFocusNodeId(null);
+    setResourceQuery('');
+    setNodeSearch('');
+    setNodeSearchOpen(false);
     setNodeContextMenu((current) => ({ ...current, visible: false }));
     setLoading(true);
     try {
@@ -1022,7 +1070,6 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
   };
 
   const handleExpandNode = async (node: ApplicationResourceNode, depth: number) => {
-    setHoveredRelationId(null);
     setHoveredGraphNodeId(null);
     setHoveredGraphEdgeId(null);
     setNodeContextMenu((current) => ({ ...current, visible: false }));
@@ -1045,6 +1092,73 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
   const closeNodeContextMenu = () => {
     setNodeContextMenu((current) => ({ ...current, visible: false }));
   };
+
+  const handleSelectNode = (nodeId: string) => {
+    closeNodeContextMenu();
+    setSelectedNodeId(nodeId);
+  };
+
+  const handleLocateTopologyNode = (nodeId: string) => {
+    const node = topologyNodeMap.get(nodeId);
+    if (node) {
+      setNodeSearch(node.name);
+    }
+    setNodeSearchOpen(false);
+    handleSelectNode(nodeId);
+    window.requestAnimationFrame(() => {
+      centerTopologyNode(graphInstance, nodeId);
+    });
+  };
+
+  const nodeSearchOptions = useMemo(
+    () => filterTopologyNodes(topology?.nodes || [], nodeSearch).map((node) => ({
+      value: node.id,
+      label: (
+        <div className={styles.nodeSearchOption}>
+          <span className={styles.nodeSearchName}>{node.name}</span>
+          <span className={styles.nodeSearchMeta}>{node.model_id}</span>
+        </div>
+      ),
+    })),
+    [nodeSearch, topology]
+  );
+
+  const handleClearNodeFocus = () => {
+    closeNodeContextMenu();
+    setSelectedNodeId(null);
+  };
+
+  const handleViewRelations = (node: ApplicationResourceNode) => {
+    closeNodeContextMenu();
+    setSelectedNodeId(node.id);
+    setRelationFocusNodeId(node.id);
+    setRelationQuery(node.name);
+    setRelationsOpen(true);
+  };
+
+  const handleViewNodeDetail = (node: ApplicationResourceNode) => {
+    closeNodeContextMenu();
+    window.open(
+      buildBaseInfoPath({
+        model_id: node.model_id,
+        inst_uuid: node.id,
+        inst_name: node.name,
+      }),
+      '_blank',
+      'noopener,noreferrer'
+    );
+  };
+
+  const handleOpenRelationsPanel = () => {
+    closeNodeContextMenu();
+    setRelationQuery('');
+    setRelationFocusNodeId(null);
+    setRelationsOpen(true);
+  };
+
+  const contextMenuNode = nodeContextMenu.visible
+    ? topologyNodeMap.get(nodeContextMenu.nodeId)
+    : undefined;
 
   const linkColumns = useMemo(() => [
     {
@@ -1075,32 +1189,83 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
     },
   ], [t, topologyNodeMap]);
 
+  const hostClassName = `${styles.overview} ${fillContainer ? styles.overviewFill : styles.overviewStandalone}`;
+
   if (loading && !selectedTarget) {
-    return <Spin spinning />;
+    return (
+      <div className={hostClassName}>
+        <Spin spinning className={styles.fillState} />
+      </div>
+    );
   }
 
   if (!selectedTarget) {
-    return <Empty description={t('ApplicationResourceOverview.emptyApps')} />;
+    return (
+      <div className={hostClassName}>
+        <Empty description={t('ApplicationResourceOverview.emptyApps')} />
+      </div>
+    );
   }
 
   return (
-    <Spin spinning={loading}>
-      <Space direction="vertical" className={styles.overview} size={16}>
-        <Radio.Group
-          className={styles.viewSwitch}
-          value={viewMode}
-          onChange={(event) => setViewMode(event.target.value)}
-          size="small"
-          optionType="button"
-          buttonStyle="solid"
-          options={[
-            { label: t('ApplicationResourceOverview.topologyTab'), value: 'topology' },
-            { label: t('ApplicationResourceOverview.resourcesTab'), value: 'resources' },
-          ]}
-        />
+    <Spin
+      spinning={loading}
+      wrapperClassName={styles.spinHost}
+    >
+      <div className={hostClassName}>
+        <div className={styles.viewToolbar}>
+          <Radio.Group
+            className={styles.viewSwitch}
+            value={viewMode}
+            onChange={(event) => setViewMode(event.target.value)}
+            size="small"
+            optionType="button"
+            buttonStyle="solid"
+            options={[
+              { label: t('ApplicationResourceOverview.topologyTab'), value: 'topology' },
+              { label: t('ApplicationResourceOverview.resourcesTab'), value: 'resources' },
+            ]}
+          />
+
+          {viewMode === 'topology' && (
+            <AutoComplete
+              className={styles.nodeSearch}
+              value={nodeSearch}
+              options={nodeSearchOptions}
+              open={nodeSearchOpen}
+              size="small"
+              filterOption={false}
+              notFoundContent={nodeSearch.trim() ? t('ApplicationResourceOverview.nodeSearchEmpty') : null}
+              popupMatchSelectWidth
+              onOpenChange={(open) => {
+                setNodeSearchOpen(open && Boolean(nodeSearch.trim()));
+              }}
+              onChange={(value) => {
+                const next = typeof value === 'string' ? value : '';
+                const matched = topologyNodeMap.get(next);
+                if (matched && matched.name !== next) {
+                  return;
+                }
+                setNodeSearch(next);
+                setNodeSearchOpen(Boolean(next.trim()));
+              }}
+              onSelect={(nodeId) => {
+                handleLocateTopologyNode(String(nodeId));
+              }}
+            >
+              <Input
+                allowClear
+                size="small"
+                prefix={<SearchOutlined />}
+                placeholder={t('ApplicationResourceOverview.nodeSearchPlaceholder')}
+                aria-label={t('ApplicationResourceOverview.nodeSearchPlaceholder')}
+              />
+            </AutoComplete>
+          )}
+        </div>
 
         {viewMode === 'topology' && (
-          <Space direction="vertical" className={styles.topologyStack} size={16}>
+          <div className={styles.topologyStack}>
             {topology?.truncated && (
               <Alert type="warning" showIcon message={t('ApplicationResourceOverview.truncated')} />
             )}
@@ -1114,6 +1279,7 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
                 <div
                   ref={topologyCardRef}
                   className={styles.graphPane}
+                  style={{ ['--cmdb-layer-label-rail' as string]: `${LAYER_LABEL_RAIL_PX}px` }}
                   onMouseLeave={() => {
                     setHoveredGraphNodeId(null);
                     setHoveredGraphEdgeId(null);
@@ -1126,26 +1292,23 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
                   ) : (
                     <>
                       <div className={styles.layerBands}>
-                        {(Object.keys(LAYER_META) as LayerKey[]).map((key, index, keys) => {
-                          const center = graphViewport.translateY
-                            + LAYER_META[key].y * graphViewport.scaleY;
-                          const previousCenter = index > 0
-                            ? graphViewport.translateY
-                              + LAYER_META[keys[index - 1]].y * graphViewport.scaleY
-                            : 0;
-                          const nextCenter = index < keys.length - 1
-                            ? graphViewport.translateY
-                              + LAYER_META[keys[index + 1]].y * graphViewport.scaleY
-                            : 0;
-                          const top = index === 0 ? 0 : (previousCenter + center) / 2;
-                          const isLast = index === keys.length - 1;
+                        {layerBands.map((band, index) => {
+                          const splitTop = index === 0
+                            ? 0
+                            : graphViewport.translateY
+                              + ((layerBands[index - 1].bottom + band.top) / 2) * graphViewport.scaleY;
+                          const isLast = index === layerBands.length - 1;
+                          const splitBottom = isLast
+                            ? 0
+                            : graphViewport.translateY
+                              + ((band.bottom + layerBands[index + 1].top) / 2) * graphViewport.scaleY;
                           return (
                             <div
-                              key={key}
+                              key={band.key}
                               className={styles.layerBand}
                               style={isLast
-                                ? { top, bottom: 0 }
-                                : { top, height: (center + nextCenter) / 2 - top }}
+                                ? { top: splitTop, bottom: 0 }
+                                : { top: splitTop, height: splitBottom - splitTop }}
                             />
                           );
                         })}
@@ -1156,10 +1319,10 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
                           centerId={topology.center.id}
                           nodeMovable={false}
                           minimap={{ width: 160, height: 96 }}
-                          fitViewKey={`app-topology-${graphData.nodes.length}-${graphData.edges.length}`}
-                          fitViewOptions={{ padding: 48, maxScale: 1 }}
+                          fitViewKey={`app-topology-${graphData.nodes.length}-${graphData.edges.length}-${laneWidth}`}
+                          fitViewOptions={{ padding: 48, maxScale: 1, minScale: 0.5, align: 'start' }}
                           onGraphReady={setGraphInstance}
-                          onNodeClick={closeNodeContextMenu}
+                          onNodeClick={handleSelectNode}
                           onNodeContextMenu={(nodeId, event) => {
                             const node = topologyNodeMap.get(nodeId);
                             if (!node) return;
@@ -1169,11 +1332,11 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
                             setNodeContextMenu({
                               visible: true,
                               x: Math.max(12, Math.min(relativeX, (containerRect?.width || 0) - 176)),
-                              y: Math.max(12, Math.min(relativeY, (containerRect?.height || 0) - 164)),
+                              y: Math.max(12, Math.min(relativeY, (containerRect?.height || 0) - 280)),
                               nodeId,
                             });
                           }}
-                          onBlankClick={closeNodeContextMenu}
+                          onBlankClick={handleClearNodeFocus}
                           onBlankContextMenu={closeNodeContextMenu}
                           toolbar={{
                             align: 'split',
@@ -1194,10 +1357,7 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
                                     aria-expanded={false}
                                     aria-controls="application-topology-relations"
                                     disabled={!topology.links.length}
-                                    onClick={() => {
-                                      closeNodeContextMenu();
-                                      setRelationsOpen(true);
-                                    }}
+                                    onClick={handleOpenRelationsPanel}
                                   >
                                     {t('ApplicationResourceOverview.linksTitle')}
                                     <span className={styles.relationCount}>{topology.links.length}</span>
@@ -1211,44 +1371,57 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
                         />
                       </div>
                       <div className={styles.layerLabels}>
-                        {(Object.keys(LAYER_META) as LayerKey[]).map((key) => (
+                        {layerBands.map((band) => (
                           <div
-                            key={key}
+                            key={band.key}
                             className={styles.layerLabel}
                             style={{
                               top: graphViewport.translateY
-                                + LAYER_META[key].y * graphViewport.scaleY,
+                                + band.labelY * graphViewport.scaleY,
                             }}
                           >
-                            <span>{getLayerTitle(key, t)}</span>
+                            <span>{getLayerTitle(band.key, t)}</span>
                           </div>
                         ))}
                       </div>
                     </>
                   )}
 
-                  {nodeContextMenu.visible && topologyNodeMap.get(nodeContextMenu.nodeId) && (
+                  {nodeContextMenu.visible && contextMenuNode && (
                     <div
                       className={styles.contextMenu}
                       style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
+                      onClick={(event) => event.stopPropagation()}
                     >
                       <div className={styles.contextMenuTitle}>
-                        {topologyNodeMap.get(nodeContextMenu.nodeId)?.name}
+                        {contextMenuNode.name}
                       </div>
                       <Space
                         direction="vertical"
                         size={2}
                         className={styles.contextMenuActions}
                       >
+                        <Button
+                          block
+                          size="small"
+                          onClick={() => handleViewRelations(contextMenuNode)}
+                        >
+                          {t('ApplicationResourceOverview.viewRelations')}
+                        </Button>
+                        <Button
+                          block
+                          size="small"
+                          onClick={() => handleViewNodeDetail(contextMenuNode)}
+                        >
+                          {t('ViewsHub.viewDetail')}
+                        </Button>
+                        <div className={styles.contextMenuDivider} />
                         {[1, 2, 3].map((depth) => (
                           <Button
                             key={depth}
                             block
                             size="small"
-                            onClick={() => handleExpandNode(
-                              topologyNodeMap.get(nodeContextMenu.nodeId) as ApplicationResourceNode,
-                              depth
-                            )}
+                            onClick={() => handleExpandNode(contextMenuNode, depth)}
                           >
                             {t(
                               depth === 1
@@ -1275,7 +1448,11 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
                       <div className={styles.relationsTitle}>
                         <ShareAltOutlined aria-hidden="true" />
                         <span>{t('ApplicationResourceOverview.linksTitle')}</span>
-                        <span className={styles.relationCount}>{topology?.links?.length || 0}</span>
+                        <span className={styles.relationCount}>
+                          {relationQuery.trim() || relationFocusNodeId
+                            ? `${filteredRelationLinks.length} / ${topology?.links?.length || 0}`
+                            : topology?.links?.length || 0}
+                        </span>
                       </div>
                       <Button
                         type="text"
@@ -1284,20 +1461,31 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
                         icon={<DoubleRightOutlined />}
                         tabIndex={relationsOpen ? 0 : -1}
                         onClick={() => {
-                          setHoveredRelationId(null);
                           setRelationsOpen(false);
                           window.requestAnimationFrame(() => relationsButtonRef.current?.focus());
                         }}
                       />
                     </div>
-                    <div
-                      className={styles.relationsTable}
-                      onMouseLeave={() => setHoveredRelationId(null)}
-                    >
+                    <div className={styles.relationsFilter}>
+                      <Input
+                        allowClear
+                        size="small"
+                        value={relationQuery}
+                        aria-label={t('ApplicationResourceOverview.relationSearchPlaceholder')}
+                        placeholder={t('ApplicationResourceOverview.relationSearchPlaceholder')}
+                        onChange={(event) => setRelationQuery(event.target.value)}
+                      />
+                    </div>
+                    <div className={styles.relationsTable}>
                       {!topology?.links?.length ? (
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
                           description={t('ApplicationResourceOverview.emptyLinks')}
+                        />
+                      ) : !filteredRelationLinks.length ? (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description={t('ApplicationResourceOverview.emptyFilteredLinks')}
                         />
                       ) : (
                         <Table
@@ -1305,20 +1493,8 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
                           size="small"
                           pagination={false}
                           tableLayout="fixed"
-                          scroll={{ y: 'calc(100vh - 308px)' }}
-                          dataSource={topology.links}
+                          dataSource={filteredRelationLinks}
                           columns={linkColumns}
-                          rowClassName={(record) =>
-                            record.id === hoveredRelationId ? styles.relationRowActive : ''
-                          }
-                          onRow={(record) => ({
-                            onMouseEnter: () => setHoveredRelationId(record.id),
-                            onMouseLeave: () => {
-                              setHoveredRelationId((current) =>
-                                current === record.id ? null : current
-                              );
-                            },
-                          })}
                         />
                       )}
                     </div>
@@ -1326,12 +1502,20 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
                 </aside>
               </div>
             </Card>
-          </Space>
+          </div>
         )}
 
         {viewMode === 'resources' && (
-          <Space direction="vertical" className={styles.resourceStack} size={16}>
-            <Flex justify="end">
+          <div className={styles.resourceStack}>
+            <Flex justify="space-between" align="center" gap={12} wrap="wrap">
+              <Input.Search
+                allowClear
+                className={styles.resourceSearch}
+                value={resourceQuery}
+                placeholder={t('ApplicationResourceOverview.resourceSearchPlaceholder')}
+                aria-label={t('ApplicationResourceOverview.resourceSearchPlaceholder')}
+                onChange={(event) => setResourceQuery(event.target.value)}
+              />
               <Button
                 icon={<DownloadOutlined />}
                 onClick={async () => {
@@ -1356,29 +1540,58 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
 
             {!resources?.groups?.length ? (
               <Empty description={t('ApplicationResourceOverview.emptyResources')} />
+            ) : !filteredResourceGroups.length ? (
+              <Empty description={t('ApplicationResourceOverview.emptyFilteredResources')} />
             ) : (
-              resources.groups.map((group) => (
+              filteredResourceGroups.map((group) => (
                 <Card
                   key={group.model_id}
                   size="small"
-                  title={`${group.model_id} (${group.count})`}
+                  title={`${group.model_name || group.model_id} (${group.count})`}
                 >
                   <Table<Record<string, string>>
-                    rowKey={(record, index) => `${group.model_id}-${record.inst_name || index}`}
+                    rowKey={(record, index) => `${group.model_id}-${record.inst_uuid || record.inst_name || index}`}
                     size="small"
-                    pagination={false}
+                    pagination={{
+                      pageSize: 10,
+                      showSizeChanger: true,
+                      pageSizeOptions: [10, 20, 50],
+                      hideOnSinglePage: true,
+                    }}
                     scroll={{ x: 'max-content' }}
                     dataSource={group.items}
                     columns={group.column_defs.map((column) => ({
                       title: column.title,
                       dataIndex: column.key,
                       key: column.key,
-                      render: (value: string) => {
+                      ellipsis: true,
+                      fixed: column.key === 'inst_name' ? 'left' : undefined,
+                      width: column.key === 'inst_name' ? 220 : 180,
+                      render: (value: string, record: Record<string, string>) => {
                         const text = value == null ? '' : String(value);
+                        if (column.key === 'inst_name' && record.inst_uuid) {
+                          return (
+                            <Button
+                              type="link"
+                              className={styles.instanceNameLink}
+                              onClick={() => {
+                                window.open(
+                                  buildBaseInfoPath({
+                                    model_id: record.model_id || group.model_id,
+                                    inst_uuid: record.inst_uuid,
+                                    inst_name: record.inst_name || text,
+                                  }),
+                                  '_blank',
+                                  'noopener,noreferrer'
+                                );
+                              }}
+                            >
+                              {text || '--'}
+                            </Button>
+                          );
+                        }
                         return (
-                          <span title={text}>
-                            {text}
-                          </span>
+                          <EllipsisWithTooltip text={text || '--'} className={styles.resourceCell} />
                         );
                       },
                     }))}
@@ -1386,9 +1599,9 @@ export default function ApplicationResourceOverview({ modelId, instUuid }: Props
                 </Card>
               ))
             )}
-          </Space>
+          </div>
         )}
-      </Space>
+      </div>
     </Spin>
   );
 }

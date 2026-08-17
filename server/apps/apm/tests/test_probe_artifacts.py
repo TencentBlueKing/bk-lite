@@ -3,8 +3,13 @@ from rest_framework.test import APIClient
 
 from apps.apm.management.commands.apm_probe_init import Command as ApmProbeInitCommand
 from apps.apm.services.probe_artifacts import (
+    GO_SDK_ARTIFACT_NAME,
     JAVA_AGENT_ARTIFACT_NAME,
+    LANGUAGE_PROBE_ARTIFACTS,
+    NODEJS_AUTO_ARTIFACT_NAME,
+    PROBE_ARTIFACT_LEGACY_OBJECT_KEYS,
     PROBE_ARTIFACT_OBJECT_KEYS,
+    PYTHON_WHEELS_ARTIFACT_NAME,
     ProbeArtifactNotFound,
     build_probe_artifact_download_url,
     upload_probe_artifact,
@@ -12,9 +17,18 @@ from apps.apm.services.probe_artifacts import (
 
 
 def test_download_url_only_covers_allowlisted_artifacts():
-    url = build_probe_artifact_download_url("http://10.10.10.1:8011/", JAVA_AGENT_ARTIFACT_NAME)
-
-    assert url == "http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar"
+    assert build_probe_artifact_download_url("http://10.10.10.1:8011/", JAVA_AGENT_ARTIFACT_NAME) == (
+        "http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar"
+    )
+    assert build_probe_artifact_download_url("http://10.10.10.1:8011", PYTHON_WHEELS_ARTIFACT_NAME).endswith(
+        "/opentelemetry-python-wheels.tar.gz"
+    )
+    assert LANGUAGE_PROBE_ARTIFACTS == {
+        "java": JAVA_AGENT_ARTIFACT_NAME,
+        "python": PYTHON_WHEELS_ARTIFACT_NAME,
+        "nodejs": NODEJS_AUTO_ARTIFACT_NAME,
+        "go": GO_SDK_ARTIFACT_NAME,
+    }
     with pytest.raises(ProbeArtifactNotFound):
         build_probe_artifact_download_url("http://10.10.10.1:8011", "etc-passwd")
 
@@ -90,6 +104,8 @@ def test_upload_probe_artifact_writes_the_allowlisted_object_key(monkeypatch, tm
     assert uploads == [
         (PROBE_ARTIFACT_OBJECT_KEYS[JAVA_AGENT_ARTIFACT_NAME], b"jar-bytes", JAVA_AGENT_ARTIFACT_NAME),
     ]
+    assert PROBE_ARTIFACT_OBJECT_KEYS[JAVA_AGENT_ARTIFACT_NAME] == "apm/probe/java/opentelemetry-javaagent.jar"
+    assert PROBE_ARTIFACT_LEGACY_OBJECT_KEYS[JAVA_AGENT_ARTIFACT_NAME] == "apm/probe/opentelemetry-javaagent.jar"
 
 
 def test_upload_probe_artifact_rejects_names_outside_the_allowlist(tmp_path):

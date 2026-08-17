@@ -11,11 +11,13 @@ import { useK8sResourceApi } from './api';
 import {
   getK8sResourceColumns, K8S_RESOURCE_NAV_ITEMS, K8sBranchData, K8sOverviewData,
   K8sResourceKind, K8sResourceSubView, K8sTopologyData, K8sTopologyNode,
-  mergeTopologyBranch, PodBranchQueue,
+  mergeTopologyBranch, PodBranchQueue, stripK8sClusterScopedParams,
 } from './model';
 import { K8sTopology } from './topology';
 import styles from './styles.module.scss';
 import { useTranslation } from '@/utils/i18n';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
+import { message } from 'antd';
 import { K8sResourceTable } from './resourceTable';
 
 const branchQueue = new PodBranchQueue(4);
@@ -52,29 +54,34 @@ export const K8sOverviewContent: React.FC<{
     { label: t('K8sResourceOverview.metrics.pod'), value: data.summary.pod_count },
     { label: t('K8sResourceOverview.metrics.node'), value: data.summary.node_count },
   ];
-  return <>
-    <div className={styles.metricGrid}>
-      {metrics.map(({ label, value, detail }) => <div className={styles.metricCard} key={label}>
-        <div className={styles.metricLabel}>{label}</div><div className={styles.metricValue}>{value}</div>
-        {detail && <div className={styles.metricDetail}>{detail}</div>}
-      </div>)}
+  return (
+    <div className={styles.overviewStage}>
+      <div className={styles.metricGrid}>
+        {metrics.map(({ label, value, detail }) => (
+          <div className={styles.metricCard} key={label}>
+            <span className={styles.metricLabel}>{label}</span>
+            <span className={styles.metricValue}>{value}</span>
+            {detail ? <span className={styles.metricDetail}>{detail}</span> : null}
+          </div>
+        ))}
+      </div>
+      <div className={styles.topologyCard}>
+        <K8sTopology
+          topology={topology}
+          expandedWorkloads={expanded}
+          branchMeta={Object.fromEntries(Object.entries(branches).map(([key, value]) => [key, value]))}
+          layers={data.layers}
+          onToggleWorkload={onToggleWorkload}
+          onLoadMorePods={onLoadMorePods}
+          onLoadMoreLayer={onLoadMoreLayer}
+          onOpenList={onOpenList}
+          unownedExpanded={unownedExpanded}
+          unownedLoading={unownedLoading}
+          onToggleUnowned={onToggleUnowned}
+        />
+      </div>
     </div>
-    <div className={styles.topologyCard}>
-      <K8sTopology
-        topology={topology}
-        expandedWorkloads={expanded}
-        branchMeta={Object.fromEntries(Object.entries(branches).map(([key, value]) => [key, value]))}
-        layers={data.layers}
-        onToggleWorkload={onToggleWorkload}
-        onLoadMorePods={onLoadMorePods}
-        onLoadMoreLayer={onLoadMoreLayer}
-        onOpenList={onOpenList}
-        unownedExpanded={unownedExpanded}
-        unownedLoading={unownedLoading}
-        onToggleUnowned={onToggleUnowned}
-      />
-    </div>
-  </>;
+  );
 };
 
 export interface K8sResourceDetailsContentProps {
@@ -117,6 +124,7 @@ export const K8sResourceDetailsContent: React.FC<K8sResourceDetailsContentProps>
   const [overlayOpen, setOverlayOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const restoredClusterRef = useRef('');
+  const prevClusterIdRef = useRef(clusterId);
 
   const loadOverview = useCallback(async (invalidate = false) => {
     if (!clusterId) return;
@@ -138,7 +146,17 @@ export const K8sResourceDetailsContent: React.FC<K8sResourceDetailsContentProps>
     } finally { setLoading(false); }
   }, [api, clusterId]);
 
-  useEffect(() => { loadOverview(); }, [clusterId]);
+  useEffect(() => {
+    const previousClusterId = prevClusterIdRef.current;
+    prevClusterIdRef.current = clusterId;
+    if (previousClusterId && previousClusterId !== clusterId) {
+      const params = new URLSearchParams(searchParams.toString());
+      if (stripK8sClusterScopedParams(params)) {
+        router.replace(`?${params.toString()}`);
+      }
+    }
+    loadOverview();
+  }, [clusterId]);
   useEffect(() => {
     const element = rootRef.current;
     if (!element) return;
@@ -285,13 +303,15 @@ export const K8sResourceDetailsContent: React.FC<K8sResourceDetailsContentProps>
         </Tooltip>
       </React.Fragment>)}
     </aside>
-    <main className={`${styles.content} ${sub !== 'overview' ? styles.listContent : ''}`}>
-      <div className={styles.toolbar}>
-        <h1 className={styles.pageTitle}>{t(`K8sResourceOverview.nav.${sub}`, t('K8sResourceOverview.resourceDetails'))}</h1>
-        {sub === 'overview' && <Button icon={<ReloadOutlined />} onClick={() => loadOverview(true)}>{t('K8sResourceOverview.actions.refresh')}</Button>}
-      </div>
+    <main className={`${styles.content} ${sub !== 'overview' ? styles.listContent : styles.overviewContent}`}>
+      {sub === 'overview' && (
+        <div className={styles.toolbar}>
+          <h1 className={styles.pageTitle}>{t('K8sResourceOverview.nav.overview')}</h1>
+          <Button icon={<ReloadOutlined />} onClick={() => loadOverview(true)}>{t('K8sResourceOverview.actions.refresh')}</Button>
+        </div>
+      )}
       {error && <Alert type="error" showIcon message={error} action={<Button size="small" onClick={() => loadOverview()}>{t('K8sResourceOverview.actions.retry')}</Button>} className="mb-3" />}
-      <Spin spinning={loading} wrapperClassName={sub !== 'overview' ? styles.listSpin : undefined}>
+      <Spin spinning={loading} wrapperClassName={styles.listSpin}>
         {sub === 'overview' && overview && <K8sOverviewContent
           data={overview} topology={topology} expanded={expanded} branches={branches}
           onToggleWorkload={toggleWorkload}
@@ -299,7 +319,7 @@ export const K8sResourceDetailsContent: React.FC<K8sResourceDetailsContentProps>
           onLoadMoreLayer={loadMoreLayer} onOpenList={openList}
           unownedExpanded={unownedExpanded} unownedLoading={unownedLoading} onToggleUnowned={toggleUnowned}
         />}
-        {sub !== 'overview' && <K8sResourceList clusterId={clusterId} kind={sub} api={api} searchParams={searchParams} router={router} />}
+        {sub !== 'overview' && <K8sResourceList key={clusterId} clusterId={clusterId} kind={sub} api={api} searchParams={searchParams} router={router} />}
       </Spin>
     </main>
   </div>;
@@ -332,7 +352,7 @@ const K8sResourceList: React.FC<{ clusterId: string; kind: K8sResourceKind; api:
     } catch (reason) { setError(reason instanceof Error ? reason.message : t('K8sResourceOverview.states.listError')); }
     finally { setLoading(false); }
   }, [api, clusterId, kind, page, pageSize, search, order, namespaceFilter, workloadFilter, nodeFilter]);
-  useEffect(() => { load(); }, [kind, page, pageSize, order, namespaceFilter, workloadFilter, nodeFilter]);
+  useEffect(() => { load(); }, [clusterId, kind, page, pageSize, order, namespaceFilter, workloadFilter, nodeFilter]);
   useEffect(() => {
     if (!['deployment', 'statefulset', 'daemonset', 'job', 'cronjob', 'other_workload', 'pod'].includes(kind)) return;
     const toOptions = (result: unknown) => unwrap<{ items: Array<{ id: string; name: string }> }>(result).items.map((item) => ({ label: item.name, value: item.id }));
@@ -357,9 +377,24 @@ const K8sResourceList: React.FC<{ clusterId: string; kind: K8sResourceKind; api:
           ? t('K8sResourceOverview.states.noData')
           : String(value);
       }
+      const instUuid = resolveCmdbInstUuid(record.inst_uuid || record.id);
+      if (!instUuid) {
+        return (
+          <a
+            href="#"
+            onClick={(event) => {
+              event.preventDefault();
+              message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+            }}
+          >
+            {String(value || t('K8sResourceOverview.states.noData'))}
+          </a>
+        );
+      }
       const params = new URLSearchParams(searchParams);
       params.set('model_id', modelId);
-      params.set('inst_id', String(record.id));
+      params.set('inst_uuid', instUuid);
+      params.delete('inst_id');
       params.set('inst_name', String(value || ''));
       const detailUrl = `/cmdb/assetData/detail/baseInfo?${params.toString()}`;
       return <a href={detailUrl} target="_blank" rel="noopener noreferrer">
@@ -375,12 +410,15 @@ const K8sResourceList: React.FC<{ clusterId: string; kind: K8sResourceKind; api:
   };
   return <div className={styles.resourceList}>
     <div className={styles.toolbar}>
-      <Space wrap>
-        <Input.Search allowClear value={search} onChange={(e) => setSearch(e.target.value)} onSearch={() => { if (page === 1) load(); else setPage(1); }} prefix={<SearchOutlined />} placeholder={t('K8sResourceOverview.list.search')} style={{ width: 260 }} />
-        {filterOptions.namespace && <Select allowClear showSearch optionFilterProp="label" placeholder={t('K8sResourceOverview.list.namespaceFilter')} value={namespaceFilter} options={filterOptions.namespace} style={{ width: 180 }} onChange={(value) => setFilter('namespace_id', value)} />}
-        {kind === 'pod' && <Select allowClear showSearch optionFilterProp="label" placeholder={t('K8sResourceOverview.list.workloadFilter')} value={workloadFilter} options={filterOptions.workload} style={{ width: 200 }} onChange={(value) => setFilter('workload_id', value)} />}
-        {kind === 'pod' && <Select allowClear showSearch optionFilterProp="label" placeholder={t('K8sResourceOverview.list.nodeFilter')} value={nodeFilter} options={filterOptions.node} style={{ width: 180 }} onChange={(value) => setFilter('node_id', value)} />}
-      </Space>
+      <div className={styles.toolbarLeading}>
+        <h1 className={styles.pageTitle}>{t(`K8sResourceOverview.nav.${kind}`)}</h1>
+        <Space wrap>
+          <Input.Search allowClear value={search} onChange={(e) => setSearch(e.target.value)} onSearch={() => { if (page === 1) load(); else setPage(1); }} prefix={<SearchOutlined />} placeholder={t('K8sResourceOverview.list.search')} style={{ width: 260 }} />
+          {filterOptions.namespace && <Select allowClear showSearch optionFilterProp="label" placeholder={t('K8sResourceOverview.list.namespaceFilter')} value={namespaceFilter} options={filterOptions.namespace} style={{ width: 180 }} onChange={(value) => setFilter('namespace_id', value)} />}
+          {kind === 'pod' && <Select allowClear showSearch optionFilterProp="label" placeholder={t('K8sResourceOverview.list.workloadFilter')} value={workloadFilter} options={filterOptions.workload} style={{ width: 200 }} onChange={(value) => setFilter('workload_id', value)} />}
+          {kind === 'pod' && <Select allowClear showSearch optionFilterProp="label" placeholder={t('K8sResourceOverview.list.nodeFilter')} value={nodeFilter} options={filterOptions.node} style={{ width: 180 }} onChange={(value) => setFilter('node_id', value)} />}
+        </Space>
+      </div>
       <Button icon={<ReloadOutlined />} onClick={load}>{t('K8sResourceOverview.actions.refresh')}</Button>
     </div>
     {error && <Alert type="error" showIcon message={error} action={<Button size="small" onClick={load}>{t('K8sResourceOverview.actions.retry')}</Button>} className="mb-3" />}

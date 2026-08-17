@@ -28,17 +28,22 @@ dependencies = [
     "xmltodict==0.13.0",
     "boto3>=1.35.0",
     "PyMySQL==1.1.1",
+    "aiomysql>=0.2.0",
     "oracledb==3.3.0",
     "pyodbc==5.2.0",
+    "aioodbc>=0.5.0",
     "paramiko==3.5.0",
     "confluent-kafka[avro]==2.15.0",
-    "netmiko==4.5.0",
+    "scrapli[asyncssh]>=2025.1.30",
+    "scrapli-community>=2025.1.30",
     "pyghmi>=1.6.5",
     "impacket>=0.12.0",
     "pytz==2025.2",
     "redis>=5.0.0",
     "influxdb-client>=1.49.0",
     "psycopg2==2.9.11",
+    "psycopg[binary]>=3.2.0",
+    "httpx>=0.28.1",
     "icmplib>=3.0.4",
     # 2026-07-07 Gap-1 预存在修复:tests/collect_fixtures/{cli,docker_lifecycle,run_collector}.py 都 import docker,
     # 没声明 SDK 会让 cli 单测在收集阶段 ModuleNotFoundError。详见 test_docker_sdk_smoke.py。
@@ -136,7 +141,6 @@ snmp = [
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=0.26.0",
     # 2026-07-07 Phase 2:pytest-xdist 加速 91s → 46s(2x,8 核 auto worker 数)

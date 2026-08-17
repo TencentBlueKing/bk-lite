@@ -207,6 +207,8 @@ def test_clock_check_event_is_optional_for_historical_installer_summaries():
         }
     )
 
+    assert normalized["installer_summary"]["expected_count"] == 6
+    assert normalized["installer_summary"]["completed_count"] == 6
     assert normalized["installer_summary"]["missing_steps"] == []
 
     with_clock_check = normalize_task_result_for_read(
@@ -224,12 +226,44 @@ def test_clock_check_event_is_optional_for_historical_installer_summaries():
             + [{"action": "connectivity_check", "status": "running", "message": "waiting"}],
         }
     )
-    assert with_clock_check["installer_summary"]["expected_count"] == 6
+    assert with_clock_check["installer_summary"]["expected_count"] == 7
+    assert with_clock_check["installer_summary"]["completed_count"] == 7
+    assert "clock_check" in with_clock_check["installer_summary"]["completed_steps"]
     assert with_clock_check["installer_summary"]["missing_steps"] == []
     assert [step["action"] for step in with_clock_check["installer_summary"]["steps"]] == [
         "clock_check",
         *[action for action, _ in installer_steps],
     ]
+
+
+def test_clock_check_counts_toward_installer_progress_when_present():
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "running",
+            "steps": [
+                {
+                    "action": action,
+                    "status": status,
+                    "message": action,
+                    "details": {"installer_event": True, "raw_step": action},
+                }
+                for action, status in (
+                    ("fetch_session", "success"),
+                    ("clock_check", "success"),
+                    ("prepare_dirs", "success"),
+                    ("download", "running"),
+                )
+            ]
+            + [{"action": "connectivity_check", "status": "waiting", "message": "waiting"}],
+        }
+    )
+
+    summary = normalized["installer_summary"]
+    assert summary["expected_count"] == 7
+    assert summary["completed_count"] == 3
+    assert summary["completed_steps"] == ["fetch_session", "clock_check", "prepare_dirs"]
+    assert summary["expected_steps"][1] == "clock_check"
+    assert summary["missing_steps"] == ["extract", "write_config", "install"]
 
 
 def test_normalize_failure_ignores_successful_status_messages():

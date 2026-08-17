@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.apm.models import ApmServiceInstance
+from apps.apm.models import ApmService
 from apps.apm.services import DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery
 from apps.apm.tests.helpers import create_application
@@ -33,15 +33,14 @@ def catalog_rows():
     active = _discover("shop", "checkout-api", "pod-active", "prod", seen_at=now - timedelta(minutes=1))
     billing = _discover("billing", "invoice-api", "pod-billing", "stage", seen_at=now - timedelta(minutes=2))
     silent = _discover("shop", "checkout-api", "pod-silent", "dev", seen_at=now - timedelta(hours=1))
-    archived = _discover("shop", "checkout-api", "pod-archived", "prod", seen_at=now - timedelta(days=10))
+    old_silent = _discover("shop", "checkout-api", "pod-old-silent", "prod", seen_at=now - timedelta(days=10))
     hidden = _discover("hidden", "private-api", "pod-hidden", "prod", seen_at=now)
-    ApmServiceInstance.objects.filter(id=archived.instance.id).update(archived_at=now, archive_reason="silent_timeout")
     return {
         "now": now,
         "active": active,
         "billing": billing,
         "silent": silent,
-        "archived": archived,
+        "old_silent": old_silent,
         "hidden": hidden,
     }
 
@@ -52,7 +51,7 @@ def test_instance_list_keeps_legacy_array_but_supports_bounded_pagination(apm_ap
 
     assert legacy.status_code == paged.status_code == 200
     assert isinstance(legacy.data, list)
-    assert paged.data["count"] == 3
+    assert paged.data["count"] == 4
     assert len(paged.data["items"]) == 2
     assert [item["last_seen_at"] for item in paged.data["items"]] == sorted(
         (item["last_seen_at"] for item in paged.data["items"]),
@@ -102,6 +101,32 @@ def test_instance_list_rejects_invalid_filters(apm_api_client, params):
     assert response.status_code == 400
 
 
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"page_size": 20, "status": "archived"},
+        {"page_size": 20, "include_archived": "true"},
+    ],
+)
+def test_instance_list_rejects_removed_archive_contract(apm_api_client, params):
+    response = apm_api_client.get("/api/v1/apm/instances/", params)
+
+    assert response.status_code == 400
+
+
+def test_old_instances_remain_queryable_as_silent_without_archive_fields(apm_api_client, catalog_rows):
+    response = apm_api_client.get(
+        "/api/v1/apm/instances/",
+        {"page_size": 20, "status": "silent", "keyword": "pod-old-silent"},
+    )
+
+    assert response.status_code == 200
+    assert response.data["count"] == 1
+    assert response.data["items"][0]["status"] == "silent"
+    assert "archived_at" not in response.data["items"][0]
+    assert "archive_reason" not in response.data["items"][0]
+
+
 def test_service_list_pagination_and_filters_are_optional_and_compatible(apm_api_client, catalog_rows):
     legacy = apm_api_client.get("/api/v1/apm/services/")
     paged = apm_api_client.get(
@@ -116,6 +141,18 @@ def test_service_list_pagination_and_filters_are_optional_and_compatible(apm_api
     assert paged.data["items"][0]["name"] == "checkout-api"
 
 
+def test_detached_legacy_uncategorized_catalog_rows_are_not_exposed(apm_api_client):
+    create_application("legacy", (10,))
+    discovered = _discover("legacy", "orphan", "pod-orphan", "prod", seen_at=timezone.now())
+    ApmService.objects.filter(id=discovered.service.id).update(application=None)
+
+    services = apm_api_client.get("/api/v1/apm/services/")
+    instances = apm_api_client.get("/api/v1/apm/instances/")
+
+    assert services.data == []
+    assert instances.data == []
+
+
 def test_catalog_page_size_is_capped_for_public_list_queries(apm_api_client, catalog_rows):
     for index in range(101):
         _discover(
@@ -128,7 +165,7 @@ def test_catalog_page_size_is_capped_for_public_list_queries(apm_api_client, cat
     response = apm_api_client.get("/api/v1/apm/instances/", {"page_size": 1000})
 
     assert response.status_code == 200
-    assert response.data["count"] == 104
+    assert response.data["count"] == 105
     assert len(response.data["items"]) == 100
 
 

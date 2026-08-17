@@ -1,15 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { ReloadOutlined } from '@ant-design/icons';
+import { CloseCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
-  Badge,
+  Alert as AntAlert,
   Button,
   Descriptions,
   Drawer,
   Input,
   message,
+  Popconfirm,
   Radio,
   Select,
   Space,
@@ -17,657 +17,503 @@ import {
   Tag,
   Timeline,
   Typography,
+  theme,
   type TableColumnsType,
 } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
-import FilterToolbar from '@/components/filter-toolbar';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
-import type { ApmEvent, ApmEventQuery, ApmNotificationDelivery, ApmPolicyMetric, ApmPolicySeverity } from '@/app/apm/types';
-import CustomTable from '@/components/custom-table';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
+import type {
+  ApmAlert,
+  ApmAlertEvent,
+  ApmAlertQuery,
+  ApmEventSnapshot,
+  ApmNotificationDelivery,
+  ApmPolicySeverity,
+} from '@/app/apm/types';
 
 type PageState = CatalogStateKind | 'ready';
-type AlertTab = 'active' | 'history';
-type DrawerTab = 'alert' | 'event';
-type TimeRange = '1h' | '24h' | '7d';
+type Range = '1h' | '24h' | '7d';
+const RANGE_MS: Record<Range, number> = { '1h': 3_600_000, '24h': 86_400_000, '7d': 604_800_000 };
+const ACTION_LABEL = { triggered: '触发', escalated: '级别升级', recovered: '恢复', closed: '人工关闭' } as const;
+const STATUS_LABEL = { active: '告警中', recovered: '已恢复', closed: '已关闭' } as const;
+const STATUS_COLOR = { active: 'error', recovered: 'success', closed: 'default' } as const;
+const SEVERITY_COLOR: Record<ApmPolicySeverity, string> = { critical: 'red', error: 'orange', warning: 'gold' };
 
-const RANGE_MS: Record<TimeRange, number> = {
-  '1h': 60 * 60 * 1000,
-  '24h': 24 * 60 * 60 * 1000,
-  '7d': 7 * 24 * 60 * 60 * 1000,
-};
-
-const SEVERITY = {
-  critical: { label: '严重', color: 'red' },
-  error: { label: '错误', color: 'orange' },
-  warning: { label: '警告', color: 'gold' },
-  info: { label: '提醒', color: 'blue' },
-} as const;
-
-const SEVERITY_CHART: Record<'critical' | 'error' | 'warning', string> = {
-  critical: 'var(--color-fail)',
-  error: 'var(--theme-color-status-warning)',
-  warning: 'var(--color-warning, var(--theme-color-status-warning))',
-};
-
-const ALERT_STATUS = {
-  firing: { label: '告警中', color: 'error' },
-  recovered: { label: '已恢复', color: 'success' },
-} as const;
-
-const METRIC_LABELS: Record<ApmPolicyMetric, string> = {
-  error_rate: '错误率',
-  p95: 'P95 延迟',
-  p99: 'P99 延迟',
-  throughput: '吞吐',
-  no_traffic: '无流量',
-};
-
-const ACTION_LABELS: Record<ApmEvent['action'], string> = {
-  created: '触发',
-  recovery: '恢复',
-};
-
-const DELIVERY_STATUS: Record<ApmNotificationDelivery['status'], { label: string; color: string }> = {
-  pending: { label: '待投递', color: 'processing' },
-  delivered: { label: '已送达', color: 'success' },
-  failed: { label: '终止失败', color: 'error' },
-};
-
-export default function ApmEventsPage() {
-  const searchParams = useSearchParams();
-  const { getEvents, isLoading: authLoading, retryNotificationDelivery } = useApmApi();
-  const [events, setEvents] = useState<ApmEvent[]>([]);
+export default function ApmAlertsPage() {
+  const { token } = theme.useToken();
+  const {
+    closeAlert,
+    getAlertDistribution,
+    getAlerts,
+    getAlertSnapshots,
+    getNotificationDeliveries,
+    isLoading: authLoading,
+  } = useApmApi();
+  const [alerts, setAlerts] = useState<ApmAlert[]>([]);
+  const [distribution, setDistribution] = useState<
+    Array<{ time: string; critical: number; error: number; warning: number }>
+  >([]);
   const [state, setState] = useState<PageState>('loading');
-  const [query, setQuery] = useState<ApmEventQuery>({ limit: 50 });
-  const [activeTab, setActiveTab] = useState<AlertTab>('active');
-  const [timeRange, setTimeRange] = useState<TimeRange>('24h');
-  const [keyword, setKeyword] = useState(
-    () => searchParams.get('service') ?? searchParams.get('q') ?? ''
-  );
-  const [environmentFilter, setEnvironmentFilter] = useState(
-    () => searchParams.get('environment') ?? ''
-  );
-  const [retryingId, setRetryingId] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>('alert');
-  const [selectedAlert, setSelectedAlert] = useState<ApmEvent | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
+  const [range, setRange] = useState<Range>('24h');
+  const [severity, setSeverity] = useState<ApmPolicySeverity | undefined>();
+  const [metric, setMetric] = useState<ApmAlertQuery['metric_type']>();
+  const [keyword, setKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const [selected, setSelected] = useState<ApmAlert | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<ApmAlertEvent | null>(null);
+  const [snapshot, setSnapshot] = useState<ApmEventSnapshot | null>(null);
+  const [deliveries, setDeliveries] = useState<ApmNotificationDelivery[]>([]);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+
+  const timeParams = useMemo(() => {
+    const endedAt = new Date();
+    return { started_at: new Date(endedAt.getTime() - RANGE_MS[range]).toISOString(), ended_at: endedAt.toISOString() };
+  }, [range]);
 
   const load = useCallback(() => {
     if (authLoading) return;
     setState('loading');
-    const endedAt = new Date();
-    getEvents({
-      ...query,
-      started_at: new Date(endedAt.getTime() - RANGE_MS[timeRange]).toISOString(),
-      ended_at: endedAt.toISOString(),
-    })
-      .then((items) => {
-        setEvents(items);
-        setState(items.length ? 'ready' : 'empty');
+    const query: ApmAlertQuery = {
+      ...timeParams,
+      limit: 100,
+      severity,
+      metric_type: metric,
+      keyword: submittedKeyword,
+      status: activeTab === 'active' ? 'active' : undefined,
+    };
+    Promise.all([getAlerts(query), getAlertDistribution(timeParams)])
+      .then(([items, buckets]) => {
+        const visible = activeTab === 'history' ? items.filter((item) => item.status !== 'active') : items;
+        setAlerts(visible);
+        setDistribution(buckets);
+        setState(visible.length ? 'ready' : 'empty');
       })
       .catch((error) => setState(catalogErrorKind(error)));
-  }, [authLoading, getEvents, query, timeRange]);
+  }, [activeTab, authLoading, getAlertDistribution, getAlerts, metric, severity, submittedKeyword, timeParams]);
 
   useEffect(() => load(), [load]);
 
-  useEffect(() => {
-    if (!drawerOpen || !selectedAlert) return;
-    const refreshed = events.find((event) => event.id === selectedAlert.id)
-      ?? events.find((event) => event.external_id === selectedAlert.external_id);
-    if (!refreshed || refreshed === selectedAlert) return;
-    setSelectedAlert(refreshed);
-  }, [drawerOpen, events]);
-
-  const alerts = useMemo(() => {
-    const seen = new Set<string>();
-    return events.filter((event) => {
-      if (seen.has(event.external_id)) return false;
-      seen.add(event.external_id);
-      return true;
-    });
-  }, [events]);
-
-  const activeAlerts = useMemo(
-    () => alerts.filter((event) => event.status === 'firing'),
-    [alerts],
-  );
-  const historicalAlerts = useMemo(
-    () => alerts.filter((event) => event.status === 'recovered'),
-    [alerts],
-  );
-  const visibleAlerts = useMemo(() => {
-    const source = activeTab === 'active' ? activeAlerts : historicalAlerts;
-    const normalized = keyword.trim().toLocaleLowerCase();
-    const env = environmentFilter.trim().toLocaleLowerCase();
-    return source.filter((event) => {
-      if (env && (event.environment || '').toLocaleLowerCase() !== env) return false;
-      if (!normalized) return true;
-      return (
-        event.title.toLocaleLowerCase().includes(normalized)
-        || event.service.toLocaleLowerCase().includes(normalized)
-        || event.resource_name.toLocaleLowerCase().includes(normalized)
-        || event.item.toLocaleLowerCase().includes(normalized)
-      );
-    });
-  }, [activeAlerts, activeTab, environmentFilter, historicalAlerts, keyword]);
-  const visibleState: PageState = state === 'ready' && !visibleAlerts.length ? 'empty' : state;
-  const pageAlerts = useMemo(
-    () => visibleAlerts.slice((page - 1) * pageSize, page * pageSize),
-    [page, pageSize, visibleAlerts],
+  const chooseEvent = useCallback(
+    (alert: ApmAlert, event: ApmAlertEvent) => {
+      setSelectedEvent(event);
+      setSnapshot(null);
+      setDeliveries([]);
+      setSnapshotLoading(true);
+      Promise.all([
+        getAlertSnapshots(alert.id, event.event_id),
+        getNotificationDeliveries({ event_id: event.event_id }),
+      ])
+        .then(([snapshots, deliveryItems]) => {
+          setSnapshot(snapshots[0] ?? null);
+          setDeliveries(deliveryItems);
+        })
+        .finally(() => setSnapshotLoading(false));
+    },
+    [getAlertSnapshots, getNotificationDeliveries],
   );
 
-  const distribution = useMemo(() => {
-    const bucketCount = timeRange === '1h' ? 12 : timeRange === '24h' ? 24 : 28;
-    const rangeMs = RANGE_MS[timeRange];
-    const bucketMs = rangeMs / bucketCount;
-    const rangeStart = Date.now() - rangeMs;
-    const buckets = Array.from({ length: bucketCount }, () => ({ critical: 0, error: 0, warning: 0 }));
-    events.forEach((event) => {
-      if (event.severity === 'info') return;
-      const index = Math.min(bucketCount - 1, Math.max(0, Math.floor((new Date(event.start_time).getTime() - rangeStart) / bucketMs)));
-      buckets[index][event.severity] += 1;
-    });
-    return buckets;
-  }, [events, timeRange]);
-  const maxDistribution = Math.max(1, ...distribution.map((bucket) => bucket.critical + bucket.error + bucket.warning));
-
-  const relatedEvents = useMemo(() => {
-    if (!selectedAlert) return [];
-    return events
-      .filter((event) => event.external_id === selectedAlert.external_id)
-      .sort((left, right) => new Date(right.start_time).getTime() - new Date(left.start_time).getTime());
-  }, [events, selectedAlert]);
-
-  const openDrawer = useCallback((alert: ApmEvent, tab: DrawerTab = 'alert') => {
-    setSelectedAlert(alert);
-    setDrawerTab(tab);
-    setDrawerOpen(true);
-  }, []);
-
-  const closeDrawer = useCallback(() => {
-    setDrawerOpen(false);
-    setSelectedAlert(null);
-    setDrawerTab('alert');
-  }, []);
-
-  const handleRetry = useCallback(async (event: ApmEvent, delivery: ApmNotificationDelivery) => {
-    setRetryingId(delivery.id);
-    try {
-      const retried = await retryNotificationDelivery(delivery.id);
-      setEvents((items) => items.map((item) => item.id === event.id ? {
-        ...item,
-        notification_deliveries: item.notification_deliveries.map((current) => (
-          current.id === retried.id ? retried : current
-        )),
-      } : item));
-      setSelectedAlert((current) => {
-        if (!current || current.id !== event.id) return current;
-        return {
-          ...current,
-          notification_deliveries: current.notification_deliveries.map((item) => (
-            item.id === retried.id ? retried : item
-          )),
-        };
-      });
-      message.success('通知已进入重投队列');
-    } finally {
-      setRetryingId(null);
-    }
-  }, [retryNotificationDelivery]);
-
-  const renderDeliveries = (event: ApmEvent) => {
-    const deliveries = event.notification_deliveries ?? [];
-    if (!deliveries.length) {
-      return <Typography.Text type="secondary">未配置通知渠道</Typography.Text>;
-    }
-    return (
-      <div className="flex flex-col gap-2">
-        {deliveries.map((delivery) => (
-          <div
-            key={delivery.id}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-3 py-2"
-          >
-            <Space direction="vertical" size={0}>
-              <Space wrap>
-                <Typography.Text strong>{delivery.channel_name || `渠道 ${delivery.channel_id ?? '未知'}`}</Typography.Text>
-                <Tag bordered={false}>{delivery.channel_type || '未知类型'}</Tag>
-                <Tag bordered={false} color={delivery.delivery_mode === 'alert_event_copy' ? 'purple' : 'blue'}>
-                  {delivery.delivery_mode === 'alert_event_copy' ? '告警中心事件副本' : '普通通知'}
-                </Tag>
-                <Tag bordered={false} color={DELIVERY_STATUS[delivery.status].color}>
-                  {DELIVERY_STATUS[delivery.status].label}
-                </Tag>
-              </Space>
-              <Typography.Text type="secondary" className="text-xs">
-                尝试 {delivery.attempts} 次
-                {delivery.recipients.length ? ` · 接收人 ${delivery.recipients.join('、')}` : ''}
-                {delivery.last_error_message ? ` · ${delivery.last_error_code || 'delivery_failed'}：${delivery.last_error_message}` : ''}
-              </Typography.Text>
-            </Space>
-            {delivery.status === 'failed' ? (
-              <Button
-                size="small"
-                loading={retryingId === delivery.id}
-                onClick={() => handleRetry(event, delivery)}
-              >
-                人工重投
-              </Button>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    );
+  const openDrawer = (alert: ApmAlert) => {
+    setSelected(alert);
+    const event = alert.events.at(-1) ?? null;
+    if (event) chooseEvent(alert, event);
   };
 
-  const columns: TableColumnsType<ApmEvent> = [
-    {
-      title: '告警',
-      dataIndex: 'title',
-      fixed: 'left',
-      render: (title, event) => (
-        <Space direction="vertical" size={0} className="min-w-0">
-          <EllipsisWithTooltip className="truncate font-medium" text={title} />
-          <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={`${event.resource_name || event.service} · ${event.environment || '未设置环境'}`} />
-        </Space>
-      ),
-    },
+  const chartRows = useMemo(() => {
+    const series = snapshot?.payload?.series ?? [];
+    const threshold = snapshot?.evaluation_snapshot.threshold;
+    const eventAt = new Date(snapshot?.occurred_at ?? 0).getTime();
+    let closest = -1;
+    let distance = Number.POSITIVE_INFINITY;
+    series.forEach((point, index) => {
+      const next = Math.abs(new Date(point.timestamp).getTime() - eventAt);
+      if (next < distance) {
+        closest = index;
+        distance = next;
+      }
+    });
+    return series.map((point, index) => ({
+      timestamp: point.timestamp,
+      value: point.value,
+      threshold: threshold == null ? null : Number(threshold),
+      event: index === closest ? point.value : null,
+    }));
+  }, [snapshot]);
+
+  const columns: TableColumnsType<ApmAlert> = [
     {
       title: '级别',
       dataIndex: 'severity',
       width: 90,
-      render: (severity: ApmEvent['severity']) => (
-        <Tag bordered={false} color={SEVERITY[severity].color}>{SEVERITY[severity].label}</Tag>
+      render: (value) => <Tag color={SEVERITY_COLOR[value as ApmPolicySeverity]}>{value}</Tag>,
+    },
+    {
+      title: '告警',
+      dataIndex: 'title',
+      render: (_, item) => (
+        <Button type="link" className="!px-0" onClick={() => openDrawer(item)}>
+          {item.title}
+        </Button>
       ),
     },
+    {
+      title: 'Service / Endpoint',
+      render: (_, item) => (
+        <Space direction="vertical" size={0}>
+          <span>
+            {item.service_namespace ? `${item.service_namespace} / ` : ''}
+            {item.service_name}
+          </span>
+          <Typography.Text type="secondary" className="!text-xs">
+            {item.endpoint || '全部端点'} · {item.environment}
+            {item.version ? ` · ${item.version}` : ''}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    { title: '指标', dataIndex: 'metric_type', width: 130 },
+    { title: '当前值', dataIndex: 'current_value', width: 110, render: (value) => value ?? '无数据' },
     {
       title: '状态',
       dataIndex: 'status',
       width: 100,
-      responsive: ['sm'],
-      render: (status: ApmEvent['status']) => (
-        <Tag bordered={false} color={ALERT_STATUS[status].color}>{ALERT_STATUS[status].label}</Tag>
+      render: (value) => (
+        <Tag color={STATUS_COLOR[value as ApmAlert['status']]}>{STATUS_LABEL[value as ApmAlert['status']]}</Tag>
       ),
     },
+    { title: '事件', dataIndex: 'event_count', width: 80 },
     {
-      title: '指标',
-      dataIndex: 'item',
-      width: 130,
-      responsive: ['lg'],
-      render: (item: ApmPolicyMetric) => METRIC_LABELS[item] ?? item,
-    },
-    {
-      title: '值',
-      dataIndex: 'value',
-      width: 100,
-      responsive: ['md'],
-      render: (value) => value ?? '—',
-      className: 'tabular-nums',
-    },
-    {
-      title: '通知',
-      width: 130,
-      render: (_, event) => {
-        const deliveries = event.notification_deliveries ?? [];
-        if (!deliveries.length) return <Typography.Text type="secondary">未配置</Typography.Text>;
-        const failed = deliveries.filter((delivery) => delivery.status === 'failed').length;
-        const pending = deliveries.filter((delivery) => delivery.status === 'pending').length;
-        return failed
-          ? <Tag bordered={false} color="error">{failed} 个失败</Tag>
-          : pending
-            ? <Tag bordered={false} color="processing">{pending} 个处理中</Tag>
-            : <Tag bordered={false} color="success">全部送达</Tag>;
-      },
-    },
-    {
-      title: '发生时间',
-      dataIndex: 'start_time',
+      title: '最近变化',
+      dataIndex: 'last_event_at',
       width: 180,
-      responsive: ['md'],
-      render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm:ss')}</span>,
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 90,
-      fixed: 'right',
-      render: (_, event) => (
-        <Button
-          type="link"
-          className="!px-0"
-          onClick={(clickEvent) => {
-            clickEvent.stopPropagation();
-            openDrawer(event);
-          }}
-        >
-          详情
-        </Button>
-      ),
+      render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm:ss'),
     },
   ];
 
   return (
     <ApmRouteShell
       title="告警"
-      description="集中查看当前告警与已恢复的历史告警，并追踪每次通知投递结果。"
+      description="Alert 聚合完整生命周期；Event 记录触发、升级、恢复与人工关闭。"
       dependency="control"
     >
-      <ApmSurface padding="none" className="overflow-hidden">
-        <div className="border-b border-[var(--color-border-2)] p-3">
-          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-            <Input.Search
-              allowClear
-              aria-label="搜索告警标题、服务或规则"
-              className="w-80"
-              placeholder="搜索告警标题 / 服务 / 规则"
-              value={keyword}
-              onChange={(event) => { setKeyword(event.target.value); setPage(1); }}
-            />
-            <Select
-              allowClear
-              aria-label="按环境筛选告警"
-              className="w-40"
-              placeholder="全部环境"
-              value={environmentFilter || undefined}
-              options={Array.from(new Set(events.map((event) => event.environment).filter(Boolean)))
-                .sort()
-                .map((value) => ({ value, label: value }))}
-              onChange={(value) => { setEnvironmentFilter(value ?? ''); setPage(1); }}
-            />
-            <div className="flex-1" />
-            <Typography.Text type="secondary" className="text-xs">时间范围</Typography.Text>
-            <Radio.Group
-              aria-label="告警时间范围"
-              buttonStyle="solid"
-              size="small"
-              value={timeRange}
-              onChange={(event) => { setTimeRange(event.target.value); setPage(1); }}
-            >
-              {(Object.keys(RANGE_MS) as TimeRange[]).map((value) => (
-                <Radio.Button key={value} value={value}>{value}</Radio.Button>
-              ))}
-            </Radio.Group>
-            <Button icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load}>刷新</Button>
-          </FilterToolbar>
-        </div>
-        <div className="border-b border-[var(--color-border-2)] px-3 py-4">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <Typography.Text strong>告警分布（近 {timeRange}）</Typography.Text>
-            <Space size="middle">
-              <Typography.Text type="secondary" className="text-xs">严重 {events.filter((event) => event.severity === 'critical').length}</Typography.Text>
-              <Typography.Text type="secondary" className="text-xs">错误 {events.filter((event) => event.severity === 'error').length}</Typography.Text>
-              <Typography.Text type="secondary" className="text-xs">警告 {events.filter((event) => event.severity === 'warning').length}</Typography.Text>
-            </Space>
-          </div>
-          <div className="relative flex h-16 items-end gap-1 border-b border-[var(--color-border-2)]" role="img" aria-label={`近 ${timeRange} 告警分布`}>
-            {distribution.map((bucket, index) => (
-              <div key={index} className="flex h-full min-w-1 flex-1 flex-col justify-end overflow-hidden rounded-t-sm" title={`第 ${index + 1} 时间段：${bucket.critical + bucket.error + bucket.warning} 条`}>
-                <span className="block" style={{ height: `${(bucket.critical / maxDistribution) * 100}%`, background: SEVERITY_CHART.critical }} />
-                <span className="block" style={{ height: `${(bucket.error / maxDistribution) * 100}%`, background: SEVERITY_CHART.error }} />
-                <span className="block" style={{ height: `${(bucket.warning / maxDistribution) * 100}%`, background: SEVERITY_CHART.warning }} />
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="px-3">
-          <Tabs
-            activeKey={activeTab}
-            className="!mb-0"
-            items={[
-              {
-                key: 'active',
-                label: <Space size={6}>活跃告警<Badge count={activeAlerts.length} showZero color="var(--color-fail)" /></Space>,
-              },
-              {
-                key: 'history',
-                label: <Space size={6}>历史告警<Badge count={historicalAlerts.length} showZero /></Space>,
-              },
-            ]}
-            onChange={(key) => { setActiveTab(key as AlertTab); setPage(1); }}
-          />
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-2)] px-3 pb-3">
-          <Space wrap size="middle">
-            <Select
-              allowClear
-              aria-label="按告警级别筛选"
-              className="w-36"
-              placeholder="全部级别"
-              value={query.severity}
-              options={(Object.entries(SEVERITY) as [ApmEvent['severity'], typeof SEVERITY[keyof typeof SEVERITY]][])
-                .filter(([value]) => value !== 'info')
-                .map(([value, config]) => ({ value: value as ApmPolicySeverity, label: config.label }))}
-              onChange={(severity) => { setQuery((current) => ({ ...current, severity })); setPage(1); }}
-            />
-            <Badge
-              count={visibleAlerts.length}
-              showZero
-              color="var(--color-primary)"
-              className="text-xs text-[var(--color-text-3)]"
-            />
-            <Typography.Text type="secondary" className="text-xs">
-              {activeTab === 'active' ? '当前未恢复' : '最近 7 天已恢复'}
-            </Typography.Text>
-          </Space>
-        </div>
-        <div className="min-w-0">
-          {visibleState === 'ready' || (state === 'loading' && events.length > 0) ? (
-            <CustomTable
-              autoScrollX={false}
-              rowKey="event_id"
-              columns={columns}
-              dataSource={pageAlerts}
-              loading={state === 'loading'}
-              pagination={{
-                current: page,
-                pageSize,
-                total: visibleAlerts.length,
-                pageSizeOptions: [10, 20, 50, 100],
-                showSizeChanger: true,
-                onChange: (nextPage, nextPageSize) => {
-                  setPage(nextPageSize === pageSize ? nextPage : 1);
-                  setPageSize(nextPageSize);
-                },
-              }}
-            />
-          ) : (
-            <CatalogState
-              kind={visibleState}
-              description={visibleState === 'empty'
-                ? activeTab === 'active'
-                  ? '当前组织没有活跃 APM 告警。'
-                  : '最近 7 天当前组织没有历史 APM 告警。'
-                : undefined}
-              onRetry={visibleState === 'forbidden' ? undefined : load}
-            />
-          )}
-        </div>
-      </ApmSurface>
-
-      <Drawer
-        open={drawerOpen}
-        onClose={closeDrawer}
-        width="min(880px, 100vw)"
-        title={selectedAlert ? (
-          <Space size={8} wrap align="center">
-            <Tag bordered={false} color={ALERT_STATUS[selectedAlert.status].color}>
-              {ALERT_STATUS[selectedAlert.status].label}
-            </Tag>
-            <Tag bordered={false} color={SEVERITY[selectedAlert.severity].color}>
-              {SEVERITY[selectedAlert.severity].label}
-            </Tag>
-            <Tag bordered={false}>{METRIC_LABELS[selectedAlert.item] ?? selectedAlert.item}</Tag>
-            <span className="text-base font-semibold">{selectedAlert.title}</span>
-          </Space>
-        ) : '告警详情'}
-        footer={(
-          <div className="flex justify-end">
-            <Button onClick={closeDrawer}>关闭</Button>
-          </div>
-        )}
-        styles={{
-          body: { paddingTop: 0 },
-        }}
-      >
-        {selectedAlert ? (
-          <div className="flex h-full flex-col">
-            <div className="flex flex-wrap gap-x-4 gap-y-2 border-b border-[var(--color-border)] py-3 text-xs text-[var(--color-text-3)]">
-              <span>
-                所属服务{' '}
-                <Typography.Text className="!text-xs !text-[var(--color-primary)]">{selectedAlert.service}</Typography.Text>
-              </span>
-              {selectedAlert.resource_name ? (
-                <span>
-                  资源{' '}
-                  <Typography.Text className="!text-xs">{selectedAlert.resource_name}</Typography.Text>
-                </span>
-              ) : null}
-              <span>
-                环境{' '}
-                <Typography.Text className="!text-xs">{selectedAlert.environment || '未设置环境'}</Typography.Text>
-              </span>
-              <span>
-                触发时间{' '}
-                <Typography.Text className="!text-xs tabular-nums">
-                  {dayjs(selectedAlert.start_time).format('YYYY-MM-DD HH:mm:ss')}
-                </Typography.Text>
-              </span>
-            </div>
-
-            <Tabs
-              activeKey={drawerTab}
-              className="mt-2"
-              onChange={(key) => setDrawerTab(key as DrawerTab)}
-              items={[
-                { key: 'alert', label: '告警' },
-                { key: 'event', label: `事件 (${relatedEvents.length})` },
+      <Space direction="vertical" size="middle" className="w-full">
+        <ApmSurface>
+          <div className="h-40" role="img" aria-label={`最近 ${range} 告警事件分布，按严重、错误、警告分组`}>
+            <TimeSeriesComposedChart
+              data={distribution}
+              xDataKey="time"
+              getXLabel={(item) => dayjs(String(item.time)).format(range === '7d' ? 'MM-DD' : 'HH:mm')}
+              series={[
+                { name: '严重', type: 'bar', dataKey: 'critical', color: token.colorError },
+                { name: '错误', type: 'bar', dataKey: 'error', color: token.colorWarning },
+                { name: '警告', type: 'bar', dataKey: 'warning', color: token.colorPrimary },
               ]}
             />
-
-            <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-              {drawerTab === 'alert' ? (
-                <div className="flex flex-col gap-4">
-                  <Descriptions
-                    title="告警信息"
-                    bordered
-                    size="small"
-                    column={2}
-                    labelStyle={{ width: 110, color: 'var(--color-text-3)' }}
-                  >
-                    <Descriptions.Item label="时间">
-                      {dayjs(selectedAlert.start_time).format('YYYY-MM-DD HH:mm:ss')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="级别">
-                      <span
-                        className="border-l-4 pl-2 font-semibold"
-                        style={{
-                          borderColor: selectedAlert.severity === 'critical'
-                            ? SEVERITY_CHART.critical
-                            : selectedAlert.severity === 'error'
-                              ? SEVERITY_CHART.error
-                              : SEVERITY_CHART.warning,
-                          color: selectedAlert.severity === 'critical'
-                            ? SEVERITY_CHART.critical
-                            : selectedAlert.severity === 'error'
-                              ? SEVERITY_CHART.error
-                              : SEVERITY_CHART.warning,
-                        }}
-                      >
-                        {SEVERITY[selectedAlert.severity].label}
-                      </span>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="状态">
-                      <Tag bordered={false} color={ALERT_STATUS[selectedAlert.status].color}>
-                        {ALERT_STATUS[selectedAlert.status].label}
-                      </Tag>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="度量">
-                      {METRIC_LABELS[selectedAlert.item] ?? selectedAlert.item}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="所属对象" span={2}>
-                      <Space direction="vertical" size={0}>
-                        <Typography.Text>{selectedAlert.service}</Typography.Text>
-                        {selectedAlert.resource_name ? (
-                          <Typography.Text type="secondary" className="text-xs">
-                            {selectedAlert.resource_name}
-                          </Typography.Text>
-                        ) : null}
-                      </Space>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="环境">
-                      {selectedAlert.environment || '未设置环境'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="当前值">
-                      <span className="tabular-nums">{selectedAlert.value ?? '—'}</span>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="描述" span={2}>
-                      {selectedAlert.description || '—'}
-                    </Descriptions.Item>
-                    {selectedAlert.end_time ? (
-                      <Descriptions.Item label="结束时间" span={2}>
-                        {dayjs(selectedAlert.end_time).format('YYYY-MM-DD HH:mm:ss')}
-                      </Descriptions.Item>
-                    ) : null}
-                    <Descriptions.Item label="策略 ID" span={2}>
-                      {selectedAlert.policy_id || '—'}
-                    </Descriptions.Item>
-                  </Descriptions>
-
-                  <div>
-                    <Typography.Text strong className="mb-2 block">通知投递</Typography.Text>
-                    {renderDeliveries(selectedAlert)}
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <Typography.Text type="secondary" className="mb-3 block text-xs">
-                    同一 external_id 关联的事件时间线
-                  </Typography.Text>
-                  {relatedEvents.length ? (
+          </div>
+        </ApmSurface>
+        <ApmSurface padding="none">
+          <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] p-3">
+            <Tabs
+              className="mr-2"
+              activeKey={activeTab}
+              onChange={(key) => setActiveTab(key as 'active' | 'history')}
+              items={[
+                { key: 'active', label: '活跃告警' },
+                { key: 'history', label: '历史告警' },
+              ]}
+            />
+            <Input.Search
+              className="w-72"
+              allowClear
+              placeholder="搜索标题、策略、服务或端点"
+              value={keyword}
+              onChange={(event) => {
+                setKeyword(event.target.value);
+                if (!event.target.value) setSubmittedKeyword('');
+              }}
+              onSearch={(value) => setSubmittedKeyword(value.trim())}
+            />
+            <Select
+              className="w-32"
+              allowClear
+              placeholder="全部级别"
+              value={severity}
+              onChange={setSeverity}
+              options={Object.keys(SEVERITY_COLOR).map((value) => ({ value, label: value }))}
+            />
+            <Select
+              className="w-36"
+              allowClear
+              placeholder="全部指标"
+              value={metric}
+              onChange={setMetric}
+              options={['error_rate', 'p95', 'p99', 'throughput', 'no_traffic'].map((value) => ({
+                value,
+                label: value,
+              }))}
+            />
+            <div className="flex-1" />
+            <Radio.Group value={range} onChange={(event) => setRange(event.target.value)}>
+              {Object.keys(RANGE_MS).map((value) => (
+                <Radio.Button key={value} value={value}>
+                  {value}
+                </Radio.Button>
+              ))}
+            </Radio.Group>
+            <Button icon={<ReloadOutlined />} onClick={load}>
+              刷新
+            </Button>
+          </div>
+          <div className="p-3">
+            {state === 'ready' ? (
+              <ApmDataTable
+                rowKey="id"
+                columns={columns}
+                dataSource={alerts}
+                pagination={{ pageSize: 20 }}
+                onRow={(item) => ({
+                  className: 'cursor-pointer',
+                  tabIndex: 0,
+                  onClick: () => openDrawer(item),
+                  onKeyDown: (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openDrawer(item);
+                    }
+                  },
+                })}
+                scroll={{ x: 1080 }}
+              />
+            ) : (
+              <CatalogState kind={state} onRetry={load} />
+            )}
+          </div>
+        </ApmSurface>
+      </Space>
+      <Drawer
+        width={880}
+        open={Boolean(selected)}
+        onClose={() => {
+          setSelected(null);
+          setSelectedEvent(null);
+          setSnapshot(null);
+        }}
+        title={selected?.title}
+        extra={
+          selected?.status === 'active' ? (
+            <Popconfirm
+              title="人工关闭会追加 closed 事件和不可变快照，确认继续？"
+              onConfirm={async () => {
+                if (!selected) return;
+                await closeAlert(selected.id);
+                message.success('告警已关闭');
+                setSelected(null);
+                load();
+              }}
+            >
+              <Button danger icon={<CloseCircleOutlined />}>
+                人工关闭
+              </Button>
+            </Popconfirm>
+          ) : null
+        }
+      >
+        {selected ? (
+          <Tabs
+            items={[
+              {
+                key: 'alert',
+                label: '告警',
+                children: (
+                  <Space direction="vertical" size="large" className="w-full">
+                    <Descriptions
+                      bordered
+                      size="small"
+                      column={2}
+                      items={[
+                        {
+                          key: 'status',
+                          label: '生命周期状态',
+                          children: <Tag color={STATUS_COLOR[selected.status]}>{STATUS_LABEL[selected.status]}</Tag>,
+                        },
+                        { key: 'severity', label: '当前级别', children: selected.severity },
+                        {
+                          key: 'service',
+                          label: 'Service',
+                          children: `${selected.service_namespace}/${selected.service_name}`,
+                        },
+                        { key: 'endpoint', label: 'Endpoint', children: selected.endpoint || '全部端点' },
+                        { key: 'environment', label: '环境', children: selected.environment },
+                        { key: 'version', label: '版本', children: selected.version || '全部版本' },
+                        {
+                          key: 'started',
+                          label: '开始时间',
+                          children: dayjs(selected.started_at).format('YYYY-MM-DD HH:mm:ss'),
+                        },
+                        {
+                          key: 'ended',
+                          label: '结束时间',
+                          children: selected.ended_at ? dayjs(selected.ended_at).format('YYYY-MM-DD HH:mm:ss') : '—',
+                        },
+                      ]}
+                    />
+                    <Typography.Title level={5}>生命周期事件</Typography.Title>
                     <Timeline
-                      items={relatedEvents.map((event) => ({
-                        color: event.action === 'recovery'
-                          ? 'green'
-                          : event.severity === 'critical'
-                            ? 'red'
-                            : 'blue',
+                      items={selected.events.map((event) => ({
+                        color: event.id === selectedEvent?.id ? token.colorPrimary : 'gray',
                         children: (
-                          <div className="flex flex-wrap items-start justify-between gap-3 pb-1">
-                            <Space direction="vertical" size={2}>
-                              <Space wrap size={6}>
-                                <Typography.Text strong className="tabular-nums">
-                                  {dayjs(event.start_time).format('YYYY-MM-DD HH:mm:ss')}
-                                </Typography.Text>
-                                <Tag bordered={false}>{ACTION_LABELS[event.action]}</Tag>
-                                <Tag bordered={false} color={SEVERITY[event.severity].color}>
-                                  {SEVERITY[event.severity].label}
-                                </Tag>
-                                <Tag bordered={false} color={ALERT_STATUS[event.status].color}>
-                                  {ALERT_STATUS[event.status].label}
-                                </Tag>
-                              </Space>
-                              <Typography.Text>{event.title}</Typography.Text>
-                              <Typography.Text type="secondary" className="text-xs">
-                                {METRIC_LABELS[event.item] ?? event.item}
-                                {event.value !== null ? ` · ${event.value}` : ''}
-                                {event.description ? ` · ${event.description}` : ''}
+                          <Button
+                            type="text"
+                            className="h-auto !px-0 text-left"
+                            onClick={() => chooseEvent(selected, event)}
+                          >
+                            <Space direction="vertical" size={0}>
+                              <span>
+                                {ACTION_LABEL[event.action]} · {event.severity}
+                              </span>
+                              <Typography.Text type="secondary" className="!text-xs">
+                                {dayjs(event.occurred_at).format('YYYY-MM-DD HH:mm:ss')} · {event.value ?? '无数据'}
                               </Typography.Text>
                             </Space>
-                          </div>
+                          </Button>
                         ),
                       }))}
                     />
-                  ) : (
-                    <Typography.Text type="secondary">暂无关联事件</Typography.Text>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+                  </Space>
+                ),
+              },
+              {
+                key: 'snapshot',
+                label: '事件快照',
+                children: snapshotLoading ? (
+                  <CatalogState kind="loading" />
+                ) : snapshot ? (
+                  <Space direction="vertical" size="middle" className="w-full">
+                    <AntAlert
+                      showIcon
+                      type={
+                        snapshot.payload_status === 'available'
+                          ? 'success'
+                          : snapshot.payload_status === 'expired'
+                            ? 'warning'
+                            : 'info'
+                      }
+                      message={
+                        snapshot.payload_status === 'expired'
+                          ? '遥测保留期已过；以下语义快照仍永久可读，指标序列已按保留策略清理。'
+                          : snapshot.payload_status === 'unavailable'
+                            ? '指标序列对象暂不可用；APM Event 与语义证据已持久化，后台将有界重试。'
+                            : snapshot.payload_status === 'pending'
+                              ? '语义快照已持久化，指标序列正在异步写入对象存储。'
+                              : '正在展示所选事件发生时的持久化快照，不会重新查询当前策略。'
+                      }
+                    />
+                    <Typography.Title level={5}>
+                      {selectedEvent
+                        ? `${ACTION_LABEL[selectedEvent.action]} · ${dayjs(selectedEvent.occurred_at).format('YYYY-MM-DD HH:mm:ss')}`
+                        : '事件趋势'}
+                    </Typography.Title>
+                    <div
+                      className="h-72"
+                      role="img"
+                      aria-label={`事件 ${snapshot.event_id} 趋势，评估值 ${snapshot.evaluation_snapshot.value ?? '无数据'}，当时阈值 ${snapshot.evaluation_snapshot.threshold ?? '无'}`}
+                    >
+                      <TimeSeriesComposedChart
+                        data={chartRows}
+                        xDataKey="timestamp"
+                        getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')}
+                        xAxisBoundaryGap={false}
+                        series={[
+                          { name: '评估值', type: 'line', dataKey: 'value', color: token.colorPrimary, showArea: true },
+                          {
+                            name: '当时阈值',
+                            type: 'line',
+                            dataKey: 'threshold',
+                            color: token.colorError,
+                            lineType: 'dashed',
+                          },
+                          {
+                            name: '事件发生点',
+                            type: 'line',
+                            dataKey: 'event',
+                            color: token.colorWarning,
+                            showSymbol: true,
+                            lineWidth: 0,
+                          },
+                        ]}
+                      />
+                    </div>
+                    <Descriptions
+                      bordered
+                      size="small"
+                      column={2}
+                      items={[
+                        { key: 'schema', label: 'Schema', children: `v${snapshot.schema_version}` },
+                        { key: 'event', label: 'event_id', children: snapshot.event_id },
+                        { key: 'value', label: '评估值', children: snapshot.evaluation_snapshot.value ?? '无数据' },
+                        {
+                          key: 'condition',
+                          label: '当时条件',
+                          children: `${snapshot.evaluation_snapshot.comparator ?? '—'} ${snapshot.evaluation_snapshot.threshold ?? '—'} ${snapshot.evaluation_snapshot.unit ?? ''}`,
+                        },
+                        {
+                          key: 'policy',
+                          label: '策略快照',
+                          span: 2,
+                          children: (
+                            <pre className="whitespace-pre-wrap text-xs">
+                              {JSON.stringify(snapshot.policy_snapshot, null, 2)}
+                            </pre>
+                          ),
+                        },
+                        {
+                          key: 'object',
+                          label: '对象快照',
+                          span: 2,
+                          children: (
+                            <pre className="whitespace-pre-wrap text-xs">
+                              {JSON.stringify(snapshot.object_snapshot, null, 2)}
+                            </pre>
+                          ),
+                        },
+                        {
+                          key: 'trace',
+                          label: 'Trace 检索上下文',
+                          span: 2,
+                          children: (
+                            <pre className="whitespace-pre-wrap text-xs">
+                              {JSON.stringify(snapshot.trace_context, null, 2)}
+                            </pre>
+                          ),
+                        },
+                      ]}
+                    />
+                    <Typography.Title level={5}>通知投递（独立记录）</Typography.Title>
+                    {deliveries.length ? (
+                      <Descriptions
+                        bordered
+                        size="small"
+                        column={1}
+                        items={deliveries.map((item) => ({
+                          key: item.id,
+                          label: item.channel_name || item.channel_type,
+                          children: `${item.status} · 尝试 ${item.attempts} 次`,
+                        }))}
+                      />
+                    ) : (
+                      <Typography.Text type="secondary">该事件未配置通知或尚未生成投递记录。</Typography.Text>
+                    )}
+                  </Space>
+                ) : (
+                  <CatalogState kind="empty" description="所选事件没有可读快照" />
+                ),
+              },
+            ]}
+          />
         ) : null}
       </Drawer>
     </ApmRouteShell>

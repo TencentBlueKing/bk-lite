@@ -7,6 +7,7 @@ import {
   getK8sResourceColumns,
   mergeTopologyBranch,
   PodBranchQueue,
+  stripK8sClusterScopedParams,
 } from '../src/app/cmdb/(pages)/assetData/detail/k8sResources/model';
 import {
   buildTopologyPaths,
@@ -31,6 +32,18 @@ assert.equal(
   buildK8sResourceUrl('resources', '9', { kind: 'pod', page: 3, search: 'api server', namespaceId: '7' }),
   '/cmdb/api/instance/k8s_resource_list/9/pod/?page=3&page_size=20&search=api+server&namespace_id=7'
 );
+
+const keptParams = new URLSearchParams('sub=pod&inst_uuid=cluster-a');
+assert.equal(stripK8sClusterScopedParams(keptParams), false);
+assert.equal(keptParams.toString(), 'sub=pod&inst_uuid=cluster-a');
+
+const scopedParams = new URLSearchParams('sub=pod&namespace_id=ns-1&workload_id=wl-1&node_id=n-1&expanded_workloads=wl-1');
+assert.equal(stripK8sClusterScopedParams(scopedParams), true);
+assert.equal(scopedParams.get('sub'), 'pod');
+assert.equal(scopedParams.get('expanded_workloads'), 'wl-1');
+assert.equal(scopedParams.get('namespace_id'), null);
+assert.equal(scopedParams.get('workload_id'), null);
+assert.equal(scopedParams.get('node_id'), null);
 
 assert.deepEqual(K8S_RESOURCE_NAV_ITEMS.map((item) => item.key), [
   'overview', 'namespace', 'deployment', 'statefulset', 'daemonset', 'job',
@@ -130,12 +143,19 @@ for (const locale of ['zh', 'en']) {
 }
 assert.match(sideMenuLayout, /menu\.name !== 'asset_k8s_resources' \|\| modelId === 'k8s_cluster'/);
 // Detail page stays a thin searchParams → Content wrapper (hub injects instId directly).
-assert.match(pageSource, /<K8sResourceDetailsContent\s+instId=\{instId\}\s*\/>/);
-assert.match(pageSource, /searchParams\.get\('inst_id'\)/);
+assert.match(pageSource, /<K8sResourceDetailsContent\s+instUuid=\{instUuid\}\s*\/>/);
+assert.match(pageSource, /searchParams\.get\('inst_uuid'\)/);
 assert.match(contentSource, /K8sResourceDetailsContentProps/);
-assert.match(contentSource, /instId:\s*string/);
+assert.match(contentSource, /instId\?:\s*string/);
 assert.match(implSource, /sub === 'overview' && overview && <K8sOverviewContent/);
 assert.match(implSource, /sub !== 'overview' && <K8sResourceList/);
+assert.match(
+  contentSource,
+  /useEffect\(\(\) => \{ load\(\); \}, \[clusterId, kind, page, pageSize, order, namespaceFilter, workloadFilter, nodeFilter\]\)/,
+  '资源列表必须在集群切换后重新拉取，不能只跟 kind/分页走'
+);
+assert.match(contentSource, /key=\{clusterId\}/, '切换集群时必须重置列表本地状态');
+assert.match(contentSource, /stripK8sClusterScopedParams/, '切换集群时必须丢掉上一集群的列表筛选');
 assert.match(implSource, /const branchCache = new Map/);
 assert.match(implSource, /expanded_workloads/);
 assert.match(implSource, /branchCache\.delete/);
@@ -168,11 +188,17 @@ assert.doesNotMatch(implSource, /<Table\s/);
 assert.match(implSource, /target="_blank"/);
 assert.match(implSource, /rel="noopener noreferrer"/);
 assert.match(implSource, /styles\.listContent/);
-assert.match(implSource, /wrapperClassName=\{sub !== 'overview' \? styles\.listSpin : undefined\}/);
+assert.match(implSource, /wrapperClassName=\{styles\.listSpin\}/);
 assert.match(implSource, /styles\.tableShell/);
+assert.match(implSource, /styles\.overviewStage/);
+assert.match(implSource, /styles\.metricGrid/);
 assert.match(stylesSource, /\.listContent[\s\S]*overflow:\s*hidden/);
 assert.match(stylesSource, /\.resourceList[\s\S]*overflow:\s*hidden/);
 assert.match(stylesSource, /\.tableShell[\s\S]*flex:\s*1/);
+assert.match(stylesSource, /\.topologyCard[\s\S]*flex:\s*1/);
+assert.match(stylesSource, /\.topologyViewport[\s\S]*flex:\s*1/);
+assert.doesNotMatch(stylesSource, /min-height:\s*98px/);
+assert.doesNotMatch(stylesSource, /height:\s*520px/);
 
 const merged = mergeTopologyBranch(
   { nodes: [{ id: 'node-1', layer: 'node', model_id: 'k8s_node', name: 'n1' }], edges: [] },

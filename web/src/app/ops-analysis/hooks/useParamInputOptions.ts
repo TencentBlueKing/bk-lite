@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { InputControlConfig } from '@/app/ops-analysis/types/dataSource';
+import type { SourceDataResult } from '@/app/ops-analysis/utils/sourceDataResponse';
+import type { SourceDataRequestOptions } from '@/app/ops-analysis/api/dataSource';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import {
   createParamInputOptionsLoader,
@@ -13,27 +15,42 @@ import {
 
 export type UseParamInputOptionsState = ParamInputOptionsState & { resultKey?: string };
 
+interface UseParamInputOptionsRuntime {
+  enabled?: boolean;
+  getSourceDataByApiId?: (
+    id: number,
+    params?: unknown,
+    options?: SourceDataRequestOptions,
+  ) => Promise<SourceDataResult>;
+}
+
 export const useParamInputOptions = (
   inputConfig?: InputControlConfig,
   loaderOptions?: ParamInputOptionsLoaderOptions,
+  runtime: UseParamInputOptionsRuntime = {},
 ): UseParamInputOptionsState => {
   const api = useDataSourceApi();
   const apiRef = useRef(api);
   apiRef.current = api;
   const loaderOptionsRef = useRef(loaderOptions);
   loaderOptionsRef.current = loaderOptions;
+  const runtimeRef = useRef(runtime);
+  runtimeRef.current = runtime;
   const loaderRef = useRef<ReturnType<typeof createParamInputOptionsLoader> | null>(null);
   if (!loaderRef.current) {
     loaderRef.current = createParamInputOptionsLoader(
       {
         getDataSourceList: (...args) => apiRef.current.getDataSourceList(...args),
-        getSourceDataByApiId: (...args) => apiRef.current.getSourceDataByApiId(...args),
+        getSourceDataByApiId: (...args) =>
+          runtimeRef.current.getSourceDataByApiId?.(...args)
+          ?? apiRef.current.getSourceDataByApiId(...args),
       },
       () => loaderOptionsRef.current,
     );
   }
   const configRef = useRef(inputConfig);
   configRef.current = inputConfig;
+  const enabled = runtime.enabled ?? true;
   const inputKey = getParamInputConfigKey(inputConfig);
   const getSynchronousState = (): ParamInputOptionsState => {
     if (!inputConfig || inputConfig.control === 'input') return { status: 'idle', options: [] };
@@ -49,14 +66,24 @@ export const useParamInputOptions = (
   }));
 
   useEffect(() => {
+    if (!enabled) {
+      if (resolved.key === inputKey && resolved.state.status === 'loading') {
+        loaderRef.current!.reset();
+      }
+      return undefined;
+    }
+    let active = true;
     const load = loaderRef.current!.load(configRef.current);
     setResolved({ key: inputKey, state: load.initial });
     if (!load.sync) {
       void load.promise.then((result) => {
-        if (result) setResolved({ key: inputKey, state: result });
+        if (active && result) setResolved({ key: inputKey, state: result });
       });
     }
-  }, [inputKey]);
+    return () => {
+      active = false;
+    };
+  }, [enabled, inputKey]);
 
   const state = resolved.key === inputKey ? resolved.state : getSynchronousState();
   return {

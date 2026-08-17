@@ -7,6 +7,7 @@ import { useInstanceApi } from '@/app/cmdb/api';
 import { useCommon } from '@/app/cmdb/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
 import type { ModelItem } from '@/app/cmdb/types/assetManage';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import type { RackRoomMode, ViewFocus, ViewType } from '../viewTypes';
 import { readViewRecent } from '../viewMemory';
 
@@ -147,17 +148,18 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
         });
         if (seq !== searchSeqRef.current) return;
         const insts = Array.isArray(data?.insts) ? data.insts : [];
-        const nextOptions: InstanceOption[] = insts.map(
-          (item: { inst_uuid?: string; _id?: string | number; inst_name?: string }) => {
-            const instUuid = String(item.inst_uuid || item._id || '');
+        const nextOptions: InstanceOption[] = insts
+          .map((item: { inst_uuid?: string; inst_name?: string }) => {
+            const instUuid = resolveCmdbInstUuid(item.inst_uuid);
+            if (!instUuid) return null;
             return {
               value: instUuid,
               label: item.inst_name || instUuid,
               model_id: modelId,
               inst_name: item.inst_name || instUuid,
             };
-          }
-        );
+          })
+          .filter((item): item is InstanceOption => item != null);
         setInstanceOptions((prev) => {
           if (!append) return nextOptions;
           const seen = new Set(prev.map((item) => item.value));

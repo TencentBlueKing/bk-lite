@@ -1,20 +1,13 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 from django.utils import timezone
 
-from apps.apm.models import (
-    ApmAlert,
-    ApmService,
-    ApmServiceInstance,
-    ApmServiceOrganization,
-    ApmSlo,
-)
+from apps.apm.models import ApmAlert, ApmService, ApmServiceInstance, ApmServiceOrganization, ApmSlo
 from apps.apm.services.contracts import ServiceRed, ServiceRedPoint, SloEvaluation, SloMeasurement
 from apps.apm.services.dashboard import ApmDashboardService
 from apps.apm.services.reliability import DjangoApmReliabilityService
-
 
 pytestmark = pytest.mark.django_db
 
@@ -97,7 +90,7 @@ def test_dashboard_aggregates_kpis_health_alerts_and_keeps_releases_empty():
         environment="production",
         metric_type="error_rate",
         severity="critical",
-        status=ApmAlert.Status.FIRING,
+        status=ApmAlert.Status.ACTIVE,
         organizations=[10],
         started_at=now - timedelta(minutes=5),
         last_event_at=now - timedelta(minutes=5),
@@ -111,7 +104,7 @@ def test_dashboard_aggregates_kpis_health_alerts_and_keeps_releases_empty():
         environment="production",
         metric_type="error_rate",
         severity="warning",
-        status=ApmAlert.Status.FIRING,
+        status=ApmAlert.Status.ACTIVE,
         organizations=[20],
         started_at=now - timedelta(minutes=1),
         last_event_at=now - timedelta(minutes=1),

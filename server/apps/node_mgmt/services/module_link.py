@@ -25,6 +25,7 @@ class NodeAssociationService:
         ip: Any,
         cloud: Any,
         existing_node_id: Any = None,
+        cmdb_id_aliases: Any = None,
     ) -> str | None:
         """CMDB 主机创建后：匹配节点并回填 Node.cmdb_id，返回 node_id。"""
         try:
@@ -34,6 +35,7 @@ class NodeAssociationService:
                 ip=ip,
                 cloud=cloud,
                 existing_node_id=existing_node_id,
+                peer_id_aliases=cmdb_id_aliases,
             )
         except Exception:
             logger.exception(
@@ -80,6 +82,7 @@ class NodeAssociationService:
         ip: Any,
         cloud: Any,
         existing_node_id: Any,
+        peer_id_aliases: Any = None,
     ) -> str | None:
         peer_id_str = cls._normalize_str(peer_id)
         if not peer_id_str:
@@ -90,7 +93,7 @@ class NodeAssociationService:
             node = Node.objects.filter(id=existing).first()
             if not node:
                 return None
-            return cls._write_peer_id(node, peer_field, peer_id_str)
+            return cls._write_peer_id(node, peer_field, peer_id_str, aliases=peer_id_aliases)
 
         ip_str = cls._normalize_str(ip)
         cloud_id = cls._normalize_cloud(cloud)
@@ -100,7 +103,7 @@ class NodeAssociationService:
         node = cls._find_unique_host_node(ip=ip_str, cloud_region_id=cloud_id)
         if not node:
             return None
-        return cls._write_peer_id(node, peer_field, peer_id_str)
+        return cls._write_peer_id(node, peer_field, peer_id_str, aliases=peer_id_aliases)
 
     @classmethod
     def _find_unique_host_node(cls, *, ip: str, cloud_region_id: int) -> Node | None:
@@ -117,19 +120,34 @@ class NodeAssociationService:
         return matches[0]
 
     @classmethod
-    def _write_peer_id(cls, node: Node, peer_field: str, peer_id: str) -> str | None:
+    def _write_peer_id(
+        cls,
+        node: Node,
+        peer_field: str,
+        peer_id: str,
+        *,
+        aliases: Any = None,
+    ) -> str | None:
+        from apps.cmdb.services.instance_identity import collect_cmdb_id_candidates, optional_graph_id, optional_inst_uuid
+
         current = cls._normalize_str(getattr(node, peer_field, None))
-        if current and current != peer_id:
-            logger.info(
-                "[NodeAssociation] skip conflict node_id=%s %s existing=%s incoming=%s",
-                node.id,
-                peer_field,
-                current,
-                peer_id,
-            )
-            return None
         if current == peer_id:
             return node.id
+        if current:
+            alias_set = set(collect_cmdb_id_candidates(peer_id, aliases))
+            # 过渡期：存量数字 cmdb_id 可升级为 UUID；其他冲突仍跳过。
+            can_upgrade = (
+                peer_field == "cmdb_id" and optional_graph_id(current) and optional_inst_uuid(peer_id) and (current in alias_set or not aliases)
+            )
+            if not can_upgrade:
+                logger.info(
+                    "[NodeAssociation] skip conflict node_id=%s %s existing=%s incoming=%s",
+                    node.id,
+                    peer_field,
+                    current,
+                    peer_id,
+                )
+                return None
         setattr(node, peer_field, peer_id)
         node.save(update_fields=[peer_field, "updated_at"])
         logger.info(

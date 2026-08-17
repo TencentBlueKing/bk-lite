@@ -14,11 +14,15 @@ metadata:
 executors:
   protocol:
     type: protocol
-    timeout: 120
+    execution_mode: sync
+    capacity_group: sync_sdk
+    timeout: 300
     collector:
       module: plugins.inputs.qcloud.qcloud_info
       class: TencentCloudManager
     target_policy:
       mode: cloud_endpoint
       tls: true
+      trusted_domains:
+      - tencentcloudapi.com
 default_executor: protocol

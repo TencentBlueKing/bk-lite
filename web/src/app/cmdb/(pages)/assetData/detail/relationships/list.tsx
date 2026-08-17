@@ -12,6 +12,7 @@ import { useModelApi, useInstanceApi } from '@/app/cmdb/api';
 import assoListStyle from './index.module.scss';
 import SelectInstance from './selectInstance';
 import PermissionWrapper from '@/components/permission';
+import { RACK_ROOM_ASSET_PERMISSION_PATH } from './rackRoomEdit';
 import React, {
   useEffect,
   useState,
@@ -219,7 +220,8 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
           render: (_: unknown, record: any) => (
             <PermissionWrapper
               requiredPermissions={['Delete Associate']}
-              instPermissions={record.permission}
+              permissionPath={RACK_ROOM_ASSET_PERMISSION_PATH}
+              instPermissions={record.permission || []}
             >
               <Button
                 type="link"

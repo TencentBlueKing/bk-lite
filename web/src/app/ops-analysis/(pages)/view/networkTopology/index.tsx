@@ -22,6 +22,11 @@ import {
   useNetworkTopologyApi,
 } from '@/app/ops-analysis/api/networkTopology';
 import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
+import { useDirectoryApi } from '@/app/ops-analysis/api';
+import useBtnPermissions from '@/hooks/usePermissions';
+import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
+import { canPersistCanvasRefreshInterval, normalizeCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
+import { shouldSkipIntervalTick } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { useNetworkEditor } from './hooks/useNetworkEditor';
 import { useNetworkLibrary } from './hooks/useNetworkLibrary';
 import { useTranslation } from '@/utils/i18n';
@@ -157,6 +162,8 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
   ({ selectedNetworkTopology, shareMode = false }, ref) => {
     const api = useNetworkTopologyApi();
     const { shareLoading, openShare } = useCanvasShareAction('networkTopology');
+    const { updateItem } = useDirectoryApi();
+    const { hasPermission } = useBtnPermissions();
     const { t } = useTranslation();
     const canvasId = selectedNetworkTopology?.data_id;
     const [config, setConfig] = useState<NetworkTopologyConfig>(emptyConfig);
@@ -221,10 +228,11 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     const runtimeLoadGenerationRef = useRef(0);
     const runtimeRefreshPromiseRef = useRef<{
       canvasId: string;
+      silent: boolean;
       promise: Promise<void>;
     } | null>(null);
     const [graph, setGraph] = useState<X6Graph | null>(null);
-    const [refreshIntervalMs, setRefreshIntervalMs] = useState(0);
+    const [savedRefreshInterval, setSavedRefreshInterval] = useState(0);
     const { isFullscreen, enterFullscreen, exitFullscreen } =
       useAppViewFullscreen();
 
@@ -238,10 +246,17 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     const libraryCollapsed = useCollapsedState(true);
 
     const loadConfiguredRuntime = useCallback(
-      (id: string | number, runtimeConfig: NetworkTopologyConfig): Promise<void> => {
+      (
+        id: string | number,
+        runtimeConfig: NetworkTopologyConfig,
+        options?: { silent?: boolean },
+      ): Promise<void> => {
         const runtimeCanvasId = String(id);
+        const silent = options?.silent === true;
         const current = runtimeRefreshPromiseRef.current;
-        if (current?.canvasId === runtimeCanvasId) return current.promise;
+        if (silent && shouldSkipIntervalTick(current?.canvasId === runtimeCanvasId)) {
+          return Promise.resolve();
+        }
 
         const generation = ++runtimeLoadGenerationRef.current;
         const isCurrent = () => runtimeLoadGenerationRef.current === generation;
@@ -282,7 +297,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
                 metricRequests[index].request_id,
               ),
             );
-            if (isCurrent()) {
+            if (isCurrent() && !silent) {
               setRuntimeMetricOverrides((prev) => ({
                 ...prev,
                 [node.id]: mergeNetworkTopologyRuntimeMetrics(
@@ -310,6 +325,9 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               }));
             } catch (err) {
               if (!isCurrent()) return;
+              if (silent) {
+                return;
+              }
               const errorMetrics = metrics.map((metric, index) =>
                 toRuntimeMetric(
                   {
@@ -365,7 +383,11 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
               runtimeRefreshPromiseRef.current = null;
             }
           });
-        runtimeRefreshPromiseRef.current = { canvasId: runtimeCanvasId, promise: task };
+        runtimeRefreshPromiseRef.current = {
+          canvasId: runtimeCanvasId,
+          silent,
+          promise: task,
+        };
         return task;
       },
       [api],
@@ -385,6 +407,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         setRuntimeLinkOverrides({});
         setRuntimeInterfaceSummaryOverrides({});
         editor.resetConfig(emptyConfig);
+        setSavedRefreshInterval(0);
         return;
       }
       const id = canvasId;
@@ -396,7 +419,20 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
       setRuntimeMetricOverrides({});
       setRuntimeLinkOverrides({});
       setRuntimeInterfaceSummaryOverrides({});
+      setSavedRefreshInterval(0);
       setViewSetsLoading(true);
+      api
+        .getNetworkTopologyDetail(id)
+        .then((detail) => {
+          if (!active) return;
+          setSavedRefreshInterval(
+            normalizeCanvasRefreshInterval(detail?.refresh_interval),
+          );
+        })
+        .catch(() => {
+          if (!active) return;
+          setSavedRefreshInterval(0);
+        });
       api
         .getViewSets(id)
         .then((viewSets) => {
@@ -472,13 +508,37 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
       return map;
     }, [runtimeNodes]);
 
-    useEffect(() => {
-      if (!canvasId || refreshIntervalMs <= 0) return undefined;
-      const timer = setInterval(() => {
-        void loadConfiguredRuntime(canvasId, config);
-      }, refreshIntervalMs);
-      return () => clearInterval(timer);
-    }, [canvasId, config, loadConfiguredRuntime, refreshIntervalMs]);
+    const configRef = useRef(config);
+    configRef.current = config;
+
+    const canPersistRefreshInterval = canPersistCanvasRefreshInterval({
+      shareMode,
+      isBuiltIn: Boolean(selectedNetworkTopology?.is_build_in),
+      hasEditPermission: hasPermission(['EditChart']),
+    });
+
+    const { effectiveRefreshInterval, handleFrequencyChange } =
+      useCanvasPeriodicRefresh({
+        canvasId,
+        savedInterval: savedRefreshInterval,
+        canPersist: canPersistRefreshInterval,
+        patchRefreshInterval: async (interval) => {
+          if (!canvasId) {
+            return;
+          }
+          await updateItem('networkTopology', canvasId, {
+            refresh_interval: interval,
+          });
+        },
+        onPeriodicRefresh: () => {
+          if (canvasId) {
+            void loadConfiguredRuntime(canvasId, configRef.current, {
+              silent: true,
+            });
+          }
+        },
+        onSavedIntervalChange: setSavedRefreshInterval,
+      });
 
     const loadNodeMetrics = useCallback(
       (node: NetworkTopologyNode) => {
@@ -1174,7 +1234,8 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         onRefresh={() => {
           if (canvasId) void loadConfiguredRuntime(canvasId, config);
         }}
-        onFrequencyChange={setRefreshIntervalMs}
+        onFrequencyChange={handleFrequencyChange}
+        frequenceValue={effectiveRefreshInterval}
         onEnterEdit={onEnterEdit}
         onCancelEdit={onCancelEdit}
         onSave={() => void onSaveConfig()}

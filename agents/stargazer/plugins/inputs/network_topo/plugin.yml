@@ -13,6 +13,8 @@ metadata:
 executors:
   protocol:
     type: protocol
+    execution_mode: async
+    capacity_group: snmp
     timeout: 60
     collector:
       module: plugins.inputs.network_topo.snmp_topo

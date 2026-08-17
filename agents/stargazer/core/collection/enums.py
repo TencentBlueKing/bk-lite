@@ -14,6 +14,7 @@ class SubmissionStatus(str, Enum):
 class RunStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
+    COMPLETED_WITH_ERRORS = "completed_with_errors"
     FAILED = "failed"
     ABANDONED = "abandoned"
 
