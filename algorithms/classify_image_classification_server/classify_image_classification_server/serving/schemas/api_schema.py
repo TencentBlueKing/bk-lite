@@ -1,8 +1,40 @@
 """Pydantic schemas for request/response validation."""
 
-from pydantic import BaseModel, Field, field_validator
+import os
+import re
 from typing import List, Optional
-import base64
+
+from pydantic import BaseModel, Field, field_validator
+
+DEFAULT_MAX_IMAGE_BASE64_BYTES = 10 * 1024 * 1024
+DEFAULT_MAX_IMAGE_BATCH_BASE64_BYTES = 96 * 1024 * 1024
+DEFAULT_MAX_IMAGE_BATCH_BYTES = 64 * 1024 * 1024
+DEFAULT_MAX_IMAGE_BATCH_PIXELS = 64 * 1024 * 1024
+_BASE64_PATTERN = re.compile(r"[A-Za-z0-9+/]*={0,2}\Z", re.ASCII)
+
+
+def _get_positive_int_env(name: str, default: int) -> int:
+    """读取正整数资源预算，非法配置安全回退到默认值。"""
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+def get_image_batch_pixel_limit() -> int:
+    """返回单请求允许累计的解码后像素数。"""
+    return _get_positive_int_env(
+        "MLOPS_PREDICT_MAX_IMAGE_BATCH_PIXELS", DEFAULT_MAX_IMAGE_BATCH_PIXELS
+    )
+
+
+def _get_base64_decoded_size(value: str) -> int:
+    """严格校验标准 Base64，并在不物化解码结果时计算字节数。"""
+    if len(value) % 4 != 0 or _BASE64_PATTERN.fullmatch(value) is None:
+        raise ValueError("不是有效的base64编码")
+    padding = len(value) - len(value.rstrip("="))
+    return len(value) // 4 * 3 - padding
 
 
 class ClassPrediction(BaseModel):
@@ -54,27 +86,70 @@ class PredictRequest(BaseModel):
         """验证base64图片列表."""
         if len(v) > 100:
             raise ValueError(f"批量大小超限：{len(v)} > 100")
+
+        max_image_bytes = _get_positive_int_env(
+            "MLOPS_PREDICT_MAX_IMAGE_BYTES", DEFAULT_MAX_IMAGE_BASE64_BYTES
+        )
+        max_batch_base64_bytes = _get_positive_int_env(
+            "MLOPS_PREDICT_MAX_IMAGE_BATCH_BASE64_BYTES",
+            DEFAULT_MAX_IMAGE_BATCH_BASE64_BYTES,
+        )
+        max_batch_bytes = _get_positive_int_env(
+            "MLOPS_PREDICT_MAX_IMAGE_BATCH_BYTES", DEFAULT_MAX_IMAGE_BATCH_BYTES
+        )
+        total_encoded_bytes = sum(len(img_data) for img_data in v)
+        if total_encoded_bytes > max_batch_base64_bytes:
+            raise ValueError(
+                f"批次编码量超限：{total_encoded_bytes} > {max_batch_base64_bytes}"
+            )
+        total_decoded_bytes = 0
         
-        # 快速检查：验证base64格式
         for idx, img_data in enumerate(v):
             if not img_data or len(img_data) < 100:
                 raise ValueError(f"图片 {idx} 数据过短，可能无效")
-            
+            if len(img_data) > max_image_bytes:
+                raise ValueError(
+                    f"图片 {idx} 单图编码量超限：{len(img_data)} > {max_image_bytes}"
+                )
+
+            if not img_data.isascii():
+                error = (
+                    "Data URI格式错误"
+                    if img_data.startswith("data:")
+                    else "不是有效的base64编码"
+                )
+                raise ValueError(f"图片 {idx} {error}")
+
             # 处理Data URI前缀
             test_data = img_data
             if test_data.startswith('data:'):
                 # 提取base64部分
                 parts = test_data.split(',', 1)
-                if len(parts) != 2:
+                header = parts[0].lower()
+                if (
+                    len(parts) != 2
+                    or not header.startswith("data:image/")
+                    or not header.endswith(";base64")
+                ):
                     raise ValueError(f"图片 {idx} Data URI格式错误")
                 test_data = parts[1]
-            
-            # 检查base64有效性
+
+            if len(test_data) > max_image_bytes:
+                raise ValueError(
+                    f"图片 {idx} 单图编码量超限：{len(test_data)} > {max_image_bytes}"
+                )
+
             try:
-                # 只验证前100字节，确认是有效base64
-                base64.b64decode(test_data[:100])
-            except Exception:
-                raise ValueError(f"图片 {idx} 不是有效的base64编码")
+                decoded_size = _get_base64_decoded_size(test_data)
+            except ValueError:
+                raise ValueError(f"图片 {idx} 不是有效的base64编码") from None
+
+            total_decoded_bytes += decoded_size
+            if total_decoded_bytes > max_batch_bytes:
+                raise ValueError(
+                    "批次解码字节量超限："
+                    f"{total_decoded_bytes} > {max_batch_bytes}"
+                )
         
         return v
 
@@ -153,4 +228,3 @@ class PredictResponse(BaseModel):
         None,
         description="整体错误信息（完全失败时）"
     )
-

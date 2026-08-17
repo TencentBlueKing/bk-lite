@@ -1,12 +1,13 @@
 """BentoML service definition."""
 
-import bentoml
-from loguru import logger
 import base64
 import os
-from io import BytesIO
-from PIL import Image
 import time
+from io import BytesIO
+
+import bentoml
+from loguru import logger
+from PIL import Image
 
 from .config import get_model_config
 from .exceptions import ModelInferenceError
@@ -18,13 +19,14 @@ from .metrics import (
 )
 from .models import load_model
 from .schemas import (
-    PredictRequest,
-    PredictResponse,
     ClassPrediction,
+    ErrorDetail,
     ImageResult,
     PredictionMetadata,
-    ErrorDetail,
+    PredictRequest,
+    PredictResponse,
 )
+from .schemas.api_schema import get_image_batch_pixel_limit
 
 
 @bentoml.service(
@@ -78,12 +80,15 @@ class MLService:
         # - 释放 GPU 显存
         logger.info("=== Cleanup completed ===")
 
-    def _decode_base64_image(self, img_data: str) -> Image.Image:
+    def _decode_base64_image(
+        self, img_data: str, remaining_pixels: int | None = None
+    ) -> Image.Image:
         """
         解码base64图片，支持纯base64和Data URI格式.
 
         Args:
             img_data: Base64编码的图片数据
+            remaining_pixels: 当前批次剩余像素预算；不传时使用配置默认值
 
         Returns:
             PIL Image对象
@@ -97,24 +102,39 @@ class MLService:
             img_data = img_data.split(",", 1)[1]
 
         # 解码base64
-        image_bytes = base64.b64decode(img_data)
+        image_bytes = base64.b64decode(img_data, validate=True)
 
         # 加载PIL图片
         image = Image.open(BytesIO(image_bytes))
 
-        # 验证格式
-        if image.format not in ["JPEG", "PNG", "BMP", "WEBP", None]:
-            raise ValueError(f"不支持的图片格式: {image.format}")
+        try:
+            # 验证格式
+            if image.format not in ["JPEG", "PNG", "BMP", "WEBP", None]:
+                raise ValueError(f"不支持的图片格式: {image.format}")
 
-        # 验证尺寸
-        if max(image.size) > 4096:
-            raise ValueError(f"图片过大: {image.size}, 最大4096px")
+            # 在像素物化和颜色转换前预留批次预算
+            image_pixels = image.width * image.height
+            if remaining_pixels is None:
+                remaining_pixels = get_image_batch_pixel_limit()
+            if image_pixels > remaining_pixels:
+                raise ValueError(
+                    f"批次像素量超限：{image_pixels} > 剩余 {remaining_pixels}"
+                )
 
-        # 转换为RGB（YOLO要求）
-        if image.mode != "RGB":
-            image = image.convert("RGB")
+            # 验证尺寸
+            if max(image.size) > 4096:
+                raise ValueError(f"图片过大: {image.size}, 最大4096px")
 
-        return image
+            # 转换为RGB（YOLO要求）
+            if image.mode != "RGB":
+                converted_image = image.convert("RGB")
+                image.close()
+                image = converted_image
+
+            return image
+        except Exception:
+            image.close()
+            raise
 
     @bentoml.api
     async def predict(
@@ -180,11 +200,17 @@ class MLService:
         images = []
         decode_times = []
         decode_errors = []
+        decoded_pixels = 0
+        max_batch_pixels = get_image_batch_pixel_limit()
 
         for idx, img_data in enumerate(request.images):
             img_decode_start = time.time()
             try:
-                image = self._decode_base64_image(img_data)
+                image = self._decode_base64_image(
+                    img_data, max_batch_pixels - decoded_pixels
+                )
+                image_pixels = image.width * image.height
+                decoded_pixels += image_pixels
                 images.append(image)
                 decode_times.append((time.time() - img_decode_start) * 1000)
                 decode_errors.append(None)
