@@ -73,9 +73,11 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         # 与写入 execution_contexts，需串行化以避免计数错乱或字典写入竞争。
         self._state_lock = threading.RLock()
 
-        # 解析流程图
-        self.nodes = self._parse_nodes(instance.flow_json)
-        self.edges = self._parse_edges(instance.flow_json)
+        # 先校验并生成仅供本次执行使用的安全结构视图。历史数据保持原样，
+        # 但缺字段/错类型不能在 validate_flow() 之前触发原始 Python 异常。
+        self._flow_structure_errors, execution_flow_json = self._normalize_flow_structure(instance.flow_json)
+        self.nodes = self._parse_nodes(execution_flow_json)
+        self.edges = self._parse_edges(execution_flow_json)
 
         # 构建节点ID到节点的映射字典（用于 O(1) 查找）
         self._node_map: Dict[str, Dict[str, Any]] = {node.get("id"): node for node in self.nodes if node.get("id")}
@@ -93,6 +95,69 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         self.max_parallel_nodes = 5
         self.max_retry_count = 3
         self.execution_timeout = 300  # 5分钟超时
+
+    @staticmethod
+    def _is_valid_graph_id(value: Any) -> bool:
+        return isinstance(value, str) and bool(value.strip())
+
+    @classmethod
+    def _normalize_flow_structure(cls, flow_json: Any) -> tuple[List[str], Dict[str, List[Dict[str, Any]]]]:
+        """返回结构错误和可安全建图的执行视图，不改写持久化配置。"""
+        if not isinstance(flow_json, dict):
+            return ["流程数据必须是对象"], {"nodes": [], "edges": []}
+
+        errors: List[str] = []
+        raw_nodes = flow_json.get("nodes", [])
+        raw_edges = flow_json.get("edges", [])
+
+        if not isinstance(raw_nodes, list):
+            errors.append("nodes 必须是数组")
+            raw_nodes = []
+        if not isinstance(raw_edges, list):
+            errors.append("edges 必须是数组")
+            raw_edges = []
+
+        nodes = []
+        node_ids = set()
+        for index, node in enumerate(raw_nodes, start=1):
+            if not isinstance(node, dict):
+                errors.append(f"节点 {index} 必须是对象")
+                continue
+            node_id = node.get("id")
+            if not cls._is_valid_graph_id(node_id):
+                errors.append(f"节点 {index} 缺少有效 id")
+                continue
+            if not isinstance(node.get("type"), str):
+                errors.append(f"节点 {index} 的 type 必须是字符串")
+                continue
+            if node_id in node_ids:
+                errors.append(f"节点 {index} 的 id 重复: {node_id}")
+                continue
+            node_ids.add(node_id)
+            nodes.append(node)
+
+        edges = []
+        for index, edge in enumerate(raw_edges, start=1):
+            if not isinstance(edge, dict):
+                errors.append(f"边 {index} 必须是对象")
+                continue
+            source = edge.get("source")
+            target = edge.get("target")
+            if not cls._is_valid_graph_id(source):
+                errors.append(f"边 {index} 缺少有效 source")
+                continue
+            if not cls._is_valid_graph_id(target):
+                errors.append(f"边 {index} 缺少有效 target")
+                continue
+            if source not in node_ids:
+                errors.append(f"边 {index} 的 source 未引用现有节点: {source}")
+                continue
+            if target not in node_ids:
+                errors.append(f"边 {index} 的 target 未引用现有节点: {target}")
+                continue
+            edges.append(edge)
+
+        return errors, {"nodes": nodes, "edges": edges}
 
     def _initialize_variables(self, input_data: Dict[str, Any]):
         """初始化变量管理器
@@ -980,7 +1045,9 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         Returns:
             错误列表，空列表表示无错误
         """
-        errors = []
+        errors = list(self._flow_structure_errors)
+        if errors:
+            return errors
 
         # 检查是否有节点
         if not self.nodes:
