@@ -41,6 +41,7 @@ from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, OPERATE_TYP
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
 from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
+from apps.cmdb.nats.list_instances_auth import authorize_list_instances_params
 from apps.cmdb.services import rack_room
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.collect_credential_result_service import CollectCredentialResultService
@@ -710,7 +711,7 @@ def list_instances(params):
     }
     -> {"count": <总数>, "items": [<实例>, ...]}
     """
-    _require_uuid_protocol(params)
+    authorize_list_instances_params(params)
     model_id = params.get("model_id")
     if not model_id:
         raise ValueError("model_id is required")
