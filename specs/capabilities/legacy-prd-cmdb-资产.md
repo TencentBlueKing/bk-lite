@@ -53,20 +53,35 @@
 - 支持单字段或批量字段编辑，遵循字段可编辑性。
 - 机柜（rack）模型内置布局定位字段：`row`（机房网格行）、`col`（机房网格列）、`u_count`（机柜总 U 数）；服务器等设备模型内置 U 位字段：`rack_u_start`（起始 U 位）、`u_size`（占用 U 数）。这些字段在资产基础信息中编辑，编辑结果直接影响机房俯视图与机柜正视 U 图的布局渲染（`support-files/model_config.xlsx`，消费方 `services/rack_room.py`：`get_rack_layout`:146-159、`get_room_layout`:162-198）。
 
+### 3.6.1 资产详情 · IP 地址视图与物理布局
+
+- 子网详情提供 IP 地址视图，可手工登记分配状态、IP 类型、使用人、IP 状态、MAC 与描述；手工登记的 IP 台账不被自动发现或自动对账覆盖。
+- 手工登记时，地址处于“可分配”且不存在台账则不创建记录；处于“可分配”且已有台账则删除该 IP 台账；其他分配状态按是否已有台账创建或更新。
+- 手工登记仅接受当前子网范围内、且不是网络号或广播地址的 IP。创建后必须建立子网与 IP 的关联；关联失败时撤销本次新建，避免遗留孤立 IP。
+- 机房俯视图可在指定网格新建或放置已有机柜；机柜正视图可在指定 U 位新建或放置已有设备。移出布局只解除当前容器关联并清空布局定位，不删除机柜或设备实例。
+- 已被其他机房/机柜占用、已在当前布局放置、网格或 U 位冲突、U 位越界、不可放置模型及无操作权限时，放置被阻断。
+
+相关架构：[[legacy-ard-modules-cmdb.md#2. 数据模型与存储【已实现/已存在】]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#3. 资产详情]]、[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#4. 资产检索与视图]]。
+> 证据来源：server/apps/cmdb/services/ipam_edit.py:81-88，server/apps/cmdb/services/ipam_edit.py:104-121，server/apps/cmdb/services/ipam_edit.py:169-245，server/apps/cmdb/services/ipam_discovery.py:260-270，server/apps/cmdb/services/ipam_reconcile.py:250-259，server/apps/cmdb/services/ipam_reconcile.py:277-288，server/apps/cmdb/services/rack_room_edit.py:303-441，server/apps/cmdb/views/instance.py:1452-1540，server/apps/cmdb/views/instance.py:1628-1750　|　同步基线：b98b782a7　|　【已实现】
+
 ### 3.7 资产详情 · 关联关系
 
 - 按关系类型分组展示关联实例，支持展开/收起与快捷新增关联。
 - 提供轻量拓扑视图：首次加载有限层级，按需在边界节点继续展开下一层。
 - 拓扑按权限过滤不可见节点，中心节点始终可见。
+- 网络设备拓扑支持选择 1、2 或 3 跳的展开范围，并可对边界节点继续按所选跳数增量展开。
+
+相关功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#4. 资产检索与视图]]。
+> 证据来源：server/apps/cmdb/views/instance.py:1542-1576，web/src/app/cmdb/(pages)/assetData/detail/relationships/networkTopo.tsx:346-536，web/src/app/cmdb/(pages)/assetData/detail/relationships/networkTopo/HopDepthControl.tsx:14-38　|　同步基线：b98b782a7　|　【已实现】
 
 ### 3.8 资产详情 · 应用资源总览
 
 - 当资产为应用系统时，支持查看其下应用清单，并从应用节点进入资源拓扑总览。
-- 资源拓扑支持按层级展开关联节点，查看节点分组后的资源实例明细。
+- 资源拓扑支持按层级展开关联节点、按名称搜索定位节点；选中或悬停节点时聚焦其相邻关系，并查看节点分组后的资源实例明细。
 - 支持将当前选中节点对应的资源实例导出为表格，用于应用资源盘点与交接。
 
 相关架构：[[legacy-ard-modules-cmdb.md#3. 接口【已实现/已存在】]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#3. 资产详情]]
-> 证据来源：server/apps/cmdb/views/instance.py:999-1143，server/apps/cmdb/constants/constants.py:53-63　|　同步基线：83091efe　|　【已实现】
+> 证据来源：server/apps/cmdb/views/instance.py:1287-1428，web/src/app/cmdb/(pages)/assetData/detail/relationships/applicationResourceOverview/index.tsx:749-1261　|　同步基线：b98b782a7　|　【已实现】
 
 ### 3.9 资产详情 · 配置文件
 
@@ -116,6 +131,9 @@
 - 临近到期类订阅按日去重，避免同一实例同日重复通知。
 - 配置文件变更类订阅仅对主机模型生效；非主机模型即使配置了该触发条件也不产生通知。
 - 配置文件变更按实例去重：同一实例在已通知后不再因后续新增版本重复通知。
+- IP 地址手工登记遵循子网边界、状态动作与关联回滚规则；物理布局放置与移出遵循冲突、归属及操作权限阻断规则，具体规则以 [[legacy-prd-cmdb-资产.md#3.6.1 资产详情 · IP 地址视图与物理布局]] 为准。
+
+> 证据来源：server/apps/cmdb/services/ipam_edit.py:104-245，server/apps/cmdb/services/rack_room_edit.py:303-441，server/apps/cmdb/views/instance.py:1452-1750　|　同步基线：b98b782a7　|　【已实现】
 
 ## 5. 关键技术架构选择
 

@@ -5,13 +5,17 @@
 ## web —— Next.js 16【已实现/已存在】
 - 路径 `web/src/app`，App Router。产品模块目录：`alarm`、`cmdb`、`job`、`log`、`monitor`、`mlops`、`node-manager`、`ops-analysis`、`ops-console`、`opspilot`、`system-manager`（11 个）；另有 `(core)`(认证/布局)、`no-permission`(无权限页)。内部 route handlers 实际位于路由组 `(core)/api/` 下（`proxy`、`locales`、`markdown`、`menu`、`auth`、`json`、`versions`、`mlops` 等）；顶层 `app/api` 仅含 `wechat-popup-login`（微信弹窗登录回调）一个 handler【已实现】。
 - **认证**：next-auth（JWT，maxAge 86400），`constants/authOptions.ts` + `lib/auth.ts`；Provider：Credentials（`/api/v1/core/api/login/`）、WeChat OAuth。
+- **认证冷启动与重认证呈现契约【已实现】**：普通受保护页面在后端恢复认证成功前不挂载，避免业务页面以未校验会话初始化；`/ops-analysis/render/execution/{id}` Render 路由例外，允许 Chromium 换票后建立会话而不被普通登录重定向。已挂载页面进入暖态重认证时保持挂载，以保留正在编辑的页面状态。
 - **API 通信（两层）**：客户端 `utils/request.ts` axios baseURL=`/api/proxy`，由 **axios 请求拦截器注入 `Authorization: Bearer {token}`**（`utils/request.ts:56`）；route handler `(core)/api/proxy/[...path]/route.ts` 为**透明代理**（不再注入鉴权），转发到 `NEXTAPI_URL/api/v1`。
 - **响应拦截分支**【已实现】（`utils/request.ts:74-89`）：`460`→`forceLogoutAndRedirect()` 强制登出并跳转；`401`→`emitSessionExpired({reason:'api-session-expired'})` 发出会话过期事件（非直接重登）；`400/403/500/其它`→统一 `message.error(messageText)` 弹错并抛 `HandledRequestError`（静默化已处理错误，避免上层重复弹窗）；无响应时：先放行非 axios 错误与超时（`code==='ECONNABORTED'`）按原始 error 透传（`utils/request.ts:93-95`），其余无响应的网络错误抛 `HandledRequestError('网络异常')`（`utils/request.ts:96`）。
 - **透明代理行为**【已实现】（`(core)/api/proxy/[...path]/route.ts`）：经 `AbortController` 控制超时（`:5-8`、`:88-91`、`:119`）——所有请求先以 `SSE_TIMEOUT_MS=300s` 计时等待响应头（`:91`），收到响应后若为 SSE 则清除计时不再限时（`:113`），若为普通响应则改用 `DEFAULT_TIMEOUT_MS=60s` 计时其余传输（`:118-119`）；目标路径不以 `/` 结尾时自动补 `/`（`:66-69`）；注入 `X-Forwarded-Host`/`X-Forwarded-For`/`X-Forwarded-Proto`（`:84-86`）；检测到 `content-type: text/event-stream` 即判为 SSE，清除超时并设 `X-Accel-Buffering: no`（禁用 Nginx 缓冲，`:110-114`、`:49`）；异常时 `AbortError` 返回 504、其它返回 500（`:129-141`）。
-- **i18n**：react-intl，`locales/{en,zh}.json`；模块级语言包在显式构建资源准备阶段汇总。
+- **i18n**：react-intl，`locales/{en,zh}.json`；模块级语言包在显式构建资源准备阶段汇总。运行时语言 API 强制动态响应并在成功、回退及错误响应上声明 `Cache-Control: no-store`，LocaleProvider 客户端请求同样使用 `cache: 'no-store'`，形成端到端不缓存契约。
+- **共享 TimeSelector【已实现】**：`frequenceValue` 为受控的自动刷新频率展示值，单位为毫秒；属性变化仅同步下拉选择展示，用户改选通过 `onFrequenceChange` 回传，不改变调用方的计时语义。
 - **UI**：antd v5 + echarts + @antv/g6/x6（拓扑/图）。
 - **本轮功能面扩展**【已实现/已存在】：`alarm` 新增告警丰富、告警处理、执行记录三组设置页；`system-manager` 新增内网白名单页；`ops-analysis` 新增大屏、报表与网络状态拓扑组件入口；`monitor` 集成页新增采集探测任务与资产视图路由组装。
 - **构建与资源准备契约**：生产构建经显式入口串行完成企业扩展路由、语言包与菜单汇总、公共资源复制后再启动 Next.js 构建；任一准备步骤失败即中止，不再由框架配置加载时隐式触发副作用。生产类型检查使用面向交付代码的独立配置，排除脚本、端到端用例、故事与单元测试等非交付范围。
+
+> 证据来源：web/src/context/auth.tsx:78-108,339-393,496-567；web/src/context/__tests__/authColdStart.test.tsx:132-193；web/src/app/routeScope.ts:1-6；web/src/app/(core)/api/locales/route.ts:91-120；web/src/context/locale.tsx:45-64；web/src/components/time-selector/index.tsx:20-35,72-100,145-148；web/src/stories/time-selector.stories.tsx:55-72　|　同步基线：b98b782a7　|　【已实现】
 
 > 证据来源：web/scripts/build.mjs:68-119、web/scripts/prepare-build-assets.mjs:8-13、web/next.config.mjs:22-24、web/tsconfig.build.json:1-21　|　同步基线：d2769559　|　【已实现】
 
@@ -50,6 +54,10 @@
 
 > 证据来源：web/src/app/(core)/api/_utils/installApps.ts:23、web/scripts/generate-workspace.js:69-78、web/package.json:13-15　|　同步基线：d2769559　|　【已实现】
 - mobile 仅暴露会话+工作台，其余模块是否规划【待确认】。
+- AuthProvider 同挂载实例在登出后再以另一账号登录时，`isProtectedContentReady` 是否会复位并再次完成冷启动恢复，当前代码与既有冷/暖态测试未覆盖，需确认【待确认】。
+- `frequenceValue` / `onFrequenceChange` 为已被多处调用的历史拼写兼容接口；其语义已稳定，但改名会破坏调用方，作为兼容性风险记录，不建议直接改名【风险】。
+
+> 证据来源：web/src/context/auth.tsx:90,107-108,462-524,537-567；web/src/context/__tests__/authColdStart.test.tsx:132-193；web/src/components/time-selector/index.tsx:20-35,72-100,145-148；web/src/app/ops-analysis/(pages)/view/dashBoard/components/dashboardToolbar.tsx:72-76；web/src/app/ops-analysis/(pages)/view/screen/components/screenToolbar.tsx:64-68；web/src/app/ops-analysis/(pages)/view/topology/components/toolbar.tsx:166-170；web/src/app/ops-analysis/(pages)/view/networkTopology/components/networkToolbar.tsx:134-138　|　同步基线：b98b782a7　|　【已实现/待确认】
 
 ## 2026-07-01 Code-ARD 校准
 - `[frontend#20260701-030]` 补录 webchat monorepo、Core/UI/Demo、会话持久化、SSE、自定义 header fetch、状态机、AG-UI 事件桥接、UMD 构建和 Next demo 入口。
