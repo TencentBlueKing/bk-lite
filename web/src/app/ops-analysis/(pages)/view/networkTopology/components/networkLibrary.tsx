@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Empty, Input, Spin, Button, Tooltip } from 'antd';
+import { Input, Spin, Button, Tooltip } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   ReloadOutlined,
   PlusOutlined,
@@ -225,17 +226,13 @@ const NetworkLibrary: React.FC<NetworkLibraryProps> = ({
                   <Spin />
                 </div>
               ) : error ? (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={error}
-                  data-testid="network-library-error"
-                />
+                <div data-testid="network-library-error">
+                  <CompactEmptyState description={error} />
+                </div>
               ) : nodeCount === 0 ? (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={t('opsAnalysis.networkTopology.library.empty')}
-                  data-testid="network-library-empty"
-                />
+                <div data-testid="network-library-empty">
+                  <CompactEmptyState description={t('opsAnalysis.networkTopology.library.empty')} />
+                </div>
               ) : (
                 <div className="flex flex-col gap-2">
                   {(nodes ?? []).map((item) => (

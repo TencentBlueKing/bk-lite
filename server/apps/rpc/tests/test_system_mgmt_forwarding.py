@@ -73,6 +73,11 @@ def test_get_all_groups_无参(client):
     assert _last(client) == ("get_all_groups", (), {})
 
 
+def test_get_archived_groups_转发分页(client):
+    client.get_archived_groups(page=2, page_size=50)
+    assert _last(client) == ("get_archived_groups", (), {"page": 2, "page_size": 50})
+
+
 def test_get_all_users_无参(client):
     client.get_all_users()
     assert _last(client) == ("get_all_users", (), {})

@@ -70,7 +70,7 @@ const LayoutContent = ({ children }: { children: React.ReactNode }) => {
     {
       title: t('memory.memories'),
       url: '/opspilot/memory/detail/memories',
-      icon: 'shujuguanli',
+      icon: 'shiyongwendang',
       name: 'memory_detail_memories',
       operation: [],
     },

@@ -134,7 +134,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
         <Select
           value={record.key || undefined}
           placeholder={t('common.selectTip')}
-          style={{ width: '100%' }}
+          className="w-full"
           onChange={(val) =>
             onFilterFieldChange(record.id, 'key', val, filterFieldOptions)
           }
@@ -173,7 +173,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
         <Select
           value={record.inputType}
           options={localizedFilterInputTypeOptions}
-          style={{ width: '100%' }}
+          className="w-full"
           onChange={(val) =>
             onFilterFieldChange(record.id, 'inputType', val, filterFieldOptions)
           }
@@ -185,22 +185,20 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
       key: 'action',
       width: 80,
       render: (_: unknown, record: FilterFieldRow, index: number) => (
-        <div
-          style={{ display: 'flex', gap: '4px', justifyContent: 'flex-start' }}
-        >
+        <div className="flex justify-start gap-1">
           <Button
             type="text"
             size="small"
             icon={<PlusCircleOutlined />}
             onClick={() => onAddFilterField(index)}
-            style={{ border: 'none', padding: '4px' }}
+            className="border-none p-1"
           />
           <Button
             type="text"
             size="small"
             icon={<MinusCircleOutlined />}
             onClick={() => onDeleteFilterField(record.id)}
-            style={{ border: 'none', padding: '4px' }}
+            className="border-none p-1"
           />
         </div>
       ),
@@ -220,7 +218,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
           <AutoComplete
             value={record.key}
             placeholder={t('dashboard.selectOrInputField')}
-            style={{ width: '100%' }}
+            className="w-full"
             options={displayColumnOptions}
             filterOption={(inputValue, option) => {
               const query = inputValue.toLowerCase();
@@ -267,15 +265,13 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
       key: 'action',
       width: 132,
       render: (_: unknown, record: DisplayColumnRow, index: number) => (
-        <div
-          style={{ display: 'flex', gap: '4px', justifyContent: 'flex-start' }}
-        >
+        <div className="flex justify-start gap-1">
           <Button
             type="text"
             size="small"
             icon={<PlusCircleOutlined />}
             onClick={() => onAddDisplayColumn(index)}
-            style={{ border: 'none', padding: '4px' }}
+            className="border-none p-1"
           />
           <Button
             type="text"
@@ -287,7 +283,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
               }
               onDeleteDisplayColumn(record.id);
             }}
-            style={{ border: 'none', padding: '4px' }}
+            className="border-none p-1"
           />
           {record.columnType === 'actions' && (
             <Tooltip title={t('dashboard.interactionConfig')}>
@@ -297,7 +293,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
                 icon={<SettingOutlined aria-hidden />}
                 aria-label={t('dashboard.interactionConfig')}
                 onClick={() => setInteractionColumn(record)}
-                style={{ border: 'none', padding: '4px' }}
+                className="border-none p-1"
               />
             </Tooltip>
           )}
@@ -309,13 +305,11 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
                 icon={<SettingOutlined aria-hidden />}
                 aria-label={t('dashboard.columnCellStyleConfig')}
                 onClick={() => setStyleColumnId(record.id)}
-                style={{
-                  border: 'none',
-                  padding: '4px',
-                  color: hasColumnCellStyle(record)
-                    ? 'var(--color-primary)'
-                    : 'var(--color-text-2)',
-                }}
+                className={`border-none p-1 ${
+                  hasColumnCellStyle(record)
+                    ? 'text-[var(--color-primary)]'
+                    : 'text-[var(--color-text-2)]'
+                }`}
               />
             </Tooltip>
           )}
@@ -326,30 +320,13 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
 
   return (
     <div className="mb-6">
-      <div
-        className="font-bold text-(--color-text-1) mb-4"
-        style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-      >
+      <div className="mb-4 flex items-center gap-2 font-bold text-(--color-text-1)">
         <span>{t('dashboard.tableSettings')}</span>
       </div>
 
-      <div style={{ marginBottom: '16px' }}>
-        <div
-          style={{
-            marginBottom: '8px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <span
-            style={{
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
+      <div className="mb-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="inline-flex items-center gap-1.5 font-medium">
             <span>{t('dashboard.displayColumns')}</span>
             {invalidConfiguredFieldKeys.length > 0 && (
               <Tooltip
@@ -358,13 +335,11 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
                   '部分已配置字段不在当前可用字段集合中，可能不可用：{{fields}}'
                 ).replace('{{fields}}', invalidConfiguredFieldKeys.join('、'))}
               >
-                <ExclamationCircleOutlined
-                  style={{ color: '#faad14', fontSize: 14 }}
-                />
+                <ExclamationCircleOutlined className="text-[14px] text-[var(--color-warning)]" />
               </Tooltip>
             )}
           </span>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="flex gap-2">
             <Tooltip
               title={
                 t('dashboard.reProbeColumnsTip') ||
@@ -431,13 +406,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
           />
         )}
         {displayColumnsError && (
-          <div
-            style={{
-              color: 'var(--ant-color-error)',
-              fontSize: 12,
-              marginTop: 8,
-            }}
-          >
+          <div className="mt-2 text-xs text-[var(--color-fail)]">
             {displayColumnsError}
           </div>
         )}
@@ -445,15 +414,8 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
 
       {showFilterFields && (
         <div>
-          <div
-            style={{
-              marginBottom: '8px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <span style={{ fontWeight: 500 }}>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-medium">
               {t('dashboard.filterFields')}
             </span>
             <Button

@@ -203,6 +203,7 @@
     "selectConnection": "选择连接",
     "extractConnection": "提取到连接库",
     "extractConnectionTitle": "提取到连接库",
+    "reenterPassword": "请重新输入密码后再提取",
     "overrideDatabase": "覆盖数据库名",
     "relativePath": "相对路径"
   },
@@ -939,6 +940,7 @@
     "room3DRackFormatError": " 个机柜数据格式错误",
     "room3DRackRequiredError": " 个机柜字段 rack_id、rack_name、row、col 必填，且坐标必须从 1 开始",
     "room3DResetView": "重置视角",
+    "room3DDismissNotice": "关闭提示",
     "room3DRoomNameLabel": "机房名称：",
     "room3DRackCountPrefix": "（共 ",
     "room3DRackCountSuffix": " 个机柜）",

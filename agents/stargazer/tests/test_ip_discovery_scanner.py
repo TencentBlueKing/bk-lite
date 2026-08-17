@@ -9,6 +9,7 @@ import pytest
 from plugins.inputs.ip.ip_discovery_scanner import IPDiscoveryScanner
 
 pytestmark = pytest.mark.unit
+SUBNET_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
 
 
 def _run(coro):
@@ -28,7 +29,7 @@ class TestScanner:
                 {
                     "model_id": "ip",
                     "scan_method": "icmp",
-                    "subnets": [{"subnet_id": 1, "cidr": "10.0.1.0/29"}],
+                    "subnets": [{"subnet_uuid": SUBNET_UUID, "cidr": "10.0.1.0/29"}],
                 }
             )
 
@@ -87,7 +88,7 @@ class TestScanner:
                 "scan_method": "icmp",
                 "subnets": [
                     {
-                        "subnet_id": 101,
+                        "subnet_uuid": SUBNET_UUID,
                         "cidr": "10.0.1.0/30",
                         "gateway": "10.0.1.1",
                         "reserved_addresses": [],
@@ -110,7 +111,7 @@ class TestScanner:
             {
                 "ip_addr": "10.0.1.2",
                 "ip_status": "online",
-                "subnet_id": "101",
+                "subnet_uuid": SUBNET_UUID,
                 "subnet_cidr": "10.0.1.0/30",
                 "scan_method": "icmp",
                 "auto_collect": "true",

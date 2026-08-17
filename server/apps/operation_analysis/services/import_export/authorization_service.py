@@ -134,7 +134,8 @@ class ImportExportAuthorizationService:
                     continue
 
                 if not view_allowed or not cls.can_access_existing_object(request, object_type, existing, current_team):
-                    suggested_actions = [ConflictAction.RENAME.value] if create_allowed else []
+                    permission_actions = [ConflictAction.RENAME.value] if create_allowed else []
+                    suggested_actions = cls._intersect_precheck_actions(conflict, permission_actions)
                     conflict["reason"] = ConflictReason.NO_PERMISSION_CONFLICT
                     conflict["suggested_actions"] = suggested_actions
                     if not suggested_actions:
@@ -148,21 +149,27 @@ class ImportExportAuthorizationService:
                         )
                     continue
 
-                suggested_actions = []
+                permission_actions = []
                 if overwrite_allowed:
-                    suggested_actions.append(ConflictAction.OVERWRITE.value)
-                suggested_actions.append(ConflictAction.SKIP.value)
+                    permission_actions.append(ConflictAction.OVERWRITE.value)
+                permission_actions.append(ConflictAction.SKIP.value)
                 if create_allowed:
-                    suggested_actions.append(ConflictAction.RENAME.value)
+                    permission_actions.append(ConflictAction.RENAME.value)
 
                 conflict["reason"] = ConflictReason.NAME_CONFLICT
-                conflict["suggested_actions"] = suggested_actions
+                conflict["suggested_actions"] = cls._intersect_precheck_actions(conflict, permission_actions)
 
         if permission_errors:
             result["valid"] = False
             result.setdefault("errors", []).extend(permission_errors)
 
         return result
+
+    @staticmethod
+    def _intersect_precheck_actions(conflict: dict[str, Any], permission_actions: list[str]) -> list[str]:
+        """权限过滤只能收窄预检动作，不能重新放宽安全或兼容约束。"""
+        precheck_actions = set(conflict.get("suggested_actions", []))
+        return [action for action in permission_actions if action in precheck_actions]
 
     @classmethod
     def validate_conflict_decisions(cls, conflicts: list[dict], conflict_decisions: dict[str, str]) -> list[dict]:

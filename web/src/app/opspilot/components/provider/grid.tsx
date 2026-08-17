@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Spin, message, Dropdown, Menu, Modal, Empty, Divider } from 'antd';
+import { Spin, message, Dropdown, Menu, Modal, Divider } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import Image from 'next/image';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
@@ -190,7 +191,7 @@ const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading
     <>
       <Spin spinning={loading}>
         {!loading && models.length === 0 ? (
-          <Empty description={t('common.noData')} />
+          <CompactEmptyState description={t('common.noData')} />
         ) : (
           <div className="space-y-6">
             {enabledModels.length > 0 && (

@@ -204,13 +204,14 @@ const CustomTable = <T extends object>({
     return columns.map((col: any, index: number) => {
       const colKey = getColumnKey(col, index);
       const width = columnLayout.widths[index];
+      const hasWidth = width !== undefined && width !== null;
 
       return {
         ...col,
-        width,
+        ...(hasWidth ? { width } : {}),
         onHeaderCell: () => ({
-          width,
-          resizeHandler: handleColumnResize(colKey),
+          ...(hasWidth ? { width } : {}),
+          resizeHandler: hasWidth ? handleColumnResize(colKey) : undefined,
         }),
       };
     });

@@ -14,6 +14,7 @@ import { useSettingApi } from '@/app/alarm/api/settings';
 import { useCommon } from '@/app/alarm/context/common';
 import { useStateMap } from '@/app/alarm/constants/alarm';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   Drawer,
   Button,
@@ -23,7 +24,6 @@ import {
   Tooltip,
   message,
   Spin,
-  Empty,
 } from 'antd';
 import {
   StateMap,
@@ -397,10 +397,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
                   <Timeline items={timeLineData} />
                 </div>
               ) : (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={t('common.noData')}
-                />
+                <CompactEmptyState description={t('common.noData')} />
               )}
             </Spin>
           )}

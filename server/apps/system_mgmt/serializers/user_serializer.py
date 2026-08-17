@@ -1,7 +1,8 @@
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.system_mgmt.models import Group, Role, User
+from apps.system_mgmt.models import Role, User
+from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.user_status import get_password_validity_days, get_user_derived_status
 
 
@@ -79,7 +80,7 @@ class UserSerializer(serializers.ModelSerializer):
         if not all_group_ids:
             return None
 
-        groups = Group.objects.filter(id__in=list(all_group_ids)).prefetch_related("roles")
+        groups = GroupUtils.active_queryset(id__in=list(all_group_ids)).prefetch_related("roles")
 
         group_roles_map = {}
         for group in groups:
@@ -117,7 +118,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     def _get_roles_from_database(self, group_list):
         """从数据库查询角色列表（单对象序列化降级处理）"""
-        groups = Group.objects.filter(id__in=group_list).prefetch_related("roles")
+        groups = GroupUtils.active_queryset(id__in=group_list).prefetch_related("roles")
         role_names = {f"{role.app}@@{role.name}" if role.app else role.name for group in groups for role in group.roles.all()}
         return list(role_names)
 

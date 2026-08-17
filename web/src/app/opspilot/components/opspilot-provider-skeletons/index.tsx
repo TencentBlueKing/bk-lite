@@ -7,7 +7,7 @@ export const OpspilotProviderGridSkeleton: React.FC = () => {
       {Array.from({ length: 8 }, (_, index) => (
         <div key={index} className="rounded-xl border border-(--color-border-1) bg-(--color-bg) p-4">
           <div className="flex items-start justify-between">
-            <div style={{ flex: '0 0 auto' }}>
+            <div className="shrink-0">
               <Skeleton.Avatar
                 size={45}
                 shape="square"
@@ -19,12 +19,12 @@ export const OpspilotProviderGridSkeleton: React.FC = () => {
               <Skeleton.Input
                 size="small"
                 active
-                style={{ width: '80%', height: '16px', marginBottom: '8px' }}
+                style={{ width: '80%', height: 16, marginBottom: 8 }}
               />
               <Skeleton.Input
                 size="small"
                 active
-                style={{ width: '50%', height: '12px' }}
+                style={{ width: '50%', height: 12 }}
               />
             </div>
             <div className="cursor-pointer">
@@ -43,12 +43,12 @@ export const OpspilotProviderGridSkeleton: React.FC = () => {
 
 export const OpspilotProviderModelTreeSkeleton: React.FC = () => {
   return (
-    <div className="flex h-full flex-col rounded-md" style={{ backgroundColor: 'var(--color-bg-1)' }}>
-      <div className="flex items-center justify-between gap-2 border-b p-3" style={{ borderColor: 'var(--color-border-2)' }}>
+    <div className="flex h-full flex-col rounded-md bg-[var(--color-bg-1)]">
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border-2)] p-3">
         <Skeleton.Input
           size="small"
           active
-          style={{ width: '120px', height: '24px' }}
+          style={{ width: 120, height: 24 }}
         />
         <Skeleton.Avatar
           size={24}
@@ -66,13 +66,13 @@ export const OpspilotProviderModelTreeSkeleton: React.FC = () => {
                 <Skeleton.Input
                   size="small"
                   active
-                  style={{ width: '60%', height: '14px' }}
+                  style={{ width: '60%', height: 14 }}
                 />
               </div>
               <Skeleton.Input
                 size="small"
                 active
-                style={{ width: '30px', height: '14px' }}
+                style={{ width: 30, height: 14 }}
               />
             </div>
           ))}

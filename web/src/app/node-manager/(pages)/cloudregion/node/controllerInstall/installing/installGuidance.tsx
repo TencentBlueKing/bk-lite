@@ -101,23 +101,23 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
         success: {
           text: t('node-manager.cloudregion.node.statusCompleted'),
           tagColor: 'success',
-          borderColor: '#52c41a',
+          borderColor: 'var(--color-success)',
           stepStatus: 'finish',
-          icon: <CheckCircleFilled style={{ color: '#52c41a' }} />
+          icon: <CheckCircleFilled className="text-[var(--color-success)]" />
         },
         error: {
           text: t('node-manager.cloudregion.node.failed'),
           tagColor: 'error',
-          borderColor: '#ff4d4f',
+          borderColor: 'var(--color-fail)',
           stepStatus: 'finish',
-          icon: <CloseCircleFilled style={{ color: '#ff4d4f' }} />
+          icon: <CloseCircleFilled className="text-[var(--color-fail)]" />
         },
         timeout: {
           text: t('node-manager.cloudregion.node.timeout'),
           tagColor: 'warning',
-          borderColor: '#faad14',
+          borderColor: 'var(--color-warning)',
           stepStatus: 'finish',
-          icon: <ClockCircleFilled style={{ color: '#faad14' }} />
+          icon: <ClockCircleFilled className="text-[var(--color-warning)]" />
         },
         running: {
           text: t('node-manager.cloudregion.node.statusRunning'),
@@ -144,23 +144,23 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
         success: {
           text: t('node-manager.cloudregion.node.statusCompleted'),
           tagColor: 'success',
-          borderColor: '#52c41a',
+          borderColor: 'var(--color-success)',
           stepStatus: 'finish',
-          icon: <CheckCircleFilled style={{ color: '#52c41a' }} />
+          icon: <CheckCircleFilled className="text-[var(--color-success)]" />
         },
         error: {
           text: t('node-manager.cloudregion.node.failed'),
           tagColor: 'error',
-          borderColor: '#ff4d4f',
+          borderColor: 'var(--color-fail)',
           stepStatus: 'finish',
-          icon: <CloseCircleFilled style={{ color: '#ff4d4f' }} />
+          icon: <CloseCircleFilled className="text-[var(--color-fail)]" />
         },
         warning: {
           text: displayLabel || t('node-manager.cloudregion.node.installStateInstallerNoReport'),
           tagColor: 'warning',
-          borderColor: '#faad14',
+          borderColor: 'var(--color-warning)',
           stepStatus: 'finish',
-          icon: <ClockCircleFilled style={{ color: '#faad14' }} />
+          icon: <ClockCircleFilled className="text-[var(--color-warning)]" />
         },
         running: {
           text: t('node-manager.cloudregion.node.statusRunning'),
@@ -174,7 +174,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
           tagColor: 'processing',
           borderColor: 'var(--color-border-2)',
           stepStatus: 'finish',
-          icon: <ClockCircleFilled style={{ color: 'var(--color-text-3)' }} />
+          icon: <ClockCircleFilled className="text-[var(--color-text-3)]" />
         }
       };
 
@@ -301,13 +301,8 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                   description: (
                     <div className="mt-[8px]">
                       <div
-                        className="p-[12px] bg-[var(--color-fill-1)] rounded-[4px]"
-                        style={{
-                          borderLeft: `4px solid ${statusConfig.borderColor}`,
-                          border: `1px solid var(--color-border-1)`,
-                          borderLeftWidth: '4px',
-                          borderLeftColor: statusConfig.borderColor
-                        }}
+                        className="rounded-[4px] border border-[var(--color-border-1)] border-l-4 bg-[var(--color-fill-1)] p-[12px]"
+                        style={{ borderLeftColor: statusConfig.borderColor }}
                       >
                         <div className="text-[12px] text-[var(--color-text-3)] mb-[4px]">
                           [
@@ -481,13 +476,8 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                     description: (
                       <div className="mt-[8px]">
                         <div
-                          className="p-[12px] bg-[var(--color-fill-1)] rounded-[4px]"
-                          style={{
-                            borderLeft: `4px solid ${statusConfig.borderColor}`,
-                            border: `1px solid var(--color-border-1)`,
-                            borderLeftWidth: '4px',
-                            borderLeftColor: statusConfig.borderColor
-                          }}
+                          className="rounded-[4px] border border-[var(--color-border-1)] border-l-4 bg-[var(--color-fill-1)] p-[12px]"
+                          style={{ borderLeftColor: statusConfig.borderColor }}
                         >
                           <div className="text-[12px] text-[var(--color-text-3)] mb-[4px]">
                             [

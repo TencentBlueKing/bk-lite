@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Empty, Spin, message, Modal } from 'antd';
+import { Spin, message, Modal } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { Graph } from '@antv/x6';
 import { ForceLayout } from '@antv/layout';
 import { useTranslation } from '@/utils/i18n';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { getIconUrl } from '@/app/cmdb/utils/common';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import { useModelApi } from '@/app/cmdb/api';
@@ -891,11 +892,8 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
             />
           ) : (
             !loading && (
-              <div className="flex items-center justify-center h-full">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={t('Model.noNetworkTopo')}
-                />
+              <div className="flex h-full items-center justify-center">
+                <CompactEmptyState description={t('Model.noNetworkTopo')} />
               </div>
             )
           )}

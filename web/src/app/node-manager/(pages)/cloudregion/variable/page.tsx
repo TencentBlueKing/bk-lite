@@ -1,12 +1,12 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Input, message } from 'antd';
+import { Button, message } from 'antd';
 import CustomTable from '@/components/custom-table';
+import SearchActionBar from '@/components/search-action-bar';
 import { useTranslation } from '@/utils/i18n';
 import VariableModal from './variableModal';
 import { ModalRef, TableDataItem, Pagination } from '@/app/node-manager/types';
 import { useVarColumns } from '@/app/node-manager/hooks/variable';
-import type { GetProps } from 'antd';
 import MainLayout from '../mainlayout/layout';
 import { PlusOutlined } from '@ant-design/icons';
 import useNodeManagerApi from '@/app/node-manager/api';
@@ -14,8 +14,6 @@ import useApiClient from '@/utils/request';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import variableStyle from './index.module.scss';
 import PermissionWrapper from '@/components/permission';
-type SearchProps = GetProps<typeof Input.Search>;
-const { Search } = Input;
 
 const Variable = () => {
   const cloudId = useCloudId();
@@ -72,7 +70,7 @@ const Variable = () => {
     delConfirm,
   });
 
-  const onSearch: SearchProps['onSearch'] = (value) => {
+  const onSearch = (value: string) => {
     setSearchText(value);
     getTablelist(value);
   };
@@ -112,30 +110,35 @@ const Variable = () => {
   return (
     <MainLayout>
       <div className={`${variableStyle.variable} w-full h-full`}>
-        <div className="flex justify-end mb-4">
-          <Search
-            className="w-64 mr-[8px]"
-            placeholder={t('common.search')}
-            enterButton
-            onSearch={onSearch}
+        <div className="mb-4">
+          <SearchActionBar
+            spacing="flush"
+            searchClassName="!w-64"
+            searchProps={{
+              placeholder: t('common.search'),
+              enterButton: true,
+              onSearch,
+            }}
+            actions={(
+              <PermissionWrapper requiredPermissions={['Add']}>
+                <Button
+                  type="primary"
+                  onClick={() => {
+                    openUerModal('add', {
+                      name: '',
+                      key: '',
+                      value: '',
+                      type: 'str',
+                      description: '',
+                    });
+                  }}
+                >
+                  <PlusOutlined />
+                  {t('common.add')}
+                </Button>
+              </PermissionWrapper>
+            )}
           />
-          <PermissionWrapper requiredPermissions={['Add']}>
-            <Button
-              type="primary"
-              onClick={() => {
-                openUerModal('add', {
-                  name: '',
-                  key: '',
-                  value: '',
-                  type: 'str',
-                  description: '',
-                });
-              }}
-            >
-              <PlusOutlined />
-              {t('common.add')}
-            </Button>
-          </PermissionWrapper>
         </div>
         <div className="tablewidth">
           <CustomTable

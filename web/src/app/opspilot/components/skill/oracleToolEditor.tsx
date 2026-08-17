@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { Button, Empty, Input, InputNumber, message } from 'antd';
+import { Button, Input, InputNumber, message } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import ToolConnectionStatusTag from '@/app/opspilot/components/opspilot-tool-editor/tool-connection-status-tag';
@@ -137,7 +138,7 @@ const OracleToolEditor = forwardRef<OracleToolEditorHandle, OracleToolEditorProp
         </div>
         <div className="flex-1 overflow-y-auto space-y-2" ref={listRef}>
           {instances.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('tool.oracle.noInstances')} />
+            <CompactEmptyState description={t('tool.oracle.noInstances')} />
           ) : instances.map((instance) => {
             const isActive = instance.id === selectedId;
             return (
@@ -202,7 +203,7 @@ const OracleToolEditor = forwardRef<OracleToolEditorHandle, OracleToolEditorProp
           </div>
         ) : (
           <div className="flex h-full items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('tool.oracle.selectInstance')} />
+            <CompactEmptyState description={t('tool.oracle.selectInstance')} />
           </div>
         )}
       </div>

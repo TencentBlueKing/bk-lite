@@ -36,7 +36,7 @@ interface WinSphereTaskProps {
 }
 
 const BASE_INITIAL_VALUES = {
-  instId: undefined,
+  instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
@@ -89,7 +89,7 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
         formatCycleValue,
       });
       const instance = baseRef.current?.instOptions?.find(
-        (item: any) => item.value === values.instId,
+        (item) => item.value === values.instUuid,
       );
       const credentialValue =
         normalizeCredentialPool(values.credentialPool)[0] || {};
@@ -120,7 +120,7 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
         credentialSchema,
       ),
     ],
-    instId: values.instances?.[0]?._id,
+    instUuid: values.instances?.[0]?.inst_uuid,
   });
 
   useEffect(() => {

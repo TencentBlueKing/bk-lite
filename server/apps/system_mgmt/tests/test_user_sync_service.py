@@ -91,31 +91,44 @@ def test_reconcile_deletes_stale_users_instead_of_disabling_them():
     class StaleUsers:
         def __init__(self):
             self.deleted = False
-            self.user = SimpleNamespace(username="missing-user", disabled=False, group_list=[1], save=lambda **kwargs: None)
+            self.user = SimpleNamespace(
+                id=99, username="missing-user", disabled=False, group_list=[1], save=lambda **kwargs: None
+            )
 
         def __iter__(self):
             return iter([self.user])
 
         def values_list(self, field_name, flat=False):
-            assert field_name == "username"
             assert flat is True
+            if field_name == "id":
+                return [99]
+            assert field_name == "username"
             return ["missing-user"]
 
         def delete(self):
             self.deleted = True
             return 1, {"system_mgmt.User": 1}
 
+        def filter(self, **kwargs):
+            # 锁后按 id 再取 username / delete
+            return self
+
     class UserManager:
         def __init__(self, stale_users):
             self.stale_users = stale_users
 
         def filter(self, **kwargs):
+            if "id__in" in kwargs:
+                return self.stale_users
             assert kwargs == {"sync_source": source, "domain": "domain.com"}
             return self
 
         def exclude(self, **kwargs):
             assert kwargs == {"username__in": ["current-user"]}
             return self.stale_users
+
+        def select_for_update(self):
+            raise AssertionError("unit test should not take row locks")
 
     class EmptyGroups:
         def exclude(self, **kwargs):
@@ -129,8 +142,8 @@ def test_reconcile_deletes_stale_users_instead_of_disabling_them():
     with patch("apps.system_mgmt.services.user_sync_service.User.objects", UserManager(stale_users)), patch(
         "apps.system_mgmt.services.user_sync_service.Group.objects.filter", return_value=EmptyGroups()
     ), patch("apps.system_mgmt.services.user_sync_service.clear_users_permission_cache"), patch(
-        "apps.system_mgmt.services.user_sync_service.transaction.atomic"
-    ) as atomic:
+        "apps.system_mgmt.services.user_sync_service._supports_user_sync_row_locks", return_value=False
+    ), patch("apps.system_mgmt.services.user_sync_service.transaction.atomic") as atomic:
         atomic.return_value.__enter__.return_value = None
         atomic.return_value.__exit__.return_value = False
         result = user_sync_service_module._reconcile_synced_directory(
@@ -1471,7 +1484,12 @@ def test_reappearing_disabled_user_is_reenabled(ready_integration_instance):
         },
     )
 
-    root_group = Group.objects.create(name="Root A", parent_id=0, sync_source=source, external_id="user-sync:1:0")
+    root_group = Group.objects.create(
+        name="Root A",
+        parent_id=0,
+        sync_source=source,
+        external_id=f"user-sync:{source.id}:0",
+    )
     user = User.objects.create(
         username="alice",
         display_name="Alice",
@@ -2426,12 +2444,11 @@ def test_per_phase_counters_split_between_sync_users_and_reconcile(ready_integra
 
 
 @pytest.mark.django_db
-def test_reconcile_clears_dangling_group_list_before_deleting_groups(ready_integration_instance):
-    """reconcile 删 Group 之前必须先清掉所有活跃用户 group_list 里的悬挂引用。
+def test_reconcile_archives_stale_groups_and_keeps_group_list_refs(ready_integration_instance):
+    """reconcile 将 stale 组织归档并保留用户 group_list 中的组织 ID。
 
-    场景:3 个 Group(1 active + 2 stale),2 个活跃用户的 group_list 引用
-    包含将被删的 Group id。reconcile 后 Group 行被删,但 User.group_list
-    不应保留对已删 Group.id 的引用。
+    场景:3 个 Group(1 active + 2 stale),活跃用户 group_list 引用含 stale。
+    reconcile 后 stale 组织 is_delete=True 仍存在，group_list 保留其 ID。
     """
     source = UserSyncSource.objects.create(
         name="dangling-groups",
@@ -2452,7 +2469,7 @@ def test_reconcile_clears_dangling_group_list_before_deleting_groups(ready_integ
         sync_source=source,
         external_id=f"user-sync:{source.id}:0",
     )
-    # 创建 3 个子组:1 active(外部清单里,会被 _sync_groups 复用) + 2 stale(将被删)
+    # 创建 3 个子组:1 active(外部清单里,会被 _sync_groups 复用) + 2 stale(将被归档)
     active_group = Group.objects.create(
         name="Active Group",
         parent_id=root_group.id,
@@ -2544,35 +2561,39 @@ def test_reconcile_clears_dangling_group_list_before_deleting_groups(ready_integ
     user_mixed.refresh_from_db()
     user_clean.refresh_from_db()
     user_empty.refresh_from_db()
+    stale_group_1.refresh_from_db()
+    stale_group_2.refresh_from_db()
 
     # 1. bob 是 stale,被删除；外部目录恢复后会在之后的同步中重新创建
     assert not User.objects.filter(id=user_stale_only.id).exists()
 
-    # 2. alice 仍 active,group_list 里的 stale_group_1 被清除,只留 active_group
+    # 2. alice 仍 active；sync_users 会按外部归属重写 group_list 为 active
     assert user_mixed.disabled is False
     assert user_mixed.group_list == [active_group.id]
-    assert stale_group_1.id not in user_mixed.group_list
 
     # 3. carol 一直只有 active_group,无变化
     assert user_clean.disabled is False
     assert user_clean.group_list == [active_group.id]
 
-    # 4. dave 是活跃用户,sync_users 把空 group_list 设为 active_group_id,
-    #    没有悬挂引用,reconcile 不动
+    # 4. dave 是活跃用户,sync_users 把空 group_list 设为 active_group_id
     assert user_empty.disabled is False
     assert user_empty.group_list == [active_group.id]
 
-    # 5. stale groups 只能在全部用户同步后的 reconcile 阶段删除
-    assert not Group.objects.filter(id=stale_group_1.id).exists()
-    assert not Group.objects.filter(id=stale_group_2.id).exists()
+    # 5. stale groups 在 reconcile 阶段归档（非物理删除）
+    assert stale_group_1.is_delete is True
+    assert stale_group_2.is_delete is True
+    assert Group.objects.filter(id=stale_group_1.id).exists()
+    assert Group.objects.filter(id=stale_group_2.id).exists()
 
-    # 6. active group 仍在
-    assert Group.objects.filter(id=active_group.id).exists()
+    # 6. active group 仍在且活动
+    active_group.refresh_from_db()
+    assert active_group.is_delete is False
 
     # 7. reconcile 记录最终对账状态
     run = UserSyncRun.objects.get(source=source)
     reconcile_phase = run.payload.get("phase_progress", {}).get("reconcile", {})
     assert reconcile_phase.get("counters", {}).get("deleted_users") == 1  # bob
+    assert reconcile_phase.get("counters", {}).get("deleted_group_count") == 2
 
 
 @pytest.mark.django_db

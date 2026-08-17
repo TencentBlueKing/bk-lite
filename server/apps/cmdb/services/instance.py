@@ -573,6 +573,41 @@ class InstanceManage(object):
             filtered_result[key] = cls._prune_topology_node(result.get(key), visible_ids, int(center_id))
         return filtered_result
 
+    @classmethod
+    def _transport_topology_result(cls, result: dict) -> dict:
+        """把通用拓扑树递归转换为只暴露 inst_uuid 的 Transport DTO。"""
+        if not isinstance(result, dict):
+            return result
+
+        graph_ids = set()
+        for key in ("src_result", "dst_result"):
+            graph_ids.update(cls._collect_topology_node_ids(result.get(key)))
+        instances_map = cls._query_instance_map_by_ids(graph_ids) if graph_ids else {}
+        uuid_by_id = {
+            int(graph_id): item.get("inst_uuid") for graph_id, item in instances_map.items() if isinstance(item, dict) and item.get("inst_uuid")
+        }
+
+        def transport_node(node: dict | None) -> dict:
+            if not isinstance(node, dict) or node.get("_id") is None:
+                return {}
+            try:
+                graph_id = int(node["_id"])
+            except (TypeError, ValueError):
+                return {}
+            inst_uuid = node.get("inst_uuid") or uuid_by_id.get(graph_id)
+            if not inst_uuid:
+                return {}
+            transported = {key: value for key, value in node.items() if key not in {"_id", "inst_id", "children"}}
+            transported["inst_uuid"] = inst_uuid
+            transported["children"] = [child for item in node.get("children") or [] if (child := transport_node(item))]
+            return transported
+
+        return {
+            **result,
+            "src_result": transport_node(result.get("src_result")),
+            "dst_result": transport_node(result.get("dst_result")),
+        }
+
     @staticmethod
     def _build_format_permission_dict(permission_map: dict, creator: str = "") -> dict:
         format_permission_dict = {}
@@ -2285,7 +2320,8 @@ class InstanceManage(object):
         instance = cls.query_entity_by_uuid(inst_uuid)
         if not instance:
             raise BaseAppException("实例不存在！")
-        return cls.topo_search_lite(instance["_id"], depth=depth, permission_map=permission_map, user=user)
+        result = cls.topo_search_lite(instance["_id"], depth=depth, permission_map=permission_map, user=user)
+        return cls._transport_topology_result(result)
 
     @classmethod
     def topo_search_expand(
@@ -2316,13 +2352,14 @@ class InstanceManage(object):
         parents = cls.query_entity_by_uuids(parent_uuids) if parent_uuids else []
         if len(parents) != len(parent_uuids or []):
             raise BaseAppException("父实例不存在！")
-        return cls.topo_search_expand(
+        result = cls.topo_search_expand(
             instance["_id"],
             [item["_id"] for item in parents],
             depth=depth,
             permission_map=permission_map,
             user=user,
         )
+        return cls._transport_topology_result(result)
 
     @staticmethod
     def inst_export(

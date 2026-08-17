@@ -157,6 +157,7 @@ def test_config_sync_tolerates_old_file_cleanup_failure(monkeypatch):
 def test_serving_runtime_cleanup_contract(monkeypatch, failure, expected_status):
     view = TeamModelViewSet()
     view.MLFLOW_PREFIX = "ObjectDetection"
+    view.request = SimpleNamespace(user=SimpleNamespace(locale="zh-Hans"))
     removed = []
 
     def remove(container_id):

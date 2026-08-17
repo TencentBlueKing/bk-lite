@@ -30,6 +30,7 @@ from apps.system_mgmt.utils.group_filter_mixin import (
     get_user_group_ids,
     normalize_group_id_set,
 )
+from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.password_vault import decrypt_from_vault
@@ -64,12 +65,31 @@ def _normalize_group_ids(groups):
     return normalized, invalid
 
 
+def _filter_active_group_ids(groups):
+    normalized, _ = _normalize_group_ids(groups)
+    if not normalized:
+        return []
+    active_ids = set(GroupUtils.active_queryset(id__in=normalized).values_list("id", flat=True))
+    return [group_id for group_id in normalized if group_id in active_ids]
+
+
+def _merge_retained_archived_groups(submitted_ids, existing_groups):
+    """更新用户时保留其已有归档组织 ID，不允许新指定原本没有的归档组织。"""
+    existing_ids, _ = _normalize_group_ids(existing_groups or [])
+    if not existing_ids:
+        return list(submitted_ids)
+    archived_ids = set(Group.objects.filter(id__in=existing_ids, is_delete=True).values_list("id", flat=True))
+    submitted_set = set(submitted_ids)
+    retained = [group_id for group_id in existing_ids if group_id in archived_ids and group_id not in submitted_set]
+    return list(submitted_ids) + retained
+
+
 def _validate_selected_groups(groups, loader):
     if not groups:
         return loader.get("error.group_selection_required", "At least one group must be selected")
 
     normalized_groups, invalid_ids = _normalize_group_ids(groups)
-    group_queryset = Group.objects.filter(id__in=normalized_groups)
+    group_queryset = GroupUtils.active_queryset(id__in=normalized_groups)
     group_map = {group.id: group for group in group_queryset}
 
     missing_group_ids = [group_id for group_id in normalized_groups if group_id not in group_map]
@@ -338,7 +358,7 @@ class UserViewSet(ViewSetUtils):
         data["roles"] = list(roles)
 
         # 添加用户组详情及规则
-        groups = list(Group.objects.filter(id__in=user.group_list).values("id", "name"))
+        groups = list(GroupUtils.active_queryset(id__in=user.group_list).values("id", "name"))
         group_rule_map = {}
         rules = UserRule.objects.filter(username=user.username).values("group_rule__group_id", "group_rule_id", "group_rule__app")
         for rule in rules:
@@ -351,7 +371,7 @@ class UserViewSet(ViewSetUtils):
 
         group_role_ids = []
         if user.group_list:
-            user_groups = Group.objects.filter(id__in=user.group_list).prefetch_related("roles")
+            user_groups = GroupUtils.active_queryset(id__in=user.group_list).prefetch_related("roles")
             group_role_id_set = set()
             for g in user_groups:
                 for role in g.roles.all():
@@ -673,16 +693,22 @@ class UserViewSet(ViewSetUtils):
             return error_response
 
         is_synced_user = target_user.sync_source_id is not None
-        groups = target_user.group_list if is_synced_user else params.get("groups", [])
-        group_validation_error = _validate_selected_groups(groups, loader)
+        submitted_groups = target_user.group_list if is_synced_user else params.get("groups", [])
+        groups_to_validate = (
+            _filter_active_group_ids(submitted_groups) if is_synced_user else submitted_groups
+        )
+        group_validation_error = _validate_selected_groups(groups_to_validate, loader)
         if group_validation_error:
             return JsonResponse({"result": False, "message": group_validation_error})
-        groups, _ = _normalize_group_ids(groups)
-        if not is_synced_user:
+        submitted_ids, _ = _normalize_group_ids(groups_to_validate if is_synced_user else submitted_groups)
+        if is_synced_user:
+            groups = submitted_ids
+        else:
+            groups = _merge_retained_archived_groups(submitted_ids, target_user.group_list)
             synced_group_error = _validate_local_user_group_changes(groups, target_user.group_list, loader=loader)
             if synced_group_error:
                 return JsonResponse({"result": False, "message": synced_group_error})
-        group_scope_error = self._validate_group_scope_for_request(request, groups, loader)
+        group_scope_error = self._validate_group_scope_for_request(request, submitted_ids, loader)
         if group_scope_error:
             return group_scope_error
         params["groups"] = groups

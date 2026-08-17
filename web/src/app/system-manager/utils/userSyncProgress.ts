@@ -71,13 +71,18 @@ const PHASE_ERROR_MESSAGE_KEYS: Record<string, string> = {
   external_service_unavailable: 'externalServiceUnavailable',
   invalid_sync_data: 'invalidSyncData',
   email_enqueue_failed: 'emailEnqueueFailed',
+  group_name_conflict: 'groupNameConflict',
 };
 
 /** 将后端持久化的语言无关错误码转为当前界面语言。 */
 export function formatUserSyncErrorMessage(
   errorCode: string | null | undefined,
   t: (key: string, fallback?: string) => string,
+  params?: Record<string, string>,
 ): string {
+  if (errorCode === 'group_name_conflict' && params?.name) {
+    return t(`${P}.phaseError.groupNameConflict`).replace('{{name}}', params.name);
+  }
   const messageKey = errorCode && PHASE_ERROR_MESSAGE_KEYS[errorCode];
   return messageKey ? t(`${P}.phaseError.${messageKey}`) : t(`${P}.phaseError.syncFailed`);
 }
@@ -205,6 +210,9 @@ export function formatPhaseBusinessResult(
   }
   if (phase === 'sync_groups') {
     const entry = payload?.phase_progress?.sync_groups;
+    if (entry?.status === 'error') {
+      return '';
+    }
     const counters = entry?.counters;
     const createdGroups = Number(counters?.created_groups ?? 0);
     const updatedGroups = Number(counters?.updated_groups ?? 0);
@@ -266,7 +274,9 @@ export function formatPhaseErrorMessage(
 ): string {
   const phaseError = payload?.phase_error;
   if (!phaseError) return '';
-  if (phaseError.error_code) return formatUserSyncErrorMessage(phaseError.error_code, t);
+  if (phaseError.error_code) {
+    return formatUserSyncErrorMessage(phaseError.error_code, t, phaseError.error_params);
+  }
   return phaseError.error_message || t(`${P}.phaseError.syncFailed`);
 }
 

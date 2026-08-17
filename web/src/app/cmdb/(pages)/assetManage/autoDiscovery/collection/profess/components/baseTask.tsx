@@ -27,6 +27,10 @@ import { ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useAssetManageStore } from '@/app/cmdb/store';
 import { useUserInfoContext } from '@/context/userInfo';
+import {
+  CmdbInstanceOption,
+  toCmdbInstanceOptions,
+} from '@/app/cmdb/utils/instanceOption';
 
 import {
   CYCLE_OPTIONS,
@@ -96,7 +100,7 @@ import {
 } from 'antd';
 
 interface TableItem {
-  _id?: string;
+  inst_uuid?: string;
   model_id?: string;
   model_name?: string;
 }
@@ -121,7 +125,7 @@ interface BaseTaskFormProps {
 }
 
 export interface BaseTaskRef {
-  instOptions: { label: string; value: string;[key: string]: any }[];
+  instOptions: CmdbInstanceOption[];
   accessPoints: { label: string; value: string;[key: string]: any }[];
   selectedData: TableItem[];
   ipRange: string[];
@@ -170,9 +174,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const users = useRef(commonContext?.userList || []);
     const userList = users.current;
     const [instOptLoading, setOptLoading] = useState(false);
-    const [instOptions, setOptions] = useState<
-      { label: string; value: string }[]
-    >([]);
+    const [instOptions, setOptions] = useState<CmdbInstanceOption[]>([]);
     const [ipRange, setIpRange] = useState<string[]>([]);
     const [collectionType, setCollectionType] = useState('ip');
     const [selectedData, setSelectedData] = useState<TableItem[]>([]);
@@ -190,7 +192,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const [instData, setInstData] = useState<any[]>([]);
     const [instLoading, setInstLoading] = useState(false);
     const [ipRangeOrg, setIpRangeOrg] = useState<number[]>([]);
-    const [selectedInstIds, setSelectedInstIds] = useState<number[]>([]);
+    const [selectedInstUuids, setSelectedInstUuids] = useState<string[]>([]);
     const cleanupStrategyValue = Form.useWatch('cleanupStrategy', form);
     const accessPointId = Form.useWatch('accessPointId', form);
     const organizationValue = Form.useWatch('organization', form);
@@ -349,10 +351,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     useEffect(() => {
       if (selectedData.length && instData.length) {
         const selectedInsts = instData.filter((item) =>
-          selectedData.some((d) => d._id === item._id)
+          selectedData.some((d) => d.inst_uuid === item.inst_uuid)
         );
         setSelectedRows(selectedInsts);
-        setSelectedKeys(selectedInsts.map((item) => item._id));
+        setSelectedKeys(selectedInsts.map((item) => item.inst_uuid));
       }
     }, [selectedData, instData]);
 
@@ -470,7 +472,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     const handleDeleteRow = (record: TableItem) => {
       const newSelectedData = selectedData.filter(
-        (item: any) => item._id !== record._id
+        (item) => item.inst_uuid !== record.inst_uuid
       );
       setSelectedData(newSelectedData);
       form.setFieldValue('assetInst', newSelectedData);
@@ -481,7 +483,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         return;
       }
       const newSelectedData = selectedData.filter(
-        (item: any) => !displaySelectedKeys.includes(item._id)
+        (item) => !displaySelectedKeys.includes(item.inst_uuid)
       );
       setSelectedData(newSelectedData);
       form.setFieldValue('assetInst', newSelectedData);
@@ -521,7 +523,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       const init = async () => {
         if (requiresSingleInstanceSelect) {
           const selectedIds = (await fetchSelectedInstances()) || [];
-          setSelectedInstIds(selectedIds);
+          setSelectedInstUuids(selectedIds);
           fetchOptions(selectedIds);
         }
 
@@ -548,7 +550,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       }
     };
 
-    const fetchOptions = async (instIds: number[] = []) => {
+    const fetchOptions = async (instUuids: string[] = []) => {
       try {
         setOptLoading(true);
         const data = await instanceApi.searchInstances({
@@ -556,15 +558,13 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
           page: 1,
           page_size: 10000,
         });
-        const currentInstId = form.getFieldValue('instId');
+        const currentInstUuid = form.getFieldValue('instUuid');
         setOptions(
-          data.insts.map((item: any) => ({
-            label: item.inst_name,
-            value: item._id,
-            origin: item,
-            disabled: (instIds.length ? instIds : selectedInstIds)
-              .filter((id) => id !== currentInstId)
-              .includes(item._id),
+          toCmdbInstanceOptions(data.insts || []).map((option) => ({
+            ...option,
+            disabled: (instUuids.length ? instUuids : selectedInstUuids)
+              .filter((instUuid) => instUuid !== currentInstUuid)
+              .includes(option.value),
           }))
         );
       } catch (error) {
@@ -819,7 +819,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             {requiresSingleInstanceSelect && (
               <Form.Item label={instPlaceholder} required>
                 <Space>
-                  <Form.Item name="instId" rules={rules.instId} noStyle>
+                  <Form.Item name="instUuid" rules={rules.instUuid} noStyle>
                     <Select
                       style={{ width: '400px' }}
                       placeholder={t('common.selectTip')}
@@ -972,7 +972,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                         pagination={false}
                         className="mt-4"
                         size="middle"
-                        rowKey="_id"
+                        rowKey="inst_uuid"
                         rowSelection={{
                           selectedRowKeys: displaySelectedKeys,
                           onChange: (selectedRowKeys) => {
@@ -1154,7 +1154,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
             dataSource={instData}
             size="middle"
             loading={instLoading}
-            rowKey="_id"
+            rowKey="inst_uuid"
             scroll={{ y: 'calc(100vh - 280px)' }}
             pagination={{
               ...instPagination,

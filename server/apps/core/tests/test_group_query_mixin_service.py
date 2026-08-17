@@ -2,6 +2,8 @@ import pydantic.root_model  # noqa
 
 import pytest
 
+from rest_framework.exceptions import PermissionDenied
+
 from apps.core.utils import group_query_mixin as gqm
 from apps.core.utils.group_query_mixin import GroupQueryMixin
 
@@ -32,7 +34,9 @@ class TestGetQueryGroups:
         req = _Req(cookies={"current_team": "abc"}, user=_User(group_list=[1]))
         assert m.get_query_groups(req) == []
 
+    @pytest.mark.django_db
     def test_delegates_to_grouputils(self, mocker):
+        mocker.patch.object(GroupQueryMixin, "_get_user_group_list", return_value=[7])
         gu = mocker.patch.object(gqm.GroupUtils, "get_user_authorized_child_groups", return_value=[7, 8])
         m = GroupQueryMixin()
         req = _Req(cookies={"current_team": "7", "include_children": "1"}, user=_User(group_list=[7]))
@@ -42,25 +46,49 @@ class TestGetQueryGroups:
         assert kwargs["include_children"] is True
         assert kwargs["user_group_list"] == [7]
 
+    @pytest.mark.django_db
     def test_include_children_default_false(self, mocker):
+        mocker.patch.object(GroupQueryMixin, "_get_user_group_list", return_value=[7])
         gu = mocker.patch.object(gqm.GroupUtils, "get_user_authorized_child_groups", return_value=[])
         m = GroupQueryMixin()
         req = _Req(cookies={"current_team": "7"}, user=_User(group_list=[7]))
         m.get_query_groups(req)
         assert gu.call_args.kwargs["include_children"] is False
 
+    @pytest.mark.django_db
+    def test_archived_current_team_raises_permission_denied(self):
+        from apps.system_mgmt.models import Group as SysGroup
+
+        archived = SysGroup.objects.create(name="mixin-archived-team", parent_id=0, is_delete=True)
+        m = GroupQueryMixin()
+        req = _Req(
+            cookies={"current_team": str(archived.id)},
+            user=_User(is_superuser=True, group_list=[archived.id]),
+        )
+        with pytest.raises(PermissionDenied, match="current_team 对应组织已归档或不存在"):
+            m.get_query_groups(req)
+
 
 class TestGetUserGroupList:
     def test_superuser_returns_all_group_ids(self, mocker):
         from apps.system_mgmt.models import Group as SysGroup
 
-        mocker.patch.object(SysGroup.objects, "values_list", return_value=[10, 20])
+        qs = mocker.MagicMock()
+        qs.values_list.return_value = [10, 20]
+        mocker.patch.object(SysGroup.objects, "filter", return_value=qs)
         req = _Req(user=_User(is_superuser=True))
         assert GroupQueryMixin._get_user_group_list(req) == [10, 20]
+        SysGroup.objects.filter.assert_called_once_with(is_delete=False)
 
-    def test_normal_user_normalizes_group_list(self):
-        req = _Req(user=_User(group_list=[{"id": 3}, {"id": "4"}]))
+    def test_normal_user_omits_archived_group_ids(self, mocker):
+        from apps.system_mgmt.models import Group as SysGroup
+
+        qs = mocker.MagicMock()
+        qs.values_list.return_value = [3, 4]
+        mocker.patch.object(SysGroup.objects, "filter", return_value=qs)
+        req = _Req(user=_User(group_list=[{"id": 3}, {"id": "4"}, {"id": 9}]))
         assert GroupQueryMixin._get_user_group_list(req) == [3, 4]
+        SysGroup.objects.filter.assert_called_once_with(id__in=[3, 4, 9], is_delete=False)
 
     def test_user_without_group_list_returns_empty(self):
         req = _Req(user=_User())  # no group_list attr

@@ -48,6 +48,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
   const { t } = useTranslation();
   const iconButtonClassName =
     'rounded-full! h-8 w-8 min-w-8 flex items-center justify-center';
+  const iconClassName = 'text-[16px]';
 
   return (
     <div className="flex items-center gap-1.5">
@@ -55,7 +56,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
           <Tooltip title={t('topology.zoomIn')}>
             <Button
               type="text"
-              icon={<ZoomInOutlined style={{ fontSize: 16 }} />}
+              icon={<ZoomInOutlined className={iconClassName} />}
               onClick={onZoomIn}
               className={iconButtonClassName}
             />
@@ -63,7 +64,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
           <Tooltip title={t('topology.zoomOut')}>
             <Button
               type="text"
-              icon={<ZoomOutOutlined style={{ fontSize: 16 }} />}
+              icon={<ZoomOutOutlined className={iconClassName} />}
               onClick={onZoomOut}
               className={iconButtonClassName}
             />
@@ -71,7 +72,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
           <Tooltip title={t('topology.fitView')}>
             <Button
               type="text"
-              icon={<PlusSquareOutlined style={{ fontSize: 16 }} />}
+              icon={<PlusSquareOutlined className={iconClassName} />}
               onClick={onFit}
               className={iconButtonClassName}
             />
@@ -85,9 +86,9 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
               type="text"
               icon={
                 isFullscreen ? (
-                  <FullscreenExitOutlined style={{ fontSize: 16 }} />
+                  <FullscreenExitOutlined className={iconClassName} />
                 ) : (
-                  <FullscreenOutlined style={{ fontSize: 16 }} />
+                  <FullscreenOutlined className={iconClassName} />
                 )
               }
               onClick={onFullscreenToggle}
@@ -101,7 +102,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
             <Tooltip title={t('topology.undo')}>
               <Button
                 type="text"
-                icon={<UndoOutlined style={{ fontSize: 16 }} />}
+                icon={<UndoOutlined className={iconClassName} />}
                 onClick={onUndo}
                 disabled={!canUndo}
                 className={iconButtonClassName}
@@ -110,7 +111,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
             <Tooltip title={t('topology.redo')}>
               <Button
                 type="text"
-                icon={<RedoOutlined style={{ fontSize: 16 }} />}
+                icon={<RedoOutlined className={iconClassName} />}
                 onClick={onRedo}
                 disabled={!canRedo}
                 className={iconButtonClassName}
@@ -119,13 +120,12 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
             <Tooltip title={t('topology.selectMode')}>
               <Button
                 type="text"
-                icon={<SelectOutlined style={{ fontSize: 16 }} />}
+                icon={<SelectOutlined className={iconClassName} />}
                 onClick={onSelectMode}
                 className={iconButtonClassName}
                 style={{
                   backgroundColor: isSelectMode ? '#1677ff15' : 'transparent',
                   color: isSelectMode ? '#1677ff' : undefined,
-                  borderRadius: 999,
                 }}
               />
             </Tooltip>
@@ -134,7 +134,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                 type="text"
                 aria-label={t('topology.deleteSelected')}
                 icon={
-                  <DeleteOutlined aria-hidden="true" style={{ fontSize: 16 }} />
+                  <DeleteOutlined aria-hidden="true" className={iconClassName} />
                 }
                 onClick={onDelete}
                 className={iconButtonClassName}
@@ -149,7 +149,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                     icon={
                       <SettingOutlined
                         aria-hidden="true"
-                        style={{ fontSize: 16 }}
+                        className={iconClassName}
                       />
                     }
                     onClick={onFilterConfig}
@@ -175,7 +175,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
           <Tooltip title={t('dashboard.share')}>
             <Button
               type="text"
-              icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
+              icon={<ShareAltOutlined className={iconClassName} />}
               loading={shareLoading}
               disabled={shareLoading}
               aria-label={t('dashboard.share')}
@@ -207,7 +207,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                 <Tooltip title={t('common.edit')}>
                   <Button
                     type="text"
-                    icon={<EditOutlined style={{ fontSize: 16 }} />}
+                    icon={<EditOutlined className={iconClassName} />}
                     onClick={onEdit}
                     disabled={selectedTopology?.is_build_in}
                     className="rounded-full!"

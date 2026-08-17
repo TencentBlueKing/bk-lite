@@ -6,7 +6,7 @@ import {
   YAxis,
   Tooltip
 } from "recharts";
-import { Empty } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import { useCallback, useMemo } from "react";
 import chartLineStyle from './index.module.scss';
 
@@ -69,7 +69,7 @@ const BarChart: React.FC<BarChartProps> = ({
         </ResponsiveContainer>
       ) : (
         <div className={`${chartLineStyle.chart} ${chartLineStyle.noData}`}>
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <ChartEmptyState compact />
         </div>
       )}
     </div>

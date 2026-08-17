@@ -31,7 +31,7 @@ interface PlatformApiTaskProps {
 
 /**
  * FusionInsight / OceanStor / 华三 UIS / 深信服 等平台 HTTPS 采集。
- * task_type=cloud → BaseTask 走与 VCenter/公有云相同的单资产 instId 选择，
+ * task_type=cloud → BaseTask 走与 VCenter/公有云相同的单资产 instUuid 选择，
  * 因此 instances 必须从 instOptions 解析，不能走 IP/selectedData 路径。
  */
 const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
@@ -74,7 +74,7 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
         formatCycleValue,
       });
       const instance = baseRef.current?.instOptions?.find(
-        (item: any) => item.value === values.instId,
+        (item) => item.value === values.instUuid,
       );
       const credential = normalizeCredentialPool(values.credentialPool)[0]
         || createPlatformApiCredential(modelId);
@@ -93,7 +93,7 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],
     accessPointId: values.access_point?.[0]?.id,
-    instId: values.instances?.[0]?._id,
+    instUuid: values.instances?.[0]?.inst_uuid,
     credentialPool: [
       restorePlatformApiCredential(
         modelId,

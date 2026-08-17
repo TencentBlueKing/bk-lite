@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Spin, Empty } from 'antd';
+import { Spin } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import { formatNumericValue } from '@/app/log/utils/common';
 
 interface ComSingleProps {
@@ -85,11 +86,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
   }
 
   if (!displayValue && displayValue !== 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   return (

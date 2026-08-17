@@ -214,6 +214,31 @@ def test_datasource_groups_must_be_subset_of_connection():
         )
 
 
+def test_binding_clears_connection_when_source_type_forbids_it():
+    connection = DataConnection.objects.create(
+        name="rest-shared",
+        connection_type=DataConnection.TYPE_REST_API,
+        groups=[1],
+        config=encrypt_connection_config({"base_url": "https://api.example.com", "headers": {}}),
+    )
+    attrs = validate_datasource_connection_binding(
+        {
+            "source_type": DataSourceAPIModel.SOURCE_TYPE_EXCEL,
+            "groups": [1],
+            "connection": connection,
+            "connection_overrides": {"path": "orders", "method": "GET", "timeout": 10},
+        }
+    )
+    assert attrs["connection"] is None
+    assert attrs["connection_overrides"] == {}
+
+    nats_attrs = validate_datasource_connection_binding(
+        {"source_type": DataSourceAPIModel.SOURCE_TYPE_NATS, "groups": [1], "connection": connection}
+    )
+    assert nats_attrs["connection"] is None
+    assert nats_attrs["connection_overrides"] == {}
+
+
 def test_resolve_rest_rejects_path_traversal():
     connection = DataConnection.objects.create(
         name="rest-base",
@@ -264,6 +289,24 @@ def test_resolve_rest_joins_safe_relative_path():
     resolved = resolve_datasource_connection(datasource, current_team=1)
     assert resolved["url"] == "https://api.example.com/v1/orders"
     assert resolved["method"] == "GET"
+
+
+def test_extract_inline_connection_rejects_existing_connection():
+    connection = DataConnection.objects.create(
+        name="already-bound",
+        connection_type=DataConnection.TYPE_REST_API,
+        groups=[1],
+        config=encrypt_connection_config({"base_url": "https://api.example.com", "headers": {}}),
+    )
+    datasource = DataSourceAPIModel.objects.create(
+        name="rest-bound",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_REST_API,
+        groups=[1],
+        connection=connection,
+        connection_config={"method": "GET", "timeout": 10},
+    )
+    with pytest.raises(ValueError, match="数据源已引用公共连接"):
+        extract_inline_connection(datasource, name="should-fail")
 
 
 def test_extract_inline_connection():
@@ -405,3 +448,80 @@ def test_resolve_preview_connection_config_for_unsaved_shared_connection():
     assert resolved["host"] == "db.example.com"
     assert resolved["database"] == "orders"
     assert resolved["password"] == "secret"
+
+
+def test_saved_preview_uses_draft_inline_when_connection_is_null():
+    from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER
+    from apps.operation_analysis.views.datasource_view import _connection_config_for_instance
+
+    connection = DataConnection.objects.create(
+        name="rest-shared",
+        connection_type=DataConnection.TYPE_REST_API,
+        groups=[1],
+        config=encrypt_connection_config({"base_url": "https://api.example.com", "headers": {}}),
+    )
+    datasource = DataSourceAPIModel.objects.create(
+        name="rest1",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_REST_API,
+        groups=[1],
+        connection=connection,
+        connection_config={"method": "GET", "timeout": 10},
+    )
+
+    resolved = _connection_config_for_instance(
+        datasource,
+        {
+            "source_type": DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,
+            "connection": None,
+            "connection_config": {
+                "host": "127.0.0.1",
+                "port": 5433,
+                "database": "bklite",
+                "username": "bklite",
+                "password": "123456",
+            },
+        },
+        current_team=1,
+    )
+    assert resolved["host"] == "127.0.0.1"
+    assert resolved["port"] == 5433
+    assert resolved["password"] == "123456"
+
+    placeholder_resolved = _connection_config_for_instance(
+        datasource,
+        {
+            "source_type": DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,
+            "connection": None,
+            "connection_config": {
+                "host": "127.0.0.1",
+                "port": 5433,
+                "database": "bklite",
+                "username": "bklite",
+                "password": SENSITIVE_PLACEHOLDER,
+            },
+        },
+        current_team=1,
+    )
+    assert placeholder_resolved["password"] is None
+
+
+def test_saved_preview_without_connection_field_still_uses_bound_connection():
+    from apps.operation_analysis.views.datasource_view import _connection_config_for_instance
+
+    connection = DataConnection.objects.create(
+        name="rest-shared-fallback",
+        connection_type=DataConnection.TYPE_REST_API,
+        groups=[1],
+        config=encrypt_connection_config({"base_url": "https://api.example.com/v1", "headers": {}}),
+    )
+    datasource = DataSourceAPIModel.objects.create(
+        name="rest-fallback",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_REST_API,
+        groups=[1],
+        connection=connection,
+        connection_overrides={"path": "orders", "method": "GET"},
+        connection_config={"method": "GET", "timeout": 10},
+    )
+
+    resolved = _connection_config_for_instance(datasource, {}, current_team=1)
+    assert resolved["url"] == "https://api.example.com/v1/orders"

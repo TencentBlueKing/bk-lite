@@ -6,7 +6,6 @@ import {
   AutoComplete,
   Button,
   Card,
-  Empty,
   Flex,
   Input,
   Radio,
@@ -30,6 +29,7 @@ import {
   type NetworkTopologyNode as VisualNode,
   type NetworkTopologyNodeStatus,
 } from '@/app/cmdb/components/networkTopology';
+import CompactEmptyState from '@/components/compact-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import type {
@@ -1202,7 +1202,7 @@ export default function ApplicationResourceOverview({
   if (!selectedTarget) {
     return (
       <div className={hostClassName}>
-        <Empty description={t('ApplicationResourceOverview.emptyApps')} />
+        <CompactEmptyState description={t('ApplicationResourceOverview.emptyApps')} />
       </div>
     );
   }
@@ -1287,7 +1287,7 @@ export default function ApplicationResourceOverview({
                 >
                   {!topology?.nodes?.length ? (
                     <div className={styles.graphEmpty}>
-                      <Empty description={t('ApplicationResourceOverview.emptyLinks')} />
+                      <CompactEmptyState description={t('ApplicationResourceOverview.emptyLinks')} />
                     </div>
                   ) : (
                     <>
@@ -1478,13 +1478,11 @@ export default function ApplicationResourceOverview({
                     </div>
                     <div className={styles.relationsTable}>
                       {!topology?.links?.length ? (
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        <CompactEmptyState
                           description={t('ApplicationResourceOverview.emptyLinks')}
                         />
                       ) : !filteredRelationLinks.length ? (
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        <CompactEmptyState
                           description={t('ApplicationResourceOverview.emptyFilteredLinks')}
                         />
                       ) : (
@@ -1539,9 +1537,9 @@ export default function ApplicationResourceOverview({
             </Flex>
 
             {!resources?.groups?.length ? (
-              <Empty description={t('ApplicationResourceOverview.emptyResources')} />
+              <CompactEmptyState description={t('ApplicationResourceOverview.emptyResources')} />
             ) : !filteredResourceGroups.length ? (
-              <Empty description={t('ApplicationResourceOverview.emptyFilteredResources')} />
+              <CompactEmptyState description={t('ApplicationResourceOverview.emptyFilteredResources')} />
             ) : (
               filteredResourceGroups.map((group) => (
                 <Card

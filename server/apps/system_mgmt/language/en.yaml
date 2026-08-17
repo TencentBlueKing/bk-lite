@@ -95,6 +95,7 @@ error:
   current_team_required: current_team parameter is required
   invalid_current_team: current_team parameter is invalid
   invalid_group_id: group_id parameter is invalid
+  invalid_pagination: page and page_size must be positive integers, and page_size may not exceed 100
   group_ids_list_required: group_ids must be a required list
   group_ids_must_be_list: group_ids must be a list
   user_ids_list_required: user_ids must be a non-empty list
@@ -102,8 +103,15 @@ error:
   invalid_user_ids: 'Invalid user IDs: {ids}'
   synced_users_delete_forbidden: Synced users cannot be deleted directly. Please delete them from the user sync source.
   synced_group_child_creation_forbidden: Synced groups cannot have manually created child groups
+  cannot_create_under_archived_group: Cannot create a group under an archived organization
   synced_child_group_name_immutable: Synced child group name cannot be changed
   synced_groups_delete_forbidden: Synced groups cannot be deleted directly
+  synced_groups_archive_forbidden: Synced groups cannot be archived directly
+  group_archive_users_need_active_org: Archiving would leave some users without an active organization. Please assign them another active organization first
+  archive_operation_requires_root: Only archived roots can be restored or permanently deleted
+  group_restore_not_allowed: This archived group cannot be restored
+  group_permanent_delete_not_allowed: This archived group cannot be permanently deleted
+  group_permanent_delete_users_need_active_org: Permanent deletion would leave some users without an active organization. Please assign them another active organization first
 success:
   menu_group_disabled: Menu group disabled
   batch_create: Batch creation successful

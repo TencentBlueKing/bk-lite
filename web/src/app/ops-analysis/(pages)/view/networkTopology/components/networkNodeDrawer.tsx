@@ -7,7 +7,6 @@ import {
   Radio,
   Space,
   Popconfirm,
-  Empty,
   Tooltip,
 } from "antd";
 import {
@@ -16,6 +15,7 @@ import {
   PlusOutlined,
 } from "@ant-design/icons";
 import { useTranslation } from "@/utils/i18n";
+import CompactEmptyState from "@/components/compact-empty-state";
 import { ThresholdColorConfigSection } from "@/app/ops-analysis/components/thresholdColorConfigSection";
 import type {
   NetworkMetricAggregateType,
@@ -134,58 +134,13 @@ const normalizeConditionFilterFormValue = (
     }, [])
     : [];
 
-const drawerFooterStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "flex-end",
-};
-const drawerInfoCardStyle: React.CSSProperties = {
-  border: "1px solid var(--color-border-1,#dce5ed)",
-  borderRadius: 8,
-  overflow: "hidden",
-  background: "var(--color-bg-1,#fff)",
-  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
-};
-const drawerInfoLabelStyle: React.CSSProperties = {
-  minWidth: 0,
-  padding: "9px 12px",
-  borderRight: "1px solid var(--color-border-1,#e5e9ef)",
-  borderBottom: "1px solid var(--color-border-1,#e5e9ef)",
-  // fill-1 向底色混合 55%,比纯 fill-1 更淡(深浅主题都适用)
-  background:
-    "color-mix(in srgb, var(--color-fill-1,#f7f9fc) 45%, var(--color-bg-1,#ffffff))",
-  color: "var(--color-text-3,#5f7290)",
-  fontSize: 12,
-  lineHeight: "20px",
-};
-const drawerInfoValueStyle: React.CSSProperties = {
-  minWidth: 0,
-  padding: "9px 12px",
-  borderRight: "1px solid var(--color-border-1,#e5e9ef)",
-  borderBottom: "1px solid var(--color-border-1,#e5e9ef)",
-  color: "var(--color-text-1,#1f2933)",
-  fontSize: 12,
-  lineHeight: "20px",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-};
-const drawerSectionTitleStyle: React.CSSProperties = {
-  color: "var(--color-text-1,#1f2937)",
-  fontSize: 13,
-  fontWeight: 600,
-};
-const drawerConfigCardStyle: React.CSSProperties = {
-  padding: "10px 12px",
-  border: "1px solid var(--color-border-1,#dce5ed)",
-  borderRadius: 8,
-  background: "var(--color-bg-1,#fff)",
-  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
-};
-const drawerSubtlePanelStyle: React.CSSProperties = {
-  padding: 12,
-  border: "1px solid var(--color-border-1,#dce5ed)",
-  borderRadius: 8,
-  background: "var(--color-fill-1,#f8fafc)",
-};
+const drawerFooterClassName = 'flex justify-end';
+const drawerInfoCardClassName = 'overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] shadow-[0_1px_2px_rgba(15,23,42,0.04)]';
+const drawerInfoLabelClassName = 'min-w-0 border-b border-r border-[var(--color-border-1)] bg-[color-mix(in_srgb,var(--color-fill-1)_45%,var(--color-bg-1))] px-3 py-2.5 text-xs leading-5 text-[var(--color-text-3)]';
+const drawerInfoValueClassName = 'min-w-0 overflow-hidden text-ellipsis border-b border-r border-[var(--color-border-1)] px-3 py-2.5 text-xs leading-5 text-[var(--color-text-1)]';
+const drawerSectionTitleClassName = 'text-[13px] font-semibold text-[var(--color-text-1)]';
+const drawerConfigCardClassName = 'rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]';
+const drawerSubtlePanelClassName = 'rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-3';
 
 /**
  * 节点配置 Drawer(design.md §7.4):
@@ -280,12 +235,8 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
     });
     return Array.from(optionMap.values());
   }, [draftMetrics, metricOptions]);
-  const compactFormItemStyle: React.CSSProperties = { marginBottom: 10 };
-  const compactLabelStyle: React.CSSProperties = {
-    color: "var(--color-text-2,#334250)",
-    fontSize: 14,
-    fontWeight: 400,
-  };
+  const compactFormItemClassName = 'mb-2.5';
+  const compactLabelClassName = 'text-sm font-normal text-[var(--color-text-2)]';
   const onSelectMetric = (
     metricKey: string,
     options?: { preserveConfig?: boolean },
@@ -423,17 +374,9 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
     );
     const dimensionKeys = metric?.supported_dimensions ?? [];
     return (
-      <Form form={form} layout="vertical" style={{ marginTop: 6 }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "52px minmax(0, 1fr)",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 10,
-          }}
-        >
-          <span style={compactLabelStyle}>
+      <Form form={form} layout="vertical" className="mt-1.5">
+        <div className="mb-2.5 grid grid-cols-[52px_minmax(0,1fr)] items-center gap-2.5">
+          <span className={compactLabelClassName}>
             {t("opsAnalysis.networkTopology.node.labelMetric")}
           </span>
           <Select
@@ -464,13 +407,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
           <>
             {dimensionLoadError &&
               (displayMode ?? "aggregate") === "dimension" && (
-                <div
-                  style={{
-                    marginBottom: 10,
-                    fontSize: 12,
-                    color: "var(--color-text-3,#94a3b8)",
-                  }}
-                >
+                <div className="mb-2.5 text-xs text-[var(--color-text-3)]">
                   {t(
                     "opsAnalysis.networkTopology.node.dimensionLoadFailed",
                   )}
@@ -482,7 +419,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                 "opsAnalysis.networkTopology.node.labelDisplayMode",
               )}
               initialValue="aggregate"
-              style={compactFormItemStyle}
+              className={compactFormItemClassName}
             >
               <Radio.Group
                 onChange={(event) => {
@@ -519,7 +456,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                 "opsAnalysis.networkTopology.node.labelAggregateType",
               )}
               initialValue="sum"
-              style={compactFormItemStyle}
+              className={compactFormItemClassName}
             >
               <Select
                 getPopupContainer={(trigger) =>
@@ -541,20 +478,14 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                         .filter(Boolean),
                     );
                     return (
-                      <div style={{ marginBottom: 10 }}>
-                        <div
-                          style={{
-                            color: "var(--color-text-2,#334250)",
-                            fontSize: 14,
-                            marginBottom: 6,
-                          }}
-                        >
+                      <div className="mb-2.5">
+                        <div className="mb-1.5 text-sm text-[var(--color-text-2)]">
                           {t("opsAnalysis.networkTopology.node.dimensionFilter")}
                         </div>
                         <Space
                           direction="vertical"
                           size={8}
-                          style={{ width: "100%" }}
+                          className="w-full"
                         >
                           {fields.map((field) => {
                             const selectedDimension =
@@ -562,17 +493,11 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                             return (
                               <div
                                 key={field.key}
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns:
-                                    "minmax(120px, 1fr) 20px minmax(0, 1.35fr) 28px",
-                                  alignItems: "center",
-                                  gap: 8,
-                                }}
+                                className="grid grid-cols-[minmax(120px,1fr)_20px_minmax(0,1.35fr)_28px] items-center gap-2"
                               >
                                 <Form.Item
                                   name={[field.name, "dimension_id"]}
-                                  style={{ marginBottom: 0 }}
+                                  className="mb-0"
                                 >
                                   <Select
                                     allowClear
@@ -604,10 +529,10 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                                     }}
                                   />
                                 </Form.Item>
-                                <span style={{ color: "var(--color-text-3,#64748b)" }}>=</span>
+                                <span className="text-[var(--color-text-3)]">=</span>
                                 <Form.Item
                                   name={[field.name, "value"]}
-                                  style={{ marginBottom: 0 }}
+                                  className="mb-0"
                                 >
                                   <Select
                                     allowClear
@@ -658,7 +583,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                   }}
                 </Form.List>
             )}
-            <div style={{ marginTop: 6 }}>
+            <div className="mt-1.5">
               <ThresholdColorConfigSection
                 t={t}
                 thresholdColors={thresholds}
@@ -748,7 +673,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
       }
       data-testid={testId ?? 'network-node-drawer'}
       footer={
-        <div style={drawerFooterStyle}>
+        <div className={drawerFooterClassName}>
           <Space>
             <Button onClick={closeWithPendingMetric}>
               {t('opsAnalysis.networkTopology.node.closeButton')}
@@ -763,21 +688,16 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
       }
     >
       {!node ? (
-        <Empty
+        <CompactEmptyState
           description={t('opsAnalysis.networkTopology.node.emptySelection')}
         />
       ) : (
         <>
           <div
             data-testid="network-node-drawer-basic"
-            style={drawerInfoCardStyle}
+            className={drawerInfoCardClassName}
           >
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '132px minmax(0, 1fr)',
-              }}
-            >
+            <div className="grid grid-cols-[132px_minmax(0,1fr)]">
               {[
                 {
                   label: t('opsAnalysis.networkTopology.node.labelAsset'),
@@ -800,13 +720,12 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                 },
               ].map((item) => (
                 <React.Fragment key={item.label}>
-                  <div style={drawerInfoLabelStyle}>{item.label}</div>
+                  <div className={drawerInfoLabelClassName}>{item.label}</div>
                   <div
-                    style={{
-                      ...drawerInfoValueStyle,
-                      whiteSpace:
-                        typeof item.value === 'string' ? 'nowrap' : undefined,
-                    }}
+                    className={[
+                      drawerInfoValueClassName,
+                      typeof item.value === 'string' ? 'whitespace-nowrap' : '',
+                    ].filter(Boolean).join(' ')}
                     title={
                       typeof item.value === 'string' ? item.value : undefined
                     }
@@ -820,20 +739,11 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
 
           {sortedMetrics.length > 0 && (
             <div
-              style={{
-                marginTop: 12,
-              }}
+              className="mt-3"
               data-testid="network-node-drawer-bound-metrics"
             >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 8,
-                }}
-              >
-                <strong style={drawerSectionTitleStyle}>
+              <div className="mb-2 flex items-center justify-between">
+                <strong className={drawerSectionTitleClassName}>
                   {t(
                     'opsAnalysis.networkTopology.node.boundMetricsTitle',
                     undefined,
@@ -843,34 +753,20 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                   )}
                 </strong>
               </div>
-              <Space direction="vertical" size={10} style={{ width: '100%' }}>
+              <Space direction="vertical" size={10} className="w-full">
                 {sortedMetrics.map((metric, index) => {
                   const row = boundMetricRows[index];
                   const isEditing = editingSortOrder === metric.sort_order;
                   return (
                     <div
                       key={`${metric.result_table_id}:${metric.metric_field}:${metric.sort_order}`}
-                      style={drawerConfigCardStyle}
+                      className={drawerConfigCardClassName}
                       data-testid="network-node-drawer-metric-row"
                     >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                        }}
-                      >
-                        <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex-1">
                           <strong
-                            style={{
-                              display: 'block',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              color: 'var(--color-text-1,#111827)',
-                              fontSize: 13,
-                              fontWeight: 600,
-                            }}
+                            className="block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-semibold text-[var(--color-text-1)]"
                             title={row?.label}
                           >
                             {row?.label ??
@@ -879,27 +775,10 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                           </strong>
                           {!isEditing && (
                             <div
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                maxWidth: '100%',
-                                marginTop: 5,
-                                padding: '2px 7px',
-                                borderRadius: 4,
-                                background: 'var(--color-fill-2,#f3f6fb)',
-                                color: 'var(--color-text-2,#5f6f85)',
-                                fontSize: 11,
-                                lineHeight: '18px',
-                              }}
+                              className="mt-1 inline-flex max-w-full items-center rounded bg-[var(--color-fill-2)] px-[7px] py-0.5 text-[11px] leading-[18px] text-[var(--color-text-2)]"
                               title={row?.scopeText}
                             >
-                              <span
-                                style={{
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
+                              <span className="overflow-hidden text-ellipsis whitespace-nowrap">
                                 {row?.scopeText}
                               </span>
                             </div>
@@ -993,7 +872,7 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
                         </Popconfirm>
                       </div>
                       {isEditing && (
-                        <div style={{ marginTop: 8 }}>
+                        <div className="mt-2">
                           {renderMetricEditor(
                             () => onSaveEditMetric(metric.sort_order),
                             () => {
@@ -1013,33 +892,17 @@ const NetworkNodeDrawer: React.FC<NetworkNodeDrawerProps> = ({
 
           {!readonly && editingSortOrder === null && (
             <div
-              style={{
-                marginTop: 12,
-                ...drawerSubtlePanelStyle,
-              }}
+              className={`mt-3 ${drawerSubtlePanelClassName}`}
               data-testid="network-node-drawer-add-metric"
             >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  marginBottom: 10,
-                }}
-              >
-                <strong style={{ ...drawerSectionTitleStyle, flex: 1 }}>
+              <div className="mb-2.5 flex items-center">
+                <strong className={`${drawerSectionTitleClassName} flex-1`}>
                   {t('opsAnalysis.networkTopology.node.addMetric')}
                 </strong>
               </div>
               {!selectedMetricKey ? (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '52px minmax(0, 1fr)',
-                    alignItems: 'center',
-                    gap: 10,
-                  }}
-                >
-                  <span style={compactLabelStyle}>
+                <div className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-2.5">
+                  <span className={compactLabelClassName}>
                     {t('opsAnalysis.networkTopology.node.labelMetric')}
                   </span>
                   <Select

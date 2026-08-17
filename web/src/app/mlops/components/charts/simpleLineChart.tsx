@@ -8,7 +8,7 @@ import {
   Tooltip,
   Area,
 } from 'recharts';
-import { Empty } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import chartLineStyle from './index.module.scss';
 
 interface StepData {
@@ -131,7 +131,7 @@ const SimpleLineChart: React.FC<SimpleLineChartProps> = ({
         </ResponsiveContainer>
       ) : (
         <div className={`${chartLineStyle.chart} ${chartLineStyle.noData}`}>
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <ChartEmptyState compact />
         </div>
       )}
     </div>

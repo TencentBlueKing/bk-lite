@@ -90,7 +90,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
       <div className="flex items-center">
         <span className="text-xs mr-4 w-40 shrink-0">{t('system.security.initialPasswordEmailChannel')}</span>
         <Select
-          style={{ width: 288 }}
+          className="w-72"
           value={initialPasswordEmailChannelId || undefined}
           onChange={onInitialPasswordEmailChannelChange}
           disabled={disabled || loading}
@@ -99,7 +99,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
         />
       </div>
       {emailChannelsError && (
-        <div className="ml-44" style={{ maxWidth: 288 }}>
+        <div className="ml-44 max-w-72">
           <Alert
             type="error"
             showIcon
@@ -140,7 +140,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
           onChange={(value) => onLoginExpiredTimeChange(value || '24')}
           disabled={disabled || loading}
           addonAfter={t('system.security.hours')}
-          style={{ width: '180px' }}
+          className="w-[180px]"
         />
       </div>
 
@@ -155,7 +155,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
                 value={minimumLength}
                 onChange={onMinimumLengthChange}
                 disabled={disabled || loading}
-                style={{ width: '80px' }}
+                className="w-20"
                 options={[
                   { value: '8', label: '8' },
                   { value: '10', label: '10' },
@@ -167,7 +167,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
                 value={maximumLength}
                 onChange={onMaximumLengthChange}
                 disabled={disabled || loading}
-                style={{ width: '80px' }}
+                className="w-20"
                 options={[
                   { value: '16', label: '16' },
                   { value: '18', label: '18' },
@@ -199,7 +199,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
               value={passwordExpiration}
               onChange={onPasswordExpirationChange}
               disabled={disabled || loading}
-              style={{ width: '180px' }}
+              className="w-[180px]"
               options={[
                 { value: '30', label: t('system.security.oneMonth') },
                 { value: '90', label: t('system.security.threeMonths') },
@@ -215,7 +215,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
               value={loginAttempts}
               onChange={onLoginAttemptsChange}
               disabled={disabled || loading}
-              style={{ width: '180px' }}
+              className="w-[180px]"
               options={[
                 { value: '3', label: t('system.security.threeTimes') },
                 { value: '5', label: t('system.security.fiveTimes') },
@@ -234,7 +234,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
               onChange={(value) => onLockDurationChange(value?.toString() || '180')}
               disabled={disabled || loading}
               addonAfter={t('system.security.seconds')}
-              style={{ width: '180px' }}
+              className="w-[180px]"
             />
           </div>
           <div className="flex items-center mb-4">
@@ -246,7 +246,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
               onChange={(value) => onReminderDaysChange(value?.toString() || '7')}
               disabled={disabled || loading}
               addonAfter={t('system.security.days')}
-              style={{ width: '180px' }}
+              className="w-[180px]"
             />
           </div>
         </div>
@@ -304,7 +304,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
                 <div className="flex items-center">
                   <span className="text-xs mr-4 w-40 shrink-0">{t('system.security.initialPassword')}</span>
                   <Input.Password
-                    style={{ width: 288 }}
+                    className="w-72"
                     value={initialPassword}
                     onChange={(event) => onInitialPasswordChange(event.target.value)}
                     disabled={disabled || loading}
@@ -315,7 +315,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
                 <div className="flex items-center">
                   <span className="text-xs mr-4 w-40 shrink-0">{t('system.security.confirmInitialPassword')}</span>
                   <Input.Password
-                    style={{ width: 288 }}
+                    className="w-72"
                     value={confirmInitialPassword}
                     onChange={(event) => onConfirmInitialPasswordChange(event.target.value)}
                     disabled={disabled || loading}

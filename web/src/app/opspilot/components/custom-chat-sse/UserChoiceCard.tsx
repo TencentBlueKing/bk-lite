@@ -119,48 +119,21 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
       type="button"
       disabled={option.disabled || submitting}
       onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        padding: '8px 14px',
-        borderRadius: '8px',
-        border: isSelected ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border-1)',
-        background: isSelected ? 'var(--color-primary-light-1, rgba(22,119,255,0.06))' : 'var(--color-bg-1)',
-        cursor: option.disabled || submitting ? 'not-allowed' : 'pointer',
-        opacity: option.disabled || submitting ? 0.5 : 1,
-        fontSize: '13px',
-        color: 'var(--color-text-1)',
-        transition: 'all 0.15s ease',
-        textAlign: 'left',
-        width: '100%',
-      }}
-      onMouseEnter={e => {
-        if (!option.disabled && !submitting) {
-          (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-primary)';
-          (e.currentTarget as HTMLElement).style.background = 'var(--color-primary-light-1, rgba(22,119,255,0.04))';
-        }
-      }}
-      onMouseLeave={e => {
-        if (!isSelected) {
-          (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-1)';
-          (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-1)';
-        }
-      }}
+      className={[
+        'flex w-full items-center gap-2 rounded-lg px-3.5 py-2 text-left text-[13px] text-[var(--color-text-1)] transition-all duration-150',
+        isSelected
+          ? 'border-[1.5px] border-[var(--color-primary)] bg-[var(--color-primary-light-1)]'
+          : 'border border-[var(--color-border-1)] bg-[var(--color-bg-1)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-light-1)]',
+        option.disabled || submitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+      ].join(' ')}
     >
       {request.multiple && (
-        <span style={{
-          width: '16px',
-          height: '16px',
-          borderRadius: '4px',
-          border: isSelected ? '1.5px solid var(--color-primary)' : '1.5px solid var(--color-border-2)',
-          background: isSelected ? 'var(--color-primary)' : 'transparent',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          transition: 'all 0.15s ease',
-        }}>
+        <span className={[
+          'flex h-4 w-4 shrink-0 items-center justify-center rounded transition-all duration-150',
+          isSelected
+            ? 'border-[1.5px] border-[var(--color-primary)] bg-[var(--color-primary)]'
+            : 'border-[1.5px] border-[var(--color-border-2)] bg-transparent',
+        ].join(' ')}>
           {isSelected && (
             <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
               <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -168,23 +141,16 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
           )}
         </span>
       )}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 font-medium">
           {option.icon && <span>{option.icon}</span>}
           <span>{option.label}</span>
           {option.recommended && (
-            <span style={{
-              fontSize: '11px',
-              padding: '1px 6px',
-              borderRadius: '4px',
-              background: 'rgba(22,119,255,0.1)',
-              color: 'var(--color-primary)',
-              fontWeight: 500,
-            }}>推荐</span>
+            <span className="rounded px-1.5 py-px text-[11px] font-medium text-[var(--color-primary)] bg-[var(--color-primary-light-1)]">推荐</span>
           )}
         </div>
         {option.description && (
-          <div style={{ fontSize: '12px', color: 'var(--color-text-3)', marginTop: '2px' }}>
+          <div className="mt-0.5 text-xs text-[var(--color-text-3)]">
             {option.description}
           </div>
         )}
@@ -193,88 +159,82 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
   );
 
   const renderButtons = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+    <div className="flex flex-col gap-1.5">
       {request.options.map(option =>
         renderOptionCard(option, false, () => handleButtonClick(option.key))
       )}
     </div>
   );
 
-  const renderCheckboxes = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      {request.options.map(option =>
-        renderOptionCard(
-          option,
-          selectedKeys.includes(option.key),
-          () => handleCheckboxChange(option.key)
-        )
-      )}
-      <button
-        type="button"
-        disabled={selectedKeys.length < request.min_select || submitting}
-        onClick={handleConfirm}
-        style={{
-          marginTop: '4px',
-          padding: '7px 20px',
-          borderRadius: '6px',
-          border: 'none',
-          background: selectedKeys.length >= request.min_select ? 'var(--color-primary)' : 'var(--color-fill-3)',
-          color: selectedKeys.length >= request.min_select ? '#fff' : 'var(--color-text-3)',
-          fontSize: '13px',
-          fontWeight: 500,
-          cursor: selectedKeys.length >= request.min_select && !submitting ? 'pointer' : 'not-allowed',
-          alignSelf: 'flex-start',
-          transition: 'all 0.15s ease',
-        }}
-      >
-        {submitting ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <LoadingOutlined />
-            {t('chat.choiceSubmitting') || '正在提交选择...'}
-          </span>
-        ) : (
-          t('chat.choiceConfirm')
+  const renderCheckboxes = () => {
+    const canConfirm = selectedKeys.length >= request.min_select;
+    return (
+      <div className="flex flex-col gap-1.5">
+        {request.options.map(option =>
+          renderOptionCard(
+            option,
+            selectedKeys.includes(option.key),
+            () => handleCheckboxChange(option.key)
+          )
         )}
-      </button>
-    </div>
-  );
+        <button
+          type="button"
+          disabled={!canConfirm || submitting}
+          onClick={handleConfirm}
+          className={[
+            'mt-1 self-start rounded-md px-5 py-[7px] text-[13px] font-medium transition-all duration-150',
+            canConfirm
+              ? 'cursor-pointer border-none bg-[var(--color-primary)] text-white'
+              : 'cursor-not-allowed border-none bg-[var(--color-fill-3)] text-[var(--color-text-3)]',
+          ].join(' ')}
+        >
+          {submitting ? (
+            <span className="inline-flex items-center gap-1.5">
+              <LoadingOutlined />
+              {t('chat.choiceSubmitting') || '正在提交选择...'}
+            </span>
+          ) : (
+            t('chat.choiceConfirm')
+          )}
+        </button>
+      </div>
+    );
+  };
 
-  const renderTextInput = () => (
-    <div style={{ display: 'flex', gap: '8px' }}>
-      <Input
-        value={textInput}
-        onChange={e => setTextInput(e.target.value)}
-        onPressEnter={handleTextSubmit}
-        placeholder={t('chat.choiceTextPlaceholder') || '输入你的回答...'}
-        disabled={submitting}
-        style={{ flex: 1, borderRadius: '8px' }}
-      />
-      <button
-        type="button"
-        disabled={!textInput.trim() || submitting}
-        onClick={handleTextSubmit}
-        style={{
-          padding: '4px 16px',
-          borderRadius: '8px',
-          border: 'none',
-          background: textInput.trim() ? 'var(--color-primary)' : 'var(--color-fill-3)',
-          color: textInput.trim() ? '#fff' : 'var(--color-text-3)',
-          fontSize: '13px',
-          fontWeight: 500,
-          cursor: textInput.trim() && !submitting ? 'pointer' : 'not-allowed',
-          transition: 'all 0.15s ease',
-        }}
-      >
-        {submitting ? <LoadingOutlined /> : (t('chat.choiceConfirm') || '确认')}
-      </button>
-    </div>
-  );
+  const renderTextInput = () => {
+    const canSubmit = !!textInput.trim();
+    return (
+      <div className="flex gap-2">
+        <Input
+          value={textInput}
+          onChange={e => setTextInput(e.target.value)}
+          onPressEnter={handleTextSubmit}
+          placeholder={t('chat.choiceTextPlaceholder') || '输入你的回答...'}
+          disabled={submitting}
+          className="flex-1 rounded-lg"
+        />
+        <button
+          type="button"
+          disabled={!canSubmit || submitting}
+          onClick={handleTextSubmit}
+          className={[
+            'rounded-lg px-4 py-1 text-[13px] font-medium transition-all duration-150',
+            canSubmit
+              ? 'cursor-pointer border-none bg-[var(--color-primary)] text-white'
+              : 'cursor-not-allowed border-none bg-[var(--color-fill-3)] text-[var(--color-text-3)]',
+          ].join(' ')}
+        >
+          {submitting ? <LoadingOutlined /> : (t('chat.choiceConfirm') || '确认')}
+        </button>
+      </div>
+    );
+  };
 
   const renderDropdown = () => (
     <Select
       size="middle"
       placeholder={t('chat.choicePlaceholder')}
-      style={{ width: '100%' }}
+      className="w-full"
       disabled={submitting}
       loading={submitting}
       onChange={handleDropdownChange}
@@ -292,48 +252,25 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
       data-a2ui-component={a2uiComponent}
       data-a2ui-version={a2uiVersion}
       data-a2ui-event={request.a2ui?.event_name || 'user_choice_request'}
-      style={{
-        margin: '8px 0',
-        padding: '14px 16px',
-        borderRadius: '12px',
-        border: '1px solid var(--color-border-1)',
-        background: 'var(--color-bg-1)',
-        maxWidth: '380px',
-        position: 'relative',
-        opacity: submitting ? 0.72 : 1,
-        pointerEvents: submitting ? 'none' : 'auto',
-      }}
+      className={[
+        'relative my-2 max-w-[380px] rounded-xl border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3.5',
+        submitting ? 'pointer-events-none opacity-[0.72]' : 'opacity-100',
+      ].join(' ')}
     >
       {submitting && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: '12px',
-            background: 'rgba(255,255,255,0.55)',
-            zIndex: 1,
-          }}
-        >
-          <Spin indicator={<LoadingOutlined style={{ fontSize: 18 }} spin />} />
+        <div className="absolute inset-0 z-[1] flex items-center justify-center rounded-xl bg-[rgba(255,255,255,0.55)]">
+          <Spin indicator={<LoadingOutlined className="text-lg" spin />} />
         </div>
       )}
 
       {/* Title */}
-      <div style={{
-        fontSize: '13px',
-        fontWeight: 600,
-        color: 'var(--color-text-1)',
-        marginBottom: '10px',
-      }}>
+      <div className="mb-2.5 text-[13px] font-semibold text-[var(--color-text-1)]">
         {request.title}
       </div>
 
       {/* Description */}
       {request.description && (
-        <div style={{ fontSize: '12px', color: 'var(--color-text-3)', marginBottom: '10px' }}>
+        <div className="mb-2.5 text-xs text-[var(--color-text-3)]">
           {request.description}
         </div>
       )}
@@ -346,9 +283,9 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
           {displayMode === 'checkbox' && renderCheckboxes()}
           {/* Always show text input: user can click an option OR type freely */}
           {displayMode !== 'checkbox' && (
-            <div style={{ marginTop: request.options.length > 0 && displayMode !== 'text' ? '10px' : '0' }}>
+            <div className={request.options.length > 0 && displayMode !== 'text' ? 'mt-2.5' : 'mt-0'}>
               {request.options.length > 0 && displayMode !== 'text' && (
-                <div style={{ fontSize: '11px', color: 'var(--color-text-4)', marginBottom: '6px' }}>
+                <div className="mb-1.5 text-[11px] text-[var(--color-text-4)]">
                   {t('chat.choiceOrType') || '或者自行输入'}
                 </div>
               )}
@@ -360,15 +297,11 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
 
       {/* Timer */}
       {isPending && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          marginTop: '10px',
-          fontSize: '11px',
-          color: remainingSeconds <= 10 ? '#ff4d4f' : 'var(--color-text-4)',
-        }}>
-          <ClockCircleOutlined style={{ fontSize: '11px' }} />
+        <div className={[
+          'mt-2.5 flex items-center gap-1 text-[11px]',
+          remainingSeconds <= 10 ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-4)]',
+        ].join(' ')}>
+          <ClockCircleOutlined className="text-[11px]" />
           <span>{remainingSeconds}s</span>
         </div>
       )}

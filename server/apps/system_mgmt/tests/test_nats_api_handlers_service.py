@@ -38,6 +38,7 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
         "create_guest_role",
         "create_default_rule",
         "get_all_groups",
+        "get_archived_groups",
         "get_channel_detail",
         "search_channel_list",
         "search_channel_list_scoped",
@@ -328,8 +329,8 @@ def test_get_group_id():
 # get_authorized_groups_scoped / _get_actor_user_scope
 # ---------------------------------------------------------------------------
 def test_actor_scope_missing_username_returns_empty():
-    user_obj, groups = nats_api._get_actor_user_scope({"current_team": 1})
-    assert user_obj is None and groups == []
+    user_obj, groups, error = nats_api._get_actor_user_scope({"current_team": 1})
+    assert user_obj is None and groups == [] and error is None
 
 
 def test_actor_scope_superuser():
@@ -344,9 +345,10 @@ def test_actor_scope_superuser():
         role_list=[admin_role.id],
     )
     ctx = {"username": "sa", "domain": "domain.com", "current_team": g.id, "is_superuser": True}
-    user_obj, groups = nats_api._get_actor_user_scope(ctx)
+    user_obj, groups, error = nats_api._get_actor_user_scope(ctx)
     assert user_obj is not None
     assert groups == [g.id]
+    assert error is None
 
 
 def test_get_authorized_groups_scoped():
@@ -364,6 +366,25 @@ def test_get_authorized_groups_scoped():
     result = nats_api.get_authorized_groups_scoped(ctx)
     assert result["result"] is True
     assert result["data"] == [g.id]
+
+
+def test_get_authorized_groups_scoped_rejects_archived_current_team():
+    archived = Group.objects.create(name="archived-team", parent_id=0, is_delete=True)
+    admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+    User.objects.create(
+        username="arch-team-admin",
+        password="x",
+        display_name="arch-team-admin",
+        email="arch-team-admin@x.com",
+        domain="domain.com",
+        role_list=[admin_role.id],
+        group_list=[archived.id],
+    )
+    result = nats_api.get_authorized_groups_scoped(
+        {"username": "arch-team-admin", "domain": "domain.com", "current_team": archived.id}
+    )
+    assert result["result"] is False
+    assert "归档" in result["message"] or "archived" in result["message"].lower()
 
 
 def test_get_group_users_scoped_no_scope_returns_empty():

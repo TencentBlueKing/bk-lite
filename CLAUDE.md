@@ -21,6 +21,21 @@
 `agents/` 前，按影响范围阅读后端工程、安全、可靠性和质量 capability；只读取
 本次任务相关章节。
 
+## Web UI 硬约束
+
+修改 `web/src/**`、`web/src/stories/**` 的页面、组件或样式时遵守本段短清单；
+**不要默认通读** `web/DESIGN.md` 全文。
+
+- **布局**：优先 Tailwind `className`；禁止新增大段行内布局，也勿为普通布局新建 SCSS Module。
+  行内 `style` 仅限动态值 / AntD 契约 / 画布瞬时尺寸。
+- **颜色**：语义 token（`var(--color-*)` / `globals.css`）；禁止硬编码主题色。
+- **组件**：Ant Design → `src/components` → app-local；升 shared 须 ≥2 真实 app，
+  并遵守 `web/COMPONENT_GOVERNANCE.md`。
+- **按需深读**（只读相关章节）：新建视觉组件、改 token/设计语义、组件治理大迁移、
+  设计走查，或短规则不够用时 → `web/DESIGN.md` 的 Layout & Styling + Do/Don't；
+  归属争议 → `COMPONENT_GOVERNANCE.md`；改色值 → `globals.css`。
+- 纯文案 / 接 API / 改 props 且不动布局与主题时，不必深读 DESIGN。
+
 ## Server 启动硬约束
 
 修改启动脚本、初始化命令、服务依赖或部署配置前，必须阅读
@@ -45,6 +60,7 @@
 - 非关键、可重建的外部资源失败不得阻断服务启动。
 - 向目标主机下发或执行操作必须有资源边界、幂等/回滚和相应测试。
 - Web 改动优先复用 Ant Design、现有组件和 Storybook；共享抽象必须已有多个真实使用方。
+  视觉与布局细则见上文「Web UI 硬约束」，勿每次通读 `web/DESIGN.md`。
 
 ## 交付
 

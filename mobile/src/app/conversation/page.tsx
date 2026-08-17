@@ -23,7 +23,6 @@ import {
 } from '@/utils/conversationRoute';
 import { buildSessionsCacheScope } from '@/utils/conversationCache';
 import { useAuth } from '@/context/auth';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 
 const sanitizeMarkdownHtml = (unsafeHtml: string): string => (
   DOMPurify.sanitize(unsafeHtml, {
@@ -40,7 +39,7 @@ export default function ConversationDetail() {
   const sessionId = searchParams?.get('session_id');
   const requestedNodeId = searchParams?.get('node_id');
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { userInfo, currentTeamId } = useAuth();
 
   const [chatInfo, setChatInfo] = useState<ChatInfo | null>(null);
   const [appLoading, setAppLoading] = useState(true);
@@ -86,7 +85,7 @@ export default function ConversationDetail() {
     botId,
     nodeId: requestedNodeId || appDetail?.nodeId,
     accountId: userInfo ? `${userInfo.domain}:${userInfo.id || userInfo.username}` : null,
-    teamId: getCurrentTeamCookie(),
+    teamId: currentTeamId,
   }));
 
   // 打开图片查看器

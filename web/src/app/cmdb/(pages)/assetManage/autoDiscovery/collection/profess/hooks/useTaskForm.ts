@@ -84,7 +84,7 @@ export const useTaskForm = ({
       const formattedData = {
         ...data,
         taskName: data.name,
-        instId: data.instances?.[0]?._id,
+        instUuid: data.instances?.[0]?.inst_uuid,
         ...cycleFields,
         ...cleanupFields,
       };

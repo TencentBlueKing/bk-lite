@@ -27,7 +27,6 @@ import {
   type TodoAlert,
 } from '@/features/todo/model';
 import { invalidateMobileViewSnapshots } from '@/navigation/mobile-view-cache';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/todo/todo.module.css';
 
@@ -35,11 +34,11 @@ type DetailStatus = 'loading' | 'ready' | 'error' | 'forbidden' | 'missing';
 
 function TodoAlertDetailContent() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { userInfo, organizationScope } = useAuth();
   const { canAccess } = useMobileAvailability();
   const params = useSearchParams();
   const id = Number(params.get('id'));
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
+  const cacheScope = organizationScope;
   const [alert, setAlert] = useState<TodoAlert | null>(null);
   const [levels, setLevels] = useState<AlertLevel[]>([]);
   const [status, setStatus] = useState<DetailStatus>('loading');

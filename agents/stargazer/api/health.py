@@ -25,7 +25,9 @@ async def health_check(request):
         "timestamp": 1703001234567
     }
     """
-    return response.json({"status": "ok", "timestamp": int(__import__("time").time() * 1000)})
+    return response.json(
+        {"status": "ok", "timestamp": int(__import__("time").time() * 1000)}
+    )
 
 
 @health_router.route("/ready", methods=["GET"])
@@ -221,16 +223,46 @@ stargazer_collection_credential_state_redis_error_total {stats.get("credential_s
             "probe_timeout_total",
             "collection_timeout_total",
             "publish_timeout_total",
+            "publish_queue_timeout_total",
+            "publish_delivery_timeout_total",
+            "publish_connect_failure_total",
+            "publish_flush_failure_total",
             "publish_lines_total",
             "publish_bytes_total",
             "publish_succeeded_total",
             "publish_failed_total",
             "publish_unknown_total",
+            "publish_confirmed_total",
+            "publish_retryable_failed_total",
+            "publish_delivery_unknown_total",
+            "publish_event_failed_total",
+            "publish_permanent_failed_total",
+            "publish_chunk_lines_p95",
+            "publish_chunk_lines_p99",
+            "publish_chunk_bytes_p95",
+            "publish_chunk_bytes_p99",
+            "publish_targets_per_chunk_p95",
+            "publish_targets_per_chunk_p99",
+            "publish_encode_duration_seconds_p95",
+            "publish_encode_duration_seconds_p99",
+            "target_slots_used",
+            "target_slots_capacity",
+            "target_slots_available",
+            "target_slots_utilization_percent",
+            "nats_metrics_connected",
+            "nats_metrics_reconnecting",
+            "nats_metrics_reconnect_total",
+            "nats_metrics_reconnect_duration_seconds",
+            "nats_metrics_reconnect_duration_seconds_p99",
+            "nats_metrics_pending_bytes",
             "run_first_schedule_wait_seconds_p95",
             "run_first_schedule_wait_seconds_p99",
         )
         for key in bounded_metric_keys:
-            prometheus_text += f"# TYPE stargazer_collection_{key} gauge\n" f"stargazer_collection_{key} {stats.get(key, 0)}\n"
+            prometheus_text += (
+                f"# TYPE stargazer_collection_{key} gauge\n"
+                f"stargazer_collection_{key} {stats.get(key, 0)}\n"
+            )
         for dimension, values in (
             ("execution_mode", ("sync", "async", "remote")),
             ("capacity_group", ("snmp", "sync_sdk", "remote_job", "default")),
@@ -250,7 +282,10 @@ stargazer_collection_credential_state_redis_error_total {stats.get("credential_s
                 prometheus_text += f"# TYPE {metric_name} {metric_type}\n"
                 for value in values:
                     key = f"{dimension}_{value}_{suffix}"
-                    prometheus_text += f'{metric_name}{{{dimension}="{value}"}} ' f"{stats.get(key, 0)}\n"
+                    prometheus_text += (
+                        f'{metric_name}{{{dimension}="{value}"}} '
+                        f"{stats.get(key, 0)}\n"
+                    )
 
         return response.text(prometheus_text, content_type="text/plain; version=0.0.4")
 

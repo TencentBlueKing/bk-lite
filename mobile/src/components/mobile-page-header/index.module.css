@@ -2,7 +2,17 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  padding: 6px 16px;
+  padding: 0 16px;
+}
+
+.headerContentTabRoot {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.headerContentTabRootWithSearch {
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
 }
 
 .leading {
@@ -11,6 +21,59 @@
   align-items: center;
   min-width: 0;
   justify-self: start;
+}
+
+.leadingOrganization {
+  width: 100%;
+}
+
+.leadingOrganizationWithSearch {
+  width: auto;
+  max-width: 112px;
+}
+
+.searchEntry {
+  display: inline-flex;
+  grid-column: 2;
+  grid-row: 1;
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 12px;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-3);
+  cursor: pointer;
+  background: var(--color-fill-2);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 160ms ease;
+}
+
+.searchEntry:active {
+  background: var(--color-fill-3);
+}
+
+.searchEntry:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.searchEntryIcon {
+  flex: 0 0 auto;
+  font-size: var(--font-size-compact-title);
+  color: var(--color-text-3);
+}
+
+.searchEntryPlaceholder {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--mobile-search-bar-font-size);
+  line-height: 1.2;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .titleGroup {
@@ -35,13 +98,39 @@
   white-space: nowrap;
 }
 
+.titleGroupSrOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip-path: inset(50%);
+}
+
+.titleGroupSrOnly h1 {
+  margin: 0;
+}
+
 .actions {
   display: flex;
   grid-column: 3;
+  grid-row: 1;
   gap: 2px;
   align-items: center;
   min-width: 0;
+  max-width: 100%;
   justify-self: end;
+}
+
+.headerContentTabRoot .actions {
+  grid-column: 2;
+}
+
+.headerContentTabRootWithSearch .actions {
+  grid-column: 3;
 }
 
 .actionButton {
@@ -118,10 +207,19 @@
     padding-right: 12px;
     padding-left: 12px;
   }
+
+  .headerContentTabRootWithSearch {
+    gap: 6px;
+  }
+
+  .leadingOrganizationWithSearch {
+    max-width: 96px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .actionButton {
+  .actionButton,
+  .searchEntry {
     transition: none;
   }
 }

@@ -321,3 +321,20 @@ def test_serving_creation_and_update_response_messages_use_i18n():
         source = (views_dir / module).read_text(encoding="utf-8")
         for prefix in direct_message_prefixes:
             assert prefix not in source, f"{module}: {prefix}"
+
+
+def test_webhook_and_config_errors_do_not_passthrough_str_e():
+    views_dir = Path(__file__).resolve().parents[1] / "views"
+    for module in (
+        "anomaly_detection.py",
+        "timeseries_predict.py",
+        "log_clustering.py",
+        "classification.py",
+        "image_classification.py",
+        "object_detection.py",
+        "base.py",
+    ):
+        source = (views_dir / module).read_text(encoding="utf-8")
+        assert '{"error": str(e)}' not in source, module
+        assert 'raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")' not in source, module
+        assert '"message": "环境变量 MLFLOW_TRACKER_URL 未配置"' not in source, module

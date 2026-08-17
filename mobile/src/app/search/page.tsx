@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { SearchBar, Avatar, ErrorBlock, InfiniteScroll, List, SpinLoading } from 'antd-mobile';
+import { Avatar, ErrorBlock, InfiniteScroll, List, SpinLoading } from 'antd-mobile';
 import { LeftOutline, FrownOutline, MessageOutline, SearchOutline } from 'antd-mobile-icons';
 import { mockChatMessages, ChatMessageRecord } from '@/constants/mockData';
 import Image from 'next/image';
@@ -19,6 +19,7 @@ import { withBasePath } from '@/utils/basePath';
 import { getAppTagColor, getAppTagLabel } from '@/constants/workbenchTags';
 import { buildConversationHref } from '@/utils/conversationRoute';
 import MobileSafeHeader from '@/components/mobile-safe-header';
+import MobileSearchBar from '@/components/mobile-search-bar';
 import { useMobileBack } from '@/navigation/mobile-back';
 import {
     hasMoreSessions,
@@ -369,7 +370,7 @@ export default function SearchPage() {
     return (
         <div className="flex flex-col h-full bg-[var(--color-background-body)]">
             {/* 顶部搜索栏 */}
-            <MobileSafeHeader contentClassName="flex items-center gap-2 px-2 py-1.5">
+            <MobileSafeHeader contentClassName="flex items-center gap-2 px-3">
                 <button
                     type="button"
                     aria-label={t('common.back')}
@@ -379,17 +380,13 @@ export default function SearchPage() {
                     <LeftOutline fontSize={24} className="text-[var(--color-text-1)]" aria-hidden="true" />
                 </button>
                 <div className="min-w-0 flex-1">
-                    <SearchBar
+                    <MobileSearchBar
+                        size="page"
                         placeholder={getPlaceholder()}
                         value={searchValue}
                         onChange={setSearchValue}
                         onSearch={submitSearch}
                         onClear={clearSearch}
-                        style={{
-                            '--border-radius': '18px',
-                            '--background': 'var(--color-fill-2)',
-                            '--height': '40px',
-                        }}
                     />
                 </div>
             </MobileSafeHeader>

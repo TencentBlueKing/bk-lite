@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Empty } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import {
   XAxis,
   YAxis,
@@ -365,7 +365,7 @@ const LineChart: React.FC<LineChartProps> = ({
         </>
       ) : (
         <div className={`${chartLineStyle.chart} ${chartLineStyle.noData}`}>
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <ChartEmptyState compact />
         </div>
       )}
     </div>
