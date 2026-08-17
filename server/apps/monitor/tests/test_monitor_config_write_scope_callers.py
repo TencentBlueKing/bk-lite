@@ -31,12 +31,25 @@ def _base_config(config_id):
 
 @pytest.mark.django_db
 def test_update_instance_config_uses_monitor_scoped_update(monkeypatch):
-    _, config = _base_config("monitor-update")
+    instance, config = _base_config("monitor-update")
+    child_config = CollectConfig.objects.create(
+        id="monitor-child-update",
+        monitor_instance=instance,
+        monitor_plugin=config.monitor_plugin,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="child",
+        file_type="toml",
+        is_child=True,
+    )
     node_mgmt = Mock()
     monkeypatch.setattr("apps.monitor.services.node_mgmt.NodeMgmt", lambda: node_mgmt)
 
     InstanceConfigService.update_instance_config(
-        child_info=None,
+        child_info={
+            "id": child_config.id,
+            "content": {"plugin": ["inputs", "cpu"], "config": {"child": "value"}},
+        },
         base_info={"id": config.id, "content": {"key": "value"}},
     )
 
@@ -46,14 +59,26 @@ def test_update_instance_config_uses_monitor_scoped_update(monkeypatch):
         None,
         source_app="monitor",
     )
+    assert node_mgmt.update_child_config_content.call_args.kwargs == {"source_app": "monitor"}
 
 
 @pytest.mark.django_db
 def test_remove_instance_uses_monitor_scoped_delete(monkeypatch):
     instance, config = _base_config("monitor-delete")
+    child_config = CollectConfig.objects.create(
+        id="monitor-child-delete-caller",
+        monitor_instance=instance,
+        monitor_plugin=config.monitor_plugin,
+        collector="Telegraf",
+        collect_type="host",
+        config_type="child",
+        file_type="toml",
+        is_child=True,
+    )
     node_mgmt = Mock()
     monkeypatch.setattr("apps.monitor.services.monitor_instance_removal.NodeMgmt", lambda: node_mgmt)
 
     MonitorInstanceRemovalService.remove([instance.id])
 
     node_mgmt.delete_configs.assert_called_once_with([config.id], source_app="monitor")
+    node_mgmt.delete_child_configs.assert_called_once_with([child_config.id], source_app="monitor")

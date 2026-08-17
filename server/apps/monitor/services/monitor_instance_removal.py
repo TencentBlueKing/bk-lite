@@ -99,7 +99,7 @@ class MonitorInstanceRemovalService:
                 if child_config_ids or base_config_ids:
                     node_mgmt = NodeMgmt()
                     if child_config_ids:
-                        node_mgmt.delete_child_configs(child_config_ids)
+                        node_mgmt.delete_child_configs(child_config_ids, source_app="monitor")
                     if base_config_ids:
                         node_mgmt.delete_configs(base_config_ids, source_app="monitor")
 

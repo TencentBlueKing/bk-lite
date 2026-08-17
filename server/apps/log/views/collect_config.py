@@ -642,7 +642,7 @@ class CollectInstanceViewSet(ViewSet):
                 configs.append(config.id)
         # 删除子配置
         if child_configs:
-            NodeMgmt().delete_child_configs(child_configs)
+            NodeMgmt().delete_child_configs(child_configs, source_app="log")
         # 删除配置
         if configs:
             NodeMgmt().delete_configs(configs, source_app="log")

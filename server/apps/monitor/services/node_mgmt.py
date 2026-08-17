@@ -1070,4 +1070,4 @@ class InstanceConfigService:
                 content = isolate_snmp_interface_tagpass(content, force=True)
                 content = restore_managed_ifmib_markers(content)
                 content = preserve_closed_ifmib_markers(content, child_info.get("content"))
-            NodeMgmt().update_child_config_content(child_info["id"], content, env_config)
+            NodeMgmt().update_child_config_content(child_info["id"], content, env_config, source_app="monitor")

@@ -150,15 +150,17 @@ class NodeMgmt(object):
         )
         return return_data
 
-    def update_child_config_content(self, id, content, env_config=None):
+    def update_child_config_content(self, id, content, env_config=None, source_app=None):
         """
         :param id: 子配置ID
         :param content: 子配置内容
         """
-        return_data = self.client.run(
-            "update_child_config_content",
-            {"id": id, "content": content, "env_config": env_config},
-        )
+        payload = {"id": id, "content": content, "env_config": env_config}
+        if source_app:
+            scope = build_config_write_scope(source_app, "update_child", payload)
+            return_data = self.client.run("update_child_config_content_scoped", scope)
+        else:
+            return_data = self.client.run("update_child_config_content", payload)
         return return_data
 
     def compare_and_swap_child_config_content_local(self, id, expected_content, content):
@@ -183,11 +185,15 @@ class NodeMgmt(object):
             return_data = self.client.run("update_config_content", payload)
         return return_data
 
-    def delete_child_configs(self, ids):
+    def delete_child_configs(self, ids, source_app=None):
         """
         :param ids: 子配置ID列表
         """
-        return_data = self.client.run("delete_child_configs", ids)
+        if source_app:
+            scope = build_config_write_scope(source_app, "delete_child", {"ids": ids})
+            return_data = self.client.run("delete_child_configs_scoped", scope)
+        else:
+            return_data = self.client.run("delete_child_configs", ids)
         return return_data
 
     def delete_configs(self, ids, source_app=None):

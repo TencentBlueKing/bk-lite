@@ -160,7 +160,7 @@ class CollectTypeService:
             if not config_obj:
                 return
             content = toml.dumps(child_info["content"]) if child_info else None
-            NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
+            NodeMgmt().update_child_config_content(child_info["id"], content, child_env, source_app="log")
 
     @staticmethod
     def update_instance_config_v2(child_info, base_info, instance_id, collect_type_id):
@@ -242,7 +242,7 @@ class CollectTypeService:
                     "PACKETBEAT_DEVICE_INPUT": raw_device,
                     "PACKETBEAT_DEVICE": Controller.normalize_packetbeat_device(raw_device, operating_system),
                 }
-            NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
+            NodeMgmt().update_child_config_content(child_info["id"], content, child_env, source_app="log")
 
     @staticmethod
     def update_instance(instance_id, name, organizations):

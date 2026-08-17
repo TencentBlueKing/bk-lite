@@ -983,7 +983,17 @@ def update_child_config_content(data: dict):
     id = data.get("id")
     content = data.get("content")
     env_config = data.get("env_config")
+    assert_config_ids_unmanaged([id], is_child=True)
     NatsService().update_child_config_content(id, content, env_config)
+
+
+@nats_client.register
+def update_child_config_content_scoped(token: str):
+    """按经过签名的调用范围更新 Log/Monitor 托管子配置。"""
+    source_app, data = verify_config_write_scope(token, "update_child")
+    id = data.get("id")
+    assert_managed_config_owner([id], source_app, is_child=True)
+    NatsService().update_child_config_content(id, data.get("content"), data.get("env_config"))
 
 
 def compare_and_swap_child_config_content(data: dict):
@@ -1001,7 +1011,7 @@ def update_config_content(data: dict):
     id = data.get("id")
     content = data.get("content")
     env_config = data.get("env_config")
-    assert_config_ids_unmanaged([id])
+    assert_config_ids_unmanaged([id], is_child=False)
     NatsService().update_config_content(id, content, env_config)
 
 
@@ -1010,20 +1020,30 @@ def update_config_content_scoped(token: str):
     """按经过签名的调用范围更新 Log/Monitor 托管配置。"""
     source_app, data = verify_config_write_scope(token, "update")
     id = data.get("id")
-    assert_managed_config_owner([id], source_app)
+    assert_managed_config_owner([id], source_app, is_child=False)
     NatsService().update_config_content(id, data.get("content"), data.get("env_config"))
 
 
 @nats_client.register
 def delete_child_configs(ids: list):
     """删除实例子配置"""
+    assert_config_ids_unmanaged(ids, is_child=True)
+    NatsService().delete_child_configs(ids)
+
+
+@nats_client.register
+def delete_child_configs_scoped(token: str):
+    """按经过签名的调用范围删除 Log/Monitor 托管子配置。"""
+    source_app, data = verify_config_write_scope(token, "delete_child")
+    ids = data.get("ids") or []
+    assert_managed_config_owner(ids, source_app, is_child=True)
     NatsService().delete_child_configs(ids)
 
 
 @nats_client.register
 def delete_configs(ids: list):
     """删除实例子配置"""
-    assert_config_ids_unmanaged(ids)
+    assert_config_ids_unmanaged(ids, is_child=False)
     NatsService().delete_configs(ids)
 
 
@@ -1032,7 +1052,7 @@ def delete_configs_scoped(token: str):
     """按经过签名的调用范围删除 Log/Monitor 托管配置。"""
     source_app, data = verify_config_write_scope(token, "delete")
     ids = data.get("ids") or []
-    assert_managed_config_owner(ids, source_app)
+    assert_managed_config_owner(ids, source_app, is_child=False)
     NatsService().delete_configs(ids)
 
 

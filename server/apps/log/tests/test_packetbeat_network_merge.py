@@ -315,7 +315,8 @@ def test_update_flows_config_preserves_child_packetbeat_device_env(monkeypatch):
         def get_nodes_by_ids(self, node_ids):
             return [{"id": node_ids[0], "operating_system": "linux"}]
 
-        def update_child_config_content(self, config_id, content, env_config):
+        def update_child_config_content(self, config_id, content, env_config, source_app=None):
+            assert source_app == "log"
             updated_child_configs.append(
                 {
                     "config_id": config_id,
@@ -380,7 +381,8 @@ def test_update_flows_config_rejects_invalid_http_ports(monkeypatch):
         def get_nodes_by_ids(self, node_ids):
             return [{"id": node_ids[0], "operating_system": "linux"}]
 
-        def update_child_config_content(self, config_id, content, env_config):
+        def update_child_config_content(self, config_id, content, env_config, source_app=None):
+            assert source_app == "log"
             update_child_config_content.called = True
 
     monkeypatch.setattr("apps.log.services.collect_type.NodeMgmt", StubNodeMgmt)

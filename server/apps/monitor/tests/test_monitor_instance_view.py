@@ -50,7 +50,10 @@ def test_remove_monitor_instance_refreshes_flow_cloud_regions(db, monkeypatch):
     )
     monkeypatch.setattr(
         NODE_MGMT_PATH,
-        lambda: types.SimpleNamespace(delete_child_configs=lambda ids: None, delete_configs=lambda ids: None),
+        lambda: types.SimpleNamespace(
+            delete_child_configs=lambda ids, source_app=None: None,
+            delete_configs=lambda ids, source_app=None: None,
+        ),
     )
     monkeypatch.setattr(
         "apps.monitor.services.flow_onboarding.FlowOnboardingService._schedule_region_refresh",
@@ -89,7 +92,10 @@ def test_remove_monitor_instance_registers_refresh_before_cleanup(db, monkeypatc
     )
     monkeypatch.setattr(
         NODE_MGMT_PATH,
-        lambda: types.SimpleNamespace(delete_child_configs=lambda ids: None, delete_configs=lambda ids: None),
+        lambda: types.SimpleNamespace(
+            delete_child_configs=lambda ids, source_app=None: None,
+            delete_configs=lambda ids, source_app=None: None,
+        ),
     )
     monkeypatch.setattr(
         "apps.monitor.services.flow_onboarding.FlowOnboardingService._schedule_region_refresh",
@@ -151,8 +157,8 @@ def test_remove_monitor_instance_always_cleans_configs(db, monkeypatch):
     monkeypatch.setattr(
         NODE_MGMT_PATH,
         lambda: types.SimpleNamespace(
-            delete_child_configs=lambda ids: cleanup_calls.__setitem__("child", ids),
-            delete_configs=lambda ids: cleanup_calls.__setitem__("base", ids),
+            delete_child_configs=lambda ids, source_app=None: cleanup_calls.__setitem__("child", ids),
+            delete_configs=lambda ids, source_app=None: cleanup_calls.__setitem__("base", ids),
         ),
     )
 

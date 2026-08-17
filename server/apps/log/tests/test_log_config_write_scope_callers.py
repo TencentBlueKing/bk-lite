@@ -17,6 +17,12 @@ def test_remove_collect_instance_uses_log_scoped_delete(monkeypatch):
         file_type="yaml",
         is_child=False,
     )
+    child_config = CollectConfig.objects.create(
+        id="log-child-config",
+        collect_instance=instance,
+        file_type="toml",
+        is_child=True,
+    )
     node_mgmt = Mock()
     monkeypatch.setattr("apps.log.views.collect_config.NodeMgmt", lambda: node_mgmt)
     monkeypatch.setattr(
@@ -31,3 +37,4 @@ def test_remove_collect_instance_uses_log_scoped_delete(monkeypatch):
 
     assert response.status_code == 200
     node_mgmt.delete_configs.assert_called_once_with([config.id], source_app="log")
+    node_mgmt.delete_child_configs.assert_called_once_with([child_config.id], source_app="log")

@@ -74,9 +74,10 @@ def test_remote_host_child_templates_default_to_full_modules(path):
 def test_stargazer_monitor_api_defaults_to_full_modules():
     content = STARGAZER_MONITOR.read_text(encoding="utf-8")
     host_metrics_block = _source_block(content, "async def host_metrics")
+    normalized_block = " ".join(host_metrics_block.split())
 
-    assert f'request.headers.get("metrics_modules", "{ALL_MODULES_CSV}")' in host_metrics_block
-    assert 'request.headers.get("metrics_modules", "cpu,mem,disk,net")' not in host_metrics_block
+    assert f'request.headers.get( "metrics_modules", "{ALL_MODULES_CSV}" )' in normalized_block
+    assert 'request.headers.get( "metrics_modules", "cpu,mem,disk,net" )' not in normalized_block
 
 
 @pytest.mark.parametrize("language", ["zh-Hans", "en"])
@@ -221,7 +222,8 @@ def test_sync_remote_host_child_configs_updates_only_host_remote_and_wmi(monkeyp
             requested_ids.extend(ids)
             return [{"id": config_id, "content": child_contents[config_id]} for config_id in ids]
 
-        def update_child_config_content(self, config_id, content, env_config=None):
+        def update_child_config_content(self, config_id, content, env_config=None, source_app=None):
+            assert source_app == "monitor"
             updates[config_id] = content
             child_contents[config_id] = content
 
