@@ -148,6 +148,12 @@ def test_cmdb_ingest_from_source_wraps_flat_kwargs_as_params(cmdb):
     )
 
 
+def test_cmdb_create_manual_config_files(cmdb):
+    params = {"protocol_version": "2", "allowed_org_ids": [1], "items": [{"instance_uuid": "u1"}]}
+    cmdb.create_manual_config_files(params=params)
+    assert _last(cmdb.client) == ("run", "create_manual_config_files", (), {"params": params})
+
+
 def test_cmdb_local_client_appclient_path(monkeypatch):
     monkeypatch.setenv("IS_LOCAL_RPC", "0")
     from apps.rpc.cmdb import CMDB
