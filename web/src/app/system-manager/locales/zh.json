@@ -1155,7 +1155,7 @@
       "back": "返回集成中心",
       "pageDesc": "统一管理企业微信、钉钉、目录服务和代码平台等外部接入。卡片展示各集成功能的启动状态，点击进入详情进行管理。",
       "addInstanceButton": "添加集成",
-      "createInstanceTitle": "添加集成实例",
+      "createInstanceTitle": "添加集成系统",
       "createOnly": "创建实例",
       "createAndConfigure": "创建并继续配置",
       "searchProviders": "搜索已注册的集成应用",
@@ -1218,13 +1218,19 @@
       "provider": {
         "label": "集成类型",
         "ad": "Active Directory",
-        "feishu": "Feishu",
-        "wechat": "Wechat",
-        "wecom": "Wecom",
+        "feishu": "飞书",
+        "wechat": "微信",
+        "wecom": "企业微信",
         "ldap": "LDAP",
         "oidc": "OIDC",
         "saml": "SAML",
         "github": "GitHub"
+      },
+      "providerDesc": {
+        "feishu": "飞书接入，支持登录认证、用户同步、通知渠道和群协作。",
+        "wechat": "微信接入，用于登录认证。",
+        "wecom": "企业微信接入，支持登录认证、用户同步、通知渠道和群协作。",
+        "ad": "Active Directory 接入，用于登录认证和用户同步。"
       },
       "providerTypeLabel": "集成类型",
       "statusSummary": "状态摘要",

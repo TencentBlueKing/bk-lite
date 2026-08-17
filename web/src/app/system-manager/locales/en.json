@@ -1155,7 +1155,7 @@
       "back": "Back to Integration Center",
       "pageDesc": "Manage external integrations such as WeCom, DingTalk, directory services, and code platforms in one place. Cards show the primary startup status and link to the detail page for configuration.",
       "addInstanceButton": "Add Integration",
-      "createInstanceTitle": "Add Integration Instance",
+      "createInstanceTitle": "Add Integration System",
       "createOnly": "Create Instance",
       "createAndConfigure": "Create and Continue",
       "searchProviders": "Search registered integrations",
@@ -1225,6 +1225,12 @@
         "oidc": "OIDC",
         "saml": "SAML",
         "github": "GitHub"
+      },
+      "providerDesc": {
+        "feishu": "Feishu integration for login authentication, user sync, notifications, and group collaboration.",
+        "wechat": "WeChat integration for login authentication.",
+        "wecom": "WeCom integration for login authentication, user sync, notifications, and group collaboration.",
+        "ad": "Active Directory integration for login authentication and user sync."
       },
       "providerTypeLabel": "Integration Type",
       "statusSummary": "Status Summary",

@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Menu, Modal, message, Tag } from 'antd';
+import { Button, Menu, Modal, message } from 'antd';
 
 import EntityList from '@/components/entity-list';
 import PermissionWrapper from '@/components/permission';
@@ -16,6 +16,7 @@ import { useTranslation } from '@/utils/i18n';
 import commonStyles from '@/app/system-manager/styles/common.module.scss';
 
 import CreateIntegrationInstanceModal from './CreateIntegrationInstanceModal';
+import ProviderCapabilityTags from './ProviderCapabilityTags';
 import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, getIntegrationCapabilityLabel, getIntegrationCapabilityTagColor, type IntegrationInstanceCardItem } from '@/app/system-manager/utils/integrationCenter';
 
 const IntegrationCenterPage: React.FC = () => {
@@ -207,34 +208,16 @@ const IntegrationCenterPage: React.FC = () => {
     [filteredInstances, providers, t],
   );
 
-  const generateDescSlot = (data: IntegrationInstanceCardItem) => {
-    const capabilitiesTag = (data.provider?.capabilities || []).map((capability) => {
-      const color = getIntegrationCapabilityTagColor(data.raw, capability.key);
-      return (
-        <Tag
-          key={capability.key}
-          bordered
-          color={color}
-          className={`mr-0 rounded-md font-mini ${
-            color === 'green'
-              ? 'border-[#b7eb8f] bg-[#f6ffed] text-[#389e0d]'
-              : 'border-[#d9d9d9] bg-[#fafafa] text-[#8c8c8c]'
-          }`}
-        >
-          <span className="flex items-center gap-1">
-            <span className={`h-2 w-2 rounded-full ${color === 'green' ? 'bg-[#389e0d]' : 'bg-[#bfbfbf]'}`} />
-            <span>{getIntegrationCapabilityLabel(capability.key, t)}</span>
-          </span>
-        </Tag>
-      );
-    });
-    return (
-      <div className='flex flex-wrap justify-end gap-1'>
-        {capabilitiesTag}
-      </div>
-    )
-  }
-
+  const generateDescSlot = (data: IntegrationInstanceCardItem) => (
+    <ProviderCapabilityTags
+      align="end"
+      tags={(data.provider?.capabilities || []).map((capability) => ({
+        key: capability.key,
+        label: getIntegrationCapabilityLabel(capability.key, t),
+        appearance: getIntegrationCapabilityTagColor(data.raw, capability.key) === 'green' ? 'ready' : 'inactive',
+      }))}
+    />
+  );
 
   const operateSection = (
     <div className="ml-2 flex flex-wrap items-center gap-2">
