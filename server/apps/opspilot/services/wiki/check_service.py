@@ -42,6 +42,7 @@ from apps.opspilot.services.wiki.decision_service import (
 )
 from apps.opspilot.services.wiki.directory_service import archive_pages
 from apps.opspilot.services.wiki.graph_service import analyze_graph
+from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
 from apps.opspilot.services.wiki.page_service import PageServiceError, create_manual_page, edit_page
 from apps.opspilot.services.wiki.relation_service import LINK_RE, normalize_wikilink_key
 from apps.opspilot.services.wiki.title_service import WikiTitleConflict, assert_unique_title_locked, canonical_title, compact_title_key
@@ -704,8 +705,6 @@ def _schedule_check_maintenance(
                     raise TypeError("cascade must return a maintenance mapping")
                 result = dict(result)
             except Exception as exc:
-                from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
-
                 callback_error = humanize_maintenance_error(exc)
                 result = {
                     "status": "partial",
@@ -867,8 +866,6 @@ def _schedule_rule_replay_maintenance(
                 result = dict(result)
                 result.setdefault("deleted_titles", deleted_titles)
             except Exception as exc:
-                from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
-
                 callback_error = humanize_maintenance_error(exc)
                 result = {
                     "status": "partial",

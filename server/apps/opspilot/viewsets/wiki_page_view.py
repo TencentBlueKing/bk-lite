@@ -24,6 +24,13 @@ from apps.opspilot.services.wiki.directory_service import DirectoryServiceError,
 from apps.opspilot.services.wiki.embedding_service import index_version, reindex_page_chunks
 from apps.opspilot.services.wiki.index_rebuild_service import rebuild_page_indexes
 from apps.opspilot.services.wiki.index_status_service import failed_index_stages_for_pages
+from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
+from apps.opspilot.services.wiki.material_build_queue_service import (
+    QUEUE_ITEM_TRIGGER,
+    RUNNER_TRIGGER,
+    reconcile_orphaned_material_builds,
+    repair_queue_runner_status_from_counts,
+)
 from apps.opspilot.services.wiki.page_service import PageServiceError, create_manual_page, diff_versions, edit_page, restore_version, save_answer_page
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -439,8 +446,6 @@ def _run_page_lifecycle_maintenance(
         result.setdefault("prune_deleted_pages", prune_deleted_pages)
         result.setdefault("stages", {})
     except Exception as exc:
-        from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
-
         error = humanize_maintenance_error(exc)
         result = {
             "status": "partial",
@@ -1227,13 +1232,6 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
 
     @HasPermission("wiki_list-View")
     def list(self, request, *args, **kwargs):
-        from apps.opspilot.services.wiki.material_build_queue_service import (
-            QUEUE_ITEM_TRIGGER,
-            RUNNER_TRIGGER,
-            reconcile_orphaned_material_builds,
-            repair_queue_runner_status_from_counts,
-        )
-
         queryset = self.get_queryset()
         # 队列租约/排队项是调度书签，不是用户可读的构建历史
         queryset = queryset.exclude(trigger__in=(QUEUE_ITEM_TRIGGER, RUNNER_TRIGGER))
