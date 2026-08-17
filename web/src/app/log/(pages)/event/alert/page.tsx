@@ -44,6 +44,8 @@ import { useLevelList, useStateMap } from '@/app/log/hooks/event';
 import useLogEventApi from '@/app/log/api/event';
 import useLogIntegrationApi from '@/app/log/api/integration';
 import { cloneDeep } from 'lodash';
+import UserAvatar from '@/components/user-avatar';
+import { formatUserDisplayName } from '@/utils/userDisplay';
 const { Search } = Input;
 const { Option } = Select;
 
@@ -149,6 +151,24 @@ const Alert: React.FC = () => {
         <>{t(`log.event.${record.notice ? 'notified' : 'unnotified'}`)}</>
       )
     },
+    ...(activeTab === 'historicalAlarms'
+      ? [
+        {
+          title: t('common.operator'),
+          dataIndex: 'operator',
+          key: 'operator',
+          render: (_: unknown, { operator }: TableDataItem) =>
+            operator ? (
+              <UserAvatar
+                userName={formatUserDisplayName(operator, userList)}
+                size="small"
+              />
+            ) : (
+              <>--</>
+            )
+        }
+      ]
+      : []),
     {
       title: t('common.action'),
       key: 'action',

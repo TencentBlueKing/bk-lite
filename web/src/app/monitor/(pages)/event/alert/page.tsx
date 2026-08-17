@@ -171,20 +171,24 @@ const Alert: React.FC = () => {
         </>
       )
     },
-    {
-      title: t('common.operator'),
-      dataIndex: 'operator',
-      key: 'operator',
-      render: (_, { operator }) =>
-        operator ? (
-          <UserAvatar
-            userName={formatUserDisplayName(operator, userList)}
-            size="small"
-          />
-        ) : (
-          <>--</>
-        )
-    },
+    ...(activeTab === 'historicalAlarms'
+      ? [
+        {
+          title: t('common.operator'),
+          dataIndex: 'operator',
+          key: 'operator',
+          render: (_: unknown, { operator }: TableDataItem) =>
+            operator ? (
+              <UserAvatar
+                userName={formatUserDisplayName(operator, userList)}
+                size="small"
+              />
+            ) : (
+              <>--</>
+            )
+        }
+      ]
+      : []),
     {
       title: t('common.action'),
       key: 'action',
