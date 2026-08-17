@@ -1,3 +1,4 @@
+from apps.core.utils.internal_event_auth import sign_internal_event
 from apps.rpc.base import AppClient
 
 
@@ -322,10 +323,17 @@ class SystemMgmt(object):
             "ack_mode": ack_mode,
             "ack_token": ack_token,
         }
-        if not any((required_delivery_mode, ack_mode, ack_token)) and producer == "lite-apm":
-            return self.client.run("dispatch_notification", **payload)
+        request_payload = {**payload, **extensions}
+        internal_auth = sign_internal_event(
+            "system_mgmt.dispatch_notification",
+            request_payload,
+        )
         try:
-            return self.client.run("dispatch_notification", **payload, **extensions)
+            return self.client.run(
+                "dispatch_notification",
+                **request_payload,
+                internal_auth=internal_auth,
+            )
         except TypeError as exc:
             # An old receiver rejects unknown kwargs before any side effect. Retry
             # once with the historical contract during receiver-first rollouts.
@@ -387,15 +395,27 @@ class SystemMgmt(object):
             [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]
             注意: 附件内容必须是base64编码的字符串，因为NATS使用JSON序列化传输
         """
-        return_data = self.client.run(
-            "send_msg_with_channel",
-            channel_id=channel_id,
-            title=title,
-            content=content,
-            receivers=receivers,
-            attachments=attachments,
+        request_payload = {
+            "channel_id": channel_id,
+            "title": title,
+            "content": content,
+            "receivers": receivers,
+            "attachments": attachments,
+        }
+        internal_auth = sign_internal_event(
+            "system_mgmt.send_msg_with_channel",
+            request_payload,
         )
-        return return_data
+        try:
+            return self.client.run(
+                "send_msg_with_channel",
+                **request_payload,
+                internal_auth=internal_auth,
+            )
+        except TypeError as exc:
+            if "unexpected keyword argument" not in str(exc):
+                raise
+            return self.client.run("send_msg_with_channel", **request_payload)
 
     def sync_opspilot_nats_channels(self, bot_id, bot_name, team, nodes, timeout=60):
         """对账 OpsPilot 某个 bot 的 NATS 触发节点对应的通道（增/改/删）。

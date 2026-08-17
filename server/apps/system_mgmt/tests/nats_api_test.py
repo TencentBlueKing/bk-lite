@@ -1187,6 +1187,7 @@ def test_send_msg_with_channel_nats_normalizes_valid_content(monkeypatch):
 @pytest.mark.django_db
 def test_send_msg_with_channel_nats_passthrough_for_alert_center(monkeypatch):
     """告警中心通道（receive_alert_events）应原样透传 content，不做 message/team/user_ids 规范化。"""
+    from apps.core.utils.internal_event_auth import sign_internal_event, verify_internal_event
     from apps.system_mgmt.models import Channel, ChannelChoices
     from apps.system_mgmt.nats_api import send_msg_with_channel
 
@@ -1212,12 +1213,34 @@ def test_send_msg_with_channel_nats_passthrough_for_alert_center(monkeypatch):
     monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", fake_send_nats_message)
 
     payload = {"source_id": "nats", "pusher": "lite-monitor", "events": [{"title": "x", "organizations": [3]}]}
-    result = send_msg_with_channel(channel.id, "", payload, [])
+    request_payload = {
+        "channel_id": channel.id,
+        "title": "",
+        "content": payload,
+        "receivers": [],
+        "attachments": None,
+    }
+    result = send_msg_with_channel(
+        channel.id,
+        "",
+        payload,
+        [],
+        internal_auth=sign_internal_event(
+            "system_mgmt.send_msg_with_channel",
+            request_payload,
+        ),
+    )
 
     assert result == {"result": True}
     assert captured["channel_id"] == channel.id
-    # content 原样透传，source_id / pusher / events 一个不丢
+    # 业务 content 原样透传，内部认证只新增边界字段。
+    internal_auth = captured["content"].pop("internal_auth")
     assert captured["content"] == payload
+    assert verify_internal_event(
+        "alerts.receive_alert_events",
+        payload,
+        internal_auth,
+    )
 
 
 def test_send_nats_message_merges_bot_id_and_node_id_from_config(monkeypatch):

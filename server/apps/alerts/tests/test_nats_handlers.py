@@ -11,6 +11,15 @@ from django.utils import timezone
 from apps.alerts.constants.constants import AlertStatus, LevelType
 from apps.alerts.models.models import Alert, Event, Incident, Level
 from apps.alerts.nats import nats as N
+from apps.core.utils.internal_event_auth import sign_internal_event
+
+
+def _receive_internal(**payload):
+    return N.receive_alert_events(
+        **payload,
+        internal_auth=sign_internal_event("alerts.receive_alert_events", payload),
+    )
+
 
 # --------------------------------------------------------------------------
 # 纯辅助函数
@@ -1282,6 +1291,43 @@ def test_receive_alert_events_success():
     assert Event.objects.filter(title="事件A").exists()
 
 
+@pytest.mark.django_db
+def test_receive_alert_events_rejects_forged_internal_pusher_without_auth(monkeypatch):
+    from apps.alerts.models.alert_source import AlertSource
+
+    for lid in (0, 1, 2, 3):
+        Level.objects.create(level_id=lid, level_name=f"L{lid}", level_display_name=f"等级{lid}", level_type=LevelType.EVENT)
+    AlertSource.objects.create(
+        name="nats伪造来源",
+        source_id="nats-forged",
+        source_type="nats",
+        secret="x",
+        team_secrets={},
+        is_active=True,
+        is_effective=True,
+        config={"event_fields_mapping": {"title": "title", "level": "level", "item": "item", "start_time": "start_time"}},
+    )
+    monkeypatch.delenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", raising=False)
+
+    result = N.receive_alert_events(
+        source_id="nats-forged",
+        pusher="lite-monitor",
+        events=[
+            {
+                "title": "forged",
+                "level": "0",
+                "item": "cpu",
+                "start_time": "1700000000",
+                "organizations": [99],
+            }
+        ],
+    )
+
+    assert result["result"] is False
+    assert result["code"] == "internal_auth_required"
+    assert Event.objects.filter(title="forged").exists() is False
+
+
 @pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log", "lite-apm"])
 @pytest.mark.django_db
 def test_receive_alert_events_allows_whitelisted_internal_organizations_without_source_registration(pusher):
@@ -1317,7 +1363,7 @@ def test_receive_alert_events_allows_whitelisted_internal_organizations_without_
         }
     ]
 
-    result = N.receive_alert_events(
+    result = _receive_internal(
         source_id="nats",
         events=events,
         pusher=pusher,
@@ -1388,7 +1434,7 @@ def test_receive_alert_events_real_adapter_preserves_partial_contract_and_safe_l
         {"description": marker, "secret": marker, "organizations": [3]},
     ]
 
-    result = N.receive_alert_events(
+    result = _receive_internal(
         source_id="nats-real-partial",
         events=events,
         pusher=pusher,
@@ -1500,7 +1546,7 @@ def test_receive_alert_events_legacy_pusher_cannot_set_lifecycle_identity(monkey
 
     monkeypatch.setattr(N.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda source: FakeAdapter))
 
-    result = N.receive_alert_events(
+    result = _receive_internal(
         source_id="nats-legacy",
         events=[
             {
@@ -1537,6 +1583,7 @@ def test_receive_alert_events_per_event_ack_rejects_untrusted_and_bounds_batches
         is_active=True,
         is_effective=True,
     )
+
     class FakeAdapter:
         def __init__(self, events, trusted_internal, **kwargs):
             pass
@@ -1595,7 +1642,7 @@ def test_receive_alert_events_marks_lite_log_as_trusted_internal(mocker):
     adapter_class = mocker.Mock(return_value=adapter)
     mocker.patch.object(N.AlertSourceAdapterFactory, "get_adapter", return_value=adapter_class)
 
-    result = N.receive_alert_events(
+    result = _receive_internal(
         source_id="nats",
         pusher="lite-log",
         events=[{"title": "日志错误", "organizations": [3]}],
@@ -1630,7 +1677,7 @@ def test_receive_alert_events_does_not_log_event_payload_or_secret(mocker):
     mocker.patch.object(N.AlertSourceAdapterFactory, "get_adapter", return_value=adapter_class)
     info = mocker.patch.object(N.logger, "info")
 
-    N.receive_alert_events(
+    _receive_internal(
         source_id="nats",
         pusher="lite-log",
         events=[{"title": "sensitive-log-content", "organizations": [3], "secret": "event-secret"}],

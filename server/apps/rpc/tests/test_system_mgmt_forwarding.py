@@ -5,7 +5,6 @@
 能抓到方法名拼写、参数名/顺序回归。不触达真实 NATS。
 """
 import pydantic.root_model  # noqa
-
 import pytest
 
 from apps.rpc.system_mgmt import SystemMgmt
@@ -192,8 +191,15 @@ def test_save_operation_log_默认detail为None(client):
         "save_operation_log",
         (),
         {
-            "username": "alice", "source_ip": "1.2.3.4", "app": "cmdb", "action_type": "create",
-            "summary": "", "domain": "domain.com", "target_type": "", "target_id": "", "detail": None,
+            "username": "alice",
+            "source_ip": "1.2.3.4",
+            "app": "cmdb",
+            "action_type": "create",
+            "summary": "",
+            "domain": "domain.com",
+            "target_type": "",
+            "target_id": "",
+            "detail": None,
         },
     )
 
@@ -281,19 +287,25 @@ def test_dispatch_notification_转发稳定投递契约(client):
         body="正文",
         event_payload={"event_key": "event"},
     )
-    assert _last(client) == (
-        "dispatch_notification",
-        (),
-        {
-            "delivery_key": "event:1",
-            "channel_id": 7,
-            "organization_ids": [1],
-            "recipients": ["42"],
-            "title": "标题",
-            "body": "正文",
-            "event_payload": {"event_key": "event"},
-        },
-    )
+    method_name, args, kwargs = _last(client)
+    internal_auth = kwargs.pop("internal_auth")
+    assert method_name == "dispatch_notification"
+    assert args == ()
+    assert kwargs == {
+        "delivery_key": "event:1",
+        "channel_id": 7,
+        "organization_ids": [1],
+        "recipients": ["42"],
+        "title": "标题",
+        "body": "正文",
+        "event_payload": {"event_key": "event"},
+        "required_delivery_mode": "",
+        "producer": "lite-apm",
+        "ack_mode": "",
+        "ack_token": "",
+    }
+    assert internal_auth["version"] == "hmac-sha256-v1"
+    assert internal_auth["signature"]
 
 
 def test_dispatch_notification_新生产者兼容旧receiver(client):
@@ -326,15 +338,18 @@ def test_dispatch_notification_新生产者兼容旧receiver(client):
 
     assert result == {"result": True}
     assert len(receiver.calls) == 2
-    assert receiver.calls[-1] == ("dispatch_notification", {
-        "delivery_key": "event:1",
-        "channel_id": 7,
-        "organization_ids": [1],
-        "recipients": [],
-        "title": "",
-        "body": "正文",
-        "event_payload": {"event_key": "event"},
-    })
+    assert receiver.calls[-1] == (
+        "dispatch_notification",
+        {
+            "delivery_key": "event:1",
+            "channel_id": 7,
+            "organization_ids": [1],
+            "recipients": [],
+            "title": "",
+            "body": "正文",
+            "event_payload": {"event_key": "event"},
+        },
+    )
 
 
 def test_probe_notification_channel_转发渠道探针(client):
@@ -385,11 +400,13 @@ def test_send_email_to_receiver_转发(client):
 
 def test_send_msg_with_channel_默认attachments为None(client):
     client.send_msg_with_channel(1, "t", "c", [1, 2])
-    assert _last(client) == (
-        "send_msg_with_channel",
-        (),
-        {"channel_id": 1, "title": "t", "content": "c", "receivers": [1, 2], "attachments": None},
-    )
+    method_name, args, kwargs = _last(client)
+    internal_auth = kwargs.pop("internal_auth")
+    assert method_name == "send_msg_with_channel"
+    assert args == ()
+    assert kwargs == {"channel_id": 1, "title": "t", "content": "c", "receivers": [1, 2], "attachments": None}
+    assert internal_auth["version"] == "hmac-sha256-v1"
+    assert internal_auth["signature"]
 
 
 def test_sync_opspilot_nats_channels_默认timeout(client):
