@@ -8,15 +8,35 @@ from apps.core.utils.open_base import OpenAPIViewSet
 from apps.core.utils.web_utils import WebUtils
 
 
+def _build_ingest_message(result: dict) -> str:
+    summary = result.get("summary") if isinstance(result, dict) else None
+    if not isinstance(summary, dict):
+        return ""
+
+    error_count = summary.get("errors", 0)
+    if not isinstance(error_count, int) or isinstance(error_count, bool) or error_count <= 0:
+        return ""
+
+    messages = summary.get("error_messages") or []
+    if not isinstance(messages, (list, tuple)):
+        messages = []
+    readable_messages = []
+    for message in messages[:3]:
+        readable_message = str(message).strip()[:300]
+        if readable_message:
+            readable_messages.append(readable_message)
+    if readable_messages:
+        return f"上报部分失败（{error_count} 条）：{'；'.join(readable_messages)}"
+    return f"上报部分失败（{error_count} 条实例处理失败）"
+
+
 class CustomReportingTaskViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def list(self, request):
         return WebUtils.response_success(get_custom_reporting_extension().list_tasks(request, request.query_params.dict()))
 
     @action(detail=False, methods=["get"], url_path="stats")
     def stats(self, request):
-        return WebUtils.response_success(
-            get_custom_reporting_extension().get_stats(request, request.query_params.dict())
-        )
+        return WebUtils.response_success(get_custom_reporting_extension().get_stats(request, request.query_params.dict()))
 
     def create(self, request):
         ser = CustomReportingCreateSerializer(data=request.data)
@@ -37,9 +57,7 @@ class CustomReportingTaskViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
     @action(detail=True, methods=["get"], url_path="field_registrations")
     def field_registrations(self, request, pk=None):
-        return WebUtils.response_success(
-            get_custom_reporting_extension().get_field_registrations(request, pk)
-        )
+        return WebUtils.response_success(get_custom_reporting_extension().get_field_registrations(request, pk))
 
     @action(detail=True, methods=["get"], url_path="batch_activity")
     def batch_activity(self, request, pk=None):
@@ -86,4 +104,5 @@ class CustomReportingIngestViewSet(OpenAPIViewSet):
             token = auth[7:].strip()
         else:
             token = auth or None
-        return WebUtils.response_success(get_custom_reporting_extension().ingest(request, token, request.data))
+        result = get_custom_reporting_extension().ingest(request, token, request.data)
+        return WebUtils.response_success(result, message=_build_ingest_message(result))

@@ -11,7 +11,7 @@ const Topo: React.FC<AssoTopoProps> = ({
   assoTypeList,
   modelList,
   modelId,
-  instId,
+  instUuid,
 }) => {
   const { isLoading } = useApiClient();
 
@@ -23,13 +23,13 @@ const Topo: React.FC<AssoTopoProps> = ({
   useEffect(() => {
     if (isLoading) return;
     getTopoList();
-  }, [modelId, instId, isLoading]);
+  }, [modelId, instUuid, isLoading]);
 
   const getTopoList = async () => {
     setLoading(true);
     try {
       // 获取拓扑图数据请求
-      const data = await topoSearchInstances(modelId, instId);
+      const data = await topoSearchInstances(modelId, instUuid);
       setTopoData(data);
 
     } finally {
@@ -75,7 +75,7 @@ const Topo: React.FC<AssoTopoProps> = ({
           {/* 初始化节点 */}
           <InitNode
             modelId={modelId}
-            instId={instId}
+            instUuid={instUuid}
             topoData={topoData}
             assoTypeList={assoTypeList}
             modelList={modelList}

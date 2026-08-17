@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState, useMemo } from 'react';
-import { Spin, Input, Button, Tag, Empty } from 'antd';
+import { Spin, Input, Button, Tag } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/log/api/integration';
 import { PlusOutlined } from '@ant-design/icons';
@@ -243,7 +244,7 @@ const Integration = () => {
               ))}
             </div>
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('common.noData')} />
           )}
         </Spin>
       </div>

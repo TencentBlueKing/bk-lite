@@ -7,6 +7,7 @@ import {
   getRoom3DColumnLabel,
   getRoom3DPositionLabel,
   getRoom3DSceneRacks,
+  getRoom3DStandardLocation,
   validateRoom3DData,
 } from "../src/app/ops-analysis/components/widgets/room3D/room3DData";
 import {
@@ -309,6 +310,10 @@ assert.equal(duplicatedSceneRacks[1].rack_id, "7");
 assert.equal(getRoom3DColumnLabel(1), "A");
 assert.equal(getRoom3DColumnLabel(26), "Z");
 assert.equal(getRoom3DColumnLabel(27), "AA");
+assert.equal(getRoom3DStandardLocation(1, 1), "A01");
+assert.equal(getRoom3DStandardLocation(1, 2), "B01");
+assert.equal(getRoom3DStandardLocation(9, 1), "A09");
+assert.equal(getRoom3DStandardLocation(21, 2), "B21");
 assert.equal(ROOM3D_COL_GAP > 1, true);
 assert.equal(ROOM3D_COL_GAP < 1.4, true);
 assert.equal(ROOM3D_ROW_GAP > ROOM3D_COL_GAP * 2.5, true);
@@ -334,15 +339,16 @@ assert.equal(
 );
 assert.equal(compactColumnAspect < columnDominantAspect, true);
 assert.equal(compactColumnFloor.floorDepth < 18, true);
-const frontRackPosition = getRoom3DRackScenePosition(
+const firstRackPosition = getRoom3DRackScenePosition(
   { row: 1, col: 1 },
   { maxRow: 4, maxCol: 6 },
 );
-const rearRackPosition = getRoom3DRackScenePosition(
+const lastRackPosition = getRoom3DRackScenePosition(
   { row: 4, col: 1 },
   { maxRow: 4, maxCol: 6 },
 );
-assert.equal(frontRackPosition.z > rearRackPosition.z, true);
+assert.equal(firstRackPosition.x, lastRackPosition.x);
+assert.equal(firstRackPosition.z > lastRackPosition.z, true);
 
 assert.equal(shouldAutoFocusRack(8.1), true);
 assert.equal(shouldAutoFocusRack(5.2), false);
@@ -383,7 +389,9 @@ createRackVisual(
   0,
   0,
 );
-assert.equal(canvasContext.fillTextCalls.includes("A02"), true);
+// row=1,col=2 → B01（字母=列，数字=行），与 CMDB 机房位置一致
+assert.equal(canvasContext.fillTextCalls.includes("B01"), true);
+assert.equal(canvasContext.fillTextCalls.includes("A02"), false);
 assert.equal(canvasContext.fillTextCalls.includes("2"), false);
 
 assert.deepEqual(filterChartTypesForSurface(["line", "room3D"], "screen"), [

@@ -2,7 +2,7 @@ import type { RackRoomMode, ViewFocus, ViewType } from './viewTypes';
 
 export interface ParsedViewsSearch {
   model_id: string | undefined;
-  inst_id: string | undefined;
+  inst_uuid: string | undefined;
   mode: RackRoomMode | undefined;
   inst_name: string | undefined;
   model_name: string | undefined;
@@ -12,7 +12,7 @@ export interface ParsedViewsSearch {
 /** Query keys owned by ViewsWorkspaceShell focus sync — all others are preserved. */
 export const FOCUS_QUERY_KEYS = [
   'model_id',
-  'inst_id',
+  'inst_uuid',
   'inst_name',
   'model_name',
   'icn',
@@ -21,7 +21,7 @@ export const FOCUS_QUERY_KEYS = [
 
 const appendFocusParams = (params: URLSearchParams, focus: ViewFocus): void => {
   params.set('model_id', focus.model_id);
-  params.set('inst_id', focus.inst_id);
+  params.set('inst_uuid', focus.inst_uuid);
   if (focus.inst_name) params.set('inst_name', focus.inst_name);
   if (focus.model_name) params.set('model_name', focus.model_name);
   if (focus.icn) params.set('icn', focus.icn);
@@ -71,7 +71,7 @@ const parseMode = (value: string | null): RackRoomMode | undefined => {
 
 export const parseViewsSearch = (searchParams: URLSearchParams): ParsedViewsSearch => ({
   model_id: searchParams.get('model_id') ?? undefined,
-  inst_id: searchParams.get('inst_id') ?? undefined,
+  inst_uuid: searchParams.get('inst_uuid') ?? undefined,
   mode: parseMode(searchParams.get('mode')),
   inst_name: searchParams.get('inst_name') ?? undefined,
   model_name: searchParams.get('model_name') ?? undefined,

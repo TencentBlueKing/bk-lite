@@ -6,14 +6,16 @@ export const useConfigFileApi = () => {
   const { get, del, post } = useApiClient();
 
   const getConfigFileList = useCallback(
-    (instance_id: string) =>
-      get('/cmdb/api/config_file_versions/file_list/', { params: { instance_id } }),
+    (instance_uuid: string) =>
+      get('/cmdb/api/config_file_versions/file_list/', { params: { instance_uuid } }),
     [get]
   );
 
   const getConfigFileVersions = useCallback(
-    (instance_id: string, file_path: string) =>
-      get('/cmdb/api/config_file_versions/', { params: { instance_id, file_path, page_size: -1 } }),
+    (instance_uuid: string, file_path: string) =>
+      get('/cmdb/api/config_file_versions/', {
+        params: { instance_uuid, file_path, page_size: -1 },
+      }),
     [get]
   );
 

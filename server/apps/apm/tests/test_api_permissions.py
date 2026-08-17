@@ -25,6 +25,7 @@ def _integration_region(monkeypatch):
     region = Mock()
     region.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
     region.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
+    region.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
     monkeypatch.setattr("apps.apm.views.control_plane.NodeMgmt", lambda: region)
     return region
 
@@ -64,28 +65,12 @@ def test_application_crud_persists_business_boundary_without_a_token(apm_api_cli
     assert updated.data["is_builtin"] is False
 
 
-def test_builtin_application_is_visible_but_cannot_be_modified(apm_api_client):
-    application = ApmApplication.objects.get(application_id="", is_builtin=True)
-
+def test_application_catalog_does_not_expose_a_builtin_uncategorized_application(apm_api_client):
     listed = apm_api_client.get("/api/v1/apm/applications/")
-    updated = apm_api_client.put(
-        f"/api/v1/apm/applications/{application.id}/",
-        {
-            "name": "被篡改的名称",
-            "description": "",
-            "organization_ids": [10],
-        },
-        format="json",
-    )
-    deleted = apm_api_client.delete(f"/api/v1/apm/applications/{application.id}/")
 
     assert listed.status_code == 200
-    assert listed.data[0]["is_builtin"] is True
-    assert updated.status_code == 409
-    assert updated.data["detail"] == "内置应用不可修改。"
-    assert deleted.status_code == 405
-    application.refresh_from_db()
-    assert application.name == "未归类应用"
+    assert listed.data == []
+    assert not ApmApplication.objects.filter(is_builtin=True).exists()
 
 
 def test_application_update_ignores_immutable_application_id_from_stale_payload(apm_api_client):
@@ -157,6 +142,7 @@ def test_integration_config_is_stateless_and_maps_standard_resource_attributes(a
     region = Mock()
     region.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
     region.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
+    region.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
 
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr("apps.apm.views.control_plane.NodeMgmt", lambda: region)
@@ -186,8 +172,10 @@ def test_integration_config_is_stateless_and_maps_standard_resource_attributes(a
     assert response.data["http_endpoint"] == "http://apm-east.example.com:4318/v1/traces"
     assert "grpc_endpoint" not in response.data
     assert response.data["environment"]["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://apm-east.example.com:4318"
+    assert "http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-python-wheels.tar.gz" in response.data["code"]
+    assert "pypi.org" not in response.data["code"]
     region.get_cloud_region_proxy_address.assert_called_once_with(7)
-    region.get_cloud_region_envconfig.assert_not_called()
+    region.get_cloud_region_envconfig.assert_called_once_with(7)
     assert ApmApplication.objects.filter(is_builtin=False).count() == 1
 
 
@@ -401,6 +389,43 @@ def test_integration_config_java_snippet_uses_the_system_probe_download_address(
     region.get_cloud_region_envconfig.assert_called_once_with(7)
 
 
+@pytest.mark.parametrize(
+    ("language", "artifact_name", "forbidden"),
+    [
+        ("python", "opentelemetry-python-wheels.tar.gz", "pypi.org"),
+        ("nodejs", "opentelemetry-js-auto.tgz", "npmjs"),
+        ("go", "opentelemetry-go-sdk.zip", "go get "),
+    ],
+)
+def test_integration_config_snippets_use_system_probe_download_addresses(
+    apm_api_client,
+    monkeypatch,
+    language,
+    artifact_name,
+    forbidden,
+):
+    create_application("shop", (10,))
+    _integration_region(monkeypatch)
+
+    response = apm_api_client.post(
+        "/api/v1/apm/integration-config/",
+        {
+            "application_id": "shop",
+            "cloud_region_id": 7,
+            "language": language,
+            "runtime": "host",
+            "service_name": "checkout",
+            "service_version": "1.4.0",
+            "environment": "production",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert f"http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/{artifact_name}" in response.data["code"]
+    assert forbidden not in response.data["code"]
+
+
 def test_integration_config_java_snippet_reports_missing_probe_download_address(apm_api_client, monkeypatch):
     create_application("shop", (10,))
     region = _integration_region(monkeypatch)
@@ -579,7 +604,7 @@ def test_service_catalog_permission_can_read_application_boundaries(apm_user):
     response = client.get("/api/v1/apm/applications/")
 
     assert response.status_code == 200
-    assert [(item["name"], item["is_builtin"]) for item in response.data] == [("未归类应用", True)]
+    assert response.data == []
 
 
 def test_service_and_instance_lists_keep_independent_organization_scopes(apm_api_client):
@@ -598,7 +623,7 @@ def test_service_and_instance_lists_keep_independent_organization_scopes(apm_api
     assert apm_api_client.get(f"/api/v1/apm/instances/{hidden.instance.id}/").status_code == 404
 
 
-def test_service_and_instance_organization_archive_restore_actions_remain_real(apm_api_client):
+def test_service_archive_and_catalog_organization_actions_remain_real_but_instance_archive_is_removed(apm_api_client):
     create_application("shop", (10,))
     discovered = DjangoTelemetryCatalogService().discover(CatalogDiscovery("shop", "checkout", "pod-a", "prod"))
 
@@ -611,6 +636,7 @@ def test_service_and_instance_organization_archive_restore_actions_remain_real(a
 
     assert service_orgs.data["organization_ids"] == [10, 20]
     assert instance_orgs.data["organization_ids"] == [10, 30]
-    assert archived_service.data["status"] == archived_instance.data["status"] == "archived"
+    assert archived_service.data["status"] == "archived"
+    assert archived_instance.status_code == 404
     assert apm_api_client.post(f"/api/v1/apm/services/{discovered.service.id}/restore/").status_code == 200
-    assert apm_api_client.post(f"/api/v1/apm/instances/{discovered.instance.id}/restore/").status_code == 200
+    assert apm_api_client.post(f"/api/v1/apm/instances/{discovered.instance.id}/restore/").status_code == 404

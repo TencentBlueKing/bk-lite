@@ -2,7 +2,6 @@ import useApiClient from "@/utils/request";
 import { LlmModel } from "@/app/opspilot/types/skill";
 import { Model } from "@/app/opspilot/types/provider";
 import {
-  BuildMaintenanceBatchRetryResult,
   BuildRecord,
   CheckItem,
   CheckDecisionRequest,
@@ -688,18 +687,6 @@ export const useWikiApi = () => {
       stages ? { stages } : {},
     );
 
-  const batchRetryBuildMaintenance = (
-    kbId: number,
-    ids: number[],
-    stages?: string[],
-  ): Promise<BuildMaintenanceBatchRetryResult> =>
-    post(
-      `${BASE}/build_record/batch_retry_maintenance/`,
-      stages
-        ? { knowledge_base: kbId, ids, stages }
-        : { knowledge_base: kbId, ids },
-    );
-
   const cancelBuild = (id: number): Promise<BuildRecord> =>
     post(`${BASE}/build_record/${id}/cancel/`, {});
 
@@ -809,7 +796,6 @@ export const useWikiApi = () => {
     fetchBuildRecord,
     retryBuild,
     retryBuildMaintenance,
-    batchRetryBuildMaintenance,
     cancelBuild,
     fetchCheckItems,
     fetchDecisionItems,

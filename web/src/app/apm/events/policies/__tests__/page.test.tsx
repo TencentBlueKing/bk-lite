@@ -1,0 +1,94 @@
+import React from 'react';
+import { cleanup, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import ApmPoliciesPage from '../page';
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+
+const policy = {
+  id: 'policy-1',
+  name: '结账接口 P95 过慢',
+  service_id: 'svc-1',
+  service_namespace: 'shop',
+  service_name: 'checkout',
+  environment: 'production',
+  alert_name: '',
+  endpoints: ['POST /checkout'],
+  version_mode: 'specific' as const,
+  versions: ['v2'],
+  metric_type: 'p95' as const,
+  evaluation_interval: 1,
+  metric_window: 5,
+  aggregation: 'max' as const,
+  thresholds: [{ severity: 'warning' as const, comparator: 'gt' as const, value: '500' }],
+  trigger_after: 3,
+  recover_after: 3,
+  no_data_after: null,
+  no_data_severity: '' as const,
+  comparator: 'gt' as const,
+  threshold: '500',
+  duration_window: 5,
+  recovery_window: 3,
+  severity: 'warning' as const,
+  notification_targets: [],
+  is_enabled: true,
+  state: {
+    status: 'active' as const,
+    consecutive_hits: 0,
+    consecutive_recoveries: 0,
+    last_succeeded_at: '2026-08-14T02:00:00Z',
+    last_failed_at: null,
+  },
+  created_at: '2026-08-11T12:03:00Z',
+  updated_at: '2026-08-14T02:00:00Z',
+  created_by: 'admin',
+  updated_by: 'admin',
+};
+const api = { deletePolicy: vi.fn(), getPolicies: vi.fn(), isLoading: false, setPolicyEnabled: vi.fn() };
+
+vi.mock('next/link', () => ({
+  default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
+}));
+vi.mock('@/app/apm/api', () => ({ default: () => api }));
+vi.mock('@/app/apm/components/apm-route-shell', () => ({
+  default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
+  ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
+}));
+
+beforeEach(() => {
+  window.matchMedia = vi
+    .fn()
+    .mockReturnValue({
+      matches: false,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+  api.getPolicies.mockResolvedValue([policy]);
+  api.setPolicyEnabled.mockResolvedValue({ ...policy, is_enabled: false });
+});
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+describe('APM 策略列表', () => {
+  it('新建和编辑使用独立路由，启停只保留在列表', async () => {
+    renderWithApmIntl(<ApmPoliciesPage />);
+    expect(await screen.findByText('结账接口 P95 过慢')).not.toBeNull();
+    expect(screen.getByRole('link', { name: /新建策略/ }).getAttribute('href')).toBe('/apm/events/policies/new');
+    expect(screen.getByRole('button', { name: '编辑策略' }).closest('a')?.getAttribute('href')).toBe(
+      '/apm/events/policies/policy-1',
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('列表启停调用专用操作接口', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmPoliciesPage />);
+    await screen.findByText('结账接口 P95 过慢');
+    await user.click(screen.getByRole('switch'));
+    expect(api.setPolicyEnabled).toHaveBeenCalledWith('policy-1', false);
+  });
+});

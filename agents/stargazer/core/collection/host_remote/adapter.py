@@ -46,6 +46,7 @@ async def submit_host_remote_collection(
         plugin_ref=context.plugin_ref,
         target=target,
         fence=context.fence,
+        attempt_id=context.attempt_id,
     )
     callback_task_id = "remote-" + result_id[:24]
     callback_params["collection_result_id"] = result_id

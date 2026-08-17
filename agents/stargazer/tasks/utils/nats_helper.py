@@ -7,14 +7,21 @@ NATS 推送辅助工具
 处理指标数据推送到 NATS（InfluxDB Line Protocol 格式）
 """
 
+import asyncio
 import json
 import os
-import asyncio
+import time
 import traceback
-from typing import Dict, Any
-from sanic.log import logger
-from influxdb_client import Point, WritePrecision
+from typing import Any, Dict, Iterable, Iterator
+
+from core.collection.contracts import StructuredMetricsPayload
 from core.infra.nats_utils import NatsLinesPublishError, nats_publish, nats_publish_lines
+from influxdb_client import Point, WritePrecision
+from sanic.log import logger
+
+MAX_NATS_LINES_PER_FLUSH = 1000
+MAX_NATS_BYTES_PER_FLUSH = 900_000
+MAX_NATS_LINE_BYTES = 900_000
 
 
 class MetricsPublishError(RuntimeError):
@@ -42,165 +49,52 @@ class MetricsPublishError(RuntimeError):
         )
 
 
-def _metrics_publish_retry_times() -> int:
-    raw_value = os.getenv("NATS_METRICS_PUBLISH_RETRIES", "2")
-    try:
-        return max(int(raw_value), 0)
-    except ValueError:
-        return 2
-
-
 def _has_confirmed_delivery(delivered_count: int) -> bool:
     return delivered_count > 0
 
 
-def _has_any_delivery(success_count: int, delivery_detected: bool) -> bool:
-    return _has_confirmed_delivery(success_count) or delivery_detected
-
-
 async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_id: str) -> int:
+    """执行一次 NATS 发布；重试由目标执行器统一管理。"""
     total_lines = len(influx_lines)
-    max_retries = _metrics_publish_retry_times()
-    last_error = ""
-    best_success_count = 0
-    delivery_detected = False
+    try:
+        success_count = await nats_publish_lines(subject, influx_lines)
+    except NatsLinesPublishError as error:
+        raise MetricsPublishError(
+            task_id=task_id,
+            subject=subject,
+            total_lines=total_lines,
+            success_count=0,
+            delivery_detected=bool(error.delivery_detected),
+            attempts=1,
+            reason=type(error).__name__,
+        ) from error
+    except Exception as error:
+        # 普通异常无法证明服务端未收到，按不确定投递处理，避免重复数据。
+        raise MetricsPublishError(
+            task_id=task_id,
+            subject=subject,
+            total_lines=total_lines,
+            success_count=int(getattr(error, "success_count", 0)),
+            delivery_detected=True,
+            attempts=1,
+            reason=type(error).__name__,
+        ) from error
 
-    for attempt in range(1, max_retries + 2):
-        try:
-            success_count = await nats_publish_lines(subject, influx_lines)
-            best_success_count = max(best_success_count, success_count)
-            delivery_detected = delivery_detected or _has_confirmed_delivery(success_count)
-            logger.info(
-                f"[NATS Helper] Metrics publish attempt={attempt} task_id={task_id} "
-                f"subject={subject} success_count={success_count} total_lines={total_lines}"
-            )
-            if success_count == total_lines:
-                return success_count
-            if _has_any_delivery(success_count, delivery_detected):
-                last_error = (
-                    f"delivery detected ({success_count}/{total_lines}); "
-                    "aborting retry to avoid duplicate metrics"
-                )
-                logger.error(
-                    f"[NATS Helper] Metrics publish delivery detected attempt={attempt} task_id={task_id} "
-                    f"subject={subject} success_count={success_count} total_lines={total_lines} "
-                    f"action=abort_full_batch_retry"
-                )
-                raise MetricsPublishError(
-                    task_id=task_id,
-                    subject=subject,
-                    total_lines=total_lines,
-                    success_count=best_success_count,
-                    delivery_detected=delivery_detected,
-                    attempts=attempt,
-                    reason=last_error,
-                )
-            last_error = f"publish incomplete ({success_count}/{total_lines})"
-            logger.warning(
-                f"[NATS Helper] Metrics publish incomplete attempt={attempt} task_id={task_id} "
-                f"subject={subject} success_count={success_count} total_lines={total_lines}"
-            )
-        except NatsLinesPublishError as err:
-            attempted_count = err.attempted_count_before_failure
-            delivery_detected = delivery_detected or err.delivery_detected
-            last_error = f"{type(err).__name__}: {err}"
-            if _has_any_delivery(best_success_count, delivery_detected):
-                last_error = (
-                    f"{type(err).__name__}: delivery detected "
-                    f"(attempted_before_failure={attempted_count}/{total_lines}); "
-                    "aborting retry to avoid duplicate metrics"
-                )
-                logger.error(
-                    f"[NATS Helper] Metrics publish delivery detected attempt={attempt} task_id={task_id} "
-                    f"subject={subject} success_count={best_success_count} total_lines={total_lines} "
-                    f"attempted_count_before_failure={attempted_count} "
-                    f"error={err} action=abort_full_batch_retry"
-                )
-                raise MetricsPublishError(
-                    task_id=task_id,
-                    subject=subject,
-                    total_lines=total_lines,
-                    success_count=best_success_count,
-                    delivery_detected=delivery_detected,
-                    attempts=attempt,
-                    reason=last_error,
-                ) from err
-            logger.warning(
-                f"[NATS Helper] Metrics publish failed attempt={attempt} task_id={task_id} "
-                f"subject={subject} success_count={best_success_count} total_lines={total_lines} "
-                f"attempted_count_before_failure={attempted_count} "
-                f"error={last_error}"
-            )
-        except MetricsPublishError:
-            raise
-        except Exception as err:
-            success_count = getattr(err, "success_count", 0)
-            best_success_count = max(best_success_count, success_count)
-            delivery_detected = delivery_detected or bool(
-                getattr(err, "delivery_detected", False)
-            )
-            last_error = f"{type(err).__name__}: {err}"
-            if not delivery_detected:
-                last_error = (
-                    f"{type(err).__name__}: publish state unknown after failure; "
-                    f"aborting retry to avoid duplicate metrics: {err}"
-                )
-                logger.error(
-                    f"[NATS Helper] Metrics publish state unknown attempt={attempt} task_id={task_id} "
-                    f"subject={subject} success_count={success_count} total_lines={total_lines} "
-                    f"error={err} action=abort_full_batch_retry"
-                )
-                raise MetricsPublishError(
-                    task_id=task_id,
-                    subject=subject,
-                    total_lines=total_lines,
-                    success_count=best_success_count,
-                    delivery_detected=True,
-                    attempts=attempt,
-                    reason=last_error,
-                ) from err
-            if _has_any_delivery(success_count, delivery_detected):
-                last_error = (
-                    f"{type(err).__name__}: delivery detected ({success_count}/{total_lines}); "
-                    "aborting retry to avoid duplicate metrics"
-                )
-                logger.error(
-                    f"[NATS Helper] Metrics publish delivery detected attempt={attempt} task_id={task_id} "
-                    f"subject={subject} success_count={success_count} total_lines={total_lines} "
-                    f"error={err} action=abort_full_batch_retry"
-                )
-                raise MetricsPublishError(
-                    task_id=task_id,
-                    subject=subject,
-                    total_lines=total_lines,
-                    success_count=best_success_count,
-                    delivery_detected=delivery_detected,
-                    attempts=attempt,
-                    reason=last_error,
-                ) from err
-            logger.warning(
-                f"[NATS Helper] Metrics publish failed attempt={attempt} task_id={task_id} "
-                f"subject={subject} success_count={success_count} total_lines={total_lines} "
-                f"error={last_error}"
-            )
-
-        if attempt <= max_retries:
-            await asyncio.sleep(min(attempt * 0.2, 1.0))
-
+    logger.info(f"[NATS Helper] Metrics publish task_id={task_id} subject={subject} " f"success_count={success_count} total_lines={total_lines}")
+    if success_count == total_lines:
+        return success_count
     raise MetricsPublishError(
         task_id=task_id,
         subject=subject,
         total_lines=total_lines,
-        success_count=best_success_count,
-        delivery_detected=delivery_detected,
-        attempts=attempt,
-        reason=last_error,
+        success_count=success_count,
+        delivery_detected=_has_confirmed_delivery(success_count),
+        attempts=1,
+        reason=f"publish incomplete ({success_count}/{total_lines})",
     )
 
 
-async def publish_callback_to_nats(
-    result: Dict[str, Any], params: Dict[str, Any], task_id: str
-):
+async def publish_callback_to_nats(result: Dict[str, Any], params: Dict[str, Any], task_id: str):
     callback_subject = params.get("callback_subject")
     if not callback_subject:
         logger.warning(f"[NATS Helper] callback_subject missing for task {task_id}")
@@ -219,9 +113,7 @@ async def publish_callback_to_nats(
         await nats_publish(subject, payload)
         logger.info(f"[NATS Helper] Published callback to {subject} for task {task_id}")
     except Exception as err:
-        logger.error(
-            f"[NATS Helper] Failed to publish callback for task {task_id}: {err}\n{traceback.format_exc()}"
-        )
+        logger.error(f"[NATS Helper] Failed to publish callback for task {task_id}: {err}\n{traceback.format_exc()}")
         raise
 
 
@@ -237,15 +129,11 @@ async def publish_credential_result_to_nats(result: Dict[str, Any], params: Dict
         await nats_publish(subject, payload)
         logger.info(f"[NATS Helper] Published credential result to {subject} for task {task_id}")
     except Exception as err:
-        logger.error(
-            f"[NATS Helper] Failed to publish credential result for task {task_id}: {err}\n{traceback.format_exc()}"
-        )
+        logger.error(f"[NATS Helper] Failed to publish credential result for task {task_id}: {err}\n{traceback.format_exc()}")
         raise
 
 
-async def publish_metrics_to_nats(
-    ctx: Dict, metrics_data: str, params: Dict[str, Any], task_id: str
-) -> int:
+async def publish_metrics_to_nats(ctx: Dict, metrics_data: str, params: Dict[str, Any], task_id: str) -> int:
     """
     将采集结果推送到 NATS 的 metrics 主题
 
@@ -262,31 +150,120 @@ async def publish_metrics_to_nats(
     metric_topic_prefix = os.getenv("NATS_METRIC_TOPIC", "metrics")
 
     # 获取任务类型（monitor_type 或 plugin_name）
-    task_type = params.get("monitor_type") or params.get(
-        "plugin_name", params.get("model_id", "unknown")
-    )
+    task_type = params.get("monitor_type") or params.get("plugin_name", params.get("model_id", "unknown"))
 
     # 构建 subject: {prefix}.{task_type}
     # 例如: metrics.vmware, metrics.mysql, metrics.host 等
     subject = f"{metric_topic_prefix}.{task_type}"
 
     # 将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
-    influx_lines = convert_prometheus_to_influx(metrics_data, params)
-
-    if not influx_lines:
-        return 0
-
-    # 复用进程级共享长连接逐行发送（与 Telegraf 保持一致）
-    # 不再每次采集都新建 TLS 连接，避免事件循环繁忙时握手超时被 reset
-    success_count = await _publish_lines_with_retry(subject, influx_lines, task_id)
-    logger.info(
-        f"[NATS Helper] Successfully published {success_count}/{len(influx_lines)} metrics "
-        f"to '{subject}' for task {task_id}"
-    )
+    success_count = 0
+    chunks = iter(_iter_line_chunks(_iter_metrics_to_influx(metrics_data, params)))
+    while chunk := await asyncio.to_thread(next, chunks, None):
+        success_count += await _publish_lines_with_retry(subject, chunk, task_id)
+    logger.info(f"[NATS Helper] Successfully published {success_count} metrics " f"to '{subject}' for task {task_id}")
     return success_count
 
 
-def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> list:
+async def publish_metrics_batch_to_nats(entries, *, metrics=None) -> dict[str, BaseException | None]:
+    """逐目标流式编码发布，并按 collection_result_id 返回独立结果。"""
+    outcomes: dict[str, BaseException | None] = {}
+    metric_topic_prefix = os.getenv("NATS_METRIC_TOPIC", "metrics")
+    for index, (_ctx, metrics_data, params, task_id) in enumerate(entries):
+        result_id = str(params.get("collection_result_id") or f"{task_id}:legacy:{index}")
+        outcomes[result_id] = None
+        task_type = params.get("monitor_type") or params.get("plugin_name", params.get("model_id", "unknown"))
+        subject = f"{metric_topic_prefix}.{task_type}"
+        delivered_lines = 0
+        try:
+            chunks = iter(_iter_line_chunks(_iter_metrics_to_influx(metrics_data, params)))
+            while chunk := await asyncio.to_thread(next, chunks, None):
+                delivered_lines += await _publish_lines_with_retry(subject, chunk, str(task_id))
+                if metrics is not None:
+                    metrics.increment("publish_lines_total", len(chunk))
+                    metrics.increment("publish_bytes_total", sum(len(line.encode("utf-8")) for line in chunk))
+        except Exception as error:  # noqa: BLE001 - 编码/传输失败只影响当前目标
+            if delivered_lines and not bool(getattr(error, "delivery_detected", False)):
+                error = MetricsPublishError(
+                    task_id=str(task_id),
+                    subject=subject,
+                    total_lines=delivered_lines,
+                    success_count=delivered_lines,
+                    delivery_detected=True,
+                    attempts=1,
+                    reason=type(error).__name__,
+                )
+            outcomes[result_id] = error
+    return outcomes
+
+
+def _iter_line_chunks(
+    lines: Iterable[str],
+    *,
+    max_lines: int | None = None,
+    max_bytes: int | None = None,
+):
+    """按行数和 UTF-8 字节数生成有界 flush 批次。"""
+    max_lines = MAX_NATS_LINES_PER_FLUSH if max_lines is None else max_lines
+    max_bytes = MAX_NATS_BYTES_PER_FLUSH if max_bytes is None else max_bytes
+    chunk: list[str] = []
+    chunk_bytes = 0
+    for line in lines:
+        line_bytes = len(line.encode("utf-8"))
+        if line_bytes > MAX_NATS_LINE_BYTES:
+            raise ValueError("metric line exceeds NATS payload limit")
+        if chunk and (len(chunk) >= max_lines or chunk_bytes + line_bytes > max_bytes):
+            yield chunk
+            chunk = []
+            chunk_bytes = 0
+        chunk.append(line)
+        chunk_bytes += line_bytes
+    if chunk:
+        yield chunk
+
+
+def _convert_metrics_to_influx(metrics_data, params: Dict[str, Any]) -> list[str]:
+    return list(_iter_metrics_to_influx(metrics_data, params))
+
+
+def _iter_metrics_to_influx(metrics_data, params: Dict[str, Any]) -> Iterator[str]:
+    if isinstance(metrics_data, StructuredMetricsPayload):
+        yield from _iter_structured_metrics_to_influx(metrics_data, params)
+        return
+    yield from _iter_prometheus_to_influx(str(metrics_data), params)
+
+
+def convert_structured_metrics_to_influx(payload: StructuredMetricsPayload, params: Dict[str, Any]) -> list[str]:
+    """把结构化配置采集结果直接编码为既有 Influx Line Protocol。"""
+    return list(_iter_structured_metrics_to_influx(payload, params))
+
+
+def _iter_structured_metrics_to_influx(payload: StructuredMetricsPayload, params: Dict[str, Any]) -> Iterator[str]:
+    common_tags = _build_common_tags(params)
+    timestamp_ns = int(time.time() * 1000) * 1_000_000
+    for model_id, items in payload.data.items():
+        if not isinstance(items, (list, tuple)):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            point = Point(f"{model_id}_info")
+            labels = {
+                str(key): str(value).replace("\r", " ").replace("\n", " ").strip()
+                for key, value in item.items()
+                if value and not isinstance(value, (list, dict))
+            }
+            labels["model_id"] = str(model_id)
+            labels.update(common_tags)
+            for key, value in labels.items():
+                if value:
+                    point.tag(key, value)
+            point.field("gauge", 1)
+            point.time(timestamp_ns, WritePrecision.NS)
+            yield point.to_line_protocol()
+
+
+def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> list:  # noqa: C901
     """
     将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
 
@@ -310,10 +287,12 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
     Returns:
         InfluxDB Line Protocol 格式的数据列表（每行一条）
     """
-    if not prometheus_data or not prometheus_data.strip():
-        return []
+    return list(_iter_prometheus_to_influx(prometheus_data, params))
 
-    lines = []
+
+def _iter_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> Iterator[str]:  # noqa: C901
+    if not prometheus_data or not prometheus_data.strip():
+        return
 
     # 获取通用 tags（从 API 传递的参数，已清理特殊字符）
     common_tags = _build_common_tags(params)
@@ -322,149 +301,121 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
     metric_types = {}  # {metric_name: field_type}
     current_type = None
 
-    # 预处理：合并多行数据（处理标签值中的换行符 \n）
-    prometheus_lines = []
+    for line in _iter_prometheus_logical_lines(prometheus_data):
+        # 解析 TYPE 注释，提取指标类型
+        if line.startswith("# TYPE "):
+            parts = line.split()
+            if len(parts) >= 4:
+                metric_name = parts[2]
+                metric_type = parts[3]
+                metric_types[metric_name] = metric_type
+                current_type = metric_type
+            continue
+
+        if line.startswith("#"):
+            continue
+
+        try:
+            converted = _prometheus_line_to_influx(line, common_tags, metric_types, current_type)
+            if converted is not None:
+                yield converted
+        except Exception as e:
+            logger.debug(f"[NATS Helper] Failed to parse line: {line[:100]}, error: {e}")
+
+
+def _iter_prometheus_logical_lines(prometheus_data: str) -> Iterator[str]:
     current_line = ""
-    for line in prometheus_data.split("\n"):
-        line = line.strip()
+    start = 0
+    data_length = len(prometheus_data)
+    while start <= data_length:
+        end = prometheus_data.find("\n", start)
+        if end < 0:
+            end = data_length
+        raw_line = prometheus_data[start:end]
+        start = end + 1
+        line = raw_line.strip()
         if not line:
+            if end == data_length:
+                break
             continue
 
         # 如果是注释行或新的指标行（不以 \ 开头），则保存之前的行
         if line.startswith("#") or (current_line and not line.startswith("\\")):
             if current_line:
-                prometheus_lines.append(current_line)
+                yield current_line
             current_line = line
         else:
             # 续行：拼接到当前行
             current_line = f"{current_line} {line}" if current_line else line
+        if end == data_length:
+            break
 
-    # 添加最后一行
     if current_line:
-        prometheus_lines.append(current_line)
+        yield current_line
 
-    for line in prometheus_lines:
-        # 解析 TYPE 注释，提取指标类型
-        if line.startswith("# TYPE "):
-            # 格式: # TYPE metric_name gauge|counter|histogram|summary
-            parts = line.split()
-            if len(parts) >= 4:
-                metric_name = parts[2]
-                metric_type = parts[3]  # gauge, counter, histogram, summary 等
-                metric_types[metric_name] = metric_type
-                current_type = metric_type
-            continue
 
-        # 跳过其他注释（HELP 等）
-        if line.startswith("#"):
-            continue
+def _prometheus_line_to_influx(
+    line: str,
+    common_tags: Dict[str, str],
+    metric_types: Dict[str, str],
+    current_type: str | None,
+) -> str | None:
+    if "{" in line:
+        metric_name = line[: line.index("{")]
+        rest = line[line.index("{") + 1 :]
+        labels_part = rest[: rest.rindex("}")]
+        value_part = rest[rest.rindex("}") + 1 :].strip()
+    else:
+        parts = line.split()
+        if len(parts) < 2:
+            return None
+        metric_name = parts[0]
+        labels_part = ""
+        value_part = " ".join(parts[1:])
 
+    value_parts = value_part.split()
+    if not value_parts:
+        return None
+    value_str = value_parts[0]
+    timestamp_str = value_parts[1] if len(value_parts) > 1 else ""
+    if value_str in ["NaN", "Inf", "+Inf", "-Inf"]:
+        logger.debug(f"[NATS Helper] Skipping special value: {value_str}")
+        return None
+
+    point = Point(metric_name)
+    all_tags = {}
+    if labels_part:
+        for key, raw_val in _parse_prometheus_labels(labels_part).items():
+            all_tags[key] = _decode_prometheus_value(raw_val)
+    for tag_key, tag_value in common_tags.items():
+        if tag_value:
+            all_tags[tag_key] = tag_value
+    for tag_key, tag_value in all_tags.items():
+        point.tag(tag_key, tag_value)
+
+    field_name = metric_types.get(metric_name, current_type if current_type else "value")
+    try:
+        point.field(field_name, float(value_str) if "." in value_str or "e" in value_str.lower() else int(value_str))
+    except ValueError:
+        point.field(field_name, value_str)
+
+    if timestamp_str:
         try:
-            # 解析 Prometheus 格式
-            # 格式: metric_name{labels} value timestamp
-            if "{" in line:
-                # 有 labels
-                metric_name = line[: line.index("{")]
-                rest = line[line.index("{") + 1 :]
-                labels_part = rest[: rest.rindex("}")]
-                value_part = rest[rest.rindex("}") + 1 :].strip()
+            ts = int(timestamp_str)
+            if len(timestamp_str) == 13:
+                ts_ns = ts * 1000000
+            elif len(timestamp_str) == 10:
+                ts_ns = ts * 1000000000
+            elif len(timestamp_str) == 19:
+                ts_ns = ts
+            elif ts > 9999999999999:
+                ts_ns = int(str(ts)[:19].ljust(19, "0"))
             else:
-                # 无 labels
-                parts = line.split()
-                if len(parts) < 2:
-                    continue
-                metric_name = parts[0]
-                labels_part = ""
-                value_part = " ".join(parts[1:])
-
-            # 解析 value 和 timestamp
-            value_parts = value_part.split()
-            if len(value_parts) >= 1:
-                value_str = value_parts[0]
-                timestamp_str = value_parts[1] if len(value_parts) > 1 else ""
-            else:
-                continue
-
-            # 跳过特殊值（NaN, Inf）
-            if value_str in ["NaN", "Inf", "+Inf", "-Inf"]:
-                logger.debug(f"[NATS Helper] Skipping special value: {value_str}")
-                continue
-
-            # 创建 Point 对象
-            point = Point(metric_name)
-
-            # 先收集所有标签（优先级：common_tags > Prometheus labels）
-            all_tags = {}
-
-            # 1. 先添加 Prometheus labels（低优先级）
-            if labels_part:
-                parsed_labels = _parse_prometheus_labels(labels_part)
-
-                for key, raw_val in parsed_labels.items():
-                    cleaned_val = _decode_prometheus_value(raw_val)
-                    all_tags[key] = cleaned_val
-
-            # 2. 再覆盖 common_tags（高优先级，已清理特殊字符）
-            for tag_key, tag_value in common_tags.items():
-                if tag_value:  # 跳过空值
-                    all_tags[tag_key] = tag_value
-
-            # 3. 添加到 Point 对象
-            for tag_key, tag_value in all_tags.items():
-                point.tag(tag_key, tag_value)
-
-            # 确定 field 名称（从 TYPE 注释中提取）
-            field_name = metric_types.get(
-                metric_name, current_type if current_type else "value"
-            )
-
-            # 添加 field（Point 会自动处理类型：int -> i 后缀，float 保持原样，str 加引号）
-            try:
-                if "." in value_str or "e" in value_str.lower():
-                    # 浮点数
-                    point.field(field_name, float(value_str))
-                else:
-                    # 整数
-                    point.field(field_name, int(value_str))
-            except ValueError:
-                # 字符串值
-                point.field(field_name, value_str)
-
-            # 转换时间戳：统一转换为纳秒（InfluxDB 默认精度）
-            if timestamp_str:
-                try:
-                    ts = int(timestamp_str)
-                    if len(timestamp_str) == 13:
-                        # 毫秒 -> 纳秒
-                        ts_ns = ts * 1000000
-                    elif len(timestamp_str) == 10:
-                        # 秒 -> 纳秒
-                        ts_ns = ts * 1000000000
-                    elif len(timestamp_str) == 19:
-                        # 已经是纳秒
-                        ts_ns = ts
-                    else:
-                        # 其他长度的时间戳，尝试标准化
-                        if ts > 9999999999999:  # 大于13位
-                            ts_ns = int(str(ts)[:19].ljust(19, "0"))
-                        else:
-                            ts_ns = ts * 1000000
-
-                    point.time(ts_ns, WritePrecision.NS)
-                except ValueError:
-                    logger.warning(f"[NATS Helper] Invalid timestamp: {timestamp_str}")
-
-            # 生成 Line Protocol（Point 自动处理转义和格式化）
-            line_protocol = point.to_line_protocol()
-            lines.append(line_protocol)
-
-        except Exception as e:
-            logger.debug(
-                f"[NATS Helper] Failed to parse line: {line[:100]}, error: {e}"
-            )
-            continue
-
-    return lines
+                ts_ns = ts * 1000000
+            point.time(ts_ns, WritePrecision.NS)
+        except ValueError:
+            logger.warning(f"[NATS Helper] Invalid timestamp: {timestamp_str}")
+    return point.to_line_protocol()
 
 
 def _parse_prometheus_labels(label_str: str) -> Dict[str, str]:
@@ -497,9 +448,7 @@ def _parse_prometheus_labels(label_str: str) -> Dict[str, str]:
             idx += 1
 
         if idx >= length or label_str[idx] != "=":
-            logger.debug(
-                f"[NATS Helper] Incomplete label segment near key '{key}' in '{label_str}'"
-            )
+            logger.debug(f"[NATS Helper] Incomplete label segment near key '{key}' in '{label_str}'")
             break
 
         idx += 1  # skip '='
@@ -509,9 +458,7 @@ def _parse_prometheus_labels(label_str: str) -> Dict[str, str]:
             idx += 1
 
         if idx >= length or label_str[idx] != '"':
-            logger.debug(
-                f"[NATS Helper] Missing opening quote for key '{key}' in '{label_str}'"
-            )
+            logger.debug(f"[NATS Helper] Missing opening quote for key '{key}' in '{label_str}'")
             break
 
         idx += 1  # skip opening quote
@@ -561,13 +508,7 @@ def _decode_prometheus_value(raw_value: str) -> str:
 
 
 def _clean_common_tag_value(value) -> str:
-    return " ".join(
-        str(value)
-        .replace("\r", " ")
-        .replace("\n", " ")
-        .replace("\t", " ")
-        .split()
-    )
+    return " ".join(str(value).replace("\r", " ").replace("\n", " ").replace("\t", " ").split())
 
 
 def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:

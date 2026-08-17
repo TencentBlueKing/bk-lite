@@ -102,8 +102,16 @@ export const getProfessionalDashboardKey = (objectName?: string | null, objectDi
   return findProfessionalDashboardMeta(objectName, objectDisplayName)?.key || '';
 };
 
-/** 侧栏/列表展示名：优先 API display_name；TCPPort 等技术名回退到注册表 objectDisplayName（→ TCP）。 */
-export const getProfessionalObjectDisplayName = (objectName?: string | null, objectDisplayName?: string | null) => {
+/**
+ * 侧栏/列表展示名：优先 API display_name（后端已按账号语言翻译）。
+ * 注册表 objectDisplayName 不得在英文等语言下覆盖 API 译名
+ * （例如 Host→Host 被错盖成「主机」）。
+ * 仅当 API 仍为技术 slug TCPPort 时，回退到友好名 TCP。
+ */
+export const getProfessionalObjectDisplayName = (
+  objectName?: string | null,
+  objectDisplayName?: string | null
+) => {
   const matched = findProfessionalDashboardMeta(objectName, objectDisplayName);
   const apiName = String(objectDisplayName || '').trim();
   const technicalName = String(objectName || '').trim();
@@ -111,10 +119,11 @@ export const getProfessionalObjectDisplayName = (objectName?: string | null, obj
   const techKey = normalizeDashboardKey(technicalName);
 
   if (techKey === 'tcpport' || apiKey === 'tcpport') {
+    if (apiName && apiKey !== 'tcpport') return apiName;
     return matched?.objectDisplayName || 'TCP';
   }
-  if (apiName && apiName !== technicalName) return apiName;
-  return matched?.objectDisplayName || apiName || technicalName || '';
+  if (apiName) return apiName;
+  return technicalName || matched?.objectDisplayName || '';
 };
 
 export const getProfessionalDashboardUrl = (

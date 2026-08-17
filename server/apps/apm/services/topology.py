@@ -14,7 +14,6 @@ from apps.apm.services.contracts import (
 )
 from apps.apm.services.identity import normalize_identity
 
-
 MAX_TOPOLOGY_WINDOW = timedelta(days=7)
 MAX_TOPOLOGY_TARGETS = 30
 
@@ -49,13 +48,13 @@ class DjangoApmTopologyService:
         truncated = len(unique_targets) > MAX_TOPOLOGY_TARGETS
         selected_targets = unique_targets[:MAX_TOPOLOGY_TARGETS]
         identities_by_name: dict[str, list[tuple[str, str, str]]] = {}
+        languages_by_identity: dict[tuple[str, str, str], str] = {}
         for target in selected_targets:
             identity = _identity(target.service_namespace, target.service_name, target.environment)
             identities_by_name.setdefault(identity[1], []).append(identity)
+            languages_by_identity[identity] = target.language
 
-        dependencies = self.topology_store.service_dependencies(
-            TopologyDependencyQuery(started_at=started_at, ended_at=ended_at)
-        )
+        dependencies = self.topology_store.service_dependencies(TopologyDependencyQuery(started_at=started_at, ended_at=ended_at))
         visible_dependencies: list[tuple[ServiceDependency, tuple[str, str, str], tuple[str, str, str]]] = []
         ambiguous = 0
         for dependency in dependencies:
@@ -82,6 +81,7 @@ class DjangoApmTopologyService:
                 health="unknown",
                 sampled_spans=calls,
                 error_spans=0,
+                language=languages_by_identity.get(identity, ""),
             )
             for identity, calls in sorted(node_calls.items())
         )

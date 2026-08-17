@@ -34,6 +34,9 @@ from apps.operation_analysis.services.network_topology.weops_adapter import (
     map_item_error_code,
 )
 
+SWITCH_INST_UUID = "11111111-1111-4111-8111-111111110001"
+FIREWALL_INST_UUID = "22222222-2222-4222-8222-222222220022"
+
 # --------------------------------------------------------------------------- #
 # Fake HTTP client                                                              #
 # --------------------------------------------------------------------------- #
@@ -125,7 +128,12 @@ def test_adapter_uses_all_true_for_list_nodes_without_pagination_fallback():
 
 
 def test_encode_node_ref_url_encodes_json_payload():
-    ref = {"bk_obj_id": "bk_switch", "bk_inst_id": 10001, "network_collect_instance_id": 345, "plugin_template_id": 8}
+    ref = {
+        "bk_obj_id": "bk_switch",
+        "bk_inst_uuid": SWITCH_INST_UUID,
+        "network_collect_instance_id": 345,
+        "plugin_template_id": 8,
+    }
     encoded = encode_node_ref(ref)
     assert "/" not in encoded
     assert "%" in encoded  # something has to be escaped (JSON braces, commas, etc.)
@@ -140,7 +148,7 @@ def _url_unquote(value: str) -> str:
 
 
 def test_adapter_list_interfaces_encodes_node_ref_in_path():
-    ref = {"bk_obj_id": "bk_switch", "bk_inst_id": 10001, "plugin_template_id": "cisco_c9300"}
+    ref = {"bk_obj_id": "bk_switch", "bk_inst_uuid": SWITCH_INST_UUID, "plugin_template_id": "cisco_c9300"}
     client = FakeHttpClient(responses=[FakeResponse(200, {"result": True, "data": {"items": [], "summary": {}, "status": "ok"}})])
     adapter = _adapter(http_client=client)
     adapter.list_interfaces(ref)
@@ -155,7 +163,7 @@ def test_adapter_list_interfaces_encodes_node_ref_in_path():
 
 
 def test_adapter_list_metrics_uses_same_encoding():
-    ref = {"bk_obj_id": "bk_firewall", "bk_inst_id": 20022, "plugin_template_id": "huawei_fw"}
+    ref = {"bk_obj_id": "bk_firewall", "bk_inst_uuid": FIREWALL_INST_UUID, "plugin_template_id": "huawei_fw"}
     client = FakeHttpClient(responses=[FakeResponse(200, {"result": True, "data": {"items": [{"metric_field": "ifHCInOctets"}], "status": "ok"}})])
     adapter = _adapter(http_client=client)
     data = adapter.list_metrics(ref)
@@ -169,7 +177,7 @@ def test_adapter_dimension_values_posts_typed_payload():
     )
     adapter = _adapter(http_client=client)
     adapter.list_dimension_values(
-        {"bk_obj_id": "bk_switch", "bk_inst_id": 10001},
+        {"bk_obj_id": "bk_switch", "bk_inst_uuid": SWITCH_INST_UUID},
         {"metric_field": "ifHCInOctets", "result_table_id": "snmp_network"},
         ["ifDescr"],
     )
@@ -204,7 +212,7 @@ def test_adapter_batch_interface_status_includes_include_summary_flag():
 def test_adapter_unwraps_data_envelope():
     client = FakeHttpClient(responses=[FakeResponse(200, {"result": True, "data": {"items": [], "summary": {}, "status": "ok"}})])
     adapter = _adapter(http_client=client)
-    data = adapter.list_interfaces({"bk_obj_id": "bk_switch", "bk_inst_id": 1})
+    data = adapter.list_interfaces({"bk_obj_id": "bk_switch", "bk_inst_uuid": SWITCH_INST_UUID})
     assert data == {"items": [], "summary": {}, "status": "ok"}
 
 
@@ -221,7 +229,7 @@ def test_adapter_unwraps_double_envelope_from_real_weops_renderer():
     }
     client = FakeHttpClient(responses=[FakeResponse(200, wrapped)])
     adapter = _adapter(http_client=client)
-    data = adapter.list_interfaces({"bk_obj_id": "bk_switch", "bk_inst_id": 1})
+    data = adapter.list_interfaces({"bk_obj_id": "bk_switch", "bk_inst_uuid": SWITCH_INST_UUID})
     assert data == real_payload
 
 

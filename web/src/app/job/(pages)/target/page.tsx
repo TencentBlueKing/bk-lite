@@ -499,7 +499,7 @@ const TargetPage = () => {
         return (
           <Tag
             color={hasCredential ? 'success' : 'error'}
-            style={{ margin: 0 }}
+            className="!m-0"
           >
             {hasCredential ? t('job.credentialConfigured') : t('job.credentialNotConfigured')}
           </Tag>
@@ -547,32 +547,17 @@ const TargetPage = () => {
   return (
     <div className="w-full h-full flex flex-col">
       {/* Header */}
-      <div
-        className="mb-4 rounded-lg px-6 py-4 shrink-0"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
-        <h2
-          className="text-base font-medium m-0 mb-1"
-          style={{ color: 'var(--color-text-1)' }}
-        >
+      <div className="mb-4 shrink-0 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-4">
+        <h2 className="m-0 mb-1 text-base font-medium text-[var(--color-text-1)]">
           {t('job.targetManagement')}
         </h2>
-        <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
+        <p className="m-0 text-sm text-[var(--color-text-3)]">
           {t('job.targetManagementDesc')}
         </p>
       </div>
 
       {/* Table Section */}
-      <div
-        className="rounded-lg px-6 py-6 flex-1 flex flex-col min-h-0"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-6">
         {/* Toolbar */}
         <div className="mb-4 flex items-center justify-between shrink-0">
           <SearchCombination
@@ -625,7 +610,7 @@ const TargetPage = () => {
           {/* Section: Basic Info */}
           <div className="flex items-center gap-2 mb-4">
             <span className="text-base">📋</span>
-            <span className="text-sm font-medium" style={{ color: 'var(--color-text-1)' }}>
+            <span className="text-sm font-medium text-[var(--color-text-1)]">
               {t('job.basicInfo')}
             </span>
           </div>
@@ -682,7 +667,7 @@ const TargetPage = () => {
           {/* Section: Driver Config */}
           <div className="flex items-center gap-2 mb-4 mt-6">
             <span className="text-base">⚙️</span>
-            <span className="text-sm font-medium" style={{ color: 'var(--color-text-1)' }}>
+            <span className="text-sm font-medium text-[var(--color-text-1)]">
               {t('job.driverConfig')}
             </span>
           </div>
@@ -697,10 +682,7 @@ const TargetPage = () => {
               options={getDriverSelectOptions()}
             />
           </Form.Item>
-          <div
-            className="text-xs mb-4"
-            style={{ color: 'var(--color-text-3)', marginTop: -16 }}
-          >
+          <div className="-mt-4 mb-4 text-xs text-[var(--color-text-3)]">
             {t('job.driverHelp')}
           </div>
 
@@ -719,7 +701,7 @@ const TargetPage = () => {
                 label={t('job.port')}
                 rules={[{ required: true }]}
               >
-                <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+                <InputNumber min={1} max={65535} className="w-full" />
               </Form.Item>
 
               <Form.Item
@@ -764,7 +746,7 @@ const TargetPage = () => {
                 name="ssh_port"
                 label={t('job.sshPort')}
               >
-                <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+                <InputNumber min={1} max={65535} className="w-full" />
               </Form.Item>
 
               <Form.Item
@@ -809,10 +791,7 @@ const TargetPage = () => {
                 </Form.Item>
               ) : (
                 keepExistingKey ? (
-                  <div
-                    className="mb-4 flex items-center justify-between rounded-md px-3 py-2"
-                    style={{ border: '1px solid var(--color-border-1)' }}
-                  >
+                  <div className="mb-4 flex items-center justify-between rounded-md border border-[var(--color-border-1)] px-3 py-2">
                     <span>{t('job.uploadedKey', undefined, { name: editingTarget?.ssh_key_file_name || t('job.privateKeyFile') })}</span>
                     <Button
                       type="text"

@@ -9,6 +9,12 @@ import type { Graph as X6Graph, Node, Edge } from '@antv/x6';
 import { message } from 'antd';
 import { fetchWidgetData, buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
+import { normalizeCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
+import {
+  beginMappedOwnerRequest,
+  finishMappedOwnerRequest,
+  isStartedOwnerRequest,
+} from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { useTranslation } from '@/utils/i18n';
 import { useTopologyApi } from '@/app/ops-analysis/api/topology';
 import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from '@/app/ops-analysis/api/dataSource';
@@ -97,6 +103,8 @@ export const useGraphData = (
   );
   
   const tableQueryParamsRef = useRef<Map<string, TableQueryParams>>(new Map());
+  const chartFetchGenerationRef = useRef<Map<string, number>>(new Map());
+  const chartInflightCountRef = useRef<Map<string, number>>(new Map());
 
   const getEffectiveTableQueryParams = useCallback((
     valueConfig: ValueConfig,
@@ -201,12 +209,27 @@ export const useGraphData = (
     filterDefinitions?: UnifiedFilterDefinition[],
     dataSource?: DatasourceItem,
     namespaceId?: number,
-    tableQueryParams?: TableQueryParams
+    tableQueryParams?: TableQueryParams,
+    options?: { silent?: boolean },
   ) => {
     if (!graphInstance || !valueConfig.dataSource) return;
 
     const node = graphInstance.getCellById(nodeId);
     if (!node) return;
+    const silent = options?.silent === true;
+    const gate = beginMappedOwnerRequest(
+      chartFetchGenerationRef.current,
+      chartInflightCountRef.current,
+      nodeId,
+      silent,
+    );
+    if (!isStartedOwnerRequest(gate)) {
+      return;
+    }
+    const generation = gate.generation;
+    const isCurrent = () =>
+      chartFetchGenerationRef.current.get(nodeId) === generation;
+    const previousData = node.getData();
 
     try {
       const effectiveFilterBindings = valueConfig.filterBindings || 
@@ -230,6 +253,7 @@ export const useGraphData = (
         throwError: true,
       });
 
+      if (!isCurrent()) return;
       const currentNodeData = node.getData();
       node.setData({
         ...currentNodeData,
@@ -240,14 +264,29 @@ export const useGraphData = (
         dataSource,
       }, { overwrite: true });
     } catch (error) {
+      if (!isCurrent()) return;
       const currentNodeData = node.getData();
+      if (silent && currentNodeData?.rawData) {
+        node.setData({
+          ...currentNodeData,
+          isLoading: false,
+        }, { overwrite: true });
+        return;
+      }
       node.setData({
         ...currentNodeData,
         isLoading: false,
-        rawData: null,
+        rawData: silent ? currentNodeData?.rawData ?? previousData?.rawData ?? null : null,
         hasError: true,
         errorMessage: getRequestErrorMessage(error, t('dashboard.dataFetchFailed')),
       }, { overwrite: true });
+    } finally {
+      finishMappedOwnerRequest(
+        chartFetchGenerationRef.current,
+        chartInflightCountRef.current,
+        nodeId,
+        generation,
+      );
     }
   }, [graphInstance, getRuntimeSourceDataByApiId, t]);
 
@@ -382,10 +421,12 @@ export const useGraphData = (
 
   const handleLoadTopology = useCallback(async (topologyId: string | number): Promise<{
     filters: UnifiedFilterDefinition[];
+    refreshInterval: number;
   }> => {
     if (!graphInstance) {
       return {
         filters: [],
+        refreshInterval: 0,
       };
     }
 
@@ -401,11 +442,13 @@ export const useGraphData = (
       const loadedFilters: UnifiedFilterDefinition[] = Array.isArray(rawFilters) ? rawFilters : [];
       return {
         filters: loadedFilters,
+        refreshInterval: normalizeCanvasRefreshInterval(topologyData.refresh_interval),
       };
     } catch (error) {
       console.error('加载拓扑图失败:', error);
       return {
         filters: [],
+        refreshInterval: 0,
       };
     } finally {
       setLoading(false);
@@ -418,6 +461,7 @@ export const useGraphData = (
     dataSources?: DatasourceItem[],
     namespaceId?: number,
     shouldRefreshNode?: (nodeData: TopologyNodeData, dataSource?: DatasourceItem) => boolean,
+    options?: { silent?: boolean },
   ) => {
     if (!graphInstance) return;
 
@@ -438,11 +482,15 @@ export const useGraphData = (
         if (shouldRefreshNode && !shouldRefreshNode(nodeData, dataSource)) {
           return;
         }
-        node.setData({ 
-          ...nodeData, 
-          isLoading: true, 
-          hasError: false,
-          errorMessage: undefined,
+        node.setData({
+          ...nodeData,
+          ...(options?.silent
+            ? {}
+            : {
+              isLoading: true,
+              hasError: false,
+              errorMessage: undefined,
+            }),
           onTableQueryChange: tableQueryHandler,
         }, { overwrite: true });
         const storedQueryParams = getEffectiveTableQueryParams(
@@ -459,7 +507,8 @@ export const useGraphData = (
           filterDefinitions,
           dataSource,
           namespaceId,
-          storedQueryParams
+          storedQueryParams,
+          options,
         );
       }
     });

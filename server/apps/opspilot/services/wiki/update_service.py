@@ -4,11 +4,10 @@
 页面正文的"提议内容"由 generator(page, material) 产出(默认走 LLM,可注入以便测试)。
 """
 
-import logging
-
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import (
     BuildRecord,
     CheckItem,
@@ -22,10 +21,9 @@ from apps.opspilot.models import (
 )
 from apps.opspilot.services.wiki import decision_service
 from apps.opspilot.services.wiki.cascade_service import cascade
+from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, new_material_call_budget
-
-logger = logging.getLogger("opspilot")
 
 
 def affected_pages(material):
@@ -823,7 +821,7 @@ def _run_material_delete_cascade(knowledge_base, page_ids, event):
             knowledge_base.id,
             event,
         )
-        error = str(exc)
+        error = humanize_maintenance_error(exc)
         return {
             "status": "partial",
             "event": event,

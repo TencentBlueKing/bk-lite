@@ -47,7 +47,7 @@ const formatDateTime = (value: string) => {
 
 const ConfigFilesPage = () => {
   const searchParams = useSearchParams();
-  const instanceId = searchParams.get('inst_id') || '';
+  const instanceId = searchParams.get('inst_uuid') || '';
   const modelId = searchParams.get('model_id') || '';
   const isSupportedModel = isConfigFileSupportedModel(modelId);
   const { t } = useTranslation();
@@ -221,7 +221,7 @@ const ConfigFilesPage = () => {
       const values = await manualForm.validateFields();
       setManualCreateLoading(true);
       await createManualConfigFile({
-        instance_id: instanceId,
+        instance_uuid: instanceId,
         model_id: modelId,
         file_path: values.file_path,
         content: values.content,

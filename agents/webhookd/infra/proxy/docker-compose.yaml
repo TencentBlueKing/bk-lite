@@ -139,7 +139,10 @@ services:
 
   stargazer:
     image: ${DOCKER_IMAGE_STARGAZER}
+    restart: always
     environment:
+      # server 按 {zone_name}_stargazer 探活，缺少该变量会回落为 default_stargazer 导致 no responders
+      NATS_INSTANCE_ID: ${ZONE_NAME}
       NATS_URLS: tls://${NATS_ADMIN_USERNAME}:${NATS_ADMIN_PASSWORD}@nats:4222
       UV_OFFLINE: True
       NATS_TLS_ENABLED: true

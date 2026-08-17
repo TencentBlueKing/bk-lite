@@ -1,17 +1,26 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Spin, Empty, Alert } from 'antd';
+import { Spin, Alert, message } from 'antd';
 import { useRouter } from 'next/navigation';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { useThemeMode } from '@/theme';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
+import usePermissions from '@/hooks/usePermissions';
 import type { RackLayoutData, RackDevice } from '@/app/cmdb/types/rackRoom';
-import { RACK_TOP, deviceColor, deviceTypeName, TECH } from '@/app/cmdb/utils/rackRoomLayout';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
+import { RACK_TOP, U_PX, deviceColor, deviceTypeName, TECH } from '@/app/cmdb/utils/rackRoomLayout';
+import LayoutPlaceModal, { type LayoutPlaceModalRef } from './layoutPlaceModal';
+import {
+  RACK_ROOM_ASSET_PERMISSION_PATH,
+  canPlaceOnEmpty,
+  occupiedUSet,
+} from './rackRoomEdit';
 
 interface Props {
   modelId: string;
-  instId: string;
+  instUuid: string;
   embedded?: boolean;
   onDeviceClick?: (d: RackDevice) => void;
 }
@@ -23,74 +32,69 @@ const INNER_W = FRAME_W - 56;
 const DEV_X = INNER_X + 12;
 const DEV_W = INNER_W - 24;
 const SVG_W = FRAME_X + FRAME_W + 44;
-const MIN_U = 9;   // 每 U 最小像素（再小就出滚动条）
-const MAX_U = 26;  // 每 U 最大像素（避免太空旷）
 
-const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceClick }) => {
+const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceClick }) => {
   const { t } = useTranslation();
   const { mode } = useThemeMode();
   const router = useRouter();
   const { getRackLayout } = useInstanceApi();
+  const { hasPermission } = usePermissions(RACK_ROOM_ASSET_PERMISSION_PATH);
+  const placeRef = useRef<LayoutPlaceModalRef>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<RackLayoutData | null>(null);
-  const [uPx, setUPx] = useState(16);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const isDark = mode === 'dark';
+  const hasAdd = hasPermission(['Add']);
+  const hasEdit = hasPermission(['Edit']);
+  const canPlace = canPlaceOnEmpty({ hasAdd, hasEdit });
 
   useEffect(() => {
-    if (!modelId || !instId) return;
+    if (!modelId || !instUuid) return;
     let cancelled = false;
     setLoading(true);
-    getRackLayout(modelId, instId)
+    getRackLayout(modelId, instUuid)
       .then((res: RackLayoutData) => !cancelled && setData(res))
       .catch(() => !cancelled && setData(null))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, instId]);
-
-  // 顶天立地：按从组件顶到视口底的可用高度，动态计算每 U 像素，让机柜撑满
-  useEffect(() => {
-    const calc = () => {
-      const el = scrollRef.current;
-      if (!el || !data || !data.u_count) return;
-      const top = el.getBoundingClientRect().top;
-      const reserve = (data.overlaps.length ? 48 : 0) + (data.unplaced.length ? 48 : 0);
-      const avail = window.innerHeight - top - 46 - reserve;
-      const per = (avail - RACK_TOP * 2 - 8) / data.u_count;
-      setUPx(Math.max(MIN_U, Math.min(MAX_U, per)));
-    };
-    calc();
-    window.addEventListener('resize', calc);
-    return () => window.removeEventListener('resize', calc);
-  }, [data]);
+     
+  }, [modelId, instUuid, reloadNonce]);
 
   const onDevice = (d: RackDevice) => {
     if (onDeviceClick) { onDeviceClick(d); return; }
+    const deviceUuid = resolveCmdbInstUuid(d.inst_uuid);
+    if (!deviceUuid) {
+      message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+      return;
+    }
     const params = new URLSearchParams({
       icn: '', model_name: d.model_id, model_id: d.model_id,
-      classification_id: '', inst_id: d.inst_id, inst_name: d.inst_name,
+      classification_id: '', inst_uuid: deviceUuid, inst_name: d.inst_name,
     }).toString();
     router.push(`/cmdb/assetData/detail/baseInfo?${params}`);
   };
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', background: isDark ? '#141820' : TECH.bg1 }}>
+      <div
+        className="p-10 text-center"
+        style={{ background: isDark ? '#141820' : TECH.bg1 }}
+      >
         <Spin spinning />
       </div>
     );
   }
-  if (!data || !data.u_count) return <Empty description={t('Model.noRackLayout')} />;
+  if (!data || !data.u_count) {
+    return <CompactEmptyState description={t('Model.noRackLayout')} />;
+  }
 
   const u = data.u_count;
+  const uPx = U_PX;
   const svgH = u * uPx + RACK_TOP * 2 + 8;
   const overlapIds = new Set(data.overlaps.flat());
   const yFor = (uStart: number, uSize: number) =>
     RACK_TOP + (u - (uStart + uSize - 1)) * uPx;
-  const step = uPx < 13 ? 3 : 2;
-  const ruler = Array.from({ length: Math.floor(u / step) + 1 }, (_, i) => i * step || 1)
-    .filter((n) => n <= u);
+  const ruler = Array.from({ length: u }, (_, i) => i + 1);
 
   // 冲突设备分道：U 位重叠的设备改为并排半幅显示，互不完全遮挡
   const lane: Record<string, number> = {};
@@ -107,6 +111,7 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
   });
 
   const usedU = u - data.free_u;
+  const occupied = occupiedUSet(data.placed);
 
   return (
     <div className="rk-wrap" style={{ background: isDark ? '#141820' : TECH.bg1 }}>
@@ -117,7 +122,7 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
         <span className="rk-ov-i"><b>{data.free_u}</b><i>{t('Model.rackFreeU')}</i></span>
         <span className="rk-ov-i hl"><b>{data.max_free_u}</b><i>{t('Model.rackContiguousFree')}</i></span>
       </div>
-      <div className="rk-scroll" ref={scrollRef}>
+      <div className="rk-scroll">
         <svg width={SVG_W} height={svgH} style={{ display: 'block', margin: '0 auto' }}>
           <defs>
             <linearGradient id="rkFrame" x1="0" y1="0" x2="1" y2="0">
@@ -166,9 +171,9 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
           ))}
           {Array.from({ length: u }).map((_, i) => (
             <g key={`h${i}`}>
-              <circle cx={INNER_X + 5} cy={RACK_TOP + i * uPx + uPx / 2} r={0.9}
+              <circle cx={INNER_X + 5} cy={RACK_TOP + i * uPx + uPx / 2} r={1.4}
                 fill={isDark ? '#8ea0b8' : '#9aa7bd'} opacity={isDark ? 0.34 : 0.38} />
-              <circle cx={INNER_X + INNER_W - 5} cy={RACK_TOP + i * uPx + uPx / 2} r={0.9}
+              <circle cx={INNER_X + INNER_W - 5} cy={RACK_TOP + i * uPx + uPx / 2} r={1.4}
                 fill={isDark ? '#8ea0b8' : '#9aa7bd'} opacity={isDark ? 0.34 : 0.38} />
             </g>
           ))}
@@ -179,6 +184,31 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
               textAnchor="end" fontSize={10} fill={isDark ? '#90a0b5' : TECH.textDim}
               style={{ fontFamily: 'ui-monospace, monospace' }}>{n}</text>
           ))}
+
+          {/* 空 U 位 */}
+          {canPlace && Array.from({ length: u }, (_, i) => i + 1).map((n) => {
+            if (occupied.has(n)) return null;
+            const y = yFor(n, 1);
+            return (
+              <rect
+                key={`empty-u-${n}`}
+                x={DEV_X}
+                y={y + 1.5}
+                width={DEV_W}
+                height={Math.max(uPx - 3, 8)}
+                rx={6}
+                fill="transparent"
+                style={{ cursor: 'pointer' }}
+                onClick={() => {
+                  placeRef.current?.show({
+                    scope: 'rack',
+                    containerInstUuid: instUuid,
+                    uStart: n,
+                  });
+                }}
+              />
+            );
+          })}
 
           {/* 设备 */}
           {data.placed.map((d) => {
@@ -227,6 +257,13 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
           message={`${t('Model.rackUnplaced')}: ${data.unplaced.map((d) => d.inst_name).join('、')}`} />
       )}
 
+      <LayoutPlaceModal
+        ref={placeRef}
+        hasAdd={hasAdd}
+        hasEdit={hasEdit}
+        onPlaced={() => setReloadNonce((n) => n + 1)}
+      />
+
       <style jsx>{`
         .rk-wrap {
           border-radius: ${embedded ? '0' : '10px'};
@@ -238,7 +275,6 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
           ${embedded ? '' : 'max-width: 420px; margin: 12px auto;'}
         }
         .rk-scroll {
-          flex: 1;
           padding: 13px 8px 14px;
           background:
             linear-gradient(90deg, ${isDark ? 'rgba(140,160,190,0.075)' : 'rgba(58,83,125,0.045)'} 1px, transparent 1px),

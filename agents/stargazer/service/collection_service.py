@@ -7,13 +7,13 @@ import ntpath
 import posixpath
 import time
 import traceback
-from typing import Dict, Any, Optional
-from core.logger import logger
+from typing import Any, Dict, Optional
 
+from core.collection.contracts import AccessProbeResult, StructuredMetricsPayload
 from core.infra.nats_utils import nats_request
-from core.plugin.yaml_reader import yaml_reader
+from core.logger import logger
 from core.plugin.executor import PluginExecutor
-from core.collection.contracts import AccessProbeResult
+from core.plugin.yaml_reader import yaml_reader
 from plugins.base_utils import convert_to_prometheus_format
 
 
@@ -59,24 +59,22 @@ class CollectionService:
         return bool(value)
 
     def _is_config_file_callback(self) -> bool:
+        plugin_name = str(self.plugin_name or "")
+        model_id = str(self.model_id or "")
         return (
             str(self.params.get("callback_subject") or "") == "receive_config_file_result"
-            or str(self.plugin_name or "") == "config_file_info"
-            or str(self.model_id or "") == "config_file"
+            or plugin_name in {"config_file_info", "network_config_file_info"}
+            or model_id in {"config_file", "network_config_file"}
         )
 
     def _get_callback_instance_name(self) -> str:
         return str(self.params.get("host") or self.params.get("instance_name") or "")
 
-    def _get_callback_instance_id(self) -> str:
-        return self._get_callback_instance_name()
+    def _get_callback_instance_uuid(self) -> str:
+        return str(self.params.get("target_instance_uuid") or "")
 
     def _get_callback_model_id(self) -> str:
-        return str(
-            self.params.get("target_model_id")
-            or self.params.get("model_id")
-            or "host"
-        )
+        return str(self.params.get("target_model_id") or self.params.get("model_id") or "host")
 
     @staticmethod
     def _extract_file_name(file_path: str) -> str:
@@ -95,9 +93,7 @@ class CollectionService:
             采集结果（Prometheus 格式字符串 或 字典）
         """
         logger.info(f"{'=' * 30}")
-        logger.info(
-            f"🎯 Starting collection V2: model={self.model_id} Plugin: {self.plugin_name}"
-        )
+        logger.info(f"🎯 Starting collection V2: model={self.model_id} Plugin: {self.plugin_name}")
         if self.host:
             logger.info(f"📍 Host: {self.host}")
         else:
@@ -108,12 +104,8 @@ class CollectionService:
             executor_type = self.params["executor_type"]
             logger.info(f"🔧 Executor type: {executor_type}")
 
-            prefer_enterprise = self._get_bool_param(
-                self.params, "prefer_enterprise", True
-            )
-            strict_enterprise = self._get_bool_param(
-                self.params, "strict_enterprise", False
-            )
+            prefer_enterprise = self._get_bool_param(self.params, "prefer_enterprise", True)
+            strict_enterprise = self._get_bool_param(self.params, "strict_enterprise", False)
 
             # 插件来源解析入口：先判断 enterprise 能力是否可用，再按
             # enterprise/plugins/inputs/{model}/plugin.yml -> plugins/inputs/{model}/plugin.yml
@@ -164,7 +156,8 @@ class CollectionService:
                         {
                             "collect_task_id": self.params.get("collect_task_id"),
                             "execution_id": self.params.get("execution_id"),
-                            "instance_id": self._get_callback_instance_id(),
+                            "protocol_version": self.params.get("protocol_version"),
+                            "instance_uuid": self._get_callback_instance_uuid(),
                             "instance_name": self._get_callback_instance_name(),
                             "model_id": self._get_callback_model_id(),
                             "file_path": self.params.get("config_file_path", ""),
@@ -173,7 +166,8 @@ class CollectionService:
                             "status": "error",
                             "size": 0,
                             "error": result.get("result", {}).get(
-                                "cmdb_collect_error", result.get("error", "Unknown error")
+                                "cmdb_collect_error",
+                                result.get("error", "Unknown error"),
                             ),
                             "content_base64": "",
                         }
@@ -189,15 +183,23 @@ class CollectionService:
                             "status": "error",
                             "size": 0,
                             "error": result.get("result", {}).get(
-                                "cmdb_collect_error", result.get("error", "Unknown error")
+                                "cmdb_collect_error",
+                                result.get("error", "Unknown error"),
                             ),
                             "content_base64": "",
                         }
                     )
                 )
 
-            # 处理结果并转换为 Prometheus 格式
-            final_result = await asyncio.to_thread(self._format_result, result)
+            processed = await asyncio.to_thread(self._process_result, result)
+            if self.params.get("_runtime_structured_metrics"):
+                result_data = result.get("result", {})
+                error = ""
+                if not result.get("success", True):
+                    error = str(result_data.get("cmdb_collect_error", result.get("error", "Unknown error")))
+                final_result = StructuredMetricsPayload(data=processed, error=error)
+            else:
+                final_result = await asyncio.to_thread(convert_to_prometheus_format, processed)
 
             logger.info("✅ Collection completed successfully")
             logger.info("=" * 60)
@@ -206,9 +208,7 @@ class CollectionService:
         except FileNotFoundError as e:
             logger.error(f"❌ YAML config not found: {e}")
             logger.info(f"{'=' * 60}")
-            return self._generate_error_response(
-                f"Plugin config not found for model '{self.model_id}'"
-            )
+            return self._generate_error_response(f"Plugin config not found for model '{self.model_id}'")
 
         except Exception as e:
             logger.error(f"❌ Collection failed: {traceback.format_exc()}")
@@ -218,18 +218,12 @@ class CollectionService:
     async def probe(self) -> AccessProbeResult:
         """通过当前解析出的协议 Adapter 执行最小凭据感知预检。"""
         executor_type = self.params["executor_type"]
-        prefer_enterprise = self._get_bool_param(
-            self.params, "prefer_enterprise", True
-        )
-        strict_enterprise = self._get_bool_param(
-            self.params, "strict_enterprise", False
-        )
-        resolved_executor = (
-            await self.yaml_reader.get_executor_config_with_resolution_async(
-                self.model_id,
-                executor_type,
-                prefer_enterprise=prefer_enterprise,
-            )
+        prefer_enterprise = self._get_bool_param(self.params, "prefer_enterprise", True)
+        strict_enterprise = self._get_bool_param(self.params, "strict_enterprise", False)
+        resolved_executor = await self.yaml_reader.get_executor_config_with_resolution_async(
+            self.model_id,
+            executor_type,
+            prefer_enterprise=prefer_enterprise,
         )
         executor = PluginExecutor(
             self.model_id,
@@ -255,15 +249,11 @@ class CollectionService:
 
         # 处理采集失败的情况
         if not result.get("success", True):
-            logger.warning(
-                f"⚠️  Collection failed for {self.host or 'default endpoint'}"
-            )
+            logger.warning(f"⚠️  Collection failed for {self.host or 'default endpoint'}")
 
             # 提取错误信息
             result_data = result.get("result", {})
-            error_msg = result_data.get(
-                "cmdb_collect_error", result.get("error", "Unknown error")
-            )
+            error_msg = result_data.get("cmdb_collect_error", result.get("error", "Unknown error"))
 
             # 创建错误记录
             error_record = {
@@ -384,16 +374,12 @@ class CollectionService:
             return {"result": [], "success": False, "message": "model_id is required"}
 
         try:
-            resolved_executor = self.yaml_reader.get_executor_config_with_resolution(
-                self.model_id, "protocol"
-            )
+            resolved_executor = self.yaml_reader.get_executor_config_with_resolution(self.model_id, "protocol")
             executor_config = resolved_executor.executor_config
 
             # 只有 protocol 类型支持 list_regions
             if not executor_config.is_cloud_protocol:
-                logger.warning(
-                    f"list_regions not supported for executor type: {executor_config.executor_type}"
-                )
+                logger.warning(f"list_regions not supported for executor type: {executor_config.executor_type}")
                 return {
                     "result": [],
                     "success": False,
@@ -425,9 +411,7 @@ class CollectionService:
         except Exception as e:  # noqa
             import traceback
 
-            logger.error(
-                f"Error list_regions for {self.plugin_name or self.model_id}: {traceback.format_exc()}"
-            )
+            logger.error(f"Error list_regions for {self.plugin_name or self.model_id}: {traceback.format_exc()}")
             return {"result": [], "success": False, "message": str(e)}
 
     async def set_node_info(self):

@@ -17,7 +17,7 @@ class SceneWidgetViewSet(ViewSet):
         result = NetworkStatusTopologyService.build(
             request=request,
             model_id=data["model_id"],
-            inst_id=data["inst_id"],
+            inst_uuid=str(data["inst_uuid"]),
             depth=data["depth"],
         )
         return Response(result)

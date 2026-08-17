@@ -3,6 +3,7 @@
 from apps.cmdb.node_configs.base import BaseNodeParams
 from apps.cmdb.node_configs.ssh.base import SSHNodeParamsMixin
 
+
 class ConfigFileNodeParams(SSHNodeParamsMixin, BaseNodeParams):
     supported_model_id = "config_file"
     plugin_name = "config_file_info"
@@ -32,10 +33,10 @@ class ConfigFileNodeParams(SSHNodeParamsMixin, BaseNodeParams):
         return host_str.split("[", 1)[0].strip()
 
     @staticmethod
-    def _get_instance_id(instance):
+    def _get_instance_uuid(instance):
         if not isinstance(instance, dict):
             return ""
-        return str(instance.get("_id") or instance.get("id") or "")
+        return str(instance.get("inst_uuid") or "")
 
     def _get_single_target_instance(self):
         instances = self.instance.instances or []
@@ -63,12 +64,13 @@ class ConfigFileNodeParams(SSHNodeParamsMixin, BaseNodeParams):
                 "execution_id": self.instance.task_id,
                 "target_model_id": target_instance.get("model_id") or params.get("target_model_id") or "host",
                 "callback_subject": "receive_config_file_result",
+                "protocol_version": "2",
             }
         )
         if target_instance:
             credential_data.update(
                 {
-                    "target_instance_id": self._get_instance_id(target_instance),
+                    "target_instance_uuid": self._get_instance_uuid(target_instance),
                     "connect_ip": self._get_connect_ip(target_host),
                 }
             )

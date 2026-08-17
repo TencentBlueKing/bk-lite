@@ -256,16 +256,64 @@ def test_receiver_reports_partial_ingestion(monkeypatch):
         staticmethod(lambda src: FakeAdapter),
     )
 
+    response = receiver_module.receiver_data(_post_body({"source_id": "src-partial"}, secret="sec"))
+    payload = json.loads(response.content)
+
+    assert response.status_code == 207
+    assert payload["status"] == "partial"
+    assert payload["ingestion"] == {"received": 2, "accepted": 1, "skipped": 1, "errored": 0}
+
+
+@pytest.mark.django_db
+def test_receiver_real_adapter_preserves_partial_response_and_safe_log(caplog):
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.models import Level
+    from apps.alerts.utils.util import encode_team_secret
+    from apps.alerts.views import receiver as receiver_module
+
+    for level_id in (0, 1, 2, 3):
+        Level.objects.create(
+            level_id=level_id,
+            level_name=f"L{level_id}",
+            level_display_name=f"等级{level_id}",
+            level_type=LevelType.EVENT,
+        )
+    team_secret = encode_team_secret("source-secret", "1")
+    _make_source(
+        source_id="src-real-partial",
+        source_type="restful",
+        secret="source-secret",
+        team_secrets={"1": team_secret},
+        config={"event_fields_mapping": {"title": "title", "level": "level"}},
+    )
+    marker = "SECRET-HTTP-4671"
+
     response = receiver_module.receiver_data(
-        _post_body({"source_id": "src-partial"}, secret="sec")
+        _post_body(
+            {
+                "source_id": "src-real-partial",
+                "events": [
+                    {"title": "HTTP 正常事件", "level": "0"},
+                    {"description": marker, "secret": marker},
+                ],
+            },
+            secret=team_secret,
+        )
     )
     payload = json.loads(response.content)
 
     assert response.status_code == 207
     assert payload["status"] == "partial"
     assert payload["ingestion"] == {
-        "received": 2, "accepted": 1, "skipped": 1, "errored": 0
+        "received": 2,
+        "accepted": 1,
+        "skipped": 1,
+        "errored": 0,
+        "duplicates": 0,
+        "rejected": 1,
     }
+    assert Event.objects.filter(title="HTTP 正常事件", team=[1]).exists()
+    assert marker not in caplog.text
 
 
 @pytest.mark.django_db

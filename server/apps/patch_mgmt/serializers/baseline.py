@@ -2,23 +2,10 @@
 
 from rest_framework import serializers
 
-from apps.patch_mgmt.constants import (
-    ComplianceStatus,
-    GovernanceTaskStatus,
-    GovernanceTaskType,
-    RequirementAssessmentStatus,
-)
-from apps.patch_mgmt.models import (
-    BaselineRequirement,
-    GovernanceTask,
-    HostBaselineBinding,
-    PatchBaseline,
-)
+from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType, RequirementAssessmentStatus
+from apps.patch_mgmt.models import BaselineRequirement, GovernanceTask, HostBaselineBinding, PatchBaseline
 from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
-from apps.patch_mgmt.services.patch_origin import (
-    source_details_for_patch,
-    source_type_for_patch,
-)
+from apps.patch_mgmt.services.patch_origin import source_details_for_patch, source_type_for_patch
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
@@ -119,6 +106,7 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
     """基线列表序列化器"""
 
     os_type_display = serializers.CharField(source="get_os_type_display", read_only=True)
+    last_evaluated_at = serializers.DateTimeField(read_only=True, allow_null=True, default=None)
     requirement_count = serializers.SerializerMethodField()
     requirement_names = serializers.SerializerMethodField()
     bound_host_count = serializers.SerializerMethodField()
@@ -143,6 +131,7 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
             "requirement_names",
             "bound_host_count",
             "compliance_distribution",
+            "last_evaluated_at",
             "is_assessing",
             "can_assess",
             "assess_disabled_reason",
@@ -163,6 +152,7 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
         team_id = None
         if request:
             from apps.core.utils.team_utils import get_current_team
+
             team_id = get_current_team(request)
         qs = PatchBaseline.objects.filter(name=value)
         if team_id:
@@ -170,7 +160,9 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError(serializer_message(self, "error.duplicate_baseline_name", "A baseline with the same name already exists"))
+            raise serializers.ValidationError(
+                serializer_message(self, "error.duplicate_baseline_name", "A baseline with the same name already exists")
+            )
         return value
 
     def create(self, validated_data):
@@ -204,19 +196,13 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
         return self._visible_bindings(obj).count()
 
     def _visible_bindings(self, obj):
-        queryset = (
-            obj.host_bindings.all()
-            if hasattr(obj.host_bindings, "all")
-            else obj.host_bindings
-        )
+        queryset = obj.host_bindings.all() if hasattr(obj.host_bindings, "all") else obj.host_bindings
         request = getattr(self, "_context", {}).get("request")
         if request is None:
             return queryset
         from apps.patch_mgmt.services.target_access import target_access_scope
 
-        return queryset.filter(
-            target_id__in=target_access_scope(request).queryset("View").values("id")
-        )
+        return queryset.filter(target_id__in=target_access_scope(request).queryset("View").values("id"))
 
     def get_compliance_distribution(self, obj):
         """按已绑定主机的合规状态聚合分布（含评估中）。"""
@@ -231,7 +217,11 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
             ComplianceStatus.EVALUATING: (serializer_message(self, "status.compliance.evaluating", "Assessing"), "processing", "evaluating"),
             ComplianceStatus.FAILED: (serializer_message(self, "status.compliance.failed", "Assessment failed"), "default", "failed"),
             ComplianceStatus.UNKNOWN: (serializer_message(self, "status.compliance.unknown", "Assessment unknown"), "warning", "unknown"),
-            ComplianceStatus.NOT_APPLICABLE: (serializer_message(self, "status.compliance.not_applicable", "Not applicable"), "default", "not_applicable"),
+            ComplianceStatus.NOT_APPLICABLE: (
+                serializer_message(self, "status.compliance.not_applicable", "Not applicable"),
+                "default",
+                "not_applicable",
+            ),
         }
         counts = {key: 0 for key in status_meta}
         from apps.patch_mgmt.services.risk_service import compute_host_compliance_status
@@ -248,7 +238,7 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
         ]
 
     def get_archs(self, obj):
-        from apps.patch_mgmt.models import WindowsPatchDetail, LinuxPatchDetail
+        from apps.patch_mgmt.models import LinuxPatchDetail, WindowsPatchDetail
 
         archs = set()
         for req in obj.requirements.select_related("patch"):
@@ -275,28 +265,16 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
         ).exists()
 
     def get_can_assess(self, obj):
-        return (
-            obj.requirements.exists()
-            and self._operable_bindings(obj).exists()
-            and not self.get_is_assessing(obj)
-        )
+        return obj.requirements.exists() and self._operable_bindings(obj).exists() and not self.get_is_assessing(obj)
 
     def _operable_bindings(self, obj):
-        queryset = (
-            obj.host_bindings.all()
-            if hasattr(obj.host_bindings, "all")
-            else obj.host_bindings
-        )
+        queryset = obj.host_bindings.all() if hasattr(obj.host_bindings, "all") else obj.host_bindings
         request = getattr(self, "_context", {}).get("request")
         if request is None:
             return queryset
         from apps.patch_mgmt.services.target_access import target_access_scope
 
-        return queryset.filter(
-            target_id__in=target_access_scope(request)
-            .queryset("Operate")
-            .values("id")
-        )
+        return queryset.filter(target_id__in=target_access_scope(request).queryset("Operate").values("id"))
 
     def get_assess_disabled_reason(self, obj):
         if not obj.requirements.exists():
@@ -347,32 +325,24 @@ class HostBaselineBindingSerializer(PatchPermissionSerializer):
 class BaselineComplianceObjectsQuerySerializer(serializers.Serializer):
     """基线合规矩阵左侧对象列表参数。"""
 
-    perspective = serializers.ChoiceField(
-        choices=("host", "patch"), default="host"
-    )
+    perspective = serializers.ChoiceField(choices=("host", "patch"), default="host")
     page = serializers.IntegerField(min_value=1, default=1)
     page_size = serializers.IntegerField(default=-1)
 
     def validate_page_size(self, value):
         if value == -1 or 1 <= value <= 100:
             return value
-        raise serializers.ValidationError(
-            "page_size must be -1 or between 1 and 100"
-        )
+        raise serializers.ValidationError("page_size must be -1 or between 1 and 100")
 
 
 class BaselineComplianceDetailsQuerySerializer(serializers.Serializer):
     """基线合规矩阵右侧选中对象明细参数。"""
 
-    perspective = serializers.ChoiceField(
-        choices=("host", "patch"), default="host"
-    )
+    perspective = serializers.ChoiceField(choices=("host", "patch"), default="host")
     selected_id = serializers.IntegerField(min_value=1)
     page = serializers.IntegerField(min_value=1, default=1)
     page_size = serializers.IntegerField(min_value=1, max_value=100, default=20)
-    search = serializers.CharField(
-        required=False, allow_blank=True, max_length=128, default=""
-    )
+    search = serializers.CharField(required=False, allow_blank=True, max_length=128, default="")
     status = serializers.ChoiceField(
         required=False,
         allow_blank=True,

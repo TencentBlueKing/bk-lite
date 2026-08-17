@@ -7,6 +7,7 @@ import { useInstanceApi } from '@/app/cmdb/api';
 import { useCommon } from '@/app/cmdb/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
 import type { ModelItem } from '@/app/cmdb/types/assetManage';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import type { RackRoomMode, ViewFocus, ViewType } from '../viewTypes';
 import { readViewRecent } from '../viewMemory';
 
@@ -84,8 +85,8 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
       return true;
     });
     // Re-read when focus changes so newly pushed recent appears.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, viewType, selectedModelId, mode, focus?.inst_id, focus?.model_id]);
+     
+  }, [userId, viewType, selectedModelId, mode, focus?.inst_uuid, focus?.model_id]);
 
   useEffect(() => {
     if (focus?.model_id && eligibleModelIds.includes(focus.model_id)) {
@@ -147,14 +148,18 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
         });
         if (seq !== searchSeqRef.current) return;
         const insts = Array.isArray(data?.insts) ? data.insts : [];
-        const nextOptions: InstanceOption[] = insts.map(
-          (item: { _id?: string | number; inst_name?: string }) => ({
-            value: String(item._id),
-            label: item.inst_name || String(item._id),
-            model_id: modelId,
-            inst_name: item.inst_name || String(item._id),
+        const nextOptions: InstanceOption[] = insts
+          .map((item: { inst_uuid?: string; inst_name?: string }) => {
+            const instUuid = resolveCmdbInstUuid(item.inst_uuid);
+            if (!instUuid) return null;
+            return {
+              value: instUuid,
+              label: item.inst_name || instUuid,
+              model_id: modelId,
+              inst_name: item.inst_name || instUuid,
+            };
           })
-        );
+          .filter((item): item is InstanceOption => item != null);
         setInstanceOptions((prev) => {
           if (!append) return nextOptions;
           const seen = new Set(prev.map((item) => item.value));
@@ -224,7 +229,7 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
     const meta = resolveModelMeta(modelId);
     return {
       model_id: modelId,
-      inst_id: instId,
+      inst_uuid: instId,
       inst_name: instName,
       model_name: meta.model_name,
       icn: meta.icn,
@@ -290,14 +295,14 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
       return;
     }
     const fromSearch = instanceOptions.find((item) => item.value === instId);
-    const fromRecent = recentItems.find((item) => item.inst_id === instId);
+    const fromRecent = recentItems.find((item) => item.inst_uuid === instId);
     onFocusChange(
       buildFocus(
         selectedModelId,
         instId,
         fromSearch?.inst_name
           || fromRecent?.inst_name
-          || (focus?.inst_id === instId ? focus.inst_name : undefined)
+          || (focus?.inst_uuid === instId ? focus.inst_name : undefined)
       )
     );
   };
@@ -312,14 +317,14 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
       groups.push({
         label: t('ViewsHub.recent'),
         options: recentItems.map((item) => ({
-          label: item.inst_name || item.inst_id,
-          value: item.inst_id,
+          label: item.inst_name || item.inst_uuid,
+          value: item.inst_uuid,
         })),
       });
     }
 
     const recentIds = new Set(
-      instanceKeyword ? [] : recentItems.map((item) => item.inst_id)
+      instanceKeyword ? [] : recentItems.map((item) => item.inst_uuid)
     );
     const searchOpts = instanceOptions
       .filter((item) => !recentIds.has(item.value))
@@ -331,12 +336,12 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
     if (
       focus
       && focus.model_id === selectedModelId
-      && !recentIds.has(focus.inst_id)
-      && !instanceOptions.some((item) => item.value === focus.inst_id)
+      && !recentIds.has(focus.inst_uuid)
+      && !instanceOptions.some((item) => item.value === focus.inst_uuid)
     ) {
       searchOpts.unshift({
-        label: focus.inst_name || focus.inst_id,
-        value: focus.inst_id,
+        label: focus.inst_name || focus.inst_uuid,
+        value: focus.inst_uuid,
       });
     }
 
@@ -356,7 +361,7 @@ const ViewInstancePicker: React.FC<ViewInstancePickerProps> = ({
   ]);
 
   const selectValue =
-    focus && focus.model_id === selectedModelId ? focus.inst_id : undefined;
+    focus && focus.model_id === selectedModelId ? focus.inst_uuid : undefined;
 
   return (
     <div className="flex items-center gap-2 flex-wrap min-w-0">

@@ -47,38 +47,36 @@ const SelectAllDropdown: React.FC<SelectAllDropdownProps> = ({
   deselectAllText,
 }) => (
   <>
-    <Space style={{ padding: '8px 12px' }}>
+    <Space className="px-3 py-2">
       <a
         onClick={(e) => {
           e.preventDefault();
           if (!allSelected) onSelectAll();
         }}
         aria-disabled={allSelected}
-        style={{
-          color: allSelected ? '#bfbfbf' : undefined,
-          cursor: allSelected ? 'not-allowed' : 'pointer',
-          pointerEvents: 'auto',
-        }}
+        className={[
+          'pointer-events-auto',
+          allSelected ? 'cursor-not-allowed text-[var(--color-text-4)]' : 'cursor-pointer',
+        ].join(' ')}
       >
         {selectAllText}
       </a>
-      <Divider type="vertical" style={{ margin: 0 }} />
+      <Divider type="vertical" className="m-0" />
       <a
         onClick={(e) => {
           e.preventDefault();
           if (!noneSelected) onDeselectAll();
         }}
         aria-disabled={noneSelected}
-        style={{
-          color: noneSelected ? '#bfbfbf' : undefined,
-          cursor: noneSelected ? 'not-allowed' : 'pointer',
-          pointerEvents: 'auto',
-        }}
+        className={[
+          'pointer-events-auto',
+          noneSelected ? 'cursor-not-allowed text-[var(--color-text-4)]' : 'cursor-pointer',
+        ].join(' ')}
       >
         {deselectAllText}
       </a>
     </Space>
-    <Divider style={{ margin: '0 0 4px' }} />
+    <Divider className="mb-1 mt-0" />
     {menu}
   </>
 );
@@ -166,15 +164,6 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
   const renderConfigContent = (type: TriggerType) => {
     if (!value.includes(type)) return null;
 
-    const fieldBlockStyle: React.CSSProperties = { marginBottom: 12 };
-    const fieldLabelStyle: React.CSSProperties = {
-      display: 'block',
-      fontSize: 13,
-      color: '#333',
-      lineHeight: '20px',
-      marginBottom: 6,
-    };
-
     if (type === 'attribute_change') {
       const hasError = !!errors['attribute_change.fields'];
       const selectedFields = triggerConfig.attribute_change?.fields || [];
@@ -183,11 +172,11 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
       const noneSelected = selectedFields.length === 0;
 
       return (
-        <div style={fieldBlockStyle}>
-          <label style={fieldLabelStyle}>{t('subscription.watchFields')}</label>
+        <div className="mb-3">
+          <label className="mb-1.5 block text-[13px] leading-5 text-[var(--color-text-1)]">{t('subscription.watchFields')}</label>
           <Select
             mode="multiple"
-            style={{ width: '100%' }}
+            className="w-full"
             status={hasError ? 'error' : undefined}
             placeholder={t('common.selectMsg')}
             value={selectedFields}
@@ -207,7 +196,7 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
             )}
           />
           {hasError && (
-            <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>
+            <div className="mt-1 text-xs text-[var(--color-fail)]">
               {errors['attribute_change.fields']}
             </div>
           )}
@@ -221,11 +210,11 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
 
       return (
         <div>
-          <div style={fieldBlockStyle}>
-            <label style={fieldLabelStyle}>{t('subscription.relatedModel')}</label>
+          <div className="mb-3">
+            <label className="mb-1.5 block text-[13px] leading-5 text-[var(--color-text-1)]">{t('subscription.relatedModel')}</label>
             <Select
               mode="multiple"
-              style={{ width: '100%' }}
+              className="w-full"
               status={hasModelError ? 'error' : undefined}
               placeholder={t('common.selectMsg')}
               value={selectedModelIds}
@@ -249,7 +238,7 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
               maxTagCount="responsive"
             />
             {hasModelError && (
-              <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>
+              <div className="mt-1 text-xs text-[var(--color-fail)]">
                 {errors['relation_change.related_models']}
               </div>
             )}
@@ -264,15 +253,15 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
             const modelFieldsError = errors[`relation_change.related_models.${item.related_model}.fields`];
 
             return (
-              <div key={item.related_model} style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>
+              <div key={item.related_model} className="mb-3">
+                <div className="mb-2 text-xs text-[var(--color-text-3)]">
                   {relatedModels.find((m) => m.id === item.related_model)?.name || item.related_model}
                 </div>
-                <div style={{ ...fieldBlockStyle, marginBottom: 0 }}>
-                  <label style={fieldLabelStyle}>{t('subscription.relatedFields')}</label>
+                <div className="mb-0">
+                  <label className="mb-1.5 block text-[13px] leading-5 text-[var(--color-text-1)]">{t('subscription.relatedFields')}</label>
                   <Select
                     mode="multiple"
-                    style={{ width: '100%' }}
+                    className="w-full"
                     status={modelFieldsError ? 'error' : undefined}
                     placeholder={t('common.selectMsg')}
                     value={selectedFields}
@@ -331,7 +320,7 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
                     )}
                   />
                   {modelFieldsError && (
-                    <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>
+                    <div className="mt-1 text-xs text-[var(--color-fail)]">
                       {modelFieldsError}
                     </div>
                   )}
@@ -347,10 +336,10 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
       const hasError = !!errors['expiration.time_field'];
       return (
         <div>
-          <div style={fieldBlockStyle}>
-            <label style={fieldLabelStyle}>{t('subscription.timeField')}</label>
+          <div className="mb-3">
+            <label className="mb-1.5 block text-[13px] leading-5 text-[var(--color-text-1)]">{t('subscription.timeField')}</label>
             <Select
-              style={{ width: '100%' }}
+              className="w-full"
               status={hasError ? 'error' : undefined}
               placeholder={t('common.selectMsg')}
               value={triggerConfig.expiration?.time_field || undefined}
@@ -365,16 +354,16 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
               options={dateFields.map((i) => ({ label: i.name, value: i.id }))}
             />
             {hasError && (
-              <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>
+              <div className="mt-1 text-xs text-[var(--color-fail)]">
                 {errors['expiration.time_field']}
               </div>
             )}
           </div>
-          <div style={{ ...fieldBlockStyle, marginBottom: 0 }}>
-            <label style={fieldLabelStyle}>{t('subscription.daysBefore')}</label>
+          <div className="mb-0">
+            <label className="mb-1.5 block text-[13px] leading-5 text-[var(--color-text-1)]">{t('subscription.daysBefore')}</label>
             <InputNumber
               min={1}
-              style={{ width: '100%' }}
+              className="w-full"
               value={triggerConfig.expiration?.days_before || 1}
               onChange={(days_before) =>
                 updateConfig({
@@ -399,38 +388,31 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: 8,
-        }}
-      >
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-2">
         {TYPES.map((type) => {
           const checked = value.includes(type);
           return (
             <Card
               key={type}
               size="small"
+              className="min-w-0 cursor-pointer"
               style={{
-                minWidth: 0,
                 borderColor: checked ? 'var(--ant-color-primary)' : undefined,
-                cursor: 'pointer',
               }}
               styles={{ body: { padding: '8px 12px' } }}
               onClick={() => toggleType(type)}
             >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <div className="flex items-start gap-2">
                 <Checkbox
                   checked={checked}
                   onClick={(e) => e.stopPropagation()}
                   onChange={() => toggleType(type)}
-                  style={{ marginTop: 2 }}
+                  className="mt-0.5"
                 />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, marginBottom: 4, lineHeight: '20px' }}>{titleMap[type]}</div>
-                  <div style={{ fontSize: 12, color: '#999', lineHeight: '18px' }}>{descMap[type]}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 font-medium leading-5">{titleMap[type]}</div>
+                  <div className="text-xs leading-[18px] text-[var(--color-text-4)]">{descMap[type]}</div>
                 </div>
               </div>
             </Card>
@@ -445,8 +427,8 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
         }
 
         return (
-          <div key={type} style={{ padding: '12px', background: '#fafafa', borderRadius: 6 }}>
-            <div style={{ fontSize: 13, color: '#333', marginBottom: 12, fontWeight: 500 }}>
+          <div key={type} className="rounded-md bg-[var(--color-fill-1)] p-3">
+            <div className="mb-3 text-[13px] font-medium text-[var(--color-text-1)]">
               {titleMap[type]}{t('subscription.config')}
             </div>
             {content}

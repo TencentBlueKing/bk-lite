@@ -117,8 +117,8 @@ def test_sync_hosts_continues_past_single_node_failure(sync_config):
         {"ip": "10.0.0.2", "cloud_region_id": 1, "organization_ids": []},
     ]
     payloads = {
-        "10.0.0.1": {"ip_addr": "10.0.0.1", "organization": []},
-        "10.0.0.2": {"ip_addr": "10.0.0.2", "organization": []},
+        "10.0.0.1": {"ip_addr": "10.0.0.1", "cloud": 1, "organization": [], "node_id": "n1"},
+        "10.0.0.2": {"ip_addr": "10.0.0.2", "cloud": 1, "organization": [], "node_id": "n2"},
     }
 
     with mock.patch.object(NodeMgmtSyncService, "_fetch_non_container_nodes", return_value=nodes), \
@@ -130,6 +130,8 @@ def test_sync_hosts_continues_past_single_node_failure(sync_config):
             mock.patch.object(NodeMgmtSyncService, "_build_host_instance_payload", side_effect=lambda node, collect_task_id=0, **kwargs: payloads[node["ip"]]), \
             mock.patch.object(NodeMgmtSyncService, "_query_region_host_instances", return_value=[]), \
             mock.patch.object(NodeMgmtSyncService, "_ensure_region_collect_task", return_value=mock.MagicMock()), \
+            mock.patch.object(NodeMgmtSyncService, "_ensure_host_node_id_attr"), \
+            mock.patch.object(NodeMgmtSyncService, "_backfill_node_cmdb_id"), \
             mock.patch(f"{SERVICE}.InstanceManage.instance_create", side_effect=[RuntimeError("node boom"), {"_id": "h2"}]):
         result = NodeMgmtSyncService.sync_hosts()
 

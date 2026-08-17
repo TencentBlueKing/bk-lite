@@ -124,7 +124,7 @@ const buildSceneWidgetConfig = (
     sceneWidgetType: 'networkStatusTopology',
     networkStatusTopology: buildPersistedNetworkStatusTopologyConfig({
       modelId: topologyConfig?.modelId || '',
-      instId: topologyConfig?.instId || '',
+      instUuid: topologyConfig?.instUuid || '',
       depth: topologyConfig?.depth || 2,
       layoutMode: topologyConfig?.layoutMode,
       layoutByMode: topologyConfig?.layoutByMode,
@@ -229,10 +229,8 @@ const applySingleValueConfig = (
   if (descriptionField) {
     result.descriptionField = descriptionField;
   }
-  if (values.unit !== undefined) result.unit = values.unit;
-  result.unitId = values.unitId;
+  applyValueFormatFields(result, values);
   result.valueMappings = values.valueMappings || undefined;
-  applyOptionalNumericDisplayFields(result, values);
 };
 
 const trimOptionalField = (value?: string) => {
@@ -270,6 +268,17 @@ const applyOptionalNumericDisplayFields = (
   }
 };
 
+const applyValueFormatFields = (
+  result: WidgetConfig,
+  values: WidgetConfigFormValues,
+) => {
+  if (values.unit !== undefined) result.unit = values.unit;
+  result.unitId = values.unitId;
+  applyOptionalNumericDisplayFields(result, values);
+};
+
+const VALUE_FORMAT_CHART_TYPES = new Set(['line', 'bar', 'pie', 'multiValue']);
+
 const stripUnsetOptionalNumericDisplayFields = <T extends object>(
   valueConfig: T,
 ): T => {
@@ -293,6 +302,14 @@ export const omitForeignChartTypeFields = <T extends object>(
     }
   } else {
     delete next.cardList;
+  }
+  if (chartType === 'multiValue') {
+    if (!Array.isArray(next.thresholdColors) || next.thresholdColors.length === 0) {
+      delete next.thresholdColors;
+    }
+    if (!Array.isArray(next.valueMappings) || next.valueMappings.length === 0) {
+      delete next.valueMappings;
+    }
   }
   return stripUnsetOptionalNumericDisplayFields(next);
 };
@@ -391,10 +408,8 @@ const applyGaugeConfig = (
 ) => {
   result.selectedFields = selectedFields;
   result.thresholdColors = thresholdColors;
-  if (values.unit !== undefined) result.unit = values.unit;
-  result.unitId = values.unitId;
+  applyValueFormatFields(result, values);
   result.valueMappings = values.valueMappings || undefined;
-  applyOptionalNumericDisplayFields(result, values);
   if (values.gaugeMin !== undefined) result.gaugeMin = values.gaugeMin;
   if (values.gaugeMax !== undefined) result.gaugeMax = values.gaugeMax;
   if (values.gaugeShape !== undefined) result.gaugeShape = values.gaugeShape;
@@ -462,6 +477,15 @@ export const buildWidgetSubmitConfig = ({
 
   if (chartType === 'gauge') {
     applyGaugeConfig(result, values, selectedFields, thresholdColors);
+  }
+
+  if (VALUE_FORMAT_CHART_TYPES.has(chartType)) {
+    applyValueFormatFields(result, values);
+  }
+
+  if (chartType === 'multiValue') {
+    result.thresholdColors = thresholdColors;
+    result.valueMappings = values.valueMappings || [];
   }
 
   if (chartType === 'topN') {

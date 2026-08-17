@@ -44,18 +44,25 @@ INSTANCE_HISTORY_DEFAULT_SCENARIOS = [DEVICE_LIFECYCLE, RELATION_CHANGE, ORDINAR
 
 class ChangeRecord(models.Model):
     operation_event_id = models.UUIDField(null=True, blank=True, unique=True)
-    inst_id = models.BigIntegerField(db_index=True, verbose_name="实例ID")
+    inst_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="历史实例图ID",
+    )
+    inst_uuid = models.UUIDField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="实例UUID",
+    )
     model_id = models.CharField(max_length=100, verbose_name="模型ID")
     label = models.CharField(max_length=50, verbose_name="标签ID")
-    type = models.CharField(
-        max_length=30, choices=OPERATE_TYPE_CHOICES, verbose_name="变更类型"
-    )
+    type = models.CharField(max_length=30, choices=OPERATE_TYPE_CHOICES, verbose_name="变更类型")
     before_data = JSONField(default=dict, verbose_name="变更前实例信息")
     after_data = JSONField(default=dict, verbose_name="变更后实例信息")
     operator = models.CharField(max_length=50, default="", verbose_name="创建者")
-    created_at = models.DateTimeField(
-        auto_now_add=True, db_index=True, verbose_name="创建时间"
-    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="创建时间")
     model_object = models.CharField(max_length=50, default="", verbose_name="模型对象", help_text="模型对象")
     message = models.TextField(default="", verbose_name="操作信息", help_text="操作信息")
     scenario = models.CharField(

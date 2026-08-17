@@ -44,6 +44,7 @@ interface InstanceSelectorProps {
     case_sensitive: boolean;
   }) => Promise<{
     insts?: Array<{
+      inst_uuid?: string;
       _id?: string | number;
       inst_name?: string;
       name?: string;
@@ -352,7 +353,7 @@ const InstanceSelector: React.FC<InstanceSelectorProps> = ({
   userList,
 }) => {
   const { t } = useTranslation();
-  const [instanceOptions, setInstanceOptions] = useState<{ label: string; value: number }[]>([]);
+  const [instanceOptions, setInstanceOptions] = useState<{ label: string; value: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [conditionRows, setConditionRows] = useState<ConditionRow[]>([]);
 
@@ -363,7 +364,7 @@ const InstanceSelector: React.FC<InstanceSelectorProps> = ({
 
   const conditionValue = (value as ConditionFilter) || { query_list: [] };
   const queryList = conditionValue.query_list || [];
-  const instancesValue = (value as InstancesFilter) || { instance_ids: [] };
+  const instancesValue = (value as InstancesFilter) || { instance_uuids: [] };
   const serializedQueryList = useMemo(() => JSON.stringify(queryList), [queryList]);
   useEffect(() => { searchInstancesRef.current = searchInstances; }, [searchInstances]);
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
@@ -436,12 +437,12 @@ const InstanceSelector: React.FC<InstanceSelectorProps> = ({
   }, [filterType, modelId]);
 
   const mergedInstanceOptions = useMemo(() => {
-    const selectedFallbackOptions = (instancesValue.instance_ids || [])
+    const selectedFallbackOptions = (instancesValue.instance_uuids || [])
       .filter((id) => !instanceOptions.some((item) => item.value === id))
       .map((id) => ({ label: String(id), value: id }));
 
     return [...instanceOptions, ...selectedFallbackOptions];
-  }, [instanceOptions, instancesValue.instance_ids]);
+  }, [instanceOptions, instancesValue.instance_uuids]);
 
   const addConditionRow = () => {
     userEditedRef.current = true;
@@ -573,10 +574,10 @@ const InstanceSelector: React.FC<InstanceSelectorProps> = ({
       loading={loading}
       showSearch
       optionFilterProp="label"
-      value={instancesValue.instance_ids || []}
+      value={instancesValue.instance_uuids || []}
       onChange={(vals) =>
         onChange({
-          instance_ids: vals.map((item) => Number(item)).filter((item) => !Number.isNaN(item)),
+          instance_uuids: vals.map((item) => String(item)).filter((item) => item.length > 0),
         })
       }
     />

@@ -3,6 +3,7 @@
  *
  * 典型场景：0→"离线"(红)、1→"在线"(绿)、范围 [0,60)→"健康"、正则匹配、
  * 以及 null/NaN/空 等特殊值的兜底展示。
+ * text 与 color 均可缺省：没配文案沿用原值，没配颜色不改色（继续阈值或默认字色）。
  *
  * 规则按声明顺序匹配，**第一条命中即返回**（与 Grafana 一致）。
  * 纯函数、无副作用、无 IO，便于在单值/表格/拓扑节点等处复用。
@@ -18,6 +19,25 @@ export interface ValueMappingResult {
   /** 命中后应用的颜色（hex），可用于文字/背景/节点 */
   color?: string;
 }
+
+/**
+ * 文案与颜色互相独立：空白 text / 未选 color 都不写入结果。
+ * 没配的字段表示不改该项，不是空字符串或默认色。
+ */
+export const normalizeValueMappingResult = (
+  result?: ValueMappingResult | null,
+): ValueMappingResult => {
+  const next: ValueMappingResult = {};
+  const text = result?.text?.trim();
+  if (text) {
+    next.text = text;
+  }
+  const color = result?.color?.trim();
+  if (color) {
+    next.color = color;
+  }
+  return next;
+};
 
 export interface ValueMapping {
   type: ValueMappingType;

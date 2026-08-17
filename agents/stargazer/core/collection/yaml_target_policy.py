@@ -28,7 +28,16 @@ def apply_yaml_target_policy(
 
     一次 run 调用一次即可；yaml 解析有缓存。
     yaml 有声明时覆盖 request_builder 兜底猜测；无声明则保留原 params。
+    监控采集若已显式设置 preflight_kind（或 plugin_family=monitor），
+    不得用同名 CMDB plugin.yml 的 tls/443 覆盖，否则 SNMP 存储会被 HTTPS
+    预检挡死。
     """
+    if str(request.params.get("plugin_family") or "") == "monitor":
+        return request
+    if str(request.params.get("preflight_kind") or "").strip() and request.params.get(
+        "preflight_kind_explicit"
+    ):
+        return request
     plugin_name = _plugin_name(request)
     executor_type = str(request.params.get("executor_type") or "").strip()
     if not executor_type:
@@ -43,8 +52,7 @@ def apply_yaml_target_policy(
         )
     except Exception as exc:  # noqa: BLE001 - 保留 request_builder 兜底
         logger.warning(
-            "event=yaml_target_policy_unavailable task_id=%s plugin=%s "
-            "executor=%s error_type=%s",
+            "event=yaml_target_policy_unavailable task_id=%s plugin=%s " "executor=%s error_type=%s",
             request.task_id,
             plugin_name,
             executor_type,
@@ -69,10 +77,15 @@ def apply_yaml_target_policy(
     params = dict(request.params)
     params["preflight_kind"] = kind
     params["target_policy_mode"] = mode
+    params["_yaml_target_policy_verified"] = True
     if "port" in policy and policy.get("port") not in (None, ""):
         params["port"] = int(policy["port"])
     if "tls" in policy:
         params.setdefault("ssl", policy["tls"])
+    if kind == "cloud" and "trusted_domains" in policy:
+        domains = policy.get("trusted_domains")
+        if isinstance(domains, (list, tuple)):
+            params["trusted_endpoint_domains"] = tuple(str(value) for value in domains)
     if not params.get("executor_type"):
         params["executor_type"] = executor_type
 
@@ -89,16 +102,10 @@ def _plugin_name(request: CollectionRequest) -> str:
     ref = str(request.plugin_ref or "")
     if "." in ref:
         return ref.split(".", 1)[0]
-    return (
-        str(request.params.get("monitor_type") or "")
-        or str(request.params.get("model_id") or "")
-        or str(request.params.get("plugin_name") or "")
-    )
+    return str(request.params.get("monitor_type") or "") or str(request.params.get("model_id") or "") or str(request.params.get("plugin_name") or "")
 
 
-def _default_executor_type(
-    plugin_name: str, reader: PluginYamlReader
-) -> str:
+def _default_executor_type(plugin_name: str, reader: PluginYamlReader) -> str:
     try:
         config = reader.read_plugin_config(plugin_name)
     except Exception:

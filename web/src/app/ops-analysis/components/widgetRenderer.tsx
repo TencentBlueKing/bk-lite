@@ -4,8 +4,10 @@ import type {
   ScreenRenderContext,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
-import { getWidgetComponent } from './widgetRegistry';
+import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
+import type { RuntimeRequestPriority } from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
 import { supportsComponentSwitch } from '@/app/ops-analysis/utils/componentParamSwitch';
+import { getWidgetComponent } from './widgetRegistry';
 
 interface WidgetRendererProps {
   chartType?: string;
@@ -14,6 +16,7 @@ interface WidgetRendererProps {
   loading?: boolean;
   config?: ValueConfig;
   refreshKey?: string | number;
+  refreshCause?: CanvasRuntimeRefreshCause;
   dataSource?: DatasourceItem;
   screenRenderContext?: ScreenRenderContext;
   onReady?: (ready?: boolean) => void;
@@ -25,6 +28,9 @@ interface WidgetRendererProps {
   ) => void;
   componentSwitchControl?: React.ReactNode;
   errorMessage?: string;
+  runtimeOwnerId?: string;
+  runtimeActive?: boolean;
+  runtimePriority?: RuntimeRequestPriority;
   fallback?: React.ReactNode;
 }
 
@@ -35,6 +41,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   loading = false,
   config,
   refreshKey,
+  refreshCause,
   dataSource,
   screenRenderContext,
   onReady,
@@ -44,6 +51,9 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   onTopologyLayoutChange,
   componentSwitchControl,
   errorMessage,
+  runtimeOwnerId,
+  runtimeActive,
+  runtimePriority,
   fallback = null,
 }) => {
   const Component = getWidgetComponent(chartType);
@@ -58,6 +68,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       loading={loading}
       config={config}
       refreshKey={refreshKey}
+      refreshCause={refreshCause}
       dataSource={dataSource}
       screenRenderContext={screenRenderContext}
       onReady={onReady}
@@ -65,6 +76,9 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       onQueryChange={onQueryChange}
       layoutEditable={layoutEditable}
       onTopologyLayoutChange={onTopologyLayoutChange}
+      runtimeOwnerId={runtimeOwnerId}
+      runtimeActive={runtimeActive}
+      runtimePriority={runtimePriority}
       {...(supportsComponentSwitch(chartType) ? { componentSwitchControl, errorMessage } : {})}
     />
   );

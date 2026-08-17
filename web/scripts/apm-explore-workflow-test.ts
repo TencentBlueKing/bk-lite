@@ -12,9 +12,9 @@ const errors = read('src/app/apm/explore/errors/page.tsx');
 const traceDetail = read('src/app/apm/explore/traces/[traceId]/page.tsx');
 const legacyTraces = read('src/app/apm/traces/page.tsx');
 
-assert.match(traces, /title="调用链"/, 'Trace 搜索页应使用产品术语“调用链”');
+assert.match(traces, /调用链/, 'Trace 搜索页应使用产品术语“调用链”');
 assert.match(traces, /TraceDistribution/, '调用链页应提供与原型一致的耗时分布视图');
-assert.match(traces, /分面筛选/, '调用链页应提供真实数据驱动的分面筛选');
+assert.match(traces, /快速筛选/, '调用链页应提供真实数据驱动的快速筛选');
 assert.match(traces, /ResultMode = 'detail' \| 'aggregate'/, '调用链页必须支持明细与聚合切换');
 assert.match(traces, /buildAggregate/, '聚合视图必须基于当前命中样本计算');
 assert.match(traces, /traces\/s/, '调用链页必须展示命中速率');
@@ -34,9 +34,8 @@ assert.match(endpoints, /部分服务的端点指标查询失败/, '端点列表
 assert.match(endpoints, /Drawer/, '端点列表必须提供详情抽屉下钻');
 assert.match(endpoints, /样本调用链/, '端点详情必须提供样本 Trace');
 assert.match(errors, /getTraces\(/, '错误页必须来自真实 Trace 查询');
-assert.match(errors, /item\.status === 'error'/, '错误页只展示真实错误 Trace');
-assert.match(errors, /Issue 自动聚类将在数据能力就绪后接入/, 'MVP 必须明确 Issue 聚类尚未接入');
-assert.match(errors, /当前版本按错误调用链展示/, 'MVP 必须清晰说明当前错误页的数据口径');
+assert.match(errors, /status:\s*'error'/, '错误页必须在服务端查询阶段限定真实错误 Trace');
+assert.doesNotMatch(errors, /Issue 自动聚类将在数据能力就绪后接入|当前版本按错误调用链展示/, '错误页不得堆叠能力规划说明');
 assert.match(errors, /查看样本 Trace/, '错误页应保留原型中的样本 Trace 下钻入口');
 assert.match(errors, /clusterErrors|入口归并/, '错误页必须对入口操作做客户端归并展示');
 assert.match(traceDetail, /跳到首个错误/, 'Trace 详情必须支持跳到首个错误 Span');

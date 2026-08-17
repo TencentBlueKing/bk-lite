@@ -15,29 +15,19 @@ import tracemalloc
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import api.collect as collect_api
+import api.monitor as monitor_api
 import httpx
 import pytest
 import pytest_asyncio
+from core.collection.application import CollectionApplication, CollectionApplicationSettings
+from core.collection.contracts import AccessProbeResult, AccessProbeStatus, CollectOutcome, CollectOutcomeStatus, PreflightResult, PreflightStatus
+from core.collection.execution_plan import ExecutionPlan
+from core.collection.result_publisher import NatsResultPublisher
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import ConnectionError as RedisConnectionError
 from sanic import Sanic
-
-import api.collect as collect_api
-import api.monitor as monitor_api
-from core.collection.application import (
-    CollectionApplication,
-    CollectionApplicationSettings,
-)
-from core.collection.result_publisher import NatsResultPublisher
-from core.collection.contracts import (
-    AccessProbeResult,
-    AccessProbeStatus,
-    CollectOutcome,
-    CollectOutcomeStatus,
-    PreflightResult,
-    PreflightStatus,
-)
 
 
 @pytest.fixture
@@ -145,9 +135,7 @@ class CredentialProbePlugin:
     def __init__(self):
         self.collected_credentials = []
 
-    async def probe(
-        self, target, credential, context, *, timeout_seconds
-    ):
+    async def probe(self, target, credential, context, *, timeout_seconds):
         if credential["credential_id"] == "credential-bad":
             return AccessProbeResult(
                 status=AccessProbeStatus.AUTH_FAILED,
@@ -158,9 +146,7 @@ class CredentialProbePlugin:
     async def collect(self, target, credential, context):
         if credential["credential_id"] != "credential-good":
             raise AssertionError("unverified credential reached collection")
-        self.collected_credentials.append(
-            (target, credential["credential_id"])
-        )
+        self.collected_credentials.append((target, credential["credential_id"]))
         return CollectOutcome(
             status=CollectOutcomeStatus.SUCCESS,
             value=f'mysql_info{{host="{target}"}} 1',
@@ -230,9 +216,7 @@ class MixedRealSnmpPlugin:
     def __init__(self, real_targets):
         from plugins.inputs.network.snmp_facts import SnmpFacts
 
-        self.real_targets = {
-            str(item["host"]): dict(item) for item in real_targets
-        }
+        self.real_targets = {str(item["host"]): dict(item) for item in real_targets}
         self.snmp_factory = SnmpFacts
         self.active = 0
         self.peak = 0
@@ -286,9 +270,7 @@ class MixedRealSnmpPlugin:
             "success": succeeded,
             "elapsed_seconds": round(time.monotonic() - started, 3),
             "system_records": len(payload.get("network_system") or []),
-            "interface_records": len(
-                payload.get("network_interfaces") or []
-            ),
+            "interface_records": len(payload.get("network_interfaces") or []),
             "error_code": "" if succeeded else "snmp_collection_failed",
         }
         return CollectOutcome(
@@ -313,7 +295,9 @@ def build_application(redis_client, plugin, published, scheduled, *, fail_once=F
     async def publish_metrics(ctx, value, params, task_id):
         attempts["count"] += 1
         if fail_once and attempts["count"] == 1:
-            raise ConnectionError("NATS unavailable")
+            error = ConnectionError("NATS unavailable before publish")
+            error.delivery_detected = False
+            raise error
         published.append((task_id, value, params))
 
     def schedule(coroutine, *, name):
@@ -342,20 +326,33 @@ def build_application(redis_client, plugin, published, scheduled, *, fail_once=F
     return application, preflight
 
 
+class FixedFiveSecondPlanResolver:
+    def resolve(self, _request):
+        return ExecutionPlan(
+            preflight_enabled=False,
+            preflight_timeout_seconds=15,
+            probe_timeout_seconds=15,
+            collection_timeout_seconds=5,
+            publish_timeout_seconds=30,
+            execution_mode="async",
+            capacity_group="default",
+        )
+
+
 def configuration_request(task_id):
     return {
-            "x-task-id": task_id,
-            "cmdbmodel_id": "mysql",
-            "cmdbhosts": "10.10.24.1,10.10.24.2",
-            "cmdbport": "3306",
-            "cmdbcredential_count": "2",
-            "cmdbcredential_0_credential_id": "credential-bad",
-            "cmdbcredential_0_username": "bad-user",
-            "cmdbcredential_0_password": "do-not-log-bad",
-            "cmdbcredential_1_credential_id": "credential-good",
-            "cmdbcredential_1_username": "collector",
-            "cmdbcredential_1_password": "do-not-log-good",
-        }
+        "x-task-id": task_id,
+        "cmdbmodel_id": "mysql",
+        "cmdbhosts": "10.10.24.1,10.10.24.2",
+        "cmdbport": "3306",
+        "cmdbcredential_count": "2",
+        "cmdbcredential_0_credential_id": "credential-bad",
+        "cmdbcredential_0_username": "bad-user",
+        "cmdbcredential_0_password": "do-not-log-bad",
+        "cmdbcredential_1_credential_id": "credential-good",
+        "cmdbcredential_1_username": "collector",
+        "cmdbcredential_1_password": "do-not-log-good",
+    }
 
 
 @asynccontextmanager
@@ -383,9 +380,7 @@ async def test_configuration_http_to_redis_plugin_nats_and_next_cycle_resubmit(
     application, preflight = build_application(
         redis_client, plugin, published, scheduled
     )
-    monkeypatch.setattr(
-        collect_api, "get_collection_application", lambda: application
-    )
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
 
     async with http_client(collect_api.collect_router, "e2e-config-app") as client:
         accepted = await client.get(
@@ -429,9 +424,7 @@ async def test_http_chain_uses_credential_protocol_probe_before_collection(
     application, _preflight = build_application(
         redis_client, plugin, published, scheduled
     )
-    monkeypatch.setattr(
-        collect_api, "get_collection_application", lambda: application
-    )
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
 
     async with http_client(
         collect_api.collect_router, "e2e-credential-probe-app"
@@ -463,9 +456,7 @@ async def test_publish_transient_failure_retries_once_without_recollecting(
     application, preflight = build_application(
         redis_client, plugin, published, scheduled, fail_once=True
     )
-    monkeypatch.setattr(
-        collect_api, "get_collection_application", lambda: application
-    )
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
     headers = {
         "x-task-id": "e2e-publish-retry",
         "cmdbmodel_id": "mysql",
@@ -498,19 +489,17 @@ async def test_monitor_http_uses_the_same_runtime_and_result_pipeline(
     application, preflight = build_application(
         redis_client, plugin, published, scheduled
     )
-    monkeypatch.setattr(
-        monitor_api, "get_collection_application", lambda: application
-    )
+    monkeypatch.setattr(monitor_api, "get_collection_application", lambda: application)
     headers = {
-            "x-task-id": "e2e-monitor",
-            "username": "monitor-user",
-            "password": "do-not-log-monitor",
-            "host": "10.10.24.20",
-            "instance_id": "vmware-20",
-            "instance_type": "vmware",
-            "collect_type": "monitor",
-            "config_type": "manual",
-        }
+        "x-task-id": "e2e-monitor",
+        "username": "monitor-user",
+        "password": "do-not-log-monitor",
+        "host": "10.10.24.20",
+        "instance_id": "vmware-20",
+        "instance_type": "vmware",
+        "collect_type": "monitor",
+        "config_type": "manual",
+    }
 
     async with http_client(monitor_api.monitor_router, "e2e-monitor-app") as client:
         accepted = await client.get(
@@ -537,10 +526,8 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
     redis_client, monkeypatch
 ):
     """最坏情况：256 个 SNMP 目标全部在 5 秒超时，验证两批有界执行。"""
-    target_prefix = os.getenv("STARGAZER_SNMP_TEST_PREFIX", "192.0.2")
-    community = os.getenv(
-        "STARGAZER_SNMP_TEST_COMMUNITY", "mock-snmp-community"
-    )
+    target_prefix = os.getenv("STARGAZER_SNMP_TEST_PREFIX", "10.10.69")
+    community = os.getenv("STARGAZER_SNMP_TEST_COMMUNITY", "mock-snmp-community")
     targets = tuple(f"{target_prefix}.{index}" for index in range(256))
     plugin = TimeoutSnmpPlugin(community)
     published = 0
@@ -572,10 +559,9 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
         ),
         plugin_factory=PluginFactory(plugin),
         publisher=NatsResultPublisher(metrics_publish=publish_metrics),
+        execution_plan_resolver=FixedFiveSecondPlanResolver(),
     )
-    monkeypatch.setattr(
-        collect_api, "get_collection_application", lambda: application
-    )
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
 
     stop_monitor = asyncio.Event()
     lag_samples = []
@@ -619,9 +605,7 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
             transport=httpx.ASGITransport(app=app),
             base_url="http://stargazer.test",
         ) as client:
-            accepted = await client.get(
-                "/collect/collect_info", headers=headers
-            )
+            accepted = await client.get("/collect/collect_info", headers=headers)
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 stats = await application.stats()
@@ -664,17 +648,14 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
         "target_concurrency": 200,
         "wall_seconds": round(wall_seconds, 3),
         "cpu_seconds": round(cpu_seconds, 3),
-        "process_cpu_percent_of_one_core": round(
-            cpu_seconds / wall_seconds * 100, 2
-        ),
+        "process_cpu_percent_of_one_core": round(cpu_seconds / wall_seconds * 100, 2),
         "process_max_rss_bytes": _max_rss_bytes(),
         "process_max_rss_delta_bytes": max(0, _max_rss_bytes() - rss_before),
         "python_traced_peak_bytes": python_peak_bytes,
         "redis_used_memory_bytes": int(redis_memory["used_memory"]),
         "redis_used_memory_delta_bytes": max(
             0,
-            int(redis_memory["used_memory"])
-            - int(redis_memory_before["used_memory"]),
+            int(redis_memory["used_memory"]) - int(redis_memory_before["used_memory"]),
         ),
         "redis_used_memory_peak_bytes": int(redis_memory["used_memory_peak"]),
         "peak_asyncio_tasks": peak_tasks,
@@ -685,9 +666,7 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
         "plugin_timeout_total": int(stats["plugin_timeout_total"]),
         "active_runs_after_completion": stats["active_runs"],
         "active_targets_after_completion": stats["active_targets"],
-        "target_worker_tasks_after_completion": stats[
-            "target_worker_tasks"
-        ],
+        "target_worker_tasks_after_completion": stats["target_worker_tasks"],
         "expected_failed_targets": 256,
         "expected_succeeded_targets": 0,
     }
@@ -704,9 +683,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
     password = os.getenv("STARGAZER_HOST_TEST_PASSWORD", "mock-host-secret")
     target_count = int(os.getenv("STARGAZER_HOST_TEST_COUNT", "150"))
     targets = tuple(f"{target_prefix}.{index}" for index in range(target_count))
-    plugin = TimeoutHostPlugin(
-        expected_username=username, expected_password=password
-    )
+    plugin = TimeoutHostPlugin(expected_username=username, expected_password=password)
     published = 0
 
     async def publish_metrics(_ctx, _value, _params, _task_id):
@@ -738,10 +715,9 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
         # 压测聚焦 CredentialAttempt/有界并发；不把本机 NATS Responder 可用性算进结果
         preflight=ReachablePreflight(),
         publisher=NatsResultPublisher(metrics_publish=publish_metrics),
+        execution_plan_resolver=FixedFiveSecondPlanResolver(),
     )
-    monkeypatch.setattr(
-        collect_api, "get_collection_application", lambda: application
-    )
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
 
     stop_monitor = asyncio.Event()
     lag_samples = []
@@ -785,9 +761,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
             transport=httpx.ASGITransport(app=app),
             base_url="http://stargazer.test",
         ) as client:
-            accepted = await client.get(
-                "/collect/collect_info", headers=headers
-            )
+            accepted = await client.get("/collect/collect_info", headers=headers)
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 stats = await application.stats()
@@ -840,17 +814,14 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
         "target_concurrency": 200,
         "wall_seconds": round(wall_seconds, 3),
         "cpu_seconds": round(cpu_seconds, 3),
-        "process_cpu_percent_of_one_core": round(
-            cpu_seconds / wall_seconds * 100, 2
-        ),
+        "process_cpu_percent_of_one_core": round(cpu_seconds / wall_seconds * 100, 2),
         "process_max_rss_bytes": _max_rss_bytes(),
         "process_max_rss_delta_bytes": max(0, _max_rss_bytes() - rss_before),
         "python_traced_peak_bytes": python_peak_bytes,
         "redis_used_memory_bytes": int(redis_memory["used_memory"]),
         "redis_used_memory_delta_bytes": max(
             0,
-            int(redis_memory["used_memory"])
-            - int(redis_memory_before["used_memory"]),
+            int(redis_memory["used_memory"]) - int(redis_memory_before["used_memory"]),
         ),
         "redis_used_memory_peak_bytes": int(redis_memory["used_memory_peak"]),
         "peak_asyncio_tasks": peak_tasks,
@@ -864,9 +835,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
         "credential_mismatch_attempts": plugin.credential_mismatches,
         "active_runs_after_completion": stats["active_runs"],
         "active_targets_after_completion": stats["active_targets"],
-        "target_worker_tasks_after_completion": stats[
-            "target_worker_tasks"
-        ],
+        "target_worker_tasks_after_completion": stats["target_worker_tasks"],
         "expected_failed_targets": target_count,
         "expected_succeeded_targets": 0,
     }
@@ -916,9 +885,7 @@ async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(
         plugin_factory=PluginFactory(plugin),
         publisher=NatsResultPublisher(metrics_publish=publish_metrics),
     )
-    monkeypatch.setattr(
-        collect_api, "get_collection_application", lambda: application
-    )
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
 
     stop_monitor = asyncio.Event()
     lag_samples = []
@@ -955,28 +922,16 @@ async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(
         headers.update(
             {
                 f"cmdbcredential_{index}_credential_id": f"snmp-real-{index + 1}",
-                f"cmdbcredential_{index}_target_host": str(
-                    credential["host"]
-                ),
-                f"cmdbcredential_{index}_version": str(
-                    credential["version"]
-                ),
-                f"cmdbcredential_{index}_community": str(
-                    credential["community"]
-                ),
-                f"cmdbcredential_{index}_snmp_port": str(
-                    credential["snmp_port"]
-                ),
+                f"cmdbcredential_{index}_target_host": str(credential["host"]),
+                f"cmdbcredential_{index}_version": str(credential["version"]),
+                f"cmdbcredential_{index}_community": str(credential["community"]),
+                f"cmdbcredential_{index}_snmp_port": str(credential["snmp_port"]),
             }
         )
         if "timeout" in credential:
-            headers[f"cmdbcredential_{index}_timeout"] = str(
-                credential["timeout"]
-            )
+            headers[f"cmdbcredential_{index}_timeout"] = str(credential["timeout"])
         if "retries" in credential:
-            headers[f"cmdbcredential_{index}_retries"] = str(
-                credential["retries"]
-            )
+            headers[f"cmdbcredential_{index}_retries"] = str(credential["retries"])
     mock_index = len(real_targets)
     headers.update(
         {
@@ -993,9 +948,7 @@ async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(
             transport=httpx.ASGITransport(app=app),
             base_url="http://stargazer.test",
         ) as client:
-            accepted = await client.get(
-                "/collect/collect_info", headers=headers
-            )
+            accepted = await client.get("/collect/collect_info", headers=headers)
             deadline = time.monotonic() + 40
             while time.monotonic() < deadline:
                 stats = await application.stats()
@@ -1017,9 +970,7 @@ async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(
     assert accepted.headers["x-target-count"] == "256"
     assert finished is True
     assert plugin.mock_calls == 252
-    assert set(plugin.real_results) == {
-        str(item["host"]) for item in real_targets
-    }
+    assert set(plugin.real_results) == {str(item["host"]) for item in real_targets}
     assert plugin.peak == 200
     assert published == 256
 
@@ -1047,17 +998,14 @@ async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(
         "target_concurrency": 200,
         "wall_seconds": round(wall_seconds, 3),
         "cpu_seconds": round(cpu_seconds, 3),
-        "process_cpu_percent_of_one_core": round(
-            cpu_seconds / wall_seconds * 100, 2
-        ),
+        "process_cpu_percent_of_one_core": round(cpu_seconds / wall_seconds * 100, 2),
         "process_max_rss_bytes": _max_rss_bytes(),
         "process_max_rss_delta_bytes": max(0, _max_rss_bytes() - rss_before),
         "python_traced_peak_bytes": python_peak_bytes,
         "redis_used_memory_bytes": int(redis_memory["used_memory"]),
         "redis_used_memory_delta_bytes": max(
             0,
-            int(redis_memory["used_memory"])
-            - int(redis_memory_before["used_memory"]),
+            int(redis_memory["used_memory"]) - int(redis_memory_before["used_memory"]),
         ),
         "redis_used_memory_peak_bytes": int(redis_memory["used_memory_peak"]),
         "peak_asyncio_tasks": peak_tasks,
@@ -1071,18 +1019,12 @@ async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(
         "real_results": plugin.real_results,
         "active_runs_after_completion": stats["active_runs"],
         "active_targets_after_completion": stats["active_targets"],
-        "target_worker_tasks_after_completion": stats[
-            "target_worker_tasks"
-        ],
+        "target_worker_tasks_after_completion": stats["target_worker_tasks"],
         "real_succeeded": sum(
-            1
-            for item in plugin.real_results.values()
-            if item.get("success")
+            1 for item in plugin.real_results.values() if item.get("success")
         ),
         "real_failed": sum(
-            1
-            for item in plugin.real_results.values()
-            if not item.get("success")
+            1 for item in plugin.real_results.values() if not item.get("success")
         ),
         "mock_calls": plugin.mock_calls,
     }

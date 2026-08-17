@@ -7,10 +7,11 @@ MySQL Server Information Collector
 A standalone script to gather information about MySQL servers.
 """
 
-import asyncio
 from decimal import Decimal
-import pymysql
+
+import aiomysql
 from pymysql.constants import CLIENT
+from pymysql.err import OperationalError
 
 from core.decorator import timer
 from core.collection.contracts import (
@@ -31,7 +32,6 @@ class MysqlInfo:
         self.database = kwargs.get('database', '')
         self.timeout = int(kwargs.get('timeout', 10))
         self.client_flag = CLIENT.MULTI_STATEMENTS
-        self.cursorclass = pymysql.cursors.DictCursor
         self.info = {
             'version': {},
             'databases': {},
@@ -47,32 +47,27 @@ class MysqlInfo:
         self.connection = None
         self.cursor = None
 
-        # self._connect()
-
-    def _connect(self):
+    async def _connect(self):
         """Establish MySQL connection."""
         try:
-            self.connection = pymysql.connect(
+            self.connection = await aiomysql.connect(
                 host=self.host,
                 port=self.port,
                 user=self.user,
                 password=self.password,
-                database=self.database,
+                db=self.database or None,
                 client_flag=self.client_flag,
-                cursorclass=self.cursorclass,
                 connect_timeout=self.timeout,
+                autocommit=True,
             )
-            self.cursor = self.connection.cursor()
+            self.cursor = await self.connection.cursor(aiomysql.DictCursor)
         except Exception as e:
             raise RuntimeError("Failed to connect to MySQL") from e
 
     async def probe(self) -> AccessProbeResult:
-        return await asyncio.to_thread(self._probe_sync)
-
-    def _probe_sync(self) -> AccessProbeResult:
         try:
-            self._connect()
-            rows = self._exec_sql("SHOW GLOBAL VARIABLES LIKE 'version'")
+            await self._connect()
+            rows = await self._exec_sql("SHOW GLOBAL VARIABLES LIKE 'version'")
             version = str(rows[0].get("Value") or "") if rows else ""
             return AccessProbeResult(
                 status=AccessProbeStatus.READY,
@@ -85,29 +80,33 @@ class MysqlInfo:
                 if cause is not None and cause.args
                 else None
             )
-            if error_number == 1045:
+            if error_number == 1045 or (
+                isinstance(cause, OperationalError)
+                and cause.args
+                and cause.args[0] == 1045
+            ):
                 return AccessProbeResult(
                     status=AccessProbeStatus.AUTH_FAILED,
                     error_code="authentication_failed",
                 )
             raise
         finally:
-            self.close()
+            await self.close()
 
-    def _exec_sql(self, query):
+    async def _exec_sql(self, query):
         """Execute SQL query and return results."""
         try:
-            self.cursor.execute(query)
-            return self.cursor.fetchall()
+            await self.cursor.execute(query)
+            return await self.cursor.fetchall()
         except Exception as e:
             raise RuntimeError(f"Error executing SQL '{query}': {str(e)}")
 
-    def _exec_first_query(self, queries):
+    async def _exec_first_query(self, queries):
         """Execute the first successful SQL query from a list."""
         last_err = None
         for query in queries:
             try:
-                return self._exec_sql(query)
+                return await self._exec_sql(query)
             except Exception as err:
                 last_err = err
         raise RuntimeError(str(last_err))
@@ -128,92 +127,57 @@ class MysqlInfo:
         except (ValueError, TypeError):
             return val
 
-    def _collect(self):
+    async def _collect(self):
         """Collect all possible subsets."""
-        self._get_databases()
-        self._get_global_variables()
-        # self._get_global_status()
-        # self._get_engines()
-        # self._get_users()
-        self._safe_collect("master_status", self._get_master_status)
-        self._safe_collect("slave_status", self._get_slave_status)
-        self._safe_collect("slave_hosts", self._get_slaves)
+        await self._get_databases()
+        await self._get_global_variables()
+        await self._safe_collect("master_status", self._get_master_status)
+        await self._safe_collect("slave_status", self._get_slave_status)
+        await self._safe_collect("slave_hosts", self._get_slaves)
 
-    def _safe_collect(self, name, func):
+    async def _safe_collect(self, name, func):
         """Collect optional data without failing the full run."""
         try:
-            func()
+            await func()
         except Exception as err:
             logger.warning("mysql_info collect %s failed: %s", name, str(err))
             self.info['replication_errors'][name] = str(err)
 
-    def _get_databases(self):
+    async def _get_databases(self):
         """Get info about databases."""
         query = ('SELECT table_schema AS "name", '
                  'SUM(data_length + index_length) AS "size" '
                  'FROM information_schema.TABLES GROUP BY table_schema')
-        res = self._exec_sql(query)
+        res = await self._exec_sql(query)
         if res:
             for db in res:
                 self.info['databases'][db['name']] = {'size': int(db['size'])}
 
-    def _get_global_variables(self):
+    async def _get_global_variables(self):
         """Get global variables (instance settings)."""
-        res = self._exec_sql('SHOW GLOBAL VARIABLES')
+        res = await self._exec_sql('SHOW GLOBAL VARIABLES')
         if res:
             for var in res:
                 self.info['settings'][var['Variable_name']] = self._convert(var['Value'])
 
             full = self.info['settings']['version']
             self.info['version'] = {"version": full}
-            self._ensure_server_uuid()
+            await self._ensure_server_uuid()
 
-    def _ensure_server_uuid(self):
+    async def _ensure_server_uuid(self):
         """Ensure server_uuid is populated for old versions."""
         if self.info['settings'].get("server_uuid"):
             return
         try:
-            res = self._exec_sql('SELECT @@server_uuid AS server_uuid')
+            res = await self._exec_sql('SELECT @@server_uuid AS server_uuid')
             if res:
                 self.info['settings']['server_uuid'] = res[0].get('server_uuid')
         except Exception as err:
             logger.warning("mysql_info get server_uuid failed: %s", str(err))
 
-    def _get_global_status(self):
-        """Get global status."""
-        res = self._exec_sql('SHOW GLOBAL STATUS')
-        if res:
-            for var in res:
-                self.info['global_status'][var['Variable_name']] = self._convert(var['Value'])
-
-    def _get_engines(self):
-        """Get storage engines info."""
-        res = self._exec_sql('SHOW ENGINES')
-        if res:
-            for line in res:
-                engine = line['Engine']
-                self.info['engines'][engine] = {k: v for k, v in line.items() if k != 'Engine'}
-
-    def _get_users(self):
-        """Get user info."""
-        res = self._exec_sql('SELECT * FROM mysql.user')
-        if res:
-            for line in res:
-                host = line['Host']
-                user = line['User']
-
-                if host not in self.info['users']:
-                    self.info['users'][host] = {}
-
-                self.info['users'][host][user] = {
-                    k: self._convert(v)
-                    for k, v in line.items()
-                    if k not in ('Host', 'User')
-                }
-
-    def _get_master_status(self):
+    async def _get_master_status(self):
         """Get master status if the instance is a master."""
-        res = self._exec_first_query([
+        res = await self._exec_first_query([
             'SHOW MASTER STATUS',
             'SHOW BINARY LOG STATUS',
         ])
@@ -222,14 +186,14 @@ class MysqlInfo:
                 for vname, val in line.items():
                     self.info['master_status'][vname] = self._convert(val)
 
-    def _get_slave_status(self):
+    async def _get_slave_status(self):
         """Get slave status if the instance is a slave."""
-        res = self._exec_first_query([
+        res = await self._exec_first_query([
             'SHOW SLAVE STATUS',
             'SHOW REPLICA STATUS',
         ])
         if res and len(res) > 0:
-            line = res[0]  # SHOW SLAVE STATUS returns only one row
+            line = res[0]
             host = self._get_first_key(line, ["Master_Host", "Source_Host"])
             port = self._get_first_key(line, ["Master_Port", "Source_Port"])
             user = self._get_first_key(line, ["Master_User", "Source_User"])
@@ -248,9 +212,9 @@ class MysqlInfo:
                 ):
                     self.info['slave_status'][host][port][user][vname] = self._convert(val)
 
-    def _get_slaves(self):
+    async def _get_slaves(self):
         """Get slave hosts info if the instance is a master."""
-        res = self._exec_first_query([
+        res = await self._exec_first_query([
             'SHOW SLAVE HOSTS',
             'SHOW REPLICA HOSTS',
         ])
@@ -292,7 +256,6 @@ class MysqlInfo:
             role = "master"
 
         has_slaves = bool(self.info['slave_hosts'])
-        cluster_id = None
         if role == "slave" and master_uuid:
             cluster_id = master_uuid
         elif role == "master" and server_uuid:
@@ -319,15 +282,10 @@ class MysqlInfo:
 
     @timer(logger=logger)
     async def list_all_resources(self):
-        return await asyncio.to_thread(self._list_all_resources_sync)
-
-    def _list_all_resources_sync(self):
-        """
-        Convert collected data to a standard format.
-        """
+        """Convert collected data to a standard format."""
         try:
-            self._connect()
-            self._collect()
+            await self._connect()
+            await self._collect()
             model_data = {
                 "ip_addr": self.host,
                 "port": self.port,
@@ -353,13 +311,15 @@ class MysqlInfo:
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         finally:
-            self.close()
+            await self.close()
 
         return inst_data
 
-    def close(self):
+    async def close(self):
         """Close the MySQL connection."""
         if self.cursor:
-            self.cursor.close()
+            await self.cursor.close()
+            self.cursor = None
         if self.connection:
             self.connection.close()
+            self.connection = None

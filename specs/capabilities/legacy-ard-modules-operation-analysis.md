@@ -14,7 +14,9 @@
 | Dashboard / Topology / Architecture | `models/models.py` | 仪表盘/拓扑/架构图（filters、view_sets JSON）；三者均含 `is_build_in`/`build_in_key`（unique）内置标识 |
 | Screen / Report | `models/models.py` | 大屏/报表画布；均含 `directory`、`view_sets`、`is_build_in`/`build_in_key` |
 | NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS）；含 `namespace`（NATS 命名空间标识，消息主题前缀，default=`bklite`）；含 `is_active`（内部预留，前端不暴露、运行时不校验） |
-| DataSourceAPIModel | `models/datasource_models.py` | 数据源定义；含 `source_type`（NATS/MySQL/PostgreSQL/REST API/Excel/Prometheus）、`connection_config`（连接配置）、`query_config`（取数配置）、`chart_type`（JSON，图表类型，default=list）、`field_schema`（JSON，接口返回字段定义，default=list）、`is_active`（内部预留），以及内置标记与唯一稳定身份键 |
+| DataSourceAPIModel | `models/datasource_models.py` | 数据源定义；含 `source_type`、`connection` FK（可空，引用公共数据连接）、`connection_config`/`connection_overrides`、`query_config`、`transform_config`（REST/Excel 可选 Python）、Excel 双槽 FK（`excel_success_slot`/`excel_candidate_slot`/`excel_materialization_generation`）、`chart_type`、`field_schema`、内置标记与稳定键 |
+| DataConnection | `models/datasource_models.py` | 组织内可复用 MySQL/PostgreSQL/REST 物理连接；凭据加密；被引用时删除受 PROTECT |
+| ExcelMaterializationSlot | `models/excel_materialization_models.py` | Excel 成功/候选物化槽；原文件与结果存对象存储，元数据在库内 |
 | DataSourceTag | `models/datasource_models.py` | 数据源标签；含 `build_in`（是否内置） |
 | DashboardReportSubscription | `models/subscription_models.py` | 画布报告订阅配置；绑定 Dashboard FK（兼容，Screen 可空）与 `resource_type`/`resource_id`、创建者 `(username, domain)`、组织、名称、状态、单个接收邮箱、邮件渠道及预留 config；`revision` 提供全字段 CAS，`version` 仅表示调度配置版本 |
 | DashboardReportExecution | `models/subscription_models.py` | 一次 Dashboard 报告订阅执行审计；含 `resource_type`/`resource_id`；支持 manual 触发及 pending/running/succeeded/failed/unknown；`pending→running` 仅经 Claim；Delivery Fact 终态修正使用独立审计字段 |
@@ -28,12 +30,14 @@
 > 证据来源：server/apps/operation_analysis/models/datasource_models.py:121-122，server/apps/operation_analysis/common/builtin_datasource_identity.py:19-45，server/apps/operation_analysis/management/commands/init_source_api_data.py:95-160，server/apps/operation_analysis/views/datasource_view.py:590-604　|　同步基线：d2769559　|　【已实现】
 
 ## 3. 接口【已实现/已存在】
-路由组：`data_source`/`dashboard`/`dashboard_subscription`/`dashboard_execution`/`directory`/`topology`/`architecture`/`screen`/`report`/`namespace`/`tag`/`import_export`/`scene_widgets`；开放端点 `open_api/import_export`。
+路由组：`data_source`/`data_connection`/`dashboard`/`dashboard_subscription`/`dashboard_execution`/`directory`/`topology`/`architecture`/`screen`/`report`/`namespace`/`tag`/`import_export`/`scene_widgets`；开放端点 `open_api/import_export`。
 
 关键自定义动作【已实现/已存在】：
-- `data_source` 的 `get_source_data/{pk}`（POST）：组件运行时取数对外入口，是整个取数链路的起点；统一返回 `{data: <原始业务 payload>, warnings: string[]}`（`views/datasource_view.py:383-502`）。
-- 内置数据源保护【已实现】：内置标记和稳定身份键仅由系统维护；普通更新、删除接口均拒绝内置项。初始化支持显式强制更新，未启用强制更新时保留已认领内置项的现有配置（证据：`serializers/datasource_serializers.py:65-83`、`views/datasource_view.py:590-604`、`management/commands/init_source_api_data.py:95-160`）。
-- `data_source` 的 `preview`（POST，保存后）与 `preview_config`（POST，未保存配置）：用于连接测试 / 数据预览。非 NATS 数据源在管理页直接走内联执行，NATS 仍按命名空间配置运行时取数；前端可把预览识别出的字段一键回填到 `field_schema`，并在设置页继续手工增删、排序与校验唯一字段名（`views/datasource_view.py:481-529`、`web/src/app/ops-analysis/(pages)/settings/dataSource/{previewPanel,fieldSchemaTable,operateModalUtils}.tsx`）。
+- `data_connection` CRUD / `test_connection` / `references`【已实现】：组织内连接库；权限绑定 `data_source-*`；详情脱敏回显。
+- `data_source` 的 `extract_connection` / `submit_excel` / `retry_excel_materialization`【已实现】：内联连接提取；Excel 原文件提交后默认同步物化；界面新建可 `discard_on_fail` 清盘；失败重试仅在已保存原文件时允许。
+- `data_source` 的 `get_source_data/{pk}`（POST）：组件运行时取数对外入口；统一返回 `{data, warnings}`；Excel 优先读成功槽，存量 `imported_items` 兼容；REST 可选 Python（完整行集后、采样前）。
+- 非 NATS 预览【已实现】：`services/datasource_preview/` + `services/transform/`（独立 Runner）+ `services/excel_materialize/`（Celery 候选物化）。
+- 内置数据源保护【已实现】：内置标记和稳定身份键仅由系统维护；普通更新、删除接口均拒绝内置项。
 - `directory` 的 `tree`（GET）：返回目录树（`views/view.py:148`）。
 - `scene_widgets/network_status_topology`（POST）：按 `model_id`、`inst_id`、`depth` 构建网络状态拓扑场景数据，是网络状态拓扑组件的专用后端入口；复用 CMDB network_topology/实例权限并汇总 Alerts 活跃告警，权限动作 `view`（证据：`urls.py:23`、`views/scene_widget_view.py:10-23,10,12`、`services/network_status_topology.py:5,65,87`）。
 - `screen` / `report`【已实现/已存在】：通过 `CanvasModelViewSet` 复用画布类 CRUD、权限与内置对象保护逻辑，新增 `directory.screen` 与 `directory.report` 两类权限域（`views/view.py:347-423`）。
@@ -145,6 +149,10 @@
 ## 2026-08-10 单值说明字段与表格单元格样式
 
 - `[operation_analysis#20260810-001]` 仪表盘 `single` 增加可选 `descriptionField`（主值下方原样说明行；空态仍由主值门控）。生产 `ComTable` 增加列级 `valueMappings` / `cellThresholdColors` / `cellType`（`text` | `colorBackground` 纯色块），操作列不配置样式；不改挂 `OpsAnalysisTable`。变更契约与证据见 `specs/changes/ops-analysis-single-description-table-cell-styling/spec.md`。
+
+## 2026-08-17 Excel 物化放弃与补偿
+
+- `[operation_analysis#20260817-001]` Excel 槽位/文件随 Excel 身份放弃：切离 Excel、导入覆盖为非 Excel、补偿扫描走 `abandon_excel_materialization`；删除数据源仍级联删槽并由 `post_delete` 清对象存储。Worker 对非 Excel / 已删槽 fail-closed。切回 Excel 必须重新上传。证据：`services/excel_materialize/cleanup.py`、`serializers/datasource_serializers.py`、`tasks/tasks.py`；契约见 `specs/changes/ops-analysis-data-connection-transform/spec.md` §7。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

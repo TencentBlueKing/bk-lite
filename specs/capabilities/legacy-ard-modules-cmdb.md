@@ -120,10 +120,10 @@
 | `collect_node_mgmt_hosts` | :361 | 采集节点管理主机 |
 | `reconcile_ipam_task` | :372 | 周期执行 IPAM 与 CMDB 自动对账，调用 `services/ipam_reconcile.run_reconciliation` |
 
-### 主机联动与历史同步切换【已实现】
-主机资产联动已改为事件推送：节点管理或监控可将主机状态和关联标识写入 CMDB，CMDB 创建主机后会通知两端并回填其建立的关联；显式推送仅面向监控。联动路径保留组织范围和操作人上下文，且以来源链路抑制回声。原“从节点管理拉取主机”的同步任务由开关固定阻断，并记录为已跳过；紧急回退前不得将其作为正常数据通路。产品行为见 [[legacy-prd-cmdb-资产.md#3.12 跨模块主机联动]]，功能范围见 [[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#2. 资产管理（实例）]]。
+### 主机联动与节点管理同步【已实现】
+主机资产联动为事件推送：节点管理或监控可将主机状态和关联标识写入 CMDB，CMDB 创建主机后会通知两端并回填其建立的关联；显式推送仅面向监控。联动路径保留组织范围和操作人上下文，且以来源链路抑制回声。节点管理拉同步默认打开，与节点→CMDB 推送共用 `node_id` → ip+cloud 认实体，主机实例名为 `{ip}[{云区域}]`，禁止双建。节点删除或拉同步发现 sidecar 节点已从源侧消失时，只清 host 上的 `node_id`，不删实例。`node_id`/`monitor_id` 对用户不可编辑；内部 `skip_permission_check` 写路径必须仍能写入或清空这两个系统联动字段。产品行为见 [[legacy-prd-cmdb-资产.md#3.12 跨模块主机联动]] 与 `specs/changes/cmdb-node-mgmt-sync-shared-identity/spec.md`。
 
-> 证据来源：server/apps/cmdb/services/module_push.py:43-79，server/apps/cmdb/services/module_push.py:82-152，server/apps/cmdb/services/node_mgmt_sync_service.py:1956-1975　|　同步基线：d2769559　|　【已实现】
+> 证据来源：server/apps/cmdb/services/module_push.py:43-79，server/apps/cmdb/services/module_push.py:82-152，server/apps/cmdb/services/host_sync_identity.py，server/apps/cmdb/services/node_mgmt_sync_service.py　|　【已实现】
 
 ### 管理命令【已实现/已存在】
 - `management/commands/model_init.py:7`：初始化 CMDB 模型种子。

@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Checkbox, Dropdown, Empty, Input, message, Modal, Spin, Tag, Upload } from 'antd';
+import { Button, Checkbox, Dropdown, Input, message, Modal, Spin, Tag, Upload } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { DeleteOutlined, DownloadOutlined, DownOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -430,7 +431,7 @@ const Template: React.FC = () => {
               })}
             </div>
           ) : (
-            <Empty description={tableLoading ? '加载中' : '暂无策略模版'} />
+            <CompactEmptyState description={tableLoading ? '加载中' : '暂无策略模版'} />
           )}
         </Spin>
 

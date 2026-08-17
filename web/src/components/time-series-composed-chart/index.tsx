@@ -26,6 +26,8 @@ export interface TimeSeriesComposedChartSeries<T extends TimeSeriesRow> {
   showArea?: boolean;
   smooth?: boolean;
   showSymbol?: boolean;
+  /** 多序列除颜色外用线型区分；默认实线。 */
+  lineType?: 'solid' | 'dashed' | 'dotted';
 }
 
 export interface TimeSeriesComposedChartProps<T extends TimeSeriesRow> {
@@ -127,6 +129,9 @@ const TimeSeriesComposedChart = <T extends TimeSeriesRow>({
       yAxes && yAxes.length > 0
         ? yAxes
         : [{ formatter: formatCompactAxisValue, minInterval: 1 }];
+    const hasDistinctLineTypes = series.some(
+      (item) => item.type === 'line' && item.lineType && item.lineType !== 'solid',
+    );
 
     return {
       animation: false,
@@ -145,7 +150,7 @@ const TimeSeriesComposedChart = <T extends TimeSeriesRow>({
           textStyle: { color: DEFAULT_LEGEND_TEXT_COLOR, fontSize: 12 },
           itemWidth: 12,
           itemHeight: 4,
-          icon: 'rect',
+          ...(hasDistinctLineTypes ? {} : { icon: 'rect' }),
         }
         : { show: false },
       grid: {
@@ -206,14 +211,24 @@ const TimeSeriesComposedChart = <T extends TimeSeriesRow>({
           };
         }
 
+        const lineType = item.lineType || 'solid';
+        const symbol = item.showSymbol
+          ? lineType === 'dotted'
+            ? 'triangle'
+            : lineType === 'dashed'
+              ? 'diamond'
+              : 'circle'
+          : 'none';
+
         return {
           name: item.name,
           type: 'line',
           data: sortedData.map((row) => toNumericValue(row[item.dataKey])),
           yAxisIndex: item.yAxisIndex || 0,
           smooth: item.smooth !== false,
-          symbol: item.showSymbol ? 'circle' : 'none',
-          lineStyle: { width: item.lineWidth || 2, color },
+          symbol,
+          symbolSize: item.showSymbol ? 7 : 0,
+          lineStyle: { width: item.lineWidth || 2, color, type: lineType },
           areaStyle: item.showArea ? createSoftLineArea(color) : undefined,
         };
       }),

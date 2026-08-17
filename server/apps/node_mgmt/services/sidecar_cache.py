@@ -95,6 +95,22 @@ def invalidate_configuration_etags(configuration_ids: Iterable | None):
         transaction.on_commit(lambda: cache.delete_many(keys))
 
 
+def invalidate_node_configuration_etags(node_ids: Iterable | None):
+    normalized_node_ids = _normalize_ids(node_ids)
+    if not normalized_node_ids:
+        return
+
+    from apps.node_mgmt.models.sidecar import NodeCollectorConfiguration
+
+    assignments = NodeCollectorConfiguration.objects.filter(node_id__in=normalized_node_ids).values_list(
+        "node_id",
+        "collector_config_id",
+    )
+    keys = [build_configuration_etag_cache_key(node_id, configuration_id) for node_id, configuration_id in assignments]
+    if keys:
+        transaction.on_commit(lambda: cache.delete_many(keys))
+
+
 def invalidate_bulk_config_node_etags(configs: Iterable | None):
     invalidate_node_etags([config.get("node_id") for config in configs or [] if isinstance(config, dict)])
 

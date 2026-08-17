@@ -11,6 +11,11 @@ import ChartLegend from '@/components/chart-legend';
 import ChartWithSidebarLegend from '@/components/chart-with-sidebar-legend';
 import { renderEChartsTooltipCard } from '@/components/echarts-tooltip-card';
 import { useTranslation } from '@/utils/i18n';
+import {
+  formatLineBarAxisTick,
+  formatVisibleChartValue,
+  getLineBarYAxisName,
+} from '@/app/ops-analysis/utils/chartValueFormat';
 
 export interface OpsAnalysisBarProps {
   rawData: any;
@@ -30,6 +35,7 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
   const themeName = resolveOpsChartThemeName();
   const chartTheme = getOpsChartTheme(themeName);
   const chartColors = randomColorForLegend(themeName);
+  const yAxisName = getLineBarYAxisName(config);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
@@ -76,13 +82,13 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
             color: param.color,
             markerShape: 'square',
             label: param.seriesName || '--',
-            value: param.value ?? '--',
+            value: formatVisibleChartValue(param.value, config),
           })),
         });
       },
     },
     grid: {
-      top: 8,
+      top: yAxisName ? 24 : 8,
       left: 16,
       right: 16,
       bottom: 8,
@@ -121,6 +127,12 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
     },
     yAxis: {
       type: 'value',
+      name: yAxisName,
+      nameGap: 6,
+      nameTextStyle: {
+        color: chartTheme.axisLabelColor,
+        fontSize: 11,
+      },
       minInterval: 1,
       axisTick: {
         show: false,
@@ -129,12 +141,7 @@ const OpsAnalysisBar: React.FC<OpsAnalysisBarProps> = ({
         show: false,
       },
       axisLabel: {
-        formatter: function (value: number) {
-          if (value >= 1000) {
-            return (value / 1000).toFixed(1) + 'k';
-          }
-          return value.toString();
-        },
+        formatter: (value: number) => formatLineBarAxisTick(value, config),
         textStyle: {
           color: chartTheme.axisLabelColor,
         },

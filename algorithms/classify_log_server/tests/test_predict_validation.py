@@ -86,8 +86,9 @@ def _setup_stubs():
     prom_mod.Histogram = lambda *a, **k: _Counter()
     prom_mod.Gauge = lambda *a, **k: _Counter()
 
-    # ---- pandas 桩（仅用于类型，实际路径不走 predict 推理逻辑）----
-    _install("pandas")
+    # ---- pandas 桩（仅在依赖不可用时兜底，避免污染同进程聚合测试）----
+    if importlib.util.find_spec("pandas") is None:
+        _install("pandas")
 
     # ---- 服务内部子模块桩 ----
     serving_base = "classify_log_server.serving"

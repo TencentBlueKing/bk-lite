@@ -38,7 +38,7 @@ const OpsAnalysisDataSourceSelect: React.FC<OpsAnalysisDataSourceSelectProps> = 
     return sources.map((item) => ({
       label: (
         <div className="flex items-center justify-between w-full">
-          <span>{`${item.name}（${item.rest_api}）`}</span>
+          <span>{`${item.name}${item.rest_api ? `（${item.rest_api}）` : ''}`}</span>
           {item.hasAuth === false && (
             <span className="ml-2">
               <StatusBadgeShell
@@ -61,7 +61,7 @@ const OpsAnalysisDataSourceSelect: React.FC<OpsAnalysisDataSourceSelectProps> = 
       value: item.id,
       title: item.desc,
       disabled: item.hasAuth === false,
-      searchText: `${item.name} ${item.rest_api}`,
+      searchText: [item.name, item.rest_api].filter(Boolean).join(' '),
     }));
   };
 

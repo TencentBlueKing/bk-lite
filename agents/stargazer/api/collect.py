@@ -2,27 +2,24 @@
 # @File: collect.py
 # @Time: 2025/2/27 10:41
 # @Author: windyzhao
-import time
 import json
+import time
+import uuid
 from typing import List
 
-from sanic import Blueprint
-from core.logger import logger
-from sanic import response
-
-from core.infra.credential_state_cache import CredentialStateCache
 from core.collection.application import get_collection_application
-from core.collection.request_builder import (
-    build_collection_request,
-    parse_credentials_pool,
-)
+from core.collection.request_builder import build_collection_request, parse_credentials_pool
 from core.collection.request_identity import build_request_task_id_from_request
+from core.collection.runtime import SubmissionStatus
+from core.infra.credential_state_cache import CredentialStateCache
+from core.logger import logger
+from plugins.base_utils import expand_ip_range
+from sanic import Blueprint, response
+from service.collect_credential_result_push_service import CollectCredentialResultPushService
+from tasks.collectors.host_collector import _escape_prometheus_label_value
 
 # 兼容旧测试/调用方私有名
 _parse_credentials_pool = parse_credentials_pool
-from core.collection.runtime import SubmissionStatus
-from plugins.base_utils import expand_ip_range
-from tasks.collectors.host_collector import _escape_prometheus_label_value
 
 collect_router = Blueprint("collect", url_prefix="/collect")
 
@@ -39,9 +36,7 @@ async def _submit_collection_run(request, task_params: dict, model_id: str):
         task_params["hosts"] = _parse_hosts(hosts_param)
         if not task_params["hosts"]:
             raise ValueError("Failed to parse hosts parameter")
-    task_params["credentials_pool"] = parse_credentials_pool(
-        task_params.get("credentials_pool"), params=task_params
-    )
+    task_params["credentials_pool"] = parse_credentials_pool(task_params.get("credentials_pool"), params=task_params)
     collection_request = build_collection_request(
         task_id=_request_task_id(request, task_params),
         params=task_params,
@@ -53,14 +48,11 @@ async def _submit_collection_run(request, task_params: dict, model_id: str):
         SubmissionStatus.BUSY: 429,
     }[submission.status]
     timestamp = int(time.time() * 1000)
-    metric = (
-        'collection_request_accepted{model_id="%s",task_id="%s",status="%s"} 1 %s\n'
-        % (
-            _escape_prometheus_label_value(model_id),
-            _escape_prometheus_label_value(submission.task_id),
-            _escape_prometheus_label_value(submission.status.value),
-            timestamp,
-        )
+    metric = 'collection_request_accepted{{model_id="{}",task_id="{}",status="{}"}} 1 {}\n'.format(
+        _escape_prometheus_label_value(model_id),
+        _escape_prometheus_label_value(submission.task_id),
+        _escape_prometheus_label_value(submission.status.value),
+        timestamp,
     )
     headers = {
         "X-Task-ID": submission.task_id,
@@ -71,9 +63,7 @@ async def _submit_collection_run(request, task_params: dict, model_id: str):
     if submission.status == SubmissionStatus.BUSY:
         headers["Retry-After"] = "1"
     if submission.summary:
-        headers["X-Run-Summary"] = json.dumps(
-            submission.summary, ensure_ascii=True, separators=(",", ":")
-        )
+        headers["X-Run-Summary"] = json.dumps(submission.summary, ensure_ascii=True, separators=(",", ":"))
     return response.raw(
         metric,
         content_type="text/plain; version=0.0.4; charset=utf-8",
@@ -83,11 +73,32 @@ async def _submit_collection_run(request, task_params: dict, model_id: str):
 
 
 def _is_config_file_collect(task_params: dict) -> bool:
+    plugin_name = str(task_params.get("plugin_name") or "")
+    model_id = str(task_params.get("model_id") or "")
     return (
         str(task_params.get("callback_subject") or "") == "receive_config_file_result"
-        or str(task_params.get("plugin_name") or "") == "config_file_info"
-        or str(task_params.get("model_id") or "") == "config_file"
+        or plugin_name in {"config_file_info", "network_config_file_info"}
+        or model_id in {"config_file", "network_config_file"}
     )
+
+
+def _validate_config_file_protocol(task_params: dict) -> str:
+    if not _is_config_file_collect(task_params):
+        return ""
+    if str(task_params.get("protocol_version") or "") != "2":
+        return "unsupported config collection protocol version"
+    if task_params.get("target_instance_id") not in (None, ""):
+        return "target_instance_id is no longer supported"
+
+    target_instance_uuid = str(task_params.get("target_instance_uuid") or "").strip()
+    try:
+        parsed_uuid = uuid.UUID(target_instance_uuid)
+    except (TypeError, ValueError, AttributeError):
+        return "target_instance_uuid must be a valid UUIDv4"
+    if parsed_uuid.version != 4 or str(parsed_uuid) != target_instance_uuid.lower():
+        return "target_instance_uuid must be a canonical UUIDv4"
+    return ""
+
 
 def _get_connect_ip(host: str) -> str:
     host_str = str(host or "").strip()
@@ -99,25 +110,25 @@ def _get_connect_ip(host: str) -> str:
 def _parse_hosts(hosts_param: str) -> List[str]:
     """
     解析hosts参数，支持逗号分隔和IP段
-    
+
     支持格式：
     - 单个IP/域名: "192.168.1.1" 或 "ecs.cn-beijing.aliyuncs.com"
     - 逗号分隔: "192.168.1.1,192.168.1.2"
     - IP段: "192.168.1.1-192.168.1.10"
     - 混合: "192.168.1.1,192.168.1.5-192.168.1.8"
-    
+
     Args:
         hosts_param: hosts参数字符串
-        
+
     Returns:
         解析后的IP/域名列表
     """
     if not hosts_param or not hosts_param.strip():
         return []
-    
+
     result = []
     segments = [seg.strip() for seg in hosts_param.split(",") if seg.strip()]
-    
+
     for segment in segments:
         if "-" in segment and segment.count(".") >= 3:
             # 可能是IP段（192.168.1.1-192.168.1.10）
@@ -131,17 +142,12 @@ def _parse_hosts(hosts_param: str) -> List[str]:
         else:
             # 单个IP/域名/endpoint
             result.append(segment)
-    
+
     return result
 
 
 def _build_credential_results_payload(events: List[dict]) -> dict:
-    next_since = ""
-    for item in events or []:
-        finished_at = str((item or {}).get("finished_at") or "")
-        if finished_at and finished_at > next_since:
-            next_since = finished_at
-    return {"results": events or [], "next_since": next_since}
+    return CollectCredentialResultPushService.build_results_payload(events)
 
 
 @collect_router.get("/credential_results")
@@ -217,14 +223,17 @@ async def collect(request):
         error_lines = [
             "# HELP collection_request_error Collection request error",
             "# TYPE collection_request_error gauge",
-            f'collection_request_error{{model_id="",instance_id="{_escape_prometheus_label_value(instance_id or "")}",error="model_id is Null"}} 1 {current_timestamp}'
+            (
+                'collection_request_error{model_id="",instance_id="'
+                f'{_escape_prometheus_label_value(instance_id or "")}",error="model_id is Null"}} 1 {current_timestamp}'
+            ),
         ]
 
-        return response.raw(
-            "\n".join(error_lines) + "\n",
-            content_type='text/plain; version=0.0.4; charset=utf-8',
-            status=500
-        )
+        return response.raw("\n".join(error_lines) + "\n", content_type="text/plain; version=0.0.4; charset=utf-8", status=500)
+
+    protocol_error = _validate_config_file_protocol(params)
+    if protocol_error:
+        return response.json({"error": protocol_error}, status=400)
 
     task_params = {
         **params,
@@ -257,7 +266,6 @@ async def collect(request):
         )
 
 
-
 @collect_router.post("/pc_test_connection")
 async def pc_test_connection(request):
     """
@@ -277,7 +285,8 @@ async def pc_test_connection(request):
     params = request.json or {}
     logger.info(
         "PC test connection request: os_type=%s host=%s",
-        params.get("os_type"), params.get("host"),
+        params.get("os_type"),
+        params.get("host"),
     )
     try:
         result = await run_pc_test_connection(params)

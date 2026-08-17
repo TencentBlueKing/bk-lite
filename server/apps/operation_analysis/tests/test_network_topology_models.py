@@ -21,6 +21,12 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from apps.operation_analysis.models.models import Directory, NetworkTopology, decrypt_weops_token, encrypt_weops_token
 from apps.operation_analysis.services.network_topology import canvas_config
 
+INST_UUID_10001 = "00000000-0000-4000-8000-000000010001"
+INST_UUID_10002 = "00000000-0000-4000-8000-000000010002"
+INST_UUID_10003 = "00000000-0000-4000-8000-000000010003"
+IFACE_UUID_90001 = "00000000-0000-4000-8000-000000090001"
+IFACE_UUID_90002 = "00000000-0000-4000-8000-000000090002"
+
 
 def _make_directory():
     return Directory.objects.create(name="网络拓扑目录", groups=[1])
@@ -85,12 +91,12 @@ def test_save_normalizes_base_url_persisted_to_db():
 # --------------------------------------------------------------------------- #
 
 
-def _node_payload(node_id="node-1", bk_obj_id="bk_switch", bk_inst_id=10001, **extras):
+def _node_payload(node_id="node-1", bk_obj_id="bk_switch", bk_inst_uuid=INST_UUID_10001, **extras):
     payload = {
         "id": node_id,
         "bk_obj_id": bk_obj_id,
-        "bk_inst_id": bk_inst_id,
-        "bk_inst_name": f"{bk_obj_id}-{bk_inst_id}",
+        "bk_inst_uuid": bk_inst_uuid,
+        "bk_inst_name": f"{bk_obj_id}-{bk_inst_uuid}",
         "ip_addr": "10.0.0.1",
         "network_collect_task_id": 12,
         "network_collect_instance_id": 345,
@@ -114,8 +120,8 @@ def _link_payload(
 ):
     default_pairs = [
         {
-            "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 90001, "interface_name": "GigE0/1"},
-            "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 90002, "interface_name": "GigE0/1"},
+            "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_uuid": IFACE_UUID_90001, "interface_name": "GigE0/1"},
+            "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_uuid": IFACE_UUID_90002, "interface_name": "GigE0/1"},
         }
     ]
     payload = {
@@ -134,7 +140,7 @@ def _link_payload(
 def test_clean_view_sets_accepts_minimal_payload():
     topology = _make_topology(token="t")
     topology.view_sets = {
-        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", 10002)],
+        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", INST_UUID_10002)],
         "links": [_link_payload("link-1", "node-1", "node-2")],
     }
 
@@ -148,7 +154,7 @@ def test_clean_view_sets_accepts_minimal_payload():
 def test_clean_view_sets_accepts_link_interface_metrics():
     topology = _make_topology(token="t")
     topology.view_sets = {
-        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", 10002)],
+        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", INST_UUID_10002)],
         "links": [
             _link_payload(
                 "link-1",
@@ -168,7 +174,7 @@ def test_clean_view_sets_accepts_link_interface_metrics():
 def test_clean_view_sets_rejects_unknown_link_interface_metric():
     topology = _make_topology(token="t")
     topology.view_sets = {
-        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", 10002)],
+        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", INST_UUID_10002)],
         "links": [
             _link_payload(
                 "link-1",
@@ -191,7 +197,7 @@ def test_clean_view_sets_rejects_unknown_link_interface_metric():
 def test_clean_view_sets_rejects_duplicate_node_id():
     topology = _make_topology(token="t")
     topology.view_sets = {
-        "nodes": [_node_payload("node-1"), _node_payload("node-1", "bk_router", 10002)],
+        "nodes": [_node_payload("node-1"), _node_payload("node-1", "bk_router", INST_UUID_10002)],
         "links": [],
     }
     with pytest.raises(DjangoValidationError) as exc:
@@ -207,7 +213,7 @@ def test_clean_view_sets_rejects_duplicate_asset_within_canvas():
     topology.view_sets = {
         "nodes": [
             _node_payload("node-1"),
-            _node_payload("node-2", "bk_switch", 10001),
+            _node_payload("node-2", "bk_switch", INST_UUID_10001),
         ],
         "links": [],
     }
@@ -215,14 +221,14 @@ def test_clean_view_sets_rejects_duplicate_asset_within_canvas():
         topology.clean_view_sets()
     detail = exc.value.message_dict if hasattr(exc.value, "message_dict") else exc.value.messages
     joined = " ".join(str(item) for items in detail.values() for item in items)
-    assert "重复" in joined and "(bk_switch, 10001)" in joined
+    assert "重复" in joined and INST_UUID_10001 in joined
 
 
 @pytest.mark.django_db
 def test_clean_view_sets_rejects_link_with_no_port_pairs():
     topology = _make_topology(token="t")
     topology.view_sets = {
-        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", 10002)],
+        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", INST_UUID_10002)],
         "links": [_link_payload("link-1", port_pairs=[])],
     }
     with pytest.raises(DjangoValidationError) as exc:
@@ -236,7 +242,7 @@ def test_clean_view_sets_rejects_link_with_no_port_pairs():
 def test_clean_view_sets_allows_draft_link_with_no_port_pairs():
     topology = _make_topology(token="t")
     topology.view_sets = {
-        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", 10002)],
+        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", INST_UUID_10002)],
         "links": [_link_payload("link-1", port_pairs=[], is_draft=True)],
     }
     # No exception expected.
@@ -262,7 +268,7 @@ def test_clean_view_sets_rejects_link_pointing_to_missing_node():
 def test_clean_view_sets_rejects_duplicate_link_id():
     topology = _make_topology(token="t")
     topology.view_sets = {
-        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", 10002)],
+        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", INST_UUID_10002)],
         "links": [
             _link_payload("link-1", source="node-1", target="node-2"),
             _link_payload("link-1", source="node-2", target="node-1"),
@@ -326,11 +332,11 @@ def test_clean_view_sets_rejects_threshold_missing_color():
 def test_clean_view_sets_rejects_port_pair_missing_interface():
     topology = _make_topology(token="t")
     topology.view_sets = {
-        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", 10002)],
+        "nodes": [_node_payload("node-1"), _node_payload("node-2", "bk_router", INST_UUID_10002)],
         "links": [
             _link_payload(
                 "link-1",
-                port_pairs=[{"source_interface": {}, "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 90002}}],
+                port_pairs=[{"source_interface": {}, "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_uuid": IFACE_UUID_90002}}],
             )
         ],
     }
@@ -353,7 +359,7 @@ def test_cascade_remove_node_removes_referencing_links_too():
         "nodes": [
             _node_payload("node-1"),
             _node_payload("node-2", "bk_router", 10002),
-            _node_payload("node-3", "bk_firewall", 10003),
+            _node_payload("node-3", "bk_firewall", INST_UUID_10003),
         ],
         "links": [
             _link_payload("link-a", "node-1", "node-2"),

@@ -219,6 +219,8 @@ export interface ObjectItem {
   template_id?: string;
   template_type?: string;
   is_custom?: boolean;
+  is_visible?: boolean;
+  parent?: number | null;
   type: string;
   plugin_name?: string;
   plugin_id?: number;

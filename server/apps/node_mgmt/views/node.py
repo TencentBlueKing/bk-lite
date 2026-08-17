@@ -28,6 +28,7 @@ from apps.node_mgmt.services.module_push import (
     parse_retire_linked_flag,
 )
 from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.sidecar_cache import invalidate_node_configuration_etags
 from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar
 from apps.node_mgmt.utils.permission import (
     add_node_permissions,
@@ -299,9 +300,11 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         if error_response:
             return error_response
         instance = nodes[0]
-        # retire_linked 默认 false：仅删节点；true 时 best-effort 退役已关联 CMDB/监控
+        # 删除节点必须清 CMDB 上悬挂的 node_id（实例保留）。
+        # retire_linked 另退役监控等已关联对象；失败都不阻断删除。
+        actor_scope = build_module_push_actor_scope(request)
+        ModulePushService.best_effort_unlink_cmdb(instance, actor_scope=actor_scope)
         if parse_retire_linked_flag(request):
-            actor_scope = build_module_push_actor_scope(request)
             ModulePushService.best_effort_retire_linked(instance, actor_scope=actor_scope)
         self.perform_destroy(instance)
         return WebUtils.response_success()
@@ -320,9 +323,12 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         if error_response:
             return error_response
 
+        name_changed = name is not None and name != node.name
         if name is not None:
             node.name = name
             node.save()
+            if name_changed:
+                invalidate_node_configuration_etags([node.id])
 
         if organizations is not None:
             NodeOrganization.objects.filter(node=node).delete()

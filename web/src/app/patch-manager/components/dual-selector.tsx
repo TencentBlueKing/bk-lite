@@ -59,10 +59,10 @@ export default function DualSelector<T extends object>({
   };
 
   return (
-    <div style={{ display: 'flex', gap: 16, height }}>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="flex gap-4" style={{ height }}>
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {leftTitle}
-        <div style={{ flex: 1, minHeight: 0 }}>
+        <div className="min-h-0 flex-1">
           <CustomTable<T>
             size="small"
             rowKey={rowKey}
@@ -82,82 +82,45 @@ export default function DualSelector<T extends object>({
           />
         </div>
       </div>
-      <div
-        style={{
-          width: 220,
-          display: 'flex',
-          flexDirection: 'column',
-          borderLeft: '1px solid var(--color-border-1, #e8e8e8)',
-          paddingLeft: 16,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 12,
-          }}
-        >
-          <span style={{ fontWeight: 500 }}>{rightTitle || t('patchManager.common.selectedItems', 'Selected {count} items', { count: selectedRecords.length })}</span>
+      <div className="flex w-[220px] flex-col border-l border-[var(--color-border-1)] pl-4">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="font-medium">
+            {rightTitle || t('patchManager.common.selectedItems', 'Selected {count} items', { count: selectedRecords.length })}
+          </span>
           {selectedRecords.length > 0 && (
-            <a style={{ color: '#ff4d4f', fontSize: 12 }} onClick={() => onChange([])}>
+            <a
+              className="cursor-pointer text-xs text-[var(--color-fail)]"
+              onClick={() => onChange([])}
+            >
               {t('patchManager.common.clearAll', 'Clear all')}
             </a>
           )}
         </div>
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div className="flex-1 overflow-y-auto">
           {selectedRecords.map((r) => {
             const recordKey = getRecordKey(r);
             return (
               <div
                 key={recordKey}
-                className="dual-selector-item"
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '6px 8px',
-                  borderRadius: 6,
-                  marginBottom: 4,
-                  background: 'var(--color-fill-1, #f4f6f9)',
-                  fontSize: 13,
-                }}
+                className="group mb-1 flex items-center justify-between rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-[13px]"
               >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span className="truncate">
                   {renderSelectedLabel(r)}
                 </span>
                 <CloseOutlined
-                  className="dual-selector-remove-btn"
-                  style={{
-                    color: '#bfbfbf',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                    opacity: 0,
-                    transition: 'opacity 0.2s',
-                  }}
+                  className="cursor-pointer text-xs text-[var(--color-text-4)] opacity-0 transition-opacity group-hover:opacity-100"
                   onClick={() => onChange(selectedKeys.filter((k) => k !== recordKey))}
                 />
               </div>
             );
           })}
           {selectedRecords.length === 0 && (
-            <div
-              style={{
-                color: 'var(--color-text-3, #8c8c8c)',
-                fontSize: 13,
-                textAlign: 'center',
-                marginTop: 40,
-              }}
-            >
+            <div className="mt-10 text-center text-[13px] text-[var(--color-text-3)]">
               {t('patchManager.common.noSelection', 'No selection')}
             </div>
           )}
         </div>
       </div>
-      <style>{`
-        .dual-selector-item:hover .dual-selector-remove-btn { opacity: 1 !important; }
-      `}</style>
     </div>
   );
 }

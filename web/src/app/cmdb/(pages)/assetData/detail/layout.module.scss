@@ -1,4 +1,9 @@
 .attrLayout {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .attrLayout :global(.ant-card-body) {
@@ -11,5 +16,5 @@
 }
 
 .attrLayout :global(section) {
-  width: calc(100vw - 250px);
+  min-width: 0;
 }

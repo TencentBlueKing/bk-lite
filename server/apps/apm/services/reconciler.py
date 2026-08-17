@@ -1,11 +1,10 @@
-import logging
 from datetime import datetime, timedelta
 
 from apps.apm.models import ApmApplication
 from apps.apm.services.catalog import DjangoTelemetryCatalogService, InvalidCatalogIdentity
 from apps.apm.services.contracts import CatalogDiscovery, CatalogReconcileResult, InstanceActivityQuery, MetricStore
+from apps.core.logger import apm_logger as logger
 
-logger = logging.getLogger(__name__)
 MAX_UNKNOWN_APPLICATION_SAMPLES = 20
 MAX_INVALID_IDENTITY_SAMPLES = 20
 
@@ -34,6 +33,7 @@ class TelemetryCatalogReconciler:
                         instance_id=activity.instance_id,
                         environment=activity.environment,
                         version=activity.version,
+                        language=activity.language,
                         seen_at=activity.last_seen_at,
                     )
                 )
@@ -59,7 +59,6 @@ class TelemetryCatalogReconciler:
                 continue
             instance_ids.add(result.instance.id)
 
-        archived_services, archived_instances = self.catalog.archive_stale(observed_at=observed_at)
         if unknown_applications:
             logger.warning(
                 "APM telemetry ignored unknown applications",
@@ -80,8 +79,7 @@ class TelemetryCatalogReconciler:
             discovered_services=len(service_ids),
             discovered_instances=len(instance_ids),
             missing_instance_identities=missing_identities,
-            archived_services=archived_services,
-            archived_instances=archived_instances,
+            archived_services=0,
             unknown_applications=len(unknown_applications),
             invalid_activities=invalid_activities,
         )

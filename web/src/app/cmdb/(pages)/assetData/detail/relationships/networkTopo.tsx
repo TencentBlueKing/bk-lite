@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Empty, Spin, message, Modal } from 'antd';
+import { Spin, message, Modal } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { Graph } from '@antv/x6';
 import { ForceLayout } from '@antv/layout';
 import { useTranslation } from '@/utils/i18n';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { getIconUrl } from '@/app/cmdb/utils/common';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import { useModelApi } from '@/app/cmdb/api';
@@ -33,6 +34,11 @@ import {
 } from './networkTopo/topoEditingUtils';
 import { HUB_COLOR, NODE_LIMIT } from './networkTopo/constants';
 import {
+  NETWORK_TOPO_DEFAULT_CENTER_HOP,
+  type NetworkTopoHop,
+} from './networkTopo/hopDepth';
+import HopDepthControl from './networkTopo/HopDepthControl';
+import {
   NETWORK_TOPO_VISUAL,
   buildNetworkTopoPortLabel,
 } from './networkTopo/visualStyles';
@@ -43,15 +49,10 @@ const NODE_WIDTH = NETWORK_TOPO_VISUAL.node.width;
 const NODE_HEIGHT = NETWORK_TOPO_VISUAL.node.height;
 const DEVICE_NODE_SHAPE = NETWORK_TOPO_VISUAL.shape;
 
-// 展开策略：首屏 2 跳，最多 4 跳，节点上限 100（与后端常量一致）
-const DEFAULT_HOP = 2;
-const MAX_HOP = 4;
+type LayoutMode = 'hierarchical' | 'force' | 'circular';
 
-// 分层布局列距/行距：列距需足够大，让接口标签落在设备之间的空隙、不遮挡节点
 const HIER_COL_GAP = NETWORK_TOPO_VISUAL.layout.columnGap;
 const HIER_ROW_GAP = NETWORK_TOPO_VISUAL.layout.rowGap;
-
-type LayoutMode = 'hierarchical' | 'force' | 'circular';
 
 const DEFAULT_BODY_ATTRS = NETWORK_TOPO_VISUAL.node.defaultBody;
 const ACTIVE_GLOW = NETWORK_TOPO_VISUAL.node.activeGlow;
@@ -328,29 +329,34 @@ const buildGraphData = (
   return { nodes, edges };
 };
 
-export type NetworkTopoFocusPayload = {
+export interface NetworkTopoFocusPayload {
   modelId: string;
-  instId: string;
+  instUuid: string;
   instName?: string;
-};
+}
 
 interface NetworkTopoProps {
   modelId: string;
-  instId: string;
+  instUuid: string;
   /** Hub flex layout: fill parent instead of viewport calc. Default false keeps detail page height. */
   fillContainer?: boolean;
-  /** When provided (hub), enable 「设为当前」 via dblclick / context menu. Detail omits → expand-on-click unchanged. */
+  /** When provided (hub), enable 「设为当前」 via dblclick / context menu. */
   onRequestFocus?: (payload: NetworkTopoFocusPayload) => void;
   /** When provided (hub), enable 「查看详情」 via context menu. */
   onViewDetail?: (payload: NetworkTopoFocusPayload) => void;
+  /** Hub-controlled hop depth from the selected device. Detail page keeps internal state. */
+  centerHop?: NetworkTopoHop;
+  onCenterHopChange?: (hop: NetworkTopoHop) => void;
 }
 
 const NetworkTopo: React.FC<NetworkTopoProps> = ({
   modelId,
-  instId,
+  instUuid,
   fillContainer = false,
   onRequestFocus,
   onViewDetail,
+  centerHop: centerHopProp,
+  onCenterHopChange,
 }) => {
   const { t } = useTranslation();
   const {
@@ -363,6 +369,16 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [centerId, setCenterId] = useState<string>('');
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('hierarchical');
+  const [internalCenterHop, setInternalCenterHop] = useState<NetworkTopoHop>(
+    NETWORK_TOPO_DEFAULT_CENTER_HOP
+  );
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const isHopControlled = centerHopProp != null;
+  const centerHop = centerHopProp ?? internalCenterHop;
+  const setCenterHop = useCallback((hop: NetworkTopoHop) => {
+    if (!isHopControlled) setInternalCenterHop(hop);
+    onCenterHopChange?.(hop);
+  }, [isHopControlled, onCenterHopChange]);
   const mergedRef = useRef<MergedGraph>({ nodes: new Map(), links: new Map() });
   const expandedRef = useRef<Set<string>>(new Set());
   const hopMapRef = useRef<Map<string, number>>(new Map());
@@ -418,7 +434,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
         )
       )
       .catch(() => setNetworkModels([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const rebuild = useCallback(async (center: string, mode: LayoutMode) => {
@@ -462,17 +478,24 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
     (data.links || []).forEach((l) => merged.links.set(l.relationship_id, l));
   }, []);
 
-  // 初次加载：默认展开 2 跳
+  // 初次加载 / 中心跳数变化：按当前选中设备重拉，右键多展开的部分收回
   useEffect(() => {
-    if (!modelId || !instId) return;
+    if (!isHopControlled) {
+      setInternalCenterHop(NETWORK_TOPO_DEFAULT_CENTER_HOP);
+    }
+    setSelectedNodeId(null);
+  }, [instUuid, isHopControlled]);
+
+  useEffect(() => {
+    if (!modelId || !instUuid) return;
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       try {
         const data: NetworkTopoData = await getNetworkTopo(
           modelId,
-          instId,
-          DEFAULT_HOP
+          instUuid,
+          centerHop
         );
         if (cancelled) return;
         // 接口异常或空响应可能没有 center，按空拓扑处理，避免崩溃
@@ -496,39 +519,32 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, instId]);
+     
+  }, [modelId, instUuid, centerHop]);
 
-  // 点击对端设备：取其下一跳并合并（受最大跳数与节点上限约束）
+  // 右键：从该设备再向外展开 1 / 2 / 3 跳并合并进当前图
   const handleExpand = useCallback(
-    async (node: NetworkTopoNode) => {
-      if (expandedRef.current.has(node.id)) return;
-      const hop = hopMapRef.current.get(node.id) ?? 0;
-      if (hop >= MAX_HOP) {
-        message.warning(t('Model.networkTopoMaxHop'));
-        return;
-      }
+    async (node: NetworkTopoNode, depth: NetworkTopoHop) => {
       if (mergedRef.current.nodes.size >= NODE_LIMIT) {
         message.warning(t('Model.networkTopoNodeLimit'));
         return;
       }
-      expandedRef.current.add(node.id);
       setLoading(true);
       try {
         const data: NetworkTopoData = await getNetworkTopo(
           node.model_id,
           node.id,
-          1
+          depth
         );
         if (!mountedRef.current) return;
         mergeData(data);
+        expandedRef.current.add(node.id);
         await rebuild(centerId, layoutMode);
         if (data.truncated || mergedRef.current.nodes.size >= NODE_LIMIT) {
           message.warning(t('Model.networkTopoNodeLimit'));
         }
       } catch {
-        // 展开失败：撤销已展开标记，允许用户重试
-        expandedRef.current.delete(node.id);
+        // 展开失败：允许用户重试
       } finally {
         if (mountedRef.current) setLoading(false);
       }
@@ -547,7 +563,16 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
   // 删除连线（已落库），更新合并图并 rebuild
   const handleDeleteLink = useCallback(
     async (relationshipId: string) => {
-      await deleteInstanceAssociation(relationshipId);
+      const link = mergedRef.current.links.get(relationshipId);
+      if (!link?.src_inst_uuid || !link?.dst_inst_uuid || !link?.model_asst_id) {
+        message.error(t('common.operationFailed'));
+        return;
+      }
+      await deleteInstanceAssociation(
+        link.src_inst_uuid,
+        link.dst_inst_uuid,
+        link.model_asst_id
+      );
       mergedRef.current.links.delete(relationshipId);
       message.success(t('successfullyDisassociated'));
       await rebuild(centerId, layoutMode);
@@ -581,21 +606,20 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
       if (!n?.model_id) return null;
       return {
         modelId: n.model_id,
-        instId: n.id,
+        instUuid: n.id,
         instName: n.name,
       };
     },
     []
   );
 
-  // Hub：非编辑态右键节点 → 「设为当前」/「查看详情」
-  const handleHubNodeContextMenu = useCallback(
+  // 非编辑态右键节点 → 展开跳数 / 设为当前 / 查看详情
+  const handleNodeContextMenu = useCallback(
     (nodeId: string, e: MouseEvent) => {
       if (editing) return;
-      if (!onRequestFocus && !onViewDetail) return;
       setMenu({ kind: 'node', id: nodeId, x: e.clientX, y: e.clientY });
     },
-    [editing, onRequestFocus, onViewDetail]
+    [editing]
   );
 
   // Hub：双击节点 → 设为当前（详情页未传 onRequestFocus，不注册）
@@ -639,6 +663,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
     graph: graphInstance,
     editing,
     linkingSourceId,
+    selectedNodeId,
     // 节点+边总数作为版本：连线/加设备/删线后变化，触发光标/高亮重应用
     revision: graphData.nodes.length + graphData.edges.length,
     onContextMenu: handleContextMenu,
@@ -646,10 +671,8 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
     onCancel: () => setLinkingSourceId(null),
   });
 
-  // Esc 取消连线 / 关闭菜单（编辑态或 hub 焦点菜单）
+  // Esc 取消连线 / 关闭菜单
   useEffect(() => {
-    const hubMenu = !!(onRequestFocus || onViewDetail);
-    if (!editing && !hubMenu) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setLinkingSourceId(null);
@@ -658,7 +681,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editing, onRequestFocus, onViewDetail]);
+  }, []);
 
   // 退出编辑态时清理连线/菜单状态
   useEffect(() => {
@@ -696,7 +719,8 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
         }
       });
       const link = buildLinkFromConnection({
-        relationshipId: String(res._id),
+        srcInstUuid: String(res.src_inst_uuid || r.sourcePortId),
+        dstInstUuid: String(res.dst_inst_uuid || r.targetPortId),
         sourceDevice: sourceId,
         targetDevice: targetId,
         sourcePortName: r.sourcePortName,
@@ -745,14 +769,25 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
   const handleCanvasNodeClick = useCallback(
     (id: string) => {
       if (editing) return;
-      if (id === centerId || expandedRef.current.has(id)) return;
-      const target = mergedRef.current.nodes.get(id);
-      if (target) handleExpand(target);
+      setSelectedNodeId(id);
     },
-    [centerId, editing, handleExpand]
+    [editing]
   );
+  const handleCanvasBlankClick = useCallback(() => {
+    if (editing) return;
+    setSelectedNodeId(null);
+  }, [editing]);
 
-  const showHubNodeActions = !!(onRequestFocus || onViewDetail);
+  const handleContextExpand = (depth: NetworkTopoHop) => {
+    if (!menu || menu.kind !== 'node') return;
+    const target =
+      mergedRef.current.nodes.get(menu.id) ||
+      floatingRef.current.get(menu.id)?.node;
+    setMenu(null);
+    if (target) handleExpand(target, depth);
+  };
+
+  const showToolbarHopControl = !isHopControlled;
 
   return (
     <div className={fillContainer ? 'h-full min-h-0' : undefined}>
@@ -795,6 +830,11 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
                 : t('Model.networkTopoEditHint')}
             </div>
           )}
+          {showToolbarHopControl && !hasGraph && !loading && (
+            <div className="absolute left-4 top-4 z-20">
+              <HopDepthControl value={centerHop} onChange={setCenterHop} />
+            </div>
+          )}
           {hasGraph ? (
             <NetworkTopologyX6Canvas
               data={graphData}
@@ -810,13 +850,18 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
               ].join('|')}
               onGraphReady={setGraphInstance}
               onNodeClick={handleCanvasNodeClick}
-              onNodeContextMenu={
-                showHubNodeActions ? handleHubNodeContextMenu : undefined
-              }
+              onBlankClick={handleCanvasBlankClick}
+              onNodeContextMenu={handleNodeContextMenu}
               toolbar={{
                 align: 'split',
                 prefix: (
                   <div className={topoStyle.topoCommandBar} style={{ marginTop: 0 }}>
+                    {showToolbarHopControl && (
+                      <HopDepthControl
+                        value={centerHop}
+                        onChange={setCenterHop}
+                      />
+                    )}
                     <EditToolbar
                       editing={editing}
                       onToggle={() => setEditing((v) => !v)}
@@ -847,11 +892,8 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
             />
           ) : (
             !loading && (
-              <div className="flex items-center justify-center h-full">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={t('Model.noNetworkTopo')}
-                />
+              <div className="flex h-full items-center justify-center">
+                <CompactEmptyState description={t('Model.noNetworkTopo')} />
               </div>
             )
           )}
@@ -893,6 +935,24 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({
           >
             {menu.kind === 'node' ? (
               <>
+                <div
+                  className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                  onClick={() => handleContextExpand(1)}
+                >
+                  {t('Model.networkTopoExpandOne')}
+                </div>
+                <div
+                  className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                  onClick={() => handleContextExpand(2)}
+                >
+                  {t('Model.networkTopoExpandTwo')}
+                </div>
+                <div
+                  className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                  onClick={() => handleContextExpand(3)}
+                >
+                  {t('Model.networkTopoExpandThree')}
+                </div>
                 {editing && (
                   <div
                     className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"

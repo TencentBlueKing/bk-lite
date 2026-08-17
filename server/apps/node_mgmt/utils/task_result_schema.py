@@ -14,6 +14,22 @@ EXPECTED_INSTALLER_STEPS = [
 ]
 
 OPTIONAL_INSTALLER_STEPS = {"clock_check"}
+CLOCK_AWARE_INSTALLER_STEPS = [
+    "fetch_session",
+    "clock_check",
+    "prepare_dirs",
+    "download",
+    "extract",
+    "write_config",
+    "install",
+]
+
+
+def _counted_installer_steps(deduped_steps):
+    observed_actions = {step.get("action") for step in deduped_steps}
+    if "clock_check" in observed_actions:
+        return list(CLOCK_AWARE_INSTALLER_STEPS)
+    return list(EXPECTED_INSTALLER_STEPS)
 
 
 def project_task_status_from_summary(summary):
@@ -120,7 +136,9 @@ def _build_installer_summary(steps, overall_status=None):
 
     installer_steps = [step for step in steps if isinstance(step, dict) and _is_installer_event_step(step)]
     deduped_steps = _dedupe_installer_events(installer_steps)
-    deduped_core_steps = [step for step in deduped_steps if step.get("action") in EXPECTED_INSTALLER_STEPS]
+    counted_steps = _counted_installer_steps(deduped_steps)
+    counted_step_set = set(counted_steps)
+    deduped_core_steps = [step for step in deduped_steps if step.get("action") in counted_step_set]
     deduped_display_steps = [
         step
         for step in deduped_steps
@@ -131,10 +149,10 @@ def _build_installer_summary(steps, overall_status=None):
     completed_steps = [
         step.get("action")
         for step in deduped_core_steps
-        if step.get("status") == "success" and step.get("action") in EXPECTED_INSTALLER_STEPS
+        if step.get("status") == "success" and step.get("action") in counted_step_set
     ]
     observed_actions = {step.get("action") for step in deduped_core_steps}
-    missing_steps = [step for step in EXPECTED_INSTALLER_STEPS if step not in observed_actions] if installer_steps else []
+    missing_steps = [step for step in counted_steps if step not in observed_actions] if installer_steps else []
     last_step = deduped_display_steps[-1] if deduped_display_steps else None
     connectivity_step = next(
         (
@@ -178,8 +196,8 @@ def _build_installer_summary(steps, overall_status=None):
 
     return {
         "state": state,
-        "expected_steps": EXPECTED_INSTALLER_STEPS,
-        "expected_count": len(EXPECTED_INSTALLER_STEPS),
+        "expected_steps": counted_steps,
+        "expected_count": len(counted_steps),
         "observed_count": observed_count,
         "completed_steps": completed_steps,
         "completed_count": len(completed_steps),

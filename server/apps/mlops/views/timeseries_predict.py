@@ -53,6 +53,7 @@ from config.drf.viewsets import ModelViewSet
 
 TIMESERIES_PREDICT_PROXY_TIMEOUT_MARGIN_SECONDS = 5
 MAX_TIMESERIES_PREDICT_TIMEOUT_SECONDS = 290
+DEFAULT_MAX_RECURSIVE_FEATURE_ENGINEERING_WORK = 2_000_000
 
 
 def get_timeseries_predict_budget_seconds() -> int:
@@ -68,6 +69,20 @@ def get_timeseries_predict_budget_seconds() -> int:
 
 def get_timeseries_predict_timeout_seconds() -> int:
     return get_timeseries_predict_budget_seconds() + TIMESERIES_PREDICT_PROXY_TIMEOUT_MARGIN_SECONDS
+
+
+def get_max_recursive_feature_engineering_work() -> int:
+    raw_limit = os.getenv(
+        "MAX_RECURSIVE_FEATURE_ENGINEERING_WORK",
+        str(DEFAULT_MAX_RECURSIVE_FEATURE_ENGINEERING_WORK),
+    )
+    try:
+        limit = int(raw_limit)
+    except ValueError:
+        raise ValueError("MAX_RECURSIVE_FEATURE_ENGINEERING_WORK must be a positive integer") from None
+    if limit <= 0:
+        raise ValueError("MAX_RECURSIVE_FEATURE_ENGINEERING_WORK must be a positive integer")
+    return limit
 
 
 class TimeSeriesPredictDatasetViewSet(TeamModelViewSet):
@@ -1008,6 +1023,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 response.data["container_info"] = serving.container_info
                 response.data["message"] = mlops_message(request, "message.serving_created_start_failed_config_missing")
                 return response
+            recursive_feature_work_limit = get_max_recursive_feature_engineering_work()
 
             # 解析 model_uri
             try:
@@ -1047,6 +1063,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     port=serving.port,
                     train_image=get_image_by_prefix(self.MLFLOW_PREFIX, serving.train_job.algorithm),
                     timeseries_predict_timeout_seconds=get_timeseries_predict_budget_seconds(),
+                    max_recursive_feature_engineering_work=recursive_feature_work_limit,
                 )
 
                 # 启动成功，仅更新容器信息
@@ -1162,12 +1179,14 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
         # 需要重启时先校验全部旧服务恢复参数，避免系统配置错误导致旧容器下线。
         predict_budget_seconds = None
+        recursive_feature_work_limit = None
         mlflow_tracking_uri = None
         old_model_uri = None
         old_train_image = None
         if container_state == "running" and (model_version_changed or train_job_changed or port_changed):
             try:
                 predict_budget_seconds = get_timeseries_predict_budget_seconds()
+                recursive_feature_work_limit = get_max_recursive_feature_engineering_work()
                 mlflow_tracking_uri = get_mlflow_tracking_uri()
                 if not mlflow_tracking_uri:
                     raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
@@ -1276,6 +1295,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                                 port=old_port,
                                 train_image=old_train_image,
                                 timeseries_predict_timeout_seconds=predict_budget_seconds,
+                                max_recursive_feature_engineering_work=recursive_feature_work_limit,
                             )
                             rollback_port = int(rollback_result.get("port", 0)) if rollback_result.get("port") else old_port
                             rollback_message = "配置已回滚，并在对账确认旧服务已删除后恢复旧服务"
@@ -1327,6 +1347,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     port=instance.port,
                     train_image=train_image,
                     timeseries_predict_timeout_seconds=predict_budget_seconds,
+                    max_recursive_feature_engineering_work=recursive_feature_work_limit,
                 )
 
                 # 更新容器信息（status 由用户控制，不修改）
@@ -1362,6 +1383,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                             port=old_port,
                             train_image=old_train_image,
                             timeseries_predict_timeout_seconds=predict_budget_seconds,
+                            max_recursive_feature_engineering_work=recursive_feature_work_limit,
                         )
                         rollback_port = int(rollback_result.get("port", 0)) if rollback_result.get("port") else old_port
                         rollback_message = "新服务启动失败，已恢复旧配置与旧服务"
@@ -1423,6 +1445,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
 
             try:
+                recursive_feature_work_limit = get_max_recursive_feature_engineering_work()
                 self._claim_runtime_transition(serving, "start")
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
@@ -1432,6 +1455,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     port=serving.port,
                     train_image=get_image_by_prefix(self.MLFLOW_PREFIX, serving.train_job.algorithm),
                     timeseries_predict_timeout_seconds=get_timeseries_predict_budget_seconds(),
+                    max_recursive_feature_engineering_work=recursive_feature_work_limit,
                 )
 
                 # 正常启动成功，更新容器信息
@@ -1707,6 +1731,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     return Response(
                         {
                             "error": error_message,
+                            "code": error_code,
                             "error_code": error_code,
                             "details": error_info.get("details"),
                         },

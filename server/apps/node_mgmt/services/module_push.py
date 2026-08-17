@@ -95,6 +95,29 @@ class ModulePushService:
             return None
 
     @classmethod
+    def best_effort_unlink_cmdb(
+        cls,
+        node: Node,
+        *,
+        actor_scope: dict[str, Any],
+        max_attempts: int | None = None,
+    ) -> dict[str, Any] | None:
+        """删除节点时清 CMDB node_id。不要求 Node.cmdb_id 已回填，对端按 node_id 查找。失败不阻断删除。"""
+        try:
+            return cls.retire_linked(
+                node,
+                targets=["cmdb"],
+                actor_scope=actor_scope,
+                max_attempts=max_attempts,
+            )
+        except Exception:
+            logger.exception(
+                "[ModulePush] best-effort unlink cmdb failed node_id=%s",
+                getattr(node, "id", None),
+            )
+            return None
+
+    @classmethod
     def best_effort_retire_linked(
         cls,
         node: Node,

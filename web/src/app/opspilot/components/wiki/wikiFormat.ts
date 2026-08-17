@@ -23,12 +23,22 @@ export const TRIGGER_LABEL: Record<string, string> = {
   material: "wiki.triggerMaterial",
   material_delete: "wiki.triggerMaterialDelete",
   material_update: "wiki.triggerMaterialUpdate",
+  material_queue: "wiki.triggerMaterialQueue",
+  material_queue_item: "wiki.triggerMaterialQueueItem",
   rebuild: "wiki.triggerRebuild",
+  build: "wiki.triggerBuildCascade",
+  maintenance_retry: "wiki.triggerMaintenanceRetry",
+  page_delete: "wiki.triggerPageDelete",
+  delete: "wiki.triggerPageDelete",
 };
 export const STAGE_LABEL: Record<string, string> = {
   done: "wiki.stageDone",
   failed: "wiki.stageFailed",
   generating: "wiki.stageGenerating",
+  preparing: "wiki.stagePreparing",
+  parsing: "wiki.stageParsing",
+  queued: "wiki.stageQueued",
+  dispatched: "wiki.stageDispatched",
   running: "wiki.stageRunning",
   cancelled: "wiki.stageCancelled",
 };

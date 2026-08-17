@@ -87,6 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAutoSigningIn, setIsAutoSigningIn] = useState<boolean>(false);
   const [isCheckingExistingAuth, setIsCheckingExistingAuth] = useState<boolean>(false);
   const [sessionExpiredOpen, setSessionExpiredOpen] = useState<boolean>(false);
+  const [isProtectedContentReady, setIsProtectedContentReady] = useState<boolean>(false);
   const router = useRouter();
   const pathname = usePathname();
   const { setLocale } = useLocale();
@@ -103,6 +104,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sessionExpiredOpenRef = useRef<boolean>(false);
   const recoveryPromiseRef = useRef<Promise<boolean> | null>(null);
   const handledRecoveryEventIdsRef = useRef<Set<string>>(new Set());
+  const isProtectedContentReadyRef = useRef<boolean>(false);
+  const startupAuthCheckIdentityRef = useRef<string | null>(null);
   authenticatedSessionIdentityRef.current = token || (
     status === 'authenticated' && isSessionValid
       ? String(extendedSession.user.token || extendedSession.user.id || extendedSession.user.username)
@@ -364,6 +367,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const shouldShowRecoveryMessage = sessionExpiredOpenRef.current;
         setToken(recoveredUser.token);
         setIsAuthenticated(true);
+        isProtectedContentReadyRef.current = true;
+        setIsProtectedContentReady(true);
         resetSessionExpiredState();
         pendingRecoveryRef.current = false;
         sessionExpiredOpenRef.current = false;
@@ -462,6 +467,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      startupAuthCheckIdentityRef.current = null;
       setToken(null);
       setIsAuthenticated(false);
       setIsCheckingAuth(false);
@@ -488,9 +494,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (isSessionValid) {
-      setToken(extendedSession.user?.token || extendedSession.user?.id || null);
-      setIsAuthenticated(true);
-      setIsCheckingAuth(false);
+      if (isDashboardRenderRoute) {
+        setToken(extendedSession.user?.token || extendedSession.user?.id || null);
+        setIsAuthenticated(true);
+        setIsCheckingAuth(false);
+      } else if (!isProtectedContentReadyRef.current) {
+        const sessionUserIdentity = getAuthUserIdentity(extendedSession.user);
+
+        if (
+          sessionUserIdentity
+          && startupAuthCheckIdentityRef.current !== sessionUserIdentity
+        ) {
+          startupAuthCheckIdentityRef.current = sessionUserIdentity;
+          expectedRecoveryUserIdentityRef.current = sessionUserIdentity;
+          pendingRecoveryRef.current = true;
+          setIsCheckingAuth(true);
+
+          void recoverAuthenticatedSession().then((recovered) => {
+            if (recovered || isProtectedContentReadyRef.current) {
+              return;
+            }
+
+            pendingRecoveryRef.current = true;
+            sessionExpiredOpenRef.current = true;
+            setSessionExpiredOpen(true);
+            setIsCheckingAuth(false);
+          });
+        }
+      }
+
       const userLocale = extendedSession.user?.locale || 'en';
       const userTimezone = extendedSession.user?.timezone || 'Asia/Shanghai';
       const savedLocale = localStorage.getItem('locale') || 'en';
@@ -500,10 +532,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('locale', userLocale);
       localStorage.setItem('timezone', userTimezone);
     }
-  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth, isCurrentAuthPath, isDashboardRenderRoute, sessionExpiredOpen, token]);
+  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth, isCurrentAuthPath, isDashboardRenderRoute, sessionExpiredOpen, token, recoverAuthenticatedSession]);
 
   // Show loading state until authentication state is determined
-  if (((status === 'loading' && !isAuthenticated) || isCheckingAuth || isAutoSigningIn || isCheckingExistingAuth) && pathname && !authPaths.includes(pathname)) {
+  const shouldHoldProtectedContent = (
+    !isCurrentAuthPath
+    && !isDashboardRenderRoute
+    && !isProtectedContentReady
+  );
+  if ((
+    (status === 'loading' && !isAuthenticated)
+    || isCheckingAuth
+    || isAutoSigningIn
+    || isCheckingExistingAuth
+    || (shouldHoldProtectedContent && !sessionExpiredOpen)
+  ) && pathname && !authPaths.includes(pathname)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -520,7 +563,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider value={{ token, isAuthenticated, isCheckingAuth }}>
-      {children}
+      {!shouldHoldProtectedContent && children}
       {sessionExpiredOpen && !isCurrentAuthPath && !isDashboardRenderRoute && (
         <div
           className="fixed inset-0 z-1200 flex items-center justify-center bg-[rgba(15,23,42,0.52)] px-4 py-8"

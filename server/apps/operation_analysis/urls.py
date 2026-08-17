@@ -6,6 +6,7 @@
 from rest_framework import routers
 
 from apps.operation_analysis.views.datasource_view import DataSourceAPIModelViewSet, DataSourceTagModelViewSet, NameSpaceModelViewSet
+from apps.operation_analysis.views.data_connection_view import DataConnectionViewSet
 from apps.operation_analysis.views.execution_view import DashboardReportExecutionViewSet
 from apps.operation_analysis.views.import_export_view import ImportExportViewSet
 from apps.operation_analysis.views.network_topology_view import NetworkTopologyViewSet
@@ -24,6 +25,7 @@ from apps.operation_analysis.views.view import (
 
 router = routers.DefaultRouter()
 router.register(r"api/data_source", DataSourceAPIModelViewSet, basename="data_source")
+router.register(r"api/data_connection", DataConnectionViewSet, basename="data_connection")
 router.register(r"api/dashboard", DashboardModelViewSet, basename="dashboard")
 router.register(r"api/dashboard_share", DashboardShareAccessViewSet, basename="dashboard_share")
 router.register(

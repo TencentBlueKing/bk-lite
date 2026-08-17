@@ -4,7 +4,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import timedelta
 
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 from django.utils.timezone import now
 
 from apps.cmdb.models.operation import CmdbUniqueWriteLock
@@ -77,3 +77,19 @@ class UniqueWriteLockService:
         finally:
             for lock_key in reversed(acquired):
                 cls.release(lock_key, owner_token=owner_token)
+
+    @classmethod
+    @contextmanager
+    def serialize(cls, lock_key: str, *, lease_seconds: int | None = None):
+        """用跨数据库的原子租约串行化长任务，竞争时由调用方有界退避重试。"""
+        owner_token = uuid.uuid4().hex
+        try:
+            acquired = cls.acquire(lock_key, owner_token=owner_token, lease_seconds=lease_seconds)
+        except DatabaseError as exc:
+            raise RuntimeError("CMDB 写锁获取失败") from exc
+        if not acquired:
+            raise TimeoutError("CMDB 写锁正被占用")
+        try:
+            yield owner_token
+        finally:
+            cls.release(lock_key, owner_token=owner_token)

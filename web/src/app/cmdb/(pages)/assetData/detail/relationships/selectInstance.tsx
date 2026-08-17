@@ -31,6 +31,7 @@ import SearchFilter from '../../list/searchFilter';
 import CustomTable from '@/components/custom-table';
 import { SelectInstanceProps } from '@/app/cmdb/types/assetData';
 import PermissionWrapper from '@/components/permission';
+import { RACK_ROOM_ASSET_PERMISSION_PATH } from './rackRoomEdit';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
 const { Option } = Select;
@@ -45,7 +46,7 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
     const [loading, setLoading] = useState<boolean>(false);
     const [title, setTitle] = useState<string>('');
     const [assoModelId, setAssoModelId] = useState<number>(0);
-    const [instId, setInstId] = useState<string>('');
+    const [instUuid, setInstUuid] = useState<string>('');
     const [modelId, setModelId] = useState<string>('');
     const [tableLoading, setTableLoading] = useState<boolean>(false);
     const [columns, setColumns] = useState<ColumnItem[]>([]);
@@ -95,14 +96,15 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
             width: 120,
             render: (_: unknown, record: any) => {
               const isRelated = !!assoInstIds.find(
-                (item) => item.id === record._id
+                (item) => item.id === record.inst_uuid
               );
               return (
                 <PermissionWrapper
                   requiredPermissions={[
-                    isRelated ? 'Add Associate' : 'Delete Associate',
+                    isRelated ? 'Delete Associate' : 'Add Associate',
                   ]}
-                  instPermissions={record.permission}
+                  permissionPath={RACK_ROOM_ASSET_PERMISSION_PATH}
+                  instPermissions={record.permission || []}
                 >
                   <Button
                     type="link"
@@ -123,12 +125,12 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
     }, [relationList, assoModelId, intancePropertyList, assoInstIds]);
 
     useImperativeHandle(ref, () => ({
-      showModal: async ({ title, model_id, list, instId }) => {
+      showModal: async ({ title, model_id, list, instUuid }) => {
         // 开启弹窗的交互
         setGroupVisible(true);
         setTitle(title);
         setModelId(model_id);
-        setInstId(instId);
+        setInstUuid(instUuid);
         setAssoInstIds(list);
         setLoading(true);
         try {
@@ -138,7 +140,7 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
             needFetchAssoInstIds &&
             instanceApi.getAssociationInstanceList(
               model_id,
-              instId.toString()
+              instUuid.toString()
             ),
           ])
             .then((res) => {
@@ -176,8 +178,14 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
                 const assoIds = res[1].reduce(
                   (pre: RelationListInstItem[], cur: CrentialsAssoInstItem) => {
                     const allInstIds = cur.inst_list.map((item) => ({
-                      id: item._id,
-                      inst_asst_id: item.inst_asst_id,
+                      id: String(item.inst_uuid || ''),
+                      src_inst_uuid: String(
+                        cur.src_model_id === model_id ? instUuid : item.inst_uuid || ''
+                      ),
+                      dst_inst_uuid: String(
+                        cur.dst_model_id === model_id ? instUuid : item.inst_uuid || ''
+                      ),
+                      model_asst_id: String(cur.model_asst_id || ''),
                     }));
                     pre = [...pre, ...allInstIds];
                     return pre;
@@ -235,27 +243,37 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
       return assoTypes.find((item) => item.asst_id === id)?.[key] || '--';
     };
 
-    const handleRelate = async (row = { _id: '' }, isRelated: boolean) => {
+    const handleRelate = async (row: { inst_uuid?: string } = {}, isRelated: boolean) => {
+      const peerUuid = String(row.inst_uuid || '');
       if (isRelated) {
-        cancelRelate(row._id);
+        cancelRelate(peerUuid);
         return;
       }
       setTableLoading(true);
       try {
         const target = relationList.find((item) => item._id === assoModelId);
+        const srcInstUuid =
+          target?.src_model_id === modelId ? instUuid : peerUuid;
+        const dstInstUuid =
+          target?.dst_model_id === modelId ? instUuid : peerUuid;
         const params = {
-          model_asst_id: target?.model_asst_id,
-          src_model_id: target?.src_model_id,
-          dst_model_id: target?.dst_model_id,
-          asst_id: target?.asst_id,
-          src_inst_id: target?.src_model_id === modelId ? +instId : row._id,
-          dst_inst_id: target?.dst_model_id === modelId ? +instId : row._id,
+          model_asst_id: String(target?.model_asst_id || ''),
+          src_model_id: target?.src_model_id ? String(target.src_model_id) : undefined,
+          dst_model_id: target?.dst_model_id ? String(target.dst_model_id) : undefined,
+          asst_id: target?.asst_id ? String(target.asst_id) : undefined,
+          src_inst_uuid: srcInstUuid,
+          dst_inst_uuid: dstInstUuid,
         };
-        const res = await instanceApi.createInstanceAssociation(params);
+        await instanceApi.createInstanceAssociation(params);
         // 更新关联状态
         setAssoInstIds([
           ...assoInstIds,
-          { id: row._id, inst_asst_id: res._id },
+          {
+            id: peerUuid,
+            src_inst_uuid: srcInstUuid,
+            dst_inst_uuid: dstInstUuid,
+            model_asst_id: String(target?.model_asst_id || ''),
+          },
         ]);
         message.success(t('successfullyAssociated'));
         onSuccess && onSuccess();
@@ -272,18 +290,18 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
         onOk() {
           return new Promise(async (resolve) => {
             try {
-              const instAsstId = assoInstIds.find(
-                (item) => item.id === id
-              )?.inst_asst_id;
+              const assoc = assoInstIds.find((item) => item.id === id);
 
-              if (!instAsstId) {
+              if (!assoc?.src_inst_uuid || !assoc?.dst_inst_uuid || !assoc?.model_asst_id) {
                 message.error(t('common.operationFailed'));
                 resolve(true);
                 return;
               }
 
               await instanceApi.deleteInstanceAssociation(
-                instAsstId.toString()
+                assoc.src_inst_uuid,
+                assoc.dst_inst_uuid,
+                assoc.model_asst_id
               );
               // 更新关联状态
               setAssoInstIds(assoInstIds.filter((item) => item.id !== id));
@@ -392,7 +410,7 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
                 columns={columns}
                 pagination={pagination}
                 loading={tableLoading}
-                rowKey="_id"
+                rowKey="inst_uuid"
                 scroll={{ x: 840, y: 'calc(100vh - 440px)' }}
                 onChange={handleTableChange}
               />

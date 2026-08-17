@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { DatePicker, Spin, Empty, Input, Select, Button, message } from 'antd';
+import { DatePicker, Spin, Input, Select, Button, message } from 'antd';
 import {
   SearchOutlined,
   DownloadOutlined,
@@ -19,6 +19,7 @@ import {
   useModelApi,
   useInstanceApi,
 } from '@/app/cmdb/api';
+import CompactEmptyState from '@/components/compact-empty-state';
 import styles from './index.module.scss';
 import {
   AttrFieldType,
@@ -28,7 +29,8 @@ const { RangePicker } = DatePicker;
 
 interface ChangeRecord {
   id: number;
-  inst_id: number;
+  inst_uuid?: string;
+  inst_id?: number;
   model_id: string;
   label: string;
   type: string;
@@ -106,7 +108,7 @@ const ChangeRecords: React.FC = () => {
 
   const searchParams = useSearchParams();
   const modelId: string = searchParams.get('model_id') || '';
-  const instId: string = searchParams.get('inst_id') || '';
+  const instUuid: string = searchParams.get('inst_uuid') || '';
 
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -157,7 +159,7 @@ const ChangeRecords: React.FC = () => {
       try {
         const query: any = {
           model_id: modelId,
-          inst_id: instId,
+          inst_uuid: instUuid,
           ...params,
         };
         const data = await changeRecordApi.getChangeRecords(query);
@@ -170,7 +172,7 @@ const ChangeRecords: React.FC = () => {
         setLoading(false);
       }
     },
-    [modelId, instId, changeRecordApi, selectedId]
+    [modelId, instUuid, changeRecordApi, selectedId]
   );
 
   useEffect(() => {
@@ -180,7 +182,7 @@ const ChangeRecords: React.FC = () => {
           changeRecordApi.getChangeRecordEnumData(),
           changeRecordApi.getChangeRecordScenarioEnum(),
           modelApi.getModelAttrList(modelId),
-          instId ? instanceApi.getInstanceDetail(instId) : Promise.resolve({}),
+          instUuid ? instanceApi.getInstanceDetail(instUuid) : Promise.resolve({}),
         ]);
         setTypeEnum(typeData || {});
         setScenarioEnum(scenarioData || {});
@@ -191,7 +193,7 @@ const ChangeRecords: React.FC = () => {
       }
       fetchRecords();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // 属性 id → 中文名
@@ -304,7 +306,7 @@ const ChangeRecords: React.FC = () => {
   const handleExport = async () => {
     try {
       setExporting(true);
-      const params: any = { model_id: modelId, inst_id: instId };
+      const params: any = { model_id: modelId, inst_uuid: instUuid };
       if (scenarioFilters.length) {
         params.scenarios = scenarioFilters.join(',');
       }
@@ -316,7 +318,7 @@ const ChangeRecords: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `change_record_${instId}_${dayjs().format(
+      link.download = `change_record_${instUuid}_${dayjs().format(
         'YYYYMMDD_HHmmss'
       )}.xlsx`;
       document.body.appendChild(link);
@@ -402,19 +404,14 @@ const ChangeRecords: React.FC = () => {
         <div className={styles.timelineCol}>
           <div className={styles.pageTitle}>
             {t('Model.changeRecords')}
-            <InfoCircleOutlined
-              style={{ color: 'var(--color-text-4)', fontSize: 14 }}
-            />
+            <InfoCircleOutlined className="text-sm text-[var(--color-text-4)]" />
           </div>
 
           {/* 统计卡片（只读，不与筛选联动） */}
           <div className={styles.statsBar}>
             <div className={styles.statCell}>
               <div className={styles.statLabel}>{t('Model.changeRecord.allChanges')}</div>
-              <div
-                className={styles.statCount}
-                style={{ color: 'var(--color-text-1)' }}
-              >
+              <div className={`${styles.statCount} text-[var(--color-text-1)]`}>
                 {stats.all || 0}
               </div>
             </div>
@@ -477,16 +474,16 @@ const ChangeRecords: React.FC = () => {
           <div className={styles.filterRow}>
             <Input
               size="small"
-              prefix={<SearchOutlined style={{ color: '#B2BDCC' }} />}
+              prefix={<SearchOutlined className="text-[#B2BDCC]" />}
               placeholder={t('Model.changeRecord.searchPlaceholder')}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               allowClear
-              style={{ flex: 1, minWidth: 140 }}
+              className="min-w-[140px] flex-1"
             />
             <RangePicker
               size="small"
-              style={{ width: 240 }}
+              className="w-60"
               onChange={(_, ds) => {
                 const range: [string, string] | null =
                   ds && (ds[0] || ds[1]) ? [ds[0] || '', ds[1] || ''] : null;
@@ -497,7 +494,7 @@ const ChangeRecords: React.FC = () => {
               size="small"
               allowClear
               placeholder={t('Model.changeRecord.operatorPlaceholder')}
-              style={{ width: 110 }}
+              className="w-[110px]"
               options={operatorOptions}
               value={operatorFilter}
               onChange={(v) => setOperatorFilter(v)}
@@ -529,9 +526,9 @@ const ChangeRecords: React.FC = () => {
 
             <div className={styles.timelineList} ref={timelineListRef}>
               {grouped.length === 0 && (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  style={{ marginTop: 60 }}
+                <CompactEmptyState
+                  className="mt-[60px]"
+                  description={t('common.noData')}
                 />
               )}
               {grouped.map((g) => {
@@ -588,14 +585,8 @@ const ChangeRecords: React.FC = () => {
                               {t('Model.changeRecord.operatorLabel')}：{r.operator || '--'}
                             </div>
                           </div>
-                          <div
-                            style={{
-                              flexShrink: 0,
-                              paddingTop: 16,
-                              color: 'var(--color-text-4)',
-                            }}
-                          >
-                            <RightOutlined style={{ fontSize: 12 }} />
+                          <div className="shrink-0 pt-4 text-[var(--color-text-4)]">
+                            <RightOutlined className="text-xs" />
                           </div>
                         </div>
                       );
@@ -628,38 +619,25 @@ const ChangeRecords: React.FC = () => {
                 <div className={styles.detailHeaderRow}>
                   <div className={styles.detailHeaderLeft}>
                     <span
+                      className="h-2 w-2 rounded-full"
                       style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
                         background:
                           SCENARIO_COLORS[selectedRecord.scenario]?.dot ||
                           '#155AEF',
                       }}
                     />
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 500,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
+                    <span className="whitespace-nowrap text-xs font-medium">
                       {selectedRecord.created_at}
                     </span>
                     <ScenarioTag
                       scenario={selectedRecord.scenario}
                       label={scenarioLabel(selectedRecord.scenario)}
                     />
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: 'var(--color-text-3)',
-                      }}
-                    >
+                    <span className="text-xs text-[var(--color-text-3)]">
                       {selectedRecord.operator}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
+                  <div className="flex gap-1">
                     <Button
                       size="small"
                       disabled={!canPrev}
@@ -760,11 +738,11 @@ const ChangeRecords: React.FC = () => {
                             <span className={styles.sectionBar} />
                             {t('Model.changeRecord.changeSummary')}
                           </div>
-                          <div style={{ overflowX: 'auto' }}>
+                          <div className="overflow-x-auto">
                             <table className={styles.diffTable}>
                               <thead>
                                 <tr>
-                                  <th style={{ width: '22%' }} />
+                                  <th className="w-[22%]" />
                                   <th>{t('Model.beforeTheChange')}</th>
                                   <th>{t('Model.afterTheChange')}</th>
                                   <th>{t('Model.changeRecord.current')}</th>
@@ -776,30 +754,27 @@ const ChangeRecords: React.FC = () => {
                                     <td className={styles.attrCell}>
                                       {row.attr}
                                     </td>
-                                    <td style={{ color: 'var(--color-text-1)' }}>
+                                    <td className="text-[var(--color-text-1)]">
                                       {row.before}
                                     </td>
                                     <td>
                                       <span
-                                        style={{
-                                          color: row.changed
-                                            ? '#12B76A'
-                                            : 'var(--color-text-1)',
-                                        }}
+                                        className={
+                                          row.changed
+                                            ? 'text-[#12B76A]'
+                                            : 'text-[var(--color-text-1)]'
+                                        }
                                       >
                                         {row.after}
                                       </span>
                                     </td>
                                     <td>
                                       <span
-                                        style={{
-                                          color: row.currentDiff
-                                            ? '#F79009'
-                                            : 'var(--color-text-1)',
-                                          fontWeight: row.currentDiff
-                                            ? 500
-                                            : 400,
-                                        }}
+                                        className={
+                                          row.currentDiff
+                                            ? 'font-medium text-[#F79009]'
+                                            : 'font-normal text-[var(--color-text-1)]'
+                                        }
                                       >
                                         {row.current}
                                       </span>
@@ -820,23 +795,21 @@ const ChangeRecords: React.FC = () => {
                         </div>
                         <div className={styles.relationBox}>
                           <span
-                            style={{
-                              color:
-                                relationInfo.kind === 'add'
-                                  ? '#12B76A'
-                                  : '#F04438',
-                              fontWeight: 600,
-                            }}
+                            className={`font-semibold ${
+                              relationInfo.kind === 'add'
+                                ? 'text-[#12B76A]'
+                                : 'text-[#F04438]'
+                            }`}
                           >
                             {relationInfo.kind === 'add' ? '+' : '−'}
                           </span>
-                          <span style={{ fontWeight: 500 }}>
+                          <span className="font-medium">
                             {relationInfo.kind === 'add'
                               ? t('Model.changeRecord.addRelation')
                               : t('Model.changeRecord.removeRelation')}
                             ：
                           </span>
-                          <span style={{ color: 'var(--color-primary)' }}>
+                          <span className="text-[var(--color-primary)]">
                             {relationInfo.dst}
                           </span>
                         </div>
@@ -852,11 +825,11 @@ const ChangeRecords: React.FC = () => {
                       {t('Model.changeRecord.attrCompare')}
                     </div>
                     {diffRows.length > 0 ? (
-                      <div style={{ overflowX: 'auto' }}>
+                      <div className="overflow-x-auto">
                         <table className={styles.diffTable}>
                           <thead>
                             <tr>
-                              <th style={{ width: '22%' }}>{t('Model.attribute')}</th>
+                              <th className="w-[22%]">{t('Model.attribute')}</th>
                               <th>{t('Model.beforeTheChange')}</th>
                               <th>{t('Model.afterTheChange')}</th>
                               <th>{t('Model.changeRecord.current')}</th>
@@ -867,35 +840,29 @@ const ChangeRecords: React.FC = () => {
                               <tr key={i}>
                                 <td className={styles.attrCell}>{row.attr}</td>
                                 <td
-                                  style={{
-                                    color: row.changed
-                                      ? '#F04438'
-                                      : 'var(--color-text-1)',
-                                    textDecoration: row.changed
-                                      ? 'line-through'
-                                      : 'none',
-                                    opacity: row.changed ? 0.6 : 1,
-                                  }}
+                                  className={
+                                    row.changed
+                                      ? 'text-[#F04438] line-through opacity-60'
+                                      : 'text-[var(--color-text-1)]'
+                                  }
                                 >
                                   {row.before}
                                 </td>
                                 <td
-                                  style={{
-                                    color: row.changed
-                                      ? '#12B76A'
-                                      : 'var(--color-text-1)',
-                                    fontWeight: row.changed ? 500 : 400,
-                                  }}
+                                  className={
+                                    row.changed
+                                      ? 'font-medium text-[#12B76A]'
+                                      : 'font-normal text-[var(--color-text-1)]'
+                                  }
                                 >
                                   {row.after}
                                 </td>
                                 <td
-                                  style={{
-                                    color: row.currentDiff
-                                      ? '#F79009'
-                                      : 'var(--color-text-1)',
-                                    fontWeight: row.currentDiff ? 500 : 400,
-                                  }}
+                                  className={
+                                    row.currentDiff
+                                      ? 'font-medium text-[#F79009]'
+                                      : 'font-normal text-[var(--color-text-1)]'
+                                  }
                                 >
                                   {row.current}
                                 </td>
@@ -921,22 +888,13 @@ const ChangeRecords: React.FC = () => {
                     {relationInfo ? (
                       <div className={styles.relationBox}>
                         <div>
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                              marginBottom: 8,
-                            }}
-                          >
+                          <div className="mb-2 flex items-center gap-2">
                             <span
-                              style={{
-                                fontWeight: 600,
-                                color:
-                                  relationInfo.kind === 'add'
-                                    ? '#12B76A'
-                                    : '#F04438',
-                              }}
+                              className={`font-semibold ${
+                                relationInfo.kind === 'add'
+                                  ? 'text-[#12B76A]'
+                                  : 'text-[#F04438]'
+                              }`}
                             >
                               {relationInfo.kind === 'add' ? '+' : '−'}
                             </span>
@@ -946,12 +904,7 @@ const ChangeRecords: React.FC = () => {
                                 : t('Model.changeRecord.removeRelation')}
                             </span>
                           </div>
-                          <div
-                            style={{
-                              marginLeft: 20,
-                              color: 'var(--color-text-2)',
-                            }}
-                          >
+                          <div className="ml-5 text-[var(--color-text-2)]">
                             {relationInfo.src} → {relationInfo.dst}
                           </div>
                         </div>

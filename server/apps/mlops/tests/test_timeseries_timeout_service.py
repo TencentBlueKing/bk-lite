@@ -16,6 +16,7 @@ BASE_PAYLOAD = {
     "train_image": "classify-timeseries:latest",
     "device": "cpu",
     "timeseries_predict_timeout_seconds": 75,
+    "max_recursive_feature_engineering_work": 2_000_000,
 }
 
 
@@ -44,13 +45,26 @@ case "$1 $2" in
     echo "container-id"
     exit 0
     ;;
-  "ps -q") echo "container-id"; exit 0 ;;
+  "ps -aq") echo "container-id"; exit 0 ;;
+  "inspect container-id")
+    if [[ "$*" == *"HostPort"* ]]; then echo "31001"; fi
+    exit 0
+    ;;
+  "inspect -f")
+    if [[ "$*" == *"State.Status"* ]]; then echo "running"; fi
+    exit 0
+    ;;
+  "update --restart") exit 0 ;;
 esac
 exit 0
 """,
         )
         _write_executable(bin_dir / "sleep", "#!/bin/bash\nexit 0\n")
         _write_executable(bin_dir / "ss", "#!/bin/bash\nexit 0\n")
+        _write_executable(
+            bin_dir / "curl",
+            '#!/bin/bash\necho "{\\"status\\":\\"healthy\\",\\"startup_instance_id\\":\\"$SERVING_INSTANCE_ID\\"}"\n',
+        )
         script = REPO_ROOT / "agents/webhookd/mlops/docker/serve.sh"
     else:
         _write_executable(
@@ -244,7 +258,12 @@ def test_webhook_client_forwards_timeseries_budget(monkeypatch):
     monkeypatch.setattr(
         WebhookClient,
         "_request",
-        staticmethod(lambda endpoint, payload: captured.update(endpoint=endpoint, payload=payload) or {"status": "success"}),
+        staticmethod(
+            lambda endpoint, payload, **kwargs: captured.update(
+                endpoint=endpoint, payload=payload, **kwargs
+            )
+            or {"status": "success"}
+        ),
     )
 
     WebhookClient.serve(
@@ -252,10 +271,12 @@ def test_webhook_client_forwards_timeseries_budget(monkeypatch):
         "http://mlflow:15000",
         "models:/timeseries/1",
         timeseries_predict_timeout_seconds=75,
+        max_recursive_feature_engineering_work=2_000_000,
     )
 
     assert captured["endpoint"] == "serve"
     assert captured["payload"]["timeseries_predict_timeout_seconds"] == 75
+    assert captured["payload"]["max_recursive_feature_engineering_work"] == 2_000_000
 
 
 def test_webhook_client_omits_budget_for_other_services(monkeypatch):
@@ -263,12 +284,13 @@ def test_webhook_client_omits_budget_for_other_services(monkeypatch):
     monkeypatch.setattr(
         WebhookClient,
         "_request",
-        staticmethod(lambda endpoint, payload: captured.update(payload) or {"status": "success"}),
+        staticmethod(lambda endpoint, payload, **kwargs: captured.update(payload) or {"status": "success"}),
     )
 
     WebhookClient.serve("Anomaly_Serving_1", "http://mlflow:15000", "models:/anomaly/1")
 
     assert "timeseries_predict_timeout_seconds" not in captured
+    assert "max_recursive_feature_engineering_work" not in captured
 
 
 @pytest.mark.parametrize("invalid_timeout", [0, 291])
@@ -291,16 +313,23 @@ def test_serve_script_injects_timeseries_budget(tmp_path, runtime):
     assert result.returncode == 0, result.stdout + result.stderr
     assert "TIMESERIES_PREDICT_TIMEOUT_SECONDS" in captured
     assert "75" in captured
+    assert "MAX_RECURSIVE_FEATURE_ENGINEERING_WORK" in captured
+    assert "2000000" in captured
 
 
 @pytest.mark.parametrize("runtime", ["docker", "kubernetes"])
 def test_serve_script_omits_timeseries_budget_for_other_services(tmp_path, runtime):
-    payload = {key: value for key, value in BASE_PAYLOAD.items() if key != "timeseries_predict_timeout_seconds"}
+    payload = {
+        key: value
+        for key, value in BASE_PAYLOAD.items()
+        if key not in {"timeseries_predict_timeout_seconds", "max_recursive_feature_engineering_work"}
+    }
 
     result, captured = _run_serve_script(tmp_path, runtime, payload)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "TIMESERIES_PREDICT_TIMEOUT_SECONDS" not in captured
+    assert "MAX_RECURSIVE_FEATURE_ENGINEERING_WORK" not in captured
 
 
 @pytest.mark.parametrize(
@@ -346,6 +375,20 @@ def test_serve_script_rejects_invalid_budget_before_mutation(tmp_path, runtime):
     assert result.returncode == 1
     error = json.loads(result.stdout)
     assert error["code"] == "INVALID_PREDICT_TIMEOUT"
+    assert captured == ""
+
+
+@pytest.mark.parametrize("runtime", ["docker", "kubernetes"])
+def test_serve_script_rejects_invalid_recursive_feature_work_before_mutation(tmp_path, runtime):
+    result, captured = _run_serve_script(
+        tmp_path,
+        runtime,
+        {**BASE_PAYLOAD, "max_recursive_feature_engineering_work": 0},
+    )
+
+    assert result.returncode == 1
+    error = json.loads(result.stdout)
+    assert error["code"] == "INVALID_RECURSIVE_FEATURE_WORK"
     assert captured == ""
 
 

@@ -11,7 +11,7 @@ test('scene widget submit preserves layoutByMode geometry fields', () => {
       sceneWidgetType: 'networkStatusTopology',
       networkStatusTopology: {
         modelId: 'switch',
-        instId: '12',
+        instUuid: '12',
         depth: 2,
         layoutMode: 'force',
         layoutByMode: {
@@ -36,7 +36,7 @@ test('scene widget submit preserves layoutByMode geometry fields', () => {
     result.config?.networkStatusTopology,
     buildPersistedNetworkStatusTopologyConfig({
       modelId: 'switch',
-      instId: '12',
+      instUuid: '12',
       depth: 2,
       layoutMode: 'force',
       layoutByMode: {
@@ -50,7 +50,7 @@ test('scene widget submit preserves layoutByMode geometry fields', () => {
 test('scene widget submit keeps layoutByMode when form only returns query fields', () => {
   const existing = {
     modelId: 'switch',
-    instId: '12',
+    instUuid: '12',
     depth: 2,
     layoutMode: 'force' as const,
     layoutByMode: {
@@ -60,12 +60,12 @@ test('scene widget submit keeps layoutByMode when form only returns query fields
   };
   const formTopology = {
     modelId: 'router',
-    instId: '99',
+    instUuid: '99',
     depth: 3,
   };
   const merged = {
     modelId: formTopology.modelId || existing.modelId,
-    instId: formTopology.instId || existing.instId,
+    instUuid: formTopology.instUuid || existing.instUuid,
     depth: formTopology.depth || existing.depth,
     layoutMode: (formTopology as typeof existing).layoutMode ?? existing.layoutMode,
     layoutByMode:
@@ -90,7 +90,7 @@ test('scene widget submit keeps layoutByMode when form only returns query fields
   });
   assert.deepEqual(result.config?.networkStatusTopology, {
     modelId: 'router',
-    instId: '99',
+    instUuid: '99',
     depth: 3,
     layoutMode: 'force',
     layoutByMode: {
@@ -108,7 +108,7 @@ test('scene widget submit without layout stays query-only', () => {
       sceneWidgetType: 'networkStatusTopology',
       networkStatusTopology: {
         modelId: 'switch',
-        instId: '12',
+        instUuid: '12',
         depth: 2,
       },
     },
@@ -125,7 +125,7 @@ test('scene widget submit without layout stays query-only', () => {
 
   assert.deepEqual(result.config?.networkStatusTopology, {
     modelId: 'switch',
-    instId: '12',
+    instUuid: '12',
     depth: 2,
   });
 });
@@ -138,7 +138,7 @@ test('scene widget submit migrates legacy flat geometry into layoutByMode', () =
       sceneWidgetType: 'networkStatusTopology',
       networkStatusTopology: {
         modelId: 'switch',
-        instId: '12',
+        instUuid: '12',
         depth: 2,
         layoutMode: 'hierarchical',
         nodePositions: { n1: { x: 10, y: 20 } },
@@ -157,7 +157,7 @@ test('scene widget submit migrates legacy flat geometry into layoutByMode', () =
 
   assert.deepEqual(result.config?.networkStatusTopology, {
     modelId: 'switch',
-    instId: '12',
+    instUuid: '12',
     depth: 2,
     layoutMode: 'hierarchical',
     layoutByMode: {

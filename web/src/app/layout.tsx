@@ -30,7 +30,6 @@ import {
 import { isSessionExpiredState } from '@/utils/sessionExpiry'
 import { useUserInfoContext } from '@/context/userInfo';
 import { RouteScopedLayout } from '@/app/routeScopedLayout';
-import GlobalWebChat from '@/app/(core)/components/global-webchat';
 
 const Loader = () => (
   <div className="flex justify-center items-center h-screen">
@@ -168,8 +167,8 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
-  const isResponsiveAppRoute = pathname?.startsWith('/apm');
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);
+  const isResponsiveAppRoute = pathname?.startsWith('/apm') || isDashboardRoute;
   const isDashboardShareRoute = pathname?.startsWith('/ops-analysis/share/');
   const isDashboardRenderRoute = pathname?.startsWith(
     '/ops-analysis/render/execution/',
@@ -354,7 +353,6 @@ const StandardRouteLayout = ({ children }: { children: React.ReactNode }) => (
   <>
     <PortalTabTitle />
     <LayoutWithProviders>{children}</LayoutWithProviders>
-    <GlobalWebChat />
   </>
 );
 

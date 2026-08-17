@@ -17,6 +17,7 @@ import {
   Dropdown,
   Empty
 } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
@@ -687,9 +688,7 @@ const Node = () => {
     <MainLayout>
       {notDeployed === '1' ? (
         <div className="flex items-center justify-center h-full">
-          <Empty
-            description={t('node-manager.cloudregion.node.notDeployedTip')}
-          />
+          <CompactEmptyState description={t('node-manager.cloudregion.node.notDeployedTip')} />
         </div>
       ) : (
         <>

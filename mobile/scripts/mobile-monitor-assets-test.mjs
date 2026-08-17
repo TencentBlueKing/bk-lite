@@ -446,15 +446,37 @@ test('关注配置与 Web 同结构、倒序且最多保留 100 条', async () =
   const { addFollowedAsset, assetRequestErrorKind, normalizeFollowedConfig, serializeFollowedConfig } = await loadModel('src/features/assets/model.ts');
   const config = normalizeFollowedConfig({ items: [
     { model_id: 'host', inst_id: 1, followed_at: '2026-01-01T00:00:00Z' },
-    { model_id: 'host', inst_id: 2, followed_at: '2026-02-01T00:00:00Z' },
+    { model_id: 'host', inst_id: 'bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee', followed_at: '2026-01-15T00:00:00Z' },
+    { model_id: 'host', inst_uuid: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', followed_at: '2026-02-01T00:00:00Z' },
   ] });
-  assert.deepEqual(config.items.map((item) => item.instanceId), [2, 1]);
+  assert.deepEqual(config.items.map((item) => item.instanceId), [
+    'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    'bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+  ]);
   let many = { items: [] };
   for (let index = 0; index < 105; index += 1) many = addFollowedAsset(many, 'host', index, new Date(index * 1000).toISOString());
   assert.equal(many.items.length, 100);
-  assert.deepEqual(Object.keys(serializeFollowedConfig(config).items[0]), ['model_id', 'inst_id', 'followed_at']);
+  assert.deepEqual(Object.keys(serializeFollowedConfig(config).items[0]), ['model_id', 'inst_uuid', 'followed_at']);
   assert.equal(assetRequestErrorKind(new Error('API Error: 403')), 'forbidden');
   assert.equal(assetRequestErrorKind(new Error('API Error: 404')), 'missing');
+  assert.equal(assetRequestErrorKind(new Error('API Error: 400 - 请使用 inst_uuid 定位实例')), 'missing');
+});
+
+test('资产列表把 search 响应的 inst_uuid 当主键，不因缺少 _id 被滤空', async () => {
+  const { keepMappedAssetInstance, mapAssetInstance } = await loadModel('src/features/assets/model.ts');
+  const insts = Array.from({ length: 5 }, (_, index) => ({
+    inst_name: `MOBILE-UX-DEMO-ASSET-0${index + 1}`,
+    inst_uuid: `aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee0${index + 1}`,
+    model_id: 'mobile_ux_demo_asset',
+    organization_display: '默认组织',
+  }));
+  const items = insts.map((item) => mapAssetInstance(item, 'mobile_ux_demo_asset')).filter(keepMappedAssetInstance);
+  assert.equal(items.length, 5);
+  assert.equal(items[0].id, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeee01');
+  assert.equal(items[0].name, 'MOBILE-UX-DEMO-ASSET-01');
+  assert.equal(items[0].organizationName, '默认组织');
+  assert.equal(keepMappedAssetInstance(mapAssetInstance({ inst_name: 'ghost' }, 'host')), false);
+  assert.equal(keepMappedAssetInstance(mapAssetInstance({ _id: 12, inst_name: 'legacy' }, 'host')), false);
 });
 
 test('资产复用 Web CMDB 接口、两阶段搜索和元数据字段详情', async () => {
@@ -465,7 +487,11 @@ test('资产复用 Web CMDB 接口、两阶段搜索和元数据字段详情', a
   assert.match(adapter, /fulltext_search\/stats/);
   assert.match(adapter, /fulltext_search\/by_model/);
   assert.match(adapter, /field_groups\/full_info/);
-  assert.match(adapter, /organizationName:\s*text\(item\.organization_display\)/);
+  assert.match(adapter, /mapAssetInstance/);
+  assert.match(adapter, /field: 'inst_uuid', type: 'str\[\]'/);
+  assert.match(adapter, /encodeURIComponent\(String\(instanceId\)\)/);
+  assert.doesNotMatch(adapter, /item\._id as string/);
+  assert.doesNotMatch(adapter, /field: 'id', type: 'id\[\]'/);
   // 模型内筛选须用 str*（contains）；裸 type "str" 会被 CMDB format_search_params 静默跳过
   assert.match(adapter, /field:\s*'inst_name',\s*type:\s*'str\*',\s*value:\s*keyword/);
   assert.doesNotMatch(adapter, /field:\s*'inst_name',\s*type:\s*'str',\s*value:\s*keyword/);

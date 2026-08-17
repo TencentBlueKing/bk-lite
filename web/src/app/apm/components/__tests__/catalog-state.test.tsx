@@ -1,9 +1,10 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import CatalogState from '../catalog-state';
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 
 afterEach(cleanup);
 
@@ -12,7 +13,7 @@ describe('CatalogState', () => {
     const retry = vi.fn();
     const user = userEvent.setup();
 
-    render(<CatalogState kind="error" onRetry={retry} retryLoading />);
+    renderWithApmIntl(<CatalogState kind="error" onRetry={retry} retryLoading />);
 
     const button = screen.getByRole('button', { name: /重新加载/ });
     expect(button.classList.contains('ant-btn-loading')).toBe(true);
@@ -24,7 +25,7 @@ describe('CatalogState', () => {
     const clear = vi.fn();
     const user = userEvent.setup();
 
-    render(
+    renderWithApmIntl(
       <CatalogState
         kind="empty"
         description="没有匹配结果"
@@ -37,7 +38,7 @@ describe('CatalogState', () => {
   });
 
   it('权限状态只给出申请路径，不渲染无效重试', () => {
-    render(<CatalogState kind="forbidden" onRetry={vi.fn()} />);
+    renderWithApmIntl(<CatalogState kind="forbidden" onRetry={vi.fn()} />);
 
     expect(screen.queryByRole('button', { name: '重新加载' })).toBeNull();
     expect(screen.getByText('请联系组织管理员申请查看权限。')).not.toBeNull();

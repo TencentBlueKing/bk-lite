@@ -41,7 +41,7 @@ import {
 } from '@/app/cmdb/utils/collectTask';
 import TableFieldEditor from './tableFieldEditor';
 import TagCascaderEditor from './tagCascaderEditor';
-import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
+import TagCapsuleGroup from '@/components/tag-capsule-group';
 import { getTagDisplayText } from '@/app/cmdb/utils/tag';
 import {
   FileFieldUpload,

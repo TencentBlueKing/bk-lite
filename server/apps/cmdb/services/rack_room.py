@@ -31,11 +31,15 @@ def letter_to_index(value: str) -> int:
 
 
 def format_rack_location_label(row: int, col: int) -> str:
-    return f"{col_to_letter(row)}{col:02d}"
+    """格式化机柜位置标签：字母为列（A–…）、数字为行（01–…）。"""
+    return f"{col_to_letter(col)}{row:02d}"
 
 
 def parse_rack_location(value) -> tuple[int, int] | None:
-    """解析 rack.location，字母为行、数字为列；支持 A3/A03。"""
+    """解析 rack.location，字母为列、数字为行；支持 A3/A03。
+
+    与机房俯视图约定一致：列 A–L（横轴）、行 1–N（纵轴）。
+    """
     if not isinstance(value, str):
         return None
 
@@ -43,8 +47,8 @@ def parse_rack_location(value) -> tuple[int, int] | None:
     if not match:
         return None
 
-    row = letter_to_index(match.group(1))
-    col = int(match.group(2))
+    col = letter_to_index(match.group(1))
+    row = int(match.group(2))
     if row < 1 or col < 1:
         return None
     return row, col
@@ -75,11 +79,7 @@ def build_room_layout(racks: list) -> dict:
             unplaced.append(
                 {
                     **r,
-                    "unplaced_reason": (
-                        "missing_location"
-                        if not isinstance(location, str) or not location.strip()
-                        else "invalid_location"
-                    ),
+                    "unplaced_reason": ("missing_location" if not isinstance(location, str) or not location.strip() else "invalid_location"),
                 }
             )
 
@@ -192,30 +192,46 @@ def _normalize_int_ids(values) -> list[int]:
     return result
 
 
-def _rack_device_relation_map(rack_ids: list[int]) -> dict[int, list[int]]:
+def _rack_device_relations(rack_ids: list[int]) -> tuple[dict[int, list[int]], dict[int, dict]]:
     relation_map = {rack_id: [] for rack_id in rack_ids}
     if not rack_ids:
-        return relation_map
+        return relation_map, {}
+
+    rack_instances = InstanceManage.query_entity_by_ids(rack_ids)
+    rack_uuid_by_id = {
+        int(instance["_id"]): instance["inst_uuid"]
+        for instance in rack_instances
+        if instance.get("_id") in relation_map and instance.get("inst_uuid")
+    }
+    rack_id_by_uuid = {inst_uuid: rack_id for rack_id, inst_uuid in rack_uuid_by_id.items()}
+    rack_uuids = [rack_uuid_by_id[rack_id] for rack_id in rack_ids if rack_id in rack_uuid_by_id]
+    if not rack_uuids:
+        return relation_map, {}
 
     query_data = [
-        {"field": "src_inst_id", "type": "int[]", "value": rack_ids},
+        {"field": "src_inst_uuid", "type": "str[]", "value": rack_uuids},
         {"field": "src_model_id", "type": "str=", "value": "rack"},
     ]
     with GraphClient() as ag:
         edges = ag.query_edge(INSTANCE_ASSOCIATION, query_data)
 
+    device_uuids = sorted({edge.get("dst_inst_uuid") for edge in edges or [] if edge.get("dst_inst_uuid")})
+    device_instances = InstanceManage.query_entity_by_uuids(device_uuids) if device_uuids else []
+    device_map = {int(instance["_id"]): instance for instance in device_instances if instance.get("_id") is not None}
+    device_id_by_uuid = {
+        instance["inst_uuid"]: int(instance["_id"]) for instance in device_instances if instance.get("_id") is not None and instance.get("inst_uuid")
+    }
     seen_by_rack = {rack_id: set() for rack_id in rack_ids}
     for edge in edges or []:
-        try:
-            rack_id = int(edge.get("src_inst_id"))
-            device_id = int(edge.get("dst_inst_id"))
-        except (TypeError, ValueError):
+        rack_id = rack_id_by_uuid.get(edge.get("src_inst_uuid"))
+        device_id = device_id_by_uuid.get(edge.get("dst_inst_uuid"))
+        if rack_id is None or device_id is None:
             continue
-        if rack_id not in relation_map or device_id in seen_by_rack[rack_id]:
+        if device_id in seen_by_rack[rack_id]:
             continue
         seen_by_rack[rack_id].add(device_id)
         relation_map[rack_id].append(device_id)
-    return relation_map
+    return relation_map, device_map
 
 
 def get_room3d_rack_device_summaries(rack_ids, permission_map=None, user=None) -> dict:
@@ -224,9 +240,7 @@ def get_room3d_rack_device_summaries(rack_ids, permission_map=None, user=None) -
     if not normalized_rack_ids:
         return {}
 
-    relation_map = _rack_device_relation_map(normalized_rack_ids)
-    device_ids = {device_id for related_ids in relation_map.values() for device_id in related_ids}
-    device_map = InstanceManage._query_instance_map_by_ids(device_ids) if device_ids else {}
+    relation_map, device_map = _rack_device_relations(normalized_rack_ids)
     summaries = {rack_id: {"devices": [], "device_count": 0, "unplaced_device_count": 0} for rack_id in normalized_rack_ids}
 
     for rack_id in normalized_rack_ids:
@@ -245,7 +259,7 @@ def get_room3d_rack_device_summaries(rack_ids, permission_map=None, user=None) -
                 continue
             summaries[rack_id]["devices"].append(
                 {
-                    "device_id": str(inst["_id"]),
+                    "device_id": str(inst.get("inst_uuid") or inst["_id"]),
                     "device_name": inst.get("inst_name") or "",
                     "model_id": inst.get("model_id"),
                     "rack_u_start": rack_u_start,
@@ -263,16 +277,24 @@ def get_rack_layout(rack_id, permission_map=None, user=None) -> dict:
     devices = [
         {
             "inst_id": str(d["_id"]),
+            "inst_uuid": d.get("inst_uuid"),
             "inst_name": d.get("inst_name"),
             "model_id": d.get("model_id"),
             "rack_u_start": _safe_int(d.get("rack_u_start")),
             "u_size": _safe_int(d.get("u_size")),
             "status": _scalar(d.get("status") or d.get("datacenter_state")),
+            "organization": d.get("organization") or [],
+            "_creator": d.get("_creator"),
         }
         for d in _rack_device_instances(rack_id, permission_map, user)
     ]
     layout = build_rack_layout(u_count, devices)
-    layout["rack"] = {"inst_id": str(rack_id), "inst_name": rack.get("inst_name"), "u_count": u_count}
+    layout["rack"] = {
+        "inst_id": str(rack_id),
+        "inst_uuid": rack.get("inst_uuid"),
+        "inst_name": rack.get("inst_name"),
+        "u_count": u_count,
+    }
     return layout
 
 
@@ -304,7 +326,9 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
             racks.append(
                 {
                     "inst_id": str(rid),
+                    "inst_uuid": r.get("inst_uuid"),
                     "inst_name": r.get("inst_name"),
+                    "model_id": r.get("model_id") or "rack",
                     "row": row,
                     "col": col,
                     "location": r.get("location"),
@@ -314,6 +338,8 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
                     "used_u": used_u,
                     "free_u": free_u,
                     "max_free_u": max_free_u,
+                    "organization": r.get("organization") or [],
+                    "_creator": r.get("_creator"),
                 }
             )
     return build_room_layout(racks)

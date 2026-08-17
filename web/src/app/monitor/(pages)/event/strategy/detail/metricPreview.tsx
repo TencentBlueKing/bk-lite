@@ -1,7 +1,8 @@
 'use client';
 import React, { useState, useEffect, useRef, useMemo, RefObject } from 'react';
-import { Select, Spin, Empty, Alert } from 'antd';
+import { Select, Spin, Alert } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import ChartEmptyState from '@/components/chart-empty-state';
 import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
 import LineChart from '@/app/monitor/components/charts/lineChart';
@@ -520,9 +521,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
               showDimensionFilter={true}
             />
           ) : (
-            <div className="h-full flex items-center justify-center">
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            </div>
+            <ChartEmptyState compact />
           )}
         </div>
       </Spin>

@@ -6,7 +6,8 @@
 
 | 你要找的 | 去这里 |
 |----------|--------|
-| 颜色 / 圆角 / 间距 / 排版 / 基础组件 token | [web/DESIGN.md](web/DESIGN.md)(唯一真相源) |
+| 颜色 / 圆角 / 间距 / 排版 / 基础组件 token / 布局样式写法 | [web/DESIGN.md](web/DESIGN.md)(唯一真相源) |
+| Web 组件所有权与治理执行 | [web/COMPONENT_GOVERNANCE.md](web/COMPONENT_GOVERNANCE.md) |
 | 前端工程约定(栈/包管理/i18n/门禁) | [前端工程规则](specs/capabilities/frontend-engineering.md) |
 | 产品侧 UI / 交互规范 | [specs/capabilities/legacy-design-ui.md](specs/capabilities/legacy-design-ui.md) |
 | 算法服务设计原则 | [algorithms/DESIGN_GUIDE.md](algorithms/DESIGN_GUIDE.md) |
@@ -16,6 +17,6 @@
 
 ## 改设计前的三条规矩
 
-1. **token 不硬编码**:前端任何颜色/圆角/间距取自 `web/DESIGN.md`,改设计先改 token。
+1. **token 不硬编码**:前端任何颜色取自语义 token（`globals.css` / `web/DESIGN.md`）；布局与间距优先 Tailwind `className`，不以大段行内 `style` 表达。
 2. **决策要留痕**:跨会话设计写入 `specs/changes/<feature>/spec.md`；长期且难回滚的决定才写 ADR。
-3. **一致性优先**:复用既有组件与规范，新范式需符合 [产品原则](PRODUCT.md)。
+3. **一致性优先**:复用既有组件与规范，新范式需符合 [产品原则](PRODUCT.md)；Web 组件放置与治理见 [COMPONENT_GOVERNANCE.md](web/COMPONENT_GOVERNANCE.md)。

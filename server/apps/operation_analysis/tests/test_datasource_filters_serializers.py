@@ -296,6 +296,180 @@ def test_datasource_serializer_redacts_and_preserves_nested_separator_variants(a
     assert serializer.validated_data["query_config"]["body"]["items"][0]["client-secret"] == "real-client-secret"
 
 
+def test_transform_config_for_source_type_strips_python_transform_for_database():
+    from apps.operation_analysis.serializers.datasource_serializers import (
+        DISABLED_TRANSFORM_CONFIG,
+        transform_config_for_source_type,
+    )
+
+    leftover = {
+        "enabled": True,
+        "language": "python",
+        "script": "def transform(rows, params): return rows",
+    }
+    assert transform_config_for_source_type("postgresql", leftover) == DISABLED_TRANSFORM_CONFIG
+    assert transform_config_for_source_type("mysql", leftover) == DISABLED_TRANSFORM_CONFIG
+    assert transform_config_for_source_type("prometheus", leftover) == DISABLED_TRANSFORM_CONFIG
+    assert transform_config_for_source_type("nats", leftover) == DISABLED_TRANSFORM_CONFIG
+    assert transform_config_for_source_type("rest_api", leftover) == leftover
+    assert transform_config_for_source_type("excel", leftover) == leftover
+
+
+@pytest.mark.django_db
+def test_datasource_serializer_strips_transform_when_switching_rest_to_postgresql(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    datasource = DataSourceAPIModel.objects.create(
+        name="rest1",
+        rest_api="",
+        source_type="rest_api",
+        connection_config={"url": "https://example.com/orders", "method": "GET", "timeout": 10},
+        query_config={"response_path": "data.items"},
+        transform_config={
+            "enabled": True,
+            "language": "python",
+            "script": "def transform(rows, params): return rows",
+        },
+        params=[],
+        chart_type=["table"],
+        field_schema=[],
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data={
+            "name": "rest1",
+            "rest_api": "",
+            "source_type": "postgresql",
+            "connection": None,
+            "connection_config": {
+                "host": "127.0.0.1",
+                "port": 5432,
+                "database": "bklite",
+                "username": "bklite",
+                "password": "secret",
+            },
+            "query_config": {"sql": "SELECT 1", "table": ""},
+            "params": [],
+            "chart_type": ["table"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+        },
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["transform_config"]["enabled"] is False
+    updated = serializer.save()
+    assert updated.source_type == "postgresql"
+    assert (updated.transform_config or {}).get("enabled") is False
+
+
+@pytest.mark.django_db
+def test_datasource_serializer_keeps_rest_transform_when_type_unchanged(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    transform_config = {
+        "enabled": True,
+        "language": "python",
+        "script": "def transform(rows, params): return rows",
+    }
+    datasource = DataSourceAPIModel.objects.create(
+        name="rest-keep",
+        rest_api="",
+        source_type="rest_api",
+        connection_config={"url": "https://example.com/orders", "method": "GET", "timeout": 10},
+        query_config={"response_path": "data.items"},
+        transform_config=transform_config,
+        params=[],
+        chart_type=["table"],
+        field_schema=[],
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data={
+            "name": "rest-keep",
+            "rest_api": "",
+            "source_type": "rest_api",
+            "connection_config": {"url": "https://example.com/orders", "method": "GET", "timeout": 10},
+            "query_config": {"response_path": "data.items"},
+            "params": [],
+            "chart_type": ["table"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+        },
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["transform_config"]["enabled"] is True
+
+
+@pytest.mark.django_db
+def test_datasource_serializer_clears_connection_when_switching_rest_to_excel(authenticated_user):
+    from apps.operation_analysis.models.datasource_models import DataConnection
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+    from apps.operation_analysis.services.data_connection.config_crypto import encrypt_connection_config
+
+    connection = DataConnection.objects.create(
+        name="rest-shared",
+        connection_type=DataConnection.TYPE_REST_API,
+        groups=[1],
+        config=encrypt_connection_config({"base_url": "https://api.example.com", "headers": {}}),
+    )
+    datasource = DataSourceAPIModel.objects.create(
+        name="rest-bound",
+        rest_api="",
+        source_type="rest_api",
+        connection=connection,
+        connection_overrides={"path": "orders", "method": "GET", "timeout": 10},
+        connection_config={"method": "GET", "timeout": 10},
+        query_config={"response_path": "data.items"},
+        transform_config={"enabled": True, "language": "python", "script": "def transform(rows, params): return rows"},
+        params=[],
+        chart_type=["table"],
+        field_schema=[],
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data={
+            "name": "rest-bound",
+            "rest_api": "",
+            "source_type": "excel",
+            "connection_config": {"filename": "demo.xlsx"},
+            "query_config": {},
+            "params": [],
+            "chart_type": ["table"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+        },
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    updated = serializer.save()
+    assert updated.source_type == "excel"
+    assert updated.connection_id is None
+    assert updated.connection_overrides == {}
+
+
 # --------------------------------------------------------------------------
 # schema 校验工具函数
 # --------------------------------------------------------------------------
@@ -341,7 +515,7 @@ def test_detect_db_id_references_allows_network_topology_external_ids():
                         {
                             "id": "node-1",
                             "bk_obj_id": "bk_firewall",
-                            "bk_inst_id": 383679,
+                            "bk_inst_uuid": "383679a0-0000-4000-8000-000000000001",
                             "plugin_template_id": 2170,
                             "network_collect_task_id": 197,
                             "network_collect_instance_id": 1994,
@@ -354,8 +528,14 @@ def test_detect_db_id_references_allows_network_topology_external_ids():
                             "target_node_id": "node-2",
                             "port_pairs": [
                                 {
-                                    "source_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 383676},
-                                    "target_interface": {"bk_obj_id": "bk_interface", "bk_inst_id": 36563},
+                                    "source_interface": {
+                                        "bk_obj_id": "bk_interface",
+                                        "bk_inst_uuid": "383676a0-0000-4000-8000-000000000001",
+                                    },
+                                    "target_interface": {
+                                        "bk_obj_id": "bk_interface",
+                                        "bk_inst_uuid": "36563a00-0000-4000-8000-000000000001",
+                                    },
                                 }
                             ],
                         }

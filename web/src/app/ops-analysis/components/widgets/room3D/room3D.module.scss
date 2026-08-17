@@ -217,28 +217,26 @@
   position: absolute;
   top: calc(48px * var(--room3d-readable-scale));
   left: calc(10px * var(--room3d-readable-scale));
-  z-index: 4;
-  display: grid;
-  gap: calc(6px * var(--room3d-readable-scale));
+  z-index: 6;
   width: min(
     calc(460px * var(--room3d-readable-scale)),
     calc(100% - (20px * var(--room3d-readable-scale)))
   );
-  max-height: min(38%, 180px);
-  padding: calc(10px * var(--room3d-readable-scale))
-    calc(12px * var(--room3d-readable-scale));
-  overflow: auto;
-  font-size: calc(13px * var(--room3d-readable-scale));
-  line-height: calc(20px * var(--room3d-readable-scale));
-  color: rgba(255, 251, 235, 0.96);
-  background: rgba(56, 40, 11, 0.86);
-  border: 1px solid rgba(251, 191, 36, 0.42);
-  border-radius: calc(6px * var(--room3d-readable-scale));
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+  pointer-events: auto;
 }
 
-.noticePanel strong {
-  font-weight: 600;
+.noticePanel :global(.ant-alert) {
+  padding: calc(8px * var(--room3d-readable-scale))
+    calc(12px * var(--room3d-readable-scale));
+  font-size: calc(13px * var(--room3d-readable-scale));
+  line-height: calc(20px * var(--room3d-readable-scale));
+}
+
+.noticePanel :global(.ant-alert-close-icon) {
+  flex-shrink: 0;
+  margin-inline-start: calc(8px * var(--room3d-readable-scale));
+  font-size: calc(14px * var(--room3d-readable-scale));
+  color: rgba(0, 0, 0, 0.55);
 }
 
 .legend {
