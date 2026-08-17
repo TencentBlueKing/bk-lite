@@ -68,7 +68,41 @@ export const buildGroupedMetricSelectOptions = (
     .filter((group): group is NonNullable<typeof group> => group != null);
 };
 
-/** 单实例指标 Select：管理搜索词并生成已过滤 options。 */
+/**
+ * 按选中指标 id 过滤分组；空数组表示展示全部。
+ * clearViewData 为 true 时清空卡片时序，便于重新懒加载。
+ */
+export const filterMetricGroupsByIds = (
+  groups: IndexViewItem[],
+  metricIds: number[],
+  options?: { clearViewData?: boolean },
+): IndexViewItem[] => {
+  const clearViewData = options?.clearViewData ?? true;
+  const mapChild = (item: MetricItem) =>
+    clearViewData
+      ? { ...item, viewData: [], seriesBudget: undefined }
+      : { ...item };
+
+  if (!metricIds.length) {
+    return groups.map((group) => ({
+      ...group,
+      child: (group.child || []).map(mapChild),
+    }));
+  }
+
+  const idSet = new Set(metricIds);
+  return groups
+    .map((group) => ({
+      ...group,
+      isLoading: false,
+      child: (group.child || [])
+        .filter((item) => idSet.has(item.id))
+        .map(mapChild),
+    }))
+    .filter((group) => (group.child || []).length > 0);
+};
+
+/** 指标筛选 Select：管理搜索词并生成已过滤 options（单选/多选均可）。 */
 export const useMetricSelectOptions = (groups: MetricSelectGroup[]) => {
   const [search, setSearch] = useState('');
   const options = useMemo(
