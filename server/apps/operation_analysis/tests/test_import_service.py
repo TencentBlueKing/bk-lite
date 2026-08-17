@@ -261,6 +261,103 @@ def test_import_datasource_overwrite_existing():
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("rest_api", ["monitor/mm_query", "monitor/mm_query_range"])
+def test_import_rejects_new_raw_monitor_query_datasource(rest_api):
+    doc = _doc(datasources=[_ds_section(key=f"raw::{rest_api}", name="raw-query", rest_api=rest_api)])
+
+    result = _service(doc).execute()
+
+    assert result["success"] is False
+    assert result["summary"]["failed"] == 1
+    assert result["results"][0]["message"] == "该监控裸查询接口已停止新增，仅保留存量数据源兼容"
+    assert not DataSourceAPIModel.objects.filter(name="raw-query").exists()
+
+
+@pytest.mark.django_db
+def test_precheck_rejects_new_raw_monitor_query_and_limits_legacy_conflict_actions():
+    new_doc = _doc(datasources=[_ds_section(key="raw::monitor/mm_query", name="raw-query", rest_api="monitor/mm_query")])
+    payload = new_doc.model_dump(mode="json")
+    payload["meta"]["object_counts"] = {"datasources": 1}
+    yaml_content = new_doc.__class__(**payload).model_dump_json()
+
+    precheck = PrecheckService.precheck(yaml_content)
+
+    assert precheck["valid"] is False
+    assert precheck["errors"] == [
+        {
+            "code": "OA_YAML_SCHEMA_INVALID",
+            "message": "该监控裸查询接口已停止新增，仅保留存量数据源兼容",
+            "object_key": "raw::monitor/mm_query",
+            "object_type": "datasource",
+        }
+    ]
+
+    DataSourceAPIModel.objects.create(
+        name="raw-query",
+        rest_api="monitor/mm_query",
+        source_type="nats",
+        created_by="system",
+        updated_by="system",
+    )
+    legacy_precheck = PrecheckService.precheck(yaml_content)
+
+    assert legacy_precheck["valid"] is True
+    assert legacy_precheck["conflicts"][0]["suggested_actions"] == ["skip", "overwrite"]
+
+
+@pytest.mark.django_db
+def test_import_allows_overwriting_existing_raw_monitor_query_datasource():
+    existing = DataSourceAPIModel.objects.create(
+        name="raw-query",
+        rest_api="monitor/mm_query_range",
+        source_type="nats",
+        desc="old",
+        created_by="system",
+        updated_by="system",
+    )
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                key="raw::monitor/mm_query_range",
+                name="raw-query",
+                rest_api="monitor/mm_query_range",
+                desc="new",
+            )
+        ]
+    )
+
+    result = _service(
+        doc,
+        conflict_decisions={"raw::monitor/mm_query_range": ConflictAction.OVERWRITE.value},
+    ).execute()
+
+    assert result["success"] is True
+    existing.refresh_from_db()
+    assert existing.desc == "new"
+
+
+@pytest.mark.django_db
+def test_import_rejects_converting_existing_non_nats_datasource_to_raw_monitor_query():
+    existing = DataSourceAPIModel.objects.create(
+        name="raw-query",
+        rest_api="monitor/mm_query",
+        source_type="rest_api",
+        created_by="system",
+        updated_by="system",
+    )
+    doc = _doc(datasources=[_ds_section(key="raw::monitor/mm_query", name="raw-query", rest_api="monitor/mm_query")])
+
+    result = _service(
+        doc,
+        conflict_decisions={"raw::monitor/mm_query": ConflictAction.OVERWRITE.value},
+    ).execute()
+
+    assert result["success"] is False
+    existing.refresh_from_db()
+    assert existing.source_type == "rest_api"
+
+
+@pytest.mark.django_db
 def test_import_non_nats_datasource_restores_connector_contract_and_secret():
     doc = _doc(
         datasources=[

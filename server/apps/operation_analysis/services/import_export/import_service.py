@@ -18,6 +18,7 @@ from copy import deepcopy
 from django.db import transaction
 
 from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ERROR, is_legacy_raw_monitor_query
 from apps.operation_analysis.constants.canvas_refresh import CANVAS_REFRESH_OBJECT_TYPES, normalize_canvas_refresh_interval
 from apps.operation_analysis.constants.import_export import (
     RENAME_SUFFIX,
@@ -361,6 +362,28 @@ class ImportService:
         """
         existing = DataSourceAPIModel.objects.filter(name=ds_item.name, rest_api=ds_item.rest_api).first()
         action = self._get_conflict_action(ds_item.key)
+
+        targets_legacy_route = is_legacy_raw_monitor_query(
+            source_type=ds_item.source_type,
+            rest_api=ds_item.rest_api,
+        )
+        preserves_existing_legacy_route = bool(
+            existing
+            and is_legacy_raw_monitor_query(
+                source_type=existing.source_type,
+                rest_api=existing.rest_api,
+            )
+            and action in {ConflictAction.SKIP.value, ConflictAction.OVERWRITE.value}
+        )
+        skips_existing_route = bool(existing and action == ConflictAction.SKIP.value)
+        if targets_legacy_route and not (preserves_existing_legacy_route or skips_existing_route):
+            self._record_result(
+                ds_item.key,
+                ObjectType.DATASOURCE.value,
+                ImportStatus.FAILED.value,
+                LEGACY_RAW_MONITOR_QUERY_ERROR,
+            )
+            return None
 
         # 解析关联的命名空间ID
         namespace_ids = [self.namespace_key_to_id[ns_key] for ns_key in ds_item.namespace_keys if ns_key in self.namespace_key_to_id]
