@@ -150,6 +150,10 @@
 
 - `[operation_analysis#20260810-001]` 仪表盘 `single` 增加可选 `descriptionField`（主值下方原样说明行；空态仍由主值门控）。生产 `ComTable` 增加列级 `valueMappings` / `cellThresholdColors` / `cellType`（`text` | `colorBackground` 纯色块），操作列不配置样式；不改挂 `OpsAnalysisTable`。变更契约与证据见 `specs/changes/ops-analysis-single-description-table-cell-styling/spec.md`。
 
+## 2026-08-17 Excel 物化放弃与补偿
+
+- `[operation_analysis#20260817-001]` Excel 槽位/文件随 Excel 身份放弃：切离 Excel、导入覆盖为非 Excel、补偿扫描走 `abandon_excel_materialization`；删除数据源仍级联删槽并由 `post_delete` 清对象存储。Worker 对非 Excel / 已删槽 fail-closed。切回 Excel 必须重新上传。证据：`services/excel_materialize/cleanup.py`、`serializers/datasource_serializers.py`、`tasks/tasks.py`；契约见 `specs/changes/ops-analysis-data-connection-transform/spec.md` §7。
+
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。
 

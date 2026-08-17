@@ -12,6 +12,10 @@ from apps.operation_analysis.services.excel_materialize.row_probe import (
     read_excel_rows_for_materialize,
 )
 from apps.operation_analysis.services.excel_materialize.runtime import load_excel_runtime
+from apps.operation_analysis.services.excel_materialize.cleanup import (
+    abandon_excel_materialization,
+    sweep_abandoned_excel_materializations,
+)
 from apps.operation_analysis.services.excel_materialize.submit import (
     discard_unready_excel_datasource,
     materialize_candidate_inline,
@@ -24,6 +28,7 @@ from apps.operation_analysis.services.excel_materialize.submit import (
 __all__ = [
     "ExcelMaterializer",
     "MAX_MATERIALIZE_ROWS",
+    "abandon_excel_materialization",
     "build_excel_materialization_payload",
     "discard_unready_excel_datasource",
     "excel_can_retry",
@@ -38,4 +43,5 @@ __all__ = [
     "script_hash",
     "submit_excel_candidate",
     "submit_excel_candidate_from_saved_source",
+    "sweep_abandoned_excel_materializations",
 ]

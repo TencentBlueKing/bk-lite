@@ -126,6 +126,22 @@ export function normalizeTransformConfig(value: unknown): TransformConfig {
   });
 }
 
+export const DISABLED_TRANSFORM_CONFIG: TransformConfig = {
+  enabled: false,
+  language: "python",
+  script: "",
+};
+
+export function transformConfigForSourceType(
+  sourceType: DataSourceSourceType,
+  value: unknown,
+): TransformConfig {
+  if (sourceType === SOURCE_TYPE_REST_API || sourceType === SOURCE_TYPE_EXCEL) {
+    return normalizeTransformConfig(value);
+  }
+  return { ...DISABLED_TRANSFORM_CONFIG };
+}
+
 export function normalizePrometheusTimeRange(
   value: unknown,
 ): string[] | number | undefined {
@@ -404,6 +420,7 @@ export const buildConnectorPayload = (
           table: queryConfig.table || "",
           sql: queryConfig.sql || "",
         },
+        transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
       };
     }
     return {
@@ -421,6 +438,7 @@ export const buildConnectorPayload = (
         table: queryConfig.table || "",
         sql: queryConfig.sql || "",
       },
+      transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
     };
   }
 
@@ -495,6 +513,7 @@ export const buildConnectorPayload = (
       source_type: currentSourceType,
       connection_config: prometheusConnectionConfig,
       query_config: normalizedQueryConfig,
+      transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
     };
   }
 
@@ -502,6 +521,7 @@ export const buildConnectorPayload = (
     source_type: currentSourceType,
     connection_config: {},
     query_config: {},
+    transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
   };
 };
 
@@ -526,6 +546,27 @@ export function splitRestUrlForConnectionLibrary(
   } catch {
     return { baseUrl: raw, path: "" };
   }
+}
+
+export function shouldCreateLibraryConnectionFromForm(
+  currentRow?: {
+    id?: number;
+    connection?: number | null;
+    connection_id?: number | null;
+    source_type?: DataSourceSourceType;
+  } | null,
+  sourceType?: DataSourceSourceType,
+): boolean {
+  if (!currentRow?.id) {
+    return true;
+  }
+  if (currentRow.connection || currentRow.connection_id) {
+    return true;
+  }
+  if (sourceType && currentRow.source_type && sourceType !== currentRow.source_type) {
+    return true;
+  }
+  return false;
 }
 
 export function canExtractConnectionFromDatasourceForm(values: any): boolean {

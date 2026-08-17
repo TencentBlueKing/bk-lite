@@ -296,6 +296,126 @@ def test_datasource_serializer_redacts_and_preserves_nested_separator_variants(a
     assert serializer.validated_data["query_config"]["body"]["items"][0]["client-secret"] == "real-client-secret"
 
 
+def test_transform_config_for_source_type_strips_python_transform_for_database():
+    from apps.operation_analysis.serializers.datasource_serializers import (
+        DISABLED_TRANSFORM_CONFIG,
+        transform_config_for_source_type,
+    )
+
+    leftover = {
+        "enabled": True,
+        "language": "python",
+        "script": "def transform(rows, params): return rows",
+    }
+    assert transform_config_for_source_type("postgresql", leftover) == DISABLED_TRANSFORM_CONFIG
+    assert transform_config_for_source_type("mysql", leftover) == DISABLED_TRANSFORM_CONFIG
+    assert transform_config_for_source_type("prometheus", leftover) == DISABLED_TRANSFORM_CONFIG
+    assert transform_config_for_source_type("nats", leftover) == DISABLED_TRANSFORM_CONFIG
+    assert transform_config_for_source_type("rest_api", leftover) == leftover
+    assert transform_config_for_source_type("excel", leftover) == leftover
+
+
+@pytest.mark.django_db
+def test_datasource_serializer_strips_transform_when_switching_rest_to_postgresql(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    datasource = DataSourceAPIModel.objects.create(
+        name="rest1",
+        rest_api="",
+        source_type="rest_api",
+        connection_config={"url": "https://example.com/orders", "method": "GET", "timeout": 10},
+        query_config={"response_path": "data.items"},
+        transform_config={
+            "enabled": True,
+            "language": "python",
+            "script": "def transform(rows, params): return rows",
+        },
+        params=[],
+        chart_type=["table"],
+        field_schema=[],
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data={
+            "name": "rest1",
+            "rest_api": "",
+            "source_type": "postgresql",
+            "connection": None,
+            "connection_config": {
+                "host": "127.0.0.1",
+                "port": 5432,
+                "database": "bklite",
+                "username": "bklite",
+                "password": "secret",
+            },
+            "query_config": {"sql": "SELECT 1", "table": ""},
+            "params": [],
+            "chart_type": ["table"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+        },
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["transform_config"]["enabled"] is False
+    updated = serializer.save()
+    assert updated.source_type == "postgresql"
+    assert (updated.transform_config or {}).get("enabled") is False
+
+
+@pytest.mark.django_db
+def test_datasource_serializer_keeps_rest_transform_when_type_unchanged(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    transform_config = {
+        "enabled": True,
+        "language": "python",
+        "script": "def transform(rows, params): return rows",
+    }
+    datasource = DataSourceAPIModel.objects.create(
+        name="rest-keep",
+        rest_api="",
+        source_type="rest_api",
+        connection_config={"url": "https://example.com/orders", "method": "GET", "timeout": 10},
+        query_config={"response_path": "data.items"},
+        transform_config=transform_config,
+        params=[],
+        chart_type=["table"],
+        field_schema=[],
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data={
+            "name": "rest-keep",
+            "rest_api": "",
+            "source_type": "rest_api",
+            "connection_config": {"url": "https://example.com/orders", "method": "GET", "timeout": 10},
+            "query_config": {"response_path": "data.items"},
+            "params": [],
+            "chart_type": ["table"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+        },
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["transform_config"]["enabled"] is True
+
+
 # --------------------------------------------------------------------------
 # schema 校验工具函数
 # --------------------------------------------------------------------------
