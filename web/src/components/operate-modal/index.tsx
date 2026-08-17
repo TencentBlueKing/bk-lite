@@ -57,6 +57,9 @@ const OperateModal: React.FC<CustomModalProps> = ({
       footer={footer}
       centered={centered}
       maskClosable={maskClosable}
+      // 预挂载表单，避免首次打开时 CSSMotion 尚未渲染 children，
+      // 业务侧 useEffect 里 formRef.current?.setFieldsValue 被静默跳过。
+      forceRender
       destroyOnHidden={destroyOnHidden ?? destroyOnClose}
       {...modalProps}
     />
