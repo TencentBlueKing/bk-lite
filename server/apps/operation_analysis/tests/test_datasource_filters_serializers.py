@@ -4,6 +4,9 @@
 field_schema 列定义需 key 非空且不重复。
 """
 
+import json
+from pathlib import Path
+
 import pytest
 from rest_framework import serializers
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -132,6 +135,82 @@ def _serializer_request(user):
     request.user = user
     force_authenticate(request, user=user)
     return request
+
+
+def _nats_datasource_payload(**overrides):
+    payload = {
+        "name": "自定义监控查询",
+        "rest_api": "monitor/query_safe",
+        "source_type": "nats",
+        "connection_config": {},
+        "query_config": {},
+        "params": [],
+        "chart_type": ["line"],
+        "field_schema": [],
+        "groups": [1],
+        "namespaces": [],
+        "tag": [],
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("rest_api", ["monitor/mm_query", "monitor/mm_query_range"])
+def test_datasource_serializer_rejects_new_raw_monitor_query_routes(authenticated_user, rest_api):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    serializer = DataSourceAPIModelSerializer(
+        context={"request": _serializer_request(authenticated_user)},
+        data=_nats_datasource_payload(rest_api=rest_api),
+    )
+
+    assert not serializer.is_valid()
+    assert serializer.errors["rest_api"] == ["该监控裸查询接口已停止新增，请改用带监控对象和实例权限的受控数据源"]
+
+
+@pytest.mark.django_db
+def test_datasource_serializer_rejects_raw_monitor_query_with_default_source_type(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    payload = _nats_datasource_payload(rest_api="monitor/mm_query")
+    payload.pop("source_type")
+    serializer = DataSourceAPIModelSerializer(
+        context={"request": _serializer_request(authenticated_user)},
+        data=payload,
+    )
+
+    assert not serializer.is_valid()
+    assert serializer.errors["rest_api"] == ["该监控裸查询接口已停止新增，请改用带监控对象和实例权限的受控数据源"]
+
+
+@pytest.mark.django_db
+def test_datasource_serializer_preserves_existing_raw_monitor_query_route(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    datasource = DataSourceAPIModel.objects.create(
+        name="历史监控查询",
+        rest_api="monitor/mm_query_range",
+        source_type="nats",
+        groups=[1],
+        created_by="system",
+        updated_by="system",
+    )
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data=_nats_datasource_payload(name="历史监控查询", rest_api="monitor/mm_query_range"),
+    )
+
+    assert serializer.is_valid(), serializer.errors
+
+
+def test_builtin_datasource_registry_stops_publishing_raw_monitor_query_routes():
+    source_file = Path(__file__).parents[1] / "support-files" / "source_api.json"
+    rest_apis = {item["rest_api"] for item in json.loads(source_file.read_text())}
+
+    assert "monitor/mm_query" not in rest_apis
+    assert "monitor/mm_query_range" not in rest_apis
 
 
 @pytest.mark.django_db

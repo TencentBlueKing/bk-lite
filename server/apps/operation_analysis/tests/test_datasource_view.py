@@ -6,6 +6,7 @@ from django.http import Http404
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ERROR
 from apps.operation_analysis.services.datasource_preview.base import PreviewResult
 from apps.operation_analysis.views import datasource_view
 
@@ -21,6 +22,40 @@ def _build_request(user, data=None):
     request.COOKIES["include_children"] = "0"
     force_authenticate(request, user=user)
     return request
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_datasource_create_rejects_raw_monitor_query_route(authenticated_user):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+
+    authenticated_user.is_superuser = True
+    factory = APIRequestFactory()
+    request = factory.post(
+        "/operation_analysis/api/data_source/",
+        data={
+            "name": "未授权监控裸查询",
+            "rest_api": "monitor/mm_query",
+            "source_type": "nats",
+            "connection_config": {},
+            "query_config": {},
+            "params": [],
+            "chart_type": ["line"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+        },
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "create"})(request)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["rest_api"] == [LEGACY_RAW_MONITOR_QUERY_ERROR]
+    assert not DataSourceAPIModel.objects.filter(rest_api="monitor/mm_query").exists()
 
 
 @pytest.mark.django_db
