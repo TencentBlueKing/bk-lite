@@ -665,10 +665,13 @@ test('移动端根壳层与 iOS 上下安全区共用连续画布背景', async 
 test('底部导航使用高对比实色选中图标与克制的按压反馈', async () => {
   const tabShell = await readProjectFile('src/components/mobile-tab-shell/index.module.css');
 
-  assert.match(tabShell, /\.navItemActive \.navIcon\s*\{[^}]*background:\s*var\(--color-primary\)/s);
+  // 选中态：图标用 primary 色，浅底落在 Inner；不要给图标刷实色 background。
+  assert.match(tabShell, /\.navItemActive \.navIcon\s*\{[^}]*color:\s*var\(--color-primary\)/s);
+  assert.match(tabShell, /\.navItemActive \.navItemInner\s*\{[^}]*background:\s*var\(--color-primary-bg\)/s);
+  assert.doesNotMatch(tabShell, /\.navItemActive \.navIcon\s*\{[^}]*background:/s);
   assert.doesNotMatch(tabShell, /\.navItem:active \.navIcon\s*\{[^}]*background:/s);
   assert.match(tabShell, /\.navItem:active\s*\{[^}]*opacity:\s*0\.78/s);
-  assert.match(tabShell, /\.navIcon\s*\{[^}]*font-size:\s*21px/s);
+  assert.match(tabShell, /\.navIcon\s*\{[^}]*font-size:\s*20px/s);
 });
 
 test('会话侧栏使用 transform 跟手推移主页面', async () => {
