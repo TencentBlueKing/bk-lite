@@ -14,6 +14,20 @@ from apps.operation_analysis.serializers.data_connection_serializers import (
     validate_rest_headers,
 )
 
+TRANSFORM_ALLOWED_SOURCE_TYPES = {
+    DataSourceAPIModel.SOURCE_TYPE_REST_API,
+    DataSourceAPIModel.SOURCE_TYPE_EXCEL,
+}
+DISABLED_TRANSFORM_CONFIG = {"enabled": False, "language": "python", "script": ""}
+
+
+def transform_config_for_source_type(source_type, transform_config):
+    if source_type not in TRANSFORM_ALLOWED_SOURCE_TYPES:
+        return dict(DISABLED_TRANSFORM_CONFIG)
+    if isinstance(transform_config, dict):
+        return transform_config
+    return {}
+
 
 def redact_sensitive_config(value):
     if isinstance(value, list):
@@ -170,6 +184,14 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             return {}
         if not isinstance(value, dict):
             raise serializers.ValidationError("transform_config 必须为对象")
+        source_type = None
+        initial_data = getattr(self, "initial_data", None)
+        if isinstance(initial_data, dict):
+            source_type = initial_data.get("source_type")
+        if not source_type and self.instance:
+            source_type = self.instance.source_type
+        if source_type not in TRANSFORM_ALLOWED_SOURCE_TYPES:
+            return dict(DISABLED_TRANSFORM_CONFIG)
         enabled = bool(value.get("enabled"))
         language = (value.get("language") or "python").lower()
         script = value.get("script") or ""
@@ -191,12 +213,8 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             "transform_config",
             getattr(self.instance, "transform_config", {}) if self.instance else {},
         )
-        if isinstance(transform_config, dict) and transform_config.get("enabled"):
-            if source_type not in {
-                DataSourceAPIModel.SOURCE_TYPE_REST_API,
-                DataSourceAPIModel.SOURCE_TYPE_EXCEL,
-            }:
-                raise serializers.ValidationError({"transform_config": "仅 REST/Excel 允许启用 Python 转换"})
+        # 编辑切类型时前端可能漏传 transform_config，不能沿用旧 REST/Excel 的 enabled 配置。
+        attrs["transform_config"] = transform_config_for_source_type(source_type, transform_config)
 
         should_validate_headers = self.instance is None or "connection_config" in attrs or "source_type" in attrs
         if source_type == DataSourceAPIModel.SOURCE_TYPE_REST_API and should_validate_headers:
@@ -238,8 +256,19 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         return data
 
     def update(self, instance, validated_data):
+        previous_type = instance.source_type
         previous_transform = instance.transform_config if isinstance(instance.transform_config, dict) else {}
         updated = super().update(instance, validated_data)
+        left_excel = (
+            previous_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL
+            and updated.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL
+        )
+        if left_excel:
+            from apps.operation_analysis.services.excel_materialize import abandon_excel_materialization
+
+            abandon_excel_materialization(updated)
+            updated.refresh_from_db()
+            return updated
         if updated.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
             return updated
 

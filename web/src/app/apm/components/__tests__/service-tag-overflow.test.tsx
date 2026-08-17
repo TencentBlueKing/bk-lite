@@ -1,10 +1,11 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ServiceTagOverflow, {
   computeVisibleServiceTagCount,
 } from '../service-tag-overflow';
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 
 const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
 const originalClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
@@ -51,7 +52,7 @@ describe('ServiceTagOverflow', () => {
   });
 
   it('无服务时展示空态文案', () => {
-    render(<ServiceTagOverflow services={[]} />);
+    renderWithApmIntl(<ServiceTagOverflow services={[]} />);
     expect(screen.getByText('尚无服务上报')).not.toBeNull();
   });
 
@@ -81,7 +82,7 @@ describe('ServiceTagOverflow', () => {
       },
     });
 
-    render(
+    renderWithApmIntl(
       <div onClick={onOuterClick}>
         <ServiceTagOverflow
           services={[

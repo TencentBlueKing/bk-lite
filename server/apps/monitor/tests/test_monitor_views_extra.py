@@ -113,12 +113,24 @@ class TestMetricView:
         )
         resp = api_client.get(f"{BASE}/api/metrics/?monitor_object_id={obj.id}")
         assert resp.status_code == 200
-        assert any(item["name"] == "cpu" for item in resp.json()["data"])
+        payload = resp.json()["data"]
+        items = payload["items"] if isinstance(payload, dict) else payload
+        assert any(item["name"] == "cpu" for item in items)
 
         resp2 = api_client.post(f"{BASE}/api/metrics/set_order/", [{"id": m.id, "sort_order": 7}], format="json")
         assert resp2.status_code == 200
         m.refresh_from_db()
         assert m.sort_order == 7
+
+    def test_list_rejects_empty_monitor_object_id(self, api_client):
+        resp = api_client.get(f"{BASE}/api/metrics/?monitor_object_id=")
+        assert resp.status_code == 400
+        assert "monitor_object_id" in resp.json()["message"]
+
+    def test_list_rejects_missing_monitor_object_id(self, api_client):
+        resp = api_client.get(f"{BASE}/api/metrics/")
+        assert resp.status_code == 400
+        assert "monitor_object_id" in resp.json()["message"]
 
 
 class TestMonitorConditionView:

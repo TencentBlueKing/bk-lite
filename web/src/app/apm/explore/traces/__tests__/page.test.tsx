@@ -1,8 +1,9 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApmTracesPage from '../page';
 
 const api = {
@@ -89,7 +90,7 @@ afterEach(() => {
 
 describe('APM 调用链探索', () => {
   it('自动检索后展示明细命中与耗时分布', async () => {
-    render(<ApmTracesPage />);
+    renderWithApmIntl(<ApmTracesPage />);
 
     expect((await screen.findAllByText('POST /pay')).length).toBeGreaterThan(0);
     expect(screen.getByText('快速筛选')).not.toBeNull();
@@ -99,7 +100,7 @@ describe('APM 调用链探索', () => {
 
   it('可切换到聚合视图并按服务汇总', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    render(<ApmTracesPage />);
+    renderWithApmIntl(<ApmTracesPage />);
     await screen.findAllByText('POST /pay');
 
     await user.click(screen.getByRole('radio', { name: '聚合' }));
@@ -110,14 +111,15 @@ describe('APM 调用链探索', () => {
     expect(screen.getAllByText('2').length).toBeGreaterThan(0);
   });
 
-  it('无深链参数时在左侧快速筛选中选中首个服务并自动查询', async () => {
+  it('无深链参数时自动查询当前权限与时间窗内全量结果', async () => {
     search = '';
-    render(<ApmTracesPage />);
+    renderWithApmIntl(<ApmTracesPage />);
 
     await waitFor(() => expect(api.getSpans).toHaveBeenCalledWith(expect.objectContaining({
-      service_namespace: 'shop',
-      service_name: 'checkout',
-      environment: 'prod',
+      service_namespace: undefined,
+      service_name: undefined,
+      environment: undefined,
+      limit: 50,
     })));
     expect(screen.getByText('快速筛选')).not.toBeNull();
   });

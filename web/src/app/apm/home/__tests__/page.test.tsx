@@ -1,10 +1,11 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ApmHomePage from '../page';
 import type { ApmDashboard } from '@/app/apm/types';
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 
 const api = {
   getDashboard: vi.fn(),
@@ -107,7 +108,7 @@ afterEach(() => {
 describe('ApmHomePage', () => {
   it('shows empty state CTA to integration', async () => {
     api.getDashboard.mockResolvedValue(emptyDashboard);
-    render(<ApmHomePage />);
+    renderWithApmIntl(<ApmHomePage />);
 
     expect(await screen.findByText('还没有接入任何应用')).not.toBeNull();
     const cta = screen.getByText('前往集成菜单').closest('a');
@@ -117,7 +118,7 @@ describe('ApmHomePage', () => {
 
   it('renders KPI labels when data loaded', async () => {
     api.getDashboard.mockResolvedValue(loadedDashboard);
-    render(<ApmHomePage />);
+    renderWithApmIntl(<ApmHomePage />);
 
     await waitFor(() => expect(screen.getByText('应用数量')).not.toBeNull());
     expect(screen.getByText('服务数量')).not.toBeNull();
@@ -129,7 +130,7 @@ describe('ApmHomePage', () => {
 
   it('shows retry when a section failed', async () => {
     api.getDashboard.mockResolvedValue(failedAlertsDashboard);
-    render(<ApmHomePage />);
+    renderWithApmIntl(<ApmHomePage />);
 
     await waitFor(() => expect(screen.getByText('实时告警')).not.toBeNull());
     expect(screen.getByText('加载失败，点击重试')).not.toBeNull();
@@ -141,7 +142,7 @@ describe('ApmHomePage', () => {
 
   it('always shows releases empty copy', async () => {
     api.getDashboard.mockResolvedValue(loadedDashboard);
-    render(<ApmHomePage />);
+    renderWithApmIntl(<ApmHomePage />);
 
     expect(await screen.findByText('近 7 天无发布')).not.toBeNull();
   });

@@ -5,6 +5,7 @@ import {
   Button,
   Drawer,
   Form,
+  Grid,
   Input,
   InputNumber,
   message,
@@ -19,8 +20,9 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
+import { formatPercentage } from '@/app/apm/components/metric-format';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type {
   ApmService,
@@ -30,6 +32,8 @@ import type {
   ApmSloInput,
 } from '@/app/apm/types';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
 
@@ -44,16 +48,16 @@ interface SloFormValues {
   evaluation_window: ApmSloEvaluationWindow;
 }
 
-const sliLabels: Record<ApmSliType, string> = {
-  availability: '可用性（非错误请求占比）',
-  latency_p95: '时延（P95 小于阈值）',
-  latency_p99: '时延（P99 小于阈值）',
+const sliI18n: Record<ApmSliType, { id: string; fallback: string }> = {
+  availability: { id: 'apm.slo.availability', fallback: '可用性（非错误请求占比）' },
+  latency_p95: { id: 'apm.slo.latencyP95', fallback: '时延（P95 小于阈值）' },
+  latency_p99: { id: 'apm.slo.latencyP99', fallback: '时延（P99 小于阈值）' },
 };
 
-const windowLabels: Record<ApmSloEvaluationWindow, string> = {
-  rolling7d: '滚动 7 天',
-  rolling30d: '滚动 30 天',
-  calendarMonth: '自然月',
+const windowI18n: Record<ApmSloEvaluationWindow, { id: string; fallback: string }> = {
+  rolling7d: { id: 'apm.slo.rolling7d', fallback: '滚动 7 天' },
+  rolling30d: { id: 'apm.slo.rolling30d', fallback: '滚动 30 天' },
+  calendarMonth: { id: 'apm.slo.calendarMonth', fallback: '自然月' },
 };
 
 function BudgetProgress({ value }: { value: number | null }) {
@@ -95,15 +99,18 @@ function SloColumnHeading({
 }
 
 function EvaluationTag({ row }: { row: ApmSlo }) {
-  if (!row.is_enabled) return <Tag bordered={false}>已停用</Tag>;
-  if (row.data_state === 'unavailable') return <Tag bordered={false} color="error">评估异常</Tag>;
-  if (row.data_state === 'no_data' || row.current_rate === null) return <Tag bordered={false} color="warning">暂无数据</Tag>;
+  const { t } = useTranslation();
+  if (!row.is_enabled) return <Tag bordered={false}>{t('apm.slo.disabledTag', '已停用')}</Tag>;
+  if (row.data_state === 'unavailable') return <Tag bordered={false} color="error">{t('apm.slo.evalError', '评估异常')}</Tag>;
+  if (row.data_state === 'no_data' || row.current_rate === null) return <Tag bordered={false} color="warning">{t('common.noData', '暂无数据')}</Tag>;
   return row.current_rate >= Number(row.objective)
-    ? <Tag bordered={false} color="success">达标</Tag>
-    : <Tag bordered={false} color="error">未达标</Tag>;
+    ? <Tag bordered={false} color="success">{t('apm.services.met', '达标')}</Tag>
+    : <Tag bordered={false} color="error">{t('apm.services.unmet', '未达标')}</Tag>;
 }
 
 export default function ApmSloPage() {
+  const { t } = useTranslation();
+  const screens = Grid.useBreakpoint();
   const { createSlo, deleteSlo, getServices, getSlos, setSloEnabled, updateSlo } = useApmApi();
   const [form] = Form.useForm<SloFormValues>();
   const [rows, setRows] = useState<ApmSlo[]>([]);
@@ -194,10 +201,10 @@ export default function ApmSloPage() {
     try {
       if (editingId) {
         await updateSlo(editingId, payload);
-        message.success('SLO 已更新');
+        message.success(t('apm.slo.updated', 'SLO 已更新'));
       } else {
         await createSlo(payload);
-        message.success('SLO 已创建');
+        message.success(t('apm.slo.created', 'SLO 已创建'));
       }
       closeDrawer();
       await load();
@@ -211,7 +218,7 @@ export default function ApmSloPage() {
     try {
       const updated = await setSloEnabled(row.id, enabled);
       setRows((items) => items.map((item) => (item.id === row.id ? updated : item)));
-      message.success(enabled ? 'SLO 已启用' : 'SLO 已停用');
+      message.success(enabled ? t('apm.slo.enabled', 'SLO 已启用') : t('apm.slo.disabled', 'SLO 已停用'));
     } finally {
       setMutatingId(null);
     }
@@ -224,7 +231,7 @@ export default function ApmSloPage() {
       const nextRows = rows.filter((item) => item.id !== row.id);
       setRows(nextRows);
       setState(nextRows.length ? 'ready' : 'empty');
-      message.success('SLO 已删除');
+      message.success(t('apm.slo.deleted', 'SLO 已删除'));
     } finally {
       setMutatingId(null);
     }
@@ -232,7 +239,7 @@ export default function ApmSloPage() {
 
   const columns: TableColumnsType<ApmSlo> = [
     {
-      title: <SloColumnHeading hint="评估结果" label="名称" />,
+      title: <SloColumnHeading hint={t('apm.slo.nameHint', '评估结果')} label={t('apm.slo.name', '名称')} />,
       dataIndex: 'name',
       render: (value, row) => (
         <Space direction="vertical" size={4} className="!flex w-full min-w-0">
@@ -242,61 +249,64 @@ export default function ApmSloPage() {
       ),
     },
     {
-      title: <SloColumnHeading hint="服务 · 环境" label="目标对象" />,
+      title: <SloColumnHeading hint={t('apm.slo.targetHint', '服务 · 环境')} label={t('apm.slo.target', '目标对象')} />,
       responsive: ['md'],
       render: (_, row) => (
         <Space direction="vertical" size={2} className="!flex w-full min-w-0">
           <EllipsisWithTooltip className="truncate" text={`${row.service_namespace ? `${row.service_namespace} / ` : ''}${row.service_name}`} />
-          <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={[row.environment, row.endpoint || '服务级'].join(' · ')} />
+          <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={[row.environment, row.endpoint || t('apm.slo.serviceLevel', '服务级')].join(' · ')} />
         </Space>
       ),
     },
     {
-      title: <SloColumnHeading hint="计算口径" label="SLI 类型" />,
+      title: <SloColumnHeading hint={t('apm.slo.sliHint', '计算口径')} label={t('apm.slo.sliType', 'SLI 类型')} />,
       dataIndex: 'sli_type',
       responsive: ['xl'],
       render: (value: ApmSliType, row) => (
         <Space direction="vertical" size={2} className="!flex w-full min-w-0">
-          <EllipsisWithTooltip className="truncate" text={sliLabels[value]} />
-          {row.latency_threshold_ms ? <Typography.Text type="secondary" className="!text-xs">阈值 {row.latency_threshold_ms} ms</Typography.Text> : null}
+          <EllipsisWithTooltip className="truncate" text={t(sliI18n[value].id, sliI18n[value].fallback)} />
+          {row.latency_threshold_ms ? <Typography.Text type="secondary" className="!text-xs">{t('apm.slo.thresholdMs', '阈值 {ms} ms', { ms: row.latency_threshold_ms })}</Typography.Text> : null}
         </Space>
       ),
     },
     {
-      title: <SloColumnHeading align="right" hint="评估窗口" label="目标值" />,
-      width: 128,
+      title: <SloColumnHeading align="right" hint={t('apm.slo.objectiveHint', '评估窗口')} label={t('apm.slo.objective', '目标值')} />,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       align: 'right',
       responsive: ['lg'],
       render: (_, row) => (
         <Space direction="vertical" size={2} className="!flex w-full !items-end">
-          <span className="tabular-nums">{Number(row.objective).toFixed(2)}%</span>
-          <Typography.Text type="secondary" className="!text-xs">{windowLabels[row.evaluation_window]}</Typography.Text>
+          <span className="tabular-nums">{formatPercentage(row.objective)}</span>
+          <Typography.Text type="secondary" className="!text-xs">{t(windowI18n[row.evaluation_window].id, windowI18n[row.evaluation_window].fallback)}</Typography.Text>
         </Space>
       ),
     },
     {
-      title: <SloColumnHeading align="right" hint="达标率" label="当前表现" />,
+      title: <SloColumnHeading align="right" hint={t('apm.slo.currentHint', '达标率')} label={t('apm.slo.current', '当前表现')} />,
       dataIndex: 'current_rate',
-      width: 128,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       align: 'right',
       responsive: ['sm'],
-      render: (value: number | null) => value === null ? '—' : <span className="tabular-nums">{value.toFixed(2)}%</span>,
+      render: (value: number | null) => value === null ? '—' : <span className="tabular-nums">{formatPercentage(value)}</span>,
     },
     {
-      title: <SloColumnHeading hint="剩余" label="错误预算" />,
+      title: <SloColumnHeading hint={t('apm.slo.budgetHint', '剩余')} label={t('apm.slo.budget', '错误预算')} />,
       dataIndex: 'budget_remaining',
-      width: 200,
+      width: APM_TABLE_COLUMN_WIDTHS.progress,
       responsive: ['xxl'],
       render: (value: number | null) => <BudgetProgress value={value} />,
     },
     {
-      title: <SloColumnHeading align="center" hint="状态" label="启用" />,
+      title: <SloColumnHeading align="center" hint={t('apm.slo.enabledHint', '状态')} label={t('apm.slo.enabledCol', '启用')} />,
       dataIndex: 'is_enabled',
-      width: 96,
+      width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'center',
       render: (_, row) => (
         <Switch
-          aria-label={`${row.is_enabled ? '停用' : '启用'} ${row.name}`}
+          aria-label={t('apm.slo.toggleAria', '{action} {name}', {
+            action: row.is_enabled ? t('apm.slo.disable', '停用') : t('apm.slo.enable', '启用'),
+            name: row.name,
+          })}
           checked={row.is_enabled}
           loading={mutatingId === row.id}
           size="small"
@@ -305,25 +315,51 @@ export default function ApmSloPage() {
       ),
     },
     {
-      title: '操作',
+      title: t('apm.common.operation', '操作'),
       key: 'actions',
-      width: 120,
+      width: screens.sm ? APM_TABLE_COLUMN_WIDTHS.metricWide : APM_TABLE_COLUMN_WIDTHS.singleAction,
       align: 'right',
       fixed: 'right',
-      render: (_, row) => (
-        <Space className="w-full justify-end whitespace-nowrap" size={8}>
-          <Button className="!px-0" size="small" type="link" onClick={() => openEditDrawer(row)}>编辑</Button>
+      render: (_, row) => screens.sm ? (
+        <Space className="whitespace-nowrap" size={8}>
+          <Button className="!px-0" size="small" type="link" onClick={() => openEditDrawer(row)}>{t('common.edit', '编辑')}</Button>
           <Popconfirm
-            cancelText="取消"
+            cancelText={t('common.cancel', '取消')}
             okButtonProps={{ danger: true, loading: mutatingId === row.id }}
-            okText="删除"
-            title="确认删除这个 SLO？"
-            description="删除后将停止目标评估，且无法恢复。"
+            okText={t('common.delete', '删除')}
+            title={t('apm.slo.deleteConfirm', '确认删除这个 SLO？')}
+            description={t('apm.slo.deleteHint', '删除后将停止目标评估，且无法恢复。')}
             onConfirm={() => remove(row)}
           >
-            <Button className="!px-0" danger disabled={mutatingId !== null && mutatingId !== row.id} size="small" type="link">删除</Button>
+            <Button className="!px-0" danger disabled={mutatingId !== null && mutatingId !== row.id} size="small" type="link">{t('common.delete', '删除')}</Button>
           </Popconfirm>
         </Space>
+      ) : (
+        <MoreActionsDropdown
+          ariaLabel={t('apm.serviceDetail.moreActions', '更多操作')}
+          buttonType="link"
+          items={[
+            {
+              key: 'edit',
+              label: t('common.edit', '编辑'),
+              onClick: () => openEditDrawer(row),
+            },
+            {
+              key: 'delete',
+              danger: true,
+              disabled: mutatingId !== null && mutatingId !== row.id,
+              label: t('common.delete', '删除'),
+              confirm: {
+                title: t('apm.slo.deleteConfirm', '确认删除这个 SLO？'),
+                content: t('apm.slo.deleteHint', '删除后将停止目标评估，且无法恢复。'),
+                okText: t('common.delete', '删除'),
+                cancelText: t('common.cancel', '取消'),
+              },
+              onClick: () => remove(row),
+            },
+          ]}
+          stopPropagation
+        />
       ),
     },
   ];
@@ -349,26 +385,26 @@ export default function ApmSloPage() {
   ) : state === 'empty' ? (
     <CatalogState
       kind="empty"
-      description="还没有 SLO，创建一个目标开始跟踪服务可靠性。"
-      action={<Button disabled={!services.length} type="primary" onClick={openCreateDrawer}>新建 SLO</Button>}
+      description={t('apm.slo.empty', '还没有 SLO，创建一个目标开始跟踪服务可靠性。')}
+      action={<Button disabled={!services.length} type="primary" onClick={openCreateDrawer}>{t('apm.slo.create', '新建 SLO')}</Button>}
     />
   ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />;
 
   return (
-    <ApmRouteShell dependency="telemetry" description="定义服务可靠性目标，跟踪达标率与错误预算。" title="SLO">
+    <ApmRouteShell dependency="telemetry" description={t('apm.slo.description', '定义服务可靠性目标，跟踪达标率与错误预算。')} title={t('apm.slo.title', 'SLO')}>
       <ApmSurface>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <Typography.Text strong>SLO 列表</Typography.Text>
+              <Typography.Text strong>{t('apm.slo.list', 'SLO 列表')}</Typography.Text>
               <span className="inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-fill-1)] px-2 py-0.5 text-xs tabular-nums text-[var(--color-text-3)]">
-                {rows.length} 项
+                {rows.length} {t('common.items', '项')}
               </span>
             </div>
           </div>
           <Space>
-            <Button aria-label="刷新 SLO" icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
-            <Button disabled={!services.length} type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreateDrawer}>新建 SLO</Button>
+            <Button aria-label={t('apm.slo.refresh', '刷新 SLO')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
+            <Button disabled={!services.length} type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreateDrawer}>{t('apm.slo.create', '新建 SLO')}</Button>
           </Space>
         </div>
         {content}
@@ -376,45 +412,45 @@ export default function ApmSloPage() {
       <Drawer
         destroyOnHidden
         open={drawerOpen}
-        title={editingId ? '编辑 SLO' : '新建 SLO'}
+        title={editingId ? t('apm.slo.edit', '编辑 SLO') : t('apm.slo.create', '新建 SLO')}
         width="min(480px, 100vw)"
         styles={{ body: { maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' } }}
         extra={(
           <Space>
-            <Button disabled={submitting} onClick={closeDrawer}>取消</Button>
-            <Button form="apm-slo-form" htmlType="submit" loading={submitting} type="primary">{editingId ? '保存' : '创建'}</Button>
+            <Button disabled={submitting} onClick={closeDrawer}>{t('common.cancel', '取消')}</Button>
+            <Button form="apm-slo-form" htmlType="submit" loading={submitting} type="primary">{editingId ? t('common.save', '保存') : t('common.create', '创建')}</Button>
           </Space>
         )}
         onClose={closeDrawer}
       >
         <Form<SloFormValues> form={form} id="apm-slo-form" layout="vertical" requiredMark="optional" onFinish={submit}>
-          <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入 SLO 名称' }, { max: 128, message: '名称不能超过 128 个字符' }]}>
-            <Input maxLength={128} placeholder="例如：结算服务可用性" />
+          <Form.Item label={t('apm.slo.name', '名称')} name="name" rules={[{ required: true, message: t('apm.slo.nameRequired', '请输入 SLO 名称') }, { max: 128, message: t('apm.slo.nameTooLong', '名称不能超过 128 个字符') }]}>
+            <Input maxLength={128} placeholder={t('apm.slo.namePlaceholder', '例如：结算服务可用性')} />
           </Form.Item>
-          <Form.Item label="目标服务" name="service_id" rules={[{ required: true, message: '请选择目标服务' }]}>
-            <Select showSearch optionFilterProp="label" placeholder="选择目标服务" options={serviceOptions} />
+          <Form.Item label={t('apm.slo.targetService', '目标服务')} name="service_id" rules={[{ required: true, message: t('apm.slo.targetServiceRequired', '请选择目标服务') }]}>
+            <Select showSearch optionFilterProp="label" placeholder={t('apm.slo.selectTargetService', '选择目标服务')} options={serviceOptions} />
           </Form.Item>
-          <Form.Item label="环境" name="environment" extra="SLO 在单个部署环境内评估。" rules={[{ required: true, message: '请选择环境' }]}>
-            <Select showSearch optionFilterProp="label" placeholder="选择环境" options={environmentOptions} />
+          <Form.Item label={t('apm.common.environment', '环境')} name="environment" extra={t('apm.slo.environmentHint', 'SLO 在单个部署环境内评估。')} rules={[{ required: true, message: t('apm.slo.environmentRequired', '请选择环境') }]}>
+            <Select showSearch optionFilterProp="label" placeholder={t('apm.common.selectEnvironment', '选择环境')} options={environmentOptions} />
           </Form.Item>
-          <Form.Item label="端点" name="endpoint" extra="留空时按整个服务计算。">
-            <Input maxLength={512} placeholder="例如：POST /api/checkout" />
+          <Form.Item label={t('apm.slo.endpoint', '端点')} name="endpoint" extra={t('apm.slo.endpointHint', '留空时按整个服务计算。')}>
+            <Input maxLength={512} placeholder={t('apm.slo.endpointPlaceholder', '例如：POST /api/checkout')} />
           </Form.Item>
-          <Form.Item label="SLI 类型" name="sli_type" rules={[{ required: true, message: '请选择 SLI 类型' }]}>
-            <Select options={Object.entries(sliLabels).map(([value, label]) => ({ value, label }))} />
+          <Form.Item label={t('apm.slo.sliType', 'SLI 类型')} name="sli_type" rules={[{ required: true, message: t('apm.slo.sliRequired', '请选择 SLI 类型') }]}>
+            <Select options={Object.entries(sliI18n).map(([value, item]) => ({ value, label: t(item.id, item.fallback) }))} />
           </Form.Item>
           <Form.Item noStyle shouldUpdate={(before, current) => before.sli_type !== current.sli_type}>
             {({ getFieldValue }) => getFieldValue('sli_type') === 'availability' ? null : (
-              <Form.Item label="时延阈值" name="latency_threshold_ms" rules={[{ required: true, message: '请输入正数时延阈值' }]}>
+              <Form.Item label={t('apm.slo.latencyThreshold', '时延阈值')} name="latency_threshold_ms" rules={[{ required: true, message: t('apm.slo.latencyRequired', '请输入正数时延阈值') }]}>
                 <InputNumber className="!w-full" min={1} precision={0} addonAfter="ms" />
               </Form.Item>
             )}
           </Form.Item>
-          <Form.Item label="目标达标率" name="objective" rules={[{ required: true, message: '请输入目标达标率' }]}>
+          <Form.Item label={t('apm.slo.objectiveRate', '目标达标率')} name="objective" rules={[{ required: true, message: t('apm.slo.objectiveRequired', '请输入目标达标率') }]}>
             <InputNumber className="!w-full" max={100} min={0.001} precision={3} step={0.1} addonAfter="%" />
           </Form.Item>
-          <Form.Item label="评估窗口" name="evaluation_window" rules={[{ required: true, message: '请选择评估窗口' }]}>
-            <Select options={Object.entries(windowLabels).map(([value, label]) => ({ value, label }))} />
+          <Form.Item label={t('apm.slo.window', '评估窗口')} name="evaluation_window" rules={[{ required: true, message: t('apm.slo.windowRequired', '请选择评估窗口') }]}>
+            <Select options={Object.entries(windowI18n).map(([value, item]) => ({ value, label: t(item.id, item.fallback) }))} />
           </Form.Item>
         </Form>
       </Drawer>

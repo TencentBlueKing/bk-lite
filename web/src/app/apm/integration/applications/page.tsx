@@ -7,7 +7,7 @@ import { AppstoreAddOutlined, PlusOutlined, SearchOutlined } from '@ant-design/i
 import { Button, Drawer, Form, Input, message, Space, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmApplication, ApmApplicationInput } from '@/app/apm/types';
@@ -16,10 +16,12 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
 
 export default function ApmApplicationsPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [messageApi, messageContextHolder] = message.useMessage();
   const { getApplications, createApplication, updateApplication, isLoading } = useApmApi();
@@ -77,10 +79,10 @@ export default function ApmApplicationsPage() {
     try {
       if (editing) {
         await updateApplication(editing.id, values);
-        messageApi.success('应用已更新');
+        messageApi.success(t('apm.applications.updated', '应用已更新'));
       } else {
         await createApplication(values);
-        messageApi.success('应用已创建');
+        messageApi.success(t('apm.applications.created', '应用已创建'));
       }
       setDrawerOpen(false);
       await load();
@@ -102,7 +104,7 @@ export default function ApmApplicationsPage() {
 
   const columns: TableColumnsType<ApmApplication> = [
     {
-      title: '应用',
+      title: t('apm.applications.name', '应用'),
       key: 'application',
       render: (_, item) => (
         <div className="flex items-center gap-3">
@@ -118,10 +120,10 @@ export default function ApmApplicationsPage() {
         </div>
       ),
     },
-    { title: '说明', dataIndex: 'description', responsive: ['lg'], render: (value) => <EllipsisWithTooltip className="truncate" text={value || '—'} /> },
-    { title: '服务数', dataIndex: 'service_count', width: 100, align: 'right', className: 'tabular-nums', responsive: ['md'] },
+    { title: t('apm.applications.note', '说明'), dataIndex: 'description', responsive: ['lg'], render: (value) => <EllipsisWithTooltip className="truncate" text={value || '—'} /> },
+    { title: t('apm.applications.serviceCount', '服务数'), dataIndex: 'service_count', width: APM_TABLE_COLUMN_WIDTHS.status, align: 'right', className: 'tabular-nums', responsive: ['md'] },
     {
-      title: '组织', dataIndex: 'organization_ids', width: 180, responsive: ['xl'],
+      title: t('apm.common.organization', '组织'), dataIndex: 'organization_ids', width: APM_TABLE_COLUMN_WIDTHS.organization, responsive: ['xl'],
       render: (values: number[]) => (
         <EllipsisWithTooltip
           className="truncate"
@@ -129,19 +131,19 @@ export default function ApmApplicationsPage() {
         />
       ),
     },
-    { title: '更新时间', dataIndex: 'updated_at', width: 170, responsive: ['xxl'], className: 'tabular-nums', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
+    { title: t('apm.applications.updatedAt', '更新时间'), dataIndex: 'updated_at', width: APM_TABLE_COLUMN_WIDTHS.timestamp, responsive: ['xxl'], className: 'tabular-nums', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
     {
-      title: '操作', key: 'action', width: 200, align: 'right', fixed: 'right',
+      title: t('apm.common.operation', '操作'), key: 'action', width: APM_TABLE_COLUMN_WIDTHS.actionGroup, align: 'right', fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
-          <Space className="w-full justify-end whitespace-nowrap" size={8}>
+          <Space className="whitespace-nowrap" size={8}>
             <Button
               className="!px-0"
               size="small"
               type="link"
               onClick={() => router.push(`/apm/integration/add?application_id=${encodeURIComponent(item.application_id)}`)}
             >
-              添加接入
+              {t('apm.applications.addIngest', '添加接入')}
             </Button>
             <Button
               className="!px-0"
@@ -149,10 +151,10 @@ export default function ApmApplicationsPage() {
               type="link"
               onClick={() => router.push(`/apm/integration/applications/${item.id}`)}
             >
-              查看详情
+              {t('apm.applications.viewDetail', '查看详情')}
             </Button>
             <Button className="!px-0" size="small" type="link" onClick={() => openEdit(item)}>
-              编辑
+              {t('common.edit', '编辑')}
             </Button>
           </Space>
         </Permission>
@@ -161,14 +163,14 @@ export default function ApmApplicationsPage() {
   ];
 
   return (
-    <ApmRouteShell title="应用管理" description="维护 APM 应用边界，并从对应应用发起遥测接入。">
+    <ApmRouteShell title={t('apm.applications.title', '应用管理')} description={t('apm.applications.description', '维护 APM 应用边界，并从对应应用发起遥测接入。')}>
       {messageContextHolder}
       <ApmSurface>
         <div className="flex flex-col gap-4">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-            <Input allowClear className="min-w-0 flex-1 md:max-w-sm" prefix={<SearchOutlined aria-hidden="true" />} placeholder="搜索应用 ID / 名称" value={keyword} onChange={(event) => { setKeyword(event.target.value); setPage(1); }} />
+            <Input allowClear className="min-w-0 flex-1 md:max-w-sm" prefix={<SearchOutlined aria-hidden="true" />} placeholder={t('apm.applications.searchPlaceholder', '搜索应用 ID / 名称')} value={keyword} onChange={(event) => { setKeyword(event.target.value); setPage(1); }} />
             <Permission className="ml-auto" requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
-              <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreate}>创建应用</Button>
+              <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreate}>{t('apm.applications.create', '创建应用')}</Button>
             </Permission>
           </FilterToolbar>
           {state === 'ready' ? (
@@ -196,14 +198,14 @@ export default function ApmApplicationsPage() {
       <Drawer
         destroyOnHidden
         open={drawerOpen}
-        title={editing ? '编辑应用' : '创建应用'}
+        title={editing ? t('apm.applications.edit', '编辑应用') : t('apm.applications.create', '创建应用')}
         width="min(480px, 100vw)"
         styles={{ body: { maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' } }}
         extra={(
           <Space>
-            <Button disabled={submitting} onClick={() => setDrawerOpen(false)}>取消</Button>
+            <Button disabled={submitting} onClick={() => setDrawerOpen(false)}>{t('common.cancel', '取消')}</Button>
             <Button form="apm-application-form" htmlType="submit" loading={submitting} type="primary">
-              {editing ? '保存' : '创建'}
+              {editing ? t('common.save', '保存') : t('common.create', '创建')}
             </Button>
           </Space>
         )}
@@ -217,17 +219,17 @@ export default function ApmApplicationsPage() {
           requiredMark="optional"
           onFinish={(values) => void submit(values)}
         >
-          <Form.Item name="application_id" label="应用 ID" extra="创建后不可修改，将作为 service.namespace。" rules={editing ? [] : [{ required: true, message: '请输入应用 ID' }, { pattern: /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/, message: '仅支持字母、数字、点、下划线和连字符' }]} hidden={Boolean(editing)}>
-            <Input placeholder="例如 shop" autoComplete="off" />
+          <Form.Item name="application_id" label={t('apm.applications.id', '应用 ID')} extra={t('apm.applications.idHint', '创建后不可修改，将作为 service.namespace。')} rules={editing ? [] : [{ required: true, message: t('apm.applications.idRequired', '请输入应用 ID') }, { pattern: /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/, message: t('apm.applications.idPattern', '仅支持字母、数字、点、下划线和连字符') }]} hidden={Boolean(editing)}>
+            <Input placeholder={t('apm.applications.idPlaceholder', '例如 shop')} autoComplete="off" />
           </Form.Item>
-          <Form.Item name="name" label="应用名称" rules={[{ required: true, whitespace: true, message: '请输入应用名称' }, { max: 128 }]}>
-            <Input placeholder="例如 电商主站" />
+          <Form.Item name="name" label={t('apm.applications.nameLabel', '应用名称')} rules={[{ required: true, whitespace: true, message: t('apm.applications.nameRequired', '请输入应用名称') }, { max: 128 }]}>
+            <Input placeholder={t('apm.applications.namePlaceholder', '例如 电商主站')} />
           </Form.Item>
-          <Form.Item name="description" label="应用说明" rules={[{ max: 512 }]}>
-            <Input.TextArea rows={3} maxLength={512} showCount placeholder="说明业务范围或负责人（可选）" />
+          <Form.Item name="description" label={t('apm.applications.noteLabel', '应用说明')} rules={[{ max: 512 }]}>
+            <Input.TextArea rows={3} maxLength={512} showCount placeholder={t('apm.applications.notePlaceholder', '说明业务范围或负责人（可选）')} />
           </Form.Item>
-          <Form.Item name="organization_ids" label="组织" rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个组织' }]}>
-            <GroupTreeSelect multiple mode="ownership" showSearch placeholder="选择可管理此应用的组织" />
+          <Form.Item name="organization_ids" label={t('apm.common.organization', '组织')} rules={[{ required: true, type: 'array', min: 1, message: t('apm.applications.orgRequired', '至少选择一个组织') }]}>
+            <GroupTreeSelect multiple mode="ownership" showSearch placeholder={t('apm.applications.orgPlaceholder', '选择可管理此应用的组织')} />
           </Form.Item>
         </Form>
       </Drawer>

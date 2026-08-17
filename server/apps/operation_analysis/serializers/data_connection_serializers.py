@@ -176,12 +176,25 @@ class DataConnectionReferenceSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "source_type", "groups"]
 
 
+CONNECTION_ALLOWED_SOURCE_TYPES = {
+    DataSourceAPIModel.SOURCE_TYPE_MYSQL,
+    DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,
+    DataSourceAPIModel.SOURCE_TYPE_REST_API,
+}
+
+
 def validate_datasource_connection_binding(attrs, instance=None):
+    source_type = attrs.get("source_type", getattr(instance, "source_type", None) if instance else None)
+    if source_type not in CONNECTION_ALLOWED_SOURCE_TYPES:
+        # 切到 Excel/NATS/Prometheus 时前端可能漏传 connection，不能沿用旧 REST/DB 连接。
+        attrs["connection"] = None
+        attrs["connection_overrides"] = {}
+        return attrs
+
     connection = attrs.get("connection", serializers.empty)
     if connection is serializers.empty:
         connection = getattr(instance, "connection", None) if instance else None
 
-    source_type = attrs.get("source_type", getattr(instance, "source_type", None) if instance else None)
     groups = attrs.get("groups", getattr(instance, "groups", None) if instance else None)
     overrides = attrs.get(
         "connection_overrides",
@@ -195,13 +208,6 @@ def validate_datasource_connection_binding(attrs, instance=None):
     if connection is None:
         attrs["connection_overrides"] = overrides or {}
         return attrs
-
-    if source_type not in {
-        DataSourceAPIModel.SOURCE_TYPE_MYSQL,
-        DataSourceAPIModel.SOURCE_TYPE_POSTGRESQL,
-        DataSourceAPIModel.SOURCE_TYPE_REST_API,
-    }:
-        raise serializers.ValidationError({"connection": "仅 MySQL/PostgreSQL/REST 可引用数据连接"})
 
     if connection.connection_type != source_type:
         raise serializers.ValidationError({"connection": "数据连接类型必须与数据源类型一致"})

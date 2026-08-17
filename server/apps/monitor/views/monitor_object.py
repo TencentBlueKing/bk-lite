@@ -276,13 +276,12 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
     @action(methods=["post"], detail=True, url_path="visibility")
     def visibility(self, request, pk=None):
-        """切换对象可见性"""
+        """切换对象可见性，同时级联到子对象。"""
         obj = self.get_object()
         is_visible = request.data.get("is_visible")
         if is_visible is None:
             return WebUtils.response_error("is_visible is required")
-        obj.is_visible = is_visible
-        obj.save(update_fields=["is_visible"])
+        MonitorObjectService.set_object_visibility(obj, bool(is_visible))
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=True, url_path="display_fields")

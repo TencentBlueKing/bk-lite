@@ -195,16 +195,9 @@ class ImportService:
         if existing.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
             return
 
-        from apps.operation_analysis.models.excel_materialization_models import ExcelMaterializationSlot
+        from apps.operation_analysis.services.excel_materialize import abandon_excel_materialization
 
-        old_success_id = existing.excel_success_slot_id
-        old_candidate_id = existing.excel_candidate_slot_id
-        existing.excel_success_slot = None
-        existing.excel_candidate_slot = None
-        existing.excel_materialization_generation = 0
-        slot_ids = [sid for sid in (old_success_id, old_candidate_id) if sid]
-        if slot_ids:
-            ExcelMaterializationSlot.objects.filter(pk__in=slot_ids).delete()
+        abandon_excel_materialization(existing, clear_excel_query_keys=False)
 
     def _generate_rename_name(self, original_name: str, model) -> str:
         """
@@ -396,6 +389,7 @@ class ImportService:
                         f"数据源缺少敏感配置: {', '.join(missing_secrets)}",
                     )
                     return None
+                previous_source_type = existing.source_type
                 existing.desc = ds_item.desc
                 existing.source_type = ds_item.source_type
                 existing.connection = None
@@ -409,9 +403,16 @@ class ImportService:
                 existing.chart_type = ds_item.chart_type
                 existing.field_schema = ds_item.field_schema
                 existing.updated_by = self.updated_by
-                if existing.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
-                    self._reset_excel_materialization_if_needs_upload(existing, query_config)
                 existing.save()
+                if (
+                    previous_source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL
+                    and existing.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL
+                ):
+                    from apps.operation_analysis.services.excel_materialize import abandon_excel_materialization
+
+                    abandon_excel_materialization(existing, clear_excel_query_keys=False)
+                elif existing.source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+                    self._reset_excel_materialization_if_needs_upload(existing, query_config)
                 existing.namespaces.set(namespace_ids)
                 existing.tag.set(tag_ids)
                 self._record_result(

@@ -11,6 +11,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 
 from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.models.excel_materialization_models import ExcelMaterializationSlot
 from apps.operation_analysis.services.datasource_preview.base import ConnectorError
 from apps.operation_analysis.services.datasource_preview.schema import infer_fields
@@ -32,6 +33,8 @@ class ExcelMaterializer:
             return {"ok": False, "code": "slot_not_candidate", "slot_id": slot_id}
 
         datasource = slot.datasource
+        if datasource.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+            return {"ok": False, "code": "not_excel", "slot_id": slot_id}
         if datasource.excel_candidate_slot_id != slot.id:
             # Stale candidate; do not overwrite newer state.
             return {"ok": False, "code": "slot_stale", "slot_id": slot_id}
@@ -53,9 +56,17 @@ class ExcelMaterializer:
                 else "slot_not_pending"
             )
             return {"ok": False, "code": code, "slot_id": slot_id}
-        slot.refresh_from_db()
+        try:
+            slot.refresh_from_db()
+            datasource.refresh_from_db(fields=["source_type", "excel_candidate_slot_id"])
+        except (ExcelMaterializationSlot.DoesNotExist, DataSourceAPIModel.DoesNotExist):
+            return {"ok": False, "code": "slot_missing", "slot_id": slot_id}
 
         try:
+            if datasource.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+                return {"ok": False, "code": "not_excel", "slot_id": slot_id}
+            if datasource.excel_candidate_slot_id != slot.id:
+                return {"ok": False, "code": "slot_stale", "slot_id": slot_id}
             if not slot.source_file:
                 raise ConnectorError("候选缺少原文件", code="excel_file_required", status_code=400)
             query_config = datasource.query_config if isinstance(datasource.query_config, dict) else {}
@@ -80,7 +91,10 @@ class ExcelMaterializer:
             # FileField.save(..., save=False) 只更新内存；切换前必须落库，否则
             # select_for_update 重载会丢掉 result_file 路径。
             slot.save(update_fields=["result_file", "updated_at"])
-            self._promote_success(slot, rows=rows, fields=fields)
+            try:
+                self._promote_success(slot, rows=rows, fields=fields)
+            except ExcelMaterializationSlot.DoesNotExist:
+                return {"ok": False, "code": "slot_missing", "slot_id": slot_id}
             logger.info(
                 "[ExcelMaterializer] succeeded slot_id=%s datasource_id=%s rows=%s generation=%s",
                 slot.id,
@@ -138,6 +152,8 @@ class ExcelMaterializer:
                 .get(pk=slot.id)
             )
             datasource = locked.datasource
+            if datasource.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
+                return
             if datasource.excel_candidate_slot_id != locked.id:
                 # Newer candidate won; keep this result file but do not switch pointers.
                 locked.status = ExcelMaterializationSlot.STATUS_SUCCEEDED

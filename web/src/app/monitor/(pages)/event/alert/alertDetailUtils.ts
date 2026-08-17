@@ -32,6 +32,48 @@ export const buildAlertSnapshotChartValues = (
   return Array.from(pointMap.values()).sort((prev, next) => prev[0] - next[0]);
 };
 
+export interface AlertDetailMetricQuery {
+  id: number;
+  monitor_object_id?: string | number;
+}
+
+const isUsableObjectId = (value: unknown): value is string | number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0;
+  }
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const trimmed = value.trim();
+  return Boolean(trimmed) && trimmed !== 'all';
+};
+
+const resolveAlertDetailMetricId = (alert: Record<string, any>): number | undefined => {
+  const queryCondition = alert.policy?.query_condition;
+  if (queryCondition?.type !== 'metric' || queryCondition.metric_id == null) {
+    return undefined;
+  }
+  const metricId = Number(queryCondition.metric_id);
+  if (!Number.isFinite(metricId) || metricId <= 0) {
+    return undefined;
+  }
+  return metricId;
+};
+
+/**
+ * 告警详情只查这一条指标定义。对象 ID 必须来自告警策略，不得复用左侧树的「全部」。
+ */
+export const buildAlertDetailMetricQuery = (
+  alert: Record<string, any>
+): AlertDetailMetricQuery | null => {
+  const metricId = resolveAlertDetailMetricId(alert);
+  const objectId = alert.policy?.monitor_object;
+  if (metricId == null || !isUsableObjectId(objectId)) {
+    return null;
+  }
+  return { id: metricId, monitor_object_id: objectId };
+};
+
 export const resolveAlertDetailMetric = (
   alert: Record<string, any>,
   metricInfo: Record<string, any> = {}

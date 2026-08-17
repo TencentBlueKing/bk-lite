@@ -42,7 +42,7 @@ def test_runtime_task_returns_reconcile_health_without_startup_side_effects(mock
     set_health = mocker.patch("apps.apm.tasks.cache.set")
     reconcile = mocker.patch(
         "apps.apm.tasks.TelemetryCatalogReconciler.reconcile",
-        return_value=CatalogReconcileResult(2, 3, 1, 4, 5),
+        return_value=CatalogReconcileResult(2, 3, 1, 4),
     )
 
     result = reconcile_telemetry_catalog.run()
@@ -52,7 +52,6 @@ def test_runtime_task_returns_reconcile_health_without_startup_side_effects(mock
         "discovered_instances": 3,
         "missing_instance_identities": 1,
         "archived_services": 4,
-        "archived_instances": 5,
         "unknown_applications": 0,
         "invalid_activities": 0,
     }

@@ -7,7 +7,6 @@ from django.utils import timezone
 from apps.apm.models import ApmApplication, ApmService, ApmServiceInstance, ApmServiceInstanceOrganization, ApmServiceOrganization
 from apps.apm.services.contracts import CatalogDiscovery, CatalogDiscoveryResult
 from apps.apm.services.identity import normalize_identity
-from apps.apm.services.status import ARCHIVE_WINDOW
 
 
 class InvalidCatalogIdentity(ValueError):
@@ -160,10 +159,6 @@ class DjangoTelemetryCatalogService:
                     if getattr(instance, field) != value:
                         setattr(instance, field, value)
                         update_fields.append(field)
-            if instance.archived_at is not None and instance.archive_reason == "silent_timeout" and is_latest_observation:
-                instance.archived_at = None
-                instance.archive_reason = ""
-                update_fields.extend(("archived_at", "archive_reason"))
             if update_fields:
                 instance.save(update_fields=(*update_fields, "updated_at"))
         return CatalogDiscoveryResult(service=service, instance=instance)
@@ -238,12 +233,3 @@ class DjangoTelemetryCatalogService:
         service.updated_by = actor
         service.save(update_fields=("archived_at", "archive_reason", "updated_by", "updated_at"))
         return service
-
-    @transaction.atomic
-    def archive_stale_instances(self, *, observed_at) -> int:
-        cutoff = observed_at - ARCHIVE_WINDOW
-        instance_count = ApmServiceInstance.objects.filter(
-            archived_at__isnull=True,
-            last_seen_at__lte=cutoff,
-        ).update(archived_at=observed_at, archive_reason="silent_timeout", updated_at=observed_at)
-        return instance_count
