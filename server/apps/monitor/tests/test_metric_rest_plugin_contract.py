@@ -6,6 +6,7 @@ import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.base.models import User
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.monitor.models import MonitorObject, MonitorPlugin
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.views.monitor_metrics import MetricViewSet
@@ -52,3 +53,23 @@ def test_metric_list_returns_paginated_monitor_plugin_name():
 
     assert payload["data"]["count"] == 1
     assert result["monitor_plugin_name"] == plugin.name
+
+
+@pytest.mark.django_db
+def test_metric_list_rejects_empty_monitor_object_id():
+    user = User.objects.create_user(username="metric_list_empty_object", password="testpass123")
+    request = APIRequestFactory().get("/monitor/api/metrics/", {"monitor_object_id": ""})
+    force_authenticate(request, user=user)
+
+    with pytest.raises(ValidationAppException, match="monitor_object_id 不能为空"):
+        MetricViewSet.as_view({"get": "list"})(request)
+
+
+@pytest.mark.django_db
+def test_metric_list_rejects_missing_monitor_object_id():
+    user = User.objects.create_user(username="metric_list_missing_object", password="testpass123")
+    request = APIRequestFactory().get("/monitor/api/metrics/")
+    force_authenticate(request, user=user)
+
+    with pytest.raises(ValidationAppException, match="monitor_object_id 不能为空"):
+        MetricViewSet.as_view({"get": "list"})(request)

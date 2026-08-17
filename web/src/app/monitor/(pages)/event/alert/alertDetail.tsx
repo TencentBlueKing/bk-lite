@@ -32,7 +32,6 @@ import {
   useAlertTypeMap
 } from '@/app/monitor/hooks';
 import useMonitorApi from '@/app/monitor/api';
-import { fetchAllMonitorMetrics } from '@/app/monitor/api/fetchMetricCatalogPages';
 import useEventApi from '@/app/monitor/api/event';
 import Information from './information';
 import EventHeatMap, { getHeatMapCellColor } from '@/components/heat-map';
@@ -41,6 +40,7 @@ import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import type { ListRef } from 'rc-virtual-list';
 import {
+  buildAlertDetailMetricQuery,
   buildAlertSnapshotChartValues,
   resolveAlertDetailChartUnit,
   resolveAlertDetailMetric
@@ -51,7 +51,7 @@ const TIMELINE_ITEM_HEIGHT = 48;
 type AlertEventItem = TableDataItem & HeatMapDataItem;
 
 const AlertDetail = forwardRef<ModalRef, ModalConfig>(
-  ({ objects, userList, onSuccess, objectId }, ref) => {
+  ({ objects, userList, onSuccess }, ref) => {
     const { t } = useTranslation();
     const { getMonitorMetrics } = useMonitorApi();
     const { getMonitorEventDetail, getEventRaw, getSnapshot } = useEventApi();
@@ -113,7 +113,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       showModal: ({ title, form }) => {
         setGroupVisible(true);
         setTitle(title);
-        getMetrics(form, objectId as React.Key);
+        getMetrics(form);
       }
     }));
 
@@ -122,17 +122,17 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       [activeTab]
     );
 
-    const getMetrics = async (row: TableDataItem, id: React.Key) => {
+    const getMetrics = async (row: TableDataItem) => {
       setPageLoading(true);
       try {
-        const { items: data } = await fetchAllMonitorMetrics(getMonitorMetrics, {
-          monitor_object_id: id
-        });
-        const metricInfo =
-          data.find(
-            (item: MetricItem) =>
-              item.id === row.policy?.query_condition?.metric_id
-          ) || {};
+        const query = buildAlertDetailMetricQuery(row);
+        let metricInfo: MetricItem | Record<string, never> = {};
+        if (query) {
+          const { items: data } = await getMonitorMetrics(query);
+          metricInfo =
+            data.find((item: MetricItem) => Number(item.id) === query.id) ||
+            {};
+        }
         const metricWithUnit = resolveAlertDetailMetric(row, metricInfo);
         const form: TableDataItem = {
           ...row,

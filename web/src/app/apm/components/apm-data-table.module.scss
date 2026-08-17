@@ -33,9 +33,18 @@
   vertical-align: middle;
 }
 
-.table :global(.ant-table-tbody > tr > td > .ant-space) {
+.table :global(.ant-table-tbody > tr > td .ant-space) {
+  display: inline-flex;
   justify-content: flex-start !important;
+  width: auto;
+  max-width: 100%;
   text-align: left !important;
+}
+
+.table :global(.ant-table-tbody > tr > td .ant-btn.ant-btn-link) {
+  height: auto;
+  margin: 0;
+  padding: 0 !important;
 }
 
 .table :global(.ant-table-tbody > tr > td > .ant-space-vertical) {

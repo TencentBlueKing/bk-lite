@@ -7,19 +7,19 @@ from apps.apm.services.contracts import (
     InstanceActivityQuery,
     NotificationDelivery,
     NotificationDeliveryResult,
-    ServiceMetricQuery,
     ServiceDependency,
+    ServiceMetricQuery,
     ServiceRed,
     SloMeasurement,
     SloMetricQuery,
     SpanPage,
     SpanSearchQuery,
     SpanSummary,
+    TopologyDependencyQuery,
     TraceDetail,
     TracePage,
     TraceSearchQuery,
     TraceSummary,
-    TopologyDependencyQuery,
 )
 from apps.apm.services.identity import normalize_identity
 
@@ -55,14 +55,8 @@ class InMemoryTraceStore:
             item
             for item in self._summaries.values()
             if query.started_at <= item.started_at <= query.ended_at
-            and (
-                query.service_namespace is None
-                or normalize_identity(item.service_namespace) == normalize_identity(query.service_namespace)
-            )
-            and (
-                query.service_name is None
-                or normalize_identity(item.service_name) == normalize_identity(query.service_name)
-            )
+            and (query.service_namespace is None or normalize_identity(item.service_namespace) == normalize_identity(query.service_namespace))
+            and (query.service_name is None or normalize_identity(item.service_name) == normalize_identity(query.service_name))
             and (query.environment is None or item.environment == query.environment)
             and (query.instance_id is None or item.instance_id == query.instance_id)
             and (query.span_name is None or item.root_span_name == query.span_name)
@@ -84,12 +78,9 @@ class InMemoryTraceStore:
             item
             for item in self._spans
             if query.started_at <= item.started_at <= query.ended_at
-            and normalize_identity(item.service_name) == normalize_identity(query.service_name)
-            and item.environment == query.environment
-            and (
-                query.service_namespace is None
-                or normalize_identity(item.service_namespace) == normalize_identity(query.service_namespace)
-            )
+            and (query.service_name is None or normalize_identity(item.service_name) == normalize_identity(query.service_name))
+            and (query.environment is None or item.environment == query.environment)
+            and (query.service_namespace is None or normalize_identity(item.service_namespace) == normalize_identity(query.service_namespace))
             and (query.instance_id is None or item.instance_id == query.instance_id)
             and (query.span_name is None or item.name == query.span_name)
             and (query.status is None or item.status == query.status)
@@ -140,11 +131,7 @@ class InMemoryMetricStore:
         return next(value for key, value in self._slo_measurements if key == query)
 
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]:
-        return [
-            item
-            for item in self._activities
-            if query.started_at <= item.last_seen_at <= query.ended_at
-        ]
+        return [item for item in self._activities if query.started_at <= item.last_seen_at <= query.ended_at]
 
 
 class InMemoryNotificationDispatcher:

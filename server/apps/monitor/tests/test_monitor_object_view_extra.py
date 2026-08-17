@@ -485,6 +485,92 @@ class TestMonitorObjectActions:
         obj.refresh_from_db()
         assert obj.is_visible is False
 
+    def test_visibility_toggle_cascades_to_child_objects(self, api_client):
+        parent = MonitorObject.objects.create(
+            name="K3SClusterVis", level="base", is_visible=True
+        )
+        child_a = MonitorObject.objects.create(
+            name="K3SPodVis", level="derivative", parent=parent, is_visible=True
+        )
+        child_b = MonitorObject.objects.create(
+            name="K3SNodeVis", level="derivative", parent=parent, is_visible=True
+        )
+        sibling = MonitorObject.objects.create(
+            name="OtherClusterVis", level="base", is_visible=True
+        )
+
+        resp = api_client.post(
+            f"{BASE}/api/monitor_object/{parent.id}/visibility/",
+            {"is_visible": False},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        parent.refresh_from_db()
+        child_a.refresh_from_db()
+        child_b.refresh_from_db()
+        sibling.refresh_from_db()
+        assert parent.is_visible is False
+        assert child_a.is_visible is False
+        assert child_b.is_visible is False
+        assert sibling.is_visible is True
+
+        resp = api_client.post(
+            f"{BASE}/api/monitor_object/{parent.id}/visibility/",
+            {"is_visible": True},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        parent.refresh_from_db()
+        child_a.refresh_from_db()
+        child_b.refresh_from_db()
+        assert parent.is_visible is True
+        assert child_a.is_visible is True
+        assert child_b.is_visible is True
+
+    def test_visibility_toggle_cascades_to_nested_descendants(self, api_client):
+        parent = MonitorObject.objects.create(
+            name="NestedVisParent", level="base", is_visible=True
+        )
+        child = MonitorObject.objects.create(
+            name="NestedVisChild", level="derivative", parent=parent, is_visible=True
+        )
+        grandchild = MonitorObject.objects.create(
+            name="NestedVisGrandchild",
+            level="derivative",
+            parent=child,
+            is_visible=True,
+        )
+
+        resp = api_client.post(
+            f"{BASE}/api/monitor_object/{parent.id}/visibility/",
+            {"is_visible": False},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        child.refresh_from_db()
+        grandchild.refresh_from_db()
+        assert child.is_visible is False
+        assert grandchild.is_visible is False
+
+    def test_visibility_toggle_on_child_does_not_hide_parent(self, api_client):
+        parent = MonitorObject.objects.create(
+            name="ChildToggleParent", level="base", is_visible=True
+        )
+        child = MonitorObject.objects.create(
+            name="ChildToggleChild", level="derivative", parent=parent, is_visible=True
+        )
+
+        resp = api_client.post(
+            f"{BASE}/api/monitor_object/{child.id}/visibility/",
+            {"is_visible": False},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        parent.refresh_from_db()
+        child.refresh_from_db()
+        assert parent.is_visible is True
+        assert child.is_visible is False
+
     def test_visibility_requires_field(self, api_client):
         obj = MonitorObject.objects.create(name="VisObj2", level="base")
         resp = api_client.post(

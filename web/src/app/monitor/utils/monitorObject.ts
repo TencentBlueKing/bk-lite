@@ -172,3 +172,29 @@ export const buildObjectNameToTypeMap = (
 
   return map;
 };
+
+/**
+ * 过滤不可见对象，以及父对象已隐藏的子对象。
+ * 对象管理页可单独关掉父对象可见性；子对象自身 is_visible 可能仍为 true。
+ */
+export const filterVisibleMonitorObjects = (
+  objects: ObjectItem[]
+): ObjectItem[] => {
+  const hiddenIds = new Set(
+    objects
+      .filter((item) => item.is_visible === false)
+      .map((item) => item.id)
+  );
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const item of objects) {
+      if (hiddenIds.has(item.id)) continue;
+      if (item.parent != null && hiddenIds.has(item.parent)) {
+        hiddenIds.add(item.id);
+        grew = true;
+      }
+    }
+  }
+  return objects.filter((item) => !hiddenIds.has(item.id));
+};
