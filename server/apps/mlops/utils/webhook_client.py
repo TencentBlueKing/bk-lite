@@ -8,6 +8,12 @@ import os
 import requests
 from typing import Optional, Any
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.utils.i18n import (
+    WEBHOOK_CONNECTION_FAILED,
+    WEBHOOK_REQUEST_FAILED,
+    WEBHOOK_SERVER_URL_NOT_CONFIGURED,
+    WEBHOOK_TIMEOUT,
+)
 
 # 敏感字段列表，日志输出时会被脱敏
 # _SENSITIVE_KEYS = frozenset(
@@ -140,7 +146,7 @@ class WebhookClient:
             tuple: (is_valid, error_message)
         """
         if not os.getenv("WEBHOOK_SERVER_URL"):
-            return False, "环境变量 WEBHOOK_SERVER_URL 未配置"
+            return False, WEBHOOK_SERVER_URL_NOT_CONFIGURED
         return True, ""
 
     @staticmethod
@@ -194,7 +200,7 @@ class WebhookClient:
         """
         url = WebhookClient.build_url(endpoint)
         if not url:
-            raise WebhookError("环境变量 WEBHOOK_SERVER_URL 未配置")
+            raise WebhookError(WEBHOOK_SERVER_URL_NOT_CONFIGURED)
 
         # logger.debug(
         #     f"请求 webhookd - URL: {url}, Payload: {_sanitize_payload(payload)}"
@@ -246,13 +252,13 @@ class WebhookClient:
 
         except requests.exceptions.Timeout:
             logger.error(f"请求 webhookd 超时({timeout}秒) - URL: {url}")
-            raise WebhookTimeoutError(f"请求 webhookd 服务超时，请检查服务是否正常运行")
+            raise WebhookTimeoutError(WEBHOOK_TIMEOUT)
         except requests.exceptions.ConnectionError as e:
             logger.error(f"无法连接到 webhookd - URL: {url}, Error: {e}")
-            raise WebhookConnectionError(f"无法连接到 webhookd 服务: {e}")
+            raise WebhookConnectionError(WEBHOOK_CONNECTION_FAILED)
         except requests.exceptions.RequestException as e:
             logger.error(f"请求 webhookd 失败 - URL: {url}, Error: {e}", exc_info=True)
-            raise WebhookError(f"请求 webhookd 失败: {e}")
+            raise WebhookError(WEBHOOK_REQUEST_FAILED)
 
     @staticmethod
     def serve(

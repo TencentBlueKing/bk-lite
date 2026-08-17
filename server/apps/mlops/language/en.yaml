@@ -112,6 +112,12 @@ error:
   nats_unknown_child_module: "Unknown submodule: {module}/{child_module}"
   serving_port_not_configured: "Service port is not configured. Please confirm the service has started"
   serving_host_not_configured: "Service address is not configured. Please check the environment variable DEFAULT_ZONE_VAR_NODE_SERVER_URL"
+  webhook_server_url_not_configured: "WEBHOOK_SERVER_URL environment variable is not configured"
+  webhook_timeout: "Request to the webhookd service timed out. Please check whether the service is running"
+  webhook_connection_failed: "Unable to connect to the webhookd service"
+  webhook_request_failed: "Request to the webhookd service failed"
+  request_failed: "The request failed"
+  model_not_available: "The model does not exist or has no available version"
 module:
   dataset: "Dataset"
   train_job: "Training Job"
