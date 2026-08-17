@@ -108,21 +108,31 @@ startup.sh
 增加重试、延长超时或捕获异常都不会消除这条循环依赖。正确处理方式是把对账
 操作移到运行期，或由启动期仅记录待处理状态，再由运行期任务幂等接管。
 
-## CMDB 实例 UUID 清洗（维护编排，非启动硬依赖）
+## CMDB 实例 UUID 清洗（运行期收敛，非启动硬依赖）
 
 CMDB 实例 UUID 结构迁移为 Django `0045_instance_uuid_transition`（仅 schema）。
-存量图节点 / 边端点 / PostgreSQL 活动引用的数据清洗由维护命令执行：
+存量图节点 / 边端点 / PostgreSQL 活动引用的数据清洗（含订阅快照、采集
+instances/结果快照、Operation snapshot/未成功 Outbox；不迁变更历史 JSON 与
+系统操作日志）：
 
-- `migrate_cmdb_instance_uuid_refs --dry-run|--apply|--verify`
-- `migrate_oa_cmdb_instance_uuid_refs --dry-run|--apply|--verify`
+- 维护命令：`migrate_cmdb_instance_uuid_refs --dry-run|--apply|--verify`
+- 维护命令：`migrate_oa_cmdb_instance_uuid_refs --dry-run|--apply|--verify`
+- 运行期任务：`apps.cmdb.tasks.uuid_migration.migrate_cmdb_instance_uuid_runtime`
 
-这些命令：
+部署链路约定：
 
-- **不属于** `batch_init`，不得在启动期同步执行并阻断 `supervisord`；
-- 依赖 PostgreSQL 与图库，须在批准的维护窗口、停写后执行；
-- 幂等与验收步骤见 `docs/operations/cmdb-instance-uuid-cutover.md`。
+- `batch_init` **只**调用 `ensure_uuid_migration_periodic_task()` 并
+  `migrate_cmdb_instance_uuid_runtime.delay()`（消息入队，等 Worker 起来后执行）；
+- **禁止**在 `batch_init` / `startup.sh` 同步执行 `--apply` 并阻断 `supervisord`；
+- Worker/Beat 起来后幂等 `--apply`；失败只打日志并由 `*/5` 周期任务重试；
+- 多 Worker 用缓存锁互斥；清洗完成可禁用周期任务减少空跑。
 
-禁止把清洗失败用 `migrate || true`、吞异常或 `sleep` 掩盖后继续恢复写流量。
+大流量切换仍可用维护窗口停写后手动 `--apply/--verify` 留证据；见
+`docs/operations/cmdb-instance-uuid-cutover.md`。
+
+禁止把清洗失败用 `migrate || true`、吞异常或 `sleep` 掩盖后继续恢复写流量
+（指启动硬门禁路径；运行期任务的失败重试不属于启动门禁）。
+
 
 ## Agent 修改检查清单
 

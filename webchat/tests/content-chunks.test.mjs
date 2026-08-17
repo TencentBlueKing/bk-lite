@@ -107,3 +107,59 @@ test('mapMessageChunks and syncSessionChunks stay aligned', () => {
     { type: 'text', content: 'hi' },
   ]);
 });
+
+test('active trailing message update preserves every historical message reference', () => {
+  const history = Array.from({ length: 500 }, (_, index) => ({
+    id: `history-${index}`,
+    type: 'text',
+    content: `message-${index}`,
+    sender: index % 2 === 0 ? 'user' : 'bot',
+    timestamp: index,
+  }));
+  const active = {
+    id: 'active',
+    type: 'text',
+    content: '',
+    sender: 'bot',
+    timestamp: 501,
+    metadata: { contentChunks: [] },
+  };
+
+  const next = mapMessageChunks(
+    [...history, active],
+    'active',
+    (chunks) => upsertTextChunk(chunks, 'streaming'),
+    'streaming'
+  );
+
+  assert.equal(next.length, 501);
+  history.forEach((message, index) => assert.equal(next[index], message));
+  assert.notEqual(next[500], active);
+});
+
+test('a non-trailing active message retains the compatibility lookup path', () => {
+  const active = {
+    id: 'active',
+    type: 'text',
+    content: '',
+    sender: 'bot',
+    timestamp: 1,
+    metadata: { contentChunks: [] },
+  };
+  const trailing = {
+    id: 'trailing',
+    type: 'text',
+    content: 'newer',
+    sender: 'user',
+    timestamp: 2,
+  };
+  const next = mapMessageChunks(
+    [active, trailing],
+    'active',
+    (chunks) => upsertTextChunk(chunks, 'streaming'),
+    'streaming'
+  );
+
+  assert.equal(next[0].content, 'streaming');
+  assert.equal(next[1], trailing);
+});

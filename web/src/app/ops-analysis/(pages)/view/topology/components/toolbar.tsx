@@ -41,6 +41,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
   canRedo = false,
   onRefresh,
   onFrequencyChange,
+  frequenceValue = 0,
   onCancel,
   onFilterConfig,
 }) => {
@@ -164,6 +165,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
         {onRefresh && onFrequencyChange && (
           <TimeSelector
             onlyRefresh={true}
+            frequenceValue={frequenceValue}
             onRefresh={onRefresh}
             onFrequenceChange={onFrequencyChange}
           />

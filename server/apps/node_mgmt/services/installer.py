@@ -1,6 +1,7 @@
 import shlex
 
 from asgiref.sync import async_to_sync
+from django.db import transaction
 from django.db.models import Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -188,6 +189,7 @@ class InstallerService:
         return install_command
 
     @staticmethod
+    @transaction.atomic
     def install_controller(
         cloud_region_id,
         work_node,
@@ -268,6 +270,7 @@ class InstallerService:
         return result
 
     @staticmethod
+    @transaction.atomic
     def uninstall_controller(
         cloud_region_id,
         work_node,

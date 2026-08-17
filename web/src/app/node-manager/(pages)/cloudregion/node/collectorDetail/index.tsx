@@ -162,7 +162,16 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       collector: TableDataItem | null,
       options?: { page?: number; configType?: string }
     ) => {
-      const targetConfig = collector ? resolveMainConfig(configs, collector) : null;
+      let targetConfig = null;
+      if (collector) {
+        targetConfig = resolveMainConfig(configs, {
+          collector_id:
+            typeof collector.collector_id === 'string'
+              ? collector.collector_id
+              : undefined,
+          configuration_id: collector.configuration_id
+        });
+      }
       if (targetConfig) {
         setMainConfig(targetConfig);
         loadSubConfigs({

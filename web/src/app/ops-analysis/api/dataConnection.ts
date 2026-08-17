@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
+import { DataConnectionTestPayload } from '@/app/ops-analysis/types/dataConnection';
 
 export const useDataConnectionApi = () => {
   const { get, post, patch, del } = useApiClient();
@@ -46,6 +47,18 @@ export const useDataConnectionApi = () => {
     [post],
   );
 
+  const testDataConnectionConfig = useCallback(
+    async (data: DataConnectionTestPayload) =>
+      post('/operation_analysis/api/data_connection/test_connection/', data),
+    [post],
+  );
+
+  const testDataConnectionDraft = useCallback(
+    async (id: number, data: DataConnectionTestPayload) =>
+      post(`/operation_analysis/api/data_connection/${id}/test_connection/`, data),
+    [post],
+  );
+
   return {
     getDataConnectionList,
     createDataConnection,
@@ -54,5 +67,7 @@ export const useDataConnectionApi = () => {
     getDataConnectionDetail,
     getDataConnectionReferences,
     testDataConnection,
+    testDataConnectionConfig,
+    testDataConnectionDraft,
   };
 };

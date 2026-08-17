@@ -118,7 +118,7 @@
         "log": "Log",
         "ip": "IP",
         "deleteNodeTips": "For nodes that are automatically installed, it is recommended to uninstall the controller for deletion. After manually deleting the node, if the node's side car reports normally in the future, it will be automatically updated in the list.",
-        "retireLinkedConfirm": "Also retire linked CMDB / Monitor objects (archive or stop collection; physical delete is not the default)",
+        "retireLinkedConfirm": "Also retire linked Monitor objects (stop collection / archive; physical delete is not the default). The CMDB instance is kept; only the node association is cleared.",
         "pushTargets": "Sync to modules",
         "pushTargetsHint": "Default-checked for purchased modules. Unchecking skips push with no cascade.",
         "pushTargetCmdb": "CMDB",

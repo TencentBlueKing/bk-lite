@@ -23,6 +23,12 @@ import { useCommon } from '@/app/cmdb/context/common';
 import { useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
 import { useRelationships } from '@/app/cmdb/context/relationships';
+import usePermissions from '@/hooks/usePermissions';
+import {
+  RACK_ROOM_ASSET_PERMISSION_PATH,
+  canUnplaceFromLayout,
+  hasInstanceOperate,
+} from './rackRoomEdit';
 
 const Ralationships = () => {
   const { t } = useTranslation();
@@ -45,6 +51,9 @@ const Ralationships = () => {
   // 机柜视图点设备：右侧抽屉展示详情（再从抽屉下钻到实例详情），与机房视图一致
   const [device, setDevice] = useState<RackDevice | null>(null);
   const [devOpen, setDevOpen] = useState<boolean>(false);
+  const [rackNonce, setRackNonce] = useState(0);
+  const { hasPermission } = usePermissions(RACK_ROOM_ASSET_PERMISSION_PATH);
+  const hasEdit = hasPermission(['Edit']);
 
   useEffect(() => {
     if (!modelId) return;
@@ -101,9 +110,20 @@ const Ralationships = () => {
     assoListRef.current?.showRelateModal();
   };
 
+  const isCanvasTab = [
+    'network',
+    'ipam',
+    'appOverview',
+    'rackView',
+    'roomView',
+  ].includes(activeTab);
+
   return (
-    <Spin spinning={loading}>
-      <header className={relationshipsStyle.header}>
+    <Spin spinning={loading} wrapperClassName={isCanvasTab ? relationshipsStyle.pageSpin : undefined}>
+      <div className={isCanvasTab ? relationshipsStyle.pageFill : undefined}>
+      <header
+        className={`${relationshipsStyle.header}${isCanvasTab ? ` ${relationshipsStyle.headerCanvas}` : ''}`}
+      >
         <Segmented
           className="mb-0"
           value={activeTab}
@@ -112,7 +132,10 @@ const Ralationships = () => {
         />
         {activeTab === 'list' && (
           <div className={relationshipsStyle.operation}>
-            <PermissionWrapper requiredPermissions={['Add Associate']}>
+            <PermissionWrapper
+              requiredPermissions={['Add Associate']}
+              permissionPath={RACK_ROOM_ASSET_PERMISSION_PATH}
+            >
               <Button
                 type="link"
                 icon={<GatewayOutlined />}
@@ -132,6 +155,7 @@ const Ralationships = () => {
           </div>
         )}
       </header>
+      <div className={isCanvasTab ? relationshipsStyle.canvasBody : undefined}>
       {activeTab === 'list' && (
         <AssoList
           ref={assoListRef}
@@ -149,32 +173,47 @@ const Ralationships = () => {
         />
       )}
       {activeTab === 'network' && (
-        <NetworkTopo modelId={modelId} instUuid={instUuid} />
+        <NetworkTopo key={instUuid} modelId={modelId} instUuid={instUuid} fillContainer />
       )}
       {activeTab === 'ipam' && (
-        <IpamMatrix instUuid={instUuid} />
+        <div className={relationshipsStyle.scrollCanvas}>
+          <IpamMatrix instUuid={instUuid} />
+        </div>
       )}
       {activeTab === 'appOverview' && (
-        <ApplicationResourceOverview modelId={modelId} instUuid={instUuid} />
+        <ApplicationResourceOverview modelId={modelId} instUuid={instUuid} fillContainer />
       )}
       {activeTab === 'rackView' && (
-        <RackElevation
-          modelId={modelId}
-          instUuid={instUuid}
-          onDeviceClick={(d) => {
-            setDevice(d);
-            setDevOpen(true);
-          }}
-        />
+        <div className={relationshipsStyle.scrollCanvas}>
+          <RackElevation
+            key={`${instUuid}-${rackNonce}`}
+            modelId={modelId}
+            instUuid={instUuid}
+            onDeviceClick={(d) => {
+              setDevice(d);
+              setDevOpen(true);
+            }}
+          />
+        </div>
       )}
       {activeTab === 'roomView' && (
-        <RoomFloorPlan modelId={modelId} instUuid={instUuid} />
+        <div className={relationshipsStyle.scrollCanvas}>
+          <RoomFloorPlan modelId={modelId} instUuid={instUuid} />
+        </div>
       )}
+      </div>
       <DeviceDetailDrawer
         device={device}
         open={devOpen}
         onClose={() => setDevOpen(false)}
+        containerInstUuid={instUuid}
+        canUnplace={canUnplaceFromLayout({
+          hasEdit,
+          instOperate: hasInstanceOperate(device?.permission),
+        })}
+        onUnplaced={() => setRackNonce((n) => n + 1)}
       />
+      </div>
     </Spin>
   );
 };

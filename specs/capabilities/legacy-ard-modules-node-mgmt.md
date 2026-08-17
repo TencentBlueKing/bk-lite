@@ -31,9 +31,9 @@ REST 路由组：`node`/`cloud_region`/`sidecar_env`/`collector`/`controller`/`c
 
 > 证据来源：server/apps/node_mgmt/models/sidecar.py:50-52，server/apps/node_mgmt/services/module_push.py:129-193,370-400　|　同步基线：d2769559　|　【已实现】
 
-节点退役联动【已实现】：删除节点默认只删除节点管理记录；调用方显式选择关联退役时，系统才向已关联的 CMDB、监控对象发送退役事件。对端不可用或退役失败不会阻断节点删除。
+节点退役联动【已实现】：删除节点时必须向 CMDB 发送 lifecycle，只清除该主机上的 `node_id`（实例保留，避免悬挂指针）。调用方显式选择 `retire_linked` 时，才额外向已关联的监控对象发送退役事件。对端不可用或退役失败不会阻断节点删除。拉同步在源侧节点消失后同样只清 sidecar `node_id`，不删主机。
 
-> 证据来源：server/apps/node_mgmt/views/node.py:296-307，server/apps/node_mgmt/services/module_push.py:98-126,197-249　|　同步基线：d2769559　|　【已实现】
+> 证据来源：server/apps/node_mgmt/views/node.py:296-310，server/apps/node_mgmt/services/module_push.py:98-149,221-273　|　同步基线：d2769559　|　【已实现】
 
 `open_api` 安装链路【已实现/已存在】：安装令牌有效期 30 分钟、最多 5 次使用；下载令牌有效期 10 分钟、最多 3 次使用；脚本渲染会调用 webhook，Linux bootstrap 入口生成安装会话，安装会话为 sidecar 生成 NATS 下载配置并按 CPU 架构选择包（证据：`views/sidecar.py:338,395,532,564,583`、`services/install_token.py:11,103`、`services/installer_session.py:51`）。
 

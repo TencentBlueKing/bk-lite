@@ -2,6 +2,8 @@
 
 Status: ready
 
+> 后续修订：拉同步退役决定已被 [`cmdb-node-mgmt-sync-shared-identity`](../cmdb-node-mgmt-sync-shared-identity/spec.md) 取代。勾选仍控制即时推送与监控；CMDB host 库存可由拉同步默认打开，且必须与推送共用身份规则。
+
 ## Problem Statement
 
 运维希望在节点管理、CMDB、监控中心之间按需打通同一台主机的身份，以便后续在运营分析等场景拼数据。今天只有 CMDB 主动拉取节点镜像主机、以及监控选节点下发采集两条专用管道：没有用户可控的推送、没有稳定互存 ID，且拉取同步与「用户选择是否同步」的产品叙事冲突。用户需要以节点为可选起点、在页面上决定是否推送，并保证多入口进入监控时不会因认不出同一实体而建出重复对象。
@@ -20,6 +22,7 @@ Status: ready
 6. As a 平台用户, I want 在节点侧同时勾选并成功推送到 CMDB 与监控后三方都保存 node_id、cmdb_id、monitor_id, so that 完整联动可对齐身份。
 7. As a 节点管理员, I want 删除或卸载节点时确认是否一并退役已关联对象, so that 既可避免幽灵监控也能只删节点。
 8. As a 平台管理员, I want 推送能力上线后关闭 CMDB 拉取节点同步, so that 不会与用户勾选推送双写。
+   - **已取代**：见 [`cmdb-node-mgmt-sync-shared-identity`](../cmdb-node-mgmt-sync-shared-identity/spec.md)。
 
 ## Implementation Decisions
 
@@ -72,12 +75,13 @@ Status: ready
 ### 删除与退役拉同步
 
 - 任一模块删除实例时，best-effort 通知另外两边的统一 lifecycle ingest（钩子失败不阻断删除）。
-- **节点删除/卸载**：页面确认 `retire_linked` 后发 lifecycle：
-  - 监控：软删（停采归档）对应主机监控资产；
+- **节点删除/卸载**：
+  - 删除节点时 **必须** 向 CMDB 发 lifecycle：只清除 `node_id`，不删实例（悬挂 `node_id` 视为脏数据）。
+  - 页面确认 `retire_linked` 后额外向监控发 lifecycle：监控侧软删/停采。
   - CMDB：只清除 `node_id`，不删实例。
 - **CMDB / 监控删除**：对端一律只清关联 ID（`node_id` / `cmdb_id` / `monitor_id`），不做真删。
 - 节点侧 lifecycle 永不删节点，只清本侧关联指针。
-- 本能力就绪后关闭并退役 NodeMgmtSync 拉取同步；不得与推送长期并行双写。
+- ~~本能力就绪后关闭并退役 NodeMgmtSync 拉取同步；不得与推送长期并行双写。~~ 已被 [`cmdb-node-mgmt-sync-shared-identity`](../cmdb-node-mgmt-sync-shared-identity/spec.md) 取代：拉同步默认打开，与推送共用 `node_id` + ip/cloud 认实体，禁止双建。
 
 ### 协议、权限与一期模型范围
 
@@ -122,6 +126,7 @@ Status: ready
 - 已知遗留关注点（不阻断一期收口）：
   - Sidecar 延迟推送：节点创建后异步推送时序与失败跳过后的详情补推体验仍需实环境观察。
   - CMDB lifecycle 目前仅清除 `node_id`，未做更完整的对端归档/停采编排。
+  - 内部 `skip_permission_check` 写路径必须能写入/清空模型上 `editable=False` 的 `node_id`/`monitor_id`；否则图更新会把字段剥掉并报 `properties is empty`。
   - **IoC 对称 ingest（2026-08-05 修订）**：
     - 三方均暴露固定 NATS add：`ingest_from_source` / `monitor_ingest_from_source` / `node_ingest_from_source`。
     - **节点 ingest**：只关联（`ip+云区域` 唯一匹配），永不新建节点。

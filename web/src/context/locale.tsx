@@ -45,7 +45,7 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
   const fetchLocaleMessages = async (locale: string) => {
     const requestId = requestGuard.begin();
     try {
-      const response = await fetch(`/api/locales?locale=${locale}`);
+      const response = await fetch(`/api/locales?locale=${locale}`, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error(`Failed to fetch locale ${locale} from api`);
       }

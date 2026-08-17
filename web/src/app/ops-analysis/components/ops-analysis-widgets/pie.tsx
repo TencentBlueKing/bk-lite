@@ -9,17 +9,21 @@ import {
 import ChartLegend from '@/components/chart-legend';
 import ChartWithSidebarLegend from '@/components/chart-with-sidebar-legend';
 import { renderEChartsTooltipCard } from '@/components/echarts-tooltip-card';
+import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
+import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 
 export interface OpsAnalysisPieProps {
   rawData: any;
   loading?: boolean;
   onReady?: (ready: boolean) => void;
+  config?: ValueConfig;
 }
 
 const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
   rawData,
   loading = false,
   onReady,
+  config,
 }) => {
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
@@ -70,7 +74,7 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
               color: params.color,
               markerShape: 'circle',
               label: params.name || '--',
-              value: `${params.value} (${percent.toFixed(1)}%)`,
+              value: `${formatVisibleChartValue(params.value, config)} (${percent.toFixed(1)}%)`,
             },
           ],
         });
@@ -96,7 +100,7 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
               (sum: number, item: any) => sum + item.value,
               0,
             );
-            return `{title|总数}\n{value|${total}}`;
+            return `{title|总数}\n{value|${formatVisibleChartValue(total, config)}}`;
           },
           rich: {
             title: {

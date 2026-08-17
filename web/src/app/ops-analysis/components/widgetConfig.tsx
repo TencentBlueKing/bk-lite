@@ -54,6 +54,9 @@ import type {
   ResponseFieldDefinition,
 } from '@/app/ops-analysis/types/dataSource';
 import { initThresholdColors } from '@/app/ops-analysis/utils/thresholdUtils';
+import { ValueFormatConfigSection } from '@/app/ops-analysis/components/ops-analysis-config-sections';
+import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
+import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 import ComponentSelector from './widgetSelector';
 
 import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
@@ -91,6 +94,7 @@ interface ViewConfigPropsWithManager extends ViewConfigProps {
 }
 
 const NETWORK_STATUS_TOPOLOGY = 'networkStatusTopology';
+const VALUE_FORMAT_CHART_TYPES = new Set(['line', 'bar', 'pie', 'multiValue']);
 
 interface SelectorLike {
   id?: unknown;
@@ -345,6 +349,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       const defaultChartType = newChartTypes[0]?.value || '';
 
       setChartType(defaultChartType);
+      if (defaultChartType === 'multiValue') {
+        singleValueConfig.setThresholdColors(initThresholdColors([]));
+      }
 
       // 重置 form 中的依赖字段
       const params: Record<string, any> = {};
@@ -366,6 +373,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         topNLabelField: undefined,
         topNValueField: undefined,
         unit: undefined,
+        unitId: undefined,
+        valueMappings: undefined,
         conversionFactor: undefined,
         decimalPlaces: undefined,
         gaugeMin: 0,
@@ -529,6 +538,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         leading: { type: 'none' },
         layout: 'list',
       });
+    }
+    if (newChartType === 'multiValue') {
+      singleValueConfig.setThresholdColors(initThresholdColors([]));
+    } else if (newChartType === 'single' || newChartType === 'gauge') {
+      singleValueConfig.setThresholdColors((prev) =>
+        prev.length > 0 ? prev : initThresholdColors(undefined),
+      );
     }
     if (surface === 'screen') {
       form.setFieldValue(
@@ -811,7 +827,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       formValues.compareMode = valueConfig.compareMode || 'percent';
     }
 
-    singleValueConfig.setThresholdColors(initThresholdColors(valueConfig?.thresholdColors));
+    singleValueConfig.setThresholdColors(
+      formValues.chartType === 'multiValue'
+        ? initThresholdColors(valueConfig?.thresholdColors ?? [])
+        : initThresholdColors(valueConfig?.thresholdColors),
+    );
 
     // Nested cardList fields are registered individually; reset first so omitted
     // optional slots from the previous edit target cannot survive setFieldsValue merge.
@@ -1392,6 +1412,32 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
           />
+        )}
+
+        {VALUE_FORMAT_CHART_TYPES.has(chartType) && (
+          <div className="mb-6">
+            <div className="font-medium mb-4">{t('dashboard.displaySettings')}</div>
+            <ValueFormatConfigSection t={t} />
+            {chartType === 'multiValue' && (
+              <>
+                <ThresholdColorConfigSection
+                  t={t}
+                  thresholdColors={singleValueConfig.thresholdColors}
+                  onThresholdChange={singleValueConfig.handleThresholdChange}
+                  onThresholdBlur={singleValueConfig.handleThresholdBlur}
+                  onAddThreshold={singleValueConfig.addThreshold}
+                  onRemoveThreshold={singleValueConfig.removeThreshold}
+                  allowEmpty
+                />
+                <Form.Item
+                  label={t('topology.nodeConfig.valueMappings')}
+                  name="valueMappings"
+                >
+                  <ValueMappingsConfigSection t={t} />
+                </Form.Item>
+              </>
+            )}
+          </div>
         )}
 
         {chartType === 'eventTimeline' && (

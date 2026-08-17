@@ -89,6 +89,7 @@ class Dashboard(MaintainerInfo, TimeInfo, Groups):
     filters = JSONField(help_text="仪表盘公共过滤条件", verbose_name="过滤条件", blank=True, null=True)
     other = JSONField(help_text="仪表盘其他配置", verbose_name="其他配置", blank=True, null=True)
     view_sets = JSONField(help_text="仪表盘视图集配置", verbose_name="视图集配置", default=list)
+    refresh_interval = models.PositiveIntegerField(default=0, verbose_name="刷新周期")
     is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
     build_in_key = models.CharField(max_length=255, null=True, blank=True, unique=True, verbose_name="内置标识键")
 
@@ -106,6 +107,7 @@ class Topology(MaintainerInfo, TimeInfo, Groups):
     directory = models.ForeignKey(Directory, on_delete=models.CASCADE, related_name="topology", verbose_name="所属目录", null=True, blank=True)
     other = JSONField(help_text="拓扑图其他配置", blank=True, null=True)
     view_sets = JSONField(help_text="拓扑图视图集配置", default=list)
+    refresh_interval = models.PositiveIntegerField(default=0, verbose_name="刷新周期")
     is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
     build_in_key = models.CharField(max_length=255, null=True, blank=True, unique=True, verbose_name="内置标识键")
 
@@ -146,6 +148,7 @@ class Screen(MaintainerInfo, TimeInfo, Groups):
     directory = models.ForeignKey(Directory, on_delete=models.CASCADE, related_name="screen", verbose_name="所属目录", null=True, blank=True)
     other = JSONField(help_text="大屏其他配置", blank=True, null=True)
     view_sets = JSONField(help_text="大屏视图集配置", default=dict)
+    refresh_interval = models.PositiveIntegerField(default=0, verbose_name="刷新周期")
     is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
     build_in_key = models.CharField(max_length=255, null=True, blank=True, unique=True, verbose_name="内置标识键")
 
@@ -204,7 +207,7 @@ class NetworkTopology(MaintainerInfo, TimeInfo, Groups):
         default="",
         verbose_name="WeOps 服务 Token（密文存储）",
     )
-    refresh_interval = models.PositiveIntegerField(default=60, verbose_name="刷新周期")
+    refresh_interval = models.PositiveIntegerField(default=0, verbose_name="刷新周期")
     status = models.CharField(
         max_length=32,
         choices=_NETWORK_TOPOLOGY_STATUS_CHOICES,

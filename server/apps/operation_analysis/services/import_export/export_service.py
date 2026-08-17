@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from apps.operation_analysis.constants.canvas_refresh import CANVAS_REFRESH_OBJECT_TYPES, normalize_canvas_refresh_interval
 from apps.operation_analysis.constants.import_export import (
     BUSINESS_KEY_SEPARATOR,
     CANVAS_TYPES,
@@ -253,6 +254,9 @@ class ExportService:
         if object_type == ObjectType.NETWORK_TOPOLOGY:
             base_data["base_url"] = canvas.base_url
             base_data["token"] = canvas.token
+
+        if object_type in CANVAS_REFRESH_OBJECT_TYPES:
+            base_data["refresh_interval"] = normalize_canvas_refresh_interval(getattr(canvas, "refresh_interval", 0))
 
         return ExportService.mask_sensitive_fields(base_data)
 
