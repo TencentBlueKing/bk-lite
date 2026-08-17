@@ -32,6 +32,7 @@ import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import TimeSelector from '@/components/time-selector';
 import Permission from '@/components/permission';
+import Collapse, { usePersistedCollapseOpen } from '@/components/collapse';
 import StackedBarChart from '@/app/log/components/charts/stackedBarChart';
 import AlertDetail from './alertDetail';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -48,6 +49,7 @@ import UserAvatar from '@/components/user-avatar';
 import { formatUserDisplayName } from '@/utils/userDisplay';
 const { Search } = Input;
 const { Option } = Select;
+const CHART_EXPAND_STORAGE_KEY = 'log.event.alert.chartExpanded';
 
 const Alert: React.FC = () => {
   const { isLoading } = useApiClient();
@@ -90,6 +92,9 @@ const Alert: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
+  const [chartExpanded, onChartToggle] = usePersistedCollapseOpen(
+    CHART_EXPAND_STORAGE_KEY
+  );
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
@@ -494,31 +499,28 @@ const Alert: React.FC = () => {
           </div>
           <Spin spinning={chartLoading}>
             <div className={alertStyle.chartWrapper}>
-              <div className="flex items-center justify-between mb-[2px]">
-                <div className="text-[14px] ml-[10px] relative">
-                  {t('log.event.distributionMap')}
+              <Collapse
+                title={t('log.event.distributionMap')}
+                icon={
                   <Tooltip
                     placement="top"
                     title={t(`log.event.${activeTab}MapTips`)}
                   >
-                    <div
-                      className="absolute cursor-pointer"
-                      style={{
-                        top: '-4px',
-                        right: '-14px'
-                      }}
-                    >
+                    <span className="cursor-pointer">
                       <Icon
                         type="a-shuoming2"
                         className="text-[14px] text-[var(--color-text-3)]"
                       />
-                    </div>
+                    </span>
                   </Tooltip>
+                }
+                isOpen={chartExpanded}
+                onToggle={onChartToggle}
+              >
+                <div className={alertStyle.chart}>
+                  <StackedBarChart data={chartData} colors={LEVEL_MAP as any} />
                 </div>
-              </div>
-              <div className={alertStyle.chart}>
-                <StackedBarChart data={chartData} colors={LEVEL_MAP as any} />
-              </div>
+              </Collapse>
             </div>
           </Spin>
           <div className={alertStyle.table}>
@@ -533,7 +535,12 @@ const Alert: React.FC = () => {
             />
             <CustomTable
               className="w-full"
-              scroll={{ y: 'calc(100vh - 606px)', x: 'max-content' }}
+              scroll={{
+                y: chartExpanded
+                  ? 'calc(100vh - 606px)'
+                  : 'calc(100vh - 496px)',
+                x: 'max-content'
+              }}
               columns={columns}
               dataSource={tableData}
               pagination={pagination}

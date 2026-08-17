@@ -1,8 +1,10 @@
+'use client';
+
 import React from 'react';
 import { Spin, Tabs } from 'antd';
 import type { TabsProps } from 'antd';
+import Collapse, { usePersistedCollapseOpen } from '@/components/collapse';
 import ManagementTableShell from '@/components/management-table-shell';
-import PageHeaderShell from '@/components/page-header-shell';
 
 type ManagementTableShellProps = React.ComponentProps<typeof ManagementTableShell>;
 
@@ -15,6 +17,7 @@ export interface EventAlertWorkspaceShellProps {
   chartHint?: React.ReactNode;
   chartLoading?: boolean;
   chartContent: React.ReactNode;
+  chartCollapseStorageKey?: string;
   searchProps: ManagementTableShellProps['searchProps'];
   columns: ManagementTableShellProps['columns'];
   dataSource: ManagementTableShellProps['dataSource'];
@@ -38,6 +41,7 @@ const EventAlertWorkspaceShell: React.FC<EventAlertWorkspaceShellProps> = ({
   chartHint,
   chartLoading = false,
   chartContent,
+  chartCollapseStorageKey = 'event.alert.chartExpanded',
   searchProps,
   columns,
   dataSource,
@@ -46,11 +50,15 @@ const EventAlertWorkspaceShell: React.FC<EventAlertWorkspaceShellProps> = ({
   loading = false,
   scroll,
   containerClassName = 'min-w-0',
-  chartWrapperClassName = 'mb-[10px] w-full bg-[var(--color-bg-1)] px-5 pb-0 pl-[10px] pt-5',
-  chartClassName = 'h-[100px]',
+  chartWrapperClassName = 'mb-[10px] w-full overflow-hidden bg-[var(--color-bg-1)]',
+  chartClassName = 'h-[100px] px-[10px]',
   filterPanelClassName = 'mb-[10px] bg-[var(--color-bg-1)] px-5 py-[10px]',
   tableContainerClassName = 'w-full bg-[var(--color-bg-1)] px-5 pb-5 pt-[10px]',
 }) => {
+  const [chartExpanded, onChartToggle] = usePersistedCollapseOpen(
+    chartCollapseStorageKey
+  );
+
   return (
     <div className={containerClassName}>
       <Tabs activeKey={activeTab} items={tabs} onChange={onTabChange} />
@@ -61,19 +69,16 @@ const EventAlertWorkspaceShell: React.FC<EventAlertWorkspaceShellProps> = ({
 
       <Spin spinning={chartLoading}>
         <div className={chartWrapperClassName}>
-          <PageHeaderShell
-            className="mb-[2px] ml-[10px]"
+          <Collapse
             title={chartTitle}
-            as="h3"
-            headerRowClassName="flex items-center justify-between gap-3"
-            titleRowClassName="flex items-center"
-            titleClassName="m-0 text-[14px] font-normal text-[var(--color-text-1)]"
-            actionsClassName="relative shrink-0"
-            actions={chartHint}
-          />
-          <div className={chartClassName}>
-            {chartContent}
-          </div>
+            icon={chartHint ? <span>{chartHint}</span> : undefined}
+            isOpen={chartExpanded}
+            onToggle={onChartToggle}
+          >
+            <div className={chartClassName}>
+              {chartContent}
+            </div>
+          </Collapse>
         </div>
       </Spin>
 

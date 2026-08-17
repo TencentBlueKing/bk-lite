@@ -21,13 +21,15 @@ import {
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import searchStyle from './index.module.scss';
-import Collapse from '@/components/collapse';
+import Collapse, { usePersistedCollapseOpen } from '@/components/collapse';
 import CustomBarChart from '@/app/log/components/charts/barChart';
 import GrammarExplanation from '@/components/operate-drawer';
 import SearchTable from './searchTable';
 import FieldList from './fieldList';
 import LogTerminal from './logTerminal';
-import SearchInput from './smartSearchInput';
+import LogQueryInput, {
+  type LogQueryTimeRange
+} from '@/app/log/components/log-query-input';
 import {
   ChartData,
   ModalRef,
@@ -53,6 +55,7 @@ import ConditionList from './conditionList';
 const { Option } = Select;
 const PAGE_LIMIT = 100;
 const DEFAULT_DISPLAY_FIELDS = ['timestamp', 'message'];
+const HISTOGRAM_EXPAND_STORAGE_KEY = 'log.search.histogramExpanded';
 
 const getStoredDisplayFields = () => {
   if (typeof window === 'undefined') {
@@ -131,7 +134,9 @@ const SearchView: React.FC = () => {
     total: 0,
     pageSize: PAGE_LIMIT
   });
-  const [expand, setExpand] = useState<boolean>(true);
+  const [expand, setExpand] = usePersistedCollapseOpen(
+    HISTOGRAM_EXPAND_STORAGE_KEY
+  );
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [visible, setVisible] = useState<boolean>(false);
   const [activeMenu, setActiveMenu] = useState<string>('list');
@@ -147,6 +152,23 @@ const SearchView: React.FC = () => {
     });
   const [windowHeight, setWindowHeight] = useState<number>(window.innerHeight);
   const [limit, setLimit] = useState<number | null>(100);
+  const suggestionTimeRange = useMemo<LogQueryTimeRange>(() => {
+    if (timeDefaultValue.selectValue) {
+      return {
+        mode: 'relative',
+        minutes: timeDefaultValue.selectValue
+      };
+    }
+    const [start, end] = timeDefaultValue.rangePickerVaule || [];
+    if (start && end) {
+      return {
+        mode: 'absolute',
+        start: start.valueOf(),
+        end: end.valueOf()
+      };
+    }
+    return { mode: 'relative', minutes: 15 };
+  }, [timeDefaultValue]);
 
   const isList = useMemo(() => activeMenu === 'list', [activeMenu]);
 
@@ -447,12 +469,6 @@ const SearchView: React.FC = () => {
     }
   };
 
-  // 获取时间范围的方法
-  const getTimeRange = () => {
-    const value = timeSelectorRef.current?.getValue?.() as any;
-    return value || [];
-  };
-
   // 获取搜索参数的方法（用于字段Top值统计）
   const getSearchParams = () => {
     const times = timeSelectorRef.current?.getValue() || [];
@@ -487,13 +503,14 @@ const SearchView: React.FC = () => {
                 </Option>
               ))}
             </Select>
-            <SearchInput
+            <LogQueryInput
               className="flex-1 mx-[8px]"
               placeholder={t('log.search.searchPlaceHolder')}
-              defaultValue={defaultSearchText}
-              fields={fields}
-              getTimeRange={getTimeRange}
+              value={defaultSearchText}
+              availableFields={fields}
               logGroups={groups}
+              timeRange={suggestionTimeRange}
+              fieldsLoading={treeLoading}
               addonAfter={
                 <BulbFilled
                   className="cursor-pointer px-[10px] py-[8px]"
@@ -503,6 +520,7 @@ const SearchView: React.FC = () => {
               }
               onChange={(value) => {
                 searchTextRef.current = value;
+                setDefaultSearchText(value);
                 setHasSearchText(!!value);
               }}
               onPressEnter={handleSearch}
