@@ -404,3 +404,202 @@ class TestJobTargetList:
         result = job_target_list({"page": 1, "page_size": 2})
         assert result["data"]["count"] == 5
         assert len(result["data"]["items"]) == 2
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestJobTargetListV2:
+    @pytest.fixture(autouse=True)
+    def enable_v2(self, monkeypatch):
+        monkeypatch.setenv("JOB_TARGET_LIST_V2_ENABLED", "true")
+
+    def test_requires_caller_token(self):
+        from apps.job_mgmt.nats_api import job_target_list_v2
+
+        assert job_target_list_v2({}) == {"result": False, "message": "caller_token 不能为空"}
+
+    def test_is_disabled_until_projection_is_reconciled(self, monkeypatch):
+        from apps.job_mgmt.nats_api import job_target_list_v2
+
+        monkeypatch.delenv("JOB_TARGET_LIST_V2_ENABLED")
+        caller = MagicMock(group_list=[1])
+        with patch("apps.job_mgmt.nats_api._verify_token", return_value=caller):
+            assert job_target_list_v2({"caller_token": "valid"}) == {
+                "result": False,
+                "message": "job_target_list_v2 尚未启用",
+            }
+
+    def test_rejects_invalid_page_size_and_cursor(self, monkeypatch):
+        from apps.job_mgmt.nats_api import job_target_list_v2
+
+        caller = MagicMock(group_list=[1])
+        with patch("apps.job_mgmt.nats_api._verify_token", return_value=caller):
+            assert job_target_list_v2({"caller_token": "valid", "page_size": -1}) == {
+                "result": False,
+                "message": "page_size 范围为 1-100",
+            }
+            assert job_target_list_v2({"caller_token": "valid", "page_size": 101}) == {
+                "result": False,
+                "message": "page_size 范围为 1-100",
+            }
+            assert job_target_list_v2({"caller_token": "valid", "cursor": 0}) == {
+                "result": False,
+                "message": "cursor 必须为大于 0 的整数",
+            }
+            for invalid in (True, 1.5):
+                assert job_target_list_v2({"caller_token": "valid", "page_size": invalid}) == {
+                    "result": False,
+                    "message": "page_size 参数非法",
+                }
+                assert job_target_list_v2({"caller_token": "valid", "cursor": invalid}) == {
+                    "result": False,
+                    "message": "cursor 必须为大于 0 的整数",
+                }
+            monkeypatch.setenv("JOB_TARGET_LIST_V2_MAX_PAGE_SIZE", "2")
+            assert job_target_list_v2({"caller_token": "valid", "page_size": 3}) == {
+                "result": False,
+                "message": "page_size 范围为 1-2",
+            }
+            for invalid_max in ("invalid", "0", "101", "1000"):
+                monkeypatch.setenv("JOB_TARGET_LIST_V2_MAX_PAGE_SIZE", invalid_max)
+                assert job_target_list_v2({"caller_token": "valid", "page_size": 100})["result"] is True
+                assert job_target_list_v2({"caller_token": "valid", "page_size": 101}) == {
+                    "result": False,
+                    "message": "page_size 范围为 1-100",
+                }
+
+    def test_returns_bounded_team_scoped_keyset_pages(self, django_assert_num_queries):
+        from apps.job_mgmt.models import Target
+        from apps.job_mgmt.nats_api import job_target_list_v2
+
+        Target.objects.create(name="foreign", ip="10.0.1.1", os_type="linux", team=[2])
+        owned = [Target.objects.create(name=f"owned-{index}", ip=f"10.0.0.{index}", os_type="linux", team=[1]) for index in range(1, 6)]
+
+        caller = MagicMock(group_list=[{"id": 1, "name": "team-one"}])
+        with patch("apps.job_mgmt.nats_api._verify_token", return_value=caller):
+            with django_assert_num_queries(2):
+                first = job_target_list_v2({"caller_token": "valid", "page_size": 2})
+                second = job_target_list_v2({"caller_token": "valid", "page_size": 2, "cursor": first["data"]["next_cursor"]})
+
+        assert first["result"] is True
+        assert "count" not in first["data"]
+        assert [item["target_id"] for item in first["data"]["items"]] == [owned[4].id, owned[3].id]
+        assert first["data"]["has_more"] is True
+        assert first["data"]["next_cursor"] == owned[3].id
+        assert [item["target_id"] for item in second["data"]["items"]] == [owned[2].id, owned[1].id]
+        assert {item["target_id"] for item in first["data"]["items"]}.isdisjoint(item["target_id"] for item in second["data"]["items"])
+
+    def test_sparse_team_page_never_exposes_foreign_cursor(self, django_assert_num_queries):
+        from apps.job_mgmt.models import Target
+        from apps.job_mgmt.nats_api import job_target_list_v2
+
+        owned = [Target.objects.create(name=f"owned-{index}", ip=f"10.0.0.{index}", os_type="linux", team=[1]) for index in range(1, 3)]
+        foreign = [Target.objects.create(name=f"foreign-{index}", ip=f"10.0.1.{index}", os_type="linux", team=[2]) for index in range(1, 4)]
+
+        caller = MagicMock(group_list=[1])
+        with patch("apps.job_mgmt.nats_api._verify_token", return_value=caller):
+            with django_assert_num_queries(1):
+                first = job_target_list_v2({"caller_token": "valid", "page_size": 1})
+            with django_assert_num_queries(1):
+                second = job_target_list_v2({"caller_token": "valid", "page_size": 1, "cursor": first["data"]["next_cursor"]})
+
+        foreign_ids = {target.id for target in foreign}
+        assert [item["target_id"] for item in first["data"]["items"]] == [owned[1].id]
+        assert first["data"]["next_cursor"] == owned[1].id
+        assert first["data"]["next_cursor"] not in foreign_ids
+        assert [item["target_id"] for item in second["data"]["items"]] == [owned[0].id]
+        assert second["data"]["next_cursor"] is None
+        assert second["data"]["has_more"] is False
+
+    def test_target_save_keeps_indexed_team_projection_in_sync(self):
+        from apps.job_mgmt.models import Target, TargetTeamMembership
+
+        target = Target.objects.create(name="owned", ip="10.0.0.1", os_type="linux", team=[1, "2", 2, "invalid"])
+        assert set(TargetTeamMembership.objects.filter(target=target).values_list("team_id", flat=True)) == {1, 2}
+
+        target.team = [{"id": 3}, 4]
+        target.save(update_fields=["team"])
+        assert set(TargetTeamMembership.objects.filter(target=target).values_list("team_id", flat=True)) == {3, 4}
+
+    def test_target_and_projection_roll_back_together(self):
+        from apps.job_mgmt.models import Target
+
+        target = Target.objects.create(name="owned", ip="10.0.0.1", os_type="linux", team=[1])
+        target.team = [2]
+        with patch("apps.job_mgmt.models.target._replace_target_team_memberships", side_effect=RuntimeError("sync failed")):
+            with pytest.raises(RuntimeError, match="sync failed"):
+                target.save(update_fields=["team"])
+
+        target.refresh_from_db()
+        assert target.team == [1]
+
+    def test_queryset_and_bulk_team_writes_keep_projection_in_sync(self):
+        from apps.job_mgmt.models import Target, TargetTeamMembership
+
+        target = Target.objects.create(name="one", ip="10.0.0.1", os_type="linux", team=[1])
+        Target.objects.filter(id=target.id).update(team=[2])
+        assert set(TargetTeamMembership.objects.filter(target=target).values_list("team_id", flat=True)) == {2}
+
+        created = Target.objects.bulk_create([Target(name="two", ip="10.0.0.2", os_type="linux", team=[3])])[0]
+        assert set(TargetTeamMembership.objects.filter(target=created).values_list("team_id", flat=True)) == {3}
+
+        created.team = [4]
+        Target.objects.bulk_update([created], ["team"])
+        assert set(TargetTeamMembership.objects.filter(target=created).values_list("team_id", flat=True)) == {4}
+
+    def test_projection_has_team_target_composite_index(self):
+        from apps.job_mgmt.models import TargetTeamMembership
+
+        assert any(index.fields == ["team_id", "target"] for index in TargetTeamMembership._meta.indexes)
+
+    def test_projection_reconciliation_is_repeatable(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        from apps.job_mgmt.models import Target, TargetTeamMembership
+
+        target = Target.objects.create(name="owned", ip="10.0.0.1", os_type="linux", team=[1])
+        TargetTeamMembership.objects.filter(target=target).delete()
+
+        with pytest.raises(CommandError, match="1 个目标"):
+            call_command("reconcile_target_team_memberships", check=True)
+        call_command("reconcile_target_team_memberships", apply=True)
+        call_command("reconcile_target_team_memberships", check=True)
+        assert set(TargetTeamMembership.objects.filter(target=target).values_list("team_id", flat=True)) == {1}
+
+    def test_real_token_page_uses_one_auth_and_one_target_query(self, django_assert_num_queries):
+        import os
+
+        import jwt
+
+        from apps.job_mgmt.models import Target
+        from apps.job_mgmt.nats_api import job_target_list_v2
+        from apps.system_mgmt.models import User
+        from apps.system_mgmt.nats.common import _build_jwt_payload
+
+        user = User.objects.create(
+            username="target-list-v2",
+            display_name="Target List V2",
+            email="target-list-v2@example.invalid",
+            password="unused",
+            group_list=[{"id": 1, "name": "team-one"}],
+        )
+        target = Target.objects.create(name="owned", ip="10.0.0.1", os_type="linux", team=[1])
+        token = jwt.encode(_build_jwt_payload(user.id), key=os.environ["SECRET_KEY"], algorithm="HS256")
+
+        with django_assert_num_queries(2):
+            result = job_target_list_v2({"caller_token": token, "page_size": 1})
+
+        assert [item["target_id"] for item in result["data"]["items"]] == [target.id]
+
+    def test_empty_page_has_no_resume_cursor(self):
+        from apps.job_mgmt.nats_api import job_target_list_v2
+
+        caller = MagicMock(group_list=[1])
+        with patch("apps.job_mgmt.nats_api._verify_token", return_value=caller):
+            result = job_target_list_v2({"caller_token": "valid"})
+
+        assert result == {
+            "result": True,
+            "data": {"items": [], "next_cursor": None, "has_more": False},
+        }

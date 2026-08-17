@@ -8,6 +8,7 @@
 |------|------|------|------|
 | 查询节点列表 | NATS `bklite.node_list` | 无 | 同步，分页返回节点 |
 | 查询目标列表 | NATS `bklite.job_target_list` | 无 | 同步，分页返回目标 |
+| 查询目标列表 v2 | NATS `bklite.job_target_list_v2` | `caller_token` | 同步，有上界键集分页 |
 | 作业列表 | NATS `bklite.job_list` | 无 | 同步，返回脚本库与 Playbook 及参数定义 |
 | 作业列表 | REST `GET /api/v1/job_mgmt/api/open/job_list` | Api-Authorization | 同步，执行前获取作业背景信息 |
 | 脚本执行 | NATS `bklite.job_script_execute` | 无 | 异步，返回 task_id |
@@ -250,9 +251,58 @@ Query：
 }
 ```
 
+> 兼容说明：该 v1 入口保留 `page_size=-1` 的“返回全部”语义。新调用方应优先使用下方 v2，避免单次返回无上界。
+
 ---
 
-### 2.1 查询作业列表
+### 2.1 查询目标列表 v2（推荐）
+
+**NATS Subject**: `bklite.job_target_list_v2`
+
+v2 根据 `caller_token` 的团队权限在数据库内过滤目标，再使用按 `target_id` 降序的键集分页。每页最多返回 100 条，不支持 `page_size=-1`。部署可用 `JOB_TARGET_LIST_V2_MAX_PAGE_SIZE` 在 1-100 内下调上限；非法值或超过 100 时恢复为 100。
+
+v2 默认关闭。滚动发布时，须先完成新版本部署并确认旧进程全部退出，再运行 `python manage.py reconcile_target_team_memberships --apply`，随后运行同命令的 `--check` 模式确认零漂移，最后设置 `JOB_TARGET_LIST_V2_ENABLED=true` 并滚动重启。未完成校验前不得启用，以避免迁移回填期间的旧进程写入造成授权投影漂移。
+
+**Request:**
+```json
+{
+  "caller_token": "<bklite_token>",
+  "name": "web",
+  "ip": "10.0",
+  "os_type": "linux",
+  "page_size": 20,
+  "cursor": 1234
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| caller_token | string | 是 | BK-Lite 用户会话 token，用于确定可见团队 |
+| name | string | 否 | 按名称模糊搜索 |
+| ip | string | 否 | 按 IP 模糊搜索 |
+| os_type | string | 否 | `linux` 或 `windows` |
+| page_size | int | 否 | 每页最大返回数量，默认 20，范围 1-100 |
+| cursor | int | 否 | 上一页返回的 `next_cursor`；首页不传 |
+
+**Response:**
+```json
+{
+  "result": true,
+  "data": {
+    "items": [],
+    "next_cursor": 1200,
+    "has_more": true
+  }
+}
+```
+
+`has_more=false` 时 `next_cursor` 为 `null`。v2 不返回需要扫描全部命中记录的精确总数。
+
+键集分页在固定筛选条件下不会重复返回同一目标，但不是一致性快照：翻页期间新增的目标可能不进入本轮后续页，删除、团队权限或筛选字段变化可能导致跳项。
+
+---
+
+### 2.2 查询作业列表
 
 **NATS Subject**: `bklite.job_list`
 

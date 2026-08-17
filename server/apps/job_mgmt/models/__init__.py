@@ -6,10 +6,11 @@ from apps.job_mgmt.models.execution import JobExecution  # noqa
 from apps.job_mgmt.models.playbook import Playbook  # noqa
 from apps.job_mgmt.models.scheduled_task import ScheduledTask  # noqa
 from apps.job_mgmt.models.script import Script  # noqa
-from apps.job_mgmt.models.target import Target  # noqa
+from apps.job_mgmt.models.target import Target, TargetTeamMembership  # noqa
 
 __all__ = [
     "Target",
+    "TargetTeamMembership",
     "Script",
     "Playbook",
     "DangerousRule",

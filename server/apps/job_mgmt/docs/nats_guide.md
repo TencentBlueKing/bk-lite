@@ -47,7 +47,7 @@ async def call_nats(method: str, data: dict, server: str = "nats://localhost:422
     nc = await nats.connect(server)
     try:
         subject = f"{namespace}.{method}"
-        payload = json.dumps(data).encode()
+        payload = json.dumps({"args": [data], "kwargs": {}}).encode()
         response = await nc.request(subject, payload, timeout=timeout)
         return json.loads(response.data.decode())
     finally:
@@ -93,7 +93,7 @@ class BKLiteNatsClient:
         nc = await nats.connect(self.server)
         try:
             subject = f"{self.namespace}.{method}"
-            payload = json.dumps(data).encode()
+            payload = json.dumps({"args": [data], "kwargs": {}}).encode()
             response = await nc.request(subject, payload, timeout=self.timeout)
             return json.loads(response.data.decode())
         finally:
@@ -103,8 +103,8 @@ class BKLiteNatsClient:
 # 使用示例
 client = BKLiteNatsClient(server="nats://localhost:4222")
 
-# 查询目标列表
-targets = client.call("job_target_list", {"page_size": -1})
+# 查询目标列表（新接入推荐 v2，按 next_cursor 继续翻页）
+targets = client.call("job_target_list_v2", {"caller_token": "<bklite_token>", "page_size": 100})
 print(targets)
 
 # 查询节点列表
@@ -144,6 +144,7 @@ print(limited_detail)
 |---------|------|----------|
 | `bklite.node_list` | 查询节点列表 | `{name, ip, os, page, page_size}` |
 | `bklite.job_target_list` | 查询目标列表 | `{name, ip, os_type, page, page_size}` |
+| `bklite.job_target_list_v2` | 有上界键集分页查询目标（推荐） | `{caller_token, name, ip, os_type, cursor, page_size}` |
 | `bklite.job_list` | 查询作业列表 | `{team, name, page, page_size}` |
 | `bklite.job_script_execute` | 脚本执行 | `{name, target_source, target_list, script_type, script_content, team, ...}` |
 | `bklite.job_file_distribute` | 文件分发（旧版，仅迁移兼容） | `{name, file_keys, target_source, target_list, target_path, team, ...}` |
@@ -154,7 +155,7 @@ print(limited_detail)
 
 ## 5. 注意事项
 
-- NATS 接口无需鉴权，信任内网通道。确保 NATS Server 不对外暴露；新文件分发调用必须改用
+- NATS 通道依赖内网边界；涉及调用方数据权限的 v2 接口还会校验 `caller_token`。确保 NATS Server 不对外暴露；新文件分发调用必须改用
   `Authorization: Bearer <api_secret>` 的统一网关 `POST /openapi/v1/job-mgmt/file-distribute`，不要新增旧版 NATS 调用。
 - 迁移窗口内保持 `JOB_FILE_DISTRIBUTE_NATS_ENABLED=1`（默认），结合 listener subject 日志与 NATS 连接审计
   盘点调用方。流量归零后置 `0` 拒绝旧入口；若新路径异常，立即置回 `1` 回滚。

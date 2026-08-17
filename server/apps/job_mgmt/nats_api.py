@@ -2,13 +2,15 @@
 
 import os
 
+from django.db.models import Exists, OuterRef
+
 import nats_client
 from apps.core.logger import job_logger as logger
 from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TriggerSource
-from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target
+from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target, TargetTeamMembership
 from apps.job_mgmt.openapi_serializers import FileDistributeRequestSerializer
 from apps.job_mgmt.services.ansible_callback_service import handle_ansible_task_callback
 from apps.job_mgmt.services.celery_dispatch import dispatch_celery_task
@@ -23,7 +25,7 @@ from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task
-from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
+from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_authorized_team_ids, normalize_team
 from apps.node_mgmt.models import Node
 from apps.system_mgmt.nats.common import _verify_token
 from apps.system_mgmt.utils.group_utils import GroupUtils
@@ -624,11 +626,7 @@ def job_task_terminate(data=None, task_id=None, **kwargs):
                 task_id = int(normalized_task_id)
             except ValueError:
                 task_id = None
-    if (
-        isinstance(task_id, bool)
-        or not isinstance(task_id, int)
-        or not 1 <= task_id <= 2**63 - 1
-    ):
+    if isinstance(task_id, bool) or not isinstance(task_id, int) or not 1 <= task_id <= 2**63 - 1:
         return {"result": False, "message": "task_id 必须为正整数或其字符串形式"}
     if not caller_token:
         return {"result": False, "message": "caller_token 不能为空"}
@@ -713,3 +711,100 @@ def job_target_list(data: dict):
         )
 
     return {"result": True, "data": {"count": total_count, "items": items}}
+
+
+_DEFAULT_TARGET_LIST_V2_PAGE_SIZE_MAX = 100
+_HARD_TARGET_LIST_V2_PAGE_SIZE_MAX = 100
+
+
+def _target_list_v2_page_size_max():
+    try:
+        configured = int(os.getenv("JOB_TARGET_LIST_V2_MAX_PAGE_SIZE", str(_DEFAULT_TARGET_LIST_V2_PAGE_SIZE_MAX)))
+    except (TypeError, ValueError):
+        return _DEFAULT_TARGET_LIST_V2_PAGE_SIZE_MAX
+    if configured < 1 or configured > _HARD_TARGET_LIST_V2_PAGE_SIZE_MAX:
+        return _DEFAULT_TARGET_LIST_V2_PAGE_SIZE_MAX
+    return configured
+
+
+def _parse_target_list_v2_int(value, error_message):
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None, error_message
+    if isinstance(value, str) and not value.isdecimal():
+        return None, error_message
+    return int(value), None
+
+
+def _parse_target_list_v2_page(data: dict):
+    max_page_size = _target_list_v2_page_size_max()
+    page_size, error = _parse_target_list_v2_int(data.get("page_size", 20), "page_size 参数非法")
+    if error:
+        return None, error
+    if page_size < 1 or page_size > max_page_size:
+        return None, f"page_size 范围为 1-{max_page_size}"
+
+    raw_cursor = data.get("cursor")
+    if raw_cursor in (None, ""):
+        return (page_size, None), None
+    cursor, error = _parse_target_list_v2_int(raw_cursor, "cursor 必须为大于 0 的整数")
+    if error or cursor < 1:
+        return None, "cursor 必须为大于 0 的整数"
+    return (page_size, cursor), None
+
+
+@nats_client.register
+def job_target_list_v2(data: dict):
+    """按可信调用方团队范围返回有上界的目标键集分页。"""
+    data = data or {}
+    caller_token = data.get("caller_token", "")
+    if not caller_token:
+        return {"result": False, "message": "caller_token 不能为空"}
+    if os.getenv("JOB_TARGET_LIST_V2_ENABLED", "false").lower() not in {"1", "true", "yes"}:
+        return {"result": False, "message": "job_target_list_v2 尚未启用"}
+    try:
+        caller = _verify_token(caller_token)
+    except Exception:  # pylint: disable=broad-except
+        return {"result": False, "message": "Unauthorized: invalid caller_token"}
+
+    caller_group_list = getattr(caller, "group_list", [])
+    caller_team = normalize_authorized_team_ids(caller_group_list) | normalize_team(caller_group_list)
+    if not caller_team:
+        return {"result": False, "message": "无可用团队权限"}
+
+    page_info, error = _parse_target_list_v2_page(data)
+    if error:
+        return {"result": False, "message": error}
+    page_size, cursor = page_info
+
+    authorized_membership = TargetTeamMembership.objects.filter(target_id=OuterRef("id"), team_id__in=caller_team)
+    queryset = Target.objects.filter(Exists(authorized_membership))
+    name = data.get("name")
+    ip = data.get("ip")
+    os_type = data.get("os_type")
+    if name:
+        queryset = queryset.filter(name__icontains=name)
+    if ip:
+        queryset = queryset.filter(ip__icontains=ip)
+    if os_type:
+        queryset = queryset.filter(os_type=os_type)
+
+    if cursor is not None:
+        queryset = queryset.filter(id__lt=cursor)
+    rows = list(queryset.order_by("-id").values("id", "name", "ip", "os_type", "cloud_region_id")[: page_size + 1])
+    has_more = len(rows) > page_size
+    rows = rows[:page_size]
+    items = [
+        {
+            "target_id": row["id"],
+            "name": row["name"],
+            "ip": str(row["ip"]),
+            "os_type": row["os_type"],
+            "cloud_region_id": row["cloud_region_id"],
+        }
+        for row in rows
+    ]
+    next_cursor = rows[-1]["id"] if has_more else None
+    return {
+        "result": True,
+        "data": {"items": items, "next_cursor": next_cursor, "has_more": has_more},
+    }
