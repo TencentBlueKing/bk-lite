@@ -1,24 +1,32 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import { useShareCanvasDetailOverride } from '@/app/ops-analysis/context/shareCanvasDetail';
+import type {
+  ReportDetail,
+  SaveReportViewSetsInput,
+} from '@/app/ops-analysis/types/report';
 
 export const useReportApi = () => {
-  const { get, put, post, del } = useApiClient();
+  const { get, patch, post, del } = useApiClient();
   const shareDetailOverride = useShareCanvasDetailOverride();
 
-  const getReportDetail = useCallback(async (id: string | number) => {
+  const getReportDetail = useCallback(async (
+    id: string | number,
+  ): Promise<ReportDetail> => {
     if (shareDetailOverride) {
-      return shareDetailOverride();
+      return (await shareDetailOverride()) as ReportDetail;
     }
-    return get(`/operation_analysis/api/report/${id}/`);
+    return get<ReportDetail>(`/operation_analysis/api/report/${id}/`);
   }, [get, shareDetailOverride]);
 
-  const saveReport = useCallback(async (id: string | number, data: any) => {
-    return put(`/operation_analysis/api/report/${id}/`, data);
-  }, [put]);
+  const saveReportViewSets = useCallback(
+    async (id: string | number, data: SaveReportViewSetsInput) =>
+      patch<ReportDetail>(`/operation_analysis/api/report/${id}/`, data),
+    [patch],
+  );
 
-  const createReport = useCallback(async (data: any) => {
-    return post('/operation_analysis/api/report/', data);
+  const createReport = useCallback(async (data: Record<string, unknown>) => {
+    return post<ReportDetail>('/operation_analysis/api/report/', data);
   }, [post]);
 
   const deleteReport = useCallback(async (id: string | number) => {
@@ -27,7 +35,7 @@ export const useReportApi = () => {
 
   return {
     getReportDetail,
-    saveReport,
+    saveReportViewSets,
     createReport,
     deleteReport,
   };

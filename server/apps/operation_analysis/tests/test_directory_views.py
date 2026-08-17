@@ -560,8 +560,97 @@ def test_screen_and_report_create_with_directory_succeed(authenticated_user):
     assert screen_payload["data"]["name"] == "值班大屏"
     assert report_response.status_code == status.HTTP_201_CREATED
     assert report_payload["data"]["name"] == "周报"
+    assert report_payload["data"]["view_sets"] == {
+        "schema_version": 1,
+        "filters": [],
+        "sections": [],
+    }
     assert Screen.objects.filter(name="值班大屏", directory=directory).exists()
     assert Report.objects.filter(name="周报", directory=directory).exists()
+
+
+@pytest.mark.django_db
+def test_report_view_sets_update_requires_current_version(authenticated_user):
+    from apps.operation_analysis.models.models import Report
+
+    user = _superuser(authenticated_user)
+    directory = Directory.objects.create(name="并发报表目录", groups=[1], created_by="testuser")
+    report = Report.objects.create(
+        name="并发周报",
+        groups=[1],
+        directory=directory,
+        created_by="testuser",
+        view_sets={"schema_version": 1, "filters": [], "sections": []},
+    )
+    stale_version = report.updated_at.isoformat()
+    report.name = "其他用户已修改"
+    report.save(update_fields=["name", "updated_at"])
+
+    request = _request(
+        "patch",
+        f"/report/{report.id}/",
+        user,
+        data={
+            "expected_updated_at": stale_version,
+            "view_sets": {"schema_version": 1, "filters": [], "sections": []},
+        },
+    )
+    response = view_module.ReportModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(report.id))
+    _render(response)
+
+    report.refresh_from_db()
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert report.view_sets["filters"] == []
+
+
+@pytest.mark.django_db
+def test_report_view_sets_update_accepts_matching_version(authenticated_user):
+    from apps.operation_analysis.models.models import Report
+
+    user = _superuser(authenticated_user)
+    directory = Directory.objects.create(name="保存报表目录", groups=[1], created_by="testuser")
+    report = Report.objects.create(
+        name="可保存周报",
+        groups=[1],
+        directory=directory,
+        created_by="testuser",
+        view_sets={"schema_version": 1, "filters": [], "sections": []},
+    )
+    Report.objects.filter(pk=report.pk).update(updated_at=report.updated_at.replace(microsecond=654321))
+    detail_request = _request("get", f"/report/{report.id}/", user)
+    detail_response = view_module.ReportModelViewSet.as_view({"get": "retrieve"})(detail_request, pk=str(report.id))
+    detail_payload = _render(detail_response)
+    assert ".654321" in detail_payload["data"]["updated_at"]
+
+    request = _request(
+        "patch",
+        f"/report/{report.id}/",
+        user,
+        data={
+            "expected_updated_at": detail_payload["data"]["updated_at"],
+            "view_sets": {
+                "schema_version": 1,
+                "filters": [
+                    {
+                        "id": "billing_period__dateRange",
+                        "key": "billing_period",
+                        "name": "账期",
+                        "type": "dateRange",
+                        "order": 0,
+                        "enabled": True,
+                    }
+                ],
+                "sections": [],
+            },
+        },
+    )
+    response = view_module.ReportModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(report.id))
+    payload = _render(response)
+
+    report.refresh_from_db()
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"]["view_sets"]["filters"][0]["key"] == "billing_period"
+    assert report.view_sets["filters"][0]["key"] == "billing_period"
 
 
 @pytest.mark.django_db

@@ -4,7 +4,8 @@
 # @Author: windyzhao
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from rest_framework import serializers
+from rest_framework import serializers, status
+from rest_framework.exceptions import APIException
 
 from apps.core.utils.serializers import AuthSerializer
 from apps.operation_analysis.constants.canvas_refresh import CANVAS_REFRESH_INTERVAL_MS
@@ -12,8 +13,16 @@ from apps.operation_analysis.constants.import_export import ObjectType
 from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Report, Screen, Topology
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
 from apps.operation_analysis.services.import_export.view_sets import normalize_canvas_view_sets_for_storage
+from apps.operation_analysis.services.report_view_sets import normalize_report_view_sets
 
 CANVAS_REFRESH_INTERVAL_KWARGS = {"required": False, "default": serializers.empty}
+REPORT_VERSION_DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%f%z"
+
+
+class ReportVersionConflict(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_code = "report_version_conflict"
+    default_detail = "报表已被其他人更新，请刷新后重试"
 
 
 def with_canvas_refresh_interval_kwargs(extra_kwargs: dict) -> dict:
@@ -198,6 +207,38 @@ class ScreenModelSerializer(CanvasRefreshIntervalSerializerMixin, CanvasObjectSe
 
 class ReportModelSerializer(CanvasObjectSerializer):
     permission_key = "directory.report"
+    # updated_at 同时作为报表乐观锁令牌；必须保留数据库微秒精度，不能使用全局秒级展示格式。
+    updated_at = serializers.DateTimeField(read_only=True, format=REPORT_VERSION_DATETIME_FORMAT)
+    expected_updated_at = serializers.DateTimeField(write_only=True, required=False)
 
     class Meta(CanvasObjectSerializer.Meta):
         model = Report
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if self.instance is None and "view_sets" not in attrs:
+            attrs["view_sets"] = normalize_report_view_sets({})
+        if "view_sets" in attrs:
+            try:
+                attrs["view_sets"] = normalize_report_view_sets(attrs["view_sets"])
+            except ValueError as error:
+                raise serializers.ValidationError({"view_sets": [str(error)]}) from error
+
+            if self.instance is not None and "expected_updated_at" not in attrs:
+                raise serializers.ValidationError({"expected_updated_at": ["保存报表内容时必须提供当前版本"]})
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop("expected_updated_at", None)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        expected_updated_at = validated_data.pop("expected_updated_at", None)
+        if "view_sets" not in validated_data:
+            return super().update(instance, validated_data)
+
+        with transaction.atomic():
+            locked_report = Report.objects.select_for_update().get(pk=instance.pk)
+            if expected_updated_at != locked_report.updated_at:
+                raise ReportVersionConflict()
+            return super().update(locked_report, validated_data)
