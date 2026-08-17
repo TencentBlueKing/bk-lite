@@ -704,7 +704,9 @@ def _schedule_check_maintenance(
                     raise TypeError("cascade must return a maintenance mapping")
                 result = dict(result)
             except Exception as exc:
-                callback_error = str(exc)
+                from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
+
+                callback_error = humanize_maintenance_error(exc)
                 result = {
                     "status": "partial",
                     "event": event,
@@ -865,7 +867,9 @@ def _schedule_rule_replay_maintenance(
                 result = dict(result)
                 result.setdefault("deleted_titles", deleted_titles)
             except Exception as exc:
-                callback_error = str(exc)
+                from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
+
+                callback_error = humanize_maintenance_error(exc)
                 result = {
                     "status": "partial",
                     "event": event,

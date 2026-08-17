@@ -1915,11 +1915,13 @@ def _maintenance_errors(maintenance):
 
 
 def _run_build_cascade(knowledge_base, affected_page_ids):
+    from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
+
     try:
         return cascade(knowledge_base, affected_page_ids, "build")
     except Exception as exc:
         logger.exception("wiki 构建级联维护异常 kb=%s", knowledge_base.id)
-        error = str(exc)
+        error = humanize_maintenance_error(exc)
         return {
             "status": "partial",
             "event": "build",

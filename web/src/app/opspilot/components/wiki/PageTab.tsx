@@ -13,7 +13,10 @@ import {
   KnowledgePage,
   WikiDirectoryTreeResult,
 } from "@/app/opspilot/types/wiki";
-import WikiDirectoryTree, { toWikiTreePages } from "./WikiDirectoryTree";
+import WikiDirectoryTree, {
+  findFirstWikiTreePageId,
+  toWikiTreePages,
+} from "./WikiDirectoryTree";
 import WikiPageMoveModal from "./WikiPageMoveModal";
 import WikiMarkdownImportModal from "./WikiMarkdownImportModal";
 import WikiPageEditorDrawer from "./WikiPageEditorDrawer";
@@ -104,7 +107,6 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
     } finally {
       setPagesLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbId]);
 
   useEffect(() => {
@@ -125,20 +127,11 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbId]);
 
   useEffect(() => {
     void loadTreePages();
   }, [loadTreePages]);
-
-  useEffect(() => {
-    if (!selectedPageId || pagesLoading) return;
-    const exists = treePages.some((page) => page.id === selectedPageId);
-    if (!exists && treePages.length > 0) {
-      setSelectedPageId(null, "replace");
-    }
-  }, [pagesLoading, selectedPageId, setSelectedPageId, treePages]);
 
   const typeOptions = useMemo(
     () =>
@@ -152,6 +145,38 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
     () => toWikiTreePages(treePages),
     [treePages],
   );
+
+  // 进入知识页且未选中时，按树序默认打开第一份页面；空目录自动跳到后续有页面的节点
+  useEffect(() => {
+    if (pagesLoading || !directoryTree || directoryTreeLoadState !== "ready") {
+      return;
+    }
+    const firstPageId = findFirstWikiTreePageId(
+      directoryTree.directories,
+      treePageItems,
+      directoryTree.unclassified_directory_id,
+      nameFilter,
+    );
+    if (selectedPageId != null) {
+      const exists = treePageItems.some((page) => page.id === selectedPageId);
+      if (exists) return;
+    }
+    if (firstPageId == null) {
+      if (selectedPageId != null) setSelectedPageId(null, "replace");
+      return;
+    }
+    if (selectedPageId !== firstPageId) {
+      setSelectedPageId(firstPageId, "replace");
+    }
+  }, [
+    directoryTree,
+    directoryTreeLoadState,
+    nameFilter,
+    pagesLoading,
+    selectedPageId,
+    setSelectedPageId,
+    treePageItems,
+  ]);
 
   const openCreate = () => {
     setEditing(null);

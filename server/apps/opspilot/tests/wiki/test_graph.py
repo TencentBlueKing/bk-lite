@@ -1,10 +1,14 @@
 import pytest
 
 
-def _kb():
+def _kb(name="kb-graph"):
     from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
 
-    return WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    kb = WikiKnowledgeBase.objects.create(name=name, team=[1], purpose_md="# Purpose", schema_md="# Schema")
+    bootstrap_knowledge_base(kb, operator="tester")
+    kb.refresh_from_db()
+    return kb
 
 
 def _page(kb, title):
@@ -16,7 +20,15 @@ def _page(kb, title):
 def _rel(a, b, rtype="reference"):
     from apps.opspilot.models import PageRelation
 
-    return PageRelation.objects.create(from_page=a, to_page=b, relation_type=rtype, weight=1.0)
+    kb = a.knowledge_base
+    kb.refresh_from_db()
+    return PageRelation.objects.create(
+        from_page=a,
+        to_page=b,
+        relation_type=rtype,
+        weight=1.0,
+        generation_id=kb.active_generation_id,
+    )
 
 
 @pytest.mark.django_db

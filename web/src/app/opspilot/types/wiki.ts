@@ -632,13 +632,6 @@ export interface BuildRecord {
   updated_at?: string;
 }
 
-export interface BuildMaintenanceBatchRetryResult {
-  retried: number;
-  skipped: number;
-  skipped_ids: number[];
-  items: BuildRecord[];
-}
-
 export interface MarkdownImportResult {
   created: number;
   updated: number;

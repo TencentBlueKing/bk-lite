@@ -4,6 +4,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from django.db import transaction
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -11,6 +12,7 @@ from django.utils.dateparse import parse_datetime
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot import tasks as _opspilot_tasks
 from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, Material, PageEvidence, WikiDirectory, WikiKnowledgeBase
@@ -333,6 +335,19 @@ def _parse_maintenance_retry_stages(request):
     return parsed, None
 
 
+def _filter_build_records_by_material_name(queryset, *, knowledge_base_id, material_name):
+    """按资料名模糊筛选构建记录；匹配 inputs.material_name 或关联 Material.name。"""
+    keyword = (material_name or "").strip()
+    if not keyword:
+        return queryset
+
+    material_ids = list(Material.objects.filter(knowledge_base_id=knowledge_base_id, name__icontains=keyword).values_list("id", flat=True)[:1000])
+    term = Q(inputs__material_name__icontains=keyword)
+    if material_ids:
+        term |= Q(inputs__material_id__in=material_ids)
+    return queryset.filter(term)
+
+
 def _filter_build_records_by_maintenance(records, maintenance_status, maintenance_stage, maintenance_stage_status):
     if not any([maintenance_status, maintenance_stage, maintenance_stage_status]):
         return records
@@ -424,7 +439,9 @@ def _run_page_lifecycle_maintenance(
         result.setdefault("prune_deleted_pages", prune_deleted_pages)
         result.setdefault("stages", {})
     except Exception as exc:
-        error = str(exc)
+        from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
+
+        error = humanize_maintenance_error(exc)
         result = {
             "status": "partial",
             "event": event,
@@ -1210,9 +1227,25 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
 
     @HasPermission("wiki_list-View")
     def list(self, request, *args, **kwargs):
+        from apps.opspilot.services.wiki.material_build_queue_service import (
+            QUEUE_ITEM_TRIGGER,
+            RUNNER_TRIGGER,
+            reconcile_orphaned_material_builds,
+            repair_queue_runner_status_from_counts,
+        )
+
         queryset = self.get_queryset()
+        # 队列租约/排队项是调度书签，不是用户可读的构建历史
+        queryset = queryset.exclude(trigger__in=(QUEUE_ITEM_TRIGGER, RUNNER_TRIGGER))
         kb_id = request.GET.get("knowledge_base")
         if kb_id:
+            try:
+                reconcile_orphaned_material_builds(int(kb_id))
+                repair_queue_runner_status_from_counts(int(kb_id))
+            except (TypeError, ValueError):
+                pass
+            except Exception:  # noqa: BLE001 - 孤儿清理失败不阻断列表
+                logger.exception("wiki build_record list reconcile failed kb=%s", kb_id)
             queryset = queryset.filter(knowledge_base_id=kb_id)
         status_filter = request.GET.get("status")
         if status_filter:
@@ -1220,6 +1253,16 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
         trigger_filter = request.GET.get("trigger")
         if trigger_filter:
             queryset = queryset.filter(trigger=trigger_filter)
+        material_name_filter = (request.GET.get("material_name") or "").strip()
+        if material_name_filter and kb_id:
+            try:
+                queryset = _filter_build_records_by_material_name(
+                    queryset,
+                    knowledge_base_id=int(kb_id),
+                    material_name=material_name_filter,
+                )
+            except (TypeError, ValueError):
+                pass
         maintenance_status_filter = request.GET.get("maintenance_status")
         maintenance_stage_filter = request.GET.get("maintenance_stage")
         maintenance_stage_status_filter = request.GET.get("maintenance_stage_status")

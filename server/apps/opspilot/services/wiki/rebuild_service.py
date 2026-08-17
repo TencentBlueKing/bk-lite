@@ -354,7 +354,9 @@ def _pending_rebuild_maintenance(page_ids, event, **metadata):
 
 
 def _failed_rebuild_maintenance(page_ids, event, exc, **metadata):
-    error = str(exc)
+    from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
+
+    error = humanize_maintenance_error(exc)
     return {
         "status": "partial",
         "event": event,
@@ -392,14 +394,17 @@ def _run_rebuild_cascade(kb, page_ids, event, **kwargs):
 
 
 def _add_maintenance_failure(maintenance, stage, exc, page_ids, event):
+    from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
+
+    error = humanize_maintenance_error(exc)
     result = dict(maintenance or {})
     result.setdefault("event", event)
     result.setdefault("affected_page_ids", list(page_ids))
     stages = dict(result.get("stages") or {})
-    stages[stage] = {"status": "failed", "error": str(exc)}
+    stages[stage] = {"status": "failed", "error": error}
     result["stages"] = stages
     result["status"] = "partial"
-    result.setdefault("error", str(exc))
+    result.setdefault("error", error)
     return result
 
 

@@ -812,6 +812,8 @@ def _pending_material_delete_maintenance(page_ids, event):
 
 
 def _run_material_delete_cascade(knowledge_base, page_ids, event):
+    from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
+
     page_ids = list(page_ids)
     if not page_ids:
         return {}
@@ -823,7 +825,7 @@ def _run_material_delete_cascade(knowledge_base, page_ids, event):
             knowledge_base.id,
             event,
         )
-        error = str(exc)
+        error = humanize_maintenance_error(exc)
         return {
             "status": "partial",
             "event": event,

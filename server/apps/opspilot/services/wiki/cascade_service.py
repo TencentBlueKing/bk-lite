@@ -2,6 +2,7 @@ import logging
 
 from apps.opspilot.models import KnowledgePage
 from apps.opspilot.services.wiki.embedding_service import clear_page_vectors, index_version, reindex_page_chunks
+from apps.opspilot.services.wiki.maintenance_errors import stage_failed
 from apps.opspilot.services.wiki.sweep_service import drop_page_references, sweep_open_checks
 
 logger = logging.getLogger("opspilot")
@@ -20,7 +21,7 @@ def _stage_success(count=0):
 
 
 def _stage_failed(exc):
-    return {"status": "failed", "error": str(exc)}
+    return stage_failed(exc)
 
 
 def _stage_skipped(reason):
