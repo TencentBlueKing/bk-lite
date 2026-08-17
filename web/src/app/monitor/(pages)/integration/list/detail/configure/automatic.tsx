@@ -33,6 +33,7 @@ import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
 import PluginGuidePanel from './pluginGuidePanel';
 import GuideEntryButton from './guideEntryButton';
+import { normalizePasswordFields } from '@/components/password/normalizePasswordWhitespace';
 import {
   buildCollectDetectFingerprint as buildCollectDetectFingerprintValue,
   CollectDetectMode,
@@ -67,6 +68,11 @@ interface IntegrationTableColumnConfig {
   is_only?: boolean;
   dependency?: FormFieldDependency;
   [key: string]: unknown;
+}
+
+interface TableValidationResult {
+  data: IntegrationMonitoredObject[] | null;
+  trimmedPassword: boolean;
 }
 
 const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
@@ -851,10 +857,24 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
   };
 
-  const validateTableData = (): boolean => {
-    if (!visibleTableColumns.length) return true;
+  const validateTableData = (): TableValidationResult => {
+    if (!visibleTableColumns.length) {
+      return { data: dataSource, trimmedPassword: false };
+    }
     let hasError = false;
-    const newData = [...dataSource];
+    let trimmedPassword = false;
+    const normalizedData = dataSource.map((row) => {
+      const result = normalizePasswordFields(
+        row as Record<string, unknown>,
+        visibleTableColumns,
+        { includeReadOnly: true }
+      );
+      if (result.changedFields.length) {
+        trimmedPassword = true;
+      }
+      return result.values as IntegrationMonitoredObject;
+    });
+    const newData = [...normalizedData];
     // 先清除所有字段的错误状态
     newData.forEach((row, index) => {
       visibleTableColumns.forEach((column: any) => {
@@ -868,7 +888,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     // 验证所有字段
     visibleTableColumns.forEach((column: any) => {
       const { name, rules = [], required = false } = column;
-      dataSource.forEach((row, index) => {
+      normalizedData.forEach((row, index) => {
         const value = row[name];
         let errorMsg: string | null = null;
         // 如果字段标记为required，进行必填验证
@@ -909,14 +929,27 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     // 更新数据源以显示错误状态
     setDataSource(newData);
     if (hasError) {
-      return false;
+      return { data: null, trimmedPassword };
     }
-    return true;
+    return { data: newData, trimmedPassword };
   };
 
   const handleSave = () => {
+    const normalizedForm = normalizePasswordFields(
+      form.getFieldsValue(true),
+      currentConfig?.form_fields,
+      { includeReadOnly: true }
+    );
+    const trimmedFormPassword = normalizedForm.changedFields.length > 0;
+    if (trimmedFormPassword) {
+      form.setFieldsValue(normalizedForm.values);
+    }
     // 先验证表格数据
-    if (!validateTableData()) {
+    const tableValidation = validateTableData();
+    if (trimmedFormPassword || tableValidation.trimmedPassword) {
+      message.warning(t('common.passwordWhitespaceTrimmed'));
+    }
+    if (!tableValidation.data) {
       return;
     }
     form.validateFields().then((values) => {
@@ -930,7 +963,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         delete row.nodes;
         const params =
           configsInfo?.getParams?.(row, {
-            dataSource,
+            dataSource: tableValidation.data,
             nodeList,
             objectId
           }) || {};
