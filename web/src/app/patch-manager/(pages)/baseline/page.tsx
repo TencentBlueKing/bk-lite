@@ -354,7 +354,7 @@ export default function BaselineManagementPage() {
         <Button
           type="link"
           size="small"
-          style={{ paddingInline: 0 }}
+          className="!px-0"
           onClick={() => setComplianceBaseline({
             id: r.id,
             name: r.name,
@@ -370,19 +370,18 @@ export default function BaselineManagementPage() {
     {
       title: t('patchManager.baseline.complianceDistribution'),
       dataIndex: 'compliance_distribution',
-      width: 280,
       render: (dist: any[], r: any) => {
         const items = dist || [];
         if (!items.length) {
-          return r.bound_host_count ? '—' : <span style={{ color: 'var(--color-text-4, #bfbfbf)' }}>{t('patchManager.baseline.unbound')}</span>;
+          return r.bound_host_count ? '—' : <span className="text-[var(--color-text-4)]">{t('patchManager.baseline.unbound')}</span>;
         }
         return (
-          <Space size={6}>
+          <Space size={6} wrap>
             {items.map((item: any) => (
               <Tag
                 key={item.filter}
                 color={item.color}
-                style={{ cursor: 'pointer' }}
+                className="cursor-pointer"
                 onClick={() => router.push(`/patch-manager/target?baseline_id=${r.id}&compliance_status=${item.filter}`)}
               >
                 {t(`patchManager.complianceStatus.${item.filter}`, item.label)} {item.count}
@@ -392,11 +391,13 @@ export default function BaselineManagementPage() {
         );
       },
     },
+    { title: t('patchManager.baseline.recentAssessment'), dataIndex: 'last_evaluated_at', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
     { title: t('patchManager.updateTime'), dataIndex: 'updated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
     {
       title: t('patchManager.operation'),
       dataIndex: 'op',
       width: 250,
+      fixed: 'right' as const,
       render: (_: unknown, r: any) => {
         const deleteBlocked = (r.bound_host_count || 0) > 0;
         const deleteTip = deleteBlocked ? t('patchManager.baseline.deleteBlocked') : '';
@@ -521,7 +522,7 @@ export default function BaselineManagementPage() {
       .filter(Boolean);
   }, [pickerSelected, patchList, requirements, draftOs]);
   return (
-    <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <div className="flex min-h-0 flex-1 flex-col rounded-[10px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
       <FilterToolbar align="between">
         <Space wrap>
           <Input.Search
@@ -529,7 +530,7 @@ export default function BaselineManagementPage() {
             value={baselineSearch}
             onChange={(e) => setBaselineSearch(e.target.value)}
             onSearch={(v) => { setPagination((p) => ({ ...p, current: 1 })); loadData(1, pagination.pageSize, v); }}
-            style={{ width: 220 }}
+            className="w-[220px]"
           />
           <Select
             mode="multiple"
@@ -541,7 +542,7 @@ export default function BaselineManagementPage() {
             placeholder={t('patchManager.baseline.patchFilter')}
             optionFilterProp="label"
             maxTagCount="responsive"
-            style={{ width: 360 }}
+            className="w-[360px]"
             options={patchFilterOptions.map((patch) => ({
               value: patch.id,
               label: patch.windows_detail?.kb_number || patch.linux_detail?.pkg_name || patch.title,
@@ -568,7 +569,7 @@ export default function BaselineManagementPage() {
           />
         </Space>
       </FilterToolbar>
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div className="min-h-0 flex-1">
         <CustomTable
           columns={columns as any}
           dataSource={data}
@@ -642,25 +643,25 @@ export default function BaselineManagementPage() {
         }
       >
         <Spin spinning={reqLoading}>
-        <Form layout="vertical" form={form} style={{ marginTop: 4 }}>
-          <Space style={{ display: 'flex' }} align="start">
-            <Form.Item label={t('patchManager.baseline.name')} name="name" rules={[{ required: true, message: t('patchManager.baseline.nameRequired') }]} style={{ flex: 1 }}><Input style={{ width: 300 }} /></Form.Item>
+        <Form layout="vertical" form={form} className="mt-1">
+          <Space className="flex" align="start">
+            <Form.Item label={t('patchManager.baseline.name')} name="name" rules={[{ required: true, message: t('patchManager.baseline.nameRequired') }]} className="flex-1"><Input className="w-[300px]" /></Form.Item>
             <Form.Item label={t('patchManager.osType')} required>
-              <Select value={draftOs} style={{ width: 130 }} disabled={!!editing} onChange={setDraftOs} options={[{ label: 'Windows', value: 'win' }, { label: 'Linux', value: 'linux' }]} />
+              <Select value={draftOs} className="w-[130px]" disabled={!!editing} onChange={setDraftOs} options={[{ label: 'Windows', value: 'win' }, { label: 'Linux', value: 'linux' }]} />
             </Form.Item>
           </Space>
-          {editing && <Alert style={{ marginBottom: 12 }} type="info" showIcon message={t('patchManager.baseline.osLocked')} />}
+          {editing && <Alert className="mb-3" type="info" showIcon message={t('patchManager.baseline.osLocked')} />}
           <Form.Item label={t('patchManager.baseline.description')} name="description"><Input.TextArea rows={2} placeholder={t('patchManager.baseline.descriptionPlaceholder')} /></Form.Item>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 8px' }}>
-            <span style={{ fontWeight: 500 }}>{t('patchManager.baseline.requirementList')}</span>
+          <div className="my-1 mb-2 flex items-center gap-2">
+            <span className="font-medium">{t('patchManager.baseline.requirementList')}</span>
             <Tag color="warning">{t('patchManager.baseline.allRequired')}</Tag>
           </div>
           <Table size="small" pagination={false} dataSource={requirements} rowKey={(r: any) => r.id ?? r.patch} columns={reqColumns as any} scroll={{ x: 960 }} />
-          <div style={{ marginTop: 8 }}>
+          <div className="mt-2">
             {draftOs ? (
               <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => { setPatchPickerOpen(true); }}>{t('patchManager.baseline.addFromLibrary')}</Button>
             ) : (
-              <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}><PlusOutlined /> {t('patchManager.baseline.addFromLibrary')}</span>
+              <span className="cursor-not-allowed text-[var(--color-text-4)]"><PlusOutlined /> {t('patchManager.baseline.addFromLibrary')}</span>
             )}
           </div>
         </Form>
@@ -742,7 +743,7 @@ export default function BaselineManagementPage() {
           onChange={setSelectedHosts}
           selectedRecordsData={selectedHostRecords}
           renderSelectedLabel={(r) => r.name}
-          leftTitle={<Input.Search placeholder={t('patchManager.baseline.targetSearch')} value={hostSearch} onSearch={(v) => { setBindHostPagination((p) => ({ ...p, current: 1 })); loadBindHosts(1, bindHostPagination.pageSize, v); }} onChange={(e) => setHostSearch(e.target.value)} allowClear style={{ width: 240, marginBottom: 12 }} />}
+          leftTitle={<Input.Search placeholder={t('patchManager.baseline.targetSearch')} value={hostSearch} onSearch={(v) => { setBindHostPagination((p) => ({ ...p, current: 1 })); loadBindHosts(1, bindHostPagination.pageSize, v); }} onChange={(e) => setHostSearch(e.target.value)} allowClear className="mb-3 w-60" />}
           rightTitle={t('patchManager.baseline.selectedTargets', undefined, { count: selectedHosts.length })}
           height="calc(100vh - 200px)"
         />
@@ -808,7 +809,7 @@ export default function BaselineManagementPage() {
           </Space>
         }
       >
-        <Alert style={{ marginBottom: 12 }} type="info" showIcon message={t('patchManager.baseline.libraryHelp')} />
+        <Alert className="mb-3" type="info" showIcon message={t('patchManager.baseline.libraryHelp')} />
         <DualSelector
           rowKey="id"
           dataSource={patchList}
@@ -851,7 +852,7 @@ export default function BaselineManagementPage() {
               onSearch={(v) => { setPatchPickerPagination((p) => ({ ...p, current: 1 })); loadPatches(1, patchPickerPagination.pageSize, v); }}
               onChange={(e) => setPatchSearch(e.target.value)}
               allowClear
-              style={{ width: 300, marginBottom: 12 }}
+              className="mb-3 w-[300px]"
             />
           }
           height="calc(100vh - 240px)"

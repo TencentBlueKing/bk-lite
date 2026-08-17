@@ -6,13 +6,13 @@ import React, {
   useImperativeHandle,
   useEffect
 } from 'react';
-import { Button, Popconfirm, message, Input } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Button, Popconfirm, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import useSearchApi from '@/app/monitor/api/search';
 import CustomDrawer from '@/components/operate-drawer';
+import SearchActionBar from '@/components/search-action-bar';
 import {
   QueryGroup,
   QueryGroupData,
@@ -203,14 +203,15 @@ const SavedQueryDrawer = forwardRef<SavedQueryDrawerRef, SavedQueryDrawerProps>(
         }
         onClose={handleClose}
       >
-        <Input.Search
-          className="mb-4 w-[300px]"
-          allowClear
-          enterButton={<SearchOutlined />}
-          placeholder={t('monitor.search.searchByName')}
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          onSearch={handleSearch}
+        <SearchActionBar
+          searchClassName="!w-[300px]"
+          searchProps={{
+            allowClear: true,
+            placeholder: t('monitor.search.searchByName'),
+            value: searchText,
+            onChange: (e) => setSearchText(e.target.value),
+            onSearch: handleSearch,
+          }}
         />
         <CustomTable
           columns={columns}

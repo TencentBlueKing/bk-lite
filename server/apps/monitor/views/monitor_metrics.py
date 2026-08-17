@@ -14,6 +14,7 @@ from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
+from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
 from apps.monitor.utils.snmp_ifmib_capability import (
     COMMON_IFMIB_METRIC_NAMES,
     IFMIB_ZH_DISPLAY_TEXTS,
@@ -80,6 +81,14 @@ def get_ifmib_display_text(metric_name, locale):
 def get_optional_query_param_id(request, param_name):
     """Read an optional positive integer query parameter without leaking ORM errors."""
     return parse_optional_positive_id(request.query_params.get(param_name), param_name)
+
+
+def get_required_query_param_id(request, param_name):
+    """Read a required positive integer query parameter; empty or missing values are rejected."""
+    parsed = get_optional_query_param_id(request, param_name)
+    if parsed is None:
+        raise ValidationAppException(f"{param_name} 不能为空")
+    return parsed
 
 
 def get_snmp_base_plugin(request, monitor_object_id):
@@ -323,7 +332,7 @@ class MetricViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         # Do not union a select_related queryset: joins would make the two SELECT
         # column sets differ. The bounded page is hydrated below in one query.
-        monitor_object_id = get_optional_query_param_id(request, "monitor_object_id")
+        monitor_object_id = get_required_query_param_id(request, "monitor_object_id")
         vendor_metrics = self.filter_queryset(Metric.objects.all()).order_by()
         base_plugin = get_snmp_base_plugin(request, monitor_object_id)
         include_ifmib = str(request.query_params.get("include_ifmib", "true")).lower() != "false"
@@ -421,6 +430,11 @@ class MetricViewSet(viewsets.ModelViewSet):
                 or lan.get(f"{lan_key}.desc")
                 or result["description"]
             )
+            if (result.get("data_type") or "").lower() == "enum":
+                result["unit"] = localize_metric_enum_unit(
+                    result.get("unit") or "",
+                    enum_translations=lan.get(f"{lan_key}.enum"),
+                )
 
         metric_groups = MetricGroup.objects.filter(
             id__in={metric.metric_group_id for metric in page}

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Empty, Spin } from 'antd';
+import { Spin } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 interface CompactInsightTableProps {
@@ -47,11 +48,7 @@ const CompactInsightTable: React.FC<CompactInsightTableProps> = ({
   }
 
   if (!rows.length || !columns.length) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   const minWidth = columns.reduce(

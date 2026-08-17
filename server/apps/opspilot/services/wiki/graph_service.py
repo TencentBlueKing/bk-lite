@@ -23,6 +23,11 @@ from apps.opspilot.services.wiki.title_service import canonical_title
 
 # 4 信号关联度权重(共享资料 / 共享标签 / 正文引用 / 同类型)。Louvain 用无外部依赖的标签传播替代。
 SIGNAL_WEIGHTS = {"shared_source": 1.0, "shared_tags": 0.6, "reference": 0.8, "same_type": 0.3}
+# 仅 same_type 不单独成边(易形成稠密团);展示层再按每节点 Top-K 剪枝,控制前端渲染规模。
+_STRUCTURAL_SIGNALS = frozenset({"shared_source", "shared_tags", "reference"})
+ANALYSIS_EDGE_MAX_PER_NODE = 8
+ANALYSIS_EDGE_MIN_WEIGHT = 0.0
+ANALYSIS_EDGE_MAX_TOTAL = 2500
 
 
 @dataclass(frozen=True)
@@ -470,8 +475,9 @@ def analyze_graph(
 ):
     """4 信号关联度加权 + Louvain 社区发现(P5 增强,纯 Python 无外部依赖)。
 
-    对每对页面综合 4 个确定性信号计算关联权重:共享资料数、共享标签数、正文 [[引用]]、同页面类型;
-    再以加权图做 Louvain 模块度优化得到社区。返回 {nodes, edges, communities, insights}。
+    对每对页面综合确定性信号计算关联权重:共享资料、共享标签、正文 [[引用]];
+    same_type 仅在已有上述结构信号时加分,不单独成边。Louvain 用完整分析边;
+    返回给前端的 edges 再按每节点 Top-K / 全局上限剪枝。
     """
     scope, pages = _read_graph_pages(
         knowledge_base,
@@ -504,6 +510,8 @@ def analyze_graph(
                 shared_sources[tuple(sorted((source, target)))] = max(1, int(round(float(relation["weight"] or 0))))
             elif relation["relation_type"] == "reference":
                 references.add((source, target))
+        # 正文 [[引用]] 现算并入,与入库 reference 取并集,避免分析漏连
+        references |= _reference_pairs(pages)
 
     raw_edges = []
     for a, b in combinations(sorted(raw_node_ids), 2):
@@ -522,39 +530,85 @@ def analyze_graph(
         if by_id[a].page_type == by_id[b].page_type:
             signals["same_type"] = 1
             weight += SIGNAL_WEIGHTS["same_type"]
-        if weight > 0:
+        # 纯 same_type 不成边,避免同类型页面两两全连导致万级边
+        if weight > 0 and (signals.keys() & _STRUCTURAL_SIGNALS):
             weight = round(weight, 3)
             raw_edges.append({"from": a, "to": b, "weight": weight, "signals": signals})
 
-    edges = _collapse_analysis_edges(raw_edges, raw_to_node)
-    wadj = _weighted_adjacency(edges)
+    analysis_edges = _collapse_analysis_edges(raw_edges, raw_to_node)
+    wadj = _weighted_adjacency(analysis_edges)
 
     communities = _louvain(node_ids, wadj)
     community_of = {nid: idx for idx, c in enumerate(communities) for nid in c}
     for n in nodes:
         n["community"] = community_of.get(n["id"], -1)
 
+    # 社区/洞察用完整分析边;返回给前端的边再 Top-K 剪枝以控制渲染成本
+    display_edges = _prune_display_edges(
+        analysis_edges,
+        max_per_node=ANALYSIS_EDGE_MAX_PER_NODE,
+        min_weight=ANALYSIS_EDGE_MIN_WEIGHT,
+        max_total=ANALYSIS_EDGE_MAX_TOTAL,
+    )
+
     insights = {
         "node_count": len(node_ids),
-        "edge_count": len(edges),
+        "edge_count": len(display_edges),
+        "analysis_edge_count": len(analysis_edges),
         "community_count": len(communities),
         "largest_community": max((len(c) for c in communities), default=0),
-        "strongest_edges": sorted(edges, key=lambda e: e["weight"], reverse=True)[:5],
+        "strongest_edges": sorted(analysis_edges, key=lambda e: e["weight"], reverse=True)[:5],
         "bridge_nodes": _bridge_nodes(node_ids, wadj, by_id),
         "sparse_communities": _sparse_communities(node_ids, wadj, by_id),
-        "cross_community_edges": _cross_community_edges(edges, community_of, by_id),
-        "surprise_links": _surprise_links(edges, community_of, by_id),
+        "cross_community_edges": _cross_community_edges(analysis_edges, community_of, by_id),
+        "surprise_links": _surprise_links(analysis_edges, community_of, by_id),
         "signal_weights": SIGNAL_WEIGHTS,
+        "edge_prune": {
+            "max_per_node": ANALYSIS_EDGE_MAX_PER_NODE,
+            "min_weight": ANALYSIS_EDGE_MIN_WEIGHT,
+            "max_total": ANALYSIS_EDGE_MAX_TOTAL,
+            "drop_pure_same_type": True,
+        },
     }
     result = {
         "generation_id": scope.generation_id,
         "nodes": nodes,
-        "edges": edges,
+        "edges": display_edges,
         "communities": [sorted(community) for community in communities],
         "insights": insights,
     }
     assert_read_scope_current(scope)
     return result
+
+
+def _prune_display_edges(
+    edges,
+    *,
+    max_per_node=ANALYSIS_EDGE_MAX_PER_NODE,
+    min_weight=ANALYSIS_EDGE_MIN_WEIGHT,
+    max_total=ANALYSIS_EDGE_MAX_TOTAL,
+):
+    """按权重保留每节点 Top-K 邻边,并可选施加全局上限,控制前端渲染规模。"""
+    if max_per_node <= 0:
+        return []
+    candidates = [edge for edge in edges if float(edge.get("weight") or 0) >= min_weight]
+    if not candidates:
+        return []
+
+    by_node = defaultdict(list)
+    for edge in candidates:
+        by_node[edge["from"]].append(edge)
+        by_node[edge["to"]].append(edge)
+
+    keep_keys = set()
+    for incident in by_node.values():
+        for edge in sorted(incident, key=lambda item: float(item.get("weight") or 0), reverse=True)[:max_per_node]:
+            keep_keys.add(tuple(sorted((edge["from"], edge["to"]))))
+
+    pruned = [edge for edge in candidates if tuple(sorted((edge["from"], edge["to"]))) in keep_keys]
+    if max_total and len(pruned) > max_total:
+        pruned = sorted(pruned, key=lambda item: float(item.get("weight") or 0), reverse=True)[:max_total]
+    return pruned
 
 
 def _collapse_analysis_edges(edges, raw_to_node):
@@ -669,6 +723,8 @@ def _louvain(node_ids, wadj, max_passes=20):
         agg = defaultdict(lambda: defaultdict(float))
         for u in super_nodes:
             cu = comm[u]
+            # 触碰 agg[cu],避免无边社区在聚合层丢失导致下层 remapping KeyError
+            agg[cu]
             for v, w in adj[u].items():
                 agg[cu][comm[v]] += w
         adj = {k: dict(v) for k, v in agg.items()}

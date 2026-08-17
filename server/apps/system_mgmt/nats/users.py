@@ -2,9 +2,14 @@
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.permission_cache import clear_all_permission_cache
+from apps.system_mgmt.services.archived_group_query import ArchivedGroupQuery
+from apps.system_mgmt.services.group_archive_types import ARCHIVED_LIST_MAX_PAGE_SIZE
 
 from .common import *  # noqa: F401,F403
 from .common import _collect_ancestor_group_ids
+
+
+CURRENT_TEAM_ARCHIVED_MESSAGE = "current_team 对应组织已归档或不存在"
 
 
 def _is_persisted_superuser(user_obj):
@@ -30,11 +35,18 @@ def get_group_users(group=None, include_children=False):
     if not group:
         # 如果没有指定组织，返回所有用户
         users = User.objects.all().values("id", "user_id", "username", "display_name")
-    elif include_children:
-        group_ids = GroupUtils.get_group_with_descendants(group)
-        users = User.objects.filter(group_list__overlap=group_ids).values("id", "user_id", "username", "display_name")
     else:
-        users = User.objects.filter(group_list__contains=int(group)).values("id", "user_id", "username", "display_name")
+        try:
+            group = int(group)
+        except (TypeError, ValueError):
+            return {"result": True, "data": []}
+        if not GroupUtils.active_queryset(id=group).exists():
+            return {"result": True, "data": []}
+        if include_children:
+            group_ids = GroupUtils.get_group_with_descendants(group)
+            users = User.objects.filter(group_list__overlap=group_ids).values("id", "user_id", "username", "display_name")
+        else:
+            users = User.objects.filter(group_list__contains=int(group)).values("id", "user_id", "username", "display_name")
     return {"result": True, "data": list(users)}
 
 
@@ -44,19 +56,20 @@ def _get_actor_user_scope(actor_context, include_children=False):
 
     :param actor_context: 调用方上下文，包含 username、domain、current_team、is_superuser 等字段
     :param include_children: 是否包含当前组织下的已授权子组织
-    :return: (user_obj, authorized_groups)
+    :return: (user_obj, authorized_groups, error_message)
         - user_obj: 当前调用用户对象，不存在时返回 None
         - authorized_groups: 当前调用方允许访问的组织 ID 列表
+        - error_message: 归档/缺失 current_team 时的明确错误；否则 None
     """
     username = (actor_context or {}).get("username")
     domain = (actor_context or {}).get("domain", "domain.com")
     current_team = (actor_context or {}).get("current_team")
     if not username or current_team in (None, ""):
-        return None, []
+        return None, [], None
 
     user_obj = User.objects.filter(username=username, domain=domain).first()
     if not user_obj:
-        return None, []
+        return None, [], None
 
     # 超管身份只能来自持久化用户，RPC 调用方声明不得提升权限。
     is_superuser = _is_persisted_superuser(user_obj)
@@ -64,19 +77,31 @@ def _get_actor_user_scope(actor_context, include_children=False):
     try:
         current_team = next(iter(_normalize_organization_ids([current_team])))
     except BaseAppException:
-        return user_obj, []
+        return user_obj, [], None
+
+    if Group.objects.filter(id=current_team, is_delete=True).exists():
+        return user_obj, [], CURRENT_TEAM_ARCHIVED_MESSAGE
 
     if is_superuser:
+        if not GroupUtils.active_queryset(id=current_team).exists():
+            return user_obj, [], CURRENT_TEAM_ARCHIVED_MESSAGE
         if include_children:
-            return user_obj, GroupUtils.get_group_with_descendants(current_team)
-        return user_obj, [current_team]
+            return user_obj, GroupUtils.get_group_with_descendants(current_team), None
+        return user_obj, [current_team], None
 
     authorized_groups = GroupUtils.get_user_authorized_child_groups(
         user_obj.group_list,
         current_team,
         include_children=include_children,
     )
-    return user_obj, authorized_groups
+    return user_obj, authorized_groups, None
+
+
+def _actor_scope_response(actor_context, include_children=False):
+    user_obj, authorized_groups, error = _get_actor_user_scope(actor_context, include_children=include_children)
+    if error:
+        return user_obj, None, {"result": False, "message": error}
+    return user_obj, authorized_groups, None
 
 
 # SECURITY COMPATIBILITY: actor_context 仍来自消息体，不构成可信调用身份；见 #4533。
@@ -90,7 +115,9 @@ def get_group_users_scoped(actor_context, group=None, include_children=False):
     :param include_children: 是否包含目标组织下的已授权子组织用户
     :return: 标准 NATS 返回结构，data 为用户列表
     """
-    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
+    if error_response is not None:
+        return error_response
     if not user_obj or not authorized_groups:
         return {"result": True, "data": []}
 
@@ -122,10 +149,12 @@ def get_group_users_scoped(actor_context, group=None, include_children=False):
 @nats_client.register
 def get_authorized_groups_scoped(actor_context, include_children=False):
     """返回调用方在当前组织上下文下可访问的组织范围。"""
-    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
+    if error_response is not None:
+        return error_response
     return {
         "result": True,
-        "data": authorized_groups,
+        "data": authorized_groups or [],
         "is_superuser": bool(user_obj and _is_persisted_superuser(user_obj)),
     }
 
@@ -143,7 +172,7 @@ def get_assignable_groups(actor_context):
         return {"result": True, "data": []}
 
     if _is_persisted_superuser(user_obj):
-        return {"result": True, "data": list(Group.objects.values_list("id", flat=True))}
+        return {"result": True, "data": list(GroupUtils.active_queryset().values_list("id", flat=True))}
 
     user_group_list = list(user_obj.group_list or [])
     if not user_group_list:
@@ -162,7 +191,7 @@ def get_all_users():
 
 @nats_client.register
 def search_groups(query_params):
-    groups = Group.objects.filter(name__contains=query_params["search"]).values()
+    groups = GroupUtils.active_queryset(name__contains=query_params["search"]).values()
     return {"result": True, "data": list(groups)}
 
 
@@ -289,14 +318,36 @@ def create_default_rule(llm_model, ocr_model, embed_model, rerank_model):
 
 @nats_client.register
 def get_all_groups():
-    groups = Group.objects.prefetch_related("roles").all()
+    groups = GroupUtils.active_queryset().prefetch_related("roles")
     return_data = GroupUtils.build_group_tree(groups, True)
     return {"result": True, "data": return_data}
 
 
 @nats_client.register
+def get_archived_groups(page=1, page_size=100):
+    """供其他模块分页查询已归档组织，自行处理其资产/数据。不替代管理端归档 Drawer。"""
+    try:
+        page = int(page)
+        page_size = int(page_size)
+    except (TypeError, ValueError):
+        return {"result": False, "message": "invalid pagination"}
+    if page < 1 or page_size < 1 or page_size > ARCHIVED_LIST_MAX_PAGE_SIZE:
+        return {"result": False, "message": "invalid pagination"}
+    listed = ArchivedGroupQuery.list_all_archived_groups(page=page, page_size=page_size)
+    return {
+        "result": True,
+        "data": {
+            "items": listed.items,
+            "count": listed.count,
+            "page": listed.page,
+            "page_size": listed.page_size,
+        },
+    }
+
+
+@nats_client.register
 def get_group_id(group_name):
-    group = Group.objects.filter(name=group_name, parent_id=0).first()
+    group = GroupUtils.active_queryset(name=group_name, parent_id=0).first()
     if not group:
         return {"result": False, "message": f"group named '{group_name}' not exists."}
     return {"result": True, "data": group.id}
@@ -351,8 +402,14 @@ def get_user_group_tree(username, sync_source_id=None):
         user = qs.first()
 
         user_group_ids = [int(g) for g in (user.group_list or [])]
+        active_ids = set(GroupUtils.active_queryset(id__in=user_group_ids).values_list("id", flat=True))
+        user_group_ids = [group_id for group_id in user_group_ids if group_id in active_ids]
         visible_ids = _collect_ancestor_group_ids(user_group_ids)
-        queryset = list(Group.objects.prefetch_related("roles").filter(id__in=visible_ids).order_by("id"))
+        queryset = list(
+            GroupUtils.active_queryset(id__in=visible_ids)
+            .prefetch_related("roles")
+            .order_by("id")
+        )
         group_tree = GroupUtils.build_group_tree(queryset, is_superuser=False, user_groups=user_group_ids)
         return {
             "result": True,

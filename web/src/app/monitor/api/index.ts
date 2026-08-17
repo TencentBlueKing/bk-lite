@@ -4,9 +4,9 @@ import { AxiosRequestConfig } from 'axios';
 import {
   GroupInfo,
   InstanceParam,
-  MetricItem,
-  ObjectItem
+  MetricItem
 } from '@/app/monitor/types';
+import { filterVisibleMonitorObjects } from '@/app/monitor/utils/monitorObject';
 
 export interface MetricsParam {
   monitor_object_id?: React.Key;
@@ -100,9 +100,9 @@ const useMonitorApi = () => {
     const result = await get('/monitor/api/monitor_object/', {
       params: queryParams
     });
-    // 默认过滤掉不可见对象（is_visible=false）
+    // 默认过滤不可见对象，以及父对象已隐藏的子对象
     if (!include_invisible && Array.isArray(result)) {
-      return result.filter((item: ObjectItem) => item.is_visible !== false);
+      return filterVisibleMonitorObjects(result);
     }
     return result;
   };

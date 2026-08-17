@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Alert, Button, Tooltip, Form, Input, Empty, InputNumber, Switch } from 'antd';
+import { Alert, Button, Tooltip, Form, Input,  InputNumber, Switch } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 
 const { TextArea } = Input;
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
@@ -313,7 +314,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
               {(fields) => (
                 <>
                   {fields.length === 0 && (
-                    <Empty description={t('common.noData')} />
+                    <CompactEmptyState description={t('common.noData')} />
                   )}
                   {fields.map(({ key, name, fieldKey, ...restField }) => {
                     const fieldType = form.getFieldValue(['kwargs', name, 'type']);

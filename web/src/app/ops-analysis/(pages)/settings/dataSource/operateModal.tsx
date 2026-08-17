@@ -50,6 +50,7 @@ import {
   buildConnectorPayload,
   buildConnectionLibraryCreateFromDatasourceForm,
   canExtractConnectionFromDatasourceForm,
+  shouldCreateLibraryConnectionFromForm,
   createDefaultParam,
   createDefaultSchemaField,
   createDefaultTransformConfig,
@@ -375,6 +376,17 @@ const OperateModal: React.FC<OperateModalProps> = ({
       if (!canExtractConnectionFromDatasourceForm(values)) {
         throw new Error(t("common.inputMsg"));
       }
+      const createFromForm = shouldCreateLibraryConnectionFromForm(
+        currentRow,
+        values.source_type,
+      );
+      if (
+        createFromForm &&
+        (isDatabaseSource || isRestApiSource) &&
+        values.connection_config?.password === PASSWORD_PLACEHOLDER
+      ) {
+        throw new Error(t("dataConnection.reenterPassword"));
+      }
       const built = buildConnectionLibraryCreateFromDatasourceForm(values, {
         t,
         name: connectionName,
@@ -389,7 +401,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         }
         : {};
 
-      if (currentRow?.id) {
+      if (currentRow?.id && !createFromForm) {
         const result = await extractDataSourceConnection(currentRow.id, {
           name: built.createPayload.name,
           description: built.createPayload.description,
@@ -440,10 +452,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
   }, [
     createDataConnection,
-    currentRow?.id,
+    currentRow,
     extractDataSourceConnection,
     extractForm,
     form,
+    isDatabaseSource,
     isRestApiSource,
     onSuccess,
     reloadConnectionOptions,
@@ -813,6 +826,16 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
 
     if (previousSourceType !== sourceType) {
+      form.setFieldsValue({
+        connection: undefined,
+        connection_overrides: {},
+        connection_mode:
+          sourceType === SOURCE_TYPE_MYSQL ||
+          sourceType === SOURCE_TYPE_POSTGRESQL ||
+          sourceType === SOURCE_TYPE_REST_API
+            ? "inline"
+            : form.getFieldValue("connection_mode"),
+      });
       if (sourceType === SOURCE_TYPE_PROMETHEUS) {
         form.setFieldsValue({
           chart_type: [...PROMETHEUS_DEFAULT_CHART_TYPES],
@@ -832,6 +855,16 @@ const OperateModal: React.FC<OperateModalProps> = ({
       } else if (sourceType !== SOURCE_TYPE_NATS) {
         form.setFieldValue("chart_type", [TABLE_CHART_TYPE]);
         setParams([]);
+        form.setFieldValue(
+          "connection_config",
+          sourceType === SOURCE_TYPE_MYSQL
+            ? { port: 3306 }
+            : sourceType === SOURCE_TYPE_POSTGRESQL
+              ? { port: 5432 }
+              : sourceType === SOURCE_TYPE_REST_API
+                ? { method: "GET", timeout: 10 }
+                : {},
+        );
       }
       if (sourceType === SOURCE_TYPE_REST_API || sourceType === SOURCE_TYPE_EXCEL) {
         form.setFieldValue(
@@ -1355,7 +1388,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         },
       }}
       footer={
-        <div style={{ textAlign: "right" }}>
+        <div className="text-right">
           {readOnly ? null : (
             <Button
               type="primary"
@@ -1366,7 +1399,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             </Button>
           )}
           <Button
-            style={{ marginLeft: readOnly ? 0 : 8 }}
+            className={readOnly ? undefined : "ml-2"}
             onClick={handleClose}
           >
             {readOnly ? t("common.close") : t("common.cancel")}
@@ -1491,16 +1524,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
               ]}
             >
               {namespacesLoading ? (
-                <div style={{ textAlign: "center", padding: "8px 0" }}>
+                <div className="py-2 text-center">
                   <Spin size="small" />
                 </div>
               ) : namespaceList.length === 0 ? (
-                <div
-                  style={{
-                    color: "var(--color-text-4)",
-                    fontSize: "13px",
-                  }}
-                >
+                <div className="text-[13px] text-[var(--color-text-4)]">
                   {t("common.noData")}
                 </div>
               ) : (
@@ -1537,16 +1565,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
           ]}
         >
           {tagsLoading ? (
-            <div style={{ textAlign: "center", padding: "8px 0" }}>
+            <div className="py-2 text-center">
               <Spin size="small" />
             </div>
           ) : tagList.length === 0 ? (
-            <div
-              style={{
-                color: "var(--color-text-4)",
-                fontSize: "13px",
-              }}
-            >
+            <div className="text-[13px] text-[var(--color-text-4)]">
               {t("common.noData")}
             </div>
           ) : (
@@ -1702,7 +1725,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   initialValue={10}
                 >
-                  <InputNumber min={1} max={30} style={{ width: "100%" }} disabled={readOnly} />
+                  <InputNumber min={1} max={30} className="w-full" disabled={readOnly} />
                 </Form.Item>
                 <Form.Item
                   name={["query_config", "response_path"]}
@@ -1804,7 +1827,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
-                  <InputNumber min={1} max={65535} style={{ width: "100%" }} disabled={readOnly} />
+                  <InputNumber min={1} max={65535} className="w-full" disabled={readOnly} />
                 </Form.Item>
                 <Form.Item
                   name={["connection_config", "database"]}
@@ -1942,7 +1965,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   initialValue={30}
                 >
-                  <InputNumber min={1} max={120} style={{ width: "100%" }} />
+                  <InputNumber min={1} max={120} className="w-full" />
                 </Form.Item>
               </div>
               {readOnly ? null : (
@@ -2007,7 +2030,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                               <InputNumber
                                 min={1}
                                 max={44640}
-                                style={{ width: "100%" }}
+                                className="w-full"
                               />
                             </Form.Item>
                             <Form.Item
@@ -2029,7 +2052,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                           <InputNumber
                             min={1}
                             max={50}
-                            style={{ width: "100%" }}
+                            className="w-full"
                           />
                         </Form.Item>
                       </div>

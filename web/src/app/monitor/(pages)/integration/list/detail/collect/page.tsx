@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Button, Empty, Modal, Spin, message } from 'antd';
+import { Button, Modal, Spin, message } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import CodeEditor from '@/components/code-editor';
+import CompactEmptyState from '@/components/compact-empty-state';
 import PermissionWrapper from '@/components/permission';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import { useTranslation } from '@/utils/i18n';
@@ -71,7 +72,7 @@ const CollectPage = () => {
 
   if (templateType !== 'snmp') {
     return (
-      <Empty description={t('monitor.integrations.collectNotSupported')} />
+      <CompactEmptyState description={t('monitor.integrations.collectNotSupported')} />
     );
   }
 

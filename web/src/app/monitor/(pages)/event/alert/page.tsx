@@ -709,7 +709,6 @@ const Alert: React.FC = () => {
       </div>
       <AlertDetail
         ref={detailRef}
-        objectId={objectId === 'all' ? '' : objectId}
         objects={objects}
         userList={userList}
         onSuccess={() => getAssetInsts('refresh')}

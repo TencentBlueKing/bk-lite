@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useImperativeHandle } from "react";
-import { Button, Empty, Input, Select } from "antd";
+import { Button, Input, Select } from "antd";
 import {
   MinusCircleOutlined,
   PlusCircleOutlined,
 } from "@ant-design/icons";
 import CustomTable from "@/components/custom-table";
+import CompactEmptyState from "@/components/compact-empty-state";
 import { useTranslation } from "@/utils/i18n";
 import { ResponseFieldDefinition } from "@/app/ops-analysis/types/dataSource";
 import {
@@ -221,12 +222,7 @@ const FieldSchemaTable = React.forwardRef<
         bordered
         locale={{
           emptyText: (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t("common.noData")}
-              className="!my-0 py-1"
-              styles={{ image: { height: 36 } }}
-            />
+            <CompactEmptyState description={t("common.noData")} />
           ),
         }}
         rowDraggable={!readOnly && schemaFields.length > 0}

@@ -9,14 +9,37 @@
 
 Storybook 是组件行为与变体的契约中心，但 Storybook 引用本身不构成 shared 证据。业务域组件应放在 `src/app/<app>/components`；控制台根壳组件放在 `src/app/(core)/components`。shared 组件禁止反向依赖 `@/app/*`。
 
+视觉、token、Tailwind / 行内样式的产品规则以 `DESIGN.md` 为准；本节只规定治理改动时如何执行这些样式约束，避免“换了 shared 壳、留下整段行内布局债”。
+
+Agent 日常入口：根 `CLAUDE.md` / `AGENTS.md`「Web UI 硬约束」；**勿要求每次通读** `DESIGN.md`。治理大迁移或归属争议时再读本文与 `DESIGN.md` 相关章节。
+
+## 样式与布局约束（治理执行）
+
+完整规则见 `DESIGN.md` → **Layout & Styling**。治理迁移与跨 app 收敛时额外遵守：
+
+1. **ClassName First / Tailwind 优先（触及即改）**  
+   接入 shared 或改布局时，同区块的 `style={{ display:'flex', gap, padding, width... }}` 须改为 Tailwind `className`。禁止只换组件、不改布局写法；也勿为普通布局新建 SCSS Module。
+
+2. **Token，不硬编码色**  
+   治理触及的颜色必须是 `var(--color-…)` 或已映射的语义 class；发现 `#ff4d4f`、`#8c8c8c`、`bg-white` / `text-black` 等主题硬编码时，随治理一并改掉，不要新增。
+
+3. **行内样式白名单**  
+   仅保留：AntD 组件契约（如 Modal `styles.body` 限高）、运行时动态值（进度/拖拽/图表坐标）、画布类瞬时尺寸。其余布局行内视为债；新代码不得扩大比例。
+
+4. **不为样式分叉组件**  
+   仅因间距、圆角、边框色不同而复制 app-local 平行实现 → 删除分叉，复用 shared variant 或补稳定 props；样式差异优先用 `className` / token，不新开目录。
+
+5. **交付自检（非所有权脚本）**  
+   `check:component-ownership` 只校验目录所有权，不替代样式审查。治理 PR / cycle 说明中应点明：触及区块是否已按 `DESIGN.md` 改为 className；若刻意保留行内，写明例外类别（动态值 / AntD 契约 / 未触及历史债）。
+
 ## 当前终态
 
 完整机器可读清单见 `component-ownership.manifest.json`。
 
 | 分类 | 数量 | 判定 |
 | --- | ---: | --- |
-| `shared-cross-app` | 64 | 至少两个真实 app 直接或传递消费 |
-| `shared-primitive` | 48 | 当前消费者不足两个，但具有明确 primitive 理由和 contract story |
+| `shared-cross-app` | 69 | 至少两个真实 app 直接或传递消费 |
+| `shared-primitive` | 43 | 当前消费者不足两个，但具有明确 primitive 理由和 contract story |
 | `app-local` | 0 | 不允许留在 `src/components` |
 | `story-only-review` | 0 | 不允许仅因 Storybook 引用留在 `src/components` |
 | `invalid-reverse-dependency` | 0 | shared 禁止依赖 app |
@@ -149,6 +172,207 @@ Storybook 是组件行为与变体的契约中心，但 Storybook 引用本身�
 - 显式不迁：Patch `risk-execution` 状态 Tag——API 驱动 `status_color` + 域状态(`pending_reboot`/`partial_success` 等)，与 `ExecutionStatusBadge` 语义不匹配。
 - 门禁：`node scripts/component-ownership-audit.mjs --check` 通过(112 records)。
 
+### 合并最新 master 后跨 app 补强(2026-08 Cycle 7)
+
+- 同步 `origin/master` + `upstream/master` 到治理分支。
+- ExecutionStatusBadge：MLOps `TrainTaskHistory` 接入(RUNNING/FINISHED/FAILED/KILLED + i18n label)，获得第二真实 app。
+- SecretValueDisplay：system-manager API Key 创建成功弹窗明文展示 + 复制收敛(`masked={false}`)，获得第二真实 app。
+- SearchActionBar + FilterToolbar：OpsPilot `tool/page.tsx` 技能包搜索/导入工具栏。
+- CompactEmptyState：Patch `baseline-compliance-detail` 三处空态。
+- 门禁：`node scripts/component-ownership-audit.mjs --check` 通过(112 records；68 cross-app / 44 primitive)。
+
+### 全量再扫 + 分叉收敛(2026-08 Cycle 8)
+
+- 同步最新 `upstream/master`。
+- 删除 CMDB `app/cmdb/components/tag-capsule-group` 平行实现，assetSearch/baseInfo/common 统一 `@/components/tag-capsule-group`。
+- ChartEmptyState：Log `stackedBarChart` / `barChart` 空态收敛(chart-empty-state 增加 log 消费)。
+- CompactEmptyState：Job playbook-library 参数/文件/README 空态。
+- SearchActionBar：Node Manager 云区域变量页；CMDB 自定义上报任务表工具栏。
+- 显式保留：AlarmAction 双实现(列表 batch dropdown vs 行内操作，见 `alarm-batch-action-toolbar-test.ts`)；relatedAlertsPanel 双路径(props/数据模型不同)；log `fieldList` CustomPopover。
+- 门禁：check 通过(112 records；68 cross-app / 44 primitive)。
+
+### Loop 续跑(2026-08 Cycle 9)
+
+- 再同步 `upstream/master`(告警日志安全相关提交)。
+- VersionBadge：MLOps `DatasetReleaseList` 版本列接入，获得第二真实 app(`job,mlops`)。
+- SearchActionBar：system-manager 用户同步记录抽屉；IM 通知渠道页搜索/操作区。
+- 门禁：check 通过(112 records；69 cross-app / 43 primitive)。
+
+### Loop 续跑(2026-08 Cycle 10)
+
+- 再同步 `upstream/master`(凭据结果兼容、补丁周期评估通知、日志正则预览边界等)。
+- CompactEmptyState：Monitor 采集页/自动配置空态；OpsPilot 技能包选择弹窗空态。
+- FilterToolbar：Patch `library` 候选补丁抽屉筛选条。
+- 门禁：check 通过(112 records；69 cross-app / 43 primitive)。
+
+### 文档：样式规则入库(2026-08)
+
+- `DESIGN.md` 新增 **Layout & Styling**：className/Tailwind 优先、token 着色、行内样式白名单、触及即改。
+- 本节新增 **样式与布局约束**：治理迁移时同步执行，所有权脚本不替代样式自检。
+- 根 `DESIGN.md` 导航补链组件治理与布局写法。
+- Agent 短清单落在根 `CLAUDE.md` / `AGENTS.md`「Web UI 硬约束」；不另建 `.cursor/rules`，避免默认通读整篇 DESIGN。
+
+### Loop 续跑(2026-08 Cycle 11)
+
+- 合并本地已缓存的 `upstream/master`(webchat 流式批处理相关；本机 fetch 经 gh-proxy 暂不可用，以已有 remote-tracking 为准)。
+- SearchActionBar：CMDB `assetManage/management` 模型管理工具栏；Monitor `savedQueryDrawer`。
+- VersionBadge：Job playbook-library 列表/详情抽屉 + job-record 详情版本展示；触及区硬编码绿改为 `var(--color-success)`。
+- CompactEmptyState：OpsPilot provider `modelManagement` / `grid` / `vendorCardGrid`、`SkillPackageDetailDrawer`、wiki `MaterialTab`。
+- 门禁：check 通过(112 records；69 cross-app / 43 primitive)。
+
+### Loop 续跑(2026-08 Cycle 12)
+
+- master 已与本地 remote-tracking 对齐(fetch 仍受 gh-proxy 限制)。
+- SearchActionBar：CMDB 模型属性页、专业采集任务页、订阅规则抽屉(行内 width→className)。
+- FilterToolbar：Patch baseline compliance 详情筛选条。
+- CompactEmptyState：OpsPilot skill/tool 页与 skill 工具编辑器族、operateModal/toolSelector；CMDB ViewsWorkspaceShell；Node collectorDetail 空态 + 搜索宽度 className。
+- 门禁：check 通过(112 records)。
+
+### Loop 续跑(2026-08 Cycle 13)
+
+- 合并 `upstream/master`(运营分析连接测试与 3D 机房展示)。
+- SearchActionBar：system-manager 集成实例创建弹窗；OpsPilot skill settings 技能包选择；CMDB nodeMgmtSyncDetail。
+- CompactEmptyState：CMDB batchReviewDrawer / assetOverview；Log 集成列表；Ops-analysis networkLibrary(保留 data-testid 包装)；nodeMgmtSyncDetail。
+- 门禁：check 通过(112 records)。
+
+### Loop 续跑(2026-08 Cycle 14)
+
+- master 已对齐；CompactEmptyState：Alarm 集成列表、actionTimeline、incident collaboration；CMDB assetData 空态。
+- 门禁：check 通过(112 records)。
+
+### Loop 续跑(2026-08 Cycle 15)
+
+- ChartEmptyState：MLOps charts（bar/line/horizontalBar/simpleLine）。
+- CompactEmptyState：MLOps FormPreview；system-manager 用户同步列表/进度抽屉；CMDB 模型管理页与 unknown view。
+- 门禁：check 通过(112 records)。
+
+### Loop 续跑(2026-08 Cycle 16)
+
+- CompactEmptyState：Monitor search/updateConfig/event template、mysql dashboard、Job home/job-record 空态、OpsPilot ExecutionPreview/WikiPageReadingPane、Node cloudregion 未部署提示。
+- ChartEmptyState：Monitor ring/horizontal-bar panels（shared + monitor-dashboard-widgets 副本）。
+- 门禁：check 通过(112 records)。
+
+### Loop 续跑(2026-08 Cycle 17)
+
+- fetch 经 gh-proxy 不可用；合并本地 `upstream/master` / `origin/master` 均为 Already up to date（相对 upstream ahead 7 / behind 0）。
+- ChartEmptyState：Monitor `stackedBarChart`、`echarts-line-chart`；Alarm `stackedBarChart`（触及区布局行内 → className）。
+- CompactEmptyState：Alarm integration detail（3 处）/ `teamSecretsManager` / `relatedAlertsPanel`；Monitor integration list；Ops-analysis sidebar 目录空态。
+- 门禁：`pnpm check:component-ownership` 通过(112 records；Node v24.18.0)。
+
+### Loop 续跑(2026-08 Cycle 18)
+
+- fetch 经 gh-proxy / origin SSH 均失败；合并本地 tracking：`origin/master`（会话恢复/图片预算等）成功；随后 `upstream/master` Already up to date（相对 remote-tracking ahead 8 / behind 0）。
+- CompactEmptyState：Ops-analysis `networkEdgeDrawer`/`networkNodeDrawer`/`dataSource/previewPanel`；Patch `risk-execution` 详情空态（2 处）；CMDB `assetSearch` 结果区。
+- ChartEmptyState：Monitor `metricPreview`；Log dashboard `comKpiCard`/`comLine`/`comBar`。
+- 显式不迁：Patch `risk-execution` 状态 Tag（API `status_color` + 域状态，与 ExecutionStatusBadge 不符）；assetSearch landing 表内 emptyText（保留 AntD Table locale + 既有 class）。
+- 门禁：`pnpm check:component-ownership` 通过(112 records；Node v24.18.0)。
+
+### Loop 续跑(2026-08 Cycle 19)
+
+- fetch 经 gh-proxy / origin SSH 均失败；合并本地 tracking：`upstream/master` / `origin/master` Already up to date（相对 remote-tracking ahead 8 / behind 0）。
+- ChartEmptyState：Log dashboard 其余通用图 `comPie`/`comBarLine`/`comScatter`。
+- CompactEmptyState：CMDB 关系 `list`/`networkTopo`；Ops-analysis `fieldSchemaTable`/`paramTable` 表空态。
+- 显式不迁：assetSearch/landing 表内 emptyText（Cycle 18 同）；roomFloorPlan / applicationResourceOverview 域文案 Empty（下轮）；Log 域专用 widget（docker/http/…）与 heatmap/sankey/single/table。
+- 门禁：`pnpm check:component-ownership` 通过(112 records；Node v24.18.0)。
+
+### Loop 续跑(2026-08 Cycle 20)
+
+- fetch 经 gh-proxy / origin SSH 均失败；合并本地 tracking：`upstream/master` / `origin/master` Already up to date（相对 remote-tracking ahead 8 / behind 0）。
+- ChartEmptyState：Log `comHeatmap`/`comSankey`/`comSingle`；域 widget 首批 `docker/dockerBarChart`、`http/httpRequestTrend`。
+- CompactEmptyState：CMDB `roomFloorPlan` 两处域文案空态。
+- 显式不迁：assetSearch/landing 表内 emptyText（Cycle 18/19 同）；applicationResourceOverview 多处域 Empty；Log 其余域 widget（mysql/redis/kafka/…）与 `compactInsightTable`/`dockerErrorTable`。
+- 门禁：`pnpm check:component-ownership` 通过(112 records；Node v24.18.0)。
+
+### Loop 续跑(2026-08 Cycle 21)
+
+- fetch 经 gh-proxy / origin SSH 均失败；合并本地 `upstream/master`（ahead 9 / behind 0）；`origin/master` Already up to date。
+- ChartEmptyState：Log 域 widget `mysql/mysqlInstanceBar`、`redis/redisTrendLine`、`http/httpStatusTrend`、`http/httpLatencyBar`。
+- CompactEmptyState：CMDB `rackElevation`、`ipamMatrix` 域文案空态。
+- 显式不迁：assetSearch/landing 表内 emptyText；landing 分类区 Empty 与 applicationResourceOverview 多处域 Empty（下轮）；Log `kafka`/`nginx`、docker 其余、`compactInsightTable`/`dockerErrorTable`。
+- 门禁：`pnpm check:component-ownership` 通过(112 records；Node v24.18.0)。
+
+### Loop 续跑(2026-08 Cycle 22)
+
+- fetch 经 gh-proxy / origin SSH 均失败；合并本地 `upstream/master` / `origin/master` Already up to date（相对 remote-tracking ahead 9 / behind 0；ahead 35 / behind 0）。
+- ChartEmptyState：Log `kafka/kafkaTrend`、`nginx/nginxTrend`；docker 其余 `dockerDualLine`/`dockerAreaChart`/`dockerDonutChart`；`compactInsightTable`。
+- 显式不迁：assetSearch/landing 表内 emptyText（Cycle 18+ 同）；landing 分类区 Empty（非表内，下轮）；applicationResourceOverview 多处域 Empty；`dockerErrorTable`。
+- 门禁：`pnpm check:component-ownership` 通过(112 records；Node v24.18.0)。
+
+### Loop 续跑(2026-08 Cycle 23)
+
+- fetch 经 gh-proxy / origin SSH 均失败；合并本地 `upstream/master` / `origin/master` Already up to date（相对 remote-tracking ahead 9 / behind 0；ahead 35 / behind 0）。
+- ChartEmptyState：Log `docker/dockerErrorTable`；域 widget `apache/apacheTrend`、`elasticsearch/elasticsearchTrend`、`mongodb/mongodbTrend`。
+- CompactEmptyState：landing 分类区（非表内）；CMDB `applicationResourceOverview` 四处域空态。
+- 显式不迁：assetSearch/landing 表内 / List emptyText（Cycle 18+ 同）；其余 Log 域 widget（redisInstanceBar/redisNodeCompareBar、rabbitmq/postgresql/fileIntegrity、syslog/windowsEvent）。
+- 门禁：`pnpm check:component-ownership` 通过(112 records；Node v24.18.0)。
+
+### Loop 续跑(2026-08 Cycle 24)
+
+- fetch 经 gh-proxy / origin SSH 均失败；合并本地 `upstream/master` / `origin/master` Already up to date（相对 remote-tracking ahead 9 / behind 0；ahead 35 / behind 0）。
+- ChartEmptyState：Log 域 widget 收尾 `redis/redisInstanceBar`、`redis/redisNodeCompareBar`、`rabbitmq/rabbitmqTrend`、`postgresql/postgresqlTrend`、`fileIntegrity/fileIntegrityTrend`、`syslog/syslogTrend`、`windowsEvent/windowsEventTrend`（7 处；dashboard widgets 内 `Empty.PRESENTED_IMAGE_SIMPLE` 已清零）。
+- 显式不迁：assetSearch/landing 等表内 emptyText（Cycle 18+ 同）；tree-selector / fieldList / 指南页域 Empty；ops-analysis canvas/topology 大块空态（非 compact chart 形态）。
+- **剩余评估**：Log ChartEmpty 高收益批次已稀薄；剩余多为表内 emptyText、域文案 Empty、画布/拓扑全页空态，边际收益下降。**建议放慢或暂停组件治理 loop**（间隔 ≥60m，或仅在有明确新共享证据时再跑）。
+- 门禁：`pnpm check:component-ownership` 通过(112 records；Node v24.18.0)。
+
+### 扫尾评估(2026-08 Cycle 25) — 可暂停
+
+- fetch：`upstream/master` 经 gh-proxy 成功；`origin/master` SSH 失败，用本地 tracking。合并二者均为 Already up to date（相对 remote-tracking ahead 9 / behind 0；ahead 35 / behind 0）。
+- CompactEmptyState 扫尾 4 处：Alarm `alarmDetail` 时间线、`ganttChart`；CMDB `selectIcon` 搜索无结果、`changeRecords` 时间线。
+- 全仓再扫：MoreActions 仅余已标注保留（log `fieldList` CustomPopover 等）；FilterToolbar / SearchActionBar 无明显低成本缺口；剩余 Empty 多为表内 emptyText、指南页、树选择器、画布/拓扑/Select notFound、带 CTA children 的域空态。
+- **结论**：高收益批次已尽；本轮为扫尾。**建议暂停定时 loop**，改为仅事件驱动（新 shared 消费证据 / 新平行分叉 / 明确治理票据）。
+- 门禁：`pnpm check:component-ownership` 通过(112 records；Node v24.18.0)。
+
+### 样式统一 loop(2026-08 Style-1)
+
+- 目标：布局/间距统一 Tailwind `className`；颜色走 token；行内仅动态值/AntD 契约。
+- `CLAUDE.md` / `DESIGN.md` Layout：明确 Tailwind 优先于新建 SCSS Module。
+- 本轮：`dual-selector`、`patch library` 导入抽屉与页壳、`compact-empty-state` 行内布局/色改为 className。
+- 下一轮优先：patch home/risk-*、job-record 等高密度 `style={{}}` 文件。
+
+### 样式统一 loop(2026-08 Style-2)
+
+- patch-manager 页壳批量收敛：`home` 47→4（仅动态色/高度）、`settings`→1（连通性动态色）、`risk-pending`/`target`/`baseline`→0、`risk-execution`→5（步骤状态色/时间线等动态边框）。
+- 退出条件未达：全仓仍有较多 `style={{}}`（job-record、ipamMatrix、cmdb subscription 等）；loop 继续直至高密度布局行内明显收敛。
+
+### 样式统一 loop(2026-08 Style-3)
+
+- OpsPilot chat：`UserChoiceCard`/`ToolCallGroup` 布局行内 →0（条件态用 className；hover 替 mouseEnter 改色）。
+- CMDB 双份 `triggerTypeConfig`：布局/错误色/标签行 → Tailwind；仅保留选中 Card `borderColor` 动态行内 + AntD `styles.body`。
+- `ipamMatrix` 收敛至约 6（进度宽/动态色、grid minmax、cell 底色、图例色块）。
+- 下一轮优先：`job-record`(≈70)、`changeRecords`(≈33)、`job/home`(≈30)、`networkNodeDrawer` 等高密度布局文件。
+
+### 样式统一 loop(2026-08 Style-4)
+
+- `job-record` 70→2（树深度 padding、语法高亮色）。
+- `job/home` 30→14（图表/Tag/进度条动态色与尺寸）。
+- `changeRecords` 33→5（场景色 map）。
+
+### 样式统一 loop(2026-08 Style-5)
+
+- `useConfigRenderer` 25→0；`file-dist` 18→0；`tableSettingsSection` 20→0；`node.tsx` 16→0。
+- `roomFloorPlan` 17→12（画布坐标/机柜色/进度宽等动态值保留）。
+- `networkNodeDrawer` 已为 0。跳过纯 Storybook `widgetShowcase.stories`。
+- 退出条件接近：app 内 ≥15 的布局行内文件已基本清完；下一轮扫 ≥10 的剩余并评估是否可停 heartbeat。
+
+### 样式统一 loop(2026-08 Style-6)
+
+- `playbook-library` 14→1；`searchFilter` 14→1；`filterBar` 12→0；`job/target` 12→1；topology `toolbar` 13→1；`edgeConfPanel` 13→0。
+- 可选：`networkNodeShape`→2；`networkEdgeDrawer`→2（动态边框/色）。
+- 退出评估：≥15 布局行内已清空；剩余 ≥10 多为图表/画布/动态色（home、roomFloorPlan、stacked-bar、authSettings 等）。下一轮可再清一轮 ≥10 静态布局后标注接近可停。
+
+### 样式统一 loop(2026-08 Style-7)
+
+- `authSettings` 11→0；`operateModal` 11→0；`commonColumns` 10→0。
+- `levelFormModal` 11→2；`userInformation` 10→1；`collectorDetail` 11→4（动态色保留）。
+- `comKpiCard` 仅静态 flex；`comTopN` 全动态未改。SKIP：job home / roomFloorPlan / stacked-bar。
+- 退出评估：静态布局 ≥10 基本清完；剩余多为图表/动态色。下一轮若无新高密度布局文件，可标注接近可停 heartbeat。
+
+### 样式统一 loop(2026-08 Style-8) — 可停
+
+- stacked-bar ×2：11→4（段宽/色动态）；paramTable/script-library→0；installGuidance/model*/environment/cron/quick-exec 等静态布局收敛。
+- 仍 ≥8 且均为动态/缩放例外：job home、roomFloorPlan、chartLegend(scale)、comTopN/comKpiCard（SKIP）。
+- **退出判定**：高密度静态布局行内已明显收敛；剩余为图表/画布/动态色例外。本 loop **停止再挂 style_unify heartbeat**（组件治理 loop 不受影响）。
+
 ### 已知 Storybook 构建阻塞
 
 - Node 24 全量 `pnpm build-storybook` 在 webpack `WasmHash._updateWithBuffer` 崩溃(#0125)。MoreActionsDropdown 的 Storybook 契约暂时以单文件 + 定向 ESLint 保障。
@@ -163,3 +387,5 @@ pnpm build-storybook
 ```
 
 新增目录若为单 app、story-only、unused 或反向依赖 app，`check:component-ownership` 必须失败。业务组件晋升 shared 前必须先完成至少两个 app 的真实迁移，并同步更新 Storybook contract。
+
+治理改动触及 UI 时，还须按 `DESIGN.md` Layout & Styling 与上文「样式与布局约束」自检：布局 className 化、颜色走 token、不为样式分叉组件。所有权脚本不替代该审查。

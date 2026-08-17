@@ -1,26 +1,10 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { IntlProvider } from 'react-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApmEndpointsPage from '../page';
-
-const tableMessages = {
-  'common.total': '共',
-  'common.items': '条',
-  'common.checked': '已选',
-  'common.confirm': '确认',
-  'common.cancel': '取消',
-  'common.searchPlaceHolder': '搜索字段',
-  'common.selectAll': '全选',
-  'common.selected': '已选',
-  'common.clear': '清空',
-  'common.pin': '固定',
-  'common.unpin': '取消固定',
-  'cutomTable.fieldSetting': '字段设置',
-  'cutomTable.pinHint': '固定字段会显示在表格左侧',
-};
 
 const api = {
   getServices: vi.fn(),
@@ -111,29 +95,24 @@ afterEach(() => {
 describe('APM 端点详情抽屉', () => {
   it('通过显式查看操作打开详情并加载样本调用链', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    render(
-      <IntlProvider locale="zh" messages={tableMessages}>
-        <ApmEndpointsPage />
-      </IntlProvider>,
-    );
+    renderWithApmIntl(<ApmEndpointsPage />);
 
     expect(await screen.findByText('/pay')).not.toBeNull();
     await user.click(screen.getByRole('button', { name: '查看' }));
 
 
     expect(await screen.findByText('端点趋势')).not.toBeNull();
-    expect(screen.getByTestId('endpoint-trend')).not.toBeNull();
+    expect(screen.getAllByTestId('endpoint-trend')).toHaveLength(3);
+    expect(screen.getByText('吞吐量 req/s')).not.toBeNull();
+    expect(screen.getByText('错误率 %')).not.toBeNull();
+    expect(screen.getByText('P95 / P99')).not.toBeNull();
     expect(await screen.findByText('样本调用链')).not.toBeNull();
     await waitFor(() => expect(api.getTraces).toHaveBeenCalled());
     expect(await screen.findByText(/trace-endpoint-1/)).not.toBeNull();
   });
 
   it('把服务筛选放在左侧，并由表头承载三个指标排序', async () => {
-    render(
-      <IntlProvider locale="zh" messages={tableMessages}>
-        <ApmEndpointsPage />
-      </IntlProvider>,
-    );
+    renderWithApmIntl(<ApmEndpointsPage />);
 
     await screen.findByText('/pay');
     expect(screen.getByRole('combobox', { name: '服务' })).not.toBeNull();
@@ -143,18 +122,14 @@ describe('APM 端点详情抽屉', () => {
     expect(screen.getByRole('columnheader', { name: /P95/ }).querySelector('.ant-table-column-sorters')).not.toBeNull();
   });
 
-  it('按容器比例平衡主信息列与指标列', async () => {
-    render(
-      <IntlProvider locale="zh" messages={tableMessages}>
-        <ApmEndpointsPage />
-      </IntlProvider>,
-    );
+  it('让主信息列自适应剩余空间，并固定指标与操作列宽度', async () => {
+    renderWithApmIntl(<ApmEndpointsPage />);
 
     await screen.findByText('/pay');
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['29%', '22%', '14%', '11%', '10%', '9%', '88px']);
+    expect(columnWidths).toEqual(['', '', '120px', '112px', '104px', '112px', '88px']);
     expect(screen.queryByRole('columnheader', { name: '方法' })).toBeNull();
     expect(getComputedStyle(screen.getByRole('columnheader', { name: /吞吐量/ })).textAlign).toBe('left');
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });

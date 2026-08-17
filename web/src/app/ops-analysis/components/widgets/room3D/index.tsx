@@ -79,6 +79,8 @@ const Room3D: React.FC<Room3DProps> = ({
   const roomData = validation.ok ? validation.data : null;
   const validationError = "error" in validation ? validation.error : "";
   const notice = roomData?.notice;
+  const [dismissedNotice, setDismissedNotice] = useState<string | null>(null);
+  const visibleNotice = notice && notice !== dismissedNotice ? notice : null;
   const [hoverState, setHoverState] = useState<PointerState | null>(null);
   const [selectedRack, setSelectedRack] = useState<Room3DRack | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<{
@@ -429,7 +431,18 @@ const Room3D: React.FC<Room3DProps> = ({
           <div className={styles.roomSwitch}>{componentSwitchControl}</div>
         )}
         <div className={styles.stateContent}>
-          {notice && <Alert type="warning" showIcon message={notice} />}
+          {visibleNotice && (
+            <Alert
+              type="warning"
+              showIcon
+              closable={{
+                closeIcon: true,
+                "aria-label": t("dashboard.room3DDismissNotice"),
+              }}
+              message={visibleNotice}
+              onClose={() => setDismissedNotice(visibleNotice)}
+            />
+          )}
           <Empty description={t("dashboard.room3DNoData")} />
         </div>
       </div>
@@ -481,9 +494,18 @@ const Room3D: React.FC<Room3DProps> = ({
           title={t("dashboard.room3DResetView")}
         />
       </div>
-      {notice && (
+      {visibleNotice && (
         <div className={styles.noticePanel}>
-          <strong>{notice}</strong>
+          <Alert
+            type="warning"
+            showIcon
+            closable={{
+              closeIcon: true,
+              "aria-label": t("dashboard.room3DDismissNotice"),
+            }}
+            message={visibleNotice}
+            onClose={() => setDismissedNotice(visibleNotice)}
+          />
         </div>
       )}
       {!isCompact && (

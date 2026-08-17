@@ -30,7 +30,9 @@ def super_client(db):
 @pytest.fixture(autouse=True)
 def _patch_externals():
     with patch("apps.system_mgmt.viewset.group_viewset.log_operation"), patch(
-        "apps.system_mgmt.viewset.group_viewset.clear_users_permission_cache"
+        "apps.system_mgmt.services.group_archive_service.log_operation"
+    ), patch("apps.system_mgmt.viewset.group_viewset.clear_users_permission_cache"), patch(
+        "apps.system_mgmt.services.group_archive_service.clear_users_permission_cache"
     ), patch("apps.system_mgmt.viewset.group_viewset.CMDB") as m_cmdb:
         m_cmdb.return_value.sync_display_fields.return_value = None
         yield
@@ -47,10 +49,26 @@ def test_builtin_list_disabled(super_client):
 # ---------------------------------------------------------------------------
 # get_teams / search_group_list
 # ---------------------------------------------------------------------------
-def test_get_teams(super_client):
+def test_get_teams_excludes_archived(super_client):
+    from apps.base.models import User as BaseUser
+
+    active = Group.objects.create(name="teams-active", parent_id=0)
+    archived = Group.objects.create(name="teams-archived", parent_id=0, is_delete=True)
+    admin = BaseUser.objects.get(username="gvadmin")
+    admin.group_list = [
+        {"id": active.id, "name": active.name},
+        {"id": archived.id, "name": archived.name},
+    ]
+    admin.save()
+    super_client.force_authenticate(user=admin)
+
     resp = super_client.get(f"{BASE}/get_teams/")
     assert resp.status_code == 200
-    assert resp.json()["data"] == [{"id": 1, "name": "Default"}]
+    data = resp.json()["data"]
+    ids = [item["id"] for item in data]
+    assert active.id in ids
+    assert archived.id not in ids
+    assert all(item["name"] != "teams-archived" for item in data)
 
 
 def test_search_group_list(super_client):
@@ -70,6 +88,14 @@ def test_get_detail(super_client):
     data = resp.json()["data"]
     assert data["name"] == "DetailGroup"
     assert data["id"] == g.id
+
+
+def test_get_detail_hides_archived_group(super_client):
+    archived = Group.objects.create(name="ArchivedDetail", parent_id=0, is_delete=True)
+    resp = super_client.get(f"{BASE}/get_detail/?group_id={archived.id}")
+    body = resp.json()
+    assert body["result"] is False
+    assert "ArchivedDetail" not in str(body)
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +136,21 @@ def test_create_group_under_synced_group_is_rejected(super_client, user_sync_sou
 
     assert response.json()["result"] is False
     assert not Group.objects.filter(name="不允许手动新增的子组织", parent_id=synced_root.id).exists()
+
+
+def test_create_group_under_archived_parent_is_rejected(super_client):
+    archived_parent = Group.objects.create(name="ArchivedParent", parent_id=0, is_delete=True)
+
+    response = super_client.post(
+        f"{BASE}/create_group/",
+        {"group_name": "归档下子组", "parent_group_id": archived_parent.id},
+        format="json",
+    )
+
+    body = response.json()
+    assert body["result"] is False
+    assert "archived" in body["message"].lower() or "归档" in body["message"]
+    assert not Group.objects.filter(name="归档下子组", parent_id=archived_parent.id).exists()
 
 
 def test_create_group_parent_not_found(super_client):
@@ -160,6 +201,19 @@ def test_update_group(super_client):
     assert g.name == "NewG"
     assert g.allow_inherit_roles is True
     assert role in g.roles.all()
+
+
+def test_update_group_rejects_archived(super_client):
+    archived = Group.objects.create(name="ArchivedUpdate", parent_id=0, is_delete=True)
+    resp = super_client.post(
+        f"{BASE}/update_group/",
+        {"group_id": archived.id, "group_name": "ShouldNotRename", "role_ids": []},
+        format="json",
+    )
+    archived.refresh_from_db()
+    assert resp.json()["result"] is False
+    assert archived.name == "ArchivedUpdate"
+    assert archived.is_delete is True
 
 
 def test_update_group_invalidates_descendant_users(super_client):
@@ -250,7 +304,11 @@ def test_delete_groups_with_children(super_client):
     child = Group.objects.create(name="DelChild", parent_id=parent.id)
     resp = super_client.post(f"{BASE}/delete_groups/", {"id": parent.id}, format="json")
     assert resp.json()["result"] is True
-    assert not Group.objects.filter(id__in=[parent.id, child.id]).exists()
+    parent.refresh_from_db()
+    child.refresh_from_db()
+    assert parent.is_delete is True
+    assert child.is_delete is True
+    assert Group.objects.filter(id__in=[parent.id, child.id]).count() == 2
 
 
 def test_delete_groups_default_protected(super_client):
@@ -258,12 +316,16 @@ def test_delete_groups_default_protected(super_client):
     g = Group.objects.create(name="Default", parent_id=0)
     resp = super_client.post(f"{BASE}/delete_groups/", {"id": g.id}, format="json")
     assert resp.json()["result"] is False
+    g.refresh_from_db()
+    assert g.is_delete is False
 
 
 def test_delete_groups_virtual_top_protected(super_client):
     g = Group.objects.create(name="VTopDel", parent_id=0, is_virtual=True)
     resp = super_client.post(f"{BASE}/delete_groups/", {"id": g.id}, format="json")
     assert resp.json()["result"] is False
+    g.refresh_from_db()
+    assert g.is_delete is False
     assert Group.objects.filter(id=g.id).exists()
 
 
@@ -273,7 +335,119 @@ def test_delete_synced_group_is_rejected(super_client, user_sync_source):
     response = super_client.post(f"{BASE}/delete_groups/", {"id": root.id}, format="json")
 
     assert response.json()["result"] is False
+    root.refresh_from_db()
+    assert root.is_delete is False
     assert Group.objects.filter(id=root.id).exists()
+
+
+def test_delete_groups_allows_user_with_other_active_group(super_client):
+    parent = Group.objects.create(name="DelKeepUser", parent_id=0)
+    other = Group.objects.create(name="DelOtherActive", parent_id=0)
+    User.objects.create(
+        username="del-keep",
+        password="x",
+        display_name="Del Keep",
+        email="del-keep@x.com",
+        group_list=[parent.id, other.id],
+    )
+
+    resp = super_client.post(f"{BASE}/delete_groups/", {"id": parent.id}, format="json")
+
+    assert resp.json()["result"] is True
+    parent.refresh_from_db()
+    assert parent.is_delete is True
+    user = User.objects.get(username="del-keep")
+    assert parent.id in user.group_list
+    assert other.id in user.group_list
+
+
+def test_delete_groups_rejects_when_user_has_no_other_active_group(super_client):
+    g = Group.objects.create(name="DelOnlyGroup", parent_id=0)
+    User.objects.create(
+        username="del-lonely",
+        password="x",
+        display_name="Del Lonely",
+        email="del-lonely@x.com",
+        group_list=[g.id],
+    )
+
+    resp = super_client.post(f"{BASE}/delete_groups/", {"id": g.id}, format="json")
+
+    assert resp.json()["result"] is False
+    g.refresh_from_db()
+    assert g.is_delete is False
+
+
+# ---------------------------------------------------------------------------
+# archived list / restore / permanent delete
+# ---------------------------------------------------------------------------
+def test_list_restore_permanent_delete_archived_groups_api(super_client):
+    root = Group.objects.create(name="ApiArchRoot", parent_id=0, is_delete=True)
+    child = Group.objects.create(name="ApiArchChild", parent_id=root.id, is_delete=True)
+    other = Group.objects.create(name="ApiArchOther", parent_id=0, is_delete=False)
+    User.objects.create(
+        username="api-arch-user",
+        password="x",
+        display_name="Api Arch",
+        email="api-arch@x.com",
+        group_list=[root.id, other.id],
+    )
+
+    listed = super_client.get(f"{BASE}/list_archived_groups/")
+    assert listed.status_code == 200
+    payload = listed.json()["data"]
+    data = payload["items"]
+    assert payload["count"] >= 1
+    matched = next(item for item in data if item["id"] == root.id)
+    assert matched["kind"] == "local"
+    assert matched["can_restore"] is True
+    assert matched["can_permanently_delete"] is True
+    assert matched["children"][0]["id"] == child.id
+
+    restored = super_client.post(f"{BASE}/restore_archived_groups/", {"id": root.id}, format="json")
+    assert restored.json()["result"] is True
+    root.refresh_from_db()
+    child.refresh_from_db()
+    assert root.is_delete is False and child.is_delete is False
+
+    # 再归档后永久删除
+    assert super_client.post(f"{BASE}/delete_groups/", {"id": root.id}, format="json").json()["result"] is True
+    deleted = super_client.post(
+        f"{BASE}/permanently_delete_archived_groups/", {"id": root.id}, format="json"
+    )
+    assert deleted.json()["result"] is True
+    assert not Group.objects.filter(id__in=[root.id, child.id]).exists()
+    user = User.objects.get(username="api-arch-user")
+    assert user.group_list == [other.id]
+
+
+def test_list_archived_groups_rejects_oversized_page(super_client):
+    resp = super_client.get(f"{BASE}/list_archived_groups/?page_size=101")
+    assert resp.status_code == 400
+    assert resp.json()["result"] is False
+
+
+def test_delete_groups_rejects_invalid_id(super_client):
+    resp = super_client.post(f"{BASE}/delete_groups/", {"id": "abc"}, format="json")
+    assert resp.status_code == 400
+    assert resp.json()["result"] is False
+
+
+def test_delete_groups_forbidden_returns_403():
+    from apps.base.models import User as BaseUser
+
+    allowed = Group.objects.create(name="member-allowed", parent_id=0)
+    target = Group.objects.create(name="member-forbidden", parent_id=0)
+    member = BaseUser.objects.create_user(username="arch-member", password="pw", domain="domain.com", locale="en")
+    member.is_superuser = False
+    member.group_list = [{"id": allowed.id, "name": allowed.name}]
+    member.save()
+    member.permission = {"system-manager": {"user_group-Delete Group"}}
+    client = APIClient()
+    client.force_authenticate(user=member)
+    resp = client.post(f"{BASE}/delete_groups/", {"id": target.id}, format="json")
+    assert resp.status_code == 403
+    assert resp.json()["result"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -296,11 +470,52 @@ def test_get_group_detail_with_roles_inheritance(super_client):
     assert data["inherited_role_source_map"][str(role_parent.id)] == "RP"
 
 
+@pytest.mark.parametrize("batch", [False, True])
+def test_group_detail_with_roles_skips_archived_parents(super_client, batch):
+    role_archived = Role.objects.create(name="r-arch", app="cmdb")
+    role_active = Role.objects.create(name="r-active", app="cmdb")
+    archived_parent = Group.objects.create(
+        name="ArchRP", parent_id=0, allow_inherit_roles=True, is_delete=True
+    )
+    archived_parent.roles.add(role_archived)
+    mid = Group.objects.create(name="MidRP", parent_id=archived_parent.id, allow_inherit_roles=True)
+    mid.roles.add(role_active)
+    child = Group.objects.create(name="ChildRP", parent_id=mid.id)
+
+    if batch:
+        resp = super_client.post(
+            f"{BASE}/batch_get_group_detail_with_roles/",
+            {"group_ids": [child.id]},
+            format="json",
+        )
+        assert resp.json()["result"] is True
+        data = resp.json()["data"][0]
+    else:
+        resp = super_client.post(
+            f"{BASE}/get_group_detail_with_roles/", {"group_id": child.id}, format="json"
+        )
+        data = resp.json()["data"]
+
+    assert role_active.id in data["inherited_role_ids"]
+    assert role_archived.id not in data["inherited_role_ids"]
+    assert str(role_archived.id) not in data["inherited_role_source_map"]
+
+
 def test_get_group_detail_with_roles_not_found(super_client):
     resp = super_client.post(
         f"{BASE}/get_group_detail_with_roles/", {"group_id": 999999}, format="json"
     )
     assert resp.json()["result"] is False
+
+
+def test_get_group_detail_with_roles_hides_archived(super_client):
+    archived = Group.objects.create(name="ArchivedRoles", parent_id=0, is_delete=True)
+    resp = super_client.post(
+        f"{BASE}/get_group_detail_with_roles/", {"group_id": archived.id}, format="json"
+    )
+    body = resp.json()
+    assert body["result"] is False
+    assert "ArchivedRoles" not in str(body)
 
 
 def test_batch_get_group_detail_with_roles(super_client):

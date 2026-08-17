@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import {
+  buildAlertDetailMetricQuery,
   buildAlertSnapshotChartValues,
   resolveAlertDetailChartUnit,
   resolveAlertDetailMetric
@@ -110,6 +111,56 @@ assert.equal(
     ''
   ),
   'bytes'
+);
+
+const metricAlert = {
+  policy: {
+    monitor_object: 42,
+    query_condition: {
+      type: 'metric',
+      metric_id: 88
+    }
+  }
+};
+
+assert.deepEqual(buildAlertDetailMetricQuery(metricAlert), {
+  id: 88,
+  monitor_object_id: 42
+});
+assert.equal(
+  buildAlertDetailMetricQuery({
+    policy: {
+      query_condition: { type: 'metric', metric_id: 88 }
+    }
+  }),
+  null
+);
+assert.equal(
+  buildAlertDetailMetricQuery({
+    policy: {
+      monitor_object: 'all',
+      query_condition: { type: 'metric', metric_id: 88 }
+    }
+  }),
+  null
+);
+assert.equal(
+  buildAlertDetailMetricQuery({
+    policy: {
+      monitor_object: 42,
+      query_condition: { type: 'formula', result_name: 'cpu_sum' }
+    }
+  }),
+  null
+);
+assert.equal(
+  buildAlertDetailMetricQuery({
+    policy: {
+      monitor_object: 42,
+      query_condition: { type: 'pmq' }
+    }
+  }),
+  null
 );
 
 console.log('monitor-alert-detail snapshot validation passed');

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { Table, Empty } from 'antd';
+import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import ChartEmptyState from '@/components/chart-empty-state';
 import useChartColors from './useChartColors';
 import { useTranslation } from '@/utils/i18n';
 
@@ -116,11 +117,7 @@ const DockerErrorTable: React.FC<DockerErrorTableProps> = ({
   ];
 
   if (!loading && tableData.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   return (

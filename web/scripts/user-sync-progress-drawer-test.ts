@@ -55,6 +55,7 @@ const messages: Record<string, string> = {
   'system.user.userSyncPage.phaseError.syncFailed': '同步失败，请稍后重试或联系管理员',
   'system.user.userSyncPage.phaseError.providerFetchFailed': '目录拉取失败，请检查同步源配置和连接状态',
   'system.user.userSyncPage.phaseError.emailEnqueueFailed': '初始密码邮件任务入队失败，请稍后重试',
+  'system.user.userSyncPage.phaseError.groupNameConflict': '组织「{{name}}」与现有组织重名',
 };
 // 严格 t():无 defaultMessage,缺失 key 直接返回 key,符合生产行为
 const t = (key: string, fallback?: string) => {
@@ -272,6 +273,14 @@ function testFormatPhaseBusinessResult() {
   );
   assert.equal(
     formatPhaseBusinessResult(
+      'sync_groups',
+      { phase_progress: { sync_groups: { current: 0, total: 1, status: 'error' } } },
+      t,
+    ),
+    '',
+  );
+  assert.equal(
+    formatPhaseBusinessResult(
       'sync_users',
       { phase_progress: { sync_users: { current: 1, total: 1, status: 'finish', counters: { new_users: 0, updated_users: 0, conflict_users: 0 } } } },
       t,
@@ -322,6 +331,19 @@ function testFormatPhaseErrorMessage() {
   assert.equal(
     formatPhaseErrorMessage({ phase_error: { phase: 'sync_users', current: 0, total: 1, error_message: 'legacy message', failed_at: '' } }, t),
     'legacy message',
+  );
+  assert.equal(
+    formatPhaseErrorMessage({
+      phase_error: {
+        phase: 'sync_groups',
+        current: 0,
+        total: 1,
+        error_code: 'group_name_conflict',
+        error_params: { name: 'AD用户测试' },
+        failed_at: '',
+      },
+    }, t),
+    '组织「AD用户测试」与现有组织重名',
   );
   console.log('  ✓ formatPhaseErrorMessage');
 }

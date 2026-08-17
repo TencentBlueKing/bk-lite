@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Descriptions, Divider, Drawer, Empty, Tag } from 'antd';
+import { Descriptions, Divider, Drawer, Tag } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import MarkdownRenderer from '@/components/markdown';
 import Icon from '@/components/icon';
 import type { SkillPackage } from '@/app/opspilot/types/skill';
@@ -20,7 +21,7 @@ const getSkillAssetSourceLabel = (sourceType?: string) => {
 
 const renderTagList = (items?: string[]) => {
   if (!items?.length) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />;
+    return <CompactEmptyState description="暂无数据" />;
   }
 
   return (
@@ -89,7 +90,7 @@ const SkillPackageDetailDrawer: React.FC<SkillPackageDetailDrawerProps> = ({
                 <MarkdownRenderer content={asset.skill_markdown} />
               </div>
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
+              <CompactEmptyState description="暂无数据" />
             )}
           </div>
         </div>

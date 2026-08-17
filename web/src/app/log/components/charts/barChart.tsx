@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Empty } from 'antd';
 import {
   XAxis,
   YAxis,
@@ -10,6 +9,7 @@ import {
   ResponsiveContainer,
   ReferenceArea,
 } from 'recharts';
+import ChartEmptyState from '@/components/chart-empty-state';
 import CustomTooltip from './customTooltips';
 import { useFormatTime } from '@/app/log/hooks';
 import barChartStyle from './index.module.scss';
@@ -95,7 +95,7 @@ const CustomBarChart: React.FC<BasicBarChartProps> = ({
     <div className={`flex w-full h-full ${className}`}>
       {!data?.length ? (
         <div className={`${barChartStyle.chart} ${barChartStyle.noData}`}>
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <ChartEmptyState compact />
         </div>
       ) : (
         <ResponsiveContainer className={barChartStyle.chart}>

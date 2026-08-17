@@ -82,7 +82,7 @@
         "sidecar": "控制器",
         "installationGuide": "安装指引",
         "installWayDes": "远程安装需要提供主机相关登录信息，进行远程安装控制器。包括sidecar和nas executor；手动安装，需要按照安装步骤前往主机进行手动操作安装控制器。",
-        "windowsRemoteInstallDes": "通过同云区域的 Ansible Executor 和 WinRM 下发原生安装程序。支持 Windows 10/Server 2016、PowerShell 5.1 及以上，目标主机需配置 HTTPS/5986 和 NTLM；证书校验默认关闭，可按需开启。",
+        "windowsRemoteInstallDes": "通过同云区域的 Ansible Executor 和 WinRM 下发原生安装程序。支持 Server 2016、PowerShell 5.1 及以上，目标主机需配置 HTTPS/5986 和 NTLM；证书校验默认关闭，可按需开启。",
         "controllerInfo": "控制器信息",
         "system": "操作系统",
         "message": "信息",

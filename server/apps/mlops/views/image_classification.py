@@ -39,7 +39,7 @@ from apps.mlops.serializers.image_classification import (
 from apps.mlops.services import ConfigurationError, get_image_by_prefix, get_mlflow_tracking_uri, get_mlflow_train_config
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
-from apps.mlops.utils.i18n import mlops_message
+from apps.mlops.utils.i18n import mlops_exception_message, mlops_message
 from apps.mlops.utils.webhook_client import WebhookClient, WebhookConnectionError, WebhookError, WebhookTimeoutError
 from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
 from config.drf.pagination import CustomPageNumberPagination
@@ -435,22 +435,22 @@ class ImageClassificationTrainJobViewSet(BaseTrainJobViewSet):
         except WebhookTimeoutError as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.training_task_start_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.training_task_start_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -491,16 +491,16 @@ class ImageClassificationTrainJobViewSet(BaseTrainJobViewSet):
             )
 
         except WebhookTimeoutError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"停止训练任务失败: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"停止训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.training_task_stop_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.training_task_stop_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -841,7 +841,7 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                 logger.error("环境变量 MLFLOW_TRACKER_URL 未配置")
                 serving.container_info = {
                     "status": "error",
-                    "message": "环境变量 MLFLOW_TRACKER_URL 未配置",
+                    "message": mlops_message(request, "error.mlflow_tracker_url_not_configured"),
                 }
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
@@ -855,11 +855,13 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                 logger.error(f"解析 model URI 失败: {e}")
                 serving.container_info = {
                     "status": "error",
-                    "message": f"解析模型 URI 失败: {str(e)}",
+                    "message": mlops_exception_message(request, e),
                 }
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
-                response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=str(e))
+                response.data["message"] = mlops_message(
+                        request, "message.serving_created_start_failed", detail=mlops_exception_message(request, e)
+                    )
                 return response
 
             # 构建 serving ID
@@ -928,11 +930,13 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                     serving.container_info = {"status": "error", "message": error_msg}
                     serving.save(update_fields=["container_info"])
                     response.data["container_info"] = serving.container_info
-                    response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=error_msg)
+                    response.data["message"] = mlops_message(
+                        request, "message.serving_created_start_failed", detail=mlops_exception_message(request, e)
+                    )
 
         except Exception as e:
             logger.error(f"自动启动 serving 异常: {str(e)}", exc_info=True)
-            response.data["message"] = mlops_message(request, "message.serving_created_start_exception", detail=str(e))
+            response.data["message"] = mlops_message(request, "message.serving_created_start_exception", detail=mlops_exception_message(request, e))
 
         return response
 
@@ -1006,7 +1010,7 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                 # 获取环境变量
                 mlflow_tracking_uri = get_mlflow_tracking_uri()
                 if not mlflow_tracking_uri:
-                    raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
+                    raise ValueError("error.mlflow_tracker_url_not_configured")
 
                 # 解析新的 model_uri
                 model_uri = self._resolve_model_uri(instance)
@@ -1045,12 +1049,14 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                 # 启动失败，仅更新容器信息
                 instance.container_info = {
                     "status": "error",
-                    "message": f"配置已更新但重启失败: {str(e)}",
+                    "message": mlops_message(request, "message.serving_updated_restart_failed", detail=mlops_exception_message(request, e)),
                 }
                 instance.save(update_fields=["container_info"])
 
                 response.data["container_info"] = instance.container_info
-                response.data["message"] = mlops_message(request, "message.serving_updated_restart_failed", detail=str(e))
+                response.data["message"] = mlops_message(
+                    request, "message.serving_updated_restart_failed", detail=mlops_exception_message(request, e)
+                )
                 response.data["warning"] = "请手动调用 start 接口重新启动服务"
 
         return response
@@ -1077,7 +1083,7 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
             try:
                 model_uri = self._resolve_model_uri(serving)
             except ValueError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_400_BAD_REQUEST)
 
             # 构建 serving ID
             serving_id = f"ImageClassification_Serving_{serving.id}"
@@ -1135,16 +1141,16 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                 raise
 
         except WebhookTimeoutError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"启动 serving 失败: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"启动图片分类 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.serving_start_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.serving_start_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1172,16 +1178,16 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"停止 serving 失败: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"停止图片分类 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.serving_stop_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.serving_stop_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1205,7 +1211,7 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                 "status": "success",
                 "id": serving_id,
                 "state": "removed",
-                "message": "容器已删除",
+                "message": mlops_message(request, "message.container_deleted"),
             }
             serving.save(update_fields=["container_info"])
 
@@ -1218,16 +1224,16 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"删除容器失败: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"删除图片分类 serving 容器失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.serving_container_delete_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.serving_container_delete_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

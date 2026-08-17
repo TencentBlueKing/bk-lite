@@ -1,5 +1,4 @@
 import React from 'react';
-import { Empty } from 'antd';
 import {
   BarChart,
   Bar,
@@ -9,6 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import ChartEmptyState from '@/components/chart-empty-state';
 
 interface StackedBarChartProps {
   data: Array<Record<string, any>>;
@@ -87,7 +87,7 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
       </BarChart>
     </ResponsiveContainer>
   ) : (
-    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+    <ChartEmptyState compact />
   );
 };
 

@@ -71,43 +71,6 @@
     ]
   },
   {
-    "name": "查询时间范围内的指标数据",
-    "desc": "",
-    "rest_api": "monitor/mm_query_range",
-    "chart_type": [
-      "line",
-      "bar",
-      "pie",
-      "single"
-    ],
-    "tag": [
-      "monitor"
-    ],
-    "params": [
-      {
-        "name": "query",
-        "type": "string",
-        "value": "",
-        "alias_name": "query",
-        "filterType": "params"
-      },
-      {
-        "name": "time_range",
-        "type": "timeRange",
-        "value": 10080,
-        "alias_name": "time_range",
-        "filterType": "fixed"
-      },
-      {
-        "name": "step",
-        "type": "string",
-        "value": "5m",
-        "alias_name": "step",
-        "filterType": "params"
-      }
-    ]
-  },
-  {
     "name": "日志搜索",
     "desc": "",
     "rest_api": "log/log_search",
@@ -144,33 +107,6 @@
       }
     ]
   },
-  {
-    "desc": "",
-    "name": "查询单个指标数据",
-    "rest_api": "monitor/mm_query",
-    "tag": [
-      "monitor"
-    ],
-    "chart_type": [
-      "single"
-    ],
-    "params": [
-      {
-        "alias_name": "查询语句",
-        "filterType": "params",
-        "name": "query",
-        "type": "string",
-        "value": ""
-      },
-      {
-        "alias_name": "步长间隔",
-        "filterType": "fixed",
-        "name": "step",
-        "type": "string",
-        "value": "5m"
-        }
-     ]
-},
 {
     "name": "主机资源使用率Top10",
     "desc": "查询当前组织权限范围内主机的CPU、内存、磁盘使用率排行榜",

@@ -88,6 +88,10 @@ const getFallbackLocale = async (locale: string): Promise<any> => {
   }
 };
 
+export const dynamic = 'force-dynamic';
+
+const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' };
+
 export const GET = async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
@@ -106,13 +110,13 @@ export const GET = async (request: NextRequest) => {
       if (!fallbackMessages) {
         throw new Error(`Failed to load fallback locale: ${locale}`);
       }
-      return NextResponse.json(fallbackMessages, { status: 200 });
+      return NextResponse.json(fallbackMessages, { status: 200, headers: NO_STORE });
     }
 
-    return NextResponse.json(mergedMessages[locale], { status: 200 });
+    return NextResponse.json(mergedMessages[locale], { status: 200, headers: NO_STORE });
   } catch (error) {
     console.error('Failed to load locales:', error);
-    return NextResponse.json({ message: 'Failed to load locales', error }, { status: 500 });
+    return NextResponse.json({ message: 'Failed to load locales', error }, { status: 500, headers: NO_STORE });
   }
 };
 

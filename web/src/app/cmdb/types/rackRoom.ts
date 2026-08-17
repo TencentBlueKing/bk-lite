@@ -1,6 +1,7 @@
 export interface RoomRack {
   inst_uuid: string;
   inst_name: string;
+  model_id?: string;
   row: number;
   col: number;
   col_letter: string;
@@ -12,6 +13,8 @@ export interface RoomRack {
   max_free_u: number;
   datacenter_type: string | null;
   datacenter_state: string | null;
+  organization?: number[];
+  permission?: string[];
 }
 
 export interface RoomLayoutData {
@@ -33,6 +36,8 @@ export interface RackDevice {
   u_size: number;
   u_end: number;
   overflow: boolean;
+  organization?: number[];
+  permission?: string[];
 }
 
 export interface RackLayoutData {

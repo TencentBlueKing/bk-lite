@@ -48,5 +48,8 @@
 - `[mlops#20260701-025]` 补录 `init_algorithm_config` 管理命令与内置算法配置种子。
 - `[mlops#20260701-026]` 补录预测批量上限、图像预测上限、NATS 分页上限与数据集发布流式读取 chunk 环境变量。
 
+## 2026-08-17 Code-ARD 校准
+- `[mlops#20260817-4812]` 训练/Serving webhook 失败与 MLflow 配置异常不再把 `str(e)` 或中文硬编码回给 API；ViewSet 经 `mlops_exception_message` 映射到 language key（`error.webhook_*` / `error.mlflow_tracker_url_not_configured`）。
+
 ## 6. 证据来源
 `server/apps/mlops/{urls.py,models/*,models/mixins.py,models/algorithm_config.py,utils/mlflow_service.py,utils/webhook_client.py,predict_url_builder.py,services/config_helpers.py,tasks/*,tasks/base.py:81,signals/base.py,nats_api.py:118,apps.py,views/anomaly_detection.py:1347,views/classification.py:635,views/image_classification.py:1360,1366,views/object_detection.py:1353,1359,views/timeseries_predict.py:1223,views/log_clustering.py:1294,management/commands/init_algorithm_config.py:11,15,48,support-files/algorithm-configs/anomaly_detection/ECOD.json}`、`config/components/mlflow.py`。

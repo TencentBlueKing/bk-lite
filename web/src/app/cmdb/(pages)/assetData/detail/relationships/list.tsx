@@ -2,16 +2,18 @@
 
 import { useSearchParams } from 'next/navigation';
 import { getAssetColumns } from '@/app/cmdb/utils/common';
-import { Spin, Collapse, Button, Modal, message, Empty } from 'antd';
+import { Spin, Collapse, Button, Modal, message } from 'antd';
 import { CaretRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { AssoListProps } from '@/app/cmdb/types/assetData';
 import { useRelationships } from '@/app/cmdb/context/relationships';
 import CustomTable from '@/components/custom-table';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useModelApi, useInstanceApi } from '@/app/cmdb/api';
 import assoListStyle from './index.module.scss';
 import SelectInstance from './selectInstance';
 import PermissionWrapper from '@/components/permission';
+import { RACK_ROOM_ASSET_PERMISSION_PATH } from './rackRoomEdit';
 import React, {
   useEffect,
   useState,
@@ -219,7 +221,8 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
           render: (_: unknown, record: any) => (
             <PermissionWrapper
               requiredPermissions={['Delete Associate']}
-              instPermissions={record.permission}
+              permissionPath={RACK_ROOM_ASSET_PERMISSION_PATH}
+              instPermissions={record.permission || []}
             >
               <Button
                 type="link"
@@ -346,7 +349,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
               onChange={handleCollapseChange}
             />
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('common.noData')} />
           )}
         </div>
         <SelectInstance

@@ -11,6 +11,9 @@ import type {
   ApmTimeWindow,
   ApmEvent,
   ApmEventQuery,
+  ApmAlert,
+  ApmAlertQuery,
+  ApmEventSnapshot,
   ApmHealth,
   ApmService,
   ApmServiceInstance,
@@ -30,14 +33,15 @@ import type {
   ApmSpanPage,
   ApmSpanSearchParams,
   ApmTopologyGraph,
-  CatalogStatus,
+  ApmIssuePage,
+  ApmIssueSearchParams,
+  InstanceStatus,
 } from '@/app/apm/types';
 
 interface InstanceQuery {
   application?: string;
   environment?: string;
-  status?: CatalogStatus;
-  include_archived?: boolean;
+  status?: InstanceStatus;
   started_at?: string;
   ended_at?: string;
   keyword?: string;
@@ -175,6 +179,11 @@ const useApmApi = () => {
     [get]
   );
 
+  const getIssues = useCallback(
+    (params: ApmIssueSearchParams = {}) => get<ApmIssuePage>('/apm/issues/', { params }),
+    [get]
+  );
+
   const getTrace = useCallback(
     (traceId: string) => get<ApmTraceDetail>(`/apm/traces/${traceId}/`),
     [get]
@@ -187,6 +196,11 @@ const useApmApi = () => {
   );
 
   const getPolicies = useCallback(() => get<ApmPolicy[]>('/apm/policies/'), [get]);
+
+  const getPolicy = useCallback(
+    (policyId: string) => get<ApmPolicy>(`/apm/policies/${policyId}/`),
+    [get]
+  );
 
   const createPolicy = useCallback(
     (payload: ApmPolicyInput) => post<ApmPolicy>('/apm/policies/', payload),
@@ -215,9 +229,41 @@ const useApmApi = () => {
     [post]
   );
 
+  const previewPolicy = useCallback(
+    (payload: ApmPolicyInput) => post<ApmPolicyQueryResult>('/apm/policies/preview/', payload),
+    [post]
+  );
+
   const getEvents = useCallback(
     (params: ApmEventQuery = {}) => get<ApmEvent[]>('/apm/events/', { params }),
     [get]
+  );
+
+  const getAlerts = useCallback(
+    (params: ApmAlertQuery = {}) => get<ApmAlert[]>('/apm/alerts/', { params }),
+    [get]
+  );
+
+  const getAlertDistribution = useCallback(
+    (params: Pick<ApmAlertQuery, 'started_at' | 'ended_at'>) =>
+      get<Array<{ time: string; critical: number; error: number; warning: number }>>(
+        '/apm/alerts/distribution/',
+        { params }
+      ),
+    [get]
+  );
+
+  const getAlertSnapshots = useCallback(
+    (alertId: string, eventId?: string) =>
+      get<ApmEventSnapshot[]>(`/apm/alerts/${alertId}/snapshots/`, {
+        params: eventId ? { event_id: eventId } : {},
+      }),
+    [get]
+  );
+
+  const closeAlert = useCallback(
+    (alertId: string) => post<ApmAlert>(`/apm/alerts/${alertId}/close/`),
+    [post]
   );
 
   const getNotificationChannels = useCallback(
@@ -268,15 +314,22 @@ const useApmApi = () => {
     setSloEnabled,
     getTraces,
     getSpans,
+    getIssues,
     getTrace,
     getTopology,
     getPolicies,
+    getPolicy,
     createPolicy,
     updatePolicy,
     deletePolicy,
     setPolicyEnabled,
     testPolicy,
+    previewPolicy,
     getEvents,
+    getAlerts,
+    getAlertDistribution,
+    getAlertSnapshots,
+    closeAlert,
     getNotificationChannels,
     getNotificationDeliveries,
     getNotificationRecipients,

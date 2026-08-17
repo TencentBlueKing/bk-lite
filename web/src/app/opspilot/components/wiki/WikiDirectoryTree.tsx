@@ -150,9 +150,10 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
         </div>
         <Input.Search
           allowClear
+          enterButton
           size="small"
           value={search}
-          placeholder={t("wiki.filterNamePlaceholder")}
+          placeholder={`${t("common.search")}...`}
           onChange={(event) => onSearchChange(event.target.value)}
           onSearch={onSearchChange}
         />
@@ -212,5 +213,57 @@ export const toWikiTreePages = (
     page_type: page.page_type,
     directory: page.directory ?? null,
   }));
+
+/** 按左侧树展示顺序取第一份页面：目录(含空目录跳过) → 子目录 → 目录下页面 → 无目录孤儿页。 */
+export const findFirstWikiTreePageId = (
+  directories: WikiDirectoryNode[],
+  pages: WikiTreePageItem[],
+  unclassifiedDirectoryId: number | null,
+  search = "",
+): number | null => {
+  const pagesByDirectory = new Map<number | null, WikiTreePageItem[]>();
+  const keyword = search.trim().toLowerCase();
+  pages.forEach((page) => {
+    if (keyword && !page.title.toLowerCase().includes(keyword)) return;
+    const key = page.directory ?? null;
+    const list = pagesByDirectory.get(key) || [];
+    list.push(page);
+    pagesByDirectory.set(key, list);
+  });
+  pagesByDirectory.forEach((list, key) => {
+    pagesByDirectory.set(
+      key,
+      [...list].sort((a, b) => a.title.localeCompare(b.title, "zh")),
+    );
+  });
+
+  const compareDirectories = (
+    left: WikiDirectoryNode,
+    right: WikiDirectoryNode,
+  ) => {
+    if (left.id === unclassifiedDirectoryId) return -1;
+    if (right.id === unclassifiedDirectoryId) return 1;
+    return left.order - right.order || left.name.localeCompare(right.name);
+  };
+
+  const walkDirectory = (directory: WikiDirectoryNode): number | null => {
+    const childDirectories = [...(directory.children || [])].sort(
+      compareDirectories,
+    );
+    for (const child of childDirectories) {
+      const found = walkDirectory(child);
+      if (found != null) return found;
+    }
+    const childPages = pagesByDirectory.get(directory.id) || [];
+    return childPages[0]?.id ?? null;
+  };
+
+  for (const directory of [...directories].sort(compareDirectories)) {
+    const found = walkDirectory(directory);
+    if (found != null) return found;
+  }
+  const orphanPages = pagesByDirectory.get(null) || [];
+  return orphanPages[0]?.id ?? null;
+};
 
 export default WikiDirectoryTree;

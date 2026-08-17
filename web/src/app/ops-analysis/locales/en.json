@@ -203,6 +203,7 @@
     "selectConnection": "Select connection",
     "extractConnection": "Extract to connection library",
     "extractConnectionTitle": "Extract to connection library",
+    "reenterPassword": "Re-enter the password before extracting",
     "overrideDatabase": "Override database",
     "relativePath": "Relative path"
   },
@@ -939,6 +940,7 @@
     "room3DRackFormatError": " data format error",
     "room3DRackRequiredError": " requires rack_id, rack_name, row, and col; coordinates must start from 1",
     "room3DResetView": "Reset view",
+    "room3DDismissNotice": "Dismiss notice",
     "room3DRoomNameLabel": "Room: ",
     "room3DRackCountPrefix": " (",
     "room3DRackCountSuffix": " racks)",

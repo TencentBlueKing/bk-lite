@@ -6,7 +6,6 @@ import {
   App,
   Button,
   Descriptions,
-  Empty,
   Form,
   Input,
   InputNumber,
@@ -24,6 +23,7 @@ import type { UploadFile } from "antd/es/upload/interface";
 import { LoadingOutlined, UploadOutlined } from "@ant-design/icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import CustomTable from "@/components/custom-table";
+import CompactEmptyState from "@/components/compact-empty-state";
 import {
   buildWikiMaterialDetailPath,
   buildWikiMaterialListPath,
@@ -830,9 +830,18 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     },
   ];
 
-  const applyMaterialFilters = () => {
-    const nextName = nameDraft.trim();
-    const nextStatus = [...statusDraft];
+  const applyMaterialFilters = (overrides?: {
+    name?: string;
+    status?: MaterialDisplayStatus[];
+  }) => {
+    const nextName = (overrides?.name ?? nameDraft).trim();
+    const nextStatus = [...(overrides?.status ?? statusDraft)];
+    if (overrides?.name !== undefined) {
+      setNameDraft(overrides.name);
+    }
+    if (overrides?.status !== undefined) {
+      setStatusDraft(overrides.status);
+    }
     loadScopeRef.current = {
       kbId,
       page: 1,
@@ -856,7 +865,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           {detail ? (
             <MaterialDetailPanel detail={detail} onBack={backToList} />
           ) : (
-            !detailLoading && <Empty description={t("wiki.empty")} />
+            !detailLoading && <CompactEmptyState description={t("wiki.empty")} />
           )}
         </Spin>
       </div>
@@ -865,47 +874,51 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <Space wrap className="min-w-0 flex-1">
-          <Input
-            allowClear
-            className="w-[220px] max-w-full"
-            placeholder={t("wiki.filterNamePlaceholder")}
-            value={nameDraft}
-            onChange={(event) => setNameDraft(event.target.value)}
-            onPressEnter={applyMaterialFilters}
-          />
-          <Select
-            mode="multiple"
-            allowClear
-            className="min-w-[200px] max-w-full sm:min-w-[240px] sm:max-w-[360px]"
-            placeholder={t("wiki.filterStatusAll")}
-            value={statusDraft}
-            options={MATERIAL_DISPLAY_STATUS_OPTIONS.map((value) => ({
-              value,
-              label: t(MATERIAL_STATUS_META[value].key),
-            }))}
-            maxTagCount="responsive"
-            onChange={(values: MaterialDisplayStatus[]) => {
-              setStatusDraft(values);
-            }}
-          />
-          <Button type="primary" onClick={applyMaterialFilters}>
-            {t("wiki.filterQuery")}
-          </Button>
-        </Space>
-        <div className="flex gap-2">
-          <Button
-            disabled={!selectedRowKeys.length}
-            loading={batchBuilding}
-            onClick={() => void handleBatchBuild()}
-          >
-            {t("wiki.batchBuild")}
-          </Button>
-          <Button type="primary" onClick={openCreate}>
-            {t("wiki.addMaterial")}
-          </Button>
-        </div>
+      <div className="mb-3 flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <Select
+          mode="multiple"
+          allowClear
+          className="min-w-[200px] max-w-full sm:min-w-[240px] sm:max-w-[360px]"
+          placeholder={t("wiki.filterStatusAll")}
+          value={statusDraft}
+          options={MATERIAL_DISPLAY_STATUS_OPTIONS.map((value) => ({
+            value,
+            label: t(MATERIAL_STATUS_META[value].key),
+          }))}
+          maxTagCount="responsive"
+          onChange={(values: MaterialDisplayStatus[] | undefined) => {
+            const next = values || [];
+            setStatusDraft(next);
+            applyMaterialFilters({
+              name: nameDraft,
+              status: next,
+            });
+          }}
+        />
+        <Input.Search
+          allowClear
+          enterButton
+          className="w-60"
+          placeholder={t("wiki.filterNamePlaceholder")}
+          value={nameDraft}
+          onChange={(event) => setNameDraft(event.target.value)}
+          onSearch={(value) =>
+            applyMaterialFilters({
+              name: value,
+              status: statusDraft,
+            })
+          }
+        />
+        <Button
+          disabled={!selectedRowKeys.length}
+          loading={batchBuilding}
+          onClick={() => void handleBatchBuild()}
+        >
+          {t("wiki.batchBuild")}
+        </Button>
+        <Button type="primary" onClick={openCreate}>
+          {t("wiki.addMaterial")}
+        </Button>
       </div>
       {/* flex-1 容器给表格确定高度,使分页时 CustomTable 自动算出的 scroll.y 稳定;
           scroll x:undefined 关闭默认按列宽合计强制的横向滚动,列宽自适应容器 */}

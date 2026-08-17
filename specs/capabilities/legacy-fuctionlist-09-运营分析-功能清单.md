@@ -160,7 +160,7 @@
 
 ### 5.2 内置数据源 API（DataSourceAPIModel）
 
-平台随包预置 **23** 个数据源 API（以 `support-files/source_api.json` 为单一事实来源）；数据源支持用户自定义新增（REST API + 命名空间 + 标签 + 图表类型）。本轮告警口径校正如下：
+平台随包预置 **21** 个数据源 API（以 `support-files/source_api.json` 为单一事实来源）；数据源支持用户自定义新增（REST API + 命名空间 + 标签 + 图表类型）。本轮告警口径校正如下：
 
 - 「告警与关联事件趋势」随时间范围返回告警、关联事件及已恢复告警的时间序列。
 - 「今日产生关闭与当前处理中」同时呈现今日产生、今日关闭与当前处理中；前两项按当日口径，处理中为当前快照。
@@ -239,17 +239,17 @@
 
 ### 内置数据源 API（代表性摘录）
 
-完整的 23 项内置数据源定义以 `server/apps/operation_analysis/support-files/source_api.json` 为单一事实来源；下表仅列常用代表项，不作为完整枚举。
+完整的 21 项内置数据源定义以 `server/apps/operation_analysis/support-files/source_api.json` 为单一事实来源；下表仅列常用代表项，不作为完整枚举。
 
 | 枚举项 | 取值 | 中文含义 |
 |---|---|---|
 | 日志命中数 | `log/log_hits` | 查询日志命中数 |
 | 告警趋势 | `alert/get_alert_trend_data` | 查询告警趋势数据 |
-| 查询时间范围内的指标数据 | `monitor/mm_query_range` | 按时间范围查询指标数据 |
 | 日志搜索 | `log/log_search` | 日志搜索查询 |
-| 查询单个指标数据 | `monitor/mm_query` | 查询单个指标即时数据 |
 | 监控活跃告警 | `monitor/query_latest_active_alerts` | 查询最新活跃告警信息 |
 | 监控中心总览统计 | `monitor/get_monitor_statistics` | 监控资源/能力/告警总览统计 |
+
+`monitor/mm_query` 与 `monitor/mm_query_range` 已停止作为新装内置数据源发布；存量数据源、画布和 RPC/NATS 契约在受控查询迁移完成前继续兼容。
 
 ### 内置标签
 

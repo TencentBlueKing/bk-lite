@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Spin, Tooltip, Input, Empty } from 'antd';
+import { Spin, Tooltip, Input} from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { SearchOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
@@ -80,7 +81,7 @@ const SelectorOperateModal: React.FC<OperateModalProps> = ({
     >
       <Spin spinning={loading}>
         {options.length === 0 ? (
-          <Empty description={t('common.noData')}/>
+          <CompactEmptyState description={t('common.noData')} />
         ) : (
           <>
             <div className="flex justify-end">

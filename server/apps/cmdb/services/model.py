@@ -80,9 +80,7 @@ ENUM_DISPLAY_BACKFILL_CHECKPOINT_TTL = 24 * 60 * 60
 class ModelManage(object):
     @staticmethod
     def _enum_display_backfill_checkpoint(model_id: str, attr_id: str, new_options: list) -> tuple[str, str]:
-        options_digest = sha256(
-            json.dumps(new_options, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
+        options_digest = sha256(json.dumps(new_options, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return f"cmdb:enum-display-backfill:{model_id}:{attr_id}", options_digest
 
     @staticmethod
@@ -964,11 +962,7 @@ class ModelManage(object):
                     models,
                     graph=ag,
                 )
-                models = [
-                    model
-                    for model in models
-                    if model["model_id"] in visible_models
-                ]
+                models = [model for model in models if model["model_id"] in visible_models]
 
         lan = SettingLanguage(language)
 
@@ -1229,19 +1223,20 @@ class ModelManage(object):
                                 display_field_id,
                                 property_values,
                             )
-                            checkpoint_available = ModelManage._save_enum_display_backfill_checkpoint(
-                                checkpoint_key,
-                                options_digest,
-                                property_values[-1]["id"],
-                            ) and checkpoint_available
+                            checkpoint_available = (
+                                ModelManage._save_enum_display_backfill_checkpoint(
+                                    checkpoint_key,
+                                    options_digest,
+                                    property_values[-1]["id"],
+                                )
+                                and checkpoint_available
+                            )
                         ModelManage._clear_enum_display_backfill_checkpoint(checkpoint_key)
                         break
 
                     next_instance_id = int(instances[-1]["_id"])
                     if scan_cursor is not None and next_instance_id <= scan_cursor:
-                        raise RuntimeError(
-                            f"枚举显示字段回填游标未推进: cursor={scan_cursor}, next_cursor={next_instance_id}"
-                        )
+                        raise RuntimeError(f"枚举显示字段回填游标未推进: cursor={scan_cursor}, next_cursor={next_instance_id}")
 
                     for instance in instances:
                         if attr_id not in instance or not instance[attr_id]:
@@ -1258,20 +1253,26 @@ class ModelManage(object):
                                 display_field_id,
                                 property_values,
                             )
-                            checkpoint_available = ModelManage._save_enum_display_backfill_checkpoint(
-                                checkpoint_key,
-                                options_digest,
-                                property_values[-1]["id"],
-                            ) and checkpoint_available
+                            checkpoint_available = (
+                                ModelManage._save_enum_display_backfill_checkpoint(
+                                    checkpoint_key,
+                                    options_digest,
+                                    property_values[-1]["id"],
+                                )
+                                and checkpoint_available
+                            )
                             property_values = []
 
                     scan_cursor = next_instance_id
                     if not property_values:
-                        checkpoint_available = ModelManage._save_enum_display_backfill_checkpoint(
-                            checkpoint_key,
-                            options_digest,
-                            scan_cursor,
-                        ) and checkpoint_available
+                        checkpoint_available = (
+                            ModelManage._save_enum_display_backfill_checkpoint(
+                                checkpoint_key,
+                                options_digest,
+                                scan_cursor,
+                            )
+                            and checkpoint_available
+                        )
 
                 if not checkpoint_available:
                     logger.warning(
@@ -1367,10 +1368,7 @@ class ModelManage(object):
                     updated_count += len(property_values)
 
                 if updated_count > 0:
-                    logger.info(
-                        f"[rebuild_file_instances_display] 已回填 {updated_count} 个实例的 {display_field_id} 字段, "
-                        f"模型: {model_id}, 字段: {attr_id}"
-                    )
+                    logger.info(f"[rebuild_file_instances_display] 已回填 {updated_count} 个实例的 {display_field_id} 字段, " f"模型: {model_id}, 字段: {attr_id}")
 
         except Exception as e:
             logger.error(
@@ -2279,9 +2277,7 @@ class ModelManage(object):
             if associations:
                 if selected_ids is not None:
                     associations = [
-                        a for a in associations
-                        if a.get("src_model_id", "") in selected_ids
-                        and a.get("dst_model_id", "") in selected_ids
+                        a for a in associations if a.get("src_model_id", "") in selected_ids and a.get("dst_model_id", "") in selected_ids
                     ]
                 if associations:
                     ws_asso = workbook.create_sheet(title=f"asso-{model_id}")
@@ -2336,8 +2332,7 @@ class ModelManage(object):
                     if conflicts:
                         if keep_existing_unique_rules_on_conflict:
                             logger.warning(
-                                "[UniqueRule] 存量实例与待应用规则冲突，保留原唯一规则并继续初始化 "
-                                "model_id=%s sheet_name=%s conflict_count=%s reason=%s",
+                                "[UniqueRule] 存量实例与待应用规则冲突，保留原唯一规则并继续初始化 " "model_id=%s sheet_name=%s conflict_count=%s reason=%s",
                                 model_id,
                                 sheet_name,
                                 len(conflicts),
@@ -2371,11 +2366,7 @@ class ModelManage(object):
 
         ModelManage._import_auto_relation_rule_sets_from_asso_sheets(model_config)
         # push/ingest 依赖可写 node_id / monitor_id；模型导入后对一期支持模型幂等补齐
-        from apps.cmdb.services.module_ingest import (
-            SUPPORTED_INGEST_MODELS,
-            ensure_model_monitor_id_attr,
-            ensure_model_node_id_attr,
-        )
+        from apps.cmdb.services.module_ingest import SUPPORTED_INGEST_MODELS, ensure_model_monitor_id_attr, ensure_model_node_id_attr
 
         for mid in sorted(SUPPORTED_INGEST_MODELS):
             ensure_model_node_id_attr(mid, username="admin")

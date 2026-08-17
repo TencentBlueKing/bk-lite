@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Spin, Empty } from 'antd';
+import { Spin } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 import ChartLegend from '../components/chartLegend';
 import useChartColors from './docker/useChartColors';
@@ -179,11 +180,7 @@ const ComBarLine: React.FC<ComBarLineProps> = ({
   }
 
   if (!isDataReady || !chartData || chartData.categories.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   const seriesData = chartData?.series && chartData.series.length > 1 ? chartData.series : null;
