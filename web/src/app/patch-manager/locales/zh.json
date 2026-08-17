@@ -298,7 +298,7 @@
       "invalidateTitle": "基线正在评估",
       "invalidateContent": "修改基线“{name}”的要求或绑定主机将使当前评估结果失效，是否继续？",
       "continueEditing": "继续修改",
-      "name": "基线名称", "patchRequirements": "补丁要求", "patchFilter": "按补丁筛选基线", "boundTargets": "绑定主机", "complianceDistribution": "合规分布", "unbound": "未绑定",
+      "name": "基线名称", "patchRequirements": "补丁要求", "patchFilter": "按补丁筛选基线", "boundTargets": "绑定主机", "complianceDistribution": "合规分布", "recentAssessment": "最近评估", "unbound": "未绑定",
       "deleteBlocked": "已绑定主机的基线不能删除", "bindTargets": "绑定主机", "deleteTitle": "删除基线", "deleteConfirm": "确定删除基线“{name}”？", "deleted": "基线已删除",
       "assessTitle": "立即评估基线", "assessConfirm": "将评估基线“{name}”当前绑定的 {count} 台主机，是否继续？", "confirmAssess": "确认评估", "assessCreated": "已创建评估任务，包含 {count} 台主机", "cannotAssess": "当前基线不可评估",
       "requirement": "要求", "description": "描述", "applicableVersion": "适用版本", "remove": "移除",

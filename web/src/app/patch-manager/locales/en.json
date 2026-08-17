@@ -298,7 +298,7 @@
       "invalidateTitle": "Assessment in progress",
       "invalidateContent": "Changing the requirements or bound targets of baseline \"{name}\" invalidates the current assessment. Continue?",
       "continueEditing": "Continue Editing",
-      "name": "Baseline Name", "patchRequirements": "Patch Requirements", "patchFilter": "Filter baselines by patch", "boundTargets": "Bound Targets", "complianceDistribution": "Compliance Distribution", "unbound": "Unbound",
+      "name": "Baseline Name", "patchRequirements": "Patch Requirements", "patchFilter": "Filter baselines by patch", "boundTargets": "Bound Targets", "complianceDistribution": "Compliance Distribution", "recentAssessment": "Recent Assessment", "unbound": "Unbound",
       "deleteBlocked": "A baseline with bound targets cannot be deleted", "bindTargets": "Bind Targets", "deleteTitle": "Delete Baseline", "deleteConfirm": "Delete baseline \"{name}\"?", "deleted": "Baseline deleted",
       "assessTitle": "Assess Baseline Now", "assessConfirm": "Assess the {count} targets currently bound to baseline \"{name}\"?", "confirmAssess": "Confirm Assessment", "assessCreated": "Assessment task created for {count} targets", "cannotAssess": "This baseline cannot be assessed",
       "requirement": "Requirement", "description": "Description", "applicableVersion": "Applicable Version", "remove": "Remove",

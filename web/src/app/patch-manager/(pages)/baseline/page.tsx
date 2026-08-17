@@ -370,14 +370,13 @@ export default function BaselineManagementPage() {
     {
       title: t('patchManager.baseline.complianceDistribution'),
       dataIndex: 'compliance_distribution',
-      width: 280,
       render: (dist: any[], r: any) => {
         const items = dist || [];
         if (!items.length) {
           return r.bound_host_count ? '—' : <span style={{ color: 'var(--color-text-4, #bfbfbf)' }}>{t('patchManager.baseline.unbound')}</span>;
         }
         return (
-          <Space size={6}>
+          <Space size={6} wrap>
             {items.map((item: any) => (
               <Tag
                 key={item.filter}
@@ -392,11 +391,13 @@ export default function BaselineManagementPage() {
         );
       },
     },
+    { title: t('patchManager.baseline.recentAssessment'), dataIndex: 'last_evaluated_at', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
     { title: t('patchManager.updateTime'), dataIndex: 'updated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
     {
       title: t('patchManager.operation'),
       dataIndex: 'op',
       width: 250,
+      fixed: 'right' as const,
       render: (_: unknown, r: any) => {
         const deleteBlocked = (r.bound_host_count || 0) > 0;
         const deleteTip = deleteBlocked ? t('patchManager.baseline.deleteBlocked') : '';
