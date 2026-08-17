@@ -1,3 +1,9 @@
 K3S:
   name: K3S
   desc: 利用K3S主动上报监控数据的能力，收集K3S集群的状态和健康，包括节点、容器和pod的性能指标。
+monitor_object:
+  K3SCluster: K3S 集群
+  K3SNode: K3S 节点
+  K3SPod: K3S Pod
+monitor_object_type:
+  K3S: K3S
