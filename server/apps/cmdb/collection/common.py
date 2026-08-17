@@ -233,20 +233,20 @@ class Management:
         if not inst_list:
             return result
 
+        heartbeat_infos = [
+            {
+                "_id": instance_info["_id"],
+                "model_id": self.model_id,
+                "organization": self.organization,
+                "collect_task": self.task_id,
+                "auto_collect": True,
+                "collect_time": self.collect_time,
+            }
+            for instance_info in inst_list
+        ]
         with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(
-                INSTANCE,
-                [{"field": "model_id", "type": "str=", "value": self.model_id}],
-            )
-            for instance_info in inst_list:
-                heartbeat_info = {
-                    "_id": instance_info["_id"],
-                    "model_id": self.model_id,
-                    "organization": self.organization,
-                    "collect_task": self.task_id,
-                    "auto_collect": True,
-                    "collect_time": self.collect_time,
-                }
+            exist_items = self._query_existing_unique_candidates(ag, heartbeat_infos)
+            for heartbeat_info in heartbeat_infos:
                 try:
                     current_items = [item for item in exist_items if item["_id"] != heartbeat_info["_id"]]
                     entity = ag.set_entity_properties(
