@@ -352,6 +352,79 @@ def test_host_credentials_inventory_password_with_hash_survives_shlex_parsing(tm
     assert "ansible_connection=ssh" in tokens
 
 
+def test_host_credentials_inventory_uses_configured_known_hosts_for_password_ssh(tmp_path, monkeypatch):
+    monkeypatch.setenv("SSH_KNOWN_HOSTS_FILE", "/etc/ansible-executor/known_hosts")
+
+    inventory = _build_host_credentials_inventory(
+        tmp_path,
+        [
+            {
+                "host": "10.0.0.8",
+                "user": "root",
+                "password": "credential",
+                "connection": "ssh",
+                "port": 22,
+            }
+        ],
+    )
+
+    assert "StrictHostKeyChecking=yes" in inventory
+    assert "UserKnownHostsFile=/etc/ansible-executor/known_hosts" in inventory
+    assert "StrictHostKeyChecking=no" not in inventory
+    assert "UserKnownHostsFile=/dev/null" not in inventory
+
+
+def test_host_credentials_inventory_explicit_ssh_args_override_configured_known_hosts(tmp_path, monkeypatch):
+    monkeypatch.setenv("SSH_KNOWN_HOSTS_FILE", "/etc/ansible-executor/known_hosts")
+    explicit_args = "-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/custom/known_hosts"
+
+    inventory = _build_host_credentials_inventory(
+        tmp_path,
+        [
+            {
+                "host": "10.0.0.8",
+                "user": "root",
+                "password": "credential",
+                "connection": "ssh",
+                "ssh_common_args": explicit_args,
+            }
+        ],
+    )
+
+    assert "StrictHostKeyChecking=accept-new" in inventory
+    assert "UserKnownHostsFile=/custom/known_hosts" in inventory
+    assert "UserKnownHostsFile=/etc/ansible-executor/known_hosts" not in inventory
+
+
+def test_host_credentials_inventory_warns_when_password_ssh_keeps_legacy_host_key_policy(tmp_path, monkeypatch, caplog):
+    monkeypatch.delenv("SSH_KNOWN_HOSTS_FILE", raising=False)
+
+    inventory = _build_host_credentials_inventory(
+        tmp_path,
+        [
+            {
+                "host": "10.0.0.8\nforged-audit-entry",
+                "user": "root",
+                "password": "credential",
+                "connection": "ssh",
+            },
+            {
+                "host": "10.0.0.9",
+                "user": "root",
+                "password": "credential",
+                "connection": "ssh",
+            },
+        ],
+    )
+
+    assert "StrictHostKeyChecking=no" in inventory
+    assert "UserKnownHostsFile=/dev/null" in inventory
+    assert caplog.text.count("password SSH host key verification is disabled") == 1
+    assert "host_count=2" in caplog.text
+    assert "forged-audit-entry" not in caplog.text
+    assert "credential" not in caplog.text
+
+
 def test_host_credentials_inventory_can_disable_winrm_certificate_validation(tmp_path):
     inventory = _build_host_credentials_inventory(
         tmp_path,

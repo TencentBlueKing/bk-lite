@@ -145,6 +145,21 @@ jetstream:
 
 兼容的环境变量模式仍保留，便于迁移，但不再推荐作为主配置方式。
 
+## SSH 主机密钥校验
+
+密码 SSH 任务可通过 `SSH_KNOWN_HOSTS_FILE` 指向已准备好的 `known_hosts` 文件。配置后，
+ansible-executor 会为未显式传入 SSH 公共参数的密码认证任务启用严格主机密钥校验：
+
+```bash
+SSH_KNOWN_HOSTS_FILE=/etc/ansible-executor/known_hosts
+```
+
+部署前应通过可信渠道准备并只读挂载该文件。调用方显式传入的 `ansible_ssh_common_args` 或
+`ssh_common_args` 仍优先，现有接口与任务载荷无需修改。
+
+未配置该变量时暂时保留历史兼容行为，并在每次构造密码 SSH inventory 时记录安全告警。
+这便于先盘点并迁移没有信任锚的存量任务，再在后续版本翻转默认策略。回滚时移除该变量即可恢复兼容行为。
+
 ## 任务执行可靠性
 
 - JetStream 开启 `backoff` 时，服务会以 `backoff[0]` 作为实际 ack deadline，并据此计算 `in_progress()` 心跳频率
