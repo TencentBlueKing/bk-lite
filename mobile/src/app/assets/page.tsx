@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DownOutline, SearchOutline } from 'antd-mobile-icons';
+import { DownOutline } from 'antd-mobile-icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import MobilePageHeader from '@/components/mobile-page-header';
 import MobilePullToRefresh from '@/components/mobile-pull-to-refresh';
@@ -22,7 +22,6 @@ import {
   restoreMobileViewScroll,
   writeMobileViewSnapshot,
 } from '@/navigation/mobile-view-cache';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/assets/assets.module.css';
 
@@ -60,7 +59,7 @@ function parseStashedAll(query: string, fallbackName = ''): StashedAllWorkbench 
 
 function AssetsPageContent() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { organizationScope } = useAuth();
   const { canAccess } = useMobileAvailability();
   const router = useRouter();
   const params = useSearchParams();
@@ -68,7 +67,7 @@ function AssetsPageContent() {
   const classificationName = params.get('classificationName') || '';
   const modelId = params.get('modelId') || '';
   const modelName = params.get('modelName') || '';
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
+  const cacheScope = organizationScope;
   const initialSnapshot = useRef(readMobileViewSnapshot<AssetsRootViewState>(cacheScope, 'assets-root'));
   const shouldRevalidate = useRef(
     Boolean(initialSnapshot.current) && isMobileViewStale(cacheScope, 'assets-root'),
@@ -285,11 +284,11 @@ function AssetsPageContent() {
       <main className={styles.page}>
         <MobilePageHeader
           title={t('navigation.assets')}
-          actions={searchAllowed ? [{
+          showOrganization
+          searchEntry={searchAllowed ? {
             href: '/assets/search',
-            icon: <SearchOutline aria-hidden="true" />,
-            label: t('assets.search'),
-          }] : []}
+            placeholder: t('assets.search'),
+          } : undefined}
         />
         <MobileSegmentTabs activeKey={activeTab} onChange={onTabChange}>
           <MobileSegmentTabs.Tab key="followed" title={t('assets.tabs.followed')} />

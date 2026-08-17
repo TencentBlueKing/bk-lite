@@ -136,7 +136,7 @@ test('会话页不猜测缺失的 Bot 或多入口节点', async () => {
   assert.match(page, /selectConversationApplication\(applications, requestedNodeId\)/);
   assert.match(page, /buildSessionsCacheScope\(\{/);
   assert.match(page, /accountId: userInfo/);
-  assert.match(page, /teamId: getCurrentTeamCookie\(\)/);
+  assert.match(page, /teamId: currentTeamId/);
   assert.match(detail, /selectConversationApplication\([\s\S]*requestedNodeId,/);
   assert.match(detail, /nodeId: botData\.node_id/);
   assert.match(detail, /node_id: botData\.node_id/);
@@ -187,8 +187,10 @@ test('智能应用、对话和我的页面共用一级标题样式', async () =>
   const safeHeader = await readProjectFile('src/components/mobile-safe-header/index.tsx');
   const safeHeaderStyles = await readProjectFile('src/components/mobile-safe-header/index.module.css');
 
-  assert.match(profile, /<MobilePageHeader\s+title=\{t\('navigation\.profile'\)\}\s*\/>/);
+  assert.match(profile, /<h1 className=\{styles\.pageTitle\}>\{t\('navigation\.profile'\)\}<\/h1>/);
+  assert.doesNotMatch(profile, /MobilePageHeader/);
   assert.doesNotMatch(profile, /text-2xl[^\n]*navigation\.profile/);
+  assert.match(profile, /OrganizationSwitcher variant="inline"/);
   assert.match(pageHeader, /import MobileSafeHeader/);
   assert.match(conversationHeader, /import MobileSafeHeader/);
   assert.match(pageHeader, /<MobileSafeHeader/);
@@ -197,10 +199,16 @@ test('智能应用、对话和我的页面共用一级标题样式', async () =>
   assert.match(safeHeaderStyles, /padding-top:\s*var\(--safe-area-inset-top\)/);
   assert.match(safeHeaderStyles, /min-height:\s*var\(--mobile-header-height\)/);
   assert.match(pageHeader, /searchType\?: SearchType/);
-  assert.match(pageHeader, /\{searchType && \(/);
+  assert.match(pageHeader, /searchEntry\?:/);
+  assert.match(pageHeader, /showTabSearchEntry/);
+  assert.match(pageHeader, /!showTabSearchEntry && searchType/);
   assert.match(pageHeader, /styles\.leading[\s\S]*styles\.titleGroup[\s\S]*styles\.actions/);
   assert.match(pageHeaderStyles, /grid-template-columns:\s*minmax\(0, 1fr\) auto minmax\(0, 1fr\)/);
-  assert.match(pageHeaderStyles, /\.titleGroup\s*\{[^}]*justify-self:\s*center;/s);
+  assert.match(pageHeader, /const hideTitle = showOrgTrigger/);
+  assert.match(pageHeaderStyles, /headerContentTabRoot/);
+  assert.match(pageHeaderStyles, /titleGroupSrOnly/);
+  assert.match(pageHeaderStyles, /headerContentTabRootWithSearch/);
+  assert.match(pageHeaderStyles, /\.searchEntry\s*\{/);
 });
 
 test('主页面壳层在 iOS 安全区内固定占满且不产生根滚动', async () => {
@@ -322,9 +330,9 @@ test('主页面头部与底栏背景连续覆盖 iOS 安全区', async () => {
   assert.match(header, /background:\s*var\(--color-page-header-bg\)/);
   assert.match(shell, /padding-bottom:\s*max\(6px, var\(--safe-area-inset-bottom\)\)/);
   assert.match(shell, /\.bottomNav\s*\{[^}]*background:\s*var\(--color-bottom-nav-bg\)/s);
-  assert.equal((variables.match(/--mobile-header-height:\s*56px/g) || []).length, 2);
+  assert.equal((variables.match(/--mobile-header-height:\s*48px/g) || []).length, 2);
   assert.equal((variables.match(/--color-app-chrome-bg:\s*var\(--color-background-body\)/g) || []).length, 2);
-  assert.equal((variables.match(/--color-page-header-bg:\s*var\(--color-app-chrome-bg\)/g) || []).length, 2);
+  assert.equal((variables.match(/--color-page-header-bg:\s*var\(--color-bg\)/g) || []).length, 2);
   assert.equal((variables.match(/--color-bottom-nav-bg:\s*var\(--color-bg\)/g) || []).length, 2);
   assert.equal((variables.match(/--color-page-header-bg:/g) || []).length, 2);
   assert.equal((variables.match(/--color-bottom-nav-bg:/g) || []).length, 2);

@@ -387,10 +387,68 @@ test('Tauri native proxy bridges current_team from stored login_info only when t
   const source = await readFile(new URL('src/utils/tauriApiProxy.ts', projectRoot), 'utf8');
 
   assert.match(source, /getCurrentTeamCookie\(\)/);
+  assert.match(source, /getIncludeChildrenCookie\(\)/);
   assert.match(source, /resolveDefaultCurrentTeamId\(getUserInfoSync\(\)\)/);
   assert.match(source, /export function resolveCurrentTeamForNativeProxy\(\)/);
   assert.match(source, /source: currentTeam \? \(cookieTeam \? 'cookie' : 'stored-login-info'\) : 'missing'/);
+  assert.match(source, /upsertCookie\(headers, 'include_children'/);
   assert.equal(source.includes('const currentTeam = resolveDefaultCurrentTeamId(getUserInfoSync()) ??'), false);
+});
+
+test('mobile organization cookies can be switched and cleared together', async () => {
+  const {
+    clearCurrentTeamCookie,
+    getCurrentTeamCookie,
+    getIncludeChildrenCookie,
+    setCurrentTeamCookie,
+    setIncludeChildrenCookie,
+  } = await loadTypeScriptModule('src/utils/teamCookie.ts');
+  const originalDocument = globalThis.document;
+  globalThis.document = createCookieDocument('current_team=1');
+
+  try {
+    setCurrentTeamCookie('9');
+    setIncludeChildrenCookie(true);
+    assert.equal(getCurrentTeamCookie(), '9');
+    assert.equal(getIncludeChildrenCookie(), true);
+
+    clearCurrentTeamCookie();
+    assert.equal(getCurrentTeamCookie(), null);
+    assert.equal(getIncludeChildrenCookie(), false);
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('mobile organization tree hides OpsPilotGuest for normal users and keeps searchable parents', async () => {
+  const {
+    buildOrganizationScope,
+    buildSelectableGroupTree,
+    filterGroupTree,
+    findGroupById,
+  } = await loadTypeScriptModule('src/utils/organization.ts');
+
+  const tree = buildSelectableGroupTree(
+    [{
+      id: 1,
+      name: 'OpsPilotGuest',
+      subGroups: [{ id: 2, name: '平台组' }],
+    }, {
+      id: 3,
+      name: '集团',
+      subGroups: [{ id: 4, name: '运维一组' }],
+    }],
+    [],
+    false,
+  );
+
+  assert.equal(findGroupById(tree, '1'), null);
+  assert.equal(findGroupById(tree, '4')?.name, '运维一组');
+  assert.deepEqual(
+    filterGroupTree(tree, '运维').map((group) => group.name),
+    ['集团'],
+  );
+  assert.equal(buildOrganizationScope(8, '4', true), '8:4:1');
 });
 
 test('H5 runtime token selection never falls back to stored JWT after initialization', async () => {

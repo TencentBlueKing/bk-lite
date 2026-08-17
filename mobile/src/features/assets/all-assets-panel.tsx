@@ -28,7 +28,6 @@ import {
   writeMobileViewSnapshot,
 } from '@/navigation/mobile-view-cache';
 import { shouldShowListPagination } from '@/utils/listPagination';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/assets/assets.module.css';
 
@@ -91,10 +90,10 @@ export default function AllAssetsPanel({
   onWorkbenchMetaChange,
 }: AllAssetsPanelProps) {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { organizationScope } = useAuth();
   const router = useRouter();
   const follow = useFollowedAssets();
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
+  const cacheScope = organizationScope;
   const cacheView = 'assets-all-panel';
   const initialSnapshot = useRef(readMobileViewSnapshot<AllAssetsPanelState>(cacheScope, cacheView));
   const [classifications, setClassifications] = useState<AssetClassification[]>(

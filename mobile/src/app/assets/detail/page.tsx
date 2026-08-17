@@ -23,18 +23,17 @@ import AssetStructuredField from '@/features/assets/asset-structured-field';
 import { useAuth } from '@/context/auth';
 import { formatAccountDateTime } from '@/platform/preferences/dateTime';
 import { invalidateMobileViewSnapshot, readMobileViewSnapshot, writeMobileViewSnapshot } from '@/navigation/mobile-view-cache';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/assets/assets.module.css';
 
 function AssetDetailContent() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { userInfo, organizationScope } = useAuth();
   const params = useSearchParams();
   const modelId = params.get('modelId') || '';
   const modelName = params.get('modelName') || modelId;
   const instanceId = params.get('instanceId') || '';
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
+  const cacheScope = organizationScope;
   const [asset, setAsset] = useState<AssetInstance | null>(null);
   const [groups, setGroups] = useState<AssetFieldGroup[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());

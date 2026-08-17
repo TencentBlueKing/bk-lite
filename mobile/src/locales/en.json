@@ -38,6 +38,16 @@
         "file": "File",
         "allApps": "All Apps"
     },
+    "organization": {
+        "switch": "Switch organization",
+        "select": "Select organization",
+        "search": "Search organizations",
+        "includeSubgroups": "Include subgroups",
+        "empty": "No matching organizations",
+        "current": "Current organization",
+        "expand": "Expand",
+        "collapse": "Collapse"
+    },
     "refresh": {
         "pulling": "Pull down to refresh",
         "canRelease": "Release to refresh",
