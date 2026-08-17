@@ -14,7 +14,6 @@ import { useMobileAvailability } from '@/platform/availability/context';
 import { useTranslation } from '@/utils/i18n';
 import { getUserInfo, type AccountUserInfo } from '@/api/user';
 import {
-  clearCachedAccountOverview,
   readCachedAccountOverview,
   writeCachedAccountOverview,
 } from '@/utils/accountOverviewCache';
