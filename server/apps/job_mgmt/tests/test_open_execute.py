@@ -1,13 +1,16 @@
 """作业执行 / 状态查询开放接口测试"""
 
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.base.models import User, UserAPISecret
 from apps.job_mgmt.constants import ExecutionStatus, JobType
-from apps.job_mgmt.models import JobExecution
+from apps.job_mgmt.models import DistributionFile, JobExecution
+from apps.system_mgmt.models import Group
 from apps.system_mgmt.models import User as SystemUser
 
 
@@ -115,6 +118,138 @@ class TestOpenScriptExecuteAndStatus:
         assert by_id[own.id]["status"] == ExecutionStatus.RUNNING
         assert by_id[foreign.id] == {"task_id": foreign.id, "status": "not_found"}
         assert by_id[99999] == {"task_id": 99999, "status": "not_found"}
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestOpenFileDistribute:
+    def setup_method(self):
+        self.client = APIClient()
+        self.team = Group.objects.create(name="trusted-team")
+        self.user = User.objects.create(username="file_app", domain="test.com")
+        self.system_user = SystemUser.objects.create(
+            username=self.user.username,
+            domain=self.user.domain,
+            group_list=[self.team.id],
+        )
+        self.api_secret_plaintext = UserAPISecret.generate_api_secret()
+        UserAPISecret.objects.create(
+            username=self.user.username,
+            domain=self.user.domain,
+            api_secret=UserAPISecret.hash_api_secret(self.api_secret_plaintext),
+            team=self.team.id,
+        )
+        self.file = DistributionFile.objects.create(
+            original_name="trusted-package.tar.gz",
+            file_key="job-files/trusted-package.tar.gz",
+            expire_at=timezone.now() + timedelta(days=1),
+            team=self.team.id,
+        )
+
+    @pytest.fixture(autouse=True)
+    def disable_license(self, settings, monkeypatch):
+        settings.LICENSE_MGMT_ENABLED = False
+        monkeypatch.setenv("LICENSE_MGMT_ENABLED", "0")
+
+    @pytest.fixture(autouse=True)
+    def disable_auth_middleware(self, settings):
+        settings.MIDDLEWARE = tuple(
+            m for m in settings.MIDDLEWARE if m != "apps.core.middlewares.auth_middleware.AuthMiddleware"
+        )
+
+    def _auth(self):
+        return {"HTTP_API_AUTHORIZATION": self.api_secret_plaintext}
+
+    def _body(self, **overrides):
+        data = {
+            "name": "可信文件分发",
+            "file_keys": [self.file.file_key],
+            "target_source": "node_mgmt",
+            "target_list": [{"node_id": "n1", "name": "web-01", "ip": "10.0.0.1", "os": "linux"}],
+            "target_path": "/tmp/patches/",
+            "team": [999],
+        }
+        data.update(overrides)
+        return data
+
+    def test_uses_api_secret_team_and_ignores_declared_team(self):
+        with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_path") as mock_check, patch(
+            "apps.job_mgmt.nats_api.distribute_files_task.delay"
+        ) as mock_delay:
+            mock_check.return_value = MagicMock(can_execute=True, forbidden=[])
+            mock_delay.return_value.id = "celery-1"
+            response = self.client.post(
+                "/api/v1/job_mgmt/api/open/distribute_file",
+                self._body(),
+                format="json",
+                **self._auth(),
+            )
+
+        assert response.status_code == 201
+        execution = JobExecution.objects.get(id=response.json()["data"]["task_id"])
+        assert execution.team == [self.team.id]
+        mock_check.assert_called_once_with("/tmp/patches/", [self.team.id])
+
+    def test_rejects_file_outside_api_secret_team(self):
+        self.file.team = Group.objects.create(name="other-team").id
+        self.file.save(update_fields=["team"])
+
+        with patch("apps.job_mgmt.nats_api.distribute_files_task.delay") as mock_delay:
+            response = self.client.post(
+                "/api/v1/job_mgmt/api/open/distribute_file",
+                self._body(),
+                format="json",
+                **self._auth(),
+            )
+
+        assert response.status_code == 400
+        assert not JobExecution.objects.filter(name="可信文件分发").exists()
+        mock_delay.assert_not_called()
+
+    @pytest.mark.parametrize("account_state", ["disabled", "inactive"])
+    def test_rejects_inactive_principal(self, account_state):
+        if account_state == "disabled":
+            self.system_user.disabled = True
+            self.system_user.save(update_fields=["disabled"])
+        else:
+            self.user.is_active = False
+            self.user.save(update_fields=["is_active"])
+
+        response = self.client.post(
+            "/api/v1/job_mgmt/api/open/distribute_file",
+            self._body(),
+            format="json",
+            **self._auth(),
+        )
+
+        assert response.status_code == 403
+        assert not JobExecution.objects.filter(name="可信文件分发").exists()
+
+    def test_rejects_archived_api_secret_team(self):
+        self.team.is_delete = True
+        self.team.save(update_fields=["is_delete"])
+
+        response = self.client.post(
+            "/api/v1/job_mgmt/api/open/distribute_file",
+            self._body(),
+            format="json",
+            **self._auth(),
+        )
+
+        assert response.status_code == 400
+        assert not JobExecution.objects.filter(name="可信文件分发").exists()
+
+    @pytest.mark.parametrize("payload", [[], "invalid"])
+    def test_rejects_non_object_json_payload(self, payload):
+        response = self.client.post(
+            "/api/v1/job_mgmt/api/open/distribute_file",
+            payload,
+            format="json",
+            **self._auth(),
+        )
+
+        assert response.status_code == 400
+        assert not JobExecution.objects.exists()
 
 
 @pytest.mark.unit
