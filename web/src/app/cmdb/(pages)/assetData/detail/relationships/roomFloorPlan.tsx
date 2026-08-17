@@ -87,7 +87,7 @@ const RoomFloorPlan: React.FC<Props> = ({
           })
         );
         message.success(t('successfullyDisassociated'));
-        setRack((current) => (current?.inst_id === target.inst_id ? null : current));
+        setRack((current) => (current?.inst_uuid === target.inst_uuid ? null : current));
         reload();
       },
     });
