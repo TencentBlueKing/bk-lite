@@ -301,15 +301,15 @@ export default function RiskPendingPage() {
 
   const patchCols = [
     { title: t('patchManager.risk.patch'), dataIndex: 'patch', width: 140 },
-    { title: t('patchManager.risk.description'), dataIndex: 'sub', ellipsis: true },
+    { title: t('patchManager.risk.description'), dataIndex: 'sub', width: 190, ellipsis: true },
     { title: t('patchManager.severity'), dataIndex: 'sev', width: 100, render: (v: string) => <SeverityTag severity={v} /> },
     { title: t('patchManager.risk.affectedHosts'), dataIndex: 'hosts', width: 90, render: (v: number) => t('patchManager.dashboard.targetCount', undefined, { count: v }) },
     { title: t('patchManager.risk.remediationStatus'), dataIndex: 'dist', render: (_: unknown, r: RiskRow) => <DistRender dist={r.dist} /> },
     { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
-    { title: t('patchManager.operation'), dataIndex: 'op', width: 240, fixed: 'right' as const, render: (_: unknown, r: RiskRow) => opCell(r) },
+    { title: t('patchManager.operation'), dataIndex: 'op', width: 200, fixed: 'right' as const, render: (_: unknown, r: RiskRow) => opCell(r) },
   ];
   const hostCols = [
-    { title: t('patchManager.risk.host'), dataIndex: 'host', width: 140 },
+    { title: t('patchManager.risk.host'), dataIndex: 'host', width: 180 },
     { title: t('patchManager.risk.ipAddress'), dataIndex: 'host_ip', width: 140, render: (v: string) => v || '—' },
     { title: t('patchManager.osType'), dataIndex: 'os_type', width: 100, render: (v: string) => v === 'windows' ? 'Windows' : v === 'linux' ? 'Linux' : v || '—' },
     { title: t('patchManager.risk.currentBaseline'), dataIndex: 'baseline', width: 180 },
@@ -331,15 +331,15 @@ export default function RiskPendingPage() {
     },
     { title: t('patchManager.risk.remediationStatus'), dataIndex: 'dist', render: (_: unknown, r: { dist: RiskRow['dist'] }) => <DistRender dist={r.dist} /> },
     { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
-    { title: t('patchManager.operation'), dataIndex: 'op', width: 240, fixed: 'right' as const, render: (_: unknown, r: any) => opCell(r) },
+    { title: t('patchManager.operation'), dataIndex: 'op', width: 200, fixed: 'right' as const, render: (_: unknown, r: any) => opCell(r) },
   ];
   const baselineCols = [
-    { title: t('patchManager.risk.baseline'), dataIndex: 'baseline', width: 200 },
+    { title: t('patchManager.risk.baseline'), dataIndex: 'baseline', width: 240 },
     { title: t('patchManager.risk.applicable'), dataIndex: 'apply', width: 200, render: (_: unknown, r: any) => r.apply || '-' },
     { title: t('patchManager.risk.affectedHosts'), width: 100, render: (_: unknown, r: any) => t('patchManager.dashboard.targetCount', undefined, { count: new Set((r.items || []).map((i: any) => i.host_id)).size }) },
     { title: t('patchManager.risk.remediationStatus'), dataIndex: 'dist', render: (_: unknown, r: { dist: RiskRow['dist'] }) => <DistRender dist={r.dist} /> },
     { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
-    { title: t('patchManager.operation'), dataIndex: 'op', width: 240, fixed: 'right' as const, render: (_: unknown, r: any) => opCell(r) },
+    { title: t('patchManager.operation'), dataIndex: 'op', width: 200, fixed: 'right' as const, render: (_: unknown, r: any) => opCell(r) },
   ];
 
   const cfg = view === 'host'
@@ -388,6 +388,7 @@ export default function RiskPendingPage() {
     if (view === 'host') {
       return {
         type: 'checkbox' as const,
+        fixed: true,
         selectedRowKeys: selected,
         onChange: setSelected,
         getCheckboxProps: (record: any) => ({
@@ -395,7 +396,7 @@ export default function RiskPendingPage() {
         }),
       };
     }
-    return { type: 'checkbox' as const, selectedRowKeys: selected, onChange: setSelected };
+    return { type: 'checkbox' as const, fixed: true, selectedRowKeys: selected, onChange: setSelected };
   }, [view, selected]);
 
   const selectedRows = (cfg.data as SelectedRow[]).filter((r) => selected.includes(r.key));

@@ -12,7 +12,9 @@ interface DashboardLayoutProps {
 export const DashboardLayout = ({ objectKey, children }: DashboardLayoutProps) => {
   return (
     <div className={styles.layout}>
-      <DashboardSidebar currentObjectKey={objectKey} />
+      <div className={styles.sidebar}>
+        <DashboardSidebar currentObjectKey={objectKey} />
+      </div>
       <div className={styles.content}>
         {children}
       </div>

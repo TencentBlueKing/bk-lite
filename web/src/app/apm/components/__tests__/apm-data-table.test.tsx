@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { Space } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ApmDataTable from '../apm-data-table';
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 
 interface Row {
   count?: number;
@@ -30,7 +31,7 @@ describe('ApmDataTable', () => {
   });
 
   it('使用单层承载、固定布局和自适应高度，不创建表体滚动区', () => {
-    const { container } = render(
+    const { container } = renderWithApmIntl(
       <ApmDataTable<Row>
         columns={columns}
         dataSource={[{ id: 1, name: 'checkout' }]}
@@ -46,7 +47,7 @@ describe('ApmDataTable', () => {
   });
 
   it('为分页列表提供统一总数和分页规格', () => {
-    render(
+    renderWithApmIntl(
       <ApmDataTable<Row>
         columns={columns}
         dataSource={[{ id: 1, name: 'checkout' }]}
@@ -61,7 +62,7 @@ describe('ApmDataTable', () => {
   });
 
   it('统一覆盖存量数值列和状态列的对齐配置', () => {
-    render(
+    renderWithApmIntl(
       <ApmDataTable<Row>
         columns={[
           { title: '名称', dataIndex: 'name' },
@@ -80,7 +81,7 @@ describe('ApmDataTable', () => {
   });
 
   it('兼容存量表头参数并递归统一分组列左对齐', () => {
-    render(
+    renderWithApmIntl(
       <ApmDataTable<Row>
         columns={[
           { title: '名称', dataIndex: 'name' },
@@ -109,7 +110,7 @@ describe('ApmDataTable', () => {
   });
 
   it('将操作列和纵向复合内容所在单元格一并归左', () => {
-    render(
+    renderWithApmIntl(
       <ApmDataTable<Row>
         columns={[
           {
@@ -121,7 +122,11 @@ describe('ApmDataTable', () => {
             title: '操作',
             key: 'action',
             align: 'right',
-            render: () => <Space className="w-full justify-end"><span>编辑</span></Space>,
+            render: () => (
+              <div>
+                <Space className="w-full justify-end"><span>编辑</span></Space>
+              </div>
+            ),
           },
         ]}
         dataSource={[{ id: 1, name: 'checkout' }]}
@@ -133,5 +138,9 @@ describe('ApmDataTable', () => {
     expect(getComputedStyle(screen.getByRole('columnheader', { name: '名称' })).textAlign).toBe('left');
     expect(getComputedStyle(screen.getByText('checkout').closest('td')! as HTMLElement).textAlign).toBe('left');
     expect(getComputedStyle(screen.getByText('编辑').closest('td')! as HTMLElement).textAlign).toBe('left');
+
+    const actionSpace = screen.getByText('编辑').closest('.ant-space') as HTMLElement;
+    expect(['flex-end', 'end', 'right']).not.toContain(getComputedStyle(actionSpace).justifyContent);
+    expect(getComputedStyle(actionSpace).width).not.toBe('100%');
   });
 });

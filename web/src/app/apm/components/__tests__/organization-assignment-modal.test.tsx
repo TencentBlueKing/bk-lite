@@ -1,8 +1,9 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import OrganizationAssignmentModal from '../organization-assignment-modal';
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 
 vi.mock('@/components/group-tree-select', () => ({
   default: () => <div>组织选择器</div>,
@@ -27,7 +28,7 @@ describe('OrganizationAssignmentModal', () => {
   it('关闭时不创建表单实例，避免控制台 useForm 警告', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    render(
+    renderWithApmIntl(
       <OrganizationAssignmentModal
         open={false}
         organizationIds={[]}

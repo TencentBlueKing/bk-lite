@@ -1,7 +1,8 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApmSloPage from '../page';
 
 const api = {
@@ -67,7 +68,7 @@ afterEach(() => {
 
 describe('APM SLO 列表布局', () => {
   it('统一左对齐表头与正文，并保留自适应主信息列', async () => {
-    const { container } = render(<ApmSloPage />);
+    const { container } = renderWithApmIntl(<ApmSloPage />);
 
     expect(await screen.findByText('结算接口 500ms 时延目标')).not.toBeNull();
     expect(screen.getByText('1 项')).not.toBeNull();

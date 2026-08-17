@@ -290,9 +290,9 @@ export default function HomePage() {
               dataSource={stats?.recent_tasks || []}
               scroll={{ y: tableScrollY }}
               columns={[
-                { title: t('patchManager.dashboard.taskName'), dataIndex: 'name', ellipsis: true },
+                { title: t('patchManager.dashboard.taskName'), dataIndex: 'name', width: 250, ellipsis: true },
                 { title: t('patchManager.execution.type'), dataIndex: 'task_type_display', width: 90, render: (value: string) => <Tag>{value}</Tag> },
-                { title: t('patchManager.risk.executionMode'), dataIndex: 'execution_mode', width: 210, render: (_: unknown, r: RecentTaskItem) => recentExecutionText(r) },
+                { title: t('patchManager.risk.executionMode'), dataIndex: 'execution_mode', width: 110, render: (_: unknown, r: RecentTaskItem) => recentExecutionText(r) },
                 { title: t('patchManager.execution.status'), dataIndex: 'status', width: 110, render: (_: unknown, r: RecentTaskItem) => <Tag color={r.status_color}>{t(`patchManager.execution.statuses.${r.status_code}`, r.status)}</Tag> },
                 { title: t('patchManager.createTime'), dataIndex: 'created_at', width: 170, render: (_: string, r: RecentTaskItem) => <span className="text-[var(--color-text-3)]">{convertToLocalizedTime(r.created_at) || '—'}</span> },
               ]}

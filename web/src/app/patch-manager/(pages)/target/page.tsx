@@ -680,7 +680,13 @@ export default function TargetPage() {
       width: 100,
       render: (v: HostRow['source_type']) => t(`patchManager.targetPage.sourceType.${v === 'node_mgmt' ? 'node' : 'manual'}`),
     },
-    { title: t('patchManager.targetPage.currentBaseline'), dataIndex: 'baseline', render: (v: string | null) => (v ? v : <span className="text-[var(--color-warning)]">{t('patchManager.baseline.unbound')}</span>) },
+    {
+      title: t('patchManager.targetPage.currentBaseline'),
+      dataIndex: 'baseline',
+      render: (v: string | null) => (v
+        ? <EllipsisWithTooltip text={v} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />
+        : <span className="whitespace-nowrap text-[var(--color-warning)]">{t('patchManager.baseline.unbound')}</span>),
+    },
     {
       title: t('patchManager.targetPage.complianceStatus'),
       dataIndex: 'compliance',
@@ -867,6 +873,7 @@ export default function TargetPage() {
           loading={listLoading || actionLoading}
           rowSelection={{
             type: 'checkbox',
+            fixed: true,
             selectedRowKeys: selectedKeys,
             onChange: setSelectedKeys,
             getCheckboxProps: (record) => ({ disabled: !record.permission?.includes('Operate') }),
@@ -1089,7 +1096,7 @@ export default function TargetPage() {
           nodeRequestCoordinatorRef.current.invalidate();
           importedNodeRequestCoordinatorRef.current.invalidate();
         }}
-        width={720}
+        width={900}
         footer={
           <Space>
             <Button onClick={() => {
@@ -1103,7 +1110,8 @@ export default function TargetPage() {
           </Space>
         }
       >
-        <div className="mb-3 text-xs text-[var(--color-text-3)]">
+        <div className="mb-3 flex items-center gap-1.5 text-xs text-[var(--color-text-3)]">
+          <LinkOutlined className="shrink-0 text-[var(--color-primary)]" />
           {t('patchManager.targetPage.nodeImportHelp')}
         </div>
         <Input.Search
@@ -1111,11 +1119,12 @@ export default function TargetPage() {
           value={nodeSearch}
           onSearch={(v) => { setNodePagination((p) => ({ ...p, current: 1 })); loadNodeList(1, nodePagination.pageSize, v); }}
           onChange={(e) => setNodeSearch(e.target.value)}
-          className="mb-3"
+          className="mb-3 w-[360px] max-w-full"
           allowClear
         />
         <DualSelector
           rowKey="id"
+          selectionColumnFixed
           dataSource={nodes}
           loading={nodeLoading}
           pagination={{

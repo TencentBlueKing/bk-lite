@@ -50,6 +50,7 @@ import {
   buildConnectorPayload,
   buildConnectionLibraryCreateFromDatasourceForm,
   canExtractConnectionFromDatasourceForm,
+  shouldCreateLibraryConnectionFromForm,
   createDefaultParam,
   createDefaultSchemaField,
   createDefaultTransformConfig,
@@ -375,6 +376,17 @@ const OperateModal: React.FC<OperateModalProps> = ({
       if (!canExtractConnectionFromDatasourceForm(values)) {
         throw new Error(t("common.inputMsg"));
       }
+      const createFromForm = shouldCreateLibraryConnectionFromForm(
+        currentRow,
+        values.source_type,
+      );
+      if (
+        createFromForm &&
+        (isDatabaseSource || isRestApiSource) &&
+        values.connection_config?.password === PASSWORD_PLACEHOLDER
+      ) {
+        throw new Error(t("dataConnection.reenterPassword"));
+      }
       const built = buildConnectionLibraryCreateFromDatasourceForm(values, {
         t,
         name: connectionName,
@@ -389,7 +401,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         }
         : {};
 
-      if (currentRow?.id) {
+      if (currentRow?.id && !createFromForm) {
         const result = await extractDataSourceConnection(currentRow.id, {
           name: built.createPayload.name,
           description: built.createPayload.description,
@@ -440,10 +452,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
   }, [
     createDataConnection,
-    currentRow?.id,
+    currentRow,
     extractDataSourceConnection,
     extractForm,
     form,
+    isDatabaseSource,
     isRestApiSource,
     onSuccess,
     reloadConnectionOptions,
@@ -813,6 +826,16 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
 
     if (previousSourceType !== sourceType) {
+      form.setFieldsValue({
+        connection: undefined,
+        connection_overrides: {},
+        connection_mode:
+          sourceType === SOURCE_TYPE_MYSQL ||
+          sourceType === SOURCE_TYPE_POSTGRESQL ||
+          sourceType === SOURCE_TYPE_REST_API
+            ? "inline"
+            : form.getFieldValue("connection_mode"),
+      });
       if (sourceType === SOURCE_TYPE_PROMETHEUS) {
         form.setFieldsValue({
           chart_type: [...PROMETHEUS_DEFAULT_CHART_TYPES],
@@ -832,6 +855,16 @@ const OperateModal: React.FC<OperateModalProps> = ({
       } else if (sourceType !== SOURCE_TYPE_NATS) {
         form.setFieldValue("chart_type", [TABLE_CHART_TYPE]);
         setParams([]);
+        form.setFieldValue(
+          "connection_config",
+          sourceType === SOURCE_TYPE_MYSQL
+            ? { port: 3306 }
+            : sourceType === SOURCE_TYPE_POSTGRESQL
+              ? { port: 5432 }
+              : sourceType === SOURCE_TYPE_REST_API
+                ? { method: "GET", timeout: 10 }
+                : {},
+        );
       }
       if (sourceType === SOURCE_TYPE_REST_API || sourceType === SOURCE_TYPE_EXCEL) {
         form.setFieldValue(

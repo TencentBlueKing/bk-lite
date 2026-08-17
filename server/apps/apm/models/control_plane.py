@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import IntegrityError, models
 from django.db.models import Q
 
+from apps.core.fields import S3JSONField
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.core.utils.database_constraints import ConstraintValidatedQuerySet
@@ -136,8 +137,6 @@ class ApmServiceInstance(AuditedModel):
     )
     first_seen_at = models.DateTimeField(db_index=True)
     last_seen_at = models.DateTimeField(db_index=True)
-    archived_at = models.DateTimeField(null=True, blank=True, db_index=True)
-    archive_reason = models.CharField(max_length=256, blank=True, default="")
 
     objects = ApmConstraintQuerySet.as_manager()
 
@@ -266,11 +265,34 @@ class ApmPolicy(AuditedModel):
         ERROR = "error", "错误"
         WARNING = "warning", "警告"
 
+    class Aggregation(models.TextChoices):
+        AVERAGE = "avg", "平均值"
+        MAXIMUM = "max", "最大值"
+        MINIMUM = "min", "最小值"
+        LAST = "last", "最新值"
+
+    class VersionMode(models.TextChoices):
+        ALL = "all", "全部版本"
+        SPECIFIC = "specific", "指定版本"
+        GROUPED = "grouped", "按版本"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=256)
     service = models.ForeignKey(ApmService, on_delete=models.CASCADE, related_name="policies")
     environment = models.CharField(max_length=256)
+    alert_name = models.CharField(max_length=512, blank=True, default="")
+    endpoints = models.JSONField(default=list)
+    version_mode = models.CharField(max_length=16, choices=VersionMode.choices, default=VersionMode.ALL)
+    versions = models.JSONField(default=list)
     metric_type = models.CharField(max_length=32, choices=MetricType.choices)
+    evaluation_interval = models.PositiveIntegerField(default=1)
+    metric_window = models.PositiveIntegerField(default=5)
+    aggregation = models.CharField(max_length=16, choices=Aggregation.choices, default=Aggregation.AVERAGE)
+    thresholds = models.JSONField(default=list)
+    trigger_after = models.PositiveIntegerField(default=1)
+    recover_after = models.PositiveIntegerField(default=3)
+    no_data_after = models.PositiveIntegerField(null=True, blank=True)
+    no_data_severity = models.CharField(max_length=16, choices=Severity.choices, blank=True, default="")
     comparator = models.CharField(max_length=8, choices=Comparator.choices)
     threshold = models.DecimalField(max_digits=20, decimal_places=6)
     duration_window = models.PositiveIntegerField()
@@ -324,7 +346,7 @@ class ApmPolicyNotificationTarget(AuditedModel):
 class ApmPolicyState(AuditedModel):
     class Status(models.TextChoices):
         NORMAL = "normal", "正常"
-        FIRING = "firing", "告警"
+        ACTIVE = "active", "告警"
 
     policy = models.OneToOneField(ApmPolicy, on_delete=models.CASCADE, related_name="state")
     evaluation_cursor = models.CharField(max_length=512, blank=True, default="")
@@ -340,10 +362,37 @@ class ApmPolicyState(AuditedModel):
         verbose_name_plural = "APM 策略状态"
 
 
+class ApmPolicyTargetState(AuditedModel):
+    class Status(models.TextChoices):
+        NORMAL = "normal", "正常"
+        ACTIVE = "active", "告警中"
+
+    policy = models.ForeignKey(ApmPolicy, on_delete=models.CASCADE, related_name="target_states")
+    target_key = models.CharField(max_length=512)
+    endpoint = models.CharField(max_length=512, blank=True, default="")
+    version = models.CharField(max_length=256, blank=True, default="")
+    evaluation_cursor = models.CharField(max_length=512, blank=True, default="")
+    consecutive_hits = models.PositiveIntegerField(default=0)
+    consecutive_recoveries = models.PositiveIntegerField(default=0)
+    consecutive_no_data = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.NORMAL)
+    current_severity = models.CharField(max_length=16, choices=ApmPolicy.Severity.choices, blank=True, default="")
+    active_alert_id = models.CharField(max_length=256, blank=True, default="")
+    last_succeeded_at = models.DateTimeField(null=True, blank=True)
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "APM 策略目标状态"
+        verbose_name_plural = "APM 策略目标状态"
+        constraints = [models.UniqueConstraint(fields=("policy", "target_key"), name="apm_policy_target_state_unique")]
+        indexes = [models.Index(fields=("policy", "status"), name="apm_policy_target_status_idx")]
+
+
 class ApmAlert(AuditedModel):
     class Status(models.TextChoices):
-        FIRING = "firing", "告警中"
+        ACTIVE = "active", "告警中"
         RECOVERED = "recovered", "已恢复"
+        CLOSED = "closed", "已关闭"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     external_id = models.CharField(max_length=256, unique=True)
@@ -368,7 +417,10 @@ class ApmAlert(AuditedModel):
     environment = models.CharField(max_length=256, blank=True, default="")
     metric_type = models.CharField(max_length=32, choices=ApmPolicy.MetricType.choices)
     severity = models.CharField(max_length=16, choices=ApmPolicy.Severity.choices)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.FIRING, db_index=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE, db_index=True)
+    endpoint = models.CharField(max_length=512, blank=True, default="")
+    version = models.CharField(max_length=256, blank=True, default="")
+    operator = models.CharField(max_length=150, blank=True, default="")
     current_value = models.DecimalField(max_digits=20, decimal_places=6, null=True, blank=True)
     organizations = models.JSONField(default=list)
     started_at = models.DateTimeField(db_index=True)
@@ -383,8 +435,10 @@ class ApmAlert(AuditedModel):
 
 class ApmEvent(AuditedModel):
     class Action(models.TextChoices):
-        CREATED = "created", "触发"
-        RECOVERY = "recovery", "恢复"
+        TRIGGERED = "triggered", "触发"
+        ESCALATED = "escalated", "级别升级"
+        RECOVERED = "recovered", "恢复"
+        CLOSED = "closed", "人工关闭"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event_id = models.CharField(max_length=320, unique=True)
@@ -408,6 +462,58 @@ class ApmEvent(AuditedModel):
         verbose_name = "APM 告警事件"
         verbose_name_plural = "APM 告警事件"
         ordering = ("-occurred_at", "-id")
+
+
+class ApmEventSnapshot(AuditedModel):
+    class PayloadStatus(models.TextChoices):
+        PENDING = "pending", "待写入"
+        AVAILABLE = "available", "可用"
+        UNAVAILABLE = "unavailable", "不可用"
+        EXPIRED = "expired", "已过期"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    alert = models.ForeignKey(ApmAlert, on_delete=models.CASCADE, related_name="snapshots")
+    event = models.OneToOneField(ApmEvent, on_delete=models.CASCADE, related_name="snapshot")
+    source_event_id = models.CharField(max_length=320, unique=True)
+    schema_version = models.PositiveSmallIntegerField(default=1)
+    action = models.CharField(max_length=16, choices=ApmEvent.Action.choices)
+    occurred_at = models.DateTimeField(db_index=True)
+    organizations = models.JSONField(default=list)
+    policy_snapshot = models.JSONField(default=dict)
+    object_snapshot = models.JSONField(default=dict)
+    evaluation_snapshot = models.JSONField(default=dict)
+    trace_context = models.JSONField(default=dict)
+    payload_status = models.CharField(
+        max_length=16,
+        choices=PayloadStatus.choices,
+        default=PayloadStatus.PENDING,
+        db_index=True,
+    )
+    payload_error_code = models.CharField(max_length=128, blank=True, default="")
+    payload_error_message = models.CharField(max_length=512, blank=True, default="")
+    payload_attempts = models.PositiveIntegerField(default=0)
+    pending_payload = models.JSONField(default=dict)
+    retention_expires_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        verbose_name = "APM 事件快照"
+        verbose_name_plural = "APM 事件快照"
+        ordering = ("occurred_at", "id")
+        indexes = [models.Index(fields=("alert", "occurred_at"), name="apm_snapshot_alert_time_idx")]
+
+
+class ApmEventSnapshotPayload(models.Model):
+    snapshot = models.OneToOneField(ApmEventSnapshot, on_delete=models.CASCADE, related_name="payload")
+    data = S3JSONField(
+        bucket_name="apm-alert-snapshots",
+        compressed=True,
+        delete_previous_on_update=False,
+        verbose_name="APM 事件指标序列",
+    )
+
+    class Meta:
+        verbose_name = "APM 事件快照载荷"
+        verbose_name_plural = "APM 事件快照载荷"
 
 
 class ApmAlertOutbox(AuditedModel):

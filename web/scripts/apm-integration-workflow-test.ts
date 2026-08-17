@@ -49,7 +49,7 @@ assert.doesNotMatch(catalog, /snippet\.grpc_endpoint|OTLP\/gRPC 端点/, '普通
 assert.match(catalog, /OTLP\/HTTP（http\/protobuf）/, '普通接入页面必须明确固定使用 OTLP\/HTTP');
 assert.match(catalog, /generationError/, '生成失败必须保留明确的页面内错误态');
 assert.match(catalog, /复制失败/, '复制操作必须反馈失败');
-assert.match(instances, /title="接入实例"/, '接入实例页应使用产品术语“接入实例”');
+assert.match(instances, /t\('apm\.instances\.title', '接入实例'\)/, '接入实例页应使用产品术语“接入实例”');
 for (const range of ["'15m'", "'1h'", "'4h'", "'1d'", "'7d'"]) {
   assert.ok(instances.includes(range), `接入列表应支持原型中的时间范围 ${range}`);
 }

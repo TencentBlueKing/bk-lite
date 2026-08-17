@@ -21,6 +21,7 @@ MINIO_PRIVATE_BUCKETS = [
     "munchkin-private",
     "log-alert-raw-data",  # 日志告警原始数据存储
     "monitor-alert-raw-data",  # 监控指标原始数据存储
+    "apm-alert-snapshots",  # APM 告警事件指标序列快照
     "job-mgmt-private",  # 监控指标原始数据存储
     "cmdb-config-file",
     "patch-mgmt-private",  # 补丁管理 SSH 私钥

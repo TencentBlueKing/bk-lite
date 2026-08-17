@@ -1,6 +1,7 @@
 from rest_framework import routers
 
 from apps.apm.views.control_plane import (
+    ApmAlertViewSet,
     ApmApplicationViewSet,
     ApmEventViewSet,
     ApmIntegrationConfigurationViewSet,
@@ -14,10 +15,11 @@ from apps.apm.views.control_plane import (
 )
 from apps.apm.views.dashboard import ApmDashboardViewSet
 from apps.apm.views.health import ApmHealthViewSet
+from apps.apm.views.issues import ApmIssueViewSet
 from apps.apm.views.open_probe import ApmOpenProbeViewSet
 from apps.apm.views.spans import ApmSpanViewSet
-from apps.apm.views.traces import ApmTraceViewSet
 from apps.apm.views.topology import ApmTopologyViewSet
+from apps.apm.views.traces import ApmTraceViewSet
 
 router = routers.DefaultRouter()
 router.register(r"applications", ApmApplicationViewSet, basename="apm-application")
@@ -29,8 +31,10 @@ router.register(r"dashboard", ApmDashboardViewSet, basename="apm-dashboard")
 router.register(r"health", ApmHealthViewSet, basename="apm-health")
 router.register(r"traces", ApmTraceViewSet, basename="apm-trace")
 router.register(r"spans", ApmSpanViewSet, basename="apm-span")
+router.register(r"issues", ApmIssueViewSet, basename="apm-issue")
 router.register(r"topology", ApmTopologyViewSet, basename="apm-topology")
 router.register(r"policies", ApmPolicyViewSet, basename="apm-policy")
+router.register(r"alerts", ApmAlertViewSet, basename="apm-alert")
 router.register(r"events", ApmEventViewSet, basename="apm-event")
 router.register(r"notification-channels", ApmNotificationChannelViewSet, basename="apm-notification-channel")
 router.register(r"notification-deliveries", ApmNotificationDeliveryViewSet, basename="apm-notification-delivery")

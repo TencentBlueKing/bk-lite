@@ -325,7 +325,7 @@
       "distroRequired": "Enter a distribution", "distroPlaceholder": "e.g. Ubuntu / Rocky Linux",
       "osVersionPlaceholder": "e.g. 22.04 / 9 (required for apt codename mapping)", "archPlaceholder": "Select a CPU architecture",
       "connectivityPassed": "Connectivity test passed", "connectivityFailed": "Connectivity test failed", "scanSaved": "Scan settings saved",
-      "hourlyTrigger": "Automatically assess all targets every {count} hours", "dailyTrigger": "Automatically assess all targets daily at {time}",
+      "scheduledAssessmentTrigger": "Global scheduled assessment", "notEnabled": "Not enabled", "hourlyTrigger": "Automatically assess all targets every {count} hours", "dailyTrigger": "Automatically assess all targets daily at {time}",
       "weeklyTrigger": "Automatically assess all targets on {weekday} at {time}",
       "triggerBaselineBound": "A target enters pending assessment when first bound to a baseline", "triggerBaselineChanged": "A target resets to pending assessment when its baseline or requirements change",
       "triggerManual": "Runs immediately when Assess Now is selected", "triggerPostRemediation": "Verifies automatically after installation or reboot",

@@ -636,6 +636,30 @@ class MonitorObjectService:
                 )
 
     @staticmethod
+    def descendant_object_ids(root_id):
+        """按 parent 关系收集全部后代对象 ID，避免环导致死循环。"""
+        descendant_ids = []
+        frontier = [root_id]
+        seen = {root_id}
+        while frontier:
+            children = list(
+                MonitorObject.objects.filter(parent_id__in=frontier)
+                .exclude(id__in=seen)
+                .values_list("id", flat=True)
+            )
+            descendant_ids.extend(children)
+            seen.update(children)
+            frontier = children
+        return descendant_ids
+
+    @staticmethod
+    def set_object_visibility(obj: MonitorObject, is_visible: bool) -> None:
+        """切换对象可见性，并同步全部子对象，避免父对象隐藏后子对象仍出现在视图中。"""
+        target_ids = [obj.id, *MonitorObjectService.descendant_object_ids(obj.id)]
+        with transaction.atomic():
+            MonitorObject.objects.filter(id__in=target_ids).update(is_visible=is_visible)
+
+    @staticmethod
     def update_instance(instance_id, name=None, organizations=None, **extra_fields):
         """更新监控对象实例"""
         instance = MonitorInstance.objects.filter(id=instance_id).first()
