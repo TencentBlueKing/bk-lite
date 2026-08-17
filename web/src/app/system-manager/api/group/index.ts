@@ -26,12 +26,13 @@ function isArchivedChildNode(value: unknown): value is ArchivedGroupChildNode {
 }
 
 function isArchivedGroupRoot(value: unknown): value is ArchivedGroupRoot {
-  if (!isArchivedChildNode(value)) {
+  if (!value || typeof value !== 'object') {
     return false;
   }
   const node = value as Record<string, unknown>;
   return (
-    typeof node.kind === 'string'
+    isArchivedChildNode(value)
+    && typeof node.kind === 'string'
     && ARCHIVED_KINDS.has(node.kind as ArchivedGroupKind)
     && typeof node.can_restore === 'boolean'
     && typeof node.can_permanently_delete === 'boolean'
