@@ -6,6 +6,7 @@ import {
   message,
   Select,
 } from 'antd';
+import { CheckCircleFilled, CloseCircleFilled, LoadingOutlined } from '@ant-design/icons';
 
 import OperateModal from '@/components/operate-modal';
 import type { ProviderManifest } from '@/app/system-manager/types/integration-center';
@@ -58,16 +59,20 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
   const [currentStep, setCurrentStep] = useState(1);
   const [mappingRows, setMappingRows] = useState<MappingRow[]>(toMappingRows({}));
   const [mappingError, setMappingError] = useState('');
+  const [rootGroupNameCheck, setRootGroupNameCheck] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
   const { checkRootGroupNameAvailable } = useUserSyncApi();
   const watchedInstanceId = Form.useWatch('integration_instance', form);
   const selectedInstanceId = watchedInstanceId ?? form.getFieldValue('integration_instance');
   const previousInstanceIdRef = useRef<number | undefined>(undefined);
+  const rootGroupNameCheckSeq = useRef(0);
 
   useEffect(() => {
     if (!open) {
       setCurrentStep(1);
       setMappingRows(toMappingRows({}));
       setMappingError('');
+      setRootGroupNameCheck('idle');
+      rootGroupNameCheckSeq.current += 1;
       form.resetFields();
       return;
     }
@@ -125,13 +130,41 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
 
   const validateRootGroupNameAvailable = async (_: unknown, value?: string) => {
     const rootGroupName = value?.trim();
-    if (!rootGroupName) return Promise.resolve();
+    if (!rootGroupName) {
+      setRootGroupNameCheck('idle');
+      return Promise.resolve();
+    }
 
-    const { available } = await checkRootGroupNameAvailable(rootGroupName);
-    if (!available) {
-      throw new Error(t('system.user.userSyncPage.rootGroupNameConflict'));
+    const seq = ++rootGroupNameCheckSeq.current;
+    setRootGroupNameCheck('checking');
+    try {
+      const { available } = await checkRootGroupNameAvailable(rootGroupName);
+      if (seq === rootGroupNameCheckSeq.current) {
+        setRootGroupNameCheck(available ? 'success' : 'error');
+      }
+      if (!available) {
+        throw new Error(t('system.user.userSyncPage.rootGroupNameConflict'));
+      }
+    } catch (err) {
+      if (seq === rootGroupNameCheckSeq.current) {
+        setRootGroupNameCheck('error');
+      }
+      throw err;
     }
   };
+
+  const rootGroupNameSuffix = useMemo(() => {
+    if (rootGroupNameCheck === 'checking') {
+      return <LoadingOutlined className="text-[var(--color-text-3)]" spin />;
+    }
+    if (rootGroupNameCheck === 'success') {
+      return <CheckCircleFilled className="text-[var(--color-success)]" />;
+    }
+    if (rootGroupNameCheck === 'error') {
+      return <CloseCircleFilled className="text-[var(--color-fail)]" />;
+    }
+    return null;
+  }, [rootGroupNameCheck]);
 
   const showMissingUsernameMapping = () => {
     const mappingErrorMessage = t('system.user.userSyncPage.usernameMappingRequired');
@@ -297,6 +330,14 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
               >
                 <Input
                   placeholder={t('common.inputMsg')}
+                  suffix={rootGroupNameSuffix}
+                  onChange={() => {
+                    if (rootGroupNameCheck === 'idle') {
+                      return;
+                    }
+                    rootGroupNameCheckSeq.current += 1;
+                    setRootGroupNameCheck('idle');
+                  }}
                 />
               </Form.Item>
               <Form.Item name="description" label={t('system.user.userSyncPage.description')}>

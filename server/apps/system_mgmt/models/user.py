@@ -86,6 +86,7 @@ class Group(models.Model):
     is_virtual = models.BooleanField(default=False, verbose_name="是否虚拟组")
     allow_inherit_roles = models.BooleanField(default=False, verbose_name="允许子组织继承角色")
     sync_source = models.ForeignKey("system_mgmt.UserSyncSource", null=True, blank=True, on_delete=models.SET_NULL, related_name="synced_groups")
+    is_delete = models.BooleanField(default=False, db_index=True)
 
     class Meta:
         unique_together = ("name", "parent_id")

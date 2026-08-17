@@ -2,8 +2,10 @@
 import html
 import re
 
+from apps.system_mgmt.utils.group_utils import GroupUtils
+
 from .common import *  # noqa: F401,F403
-from .users import _get_actor_user_scope
+from .users import _actor_scope_response
 
 try:
     from apps.system_mgmt.enterprise import nats_notifications
@@ -38,26 +40,10 @@ def search_channel_list(channel_type="", teams=None, include_children=False, cha
     if not teams:
         return {"result": True, "data": []}
 
-    # 如果 include_children 为 True，递归获取所有子组织
     if include_children:
-        # 一次性获取所有组织，避免递归查询数据库
-        all_groups = Group.objects.values_list("id", "parent_id")
-        # 构建 parent_id -> [child_ids] 的映射
-        children_map = {}
-        for gid, pid in all_groups:
-            if pid is not None:
-                children_map.setdefault(pid, []).append(gid)
-
-        # 在内存中递归获取所有子组织
-        def get_descendants(group_id, result_set):
-            result_set.add(group_id)
-            for child_id in children_map.get(group_id, []):
-                get_descendants(child_id, result_set)
-
-        all_teams = set()
-        for team_id in teams:
-            get_descendants(team_id, all_teams)
-        teams = list(all_teams)
+        teams = GroupUtils.get_group_with_descendants(teams)
+        if not teams:
+            return {"result": True, "data": []}
 
     # 构建 teams 筛选条件：team 字段与 teams 有交集
     channels = Channel.objects.all()
@@ -97,7 +83,9 @@ def search_channel_list_scoped(
     :param channel_method: 可选，仅返回 config.method_name 匹配的通道
     :return: 标准 NATS 返回结构，data 为通知通道列表
     """
-    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
+    if error_response is not None:
+        return error_response
     if not user_obj or not authorized_groups:
         return {"result": True, "data": []}
 
@@ -241,7 +229,9 @@ def _channel_delivery_organizations(channel, organization_ids):
 @nats_client.register
 def list_notification_channels_scoped(actor_context, teams=None, include_children=False):
     """返回调用方组织范围内可用的公开通知能力，不暴露渠道私有配置。"""
-    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
+    if error_response is not None:
+        return error_response
     if not user_obj or not authorized_groups:
         return {"result": True, "data": []}
     if teams:
@@ -272,7 +262,9 @@ def search_notification_recipients_scoped(
     limit=100,
 ):
     """返回通知配置可引用的组织内系统用户稳定 ID，不暴露用户敏感字段。"""
-    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
+    if error_response is not None:
+        return error_response
     if not user_obj or not authorized_groups:
         return {"result": True, "data": []}
     try:
@@ -684,21 +676,7 @@ def search_opspilot_nats_channels(teams=None, bot_id=None, include_children=Fals
                 continue
 
         if include_children and normalized_teams:
-            all_groups = Group.objects.values_list("id", "parent_id")
-            children_map = {}
-            for gid, pid in all_groups:
-                if pid is not None:
-                    children_map.setdefault(pid, []).append(gid)
-
-            def _collect_descendants(group_id, acc):
-                acc.add(group_id)
-                for child_id in children_map.get(group_id, []):
-                    _collect_descendants(child_id, acc)
-
-            expanded = set()
-            for team_id in normalized_teams:
-                _collect_descendants(team_id, expanded)
-            normalized_teams = list(expanded)
+            normalized_teams = GroupUtils.get_group_with_descendants(normalized_teams)
 
         if not normalized_teams:
             return {"result": True, "data": []}

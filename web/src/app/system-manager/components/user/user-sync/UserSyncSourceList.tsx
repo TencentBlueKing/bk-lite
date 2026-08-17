@@ -25,6 +25,8 @@ export interface UserSyncSourceCardItem {
   latestStatusText: string;
   latestStatusTone: UserSyncStatusTone;
   syncDisabled: boolean;
+  deleteDisabled?: boolean;
+  deleteDisabledReason?: string;
   dependencyStatusText?: string;
 }
 
@@ -88,8 +90,15 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
     },
     {
       key: 'delete',
-      label: t('common.delete'),
+      label: item.deleteDisabled && item.deleteDisabledReason ? (
+        <Tooltip title={item.deleteDisabledReason}>
+          <span>{t('common.delete')}</span>
+        </Tooltip>
+      ) : (
+        t('common.delete')
+      ),
       danger: true,
+      disabled: Boolean(item.deleteDisabled),
       onClick: () => onDelete(item),
     },
   ];
