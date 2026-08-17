@@ -55,10 +55,12 @@ _DEEPAGENT_BUILTIN_TOOL_NAMES = frozenset(
     }
 )
 
-# 纯文本轮开播条件（与模型无关，不按厂商硬编码）：
+# 纯文本轮开播条件（仅 show_think=True 时启用；与模型无关，不按厂商硬编码）：
 # 1) 连续多个正文 stream chunk 且未见 tool_call，或
 # 2) 缓冲正文已明显长于典型「先旁白再调工具」短句（兼容 Minimax 等单大片输出）。
 # 短旁白（通常 < 该阈值）继续缓冲，等 tool_call 到达后丢弃。
+# show_think=False 时禁止开播：DeepSeek V4 等会在 tool_call 前输出大段分析旁白，
+# 超过字符阈值就会泄漏到正文；改为整轮缓冲，有工具则丢弃，无工具再于 end 发出。
 _AGUI_PLAIN_TEXT_LIVE_AFTER_CHUNKS = 2
 _AGUI_PLAIN_TEXT_LIVE_AFTER_CHARS = 96
 # 单次推送过长时拆成多条 TEXT_MESSAGE_CONTENT，避免「一整段一个 delta」。
@@ -868,6 +870,19 @@ class BasicGraph(ABC):
             return json.dumps(value, sort_keys=True, ensure_ascii=False)
         return str(value)
 
+    @staticmethod
+    def _normalize_tool_result_content(tool_output: Any) -> str:
+        """把 on_tool_end 的 output 规范成可展示的工具结果字符串。"""
+        if tool_output is None or tool_output == "":
+            return ""
+        if isinstance(tool_output, ToolMessage):
+            return str(getattr(tool_output, "content", "") or "")
+        # 部分运行时会把 ToolMessage 包在带 content 属性的容器里
+        content_attr = getattr(tool_output, "content", None)
+        if content_attr is not None and not isinstance(tool_output, (str, bytes, dict, list, tuple, int, float, bool)):
+            return str(content_attr or "")
+        return str(tool_output)
+
     def _handle_tool_end_event(
         self,
         event: Dict[str, Any],
@@ -913,12 +928,14 @@ class BasicGraph(ABC):
                         type=EventType.TOOL_CALL_RESULT,
                         message_id=f"result_{uuid.uuid4()}",
                         tool_call_id=tool_call_id,
-                        content=str(tool_output) if tool_output else "",
+                        content=self._normalize_tool_result_content(tool_output),
                         role="tool",
                         timestamp=int(time.time() * 1000),
                     )
                 )
             )
+            # 标记已回填，避免后续 on_chain_end 用同一 ToolMessage 再发一遍 RESULT
+            current_tool_calls[tool_call_id]["result_sent"] = True
         return events
 
     @staticmethod
@@ -1180,10 +1197,9 @@ class BasicGraph(ABC):
                 current_tool_calls,
                 message_started=False,
                 allow_non_streaming_text=True,
+                emitted_text_signatures=emitted_text_signatures,
             ):
                 events.append(ev)
-            if content:
-                emitted_text_signatures.add(content)
 
         return events
 
@@ -1196,6 +1212,7 @@ class BasicGraph(ABC):
         message_started: bool = False,
         allow_non_streaming_text: bool = False,
         fallback_text: str = "",
+        emitted_text_signatures: Optional[set[str]] = None,
     ) -> list[str]:
         """处理 on_chat_model_end 事件：补充文本输出（非流式 adapter）和工具调用"""
         events = []
@@ -1213,8 +1230,12 @@ class BasicGraph(ABC):
             text_content = strip_phantom_tool_calls(fallback_text)
         tool_calls_list = getattr(output, "tool_calls", None) or []
         if text_content and not tool_calls_list and (not message_started or allow_non_streaming_text):
-            # 纯文本响应：发 TEXT_MESSAGE_START + CONTENT + END
+            # DeepAgent 步骤内确认文案 + 步骤后再来一轮相同正文时，指纹去重只推一次。
+            if emitted_text_signatures is not None and text_content in emitted_text_signatures:
+                return events
             events.extend(self._emit_assistant_text_message(encoder, text_content))
+            if emitted_text_signatures is not None:
+                emitted_text_signatures.add(text_content)
             return events
 
         # 工具调用：补充未经 on_chat_model_stream 发出的 tool_call 事件
@@ -1386,6 +1407,24 @@ class BasicGraph(ABC):
                     # 先看 tool_call：同 chunk 内工具优先于正文，避免旁白泄漏。
                     tool_chunk_events = self._handle_tool_call_chunks(chunk, encoder, current_message_id, current_tool_calls)
                     if tool_chunk_events:
+                        # 若旁白已提前开播，先撤回再发工具事件。
+                        if live_turn_emitted_text and current_message_id:
+                            yield encoder.encode(
+                                CustomEvent(
+                                    type=EventType.CUSTOM,
+                                    name="assistant_text_retract",
+                                    value={"message_id": current_message_id, "reason": "tool_call"},
+                                )
+                            )
+                            if message_started:
+                                yield encoder.encode(
+                                    TextMessageEndEvent(
+                                        type=EventType.TEXT_MESSAGE_END,
+                                        message_id=current_message_id,
+                                        timestamp=int(time.time() * 1000),
+                                    )
+                                )
+                                message_started = False
                         turn_saw_tool_call_chunks = True
                         pending_turn_text = ""
                         turn_plain_text_chunks = 0
@@ -1415,7 +1454,8 @@ class BasicGraph(ABC):
                     elif text_piece:
                         pending_turn_text += text_piece
                         turn_plain_text_chunks += 1
-                        should_go_live = (
+                        # show_think=False：禁止提前开播，等 chat_model_end 再裁定（防长旁白泄漏）。
+                        should_go_live = show_think and (
                             turn_text_live
                             or turn_plain_text_chunks >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHUNKS
                             or len(pending_turn_text) >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHARS
@@ -1472,6 +1512,14 @@ class BasicGraph(ABC):
                         pending_turn_text = ""
                         fallback_text = ""
                         allow_non_streaming_text = bool(tool_result_seen_since_model_end)
+                        if live_turn_emitted_text and current_message_id:
+                            yield encoder.encode(
+                                CustomEvent(
+                                    type=EventType.CUSTOM,
+                                    name="assistant_text_retract",
+                                    value={"message_id": current_message_id, "reason": "tool_call"},
+                                )
+                            )
                         if message_started and current_message_id is not None:
                             yield encoder.encode(
                                 TextMessageEndEvent(
@@ -1481,6 +1529,8 @@ class BasicGraph(ABC):
                                 )
                             )
                             message_started = False
+                        live_turn_emitted_text = ""
+                        turn_text_live = False
                     elif turn_text_live:
                         if pending_turn_text:
                             live_events, current_message_id, message_started = self._emit_live_text_delta(
@@ -1529,6 +1579,7 @@ class BasicGraph(ABC):
                         message_started=turn_text_live,
                         allow_non_streaming_text=allow_non_streaming_text,
                         fallback_text=fallback_text,
+                        emitted_text_signatures=emitted_text_signatures,
                     )
                     # 收集本轮 chat_model_end 实际 emit 的文本指纹(含拆段后的全文),
                     # 后续 on_chain_end 若再 emit 相同内容会基于此集合去重。
