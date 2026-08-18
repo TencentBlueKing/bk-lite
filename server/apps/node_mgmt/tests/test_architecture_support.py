@@ -2853,21 +2853,26 @@ def test_installer_download_endpoint_passes_architecture_to_service(monkeypatch)
 def test_open_api_installer_session_uses_arch_query_param(monkeypatch):
     factory = APIRequestFactory()
     view = OpenSidecarViewSet.as_view({"get": "installer_session"})
+    token_data = {
+        "node_id": "node-1",
+        "ip": "10.0.0.1",
+        "user": "tester",
+        "os": NodeConstants.LINUX_OS,
+        "package_id": "1",
+        "cloud_region_id": "1",
+        "organizations": [1],
+        "node_name": "node-1",
+        "cpu_architecture": NodeConstants.ARM64_ARCH,
+        "remaining_usage": 3,
+    }
 
     monkeypatch.setattr(
         "apps.node_mgmt.views.sidecar.InstallTokenService.validate_and_get_token_data",
-        lambda token: {
-            "node_id": "node-1",
-            "ip": "10.0.0.1",
-            "user": "tester",
-            "os": NodeConstants.LINUX_OS,
-            "package_id": "1",
-            "cloud_region_id": "1",
-            "organizations": [1],
-            "node_name": "node-1",
-            "cpu_architecture": NodeConstants.ARM64_ARCH,
-            "remaining_usage": 3,
-        },
+        lambda token: token_data,
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.sidecar.InstallTokenService.inspect_token_data",
+        lambda token: token_data,
     )
     monkeypatch.setattr(
         InstallerSessionService,
@@ -2912,6 +2917,21 @@ def test_open_api_installer_session_consumes_token_once(monkeypatch):
     monkeypatch.setattr(
         "apps.node_mgmt.views.sidecar.InstallTokenService.validate_and_get_token_data",
         fake_validate,
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.sidecar.InstallTokenService.inspect_token_data",
+        lambda token: {
+            "node_id": "node-1",
+            "ip": "10.0.0.1",
+            "user": "tester",
+            "os": NodeConstants.LINUX_OS,
+            "package_id": "1",
+            "cloud_region_id": "1",
+            "organizations": [1],
+            "node_name": "node-1",
+            "cpu_architecture": NodeConstants.ARM64_ARCH,
+            "remaining_usage": 5,
+        },
     )
     monkeypatch.setattr(
         InstallerSessionService,
@@ -2966,6 +2986,10 @@ def test_open_api_linux_bootstrap_contains_arch_detection_and_routed_urls(monkey
         lambda token: {"cpu_architecture": NodeConstants.ARM64_ARCH},
     )
     monkeypatch.setattr(
+        "apps.node_mgmt.views.sidecar.InstallTokenService.inspect_token_data",
+        lambda token: {"cpu_architecture": NodeConstants.ARM64_ARCH},
+    )
+    monkeypatch.setattr(
         InstallerSessionService,
         "build_session_config",
         lambda token, arch="", token_data=None: {
@@ -3012,6 +3036,10 @@ def test_open_api_linux_bootstrap_shell_quotes_dynamic_values(monkeypatch):
         lambda token: {"cpu_architecture": NodeConstants.ARM64_ARCH},
     )
     monkeypatch.setattr(
+        "apps.node_mgmt.views.sidecar.InstallTokenService.inspect_token_data",
+        lambda token: {"cpu_architecture": NodeConstants.ARM64_ARCH},
+    )
+    monkeypatch.setattr(
         InstallerSessionService,
         "build_session_config",
         lambda token, arch="", token_data=None: {
@@ -3041,6 +3069,10 @@ def test_open_api_linux_bootstrap_preserves_installer_failure_and_cleans_temp_di
 
     monkeypatch.setattr(
         "apps.node_mgmt.views.sidecar.InstallTokenService.validate_and_get_token_data",
+        lambda token: {"cpu_architecture": NodeConstants.X86_64_ARCH},
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.sidecar.InstallTokenService.inspect_token_data",
         lambda token: {"cpu_architecture": NodeConstants.X86_64_ARCH},
     )
     monkeypatch.setattr(
@@ -3101,6 +3133,10 @@ def test_open_api_linux_bootstrap_consumes_token_once(monkeypatch):
     monkeypatch.setattr(
         "apps.node_mgmt.views.sidecar.InstallTokenService.validate_and_get_token_data",
         fake_validate,
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.sidecar.InstallTokenService.inspect_token_data",
+        lambda token: {"cpu_architecture": NodeConstants.ARM64_ARCH},
     )
     monkeypatch.setattr(
         InstallerSessionService,

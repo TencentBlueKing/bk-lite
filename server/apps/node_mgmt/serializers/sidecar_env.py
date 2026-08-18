@@ -1,11 +1,28 @@
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.database import EnvVariableConstants
+from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.models.cloud_region import SidecarEnv
+from apps.node_mgmt.services.installer_credentials import normalize_installer_credentials_mode
 from rest_framework import serializers
 
 
-class SidecarEnvSerializer(serializers.ModelSerializer):
+class InstallerCredentialsModeValidationMixin:
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        key = attrs.get("key", getattr(self.instance, "key", None))
+        if key != NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_KEY:
+            return attrs
+
+        value = attrs.get("value", getattr(self.instance, "value", None))
+        try:
+            attrs["value"] = normalize_installer_credentials_mode(value)
+        except ValueError as exc:
+            raise serializers.ValidationError({"value": str(exc)})
+        return attrs
+
+
+class SidecarEnvSerializer(InstallerCredentialsModeValidationMixin, serializers.ModelSerializer):
     class Meta:
         model = SidecarEnv
         fields = ['id', 'key', 'value', 'description', 'type']
@@ -35,7 +52,7 @@ class SidecarEnvSerializer(serializers.ModelSerializer):
         return value
 
 
-class EnvVariableCreateSerializer(serializers.ModelSerializer):
+class EnvVariableCreateSerializer(InstallerCredentialsModeValidationMixin, serializers.ModelSerializer):
     cloud_region_id = serializers.PrimaryKeyRelatedField(queryset=CloudRegion.objects.all(), source='cloud_region')
 
     class Meta:
@@ -50,7 +67,7 @@ class EnvVariableCreateSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-class EnvVariableUpdateSerializer(serializers.ModelSerializer):
+class EnvVariableUpdateSerializer(InstallerCredentialsModeValidationMixin, serializers.ModelSerializer):
     class Meta:
         model = SidecarEnv
         fields = ['key', 'value', 'description']

@@ -551,10 +551,12 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         if not token:
             raise BaseAppException("Missing token parameter")
 
-        token_data = InstallTokenService.validate_and_get_token_data(token)
+        token_data = InstallTokenService.inspect_token_data(token)
         serializer = InstallerArtifactQuerySerializer(data=request.query_params, context={"target_os": token_data.get("os", "linux")})
         serializer.is_valid(raise_exception=True)
         config = InstallerSessionService.build_session_config(token, serializer.validated_data.get("arch", ""), token_data=token_data)
+        consumed_token_data = InstallTokenService.validate_and_get_token_data(token)
+        config["remaining_usage"] = consumed_token_data["remaining_usage"]
 
         response = JsonResponse(config)
         response["X-Token-Remaining-Usage"] = str(config["remaining_usage"])
@@ -585,9 +587,10 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         if not token:
             raise BaseAppException("Missing token parameter")
 
-        token_data = InstallTokenService.validate_and_get_token_data(token)
+        token_data = InstallTokenService.inspect_token_data(token)
         requested_arch = normalize_cpu_architecture(token_data.get("cpu_architecture", ""))
         config = InstallerSessionService.build_session_config(token, requested_arch, token_data=token_data)
+        InstallTokenService.validate_and_get_token_data(token)
         installer = config["installer"]
         install_dir = config["install_dir"]
         server_base_url = config["server_url"].replace("/api/v1/node_mgmt/open_api/node", "")

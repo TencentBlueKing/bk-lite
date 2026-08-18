@@ -208,6 +208,17 @@ Windows 远程安装还要求云区域配置 `NATS_PROTOCOL=tls`，并使用受�
 
 bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`，实时发布失败会自动降级为 Ansible 终态 stdout 回放，不会让安装失败；但页面将无法实时显示下载和解压过程。生产验收必须覆盖实时进度，不能只验证最终成功。
 
+### 安装凭据逐区域切换
+
+`NATS_INSTALLER_CREDENTIALS_MODE` 是云区域级迁移闸，只允许以下值：
+
+- 未配置或 `legacy`：保留 Linux 与 Windows GUI 的管理员凭据兼容回退；Windows 远程安装仍强制使用专用凭据。
+- `strict`：所有安装会话缺少任一 `NATS_INSTALLER_USERNAME/PASSWORD` 时均失败关闭，不再下发管理员凭据。
+
+迁移必须逐区域执行：先配置安装专用账号及 Object Store 读取、`installer.progress.>` 发布权限，完成 Linux 自动/手动、Windows GUI/远程安装验证，再把该区域模式改为 `strict`。保存接口会拒绝空值和未知值；切换后应再执行一次缺配探针，确认请求明确失败且响应中没有管理员凭据。
+
+区域级回滚时先把模式改回 `legacy`，并移除或修正错误的专用用户名/密码；只改模式不会覆盖一组已存在但无法认证的专用凭据，因为安装会话始终优先使用专用账号。若失败请求已经消耗安装 token 次数，还需重新签发 token 后再验证。回滚不得恢复已轮换的旧管理员密码，也不得删除已验证可用的最小权限账号。
+
 ## 8. 发布验收清单
 
 发布完成后逐项确认：
