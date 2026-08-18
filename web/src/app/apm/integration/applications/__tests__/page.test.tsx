@@ -109,7 +109,7 @@ describe('APM 应用管理', () => {
     expect(document.querySelector('[data-fixed="right"]')).not.toBeNull();
   });
 
-  it('使用抽屉承载创建应用表单', async () => {
+  it('使用抽屉承载创建应用表单并将操作按钮放在底部', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmApplicationsPage />);
     await screen.findByText('演示应用');
@@ -120,6 +120,13 @@ describe('APM 应用管理', () => {
     expect(document.querySelector('.ant-modal')).toBeNull();
     expect(document.querySelector('.ant-drawer-title')?.textContent).toBe('创建应用');
     expect(document.querySelector('form#apm-application-form')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /^创\s*建$/ }).getAttribute('form')).toBe('apm-application-form');
+    const createButton = screen.getByRole('button', { name: /^创\s*建$/ });
+    const cancelButton = screen.getByRole('button', { name: /^取\s*消$/ });
+    const drawerFooter = document.querySelector('.ant-drawer-footer');
+
+    expect(createButton.getAttribute('form')).toBe('apm-application-form');
+    expect(drawerFooter?.contains(cancelButton)).toBe(true);
+    expect(drawerFooter?.contains(createButton)).toBe(true);
+    expect(document.querySelector('.ant-drawer-header')?.contains(createButton)).toBe(false);
   });
 });
