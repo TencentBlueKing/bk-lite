@@ -6,7 +6,6 @@ AnsibleExecutor 把 adhoc/playbook/task_query 转发到不同 namespace 的 RpcC
 不触达真实 NATS。
 """
 import pydantic.root_model  # noqa
-
 import pytest
 
 from apps.rpc.ansible import AnsibleExecutor, AnsibleRpcClient
@@ -44,6 +43,7 @@ def test_rpc_client_subclass_namespace():
 
 
 # --------------------------- adhoc ---------------------------
+
 
 def test_adhoc_缺少所有目标源抛错(ex):
     with pytest.raises(ValueError, match="inventory or inventory_content or host_credentials is required"):
@@ -83,6 +83,7 @@ def test_adhoc_可选字段仅在传入时加入(ex):
         inventory_content="[t]\nh",
         stream_log_topic="log.topic",
         execution_id="exec-9",
+        stream_remote_output=True,
         timeout=120,
     )
     args, kwargs = ex.adhoc_client.calls[-1]
@@ -90,10 +91,12 @@ def test_adhoc_可选字段仅在传入时加入(ex):
     rd = args[1]
     assert rd["stream_log_topic"] == "log.topic"
     assert rd["execution_id"] == "exec-9"
+    assert rd["stream_remote_output"] is True
     assert rd["execute_timeout"] == 120
 
 
 # --------------------------- playbook ---------------------------
+
 
 def test_playbook_缺少playbook源抛错(ex):
     with pytest.raises(ValueError, match="playbook_path or playbook_content is required"):
@@ -142,6 +145,7 @@ def test_playbook_显式task_id与timeout(ex):
 
 
 # --------------------------- task_query ---------------------------
+
 
 def test_task_query_组装并转发(ex, monkeypatch):
     rec = _Recorder()
