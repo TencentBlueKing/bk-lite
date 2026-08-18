@@ -587,6 +587,7 @@ export interface ApmAlert {
 
 export interface ApmAlertQuery {
   status?: ApmAlert['status'];
+  status_group?: 'active' | 'history';
   severity?: ApmPolicySeverity;
   metric_type?: ApmPolicyMetric;
   service_id?: string;

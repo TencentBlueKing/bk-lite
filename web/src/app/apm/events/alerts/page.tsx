@@ -122,10 +122,11 @@ export default function ApmAlertsPage() {
     const timeParams = resolveTimeParams(range, customRange);
     const query: ApmAlertQuery = {
       ...timeParams,
+      status_group: activeTab,
       limit: 100,
       keyword: submittedKeyword,
     };
-    Promise.all([getAlerts(query), getAlertDistribution(timeParams)])
+    Promise.all([getAlerts(query), getAlertDistribution({ ...timeParams, status_group: activeTab })])
       .then(([items, buckets]) => {
         if (sequence !== loadSequence.current) return;
         setAllAlerts(items);
@@ -139,7 +140,7 @@ export default function ApmAlertsPage() {
       .finally(() => {
         if (sequence === loadSequence.current) setIsRefreshing(false);
       });
-  }, [authLoading, customRange, getAlertDistribution, getAlerts, range, submittedKeyword]);
+  }, [activeTab, authLoading, customRange, getAlertDistribution, getAlerts, range, submittedKeyword]);
 
   useEffect(() => load(), [load]);
 
@@ -154,9 +155,7 @@ export default function ApmAlertsPage() {
     return () => window.clearInterval(timer);
   }, [load, refreshInterval]);
 
-  const activeAlerts = useMemo(() => allAlerts.filter((item) => item.status === 'active'), [allAlerts]);
-  const historyAlerts = useMemo(() => allAlerts.filter((item) => item.status !== 'active'), [allAlerts]);
-  const alerts = activeTab === 'active' ? activeAlerts : historyAlerts;
+  const alerts = allAlerts;
   const distributionTotals = useMemo(
     () => distribution.reduce(
       (totals, bucket) => ({
@@ -203,6 +202,18 @@ export default function ApmAlertsPage() {
       setSnapshot(null);
     }
     load();
+  };
+
+  const handleViewChange = (key: string) => {
+    const nextView = key as 'active' | 'history';
+    if (nextView === activeTab) return;
+    setActiveTab(nextView);
+    setAllAlerts([]);
+    setDistribution([]);
+    setState('loading');
+    setSelected(null);
+    setSelectedEvent(null);
+    setSnapshot(null);
   };
 
   const chartRows = useMemo(() => {
@@ -358,6 +369,16 @@ export default function ApmAlertsPage() {
       spacing="flush"
     >
       <div className={`${styles.workspace} ${styles.alertsWorkspace}`}>
+        <Tabs
+          className={styles.alertsViewTabs}
+          activeKey={activeTab}
+          onChange={handleViewChange}
+          items={[
+            { key: 'active', label: '活跃告警' },
+            { key: 'history', label: '历史告警' },
+          ]}
+        />
+
         <section className={styles.alertsToolbar} aria-labelledby="apm-alerts-title">
           <div className={styles.alertsToolbarTitle}>
             <BellOutlined aria-hidden="true" />
@@ -487,21 +508,6 @@ export default function ApmAlertsPage() {
         </section>
 
         <section className={styles.alertsTableSection} aria-label="告警列表">
-          <Tabs
-            className={styles.alertsTableTabs}
-            activeKey={activeTab}
-            onChange={(key) => setActiveTab(key as 'active' | 'history')}
-            items={[
-              {
-                key: 'active',
-                label: <Space size={6}>活跃告警<Tag color="error">{activeAlerts.length}</Tag></Space>,
-              },
-              {
-                key: 'history',
-                label: <Space size={6}>历史告警<Tag>{historyAlerts.length}</Tag></Space>,
-              },
-            ]}
-          />
           {state === 'ready' && alerts.length ? (
             <ApmDataTable
               rowKey="id"

@@ -29,6 +29,7 @@ class DjangoApmAlertService:
         started_at: datetime,
         ended_at: datetime,
         status: str | None = None,
+        status_group: str | None = None,
         severity: str | None = None,
         metric_type: str | None = None,
         service_id=None,
@@ -41,6 +42,12 @@ class DjangoApmAlertService:
         )
         if status:
             queryset = queryset.filter(status=status)
+        if status_group == "active":
+            queryset = queryset.filter(status=ApmAlert.Status.ACTIVE)
+        elif status_group == "history":
+            queryset = queryset.filter(
+                status__in=(ApmAlert.Status.RECOVERED, ApmAlert.Status.CLOSED)
+            )
         if severity:
             queryset = queryset.filter(severity=severity)
         if metric_type:
@@ -57,8 +64,21 @@ class DjangoApmAlertService:
             )
         return [self.serialize(alert) for alert in queryset.order_by("-last_event_at", "-id")[:limit]]
 
-    def distribution(self, *, organization_id: int, started_at: datetime, ended_at: datetime) -> list[dict]:
+    def distribution(
+        self,
+        *,
+        organization_id: int,
+        started_at: datetime,
+        ended_at: datetime,
+        status_group: str | None = None,
+    ) -> list[dict]:
         event_queryset = ApmEvent.objects.all()
+        if status_group == "active":
+            event_queryset = event_queryset.filter(alert__status=ApmAlert.Status.ACTIVE)
+        elif status_group == "history":
+            event_queryset = event_queryset.filter(
+                alert__status__in=(ApmAlert.Status.RECOVERED, ApmAlert.Status.CLOSED)
+            )
         rows = (
             event_queryset.filter(build_json_membership_query(event_queryset, "organizations", [organization_id]))
             .filter(occurred_at__gte=started_at, occurred_at__lte=ended_at)

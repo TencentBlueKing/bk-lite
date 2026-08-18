@@ -631,6 +631,7 @@ class ApmAlertQuerySerializer(serializers.Serializer):
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
     status = serializers.ChoiceField(choices=("active", "recovered", "closed"), required=False)
+    status_group = serializers.ChoiceField(choices=("active", "history"), required=False)
     severity = serializers.ChoiceField(choices=("critical", "error", "warning"), required=False)
     metric_type = serializers.ChoiceField(choices=ApmPolicy.MetricType.choices, required=False)
     service_id = serializers.UUIDField(required=False)

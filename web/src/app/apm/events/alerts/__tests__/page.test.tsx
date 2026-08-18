@@ -95,7 +95,7 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
 }));
 vi.mock('@/components/time-series-composed-chart', () => ({
-  default: (props: { series: Array<{ name: string }> }) => {
+  default: (props: { data: Array<Record<string, unknown>>; series: Array<{ name: string }> }) => {
     chartRender(props);
     return <div>{props.series.map((item) => item.name).join(' / ')}</div>;
   },
@@ -111,8 +111,16 @@ beforeEach(() => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     });
-  api.getAlerts.mockResolvedValue([alert, recoveredAlert]);
-  api.getAlertDistribution.mockResolvedValue([{ time: event.occurred_at, critical: 0, error: 1, warning: 0 }]);
+  api.getAlerts.mockImplementation((query: { status_group?: string }) => Promise.resolve(
+    query.status_group === 'active' ? [alert] : query.status_group === 'history' ? [recoveredAlert] : [],
+  ));
+  api.getAlertDistribution.mockImplementation((query: { status_group?: string }) => Promise.resolve(
+    query.status_group === 'active'
+      ? [{ time: event.occurred_at, critical: 0, error: 1, warning: 0 }]
+      : query.status_group === 'history'
+        ? [{ time: recoveredAlert.ended_at, critical: 0, error: 0, warning: 1 }]
+        : [],
+  ));
   api.getAlertSnapshots.mockResolvedValue([snapshot]);
   api.getNotificationDeliveries.mockResolvedValue([]);
 });
@@ -137,8 +145,9 @@ describe('APM Alert 与 Event Snapshot', () => {
       expect.objectContaining({ color: '#D97007', stack: 'severity', barGradient: false }),
       expect.objectContaining({ color: '#FFAD42', stack: 'severity', barGradient: false }),
     ]);
-    expect(screen.getByRole('tab', { name: /活跃告警.*1/ })).not.toBeNull();
-    expect(screen.getByRole('tab', { name: /历史告警.*1/ })).not.toBeNull();
+    const activeTab = screen.getByRole('tab', { name: '活跃告警' });
+    const historyTab = screen.getByRole('tab', { name: '历史告警' });
+    expect(activeTab.compareDocumentPosition(screen.getByLabelText('搜索告警')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getAllByRole('columnheader').map((cell) => cell.textContent?.trim())).toEqual([
       '级别',
       '触发时间',
@@ -155,10 +164,16 @@ describe('APM Alert 与 Event Snapshot', () => {
     expect(screen.queryByRole('columnheader', { name: '状态' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '事件' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '最近变化' })).toBeNull();
-    expect(api.getAlerts).toHaveBeenCalledWith(expect.not.objectContaining({ status: 'active' }));
-    await user.click(screen.getByRole('tab', { name: /历史告警.*1/ }));
+    expect(api.getAlerts).toHaveBeenCalledWith(expect.objectContaining({ status_group: 'active' }));
+    expect(api.getAlertDistribution).toHaveBeenCalledWith(expect.objectContaining({ status_group: 'active' }));
+    await user.click(historyTab);
     expect(await screen.findByText('checkout P95 时延恢复')).not.toBeNull();
-    expect(api.getAlerts).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('checkout 错误率升高')).toBeNull();
+    expect(api.getAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ status_group: 'history' }));
+    expect(api.getAlertDistribution).toHaveBeenLastCalledWith(expect.objectContaining({ status_group: 'history' }));
+    expect(chartRender.mock.calls.at(-1)?.[0].data).toEqual([
+      expect.objectContaining({ warning: 1 }),
+    ]);
   });
 
   it('详情趋势绑定所选 event_id 的持久化快照，而不是重查当前 RED', async () => {

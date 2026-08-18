@@ -903,6 +903,7 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
                 organization_id=organization_id,
                 started_at=data["started_at"],
                 ended_at=data["ended_at"],
+                status_group=data.get("status_group"),
             )
         )
 
