@@ -10,6 +10,8 @@
     "collector",
     "instance_id",
     "message",
+    "timestamp",
+    "collect_timestamp",
     "rabbitmq.log.timestamp",
     "rabbitmq.log.level",
     "rabbitmq.log.pid",

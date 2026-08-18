@@ -17,20 +17,21 @@ assert.match(events, /活跃告警/);
 assert.match(events, /历史告警/);
 assert.match(events, /getAlerts\(query\)/, '告警列表必须读取 APM Alert 聚合接口');
 assert.match(events, /getAlertDistribution/, '告警页应提供真实事件分布概览');
-assert.match(events, /搜索标题、策略、服务或端点/, '告警页应支持原型中的快捷搜索');
+assert.match(events, /搜索告警标题 \/ 服务 \/ 规则/, '告警页应支持原型中的快捷搜索');
 assert.match(events, /Drawer/, '告警页必须提供详情抽屉');
 assert.match(events, /openDrawer|setSelected/, '告警行必须可打开详情');
 assert.match(events, /Timeline/, '告警详情必须提供事件时间线');
 assert.match(events, /getNotificationDeliveries/, '通知投递必须作为独立记录读取');
 assert.match(events, /getAlertSnapshots\(alert\.id, event\.event_id\)/, '趋势必须绑定所选 event_id 的持久化快照');
 assert.doesNotMatch(events, /getServiceRed/, '告警详情不得重查当前 RED 冒充历史快照');
-assert.match(events, /Service \/ Endpoint/, '告警列表必须展示服务和端点身份');
+assert.match(events, /服务 \/ 端点/, '告警列表必须展示服务和端点身份');
 assert.match(events, /当时阈值/, '告警详情必须展示事件发生时阈值线');
 assert.match(events, /事件发生点/, '告警详情必须展示事件发生点');
 assert.match(events, /width=\{880\}/, '详情抽屉必须使用 880px 宽度');
-for (const range of ["'1h'", "'24h'", "'7d'"]) {
-  assert.ok(events.includes(range), `告警页应支持原型中的时间范围 ${range}`);
-}
+assert.match(events, /TimeSelector/, '历史告警应复用 Monitor/Log 的时间范围下拉框');
+assert.match(events, /onlyTimeSelect/, '历史告警的时间控件不应重复展示刷新周期');
+assert.match(events, /selectValue: 10080/, '历史告警默认查询最近 7 天');
+assert.doesNotMatch(events, /refreshInterval|自动刷新/, '告警页不应暴露独立的自动刷新周期配置');
 assert.match(policies, /新建策略/);
 assert.match(policies, /编辑/);
 assert.match(policies, /setPolicyEnabled/, '策略启停必须保留在列表中');

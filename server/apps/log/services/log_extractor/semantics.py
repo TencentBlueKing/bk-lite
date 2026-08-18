@@ -11,7 +11,16 @@ from apps.log.services.log_extractor.preview_runtime import (
     execute_regex_preview,
 )
 
-PROTECTED_FIELDS = {"instance_id", "source_type", "timestamp", "_msg", "log_message", "raw_message", "trap_message"}
+PROTECTED_FIELDS = {
+    "instance_id",
+    "source_type",
+    "timestamp",
+    "collect_timestamp",
+    "_msg",
+    "log_message",
+    "raw_message",
+    "trap_message",
+}
 EXTRACTOR_TYPES = {"copy", "split", "kv", "regex", "regex_replace", "json"}
 CONDITION_OPERATORS = {"==", "!=", "contains", "!contains", "startswith", "endswith", "exists", "!exists"}
 _SIMPLE_SEGMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")

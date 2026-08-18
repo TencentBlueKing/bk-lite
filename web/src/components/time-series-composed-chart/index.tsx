@@ -4,6 +4,7 @@ import ReactEcharts from 'echarts-for-react';
 import ChartSurface, {
   type ChartSurfaceProps,
 } from '@/components/chart-surface';
+import useChartColors from '@/hooks/useChartColors';
 
 type TimeSeriesRow = Record<string, unknown>;
 type BorderRadius = [number, number, number, number];
@@ -22,8 +23,13 @@ export interface TimeSeriesComposedChartSeries<T extends TimeSeriesRow> {
   yAxisIndex?: number;
   barMaxWidth?: number;
   barBorderRadius?: BorderRadius;
+  /** 同名堆叠组会在同一时间刻度上累加展示。 */
+  stack?: string;
+  /** Monitor 告警分布使用纯色柱，其他趋势柱默认保留渐变。 */
+  barGradient?: boolean;
   lineWidth?: number;
   showArea?: boolean;
+  areaOpacity?: number;
   smooth?: boolean;
   showSymbol?: boolean;
   /** 多序列除颜色外用线型区分；默认实线。 */
@@ -64,7 +70,7 @@ const createVerticalBarGradient = (color: string) => ({
   ],
 });
 
-const createSoftLineArea = (color: string) => ({
+const createSoftLineArea = (color: string, opacity = 0.12) => ({
   color: {
     type: 'linear' as const,
     x: 0,
@@ -72,7 +78,15 @@ const createSoftLineArea = (color: string) => ({
     x2: 0,
     y2: 1,
     colorStops: [
-      { offset: 0, color: withAlpha(color, '1F') },
+      {
+        offset: 0,
+        color: withAlpha(
+          color,
+          Math.round(Math.max(0, Math.min(1, opacity)) * 255)
+            .toString(16)
+            .padStart(2, '0'),
+        ),
+      },
       { offset: 1, color: withAlpha(color, '03') },
     ],
   },
@@ -90,11 +104,6 @@ const toNumericValue = (value: unknown) => {
   return Number.isFinite(num) ? num : 0;
 };
 
-const DEFAULT_LEGEND_TEXT_COLOR = 'var(--color-text-3)';
-const DEFAULT_AXIS_LABEL_COLOR = 'var(--color-text-3)';
-const DEFAULT_AXIS_LINE_COLOR = 'var(--color-border-2)';
-const DEFAULT_SPLIT_LINE_COLOR = 'var(--color-border-1)';
-
 const TimeSeriesComposedChart = <T extends TimeSeriesRow>({
   data,
   loading = false,
@@ -108,6 +117,7 @@ const TimeSeriesComposedChart = <T extends TimeSeriesRow>({
   grid,
   surfaceProps,
 }: TimeSeriesComposedChartProps<T>) => {
+  const chartColors = useChartColors();
   const sortedData = useMemo(() => {
     if (!Array.isArray(data) || data.length === 0) {
       return [];
@@ -138,16 +148,22 @@ const TimeSeriesComposedChart = <T extends TimeSeriesRow>({
       color: series.map((item) => item.color),
       tooltip: {
         trigger: 'axis',
-        axisPointer: { type: 'cross' },
+        axisPointer: {
+          type: 'cross',
+          lineStyle: { color: chartColors.textTertiary, type: 'dashed' },
+          crossStyle: { color: chartColors.textTertiary, type: 'dashed' },
+        },
         appendToBody: true,
         confine: false,
-        textStyle: { fontSize: 12 },
+        backgroundColor: chartColors.tooltipBg,
+        borderColor: chartColors.tooltipBorder,
+        textStyle: { color: chartColors.textPrimary, fontSize: 12 },
       },
       legend: legendVisible
         ? {
           top: 0,
           left: 18,
-          textStyle: { color: DEFAULT_LEGEND_TEXT_COLOR, fontSize: 12 },
+          textStyle: { color: chartColors.textTertiary, fontSize: 12 },
           itemWidth: 12,
           itemHeight: 4,
           ...(hasDistinctLineTypes ? {} : { icon: 'rect' }),
@@ -168,12 +184,12 @@ const TimeSeriesComposedChart = <T extends TimeSeriesRow>({
         ),
         boundaryGap: xAxisBoundaryGap,
         axisLabel: {
-          color: DEFAULT_AXIS_LABEL_COLOR,
+          color: chartColors.axisLabel,
           fontSize: axisLabelFontSize,
           interval: 'auto',
           hideOverlap: true,
         },
-        axisLine: { lineStyle: { color: DEFAULT_AXIS_LINE_COLOR } },
+        axisLine: { lineStyle: { color: chartColors.axisLine } },
         axisTick: { show: false },
       },
       yAxis: resolvedYAxes.map((axis, index) => ({
@@ -182,7 +198,7 @@ const TimeSeriesComposedChart = <T extends TimeSeriesRow>({
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: {
-          color: DEFAULT_AXIS_LABEL_COLOR,
+          color: chartColors.axisLabel,
           fontSize: axisLabelFontSize,
           formatter: axis.formatter || formatCompactAxisValue,
         },
@@ -190,7 +206,7 @@ const TimeSeriesComposedChart = <T extends TimeSeriesRow>({
           index === 0 || axis.splitLine
             ? {
               show: axis.splitLine !== false,
-              lineStyle: { color: DEFAULT_SPLIT_LINE_COLOR },
+              lineStyle: { color: chartColors.splitLine },
             }
             : { show: false },
       })),
@@ -203,10 +219,11 @@ const TimeSeriesComposedChart = <T extends TimeSeriesRow>({
             type: 'bar',
             data: sortedData.map((row) => toNumericValue(row[item.dataKey])),
             yAxisIndex: item.yAxisIndex || 0,
+            stack: item.stack,
             barMaxWidth: item.barMaxWidth || 12,
             itemStyle: {
               borderRadius: item.barBorderRadius || ([3, 3, 0, 0] as BorderRadius),
-              color: createVerticalBarGradient(color),
+              color: item.barGradient === false ? color : createVerticalBarGradient(color),
             },
           };
         }
@@ -228,13 +245,14 @@ const TimeSeriesComposedChart = <T extends TimeSeriesRow>({
           smooth: item.smooth !== false,
           symbol,
           symbolSize: item.showSymbol ? 7 : 0,
-          lineStyle: { width: item.lineWidth || 2, color, type: lineType },
-          areaStyle: item.showArea ? createSoftLineArea(color) : undefined,
+          lineStyle: { width: item.lineWidth ?? 2, color, type: lineType },
+          areaStyle: item.showArea ? createSoftLineArea(color, item.areaOpacity) : undefined,
         };
       }),
     };
   }, [
     axisLabelFontSize,
+    chartColors,
     getXLabel,
     grid,
     legendVisible,

@@ -396,6 +396,8 @@
       "systemManager": "系统管理",
       "goConfigureChannels": "前往系统管理配置渠道",
       "invalidRemove": "已失效，保存前请移除",
+      "archivedServiceOption": "{name}（已归档）",
+      "unavailableChannelOption": "{name}（当前不可用）",
       "userUnavailable": "用户 {id}（当前不可用）"
     },
     "services": {
@@ -550,7 +552,8 @@
       "list": "SLO 列表",
       "disabledTag": "已停用",
       "evalError": "评估异常",
-      "thresholdMs": "阈值 {ms} ms"
+      "thresholdMs": "阈值 {ms} ms",
+      "archivedServiceOption": "{name}（已归档）"
     },
     "topology": {
       "title": "服务拓扑",
