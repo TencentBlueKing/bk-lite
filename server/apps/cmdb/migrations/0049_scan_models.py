@@ -95,6 +95,13 @@ class Migration(migrations.Migration):
                 ("target_count", models.PositiveIntegerField(default=0)),
                 ("received_count", models.PositiveIntegerField(default=0)),
                 (
+                    "progress_hosts",
+                    models.JSONField(
+                        default=list,
+                        help_text="已计入进度的主机（含失败/不可达）；清单仅保留 success",
+                    ),
+                ),
+                (
                     "admit_status",
                     models.CharField(
                         choices=[
@@ -143,6 +150,15 @@ class Migration(migrations.Migration):
                 ("cmdb_model_id", models.CharField(blank=True, default="", max_length=64)),
                 ("inst_uuid", models.CharField(blank=True, default="", max_length=36)),
                 ("attached_inst_uuid", models.CharField(blank=True, default="", max_length=36)),
+                (
+                    "collect_task_id",
+                    models.PositiveIntegerField(
+                        blank=True,
+                        default=None,
+                        help_text="已生成的采集任务ID",
+                        null=True,
+                    ),
+                ),
                 ("error_code", models.CharField(blank=True, default="", max_length=64)),
                 ("snapshot", models.JSONField(default=dict)),
                 (
