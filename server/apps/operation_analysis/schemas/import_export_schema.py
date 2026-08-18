@@ -365,6 +365,7 @@ class ReportItem(BaseModel):
     desc: str = Field(default="")
     other: dict = Field(default_factory=dict)
     view_sets: dict = Field(default_factory=dict)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")

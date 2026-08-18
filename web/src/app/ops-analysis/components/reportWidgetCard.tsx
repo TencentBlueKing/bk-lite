@@ -15,7 +15,11 @@ import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/w
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type { FilterValue, UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
 import type { ReportSection } from '@/app/ops-analysis/types/report';
-import type { DashboardWidgetRenderStatus } from '@/app/ops-analysis/renderContract';
+import type {
+  DashboardWidgetRenderResult,
+  DashboardWidgetRenderStatus,
+} from '@/app/ops-analysis/renderContract';
+import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { useTranslation } from '@/utils/i18n';
 
 const REPORT_WIDGET_HEIGHT = 420;
@@ -27,10 +31,14 @@ interface ReportWidgetCardProps {
   unifiedFilterValues: Record<string, FilterValue>;
   filterDefinitions: UnifiedFilterDefinition[];
   filterSearchVersion: number;
+  reloadVersion?: number;
+  refreshCause?: CanvasRuntimeRefreshCause;
   dataSource?: DatasourceItem;
   editing: boolean;
+  eagerRuntime?: boolean;
   onEdit: (sectionId: string) => void;
   onDelete: (sectionId: string) => void;
+  onWidgetRenderStatus?: (result: DashboardWidgetRenderResult) => void;
 }
 
 const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
@@ -40,20 +48,35 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
   unifiedFilterValues,
   filterDefinitions,
   filterSearchVersion,
+  reloadVersion = 0,
+  refreshCause = 'manual',
   dataSource,
   editing,
+  eagerRuntime = false,
   onEdit,
   onDelete,
+  onWidgetRenderStatus,
 }) => {
   const { t } = useTranslation();
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const [runtimeActive, setRuntimeActive] = useState(false);
-  const [reloadVersion, setReloadVersion] = useState(0);
+  const [runtimeActive, setRuntimeActive] = useState(eagerRuntime);
+  const [localReloadVersion, setLocalReloadVersion] = useState(0);
   const [renderStatus, setRenderStatus] = useState<DashboardWidgetRenderStatus>('loading');
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: section.id, disabled: !editing });
 
   useEffect(() => {
+    if (!eagerRuntime || renderStatus === 'loading') {
+      return;
+    }
+    onWidgetRenderStatus?.({ widgetId: section.id, status: renderStatus });
+  }, [eagerRuntime, onWidgetRenderStatus, renderStatus, section.id]);
+
+  useEffect(() => {
+    if (eagerRuntime) {
+      setRuntimeActive(true);
+      return;
+    }
     const element = cardRef.current;
     if (!element || typeof IntersectionObserver === 'undefined') {
       setRuntimeActive(true);
@@ -71,7 +94,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
     );
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [eagerRuntime]);
 
   const setRefs = (element: HTMLDivElement | null) => {
     cardRef.current = element;
@@ -81,6 +104,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
   return (
     <div
       ref={setRefs}
+      data-export-expand="true"
       style={{
         height: REPORT_WIDGET_HEIGHT,
         transform: CSS.Transform.toString(transform),
@@ -122,7 +146,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                     aria-label={t('common.retry')}
                     danger
                     icon={<ReloadOutlined aria-hidden="true" />}
-                    onClick={() => setReloadVersion((value) => value + 1)}
+                    onClick={() => setLocalReloadVersion((value) => value + 1)}
                   />
                 </Tooltip>
               )}
@@ -144,7 +168,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                 />
               )}
             </div>
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-y-auto" data-export-expand="true">
               <WidgetDataRenderer
                 dashboardId={reportId}
                 widgetId={section.id}
@@ -154,11 +178,14 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                 unifiedFilterValues={unifiedFilterValues}
                 filterDefinitions={filterDefinitions}
                 filterSearchVersion={filterSearchVersion}
-                reloadVersion={String(reloadVersion)}
-                refreshCause="manual"
+                reloadVersion={`${reloadVersion}:${localReloadVersion}`}
+                refreshCause={refreshCause}
                 runtimeActive={runtimeActive}
                 runtimePriority={{ cause: 1, visibility: 0, distance: 0, order: index }}
-                onRenderStatus={(result) => setRenderStatus(result.status)}
+                onRenderStatus={(result) => {
+                  setRenderStatus(result.status);
+                  onWidgetRenderStatus?.(result);
+                }}
               />
             </div>
           </>

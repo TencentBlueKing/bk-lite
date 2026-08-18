@@ -257,8 +257,8 @@ interface ReportSectionV1 {
 - 复制组件。
 - 报表组件数量硬上限。
 - 把分页、搜索、筛选、排序、事件展开等查看态状态持久化。
-- 报表分享、PDF 导出、报告订阅、打印版式。
-- 报表周期刷新配置；本期筛选搜索触发刷新，不新增自动刷新频率。
+- 报表分享、PDF 导出、报告订阅、打印版式、周期刷新：本切片不做；后续由
+  [`ops-analysis-report-canvas-toolbar`](../ops-analysis-report-canvas-toolbar/spec.md) 交付。
 - 重构 Dashboard、Screen 或通用 Widget 全部类型为 Adapter 插件。
 
 ## Further Notes

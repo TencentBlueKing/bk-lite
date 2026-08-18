@@ -9,6 +9,7 @@ import { useDashboardSubscriptionApi } from '@/app/ops-analysis/api/dashboardSub
 import { emitDashboardRenderSignal } from '@/app/ops-analysis/renderContract';
 import type { DashboardExecutionRenderInput } from '@/app/ops-analysis/types/dashboardSubscription';
 import { DashboardExecutionRenderPageContent } from './dashboardExecutionRenderPage';
+import { ReportExecutionRenderPageContent } from './reportExecutionRenderPage';
 import { ScreenExecutionRenderPageContent } from './screenExecutionRenderPage';
 
 export default function DashboardExecutionRenderPage() {
@@ -58,6 +59,11 @@ export default function DashboardExecutionRenderPage() {
     <DashboardRenderOpsAnalysisProvider>
       {resourceType === 'screen' ? (
         <ScreenExecutionRenderPageContent
+          executionId={executionId}
+          initialRenderInput={renderInput}
+        />
+      ) : resourceType === 'report' ? (
+        <ReportExecutionRenderPageContent
           executionId={executionId}
           initialRenderInput={renderInput}
         />

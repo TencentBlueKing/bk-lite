@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DASHBOARD_PREPARE_PRINT_EVENT,
   prepareDashboardPrintLayout,
+  prepareReportPrintLayout,
 } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
 
 describe('prepareDashboardPrintLayout', () => {
@@ -87,5 +88,26 @@ describe('prepareDashboardPrintLayout', () => {
     await expect(prepareDashboardPrintLayout(null)).rejects.toThrow(
       'Dashboard render root not found',
     );
+    await expect(prepareReportPrintLayout(null)).rejects.toThrow(
+      'Report render root not found',
+    );
+  });
+
+  it('prepareReportPrintLayout expands overflow without touching grid-stack', async () => {
+    document.body.innerHTML = `
+      <div data-dashboard-render-root="true" style="height: 100vh; overflow: auto;">
+        <div data-export-expand="true" style="height: 100%; overflow: auto;"></div>
+        <div class="grid-stack" style="height: 900px; overflow: hidden;"></div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>(
+      '[data-dashboard-render-root="true"]',
+    );
+    await prepareReportPrintLayout(root);
+
+    const grid = document.querySelector<HTMLElement>('.grid-stack');
+    expect(grid?.style.overflow).not.toBe('visible');
+    expect(grid?.style.height).not.toBe('auto');
   });
 });

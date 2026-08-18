@@ -205,7 +205,7 @@ class ScreenModelSerializer(CanvasRefreshIntervalSerializerMixin, CanvasObjectSe
         return attrs
 
 
-class ReportModelSerializer(CanvasObjectSerializer):
+class ReportModelSerializer(CanvasRefreshIntervalSerializerMixin, CanvasObjectSerializer):
     permission_key = "directory.report"
     # updated_at 同时作为报表乐观锁令牌；必须保留数据库微秒精度，不能使用全局秒级展示格式。
     updated_at = serializers.DateTimeField(read_only=True, format=REPORT_VERSION_DATETIME_FORMAT)
@@ -213,6 +213,7 @@ class ReportModelSerializer(CanvasObjectSerializer):
 
     class Meta(CanvasObjectSerializer.Meta):
         model = Report
+        extra_kwargs = with_canvas_refresh_interval_kwargs(CanvasObjectSerializer.Meta.extra_kwargs)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)

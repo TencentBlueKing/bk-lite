@@ -28,10 +28,7 @@ from apps.operation_analysis.serializers.directory_serializers import (
     TopologyModelSerializer,
 )
 from apps.operation_analysis.services.directory_service import DictDirectoryService
-from apps.operation_analysis.services.share_service import (
-    SharePermissionDenied,
-    create_or_get_share,
-)
+from apps.operation_analysis.services.share_service import SharePermissionDenied, create_or_get_share
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -47,6 +44,28 @@ def _raise_if_builtin_content_update(instance, request):
     """内置对象仅开放组织可见性配置，内容字段仍保持只读。"""
     if getattr(instance, "is_build_in", False) and set(request.data.keys()) != {"groups"}:
         _raise_if_builtin(instance, "编辑")
+
+
+def _destroy_subscribable_canvas(viewset, request, *, resource_type: str, log_action: str):
+    """删除画布前终止关联订阅（Dashboard / Screen / Report 共用）。"""
+    from django.db import transaction
+
+    from apps.operation_analysis.services.canvas_report.registry import get_canvas_report_adapter
+
+    instance = viewset.get_object()
+    _raise_if_builtin(instance, "删除")
+    name = instance.name
+    with transaction.atomic():
+        adapter = get_canvas_report_adapter(resource_type)
+        adapter.terminate_subscriptions_on_delete(
+            instance,
+            actor=getattr(request.user, "username", "") or "",
+            actor_domain=getattr(request.user, "domain", "") or "",
+        )
+        viewset.perform_destroy(instance)
+    response = Response(status=204)
+    log_ops_analysis_success(request, response, "delete", log_action.format(name=name))
+    return response
 
 
 def _create_canvas_share_response(viewset, request, *, resource_type, resource_label):
@@ -298,29 +317,14 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
-        from django.db import transaction
+        from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD
 
-        from apps.operation_analysis.services.canvas_report.registry import (
-            get_canvas_report_adapter,
+        return _destroy_subscribable_canvas(
+            self,
+            request,
+            resource_type=RESOURCE_TYPE_DASHBOARD,
+            log_action="删除仪表盘: {name}",
         )
-        from apps.operation_analysis.services.canvas_report.types import (
-            RESOURCE_TYPE_DASHBOARD,
-        )
-
-        instance = self.get_object()
-        _raise_if_builtin(instance, "删除")
-        name = instance.name
-        with transaction.atomic():
-            adapter = get_canvas_report_adapter(RESOURCE_TYPE_DASHBOARD)
-            adapter.terminate_subscriptions_on_delete(
-                instance,
-                actor=getattr(request.user, "username", "") or "",
-                actor_domain=getattr(request.user, "domain", "") or "",
-            )
-            self.perform_destroy(instance)
-        response = Response(status=204)
-        log_ops_analysis_success(request, response, "delete", f"删除仪表盘: {name}")
-        return response
 
     @HasPermission("view-View")
     @action(detail=True, methods=["post"], url_path="share")
@@ -550,29 +554,14 @@ class ScreenModelViewSet(CanvasModelViewSet):
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
-        from django.db import transaction
+        from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_SCREEN
 
-        from apps.operation_analysis.services.canvas_report.registry import (
-            get_canvas_report_adapter,
+        return _destroy_subscribable_canvas(
+            self,
+            request,
+            resource_type=RESOURCE_TYPE_SCREEN,
+            log_action="删除大屏: {name}",
         )
-        from apps.operation_analysis.services.canvas_report.types import (
-            RESOURCE_TYPE_SCREEN,
-        )
-
-        instance = self.get_object()
-        _raise_if_builtin(instance, "删除")
-        name = instance.name
-        with transaction.atomic():
-            adapter = get_canvas_report_adapter(RESOURCE_TYPE_SCREEN)
-            adapter.terminate_subscriptions_on_delete(
-                instance,
-                actor=getattr(request.user, "username", "") or "",
-                actor_domain=getattr(request.user, "domain", "") or "",
-            )
-            self.perform_destroy(instance)
-        response = Response(status=204)
-        log_ops_analysis_success(request, response, "delete", f"删除大屏: {name}")
-        return response
 
 
 class ReportModelViewSet(CanvasModelViewSet):
@@ -585,4 +574,15 @@ class ReportModelViewSet(CanvasModelViewSet):
     filterset_class = ReportModelFilter
     permission_key = "directory.report"
     canvas_label = "报表"
-    # 第一阶段不开放报表分享入口；resource_type 仍保留以支持解析与迁移。
+    share_resource_type = "report"
+
+    @HasPermission("view-DeleteChart")
+    def destroy(self, request, *args, **kwargs):
+        from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_REPORT
+
+        return _destroy_subscribable_canvas(
+            self,
+            request,
+            resource_type=RESOURCE_TYPE_REPORT,
+            log_action="删除报表: {name}",
+        )

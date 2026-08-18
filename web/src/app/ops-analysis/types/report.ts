@@ -1,5 +1,5 @@
 import type { DirItem } from './index';
-import type { UnifiedFilterDefinition, WidgetConfig } from './dashBoard';
+import type { FilterValue, UnifiedFilterDefinition, WidgetConfig } from './dashBoard';
 
 export interface ReportSection {
   id: string;
@@ -15,13 +15,17 @@ export interface ReportViewSets {
 export interface ReportProps {
   selectedReport?: DirItem | null;
   shareMode?: boolean;
+  renderMode?: boolean;
+  renderFilterValues?: Record<string, FilterValue>;
+  getReportDetailOverride?: (id: string | number) => Promise<ReportDetail>;
 }
 
 export interface ReportDetail {
   id: number | string;
   name: string;
   desc?: string | null;
-  updated_at: string;
+  updated_at?: string;
+  refresh_interval?: number;
   view_sets: unknown;
 }
 

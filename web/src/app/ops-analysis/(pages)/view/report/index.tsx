@@ -1,16 +1,19 @@
 'use client';
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Modal, Tooltip, message } from 'antd';
-import { EditOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
+import { Button, Empty, Modal, message } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
-import PermissionWrapper from '@/components/permission';
 import { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
+import useBtnPermissions from '@/hooks/usePermissions';
 import { useReportApi } from '@/app/ops-analysis/api/report';
+import { useDirectoryApi } from '@/app/ops-analysis/api';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
+import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
+import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import type { ComponentSelectorConfigItem, FilterValue, LayoutItem, UnifiedFilterDefinition, WidgetConfig } from '@/app/ops-analysis/types/dashBoard';
 import type { ReportProps, ReportViewSets } from '@/app/ops-analysis/types/report';
 import {
@@ -30,15 +33,34 @@ import {
 } from '@/app/ops-analysis/utils/reportBuilder';
 import { buildResetFilterValues, syncFilterValuesWithDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 import {
+  canPersistCanvasRefreshInterval,
+  normalizeCanvasRefreshInterval,
+} from '@/app/ops-analysis/utils/canvasRefreshInterval';
+import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
+import { exportDashboardToPdf } from '@/app/ops-analysis/utils/exportPdf';
+import { prepareReportPrintLayout } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
+import {
   getOpsChartTheme,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
+import {
+  buildDashboardRenderSignal,
+  emitDashboardRenderSignal,
+  type DashboardRenderSignal,
+  type DashboardWidgetRenderResult,
+} from '@/app/ops-analysis/renderContract';
 import ComponentSelector from '@/app/ops-analysis/components/widgetSelector';
 import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
 import ReportWidgetCard from '@/app/ops-analysis/components/reportWidgetCard';
+import DashboardSubscriptionModal from '@/app/ops-analysis/components/dashboardSubscriptionModal';
+import {
+  AppViewFullscreenExit,
+  useAppViewFullscreen,
+} from '@/app/ops-analysis/components/appFullscreen';
 import { UnifiedFilterBar, UnifiedFilterConfigModal } from '@/app/ops-analysis/components/unifiedFilter';
 import { DashboardRuntimeSchedulerProvider } from '@/app/ops-analysis/context/dashboardRuntimeScheduler';
 import ViewWorkspace from '../components/viewWorkspace';
+import ReportToolbar from './components/reportToolbar';
 
 export interface ReportRef {
   hasUnsavedChanges: () => boolean;
@@ -51,32 +73,89 @@ const createSectionId = () => {
   return `report-widget-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const Report = forwardRef<ReportRef, ReportProps>(({ selectedReport }, ref) => {
+const waitForReportWidgetsReady = (
+  widgetIds: string[],
+  resultsRef: { current: Map<string, DashboardWidgetRenderResult> },
+  timeoutMs = 60000,
+) =>
+  new Promise<void>((resolve, reject) => {
+    if (widgetIds.length === 0) {
+      resolve();
+      return;
+    }
+    const started = Date.now();
+    const tick = () => {
+      const allSettled = widgetIds.every((widgetId) => {
+        const status = resultsRef.current.get(widgetId)?.status;
+        return status === 'ready' || status === 'empty' || status === 'failed';
+      });
+      if (allSettled) {
+        resolve();
+        return;
+      }
+      if (Date.now() - started >= timeoutMs) {
+        reject(new Error('Report PDF export preparation timed out'));
+        return;
+      }
+      window.setTimeout(tick, 100);
+    };
+    tick();
+  });
+
+const Report = forwardRef<ReportRef, ReportProps>(({
+  selectedReport,
+  shareMode = false,
+  renderMode = false,
+  renderFilterValues,
+  getReportDetailOverride,
+}, ref) => {
   const { t } = useTranslation();
   const { getReportDetail, saveReportViewSets } = useReportApi();
+  const { updateItem } = useDirectoryApi();
+  const { hasPermission } = useBtnPermissions();
   const dataSourceManager = useDataSourceManager();
+  const { shareLoading, openShare } = useCanvasShareAction('report');
+  const { isFullscreen, enterFullscreen, exitFullscreen } = useAppViewFullscreen();
+  const resumeEditModeAfterFullscreenRef = useRef(false);
+  const getReportDetailRef = useRef(getReportDetailOverride ?? getReportDetail);
+  const exportRef = useRef<HTMLDivElement | null>(null);
+  const renderResultsRef = useRef<Map<string, DashboardWidgetRenderResult>>(new Map());
+  const pdfExportResultsRef = useRef<Map<string, DashboardWidgetRenderResult>>(new Map());
+  const pdfExportPreparingRef = useRef(false);
+  const emittedRenderSignalRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [pdfExportPreparing, setPdfExportPreparing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [savedViewSets, setSavedViewSets] = useState<ReportViewSets>(EMPTY_REPORT_VIEW_SETS);
   const [draftViewSets, setDraftViewSets] = useState<ReportViewSets>(EMPTY_REPORT_VIEW_SETS);
   const [savedVersion, setSavedVersion] = useState('');
+  const [savedRefreshInterval, setSavedRefreshInterval] = useState(0);
+  const [refreshCause, setRefreshCause] = useState<CanvasRuntimeRefreshCause>('initial');
   const [filterValues, setFilterValues] = useState<Record<string, FilterValue>>({});
   const [appliedFilterValues, setAppliedFilterValues] = useState<Record<string, FilterValue>>({});
   const [appliedFilterDefinitions, setAppliedFilterDefinitions] = useState<UnifiedFilterDefinition[]>([]);
   const [filterSearchVersion, setFilterSearchVersion] = useState(0);
+  const [widgetReloadVersion, setWidgetReloadVersion] = useState(0);
   const [filterConfigOpen, setFilterConfigOpen] = useState(false);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [configItem, setConfigItem] = useState<LayoutItem>();
   const [editingSectionId, setEditingSectionId] = useState<string>();
   const [addingComponent, setAddingComponent] = useState(false);
+  const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
   const loadGuardRef = useRef(createReportLoadGuard());
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-  const chartTheme = getOpsChartTheme(resolveOpsChartThemeName());
+  const themeName = renderMode ? 'light' : resolveOpsChartThemeName();
+  const chartTheme = getOpsChartTheme(themeName);
 
   const dirty = editing && isReportDraftDirty(savedViewSets, draftViewSets);
   useImperativeHandle(ref, () => ({ hasUnsavedChanges: () => dirty }), [dirty]);
+
+  useEffect(() => {
+    getReportDetailRef.current = getReportDetailOverride ?? getReportDetail;
+  }, [getReportDetail, getReportDetailOverride]);
 
   useEffect(() => {
     if (!dirty) return undefined;
@@ -95,6 +174,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({ selectedReport }, ref) => {
       setSavedViewSets(EMPTY_REPORT_VIEW_SETS);
       setDraftViewSets(EMPTY_REPORT_VIEW_SETS);
       setSavedVersion('');
+      setSavedRefreshInterval(0);
       setFilterValues({});
       setAppliedFilterValues({});
       setAppliedFilterDefinitions([]);
@@ -103,13 +183,16 @@ const Report = forwardRef<ReportRef, ReportProps>(({ selectedReport }, ref) => {
 
     setLoading(true);
     try {
-      const detail = await getReportDetail(reportId);
+      const detail = await getReportDetailRef.current(reportId);
       if (!isCurrentReportLoad(loadGuardRef.current, requestId)) return;
       const normalized = normalizeReportViewSets(detail.view_sets);
       setSavedViewSets(normalized);
       setDraftViewSets(normalized);
-      setSavedVersion(detail.updated_at);
-      const initialFilterValues = buildResetFilterValues(normalized.filters);
+      setSavedVersion(detail.updated_at || '');
+      setSavedRefreshInterval(normalizeCanvasRefreshInterval(detail.refresh_interval));
+      const initialFilterValues = renderMode
+        ? syncFilterValuesWithDefinitions(normalized.filters, renderFilterValues ?? {})
+        : buildResetFilterValues(normalized.filters);
       setFilterValues(initialFilterValues);
       setAppliedFilterValues(initialFilterValues);
       setAppliedFilterDefinitions(normalized.filters);
@@ -120,20 +203,32 @@ const Report = forwardRef<ReportRef, ReportProps>(({ selectedReport }, ref) => {
     } catch (error) {
       if (!isCurrentReportLoad(loadGuardRef.current, requestId)) return;
       console.error('Failed to load report:', error);
-      message.error(t('opsAnalysis.report.loadFailed'));
+      if (!renderMode) {
+        message.error(t('opsAnalysis.report.loadFailed'));
+      }
       setEditing(false);
       setSavedViewSets(EMPTY_REPORT_VIEW_SETS);
       setDraftViewSets(EMPTY_REPORT_VIEW_SETS);
       setSavedVersion('');
+      setSavedRefreshInterval(0);
       setFilterValues({});
       setAppliedFilterValues({});
       setAppliedFilterDefinitions([]);
+      if (renderMode && !emittedRenderSignalRef.current) {
+        emittedRenderSignalRef.current = true;
+        emitDashboardRenderSignal({
+          type: 'report-failed',
+          dashboardId: String(selectedReport?.data_id),
+          widgets: [],
+          error: error instanceof Error ? error.message : 'Report layout load failed',
+        });
+      }
     } finally {
       if (isCurrentReportLoad(loadGuardRef.current, requestId)) {
         setLoading(false);
       }
     }
-  }, [getReportDetail, loadCanvasDataSources, selectedReport?.data_id, t]);
+  }, [loadCanvasDataSources, renderFilterValues, renderMode, selectedReport?.data_id, t]);
 
   useEffect(() => {
     setEditing(false);
@@ -142,6 +237,12 @@ const Report = forwardRef<ReportRef, ReportProps>(({ selectedReport }, ref) => {
     setFilterConfigOpen(false);
     setEditingSectionId(undefined);
     setAddingComponent(false);
+    setSubscriptionModalVisible(false);
+    setWidgetReloadVersion(0);
+    setFilterSearchVersion(0);
+    setRefreshCause('initial');
+    renderResultsRef.current = new Map();
+    emittedRenderSignalRef.current = false;
     void loadReport();
     return () => {
       invalidateReportLoads(loadGuardRef.current);
@@ -151,7 +252,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({ selectedReport }, ref) => {
   const visibleViewSets = editing ? draftViewSets : savedViewSets;
   const canEnterEdit = canEnterReportEdit({
     reportId: selectedReport?.data_id,
-    isBuiltIn: selectedReport?.is_build_in,
+    isBuiltIn: Boolean(selectedReport?.is_build_in) || shareMode || renderMode,
     savedVersion,
     loading,
   });
@@ -168,6 +269,43 @@ const Report = forwardRef<ReportRef, ReportProps>(({ selectedReport }, ref) => {
     setFilterValues((previous) => syncFilterValuesWithDefinitions(definitions, previous));
     setFilterConfigOpen(false);
   };
+
+  const handleRefresh = useCallback(() => {
+    setRefreshCause('manual');
+    setWidgetReloadVersion((previous) => previous + 1);
+  }, []);
+
+  const handlePeriodicRefresh = useCallback(
+    (cause: CanvasRuntimeRefreshCause = 'periodic') => {
+      setRefreshCause(cause);
+      setWidgetReloadVersion((previous) => previous + 1);
+    },
+    [],
+  );
+
+  const canPersistRefreshInterval = canPersistCanvasRefreshInterval({
+    shareMode,
+    isBuiltIn: Boolean(selectedReport?.is_build_in),
+    hasEditPermission: hasPermission(['EditChart']),
+  });
+
+  const { effectiveRefreshInterval, handleFrequencyChange } =
+    useCanvasPeriodicRefresh({
+      canvasId: selectedReport?.data_id,
+      savedInterval: savedRefreshInterval,
+      canPersist: canPersistRefreshInterval,
+      enabled: !renderMode && !pdfExportPreparing,
+      patchRefreshInterval: async (interval) => {
+        if (!selectedReport?.data_id) {
+          return;
+        }
+        await updateItem('report', selectedReport.data_id, {
+          refresh_interval: interval,
+        });
+      },
+      onPeriodicRefresh: handlePeriodicRefresh,
+      onSavedIntervalChange: setSavedRefreshInterval,
+    });
 
   const enterEditMode = () => {
     if (!canEnterEdit) return;
@@ -297,75 +435,113 @@ const Report = forwardRef<ReportRef, ReportProps>(({ selectedReport }, ref) => {
     });
   };
 
-  const toolbar = (
-    <div className="flex items-center gap-1.5">
-      {editing && (
-        <>
-          <PermissionWrapper requiredPermissions={['EditChart']}>
-            <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
-              <Button
-                type="text"
-                icon={<SettingOutlined style={{ fontSize: 16 }} />}
-                aria-label={t('dashboard.configUnifiedFilterFields')}
-                onClick={() => setFilterConfigOpen(true)}
-                className="rounded-full!"
-              />
-            </Tooltip>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['EditChart']}>
-            <Button
-              type="default"
-              icon={<PlusOutlined aria-hidden="true" />}
-              onClick={() => setSelectorOpen(true)}
-              className="rounded-full!"
-              style={{
-                borderColor: chartTheme.panelBorderColor,
-                color: 'var(--color-text-1)',
-                background: chartTheme.panelBg,
-              }}
-            >
-              {t('opsAnalysis.report.addComponent')}
-            </Button>
-          </PermissionWrapper>
-        </>
-      )}
-      <PermissionWrapper requiredPermissions={['EditChart']}>
-        {!editing ? (
-          <Tooltip title={t('common.edit')}>
-            <Button
-              type="text"
-              aria-label={t('common.edit')}
-              icon={<EditOutlined aria-hidden="true" style={{ fontSize: 16 }} />}
-              disabled={!canEnterEdit}
-              onClick={enterEditMode}
-              className="rounded-full!"
-            />
-          </Tooltip>
-        ) : (
-          <div className="flex items-center gap-2 ml-4">
-            <Button
-              disabled={!selectedReport?.data_id}
-              onClick={cancelEdit}
-              className="rounded-full!"
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              type="primary"
-              loading={saving}
-              disabled={!selectedReport?.data_id}
-              onClick={save}
-              className="rounded-full!"
-            >
-              {t('common.save')}
-            </Button>
-          </div>
-        )}
-      </PermissionWrapper>
-    </div>
+  useEffect(() => {
+    if (isFullscreen || !resumeEditModeAfterFullscreenRef.current) {
+      return;
+    }
+    resumeEditModeAfterFullscreenRef.current = false;
+    setEditing(true);
+  }, [isFullscreen]);
+
+  const handleFullscreenToggle = useCallback(() => {
+    if (isFullscreen) {
+      exitFullscreen();
+      return;
+    }
+    resumeEditModeAfterFullscreenRef.current = editing;
+    if (editing) {
+      setEditing(false);
+    }
+    enterFullscreen();
+  }, [editing, enterFullscreen, exitFullscreen, isFullscreen]);
+
+  const sectionIds = useMemo(
+    () => visibleViewSets.sections.map((section) => section.id),
+    [visibleViewSets.sections],
   );
 
-  const sectionIds = useMemo(() => visibleViewSets.sections.map((section) => section.id), [visibleViewSets.sections]);
+  const handleExportPdf = useCallback(async () => {
+    if (!exportRef.current || exporting) return;
+    setExporting(true);
+    pdfExportResultsRef.current = new Map();
+    pdfExportPreparingRef.current = true;
+    setPdfExportPreparing(true);
+    try {
+      await waitForReportWidgetsReady(sectionIds, pdfExportResultsRef);
+      await exportDashboardToPdf(
+        exportRef.current,
+        selectedReport?.name || 'report',
+      );
+      message.success(t('dashboard.exportPdfSuccess'));
+    } catch (error) {
+      console.error('Failed to export report PDF:', error);
+      message.error(t('dashboard.exportPdfFailed'));
+    } finally {
+      pdfExportPreparingRef.current = false;
+      setPdfExportPreparing(false);
+      setExporting(false);
+    }
+  }, [exporting, sectionIds, selectedReport?.name, t]);
+
+  const emitPreparedRenderSignal = useCallback(
+    async (signal: DashboardRenderSignal) => {
+      if (emittedRenderSignalRef.current) return;
+      emittedRenderSignalRef.current = true;
+      if (signal.type === 'report-ready') {
+        try {
+          await prepareReportPrintLayout();
+        } catch (error) {
+          emitDashboardRenderSignal({
+            type: 'report-failed',
+            dashboardId: signal.dashboardId,
+            widgets: signal.widgets,
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Report print preparation failed',
+          });
+          return;
+        }
+      }
+      emitDashboardRenderSignal(signal);
+    },
+    [],
+  );
+
+  const handleWidgetRenderStatus = useCallback(
+    (result: DashboardWidgetRenderResult) => {
+      if (pdfExportPreparingRef.current) {
+        pdfExportResultsRef.current.set(result.widgetId, result);
+      }
+      if (!renderMode || emittedRenderSignalRef.current) return;
+      renderResultsRef.current.set(result.widgetId, result);
+      const signal = buildDashboardRenderSignal(
+        selectedReport?.data_id || 'unknown',
+        sectionIds,
+        renderResultsRef.current,
+      );
+      if (signal) {
+        void emitPreparedRenderSignal(signal);
+      }
+    },
+    [emitPreparedRenderSignal, renderMode, sectionIds, selectedReport?.data_id],
+  );
+
+  useEffect(() => {
+    if (!renderMode || emittedRenderSignalRef.current || loading) return;
+    if (sectionIds.length > 0) return;
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        void emitPreparedRenderSignal({
+          type: 'report-ready',
+          dashboardId: String(selectedReport?.data_id || 'unknown'),
+          widgets: [],
+        });
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [emitPreparedRenderSignal, loading, renderMode, sectionIds.length, selectedReport?.data_id]);
+
   const filterLayoutItems = useMemo<LayoutItem[]>(
     () => draftViewSets.sections.map((section, index) => ({
       i: section.id,
@@ -384,56 +560,144 @@ const Report = forwardRef<ReportRef, ReportProps>(({ selectedReport }, ref) => {
       values={filterValues}
       onSearch={handleFilterSearch}
       onReset={handleFilterSearch}
+      popupZIndex={isFullscreen ? 1200 : undefined}
     />
   ) : null;
 
-  return (
-    <ViewWorkspace
-      selectedItem={selectedReport}
-      loading={loading}
-      titleFallback={t('opsAnalysis.report.title')}
-      emptyDescription={t('opsAnalysis.report.selectFirst')}
-      toolbar={toolbar}
-      filterBar={filterBar}
-      contentClassName="bg-[var(--color-bg-2)]"
+  const reportCanvas = (
+    <div
+      className={renderMode ? 'w-full overflow-visible px-4 pb-4' : 'h-full overflow-y-auto px-4 pb-4'}
+      data-export-expand="true"
     >
-      <div className="h-full overflow-y-auto px-4 pb-4">
-        {visibleViewSets.sections.length === 0 ? (
-          <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-1)]">
-            <Empty description={t('opsAnalysis.report.emptyDescription')}>
-              {editing && (
-                <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={() => setSelectorOpen(true)}>
-                  {t('opsAnalysis.report.addComponent')}
-                </Button>
-              )}
-            </Empty>
+      {visibleViewSets.sections.length === 0 ? (
+        <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-1)]">
+          <Empty description={t('opsAnalysis.report.emptyDescription')}>
+            {editing && (
+              <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={() => setSelectorOpen(true)}>
+                {t('opsAnalysis.report.addComponent')}
+              </Button>
+            )}
+          </Empty>
+        </div>
+      ) : (
+        <DashboardRuntimeSchedulerProvider>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
+              <div className="flex flex-col gap-3">
+                {visibleViewSets.sections.map((section, index) => (
+                  <ReportWidgetCard
+                    key={section.id}
+                    section={section}
+                    index={index}
+                    reportId={selectedReport?.data_id}
+                    unifiedFilterValues={appliedFilterValues}
+                    filterDefinitions={appliedFilterDefinitions}
+                    filterSearchVersion={filterSearchVersion}
+                    reloadVersion={widgetReloadVersion}
+                    refreshCause={refreshCause}
+                    dataSource={dataSourceManager.findDataSource(section.valueConfig.dataSource)}
+                    editing={editing}
+                    eagerRuntime={renderMode || pdfExportPreparing}
+                    onEdit={editComponent}
+                    onDelete={deleteComponent}
+                    onWidgetRenderStatus={handleWidgetRenderStatus}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </DashboardRuntimeSchedulerProvider>
+      )}
+    </div>
+  );
+
+  const toolbar = renderMode ? null : (
+    <ReportToolbar
+      selectedReport={selectedReport}
+      chartTheme={chartTheme}
+      exporting={exporting}
+      isFullscreen={isFullscreen}
+      editing={editing}
+      saving={saving}
+      canEnterEdit={canEnterEdit}
+      onRefresh={handleRefresh}
+      frequenceValue={effectiveRefreshInterval}
+      onFrequencyChange={handleFrequencyChange}
+      onToggleFullscreen={handleFullscreenToggle}
+      onExportPdf={handleExportPdf}
+      onOpenFilterConfig={() => setFilterConfigOpen(true)}
+      onOpenAddComponent={() => setSelectorOpen(true)}
+      onToggleEditMode={enterEditMode}
+      onCancelEdit={cancelEdit}
+      onSave={save}
+      shareMode={shareMode}
+      shareLoading={shareLoading}
+      onOpenShare={!shareMode && selectedReport?.data_id ? () => { void openShare(selectedReport.data_id); } : undefined}
+      onOpenSubscriptions={
+        !shareMode && selectedReport?.data_id
+          ? () => setSubscriptionModalVisible(true)
+          : undefined
+      }
+    />
+  );
+
+  const workspace = (
+    <>
+      {renderMode ? (
+        <div
+          className="w-full min-h-screen overflow-visible bg-[var(--color-bg-2)] p-4"
+          data-dashboard-render-root="true"
+        >
+          {reportCanvas}
+        </div>
+      ) : isFullscreen ? (
+        <div
+          ref={exportRef}
+          className="flex min-h-0 flex-1 flex-col"
+          data-export-expand="true"
+        >
+          {filterBar && (
+            <div className="shrink-0 bg-[var(--color-bg-1)] px-2.5 pb-2 pt-1">
+              {filterBar}
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-hidden pt-1" data-export-expand="true">
+            {reportCanvas}
           </div>
-        ) : (
-          <DashboardRuntimeSchedulerProvider>
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
-                <div className="flex flex-col gap-3">
-                  {visibleViewSets.sections.map((section, index) => (
-                    <ReportWidgetCard
-                      key={section.id}
-                      section={section}
-                      index={index}
-                      reportId={selectedReport?.data_id}
-                      unifiedFilterValues={appliedFilterValues}
-                      filterDefinitions={appliedFilterDefinitions}
-                      filterSearchVersion={filterSearchVersion}
-                      dataSource={dataSourceManager.findDataSource(section.valueConfig.dataSource)}
-                      editing={editing}
-                      onEdit={editComponent}
-                      onDelete={deleteComponent}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          </DashboardRuntimeSchedulerProvider>
-        )}
-      </div>
+        </div>
+      ) : (
+        <ViewWorkspace
+          selectedItem={selectedReport}
+          loading={loading}
+          titleFallback={t('opsAnalysis.report.title')}
+          emptyDescription={t('opsAnalysis.report.selectFirst')}
+          toolbar={toolbar}
+          filterBar={filterBar}
+          contentRef={exportRef}
+          contentClassName="bg-[var(--color-bg-2)]"
+        >
+          {reportCanvas}
+        </ViewWorkspace>
+      )}
+    </>
+  );
+
+  return (
+    <div
+      className={`flex flex-col ${
+        isFullscreen
+          ? 'fixed inset-0 h-screen w-screen overflow-hidden'
+          : renderMode
+            ? 'w-full min-h-screen overflow-visible'
+            : 'h-full flex-1 overflow-auto'
+      }`}
+      style={{
+        backgroundColor: 'var(--color-bg-2)',
+        zIndex: isFullscreen ? 1100 : undefined,
+      }}
+    >
+      <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
+      {workspace}
 
       <ComponentSelector
         visible={selectorOpen}
@@ -464,7 +728,16 @@ const Report = forwardRef<ReportRef, ReportProps>(({ selectedReport }, ref) => {
         layoutItems={filterLayoutItems}
         dataSources={dataSourceManager.dataSources}
       />
-    </ViewWorkspace>
+      {selectedReport?.data_id != null && (
+        <DashboardSubscriptionModal
+          open={subscriptionModalVisible}
+          resourceType="report"
+          resourceId={Number(selectedReport.data_id)}
+          appliedFilterValues={appliedFilterValues}
+          onClose={() => setSubscriptionModalVisible(false)}
+        />
+      )}
+    </div>
   );
 });
 
