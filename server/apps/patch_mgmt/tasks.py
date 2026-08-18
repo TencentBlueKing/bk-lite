@@ -635,10 +635,11 @@ def watch_governance_timeouts() -> None:
     for task in GovernanceTask.objects.filter(pk__in=changed_task_ids):
         _finalize_task_status(task)
 
-    # 独立收敛父任务与子任务的终态不一致；没有子结果的刚启动任务不在此误收口。
+    # 只收敛已被父 worker 领取的任务；PENDING -> RUNNING 只能由父任务入口完成，
+    # 否则巡检会让仍在 Celery 队列中的父任务误以为已启动并跳过子任务派发。
     inconsistent_tasks = (
         GovernanceTask.objects.filter(
-            status__in=GovernanceTaskStatus.ACTIVE_STATES,
+            status=GovernanceTaskStatus.RUNNING,
             host_results__isnull=False,
         )
         .distinct()

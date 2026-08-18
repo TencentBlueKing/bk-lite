@@ -126,6 +126,37 @@ def test_watchdog_finalizes_active_parent_when_all_children_are_terminal():
 
 
 @pytest.mark.django_db
+def test_watchdog_does_not_preempt_pending_parent_before_it_dispatches(monkeypatch):
+    target = PatchTarget.objects.create(name="queued-host", ip="10.0.0.10", os_type=OSType.WINDOWS)
+    task = GovernanceTask.objects.create(
+        name="queued-parent",
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.PENDING,
+        target_list=[target.id],
+    )
+    GovernanceTaskHost.objects.create(
+        task=task,
+        target_id=target.id,
+        target_name=target.name,
+        target_ip=target.ip,
+        stage="waiting",
+    )
+    dispatched = []
+    monkeypatch.setattr(
+        patch_tasks.execute_governance_host,
+        "apply_async",
+        lambda **kwargs: dispatched.append(kwargs),
+    )
+
+    patch_tasks.watch_governance_timeouts()
+    patch_tasks.execute_governance_task(task.id)
+
+    task.refresh_from_db()
+    assert task.status == GovernanceTaskStatus.RUNNING
+    assert [call["args"] for call in dispatched] == [[task.id, target.id]]
+
+
+@pytest.mark.django_db
 def test_late_worker_cannot_overwrite_watchdog_terminal_state():
     task = GovernanceTask.objects.create(
         name="late-worker",
