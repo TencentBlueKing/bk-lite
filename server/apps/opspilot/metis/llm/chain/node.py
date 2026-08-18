@@ -2992,16 +2992,24 @@ class ToolsNodes(BasicNode):
         return not bool(getattr(plan, "steps", None))
 
     _MARKDOWN_TABLE_RE = re.compile(r"\|[^\n]+\|\s*\n\s*\|?\s*:?-{3,}", re.MULTILINE)
+    _STEP_STUB_RE = re.compile(r"^执行结果\s*\d+\s*$")
 
     @classmethod
     def _planned_step_already_answered(cls, messages) -> bool:
-        """步骤正文里已有 Markdown 表格时，最终总结再写一遍就会和用户看到的内容重复。"""
+        """单步已写出给用户看的正文时，跳过总结轮，避免再复述一遍。"""
         for message in reversed(messages or []):
             if not isinstance(message, AIMessage):
                 continue
-            text = str(getattr(message, "content", "") or "")
+            if getattr(message, "tool_calls", None):
+                continue
+            text = str(getattr(message, "content", "") or "").strip()
+            if not text:
+                continue
             if cls._MARKDOWN_TABLE_RE.search(text):
                 return True
+            if cls._STEP_STUB_RE.match(text):
+                return False
+            return len(text) >= 15
         return False
 
     @staticmethod
@@ -3061,7 +3069,13 @@ class ToolsNodes(BasicNode):
     @staticmethod
     def _planned_tool_step_guidance() -> str:
         """业务工具步：与技能步共用停手契约，但不收掉本步多个计划工具。"""
-        return "【工具执行】只调用本步骤计划/可见工具。" "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。" "工具已返回结构化结果（含空列表）即终态，不要把空当失败反复换参。" "仅当结果带明确 error 时最多改参重试 1 次，然后把错误原样告诉用户。"
+        return (
+            "【工具执行】只调用本步骤计划/可见工具。"
+            "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
+            "工具已返回结构化结果（含空列表）即终态，不要把空当失败反复换参。"
+            "仅当结果带明确 error 时最多改参重试 1 次，然后把错误原样告诉用户。"
+            "工具成功后用一两句话直接回答用户并结束本步，禁止再写第二份重复说明。"
+        )
 
     @staticmethod
     def _build_lightweight_system_prompt(user_system_message: str = "", *, skills_available: bool = False) -> str:
@@ -3876,8 +3890,8 @@ class ToolsNodes(BasicNode):
                         "请用一两句告知用户查看上方报告与修复建议，不要重复 Markdown 表格或声称数据被截断。"
                     )
                 elif len(completed_steps) == 1 and self._planned_step_already_answered(collected_output_messages):
-                    # 单步查询已经把表格写进正文（技能包 execute 后 DeepAgent 当场作答）。
-                    # 再跑总结轮会原样复述并追加安全建议，用户看到两份结果。
+                    # 单步已经把答案写进正文（技能表 / 工具一两句话）。
+                    # 再跑总结轮会换个说法复述，用户看到两份结果。
                     result = {"messages": list(agent_state.get("messages") or [])}
                     final_message = None
                 else:

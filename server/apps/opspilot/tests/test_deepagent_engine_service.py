@@ -1013,6 +1013,15 @@ def test_planned_step_already_answered_detects_markdown_table():
     assert ToolsNodes._planned_step_already_answered([ToolMessage(content=table, tool_call_id="t1")]) is False
 
 
+def test_planned_step_already_answered_detects_tool_sentence():
+    from langchain_core.messages import AIMessage
+
+    answer = "当前时间是 **2026-08-18 17:54:29**（默认时区：Asia/Shanghai）。"
+    tool_call = AIMessage(content="", tool_calls=[{"id": "1", "name": "get_current_time", "args": {}}])
+    assert ToolsNodes._planned_step_already_answered([tool_call, AIMessage(content=answer)]) is True
+    assert ToolsNodes._planned_step_already_answered([tool_call]) is False
+
+
 def test_plan_is_skills_only_and_step_guidance():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep
 
@@ -1041,6 +1050,7 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     assert "未计划工具" in guidance
     assert "空列表" in guidance
     assert "重规划" in guidance
+    assert "第二份" in guidance
     assert "execute" not in guidance
     assert "扫技能包" not in guidance
 
