@@ -33,7 +33,7 @@ class ModuleDataQuerySerializer(PaginatedRequestSerializer):
     method="GET",                     # GET 走 query string；写方法走 JSON body
     schema=ModuleDataQuerySerializer, # 必填
     inject="team_list",               # 或 "user_info"（锚点式）；见下
-    permission="patch_mgmt-View",     # 可选；声明时必须同时给 permission_app
+    permission="patch_target-View",   # 可选；声明时必须同时给 permission_app
     permission_app="patch",
     summary="一句话说明（含组织口径：是否级联子组织）",
 )

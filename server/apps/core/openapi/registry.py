@@ -125,6 +125,21 @@ class OpenAPIRegistry:
                     raise ImproperlyConfigured(
                         f"openapi_expose({func_name}): serializer 不得声明身份字段 {sorted(conflict)}"
                     )
+                # 锚点式下 dispatcher 从 serializer 中抽取字面名 team 的字段并入
+                # user_info。serializer 若把锚点命名成别的字段，JWT 调用方将永远
+                # 拿到 400 "team is required"（且无法补传，未知字段被拒），
+                # API 令牌调用方则静默使用绑定组织——把该错误提前到启动期。
+                if "team" not in serializer_fields:
+                    raise ImproperlyConfigured(
+                        f"openapi_expose({func_name}): inject='user_info' 要求 serializer 声明名为 "
+                        "'team' 的组织锚点字段（网关据此抽取并注入 user_info）"
+                    )
+
+        if permission and not permission_app:
+            raise ImproperlyConfigured(
+                f"openapi_expose({func_name}): 声明 permission 时必须同时声明 permission_app"
+                "（取值为该应用菜单定义的 client_id，如 patch_mgmt → 'patch'）"
+            )
 
         key = (service, sub_path, method)
         if key in self._endpoints:

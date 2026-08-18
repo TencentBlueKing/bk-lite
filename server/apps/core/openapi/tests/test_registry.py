@@ -30,6 +30,11 @@ def user_info_func(name, user_info=None):
     return {}
 
 
+class AnchorSerializer(OpenAPIRequestSerializer):
+    name = serializers.CharField()
+    team = serializers.IntegerField(required=False)
+
+
 def no_identity_func(name):
     return {}
 
@@ -69,6 +74,10 @@ def test_valid_registration_and_find():
         {"inject": "team_list", "serializer_class": TeamFieldSerializer},
         {"inject": "user_info", "func": no_identity_func},
         {"inject": "user_info", "func": user_info_func, "serializer_class": UserFieldSerializer},
+        # 锚点式必须声明 team 字段，否则 JWT 调用方永久 400 且无法补传
+        {"inject": "user_info", "func": user_info_func},
+        # 声明 permission 却漏 permission_app 会导致非超管全量 403（superuser 直通掩盖）
+        {"permission": "patch_target-View"},
         {"team_free": True, "inject": "team_list"},
     ],
 )
@@ -93,5 +102,13 @@ def test_team_free_without_inject_allowed():
 
 def test_user_info_registration():
     reg = OpenAPIRegistry()
-    endpoint = register(reg, inject="user_info", func=user_info_func)
+    endpoint = register(
+        reg, inject="user_info", func=user_info_func, serializer_class=AnchorSerializer
+    )
     assert endpoint.inject == "user_info"
+
+
+def test_permission_with_app_accepted():
+    reg = OpenAPIRegistry()
+    endpoint = register(reg, permission="patch_target-View", permission_app="patch")
+    assert endpoint.permission_app == "patch"
