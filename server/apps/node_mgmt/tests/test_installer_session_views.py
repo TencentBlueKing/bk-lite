@@ -1,13 +1,16 @@
 import json
+import re
 
 import pytest
 from django.core.cache import cache
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import CloudRegion, PackageVersion, SidecarEnv
 from apps.node_mgmt.services.install_token import InstallTokenService
+from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
 
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
@@ -96,4 +99,65 @@ def test_strict_credentials_failure_does_not_consume_install_token(monkeypatch):
     assert recovered_response["X-Token-Remaining-Usage"] == str(
         InstallerConstants.INSTALL_TOKEN_MAX_USAGE - 1
     )
+    assert cache.get(usage_key) == 1
+
+
+@pytest.mark.parametrize("install_mode", ["manual", "auto"])
+def test_linux_command_issuance_does_not_consume_install_token(monkeypatch, install_mode):
+    cloud_region = CloudRegion.objects.create(
+        name=f"linux-command-{install_mode}",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    env_values = {
+        NodeConstants.SERVER_URL_KEY: "https://server.example",
+        NodeConstants.NATS_SERVERS_KEY: "tls://nats.example:4222",
+        "NATS_PROTOCOL": "tls",
+        NodeConstants.NATS_INSTALLER_USERNAME_KEY: "installer-user",
+        NodeConstants.NATS_INSTALLER_PASSWORD_KEY: "installer-password",
+        NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_KEY: NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_STRICT,
+    }
+    for key, value in env_values.items():
+        SidecarEnv.objects.create(key=key, value=value, type="text", cloud_region=cloud_region)
+
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="1.0.0",
+        name="controller.tar.gz",
+        created_by="tester",
+        updated_by="tester",
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.installer_session.PackageService.resolve_existing_file_path",
+        lambda _: "linux/Controller/1.0.0/controller.tar.gz",
+    )
+
+    command = InstallerService.get_install_command(
+        user="root",
+        ip="10.0.0.10",
+        node_id=f"node-{install_mode}",
+        os=NodeConstants.LINUX_OS,
+        package_id=str(package.id),
+        cloud_region_id=str(cloud_region.id),
+        organizations=[],
+        node_name=f"node-{install_mode}",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        install_mode=install_mode,
+    )
+    token = re.search(r"linux_bootstrap\?token=([0-9a-f-]+)", command).group(1)
+    usage_key = (
+        f"{InstallerConstants.INSTALL_TOKEN_CACHE_PREFIX}:{token}:"
+        f"{InstallTokenService.USAGE_COUNT_CACHE_SUFFIX}"
+    )
+
+    assert cache.get(usage_key) in (None, 0)
+
+    request = APIRequestFactory().get("/node_mgmt/open_api/installer/session", {"token": token})
+    response = OpenSidecarViewSet.as_view({"get": "installer_session"})(request)
+
+    assert response.status_code == 200
     assert cache.get(usage_key) == 1

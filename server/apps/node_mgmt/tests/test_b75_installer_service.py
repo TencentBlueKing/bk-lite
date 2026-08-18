@@ -7,6 +7,7 @@
 import os
 import shlex
 import subprocess
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -590,6 +591,10 @@ def test_get_install_command_linux_returns_bootstrap():
             return_value="tok-xyz",
         ),
         patch(
+            "apps.node_mgmt.services.installer.InstallTokenService.inspect_token_data",
+            return_value={"remaining_usage": 5},
+        ),
+        patch(
             "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
             return_value=session_cfg,
         ),
@@ -617,6 +622,21 @@ _SESSION_CFG = {
     "install_dir": "/opt/fusion",
     "server_url": "https://srv.local/api/v1/node_mgmt/open_api/node",
 }
+
+
+@contextmanager
+def _mock_bootstrap_session(session_config=_SESSION_CFG):
+    with (
+        patch(
+            "apps.node_mgmt.services.installer.InstallTokenService.inspect_token_data",
+            return_value={"remaining_usage": 5},
+        ),
+        patch(
+            "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+            return_value=session_config,
+        ),
+    ):
+        yield
 
 
 def _write_executable(path, content):
@@ -681,10 +701,7 @@ printf '%s\n' '#!/bin/sh' 'printf "%s" "${SELECTED_SHELL:-bash}" > "$RUNNER_LOG"
 
 @pytest.mark.django_db
 def test_get_linux_bootstrap_command_manual_mode():
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
     assert "sh -lc" not in cmd
     assert "bash -lc" not in cmd
@@ -700,10 +717,7 @@ def test_get_linux_bootstrap_command_manual_mode():
 
 @pytest.mark.django_db
 def test_get_linux_bootstrap_command_auto_mode():
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
     assert "sh -lc" not in cmd
     assert "bash -lc" not in cmd
@@ -725,10 +739,7 @@ def test_get_linux_bootstrap_command_shell_quotes_bootstrap_url():
         "install_dir": "/opt/fusion",
         "server_url": "https://srv.local/path with space/it's/api/v1/node_mgmt/open_api/node",
     }
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=session_cfg,
-    ):
+    with _mock_bootstrap_session(session_cfg):
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     expected_url = "https://srv.local/path with space/it's/api/v1/node_mgmt/open_api/installer/linux_bootstrap?token=tok"
@@ -739,10 +750,7 @@ def test_get_linux_bootstrap_command_shell_quotes_bootstrap_url():
 @pytest.mark.parametrize("shell_name", ["sh", "bash"])
 def test_get_linux_bootstrap_command_runs_with_only_one_supported_shell(tmp_path, shell_name):
     env, bootstrap_temp, runner_log, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, shell_name)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -758,10 +766,7 @@ def test_get_linux_bootstrap_command_runs_with_only_one_supported_shell(tmp_path
 def test_get_linux_bootstrap_command_prefers_sh_when_sh_and_bash_are_available(tmp_path):
     env, _, runner_log, _ = _prepare_bootstrap_shell_test(tmp_path, "sh")
     (tmp_path / "bin" / "bash").symlink_to("/bin/bash")
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -773,10 +778,7 @@ def test_get_linux_bootstrap_command_prefers_sh_when_sh_and_bash_are_available(t
 @pytest.mark.django_db
 def test_get_linux_bootstrap_command_auto_mode_uses_non_interactive_sudo_for_non_root(tmp_path):
     env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh", uid=1000)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -791,10 +793,7 @@ def test_get_linux_bootstrap_command_auto_mode_uses_non_interactive_sudo_for_non
 @pytest.mark.django_db
 def test_get_linux_bootstrap_command_manual_mode_uses_interactive_sudo_for_non_root(tmp_path):
     env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh", uid=1000)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -811,10 +810,7 @@ def test_get_linux_bootstrap_command_manual_mode_keeps_login_shell_alive(tmp_pat
     env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh")
     shell_alive_log = tmp_path / "shell-alive.log"
     env["SHELL_ALIVE_LOG"] = str(shell_alive_log)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
 
     result = subprocess.run(
@@ -869,10 +865,7 @@ printf '%s\n' '#!/bin/sh' 'printf ran > "$BOOTSTRAP_LOG"' 'exit 7' > "$output"
             "INSTALL_STATUS_LOG": str(install_status_log),
         }
     )
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
 
     result = subprocess.run(
@@ -900,10 +893,7 @@ def test_get_linux_bootstrap_command_auto_mode_still_ends_execution_shell(tmp_pa
     env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh")
     shell_alive_log = tmp_path / "shell-alive.log"
     env["SHELL_ALIVE_LOG"] = str(shell_alive_log)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(
@@ -926,10 +916,7 @@ def test_get_linux_bootstrap_command_preserves_download_failure_and_cleans_temp_
         "sh",
         curl_exit_code=22,
     )
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -954,10 +941,7 @@ done
 printf '%s\n' '#!/bin/sh' 'printf ran > "$BOOTSTRAP_LOG"' 'exit 7' > "$output"
 """,
     )
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -973,10 +957,7 @@ def test_get_linux_bootstrap_command_reports_missing_supported_shell(tmp_path):
     empty_path.mkdir()
     env = os.environ.copy()
     env["PATH"] = str(empty_path)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
