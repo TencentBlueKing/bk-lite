@@ -19,6 +19,7 @@ from langchain_core.messages import HumanMessage
 from apps.opspilot.metis.llm.chain.node import ToolsNodes
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
+    SkillExecutionGuardMiddleware,
     ToolVisibilityMiddleware,
     is_progressive_tools_enabled,
 )
@@ -167,8 +168,30 @@ class TestSkillBackendSources:
         finally:
             os.environ.pop("DB_PASSWORD", None)
         assert "DB_PASSWORD" not in env
-        assert set(env).issubset({"PATH", "LANG", "LC_ALL", "TMPDIR", "HOME", "KUBECONFIG"})
+        allowed = {"PATH", "LANG", "LC_ALL", "TMPDIR", "HOME", "KUBECONFIG"}
+        allowed.update(n._WINDOWS_SOCKET_ENV_KEYS)
+        assert set(env).issubset(allowed)
         assert env["TMPDIR"] == "/tmp/run-xyz"
+        if os.name == "nt":
+            assert env.get("SystemRoot")
+            assert "SYSTEMROOT" not in env
+            assert env.get("TEMP") == "/tmp/run-xyz"
+            assert env.get("TMP") == "/tmp/run-xyz"
+            path_entries = env["PATH"].split(os.pathsep)
+            assert any(p.lower().endswith("\\system32") or p.lower().endswith("/system32") for p in path_entries)
+
+    def test_sandbox_env_can_create_socket(self):
+        """精简沙箱 env 必须能初始化套接字。Windows 缺 SystemRoot 会 WinError 10106。"""
+        n = ToolsNodes()
+        env = n._sandbox_env(os.path.abspath("/tmp/run-socket"))
+        completed = subprocess.run(
+            [sys.executable, "-c", "import socket; socket.socket().close()"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert completed.returncode == 0, completed.stderr
 
     def test_cleanup_sandbox_removes_dir(self):
         import tempfile
@@ -183,13 +206,14 @@ class TestSkillBackendSources:
     def test_sandbox_prefers_runtime_python_when_parent_path_only_has_system_python(self):
         n = ToolsNodes()
 
-        with patch.dict(os.environ, {"PATH": "/usr/bin:/bin"}):
+        with patch.dict(os.environ, {"PATH": os.pathsep.join(["/usr/bin", "/bin"])}):
             env = n._sandbox_env("/tmp/run-python-path")
 
-        path_entries = env["PATH"].split(":")
+        path_entries = env["PATH"].split(os.pathsep)
         assert path_entries[0] == os.path.dirname(sys.executable)
+        python_cmd = "python" if os.name == "nt" else "python3"
         completed = subprocess.run(
-            ["python3", "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+            [python_cmd, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
             env=env,
             capture_output=True,
             text=True,
@@ -253,6 +277,7 @@ class TestBuildDeepagentNodes:
         plan_payloads=None,
         failing_agent_calls=(),
         direct_reply_content=None,
+        agent_reply=None,
     ):
         gb = _FakeGraphBuilder()
 
@@ -293,7 +318,7 @@ class TestBuildDeepagentNodes:
             else:
                 captured.setdefault("visible_tool_calls", []).append([tool.name for tool in captured["create_kwargs"]["tools"]])
             call_index = len(captured["visible_tool_calls"])
-            appended_messages = [AIMessage(content=f"执行结果 {call_index}")]
+            appended_messages = [AIMessage(content=agent_reply or f"执行结果 {call_index}")]
             if call_index in failing_agent_calls:
                 from langchain_core.messages import ToolMessage
 
@@ -445,7 +470,13 @@ class TestBuildDeepagentNodes:
         assert kwargs["backend"] is fake_backend
         assert kwargs["skills"] == ["/skills/"]
         visibility = next(m for m in kwargs["middleware"] if isinstance(m, ToolVisibilityMiddleware))
-        assert "read_file" in visibility._always_visible_tools
+        # 纯技能步不再常驻整套 FS（避免每轮 ~7k schema），但必须把 execute
+        # 放进 always_visible（仅 discard hidden 不够，allow_unregistered=False）。
+        assert "read_file" not in visibility._always_visible_tools
+        assert "execute" not in visibility._hidden_tools
+        assert "execute" in visibility._always_visible_tools
+        skill_guard = next(m for m in kwargs["middleware"] if isinstance(m, SkillExecutionGuardMiddleware))
+        assert skill_guard.enabled is True
 
     def test_context_overflow_skips_current_step_and_continues_remaining(self):
         node = ToolsNodes()
@@ -930,6 +961,29 @@ class TestBuildDeepagentNodes:
             [],
         ]
 
+    def test_planned_execution_skips_summary_when_step_already_showed_table(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("execute")]
+        req = _request(user_message="查询域控前10个用户")
+        captured = {}
+        table = "已成功查询\n\n| 序号 | sAMAccountName |\n| --- | --- |\n| 1 | Administrator |"
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查用户",
+                    "steps": [{"objective": "调用 AD 技能包", "tools": ["execute"]}],
+                },
+                agent_reply=table,
+            )
+
+        assert len(captured["ainvoke_messages"]) == 1
+        assert len(result["messages"]) == 1
+        assert result["messages"][0].content == table
+
     def test_progressive_disabled_skips_planner_and_binds_all_tools(self, monkeypatch):
         monkeypatch.setenv("OPSPILOT_DEEPAGENT_PROGRESSIVE_TOOLS", "0")
         assert is_progressive_tools_enabled() is False
@@ -948,3 +1002,57 @@ class TestBuildDeepagentNodes:
         assert not any(isinstance(item, ToolVisibilityMiddleware) for item in middleware)
         assert len(captured["ainvoke_messages"]) == 1
         assert captured["ainvoke_messages"][0][0].content == "排查 pod 崩溃"
+
+
+def test_planned_step_already_answered_detects_markdown_table():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    table = "已成功查询\n\n| 序号 | sAMAccountName |\n| --- | --- |\n| 1 | Administrator |"
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content=table)]) is True
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content="执行结果 1")]) is False
+    assert ToolsNodes._planned_step_already_answered([ToolMessage(content=table, tool_call_id="t1")]) is False
+
+
+def test_plan_is_skills_only_and_step_guidance():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep
+
+    skills_only = ToolExecutionPlan(
+        goal="查 AD",
+        steps=[ToolExecutionStep(objective="跑技能", tools=["__use_skills__"])],
+    )
+    mixed = ToolExecutionPlan(
+        goal="查 AD",
+        steps=[ToolExecutionStep(objective="跑技能", tools=["__use_skills__", "shell"])],
+    )
+    assert ToolsNodes._plan_is_skills_only(skills_only) is True
+    assert ToolsNodes._plan_is_skills_only(mixed) is False
+    guidance = ToolsNodes._skill_only_step_guidance([{"package_id": "ad-domain-ops"}])
+    assert "禁止 echo" in guidance or "禁止" in guidance
+    assert "/skills/ad-domain-ops/scripts/" in guidance
+    assert "一张表" in guidance
+    assert "禁止发明" in guidance
+    assert "--help" in guidance
+    assert "管道" in guidance
+
+
+def test_planned_tool_step_guidance_is_policy_not_skill_scan():
+    guidance = ToolsNodes._planned_tool_step_guidance()
+    assert "【工具执行】" in guidance
+    assert "未计划工具" in guidance
+    assert "空列表" in guidance
+    assert "重规划" in guidance
+    assert "execute" not in guidance
+    assert "扫技能包" not in guidance
+
+
+def test_skill_only_step_guidance_lists_real_scripts(tmp_path):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "ad_search.py").write_text("# search\n", encoding="utf-8")
+    (scripts / "_lib.py").write_text("# private\n", encoding="utf-8")
+    guidance = ToolsNodes._skill_only_step_guidance(
+        [{"package_id": "ad-domain-ops", "extracted_root": tmp_path}],
+    )
+    assert "python3 /skills/ad-domain-ops/scripts/ad_search.py" in guidance
+    assert "_lib.py" not in guidance
+    assert "query_users.py" not in guidance

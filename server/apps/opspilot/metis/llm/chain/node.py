@@ -1,9 +1,11 @@
 import asyncio
 import hashlib
 import json
+import re
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
@@ -78,6 +80,7 @@ from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS,
     PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS,
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
+    SkillExecutionGuardMiddleware,
     ToolResultCompactionMiddleware,
     ToolVisibilityMiddleware,
     is_progressive_tools_enabled,
@@ -2459,7 +2462,8 @@ class ToolsNodes(BasicNode):
             from deepagents.backends import LocalShellBackend
 
             from apps.opspilot.services.skill_executor import PathRewritingBackend
-            from apps.opspilot.services.skill_package.materializer import materialize_skill_package
+            from apps.opspilot.services.skill_package.materializer import materialize_skill_package, sanitize_skill_name
+            from apps.opspilot.utils.skill_package_params import format_skillenv
 
             base = self._skill_sandbox_base()
             os.makedirs(base, exist_ok=True)
@@ -2479,6 +2483,12 @@ class ToolsNodes(BasicNode):
             # Phase 0 路径解析修复:deepagents 0.5.x 的 virtual_mode 不重写
             # execute 命令字符串里的绝对路径(/skills/...)。
             # PathRewritingBackend 在 execute 前正则替换 /skills/ → 物理 sandbox_dir/skills/。
+            params_by_dir, secret_values = self._load_skill_package_runtime_params(graph_request, packages)
+            injected = {name: sorted(env.keys()) for name, env in (params_by_dir or {}).items() if env}
+            if injected:
+                logger.info("技能包运行时参数已加载: %s", injected)
+            else:
+                logger.warning("技能包运行时参数为空，脚本将读不到 AD_HOST 等变量")
             inner_backend = LocalShellBackend(
                 root_dir=sandbox_dir,
                 virtual_mode=True,
@@ -2490,6 +2500,8 @@ class ToolsNodes(BasicNode):
                 sandbox_dir=sandbox_dir,
                 skills_root="/skills",
                 on_skill_access=self._make_lazy_skill_deps_callback(packages),
+                params_by_package=params_by_dir,
+                secret_values=secret_values,
             )
             # 不在建沙箱时预装依赖:寒暄/未用技能时不应 pip install。
             # 依赖在 read/execute 真正碰到 /skills/<name>/ 时按需安装。
@@ -2506,6 +2518,21 @@ class ToolsNodes(BasicNode):
                         me,
                         traceback.format_exc(),
                     )
+            for pkg in packages:
+                if not isinstance(pkg, dict):
+                    continue
+                dir_name = sanitize_skill_name(pkg.get("package_id") or pkg.get("name"))
+                env = params_by_dir.get(dir_name) or {}
+                if not env:
+                    continue
+                skillenv_path = f"/skills/{dir_name}/.skillenv"
+                try:
+                    backend.write(skillenv_path, format_skillenv(env))
+                    chmod = getattr(backend, "chmod", None)
+                    if callable(chmod):
+                        chmod(skillenv_path, 0o600)
+                except Exception as env_exc:
+                    logger.warning("写入 .skillenv 失败(%s): %r", dir_name, env_exc)
             sources = ["/skills/"]
             return backend, sources, sandbox_dir
         except Exception as e:  # pragma: no cover - defensive
@@ -2736,13 +2763,17 @@ class ToolsNodes(BasicNode):
         找不到的问题 — 不用每次都猜安装路径。
 
         Returns:
-            合并后的 PATH 字符串(冒号分隔,Unix 风格,无重复)。
+            合并后的 PATH 字符串(``os.pathsep`` 分隔,无重复)。
         """
         import os
         import shutil
         import sys
 
-        host_path = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+        host_path = os.environ.get("PATH", "")
+        path_sep = os.pathsep
+        if not host_path:
+            host_path = "/usr/local/bin:/usr/bin:/bin" if os.name != "nt" else ""
+        host_parts = [p for p in host_path.split(path_sep) if p]
         bins: list[str] = []
         runtime_bins = [
             os.path.dirname(sys.executable),
@@ -2757,15 +2788,36 @@ class ToolsNodes(BasicNode):
             if not resolved:
                 continue
             bin_dir = os.path.dirname(resolved)
-            if bin_dir and bin_dir not in host_path.split(":") and bin_dir not in bins:
+            if bin_dir and bin_dir not in host_parts and bin_dir not in bins:
                 bins.append(bin_dir)
 
         # 合并 host PATH + 探测 bins,用 dict.fromkeys 保序去重(host PATH 本身可能有重复段)
         # 当前服务的 venv 必须优先于父进程 PATH。否则从精简环境启动时会命中
         # /usr/bin/python3，并与服务 venv 的依赖形成跨 Python 版本混用。
-        merged_list = runtime_bins + host_path.split(":") + bins
+        merged_list = runtime_bins + host_parts + bins
         merged_unique = list(dict.fromkeys(p for p in merged_list if p))
-        return ":".join(merged_unique)
+        return path_sep.join(merged_unique)
+
+    # Windows 套接字初始化依赖这些变量;inherit_env=False 若不带上,
+    # ldap3/socket 会报 WinError 10106(无法加载或初始化请求的服务程序)。
+    # 都是系统路径类变量,不含密钥。Linux 上这些键不存在,不会写入。
+    _WINDOWS_SOCKET_ENV_KEYS = (
+        "SystemRoot",
+        "SYSTEMROOT",
+        "SystemDrive",
+        "SYSTEMDRIVE",
+        "windir",
+        "WINDIR",
+        "PATHEXT",
+        "ComSpec",
+        "COMSPEC",
+        "USERPROFILE",
+        "USERNAME",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "TEMP",
+        "TMP",
+    )
 
     @staticmethod
     def _sandbox_env(sandbox_dir: str) -> dict:
@@ -2774,13 +2826,16 @@ class ToolsNodes(BasicNode):
         设计原则:
           - **PATH 扩展**: 用 shutil.which 探测 host 用户级 Python 工具(pip / uv / markitdown 等),
             任何工具的 bin 目录自动加入 sandbox PATH。LLM 不必反复试不同路径,
-            一次能找到工具。
+            一次能找到工具。分隔符用 ``os.pathsep``(Windows `;` / Linux `:`)，
+            不能写死冒号,否则 `C:\\Windows\\system32` 会被拆碎。
           - **HOME 隔离到 sandbox_dir**: 避免 `~/.cache/pip` 等用户配置污染 host HOME,
             sandbox 销毁后清理。
           - **TMPDIR 隔离到 sandbox_dir**: subprocess 写 /tmp 时落沙箱内,
             跟 L3b 的 /tmp 重写 + PathRewritingBackend 配合。
           - **不携带敏感变量**: SECRET_KEY / DB_PASSWORD / NATS_TOKEN 等
             不出现在 sandbox 子进程环境中,即使工具泄漏也不会泄露。
+          - **Windows 套接字**: 透传 SystemRoot / windir / PATHEXT / ComSpec,
+            否则 ldap3 建 socket 会 WinError 10106。
         """
         import os
 
@@ -2794,6 +2849,37 @@ class ToolsNodes(BasicNode):
             # 找不到 kubeconfig。显式传 KUBECONFIG(host 环境变量,LLM 调 kubectl 才能连 k8s)。
             "KUBECONFIG": os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/config")),
         }
+        # Windows 环境变量名大小写不敏感;同时写入 SystemRoot/SYSTEMROOT
+        # 在部分 CreateProcess 路径上会异常。按规范名去重,只保留一份。
+        preferred_windows_keys = {
+            "systemroot": "SystemRoot",
+            "systemdrive": "SystemDrive",
+            "windir": "windir",
+            "pathext": "PATHEXT",
+            "comspec": "ComSpec",
+            "userprofile": "USERPROFILE",
+            "username": "USERNAME",
+            "appdata": "APPDATA",
+            "localappdata": "LOCALAPPDATA",
+            "temp": "TEMP",
+            "tmp": "TMP",
+        }
+        for key in ToolsNodes._WINDOWS_SOCKET_ENV_KEYS:
+            value = os.environ.get(key)
+            if not value:
+                continue
+            canon = preferred_windows_keys.get(key.lower(), key)
+            env.setdefault(canon, value)
+        system_root = env.get("SystemRoot")
+        if system_root:
+            system32 = os.path.join(system_root, "system32")
+            parts = [p for p in env["PATH"].split(os.pathsep) if p]
+            if system32 not in parts:
+                parts.append(system32)
+                env["PATH"] = os.pathsep.join(parts)
+            # 临时目录仍落沙箱,避免子进程写到宿主 %TEMP%。
+            env["TEMP"] = sandbox_dir
+            env["TMP"] = sandbox_dir
         return env
 
     @staticmethod
@@ -2814,6 +2900,31 @@ class ToolsNodes(BasicNode):
         import os
 
         return os.getenv("OPSPILOT_SKILL_BUCKET", "munchkin-private")
+
+    @classmethod
+    def _load_skill_package_runtime_params(cls, graph_request, packages) -> tuple[dict, list]:
+        """解密技能包参数并映射到沙箱目录名。明文只留在本进程内存。"""
+        from apps.opspilot.utils.skill_package_params import map_params_to_skill_dirs, resolve_package_params
+
+        ec = ExtraConfig.from_raw(getattr(graph_request, "extra_config", None))
+        overlay = getattr(ec, "skill_package_params_overlay", None)
+        skill_id = getattr(ec, "skill_id", None)
+
+        def _load():
+            params_by_id, secrets_by_id = resolve_package_params(skill_id, overlay=overlay)
+            return map_params_to_skill_dirs(packages, params_by_id, secrets_by_id)
+
+        try:
+            asyncio.get_running_loop()
+            in_async = True
+        except RuntimeError:
+            in_async = False
+        if in_async:
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                return ex.submit(_load).result()
+        return _load()
 
     @staticmethod
     def _resolve_skill_packages(graph_request) -> list:
@@ -2879,6 +2990,78 @@ class ToolsNodes(BasicNode):
     def _should_use_lightweight_after_empty_plan(plan) -> bool:
         """规划器判定无需执行步骤时，跳过 DeepAgent/FS（含已启用技能包的寒暄场景）。"""
         return not bool(getattr(plan, "steps", None))
+
+    _MARKDOWN_TABLE_RE = re.compile(r"\|[^\n]+\|\s*\n\s*\|?\s*:?-{3,}", re.MULTILINE)
+
+    @classmethod
+    def _planned_step_already_answered(cls, messages) -> bool:
+        """步骤正文里已有 Markdown 表格时，最终总结再写一遍就会和用户看到的内容重复。"""
+        for message in reversed(messages or []):
+            if not isinstance(message, AIMessage):
+                continue
+            text = str(getattr(message, "content", "") or "")
+            if cls._MARKDOWN_TABLE_RE.search(text):
+                return True
+        return False
+
+    @staticmethod
+    def _plan_is_skills_only(candidate_plan) -> bool:
+        """整份计划是否仅依赖技能运行时（无业务工具名）。"""
+        from apps.opspilot.metis.llm.agent.tool_execution_planner import USE_SKILLS_TOOL_NAME
+
+        steps = list(getattr(candidate_plan, "steps", None) or [])
+        if not steps:
+            return False
+        for step in steps:
+            tools = [str(name) for name in (getattr(step, "tools", None) or []) if str(name)]
+            if not tools:
+                return False
+            if any(name != USE_SKILLS_TOOL_NAME for name in tools):
+                return False
+        return True
+
+    @staticmethod
+    def _skill_package_script_lines(package: dict) -> list[str]:
+        pkg_id = str(package.get("package_id") or package.get("name") or "").strip()
+        if not pkg_id:
+            return []
+        extracted = package.get("extracted_root")
+        scripts_dir = None
+        if isinstance(extracted, Path):
+            scripts_dir = extracted / "scripts"
+        elif extracted:
+            scripts_dir = Path(str(extracted)) / "scripts"
+        names: list[str] = []
+        if scripts_dir is not None and scripts_dir.is_dir():
+            names = sorted(path.name for path in scripts_dir.glob("*.py") if path.is_file() and not path.name.startswith("_"))
+        if not names:
+            return [f"- python3 /skills/{pkg_id}/scripts/<脚本>.py"]
+        return [f"- python3 /skills/{pkg_id}/scripts/{name}" for name in names]
+
+    @staticmethod
+    def _skill_only_step_guidance(packages: list | None = None) -> str:
+        """纯技能步的硬约束：直跑脚本，禁止扫包/探环境。"""
+        package_hints: list[str] = []
+        for package in packages or []:
+            if not isinstance(package, dict):
+                continue
+            package_hints.extend(ToolsNodes._skill_package_script_lines(package))
+        hint_lines = "\n".join(package_hints) if package_hints else "- python3 /skills/<包名>/scripts/<脚本>.py"
+        return (
+            "【技能包执行】连接参数已由平台注入，禁止 echo/$VAR/env/python -c 探测。"
+            "禁止反复 read_file/ls/grep 扫技能包。"
+            "禁止 --help/-h，禁止 2>&1 | head 或任何管道/重定向；用法已在本提示，不要先探命令。"
+            "必须使用下列真实脚本路径，禁止发明文件名。"
+            "直接 execute 查询，例如："
+            'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "*" --type user --limit 10 --attrs sAMAccountName。'
+            "脚本 ok=true（含空结果）后立即用一张表回答并结束本步。\n"
+            f"可用脚本：\n{hint_lines}"
+        )
+
+    @staticmethod
+    def _planned_tool_step_guidance() -> str:
+        """业务工具步：与技能步共用停手契约，但不收掉本步多个计划工具。"""
+        return "【工具执行】只调用本步骤计划/可见工具。" "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。" "工具已返回结构化结果（含空列表）即终态，不要把空当失败反复换参。" "仅当结果带明确 error 时最多改参重试 1 次，然后把错误原样告诉用户。"
 
     @staticmethod
     def _build_lightweight_system_prompt(user_system_message: str = "", *, skills_available: bool = False) -> str:
@@ -3232,11 +3415,19 @@ class ToolsNodes(BasicNode):
             if needs_skill_runtime:
                 backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
 
+            skills_only_plan = bool(skill_sources) and self._plan_is_skills_only(plan)
             active_tools = []
-            # 仅在规划器显式挂上技能运行时时常驻 FS；否则不吃 8K 窗口。
+            # 纯技能步：不常驻整套 FS（每轮 ~7k schema）；只放开 execute。
+            # 混有业务工具时仍常驻 FS，便于大结果落盘与读 SKILL.md。
+            # 注意：allow_unregistered_tools=False 时，仅从 hidden 去掉不够，
+            # 必须把 execute 放进 always_visible，否则模型可见工具为空、只会空谈。
             always_visible = set()
-            if skill_sources:
+            hidden_tools = set(PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS)
+            if skill_sources and not skills_only_plan:
                 always_visible |= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
+            if skills_only_plan:
+                hidden_tools.discard("execute")
+                always_visible.add("execute")
             always_visible |= {
                 name for name in PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS if any(getattr(tool, "name", "") == name for tool in registered_tools)
             }
@@ -3251,7 +3442,7 @@ class ToolsNodes(BasicNode):
             visibility_middleware = ToolVisibilityMiddleware(
                 business_tools=registered_tools,
                 active_tools=active_tools,
-                hidden_tools=PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
+                hidden_tools=hidden_tools,
                 always_visible_tools=always_visible,
                 allow_unregistered_tools=False,
                 include_always_visible=True,
@@ -3262,8 +3453,10 @@ class ToolsNodes(BasicNode):
                 soft_budget_ratio=resolve_planned_execution_soft_budget_ratio(graph_request),
                 accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
             )
+            skill_guard = SkillExecutionGuardMiddleware(enabled=skills_only_plan)
             runtime_middleware = [
                 visibility_middleware,
+                skill_guard,
                 ToolResultCompactionMiddleware(),
                 limit_middleware,
             ]
@@ -3307,7 +3500,18 @@ class ToolsNodes(BasicNode):
                     return
                 backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
                 if skill_sources:
-                    always_visible |= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
+                    skills_only = self._plan_is_skills_only(candidate_plan)
+                    skill_guard.enabled = skills_only
+                    if skills_only:
+                        always_visible -= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
+                        always_visible.add("execute")
+                        visibility_middleware._hidden_tools = frozenset(
+                            name for name in PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS if name != "execute"
+                        )
+                    else:
+                        always_visible |= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
+                        always_visible.discard("execute")
+                        visibility_middleware._hidden_tools = frozenset(PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS)
                     visibility_middleware._always_visible_tools = frozenset(always_visible)
                     # 技能运行时启用后切回完整 deepagent system（含技能说明）。
                     final_system_prompt = TemplateLoader.render_template(
@@ -3434,12 +3638,20 @@ class ToolsNodes(BasicNode):
                         },
                     )
                     limit_middleware.reset_step_continues()
+                    step_guidance = ""
+                    if skills_only_plan or (
+                        USE_SKILLS_TOOL_NAME in (step.tools or []) and not any(t != USE_SKILLS_TOOL_NAME for t in (step.tools or []))
+                    ):
+                        step_guidance = "\n" + self._skill_only_step_guidance(skill_packages)
+                    else:
+                        step_guidance = "\n" + self._planned_tool_step_guidance()
                     step_message = _internal_message(
                         f"执行计划当前步骤：{step.objective}\n"
                         f"本步骤计划工具：{', '.join(step.tools) or '无'}。\n"
                         f"本步骤当前可见工具：{', '.join(visible_names) or '无'} "
                         f"（含文件/交互等常驻工具）。\n"
                         "只完成本步骤；取得足够证据后立即结束，不要处理后续步骤。"
+                        f"{step_guidance}"
                     )
                     step_payload = {
                         **agent_state,
@@ -3663,23 +3875,30 @@ class ToolsNodes(BasicNode):
                         "当前没有可用工具，不要继续调用工具；"
                         "请用一两句告知用户查看上方报告与修复建议，不要重复 Markdown 表格或声称数据被截断。"
                     )
+                elif len(completed_steps) == 1 and self._planned_step_already_answered(collected_output_messages):
+                    # 单步查询已经把表格写进正文（技能包 execute 后 DeepAgent 当场作答）。
+                    # 再跑总结轮会原样复述并追加安全建议，用户看到两份结果。
+                    result = {"messages": list(agent_state.get("messages") or [])}
+                    final_message = None
                 else:
                     final_message = _internal_message(
                         f"工具执行计划目标：{plan.goal or planning_question}\n"
                         f"已完成步骤及结果：\n{completed_text}\n\n"
                         "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具；"
                         "请基于已有证据直接总结结论、依据和下一步建议。"
+                        "用户已经看过步骤里的表格或清单时，不要再输出表格、不要重复名单，最多补一两句。"
                     )
-                final_payload = {
-                    **agent_state,
-                    "messages": list(agent_state.get("messages") or []) + [final_message],
-                }
-                result = await deep_agent.ainvoke(
-                    final_payload,
-                    config=deep_config,
-                )
-                final_messages = list(result.get("messages") or [])
-                _collect_output_messages(final_messages[len(final_payload["messages"]) :])
+                if final_message is not None:
+                    final_payload = {
+                        **agent_state,
+                        "messages": list(agent_state.get("messages") or []) + [final_message],
+                    }
+                    result = await deep_agent.ainvoke(
+                        final_payload,
+                        config=deep_config,
+                    )
+                    final_messages = list(result.get("messages") or [])
+                    _collect_output_messages(final_messages[len(final_payload["messages"]) :])
             except Exception as _await_exc:
                 # deepagent 框架层异常(典型:execute 工具撞 sandbox 命令白名单)会把整
                 # 个 graph 标 ERROR,LLM 没机会拿到 ToolMessage 写 follow-up。
