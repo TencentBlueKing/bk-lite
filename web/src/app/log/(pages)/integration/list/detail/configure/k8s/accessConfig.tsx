@@ -9,8 +9,8 @@ import useIntegrationApi from '@/app/log/api/integration';
 import GroupTreeSelector from '@/components/group-tree-select';
 import Icon from '@/components/icon';
 import { K8sCommandData } from './k8sConfiguration';
+import FormSettingRow from '@/components/form-setting-row';
 import CollectSettingFields, {
-  FieldHint,
   FieldLabel,
   K8S_SETTING_FORM_WIDTH
 } from './collectSettingFields';
@@ -212,29 +212,31 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
           }
           required
         >
-          <div className="flex items-start gap-4">
-            <Form.Item
-              name="accessType"
-              noStyle
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Radio.Group
-                style={{ width: K8S_SETTING_FORM_WIDTH }}
-                onChange={(event) => {
-                  if (event.target.value === 'new') {
-                    setSettingUnknown(false);
-                    form.setFieldsValue({ runtime_profile: 'standard' });
-                  }
-                }}
+          <FormSettingRow
+            control={
+              <Form.Item
+                name="accessType"
+                noStyle
+                rules={[{ required: true, message: t('common.required') }]}
               >
-                <Radio value="new">{t('log.integration.k8s.newAsset')}</Radio>
-                <Radio value="existing">
-                  {t('log.integration.k8s.existingAsset')}
-                </Radio>
-              </Radio.Group>
-            </Form.Item>
-            <FieldHint hint={t('log.integration.k8s.accessAssetHint')} />
-          </div>
+                <Radio.Group
+                  style={{ width: K8S_SETTING_FORM_WIDTH }}
+                  onChange={(event) => {
+                    if (event.target.value === 'new') {
+                      setSettingUnknown(false);
+                      form.setFieldsValue({ runtime_profile: 'standard' });
+                    }
+                  }}
+                >
+                  <Radio value="new">{t('log.integration.k8s.newAsset')}</Radio>
+                  <Radio value="existing">
+                    {t('log.integration.k8s.existingAsset')}
+                  </Radio>
+                </Radio.Group>
+              </Form.Item>
+            }
+            description={t('log.integration.k8s.accessAssetHint')}
+          />
         </Form.Item>
 
         <Form.Item
@@ -255,23 +257,25 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                   }
                   required
                 >
-                  <div className="flex items-start gap-4">
-                    <Form.Item
-                      name="name"
-                      noStyle
-                      rules={[
-                        { required: true, message: t('common.required') }
-                      ]}
-                    >
-                      <Input
-                        placeholder={t(
-                          'log.integration.k8s.clusterNamePlaceholder'
-                        )}
-                        style={{ width: K8S_SETTING_FORM_WIDTH }}
-                      />
-                    </Form.Item>
-                    <FieldHint hint={t('log.integration.k8s.clusterNameHint')} />
-                  </div>
+                  <FormSettingRow
+                    control={
+                      <Form.Item
+                        name="name"
+                        noStyle
+                        rules={[
+                          { required: true, message: t('common.required') }
+                        ]}
+                      >
+                        <Input
+                          placeholder={t(
+                            'log.integration.k8s.clusterNamePlaceholder'
+                          )}
+                          style={{ width: K8S_SETTING_FORM_WIDTH }}
+                        />
+                      </Form.Item>
+                    }
+                    description={t('log.integration.k8s.clusterNameHint')}
+                  />
                 </Form.Item>
 
                 <Form.Item
@@ -283,23 +287,23 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                   }
                   required
                 >
-                  <div className="flex items-start gap-4">
-                    <Form.Item
-                      name="organizations"
-                      noStyle
-                      rules={[
-                        { required: true, message: t('common.required') }
-                      ]}
-                    >
-                      <GroupTreeSelector
-                        style={{ width: K8S_SETTING_FORM_WIDTH }}
-                        placeholder={t('common.selectTip')}
-                      />
-                    </Form.Item>
-                    <FieldHint
-                      hint={t('log.integration.k8s.organizationHint')}
-                    />
-                  </div>
+                  <FormSettingRow
+                    control={
+                      <Form.Item
+                        name="organizations"
+                        noStyle
+                        rules={[
+                          { required: true, message: t('common.required') }
+                        ]}
+                      >
+                        <GroupTreeSelector
+                          style={{ width: K8S_SETTING_FORM_WIDTH }}
+                          placeholder={t('common.selectTip')}
+                        />
+                      </Form.Item>
+                    }
+                    description={t('log.integration.k8s.organizationHint')}
+                  />
                 </Form.Item>
               </>
             ) : (
@@ -312,30 +316,32 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                 }
                 required
               >
-                <div className="flex items-start gap-4">
-                  <Form.Item
-                    name="k8sCluster"
-                    noStyle
-                    rules={[{ required: true, message: t('common.required') }]}
-                  >
-                    <Select
-                      showSearch
-                      loading={k8sClusterLoading}
-                      placeholder={t('log.integration.k8s.selectK8sCluster')}
-                      style={{ width: K8S_SETTING_FORM_WIDTH }}
-                      options={k8sClusterList.map((item) => ({
-                        label: item.name,
-                        value: item.id
-                      }))}
-                      onChange={(value) => {
-                        if (value) {
-                          void loadSetting(String(value));
-                        }
-                      }}
-                    />
-                  </Form.Item>
-                  <FieldHint hint={t('log.integration.k8s.k8sClusterHint')} />
-                </div>
+                <FormSettingRow
+                  control={
+                    <Form.Item
+                      name="k8sCluster"
+                      noStyle
+                      rules={[{ required: true, message: t('common.required') }]}
+                    >
+                      <Select
+                        showSearch
+                        loading={k8sClusterLoading}
+                        placeholder={t('log.integration.k8s.selectK8sCluster')}
+                        style={{ width: K8S_SETTING_FORM_WIDTH }}
+                        options={k8sClusterList.map((item) => ({
+                          label: item.name,
+                          value: item.id
+                        }))}
+                        onChange={(value) => {
+                          if (value) {
+                            void loadSetting(String(value));
+                          }
+                        }}
+                      />
+                    </Form.Item>
+                  }
+                  description={t('log.integration.k8s.k8sClusterHint')}
+                />
               </Form.Item>
             )
           }
@@ -350,24 +356,26 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
           }
           required
         >
-          <div className="flex items-start gap-4">
-            <Form.Item
-              name="cloud_region_id"
-              noStyle
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Select
-                loading={cloudRegionLoading}
-                placeholder={t('log.integration.k8s.selectCloudRegion')}
-                style={{ width: K8S_SETTING_FORM_WIDTH }}
-                options={cloudRegionList.map((item) => ({
-                  label: item.name || item.id,
-                  value: item.id
-                }))}
-              />
-            </Form.Item>
-            <FieldHint hint={t('log.integration.k8s.cloudRegionHint')} />
-          </div>
+          <FormSettingRow
+            control={
+              <Form.Item
+                name="cloud_region_id"
+                noStyle
+                rules={[{ required: true, message: t('common.required') }]}
+              >
+                <Select
+                  loading={cloudRegionLoading}
+                  placeholder={t('log.integration.k8s.selectCloudRegion')}
+                  style={{ width: K8S_SETTING_FORM_WIDTH }}
+                  options={cloudRegionList.map((item) => ({
+                    label: item.name || item.id,
+                    value: item.id
+                  }))}
+                />
+              </Form.Item>
+            }
+            description={t('log.integration.k8s.cloudRegionHint')}
+          />
         </Form.Item>
 
         <CollectSettingFields

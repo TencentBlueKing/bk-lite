@@ -333,6 +333,7 @@
         "collectPodPlaceholder": "api-*\nworker-*",
         "collectPodDesc": "One Pod name per line. * and ? are supported, for example api-*. Deployment Pods have random suffixes, so enter api-* instead of api. Leave empty to collect all Pods. When both fields are filled, a log must match both.",
         "patternLimit": "At most 50 items per dimension. Use a broader wildcard instead.",
+        "patternExpandedLimit": "Expanded collection scope exceeds 200 patterns. Use a broader wildcard instead.",
         "patternNoUnderscore": "Underscores are not allowed. Kubernetes names do not contain _.",
         "patternNoDoubleStar": "** is not supported. Use * to match any length.",
         "patternNoUppercase": "Uppercase letters are not allowed.",

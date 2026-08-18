@@ -333,6 +333,7 @@
         "collectPodPlaceholder": "api-*\nworker-*",
         "collectPodDesc": "每行一个 Pod 名称，支持 * 和 ?。例如 api-*。Deployment 生成的 Pod 带随机后缀，请填 api-* 而不是 api。留空表示采集全部 Pod。两项都填时需同时匹配。",
         "patternLimit": "同一维度最多 50 项，请改用更宽的通配",
+        "patternExpandedLimit": "采集范围展开后超过 200 条，请改用更宽的通配",
         "patternNoUnderscore": "不能包含下划线，Kubernetes 名称不含 _",
         "patternNoDoubleStar": "不支持 **，请使用 * 匹配任意长度",
         "patternNoUppercase": "不能包含大写字母",

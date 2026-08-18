@@ -1,93 +1,64 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Form, Input, Radio, Tooltip } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import { Alert, Button, Form, Input, Radio } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import FieldGuideTip from '@/components/field-guide-tip';
+import FormSettingRow from '@/components/form-setting-row';
 
 export const K8S_SETTING_FORM_WIDTH = 300;
+export const MAX_PATTERNS_PER_DIMENSION = 50;
+export const MAX_INCLUDE_PATTERNS = 200;
 const PATTERN_WHITELIST = /^[a-z0-9.*?-]+$/;
-
-export const FieldHint: React.FC<{ hint: string }> = ({ hint }) => (
-  <div className="flex-1 text-[var(--color-text-3)]">{hint}</div>
-);
-
-const FieldGuideTip: React.FC<{ detail?: string }> = ({ detail }) => {
-  const { t } = useTranslation();
-
-  if (!detail) {
-    return null;
-  }
-
-  return (
-    <Tooltip
-      placement="top"
-      mouseEnterDelay={0.15}
-      color="var(--color-bg)"
-      overlayInnerStyle={{
-        maxWidth: 420,
-        padding: '10px 12px',
-        color: 'var(--color-text-1)',
-        border: '1px solid var(--color-border-1)',
-        boxShadow: '0 6px 16px rgba(0, 0, 0, 0.08)',
-        borderRadius: 8
-      }}
-      title={
-        <div>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              color: 'var(--color-text-1)',
-              marginBottom: 4
-            }}
-          >
-            {t('log.integration.k8s.fieldGuideTip')}
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              lineHeight: '20px',
-              color: 'var(--color-text-2)',
-              whiteSpace: 'pre-line'
-            }}
-          >
-            {detail}
-          </div>
-        </div>
-      }
-    >
-      <button
-        type="button"
-        aria-label={t('log.integration.k8s.fieldGuideTip')}
-        className="inline-flex items-center justify-center ml-[4px] align-middle w-[18px] h-[18px] rounded-full text-[var(--color-text-3)] hover:text-[var(--color-primary)] hover:bg-[var(--color-fill-2)] transition-colors duration-150 cursor-help border-0 bg-transparent p-0"
-        onClick={(e) => e.preventDefault()}
-      >
-        <QuestionCircleOutlined className="text-[13px]" />
-      </button>
-    </Tooltip>
-  );
-};
 
 export const FieldLabel: React.FC<{ label: string; detail?: string }> = ({
   label,
   detail
-}) => (
-  <span className="inline-flex items-center">
-    {label}
-    <FieldGuideTip detail={detail} />
-  </span>
-);
+}) => {
+  const { t } = useTranslation();
+  return (
+    <span className="inline-flex items-center">
+      {label}
+      <FieldGuideTip
+        short={detail}
+        title={t('log.integration.k8s.fieldGuideTip')}
+      />
+    </span>
+  );
+};
+
+const parsePatternLines = (value: unknown): string[] => {
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  for (const item of String(value || '').split('\n')) {
+    const line = item.trim();
+    if (!line || seen.has(line)) {
+      continue;
+    }
+    seen.add(line);
+    lines.push(line);
+  }
+  return lines;
+};
+
+export const expandedIncludePatternCount = (
+  namespaceValue: unknown,
+  podValue: unknown
+) => {
+  const namespaces = parsePatternLines(namespaceValue);
+  const pods = parsePatternLines(podValue);
+  if (!namespaces.length && !pods.length) {
+    return 0;
+  }
+  return (namespaces.length || 1) * (pods.length || 1);
+};
 
 export const validateK8sCollectPatterns = (
   value: unknown,
   t: (key: string) => string
 ) => {
-  const lines = String(value || '')
-    .split('\n')
-    .map((item) => item.trim())
-    .filter(Boolean);
-  if (lines.length > 50) {
+  const lines = parsePatternLines(value);
+  if (lines.length > MAX_PATTERNS_PER_DIMENSION) {
     return Promise.reject(new Error(t('log.integration.k8s.patternLimit')));
   }
   for (const line of lines) {
@@ -115,6 +86,21 @@ export const validateK8sCollectPatterns = (
   return Promise.resolve();
 };
 
+const validateK8sCollectExpansion = (
+  namespaceValue: unknown,
+  podValue: unknown,
+  t: (key: string) => string
+) => {
+  if (
+    expandedIncludePatternCount(namespaceValue, podValue) > MAX_INCLUDE_PATTERNS
+  ) {
+    return Promise.reject(
+      new Error(t('log.integration.k8s.patternExpandedLimit'))
+    );
+  }
+  return Promise.resolve();
+};
+
 interface CollectSettingFieldsProps {
   unknown?: boolean;
   initialDockerPath?: string;
@@ -125,6 +111,7 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
   initialDockerPath
 }) => {
   const { t } = useTranslation();
+  const form = Form.useFormInstance();
   const [showDockerAdvanced, setShowDockerAdvanced] = useState(
     Boolean(String(initialDockerPath || '').trim())
   );
@@ -132,6 +119,18 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
   useEffect(() => {
     setShowDockerAdvanced(Boolean(String(initialDockerPath || '').trim()));
   }, [initialDockerPath]);
+
+  const validatePatternField = (field: 'namespace_patterns' | 'pod_patterns') =>
+    (_: unknown, value: unknown) =>
+      validateK8sCollectPatterns(value, t).then(() =>
+        validateK8sCollectExpansion(
+          field === 'namespace_patterns'
+            ? value
+            : form.getFieldValue('namespace_patterns'),
+          field === 'pod_patterns' ? value : form.getFieldValue('pod_patterns'),
+          t
+        )
+      );
 
   return (
     <>
@@ -154,26 +153,28 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
         }
         required
       >
-        <div className="flex items-start gap-4">
-          <Form.Item
-            name="runtime_profile"
-            noStyle
-            rules={[{ required: true, message: t('common.required') }]}
-          >
-            <Radio.Group style={{ width: K8S_SETTING_FORM_WIDTH }}>
-              <Radio value="standard">
-                {t('log.integration.k8s.runtimeProfileStandard')}
-              </Radio>
-              <Radio value="docker">
-                {t('log.integration.k8s.runtimeProfileDocker')}
-              </Radio>
-              <Radio value="custom">
-                {t('log.integration.k8s.runtimeProfileCustom')}
-              </Radio>
-            </Radio.Group>
-          </Form.Item>
-          <FieldHint hint={t('log.integration.k8s.runtimeProfileHint')} />
-        </div>
+        <FormSettingRow
+          control={
+            <Form.Item
+              name="runtime_profile"
+              noStyle
+              rules={[{ required: true, message: t('common.required') }]}
+            >
+              <Radio.Group style={{ width: K8S_SETTING_FORM_WIDTH }}>
+                <Radio value="standard">
+                  {t('log.integration.k8s.runtimeProfileStandard')}
+                </Radio>
+                <Radio value="docker">
+                  {t('log.integration.k8s.runtimeProfileDocker')}
+                </Radio>
+                <Radio value="custom">
+                  {t('log.integration.k8s.runtimeProfileCustom')}
+                </Radio>
+              </Radio.Group>
+            </Form.Item>
+          }
+          description={t('log.integration.k8s.runtimeProfileHint')}
+        />
       </Form.Item>
 
       <Form.Item
@@ -194,35 +195,37 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
                 }
                 required
               >
-                <div className="flex items-start gap-4">
-                  <Form.Item
-                    name="host_log_path"
-                    noStyle
-                    rules={[
-                      { required: true, message: t('common.required') },
-                      {
-                        validator: (_, value) => {
-                          if (!value || String(value).startsWith('/')) {
-                            return Promise.resolve();
+                <FormSettingRow
+                  control={
+                    <Form.Item
+                      name="host_log_path"
+                      noStyle
+                      rules={[
+                        { required: true, message: t('common.required') },
+                        {
+                          validator: (_, value) => {
+                            if (!value || String(value).startsWith('/')) {
+                              return Promise.resolve();
+                            }
+                            return Promise.reject(
+                              new Error(
+                                t('log.integration.k8s.absolutePathRequired')
+                              )
+                            );
                           }
-                          return Promise.reject(
-                            new Error(
-                              t('log.integration.k8s.absolutePathRequired')
-                            )
-                          );
                         }
-                      }
-                    ]}
-                  >
-                    <Input
-                      placeholder={t(
-                        'log.integration.k8s.hostLogPathPlaceholder'
-                      )}
-                      style={{ width: K8S_SETTING_FORM_WIDTH }}
-                    />
-                  </Form.Item>
-                  <FieldHint hint={t('log.integration.k8s.hostLogPathHint')} />
-                </div>
+                      ]}
+                    >
+                      <Input
+                        placeholder={t(
+                          'log.integration.k8s.hostLogPathPlaceholder'
+                        )}
+                        style={{ width: K8S_SETTING_FORM_WIDTH }}
+                      />
+                    </Form.Item>
+                  }
+                  description={t('log.integration.k8s.hostLogPathHint')}
+                />
               </Form.Item>
 
               <Button
@@ -246,36 +249,38 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
                     />
                   }
                 >
-                  <div className="flex items-start gap-4">
-                    <Form.Item
-                      name="docker_container_log_path"
-                      noStyle
-                      rules={[
-                        {
-                          validator: (_, value) => {
-                            if (!value || String(value).startsWith('/')) {
-                              return Promise.resolve();
+                  <FormSettingRow
+                    control={
+                      <Form.Item
+                        name="docker_container_log_path"
+                        noStyle
+                        rules={[
+                          {
+                            validator: (_, value) => {
+                              if (!value || String(value).startsWith('/')) {
+                                return Promise.resolve();
+                              }
+                              return Promise.reject(
+                                new Error(
+                                  t('log.integration.k8s.absolutePathRequired')
+                                )
+                              );
                             }
-                            return Promise.reject(
-                              new Error(
-                                t('log.integration.k8s.absolutePathRequired')
-                              )
-                            );
                           }
-                        }
-                      ]}
-                    >
-                      <Input
-                        placeholder={t(
-                          'log.integration.k8s.dockerContainerLogPathPlaceholder'
-                        )}
-                        style={{ width: K8S_SETTING_FORM_WIDTH }}
-                      />
-                    </Form.Item>
-                    <FieldHint
-                      hint={t('log.integration.k8s.dockerContainerLogPathHint')}
-                    />
-                  </div>
+                        ]}
+                      >
+                        <Input
+                          placeholder={t(
+                            'log.integration.k8s.dockerContainerLogPathPlaceholder'
+                          )}
+                          style={{ width: K8S_SETTING_FORM_WIDTH }}
+                        />
+                      </Form.Item>
+                    }
+                    description={t(
+                      'log.integration.k8s.dockerContainerLogPathHint'
+                    )}
+                  />
                 </Form.Item>
               ) : null}
             </>
@@ -291,26 +296,25 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
           />
         }
       >
-        <div className="flex items-start gap-4">
-          <Form.Item
-            name="namespace_patterns"
-            noStyle
-            rules={[
-              {
-                validator: (_, value) => validateK8sCollectPatterns(value, t)
-              }
-            ]}
-          >
-            <Input.TextArea
-              rows={3}
-              placeholder={t(
-                'log.integration.k8s.collectNamespacePlaceholder'
-              )}
-              style={{ width: K8S_SETTING_FORM_WIDTH }}
-            />
-          </Form.Item>
-          <FieldHint hint={t('log.integration.k8s.collectNamespaceHint')} />
-        </div>
+        <FormSettingRow
+          control={
+            <Form.Item
+              name="namespace_patterns"
+              noStyle
+              dependencies={['pod_patterns']}
+              rules={[{ validator: validatePatternField('namespace_patterns') }]}
+            >
+              <Input.TextArea
+                rows={3}
+                placeholder={t(
+                  'log.integration.k8s.collectNamespacePlaceholder'
+                )}
+                style={{ width: K8S_SETTING_FORM_WIDTH }}
+              />
+            </Form.Item>
+          }
+          description={t('log.integration.k8s.collectNamespaceHint')}
+        />
       </Form.Item>
 
       <Form.Item
@@ -321,24 +325,23 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
           />
         }
       >
-        <div className="flex items-start gap-4">
-          <Form.Item
-            name="pod_patterns"
-            noStyle
-            rules={[
-              {
-                validator: (_, value) => validateK8sCollectPatterns(value, t)
-              }
-            ]}
-          >
-            <Input.TextArea
-              rows={3}
-              placeholder={t('log.integration.k8s.collectPodPlaceholder')}
-              style={{ width: K8S_SETTING_FORM_WIDTH }}
-            />
-          </Form.Item>
-          <FieldHint hint={t('log.integration.k8s.collectPodHint')} />
-        </div>
+        <FormSettingRow
+          control={
+            <Form.Item
+              name="pod_patterns"
+              noStyle
+              dependencies={['namespace_patterns']}
+              rules={[{ validator: validatePatternField('pod_patterns') }]}
+            >
+              <Input.TextArea
+                rows={3}
+                placeholder={t('log.integration.k8s.collectPodPlaceholder')}
+                style={{ width: K8S_SETTING_FORM_WIDTH }}
+              />
+            </Form.Item>
+          }
+          description={t('log.integration.k8s.collectPodHint')}
+        />
       </Form.Item>
     </>
   );

@@ -8,7 +8,7 @@ import requests
 from django.db import transaction
 from django.utils import timezone
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, K8sCollectSetting, K8sInstallToken
 from apps.log.services.search import SearchService
@@ -77,20 +77,20 @@ class K8sLogCollectService:
     @classmethod
     def validate_cluster_name(cls, cluster_name: str):
         if not cluster_name:
-            raise BaseAppException("集群名称不能为空")
+            raise ValidationAppException("集群名称不能为空")
 
     @classmethod
     def validate_host_path(cls, path: str, field_name: str):
         if not path:
-            raise BaseAppException(f"{field_name} 不能为空")
+            raise ValidationAppException(f"{field_name} 不能为空")
         if not isinstance(path, str):
-            raise BaseAppException(f"{field_name} 格式不正确")
+            raise ValidationAppException(f"{field_name} 格式不正确")
 
         normalized_path = path.strip()
         if not normalized_path.startswith("/"):
-            raise BaseAppException(f"{field_name} 必须为绝对路径")
+            raise ValidationAppException(f"{field_name} 必须为绝对路径")
         if cls.PATH_UNSAFE_PATTERN.search(normalized_path):
-            raise BaseAppException(f"{field_name} 包含非法字符")
+            raise ValidationAppException(f"{field_name} 包含非法字符")
         return normalized_path
 
     @classmethod
@@ -102,7 +102,7 @@ class K8sLogCollectService:
     ) -> dict:
         normalized_profile = (runtime_profile or "standard").strip().lower()
         if normalized_profile not in cls.RUNTIME_PROFILES:
-            raise BaseAppException("日志运行环境配置不正确")
+            raise ValidationAppException("日志运行环境配置不正确")
 
         normalized_host_log_path = None
         normalized_docker_container_log_path = None
@@ -129,7 +129,7 @@ class K8sLogCollectService:
         elif isinstance(raw_value, list):
             items = raw_value
         else:
-            raise BaseAppException(f"{field_name} 格式不正确")
+            raise ValidationAppException(f"{field_name} 格式不正确")
 
         normalized = []
         seen = set()
@@ -137,23 +137,23 @@ class K8sLogCollectService:
             if item is None:
                 continue
             if not isinstance(item, str):
-                raise BaseAppException(f"{field_name} 格式不正确")
+                raise ValidationAppException(f"{field_name} 格式不正确")
             value = item.strip()
             if not value or value in seen:
                 continue
             if "_" in value:
-                raise BaseAppException(f"{field_name} 不能包含下划线，Kubernetes 名称不含 '_'")
+                raise ValidationAppException(f"{field_name} 不能包含下划线，Kubernetes 名称不含 '_'")
             if "**" in value:
-                raise BaseAppException(f"{field_name} 不支持 '**'，请使用 '*' 匹配任意长度")
+                raise ValidationAppException(f"{field_name} 不支持 '**'，请使用 '*' 匹配任意长度")
             if any(ch.isupper() for ch in value):
-                raise BaseAppException(f"{field_name} 不能包含大写字母")
+                raise ValidationAppException(f"{field_name} 不能包含大写字母")
             if not cls.PATTERN_WHITELIST.fullmatch(value):
-                raise BaseAppException(f"{field_name} 仅允许小写字母、数字、'-'、'.'、'*'、'?'")
+                raise ValidationAppException(f"{field_name} 仅允许小写字母、数字、'-'、'.'、'*'、'?'")
             seen.add(value)
             normalized.append(value)
 
         if len(normalized) > cls.MAX_PATTERNS_PER_DIMENSION:
-            raise BaseAppException(f"{field_name} 最多 {cls.MAX_PATTERNS_PER_DIMENSION} 项，请改用更宽的通配")
+            raise ValidationAppException(f"{field_name} 最多 {cls.MAX_PATTERNS_PER_DIMENSION} 项，请改用更宽的通配")
         return normalized
 
     @classmethod
@@ -165,7 +165,7 @@ class K8sLogCollectService:
         pod_globs = pod_patterns or ["*"]
         patterns = [f"/var/log/pods/{namespace}_{pod}_*/**" for namespace in namespace_globs for pod in pod_globs]
         if len(patterns) > cls.MAX_INCLUDE_PATTERNS:
-            raise BaseAppException(f"采集范围展开后超过 {cls.MAX_INCLUDE_PATTERNS} 条，请改用更宽的通配")
+            raise ValidationAppException(f"采集范围展开后超过 {cls.MAX_INCLUDE_PATTERNS} 条，请改用更宽的通配")
         return patterns
 
     @staticmethod
@@ -225,7 +225,7 @@ class K8sLogCollectService:
         instance = cls.get_k8s_instance(instance_id)
         setting = K8sCollectSetting.objects.filter(collect_instance_id=instance.id).first()
         if setting is None:
-            raise BaseAppException(cls.SETTING_MISSING_MESSAGE)
+            raise ValidationAppException(cls.SETTING_MISSING_MESSAGE)
         render_options = cls.normalize_render_options(
             setting.runtime_profile,
             setting.host_log_path or None,
