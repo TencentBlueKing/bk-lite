@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ApmPolicyEditor from '../policy-editor';
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 
+const { chartRender } = vi.hoisted(() => ({ chartRender: vi.fn() }));
+
 const input = {
   name: '错误率策略',
   service_id: 'svc-1',
@@ -61,7 +63,12 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
 }));
-vi.mock('@/components/time-series-composed-chart', () => ({ default: () => <div>真实趋势图</div> }));
+vi.mock('@/components/time-series-composed-chart', () => ({
+  default: (props: { series: Array<Record<string, unknown>> }) => {
+    chartRender(props);
+    return <div>真实趋势图</div>;
+  },
+}));
 
 beforeEach(() => {
   window.matchMedia = vi
@@ -180,8 +187,19 @@ describe('APM 四步策略编辑器', () => {
         }),
         true,
       ),
+    { timeout: 3000 },
     );
     expect(await screen.findByText('真实趋势图')).not.toBeNull();
+    const previewSeries = chartRender.mock.calls.at(-1)?.[0].series;
+    expect(previewSeries).toEqual([
+      expect.objectContaining({
+        color: '#5B8FF9',
+        smooth: false,
+        lineWidth: 1,
+        areaOpacity: 0.36,
+      }),
+      expect.objectContaining({ color: '#FFAD42', lineWidth: 1 }),
+    ]);
   });
 
   it('阈值变化后防抖自动更新指标预览', async () => {

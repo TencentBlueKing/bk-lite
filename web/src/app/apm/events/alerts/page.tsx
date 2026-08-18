@@ -34,6 +34,7 @@ import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-
 import ApmRouteShell from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
+import { ALERT_LEVEL_COLORS, OBSERVABILITY_SERIES_COLORS } from '@/constants/observabilityChart';
 import type {
   ApmAlert,
   ApmAlertEvent,
@@ -387,9 +388,9 @@ export default function ApmAlertsPage() {
             <Typography.Text strong>告警分布(近 {RANGE_LABEL[range]})</Typography.Text>
             <div className={styles.alertsSeveritySummary} aria-label="三级告警数量">
               <Typography.Text type="secondary">级别：</Typography.Text>
-              <Tag color="red">严重 {distributionTotals.critical}</Tag>
-              <Tag color="orange">错误 {distributionTotals.error}</Tag>
-              <Tag color="gold">警告 {distributionTotals.warning}</Tag>
+              <Tag color={ALERT_LEVEL_COLORS.critical}>严重 {distributionTotals.critical}</Tag>
+              <Tag color={ALERT_LEVEL_COLORS.error}>错误 {distributionTotals.error}</Tag>
+              <Tag color={ALERT_LEVEL_COLORS.warning}>警告 {distributionTotals.warning}</Tag>
             </div>
           </div>
           <div
@@ -402,9 +403,36 @@ export default function ApmAlertsPage() {
               xDataKey="time"
               getXLabel={(item) => dayjs(String(item.time)).format(range === '7d' ? 'MM-DD' : 'HH:mm')}
               series={[
-                { name: '严重', type: 'bar', dataKey: 'critical', color: token.colorError },
-                { name: '错误', type: 'bar', dataKey: 'error', color: token.colorWarningActive },
-                { name: '警告', type: 'bar', dataKey: 'warning', color: token.colorWarning },
+                {
+                  name: '严重',
+                  type: 'bar',
+                  dataKey: 'critical',
+                  color: ALERT_LEVEL_COLORS.critical,
+                  stack: 'severity',
+                  barGradient: false,
+                  barMaxWidth: 32,
+                  barBorderRadius: [0, 0, 0, 0],
+                },
+                {
+                  name: '错误',
+                  type: 'bar',
+                  dataKey: 'error',
+                  color: ALERT_LEVEL_COLORS.error,
+                  stack: 'severity',
+                  barGradient: false,
+                  barMaxWidth: 32,
+                  barBorderRadius: [0, 0, 0, 0],
+                },
+                {
+                  name: '警告',
+                  type: 'bar',
+                  dataKey: 'warning',
+                  color: ALERT_LEVEL_COLORS.warning,
+                  stack: 'severity',
+                  barGradient: false,
+                  barMaxWidth: 32,
+                  barBorderRadius: [3, 3, 0, 0],
+                },
               ]}
             />
           </div>
@@ -626,13 +654,22 @@ export default function ApmAlertsPage() {
                         getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')}
                         xAxisBoundaryGap={false}
                         series={[
-                          { name: '评估值', type: 'line', dataKey: 'value', color: token.colorPrimary, showArea: true },
+                          {
+                            name: '评估值',
+                            type: 'line',
+                            dataKey: 'value',
+                            color: OBSERVABILITY_SERIES_COLORS[0],
+                            showArea: true,
+                            areaOpacity: 0.36,
+                            smooth: false,
+                            lineWidth: 1,
+                          },
                           {
                             name: '当时阈值',
                             type: 'line',
                             dataKey: 'threshold',
-                            color: token.colorError,
-                            lineType: 'dashed',
+                            color: ALERT_LEVEL_COLORS[snapshot.evaluation_snapshot.severity ?? 'critical'],
+                            lineWidth: 1,
                           },
                           {
                             name: '事件发生点',

@@ -19,13 +19,13 @@ import {
   Table,
   Tag,
   Typography,
-  theme,
 } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState from '@/app/apm/components/catalog-state';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
+import { ALERT_LEVEL_COLORS, OBSERVABILITY_SERIES_COLORS } from '@/constants/observabilityChart';
 import { useTranslation } from '@/utils/i18n';
 import type {
   ApmNotificationChannel,
@@ -221,7 +221,6 @@ function buildMetricPreviewPayload(
 export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { token } = theme.useToken();
   const {
     createPolicy,
     deletePolicy,
@@ -945,16 +944,18 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                             name: METRICS.find((item) => item.value === metricType)?.label ?? metricType,
                             type: 'line',
                             dataKey: 'value',
-                            color: token.colorPrimary,
+                            color: OBSERVABILITY_SERIES_COLORS[0],
                             showArea: true,
-                            showSymbol: true,
+                            areaOpacity: 0.36,
+                            smooth: false,
+                            lineWidth: 1,
                           },
                           {
                             name: '当前阈值',
                             type: 'line',
                             dataKey: 'threshold',
-                            color: token.colorError,
-                            lineType: 'dashed',
+                            color: ALERT_LEVEL_COLORS[preview.threshold?.severity ?? 'critical'],
+                            lineWidth: 1,
                           },
                         ]}
                       />

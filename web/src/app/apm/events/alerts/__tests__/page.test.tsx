@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ApmAlertsPage from '../page';
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 
+const { chartRender } = vi.hoisted(() => ({ chartRender: vi.fn() }));
+
 const event = {
   id: 'e1',
   event_id: 'evt-1',
@@ -93,9 +95,10 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
 }));
 vi.mock('@/components/time-series-composed-chart', () => ({
-  default: ({ series }: { series: Array<{ name: string }> }) => (
-    <div>{series.map((item) => item.name).join(' / ')}</div>
-  ),
+  default: (props: { series: Array<{ name: string }> }) => {
+    chartRender(props);
+    return <div>{props.series.map((item) => item.name).join(' / ')}</div>;
+  },
 }));
 
 beforeEach(() => {
@@ -126,6 +129,14 @@ describe('APM Alert 与 Event Snapshot', () => {
     expect(screen.getByRole('heading', { name: '告警' })).not.toBeNull();
     expect(screen.getByText('告警分布(近 24h)')).not.toBeNull();
     expect(screen.getByText('严重 / 错误 / 警告')).not.toBeNull();
+    const distributionSeries = chartRender.mock.calls.find(
+      ([props]) => props.series[0]?.name === '严重',
+    )?.[0].series;
+    expect(distributionSeries).toEqual([
+      expect.objectContaining({ color: '#F43B2C', stack: 'severity', barGradient: false }),
+      expect.objectContaining({ color: '#D97007', stack: 'severity', barGradient: false }),
+      expect.objectContaining({ color: '#FFAD42', stack: 'severity', barGradient: false }),
+    ]);
     expect(screen.getByRole('tab', { name: /活跃告警.*1/ })).not.toBeNull();
     expect(screen.getByRole('tab', { name: /历史告警.*1/ })).not.toBeNull();
     expect(screen.getAllByRole('columnheader').map((cell) => cell.textContent?.trim())).toEqual([
