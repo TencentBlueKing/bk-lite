@@ -30,6 +30,7 @@ import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
+import Collapse from '@/components/collapse';
 import TimeSelector from '@/components/time-selector';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 import { ALERT_LEVEL_COLORS, OBSERVABILITY_SERIES_COLORS } from '@/constants/observabilityChart';
@@ -100,6 +101,7 @@ export default function ApmAlertsPage() {
   >([]);
   const [state, setState] = useState<PageState>('loading');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [chartExpanded, setChartExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<AlertView>('active');
   const [historyTimeRange, setHistoryTimeRange] = useState<[number, number] | null>(null);
   const [keyword, setKeyword] = useState('');
@@ -374,10 +376,7 @@ export default function ApmAlertsPage() {
         />
 
         <section className={styles.alertsContent} aria-label="告警工作区">
-          <section className={styles.alertsToolbar} aria-labelledby="apm-alerts-filter-title">
-            <div className={styles.alertsToolbarTitle}>
-              <h2 id="apm-alerts-filter-title">搜索条件</h2>
-            </div>
+          <section className={styles.alertsToolbar} aria-label="告警筛选">
             <div className={styles.alertsToolbarActions}>
               <Input
                 allowClear
@@ -411,58 +410,65 @@ export default function ApmAlertsPage() {
           </section>
 
           <section className={styles.alertsDistribution} aria-label="告警分布">
-            <div className={styles.alertsDistributionHeader}>
-              <Typography.Text strong>{activeTab === 'active' ? '活跃告警分布' : '历史告警分布'}</Typography.Text>
-              <div className={styles.alertsSeveritySummary} aria-label="三级告警数量">
-                <Typography.Text type="secondary">级别：</Typography.Text>
-                <Tag color={ALERT_LEVEL_COLORS.critical}>严重 {distributionTotals.critical}</Tag>
-                <Tag color={ALERT_LEVEL_COLORS.error}>错误 {distributionTotals.error}</Tag>
-                <Tag color={ALERT_LEVEL_COLORS.warning}>警告 {distributionTotals.warning}</Tag>
-              </div>
-            </div>
-            <div
-              className={styles.alertsDistributionChart}
-              role="img"
-              aria-label={`${activeTab === 'active' ? '活跃' : '历史'}告警事件分布，按严重、错误、警告分组`}
+            <Collapse
+              title="分布图"
+              isOpen={chartExpanded}
+              onToggle={setChartExpanded}
+              titleClassName={styles.alertsDistributionCollapseTitle}
+              contentClassName={styles.alertsDistributionCollapseContent}
+              icon={(
+                <div className={styles.alertsSeveritySummary} aria-label="三级告警数量">
+                  <Typography.Text type="secondary">级别：</Typography.Text>
+                  <Tag color={ALERT_LEVEL_COLORS.critical}>严重 {distributionTotals.critical}</Tag>
+                  <Tag color={ALERT_LEVEL_COLORS.error}>错误 {distributionTotals.error}</Tag>
+                  <Tag color={ALERT_LEVEL_COLORS.warning}>警告 {distributionTotals.warning}</Tag>
+                </div>
+              )}
             >
-              <TimeSeriesComposedChart
-                data={distribution}
-                xDataKey="time"
-                getXLabel={(item) => dayjs(String(item.time)).format('YYYY-MM-DD HH:mm')}
-                series={[
-                  {
-                    name: '严重',
-                    type: 'bar',
-                    dataKey: 'critical',
-                    color: ALERT_LEVEL_COLORS.critical,
-                    stack: 'severity',
-                    barGradient: false,
-                    barMaxWidth: 32,
-                    barBorderRadius: [0, 0, 0, 0],
-                  },
-                  {
-                    name: '错误',
-                    type: 'bar',
-                    dataKey: 'error',
-                    color: ALERT_LEVEL_COLORS.error,
-                    stack: 'severity',
-                    barGradient: false,
-                    barMaxWidth: 32,
-                    barBorderRadius: [0, 0, 0, 0],
-                  },
-                  {
-                    name: '警告',
-                    type: 'bar',
-                    dataKey: 'warning',
-                    color: ALERT_LEVEL_COLORS.warning,
-                    stack: 'severity',
-                    barGradient: false,
-                    barMaxWidth: 32,
-                    barBorderRadius: [3, 3, 0, 0],
-                  },
-                ]}
-              />
-            </div>
+              <div
+                className={styles.alertsDistributionChart}
+                role="img"
+                aria-label={`${activeTab === 'active' ? '活跃' : '历史'}告警事件分布，按严重、错误、警告分组`}
+              >
+                <TimeSeriesComposedChart
+                  data={distribution}
+                  xDataKey="time"
+                  getXLabel={(item) => dayjs(String(item.time)).format('YYYY-MM-DD HH:mm')}
+                  series={[
+                    {
+                      name: '严重',
+                      type: 'bar',
+                      dataKey: 'critical',
+                      color: ALERT_LEVEL_COLORS.critical,
+                      stack: 'severity',
+                      barGradient: false,
+                      barMaxWidth: 32,
+                      barBorderRadius: [0, 0, 0, 0],
+                    },
+                    {
+                      name: '错误',
+                      type: 'bar',
+                      dataKey: 'error',
+                      color: ALERT_LEVEL_COLORS.error,
+                      stack: 'severity',
+                      barGradient: false,
+                      barMaxWidth: 32,
+                      barBorderRadius: [0, 0, 0, 0],
+                    },
+                    {
+                      name: '警告',
+                      type: 'bar',
+                      dataKey: 'warning',
+                      color: ALERT_LEVEL_COLORS.warning,
+                      stack: 'severity',
+                      barGradient: false,
+                      barMaxWidth: 32,
+                      barBorderRadius: [3, 3, 0, 0],
+                    },
+                  ]}
+                />
+              </div>
+            </Collapse>
           </section>
 
           <section className={styles.alertsTableSection} aria-label="告警列表">

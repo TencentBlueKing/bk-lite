@@ -134,12 +134,12 @@ describe('APM Alert 与 Event Snapshot', () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmAlertsPage />);
     expect(await screen.findByText('checkout 错误率升高')).not.toBeNull();
-    expect(screen.getByRole('heading', { name: '搜索条件' })).not.toBeNull();
+    expect(screen.queryByText('搜索条件')).toBeNull();
     const alertWorkspace = screen.getByRole('region', { name: '告警工作区' });
     expect(alertWorkspace.contains(screen.getByLabelText('搜索告警'))).toBe(true);
     expect(alertWorkspace.contains(screen.getByLabelText('告警分布'))).toBe(true);
     expect(alertWorkspace.contains(screen.getByLabelText('告警列表'))).toBe(true);
-    expect(screen.getByText('活跃告警分布')).not.toBeNull();
+    expect(screen.getByText('分布图')).not.toBeNull();
     expect(screen.queryByText('自动刷新')).toBeNull();
     expect(screen.queryByText('最近7天')).toBeNull();
     expect(screen.getByText('严重 / 错误 / 警告')).not.toBeNull();
@@ -150,6 +150,11 @@ describe('APM Alert 与 Event Snapshot', () => {
       ([props]) => props.series[0]?.name === '严重',
     )?.[0].getXLabel({ time: '2026-08-17T16:41:03Z' });
     expect(distributionLabel).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    expect(screen.getByRole('img', { name: /活跃告警事件分布/ })).not.toBeNull();
+    await user.click(screen.getByText('分布图'));
+    expect(screen.queryByRole('img', { name: /活跃告警事件分布/ })).toBeNull();
+    await user.click(screen.getByText('分布图'));
+    expect(screen.getByRole('img', { name: /活跃告警事件分布/ })).not.toBeNull();
     expect(distributionSeries).toEqual([
       expect.objectContaining({ color: '#F43B2C', stack: 'severity', barGradient: false }),
       expect.objectContaining({ color: '#D97007', stack: 'severity', barGradient: false }),
@@ -186,7 +191,7 @@ describe('APM Alert 与 Event Snapshot', () => {
     expect(activeDistributionQuery).not.toHaveProperty('ended_at');
     await user.click(historyTab);
     expect(await screen.findByText('checkout P95 时延恢复')).not.toBeNull();
-    expect(screen.getByText('历史告警分布')).not.toBeNull();
+    expect(screen.getByText('分布图')).not.toBeNull();
     expect(screen.getByText('最近7天')).not.toBeNull();
     expect(screen.queryByText('checkout 错误率升高')).toBeNull();
     expect(api.getAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ status_group: 'history' }));
