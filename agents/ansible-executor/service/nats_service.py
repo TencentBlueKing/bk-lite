@@ -24,6 +24,7 @@ from service.ansible_runner import (
 )
 from service.callback_delivery_service import CallbackDeliveryMixin
 from service.nats_topology_service import NATSTopologyMixin
+from service.remote_shell_stream import run_remote_shell_stream
 from service.task_store import TERMINAL_TASK_STATUSES, TaskStore, _sanitize_callback_for_storage, _sanitize_payload_for_storage
 
 
@@ -73,7 +74,6 @@ def _subject_matches(subject: str, allowed_subjects: list[str] | None) -> bool:
 
 
 class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
-
     def __init__(self, config: ServiceConfig):
         self.config = config
         self.workers: list[asyncio.Task] = []
@@ -240,7 +240,19 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
             if task.task_type == "adhoc":
                 request = to_adhoc_request(execution_payload)
                 cmd, workspace = prepare_adhoc_execution(request)
-                code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
+                use_remote_shell_stream = (
+                    getattr(request, "stream_remote_output", False) and stream_kwargs and getattr(request, "module", "") == "shell"
+                )
+                if use_remote_shell_stream:
+                    code, output, output_meta = await run_remote_shell_stream(
+                        cmd,
+                        script_content=request.module_args,
+                        shell_executable=str((request.extra_vars or {}).get("ansible_shell_executable") or "/bin/sh"),
+                        timeout=request.execute_timeout,
+                        **stream_kwargs,
+                    )
+                else:
+                    code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
             else:
                 request = to_playbook_request(execution_payload)
                 cmd, workspace, prepared_request = await prepare_playbook_execution(self.config, request)

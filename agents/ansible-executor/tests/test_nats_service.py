@@ -944,6 +944,71 @@ async def test_run_task_forwards_stream_context_to_run_command(tmp_path, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_run_task_uses_remote_shell_stream_for_job_script(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    service.nc = RecordingNATSClient()
+    captured = {}
+
+    request = type(
+        "R",
+        (),
+        {
+            "execute_timeout": 90,
+            "stream_remote_output": True,
+            "module": "shell",
+            "module_args": "echo first; sleep 20; echo second",
+            "extra_vars": {"ansible_shell_executable": "/bin/bash"},
+        },
+    )()
+    monkeypatch.setattr("service.nats_service.to_adhoc_request", lambda payload: request)
+    monkeypatch.setattr("service.nats_service.prepare_adhoc_execution", lambda prepared: (["ansible", "all"], None))
+    monkeypatch.setattr("service.nats_service.cleanup_workspace", lambda workspace: None)
+
+    async def fake_remote_stream(command, **kwargs):
+        captured["command"] = command
+        captured.update(kwargs)
+        return (
+            0,
+            "host | CHANGED | rc=0 >>\nfirst\nsecond",
+            {
+                "truncated": False,
+                "output_bytes_total": 13,
+                "output_bytes_retained": 13,
+                "output_max_bytes": 262144,
+            },
+        )
+
+    async def fail_run_command(*args, **kwargs):
+        raise AssertionError("buffered ansible CLI path must not be used")
+
+    monkeypatch.setattr("service.nats_service.run_remote_shell_stream", fake_remote_stream)
+    monkeypatch.setattr("service.nats_service.run_command", fail_run_command)
+    monkeypatch.setattr(service.task_store, "update_execution_result", lambda *a, **k: True)
+    monkeypatch.setattr(service.task_store, "update_callback_status", lambda *a, **k: True)
+
+    task = QueuedTask(
+        task_id="task-remote-stream",
+        task_type="adhoc",
+        payload={
+            "task_id": "task-remote-stream",
+            "stream_log_topic": "job.stream.23.ansible",
+            "execution_id": "23",
+        },
+        callback=None,
+        instance_id="default",
+    )
+
+    result = await service._run_task(task, "owner-a")
+
+    assert result["success"] is True
+    assert captured["script_content"] == request.module_args
+    assert captured["shell_executable"] == "/bin/bash"
+    assert captured["stream_log_topic"] == "job.stream.23.ansible"
+    assert captured["execution_id"] == "23"
+    assert callable(captured["stream_publish"])
+
+
+@pytest.mark.asyncio
 async def test_run_task_rejects_untrusted_stream_topic_before_publish(tmp_path, monkeypatch):
     service = _make_service(tmp_path)
     service.nc = RecordingNATSClient()
