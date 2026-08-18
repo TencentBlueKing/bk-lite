@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Spin, Empty, Alert, Drawer, Tag, Button, Modal, message, Tooltip } from 'antd';
+import { Spin, Alert, Drawer, Tag, Button, Modal, message, Tooltip } from 'antd';
 import { DisconnectOutlined } from '@ant-design/icons';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { useThemeMode } from '@/theme';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -86,7 +87,7 @@ const RoomFloorPlan: React.FC<Props> = ({
           })
         );
         message.success(t('successfullyDisassociated'));
-        setRack((current) => (current?.inst_id === target.inst_id ? null : current));
+        setRack((current) => (current?.inst_uuid === target.inst_uuid ? null : current));
         reload();
       },
     });
@@ -120,8 +121,8 @@ const RoomFloorPlan: React.FC<Props> = ({
     return () => window.clearTimeout(timer);
   }, [highlightRackId, data, loading]);
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center' }}><Spin spinning /></div>;
-  if (!data) return <Empty description={t('Model.noRoomLayout')} />;
+  if (loading) return <div className="p-[60px] text-center"><Spin spinning /></div>;
+  if (!data) return <CompactEmptyState description={t('Model.noRoomLayout')} />;
 
   const missingLocationRacks = data.unplaced.filter(
     (rack) => rack.unplaced_reason === 'missing_location'
@@ -147,15 +148,15 @@ const RoomFloorPlan: React.FC<Props> = ({
   return (
     <div className="rf">
       {data.conflicts.length > 0 && (
-        <Alert style={{ marginBottom: 12 }} type="error" showIcon
+        <Alert className="mb-3" type="error" showIcon
           message={t('Model.rackCellConflict')} />
       )}
       {missingLocationRacks.length > 0 && (
-        <Alert style={{ marginBottom: 12 }} type="warning" showIcon
+        <Alert className="mb-3" type="warning" showIcon
           message={`${t('Model.rackLocationMissing')}: ${missingLocationRacks.map((rack) => rack.inst_name).join('、')}`} />
       )}
       {invalidLocationRacks.length > 0 && (
-        <Alert style={{ marginBottom: 12 }} type="warning" showIcon
+        <Alert className="mb-3" type="warning" showIcon
           message={`${t('Model.rackLocationInvalid')}: ${invalidLocationRacks.map((rack) => rack.inst_name).join('、')}`} />
       )}
 
@@ -215,9 +216,9 @@ const RoomFloorPlan: React.FC<Props> = ({
             });
             return (
               <div
-                key={r.inst_id}
-                className={`rf-rack${activeHighlightId === r.inst_id ? ' rf-rack--highlight' : ''}`}
-                data-room-rack-id={r.inst_id}
+                key={r.inst_uuid}
+                className={`rf-rack${activeHighlightId === r.inst_uuid ? ' rf-rack--highlight' : ''}`}
+                data-room-rack-id={r.inst_uuid}
                 style={{
                   left: x + GAP / 2, top: y + GAP / 2, width: box, height: box,
                   borderColor: isDark
@@ -300,7 +301,7 @@ const RoomFloorPlan: React.FC<Props> = ({
                 background: rackTypeColor(rack.datacenter_type),
                 boxShadow: `0 0 0 4px ${rackTypeColor(rack.datacenter_type)}18`,
               }} />
-              <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="min-w-0 flex-1">
                 <EllipsisWithTooltip text={rack.inst_name} className="rd-name" />
                 <div className="rd-sub">
                   <Tag style={{
@@ -327,7 +328,7 @@ const RoomFloorPlan: React.FC<Props> = ({
             {(() => {
               const rackUuid = resolveCmdbInstUuid(rack.inst_uuid);
               if (!rackUuid) {
-                return <Empty description="机柜缺少合法 inst_uuid，请先完成 UUID 存量清洗" />;
+                return <CompactEmptyState description="机柜缺少合法 inst_uuid，请先完成 UUID 存量清洗" />;
               }
               return (
                 <RackElevation

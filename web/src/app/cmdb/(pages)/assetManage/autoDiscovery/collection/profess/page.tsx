@@ -28,14 +28,14 @@ import {
 import MarkdownRenderer from '@/components/markdown';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
+import SearchActionBar from '@/components/search-action-bar';
 import { useCollectApi } from '@/app/cmdb/api';
 import type { TableColumnType, TablePaginationConfig } from 'antd';
 import type { ColumnItem } from '@/app/cmdb/types/assetManage';
 import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
-import { Modal } from 'antd';
+import { Alert, Button, Drawer, Input, Modal, Spin, Tag, Tabs, Tooltip, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { Alert, Input, Button, Spin, Tag, Drawer, message, Tabs, Tooltip } from 'antd';
 import {
   getExecStatusConfig,
   EXEC_STATUS,
@@ -1157,21 +1157,25 @@ const ProfessionalCollection: React.FC = () => {
               </Button>
             </div>
 
-            <div className="px-4 py-2 flex justify-between items-center">
-              <Input.Search
-                placeholder={t('Collection.inputTaskPlaceholder')}
-                className="w-80"
-                allowClear
-                value={searchTextUI}
-                onChange={(e) => setSearchTextUI(e.target.value)}
-                onSearch={handleSearch}
-              />
-              <PermissionWrapper requiredPermissions={['Add']}>
-                <Button type="primary" onClick={handleCreate}>
-                  {t('Collection.addTaskTitle')}
-                </Button>
-              </PermissionWrapper>
-            </div>
+            <SearchActionBar
+              className="px-4 py-2"
+              spacing="flush"
+              searchClassName="!w-80"
+              searchProps={{
+                placeholder: t('Collection.inputTaskPlaceholder'),
+                allowClear: true,
+                value: searchTextUI,
+                onChange: (e) => setSearchTextUI(e.target.value),
+                onSearch: handleSearch,
+              }}
+              actions={(
+                <PermissionWrapper requiredPermissions={['Add']}>
+                  <Button type="primary" onClick={handleCreate}>
+                    {t('Collection.addTaskTitle')}
+                  </Button>
+                </PermissionWrapper>
+              )}
+            />
 
             <div className="min-h-0 flex-1 overflow-hidden px-4 pb-1 pt-1">
               <div className={styles.collectionTaskTable}>

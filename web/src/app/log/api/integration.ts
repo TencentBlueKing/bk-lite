@@ -54,9 +54,13 @@ const useIntegrationApi = () => {
     return await get('/log/collect_types/display_category_enum/');
   };
 
-  const getFields = async (params: GetFieldsParams = {}) => {
+  const getFields = async (
+    params: GetFieldsParams = {},
+    config?: AxiosRequestConfig
+  ) => {
     return await get('/log/collect_types/all_attrs/', {
-      params
+      params,
+      ...config
     });
   };
 
@@ -67,10 +71,12 @@ const useIntegrationApi = () => {
       end_time?: string;
       limit?: number;
       log_groups?: React.Key[];
-    } = {}
+    } = {},
+    config?: AxiosRequestConfig
   ) => {
     return await get(`/log/search/field_values/`, {
-      params
+      params,
+      ...config
     });
   };
 

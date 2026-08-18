@@ -23,6 +23,7 @@ import {
 import PermissionWrapper from '@/components/permission';
 import CustomTable from '@/components/custom-table';
 import PageLayout from '@/components/page-layout';
+import SearchActionBar from '@/components/search-action-bar';
 import TopSection from '@/components/top-section';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import IMNotificationConfigModal, {
@@ -644,35 +645,40 @@ const ImNotificationPage: React.FC = () => {
                 onClick={handleBack}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Input.Search
-                placeholder={t('system.channel.imNotificationPage.search')}
-                allowClear
-                style={{ width: 280 }}
-                onSearch={setSearchText}
-                onChange={(event) => !event.target.value && setSearchText('')}
-              />
-              <PermissionWrapper requiredPermissions={['Add']}>
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={() => openModal(null)}
-                >
-                  {t('common.add')}
-                </Button>
-              </PermissionWrapper>
-              <PermissionWrapper requiredPermissions={['Edit']}>
-                <Button onClick={handleSendOpen}>
-                  {t('system.channel.imNotificationPage.sendTitle')}
-                </Button>
-              </PermissionWrapper>
-              <Button
-                type="text"
-                icon={<ReloadOutlined />}
-                onClick={handleRefresh}
-                loading={refreshing}
-              />
-            </div>
+            <SearchActionBar
+              spacing="flush"
+              searchClassName="!w-[280px]"
+              searchProps={{
+                placeholder: t('system.channel.imNotificationPage.search'),
+                allowClear: true,
+                onSearch: setSearchText,
+                onChange: (event) => !event.target.value && setSearchText(''),
+              }}
+              actions={(
+                <>
+                  <PermissionWrapper requiredPermissions={['Add']}>
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => openModal(null)}
+                    >
+                      {t('common.add')}
+                    </Button>
+                  </PermissionWrapper>
+                  <PermissionWrapper requiredPermissions={['Edit']}>
+                    <Button onClick={handleSendOpen}>
+                      {t('system.channel.imNotificationPage.sendTitle')}
+                    </Button>
+                  </PermissionWrapper>
+                  <Button
+                    type="text"
+                    icon={<ReloadOutlined />}
+                    onClick={handleRefresh}
+                    loading={refreshing}
+                  />
+                </>
+              )}
+            />
           </div>
 
           <div className="flex h-full">

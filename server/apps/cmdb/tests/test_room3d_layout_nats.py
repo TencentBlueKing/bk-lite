@@ -24,7 +24,6 @@ def _room(inst_id=7, model_id="server_room"):
 
 def _rack(inst_id=5, location="A03"):
     return {
-        "inst_id": str(inst_id),
         "inst_uuid": _rack_uuid(inst_id),
         "inst_name": f"RACK-{inst_id}",
         "location": location,
@@ -59,7 +58,7 @@ def test_get_room3d_layout_ok_contract(monkeypatch):
         captured["summary_permission_map"] = permission_map
         captured["summary_user"] = user
         return {
-            5: {
+            RACK_UUID: {
                 "devices": [
                     {
                         "device_id": DEVICE_UUID,
@@ -119,9 +118,34 @@ def test_get_room3d_layout_ok_contract(monkeypatch):
     assert captured["permission_map"] is permission_map
     assert captured["user"].username == "alice"
     assert captured["user"].domain == "local"
-    assert captured["summary_rack_ids"] == [5]
+    assert captured["summary_rack_ids"] == [RACK_UUID]
     assert captured["summary_permission_map"] is permission_map
     assert captured["summary_user"].username == "alice"
+
+
+def test_room3d_fallback_summary_skips_devices_without_uuid(monkeypatch):
+    monkeypatch.setattr(
+        N.rack_room,
+        "get_rack_layout",
+        lambda *args, **kwargs: {
+            "placed": [
+                {"_id": 7, "inst_name": "legacy-device", "rack_u_start": 1, "u_size": 1},
+                {
+                    "inst_uuid": DEVICE_UUID,
+                    "inst_name": "uuid-device",
+                    "rack_u_start": 2,
+                    "u_size": 1,
+                },
+            ],
+            "unplaced": [{"_id": 8, "inst_name": "legacy-unplaced"}],
+        },
+    )
+
+    summary = N._get_room3d_rack_device_summary(5)
+
+    assert summary["device_count"] == 1
+    assert summary["unplaced_device_count"] == 0
+    assert [item["device_id"] for item in summary["devices"]] == [DEVICE_UUID]
 
 
 @pytest.mark.unit
@@ -301,6 +325,11 @@ def test_get_room3d_layout_returns_conflicting_racks_for_frontend_resolution(mon
     captured_rack_ids = []
     monkeypatch.setattr(N.InstanceManage, "query_entity_by_id", lambda pk: _room(pk))
     monkeypatch.setattr(
+        N.InstanceManage,
+        "query_entity_by_uuids",
+        lambda values: [{"_id": index, "inst_uuid": value} for index, value in zip((5, 6, 7), values)],
+    )
+    monkeypatch.setattr(
         N,
         "rack_room",
         SimpleNamespace(
@@ -326,7 +355,7 @@ def test_get_room3d_layout_returns_conflicting_racks_for_frontend_resolution(mon
         (1, 2, "B01"),
     ]
     assert "diagnostics" not in result["data"]
-    assert captured_rack_ids == ["5", "6", "7"]
+    assert captured_rack_ids == [5, 6, 7]
 
 
 @pytest.mark.unit
@@ -334,6 +363,11 @@ def test_get_room3d_layout_reports_invalid_location_without_blocking_valid_racks
     _install_permission(monkeypatch)
     captured_rack_ids = []
     monkeypatch.setattr(N.InstanceManage, "query_entity_by_id", lambda pk: _room(pk))
+    monkeypatch.setattr(
+        N.InstanceManage,
+        "query_entity_by_uuids",
+        lambda values: [{"_id": 6, "inst_uuid": values[0]}],
+    )
     monkeypatch.setattr(
         N,
         "rack_room",
@@ -353,7 +387,7 @@ def test_get_room3d_layout_reports_invalid_location_without_blocking_valid_racks
 
     assert result["result"] is True
     assert [rack["rack_id"] for rack in result["data"]["racks"]] == [_rack_uuid(6)]
-    assert captured_rack_ids == ["6"]
+    assert captured_rack_ids == [6]
     assert "diagnostics" not in result["data"]
     assert "1 个机柜位置格式错误未展示" in result["data"]["notice"]
     assert "RACK-5" in result["data"]["notice"]

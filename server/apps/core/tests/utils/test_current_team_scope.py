@@ -41,11 +41,15 @@ def patch_scoped_groups(monkeypatch, groups):
     monkeypatch.setattr("apps.core.utils.current_team_scope.SystemMgmt", _SystemMgmt)
 
 
+@pytest.mark.django_db
 def test_superuser_scope_is_current_team_only(monkeypatch):
-    request = make_request(is_superuser=True, current_team=1)
-    patch_scoped_groups(monkeypatch, [1])
+    from apps.system_mgmt.models import Group
 
-    assert resolve_current_team_data_scope(request).data_team_ids == frozenset({1})
+    team = Group.objects.create(name="scope-super-team", parent_id=0)
+    request = make_request(is_superuser=True, current_team=team.id)
+    patch_scoped_groups(monkeypatch, [team.id])
+
+    assert resolve_current_team_data_scope(request).data_team_ids == frozenset({team.id})
 
 
 @pytest.mark.django_db

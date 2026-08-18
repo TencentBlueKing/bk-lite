@@ -112,6 +112,12 @@ error:
   nats_unknown_child_module: "未知子模块：{module}/{child_module}"
   serving_port_not_configured: "服务端口未配置，请确认服务已启动"
   serving_host_not_configured: "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"
+  webhook_server_url_not_configured: "环境变量 WEBHOOK_SERVER_URL 未配置"
+  webhook_timeout: "请求 webhookd 服务超时，请检查服务是否正常运行"
+  webhook_connection_failed: "无法连接到 webhookd 服务"
+  webhook_request_failed: "请求 webhookd 服务失败"
+  request_failed: "请求失败"
+  model_not_available: "模型不存在或无可用版本"
 module:
   dataset: "数据集"
   train_job: "训练任务"

@@ -163,7 +163,11 @@ export default function WorkbenchPage() {
       <div className={styles.page}>
         <MobilePageHeader
           title={t('navigation.apps')}
-          searchType="WorkbenchPage"
+          showOrganization
+          searchEntry={{
+            href: '/search?type=WorkbenchPage',
+            placeholder: t('search.searchApp'),
+          }}
           actions={[{
             href: '/conversations',
             icon: <MessageOutline aria-hidden="true" />,

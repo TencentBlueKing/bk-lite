@@ -360,6 +360,25 @@ export const resolveEffectiveCalculationUnit = ({
     : null;
 };
 
+/** 将告警名称变量插入光标/选区位置；未提供选区时追加到末尾 */
+export const insertAlertNameVariableAtCursor = (
+  text: string,
+  variable: string,
+  selectionStart?: number | null,
+  selectionEnd?: number | null
+): { value: string; cursor: number } => {
+  const fallback = text.length;
+  const rawStart =
+    typeof selectionStart === 'number' ? selectionStart : fallback;
+  const rawEnd = typeof selectionEnd === 'number' ? selectionEnd : rawStart;
+  const start = Math.max(0, Math.min(rawStart, text.length));
+  const end = Math.max(start, Math.min(rawEnd, text.length));
+  return {
+    value: `${text.slice(0, start)}${variable}${text.slice(end)}`,
+    cursor: start + variable.length
+  };
+};
+
 // 公式 → 单指标 retract:返回新值;否则返回 undefined 表示「无变化」
 export const getReverseModeCalculationUnit = ({
   previousMode,

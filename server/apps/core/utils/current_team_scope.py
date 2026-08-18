@@ -74,6 +74,11 @@ def resolve_current_team_data_scope(request):
     except BaseAppException:
         raise BaseAppException("current_team 参数非法")
 
+    from apps.system_mgmt.utils.group_utils import GroupUtils
+
+    if not GroupUtils.active_queryset(id=current_team).exists():
+        raise BaseAppException("current_team 对应组织已归档或不存在")
+
     actor_context = _get_actor_context(request)
     actor_context["current_team"] = current_team
     include_children = request.COOKIES.get("include_children", "0") == "1"

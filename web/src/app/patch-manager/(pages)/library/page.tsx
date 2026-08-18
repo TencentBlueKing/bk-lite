@@ -334,7 +334,7 @@ export default function LibraryPage() {
         render: (_: unknown, r: Patch) => {
           const sourceTypes = getPatchSourceTypes(r);
           const text = sourceTypes.map((value) => value === 'manual' ? t('patchManager.manual') : SOURCE_TYPE_LABELS[value]).join('，') || '—';
-          return <Tooltip title={text}><Tag color={sourceTypes.includes('manual') ? 'warning' : 'default'} style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</Tag></Tooltip>;
+          return <Tooltip title={text}><Tag color={sourceTypes.includes('manual') ? 'warning' : 'default'} className="max-w-[120px] overflow-hidden text-ellipsis">{text}</Tag></Tooltip>;
         },
       },
       { title: t('patchManager.libraryPage.readyStatus'), dataIndex: 'pkg_status', width: 120, render: (_: unknown, r: Patch) => <ReadyTag status={presentPackageStatus(r.pkg_status)} /> },
@@ -343,8 +343,8 @@ export default function LibraryPage() {
         dataIndex: 'baseline_requirement_count',
         width: 110,
         render: (v: number, r: Patch) => (v ?? 0) > 0
-          ? <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={() => router.push(`/patch-manager/baseline?patch_ids=${r.id}`)}>{v}</Button>
-          : <span style={{ color: 'var(--color-text-4, #bfbfbf)' }}>0</span>,
+          ? <Button type="link" size="small" className="!px-0" onClick={() => router.push(`/patch-manager/baseline?patch_ids=${r.id}`)}>{v}</Button>
+          : <span className="text-[var(--color-text-4)]">0</span>,
       },
       { title: t('patchManager.libraryPage.lastUpdated'), dataIndex: 'last_synced_at', width: 180, render: (v: string | null, r: Patch) => convertToLocalizedTime(v || r.updated_at) || '—' },
       { title: t('patchManager.operation'), dataIndex: 'op', width: 180, fixed: 'right', render: (_: unknown, r: Patch) => {
@@ -355,12 +355,12 @@ export default function LibraryPage() {
           danger
           disabled={deleteBlocked || deleting}
           icon={<DeleteOutlined />}
-          style={{ paddingInline: 0 }}
+          className="!px-0"
         >
           {t('patchManager.delete')}
         </Button>;
         return <Space size={12}>
-          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: '#1677ff' }} onClick={() => setEditingPatch(r)}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']}><a className="cursor-pointer text-[var(--color-primary)]" onClick={() => setEditingPatch(r)}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Delete']}>
             {deleteBlocked ? <Tooltip title={t('patchManager.libraryPage.deleteReferenced')}><span>{deleteButton}</span></Tooltip> : <PatchDeletePopconfirm title={t('patchManager.libraryPage.deleteConfirm')} onConfirm={() => handleDelete([r.id])} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
               {deleteButton}
@@ -588,7 +588,7 @@ export default function LibraryPage() {
           value={candidateSeverity[r.key]}
           onChange={(v) => setCandidateSeverity((prev) => ({ ...prev, [r.key]: v }))}
           options={SEVERITY_SELECT_OPTIONS}
-          style={{ width: 100 }}
+          className="w-[100px]"
         />
       ),
     },
@@ -608,7 +608,7 @@ export default function LibraryPage() {
   ];
 
   return (
-    <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <div className="flex min-h-0 flex-1 flex-col rounded-[10px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
       <Tabs activeKey={activeTab} onChange={(k) => setActiveTab(k as TabKey)} items={[
         { key: 'win', label: 'Windows', children: null },
         { key: 'linux', label: 'Linux', children: null },
@@ -641,7 +641,7 @@ export default function LibraryPage() {
                       title={batchDeleteBlocked ? t('patchManager.libraryPage.batchDeleteReferenced') : undefined}
                       zIndex={10001}
                     >
-                      <span style={{ display: 'block' }}>{t('common.batchDelete')}</span>
+                      <span className="block">{t('common.batchDelete')}</span>
                     </Tooltip>
                   ),
                   onClick: confirmBatchDelete,
@@ -660,7 +660,7 @@ export default function LibraryPage() {
         </Space>
       </FilterToolbar>
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div className="min-h-0 flex-1">
         <CustomTable<Patch>
           rowKey="id"
           columns={columns}
@@ -779,26 +779,28 @@ export default function LibraryPage() {
           </Space>
         }
       >
-        <div style={{ display: 'flex', gap: 16, height: '100%', padding: 16, boxSizing: 'border-box' }}>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center' }}>
-              <Select
-                style={{ width: 220 }}
-                placeholder={t('patchManager.libraryPage.selectSource')}
-                virtual
-                value={selectedSourceId ?? undefined}
-                onChange={handleSourceChange}
-                options={sources.map((s) => ({ value: s.id, label: `${s.name} (${s.source_type_display || s.source_type})` }))}
-              />
-              <Input.Search
-                placeholder={activeTab === 'win' ? t('patchManager.kbNumber') : t('patchManager.packageName')}
-                value={candidateSearch}
-                onChange={(e) => setCandidateSearch(e.target.value)}
-                onSearch={(v) => handleCandidateSearch(v)}
-                style={{ width: 200 }}
-              />
+        <div className="box-border flex h-full gap-4 p-4">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="mb-3">
+              <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+                <Select
+                  className="w-[220px]"
+                  placeholder={t('patchManager.libraryPage.selectSource')}
+                  virtual
+                  value={selectedSourceId ?? undefined}
+                  onChange={handleSourceChange}
+                  options={sources.map((s) => ({ value: s.id, label: `${s.name} (${s.source_type_display || s.source_type})` }))}
+                />
+                <Input.Search
+                  placeholder={activeTab === 'win' ? t('patchManager.kbNumber') : t('patchManager.packageName')}
+                  value={candidateSearch}
+                  onChange={(e) => setCandidateSearch(e.target.value)}
+                  onSearch={(v) => handleCandidateSearch(v)}
+                  className="w-[200px]"
+                />
+              </FilterToolbar>
             </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
+            <div className="min-h-0 flex-1">
               <CustomTable<CandidateItem>
                 rowKey="key"
                 loading={candidateLoading || candidateActionLoading}
@@ -827,27 +829,39 @@ export default function LibraryPage() {
               />
             </div>
           </div>
-          <div style={{ width: 220, display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--color-border-1, #e8e8e8)', paddingLeft: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontWeight: 500 }}>{t('patchManager.libraryPage.selectedCount', undefined, { count: candidateSelection.keys.length })}</span>
+          <div className="flex w-[220px] flex-col border-l border-[var(--color-border-1)] pl-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="font-medium">{t('patchManager.libraryPage.selectedCount', undefined, { count: candidateSelection.keys.length })}</span>
               {candidateSelection.keys.length > 0 && (
-                <a style={{ color: '#ff4d4f', fontSize: 12 }} onClick={() => setCandidateSelection(createCandidateSelection())}>{t('patchManager.common.clearAll')}</a>
+                <a
+                  className="cursor-pointer text-xs text-[var(--color-fail)]"
+                  onClick={() => setCandidateSelection(createCandidateSelection())}
+                >
+                  {t('patchManager.common.clearAll')}
+                </a>
               )}
             </div>
-            <div style={{ flex: 1, overflowY: 'auto' }}>
+            <div className="flex-1 overflow-y-auto">
               {candidateSelection.items.map((c) => (
-                <div key={c.key} className="candidate-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', borderRadius: 6, marginBottom: 4, background: 'var(--color-fill-1, #f4f6f9)', fontSize: 13 }}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-                  <CloseOutlined className="candidate-remove-btn" style={{ color: '#bfbfbf', fontSize: 12, cursor: 'pointer', opacity: 0, transition: 'opacity 0.2s' }} onClick={() => setCandidateSelection((previous) => removeCandidateFromSelection(previous, c.key))} />
+                <div
+                  key={c.key}
+                  className="group mb-1 flex items-center justify-between rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-[13px]"
+                >
+                  <span className="truncate">{c.name}</span>
+                  <CloseOutlined
+                    className="cursor-pointer text-xs text-[var(--color-text-4)] opacity-0 transition-opacity group-hover:opacity-100"
+                    onClick={() => setCandidateSelection((previous) => removeCandidateFromSelection(previous, c.key))}
+                  />
                 </div>
               ))}
               {candidateSelection.keys.length === 0 && (
-                <div style={{ color: 'var(--color-text-3, #8c8c8c)', fontSize: 13, textAlign: 'center', marginTop: 40 }}>{t('patchManager.common.noSelection')}</div>
+                <div className="mt-10 text-center text-[13px] text-[var(--color-text-3)]">
+                  {t('patchManager.common.noSelection')}
+                </div>
               )}
             </div>
           </div>
         </div>
-        <style>{`.candidate-item:hover .candidate-remove-btn { opacity: 1 !important; }`}</style>
       </OperateDrawer>
 
       <Modal
@@ -869,16 +883,16 @@ export default function LibraryPage() {
         }}
         width={360}
       >
-        <div style={{ padding: '16px 0' }}>
-          <span style={{ marginRight: 12 }}>{t('patchManager.severity')}：</span>
+        <div className="py-4">
+          <span className="mr-3">{t('patchManager.severity')}：</span>
           <Select
             value={batchSeverityValue}
             onChange={setBatchSeverityValue}
             options={SEVERITY_SELECT_OPTIONS}
-            style={{ width: 160 }}
+            className="w-40"
             placeholder={t('patchManager.libraryPage.select')}
           />
-          <div style={{ marginTop: 12, color: 'var(--color-text-3, #8c8c8c)', fontSize: 12 }}>
+          <div className="mt-3 text-xs text-[var(--color-text-3)]">
             {t('patchManager.libraryPage.batchSeverityHelp')}
           </div>
         </div>

@@ -13,7 +13,6 @@ import {
   readMobileViewSnapshot,
   writeMobileViewSnapshot,
 } from '@/navigation/mobile-view-cache';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/monitor/monitor.module.css';
 
@@ -23,11 +22,11 @@ interface MonitorRootViewState {
 
 function MonitorPageContent() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { organizationScope } = useAuth();
   const params = useSearchParams();
   const objectId = Number(params.get('objectId')) || 0;
   const objectName = params.get('objectName') || '';
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
+  const cacheScope = organizationScope;
   const initialSnapshot = useRef(readMobileViewSnapshot<MonitorRootViewState>(cacheScope, 'monitor-root'));
   const [activeTab, setActiveTab] = useState(initialSnapshot.current?.data.activeTab || 'recent');
 
@@ -38,7 +37,7 @@ function MonitorPageContent() {
   return (
     <MobileTabShell activeTab="monitor">
       <main className={styles.page}>
-        <MobilePageHeader title={t('navigation.monitor')} />
+        <MobilePageHeader title={t('navigation.monitor')} showOrganization />
         <MobileSegmentTabs activeKey={activeTab} onChange={setActiveTab}>
           <MobileSegmentTabs.Tab key="recent" title={t('monitor.tabs.recent')} />
           <MobileSegmentTabs.Tab key="all" title={t('monitor.tabs.all')} />

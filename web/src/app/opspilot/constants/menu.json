@@ -110,7 +110,7 @@
         {
           "title": "记忆",
           "url": "/opspilot/memory/detail/memories",
-          "icon": "shujuguanli",
+          "icon": "shiyongwendang",
           "name": "memory_detail_memories",
           "isNotMenuItem": true
         }
@@ -244,7 +244,7 @@
         {
           "title": "Memories",
           "url": "/opspilot/memory/detail/memories",
-          "icon": "shujuguanli",
+          "icon": "shiyongwendang",
           "name": "memory_detail_memories",
           "isNotMenuItem": true
         }

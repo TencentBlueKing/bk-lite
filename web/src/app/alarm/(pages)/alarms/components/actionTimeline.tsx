@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Timeline, Button, Spin, Empty, message } from 'antd';
+import { Timeline, Button, Spin, message } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useSettingApi } from '@/app/alarm/api/settings';
@@ -145,10 +146,7 @@ const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId }) => {
   return (
     <Spin spinning={loading}>
       {!loading && items.length === 0 ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t('common.noData')}
-        />
+        <CompactEmptyState description={t('common.noData')} />
       ) : (
         <div className="pt-[10px]">
           <Timeline items={timelineItems} />

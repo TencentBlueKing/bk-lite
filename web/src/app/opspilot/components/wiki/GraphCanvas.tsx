@@ -38,8 +38,6 @@ export interface GraphCanvasHandle {
 interface GraphCanvasProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
-  visibleNodeIds: Set<string>;
-  visibleEdgeIds: Set<string>;
   height?: number | string; // 数值固定高;传 '100%' 由父容器(全幅/全屏)撑满
   nodeScale?: number; // 节点大小系数(过滤器「节点大小」滑块),默认 1
   linkDistance?: number; // 力导链接距离(过滤器「间距」滑块),默认 160
@@ -50,8 +48,6 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     {
       nodes,
       edges,
-      visibleNodeIds,
-      visibleEdgeIds,
       height = 460,
       nodeScale = 1,
       linkDistance = 160,
@@ -65,35 +61,6 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     nodeScaleRef.current = nodeScale;
     const linkDistanceRef = useRef(linkDistance);
     linkDistanceRef.current = linkDistance;
-    const allNodeIdsRef = useRef<string[]>([]);
-    const allEdgeIdsRef = useRef<string[]>([]);
-    const visibleNodeIdsRef = useRef<Set<string> | undefined>(visibleNodeIds);
-    const visibleEdgeIdsRef = useRef<Set<string> | undefined>(visibleEdgeIds);
-
-    const allNodeIds = useMemo(() => nodes.map((n) => String(n.id)), [nodes]);
-    const allEdgeIds = useMemo(
-      () => edges.map((e, index) => graphEdgeId(e, index)),
-      [edges],
-    );
-    const visibleNodeIdsKey = useMemo(
-      () =>
-        visibleNodeIds
-          ? Array.from(visibleNodeIds).sort().join("|")
-          : "__all__",
-      [visibleNodeIds],
-    );
-    const visibleEdgeIdsKey = useMemo(
-      () =>
-        visibleEdgeIds
-          ? Array.from(visibleEdgeIds).sort().join("|")
-          : "__all__",
-      [visibleEdgeIds],
-    );
-
-    allNodeIdsRef.current = allNodeIds;
-    allEdgeIdsRef.current = allEdgeIds;
-    visibleNodeIdsRef.current = visibleNodeIds;
-    visibleEdgeIdsRef.current = visibleEdgeIds;
 
     // 连接度(决定节点大小层级),仅随 edges 变化
     const degree = useMemo(() => {
@@ -126,28 +93,6 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       }
     }, []);
 
-    const applyVisibility = useCallback(() => {
-      const graph = graphRef.current;
-      if (!graph) return;
-
-      const shownNodeIds =
-        visibleNodeIdsRef.current ?? new Set(allNodeIdsRef.current);
-      const shownEdgeIds =
-        visibleEdgeIdsRef.current ?? new Set(allEdgeIdsRef.current);
-      const visibility: Record<string, "visible" | "hidden"> = {};
-
-      allNodeIdsRef.current.forEach((id) => {
-        visibility[id] = shownNodeIds.has(id) ? "visible" : "hidden";
-      });
-      allEdgeIdsRef.current.forEach((id) => {
-        visibility[id] = shownEdgeIds.has(id) ? "visible" : "hidden";
-      });
-
-      void graph.setElementVisibility(visibility, false).catch(() => {
-        /* 图谱重建/销毁过程中忽略可见性同步失败 */
-      });
-    }, []);
-
     useImperativeHandle(
       ref,
       () => ({
@@ -168,7 +113,7 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       [fitGraphToContainer],
     );
 
-    // 创建图:仅在 nodes/edges 变化时重建(滑块改尺寸/间距不在此触发,避免整图重排)
+    // 创建图:父组件传入当前可见子图;筛选变化时重建更小的图,避免全量 force + hidden
     useEffect(() => {
       const container = containerRef.current;
       if (!container || !nodes.length) return;
@@ -295,7 +240,6 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       };
       graph.on("afterlayout", fit);
       graph.render().then(() => {
-        applyVisibility();
         fit();
       });
 
@@ -303,12 +247,7 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         graph.destroy();
         graphRef.current = null;
       };
-    }, [nodes, edges, baseSize, applyVisibility]);
-
-    // 类型/孤立节点筛选:只切换元素可见性,不替换图数据、不重建 Graph、不重跑布局
-    useEffect(() => {
-      applyVisibility();
-    }, [visibleNodeIdsKey, visibleEdgeIdsKey]);
+    }, [nodes, edges, baseSize]);
 
     // 「节点大小」滑块:原地更新尺寸,不重跑布局 → 位置不动,只是变大变小(跳过首渲染,避免与创建重复)
     const firstScale = useRef(true);
@@ -331,7 +270,6 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       } catch {
         /* 忽略 */
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [nodeScale]);
 
     // 「间距」滑块:改 linkDistance → 从当前位置重跑一次布局(父组件用 onChangeComplete 触发,拖动中不持续触发)
@@ -352,7 +290,6 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           /* 忽略 */
         }
       })();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [linkDistance]);
 
     return <div ref={containerRef} style={{ width: "100%", height }} />;

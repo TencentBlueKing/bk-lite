@@ -13,6 +13,7 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useLogApi from '@/app/log/api/integration';
 import { useCollectTypeConfig } from '@/app/log/hooks/integration/index';
+import { normalizePasswordWhitespace } from '@/components/password/normalizePasswordWhitespace';
 
 const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   const [form] = Form.useForm();
@@ -96,6 +97,22 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   };
 
   const handleSubmit = () => {
+    if (
+      formData.collect_type__name === 'redis' &&
+      form.isFieldTouched(['slowlog', 'password'])
+    ) {
+      const password = form.getFieldValue(['slowlog', 'password']);
+      if (typeof password === 'string') {
+        const normalizedPassword = normalizePasswordWhitespace(password);
+        if (normalizedPassword.changed) {
+          form.setFieldValue(
+            ['slowlog', 'password'],
+            normalizedPassword.value
+          );
+          message.warning(t('common.passwordWhitespaceTrimmed'));
+        }
+      }
+    }
     form.validateFields().then((values) => {
       operateConfig(values);
     });

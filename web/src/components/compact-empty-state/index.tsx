@@ -15,7 +15,7 @@ const CompactEmptyState: React.FC<CompactEmptyStateProps> = ({
   return (
     <div className={`py-1 ${className}`.trim()}>
       <Empty
-        style={{ marginBlock: 0 }}
+        className="!my-0"
         image={Empty.PRESENTED_IMAGE_SIMPLE}
         imageStyle={{
           height: 28,
@@ -24,13 +24,7 @@ const CompactEmptyState: React.FC<CompactEmptyStateProps> = ({
           opacity: 0.78,
         }}
         description={
-          <span
-            className="text-xs leading-4"
-            style={{
-              color:
-                'color-mix(in srgb, var(--color-text-3) 72%, #9ca3af 28%)',
-            }}
-          >
+          <span className="text-xs leading-4 text-[var(--color-text-3)]">
             {description}
           </span>
         }

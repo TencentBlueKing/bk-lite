@@ -1,7 +1,8 @@
 import React from 'react';
 import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Drawer, Input, Space, Tag, Tooltip } from 'antd';
+import { Button, Drawer, Tag, Tooltip } from 'antd';
 import CustomTable from '@/components/custom-table';
+import SearchActionBar from '@/components/search-action-bar';
 import { useLocalizedTime } from "@/hooks/useLocalizedTime";
 
 import type { RunStatus } from '@/app/system-manager/types/user-sync';
@@ -113,23 +114,26 @@ const UserSyncRecordsDrawer: React.FC<UserSyncRecordsDrawerProps> = ({
       onClose={onClose}
       width={980}
     >
-      <div className="mb-4 flex items-center justify-end gap-2">
-        <Space.Compact>
-          <Input.Search
-            size="middle"
-            allowClear
-            enterButton
-            placeholder={`${t('common.search')}...`}
-            className="w-60"
-            onSearch={onSearch}
-          />
-        </Space.Compact>
-        <Button
-          type="text"
-          icon={<ReloadOutlined />}
-          onClick={onRefresh}
-          loading={loading}
-          aria-label={t('common.refresh')}
+      <div className="mb-4">
+        <SearchActionBar
+          spacing="flush"
+          searchClassName="!w-60"
+          searchProps={{
+            size: 'middle',
+            allowClear: true,
+            enterButton: true,
+            placeholder: `${t('common.search')}...`,
+            onSearch,
+          }}
+          actions={(
+            <Button
+              type="text"
+              icon={<ReloadOutlined />}
+              onClick={onRefresh}
+              loading={loading}
+              aria-label={t('common.refresh')}
+            />
+          )}
         />
       </div>
       <CustomTable

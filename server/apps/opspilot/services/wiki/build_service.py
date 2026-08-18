@@ -18,6 +18,7 @@ from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion, WikiKnowledgeBase
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.check_service import create_candidate
+from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
 from apps.opspilot.services.wiki.text_utils import split_text_by_estimated_tokens, split_text_for_llm
 from apps.opspilot.services.wiki.title_service import canonical_title as _canonical_title
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, estimate_tokens
@@ -1919,7 +1920,7 @@ def _run_build_cascade(knowledge_base, affected_page_ids):
         return cascade(knowledge_base, affected_page_ids, "build")
     except Exception as exc:
         logger.exception("wiki 构建级联维护异常 kb=%s", knowledge_base.id)
-        error = str(exc)
+        error = humanize_maintenance_error(exc)
         return {
             "status": "partial",
             "event": "build",

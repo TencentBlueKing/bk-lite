@@ -1,13 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Empty } from 'antd';
 import type { ChartData, GuideItem } from '@/app/monitor/components/monitor-dashboard-widgets/types';
 import {
   TitleWithGuide,
   type GuideTooltipStyles,
 } from '@/app/monitor/components/monitor-dashboard-widgets/guide-tooltip';
 import { MiniTrendChart } from '@/app/monitor/components/monitor-dashboard-widgets/mini-trend-chart';
+import ChartEmptyState from '@/components/chart-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 
@@ -168,9 +168,6 @@ export const HorizontalBarPanel = ({
   styles,
 }: HorizontalBarPanelProps) => {
   const { t } = useTranslation();
-  const resolvedEmptyDescription = emptyDescription === undefined
-    ? t('common.noData')
-    : emptyDescription;
 
   return (
     <div className={[styles.panel, className].filter(Boolean).join(' ')}>
@@ -192,8 +189,11 @@ export const HorizontalBarPanel = ({
         </div>
       </div>
       {isEmpty ? (
-        <div style={{ minHeight: 176, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Empty description={resolvedEmptyDescription} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <div className="flex min-h-[176px] items-center justify-center">
+          <ChartEmptyState
+            description={emptyDescription === undefined ? t('common.noData') : emptyDescription}
+            compact
+          />
         </div>
       ) : (
         <BarList items={items} emphasizeTop={emphasizeTop} tiered={tiered} styles={styles} />

@@ -2,6 +2,10 @@
 @import "tailwindcss/utilities";
 @import "tailwindcss";
 
+/* Docs mention token patterns; exclude so Tailwind does not emit invalid utilities. */
+@source not "../**/*.md";
+@source not "../**/*.mdc";
+
 /* Enterprise generated routes are gitignored, so Tailwind skips them.
    Use direct @source paths (not globs) — parentheses in glob patterns
    are treated as extglob syntax and won't match literal directory names.

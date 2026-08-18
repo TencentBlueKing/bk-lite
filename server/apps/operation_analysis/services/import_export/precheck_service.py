@@ -14,6 +14,7 @@ YAML导入预检服务
 import yaml
 from pydantic import ValidationError
 
+from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ERROR, is_legacy_raw_monitor_query
 from apps.operation_analysis.constants.import_export import (
     CANVAS_TYPES,
     IMPORT_OBJECT_LIMIT,
@@ -357,6 +358,34 @@ class PrecheckService:
 
         return errors
 
+    @staticmethod
+    def check_datasource_security(doc: YAMLDocument) -> list[dict]:
+        """在提交导入前拒绝没有可兼容存量记录的监控裸查询数据源。"""
+        raw_items = [
+            item
+            for item in doc.datasources
+            if is_legacy_raw_monitor_query(source_type=item.source_type, rest_api=item.rest_api)
+        ]
+        if not raw_items:
+            return []
+
+        existing_keys = set(
+            DataSourceAPIModel.objects.filter(
+                name__in={item.name for item in raw_items},
+                rest_api__in={item.rest_api for item in raw_items},
+            ).values_list("name", "rest_api")
+        )
+        return [
+            {
+                "code": ImportExportErrorCode.YAML_SCHEMA_INVALID,
+                "message": LEGACY_RAW_MONITOR_QUERY_ERROR,
+                "object_key": item.key,
+                "object_type": ObjectType.DATASOURCE.value,
+            }
+            for item in raw_items
+            if (item.name, item.rest_api) not in existing_keys
+        ]
+
     @classmethod
     def identify_conflicts(cls, doc: YAMLDocument, current_team: int | None = None) -> list[dict]:
         """
@@ -394,12 +423,23 @@ class PrecheckService:
             existing = existing_datasources.get((ds.name, ds.rest_api))
             if existing:
                 has_permission = cls._check_group_permission(existing, current_team)
+                suggested_actions = all_actions if has_permission else rename_only
+                if is_legacy_raw_monitor_query(source_type=ds.source_type, rest_api=ds.rest_api):
+                    if not has_permission:
+                        suggested_actions = []
+                    elif is_legacy_raw_monitor_query(
+                        source_type=existing.source_type,
+                        rest_api=existing.rest_api,
+                    ):
+                        suggested_actions = [ConflictAction.SKIP.value, ConflictAction.OVERWRITE.value]
+                    else:
+                        suggested_actions = [ConflictAction.SKIP.value]
                 conflicts.append(
                     {
                         "object_key": ds.key,
                         "object_type": ObjectType.DATASOURCE.value,
                         "reason": ConflictReason.NAME_CONFLICT if has_permission else ConflictReason.NO_PERMISSION_CONFLICT,
-                        "suggested_actions": all_actions if has_permission else rename_only,
+                        "suggested_actions": suggested_actions,
                     }
                 )
 
@@ -508,6 +548,7 @@ class PrecheckService:
 
         # Step 6: 依赖完整性检查
         all_errors.extend(cls.check_dependencies(doc))
+        all_errors.extend(cls.check_datasource_security(doc))
 
         # Step 7: 画布导入必须指定目录
         if cls.has_canvas_objects(doc) and target_directory_id is None:

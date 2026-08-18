@@ -6,7 +6,6 @@
 
 import pytest
 
-from apps.cmdb.services import instance as inst_mod
 from apps.cmdb.services.instance import (
     InstanceManage,
     _normalize_allowed_org_ids,
@@ -114,8 +113,11 @@ def test_apply_tag_batch_valid():
 
 _ENUM_ATTRS = [
     {
-        "attr_id": "status", "attr_type": "enum", "enum_select_mode": "single",
-        "is_required": False, "option": [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}],
+        "attr_id": "status",
+        "attr_type": "enum",
+        "enum_select_mode": "single",
+        "is_required": False,
+        "option": [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}],
     }
 ]
 
@@ -244,8 +246,9 @@ def test_add_inst_name_permission():
 
 @pytest.mark.django_db
 def test_search_inst(fake_graph):
-    fake_graph(MODULE, query_entity=([{"_id": 1, "inst_name": "h"}], 1))
-    insts, count = InstanceManage.search_inst("host", inst_name="h", _id=1)
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    fake_graph(MODULE, query_entity=([{"_id": 1, "inst_uuid": inst_uuid, "inst_name": "h"}], 1))
+    insts, count = InstanceManage.search_inst("host", inst_name="h", inst_uuid=inst_uuid)
     assert count == 1
 
 

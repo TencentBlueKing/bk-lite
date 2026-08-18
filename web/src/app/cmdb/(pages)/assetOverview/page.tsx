@@ -8,7 +8,8 @@ import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { useRouter } from 'next/navigation';
 import ModelIcon from '@/app/cmdb/components/model-icon';
-import { Spin, Input, Empty } from 'antd';
+import { Spin, Input } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useClassificationApi, useInstanceApi } from '@/app/cmdb/api';
 import { useCommon } from '@/app/cmdb/context/common';
@@ -167,7 +168,7 @@ const AssetsOverview: React.FC = () => {
             ))}
           </Masonry>
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <CompactEmptyState description={t('common.noData')} />
         )}
       </Spin>
     </div>

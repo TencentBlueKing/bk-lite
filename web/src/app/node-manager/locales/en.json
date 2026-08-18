@@ -43,6 +43,9 @@
         "searchPlaceholder": "Enter configuration type"
       },
       "node": {
+        "batchEditOrganizations": "Batch Update Organizations",
+        "batchEditOrganizationsHint": "The organizations of the {count} selected nodes will be replaced with this selection.",
+        "batchEdit": "Batch Edit",
         "installCollector": "Install Component",
         "node": "Node",
         "sidecarVersionDes": "Please select the Controller version for the selected operating system and CPU architecture ({architecture}).",

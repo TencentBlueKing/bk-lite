@@ -20,6 +20,7 @@ import { formatUserDisplayName } from '@/utils/userDisplay';
 interface InformationProps extends TableDataItem {
   eventData?: TableDataItem[];
   chartUnit?: string | null;
+  chartXAxisDomain?: [number, number] | null;
 }
 
 const Information: React.FC<InformationProps> = ({
@@ -29,7 +30,8 @@ const Information: React.FC<InformationProps> = ({
   userList,
   onClose,
   trapData,
-  chartUnit
+  chartUnit,
+  chartXAxisDomain
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -232,6 +234,14 @@ const Information: React.FC<InformationProps> = ({
                 }
                 unit={chartUnit || ''}
                 metric={formData.metric}
+                xAxisDomain={
+                  formData.alert_type === 'no_data'
+                    ? chartXAxisDomain || undefined
+                    : undefined
+                }
+                gapFit={
+                  formData.alert_type === 'no_data' ? 'plot' : 'samples'
+                }
               />
             </div>
           </div>

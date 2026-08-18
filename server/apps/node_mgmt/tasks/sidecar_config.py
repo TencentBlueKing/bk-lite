@@ -1,14 +1,11 @@
-from celery import shared_task
-
-from apps.core.logger import logger
+from apps.core.logger import node_logger as logger
 from apps.node_mgmt.models import Node
 from apps.node_mgmt.services.sidecar_config import SidecarConfigService
+from celery import shared_task
 
 
 @shared_task
-def sync_node_properties_to_sidecar(
-    node_id: str, name: str | None = None, organizations: list[str] | None = None
-):
+def sync_node_properties_to_sidecar(node_id: str, name: str | None = None, organizations: list[str] | None = None):
     """
     异步同步节点属性到远程 sidecar.yml 配置文件
 
@@ -24,17 +21,28 @@ def sync_node_properties_to_sidecar(
         return {"success": False, "error": "Node not found"}
 
     try:
-        SidecarConfigService.sync_node_properties(
-            node, name=name, organizations=organizations
-        )
+        SidecarConfigService.sync_node_properties(node, name=name, organizations=organizations)
         return {"success": True}
     except ValueError as e:
-        logger.warning(
-            f"Failed to sync node properties to sidecar for node {node_id}: {e}"
-        )
+        logger.warning(f"Failed to sync node properties to sidecar for node {node_id}: {e}")
         return {"success": False, "error": str(e)}
     except Exception as e:
-        logger.exception(
-            f"Unexpected error syncing node properties to sidecar for node {node_id}"
-        )
+        logger.exception(f"Unexpected error syncing node properties to sidecar for node {node_id}")
         return {"success": False, "error": str(e)}
+
+
+@shared_task
+def sync_nodes_organizations_to_sidecar(node_ids: list[str], organizations: list[int]):
+    """按顺序同步批量修改后的节点组织，避免一次批量操作产生无界并发。"""
+    if len(node_ids) > 100:
+        raise ValueError("A maximum of 100 nodes can be synchronized at once")
+
+    results = {"success": 0, "failed": 0}
+    for node_id in dict.fromkeys(node_ids):
+        result = sync_node_properties_to_sidecar(
+            node_id=node_id,
+            organizations=[str(organization_id) for organization_id in organizations],
+        )
+        outcome = "success" if result.get("success") else "failed"
+        results[outcome] += 1
+    return results

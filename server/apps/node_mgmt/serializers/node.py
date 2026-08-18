@@ -1,7 +1,7 @@
-from rest_framework import serializers
-from django.db.models import Prefetch
-from apps.node_mgmt.models.sidecar import Node
 from apps.node_mgmt.models.node_version import NodeComponentVersion
+from apps.node_mgmt.models.sidecar import Node
+from django.db.models import Prefetch
+from rest_framework import serializers
 
 
 class NodeSerializer(serializers.ModelSerializer):
@@ -80,6 +80,31 @@ class BatchOperateNodeCollectorSerializer(serializers.Serializer):
     node_ids = serializers.ListField(child=serializers.CharField(), required=True)
     collector_id = serializers.CharField(required=True)
     operation = serializers.ChoiceField(choices=["start", "restart", "stop"], required=True)
+
+
+class BatchUpdateNodeOrganizationsSerializer(serializers.Serializer):
+    node_ids = serializers.ListField(
+        child=serializers.CharField(max_length=100),
+        required=True,
+        allow_empty=False,
+        max_length=100,
+    )
+    organizations = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=True,
+        allow_empty=False,
+        max_length=100,
+    )
+
+    def validate_node_ids(self, value):
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("node_ids must not contain duplicates")
+        return value
+
+    def validate_organizations(self, value):
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("organizations must not contain duplicates")
+        return value
 
 
 class TaskNodesQuerySerializer(serializers.Serializer):

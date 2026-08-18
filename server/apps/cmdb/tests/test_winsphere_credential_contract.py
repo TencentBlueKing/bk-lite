@@ -5,9 +5,9 @@ import pytest
 from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.serializers.collect_serializer import CollectModelSerializer
-from apps.cmdb.services.collect_credential_contract import (
-    get_collect_credential_contract,
-)
+from apps.cmdb.services.collect_credential_contract import get_collect_credential_contract
+
+_TRUSTED_MANAGEMENT_ADDRESS = "WS.EXAMPLE.COM."
 
 
 @pytest.fixture(autouse=True)
@@ -35,15 +35,33 @@ def _stub_auth_serializer_dependencies(monkeypatch):
     )
     monkeypatch.setattr(
         "apps.cmdb.serializers.collect_serializer.get_collect_object_meta",
-        lambda model_id, driver_type=None: (
-            {"model_id": model_id, "type": driver_type}
-            if model_id == "winsphere"
-            else {}
-        ),
+        lambda model_id, driver_type=None: ({"model_id": model_id, "type": driver_type} if model_id == "winsphere" else {}),
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.InstanceManage.query_entity_by_uuids",
+        lambda uuids: [
+            {
+                "inst_uuid": inst_uuid,
+                "model_id": "winsphere",
+                "inst_name": "winsphere-prod",
+                "management_address": _TRUSTED_MANAGEMENT_ADDRESS,
+            }
+            for inst_uuid in uuids
+        ],
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.CmdbRulesFormatUtil.format_user_groups_permissions",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.InstanceManage._has_topology_view_permission",
+        lambda *args, **kwargs: True,
     )
 
 
 def _payload(credential):
+    global _TRUSTED_MANAGEMENT_ADDRESS
+    _TRUSTED_MANAGEMENT_ADDRESS = "WS.EXAMPLE.COM."
     return {
         "name": "winsphere-collect",
         "task_type": CollectPluginTypes.CLOUD,
@@ -52,7 +70,7 @@ def _payload(credential):
         "access_point": [{"id": 1}],
         "instances": [
             {
-                "_id": "winsphere-1",
+                "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
                 "model_id": "winsphere",
                 "inst_name": "winsphere-prod",
                 "management_address": "WS.EXAMPLE.COM.",
@@ -95,12 +113,7 @@ def test_winsphere_contract_is_static_metadata_not_a_database_model():
     assert contract["fields"][2]["default"] == 443
     assert contract["fields"][2]["min"] == 1
     assert contract["fields"][2]["max"] == 65535
-    assert all(
-        "help" not in field
-        and "help_key" not in field
-        and "label_key" not in field
-        for field in contract["fields"]
-    )
+    assert all("help" not in field and "help_key" not in field and "label_key" not in field for field in contract["fields"])
 
 
 def test_winsphere_serializer_applies_defaults_and_normalizes_endpoint():
@@ -115,12 +128,8 @@ def test_winsphere_serializer_applies_defaults_and_normalizes_endpoint():
             "verify_tls": False,
         }
     ]
-    assert serializer.validated_data["instances"][0]["management_address"] == (
-        "ws.example.com"
-    )
-    assert serializer.validated_data["instances"][0]["endpoint"] == (
-        "https://ws.example.com:443"
-    )
+    assert serializer.validated_data["instances"][0]["management_address"] == ("ws.example.com")
+    assert serializer.validated_data["instances"][0]["endpoint"] == ("https://ws.example.com:443")
 
 
 def test_winsphere_serializer_rejects_task_when_enterprise_capability_is_disabled(
@@ -191,8 +200,10 @@ def test_winsphere_serializer_rejects_ip_range_alongside_management_endpoint():
 def test_winsphere_serializer_rejects_non_host_management_address(
     management_address,
 ):
+    global _TRUSTED_MANAGEMENT_ADDRESS
     payload = _payload({"user": "reader", "password": "secret"})
     payload["instances"][0]["management_address"] = management_address
+    _TRUSTED_MANAGEMENT_ADDRESS = management_address
     request = SimpleNamespace(user=SimpleNamespace(group_list=[]), COOKIES={})
     serializer = CollectModelSerializer(
         data=payload,
@@ -269,9 +280,7 @@ def test_winsphere_update_preserves_existing_encrypted_password():
     )
 
     assert serializer.is_valid(), serializer.errors
-    assert serializer.validated_data["credential"][0]["password"] == (
-        "enc:existing-secret"
-    )
+    assert serializer.validated_data["credential"][0]["password"] == ("enc:existing-secret")
 
 
 def test_winsphere_update_treats_api_password_mask_as_unchanged():
@@ -299,9 +308,7 @@ def test_winsphere_update_treats_api_password_mask_as_unchanged():
     )
 
     assert serializer.is_valid(), serializer.errors
-    assert serializer.validated_data["credential"][0]["password"] == (
-        "enc:existing-secret"
-    )
+    assert serializer.validated_data["credential"][0]["password"] == ("enc:existing-secret")
 
 
 def test_winsphere_create_rejects_api_password_mask():
@@ -348,9 +355,7 @@ def test_winsphere_partial_update_reuses_existing_endpoint_and_credential():
     )
 
     assert serializer.is_valid(), serializer.errors
-    assert serializer.validated_data["instances"][0]["endpoint"] == (
-        "https://ws.example.com:8443"
-    )
+    assert serializer.validated_data["instances"][0]["endpoint"] == ("https://ws.example.com:8443")
 
 
 @pytest.mark.django_db

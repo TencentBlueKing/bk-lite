@@ -4,7 +4,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("log", "0020_cross_database_extractor_guards"),
+        ("log", "0021_userhabit"),
     ]
 
     operations = [

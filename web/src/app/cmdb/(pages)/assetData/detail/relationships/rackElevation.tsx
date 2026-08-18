@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Spin, Empty, Alert, message } from 'antd';
+import { Spin, Alert, message } from 'antd';
 import { useRouter } from 'next/navigation';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { useThemeMode } from '@/theme';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
@@ -75,12 +76,17 @@ const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceC
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', background: isDark ? '#141820' : TECH.bg1 }}>
+      <div
+        className="p-10 text-center"
+        style={{ background: isDark ? '#141820' : TECH.bg1 }}
+      >
         <Spin spinning />
       </div>
     );
   }
-  if (!data || !data.u_count) return <Empty description={t('Model.noRackLayout')} />;
+  if (!data || !data.u_count) {
+    return <CompactEmptyState description={t('Model.noRackLayout')} />;
+  }
 
   const u = data.u_count;
   const uPx = U_PX;
@@ -100,7 +106,7 @@ const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceC
     const used = new Set(active.map((x) => x.lane));
     let l = 0;
     while (used.has(l)) l += 1;
-    lane[d.inst_id] = l;
+    lane[d.inst_uuid] = l;
     active.push({ end: d.u_end, lane: l });
   });
 
@@ -207,9 +213,9 @@ const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceC
           {/* 设备 */}
           {data.placed.map((d) => {
             const y = yFor(d.rack_u_start, d.u_size);
-            const bad = d.overflow || overlapIds.has(d.inst_id);
-            const conflicted = overlapIds.has(d.inst_id);
-            const l = lane[d.inst_id] || 0;
+            const bad = d.overflow || overlapIds.has(d.inst_uuid);
+            const conflicted = overlapIds.has(d.inst_uuid);
+            const l = lane[d.inst_uuid] || 0;
             const dx = conflicted ? DEV_X + (l % 2) * (DEV_W / 2) : DEV_X;
             const wDev = conflicted ? DEV_W / 2 - 2 : DEV_W;
             const tx = dx + 22;
@@ -220,7 +226,7 @@ const RackElevation: React.FC<Props> = ({ modelId, instUuid, embedded, onDeviceC
             const clip = (s: string) => (s.length > lim ? `${s.slice(0, lim - 1)}…` : s);
             const twoLine = h > 30;
             return (
-              <g key={d.inst_id} className="rk-dev" style={{ cursor: 'pointer' }}
+              <g key={d.inst_uuid} className="rk-dev" style={{ cursor: 'pointer' }}
                 onClick={() => onDevice(d)}>
                 <rect x={dx} y={y + 1.5} width={wDev} height={h} rx={6}
                   fill="url(#rkDev)" stroke={bad ? TECH.danger : (isDark ? 'rgba(148,163,184,0.16)' : 'rgba(23,54,106,0.15)')}

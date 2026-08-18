@@ -81,7 +81,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   if (layout === 'horizontal') {
     return (
       <div
-        className="shrink-0 flex flex-wrap items-center px-2 pb-2"
+        className="flex shrink-0 flex-wrap items-center"
         style={{
           columnGap: 16 * scale,
           rowGap: 4 * scale,
@@ -93,12 +93,12 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
         {legendData.map((item, index) => (
           <div
             key={`${item.name}-${index}`}
-            className="flex items-center cursor-pointer select-none"
+            className="flex cursor-pointer select-none items-center"
             onClick={() => handleClick(item.name)}
             style={{ gap: 6 * scale, opacity: isActive(item.name) ? 1 : 0.4 }}
           >
             <span
-              className="inline-block rounded-sm flex-shrink-0"
+              className="inline-block shrink-0 rounded-sm"
               style={{
                 backgroundColor: chartColors[index % chartColors.length],
                 height: 10 * scale,
@@ -120,17 +120,12 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   // vertical layout (right side)
   return (
     <div
-      className="shrink-0 h-full flex items-center"
-      style={{
-        flex: '0 0 auto',
-        width: 'max-content',
-        maxWidth: `min(48%, ${360 * scale}px)`,
-      }}
+      className="flex h-full w-max shrink-0 items-center"
+      style={{ maxWidth: `min(48%, ${360 * scale}px)` }}
     >
       <div
-        className="max-h-full overflow-y-auto"
+        className="max-h-full max-w-full overflow-y-auto"
         style={{
-          maxWidth: '100%',
           paddingBottom: 4 * scale,
           paddingTop: 4 * scale,
         }}
@@ -143,7 +138,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
           return (
             <div
               key={`${item.name}-${index}`}
-              className="flex items-center cursor-pointer select-none rounded hover:bg-[var(--color-fill-2)] transition-colors"
+              className="flex cursor-pointer select-none items-center rounded transition-colors hover:bg-[var(--color-fill-2)]"
               onClick={() => handleClick(item.name)}
               style={{
                 gap: 8 * scale,
@@ -152,7 +147,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
               }}
             >
               <span
-                className="inline-block rounded-sm flex-shrink-0"
+                className="inline-block shrink-0 rounded-sm"
                 style={{
                   backgroundColor: chartColors[index % chartColors.length],
                   height: 10 * scale,
@@ -160,11 +155,10 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                 }}
               />
               <span
-                className="inline-block text-[var(--color-text-2)]"
+                className="inline-block whitespace-nowrap text-[var(--color-text-2)]"
                 style={{
                   color: textColor,
                   fontSize: 12 * scale,
-                  whiteSpace: 'nowrap',
                 }}
               >
                 {item.name}

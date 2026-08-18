@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Spin, Tooltip, Button, Empty, message } from 'antd';
+import { Spin, Tooltip, Button, message } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import usePermissions from '@/hooks/usePermissions';
@@ -36,28 +37,34 @@ const SummaryBar: React.FC<SummaryBarProps> = ({ data }) => {
   const { t } = useTranslation();
   const pct = Math.round(data.ratio * 100);
   return (
-    <div style={{ display: 'flex', gap: 24, alignItems: 'center', padding: '8px 0 12px', flexWrap: 'wrap' }}>
-      <span style={{ color: 'var(--color-text-3)', fontSize: 13 }}>
+    <div className="flex flex-wrap items-center gap-6 py-2 pb-3">
+      <span className="text-[13px] text-[var(--color-text-3)]">
         {data.subnet_address}/{data.prefixlen}
       </span>
       <span>
-        <span style={{ color: 'var(--color-text-3)', fontSize: 12, marginRight: 4 }}>{t('Model.ipViewCapacity')}:</span>
+        <span className="mr-1 text-xs text-[var(--color-text-3)]">{t('Model.ipViewCapacity')}:</span>
         <strong>{data.capacity}</strong>
       </span>
       <span>
-        <span style={{ color: 'var(--color-text-3)', fontSize: 12, marginRight: 4 }}>{t('Model.ipViewUsed')}:</span>
-        <strong style={{ color: '#1677ff' }}>{data.used}</strong>
+        <span className="mr-1 text-xs text-[var(--color-text-3)]">{t('Model.ipViewUsed')}:</span>
+        <strong className="text-[var(--color-primary)]">{data.used}</strong>
       </span>
       <span>
-        <span style={{ color: 'var(--color-text-3)', fontSize: 12, marginRight: 4 }}>{t('Model.ipViewAvailable')}:</span>
-        <strong style={{ color: '#52c41a' }}>{data.available}</strong>
+        <span className="mr-1 text-xs text-[var(--color-text-3)]">{t('Model.ipViewAvailable')}:</span>
+        <strong className="text-[var(--color-success)]">{data.available}</strong>
       </span>
       <span>
-        <span style={{ color: 'var(--color-text-3)', fontSize: 12, marginRight: 4 }}>{t('Model.ipViewRatio')}:</span>
-        <strong style={{ color: pct > 80 ? '#ff4d4f' : '#1677ff' }}>{pct}%</strong>
+        <span className="mr-1 text-xs text-[var(--color-text-3)]">{t('Model.ipViewRatio')}:</span>
+        <strong className={pct > 80 ? 'text-[var(--color-danger)]' : 'text-[var(--color-primary)]'}>{pct}%</strong>
       </span>
-      <div style={{ flexBasis: '100%', height: 6, background: 'var(--color-fill-2)', borderRadius: 3, overflow: 'hidden', marginTop: 2 }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: pct > 80 ? '#ff4d4f' : '#1677ff', transition: 'width .3s' }} />
+      <div className="mt-0.5 h-1.5 basis-full overflow-hidden rounded-sm bg-[var(--color-fill-2)]">
+        <div
+          className="h-full transition-[width] duration-300"
+          style={{
+            width: `${pct}%`,
+            background: pct > 80 ? 'var(--color-danger)' : 'var(--color-primary)',
+          }}
+        />
       </div>
     </div>
   );
@@ -75,16 +82,14 @@ const Legend: React.FC = () => {
     { kind: 'unknown', label: t('Model.ipViewUnknown') },
   ];
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', padding: '8px 0' }}>
+    <div className="flex flex-wrap gap-x-5 gap-y-2 py-2">
       {items.map(({ kind, label }) => (
-        <span key={kind} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+        <span key={kind} className="flex items-center gap-1.5 text-xs">
           <span
-            style={{
-              width: 14, height: 14, borderRadius: 3,
-              background: KIND_COLOR[kind], display: 'inline-block', flexShrink: 0,
-            }}
+            className="inline-block h-3.5 w-3.5 shrink-0 rounded-sm"
+            style={{ background: KIND_COLOR[kind] }}
           />
-          <span style={{ color: 'var(--color-text-2)' }}>{label}</span>
+          <span className="text-[var(--color-text-2)]">{label}</span>
         </span>
       ))}
     </div>
@@ -93,7 +98,6 @@ const Legend: React.FC = () => {
 
 const CELL_MIN = 40;
 const CELL_H = 36;
-const GRID_GAP = 4;
 
 interface SquareGridProps {
   data: IpamViewData;
@@ -166,14 +170,9 @@ const SquareGrid: React.FC<SquareGridProps> = ({
         .ipam-cell:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,.18); z-index: 1; }
       `}</style>
       <div
+        className="grid gap-1 rounded-[10px] border border-[var(--color-border-2)] bg-[var(--color-bg-2)] p-4"
         style={{
-          display: 'grid',
           gridTemplateColumns: `repeat(auto-fill, minmax(${CELL_MIN}px, 1fr))`,
-          gap: GRID_GAP,
-          padding: 16,
-          border: '1px solid var(--color-border-2)',
-          borderRadius: 10,
-          background: 'var(--color-bg-2)',
         }}
       >
         {cells.map(({ hostNum, ip, kind }) => {
@@ -183,7 +182,7 @@ const SquareGrid: React.FC<SquareGridProps> = ({
           const clickable = Boolean(ip) || hasAdd;
 
           const tooltipTitle = (
-            <div style={{ fontSize: 12 }}>
+            <div className="text-xs">
               <div><strong>{ipAddr}</strong></div>
               {ip && (
                 <>
@@ -204,22 +203,13 @@ const SquareGrid: React.FC<SquareGridProps> = ({
           return (
             <Tooltip key={hostNum} title={tooltipTitle} placement="top" mouseEnterDelay={0.15}>
               <div
-                className="ipam-cell"
+                className={`ipam-cell flex select-none items-center justify-center rounded-md text-[11px] tabular-nums ${clickable ? 'cursor-pointer' : 'cursor-default'} ${isFree ? 'font-normal' : 'font-semibold text-white'}`}
                 onClick={() => handleCellClick(hostNum, ip)}
                 style={{
                   height: CELL_H,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  fontVariantNumeric: 'tabular-nums',
-                  cursor: clickable ? 'pointer' : 'default',
                   background: isFree ? 'rgba(82,196,26,0.12)' : color,
                   border: `1px solid ${isFree ? 'rgba(82,196,26,0.35)' : color}`,
-                  color: isFree ? '#389e0d' : '#fff',
-                  fontWeight: isFree ? 400 : 600,
-                  userSelect: 'none',
+                  color: isFree ? '#389e0d' : undefined,
                 }}
               >
                 {hostNum}
@@ -291,11 +281,11 @@ const HeatView: React.FC<HeatViewProps> = ({ data, onDrill }) => {
 
   return (
     <div>
-      <p style={{ color: 'var(--color-text-3)', fontSize: 13, marginBottom: 12 }}>
+      <p className="mb-3 text-[13px] text-[var(--color-text-3)]">
         {t('Model.ipViewDrillTitle')} — {data.subnet_address}/{data.prefixlen}
         {cappedBlocks < numBlocks && ` (showing first ${cappedBlocks} of ${numBlocks})`}
       </p>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div className="flex flex-wrap gap-2">
         {blocks.map((block) => {
           const ratio = block.totalSlots > 0 ? block.usedSlots / block.totalSlots : 0;
           const pct = Math.round(ratio * 100);
@@ -308,26 +298,10 @@ const HeatView: React.FC<HeatViewProps> = ({ data, onDrill }) => {
             >
               <div
                 onClick={() => onDrill(block)}
-                style={{
-                  width: 80,
-                  height: 56,
-                  borderRadius: 6,
-                  background: bg,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: '#fff',
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  opacity: 0.88,
-                  transition: 'opacity 0.15s',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.88'; }}
+                className="flex h-14 w-20 cursor-pointer flex-col items-center justify-center rounded-md font-mono text-[11px] text-white opacity-90 transition-opacity hover:opacity-100"
+                style={{ background: bg }}
               >
-                <span style={{ fontWeight: 600 }}>{block.prefix}.x</span>
+                <span className="font-semibold">{block.prefix}.x</span>
                 <span>{pct}%</span>
               </div>
             </Tooltip>
@@ -388,7 +362,7 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instUuid }) => {
 
   if (loading && !data) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+      <div className="flex justify-center p-[60px]">
         <Spin size="large" />
       </div>
     );
@@ -396,7 +370,7 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instUuid }) => {
 
   if (error && !data) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-danger)' }}>
+      <div className="p-10 text-center text-[var(--color-danger)]">
         {error}
       </div>
     );
@@ -404,8 +378,8 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instUuid }) => {
 
   if (!data || !data.subnet_address || !data.subnet_mask) {
     return (
-      <div style={{ padding: 40, textAlign: 'center' }}>
-        <Empty description={t('Model.ipViewEmptyHint')} />
+      <div className="p-10 text-center">
+        <CompactEmptyState description={t('Model.ipViewEmptyHint')} />
       </div>
     );
   }
@@ -428,19 +402,19 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instUuid }) => {
       ips: drillIps,
     };
     return (
-      <div style={{ padding: '0 4px' }}>
+      <div className="px-1">
         <Button
           icon={<ArrowLeftOutlined />}
           size="small"
           type="link"
-          style={{ paddingLeft: 0, marginBottom: 8 }}
+          className="mb-2 pl-0"
           onClick={() => setDrill(null)}
         >
           {t('Model.ipViewBack')} — {data.subnet_address}/{data.prefixlen}
         </Button>
         <SummaryBar data={drillData} />
         <Legend />
-        <div style={{ marginTop: 8 }}>
+        <div className="mt-2">
           <SquareGrid
             data={drillData}
             subnetInstUuid={instUuid}
@@ -453,10 +427,10 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instUuid }) => {
   }
 
   return (
-    <div style={{ padding: '0 4px' }}>
+    <div className="px-1">
       <SummaryBar data={data} />
       <Legend />
-      <div style={{ marginTop: 8 }}>
+      <div className="mt-2">
         {isSmallSubnet ? (
           <SquareGrid
             data={data}

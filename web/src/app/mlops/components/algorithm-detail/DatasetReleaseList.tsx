@@ -4,6 +4,7 @@ import { Button, Tag, message, Popconfirm, Space, Drawer } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
+import VersionBadge from '@/components/version-badge';
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ModalRef, ColumnItem, DatasetType } from '@/app/mlops/types';
@@ -235,7 +236,9 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
       dataIndex: 'version',
       key: 'version',
       width: 120,
-      render: (_, record: DatasetRelease) => <Tag color="blue">{record.version}</Tag>,
+      render: (_, record: DatasetRelease) => (
+        <VersionBadge value={record.version} fallback="--" />
+      ),
     },
     {
       title: t(`common.name`),
