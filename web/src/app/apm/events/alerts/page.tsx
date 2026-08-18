@@ -46,7 +46,6 @@ import styles from '@/app/apm/events/event-workspace.module.scss';
 
 type PageState = CatalogStateKind | 'ready';
 type AlertView = 'active' | 'history';
-const ACTIVE_RANGE_MS = 86_400_000;
 const HISTORY_RANGE_MS = 604_800_000;
 const HISTORY_TIME_DEFAULT = { selectValue: 10080, rangePickerVaule: null };
 const ACTION_LABEL = { triggered: '触发', escalated: '级别升级', recovered: '恢复', closed: '人工关闭' } as const;
@@ -70,6 +69,9 @@ const NOTIFICATION_LABEL = {
 } as const;
 
 function resolveTimeParams(view: AlertView, historyTimeRange: [number, number] | null) {
+  if (view === 'active') {
+    return {};
+  }
   if (view === 'history' && historyTimeRange) {
     return {
       started_at: new Date(historyTimeRange[0]).toISOString(),
@@ -77,8 +79,10 @@ function resolveTimeParams(view: AlertView, historyTimeRange: [number, number] |
     };
   }
   const endedAt = new Date();
-  const windowMs = view === 'history' ? HISTORY_RANGE_MS : ACTIVE_RANGE_MS;
-  return { started_at: new Date(endedAt.getTime() - windowMs).toISOString(), ended_at: endedAt.toISOString() };
+  return {
+    started_at: new Date(endedAt.getTime() - HISTORY_RANGE_MS).toISOString(),
+    ended_at: endedAt.toISOString(),
+  };
 }
 
 export default function ApmAlertsPage() {

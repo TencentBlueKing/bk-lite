@@ -166,8 +166,16 @@ describe('APM Alert 与 Event Snapshot', () => {
     expect(screen.queryByRole('columnheader', { name: '状态' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '事件' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '最近变化' })).toBeNull();
-    expect(api.getAlerts).toHaveBeenCalledWith(expect.objectContaining({ status_group: 'active' }));
-    expect(api.getAlertDistribution).toHaveBeenCalledWith(expect.objectContaining({ status_group: 'active' }));
+    const activeQuery = api.getAlerts.mock.calls.find(
+      ([query]) => query.status_group === 'active'
+    )?.[0] as Record<string, unknown>;
+    const activeDistributionQuery = api.getAlertDistribution.mock.calls.find(
+      ([query]) => query.status_group === 'active'
+    )?.[0] as Record<string, unknown>;
+    expect(activeQuery).not.toHaveProperty('started_at');
+    expect(activeQuery).not.toHaveProperty('ended_at');
+    expect(activeDistributionQuery).not.toHaveProperty('started_at');
+    expect(activeDistributionQuery).not.toHaveProperty('ended_at');
     await user.click(historyTab);
     expect(await screen.findByText('checkout P95 时延恢复')).not.toBeNull();
     expect(screen.getByText('历史告警分布')).not.toBeNull();
