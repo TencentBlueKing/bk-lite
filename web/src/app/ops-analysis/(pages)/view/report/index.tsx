@@ -107,6 +107,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
   shareMode = false,
   renderMode = false,
   renderFilterValues,
+  renderDataSourceIds,
   getReportDetailOverride,
 }, ref) => {
   const { t } = useTranslation();
@@ -196,9 +197,12 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       setFilterValues(initialFilterValues);
       setAppliedFilterValues(initialFilterValues);
       setAppliedFilterDefinitions(normalized.filters);
-      const dataSourceIds = normalized.sections
-        .map((section) => section.valueConfig.dataSource)
-        .filter((id): id is string | number => id !== undefined);
+      const dataSourceIds = Array.from(new Set([
+        ...normalized.sections
+          .map((section) => section.valueConfig.dataSource)
+          .filter((id): id is string | number => id !== undefined),
+        ...(renderDataSourceIds || []),
+      ]));
       await loadCanvasDataSources(dataSourceIds);
     } catch (error) {
       if (!isCurrentReportLoad(loadGuardRef.current, requestId)) return;
@@ -228,7 +232,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
         setLoading(false);
       }
     }
-  }, [loadCanvasDataSources, renderFilterValues, renderMode, selectedReport?.data_id, t]);
+  }, [loadCanvasDataSources, renderDataSourceIds, renderFilterValues, renderMode, selectedReport?.data_id, t]);
 
   useEffect(() => {
     setEditing(false);

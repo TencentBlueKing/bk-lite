@@ -517,6 +517,48 @@ def test_legacy_render_claims_are_detected_and_fail_closed():
     assert AuthMiddleware._is_render_token_candidate(token)
 
 
+ROOM3D_SWITCH_PARAMS = [
+    {
+        "name": "server_room_id",
+        "inputConfig": {
+            "control": "select",
+            "componentSwitch": True,
+            "optionsSource": {
+                "type": "dynamic",
+                "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
+                "valueField": "inst_uuid",
+                "labelField": "inst_name",
+            },
+        },
+    }
+]
+
+
+def _create_room3d_option_datasources():
+    layout = DataSourceAPIModel.objects.create(
+        id=17,
+        name="CMDB 3D机房布局",
+        rest_api="cmdb/get_room3d_layout",
+        groups=[1],
+        params=ROOM3D_SWITCH_PARAMS,
+    )
+    rooms = DataSourceAPIModel.objects.create(
+        id=42,
+        name="CMDB 机房列表",
+        rest_api="cmdb/get_room_list",
+        groups=[1],
+        params=[],
+    )
+    unrelated = DataSourceAPIModel.objects.create(
+        id=18,
+        name="无关数据源",
+        rest_api="other/query",
+        groups=[1],
+        params=[],
+    )
+    return layout, rooms, unrelated
+
+
 def test_render_session_allows_only_manifest_datasource(
     running_execution,
     monkeypatch,
@@ -552,6 +594,152 @@ def test_render_session_allows_only_manifest_datasource(
             ),
             session["token"],
         )
+
+
+def test_render_session_allows_component_switch_option_datasource(
+    running_execution,
+    monkeypatch,
+):
+    monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
+    _create_room3d_option_datasources()
+    issued = DashboardReportRenderTokenService.issue(running_execution)
+    session = DashboardReportRenderTokenService.consume(
+        execution_id=running_execution.id,
+        plaintext=issued.plaintext,
+    )
+    factory = APIRequestFactory()
+
+    with pytest.raises(DashboardReportRenderScopeError):
+        DashboardReportRenderScopeService.authorize_request(
+            factory.get(
+                "/api/v1/operation_analysis/api/data_source/",
+                {"page_size": "-1"},
+            ),
+            session["token"],
+        )
+
+    DashboardReportRenderScopeService.authorize_request(
+        factory.get(
+            "/api/v1/operation_analysis/api/data_source/",
+            {"ids": "17,42"},
+        ),
+        session["token"],
+    )
+    DashboardReportRenderScopeService.authorize_request(
+        factory.post(
+            "/api/v1/operation_analysis/api/data_source/get_source_data/42/",
+            {},
+            format="json",
+        ),
+        session["token"],
+    )
+    with pytest.raises(DashboardReportRenderScopeError):
+        DashboardReportRenderScopeService.authorize_request(
+            factory.get(
+                "/api/v1/operation_analysis/api/data_source/",
+                {"ids": "17,18"},
+            ),
+            session["token"],
+        )
+    with pytest.raises(DashboardReportRenderScopeError):
+        DashboardReportRenderScopeService.authorize_request(
+            factory.post(
+                "/api/v1/operation_analysis/api/data_source/get_source_data/18/",
+                {},
+                format="json",
+            ),
+            session["token"],
+        )
+
+
+def test_render_session_rejects_ambiguous_option_rest_api(
+    running_execution,
+    monkeypatch,
+):
+    monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
+    DataSourceAPIModel.objects.create(
+        id=17,
+        name="CMDB 3D机房布局",
+        rest_api="cmdb/get_room3d_layout",
+        groups=[1],
+        params=ROOM3D_SWITCH_PARAMS,
+    )
+    DataSourceAPIModel.objects.create(
+        id=42,
+        name="机房列表 A",
+        rest_api="cmdb/get_room_list",
+        groups=[1],
+    )
+    DataSourceAPIModel.objects.create(
+        id=43,
+        name="机房列表 B",
+        rest_api="cmdb/get_room_list",
+        groups=[1],
+    )
+    issued = DashboardReportRenderTokenService.issue(running_execution)
+    session = DashboardReportRenderTokenService.consume(
+        execution_id=running_execution.id,
+        plaintext=issued.plaintext,
+    )
+    factory = APIRequestFactory()
+
+    DashboardReportRenderScopeService.authorize_request(
+        factory.post(
+            "/api/v1/operation_analysis/api/data_source/get_source_data/17/",
+            {},
+            format="json",
+        ),
+        session["token"],
+    )
+    with pytest.raises(DashboardReportRenderScopeError):
+        DashboardReportRenderScopeService.authorize_request(
+            factory.post(
+                "/api/v1/operation_analysis/api/data_source/get_source_data/42/",
+                {},
+                format="json",
+            ),
+            session["token"],
+        )
+
+
+def test_render_session_datasource_list_requires_named_ids(
+    running_execution,
+    monkeypatch,
+    settings,
+):
+    monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
+    _create_room3d_option_datasources()
+    issued = DashboardReportRenderTokenService.issue(running_execution)
+    session = DashboardReportRenderTokenService.consume(
+        execution_id=running_execution.id,
+        plaintext=issued.plaintext,
+    )
+    settings.MIDDLEWARE = (
+        *settings.MIDDLEWARE,
+        "apps.core.middlewares.auth_middleware.AuthMiddleware",
+    )
+    _stub_render_auth_context(
+        monkeypatch,
+        username=running_execution.creator,
+        domain=running_execution.creator_domain,
+    )
+    _stub_datasource_instance_rules(monkeypatch, team_ids=[1])
+    client = APIClient()
+
+    denied = client.get(
+        "/api/v1/operation_analysis/api/data_source/",
+        {"page_size": "-1"},
+        HTTP_AUTHORIZATION=f"Bearer {session['token']}",
+    )
+    assert denied.status_code in {401, 403}
+
+    allowed = client.get(
+        "/api/v1/operation_analysis/api/data_source/",
+        {"ids": "17,42", "page_size": "-1"},
+        HTTP_AUTHORIZATION=f"Bearer {session['token']}",
+    )
+    assert allowed.status_code == 200, allowed.data
+    assert {item["id"] for item in allowed.data} == {17, 42}
 
 
 def test_render_session_allows_frozen_network_status_topology(

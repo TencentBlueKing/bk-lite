@@ -9,6 +9,7 @@ import { emitDashboardRenderSignal } from '@/app/ops-analysis/renderContract';
 import type { DashboardExecutionRenderInput } from '@/app/ops-analysis/types/dashboardSubscription';
 import type { FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import type { ReportDetail } from '@/app/ops-analysis/types/report';
+import { collectWidgetManifestDataSourceIds } from '@/app/ops-analysis/utils/canvasResources';
 
 interface ReportExecutionRenderPageContentProps {
   executionId: number;
@@ -88,6 +89,9 @@ export const ReportExecutionRenderPageContent = ({
       renderFilterValues={
         renderInput.input_snapshot.filter_values as Record<string, FilterValue>
       }
+      renderDataSourceIds={collectWidgetManifestDataSourceIds(
+        renderInput.render_snapshot.widget_manifest,
+      )}
       getReportDetailOverride={getReportDetailOverride}
     />
   );

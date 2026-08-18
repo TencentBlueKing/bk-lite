@@ -4,6 +4,7 @@ import {
   DASHBOARD_PREPARE_PRINT_EVENT,
   prepareDashboardPrintLayout,
   prepareReportPrintLayout,
+  prepareScreenPrintLayout,
 } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
 
 describe('prepareDashboardPrintLayout', () => {
@@ -142,5 +143,121 @@ describe('prepareDashboardPrintLayout', () => {
     const tableBody = document.querySelector<HTMLElement>('.ant-table-body');
     expect(tableBody?.style.maxHeight).toBe('240px');
     expect(tableBody?.style.overflow).toBe('auto');
+  });
+
+  it('freezes WebGL canvases into images before Chromium print', async () => {
+    const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.toDataURL = () =>
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    HTMLCanvasElement.prototype.getContext = function (type: string, ...rest: unknown[]) {
+      if (type === 'webgl' || type === 'webgl2') {
+        return {} as RenderingContext;
+      }
+      return originalGetContext.call(this, type, ...rest as []);
+    };
+
+    try {
+      document.body.innerHTML = `
+        <div data-dashboard-render-root="true" style="width: 400px; height: 300px;">
+          <div class="canvas">
+            <canvas width="80" height="60" style="width: 80px; height: 60px;"></canvas>
+          </div>
+        </div>
+      `;
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        canvas.width = 80;
+        canvas.height = 60;
+      }
+
+      const root = document.querySelector<HTMLElement>(
+        '[data-dashboard-render-root="true"]',
+      );
+      await prepareScreenPrintLayout(root);
+
+      expect(root?.querySelector('canvas')).toBeNull();
+      const image = root?.querySelector<HTMLImageElement>(
+        'img[data-print-snapshot="true"]',
+      );
+      expect(image?.src).toMatch(/^data:image\/png/);
+      expect(image?.style.width).toBe('80px');
+      expect(image?.style.height).toBe('60px');
+    } finally {
+      HTMLCanvasElement.prototype.toDataURL = originalToDataURL;
+      HTMLCanvasElement.prototype.getContext = originalGetContext;
+    }
+  });
+
+  it('leaves 2D canvases in the DOM during print snapshot', async () => {
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type: string, ...rest: unknown[]) {
+      if (type === '2d') {
+        return {} as RenderingContext;
+      }
+      return originalGetContext.call(this, type, ...rest as []);
+    };
+
+    try {
+      document.body.innerHTML = `
+        <div data-dashboard-render-root="true">
+          <canvas width="40" height="20"></canvas>
+        </div>
+      `;
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        canvas.width = 40;
+        canvas.height = 20;
+      }
+
+      const root = document.querySelector<HTMLElement>(
+        '[data-dashboard-render-root="true"]',
+      );
+      await prepareScreenPrintLayout(root);
+
+      expect(root?.querySelector('canvas')).not.toBeNull();
+      expect(root?.querySelector('img[data-print-snapshot="true"]')).toBeNull();
+    } finally {
+      HTMLCanvasElement.prototype.getContext = originalGetContext;
+    }
+  });
+
+  it('prepareDashboardPrintLayout snapshots WebGL canvases then still expands overflow', async () => {
+    const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.toDataURL = () =>
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    HTMLCanvasElement.prototype.getContext = function (type: string, ...rest: unknown[]) {
+      if (type === 'webgl' || type === 'webgl2') {
+        return {} as RenderingContext;
+      }
+      return originalGetContext.call(this, type, ...rest as []);
+    };
+
+    try {
+      document.body.innerHTML = `
+        <div data-dashboard-render-root="true" style="height: 100vh; overflow: auto;">
+          <canvas width="40" height="20"></canvas>
+        </div>
+      `;
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        canvas.width = 40;
+        canvas.height = 20;
+      }
+
+      const root = document.querySelector<HTMLElement>(
+        '[data-dashboard-render-root="true"]',
+      );
+      await prepareDashboardPrintLayout(root);
+
+      expect(root?.querySelector('canvas')).toBeNull();
+      expect(root?.querySelector('img[data-print-snapshot="true"]')).toBeTruthy();
+      expect(root?.style.overflow).toBe('visible');
+      expect(root?.style.height).toBe('auto');
+    } finally {
+      HTMLCanvasElement.prototype.toDataURL = originalToDataURL;
+      HTMLCanvasElement.prototype.getContext = originalGetContext;
+    }
   });
 });
