@@ -13,13 +13,11 @@ import {
   Alert as AntAlert,
   Avatar,
   Button,
-  DatePicker,
   Descriptions,
   Drawer,
   Input,
   message,
   Popconfirm,
-  Radio,
   Space,
   Tabs,
   Tag,
@@ -28,11 +26,12 @@ import {
   theme,
   type TableColumnsType,
 } from 'antd';
-import dayjs, { type Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
+import TimeSelector from '@/components/time-selector';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 import { ALERT_LEVEL_COLORS, OBSERVABILITY_SERIES_COLORS } from '@/constants/observabilityChart';
 import type {
@@ -46,14 +45,10 @@ import type {
 import styles from '@/app/apm/events/event-workspace.module.scss';
 
 type PageState = CatalogStateKind | 'ready';
-type Range = '1h' | '24h' | '7d' | 'custom';
-type RefreshInterval = 0 | 30 | 60 | 300;
-const RANGE_MS: Record<Exclude<Range, 'custom'>, number> = {
-  '1h': 3_600_000,
-  '24h': 86_400_000,
-  '7d': 604_800_000,
-};
-const RANGE_LABEL: Record<Range, string> = { '1h': '1h', '24h': '24h', '7d': '7d', custom: '自定义' };
+type AlertView = 'active' | 'history';
+const ACTIVE_RANGE_MS = 86_400_000;
+const HISTORY_RANGE_MS = 604_800_000;
+const HISTORY_TIME_DEFAULT = { selectValue: 10080, rangePickerVaule: null };
 const ACTION_LABEL = { triggered: '触发', escalated: '级别升级', recovered: '恢复', closed: '人工关闭' } as const;
 const STATUS_LABEL = { active: '告警中', recovered: '已恢复', closed: '已关闭' } as const;
 const STATUS_COLOR = { active: 'error', recovered: 'success', closed: 'default' } as const;
@@ -74,12 +69,15 @@ const NOTIFICATION_LABEL = {
   failed: '投递失败',
 } as const;
 
-function resolveTimeParams(range: Range, customRange: [Dayjs, Dayjs] | null) {
-  if (range === 'custom' && customRange) {
-    return { started_at: customRange[0].toISOString(), ended_at: customRange[1].toISOString() };
+function resolveTimeParams(view: AlertView, historyTimeRange: [number, number] | null) {
+  if (view === 'history' && historyTimeRange) {
+    return {
+      started_at: new Date(historyTimeRange[0]).toISOString(),
+      ended_at: new Date(historyTimeRange[1]).toISOString(),
+    };
   }
   const endedAt = new Date();
-  const windowMs = RANGE_MS[range === 'custom' ? '24h' : range];
+  const windowMs = view === 'history' ? HISTORY_RANGE_MS : ACTIVE_RANGE_MS;
   return { started_at: new Date(endedAt.getTime() - windowMs).toISOString(), ended_at: endedAt.toISOString() };
 }
 
@@ -99,11 +97,8 @@ export default function ApmAlertsPage() {
   >([]);
   const [state, setState] = useState<PageState>('loading');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
-  const [range, setRange] = useState<Range>('24h');
-  const [customRange, setCustomRange] = useState<[Dayjs, Dayjs] | null>(null);
-  const [refreshInterval, setRefreshInterval] = useState<RefreshInterval>(0);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<Dayjs | null>(null);
+  const [activeTab, setActiveTab] = useState<AlertView>('active');
+  const [historyTimeRange, setHistoryTimeRange] = useState<[number, number] | null>(null);
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [selected, setSelected] = useState<ApmAlert | null>(null);
@@ -119,7 +114,7 @@ export default function ApmAlertsPage() {
     loadSequence.current = sequence;
     setIsRefreshing(true);
     setState((current) => current === 'ready' ? current : 'loading');
-    const timeParams = resolveTimeParams(range, customRange);
+    const timeParams = resolveTimeParams(activeTab, historyTimeRange);
     const query: ApmAlertQuery = {
       ...timeParams,
       status_group: activeTab,
@@ -131,7 +126,6 @@ export default function ApmAlertsPage() {
         if (sequence !== loadSequence.current) return;
         setAllAlerts(items);
         setDistribution(buckets);
-        setLastUpdatedAt(dayjs());
         setState(items.length ? 'ready' : 'empty');
       })
       .catch((error) => {
@@ -140,7 +134,7 @@ export default function ApmAlertsPage() {
       .finally(() => {
         if (sequence === loadSequence.current) setIsRefreshing(false);
       });
-  }, [activeTab, authLoading, customRange, getAlertDistribution, getAlerts, range, submittedKeyword]);
+  }, [activeTab, authLoading, getAlertDistribution, getAlerts, historyTimeRange, submittedKeyword]);
 
   useEffect(() => load(), [load]);
 
@@ -148,12 +142,6 @@ export default function ApmAlertsPage() {
     const timer = window.setTimeout(() => setSubmittedKeyword(keyword.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [keyword]);
-
-  useEffect(() => {
-    if (!refreshInterval) return undefined;
-    const timer = window.setInterval(load, refreshInterval * 1000);
-    return () => window.clearInterval(timer);
-  }, [load, refreshInterval]);
 
   const alerts = allAlerts;
   const distributionTotals = useMemo(
@@ -205,8 +193,11 @@ export default function ApmAlertsPage() {
   };
 
   const handleViewChange = (key: string) => {
-    const nextView = key as 'active' | 'history';
+    const nextView = key as AlertView;
     if (nextView === activeTab) return;
+    if (nextView === 'history') {
+      setHistoryTimeRange(null);
+    }
     setActiveTab(nextView);
     setAllAlerts([]);
     setDistribution([]);
@@ -398,6 +389,18 @@ export default function ApmAlertsPage() {
               }}
               onPressEnter={() => setSubmittedKeyword(keyword.trim())}
             />
+            {activeTab === 'history' ? (
+              <TimeSelector
+                className={styles.alertsHistoryTimeSelector}
+                defaultValue={HISTORY_TIME_DEFAULT}
+                onlyTimeSelect
+                onChange={(values) => {
+                  if (values.length === 2) {
+                    setHistoryTimeRange([values[0], values[1]]);
+                  }
+                }}
+              />
+            ) : null}
             <Button icon={<ReloadOutlined />} loading={isRefreshing} onClick={load}>
               刷新
             </Button>
@@ -406,7 +409,7 @@ export default function ApmAlertsPage() {
 
         <section className={styles.alertsDistribution} aria-label="告警分布">
           <div className={styles.alertsDistributionHeader}>
-            <Typography.Text strong>告警分布(近 {RANGE_LABEL[range]})</Typography.Text>
+            <Typography.Text strong>{activeTab === 'active' ? '活跃告警分布' : '历史告警分布'}</Typography.Text>
             <div className={styles.alertsSeveritySummary} aria-label="三级告警数量">
               <Typography.Text type="secondary">级别：</Typography.Text>
               <Tag color={ALERT_LEVEL_COLORS.critical}>严重 {distributionTotals.critical}</Tag>
@@ -417,12 +420,12 @@ export default function ApmAlertsPage() {
           <div
             className={styles.alertsDistributionChart}
             role="img"
-            aria-label={`最近 ${RANGE_LABEL[range]} 告警事件分布，按严重、错误、警告分组`}
+            aria-label={`${activeTab === 'active' ? '活跃' : '历史'}告警事件分布，按严重、错误、警告分组`}
           >
             <TimeSeriesComposedChart
               data={distribution}
               xDataKey="time"
-              getXLabel={(item) => dayjs(String(item.time)).format(range === '7d' ? 'MM-DD' : 'HH:mm')}
+              getXLabel={(item) => dayjs(String(item.time)).format(activeTab === 'history' ? 'MM-DD' : 'HH:mm')}
               series={[
                 {
                   name: '严重',
@@ -456,54 +459,6 @@ export default function ApmAlertsPage() {
                 },
               ]}
             />
-          </div>
-          <div className={styles.alertsDistributionFooter}>
-            <div className={styles.alertsRangeControls}>
-              <Typography.Text type="secondary">自动刷新</Typography.Text>
-              <Radio.Group
-                size="small"
-                value={refreshInterval}
-                onChange={(event) => setRefreshInterval(event.target.value as RefreshInterval)}
-              >
-                <Radio.Button value={0}>关</Radio.Button>
-                <Radio.Button value={30}>30s</Radio.Button>
-                <Radio.Button value={60}>1m</Radio.Button>
-                <Radio.Button value={300}>5m</Radio.Button>
-              </Radio.Group>
-              <Typography.Text type="secondary">时间范围</Typography.Text>
-              <Radio.Group
-                size="small"
-                value={range}
-                onChange={(event) => {
-                  const nextRange = event.target.value as Range;
-                  if (nextRange === 'custom' && !customRange) {
-                    setCustomRange([dayjs().subtract(24, 'hour'), dayjs()]);
-                  }
-                  setRange(nextRange);
-                }}
-              >
-                <Radio.Button value="1h">1h</Radio.Button>
-                <Radio.Button value="24h">24h</Radio.Button>
-                <Radio.Button value="7d">7d</Radio.Button>
-                <Radio.Button value="custom">自定义</Radio.Button>
-              </Radio.Group>
-              {range === 'custom' ? (
-                <DatePicker.RangePicker
-                  showTime
-                  value={customRange}
-                  onChange={(values) => {
-                    if (values && values[1].diff(values[0], 'day', true) > 90) {
-                      message.warning('自定义时间范围不能超过 90 天');
-                      return;
-                    }
-                    setCustomRange(values ? [values[0], values[1]] : null);
-                  }}
-                />
-              ) : null}
-            </div>
-            <Typography.Text type="secondary" className={styles.alertsLastUpdated}>
-              最后更新：{lastUpdatedAt ? lastUpdatedAt.format('YYYY-MM-DD HH:mm:ss') : '--'}
-            </Typography.Text>
           </div>
         </section>
 

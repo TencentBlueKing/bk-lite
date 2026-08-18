@@ -135,7 +135,9 @@ describe('APM Alert 与 Event Snapshot', () => {
     renderWithApmIntl(<ApmAlertsPage />);
     expect(await screen.findByText('checkout 错误率升高')).not.toBeNull();
     expect(screen.getByRole('heading', { name: '告警' })).not.toBeNull();
-    expect(screen.getByText('告警分布(近 24h)')).not.toBeNull();
+    expect(screen.getByText('活跃告警分布')).not.toBeNull();
+    expect(screen.queryByText('自动刷新')).toBeNull();
+    expect(screen.queryByText('最近7天')).toBeNull();
     expect(screen.getByText('严重 / 错误 / 警告')).not.toBeNull();
     const distributionSeries = chartRender.mock.calls.find(
       ([props]) => props.series[0]?.name === '严重',
@@ -168,9 +170,23 @@ describe('APM Alert 与 Event Snapshot', () => {
     expect(api.getAlertDistribution).toHaveBeenCalledWith(expect.objectContaining({ status_group: 'active' }));
     await user.click(historyTab);
     expect(await screen.findByText('checkout P95 时延恢复')).not.toBeNull();
+    expect(screen.getByText('历史告警分布')).not.toBeNull();
+    expect(screen.getByText('最近7天')).not.toBeNull();
     expect(screen.queryByText('checkout 错误率升高')).toBeNull();
     expect(api.getAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ status_group: 'history' }));
     expect(api.getAlertDistribution).toHaveBeenLastCalledWith(expect.objectContaining({ status_group: 'history' }));
+    const historyQuery = api.getAlerts.mock.calls.at(-1)?.[0] as { started_at: string; ended_at: string };
+    expect(new Date(historyQuery.ended_at).getTime() - new Date(historyQuery.started_at).getTime()).toBe(604_800_000);
+    await user.click(screen.getByText('最近7天'));
+    await user.click(await screen.findByText('最近1天'));
+    await waitFor(() => {
+      const oneDayQuery = api.getAlerts.mock.calls.at(-1)?.[0] as { started_at: string; ended_at: string };
+      const oneDayDuration =
+        new Date(oneDayQuery.ended_at).getTime() - new Date(oneDayQuery.started_at).getTime();
+      expect(oneDayDuration).toBeGreaterThanOrEqual(86_400_000);
+      expect(oneDayDuration).toBeLessThan(86_401_000);
+      expect(api.getAlertDistribution).toHaveBeenLastCalledWith(expect.objectContaining({ status_group: 'history' }));
+    });
     expect(chartRender.mock.calls.at(-1)?.[0].data).toEqual([
       expect.objectContaining({ warning: 1 }),
     ]);

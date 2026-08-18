@@ -108,9 +108,7 @@
 .alertsToolbarTitle,
 .alertsToolbarActions,
 .alertsDistributionHeader,
-.alertsSeveritySummary,
-.alertsDistributionFooter,
-.alertsRangeControls {
+.alertsSeveritySummary {
   display: flex;
   align-items: center;
 }
@@ -140,13 +138,21 @@
   width: 320px;
 }
 
+.alertsHistoryTimeSelector {
+  width: 350px;
+}
+
+.alertsHistoryTimeSelector :global(.ant-select),
+.alertsHistoryTimeSelector :global(.ant-picker) {
+  width: 100% !important;
+}
+
 .alertsDistribution {
   padding: 14px 16px 12px;
   margin-bottom: 16px;
 }
 
-.alertsDistributionHeader,
-.alertsDistributionFooter {
+.alertsDistributionHeader {
   justify-content: space-between;
   gap: 16px;
 }
@@ -155,8 +161,7 @@
   min-height: 32px;
 }
 
-.alertsSeveritySummary,
-.alertsRangeControls {
+.alertsSeveritySummary {
   flex-wrap: wrap;
   gap: 8px;
 }
@@ -169,22 +174,6 @@
 .alertsDistributionChart {
   height: 150px;
   margin: 8px 0;
-}
-
-.alertsDistributionFooter {
-  min-height: 44px;
-  padding-top: 10px;
-  border-top: 1px solid var(--color-border-1);
-}
-
-.alertsRangeControls > :global(.ant-typography) {
-  font-size: 12px;
-}
-
-.alertsLastUpdated {
-  flex: none;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
 }
 
 .alertsTableSection {
@@ -635,18 +624,13 @@
   }
 
   .alertsToolbar,
-  .alertsDistributionHeader,
-  .alertsDistributionFooter {
+  .alertsDistributionHeader {
     align-items: stretch;
     flex-direction: column;
   }
 
   .alertsToolbarActions :global(.ant-input-affix-wrapper) {
     width: min(100%, 360px);
-  }
-
-  .alertsLastUpdated {
-    align-self: flex-end;
   }
 
   .editor {
@@ -690,15 +674,14 @@
     margin-left: -12px;
   }
 
-  .alertsToolbarActions,
-  .alertsRangeControls {
+  .alertsToolbarActions {
     align-items: stretch;
     flex-direction: column;
   }
 
   .alertsToolbarActions :global(.ant-input-affix-wrapper),
   .alertsToolbarActions :global(.ant-btn),
-  .alertsRangeControls :global(.ant-picker) {
+  .alertsHistoryTimeSelector {
     width: 100%;
   }
 
@@ -713,10 +696,6 @@
 
   .alertsSeveritySummary {
     align-items: flex-start;
-  }
-
-  .alertsLastUpdated {
-    align-self: flex-start;
   }
 
   .editor :global(.ant-form-item-row) {
