@@ -1,12 +1,24 @@
-# OpenAPI 统一网关 · 外部服务接入指南
+# OpenAPI 统一网关 · 接入指南
 
-面向把一个已有 HTTP 服务（ITSM、审批系统、第三方 API 等）接入 BK-Lite 统一网关的**平台运维**与**被接入方开发**。
+BK-Lite 统一网关把对外 API 收口到 `https://<平台地址>/openapi/v1/<服务名>/*`：调用方只面对一个入口、一种凭据，认证 / 审计 / 限流由网关统一承担。
 
-接入后的效果：调用方只面对 `https://<平台地址>/openapi/v1/<服务名>/*` 一个入口、一种凭据，认证 / 审计 / 限流由网关统一承担；被接入服务不需要自建认证。
+接入分两条路径，按被接入方形态选择：
 
-> 设计依据与契约冻结清单见 `specs/changes/openapi-unified-gateway/design.md`。
+| 路径 | 适用 | 面向 | 章节 |
+| --- | --- | --- | --- |
+| **外部服务接入** | 独立部署的 HTTP 服务（ITSM、审批系统、第三方 / 内网 API） | 平台运维 + 被接入方开发 | 第 1–7 节 |
+| **内部接口接入** | BK-Lite 自身各应用（cmdb、monitor、patch_mgmt…）的已有函数 | bk-lite 后端开发 | 第 8 节 |
+
+两者的对外契约一致（同一入口、同一凭据、同一错误码），差别只在注册方式：外部服务写 NATS KV（秒级生效、不发版），内部接口用装饰器声明（随版本发布）。
+
+> 设计依据与契约冻结清单见 `specs/changes/openapi-unified-gateway/design.md`；
+> 内部接入的代码级说明另见 `server/apps/core/openapi/README.md`。
 
 ---
+
+---
+
+# 第一部分 · 外部服务接入
 
 ## 1. 接入前置条件
 
@@ -281,6 +293,143 @@ wxc openapi list                      # 确认状态
 ```
 
 变更 `base_url` / `paths` / 限流：改条目重新 `register` 即可，秒级生效，无需发版或重启。
+
+---
+
+---
+
+# 第二部分 · 内部接口接入
+
+## 8. 内部接口接入规范
+
+把 BK-Lite 某个应用的已有函数暴露为对外 API。与外部服务不同，内部接口的暴露是
+**代码级声明**：随版本发布，受编译期（启动期）校验与 CI 门禁约束。
+
+### 8.1 基本原则
+
+1. **默认全关，显式 opt-in**：未声明 `@openapi_expose` 的函数一律不可经网关调用（返回 404）。不存在"批量暴露"开关。
+2. **fail-closed**：契约声明不完整时**在 server 启动阶段直接报错**（`ImproperlyConfigured`），不会带病上线。
+3. **schema 即契约**：对外暴露的字段名与类型一经发布即冻结，内部重构不得波及。
+4. **暴露 ≠ 免鉴权**：网关只解决"谁在调用"，数据可见范围仍由函数自身的组织过滤逻辑负责——这是暴露方的责任，见 8.5。
+
+### 8.2 四步接入
+
+**① 写暴露专用 serializer**（`apps/<app>/openapi_serializers.py`）
+
+```python
+from rest_framework import serializers
+from apps.core.openapi.serializers import PaginatedRequestSerializer
+
+class ModuleDataQuerySerializer(PaginatedRequestSerializer):
+    module = serializers.ChoiceField(choices=["patch_target"])
+    group_id = serializers.IntegerField(min_value=1)
+```
+
+- **禁止复用内部业务 serializer**：内部迭代改字段会静默破坏对外契约；
+- 禁止 `fields = "__all__"`：新增字段会意外外泄；
+- 基类已内建：未知字段拒绝（客户端身份字段无从混入）、分页钳制（`page` 1-based、`page_size` 默认 20 / 上限 500、越限钳制而非报错）。
+
+**② 叠加装饰器**（与 `@nats_client.register` 共存，不影响原有 NATS 调用）
+
+```python
+@nats_client.register
+@openapi_expose(
+    path="patch-mgmt/module-data",     # service/sub-path，发布后永久固定
+    method="GET",                       # GET 走 query string；写方法走 JSON body
+    schema=ModuleDataQuerySerializer,   # 必填
+    inject="team_list",                 # 或 "user_info"，见 8.3
+    permission="patch_mgmt-View",       # 可选；声明时必须同时给 permission_app
+    permission_app="patch",
+    summary="…（须写明组织口径：是否级联子组织）",
+)
+def get_patch_mgmt_module_data(module, child_module, page, page_size, group_id, *, team=None):
+    ...
+```
+
+其余可选参数：`param_map`（schema 字段 → 函数形参的显式映射，用于内部重命名形参而不动契约）、`team_free`（见 8.4）。
+
+**③ 写双租户测试并登记**（合并的硬性门禁）
+
+用 `apps/core/openapi/testing.py` 的基建构造两个组织身份，断言读隔离与写归属，然后登记到 `apps/core/openapi/tests/tenant_coverage.py`：
+
+```python
+TENANT_ISOLATION_COVERAGE = {
+    "patch-mgmt/module-data": [
+        "apps.core.openapi.tests.test_gateway::test_tenant_cannot_read_other_org",
+    ],
+}
+```
+
+未登记或引用失效时 `test_governance.py` 失败，**CI 拒绝合并**。
+
+**④ 过命名与契约评审**（见 8.6 checklist）
+
+### 8.3 两种身份注入协议
+
+按被暴露函数**已有的**组织参数形态选择，无需改造函数：
+
+| `inject` | 函数期待 | 网关注入 | 语义 |
+| --- | --- | --- | --- |
+| `team_list` | `*, team=None` | API 令牌 → `[绑定组织]`；JWT → 用户全部直属组织 | 函数按注入集合做精确成员校验（**不级联**子组织） |
+| `user_info` | `user_info=None` | 仅注入 `{user, domain}`；组织锚点为业务参数 | 函数自查 `group_list` 并**级联展开**子组织 |
+
+两点必须写进 `summary` 并对调用方讲清：
+
+- **可见范围口径不同**：同一用户经两类接口能看到的组织范围可能不同（历史实现差异，非有意的权限模型）；
+- **锚点式的锚点必须是调用者的直属组织**：传入真实存在但非直属的子组织 id 会**静默返回空结果**而非报错。
+
+API 令牌为单组织收窄凭据：锚点式下网关**强制覆盖**客户端传入的锚点为令牌绑定组织。
+
+### 8.4 `team_free` 的适用与约束
+
+仅用于**不含任何组织维度数据**的公共元信息接口（如枚举字典、版本信息）。声明后网关不注入任何组织上下文，因此：
+
+- 必须附带"响应不含组织相关字段"的断言测试；
+- 须经 CODEOWNERS 安全评审签字；
+- 审计日志对此类调用打标。
+
+`team_free=True` 与 `inject` 互斥（同时声明会启动报错）。
+
+### 8.5 暴露方的数据域责任（最容易出事的一条）
+
+网关能保证"注入的身份不可伪造"，**不能保证"函数用了这个身份"**。一个签名完全合规、却在函数体里 `Model.objects.all()` 的函数，会安静地跨租户泄漏数据——请求返回 200，无任何报错。
+
+因此：
+
+- 每条查询必须经过组织过滤（`build_json_membership_query` 等既有 helper），写操作必须校验目标对象归属；
+- 越权应返回明确拒绝（网关会将组织越权类软错误映射为 `403 TEAM_OUT_OF_SCOPE`）；
+- **双租户测试是唯一能验证"注入被真正使用"的手段**，故列为准入门槛而非建议。
+
+### 8.6 评审 checklist
+
+`@openapi_expose` 与暴露 serializer 的任何变更须经 API 设计责任人评审：
+
+- [ ] schema 字段命名与全平台一致（组织概念统一字段名，不把内部 NATS 字段名直接透传为对外契约）；
+- [ ] 每条查询经过组织过滤，写操作校验目标归属；
+- [ ] 已发布字段未被改名 / 收紧 / 删除——**破坏性变更必须以新 path（或新版本段）发布**；请求 schema 只能新增可选字段，响应只能新增字段；
+- [ ] 函数短耗时、强制分页；长任务已拆为「提交 + 查询」两个接口；
+- [ ] 双租户测试已登记；`team_free` 有豁免理由与断言测试；
+- [ ] `summary` 写明组织口径。
+
+### 8.7 发布后不可变的契约面
+
+以下一经发布即冻结（详见设计文档第 8 章冻结清单）：`path` 字符串、serializer 字段名与类型、响应结构、`inject` 形状与组织口径、错误码语义。内部实现（函数名、形参名、内部 serializer、调用链）可自由重构——前提是经 `param_map` 与暴露专用 serializer 与契约解耦。
+
+### 8.8 自检与排查
+
+```bash
+# 已暴露的内部端点清单（含 schema 内省）
+curl -sk -H "Authorization: Bearer $TOKEN" $BASE/openapi/v1/_docs | jq '.data.services[] | select(.kind=="internal")'
+```
+
+| 现象 | 原因 |
+| --- | --- |
+| server 启动即报 `ImproperlyConfigured` | 装饰器声明不完整：缺 schema / 缺 inject / 身份参数缺失 / path 非法 / 重复注册。错误信息直指函数名与缺失项 |
+| 调用返回 404 | 该函数未声明 `@openapi_expose`，或 path / method 不匹配 |
+| 返回 400 `SCHEMA_INVALID` | 请求含 schema 未声明的字段（含试图传 `team`、`user_info` 等身份字段——设计如此） |
+| 返回 403 `PERM_MISSING` | 未满足装饰器声明的 `permission` |
+| 返回 403 `TEAM_OUT_OF_SCOPE` | 业务组织参数越出注入的授权集合 |
+| CI 报未登记双租户测试 | 补测试并登记到 `tenant_coverage.py` |
 
 ---
 
