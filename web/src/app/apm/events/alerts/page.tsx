@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BellOutlined,
   CheckOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
@@ -374,121 +373,122 @@ export default function ApmAlertsPage() {
           ]}
         />
 
-        <section className={styles.alertsToolbar} aria-labelledby="apm-alerts-title">
-          <div className={styles.alertsToolbarTitle}>
-            <BellOutlined aria-hidden="true" />
-            <h2 id="apm-alerts-title">告警</h2>
-          </div>
-          <div className={styles.alertsToolbarActions}>
-            <Input
-              allowClear
-              aria-label="搜索告警"
-              placeholder="搜索告警标题 / 服务 / 规则"
-              prefix={<SearchOutlined aria-hidden="true" />}
-              value={keyword}
-              onChange={(event) => {
-                const value = event.target.value;
-                setKeyword(value);
-                if (!value) setSubmittedKeyword('');
-              }}
-              onPressEnter={() => setSubmittedKeyword(keyword.trim())}
-            />
-            {activeTab === 'history' ? (
-              <TimeSelector
-                className={styles.alertsHistoryTimeSelector}
-                defaultValue={HISTORY_TIME_DEFAULT}
-                onlyTimeSelect
-                onChange={(values) => {
-                  if (values.length === 2) {
-                    setHistoryTimeRange([values[0], values[1]]);
-                  }
-                }}
-              />
-            ) : null}
-            <Button icon={<ReloadOutlined />} loading={isRefreshing} onClick={load}>
-              刷新
-            </Button>
-          </div>
-        </section>
-
-        <section className={styles.alertsDistribution} aria-label="告警分布">
-          <div className={styles.alertsDistributionHeader}>
-            <Typography.Text strong>{activeTab === 'active' ? '活跃告警分布' : '历史告警分布'}</Typography.Text>
-            <div className={styles.alertsSeveritySummary} aria-label="三级告警数量">
-              <Typography.Text type="secondary">级别：</Typography.Text>
-              <Tag color={ALERT_LEVEL_COLORS.critical}>严重 {distributionTotals.critical}</Tag>
-              <Tag color={ALERT_LEVEL_COLORS.error}>错误 {distributionTotals.error}</Tag>
-              <Tag color={ALERT_LEVEL_COLORS.warning}>警告 {distributionTotals.warning}</Tag>
+        <section className={styles.alertsContent} aria-label="告警工作区">
+          <section className={styles.alertsToolbar} aria-labelledby="apm-alerts-filter-title">
+            <div className={styles.alertsToolbarTitle}>
+              <h2 id="apm-alerts-filter-title">搜索条件</h2>
             </div>
-          </div>
-          <div
-            className={styles.alertsDistributionChart}
-            role="img"
-            aria-label={`${activeTab === 'active' ? '活跃' : '历史'}告警事件分布，按严重、错误、警告分组`}
-          >
-            <TimeSeriesComposedChart
-              data={distribution}
-              xDataKey="time"
-              getXLabel={(item) => dayjs(String(item.time)).format(activeTab === 'history' ? 'MM-DD' : 'HH:mm')}
-              series={[
-                {
-                  name: '严重',
-                  type: 'bar',
-                  dataKey: 'critical',
-                  color: ALERT_LEVEL_COLORS.critical,
-                  stack: 'severity',
-                  barGradient: false,
-                  barMaxWidth: 32,
-                  barBorderRadius: [0, 0, 0, 0],
-                },
-                {
-                  name: '错误',
-                  type: 'bar',
-                  dataKey: 'error',
-                  color: ALERT_LEVEL_COLORS.error,
-                  stack: 'severity',
-                  barGradient: false,
-                  barMaxWidth: 32,
-                  barBorderRadius: [0, 0, 0, 0],
-                },
-                {
-                  name: '警告',
-                  type: 'bar',
-                  dataKey: 'warning',
-                  color: ALERT_LEVEL_COLORS.warning,
-                  stack: 'severity',
-                  barGradient: false,
-                  barMaxWidth: 32,
-                  barBorderRadius: [3, 3, 0, 0],
-                },
-              ]}
-            />
-          </div>
-        </section>
+            <div className={styles.alertsToolbarActions}>
+              <Input
+                allowClear
+                aria-label="搜索告警"
+                placeholder="搜索告警标题 / 服务 / 规则"
+                prefix={<SearchOutlined aria-hidden="true" />}
+                value={keyword}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setKeyword(value);
+                  if (!value) setSubmittedKeyword('');
+                }}
+                onPressEnter={() => setSubmittedKeyword(keyword.trim())}
+              />
+              {activeTab === 'history' ? (
+                <TimeSelector
+                  className={styles.alertsHistoryTimeSelector}
+                  defaultValue={HISTORY_TIME_DEFAULT}
+                  onlyTimeSelect
+                  onChange={(values) => {
+                    if (values.length === 2) {
+                      setHistoryTimeRange([values[0], values[1]]);
+                    }
+                  }}
+                />
+              ) : null}
+              <Button icon={<ReloadOutlined />} loading={isRefreshing} onClick={load}>
+                刷新
+              </Button>
+            </div>
+          </section>
 
-        <section className={styles.alertsTableSection} aria-label="告警列表">
-          {state === 'ready' && alerts.length ? (
-            <ApmDataTable
-              rowKey="id"
-              columns={columns}
-              dataSource={alerts}
-              pagination={{ pageSize: 20 }}
-              onRow={(item) => ({
-                className: 'cursor-pointer',
-                tabIndex: 0,
-                onClick: () => openDrawer(item),
-                onKeyDown: (event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    openDrawer(item);
-                  }
-                },
-              })}
-              scroll={{ x: 1248 }}
-            />
-          ) : (
-            <CatalogState kind={state === 'ready' ? 'empty' : state} onRetry={load} />
-          )}
+          <section className={styles.alertsDistribution} aria-label="告警分布">
+            <div className={styles.alertsDistributionHeader}>
+              <Typography.Text strong>{activeTab === 'active' ? '活跃告警分布' : '历史告警分布'}</Typography.Text>
+              <div className={styles.alertsSeveritySummary} aria-label="三级告警数量">
+                <Typography.Text type="secondary">级别：</Typography.Text>
+                <Tag color={ALERT_LEVEL_COLORS.critical}>严重 {distributionTotals.critical}</Tag>
+                <Tag color={ALERT_LEVEL_COLORS.error}>错误 {distributionTotals.error}</Tag>
+                <Tag color={ALERT_LEVEL_COLORS.warning}>警告 {distributionTotals.warning}</Tag>
+              </div>
+            </div>
+            <div
+              className={styles.alertsDistributionChart}
+              role="img"
+              aria-label={`${activeTab === 'active' ? '活跃' : '历史'}告警事件分布，按严重、错误、警告分组`}
+            >
+              <TimeSeriesComposedChart
+                data={distribution}
+                xDataKey="time"
+                getXLabel={(item) => dayjs(String(item.time)).format('YYYY-MM-DD HH:mm')}
+                series={[
+                  {
+                    name: '严重',
+                    type: 'bar',
+                    dataKey: 'critical',
+                    color: ALERT_LEVEL_COLORS.critical,
+                    stack: 'severity',
+                    barGradient: false,
+                    barMaxWidth: 32,
+                    barBorderRadius: [0, 0, 0, 0],
+                  },
+                  {
+                    name: '错误',
+                    type: 'bar',
+                    dataKey: 'error',
+                    color: ALERT_LEVEL_COLORS.error,
+                    stack: 'severity',
+                    barGradient: false,
+                    barMaxWidth: 32,
+                    barBorderRadius: [0, 0, 0, 0],
+                  },
+                  {
+                    name: '警告',
+                    type: 'bar',
+                    dataKey: 'warning',
+                    color: ALERT_LEVEL_COLORS.warning,
+                    stack: 'severity',
+                    barGradient: false,
+                    barMaxWidth: 32,
+                    barBorderRadius: [3, 3, 0, 0],
+                  },
+                ]}
+              />
+            </div>
+          </section>
+
+          <section className={styles.alertsTableSection} aria-label="告警列表">
+            {state === 'ready' && alerts.length ? (
+              <ApmDataTable
+                rowKey="id"
+                columns={columns}
+                dataSource={alerts}
+                pagination={{ pageSize: 20 }}
+                onRow={(item) => ({
+                  className: 'cursor-pointer',
+                  tabIndex: 0,
+                  onClick: () => openDrawer(item),
+                  onKeyDown: (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openDrawer(item);
+                    }
+                  },
+                })}
+                scroll={{ x: 1248 }}
+              />
+            ) : (
+              <CatalogState kind={state === 'ready' ? 'empty' : state} onRetry={load} />
+            )}
+          </section>
         </section>
       </div>
       <Drawer

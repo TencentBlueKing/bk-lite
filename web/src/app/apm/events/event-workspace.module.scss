@@ -86,9 +86,7 @@
   margin-bottom: 0;
 }
 
-.alertsToolbar,
-.alertsDistribution,
-.alertsTableSection {
+.alertsContent {
   overflow: hidden;
   background: var(--color-bg-1);
   border: 1px solid var(--color-border-1);
@@ -98,11 +96,11 @@
 .alertsToolbar {
   display: flex;
   min-height: 64px;
-  align-items: center;
-  justify-content: space-between;
+  align-items: stretch;
+  flex-direction: column;
   padding: 12px 16px;
-  margin-bottom: 16px;
-  gap: 16px;
+  border-bottom: 1px solid var(--color-border-1);
+  gap: 12px;
 }
 
 .alertsToolbarTitle,
@@ -118,11 +116,6 @@
   gap: 10px;
 }
 
-.alertsToolbarTitle > :global(.anticon) {
-  color: var(--color-primary);
-  font-size: 18px;
-}
-
 .alertsToolbarTitle h2 {
   margin: 0;
   font-size: 16px;
@@ -131,11 +124,14 @@
 }
 
 .alertsToolbarActions {
+  width: 100%;
+  justify-content: flex-end;
   gap: 8px;
 }
 
 .alertsToolbarActions :global(.ant-input-affix-wrapper) {
   width: 320px;
+  margin-right: auto;
 }
 
 .alertsHistoryTimeSelector {
@@ -149,7 +145,7 @@
 
 .alertsDistribution {
   padding: 14px 16px 12px;
-  margin-bottom: 16px;
+  border-bottom: 1px solid var(--color-border-1);
 }
 
 .alertsDistributionHeader {

@@ -134,7 +134,11 @@ describe('APM Alert 与 Event Snapshot', () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmAlertsPage />);
     expect(await screen.findByText('checkout 错误率升高')).not.toBeNull();
-    expect(screen.getByRole('heading', { name: '告警' })).not.toBeNull();
+    expect(screen.getByRole('heading', { name: '搜索条件' })).not.toBeNull();
+    const alertWorkspace = screen.getByRole('region', { name: '告警工作区' });
+    expect(alertWorkspace.contains(screen.getByLabelText('搜索告警'))).toBe(true);
+    expect(alertWorkspace.contains(screen.getByLabelText('告警分布'))).toBe(true);
+    expect(alertWorkspace.contains(screen.getByLabelText('告警列表'))).toBe(true);
     expect(screen.getByText('活跃告警分布')).not.toBeNull();
     expect(screen.queryByText('自动刷新')).toBeNull();
     expect(screen.queryByText('最近7天')).toBeNull();
@@ -142,6 +146,10 @@ describe('APM Alert 与 Event Snapshot', () => {
     const distributionSeries = chartRender.mock.calls.find(
       ([props]) => props.series[0]?.name === '严重',
     )?.[0].series;
+    const distributionLabel = chartRender.mock.calls.find(
+      ([props]) => props.series[0]?.name === '严重',
+    )?.[0].getXLabel({ time: '2026-08-17T16:41:03Z' });
+    expect(distributionLabel).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
     expect(distributionSeries).toEqual([
       expect.objectContaining({ color: '#F43B2C', stack: 'severity', barGradient: false }),
       expect.objectContaining({ color: '#D97007', stack: 'severity', barGradient: false }),
