@@ -1,7 +1,7 @@
 """智能体 usage_team 与渠道发布核心行为测试。"""
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -390,6 +390,157 @@ class TestSkillConversationHistory:
         assert conv.title == f"{long_msg[:50]}..."
         reused = get_or_create_conversation(platform, "u@domain.com", session_id="shared-1")
         assert reused.id == conv.id
+
+
+class TestPublishedWebSkillApis:
+    def test_lists_unique_web_skills_for_current_team(self):
+        skill = _skill(name="web-skill", usage_team=[1])
+        SkillChannel.objects.create(
+            skill=skill,
+            channel_type=SkillChannelChoices.WEB_CHAT,
+            enabled=True,
+            usage_team=[1],
+            name="w-a",
+        )
+        SkillChannel.objects.create(
+            skill=skill,
+            channel_type=SkillChannelChoices.WEB_CHAT,
+            enabled=True,
+            usage_team=[1],
+            name="w-b",
+        )
+        other = _skill(name="other-skill", team=[2], usage_team=[2])
+        SkillChannel.objects.create(
+            skill=other,
+            channel_type=SkillChannelChoices.WEB_CHAT,
+            enabled=True,
+            usage_team=[2],
+        )
+        factory = APIRequestFactory()
+        user = _superuser("web_skill_su")
+        request = factory.get("/skill_channel/web_skills/")
+        request.user = user
+        request.COOKIES["current_team"] = "1"
+        resp = opspilot_views.list_published_web_skills(request)
+        assert resp.status_code == 200
+        data = json.loads(resp.content)["data"]
+        ids = [row["id"] for row in data]
+        assert ids.count(skill.id) == 1
+        assert other.id not in ids
+
+    def test_agui_chat_loads_skill_and_truncates_history(self):
+        skill = _skill(name="agui-skill", usage_team=[1], conversation_window_size=2)
+        SkillChannel.objects.create(
+            skill=skill,
+            channel_type=SkillChannelChoices.WEB_CHAT,
+            enabled=True,
+            usage_team=[1],
+        )
+        factory = APIRequestFactory()
+        user = _superuser("agui_su")
+        history = [{"event": "user", "message": f"m{i}"} for i in range(5)]
+        request = factory.post(
+            f"/skill_channel/skill/{skill.id}/chat/",
+            {
+                "user_message": "最新问题",
+                "chat_history": history,
+                "conversation_window_size": 99,
+                "llm_model": 999,
+                "tools": [{"name": "should_ignore"}],
+            },
+            format="json",
+        )
+        request.user = user
+        request.COOKIES["current_team"] = "1"
+        with patch("apps.opspilot.views.stream_agui_chat") as mock_stream:
+            from django.http import StreamingHttpResponse
+
+            mock_stream.return_value = StreamingHttpResponse(iter([b"data: ok\n\n"]), content_type="text/event-stream")
+            with patch(
+                "apps.opspilot.views.capture_caller_identity",
+                return_value={"username": user.username, "domain": user.domain, "group": 1},
+            ):
+                resp = opspilot_views.execute_published_web_skill_chat(request, skill.id)
+            assert resp.status_code == 200
+            mock_stream.assert_called_once()
+            params = mock_stream.call_args.args[0]
+        assert params["conversation_window_size"] == 2
+        assert [item["message"] for item in params["chat_history"]] == ["m3", "m4"]
+        assert params["user_message"] == "最新问题"
+        assert params["skill_id"] == skill.id
+        assert params.get("llm_model") != 999
+        assert params.get("tools") != [{"name": "should_ignore"}]
+
+    def test_agui_chat_rejects_unpublished_or_other_team(self):
+        skill = _skill(usage_team=[2])
+        SkillChannel.objects.create(
+            skill=skill,
+            channel_type=SkillChannelChoices.WEB_CHAT,
+            enabled=True,
+            usage_team=[2],
+        )
+        factory = APIRequestFactory()
+        user = _superuser("agui_denied")
+        request = factory.post(
+            f"/skill_channel/skill/{skill.id}/chat/",
+            {"user_message": "hi", "chat_history": []},
+            format="json",
+        )
+        request.user = user
+        request.COOKIES["current_team"] = "1"
+        resp = opspilot_views.execute_published_web_skill_chat(request, skill.id)
+        chunks = []
+        try:
+            for piece in resp.streaming_content:
+                chunks.append(piece if isinstance(piece, (bytes, bytearray)) else str(piece).encode())
+        except TypeError:
+            assert resp["Content-Type"].startswith("text/event-stream")
+            return
+        content = b"".join(chunks).decode()
+        assert "无权" in content or "未发布" in content
+
+    def test_skill_approval_and_choice_allow_local_agui_nodes(self):
+        from types import SimpleNamespace
+
+        factory = APIRequestFactory()
+        user = SimpleNamespace(username="alice", domain="d", team=1, locale="en")
+        qs_mock = MagicMock()
+        qs_mock.order_by.return_value.first.return_value = None
+        qs_mock.exists.return_value = False
+        with (
+            patch.object(opspilot_views, "validate_openai_token", return_value=(True, user)),
+            patch.object(opspilot_views, "extract_api_token", return_value="tok"),
+            patch.object(opspilot_views.WorkFlowTaskResult.objects, "filter", return_value=qs_mock),
+            patch("apps.opspilot.services.approval.submit_approval_decision") as submit_approval,
+            patch("apps.opspilot.utils.user_choice.submit_user_choice") as submit_choice,
+            patch.object(opspilot_views, "request_interrupt") as interrupt,
+        ):
+            approval_req = factory.post(
+                "/bot_mgmt/submit_approval/",
+                {"execution_id": "exec-skill", "node_id": "skill_test", "tool_call_id": "t1", "decision": "approve"},
+                format="json",
+            )
+            approval_resp = opspilot_views.submit_approval(approval_req)
+            assert approval_resp.status_code == 200
+            submit_approval.assert_called_once()
+
+            choice_req = factory.post(
+                "/bot_mgmt/submit_choice/",
+                {"execution_id": "exec-skill", "node_id": "skill_test", "choice_id": "c1", "selected": ["opt1"]},
+                format="json",
+            )
+            choice_resp = opspilot_views.submit_choice(choice_req)
+            assert choice_resp.status_code == 200
+            submit_choice.assert_called_once()
+
+            interrupt_req = factory.post(
+                "/bot_mgmt/interrupt_chat_flow_execution/",
+                {"execution_id": "exec-skill", "reason": "user_manual"},
+                format="json",
+            )
+            interrupt_resp = opspilot_views.interrupt_chat_flow_execution(interrupt_req)
+            assert interrupt_resp.status_code == 200
+            interrupt.assert_called_once()
 
 
 class TestSyncHelper:

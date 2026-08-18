@@ -170,6 +170,16 @@ urlpatterns += [
         name="list_web_chat_skill_channels",
     ),
     path(
+        r"skill_channel/web_skills/",
+        views.list_published_web_skills,
+        name="list_published_web_skills",
+    ),
+    path(
+        r"skill_channel/skill/<int:skill_id>/chat/",
+        views.execute_published_web_skill_chat,
+        name="execute_published_web_skill_chat",
+    ),
+    path(
         r"skill_channel/conversations/",
         views.list_skill_channel_conversations,
         name="list_skill_channel_conversations",

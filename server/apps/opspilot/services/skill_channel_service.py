@@ -69,3 +69,20 @@ def platform_channels_for_team(team_id, group_list=None):
 def web_chat_channels_for_team(team_id, group_list=None):
     """当前组织有权使用的已启用 Web 对话渠道。"""
     return saas_channels_for_team(team_id, group_list, {SkillChannelChoices.WEB_CHAT})
+
+
+def published_web_skills_for_team(team_id, group_list=None):
+    """当前组织可用的已发布 Web 智能体（按 skill_id 去重）。"""
+    skills = []
+    seen = set()
+    for channel in web_chat_channels_for_team(team_id, group_list):
+        if channel.skill_id in seen or channel.skill_id is None:
+            continue
+        seen.add(channel.skill_id)
+        skills.append(channel.skill)
+    return skills
+
+
+def published_web_channel_for_skill(skill_id, team_id, group_list=None):
+    """当前组织下某智能体的一条已启用 Web 渠道；没有则 None。"""
+    return web_chat_channels_for_team(team_id, group_list).filter(skill_id=skill_id).first()

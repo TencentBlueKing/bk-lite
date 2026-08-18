@@ -36,18 +36,28 @@ from apps.opspilot.services.skill_channel_chat_service import (
     SkillChannelChatError,
     assert_org_access,
     authenticate_embedded,
+    build_skill_chat_params,
     delete_skill_session,
     get_enabled_channel,
     get_skill_session_messages,
     list_skill_conversations_for_user,
+    normalize_client_chat_history,
     saas_external_user_id,
+    split_user_message_and_history,
     stream_skill_channel_chat,
+    truncate_chat_history,
 )
-from apps.opspilot.services.skill_channel_service import platform_channels_for_team, web_chat_channels_for_team
+from apps.opspilot.services.skill_channel_service import (
+    platform_channels_for_team,
+    published_web_channel_for_skill,
+    published_web_skills_for_team,
+    web_chat_channels_for_team,
+)
 from apps.opspilot.services.skill_execute_service import SkillExecuteService
 from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 from apps.opspilot.services.workflow_attachment_service import resolve_signed_attachment_token
 from apps.opspilot.tasks import chat_flow_test_execute_task
+from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
@@ -57,6 +67,9 @@ from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import User
+
+# 智能体 / AGUI 本地会话没有 WorkFlowTaskResult；与 request_user_choice 默认 node_id 对齐。
+LOCAL_SKILL_HITL_NODES = frozenset({"skill_test", "deep_agent"})
 
 
 def parse_json_body(request, default=None):
@@ -557,7 +570,9 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
                 thread_sensitive=False,
             )()
             if web_session is not None and not web_session.is_participant(user):
-                return JsonResponse({"result": False, "message": loader.get("error.session_not_participant", "当前用户不在该会话的干系人列表中")}, status=403)
+                return JsonResponse(
+                    {"result": False, "message": loader.get("error.session_not_participant", "当前用户不在该会话的干系人列表中")}, status=403
+                )
 
             delivered = await sync_to_async(try_deliver_to_pending, thread_sensitive=False)(bot_id, session_id, message)
             if delivered:
@@ -655,9 +670,21 @@ def interrupt_chat_flow_execution(request):  # pragma: no cover
         .first()
     )
     if not task_result:
+        if WorkFlowTaskResult.objects.filter(execution_id=execution_id).exists():
+            return JsonResponse(
+                {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
+                status=404,
+            )
+        request_interrupt(execution_id, reason=validated["reason"])
         return JsonResponse(
-            {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
-            status=404,
+            {
+                "result": True,
+                "data": {
+                    "execution_id": execution_id,
+                    "status": WorkFlowTaskStatus.INTERRUPTED,
+                    "interrupt_requested": True,
+                },
+            }
         )
 
     request_interrupt(execution_id, reason=validated["reason"])
@@ -724,9 +751,16 @@ def submit_approval(request):  # pragma: no cover
         .first()
     )
     if not task_result:
-        return JsonResponse(
-            {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
-            status=404,
+        if node_id not in LOCAL_SKILL_HITL_NODES or WorkFlowTaskResult.objects.filter(execution_id=execution_id).exists():
+            return JsonResponse(
+                {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
+                status=404,
+            )
+        logger.warning(
+            "Local skill/AGUI approval submitted without workflow task result: execution_id=%s, node_id=%s, tool_call_id=%s",
+            execution_id,
+            node_id,
+            tool_call_id,
         )
 
     from apps.opspilot.services.approval import submit_approval_decision
@@ -791,8 +825,7 @@ def submit_choice(request):  # pragma: no cover
     if not task_result:
         # 技能调试 / AGUI DeepAgent 本地会话没有 WorkFlowTaskResult；
         # 与 request_user_choice、ask_limit_continue 默认 node_id 对齐后放行。
-        local_choice_nodes = {"skill_test", "deep_agent"}
-        if node_id not in local_choice_nodes:
+        if node_id not in LOCAL_SKILL_HITL_NODES:
             return JsonResponse(
                 {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
                 status=404,
@@ -988,6 +1021,67 @@ def list_web_chat_skill_channels(request):
     group_list = getattr(request.user, "group_list", None) or []
     qs = web_chat_channels_for_team(current_team, group_list)
     return JsonResponse({"result": True, "data": _serialize_saas_skill_channels(qs)})
+
+
+def _serialize_published_web_skills(skills):
+    return [
+        {
+            "id": skill.id,
+            "name": skill.name,
+            "introduction": getattr(skill, "introduction", "") or "",
+            "conversation_window_size": skill.conversation_window_size,
+        }
+        for skill in skills
+    ]
+
+
+def list_published_web_skills(request):
+    """当前组可用的已发布 Web 智能体列表（按 skill_id，使用组包含当前组）。"""
+    if not getattr(request, "user", None) or not request.user.is_authenticated:
+        return JsonResponse({"result": False, "message": "未登录"}, status=401)
+    current_team = request.COOKIES.get("current_team") or get_current_team(request) or "0"
+    group_list = getattr(request.user, "group_list", None) or []
+    skills = published_web_skills_for_team(current_team, group_list)
+    return JsonResponse({"result": True, "data": _serialize_published_web_skills(skills)})
+
+
+def execute_published_web_skill_chat(request, skill_id):
+    """已发布 Web 智能体 AGUI 流式对话：只传 skill_id 与对话历史，参数与窗口由服务端读取并截断。"""
+    if not getattr(request, "user", None) or not request.user.is_authenticated:
+        return create_error_stream_response("未登录")
+    kwargs, parse_error = parse_json_body(request)
+    if parse_error:
+        return create_error_stream_response(parse_error)
+    current_team = request.COOKIES.get("current_team") or get_current_team(request) or "0"
+    group_list = getattr(request.user, "group_list", None) or []
+    try:
+        channel = published_web_channel_for_skill(skill_id, current_team, group_list)
+        if not channel:
+            raise SkillChannelChatError("当前组织无权使用该智能体或未发布 Web 渠道", status=403)
+        skill = channel.skill
+        history = normalize_client_chat_history((kwargs or {}).get("chat_history"))
+        user_message, history = split_user_message_and_history(
+            (kwargs or {}).get("user_message") or (kwargs or {}).get("message"),
+            history,
+        )
+        window = skill.conversation_window_size or 10
+        history = truncate_chat_history(history, window)
+        params = build_skill_chat_params(skill, user_message, request.user)
+        params["chat_history"] = history
+        params["conversation_window_size"] = window
+        params["browser_use_force_task"] = True
+        params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, request.user)
+    except SkillChannelChatError as e:
+        return create_error_stream_response(e.message)
+    except CallerIdentityError as e:
+        return create_error_stream_response(str(e))
+
+    current_ip = request.META.get("HTTP_X_FORWARDED_FOR")
+    if current_ip:
+        current_ip = current_ip.split(",")[0].strip()
+    else:
+        current_ip = request.META.get("REMOTE_ADDR", "")
+    return stream_agui_chat(params, skill.name, {}, current_ip, user_message, skill_id=skill.id)
 
 
 def _require_login_and_web_channel(request):

@@ -5,7 +5,7 @@ Status: in-progress
 ## Completion Evidence
 
 - Worktree: `.claude/worktrees/opspilot-skill-channel-publish`（分支 `feat/opspilot-skill-channel-publish`）
-- 后端：LLMSkill.`usage_team`、SkillChannel/会话模型与 migration `0071_skill_usage_team_and_channels`、渠道 CRUD、平台/Web 列表、登录态/嵌入式 SSE、四类 IM 完整协议
+- 后端：LLMSkill.`usage_team`、SkillChannel/会话模型与 migration `0071_skill_usage_team_and_channels`、渠道 CRUD、平台/Web 渠道列表、已发布 Web 智能体列表、按 skill_id 的 AGUI 对话、登录态/嵌入式 SSE、四类 IM 完整协议
 - Worktree 已对齐 `origin/master`（`badd1b959`）后重新生成 migration
 - 前端：智能体详情「渠道发布」页、Web 独立对话页 `/opspilot/skill/chat`（服务端历史 + 通道 Tag）、API 客户端
 - 测试：`test_skill_channel_publish*.py`、`test_skill_channel_aibot.py`、`test_skill_channel_wechat*.py`、`test_skill_channel_dingtalk.py`
@@ -44,7 +44,8 @@ Status: in-progress
 - 配置活引用：渠道绑定不快照 prompt / 模型 / 工具；执行时读当前智能体配置。「发布」职责是开通或更新绑定、写入组副本、启停与对外入口，不是冻结版本。
 - 企微 / 钉钉 / 公众号的配置字段与协议复用现有 Bot/ChatFlow 对应入口节点 schema；执行层复用或薄封装现有渠道 utils，对话内核改为智能体单 Agent，不假造 ChatFlow 节点。
 - 嵌入式：请求携带固定智能体 ID 与渠道绑定 ID；用现有 `UserAPISecret`（`Api-Authorization`）解析调用方用户与绑定 team，再要求该 team 属于该渠道组副本。渠道绑定不保存、不关联具体 Secret 主键。第一版不做 Origin/域名白名单。
-- 平台本侧交付：当前用户有权限的平台渠道列表接口 + SSE 对话请求接口。悬浮机器人 UI / 多智能体选择壳不在本变更实现，但必须能消费上述契约。Web 为 SaaS 登录下的独立对话路由页，复用同一套登录态对话能力。
+- 平台本侧交付：当前用户有权限的平台渠道列表接口 + SSE 对话请求接口。悬浮机器人 UI / 多智能体选择壳不在本变更实现，但必须能消费上述契约。Web 为 SaaS 登录下的独立对话路由页，复用同一套登录态对话能力。另提供按智能体 ID 的已发布 Web 列表与 AGUI 流式对话：`GET /opspilot/skill_channel/web_skills/`（当前组、已启用 web 渠道、按 skill 去重）、`POST /opspilot/skill_channel/skill/<skill_id>/chat/`（客户端只传 skill_id 与 chat_history / user_message，窗口与技能参数由服务端读取并截断，不信客户端模型/工具/窗口）。
+- 对话审批 / 用户选择 / 中断复用 `bot_mgmt/submit_approval/`、`bot_mgmt/submit_choice/`、`bot_mgmt/interrupt_chat_flow_execution/`；智能体 AGUI 本地会话 `node_id` 为 `skill_test` / `deep_agent` 且全库无该 `execution_id` 的工作流任务时放行。
 - 平台 / Web / 嵌入式对话响应为 SSE 流式（风格对齐现有 Bot 对话执行）；IM 渠道为回调受理后异步生成再回覆，不在回调请求内同步阻塞长推理。
 - 会话与消息使用独立于 Bot 的智能体会话模型，关联智能体与渠道绑定，并按外部用户标识或 SaaS 用户区分会话；支持多轮续聊与历史只读。下线渠道：拒绝该绑定上的新请求，保留历史。删除智能体：级联删除其渠道绑定与会话/消息。
 - 与 Bot 并存：独立发布不改变 Bot 的 `online` 或流程引用；两边入口互不抢状态。删除或活引用变更对两边同时生效。

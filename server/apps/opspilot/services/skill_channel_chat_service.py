@@ -175,6 +175,7 @@ def build_skill_chat_params(skill: LLMSkill, user_message: str, request_user, ex
         "group": (skill.team or [0])[0],
         "wiki_kb_ids": list(skill.wiki_knowledge_bases.values_list("id", flat=True)),
         "skill_params": merge_skill_params([], skill.skill_params or []),
+        "temperature": getattr(skill, "temperature", 0.7),
         "username": getattr(request_user, "username", "") or "",
         "user_id": getattr(request_user, "id", None),
         "locale": getattr(request_user, "locale", "en") or "en",
@@ -207,6 +208,56 @@ def _history_from_conversation(conversation: SkillConversation, window: int) -> 
     for msg in items:
         history.append({"role": msg.role if msg.role != "assistant" else "assistant", "content": msg.content})
     return history
+
+
+def normalize_client_chat_history(raw) -> list[dict]:
+    """把客户端历史统一成 chat_service 使用的 {event, message}。"""
+    if raw in (None, ""):
+        return []
+    if not isinstance(raw, list):
+        raise SkillChannelChatError("chat_history 必须是数组", status=400)
+    history = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        event = str(item.get("event") or item.get("role") or "").strip().lower()
+        if event in {"assistant", "bot"}:
+            event = "bot"
+        elif event != "user":
+            event = "user"
+        message = item.get("message", item.get("content", item.get("text", "")))
+        history.append({"event": event, "message": message})
+    return history
+
+
+def split_user_message_and_history(user_message, history: list[dict]) -> tuple:
+    """当前用户话从独立字段或历史最后一条 user 取出；其余作为上下文。"""
+    if isinstance(user_message, str) and user_message.strip():
+        return user_message.strip(), history
+    if user_message and not isinstance(user_message, str):
+        return user_message, history
+    for idx in range(len(history) - 1, -1, -1):
+        item = history[idx]
+        if item.get("event") != "user":
+            continue
+        message = item.get("message")
+        if isinstance(message, str) and not message.strip():
+            continue
+        if message in (None, ""):
+            continue
+        return message, history[:idx]
+    raise SkillChannelChatError("user_message 或对话历史中的用户消息必填", status=400)
+
+
+def truncate_chat_history(history: list[dict], window_size: int) -> list[dict]:
+    """只保留最近 window_size 条，超出的不进入后续对话服务。"""
+    try:
+        window = int(window_size)
+    except (TypeError, ValueError):
+        window = 10
+    if window <= 0:
+        return []
+    return list(history[-window:])
 
 
 def execute_skill_channel_im_sync(

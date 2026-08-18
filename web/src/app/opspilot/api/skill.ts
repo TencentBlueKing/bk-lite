@@ -173,6 +173,14 @@ export const useSkillApi = () => {
     return (res?.data ?? res) as any[];
   };
 
+  const fetchPublishedWebSkills = async () => {
+    const res = await get('/opspilot/skill_channel/web_skills/');
+    return (res?.data ?? res) as any[];
+  };
+
+  const getPublishedWebSkillChatUrl = (skillId: number | string) =>
+    `/api/proxy/opspilot/skill_channel/skill/${skillId}/chat/`;
+
   const fetchSkillConversations = async (channelId: number | string) => {
     const res = await get('/opspilot/skill_channel/conversations/', {
       params: { channel_id: channelId },
@@ -223,6 +231,8 @@ export const useSkillApi = () => {
     setSkillChannelEnabled,
     deleteSkillChannel,
     fetchWebChatSkillChannels,
+    fetchPublishedWebSkills,
+    getPublishedWebSkillChatUrl,
     fetchSkillConversations,
     fetchSkillSessionMessages,
     deleteSkillSession,
