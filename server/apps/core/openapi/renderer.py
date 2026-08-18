@@ -214,7 +214,12 @@ def render_traefik_config(entries: dict, internal_services=()):
             middlewares[inject] = {
                 "headers": {
                     "customRequestHeaders": {
-                        "X-BK-Gateway-Auth": normalized["secrets"]["shared_secret"]
+                        "X-BK-Gateway-Auth": normalized["secrets"]["shared_secret"],
+                        # 清除调用方的平台凭据：信任头模式下上游按注入的身份头
+                        # 识别用户，不需要也不应看到调用方的 API 令牌 / JWT——
+                        # 否则半可信上游可凭其冒充调用方回调平台。
+                        # service-token 模式天然覆盖该头，无此问题。
+                        "Authorization": "",
                     }
                 }
             }
