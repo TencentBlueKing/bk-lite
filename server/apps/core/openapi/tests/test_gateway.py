@@ -150,15 +150,34 @@ def test_tenant_can_read_own_org(client, patch_targets):
 
 
 def test_tenant_cannot_read_other_org(client, patch_targets):
-    """组织 2 的令牌请求组织 1 的数据：注入集合不含组织 1，函数拒绝。"""
+    """组织 2 的令牌请求组织 1 的数据：注入集合不含组织 1，函数拒绝。
+
+    越权按冻结清单映射为 403 TEAM_OUT_OF_SCOPE，不与普通业务拒绝(400)混淆。
+    """
     _, token = create_api_tenant(2)
     resp = client.get(
         PATCH_URL, {"module": "patch_target", "group_id": 1}, **bearer(token)
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 403
     body = resp.json()
     assert body["result"] is False
-    assert body["code"] == "BUSINESS_REJECTED"
+    assert body["code"] == "TEAM_OUT_OF_SCOPE"
+
+
+def test_non_scope_business_error_stays_400(client, patch_targets):
+    """非越权类软错误仍映射为 400 BUSINESS_REJECTED（两者不得混淆）。"""
+    _, token = create_api_tenant(1)
+    endpoint = default_registry.find("patch-mgmt", "module-data", "GET")
+    original = endpoint.func
+    try:
+        endpoint.func = lambda **kw: {"result": False, "message": "参数组合不支持"}
+        resp = client.get(
+            PATCH_URL, {"module": "patch_target", "group_id": 1}, **bearer(token)
+        )
+    finally:
+        endpoint.func = original
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "BUSINESS_REJECTED"
 
 
 def test_forged_identity_headers_ignored(client, patch_targets):
@@ -171,8 +190,9 @@ def test_forged_identity_headers_ignored(client, patch_targets):
         HTTP_X_BK_TEAM="1",
         **bearer(token),
     )
-    assert resp.status_code == 400
-    assert resp.json()["code"] == "BUSINESS_REJECTED"
+    # 伪造头未生效：身份仍取自凭据（组织 2），越权访问组织 1 被拒
+    assert resp.status_code == 403
+    assert resp.json()["code"] == "TEAM_OUT_OF_SCOPE"
 
 
 # ---------- 锚点式注入（cmdb，捕获 kwargs 验证注入行为） ----------
@@ -241,6 +261,9 @@ def test_me_api_token(client):
     assert set(data["groups"][0]) == {"id", "name"}
     assert data["anchor_scopes"][0]["anchor"] == 3
     assert 3 in data["anchor_scopes"][0]["cascaded_group_ids"]
+    # anchor_scopes 必须与实际授权同源：不得包含用户无权限的组织（超报）。
+    # 该用户仅授权组织 3 且 3 无子组织，故级联集合恰为 {3}
+    assert data["anchor_scopes"][0]["cascaded_group_ids"] == [3]
     service_names = {s["name"] for s in data["services"]}
     assert {"patch-mgmt", "cmdb"} <= service_names
     assert all(s["kind"] == "internal" for s in data["services"])

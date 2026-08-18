@@ -47,8 +47,16 @@ def _base_url_allowed(base_url: str) -> bool:
         return False
     if "*" in allow:
         return True
-    host = urlparse(base_url).hostname or ""
-    return any(host == item or host.endswith(item) for item in allow)
+    host = (urlparse(base_url).hostname or "").lower()
+    if not host:
+        return False
+    for item in allow:
+        item = item.lower()
+        # 后缀匹配必须落在点边界上，否则 allow=itsm-svc 会放行 evil-itsm-svc
+        suffix = item if item.startswith(".") else "." + item
+        if host == item.lstrip(".") or host.endswith(suffix):
+            return True
+    return False
 
 
 def validate_entry(name: str, entry, internal_services=()):

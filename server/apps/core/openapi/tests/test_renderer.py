@@ -138,6 +138,26 @@ def test_reserved_name_rejected(env):
     assert "invalid service name" in report["skipped"]["_me"]
 
 
+@pytest.mark.parametrize(
+    "host, allowed",
+    [
+        ("itsm-svc", True),           # 精确匹配
+        ("a.itsm-svc", True),         # 点边界后缀
+        ("evil-itsm-svc", False),     # 同尾但非点边界，必须拒绝
+        ("xitsm-svc", False),
+        ("svc.internal", True),       # allowlist 中的 .internal 后缀
+        ("evilinternal", False),
+    ],
+)
+def test_base_url_allowlist_requires_dot_boundary(env, host, allowed):
+    entry = dict(GOOD, base_url=f"http://{host}:8000")
+    _, report = render_one(entry)
+    if allowed:
+        assert report["rendered"] == ["itsm"], f"{host} 应被放行"
+    else:
+        assert "allowlist" in report["skipped"]["itsm"], f"{host} 应被拒绝"
+
+
 def test_missing_allowlist_rejects_everything(env, monkeypatch):
     monkeypatch.delenv("OPENAPI_BASEURL_ALLOWLIST")
     _, report = render_one(dict(GOOD))

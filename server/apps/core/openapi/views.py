@@ -263,7 +263,16 @@ def _build_me_payload(identity):
     anchor_scopes = []
     for team_id in identity.team_ids:
         try:
-            cascaded = sorted(GroupUtils.get_group_with_descendants([team_id]))
+            # 必须与锚点式端点（cmdb）实际的授权展开同源：用带 group_list 过滤的
+            # get_user_authorized_child_groups，而非无过滤的全子树展开——否则
+            # _me 会向第三方超报可见组织范围，调用后却得空结果
+            cascaded = sorted(
+                GroupUtils.get_user_authorized_child_groups(
+                    user_group_list=identity.team_ids,
+                    target_group_id=team_id,
+                    include_children=True,
+                )
+            )
         except Exception:
             logger.exception("anchor scope resolution failed for group %s", team_id)
             cascaded = [team_id]

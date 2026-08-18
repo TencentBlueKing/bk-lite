@@ -26,6 +26,11 @@ from apps.core.openapi.registry import (
 
 _executor = None
 
+# 现有 nats_api 以自由文本 message 表达组织越权（无结构化 code），网关据此
+# 映射到冻结清单定义的 TEAM_OUT_OF_SCOPE(403)。暴露函数改用结构化错误码后，
+# 本表可随之退役（见 m1-notes 软错误映射）。
+_TEAM_SCOPE_MARKERS = ("无权访问该组织", "无权限访问该组织", "组织数据", "out of scope")
+
 
 def _get_executor():
     global _executor
@@ -122,9 +127,13 @@ def dispatch(identity: CallerIdentity, endpoint: Endpoint, payload: dict):
         logger.exception("openapi invoke error: %s", endpoint.path)
         return fail(ErrorCode.INTERNAL_ERROR, "internal error")
 
-    # 现有 nats_api 软错误约定 {"result": False, "message": ...} 统一映射
+    # 现有 nats_api 软错误约定 {"result": False, "message": ...} 统一映射。
+    # 组织越权类软错误单独识别为 TEAM_OUT_OF_SCOPE(403)：函数按注入的授权集合
+    # 拒绝越界组织参数是网关的核心授权语义，冻结清单为其定义了专属错误码，
+    # 不能与普通业务拒绝混为 400。
     if isinstance(result, dict) and result.get("result") is False:
-        return fail(
-            ErrorCode.BUSINESS_REJECTED, str(result.get("message", "rejected"))
-        )
+        message = str(result.get("message", "rejected"))
+        if any(marker in message for marker in _TEAM_SCOPE_MARKERS):
+            return fail(ErrorCode.TEAM_OUT_OF_SCOPE, message)
+        return fail(ErrorCode.BUSINESS_REJECTED, message)
     return ok(result)

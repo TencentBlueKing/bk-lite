@@ -50,3 +50,25 @@ commit `8c054cc`（分支 claude/webhookd-traefik-openapi-gateway-14ea9d）。
    配置 ITSM 侧身份处理中间件与共享密钥，`register --probe` 指向其真实端口。
 4. CODEOWNERS owner 确认、design.md 3.8 错误码回填（TIMEOUT /
    BUSINESS_REJECTED）仍在待办（见 m1-notes.md / m3-notes.md）。
+
+## 对抗式审查修复（合并前）
+
+四视角对抗式审查 23 条发现 → 17 confirmed（去重后 9 个真问题）→ 已修复如下：
+
+| 项 | 严重度 | 问题 | 修复 |
+| --- | --- | --- | --- |
+| A1 | high | wxc 内嵌 compose 副本未同步源改动，`TestCommunityInSync` 漂移检测失败 | 跑 `internal/compose/sync.sh` 同步 |
+| A2 | high | `OPENAPI_PROVIDER_TOKEN` 只写 common.env、未写 `.env`（compose 唯一插值源），事后任何 `docker compose up -d` 会把令牌插值成空 → provider 端点 503 → 外部路由永久不刷新 | bootstrap.sh 的 `.env` heredoc 补该变量与 `OPENAPI_BASEURL_ALLOWLIST` 占位 |
+| A3 | medium | `base_url` 允许清单 `endswith` 无点边界，`evil-itsm-svc` 可绕过 `itsm-svc` | 改为点边界匹配 + 大小写归一，补 6 组参数化回归测试 |
+| A4 | medium | `_provider`（渲染结果含下游明文密钥）与 `_auth` 经公网 websecure 入口可达 | Traefik 路由规则排除二者（消费方仅 traefik 自身，走 compose 内网直连） |
+| C1 | medium | 冻结清单定义的 `TEAM_OUT_OF_SCOPE`(403) 永不产生，越权被降级为 `BUSINESS_REJECTED`(400) | dispatcher 识别组织越权类软错误映射 403，补正/反两向测试 |
+| C2 | medium | `_me.anchor_scopes` 用无权限过滤的全子树展开，向第三方超报可见组织范围 | 改用与 cmdb 同源的 `get_user_authorized_child_groups`，补断言 |
+
+测试：server 侧 79 项全部通过（新增 8 项回归）；wxc `go test ./internal/compose` 转绿、`go build`/`go vet` 干净。
+
+## 新增遗留（审查提出，本期不修）
+
+- **HA 栈（docker-compose-ha + wxc ha bundle）未接入网关**：`wxc ha` 部署的节点无 `/openapi/v1` 路由。与 M4「单机 compose 试点」scope 一致，作为独立事项跟进。
+- `OPENAPI_INVOKE_TIMEOUT` 生产未配置且 settings 未接入该 env（README 列为运行期配置但当前为空操作）；开启后线程池 worker 的 DB 连接不随请求周期回收。试点为分页轻查询，发版前处理。
+- 试点端点未声明 `permission`（团队决策：维持现状，team 组织自域约束已在）。
+- `_me`/`_docs`/`_auth` 未捕获异常经 AppExceptionMiddleware 输出无 `code` 的 500；参数位置混用被静默忽略而非 `SCHEMA_INVALID`；`wxc openapi list` 将服务端会丢弃的条目显示为 ok。
