@@ -116,12 +116,7 @@ def _get_existing_builtin_canvas_ids(doc, canvas_type_model_map):
             identity = (object_type, item.key)
             if identity in existing_canvas_ids:
                 continue
-            legacy = (
-                model.objects.select_for_update()
-                .filter(is_build_in=True, name=item.name)
-                .exclude(build_in_key__in=keys)
-                .first()
-            )
+            legacy = model.objects.select_for_update().filter(is_build_in=True, name=item.name).exclude(build_in_key__in=keys).first()
             if legacy is None:
                 continue
             previous_key = legacy.build_in_key
@@ -177,10 +172,7 @@ def _collect_retired_builtin_objects(doc, canvas_type_model_map, datasource_mode
 def _write_retirement_plan(candidates, stdout, *, dry_run):
     action = "预检待退役" if dry_run else "清理已退役"
     for object_type, instance in candidates:
-        stdout.write(
-            f"{action}内置对象: type={object_type}, id={instance.pk}, "
-            f"build_in_key={instance.build_in_key}, name={instance.name}"
-        )
+        stdout.write(f"{action}内置对象: type={object_type}, id={instance.pk}, " f"build_in_key={instance.build_in_key}, name={instance.name}")
     stdout.write(f"{action}内置对象合计: {len(candidates)} 个")
 
 
@@ -192,7 +184,7 @@ def _delete_retired_builtin_objects(candidates, stdout):
         instance_id = instance.pk
         build_in_key = instance.build_in_key
         name = instance.name
-        if object_type in {"dashboard", "screen"}:
+        if object_type in {"dashboard", "screen", "report"}:
             get_canvas_report_adapter(object_type).terminate_subscriptions_on_delete(
                 instance,
                 actor="system",
@@ -202,10 +194,7 @@ def _delete_retired_builtin_objects(candidates, stdout):
 
     def write_results():
         for object_type, instance_id, build_in_key, name in results:
-            stdout.write(
-                f"清理已退役内置对象: type={object_type}, id={instance_id}, "
-                f"build_in_key={build_in_key}, name={name}"
-            )
+            stdout.write(f"清理已退役内置对象: type={object_type}, id={instance_id}, " f"build_in_key={build_in_key}, name={name}")
         stdout.write(f"清理已退役内置对象合计: {len(results)} 个")
 
     transaction.on_commit(write_results)
@@ -345,7 +334,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true", help="只预检待退役内置对象，不修改数据库")
 
-    def handle(self, *args, **options):
+    def handle(self, *args, **options):  # noqa: C901
         # 1. 读取 YAML 文件
         try:
             yaml_documents = [_load_source_api_document()]
@@ -377,9 +366,7 @@ class Command(BaseCommand):
             try:
                 data = yaml.safe_load(raw_content)
             except yaml.YAMLError as error:
-                self.stdout.write(
-                    self.style.ERROR(f"内置画布 YAML 解析失败，跳过同步: {file_path}: {type(error).__name__}: {error}")
-                )
+                self.stdout.write(self.style.ERROR(f"内置画布 YAML 解析失败，跳过同步: {file_path}: {type(error).__name__}: {error}"))
                 logger.error("[BuiltinCanvas] 内置画布 YAML 解析失败，跳过同步：%s", file_path, exc_info=True)
                 return
             if not data:
@@ -389,9 +376,7 @@ class Command(BaseCommand):
             object_counts_error = _get_object_counts_error(data)
             if object_counts_error:
                 definitions_complete = False
-                self.stdout.write(
-                    self.style.WARNING(f"内置画布 YAML 快照不完整，本次禁止退役清理: {file_path}: {object_counts_error}")
-                )
+                self.stdout.write(self.style.WARNING(f"内置画布 YAML 快照不完整，本次禁止退役清理: {file_path}: {object_counts_error}"))
             yaml_documents.append(data)
             loaded_yaml_count += 1
 

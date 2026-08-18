@@ -26,19 +26,10 @@ const applyExpandStyles = (element: HTMLElement) => {
   }
 };
 
-/**
- * Expand the live render DOM so Chromium page.pdf() paginates full content.
- * Mirrors exportPdf expand rules without cloning or screenshot stitching.
- */
-export async function prepareDashboardPrintLayout(
-  root: HTMLElement | null = typeof document === 'undefined'
-    ? null
-    : document.querySelector<HTMLElement>('[data-dashboard-render-root="true"]'),
+async function preparePrintLayoutExpand(
+  root: HTMLElement,
+  options: { expandGridStack: boolean },
 ): Promise<void> {
-  if (!root) {
-    throw new Error('Dashboard render root not found');
-  }
-
   window.dispatchEvent(
     new CustomEvent(DASHBOARD_PREPARE_PRINT_EVENT, {
       detail: { phase: 'prepare-print' },
@@ -59,9 +50,11 @@ export async function prepareDashboardPrintLayout(
     element.style.display = 'none';
   });
 
-  root
-    .querySelectorAll<HTMLElement>('.grid-stack')
-    .forEach(applyExpandStyles);
+  if (options.expandGridStack) {
+    root
+      .querySelectorAll<HTMLElement>('.grid-stack')
+      .forEach(applyExpandStyles);
+  }
 
   let ancestor: HTMLElement | null = root.parentElement;
   while (ancestor) {
@@ -74,4 +67,47 @@ export async function prepareDashboardPrintLayout(
 
   await waitForNextPaint();
   await waitForNextPaint();
+}
+
+function resolveDashboardRenderRoot(
+  root: HTMLElement | null,
+): HTMLElement | null {
+  if (root) {
+    return root;
+  }
+  if (typeof document === 'undefined') {
+    return null;
+  }
+  return document.querySelector<HTMLElement>('[data-dashboard-render-root="true"]');
+}
+
+/**
+ * Expand the live render DOM so Chromium page.pdf() paginates full content.
+ * Mirrors exportPdf expand rules without cloning or screenshot stitching.
+ */
+export async function prepareDashboardPrintLayout(
+  root: HTMLElement | null = typeof document === 'undefined'
+    ? null
+    : document.querySelector<HTMLElement>('[data-dashboard-render-root="true"]'),
+): Promise<void> {
+  const resolvedRoot = resolveDashboardRenderRoot(root);
+  if (!resolvedRoot) {
+    throw new Error('Dashboard render root not found');
+  }
+
+  await preparePrintLayoutExpand(resolvedRoot, { expandGridStack: true });
+}
+
+/** Report renderMode：只展开 overflow，不查询 GridStack。 */
+export async function prepareReportPrintLayout(
+  root: HTMLElement | null = typeof document === 'undefined'
+    ? null
+    : document.querySelector<HTMLElement>('[data-dashboard-render-root="true"]'),
+): Promise<void> {
+  const resolvedRoot = resolveDashboardRenderRoot(root);
+  if (!resolvedRoot) {
+    throw new Error('Report render root not found');
+  }
+
+  await preparePrintLayoutExpand(resolvedRoot, { expandGridStack: false });
 }

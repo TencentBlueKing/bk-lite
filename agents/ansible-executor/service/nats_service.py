@@ -26,6 +26,7 @@ from service.callback_delivery_service import CallbackDeliveryMixin
 from service.nats_topology_service import NATSTopologyMixin
 from service.remote_shell_stream import run_remote_shell_stream
 from service.task_store import TERMINAL_TASK_STATUSES, TaskStore, _sanitize_callback_for_storage, _sanitize_payload_for_storage
+from service.winrm_stream import run_winrm_stream
 
 
 def _extract_payload(data: bytes) -> dict:
@@ -240,10 +241,8 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
             if task.task_type == "adhoc":
                 request = to_adhoc_request(execution_payload)
                 cmd, workspace = prepare_adhoc_execution(request)
-                use_remote_shell_stream = (
-                    getattr(request, "stream_remote_output", False) and stream_kwargs and getattr(request, "module", "") == "shell"
-                )
-                if use_remote_shell_stream:
+                remote_stream_enabled = getattr(request, "stream_remote_output", False) and stream_kwargs
+                if remote_stream_enabled and request.module == "shell":
                     code, output, output_meta = await run_remote_shell_stream(
                         cmd,
                         script_content=request.module_args,
@@ -251,6 +250,20 @@ class AnsibleNATSService(NATSTopologyMixin, CallbackDeliveryMixin):
                         timeout=request.execute_timeout,
                         **stream_kwargs,
                     )
+                elif remote_stream_enabled and request.module == "win_shell":
+                    windows_stream_kwargs = {
+                        "script_content": request.module_args,
+                        "script_type": str(request.stream_remote_type or ""),
+                        "timeout": request.execute_timeout,
+                        **stream_kwargs,
+                    }
+                    if request.host_credentials:
+                        code, output, output_meta = await run_winrm_stream(
+                            request.host_credentials,
+                            **windows_stream_kwargs,
+                        )
+                    else:
+                        code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
                 else:
                     code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
             else:

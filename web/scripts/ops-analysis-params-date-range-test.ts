@@ -52,6 +52,11 @@ assert.equal(
   null,
   'explicitly cleared dateRange values must remain null',
 );
+assert.equal(
+  getDataSourceFormParamInitialValue({ ...dateRangeParam, value: '' }),
+  null,
+  'legacy empty-string dateRange defaults must initialize as unset',
+);
 
 assert.match(
   source,

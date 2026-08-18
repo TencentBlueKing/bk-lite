@@ -84,6 +84,7 @@ def test_adhoc_可选字段仅在传入时加入(ex):
         stream_log_topic="log.topic",
         execution_id="exec-9",
         stream_remote_output=True,
+        stream_remote_type="powershell",
         timeout=120,
     )
     args, kwargs = ex.adhoc_client.calls[-1]
@@ -92,6 +93,7 @@ def test_adhoc_可选字段仅在传入时加入(ex):
     assert rd["stream_log_topic"] == "log.topic"
     assert rd["execution_id"] == "exec-9"
     assert rd["stream_remote_output"] is True
+    assert rd["stream_remote_type"] == "powershell"
     assert rd["execute_timeout"] == 120
 
 

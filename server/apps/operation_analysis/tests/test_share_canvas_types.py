@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from rest_framework.test import APIClient
 
-from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Report, Screen, Topology
+from apps.operation_analysis.models.models import Architecture, Directory, Report, Screen, Topology
 from apps.operation_analysis.models.share_models import DashboardShareLink
 from apps.operation_analysis.services.share_service import create_or_get_share, exchange_share
 from apps.system_mgmt.models.user import User
@@ -69,9 +69,7 @@ def _make_directory():
         (Architecture, DashboardShareLink.ResourceType.ARCHITECTURE, "architecture"),
     ],
 )
-def test_create_share_for_canvas_types(
-    settings, sharer, visitor, monkeypatch, model, resource_type, endpoint
-):
+def test_create_share_for_canvas_types(settings, sharer, visitor, monkeypatch, model, resource_type, endpoint):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
         "apps.operation_analysis.services.share_service.can_view_canvas",
@@ -145,8 +143,7 @@ def test_detail_only_architecture_rejects_datasource_query(settings, sharer, vis
 
 
 @pytest.mark.django_db
-def test_report_share_api_is_not_open(settings, sharer, monkeypatch):
-    """第一阶段不开放报表分享入口，但 resource_type 仍保留。"""
+def test_report_share_api_endpoint(settings, sharer, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
         "apps.operation_analysis.services.share_service.can_view_canvas",
@@ -169,16 +166,14 @@ def test_report_share_api_is_not_open(settings, sharer, monkeypatch):
         {},
         format="json",
     )
-    assert response.status_code == 405
-    assert not DashboardShareLink.objects.filter(
-        resource_type=DashboardShareLink.ResourceType.REPORT,
-        dashboard_instance_id=report.pk,
-    ).exists()
+    assert response.status_code == 200
+    assert response.data["resource_type"] == DashboardShareLink.ResourceType.REPORT
+    assert "/ops-analysis/share/" in response.data["url"]
 
 
 @pytest.mark.django_db
 def test_report_resource_type_still_supported_by_service(settings, sharer, visitor, monkeypatch):
-    """service 层仍支持 report resource_type，便于后续阶段接入。"""
+    """service 层支持 report resource_type 与分享 query 闸门。"""
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
         "apps.operation_analysis.services.share_service.can_view_canvas",

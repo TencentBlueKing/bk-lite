@@ -33,7 +33,7 @@ import { useSearchParams } from 'next/navigation';
 import Permission from '@/components/permission';
 import {
   needsTagsEntry,
-  getObjectTypeByName
+  getPluginFamilyObjects
 } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 import { buildIfmibMetricView, getDefaultMetricGroupOpenState } from './ifmibMetricView';
@@ -223,10 +223,7 @@ const Configure = () => {
       const data = await getMonitorObject();
       if (templateType !== 'pull' && needsTagsEntry(groupName, data)) {
         setShowTabs(true);
-        const objectType = getObjectTypeByName(groupName, data);
-        const _items = data
-          .filter((item: ObjectItem) => item.type === objectType)
-          .sort((a: ObjectItem, b: ObjectItem) => a.id - b.id)
+        const _items = getPluginFamilyObjects(groupName, data)
           .map((item: ObjectItem) => {
             const name = item.display_name || item.name;
             return {

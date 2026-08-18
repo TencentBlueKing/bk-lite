@@ -50,7 +50,33 @@ def _is_valid_date_only(value: Any) -> bool:
         return False
 
 
+def _normalize_date_range_value(value: Any) -> Any:
+    """Blank strings are the historical 'unset' default from builtin datasources."""
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
+def _normalize_one_date_range_param(param: Any) -> Any:
+    if not isinstance(param, dict) or param.get("type") != "dateRange":
+        return param
+    normalized = dict(param)
+    normalized["value"] = _normalize_date_range_value(normalized.get("value"))
+    return normalized
+
+
+def normalize_date_range_param_values(params: Any) -> Any:
+    if isinstance(params, list):
+        return [_normalize_one_date_range_param(item) for item in params]
+    if isinstance(params, dict):
+        if params.get("type") == "dateRange":
+            return _normalize_one_date_range_param(params)
+        return {key: _normalize_one_date_range_param(item) for key, item in params.items()}
+    return params
+
+
 def _validate_date_range_value(value: Any) -> bool:
+    value = _normalize_date_range_value(value)
     if value is None:
         return True
     if not isinstance(value, dict):
@@ -174,6 +200,11 @@ class DatasourceItem(BaseModel):
     @classmethod
     def normalize_rest_api(cls, v: Any) -> str:
         return "" if v is None else str(v).strip()
+
+    @field_validator("params", mode="before")
+    @classmethod
+    def normalize_date_range_params(cls, v: Any) -> Any:
+        return normalize_date_range_param_values(v)
 
     @field_validator("source_type")
     @classmethod
@@ -334,6 +365,7 @@ class ReportItem(BaseModel):
     desc: str = Field(default="")
     other: dict = Field(default_factory=dict)
     view_sets: dict = Field(default_factory=dict)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")
@@ -354,7 +386,10 @@ class ReportItem(BaseModel):
     @field_validator("view_sets", mode="before")
     @classmethod
     def normalize_view_sets(cls, v: Any) -> dict:
-        return _normalize_canvas_view_sets_for_storage(v, ObjectType.REPORT)
+        from apps.operation_analysis.services.report_view_sets import normalize_report_view_sets
+
+        # YAML 里 dataSource 仍是业务键；先做结构校验，导入改写后再走存储态整数 ID 合同。
+        return normalize_report_view_sets(v or {}, allow_portable_datasource_ref=True)
 
 
 class NetworkTopologyItem(BaseModel):
@@ -435,6 +470,7 @@ def validate_date_range_params(doc: YAMLDocument) -> list[dict]:
         for param_index, param in enumerate(items):
             if not isinstance(param, dict) or param.get("type") != "dateRange":
                 continue
+            param["value"] = _normalize_date_range_value(param.get("value"))
             if not _validate_date_range_value(param.get("value")):
                 violations.append(
                     {

@@ -1,19 +1,35 @@
 import type { DirItem } from './index';
-import type { ValueConfig } from './dashBoard';
+import type { FilterValue, UnifiedFilterDefinition, WidgetConfig } from './dashBoard';
 
 export interface ReportSection {
   id: string;
-  title: string;
-  description?: string;
-  valueConfig?: ValueConfig;
+  valueConfig: WidgetConfig;
 }
 
 export interface ReportViewSets {
-  time_range?: string | number | null;
+  schema_version: 1;
+  filters: UnifiedFilterDefinition[];
   sections: ReportSection[];
 }
 
 export interface ReportProps {
   selectedReport?: DirItem | null;
   shareMode?: boolean;
+  renderMode?: boolean;
+  renderFilterValues?: Record<string, FilterValue>;
+  getReportDetailOverride?: (id: string | number) => Promise<ReportDetail>;
+}
+
+export interface ReportDetail {
+  id: number | string;
+  name: string;
+  desc?: string | null;
+  updated_at?: string;
+  refresh_interval?: number;
+  view_sets: unknown;
+}
+
+export interface SaveReportViewSetsInput {
+  view_sets: ReportViewSets;
+  expected_updated_at: string;
 }

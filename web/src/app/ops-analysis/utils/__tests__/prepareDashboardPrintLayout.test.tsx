@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DASHBOARD_PREPARE_PRINT_EVENT,
   prepareDashboardPrintLayout,
+  prepareReportPrintLayout,
 } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
 
 describe('prepareDashboardPrintLayout', () => {
@@ -87,5 +88,59 @@ describe('prepareDashboardPrintLayout', () => {
     await expect(prepareDashboardPrintLayout(null)).rejects.toThrow(
       'Dashboard render root not found',
     );
+    await expect(prepareReportPrintLayout(null)).rejects.toThrow(
+      'Report render root not found',
+    );
+  });
+
+  it('prepareReportPrintLayout expands overflow without touching grid-stack', async () => {
+    document.body.innerHTML = `
+      <div data-dashboard-render-root="true" style="height: 100vh; overflow: auto;">
+        <div data-export-expand="true" style="height: 100%; overflow: auto;"></div>
+        <div class="grid-stack" style="height: 900px; overflow: hidden;"></div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>(
+      '[data-dashboard-render-root="true"]',
+    );
+    await prepareReportPrintLayout(root);
+
+    const grid = document.querySelector<HTMLElement>('.grid-stack');
+    expect(grid?.style.overflow).not.toBe('visible');
+    expect(grid?.style.height).not.toBe('auto');
+  });
+
+  it('prepareReportPrintLayout keeps untagged 420px cards and table scroll windows', async () => {
+    document.body.innerHTML = `
+      <div data-dashboard-render-root="true" style="min-height: 100vh; overflow: auto;">
+        <div data-export-expand="true" style="height: 100%; overflow: auto;">
+          <div id="report-card" style="height: 420px; overflow: hidden;">
+            <div class="widget-scroll" style="height: 100%; overflow-y: auto;">
+              <div class="ant-table-body" style="overflow: auto; max-height: 240px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>(
+      '[data-dashboard-render-root="true"]',
+    );
+    await prepareReportPrintLayout(root);
+
+    const page = document.querySelector<HTMLElement>(
+      '[data-export-expand="true"]',
+    );
+    expect(page?.style.height).toBe('auto');
+    expect(page?.style.overflow).toBe('visible');
+
+    const card = document.getElementById('report-card');
+    expect(card?.style.height).toBe('420px');
+    expect(card?.style.overflow).toBe('hidden');
+
+    const tableBody = document.querySelector<HTMLElement>('.ant-table-body');
+    expect(tableBody?.style.maxHeight).toBe('240px');
+    expect(tableBody?.style.overflow).toBe('auto');
   });
 });

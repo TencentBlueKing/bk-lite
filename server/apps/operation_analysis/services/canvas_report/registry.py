@@ -1,14 +1,8 @@
 from apps.operation_analysis.services.canvas_report.base import CanvasReportAdapter
-from apps.operation_analysis.services.canvas_report.dashboard import (
-    DashboardCanvasReportAdapter,
-)
-from apps.operation_analysis.services.canvas_report.screen import (
-    ScreenCanvasReportAdapter,
-)
-from apps.operation_analysis.services.canvas_report.types import (
-    RESOURCE_TYPE_DASHBOARD,
-    RESOURCE_TYPE_SCREEN,
-)
+from apps.operation_analysis.services.canvas_report.dashboard import DashboardCanvasReportAdapter
+from apps.operation_analysis.services.canvas_report.report import ReportCanvasReportAdapter
+from apps.operation_analysis.services.canvas_report.screen import ScreenCanvasReportAdapter
+from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD, RESOURCE_TYPE_REPORT, RESOURCE_TYPE_SCREEN
 
 
 class UnknownCanvasReportType(ValueError):
@@ -18,6 +12,7 @@ class UnknownCanvasReportType(ValueError):
 _ADAPTERS: dict[str, CanvasReportAdapter] = {
     RESOURCE_TYPE_DASHBOARD: DashboardCanvasReportAdapter(),
     RESOURCE_TYPE_SCREEN: ScreenCanvasReportAdapter(),
+    RESOURCE_TYPE_REPORT: ReportCanvasReportAdapter(),
 }
 
 

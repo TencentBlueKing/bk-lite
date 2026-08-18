@@ -307,7 +307,8 @@ class ExecutionTaskBaseService(object):
             extra_vars=extra_vars if extra_vars else None,
             stream_log_topic=build_stream_topic(execution.id, "ansible"),
             execution_id=str(execution.id),
-            stream_remote_output=module == "shell",
+            stream_remote_output=module in {"shell", "win_shell"},
+            stream_remote_type=script_type if module == "win_shell" else None,
         )
 
         logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
