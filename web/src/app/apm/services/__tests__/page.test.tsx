@@ -160,13 +160,13 @@ beforeEach(() => {
       environment: 'production',
       endpoint: '',
       sli_type: 'availability',
-      objective: '0.99',
+      objective: '99',
       evaluation_window: 'rolling7d',
       is_enabled: true,
       service_namespace: 'bklite',
       service_name: 'bklite-server',
-      current_rate: 0.995,
-      budget_remaining: 0.8,
+      current_rate: 78.785,
+      budget_remaining: 0,
       data_state: 'available',
       started_at: null,
       ended_at: '2026-07-31T06:25:01Z',
@@ -219,7 +219,7 @@ describe('APM 服务目录应用视角', () => {
 });
 
 describe('APM 服务目录服务视角与归档', () => {
-  it('切换到服务视角后展示 RED、语言与最高活跃告警', async () => {
+  it('切换到服务视角后展示 RED、SLO、语言与最高活跃告警', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmServicesPage />);
 
@@ -238,6 +238,7 @@ describe('APM 服务目录服务视角与归档', () => {
     ).toBe('/apm/events/alerts?service=bklite-server&environment=production');
     await waitFor(() => expect(screen.getAllByText('12.5').length).toBeGreaterThan(0));
     expect(screen.getAllByText('2.00%').length).toBeGreaterThan(0);
+    expect(screen.getByText('未达标 78.8%')).not.toBeNull();
     const searchInput = screen.getByRole('textbox', { name: '按应用或服务名称搜索' });
     const serviceHeader = screen.getByRole('columnheader', { name: '服务' });
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });

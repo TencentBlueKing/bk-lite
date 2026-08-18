@@ -40,6 +40,7 @@ import CatalogState, {
 import {
   formatErrorRate,
   formatLatency,
+  formatPercentage,
   formatRelativeTime,
   formatThroughput,
   isErrorRateDanger,
@@ -696,7 +697,7 @@ export default function ApmServicesPage() {
             }`}
           >
             {met ? t('apm.services.met', '达标') : t('apm.services.unmet', '未达标')}
-            {slo.current_rate !== null ? ` ${(Number(slo.current_rate) * 100).toFixed(1)}%` : ''}
+            {slo.current_rate !== null ? ` ${formatPercentage(slo.current_rate, 1)}` : ''}
           </Tag>
         );
       },
