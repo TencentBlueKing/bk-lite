@@ -22,6 +22,9 @@ import type {
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { useTranslation } from '@/utils/i18n';
 
+// Canvas and subscription PDF share this height. Do not mark the card
+// `data-export-expand`: that unlocks 420px in print while the table body
+// still clips, unlike dashboard widgets.
 const REPORT_WIDGET_HEIGHT = 420;
 
 interface ReportWidgetCardProps {
@@ -104,7 +107,6 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
   return (
     <div
       ref={setRefs}
-      data-export-expand="true"
       style={{
         height: REPORT_WIDGET_HEIGHT,
         transform: CSS.Transform.toString(transform),
@@ -168,7 +170,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                 />
               )}
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto" data-export-expand="true">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               <WidgetDataRenderer
                 dashboardId={reportId}
                 widgetId={section.id}
