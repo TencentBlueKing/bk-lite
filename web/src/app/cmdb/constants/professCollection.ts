@@ -197,7 +197,7 @@ export const buildSnmpTopologyParams = (
 });
 
 export const K8S_FORM_INITIAL_VALUES = {
-  instId: undefined,
+  instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalMinutes: 30,
   intervalValue: 30,
@@ -207,7 +207,7 @@ export const K8S_FORM_INITIAL_VALUES = {
 };
 
 export const VM_FORM_INITIAL_VALUES = {
-  instId: undefined,
+  instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
@@ -219,7 +219,7 @@ export const VM_FORM_INITIAL_VALUES = {
 };
 
 export const SNMP_FORM_INITIAL_VALUES = {
-  instId: undefined,
+  instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
@@ -238,7 +238,7 @@ export const SNMP_FORM_INITIAL_VALUES = {
 };
 
 export const SQL_FORM_INITIAL_VALUES = {
-  instId: undefined,
+  instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
@@ -252,7 +252,7 @@ export const SQL_FORM_INITIAL_VALUES = {
 };
 
 export const CLOUD_FORM_INITIAL_VALUES = {
-  instId: undefined,
+  instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalValue: 30,
   enterType: ENTER_TYPE.APPROVAL,
@@ -266,7 +266,7 @@ export const CLOUD_FORM_INITIAL_VALUES = {
 
 /** FusionInsight / OceanStor / 华三 UIS 等平台 HTTPS API 采集表单默认值 */
 export const PLATFORM_API_FORM_INITIAL_VALUES = {
-  instId: undefined,
+  instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
@@ -276,7 +276,7 @@ export const PLATFORM_API_FORM_INITIAL_VALUES = {
 };
 
 export const HOST_FORM_INITIAL_VALUES = {
-  instId: undefined,
+  instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
@@ -289,7 +289,7 @@ export const HOST_FORM_INITIAL_VALUES = {
 };
 
 export const PC_FORM_INITIAL_VALUES = {
-  instId: undefined,
+  instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
@@ -451,7 +451,7 @@ export const createTaskValidationRules = (context: ValidationContext) => {
         `${t('common.selectMsg')}${t('Collection.cycle')}`
       ),
     ],
-    instId: [baseValidators.required(`${t('required')}`)],
+    instUuid: [baseValidators.required(`${t('required')}`)],
     timeout: [
       baseValidators.required(
         `${t('common.inputMsg')}${t('Collection.timeout')}`

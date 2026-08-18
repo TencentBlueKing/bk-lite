@@ -266,7 +266,9 @@ class TestCountEvents:
 
 @pytest.mark.django_db
 class TestRecoverThresholdAlerts:
-    def test_recovers_when_info_count_reaches_condition(self, mocker):
+    def test_recovers_when_info_count_reaches_condition(
+        self, mocker, django_capture_on_commit_callbacks
+    ):
         notifier = mocker.patch(
             "apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier"
         )
@@ -275,7 +277,8 @@ class TestRecoverThresholdAlerts:
             status="new", info_event_count=5,
         )
         detector = AlertDetector(_policy(recovery_condition=2), {}, {}, [alert], _mq())
-        detector.recover_threshold_alerts()
+        with django_capture_on_commit_callbacks(execute=True):
+            detector.recover_threshold_alerts()
         alert.refresh_from_db()
         assert alert.status == "recovered"
         assert alert.operator == "system"
@@ -310,7 +313,9 @@ class TestRecoverNoDataAlerts:
         # 不应抛错，直接返回
         assert detector.recover_no_data_alerts() is None
 
-    def test_recovers_no_data_alert_when_data_returns(self, mocker):
+    def test_recovers_no_data_alert_when_data_returns(
+        self, mocker, django_capture_on_commit_callbacks
+    ):
         notifier = mocker.patch(
             "apps.monitor.tasks.services.policy_scan.alert_detector.AlertLifecycleNotifier"
         )
@@ -322,7 +327,8 @@ class TestRecoverNoDataAlerts:
             _policy(), {}, {}, [alert],
             _mq(formatted={"('h1',)": {"value": 1.0}}),
         )
-        detector.recover_no_data_alerts()
+        with django_capture_on_commit_callbacks(execute=True):
+            detector.recover_no_data_alerts()
         alert.refresh_from_db()
         assert alert.status == "recovered"
         notifier.return_value.notify_alerts.assert_called_once()

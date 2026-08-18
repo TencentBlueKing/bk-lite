@@ -15,7 +15,7 @@ export interface TopoData {
 }
   
 export interface NodeData {
-  _id: number;
+  inst_uuid: string;
   model_id: string;
   inst_name: string;
   asst_id?: string;
@@ -74,12 +74,12 @@ export interface AssoTopoProps {
   modelList: ModelItem[];
   assoTypeList: AssoTypeItem[];
   modelId: string;
-  instId: string;
+  instUuid: string;
 }
 
 export interface TopoDataProps {
   modelId: string;
-  instId: string;
+  instUuid: string;
   topoData: TopoData;
   modelList: ModelItem[];
   assoTypeList: AssoTypeItem[];
@@ -134,6 +134,10 @@ export interface NetworkTopoNode {
 
 export interface NetworkTopoLink {
   relationship_id: string;
+  /** 端口 connect 边端点 UUID；删除关联时必需 */
+  src_inst_uuid?: string;
+  dst_inst_uuid?: string;
+  model_asst_id?: string;
   source_device: string;
   source_inst_name: string;
   target_device: string;

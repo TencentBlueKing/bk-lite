@@ -17,25 +17,22 @@ from apps.cmdb.models.collect_model import (
     OidMapping,
     normalize_topology_contract,
 )
-from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
-from apps.cmdb.services.collect_object_tree import get_collect_object_meta
 from apps.cmdb.services.collect_credential_contract import (
     API_SECRET_MASK,
     CredentialContractError,
     get_collect_credential_contract,
     validate_collect_credential,
 )
+from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
+from apps.cmdb.services.collect_object_tree import get_collect_object_meta
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
-from apps.cmdb.services.network_config_file_policy import (
-    normalize_network_config_instance,
-    validate_commands,
-    validate_network_config_instance,
-)
+from apps.cmdb.services.instance import InstanceManage
+from apps.cmdb.services.instance_identity import normalize_inst_uuid
+from apps.cmdb.services.network_config_file_policy import normalize_network_config_instance, validate_commands, validate_network_config_instance
 from apps.cmdb.services.pc_collect_policy import validate_pc_collect_task
-from apps.cmdb.services.winsphere_endpoint import (
-    normalize_winsphere_management_address,
-)
+from apps.cmdb.services.winsphere_endpoint import normalize_winsphere_management_address
 from apps.cmdb.utils.config_file_path import validate_absolute_path
+from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.utils.serializers import AuthSerializer, UsernameSerializer
 
 COLLECT_RESULT_PAYLOAD_FIELDS = (
@@ -83,6 +80,29 @@ COLLECT_MODEL_DETAIL_FIELDS = (
 
 
 class CollectModelSerializer(AuthSerializer):
+    TRUSTED_INSTANCE_SNAPSHOT_FIELDS = {
+        "inst_uuid",
+        "model_id",
+        "inst_name",
+        "ip_addr",
+        "ip",
+        "host",
+        "name",
+        "endpoint",
+        "management_address",
+        "cloud_id",
+        "cloud",
+        "cloud_region_id",
+        "port",
+        "snmp_port",
+        "brand",
+        "device_type",
+        "organization",
+        "os_type",
+        "collector_cluster_id",
+        "node_id",
+        "monitor_id",
+    }
     permission_key = PERMISSION_TASK
 
     class Meta:
@@ -111,6 +131,75 @@ class CollectModelSerializer(AuthSerializer):
         params = dict(instance_params)
         params.update(dict(raw_params or {}))
         return params
+
+    def _query_authorized_instances(self, inst_uuids):
+        trusted_instances = InstanceManage.query_entity_by_uuids(inst_uuids)
+        request = self.context.get("request")
+        if request is None:
+            raise serializers.ValidationError({"instances": "缺少实例权限上下文"})
+        permission_maps = {}
+        for instance in trusted_instances:
+            instance_model_id = instance.get("model_id", "")
+            if instance_model_id not in permission_maps:
+                permission_maps[instance_model_id] = CmdbRulesFormatUtil.format_user_groups_permissions(
+                    request,
+                    instance_model_id,
+                )
+            if not InstanceManage._has_topology_view_permission(
+                instance,
+                permission_maps[instance_model_id],
+                user=request.user,
+            ):
+                raise serializers.ValidationError({"instances": "部分实例不存在或缺少访问权限"})
+        return trusted_instances
+
+    def _normalize_instance_identity_contract(self, raw_instances, model_id):
+        if raw_instances in (None, []):
+            return raw_instances
+
+        if model_id == "ip" and isinstance(raw_instances, dict):
+            if "subnet_ids" in raw_instances:
+                raise serializers.ValidationError({"instances": "IP 采集任务不接受 subnet_ids，请使用 subnet_uuids"})
+            subnet_uuids = raw_instances.get("subnet_uuids") or []
+            if not isinstance(subnet_uuids, list) or not subnet_uuids:
+                raise serializers.ValidationError({"instances": "IP 采集任务必须使用 subnet_uuids 选择子网"})
+            try:
+                normalized_uuids = [normalize_inst_uuid(value) for value in subnet_uuids]
+            except Exception as err:  # noqa: BaseAppException
+                raise serializers.ValidationError({"instances": "subnet_uuids 必须为合法 UUIDv4 列表"}) from err
+            trusted_subnets = self._query_authorized_instances(normalized_uuids)
+            if len(trusted_subnets) != len(normalized_uuids) or any(subnet.get("model_id") != "subnet" for subnet in trusted_subnets):
+                raise serializers.ValidationError({"instances": "部分子网不存在、无权限或模型不匹配"})
+            normalized = {key: copy.deepcopy(raw_instances[key]) for key in ("scan_method", "ports") if key in raw_instances}
+            normalized["subnet_uuids"] = normalized_uuids
+            return normalized
+
+        if not isinstance(raw_instances, list):
+            raise serializers.ValidationError({"instances": "实例目标必须为列表"})
+
+        normalized_instances = []
+        for raw_instance in raw_instances:
+            if not isinstance(raw_instance, dict):
+                raise serializers.ValidationError({"instances": "实例目标格式错误"})
+            if "_id" in raw_instance or "inst_id" in raw_instance:
+                raise serializers.ValidationError({"instances": "实例目标不接受 _id/inst_id，请使用 inst_uuid"})
+            try:
+                inst_uuid = normalize_inst_uuid(raw_instance.get("inst_uuid"))
+            except Exception as err:  # noqa: BaseAppException
+                raise serializers.ValidationError({"instances": "每个实例目标必须包含合法 inst_uuid"}) from err
+            normalized_instances.append(inst_uuid)
+
+        trusted_instances = self._query_authorized_instances(normalized_instances)
+        trusted_by_uuid = {trusted.get("inst_uuid"): trusted for trusted in trusted_instances if trusted.get("inst_uuid")}
+        if any(inst_uuid not in trusted_by_uuid for inst_uuid in normalized_instances):
+            raise serializers.ValidationError({"instances": "部分实例不存在或缺少访问权限"})
+        snapshots = []
+        for inst_uuid in normalized_instances:
+            trusted = trusted_by_uuid[inst_uuid]
+            snapshots.append(
+                {key: copy.deepcopy(value) for key, value in trusted.items() if key in CollectModelSerializer.TRUSTED_INSTANCE_SNAPSHOT_FIELDS}
+            )
+        return snapshots
 
     @staticmethod
     def _should_validate_network_topology(task_type, model_id):
@@ -199,22 +288,13 @@ class CollectModelSerializer(AuthSerializer):
             }
         )
         if masked_fields:
-            raise serializers.ValidationError(
-                {
-                    "credential": {
-                        field: "新建任务时请重新填写凭据"
-                        for field in masked_fields
-                    }
-                }
-            )
+            raise serializers.ValidationError({"credential": {field: "新建任务时请重新填写凭据" for field in masked_fields}})
 
     def _validate_influxdb_credential(self, attrs):
         instances = self._get_attr_or_instance_value(attrs, "instances")
         ip_range = self._get_attr_or_instance_value(attrs, "ip_range")
         if ip_range or not isinstance(instances, list) or len(instances) != 1:
-            raise serializers.ValidationError(
-                {"instances": "InfluxDB 仅支持选择一个明确的采集端点"}
-            )
+            raise serializers.ValidationError({"instances": "InfluxDB 仅支持选择一个明确的采集端点"})
 
         raw_credential = self._get_attr_or_instance_value(attrs, "credential")
         if isinstance(raw_credential, dict):
@@ -222,13 +302,9 @@ class CollectModelSerializer(AuthSerializer):
         elif isinstance(raw_credential, list):
             credential_pool = copy.deepcopy(raw_credential)
         else:
-            raise serializers.ValidationError(
-                {"credential": "InfluxDB 凭据格式错误"}
-            )
+            raise serializers.ValidationError({"credential": "InfluxDB 凭据格式错误"})
         if len(credential_pool) != 1 or not isinstance(credential_pool[0], dict):
-            raise serializers.ValidationError(
-                {"credential": "InfluxDB 仅支持一组连接配置"}
-            )
+            raise serializers.ValidationError({"credential": "InfluxDB 仅支持一组连接配置"})
 
         credential = credential_pool[0]
         allowed_fields = {
@@ -283,21 +359,15 @@ class CollectModelSerializer(AuthSerializer):
         elif isinstance(raw_credential, list):
             credential_pool = copy.deepcopy(raw_credential)
         else:
-            raise serializers.ValidationError(
-                {"credential": "华为云凭据格式错误"}
-            )
+            raise serializers.ValidationError({"credential": "华为云凭据格式错误"})
 
         if len(credential_pool) != 1 or not isinstance(credential_pool[0], dict):
-            raise serializers.ValidationError(
-                {"credential": "华为云仅支持一组连接凭据"}
-            )
+            raise serializers.ValidationError({"credential": "华为云仅支持一组连接凭据"})
 
         credential = credential_pool[0]
         project_id = credential.get("project_id")
         if not isinstance(project_id, str) or not project_id.strip():
-            raise serializers.ValidationError(
-                {"credential": {"project_id": "请输入华为云 Project ID"}}
-            )
+            raise serializers.ValidationError({"credential": {"project_id": "请输入华为云 Project ID"}})
         credential["project_id"] = project_id.strip()
         attrs["credential"] = [credential]
 
@@ -308,13 +378,9 @@ class CollectModelSerializer(AuthSerializer):
         elif isinstance(raw_credential, list):
             credential_pool = copy.deepcopy(raw_credential)
         else:
-            raise serializers.ValidationError(
-                {"credential": "平台 API 凭据格式错误"}
-            )
+            raise serializers.ValidationError({"credential": "平台 API 凭据格式错误"})
         if len(credential_pool) != 1 or not isinstance(credential_pool[0], dict):
-            raise serializers.ValidationError(
-                {"credential": "平台 API 仅支持一组连接凭据"}
-            )
+            raise serializers.ValidationError({"credential": "平台 API 仅支持一组连接凭据"})
 
         credential = credential_pool[0]
         legacy_username = credential.pop("accessKey", None)
@@ -340,9 +406,7 @@ class CollectModelSerializer(AuthSerializer):
             errors["username"] = "请输入平台 API 用户名"
 
         password = credential.get("password")
-        if self.instance is None and (
-            not isinstance(password, str) or not password.strip()
-        ):
+        if self.instance is None and (not isinstance(password, str) or not password.strip()):
             errors["password"] = "请输入平台 API 密码"
         elif password is not None and not isinstance(password, str):
             errors["password"] = "平台 API 密码必须为字符串"
@@ -370,11 +434,7 @@ class CollectModelSerializer(AuthSerializer):
 
     def _validate_registered_credential(self, attrs, model_id):
         raw_credential = self._get_attr_or_instance_value(attrs, "credential")
-        existing_credential = (
-            getattr(self.instance, "credential", None)
-            if self.instance is not None
-            else None
-        )
+        existing_credential = getattr(self.instance, "credential", None) if self.instance is not None else None
         try:
             attrs["credential"] = validate_collect_credential(
                 model_id,
@@ -382,44 +442,36 @@ class CollectModelSerializer(AuthSerializer):
                 existing_credential=existing_credential,
             )
         except CredentialContractError as err:
-            raise serializers.ValidationError(
-                {"credential": err.errors}
-            ) from err
+            raise serializers.ValidationError({"credential": err.errors}) from err
 
     def _normalize_winsphere_instances(self, attrs):
         credential = attrs["credential"][0]
         https_port = credential["https_port"]
         if self._get_attr_or_instance_value(attrs, "ip_range"):
-            raise serializers.ValidationError(
-                {"ip_range": "WinSphere 任务不支持 IP 范围"}
-            )
+            raise serializers.ValidationError({"ip_range": "WinSphere 任务不支持 IP 范围"})
         instances = self._get_attr_or_instance_value(attrs, "instances")
         if not isinstance(instances, list) or len(instances) != 1:
-            raise serializers.ValidationError(
-                {"instances": "WinSphere 任务必须选择一个管理平台"}
-            )
+            raise serializers.ValidationError({"instances": "WinSphere 任务必须选择一个管理平台"})
         instance = copy.deepcopy(instances[0])
         if not isinstance(instance, dict):
-            raise serializers.ValidationError(
-                {"instances": "WinSphere 管理平台格式错误"}
-            )
+            raise serializers.ValidationError({"instances": "WinSphere 管理平台格式错误"})
         try:
-            management_address = normalize_winsphere_management_address(
-                instance.get("management_address")
-            )
+            management_address = normalize_winsphere_management_address(instance.get("management_address"))
         except ValueError as err:
-            raise serializers.ValidationError(
-                {"instances": str(err)}
-            ) from err
+            raise serializers.ValidationError({"instances": str(err)}) from err
         instance["management_address"] = management_address
-        instance["endpoint"] = (
-            f"https://{management_address}:{https_port}"
-        )
+        instance["endpoint"] = f"https://{management_address}:{https_port}"
         attrs["instances"] = [instance]
 
-    def validate(self, attrs):
+    def validate(self, attrs):  # noqa: C901
         task_type = self._get_attr_or_instance_value(attrs, "task_type")
         model_id = self._get_attr_or_instance_value(attrs, "model_id")
+
+        if "instances" in attrs:
+            attrs["instances"] = self._normalize_instance_identity_contract(
+                attrs.get("instances"),
+                model_id,
+            )
 
         credential_contract = get_collect_credential_contract(model_id)
         if credential_contract:
@@ -444,9 +496,7 @@ class CollectModelSerializer(AuthSerializer):
                 self._get_attr_or_instance_value(attrs, "driver_type"),
             )
         ):
-            raise serializers.ValidationError(
-                {"model_id": "当前版本未启用该采集能力"}
-            )
+            raise serializers.ValidationError({"model_id": "当前版本未启用该采集能力"})
         self._reject_masked_secrets_on_create(attrs, model_id)
         if credential_contract:
             self._validate_registered_credential(attrs, model_id)
@@ -462,9 +512,7 @@ class CollectModelSerializer(AuthSerializer):
 
         if model_id == "pc":
             params = self._get_effective_params(attrs)
-            instance_params = (
-                dict(getattr(self.instance, "params", None) or {}) if self.instance is not None else {}
-            )
+            instance_params = dict(getattr(self.instance, "params", None) or {}) if self.instance is not None else {}
             try:
                 attrs["params"] = validate_pc_collect_task(
                     params,

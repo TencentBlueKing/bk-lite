@@ -4,12 +4,16 @@
 全文检索系列、check_asso_mapping。
 """
 
+from uuid import UUID
+
 import pytest
 
 from apps.cmdb.services.instance import InstanceManage
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 MODULE = "apps.cmdb.services.instance"
+HOST_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+DST_UUID = "7de0c6de-f841-44b1-846d-2d75a7c59c50"
 
 
 @pytest.fixture
@@ -45,9 +49,7 @@ def patch_side_effects(monkeypatch):
         lambda model_id: {"model_id": model_id, "model_name": "主机", "attrs": "[]", "_id": 1},
     )
     # 权限校验放行
-    monkeypatch.setattr(
-        f"{MODULE}.InstanceManage.check_instances_permission", lambda *a, **k: None
-    )
+    monkeypatch.setattr(f"{MODULE}.InstanceManage.check_instances_permission", lambda *a, **k: None)
 
 
 # --------------------------------------------------------------------------
@@ -57,16 +59,31 @@ def patch_side_effects(monkeypatch):
 
 @pytest.mark.django_db
 def test_instance_create(fake_graph, patch_side_effects):
-    fake_graph(
+    graph = fake_graph(
         MODULE,
         query_entity=([], 0),
-        create_entity={"_id": 9, "model_id": "host", "inst_name": "h1"},
+        create_entity={"_id": 9, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h1"},
     )
-    out = InstanceManage.instance_create(
-        "host", {"inst_name": "h1"}, "admin", allowed_org_ids=[1]
-    )
+    out = InstanceManage.instance_create("host", {"inst_name": "h1"}, "admin", allowed_org_ids=[1])
     assert out["_id"] == 9
     assert out["inst_name"] == "h1"
+    create_call = next(call for call in graph.calls if call[0] == "create_entity")
+    assert UUID(create_call[1][1]["inst_uuid"]).version == 4
+
+
+@pytest.mark.django_db
+def test_instance_create_rejects_client_supplied_uuid(fake_graph, patch_side_effects):
+    fake_graph(MODULE, query_entity=([], 0))
+    with pytest.raises(BaseAppException, match="inst_uuid 是系统保留字段"):
+        InstanceManage.instance_create(
+            "host",
+            {
+                "inst_name": "h1",
+                "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+            },
+            "admin",
+            allowed_org_ids=[1],
+        )
 
 
 @pytest.mark.django_db
@@ -74,7 +91,7 @@ def test_instance_create_can_defer_audit_and_auto_relation(fake_graph, patch_sid
     graph = fake_graph(
         MODULE,
         query_entity=([], 0),
-        create_entity={"_id": 9, "model_id": "host", "inst_name": "h1"},
+        create_entity={"_id": 9, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h1"},
     )
     monkeypatch.setattr(f"{MODULE}.create_change_record", lambda *a, **k: pytest.fail("审计不得同步执行"))
     monkeypatch.setattr(
@@ -110,7 +127,7 @@ def test_instance_create_queries_only_unique_rule_candidates(fake_graph, patch_s
     fake_graph(
         MODULE,
         query_entity=query_entity,
-        create_entity={"_id": 9, "model_id": "host", "inst_name": "h1", "serial": "S-1", "region": "cn"},
+        create_entity={"_id": 9, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h1", "serial": "S-1", "region": "cn"},
     )
     monkeypatch.setattr(
         f"{MODULE}.InstanceManage._build_unique_rule_check_attr_map",
@@ -122,9 +139,7 @@ def test_instance_create_queries_only_unique_rule_candidates(fake_graph, patch_s
         },
     )
 
-    InstanceManage.instance_create(
-        "host", {"inst_name": "h1", "serial": "S-1", "region": "cn"}, "admin", allowed_org_ids=[1]
-    )
+    InstanceManage.instance_create("host", {"inst_name": "h1", "serial": "S-1", "region": "cn"}, "admin", allowed_org_ids=[1])
 
     assert len(query_params) == 1
     assert query_params[0] == [
@@ -147,29 +162,103 @@ def test_instance_update_not_found(fake_graph, patch_side_effects):
 
 
 @pytest.mark.django_db
+def test_instance_update_rejects_inst_uuid(fake_graph, patch_side_effects):
+    fake_graph(
+        MODULE,
+        query_entity_by_id={
+            "_id": 5,
+            "inst_uuid": HOST_UUID,
+            "model_id": "host",
+            "inst_name": "h1",
+            "organization": [1],
+        },
+    )
+
+    with pytest.raises(BaseAppException, match="inst_uuid 不可修改"):
+        InstanceManage.instance_update(
+            [{"id": 1}],
+            ["admin"],
+            5,
+            {"inst_uuid": HOST_UUID},
+            "admin",
+        )
+
+
+@pytest.mark.django_db
 def test_instance_update_ok(fake_graph, patch_side_effects):
     def _query(label, params, **k):
         return ([], 0)
 
     fake_graph(
         MODULE,
-        query_entity_by_id={"_id": 5, "model_id": "host", "inst_name": "h1", "organization": [1]},
+        query_entity_by_id={"_id": 5, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h1", "organization": [1]},
         query_entity=_query,
-        set_entity_properties=[{"_id": 5, "model_id": "host", "inst_name": "h2", "organization": [1]}],
+        set_entity_properties=[{"_id": 5, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h2", "organization": [1]}],
     )
-    out = InstanceManage.instance_update(
-        [{"id": 1}], ["admin"], 5, {"inst_name": "h2"}, "admin"
-    )
+    out = InstanceManage.instance_update([{"id": 1}], ["admin"], 5, {"inst_name": "h2"}, "admin")
     assert out["inst_name"] == "h2"
+
+
+@pytest.mark.django_db
+def test_instance_update_skip_permission_can_clear_non_editable_node_id(fake_graph, patch_side_effects, monkeypatch):
+    monkeypatch.setattr(
+        f"{MODULE}.InstanceManage._build_unique_rule_check_attr_map",
+        lambda model_id, attrs, for_update=False: {
+            "is_only": {"node_id": "节点ID"},
+            "is_required": {},
+            "editable": {"inst_name": "名称"} if for_update else {},
+            "unique_rules": [],
+            "attrs_by_id": {},
+        },
+    )
+    graph = fake_graph(
+        MODULE,
+        query_entity_by_id={
+            "_id": 1140,
+            "inst_uuid": HOST_UUID,
+            "model_id": "host",
+            "inst_name": "172.16.0.4[default]",
+            "node_id": "7e1bcd3d738c482fa33530b289d1c444",
+            "organization": [1],
+        },
+        query_entity=([], 0),
+        set_entity_properties=[
+            {
+                "_id": 1140,
+                "inst_uuid": HOST_UUID,
+                "model_id": "host",
+                "inst_name": "172.16.0.4[default]",
+                "node_id": "",
+                "organization": [1],
+            }
+        ],
+    )
+
+    InstanceManage.instance_update(
+        [],
+        [],
+        1140,
+        {"node_id": ""},
+        "system",
+        skip_permission_check=True,
+        schedule_post_actions=False,
+        record_change=False,
+    )
+
+    call = next(item for item in graph.calls if item[0] == "set_entity_properties")
+    properties = call[1][2]
+    check_attr_map = call[1][3]
+    assert properties["node_id"] == ""
+    assert "node_id" in check_attr_map.get("editable", {})
 
 
 @pytest.mark.django_db
 def test_instance_update_can_defer_audit_and_auto_relation(fake_graph, patch_side_effects, monkeypatch):
     graph = fake_graph(
         MODULE,
-        query_entity_by_id={"_id": 5, "model_id": "host", "inst_name": "h1", "organization": [1]},
+        query_entity_by_id={"_id": 5, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h1", "organization": [1]},
         query_entity=([], 0),
-        set_entity_properties=[{"_id": 5, "model_id": "host", "inst_name": "h2", "organization": [1]}],
+        set_entity_properties=[{"_id": 5, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h2", "organization": [1]}],
     )
     monkeypatch.setattr(f"{MODULE}.create_change_record", lambda *a, **k: pytest.fail("审计不得同步执行"))
     monkeypatch.setattr(
@@ -209,13 +298,11 @@ def test_batch_instance_update_not_found(fake_graph, patch_side_effects):
 def test_batch_instance_update_ok(fake_graph, patch_side_effects):
     fake_graph(
         MODULE,
-        query_entity_by_ids=[{"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [1]}],
+        query_entity_by_ids=[{"_id": 1, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h1", "organization": [1]}],
         query_entity=([], 0),
-        set_entity_properties=[{"_id": 1, "model_id": "host", "inst_name": "h2", "organization": [1]}],
+        set_entity_properties=[{"_id": 1, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h2", "organization": [1]}],
     )
-    out = InstanceManage.batch_instance_update(
-        [{"id": 1}], ["admin"], [1], {"inst_name": "h2"}, "admin"
-    )
+    out = InstanceManage.batch_instance_update([{"id": 1}], ["admin"], [1], {"inst_name": "h2"}, "admin")
     assert out[0]["inst_name"] == "h2"
 
 
@@ -241,13 +328,11 @@ def test_batch_instance_update_runs_file_field_hooks(fake_graph, patch_side_effe
     try:
         fake_graph(
             MODULE,
-            query_entity_by_ids=[{"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [1]}],
+            query_entity_by_ids=[{"_id": 1, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h1", "organization": [1]}],
             query_entity=([], 0),
-            set_entity_properties=[{"_id": 1, "model_id": "host", "inst_name": "h2", "organization": [1]}],
+            set_entity_properties=[{"_id": 1, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h2", "organization": [1]}],
         )
-        InstanceManage.batch_instance_update(
-            [{"id": 1}], ["admin"], [1], {"inst_name": "h2"}, "admin"
-        )
+        InstanceManage.batch_instance_update([{"id": 1}], ["admin"], [1], {"inst_name": "h2"}, "admin")
     finally:
         if saved_ext is not None:
             registry.register("instance_ops", saved_ext)
@@ -267,7 +352,7 @@ def test_batch_instance_update_runs_file_field_hooks(fake_graph, patch_side_effe
 def test_instance_batch_delete_ok(fake_graph, patch_side_effects):
     fg = fake_graph(
         MODULE,
-        query_entity_by_ids=[{"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [1]}],
+        query_entity_by_ids=[{"_id": 1, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h1", "organization": [1]}],
     )
     InstanceManage.instance_batch_delete([{"id": 1}], ["admin"], [1], "admin")
     # 验证 batch_delete_entity 调用了
@@ -287,14 +372,27 @@ def test_instance_association_create(fake_graph, patch_side_effects, monkeypatch
     monkeypatch.setattr(
         f"{MODULE}.InstanceManage.instance_association_by_asso_id",
         lambda aid: {
-            "src": {"_id": 1, "model_id": "host", "inst_name": "h"},
-            "dst": {"_id": 2, "model_id": "sw", "inst_name": "s"},
+            "src": {"_id": 1, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h"},
+            "dst": {"_id": 2, "inst_uuid": DST_UUID, "model_id": "sw", "inst_name": "s"},
         },
     )
-    fake_graph(MODULE, create_edge={"_id": 100, "model_asst_id": "a_b_c"})
+
+    def _by_id(inst_id):
+        return {
+            1: {"_id": 1, "inst_uuid": HOST_UUID, "model_id": "host", "inst_name": "h"},
+            2: {"_id": 2, "inst_uuid": DST_UUID, "model_id": "sw", "inst_name": "s"},
+        }.get(inst_id)
+
+    fake_graph(MODULE, create_edge={"_id": 100, "model_asst_id": "a_b_c"}, query_entity_by_id=_by_id)
     out = InstanceManage.instance_association_create(
-        {"src_inst_id": 1, "dst_inst_id": 2, "asst_id": "conn",
-         "src_model_id": "host", "dst_model_id": "switch", "model_asst_id": "host_conn_switch"},
+        {
+            "src_inst_id": 1,
+            "dst_inst_id": 2,
+            "asst_id": "conn",
+            "src_model_id": "host",
+            "dst_model_id": "switch",
+            "model_asst_id": "host_conn_switch",
+        },
         "admin",
     )
     assert out["_id"] == 100
@@ -325,11 +423,27 @@ def test_instance_association_create_unresolved_endpoint(fake_graph, patch_side_
         f"{MODULE}.InstanceManage.instance_association_by_asso_id",
         lambda aid: {"src": {"_id": 1, "inst_name": "if-a"}, "dst": {}},
     )
-    fake_graph(MODULE, create_edge={"_id": 101, "model_asst_id": "interface_connect_interface"})
+
+    def _by_id(inst_id):
+        return {
+            1: {"_id": 1, "inst_uuid": HOST_UUID, "model_id": "interface", "inst_name": "if-a"},
+            2: {"_id": 2, "inst_uuid": DST_UUID, "model_id": "interface", "inst_name": "if-b"},
+        }.get(inst_id)
+
+    fake_graph(
+        MODULE,
+        create_edge={"_id": 101, "model_asst_id": "interface_connect_interface"},
+        query_entity_by_id=_by_id,
+    )
     out = InstanceManage.instance_association_create(
-        {"src_inst_id": 1, "dst_inst_id": 2, "asst_id": "connect",
-         "src_model_id": "interface", "dst_model_id": "interface",
-         "model_asst_id": "interface_connect_interface"},
+        {
+            "src_inst_id": 1,
+            "dst_inst_id": 2,
+            "asst_id": "connect",
+            "src_model_id": "interface",
+            "dst_model_id": "interface",
+            "model_asst_id": "interface_connect_interface",
+        },
         "admin",
     )
     assert out["_id"] == 101
@@ -356,12 +470,23 @@ def test_instance_association_create_duplicate_raises_friendly(fake_graph, patch
     def dup(*a, **k):
         raise BaseAppException("edge already exists")
 
-    fake_graph(MODULE, create_edge=dup)
+    def _by_id(inst_id):
+        return {
+            1: {"_id": 1, "inst_uuid": HOST_UUID, "model_id": "interface"},
+            2: {"_id": 2, "inst_uuid": DST_UUID, "model_id": "interface"},
+        }.get(inst_id)
+
+    fake_graph(MODULE, create_edge=dup, query_entity_by_id=_by_id)
     with pytest.raises(BaseAppException) as ei:
         InstanceManage.instance_association_create(
-            {"src_inst_id": 1, "dst_inst_id": 2, "asst_id": "connect",
-             "src_model_id": "interface", "dst_model_id": "interface",
-             "model_asst_id": "interface_connect_interface"},
+            {
+                "src_inst_id": 1,
+                "dst_inst_id": 2,
+                "asst_id": "connect",
+                "src_model_id": "interface",
+                "dst_model_id": "interface",
+                "model_asst_id": "interface_connect_interface",
+            },
             "admin",
         )
     assert "repetition" in str(ei.value.message)
@@ -376,12 +501,23 @@ def test_instance_association_create_propagates_graph_error(fake_graph, patch_si
     def boom(*a, **k):
         raise BaseAppException("graph down")
 
-    fake_graph(MODULE, create_edge=boom)
+    def _by_id(inst_id):
+        return {
+            1: {"_id": 1, "inst_uuid": HOST_UUID, "model_id": "interface"},
+            2: {"_id": 2, "inst_uuid": DST_UUID, "model_id": "interface"},
+        }.get(inst_id)
+
+    fake_graph(MODULE, create_edge=boom, query_entity_by_id=_by_id)
     with pytest.raises(BaseAppException) as ei:
         InstanceManage.instance_association_create(
-            {"src_inst_id": 1, "dst_inst_id": 2, "asst_id": "connect",
-             "src_model_id": "interface", "dst_model_id": "interface",
-             "model_asst_id": "interface_connect_interface"},
+            {
+                "src_inst_id": 1,
+                "dst_inst_id": 2,
+                "asst_id": "connect",
+                "src_model_id": "interface",
+                "dst_model_id": "interface",
+                "model_asst_id": "interface_connect_interface",
+            },
             "admin",
         )
     assert "graph down" in str(ei.value.message)
@@ -425,9 +561,7 @@ def test_fulltext_search_stats(fake_graph, monkeypatch):
 def test_fulltext_search_by_model(fake_graph, monkeypatch):
     monkeypatch.setattr(f"{MODULE}.InstanceManage._build_permission_params", classmethod(lambda cls, pmap, creator="": ("", {})))
     fake_graph(MODULE, full_text_by_model={"total": 1, "data": [{"_id": 1}], "page": 1, "page_size": 10})
-    out = InstanceManage.fulltext_search_by_model(
-        search="h", model_id="host", permission_map={1: {"inst_names": []}}
-    )
+    out = InstanceManage.fulltext_search_by_model(search="h", model_id="host", permission_map={1: {"inst_names": []}})
     assert out["total"] == 1
 
 
@@ -473,9 +607,7 @@ def test_create_or_update_empty():
 
 @pytest.mark.django_db
 def test_create_or_update_ok():
-    out = InstanceManage.create_or_update(
-        {"show_fields": ["inst_name"], "model_id": "host", "created_by": "a"}
-    )
+    out = InstanceManage.create_or_update({"show_fields": ["inst_name"], "model_id": "host", "created_by": "a"})
     assert out["model_id"] == "host"
 
 
@@ -486,8 +618,6 @@ def test_get_info_none():
 
 @pytest.mark.django_db
 def test_get_info_found():
-    InstanceManage.create_or_update(
-        {"show_fields": ["inst_name"], "model_id": "host", "created_by": "u1"}
-    )
+    InstanceManage.create_or_update({"show_fields": ["inst_name"], "model_id": "host", "created_by": "u1"})
     out = InstanceManage.get_info("host", "u1")
     assert out["model_id"] == "host"

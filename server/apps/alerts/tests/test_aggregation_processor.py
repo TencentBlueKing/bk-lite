@@ -15,7 +15,6 @@ from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event
 
-
 # --------------------------------------------------------------------------
 # _load_params
 # --------------------------------------------------------------------------
@@ -44,8 +43,14 @@ def test_load_params_preserves_existing():
 
 def test_build_heartbeat_context():
     event = SimpleNamespace(
-        service="svc", location="loc", resource_name="rn", resource_id="rid",
-        resource_type="rt", item="cpu", title="t", level="0",
+        service="svc",
+        location="loc",
+        resource_name="rn",
+        resource_id="rid",
+        resource_type="rt",
+        item="cpu",
+        title="t",
+        level="0",
     )
     ctx = AggregationProcessor._build_heartbeat_context(event)
     assert ctx["service"] == "svc"
@@ -96,8 +101,7 @@ def source(db):
 @pytest.mark.django_db
 def test_get_events_for_strategy_within_window(source):
     now = timezone.now()
-    Event.objects.create(source=source, raw_data={}, title="t", level="0", start_time=now,
-                         event_id="E1", action=EventAction.CREATED)
+    Event.objects.create(source=source, raw_data={}, title="t", level="0", start_time=now, event_id="E1", action=EventAction.CREATED)
     strategy = AlarmStrategy.objects.create(name="s", strategy_type="smart_denoise", params={"window_size": 60})
     events = AggregationProcessor.get_events_for_strategy(strategy, now)
     assert events.filter(event_id="E1").exists()
@@ -214,8 +218,7 @@ def test_query_candidate_events_after_last_execute(source):
     strategy = AlarmStrategy.objects.create(name="s", strategy_type="missing_detection", params={})
     # last_execute_time 为 None → 用 created_at 起始
     proc = AggregationProcessor()
-    Event.objects.create(source=source, raw_data={}, title="t", level="0", start_time=now,
-                         event_id="E1", action=EventAction.CREATED)
+    Event.objects.create(source=source, raw_data={}, title="t", level="0", start_time=now, event_id="E1", action=EventAction.CREATED)
     qs = proc._query_candidate_events(strategy, now)
     # 不报错并返回 queryset
     assert qs is not None
@@ -230,8 +233,17 @@ def test_query_candidate_events_after_last_execute(source):
 def test_duckdb_connection_load_and_query(source):
     from apps.alerts.aggregation.engine.connection import DuckDBConnection
 
-    Event.objects.create(source=source, raw_data={}, title="t", level="0", start_time=timezone.now(),
-                         event_id="E1", action=EventAction.CREATED, service="svc", labels={"k": "v"})
+    Event.objects.create(
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E1",
+        action=EventAction.CREATED,
+        service="svc",
+        labels={"k": "v"},
+    )
     conn = DuckDBConnection()
     ok = conn.load_events_to_memory(Event.objects.all())
     assert ok is True
@@ -257,6 +269,7 @@ def test_duckdb_load_with_future_infer_string():
     load_events_to_memory 必须把扩展 string 列降级为 object，保证聚合正常装载。
     用假 queryset 避免依赖 DB（与本用例无关的迁移状态）。"""
     import pandas as pd
+
     from apps.alerts.aggregation.engine.connection import DuckDBConnection
 
     class _FakeQS:
@@ -266,13 +279,28 @@ def test_duckdb_load_with_future_infer_string():
         def values(self, *fields):
             return self._rows
 
-    rows = [{
-        "event_id": "E1", "title": "主机 10.36.0.60-weopsx 磁盘使用率过高", "description": None,
-        "level": "2", "resource_name": "10.36.0.60-weopsx", "resource_id": "('YTFlY2Y3YWVjZGU5',)",
-        "resource_type": None, "item": None, "external_id": "9", "received_at": timezone.now(),
-        "action": EventAction.CREATED, "source_id": 1, "push_source_id": "lite-monitor",
-        "labels": {"k": "v"}, "service": "svc", "location": None, "event_type": 0, "tags": {},
-    }]
+    rows = [
+        {
+            "event_id": "E1",
+            "title": "主机 10.36.0.60-weopsx 磁盘使用率过高",
+            "description": None,
+            "level": "2",
+            "resource_name": "10.36.0.60-weopsx",
+            "resource_id": "('YTFlY2Y3YWVjZGU5',)",
+            "resource_type": None,
+            "item": None,
+            "external_id": "9",
+            "received_at": timezone.now(),
+            "action": EventAction.CREATED,
+            "source_id": 1,
+            "push_source_id": "lite-monitor",
+            "labels": {"k": "v"},
+            "service": "svc",
+            "location": None,
+            "event_type": 0,
+            "tags": {},
+        }
+    ]
     conn = DuckDBConnection()
     with pd.option_context("future.infer_string", True):
         ok = conn.load_events_to_memory(_FakeQS(rows))
@@ -302,13 +330,25 @@ def test_process_aggregation_smart_denoise_creates_alert(source):
     now = timezone.now()
     for i in range(3):
         Event.objects.create(
-            source=source, raw_data={}, title="CPU高", level="1", start_time=now,
-            event_id=f"E{i}", action=EventAction.CREATED, service="svc-a",
-            resource_name="host1", item="cpu", external_id=f"ext{i}",
+            source=source,
+            raw_data={},
+            title="CPU高",
+            level="1",
+            start_time=now,
+            event_id=f"E{i}",
+            action=EventAction.CREATED,
+            service="svc-a",
+            resource_name="host1",
+            item="cpu",
+            external_id=f"ext{i}",
         )
 
     AlarmStrategy.objects.create(
-        name="降噪", strategy_type="smart_denoise", is_active=True, team=[1], dispatch_team=[1],
+        name="降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
         match_rules=[[{"key": "title", "operator": "eq", "value": "CPU高"}]],
         params={"window_size": 60, "group_by": ["service"]},
     )
@@ -358,11 +398,106 @@ def test_process_aggregation_reports_alert_creation_failure(source, mocker):
         side_effect=RuntimeError("alert write failed"),
     )
 
-    with pytest.raises(RuntimeError, match="1 个告警组创建失败"):
+    with pytest.raises(RuntimeError, match="聚合轮次部分失败"):
         AggregationProcessor().process_aggregation()
 
     strategy.refresh_from_db()
     assert strategy.last_execute_time is None
+
+
+@pytest.mark.django_db
+def test_process_aggregation_isolates_strategy_failure(source, mocker):
+    """单策略失败不得阻断同轮后续策略（可用性隔离）。"""
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.models import Alert, Level
+
+    for lid in (0, 1, 2):
+        Level.objects.create(
+            level_id=lid,
+            level_name=f"L{lid}",
+            level_display_name=f"等级{lid}",
+            level_type=LevelType.ALERT,
+        )
+
+    now = timezone.now()
+    Event.objects.create(
+        source=source,
+        raw_data={},
+        title="CPU高",
+        level="1",
+        start_time=now,
+        event_id="E-iso-1",
+        action=EventAction.CREATED,
+        service="svc-a",
+        resource_name="host1",
+        item="cpu",
+        external_id="ext-iso-1",
+    )
+    Event.objects.create(
+        source=source,
+        raw_data={},
+        title="内存高",
+        level="1",
+        start_time=now,
+        event_id="E-iso-2",
+        action=EventAction.CREATED,
+        service="svc-b",
+        resource_name="host2",
+        item="mem",
+        external_id="ext-iso-2",
+    )
+
+    # updated_at 降序处理：后创建的会先跑。先建成功策略，再建失败策略。
+    ok_strategy = AlarmStrategy.objects.create(
+        name="成功降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[[{"key": "title", "operator": "eq", "value": "内存高"}]],
+        params={"window_size": 60, "group_by": ["service"]},
+    )
+    bad_strategy = AlarmStrategy.objects.create(
+        name="失败降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[[{"key": "title", "operator": "eq", "value": "CPU高"}]],
+        params={"window_size": 60, "group_by": ["service"]},
+    )
+
+    original = AggregationProcessor._process_strategy
+
+    def _fail_only_bad(self, strategy, now_value):
+        if strategy.id == bad_strategy.id:
+            raise RuntimeError("boom-bad-strategy")
+        return original(self, strategy, now_value)
+
+    mocker.patch.object(AggregationProcessor, "_process_strategy", _fail_only_bad)
+
+    with pytest.raises(RuntimeError, match="聚合轮次部分失败"):
+        AggregationProcessor().process_aggregation()
+
+    assert Alert.objects.filter(rule_id=str(ok_strategy.id)).exists()
+    assert not Alert.objects.filter(rule_id=str(bad_strategy.id)).exists()
+    ok_strategy.refresh_from_db()
+    assert ok_strategy.last_execute_time is not None
+    bad_strategy.refresh_from_db()
+    assert bad_strategy.last_execute_time is None
+
+
+def test_log_dimension_fallback_summary_emits_warning(caplog):
+    strategy = SimpleNamespace(id=9, name="降级策略")
+    results = [
+        {"used_dimension_fallback": True, "effective_group_dimension": "ext-a"},
+        {"used_dimension_fallback": False, "effective_group_dimension": "service=api"},
+        {"used_dimension_fallback": 1, "effective_group_dimension": "ext-b"},
+    ]
+    with caplog.at_level("WARNING"):
+        AggregationProcessor._log_dimension_fallback_summary(strategy, ["service"], results)
+    assert "dimension_fallback" in caplog.text
+    assert "fallback_groups=2" in caplog.text
 
 
 @pytest.mark.django_db
@@ -395,9 +530,17 @@ def test_process_aggregation_smart_denoise_updates_last_execute_time_without_mat
         params={"window_size": 60, "group_by": ["service"]},
     )
     Event.objects.create(
-        source=source, raw_data={}, title="MEM高", level="1", start_time=timezone.now(),
-        event_id="E-no-match", action=EventAction.CREATED, service="svc-a",
-        resource_name="host1", item="mem", external_id="ext-no-match",
+        source=source,
+        raw_data={},
+        title="MEM高",
+        level="1",
+        start_time=timezone.now(),
+        event_id="E-no-match",
+        action=EventAction.CREATED,
+        service="svc-a",
+        resource_name="host1",
+        item="mem",
+        external_id="ext-no-match",
     )
 
     AggregationProcessor().process_aggregation()
@@ -422,8 +565,11 @@ def _missing_strategy(**param_over):
     }
     params.update(param_over)
     return AlarmStrategy.objects.create(
-        name="缺失检查", strategy_type="missing_detection", is_active=True,
-        team=[1], dispatch_team=[1],
+        name="缺失检查",
+        strategy_type="missing_detection",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
         match_rules=[[{"key": "item", "operator": "eq", "value": "heartbeat"}]],
         params=params,
     )
@@ -434,11 +580,19 @@ def test_process_missing_detection_with_heartbeat(source):
     # 有心跳事件 → 保存运行态，不创建告警
     _missing_strategy()
     Event.objects.create(
-        source=source, raw_data={}, title="hb", level="1", start_time=timezone.now(),
-        event_id="HB1", action=EventAction.CREATED, item="heartbeat", service="svc-a",
+        source=source,
+        raw_data={},
+        title="hb",
+        level="1",
+        start_time=timezone.now(),
+        event_id="HB1",
+        action=EventAction.CREATED,
+        item="heartbeat",
+        service="svc-a",
     )
     AggregationProcessor().process_aggregation()
     from apps.alerts.models.models import Alert
+
     # 有心跳，不应触发缺失告警
     assert not Alert.objects.filter(title="心跳缺失").exists()
 
@@ -449,9 +603,7 @@ def test_process_missing_detection_no_event_saves_runtime():
 
     # 无心跳事件，deadline 尚未到（高频 cron 的下一个周期在未来）→ 保存运行态，不创建告警
     strategy = _missing_strategy()
-    AlarmStrategy.objects.filter(pk=strategy.pk).update(
-        created_at=timezone.now() - timedelta(hours=2)
-    )
+    AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=timezone.now() - timedelta(hours=2))
     AggregationProcessor().process_aggregation()
     strategy.refresh_from_db()
     # 运行态被保存：last_execute_time 被更新
@@ -469,8 +621,15 @@ def test_process_missing_detection_recovers_active_alert(source):
     assert active.status in AlertStatus.ACTIVATE_STATUS
 
     Event.objects.create(
-        source=source, raw_data={}, title="hb", level="1", start_time=timezone.now(),
-        event_id="HB1", action=EventAction.CREATED, item="heartbeat", service="svc-a",
+        source=source,
+        raw_data={},
+        title="hb",
+        level="1",
+        start_time=timezone.now(),
+        event_id="HB1",
+        action=EventAction.CREATED,
+        item="heartbeat",
+        service="svc-a",
     )
     AggregationProcessor().process_aggregation()
     active.refresh_from_db()
@@ -513,10 +672,10 @@ def test_get_events_for_strategy_excludes_shielded(source):
     from apps.alerts.constants.constants import EventStatus
 
     now = timezone.now()
-    Event.objects.create(source=source, raw_data={}, title="t", level="0", start_time=now,
-                         event_id="E-ok", action=EventAction.CREATED)
-    Event.objects.create(source=source, raw_data={}, title="t", level="0", start_time=now,
-                         event_id="E-shield", action=EventAction.CREATED, status=EventStatus.SHIELD)
+    Event.objects.create(source=source, raw_data={}, title="t", level="0", start_time=now, event_id="E-ok", action=EventAction.CREATED)
+    Event.objects.create(
+        source=source, raw_data={}, title="t", level="0", start_time=now, event_id="E-shield", action=EventAction.CREATED, status=EventStatus.SHIELD
+    )
     strategy = AlarmStrategy.objects.create(name="s", strategy_type="smart_denoise", params={"window_size": 60})
 
     events = AggregationProcessor.get_events_for_strategy(strategy, now)
@@ -534,6 +693,7 @@ def test_get_events_for_strategy_excludes_shielded(source):
 @pytest.mark.django_db
 def test_trigger_missing_alert_schedules_auto_assignment(source):
     from unittest import mock
+
     from apps.alerts.models import AlertOutbox
 
     strategy = _missing_strategy()
@@ -585,9 +745,17 @@ def _denoise_strategy(**param_over):
 
 def _cpu_event(source, event_id):
     return Event.objects.create(
-        source=source, raw_data={}, title="CPU高", level="1", start_time=timezone.now(),
-        event_id=event_id, action=EventAction.CREATED, service="svc-a",
-        resource_name="host1", item="cpu", external_id=f"ext-{event_id}",
+        source=source,
+        raw_data={},
+        title="CPU高",
+        level="1",
+        start_time=timezone.now(),
+        event_id=event_id,
+        action=EventAction.CREATED,
+        service="svc-a",
+        resource_name="host1",
+        item="cpu",
+        external_id=f"ext-{event_id}",
     )
 
 
@@ -626,10 +794,7 @@ def test_existing_unassigned_alert_retried_on_new_event(source):
     assert alert.status == "unassigned"
     assignment_rows = list(AlertOutbox.objects.filter(kind="auto_assignment"))
     assert len(assignment_rows) == 2, "存量 UNASSIGNED 告警收到新事件后未创建新的分派尝试"
-    assert all(
-        alert.alert_id in (record.payload.get("alert_ids") or [])
-        for record in assignment_rows
-    )
+    assert all(alert.alert_id in (record.payload.get("alert_ids") or []) for record in assignment_rows)
 
 
 @pytest.mark.django_db
@@ -717,12 +882,15 @@ def test_get_events_for_strategy_no_count_sql_when_debug_disabled(source):
 
     now = timezone.now()
     Event.objects.create(
-        source=source, raw_data={}, title="t", level="0",
-        start_time=now, event_id="E1", action=EventAction.CREATED,
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=now,
+        event_id="E1",
+        action=EventAction.CREATED,
     )
-    strategy = AlarmStrategy.objects.create(
-        name="s-no-count", strategy_type="smart_denoise", params={"window_size": 60}
-    )
+    strategy = AlarmStrategy.objects.create(name="s-no-count", strategy_type="smart_denoise", params={"window_size": 60})
 
     import apps.alerts.aggregation.processor.aggregation_processor as proc_module
 
@@ -743,12 +911,15 @@ def test_get_events_for_strategy_count_sql_when_debug_enabled(source):
 
     now = timezone.now()
     Event.objects.create(
-        source=source, raw_data={}, title="t", level="0",
-        start_time=now, event_id="E2", action=EventAction.CREATED,
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=now,
+        event_id="E2",
+        action=EventAction.CREATED,
     )
-    strategy = AlarmStrategy.objects.create(
-        name="s-with-count", strategy_type="smart_denoise", params={"window_size": 60}
-    )
+    strategy = AlarmStrategy.objects.create(name="s-with-count", strategy_type="smart_denoise", params={"window_size": 60})
 
     import apps.alerts.aggregation.processor.aggregation_processor as proc_module
 
@@ -765,8 +936,8 @@ def test_get_events_for_strategy_count_sql_when_debug_enabled(source):
 @pytest.mark.django_db
 def test_match_heartbeat_events_no_count_when_debug_disabled(source):
     """_match_heartbeat_events 在 INFO 级别下不应触发 matched_events.count() SQL。"""
-    from unittest import mock
     from types import SimpleNamespace
+    from unittest import mock
 
     proc = AggregationProcessor()
     strategy = SimpleNamespace(id=1, match_rules=None)

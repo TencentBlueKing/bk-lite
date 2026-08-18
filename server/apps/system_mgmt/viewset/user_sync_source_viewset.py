@@ -58,9 +58,10 @@ class UserSyncSourceViewSet(MaintainerViewSet):
     @HasPermission("user_sync-Delete")
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
-        obj.delete_sync_periodic_task()
         source_name = obj.name
         result = delete_user_sync_source(obj)
+        if not result.get("result"):
+            return JsonResponse(result, status=400)
         log_operation(request, "delete", "system-manager", f"删除用户同步源: {source_name}")
         return JsonResponse(result)
 

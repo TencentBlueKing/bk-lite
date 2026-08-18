@@ -28,6 +28,7 @@ export interface NetworkToolbarProps {
   /** 运行态刷新(对应 reference 的 TimeSelector.refresh)。 */
   onRefresh: () => void;
   onFrequencyChange: (intervalMs: number) => void;
+  frequenceValue?: number;
   /** 编辑 / 取消 / 保存。 */
   onEnterEdit: () => void;
   onCancelEdit: () => void;
@@ -64,6 +65,7 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
   onFullscreenToggle,
   onRefresh,
   onFrequencyChange,
+  frequenceValue = 0,
   onEnterEdit,
   onCancelEdit,
   onSave,
@@ -129,14 +131,13 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
         )}
       </div>
 
-      {!shareMode && (
-        <TimeSelector
-          onlyRefresh
-          onRefresh={onRefresh}
-          onFrequenceChange={onFrequencyChange}
-          className="network-topology-refresh"
-        />
-      )}
+      <TimeSelector
+        onlyRefresh
+        frequenceValue={frequenceValue}
+        onRefresh={onRefresh}
+        onFrequenceChange={onFrequencyChange}
+        className="network-topology-refresh"
+      />
 
       {!shareMode && !editMode && onOpenShare && (
         <Tooltip title={t('dashboard.share')}>

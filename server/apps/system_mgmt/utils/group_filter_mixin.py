@@ -6,6 +6,7 @@ from rest_framework.exceptions import PermissionDenied
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.team_utils import get_current_team
 from apps.system_mgmt.models import Group, User
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 def normalize_group_id_set(group_list):
@@ -171,11 +172,14 @@ class GroupFilterMixin:
         """验证用户有权限访问 current_team，返回 current_team 值
 
         - 如果 current_team 无效或用户无权访问，抛出 PermissionDenied
-        - superuser 跳过 group_list 验证，但仍需要有效的 current_team
+        - 已归档或不存在的组织一律拒绝（含超管）
+        - superuser 跳过 group_list 验证，但仍需要有效的活动 current_team
         """
         current_team = self._parse_current_team_cookie(request)
         if not current_team:
             raise PermissionDenied("无权访问该团队数据")
+        if not GroupUtils.active_queryset(id=current_team).exists():
+            raise PermissionDenied("current_team 对应组织已归档或不存在")
         if not getattr(request.user, "is_superuser", False):
             user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
             if current_team not in user_group_ids:
@@ -191,12 +195,12 @@ class GroupFilterMixin:
             group_model: Group模型类
 
         Returns:
-            set: 包含父组及所有子孙组的ID集合
+            set: 包含父组及所有子孙组的ID集合（仅活动组织）
         """
         group_ids = {parent_id}
 
-        # 查找直接子组
-        child_groups = group_model.objects.filter(parent_id=parent_id)
+        # 查找直接子组（仅活动）
+        child_groups = GroupUtils.active_queryset(parent_id=parent_id)
 
         # 递归获取每个子组的子组
         for child in child_groups:

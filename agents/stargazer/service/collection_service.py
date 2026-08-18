@@ -7,13 +7,13 @@ import ntpath
 import posixpath
 import time
 import traceback
-from typing import Dict, Any, Optional
-from core.logger import logger
+from typing import Any, Dict, Optional
 
+from core.collection.contracts import AccessProbeResult, StructuredMetricsPayload
 from core.infra.nats_utils import nats_request
-from core.plugin.yaml_reader import yaml_reader
+from core.logger import logger
 from core.plugin.executor import PluginExecutor
-from core.collection.contracts import AccessProbeResult
+from core.plugin.yaml_reader import yaml_reader
 from plugins.base_utils import convert_to_prometheus_format
 
 
@@ -59,23 +59,24 @@ class CollectionService:
         return bool(value)
 
     def _is_config_file_callback(self) -> bool:
+        plugin_name = str(self.plugin_name or "")
+        model_id = str(self.model_id or "")
         return (
-            str(self.params.get("callback_subject") or "") == "receive_config_file_result"
-            or str(self.plugin_name or "") == "config_file_info"
-            or str(self.model_id or "") == "config_file"
+            str(self.params.get("callback_subject") or "")
+            == "receive_config_file_result"
+            or plugin_name in {"config_file_info", "network_config_file_info"}
+            or model_id in {"config_file", "network_config_file"}
         )
 
     def _get_callback_instance_name(self) -> str:
         return str(self.params.get("host") or self.params.get("instance_name") or "")
 
-    def _get_callback_instance_id(self) -> str:
-        return self._get_callback_instance_name()
+    def _get_callback_instance_uuid(self) -> str:
+        return str(self.params.get("target_instance_uuid") or "")
 
     def _get_callback_model_id(self) -> str:
         return str(
-            self.params.get("target_model_id")
-            or self.params.get("model_id")
-            or "host"
+            self.params.get("target_model_id") or self.params.get("model_id") or "host"
         )
 
     @staticmethod
@@ -119,10 +120,12 @@ class CollectionService:
             # enterprise/plugins/inputs/{model}/plugin.yml -> plugins/inputs/{model}/plugin.yml
             # 的顺序选中最终 plugin.yml；若命中 enterprise 且后续 import 失败，executor 会按 strict_enterprise
             # 决定是直接报错还是回退到同名 oss 插件。
-            resolved_executor = await self.yaml_reader.get_executor_config_with_resolution_async(
-                self.model_id,
-                executor_type,
-                prefer_enterprise=prefer_enterprise,
+            resolved_executor = (
+                await self.yaml_reader.get_executor_config_with_resolution_async(
+                    self.model_id,
+                    executor_type,
+                    prefer_enterprise=prefer_enterprise,
+                )
             )
             executor_config = resolved_executor.executor_config
             plugin_resolution = resolved_executor.plugin_resolution
@@ -164,16 +167,20 @@ class CollectionService:
                         {
                             "collect_task_id": self.params.get("collect_task_id"),
                             "execution_id": self.params.get("execution_id"),
-                            "instance_id": self._get_callback_instance_id(),
+                            "protocol_version": self.params.get("protocol_version"),
+                            "instance_uuid": self._get_callback_instance_uuid(),
                             "instance_name": self._get_callback_instance_name(),
                             "model_id": self._get_callback_model_id(),
                             "file_path": self.params.get("config_file_path", ""),
-                            "file_name": self._extract_file_name(self.params.get("config_file_path", "")),
+                            "file_name": self._extract_file_name(
+                                self.params.get("config_file_path", "")
+                            ),
                             "version": "",
                             "status": "error",
                             "size": 0,
                             "error": result.get("result", {}).get(
-                                "cmdb_collect_error", result.get("error", "Unknown error")
+                                "cmdb_collect_error",
+                                result.get("error", "Unknown error"),
                             ),
                             "content_base64": "",
                         }
@@ -181,25 +188,54 @@ class CollectionService:
                         else {
                             "collect_task_id": self.params.get("collect_task_id"),
                             "execution_id": self.params.get("execution_id"),
-                            "instance_id": self.params.get("instance_id") or self.host or "",
-                            "model_id": self.params.get("target_model_id") or self.params.get("model_id"),
+                            "instance_id": self.params.get("instance_id")
+                            or self.host
+                            or "",
+                            "model_id": self.params.get("target_model_id")
+                            or self.params.get("model_id"),
                             "file_path": self.params.get("config_file_path", ""),
-                            "file_name": self._extract_file_name(self.params.get("config_file_path", "")),
+                            "file_name": self._extract_file_name(
+                                self.params.get("config_file_path", "")
+                            ),
                             "version": "",
                             "status": "error",
                             "size": 0,
                             "error": result.get("result", {}).get(
-                                "cmdb_collect_error", result.get("error", "Unknown error")
+                                "cmdb_collect_error",
+                                result.get("error", "Unknown error"),
                             ),
                             "content_base64": "",
                         }
                     )
                 )
 
-            # 处理结果并转换为 Prometheus 格式
-            final_result = await asyncio.to_thread(self._format_result, result)
+            processed = await asyncio.to_thread(self._process_result, result)
+            if self.params.get("_runtime_structured_metrics"):
+                result_data = result.get("result", {})
+                error = ""
+                if not result.get("success", True):
+                    error = str(
+                        result_data.get(
+                            "cmdb_collect_error", result.get("error", "Unknown error")
+                        )
+                    )
+                final_result = StructuredMetricsPayload(data=processed, error=error)
+            else:
+                final_result = await asyncio.to_thread(
+                    convert_to_prometheus_format, processed
+                )
 
-            logger.info("✅ Collection completed successfully")
+            if result.get("success", True):
+                logger.info("✅ Collection completed successfully")
+            else:
+                logger.warning(
+                    "event=plugin_result_failed task_id=%s model_id=%s "
+                    "plugin_name=%s host=%s",
+                    self.params.get("collection_task_id") or "-",
+                    self.model_id,
+                    self.plugin_name or "-",
+                    self.host or "logical",
+                )
             logger.info("=" * 60)
             return final_result
 
@@ -218,9 +254,7 @@ class CollectionService:
     async def probe(self) -> AccessProbeResult:
         """通过当前解析出的协议 Adapter 执行最小凭据感知预检。"""
         executor_type = self.params["executor_type"]
-        prefer_enterprise = self._get_bool_param(
-            self.params, "prefer_enterprise", True
-        )
+        prefer_enterprise = self._get_bool_param(self.params, "prefer_enterprise", True)
         strict_enterprise = self._get_bool_param(
             self.params, "strict_enterprise", False
         )

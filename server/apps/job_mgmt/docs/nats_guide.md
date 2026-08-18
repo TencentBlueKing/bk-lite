@@ -144,6 +144,7 @@ print(limited_detail)
 |---------|------|----------|
 | `bklite.node_list` | 查询节点列表 | `{name, ip, os, page, page_size}` |
 | `bklite.job_target_list` | 查询目标列表 | `{name, ip, os_type, page, page_size}` |
+| `bklite.job_list` | 查询作业列表 | `{team, name, page, page_size}` |
 | `bklite.job_script_execute` | 脚本执行 | `{name, target_source, target_list, script_type, script_content, team, ...}` |
 | `bklite.job_file_distribute` | 文件分发 | `{name, file_keys, target_source, target_list, target_path, team, ...}` |
 | `bklite.job_status_batch_query` | 批量查询状态 | `{task_ids}` |

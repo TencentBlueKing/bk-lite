@@ -65,14 +65,6 @@ const StudioPage: React.FC = () => {
       CardComponent={StudioCard}
       ModifyModalComponent={StudioModifyModal}
       itemTypeSingle="studio"
-      typeConfig={{
-        options: [
-          { key: 1, title: t('studio.pilot') },
-          { key: 2, title: t('studio.lobeChat') },
-          { key: 3, title: t('studio.chatflow') },
-        ],
-        searchField: 'bot_type',
-      }}
       beforeDelete={beforeDelete}
       onTogglePin={beforePin}
     />

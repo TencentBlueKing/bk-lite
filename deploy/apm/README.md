@@ -79,6 +79,14 @@ make contract  # 真实 SDK 全链路；需 Docker
 `make contract` 使用独立 Compose project、随机端口与独立卷，验证入口、ACK、VT 查询、清洗与去重；
 结束后只删除自建资源。通过契约不等于完成生产上线。
 
+## 探针制品初始化（部署准备期）
+
+APM 接入页生成的 Java / Python / Node.js / Go 接入脚本都从本系统下载离线包，
+不依赖公网。运维调整发布流水线、归档产物和对象存储初始化，以
+[APM 探针制品发布 Runbook](../../docs/operations/apm-probe-artifact-release.md)
+为准。制品缺失只影响对应语言的接入指引，不阻断 Server 启动，也不得加入
+`batch_init`。
+
 ## 与 Server 启动的关系
 
 NATS、Collector、VT 都是运行期可降级依赖：不可用只使 APM degraded，不得阻断

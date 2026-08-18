@@ -127,3 +127,34 @@ def test_rest_preview_accepts_small_chunked_response_without_content_length():
     )
 
     assert result.items == [{"name": "ok"}]
+
+
+def test_rest_test_connection_accepts_non_json_http_ok():
+    """测连只校验 HTTP 可达，不要求 JSON 行集（连接库 base_url 常见为站点根）。"""
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+        headers = {"content-type": "text/html"}
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size):
+            yield b"<html>ok</html>"
+
+        def close(self):
+            return None
+
+    class FakeClient:
+        def request(self, **kwargs):
+            calls.append(kwargs)
+            return FakeResponse()
+
+    RestApiConnectorExecutor(http_client=FakeClient()).test_connection(
+        {"url": "https://baidu.com", "method": "GET", "timeout": 3}
+    )
+
+    assert calls[0]["method"] == "GET"
+    assert calls[0]["url"] == "https://baidu.com"
+    assert calls[0]["stream"] is True

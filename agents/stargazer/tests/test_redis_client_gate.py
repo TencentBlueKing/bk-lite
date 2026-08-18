@@ -2,7 +2,11 @@ import asyncio
 
 import pytest
 
-from core.infra.redis_client import GatedRedis, RedisPoolTimeoutError
+from core.infra.redis_client import (
+    GatedRedis,
+    RedisPoolTimeoutError,
+    build_redis_client,
+)
 
 
 @pytest.mark.asyncio
@@ -54,3 +58,23 @@ async def test_gated_redis_waits_then_proceeds_when_slot_frees():
     await releaser
     assert client.pool_wait_seconds_total > 0
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_build_redis_client_defaults_to_resp2(monkeypatch):
+    monkeypatch.delenv("REDIS_PROTOCOL", raising=False)
+    client = build_redis_client()
+    try:
+        assert client.connection_pool.connection_kwargs.get("protocol") == 2
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_build_redis_client_respects_protocol_env(monkeypatch):
+    monkeypatch.setenv("REDIS_PROTOCOL", "3")
+    client = build_redis_client()
+    try:
+        assert client.connection_pool.connection_kwargs.get("protocol") == 3
+    finally:
+        await client.aclose()

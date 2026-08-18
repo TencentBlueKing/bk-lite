@@ -17,6 +17,11 @@
   overflow: hidden;
 }
 
+.sidebar {
+  height: 100%;
+  flex-shrink: 0;
+}
+
 .content {
   flex: 1;
   overflow: auto;
@@ -26,5 +31,11 @@
 @media (max-width: 768px) {
   .sidebarInner {
     padding: 12px 10px 10px 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar {
+    display: none;
   }
 }

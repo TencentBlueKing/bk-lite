@@ -579,6 +579,8 @@ const FamilyOverview = () => {
                         color: '#ef4444',
                         yAxisIndex: 1,
                         showArea: true,
+                        lineType: 'dashed',
+                        showSymbol: true,
                       },
                       {
                         name: 'Warnings',
@@ -587,6 +589,8 @@ const FamilyOverview = () => {
                         color: '#f59e0b',
                         yAxisIndex: 1,
                         showArea: true,
+                        lineType: 'dotted',
+                        showSymbol: true,
                       },
                     ]}
                     yAxes={[

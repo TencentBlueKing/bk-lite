@@ -1,6 +1,7 @@
 import logging
 from types import SimpleNamespace
 from unittest.mock import patch
+from uuid import UUID
 
 import pytest
 
@@ -8,7 +9,6 @@ from apps.cmdb.graph.falkordb import FalkorDBClient
 from apps.cmdb.services.instance import InstanceManage, _require_complete_batch_instances
 from apps.cmdb.services.unique_rule import ModelUniqueRule
 from apps.core.exceptions.base_app_exception import BaseAppException
-
 
 pytestmark = pytest.mark.unit
 
@@ -25,12 +25,10 @@ class _NoopExtension:
 
 
 def _use_real_required_validator(graph):
-    graph.check_required_attr.side_effect = (
-        lambda item, check_attr_map: FalkorDBClient.check_required_attr(
-            graph,
-            item,
-            check_attr_map,
-        )
+    graph.check_required_attr.side_effect = lambda item, check_attr_map: FalkorDBClient.check_required_attr(
+        graph,
+        item,
+        check_attr_map,
     )
 
 
@@ -255,10 +253,12 @@ def test_batch_create_persists_all_free_tags_once_after_prevalidation():
         graph.query_entity.return_value = ([], 0)
         _use_real_required_validator(graph)
         mock_merge_tags.side_effect = lambda *args: events.append("merge_tags")
-        graph.batch_create_entity.side_effect = lambda *args: events.append("graph_write") or [
-            {"success": True, "data": {"_id": 1, "model_id": "host", "inst_name": "h1"}},
-            {"success": True, "data": {"_id": 2, "model_id": "host", "inst_name": "h2"}},
-        ]
+
+        def batch_create(*args):
+            events.append("graph_write")
+            return [{"success": True, "data": {**item, "_id": index}} for index, item in enumerate(args[1], start=1)]
+
+        graph.batch_create_entity.side_effect = batch_create
 
         InstanceManage.instance_batch_create(
             "host",
@@ -271,6 +271,9 @@ def test_batch_create_persists_all_free_tags_once_after_prevalidation():
         )
 
     mock_merge_tags.assert_called_once_with("host", ["env:prod", "team:ops"])
+    prepared = graph.batch_create_entity.call_args.args[1]
+    assert len({item["inst_uuid"] for item in prepared}) == 2
+    assert all(UUID(item["inst_uuid"]).version == 4 for item in prepared)
     assert events == ["merge_tags", "graph_write"]
 
 
@@ -400,9 +403,7 @@ def test_batch_update_rejects_merged_unique_conflict_before_graph_write(
     ):
         graph = mock_graph.return_value.__enter__.return_value
         graph.query_entity.return_value = (instances, len(instances))
-        graph.set_entity_properties.return_value = [
-            {**instance, **update_data} for instance in instances
-        ]
+        graph.set_entity_properties.return_value = [{**instance, **update_data} for instance in instances]
         with pytest.raises(BaseAppException) as exc_info:
             InstanceManage.batch_instance_update([], [], [1, 2], update_data, "api-user")
 
@@ -432,9 +433,7 @@ def test_batch_update_rejects_missing_query_result_before_graph_write():
     ):
         graph = mock_graph.return_value.__enter__.return_value
         graph.query_entity.return_value = (instances, len(instances))
-        graph.set_entity_properties.return_value = [
-            {**instances[0], "status": "active"}
-        ]
+        graph.set_entity_properties.return_value = [{**instances[0], "status": "active"}]
         with pytest.raises(BaseAppException) as exc_info:
             InstanceManage.batch_instance_update([], [], [1, 1, 2], {"status": "active"}, "api-user")
 
@@ -576,11 +575,11 @@ def test_batch_create_writes_side_effects_after_all_graph_rows_succeed(
     graph.batch_create_entity.return_value = [
         {
             "success": True,
-            "data": {"_id": 1, "model_id": "host", "inst_name": "h1"},
+            "data": {"_id": 1, "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e", "model_id": "host", "inst_name": "h1"},
         },
         {
             "success": True,
-            "data": {"_id": 2, "model_id": "host", "inst_name": "h2"},
+            "data": {"_id": 2, "inst_uuid": "c28e467a-501d-426f-a3c3-6e560c7b33cb", "model_id": "host", "inst_name": "h2"},
         },
     ]
 

@@ -8,10 +8,11 @@ YAML导入导出契约校验模块
 
 import re
 from datetime import date
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 
+from apps.operation_analysis.constants.canvas_refresh import normalize_canvas_refresh_interval
 from apps.operation_analysis.constants.import_export import (
     BUSINESS_KEY_SEPARATOR,
     CANVAS_TYPES,
@@ -21,7 +22,7 @@ from apps.operation_analysis.constants.import_export import (
     ImportExportErrorCode,
     ObjectType,
 )
-
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 
 DATE_RANGE_QUICK_TYPES = {
     "today",
@@ -35,6 +36,9 @@ DATE_RANGE_QUICK_TYPES = {
     "last_90_days",
 }
 DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+CanvasRefreshIntervalField = Annotated[int, BeforeValidator(normalize_canvas_refresh_interval)]
 
 
 def _is_valid_date_only(value: Any) -> bool:
@@ -149,6 +153,7 @@ class DatasourceItem(BaseModel):
     source_type: str = Field(default="nats")
     connection_config: dict = Field(default_factory=dict)
     query_config: dict = Field(default_factory=dict)
+    transform_config: dict = Field(default_factory=dict)
     desc: str = Field(default="")
     is_active: bool = Field(default=True)
     params: dict | list | None = Field(default_factory=list)
@@ -173,7 +178,8 @@ class DatasourceItem(BaseModel):
     @field_validator("source_type")
     @classmethod
     def validate_source_type(cls, v: str) -> str:
-        if v not in {"nats", "mysql", "postgresql", "rest_api", "excel"}:
+        allowed = {choice[0] for choice in DataSourceAPIModel.SOURCE_TYPE_CHOICES}
+        if v not in allowed:
             raise ValueError("source_type 不支持")
         return v
 
@@ -200,6 +206,7 @@ class DashboardItem(BaseModel):
     filters: list = Field(default_factory=list)
     other: dict = Field(default_factory=dict)
     view_sets: list = Field(default_factory=list)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")
@@ -232,6 +239,7 @@ class TopologyItem(BaseModel):
     desc: str = Field(default="")
     other: dict = Field(default_factory=dict)
     view_sets: dict = Field(default_factory=dict)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")
@@ -294,6 +302,7 @@ class ScreenItem(BaseModel):
     desc: str = Field(default="")
     other: dict = Field(default_factory=dict)
     view_sets: dict
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")
@@ -357,6 +366,7 @@ class NetworkTopologyItem(BaseModel):
     base_url: str
     token: str = Field(default="")
     view_sets: dict = Field(default_factory=dict)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name", "base_url")
@@ -442,7 +452,7 @@ DB_ID_FIELD_PATTERN = re.compile(r"(^|_)(id|ids)$", re.IGNORECASE)
 PURE_NUMERIC_PATTERN = re.compile(r"^\d+$")
 
 NETWORK_TOPOLOGY_EXTERNAL_ID_FIELDS = {
-    "bk_inst_id",
+    "bk_inst_uuid",
     "plugin_group_id",
     "plugin_template_id",
     "network_collect_task_id",

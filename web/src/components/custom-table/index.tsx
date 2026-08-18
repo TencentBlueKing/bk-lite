@@ -118,7 +118,7 @@ const CustomTable = <T extends object>({
 
     if (typeof scrollY === 'string' && scrollY.includes('vh')) {
       window.addEventListener('resize', scheduler.schedule);
-    } else if (scrollY === undefined && hasPagination) {
+    } else if (scrollY === undefined && hasPagination && typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(scheduler.schedule);
       resizeObserver.observe(parentElement);
     }
@@ -204,13 +204,14 @@ const CustomTable = <T extends object>({
     return columns.map((col: any, index: number) => {
       const colKey = getColumnKey(col, index);
       const width = columnLayout.widths[index];
+      const hasWidth = width !== undefined && width !== null;
 
       return {
         ...col,
-        width,
+        ...(hasWidth ? { width } : {}),
         onHeaderCell: () => ({
-          width,
-          resizeHandler: handleColumnResize(colKey),
+          ...(hasWidth ? { width } : {}),
+          resizeHandler: hasWidth ? handleColumnResize(colKey) : undefined,
         }),
       };
     });

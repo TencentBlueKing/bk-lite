@@ -483,7 +483,7 @@ const FamilyOverview = () => {
           spacing="flush"
           title="Event alert workspace shell"
           titleClassName="text-sm font-semibold"
-          description="Monitor and log alert pages share the same event-alert workspace shell; the stable differences live in filter controls, chart hint copy, and whether state filtering is present."
+          description="Monitor and log alert pages share the same event-alert workspace shell; the distribution chart collapses like log search and remembers the last open state. The stable differences live in filter controls, chart hint copy, and whether state filtering is present."
         />
         <div className="space-y-4">
           <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-2)] p-4">
@@ -554,15 +554,12 @@ const FamilyOverview = () => {
               chartTitle="Distribution map"
               chartHint={(
                 <Tooltip placement="top" title="Monitor alert distribution details">
-                  <div
-                    className="absolute cursor-pointer"
-                    style={{ top: '-4px', right: '-14px' }}
-                  >
+                  <span className="cursor-pointer">
                     <Icon
                       type="a-shuoming2"
                       className="text-[14px] text-[var(--color-text-3)]"
                     />
-                  </div>
+                  </span>
                 </Tooltip>
               )}
               chartContent={<StackedBarChart data={eventAlertChartData} colors={{ critical: '#f04438', warning: '#f79009', error: '#6172f3' } as any} />}

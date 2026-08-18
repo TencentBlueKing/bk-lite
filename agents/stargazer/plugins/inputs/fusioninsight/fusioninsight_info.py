@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""FusionInsight 采集器：自包含 REST 实现（requests，不依赖 SDK）。
+"""FusionInsight 采集器：自包含 REST 实现（httpx，不依赖 SDK）。
 
 移植自 old_plugins/.../resource_apis/cw_fusioninsight.py，保留其 HTTP/认证（login，
 HTTP Basic）/handle_request/get_resource_uri/list_clusters/list_hosts 逻辑
@@ -14,21 +14,13 @@ PrivateCloudManage、@register、双类 __getattr__ 分发、监控相关方法�
 输出结构：{"result": {"fusioninsight_cluster":[...], "fusioninsight_host":[...]},
 "success": bool}
 """
-import asyncio
 import base64
 import traceback
 
+import httpx
 from sanic.log import logger
 
-# `requests` 仅在真正发起 HTTP 时才需要；延迟导入，保证模块（含纯函数与字段重命名）
-# 在未安装 requests 的精简环境下也可导入与单测。
-try:  # pragma: no cover - 取决于运行环境是否装了 requests
-    import requests
-except ImportError:  # pragma: no cover
-    requests = None
 
-
-# fusioninsight api 接口枚举（路径与 old get_resource_uri 完全一致）
 def get_resource_uri(op, basic_url, **kwargs):
     supported_ops = {
         "get_session": "{basic_url}/api/v2/session/status",
@@ -44,29 +36,24 @@ def _str2base64(string):
     return base64.b64encode(string.encode("utf-8")).decode("utf-8")
 
 
-def handle_request(method, url, session=None, **kwargs):
-    if requests is None:
-        raise RuntimeError(
-            "FusionInsight 采集需要 requests 库，但当前运行环境未安装 requests，请在 stargazer 运行环境安装后重试"
-        )
-    _requests = session or requests
+async def handle_request(method, url, client: httpx.AsyncClient, **kwargs):
     try:
-        resp = _requests.request(method, url, **kwargs)
+        resp = await client.request(method, url, **kwargs)
     except Exception:
         logger.exception(f"fusioninsight 请求失败,url:{url},method:{method}")
         return {"result": False, "message": f"请求失败,url:{url},method:{method}", "data": {}}
     if resp.status_code > 300:
         logger.error(
             f"fusioninsight 请求失败,url:{url},method:{method},"
-            f"status_code:{resp.status_code},message:{resp.content.decode('utf-8')}"
+            f"status_code:{resp.status_code},message:{resp.text}"
         )
         return {
             "result": False,
-            "message": f"请求错误,status_code:{resp.status_code},message:{resp.content.decode('utf-8')}",
+            "message": f"请求错误,status_code:{resp.status_code},message:{resp.text}",
             "data": {},
         }
     logger.info(f"fusioninsight 请求成功,url:{url},method:{method}")
-    return {"result": True, "data": resp.json()}
+    return {"result": True, "data": resp.json() if resp.content else {}}
 
 
 def _filter_obj_fields(obj, fields):
@@ -104,72 +91,58 @@ class FusionInsightManager:
         port_suffix = "" if self.port == 443 else f":{self.port}"
         self.basic_url = f"{self.scheme}://{self.host}{port_suffix}/web"
         self.cw_headers = {"Content-Type": "application/json"}
-        self._handle_request = handle_request
-        self._session = None
+        self._client: httpx.AsyncClient | None = None
         self._authed = False
 
-    # ----------------------------------------------------------------------
-    # 认证（移植 old login，HTTP Basic + session 复用，逻辑保持不变）
-    # ----------------------------------------------------------------------
-    def login(self):
-        if requests is None:
-            raise RuntimeError(
-                "FusionInsight 采集需要 requests 库，但当前运行环境未安装 requests，请在 stargazer 运行环境安装后重试"
-            )
-        self._session = requests.Session()
+    async def login(self):
+        if self._client is None:
+            self._client = httpx.AsyncClient(verify=self.verify_tls, timeout=60.0)
         new_string = _str2base64(f"{self.account}:{self.password}")
         headers = {"Authorization": f"Basic {new_string}"}
         url = get_resource_uri("get_session", self.basic_url)
-        resp = self._handle_request(
+        resp = await handle_request(
             "GET",
             url,
-            session=self._session,
+            client=self._client,
             headers=headers,
-            verify=self.verify_tls,
         )
         if not resp["result"]:
             raise Exception(resp["message"])
-        return self._session
+        return self._client
 
-    def _ensure_auth(self):
+    async def _ensure_auth(self):
         if not self._authed:
-            self.login()
+            await self.login()
             self._authed = True
-        return self._session
+        return self._client
 
-    # ----------------------------------------------------------------------
-    # list_*（移植 old，返回原始资源字段过滤结果）
-    # ----------------------------------------------------------------------
-    def list_clusters(self, **kwargs):
-        self._ensure_auth()
+    async def list_clusters(self, **kwargs):
+        await self._ensure_auth()
         url = get_resource_uri("get_clusters", self.basic_url)
-        resp = self._handle_request(
+        resp = await handle_request(
             "GET",
             url,
-            session=self._session,
+            client=self._client,
             headers=self.cw_headers,
-            verify=self.verify_tls,
         )
         if not resp["result"]:
             return {"result": False, "message": resp["message"]}
         data = _filter_obj_fields_by_list(resp["data"], ["id", "name"])
         return {"result": True, "data": data}
 
-    def list_hosts(self, **kwargs):
-        self._ensure_auth()
+    async def list_hosts(self, **kwargs):
+        await self._ensure_auth()
         url = get_resource_uri("get_hosts", self.basic_url)
         params = {"no_page": True}
-        resp = self._handle_request(
+        resp = await handle_request(
             "GET",
             url,
-            session=self._session,
+            client=self._client,
             params=params,
             headers=self.cw_headers,
-            verify=self.verify_tls,
         )
         if not resp["result"]:
             return {"result": False, "message": resp["message"]}
-        # old 行为：主机列表在 resp["data"]["hosts"]
         hosts = resp["data"].get("hosts", []) if isinstance(resp["data"], dict) else []
         data = _filter_obj_fields_by_list(
             hosts,
@@ -180,22 +153,15 @@ class FusionInsightManager:
         )
         return {"result": True, "data": data}
 
-    # ----------------------------------------------------------------------
-    # 字段重命名纯函数（原始字段 → 模型 attr 字段 + 隐藏关联字段）
-    # ----------------------------------------------------------------------
     @staticmethod
     def _map_cluster(raw: dict) -> dict:
         return {
             "resource_name": raw.get("name", ""),
-            # format/collect.py 口径：resource_id = str(id)，即使是数字也转 str
             "resource_id": _safe_str(raw.get("id")),
         }
 
     @staticmethod
     def _map_host(raw: dict) -> dict:
-        # 注意：totalMemory / totalHardDiskSpace 的单位（MB? GB?）由 FusionInsight API
-        # 决定，old collect.py 直传未做单位换算，此处沿用原始值（仅 _safe_str 防 None）。
-        # 需真机核对其单位是否符合模型 memory_mb / storage_gb 语义，必要时再加换算。
         return {
             "resource_name": raw.get("hostname", ""),
             "resource_id": raw.get("hostname", ""),
@@ -205,41 +171,38 @@ class FusionInsightManager:
             "storage_gb": _safe_str(raw.get("totalHardDiskSpace")),
             "status": raw.get("runningStatus", ""),
             "os_name": raw.get("osType", ""),
-            # 隐藏关联字段：host belong cluster。host belong 的集群 resource_id 是
-            # str(cluster id)，故 cluster_id 与 cluster.resource_id 同为 str。
             "cluster_id": _safe_str(raw.get("clusterId")),
         }
 
-    # ----------------------------------------------------------------------
-    # get_*：拉原始列表 + 重命名（不实现 get_platform）
-    # ----------------------------------------------------------------------
     @staticmethod
     def _unwrap(resp):
         if not resp or not resp.get("result"):
             raise RuntimeError(resp.get("message") if isinstance(resp, dict) else "fusioninsight collect failed")
         return resp.get("data", []) or []
 
-    def get_clusters(self):
-        return [self._map_cluster(raw) for raw in self._unwrap(self.list_clusters())]
+    async def get_clusters(self):
+        return [self._map_cluster(raw) for raw in self._unwrap(await self.list_clusters())]
 
-    def get_hosts(self):
-        return [self._map_host(raw) for raw in self._unwrap(self.list_hosts())]
+    async def get_hosts(self):
+        return [self._map_host(raw) for raw in self._unwrap(await self.list_hosts())]
 
-    def exec_script(self):
-        clusters = self.get_clusters()
-        hosts = self.get_hosts()
+    async def exec_script(self):
+        clusters = await self.get_clusters()
+        hosts = await self.get_hosts()
         return {
             "fusioninsight_cluster": clusters,
             "fusioninsight_host": hosts,
         }
 
     async def list_all_resources(self):
-        return await asyncio.to_thread(self._list_all_resources_sync)
-
-    def _list_all_resources_sync(self):
         try:
-            result = self.exec_script()
+            result = await self.exec_script()
             return {"result": result, "success": True}
         except Exception as err:  # noqa: BLE001
             logger.error(f"{self.__class__.__name__} error! {traceback.format_exc()}")
             return {"result": {"cmdb_collect_error": str(err)}, "success": False}
+        finally:
+            if self._client is not None:
+                await self._client.aclose()
+                self._client = None
+                self._authed = False

@@ -80,7 +80,7 @@ def test_builtin_room3d_screen_yaml_uses_dynamic_room_switch():
         "optionsSource": {
             "type": "dynamic",
             "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
-            "valueField": "_id",
+            "valueField": "inst_uuid",
             "labelField": "inst_name",
         },
     }
@@ -339,6 +339,82 @@ def _ensure_default_namespace():
     return namespace
 
 
+def _configure_minimal_builtin_dashboard(monkeypatch, tmp_path, *, name="Issue 4743 内置仪表盘", desc="初始内容"):
+    from apps.operation_analysis.management.commands import init_builtin_canvases as command_module
+
+    yaml_path = tmp_path / "builtin-canvases.yaml"
+    yaml_path.write_text(
+        yaml.safe_dump(
+            {
+                "meta": {
+                    "object_counts": {
+                        "dashboards": 1,
+                        "topologies": 0,
+                        "architectures": 0,
+                        "screens": 0,
+                        "reports": 0,
+                        "datasources": 0,
+                        "namespaces": 0,
+                    }
+                },
+                "dashboards": [
+                    {
+                        "key": "dashboard::issue-4743",
+                        "name": name,
+                        "desc": desc,
+                        "view_sets": [],
+                    }
+                ],
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(command_module, "_get_builtin_canvas_file_paths", lambda: [yaml_path])
+    monkeypatch.setattr(command_module, "_load_source_api_document", lambda: {"datasources": []})
+    monkeypatch.setattr(command_module, "_ensure_builtin_tags", lambda: None)
+    return yaml_path
+
+
+def _configure_minimal_builtin_datasource(monkeypatch, tmp_path):
+    from apps.operation_analysis.management.commands import init_builtin_canvases as command_module
+
+    yaml_path = tmp_path / "builtin-datasource.yaml"
+    yaml_path.write_text(
+        yaml.safe_dump(
+            {
+                "meta": {
+                    "object_counts": {
+                        "dashboards": 0,
+                        "topologies": 0,
+                        "architectures": 0,
+                        "screens": 0,
+                        "reports": 0,
+                        "datasources": 1,
+                        "namespaces": 0,
+                    }
+                },
+                "datasources": [
+                    {
+                        "key": "datasource::issue-4743",
+                        "name": "Issue 4743 内置数据源",
+                        "rest_api": "/issue-4743",
+                        "source_type": "rest_api",
+                        "desc": "初始内容",
+                    }
+                ],
+                "dashboards": [],
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(command_module, "_get_builtin_canvas_file_paths", lambda: [yaml_path])
+    monkeypatch.setattr(command_module, "_load_source_api_document", lambda: {"datasources": []})
+    monkeypatch.setattr(command_module, "_ensure_builtin_tags", lambda: None)
+    return yaml_path
+
+
 @pytest.mark.django_db
 def test_init_builtin_canvases_creates_builtin_directory():
     from apps.system_mgmt.models.user import Group
@@ -366,6 +442,204 @@ def test_init_builtin_canvases_rerun_is_idempotent():
 
 @pytest.mark.django_db
 @pytest.mark.integration
+def test_init_builtin_canvases_rerun_preserves_identity_references_and_visibility(monkeypatch, tmp_path):
+    from apps.operation_analysis.models.share_models import DashboardShareLink
+    from apps.operation_analysis.models.subscription_models import DashboardReportSubscription
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    extra = Group.objects.create(name="Issue 4743 Extra")
+    yaml_path = _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+    call_command("init_builtin_canvases")
+
+    dashboard = Dashboard.objects.get(build_in_key="dashboard::issue-4743")
+    directory = Directory.objects.get(build_in_key="__builtin__")
+    original_id = dashboard.pk
+    expected_groups = [default.pk, extra.pk]
+    Dashboard.objects.filter(pk=dashboard.pk).update(groups=expected_groups)
+    Directory.objects.filter(pk=directory.pk).update(groups=expected_groups)
+    share = DashboardShareLink.objects.create(
+        dashboard=dashboard,
+        dashboard_instance_id=dashboard.pk,
+        tenant_domain=dashboard.domain,
+        space_id=default.pk,
+        sharer_username="tester",
+        sharer_domain=dashboard.domain,
+    )
+    subscription = DashboardReportSubscription.objects.create(
+        dashboard=dashboard,
+        creator="tester",
+        team_id=default.pk,
+        name="Issue 4743 订阅",
+        recipient_email="tester@example.com",
+    )
+    yaml_path.write_text(
+        yaml.safe_dump(
+            {
+                "dashboards": [
+                    {
+                        "key": "dashboard::issue-4743",
+                        "name": "Issue 4743 内置仪表盘（新版）",
+                        "desc": "新版内容",
+                        "view_sets": [],
+                    }
+                ]
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    call_command("init_builtin_canvases")
+
+    dashboard = Dashboard.objects.get(build_in_key="dashboard::issue-4743")
+    directory.refresh_from_db()
+    share.refresh_from_db()
+    subscription.refresh_from_db()
+    assert dashboard.pk == original_id
+    assert dashboard.name == "Issue 4743 内置仪表盘（新版）"
+    assert dashboard.desc == "新版内容"
+    assert set(dashboard.groups) == set(expected_groups)
+    assert set(directory.groups) == set(expected_groups)
+    assert share.status == DashboardShareLink.Status.ACTIVE
+    assert share.dashboard_id == original_id
+    assert share.dashboard_instance_id == original_id
+    assert subscription.status == DashboardReportSubscription.Status.ACTIVE
+    assert subscription.dashboard_id == original_id
+    assert subscription.resource_id == original_id
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_rerun_preserves_datasource_identity_and_visibility(monkeypatch, tmp_path):
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    extra = Group.objects.create(name="Issue 4743 Datasource Extra")
+    yaml_path = _configure_minimal_builtin_datasource(monkeypatch, tmp_path)
+    call_command("init_builtin_canvases")
+
+    datasource = DataSourceAPIModel.objects.get(build_in_key="datasource::issue-4743")
+    original_id = datasource.pk
+    expected_groups = [default.pk, extra.pk]
+    DataSourceAPIModel.objects.filter(pk=datasource.pk).update(groups=expected_groups)
+    yaml_path.write_text(
+        yaml.safe_dump(
+            {
+                "datasources": [
+                    {
+                        "key": "datasource::issue-4743",
+                        "name": "Issue 4743 内置数据源（新版）",
+                        "rest_api": "/issue-4743-v2",
+                        "source_type": "rest_api",
+                        "desc": "新版内容",
+                    }
+                ],
+                "dashboards": [],
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    call_command("init_builtin_canvases")
+
+    datasource = DataSourceAPIModel.objects.get(build_in_key="datasource::issue-4743")
+    assert datasource.pk == original_id
+    assert datasource.name == "Issue 4743 内置数据源（新版）"
+    assert datasource.rest_api == "/issue-4743-v2"
+    assert datasource.desc == "新版内容"
+    assert set(datasource.groups) == set(expected_groups)
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_preserves_user_canvas_on_name_conflict(monkeypatch, tmp_path):
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    user_dashboard = Dashboard.objects.create(
+        name="Issue 4743 内置仪表盘",
+        desc="用户内容",
+        groups=[default.pk],
+        created_by="tester",
+        updated_by="tester",
+    )
+    _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+
+    call_command("init_builtin_canvases")
+
+    user_dashboard.refresh_from_db()
+    assert user_dashboard.desc == "用户内容"
+    assert user_dashboard.is_build_in is False
+    assert user_dashboard.build_in_key is None
+    assert not Dashboard.objects.filter(build_in_key="dashboard::issue-4743").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_reclaims_renamed_builtin_key_by_name(monkeypatch, tmp_path):
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+    legacy = Dashboard.objects.create(
+        name="Issue 4743 内置仪表盘",
+        desc="旧版本内容",
+        groups=[default.pk],
+        is_build_in=True,
+        build_in_key="dashboard::issue-4743-old-key",
+        created_by="system",
+        updated_by="system",
+    )
+
+    call_command("init_builtin_canvases")
+
+    legacy.refresh_from_db()
+    assert legacy.build_in_key == "dashboard::issue-4743"
+    assert legacy.desc == "初始内容"
+    assert Dashboard.objects.filter(name="Issue 4743 内置仪表盘").count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_does_not_rebind_another_active_key_with_same_name(monkeypatch, tmp_path):
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    yaml_path = _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+    payload = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    payload["dashboards"].insert(
+        0,
+        {
+            "key": "dashboard::already-active",
+            "name": "Issue 4743 内置仪表盘",
+            "desc": "活跃定义内容",
+            "view_sets": [],
+        },
+    )
+    payload["meta"]["object_counts"]["dashboards"] = 2
+    yaml_path.write_text(yaml.safe_dump(payload, allow_unicode=True), encoding="utf-8")
+    existing = Dashboard.objects.create(
+        name="Issue 4743 内置仪表盘",
+        desc="旧内容",
+        groups=[default.pk],
+        is_build_in=True,
+        build_in_key="dashboard::already-active",
+        created_by="system",
+        updated_by="system",
+    )
+
+    call_command("init_builtin_canvases")
+
+    existing.refresh_from_db()
+    assert existing.build_in_key == "dashboard::already-active"
+    assert existing.desc == "活跃定义内容"
+    assert not Dashboard.objects.filter(build_in_key="dashboard::issue-4743").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
 def test_init_builtin_canvases_removes_retired_builtin_topology_only():
     from apps.system_mgmt.models.user import Group
 
@@ -383,12 +657,221 @@ def test_init_builtin_canvases_removes_retired_builtin_topology_only():
         created_by="user",
         updated_by="user",
     )
+    unknown_legacy_builtin = Topology.objects.create(
+        name="缺少稳定键的历史内置拓扑",
+        is_build_in=True,
+        build_in_key=None,
+        created_by="system",
+        updated_by="system",
+    )
 
     call_command("init_builtin_canvases")
 
     assert not Topology.objects.filter(pk=retired.pk).exists()
     assert not Topology.objects.filter(build_in_key="topology::运营健康拓扑_内置").exists()
     assert Topology.objects.filter(pk=custom.pk, is_build_in=False).exists()
+    assert Topology.objects.filter(pk=unknown_legacy_builtin.pk, is_build_in=True).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_retires_dashboard_references_explicitly(monkeypatch, tmp_path):
+    from apps.operation_analysis.models.share_models import DashboardShareLink
+    from apps.operation_analysis.models.subscription_models import DashboardReportSubscription
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+    retired = Dashboard.objects.create(
+        name="Issue 4743 已退役仪表盘",
+        is_build_in=True,
+        build_in_key="dashboard::issue-4743-retired",
+        groups=[default.pk],
+        created_by="system",
+        updated_by="system",
+    )
+    share = DashboardShareLink.objects.create(
+        dashboard=retired,
+        dashboard_instance_id=retired.pk,
+        tenant_domain=retired.domain,
+        space_id=default.pk,
+        sharer_username="tester",
+        sharer_domain=retired.domain,
+    )
+    subscription = DashboardReportSubscription.objects.create(
+        dashboard=retired,
+        creator="tester",
+        team_id=default.pk,
+        name="Issue 4743 退役订阅",
+        recipient_email="tester@example.com",
+    )
+
+    call_command("init_builtin_canvases")
+
+    share.refresh_from_db()
+    subscription.refresh_from_db()
+    assert not Dashboard.objects.filter(pk=retired.pk).exists()
+    assert share.status == DashboardShareLink.Status.DASHBOARD_INVALID
+    assert share.dashboard_id is None
+    assert subscription.status == DashboardReportSubscription.Status.TERMINATED
+    assert subscription.termination_reason == "dashboard_deleted"
+    assert subscription.terminated_by == "system"
+    assert subscription.dashboard_id is None
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_skips_retirement_when_definition_file_is_missing(monkeypatch, tmp_path):
+    from apps.operation_analysis.management.commands import init_builtin_canvases as command_module
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    yaml_path = _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+    missing_path = tmp_path / "temporarily-missing.yaml"
+    monkeypatch.setattr(command_module, "_get_builtin_canvas_file_paths", lambda: [yaml_path, missing_path])
+    retired_candidate = Dashboard.objects.create(
+        name="Issue 4743 缺失文件中的仪表盘",
+        is_build_in=True,
+        build_in_key="dashboard::from-missing-file",
+        groups=[default.pk],
+        created_by="system",
+        updated_by="system",
+    )
+
+    call_command("init_builtin_canvases")
+
+    assert Dashboard.objects.filter(build_in_key="dashboard::issue-4743").exists()
+    assert Dashboard.objects.filter(pk=retired_candidate.pk).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_skips_retirement_when_declared_counts_do_not_match(monkeypatch, tmp_path):
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    yaml_path = _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+    payload = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    payload["meta"]["object_counts"]["dashboards"] = 2
+    yaml_path.write_text(yaml.safe_dump(payload, allow_unicode=True), encoding="utf-8")
+    retired_candidate = Dashboard.objects.create(
+        name="Issue 4743 截断快照中的仪表盘",
+        is_build_in=True,
+        build_in_key="dashboard::from-truncated-snapshot",
+        groups=[default.pk],
+        created_by="system",
+        updated_by="system",
+    )
+
+    call_command("init_builtin_canvases")
+
+    assert Dashboard.objects.filter(build_in_key="dashboard::issue-4743").exists()
+    assert Dashboard.objects.filter(pk=retired_candidate.pk).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_invalid_section_shape_is_fail_open(monkeypatch, tmp_path):
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    yaml_path = _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+    payload = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    payload["dashboards"] = 1
+    yaml_path.write_text(yaml.safe_dump(payload, allow_unicode=True), encoding="utf-8")
+    existing = Dashboard.objects.create(
+        name="Issue 4743 结构错误时保留",
+        is_build_in=True,
+        build_in_key="dashboard::preserved-on-shape-error",
+        groups=[default.pk],
+        created_by="system",
+        updated_by="system",
+    )
+
+    call_command("init_builtin_canvases")
+
+    assert Dashboard.objects.filter(pk=existing.pk).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_retirement_dry_run_has_no_side_effects(monkeypatch, tmp_path, capsys):
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+    retired_candidate = Dashboard.objects.create(
+        name="Issue 4743 退役预检仪表盘",
+        is_build_in=True,
+        build_in_key="dashboard::dry-run-candidate",
+        groups=[default.pk],
+        created_by="system",
+        updated_by="system",
+    )
+
+    call_command("init_builtin_canvases", dry_run=True)
+
+    output = capsys.readouterr().out
+    assert "预检待退役内置对象" in output
+    assert "dashboard::dry-run-candidate" in output
+    assert Dashboard.objects.filter(pk=retired_candidate.pk).exists()
+    assert not Dashboard.objects.filter(build_in_key="dashboard::issue-4743").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_retirement_limit_rolls_back_before_sync(monkeypatch, tmp_path, settings):
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+    settings.OPERATION_ANALYSIS_BUILTIN_RETIRE_LIMIT = 1
+    candidates = [
+        Dashboard.objects.create(
+            name=f"Issue 4743 超限退役仪表盘 {index}",
+            is_build_in=True,
+            build_in_key=f"dashboard::over-limit-{index}",
+            groups=[default.pk],
+            created_by="system",
+            updated_by="system",
+        )
+        for index in range(2)
+    ]
+
+    call_command("init_builtin_canvases")
+
+    assert all(Dashboard.objects.filter(pk=item.pk).exists() for item in candidates)
+    assert not Dashboard.objects.filter(build_in_key="dashboard::issue-4743").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_init_builtin_canvases_malformed_yaml_is_fail_open_and_retryable(monkeypatch, tmp_path, capsys):
+    from apps.system_mgmt.models.user import Group
+
+    default, _ = Group.objects.get_or_create(name="Default")
+    yaml_path = _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+    existing = Dashboard.objects.create(
+        name="Issue 4743 解析失败时保留",
+        is_build_in=True,
+        build_in_key="dashboard::preserved-on-parse-error",
+        groups=[default.pk],
+        created_by="system",
+        updated_by="system",
+    )
+    yaml_path.write_text("dashboards: [", encoding="utf-8")
+
+    call_command("init_builtin_canvases")
+
+    assert Dashboard.objects.filter(pk=existing.pk).exists()
+    output = capsys.readouterr().out
+    assert "ParserError" in output
+    assert "expected" in output
+
+    _configure_minimal_builtin_dashboard(monkeypatch, tmp_path)
+    call_command("init_builtin_canvases")
+
+    assert Dashboard.objects.filter(build_in_key="dashboard::issue-4743").exists()
 
 
 @pytest.mark.django_db
@@ -604,6 +1087,29 @@ def test_init_builtin_canvases_overwrites_and_prunes_only_builtin_datasources():
         created_by="system",
         updated_by="system",
     )
+    preserved_raw_queries = [
+        DataSourceAPIModel.objects.create(
+            name=name,
+            rest_api=rest_api,
+            source_type="nats",
+            is_build_in=True,
+            build_in_key=f"{name}::{rest_api}",
+            created_by="system",
+            updated_by="system",
+        )
+        for name, rest_api in (
+            ("查询时间范围内的指标数据", "monitor/mm_query_range"),
+            ("查询单个指标数据", "monitor/mm_query"),
+        )
+    ]
+    unknown_legacy_builtin = DataSourceAPIModel.objects.create(
+        name="unknown legacy builtin",
+        rest_api="unknown/legacy/query",
+        is_build_in=True,
+        build_in_key=None,
+        created_by="system",
+        updated_by="system",
+    )
     custom = DataSourceAPIModel.objects.create(
         name="custom",
         rest_api="custom/query",
@@ -618,6 +1124,8 @@ def test_init_builtin_canvases_overwrites_and_prunes_only_builtin_datasources():
     assert legacy.build_in_key == "告警状态分布::alert/get_alert_status_distribution"
     assert legacy.params != [{"name": "legacy"}]
     assert not DataSourceAPIModel.objects.filter(pk=stale.pk).exists()
+    assert all(DataSourceAPIModel.objects.filter(pk=item.pk).exists() for item in preserved_raw_queries)
+    assert DataSourceAPIModel.objects.filter(pk=unknown_legacy_builtin.pk, is_build_in=True).exists()
     assert DataSourceAPIModel.objects.filter(pk=custom.pk, is_build_in=False).exists()
 
 

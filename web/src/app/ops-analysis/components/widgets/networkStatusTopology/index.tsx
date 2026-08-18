@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Empty, Modal, Spin } from 'antd';
+import { Empty, Alert, Button, Modal, Spin } from 'antd';
 import type { Graph } from '@antv/x6';
 import {
   NetworkTopologyX6Canvas,
@@ -15,6 +15,8 @@ import type {
 import { useTranslation } from '@/utils/i18n';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import { useNetworkStatusTopologyApi } from '@/app/ops-analysis/api/networkStatusTopology';
+import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
+import { isValidCmdbInstanceUuid } from '@/app/ops-analysis/utils/cmdbInstanceUuid';
 import type {
   NetworkStatusTopologyConfig,
   NetworkStatusTopologyLink,
@@ -23,6 +25,15 @@ import type {
   NetworkStatusTopologyResponse,
 } from '@/app/ops-analysis/types/sceneWidget';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import {
+  beginOwnerRequest,
+  finishOwnerRequest,
+  isSilentCanvasRuntimeRefresh,
+  isStartedOwnerRequest,
+  shouldKeepWidgetRuntimeDataOnError,
+  shouldShowWidgetRuntimeLoading,
+  type CanvasRuntimeRefreshCause,
+} from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import {
   isScreenChartThemeMode,
   resolveOpsChartThemeName,
@@ -60,16 +71,32 @@ import type { StatusTopologyPositionedLink } from './statusTopologyGraph';
 import { resolveNodePopoverPosition } from './popoverPosition';
 import { useWidgetViewport } from '@/app/ops-analysis/components/widget-viewport';
 import styles from './networkStatusTopology.module.scss';
+import { useDashboardRuntimeScheduler } from '@/app/ops-analysis/context/dashboardRuntimeScheduler';
+import {
+  RuntimeRequestCancelledError,
+  type RuntimeRequestPriority,
+} from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
 
 interface NetworkStatusTopologyProps {
   config?: ValueConfig;
   refreshKey?: string | number;
+  refreshCause?: CanvasRuntimeRefreshCause;
   onReady?: (ready?: boolean) => void;
   /** 父级画布可编辑且非分享时为 true */
   layoutEditable?: boolean;
   /** 几何相关改动写回组件实例草稿配置 */
   onTopologyLayoutChange?: (next: NetworkStatusTopologyConfig) => void;
+  runtimeOwnerId?: string;
+  runtimeActive?: boolean;
+  runtimePriority?: RuntimeRequestPriority;
 }
+
+const DEFAULT_RUNTIME_PRIORITY: RuntimeRequestPriority = {
+  cause: 1,
+  visibility: 0,
+  distance: 0,
+  order: 0,
+};
 
 const stripDevicePrefix = (value?: string, deviceName?: string) => {
   if (!value) return '';
@@ -126,14 +153,23 @@ const toCanvasLink = (
 const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   config,
   refreshKey,
+  refreshCause = 'manual',
   onReady,
   layoutEditable = false,
   onTopologyLayoutChange,
+  runtimeOwnerId = 'network-status-topology',
+  runtimeActive = true,
+  runtimePriority = DEFAULT_RUNTIME_PRIORITY,
 }) => {
   const { t } = useTranslation();
   const shareMode = useShareMode();
   const { scale: viewportScale } = useWidgetViewport();
   const { getNetworkStatusTopology } = useNetworkStatusTopologyApi();
+  // API hooks may expose a fresh function on every render. Keep the latest
+  // implementation without turning it into a fetch trigger.
+  const getNetworkStatusTopologyRef = useRef(getNetworkStatusTopology);
+  getNetworkStatusTopologyRef.current = getNetworkStatusTopology;
+  const runtimeScheduler = useDashboardRuntimeScheduler();
   const [data, setData] = useState<NetworkStatusTopologyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -145,6 +181,16 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const graphRef = useRef<Graph | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const fetchIdRef = useRef(0);
+  const inflightCountRef = useRef(0);
+  const physicalSequenceRef = useRef(0);
+  const fulfilledRequestKeyRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+  const lifecycleRef = useRef(0);
+  const runtimeActiveRef = useRef(runtimeActive);
+  runtimeActiveRef.current = runtimeActive;
+  const runtimePriorityRef = useRef(runtimePriority);
+  runtimePriorityRef.current = runtimePriority;
   const [hoverNodeId, setHoverNodeId] = useState('');
   const [hoverPoint, setHoverPoint] = useState({ x: 0, y: 0 });
   const hoverNodeIdRef = useRef('');
@@ -152,6 +198,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const [contextPoint, setContextPoint] = useState({ x: 0, y: 0 });
 
   const topoConfig = config?.networkStatusTopology;
+  const hasValidInstanceUuid = isValidCmdbInstanceUuid(topoConfig?.instUuid);
   /** 画布编辑态且非分享：几何写回草稿，随页面保存落库 */
   const canPersistLayout = canPersistNetworkStatusTopologyLayout({
     layoutEditable,
@@ -165,6 +212,10 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   // 父级 onReady 常随 layout 草稿更新换新引用；不得进入 fetch 依赖，否则拖点会重取数出 loading
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const refreshCauseRef = useRef(refreshCause);
+  refreshCauseRef.current = refreshCause;
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   useEffect(() => {
     if (canPersistLayout) {
@@ -177,7 +228,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     // 拓扑查询身份变化时清空查看态临时摆放
     setEphemeralPositions({});
     setViewLayoutMode(null);
-  }, [topoConfig?.modelId, topoConfig?.instId, topoConfig?.depth]);
+  }, [topoConfig?.modelId, topoConfig?.instUuid, topoConfig?.depth]);
 
   const emitLayoutChange = useCallback(
     (next: NetworkStatusTopologyConfig) => {
@@ -186,41 +237,124 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     [onTopologyLayoutChange],
   );
 
-  const fetchData = useCallback(async () => {
-    if (!topoConfig?.modelId || !topoConfig?.instId) {
+  const fetchData = useCallback(async (options?: { force?: boolean }) => {
+    if (!runtimeActiveRef.current) return;
+    if (!topoConfig?.modelId || !hasValidInstanceUuid) {
       setData(null);
       setError(t('dashboard.networkTopoMissingConfig'));
       onReadyRef.current?.(false);
       return;
     }
+    const request = {
+      model_id: topoConfig.modelId,
+      inst_uuid: topoConfig.instUuid,
+      depth: topoConfig.depth || 2,
+    };
+    const physicalKey = `scene:${refreshKey ?? '0'}:${JSON.stringify(request)}`;
+    if (!options?.force && fulfilledRequestKeyRef.current === physicalKey) return;
 
+    const cause = refreshCauseRef.current;
+    const silent = isSilentCanvasRuntimeRefresh(cause);
+    const gate = beginOwnerRequest({
+      silent,
+      latestGeneration: fetchIdRef.current,
+      inflightCount: inflightCountRef.current,
+    });
+    if (!isStartedOwnerRequest(gate)) {
+      return;
+    }
+    const currentFetchId = gate.generation;
+    fetchIdRef.current = currentFetchId;
+    inflightCountRef.current += 1;
+    runtimeScheduler?.cancelQueuedForOwner(runtimeOwnerId);
+    const hasSuccessfulPayload = dataRef.current !== null;
     try {
-      setLoading(true);
-      setError('');
-      const result = await getNetworkStatusTopology({
-        model_id: topoConfig.modelId,
-        inst_id: topoConfig.instId,
-        depth: topoConfig.depth || 2,
-      });
+      if (shouldShowWidgetRuntimeLoading(cause)) {
+        setLoading(true);
+        setError('');
+      }
+      const result = runtimeScheduler
+        ? await runtimeScheduler.schedule({
+          consumerId: `${runtimeOwnerId}:${currentFetchId}:${++physicalSequenceRef.current}`,
+          ownerId: runtimeOwnerId,
+          physicalKey,
+          priority: {
+            ...runtimePriorityRef.current,
+            cause: silent ? 2 : cause === 'initial' ? 1 : 0,
+          },
+          start: () => getNetworkStatusTopologyRef.current(request),
+        })
+        : await getNetworkStatusTopologyRef.current(request);
+      if (!mountedRef.current || currentFetchId !== fetchIdRef.current) return;
+      fulfilledRequestKeyRef.current = physicalKey;
       setData(result);
-      setSelectedNodeId('');
-      setEphemeralPositions({});
+      if (shouldShowWidgetRuntimeLoading(cause)) {
+        setSelectedNodeId('');
+        setEphemeralPositions({});
+      }
       onReadyRef.current?.((result.nodes || []).length > 0);
     } catch (err) {
+      if (err instanceof RuntimeRequestCancelledError) return;
+      if (!mountedRef.current || currentFetchId !== fetchIdRef.current) return;
+      fulfilledRequestKeyRef.current = physicalKey;
       console.error('network status topology fetch failed:', err);
-      setData(null);
-      setError(t('dashboard.networkTopoLoadFailed'));
-      onReadyRef.current?.(false);
+      if (
+        !shouldKeepWidgetRuntimeDataOnError({
+          cause,
+          hasSuccessfulPayload,
+        })
+      ) {
+        setData(null);
+        setError(getRequestErrorMessage(err, t('dashboard.networkTopoLoadFailed')));
+        onReadyRef.current?.(false);
+      }
     } finally {
+      inflightCountRef.current = finishOwnerRequest({
+        inflightCount: inflightCountRef.current,
+      }).inflightCount;
+      if (!mountedRef.current || currentFetchId !== fetchIdRef.current) return;
       setLoading(false);
     }
     // API hooks return fresh function references; fetching is driven by widget config.
-     
-  }, [t, topoConfig?.depth, topoConfig?.instId, topoConfig?.modelId]);
+  }, [
+    hasValidInstanceUuid,
+    refreshKey,
+    runtimeOwnerId,
+    runtimeScheduler,
+    t,
+    topoConfig?.depth,
+    topoConfig?.instUuid,
+    topoConfig?.modelId,
+  ]);
+
+  const handleExplicitRefresh = useCallback(() => {
+    void fetchData({ force: true });
+  }, [fetchData]);
 
   useEffect(() => {
     void fetchData();
-  }, [fetchData, refreshKey]);
+  }, [fetchData, refreshKey, runtimeActive]);
+
+  useEffect(() => {
+    if (runtimeActive) {
+      runtimeScheduler?.updateOwnerPriority(runtimeOwnerId, runtimePriority);
+      return;
+    }
+    runtimeScheduler?.cancelQueuedForOwner(runtimeOwnerId);
+  }, [runtimeActive, runtimeOwnerId, runtimePriority, runtimeScheduler]);
+
+  useEffect(() => {
+    const lifecycle = ++lifecycleRef.current;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      queueMicrotask(() => {
+        if (lifecycleRef.current === lifecycle) {
+          runtimeScheduler?.cancelQueuedForOwner(runtimeOwnerId);
+        }
+      });
+    };
+  }, [runtimeOwnerId, runtimeScheduler]);
 
   useEffect(() => {
     ensureStatusTopologyNodeRegistered();
@@ -305,7 +439,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       const computed = layoutNetworkTopology({
         nodes: canvasNodes,
         links: parallelLinks,
-        centerId: String(data?.center_id || topoConfig?.instId || ''),
+        centerId: String(data?.center_id || topoConfig?.instUuid || ''),
         mode: layoutMode,
         fitToViewport: false,
       });
@@ -325,7 +459,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       ephemeralPositions,
       layoutMode,
       parallelLinks,
-      topoConfig?.instId,
+      topoConfig?.instUuid,
     ],
   );
   const graphData = useMemo(
@@ -345,7 +479,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       return buildStatusTopologyX6GraphData({
         nodes: layout.nodes,
         links: positionedLinks,
-        centerId: String(data?.center_id || topoConfig?.instId || ''),
+        centerId: String(data?.center_id || topoConfig?.instUuid || ''),
         selectedNodeId,
         activeNodeIds: faultNodeIds,
         activeLinkIds: faultLinkIds,
@@ -364,21 +498,21 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       layout.nodes,
       parallelLinks,
       selectedNodeId,
-      topoConfig?.instId,
+      topoConfig?.instUuid,
       topologyPalette,
     ],
   );
   const fitViewKey = useMemo(
     () => [
       layoutMode,
-      data?.center_id || topoConfig?.instId || '',
+      data?.center_id || topoConfig?.instUuid || '',
       canvasNodes.map((node) => node.id).join(','),
       parallelLinks.map((link) => link.id).join(','),
       // 强制在视觉常量 / shape 版本变更后重建画布
       STATUS_TOPOLOGY_NODE_SHAPE,
       `i${STATUS_TOPOLOGY_VISUAL.iconSize}-n${STATUS_TOPOLOGY_VISUAL.nameFontSize}-y${STATUS_TOPOLOGY_VISUAL.labelNameY}`,
     ].join('|'),
-    [canvasNodes, data?.center_id, layoutMode, parallelLinks, topoConfig?.instId],
+    [canvasNodes, data?.center_id, layoutMode, parallelLinks, topoConfig?.instUuid],
   );
 
   useEffect(() => {
@@ -424,7 +558,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       );
       emitLayoutChange({
         modelId: topoConfig.modelId,
-        instId: topoConfig.instId,
+        instUuid: topoConfig.instUuid,
         depth: topoConfig.depth || 2,
         ...pruned,
       });
@@ -588,7 +722,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         closeMenu();
         openUrl(buildInstanceDetailUrl({
           modelId: String(originalNode.model_id),
-          instId: String(originalNode.id),
+          instUuid: String(originalNode.id),
           instName: originalNode.name,
         }));
       };
@@ -623,8 +757,8 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
 
   const hoverCanvasNode = canvasNodes.find((node) => node.id === hoverNodeId);
   const contextCanvasNode = canvasNodes.find((node) => node.id === contextNodeId);
-  const isMissingConfig = !topoConfig?.modelId || !topoConfig?.instId;
-
+  const isMissingConfig = !topoConfig?.modelId || !hasValidInstanceUuid;
+  
   return (
     <div
       ref={canvasRef}
@@ -636,7 +770,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       {graphData.nodes.length ? (
         <NetworkTopologyX6Canvas
           data={graphData}
-          centerId={String(data?.center_id || topoConfig?.instId || '')}
+          centerId={String(data?.center_id || topoConfig?.instUuid || '')}
           graphRef={graphRef}
           nodeMovable
           edgeVerticesEditable={canPersistLayout}
@@ -668,7 +802,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
             },
             exportFileName: 'network-status-topology',
             refreshLoading: loading,
-            onRefresh: fetchData,
+            onRefresh: handleExplicitRefresh,
           }}
           minimap={{
             width: 96,
@@ -719,7 +853,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
                 showIcon
                 message={error}
                 action={(
-                  <Button size="small" onClick={fetchData}>
+                  <Button size="small" onClick={handleExplicitRefresh}>
                     {t('dashboard.networkTopoRefresh')}
                   </Button>
                 )}

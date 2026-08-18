@@ -12,14 +12,15 @@ import {
   Radio,
   Select,
   Space,
-  Table,
   Tag,
+  theme,
   Typography,
   type TableColumnsType,
 } from 'antd';
 import dayjs from 'dayjs';
 import FilterToolbar from '@/components/filter-toolbar';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import HealthDot from '@/app/apm/components/health-dot';
@@ -30,7 +31,11 @@ import {
   formatThroughput,
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
-import type { ApmService, ApmTraceSummary } from '@/app/apm/types';
+import type { ApmService, ApmServiceRed, ApmTraceSummary } from '@/app/apm/types';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import SummaryMetricCard from '@/components/summary-metric-card';
+import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
+import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
 type MetricRange = '15m' | '1h' | '4h' | '1d' | '7d';
@@ -73,6 +78,8 @@ const errorRateColor = (value: number | null) => {
 };
 
 export default function ApmEndpointsPage() {
+  const { t } = useTranslation();
+  const { token } = theme.useToken();
   const { getServiceRed, getServices, getTraces, isLoading: authLoading } = useApmApi();
   const [services, setServices] = useState<ApmService[]>([]);
   const [rows, setRows] = useState<EndpointRow[]>([]);
@@ -81,11 +88,15 @@ export default function ApmEndpointsPage() {
   const [timeRange, setTimeRange] = useState<MetricRange>('1h');
   const [serviceId, setServiceId] = useState('all');
   const [sortKey, setSortKey] = useState<SortKey>('request_rate');
+  const [sortOrder, setSortOrder] = useState<'ascend' | 'descend'>('descend');
   const [keyword, setKeyword] = useState('');
   const [metricFailureCount, setMetricFailureCount] = useState(0);
   const [selected, setSelected] = useState<EndpointRow | null>(null);
   const [sampleTraces, setSampleTraces] = useState<ApmTraceSummary[]>([]);
+  const [endpointRed, setEndpointRed] = useState<ApmServiceRed | null>(null);
   const [samplesLoading, setSamplesLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const load = useCallback(async () => {
     if (authLoading) return;
@@ -153,30 +164,45 @@ export default function ApmEndpointsPage() {
   useEffect(() => {
     if (!selected) {
       setSampleTraces([]);
+      setEndpointRed(null);
       return;
     }
     let active = true;
     setSamplesLoading(true);
     const endedAt = new Date();
     const startedAt = new Date(endedAt.getTime() - RANGE_MS[timeRange]);
-    getTraces({
-      service_namespace: selected.namespace,
-      service_name: selected.serviceName,
-      environment: selected.environment,
-      started_at: startedAt.toISOString(),
-      ended_at: endedAt.toISOString(),
-      limit: 20,
-    })
-      .then((page) => {
+    Promise.all([
+      getTraces({
+        service_namespace: selected.namespace,
+        service_name: selected.serviceName,
+        environment: selected.environment,
+        span_name: selected.route,
+        started_at: startedAt.toISOString(),
+        ended_at: endedAt.toISOString(),
+        limit: 20,
+      }),
+      getServiceRed(
+        selected.serviceId,
+        selected.environment,
+        startedAt.toISOString(),
+        endedAt.toISOString(),
+        selected.endpoint,
+      ),
+    ])
+      .then(([page, red]) => {
         if (!active) return;
         const matched = page.items.filter((item) => (
           item.root_span_name === selected.endpoint
           || item.root_span_name.includes(selected.route)
         ));
         setSampleTraces(matched.length ? matched : page.items.slice(0, 8));
+        setEndpointRed(red);
       })
       .catch(() => {
-        if (active) setSampleTraces([]);
+        if (active) {
+          setSampleTraces([]);
+          setEndpointRed(null);
+        }
       })
       .finally(() => {
         if (active) setSamplesLoading(false);
@@ -184,7 +210,7 @@ export default function ApmEndpointsPage() {
     return () => {
       active = false;
     };
-  }, [getTraces, selected, timeRange]);
+  }, [getServiceRed, getTraces, selected, timeRange]);
 
   const environmentOptions = useMemo(() => Array.from(new Set(
     services.flatMap((service) => service.environment_views.map((view) => view.environment)),
@@ -202,52 +228,52 @@ export default function ApmEndpointsPage() {
         || row.route.toLocaleLowerCase().includes(normalized)
         || row.serviceName.toLocaleLowerCase().includes(normalized))
       .sort((left, right) => {
-        if (sortKey === 'request_rate') return right.requestRate - left.requestRate;
-        if (sortKey === 'error_rate') return (right.errorRate ?? -1) - (left.errorRate ?? -1);
-        return (right.p95Ms ?? -1) - (left.p95Ms ?? -1);
+        const direction = sortOrder === 'ascend' ? 1 : -1;
+        if (sortKey === 'request_rate') return direction * (left.requestRate - right.requestRate);
+        if (sortKey === 'error_rate') return direction * ((left.errorRate ?? -1) - (right.errorRate ?? -1));
+        return direction * ((left.p95Ms ?? -1) - (right.p95Ms ?? -1));
       });
-  }, [keyword, rows, serviceId, sortKey]);
+  }, [keyword, rows, serviceId, sortKey, sortOrder]);
+  const pageRows = useMemo(
+    () => visibleRows.slice((page - 1) * pageSize, page * pageSize),
+    [page, pageSize, visibleRows],
+  );
 
   const columns: TableColumnsType<EndpointRow> = [
     {
-      title: '方法',
-      dataIndex: 'method',
-      width: 80,
-      render: (value) => (
-        <span className={`rounded px-2 py-0.5 font-mono text-[11px] font-medium ${
-          value === 'POST'
-            ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
-            : 'bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
-        }`}
-        >
-          {value}
+      title: t('apm.common.endpoint', '端点'),
+      render: (_, row) => (
+        <span className="inline-flex min-w-0 items-center gap-2">
+          <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-xs font-medium ${
+            row.method === 'POST'
+              ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
+              : 'bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
+          }`}
+          >
+            {row.method}
+          </span>
+          <EllipsisWithTooltip className="truncate font-mono text-xs" text={row.route} />
         </span>
       ),
     },
     {
-      title: '端点',
+      title: t('apm.explore.ownerService', '所属服务'),
+      responsive: ['sm'],
       render: (_, row) => (
-        <span className="inline-flex items-center gap-2">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-primary)]" aria-hidden="true" />
-          <Typography.Text className="font-mono text-xs">{row.method} {row.route}</Typography.Text>
-        </span>
-      ),
-    },
-    {
-      title: '所属服务',
-      width: 180,
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text>{row.serviceName}</Typography.Text>
-          <Typography.Text type="secondary" className="text-xs">{row.namespace || '未归类应用'} · {row.environment}</Typography.Text>
+        <Space direction="vertical" size={0} className="min-w-0">
+          <EllipsisWithTooltip className="truncate" text={row.serviceName} />
+          <EllipsisWithTooltip className="truncate text-xs text-[var(--color-text-3)]" text={`${row.namespace || t('apm.common.unsetNamespace', '未设置 namespace')} · ${row.environment}`} />
         </Space>
       ),
     },
     {
-      title: '吞吐量',
+      title: t('apm.common.throughput', '吞吐量'),
       dataIndex: 'requestRate',
       align: 'right',
-      width: 130,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
+      sorter: true,
+      sortOrder: sortKey === 'request_rate' ? sortOrder : null,
+      responsive: ['md'],
       render: (value) => (
         <span className="tabular-nums">
           <strong>{formatThroughput(value)}</strong>
@@ -257,127 +283,158 @@ export default function ApmEndpointsPage() {
       ),
     },
     {
-      title: '错误率',
+      title: t('apm.common.errorRate', '错误率'),
       dataIndex: 'errorRate',
       align: 'right',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
+      sorter: true,
+      sortOrder: sortKey === 'error_rate' ? sortOrder : null,
+      responsive: ['md'],
       render: (value: number | null) => value === null
         ? '—'
         : <Tag bordered={false} color={errorRateColor(value)}>{formatErrorRate(value)}</Tag>,
     },
     {
-      title: 'P95',
+      title: t('apm.common.p95', 'P95'),
       dataIndex: 'p95Ms',
       align: 'right',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.compact,
+      sorter: true,
+      sortOrder: sortKey === 'p95_ms' ? sortOrder : null,
+      responsive: ['lg'],
       render: (value: number | null) => <span className="tabular-nums">{formatLatency(value)}</span>,
     },
     {
-      title: '最近活跃',
+      title: t('apm.common.lastSeen', '最近活跃'),
       dataIndex: 'lastSeenAt',
       align: 'right',
-      width: 110,
+      width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
+      responsive: ['xl'],
       render: (value) => <Typography.Text type="secondary" className="text-xs">{formatRelativeTime(value)}</Typography.Text>,
+    },
+    {
+      title: t('apm.common.operation', '操作'),
+      key: 'actions',
+      width: APM_TABLE_COLUMN_WIDTHS.singleAction,
+      align: 'right',
+      fixed: 'right',
+      render: (_, row) => <Button className="!px-0" size="small" type="link" onClick={() => setSelected(row)}>{t('apm.common.view', '查看')}</Button>,
     },
   ];
 
   return (
     <ApmRouteShell
-      title="端点"
-      description="按服务端点查看吞吐量、错误率与时延，点击行打开详情与样本调用链。"
+      title={t('apm.explore.endpointsTitle', '端点')}
+      description={t('apm.explore.endpointsDescription', '按服务端点查看吞吐量、错误率与时延，通过查看操作打开详情与样本调用链。')}
       dependency="telemetry"
     >
       <div className="flex flex-col gap-3">
         {metricFailureCount ? (
           <Alert
-            action={<Button icon={<ReloadOutlined aria-hidden="true" />} size="small" onClick={load}>重试</Button>}
-            description="已展示成功返回的服务，失败服务不会被误判为没有端点数据。"
-            message={`部分服务的端点指标查询失败（${metricFailureCount} 项）`}
+            action={<Button icon={<ReloadOutlined aria-hidden="true" />} size="small" onClick={load}>{t('apm.common.retry', '重试')}</Button>}
+            description={t('apm.explore.partialEndpointMetrics', '部分服务暂未返回端点指标，请稍后重试。')}
+            message={t('apm.explore.metricFailureCount', '部分服务的端点指标查询失败（{count} 项）', { count: metricFailureCount })}
             showIcon
             type="warning"
           />
         ) : null}
-        <ApmSurface padding="compact">
-          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-            <Input
-              allowClear
-              aria-label="搜索路径模板或服务"
-              className="w-72"
-              placeholder="搜索路径模板 / 服务"
-              prefix={<SearchOutlined aria-hidden="true" />}
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-            <Select
-              aria-label="环境"
-              className="w-36"
-              value={environment || undefined}
-              placeholder="选择环境"
-              options={environmentOptions}
-              onChange={(value) => {
-                setEnvironment(value);
-                setServiceId('all');
-              }}
-            />
-            <div className="flex-1" />
-            <Select
-              aria-label="服务"
-              className="w-40"
-              value={serviceId}
-              options={[{ value: 'all', label: '全部服务' }, ...serviceOptions]}
-              onChange={setServiceId}
-            />
-            <Select<SortKey>
-              aria-label="排序"
-              className="w-32"
-              value={sortKey}
-              options={[
-                { value: 'request_rate', label: '吞吐量' },
-                { value: 'error_rate', label: '错误率' },
-                { value: 'p95_ms', label: 'P95 耗时' },
-              ]}
-              onChange={setSortKey}
-            />
-            <Radio.Group
-              aria-label="时间范围"
-              buttonStyle="solid"
-              size="small"
-              value={timeRange}
-              onChange={(event) => setTimeRange(event.target.value)}
-            >
-              {(Object.keys(RANGE_MS) as MetricRange[]).map((value) => (
-                <Radio.Button key={value} value={value}>{value}</Radio.Button>
-              ))}
-            </Radio.Group>
-            <Button aria-label="刷新端点" icon={<ReloadOutlined aria-hidden="true" />} onClick={load} />
-          </FilterToolbar>
-        </ApmSurface>
-        <ApmSurface padding="none" className="overflow-hidden">
-          {state === 'ready' ? (
-            <Table
+        <ApmSurface>
+          <div className="flex flex-col gap-4">
+            <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+              <Input
+                allowClear
+                aria-label={t('apm.explore.searchEndpoint', '搜索路径模板或服务')}
+                className="w-72"
+                placeholder={t('apm.explore.searchEndpointPlaceholder', '搜索路径模板 / 服务')}
+                prefix={<SearchOutlined aria-hidden="true" />}
+                value={keyword}
+                onChange={(event) => { setKeyword(event.target.value); setPage(1); }}
+              />
+              <Select
+                aria-label={t('apm.common.service', '服务')}
+                className="w-40"
+                value={serviceId}
+                options={[{ value: 'all', label: t('apm.common.allServices', '全部服务') }, ...serviceOptions]}
+                onChange={(value) => { setServiceId(value); setPage(1); }}
+              />
+              <Select
+                aria-label={t('apm.common.environment', '环境')}
+                className="w-36"
+                value={environment || undefined}
+                placeholder={t('apm.common.selectEnvironment', '选择环境')}
+                options={environmentOptions}
+                onChange={(value) => {
+                  setEnvironment(value);
+                  setServiceId('all');
+                  setPage(1);
+                }}
+              />
+              <div className="flex-1" />
+              <Radio.Group
+                aria-label={t('apm.common.timeRange', '时间范围')}
+                buttonStyle="solid"
+                size="small"
+                value={timeRange}
+                onChange={(event) => setTimeRange(event.target.value)}
+              >
+                {(Object.keys(RANGE_MS) as MetricRange[]).map((value) => (
+                  <Radio.Button key={value} value={value}>{value}</Radio.Button>
+                ))}
+              </Radio.Group>
+              <Button aria-label={t('apm.explore.refreshEndpoints', '刷新端点')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={load} />
+            </FilterToolbar>
+            {state === 'ready' || (state === 'loading' && rows.length > 0) ? (
+              <ApmDataTable
               rowKey="key"
               size="middle"
               columns={columns}
-              dataSource={visibleRows}
-              pagination={false}
-              onRow={(row) => ({
-                onClick: () => setSelected(row),
-                className: 'cursor-pointer',
-              })}
-            />
-          ) : (
-            <CatalogState kind={state} description={state === 'empty' ? '当前环境和时间范围内没有端点指标。' : undefined} />
-          )}
+              dataSource={pageRows}
+              headerAlignment="column"
+              loading={state === 'loading'}
+              pagination={{
+                current: page,
+                pageSize,
+                total: visibleRows.length,
+                pageSizeOptions: [10, 20, 50, 100],
+                showSizeChanger: true,
+                onChange: (nextPage, nextPageSize) => {
+                  setPage(nextPageSize === pageSize ? nextPage : 1);
+                  setPageSize(nextPageSize);
+                },
+              }}
+              onChange={(_, __, sorter) => {
+                const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+                if (!activeSorter?.order) return;
+                const fieldMap: Record<string, SortKey> = {
+                  requestRate: 'request_rate',
+                  errorRate: 'error_rate',
+                  p95Ms: 'p95_ms',
+                };
+                const nextKey = fieldMap[String(activeSorter.field)];
+                if (!nextKey) return;
+                setSortKey(nextKey);
+                setSortOrder(activeSorter.order);
+                setPage(1);
+              }}
+              />
+            ) : (
+              <CatalogState
+                kind={state}
+                description={state === 'empty' ? t('apm.explore.noEndpoints', '当前环境和时间范围内没有端点指标。') : undefined}
+                onRetry={state === 'forbidden' ? undefined : load}
+              />
+            )}
+          </div>
         </ApmSurface>
       </div>
       <Drawer
-        width={720}
+        width="min(720px, 100vw)"
         open={Boolean(selected)}
         onClose={() => setSelected(null)}
         title={selected ? (
           <div>
             <div className="flex items-center gap-2">
-              <span className={`rounded px-2 py-0.5 font-mono text-[11px] font-medium ${
+              <span className={`rounded px-2 py-0.5 font-mono text-xs font-medium ${
                 selected.method === 'POST'
                   ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
                   : 'bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
@@ -397,26 +454,52 @@ export default function ApmEndpointsPage() {
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {[
-                { label: '吞吐', value: `${formatThroughput(selected.requestRate)}/s` },
+                { label: t('apm.explore.throughputShort', '吞吐'), value: `${formatThroughput(selected.requestRate)}/s` },
                 {
-                  label: '错误率',
+                  label: t('apm.common.errorRate', '错误率'),
                   value: formatErrorRate(selected.errorRate),
                   danger: isErrorRateDanger(selected.errorRate),
                 },
-                { label: 'P95', value: formatLatency(selected.p95Ms) },
-                { label: 'P99', value: formatLatency(selected.p99Ms) },
+                { label: t('apm.common.p95', 'P95'), value: formatLatency(selected.p95Ms) },
+                { label: t('apm.common.p99', 'P99'), value: formatLatency(selected.p99Ms) },
               ].map((metric) => (
-                <div key={metric.label} className="rounded-md border border-[var(--color-border)] px-3 py-2.5">
-                  <Typography.Text type="secondary" className="!text-[11px]">{metric.label}</Typography.Text>
-                  <div className={`mt-1 text-xl font-bold tabular-nums ${metric.danger ? 'text-[var(--color-fail)]' : ''}`}>
-                    {metric.value}
-                  </div>
-                </div>
+                <SummaryMetricCard
+                  key={metric.label}
+                  className="rounded-lg px-3 py-2.5"
+                  label={metric.label}
+                  labelClassName="!text-xs"
+                  layout="vertical"
+                  maxFontSize={16}
+                  minFontSize={16}
+                  value={metric.value}
+                  valueColor={metric.danger ? 'var(--color-fail)' : undefined}
+                />
               ))}
             </div>
             <div>
+              <Typography.Text strong className="mb-2 block">{t('apm.explore.endpointTrend', '端点趋势')}</Typography.Text>
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.throughput', '吞吐量')}</Typography.Text>
+                <TimeSeriesComposedChart
+                  data={(endpointRed?.timeseries ?? []).map((point) => ({
+                    ...point,
+                    error_rate_percent: point.error_rate === null ? null : point.error_rate * 100,
+                  }))}
+                  xDataKey="timestamp"
+                  getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')}
+                  xAxisBoundaryGap={false}
+                  yAxes={[{ formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)} req/s` }]}
+                  series={[{ name: t('apm.common.throughputReq', '吞吐量 req/s'), type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true }]}
+                  surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }}
+                />
+                </div>
+                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.errorRate', '错误率')}</Typography.Text><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point, error_rate_percent: point.error_rate === null ? null : point.error_rate * 100 }))} xDataKey="timestamp" getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => `${value.toFixed(1)}%` }]} series={[{ name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, showArea: true, showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></div>
+                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.latency', '时延')}</Typography.Text><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point }))} xDataKey="timestamp" getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => `${value.toFixed(0)} ms` }]} series={[{ name: 'P95', type: 'line', dataKey: 'p95_ms', color: token.colorPrimary, showArea: true }, { name: 'P99', type: 'line', dataKey: 'p99_ms', color: token.colorWarning, lineType: 'dotted', showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></div>
+              </div>
+            </div>
+            <div>
               <div className="mb-2 flex items-center justify-between">
-                <Typography.Text strong>样本调用链</Typography.Text>
+                <Typography.Text strong>{t('apm.explore.sampleTraces', '样本调用链')}</Typography.Text>
                 <Link
                   href={`/apm/explore/traces?${new URLSearchParams({
                     service_namespace: selected.namespace,
@@ -424,13 +507,13 @@ export default function ApmEndpointsPage() {
                     environment: selected.environment,
                   }).toString()}`}
                 >
-                  <Button type="link" size="small">在探索中打开</Button>
+                  <Button type="link" size="small">{t('apm.explore.openInExplore', '在探索中打开')}</Button>
                 </Link>
               </div>
               {samplesLoading ? (
                 <CatalogState kind="loading" />
               ) : sampleTraces.length ? (
-                <Table
+                <ApmDataTable
                   size="small"
                   rowKey="trace_id"
                   pagination={false}
@@ -448,20 +531,20 @@ export default function ApmEndpointsPage() {
                       ),
                     },
                     {
-                      title: '资源',
+                      title: t('apm.explore.resource', '资源'),
                       dataIndex: 'root_span_name',
                       render: (value) => <span className="font-mono text-xs">{value}</span>,
                     },
                     {
-                      title: '耗时',
+                      title: t('apm.common.latency', '耗时'),
                       dataIndex: 'duration_ms',
-                      width: 90,
+                      width: APM_TABLE_COLUMN_WIDTHS.metric,
                       render: (value: number) => <span className="tabular-nums">{formatLatency(value)}</span>,
                     },
                     {
-                      title: '时间',
+                      title: t('apm.common.time', '时间'),
                       dataIndex: 'started_at',
-                      width: 100,
+                      width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
                       render: (value: string) => (
                         <span className="text-xs text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
                       ),
@@ -469,11 +552,11 @@ export default function ApmEndpointsPage() {
                   ]}
                 />
               ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无匹配样本 Trace" />
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('apm.explore.noSampleTraces', '暂无匹配样本 Trace')} />
               )}
             </div>
             <Typography.Text type="secondary" className="!text-xs">
-              端点指标来自服务 RED Top endpoint 聚合；最近活跃参考服务发现时间 {dayjs(selected.lastSeenAt).format('YYYY-MM-DD HH:mm:ss')}。
+              {t('apm.explore.endpointSourceHint', '端点指标来自服务 RED Top endpoint 聚合；最近活跃参考服务发现时间 {time}。', { time: dayjs(selected.lastSeenAt).format('YYYY-MM-DD HH:mm:ss') })}
             </Typography.Text>
           </div>
         ) : null}

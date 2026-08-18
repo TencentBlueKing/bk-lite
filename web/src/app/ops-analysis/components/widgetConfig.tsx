@@ -54,6 +54,9 @@ import type {
   ResponseFieldDefinition,
 } from '@/app/ops-analysis/types/dataSource';
 import { initThresholdColors } from '@/app/ops-analysis/utils/thresholdUtils';
+import { ValueFormatConfigSection } from '@/app/ops-analysis/components/ops-analysis-config-sections';
+import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
+import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 import ComponentSelector from './widgetSelector';
 
 import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
@@ -61,6 +64,8 @@ import { TableSettingsSection } from './widgetConfig/sections/tableSettingsSecti
 import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection';
 import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
 import { RadarSettingsSection } from './widgetConfig/sections/radarSettingsSection';
+import { CardListSettingsSection } from './widgetConfig/sections/cardListSettingsSection';
+import { resolveCardListSettingsRemountKey } from './widgetConfig/utils/cardListSettingsRemountKey';
 import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
@@ -89,6 +94,7 @@ interface ViewConfigPropsWithManager extends ViewConfigProps {
 }
 
 const NETWORK_STATUS_TOPOLOGY = 'networkStatusTopology';
+const VALUE_FORMAT_CHART_TYPES = new Set(['line', 'bar', 'pie', 'multiValue']);
 
 interface SelectorLike {
   id?: unknown;
@@ -287,7 +293,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           dataSource: undefined,
           networkStatusTopology: {
             modelId: '',
-            instId: '',
+            instUuid: '',
             depth: 2,
           },
           params: {},
@@ -310,6 +316,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             min: 0,
             max: 100,
             indicators: [],
+          },
+          cardList: {
+            leading: { type: 'none' },
+            layout: 'list',
           },
           compare: false,
           compareMode: 'percent',
@@ -339,6 +349,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       const defaultChartType = newChartTypes[0]?.value || '';
 
       setChartType(defaultChartType);
+      if (defaultChartType === 'multiValue') {
+        singleValueConfig.setThresholdColors(initThresholdColors([]));
+      }
 
       // 重置 form 中的依赖字段
       const params: Record<string, any> = {};
@@ -360,6 +373,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         topNLabelField: undefined,
         topNValueField: undefined,
         unit: undefined,
+        unitId: undefined,
+        valueMappings: undefined,
         conversionFactor: undefined,
         decimalPlaces: undefined,
         gaugeMin: 0,
@@ -372,6 +387,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           min: 0,
           max: 100,
           indicators: [],
+        },
+        cardList: {
+          leading: { type: 'none' },
+          layout: 'list',
         },
         compare: false,
         compareMode: 'percent',
@@ -514,6 +533,19 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (newChartType === 'radar' && !form.getFieldValue('radar')) {
       form.setFieldValue('radar', { min: 0, max: 100, indicators: [] });
     }
+    if (newChartType === 'cardList' && !form.getFieldValue('cardList')) {
+      form.setFieldValue('cardList', {
+        leading: { type: 'none' },
+        layout: 'list',
+      });
+    }
+    if (newChartType === 'multiValue') {
+      singleValueConfig.setThresholdColors(initThresholdColors([]));
+    } else if (newChartType === 'single' || newChartType === 'gauge') {
+      singleValueConfig.setThresholdColors((prev) =>
+        prev.length > 0 ? prev : initThresholdColors(undefined),
+      );
+    }
     if (surface === 'screen') {
       form.setFieldValue(
         'appearance',
@@ -569,7 +601,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (isSceneWidget) {
       const networkStatusTopology = valueConfig?.networkStatusTopology || {
         modelId: '',
-        instId: '',
+        instUuid: '',
         depth: 2,
       };
       setSelectedDataSource(undefined);
@@ -775,6 +807,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (valueConfig?.radar !== undefined) {
       formValues.radar = valueConfig.radar;
     }
+    if (valueConfig?.cardList !== undefined) {
+      formValues.cardList = {
+        ...valueConfig.cardList,
+        leading: valueConfig.cardList.leading || { type: 'none' },
+        layout: valueConfig.cardList.layout || 'list',
+      };
+    } else {
+      formValues.cardList = {
+        leading: { type: 'none' },
+        layout: 'list',
+      };
+    }
     if (valueConfig?.compare !== undefined) {
       formValues.compare = valueConfig.compare && canEnableCompare({
         config: { chartType: 'single', dataSourceParams: targetDataSource?.params },
@@ -783,8 +827,15 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       formValues.compareMode = valueConfig.compareMode || 'percent';
     }
 
-    singleValueConfig.setThresholdColors(initThresholdColors(valueConfig?.thresholdColors));
+    singleValueConfig.setThresholdColors(
+      formValues.chartType === 'multiValue'
+        ? initThresholdColors(valueConfig?.thresholdColors ?? [])
+        : initThresholdColors(valueConfig?.thresholdColors),
+    );
 
+    // Nested cardList fields are registered individually; reset first so omitted
+    // optional slots from the previous edit target cannot survive setFieldsValue merge.
+    form.resetFields(['cardList']);
     form.setFieldsValue(formValues);
     // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
     markFormPristine(form);
@@ -893,6 +944,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   useEffect(() => {
     if (open) {
+      if (!widgetItem) {
+        return;
+      }
       const requestId = nextConfigRequestId();
       void initializeItemForm(widgetItem, requestId);
     } else if (!open) {
@@ -967,7 +1021,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         const formTopology = values.networkStatusTopology;
         values.networkStatusTopology = {
           modelId: formTopology?.modelId || existingTopology?.modelId || '',
-          instId: formTopology?.instId || existingTopology?.instId || '',
+          instUuid: formTopology?.instUuid || existingTopology?.instUuid || '',
           depth: formTopology?.depth || existingTopology?.depth || 2,
           layoutMode: formTopology?.layoutMode ?? existingTopology?.layoutMode,
           layoutByMode:
@@ -1007,6 +1061,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         }
         if (submitResult.error === 'multipleComponentSwitchParams') {
           message.error(t('dashboard.multipleComponentSwitchParams'));
+          return;
+        }
+        if (submitResult.error === 'cardListTitleRequired') {
+          message.error(t('dashboard.cardListTitleRequired'));
+          return;
+        }
+        if (submitResult.error === 'cardListLeadingFieldRequired') {
+          message.error(t('dashboard.cardListLeadingFieldRequired'));
           return;
         }
       }
@@ -1082,7 +1144,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               </Form.Item>
               <Form.Item
                 label={t('dashboard.networkTopoInstance')}
-                name={['networkStatusTopology', 'instId']}
+                name={['networkStatusTopology', 'instUuid']}
                 rules={[{ required: true, message: t('dashboard.selectInstance') }]}
                 tooltip={t('dashboard.networkTopoInstanceHelp')}
               >
@@ -1125,7 +1187,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 rules={[{ required: true, message: t('common.selectTip') }]}
                 getValueProps={() => ({
                   value: selectedDataSource
-                    ? `${selectedDataSource.name}（${selectedDataSource.rest_api}）`
+                    ? `${selectedDataSource.name}${
+                        selectedDataSource.rest_api
+                          ? `（${selectedDataSource.rest_api}）`
+                          : ''
+                      }`
                     : '',
                 })}
               >
@@ -1348,6 +1414,32 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           />
         )}
 
+        {VALUE_FORMAT_CHART_TYPES.has(chartType) && (
+          <div className="mb-6">
+            <div className="font-medium mb-4">{t('dashboard.displaySettings')}</div>
+            <ValueFormatConfigSection t={t} />
+            {chartType === 'multiValue' && (
+              <>
+                <ThresholdColorConfigSection
+                  t={t}
+                  thresholdColors={singleValueConfig.thresholdColors}
+                  onThresholdChange={singleValueConfig.handleThresholdChange}
+                  onThresholdBlur={singleValueConfig.handleThresholdBlur}
+                  onAddThreshold={singleValueConfig.addThreshold}
+                  onRemoveThreshold={singleValueConfig.removeThreshold}
+                  allowEmpty
+                />
+                <Form.Item
+                  label={t('topology.nodeConfig.valueMappings')}
+                  name="valueMappings"
+                >
+                  <ValueMappingsConfigSection t={t} />
+                </Form.Item>
+              </>
+            )}
+          </div>
+        )}
+
         {chartType === 'eventTimeline' && (
           <div className="mb-6">
             <div className="font-medium mb-4">{t('dashboard.eventTimelineSettings')}</div>
@@ -1380,6 +1472,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             selectedDataSource={selectedDataSource}
             topNLabelFieldOptions={topNLabelFieldOptions}
             topNValueFieldOptions={topNValueFieldOptions}
+          />
+        )}
+
+        {chartType === 'cardList' && (
+          <CardListSettingsSection
+            key={resolveCardListSettingsRemountKey(widgetItem)}
+            t={t}
+            availableFields={availableFields}
           />
         )}
 

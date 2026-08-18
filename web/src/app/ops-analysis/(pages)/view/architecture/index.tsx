@@ -20,14 +20,14 @@ import {
   ArchitectureProps,
 } from '@/app/ops-analysis/types/architecture';
 import dynamic from 'next/dynamic';
-import awsIsopack from '@isoflow/isopacks/dist/aws';
-import gcpIsopack from '@isoflow/isopacks/dist/gcp';
-import azureIsopack from '@isoflow/isopacks/dist/azure';
 import isoflowIsopack from '@isoflow/isopacks/dist/isoflow';
-import kubernetesIsopack from '@isoflow/isopacks/dist/kubernetes';
 import ArchitectureToolbar from './components/toolbar';
 import { DEFAULT_COLORS } from '@/app/ops-analysis/constants/common';
 import { svgToBase64 } from '@/app/ops-analysis/utils/common';
+import {
+  selectCmdbIsometricIcons,
+  selectIsometricIsopackIcons,
+} from '@/app/ops-analysis/utils/architectureIcons';
 import {
   AppViewFullscreenExit,
   useAppViewFullscreen,
@@ -45,20 +45,20 @@ const Isoflow = dynamic(
   }
 );
 
-const createCmdbIsopack = async () => {
-  const icons = await Promise.all(
-    iconList.map(async (icon) => ({
-      id: `cmdb-${icon.key}`,
-      name: icon.describe || icon.key,
-      url: await svgToBase64(icon.url),
-      isIsometric: true,
+const createArchitectureIcons = async () => {
+  const cmdbIcons = await Promise.all(
+    selectCmdbIsometricIcons(iconList).map(async (icon) => ({
+      id: icon.id,
+      name: icon.name,
+      url: await svgToBase64(icon.src),
+      isIsometric: true as const,
     }))
   );
-  return {
-    id: 'cmdb',
-    name: 'CMDB',
-    icons,
-  };
+
+  return [
+    ...cmdbIcons,
+    ...selectIsometricIsopackIcons(flattenCollections([isoflowIsopack])),
+  ];
 };
 
 export interface ArchitectureRef {
@@ -100,21 +100,9 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
 
     useEffect(() => {
       let isMounted = true;
-      createCmdbIsopack().then((cmdbIsopack) => {
-        const allIcons = flattenCollections([
-          cmdbIsopack,
-          isoflowIsopack,
-          awsIsopack,
-          azureIsopack,
-          gcpIsopack,
-          kubernetesIsopack,
-        ]);
-        const unique = allIcons.filter(
-          (icon, index, self) =>
-            index === self.findIndex((i) => i.id === icon.id)
-        );
+      createArchitectureIcons().then((icons) => {
         if (isMounted) {
-          setUniqueIcons(unique);
+          setUniqueIcons(icons);
         }
       });
       return () => {

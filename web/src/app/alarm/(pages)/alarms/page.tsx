@@ -11,7 +11,7 @@ import alertStyle from './index.module.scss';
 import AlarmFilters from '@/app/alarm/components/alarmFilters';
 import AlarmTable from '@/app/alarm/(pages)/alarms/components/alarmTable';
 import SearchFilter from '../../components/searchFilter';
-// import AlarmAction from './components/alarmAction';  // 顶部 batch AlarmAction 暂隐藏（见上方 TODO），恢复时取消本注释
+import AlarmAction from './components/alarmAction';
 import DeclareIncident from './components/declareIncident';
 import { SearchFilterCondition } from '@/app/alarm/types/alarms';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
@@ -478,18 +478,12 @@ const Alert: React.FC = () => {
                   rowData={selectedRowData}
                   onSuccess={onRefresh}
                 />
-                {/*
-                  TODO: 暂不需要批量的"操作/手动触发"。
-                  当前需求收敛到单条告警维度，顶部 batch AlarmAction 暂时隐藏，
-                  确认位置：(pages)/alarms/page.tsx 顶右批量按钮区。
-                  恢复时去掉本注释块并恢复下面的 <AlarmAction .../> 即可。
-                */}
-                {/* <AlarmAction
+                <AlarmAction
                   rowData={selectedRowData}
                   displayMode="dropdown"
                   showAll
                   onAction={onRefresh}
-                /> */}
+                />
               </div>
             </div>
             <AlarmTable

@@ -2,8 +2,6 @@ from typing import Any
 
 from rest_framework.exceptions import NotFound, PermissionDenied
 
-from apps.alerts.constants import AlertStatus
-from apps.alerts.views.alert import AlertModelViewSet
 from apps.cmdb.constants.constants import NETWORK_TOPO_NODE_LIMIT, VIEW
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
@@ -25,8 +23,8 @@ def map_alert_level_to_node_status(level: str | int | None) -> dict[str, Any]:
 
 class NetworkStatusTopologyService:
     @classmethod
-    def build(cls, request, model_id: str, inst_id: int, depth: int) -> dict[str, Any]:
-        topology = cls._get_cmdb_topology(request, model_id, inst_id, depth)
+    def build(cls, request, model_id: str, inst_uuid: str, depth: int) -> dict[str, Any]:
+        topology = cls._get_cmdb_topology(request, model_id, inst_uuid, depth)
         node_keys = {
             (str(node.get("model_id")), str(node.get("id")))
             for node in topology.get("nodes", [])
@@ -48,7 +46,7 @@ class NetworkStatusTopologyService:
 
         center = topology.get("center") or {}
         return {
-            "center_id": str(center.get("id") or inst_id),
+            "center_id": str(center.get("id") or inst_uuid),
             "center_model_id": str(center.get("model_id") or model_id),
             "nodes": nodes,
             "links": topology.get("links", []),
@@ -57,8 +55,8 @@ class NetworkStatusTopologyService:
         }
 
     @staticmethod
-    def _get_cmdb_topology(request, model_id: str, inst_id: int, depth: int) -> dict[str, Any]:
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+    def _get_cmdb_topology(request, model_id: str, inst_uuid: str, depth: int) -> dict[str, Any]:
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             raise NotFound("实例不存在")
 
@@ -71,8 +69,8 @@ class NetworkStatusTopologyService:
             request=request,
             model_id=instance["model_id"],
         )
-        return InstanceManage.network_topology(
-            int(inst_id),
+        return InstanceManage.network_topology_by_uuid(
+            inst_uuid,
             instance["model_id"],
             depth=depth,
             permission_map=permissions_map,
@@ -83,6 +81,9 @@ class NetworkStatusTopologyService:
     def _get_active_alert_summary(request, node_keys: set[tuple[str, str]]) -> dict[tuple[str, str], dict[str, Any]]:
         if not node_keys:
             return {}
+
+        from apps.alerts.constants import AlertStatus
+        from apps.alerts.views.alert import AlertModelViewSet
 
         alert_view = AlertModelViewSet()
         queryset = alert_view.get_queryset_by_permission(request, alert_view.get_queryset())

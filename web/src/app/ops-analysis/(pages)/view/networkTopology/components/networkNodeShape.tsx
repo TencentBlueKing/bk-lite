@@ -73,84 +73,37 @@ const NetworkNodeShape: React.FC<NetworkNodeShapeProps> = ({
     <div
       data-testid="network-node-shape"
       data-status={status}
+      className="w-[190px] min-h-[112px] select-none rounded-lg bg-[var(--color-bg-1,#ffffff)] p-2.5"
       style={{
-        width: 190,
-        minHeight: 112,
-        padding: 10,
-        background: 'var(--color-bg-1,#ffffff)',
         border: `1px solid ${
           selected ? 'var(--color-primary,#2f8fb0)' : 'var(--color-border-2,#cfdbe5)'
         }`,
         borderTop: `3px solid ${outerColor}`,
-        borderRadius: 8,
         boxShadow: selected
           ? '0 0 0 2px rgba(47,143,176,0.18), 0 16px 34px rgba(36,50,63,0.18)'
           : '0 12px 26px rgba(36,50,63,0.12)',
-        userSelect: 'none',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span
-          style={{
-            display: 'inline-grid',
-            placeItems: 'center',
-            width: 32,
-            height: 32,
-            background: 'var(--color-fill-2,#eef4f6)',
-            borderRadius: 6,
-            color: 'var(--color-text-2,#335364)',
-            fontWeight: 700,
-            fontSize: 11,
-          }}
-        >
+      <div className="flex items-center gap-2">
+        <span className="inline-grid h-8 w-8 place-items-center rounded-md bg-[var(--color-fill-2,#eef4f6)] text-[11px] font-bold text-[var(--color-text-2,#335364)]">
           {node.bk_obj_id.replace(/^bk_/, '').slice(0, 2).toUpperCase()}
         </span>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div
-            style={{
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              fontWeight: 650,
-              fontSize: 13,
-              color: 'var(--color-text-1,#1f2933)',
-            }}
-          >
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-semibold text-[var(--color-text-1,#1f2933)]">
             {node.bk_inst_name}
           </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: 'var(--color-text-3,#73808c)',
-              marginTop: 2,
-            }}
-          >
+          <div className="mt-0.5 text-[11px] text-[var(--color-text-3,#73808c)]">
             {node.ip_addr || node.bk_obj_id}
           </div>
         </div>
         <span
           aria-hidden
-          style={{
-            width: 9,
-            height: 9,
-            borderRadius: 999,
-            background: outerColor,
-          }}
+          className="h-2.5 w-2.5 rounded-full"
+          style={{ background: outerColor }}
         />
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginTop: 8,
-          paddingTop: 6,
-          borderTop: '1px solid var(--color-border-1,#e4ebf0)',
-          fontSize: 11,
-          color: 'var(--color-text-2,#536270)',
-        }}
-      >
+      <div className="mt-2 flex items-center justify-between border-t border-[var(--color-border-1,#e4ebf0)] pt-1.5 text-[11px] text-[var(--color-text-2,#536270)]">
         <span>
           {t('opsAnalysis.networkTopology.nodeShape.interfaceLabel', undefined, { summary: summaryText })}
         </span>
@@ -160,37 +113,24 @@ const NetworkNodeShape: React.FC<NetworkNodeShapeProps> = ({
       {node.metrics.slice(0, 2).map((metric) => (
         <div
           key={`${metric.result_table_id}:${metric.metric_field}`}
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: 11,
-            color: 'var(--color-text-2,#334250)',
-            marginTop: 4,
-          }}
+          className="mt-1 flex justify-between text-[11px] text-[var(--color-text-2,#334250)]"
         >
-          <span
-            style={{
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              maxWidth: 130,
-            }}
-          >
+          <span className="max-w-[130px] truncate">
             {metric.display_name || metric.metric_field}
           </span>
-          <strong style={{ color: 'var(--color-text-1,#192733)' }}>
+          <strong className="text-[var(--color-text-1,#192733)]">
             {formatMetricValue(metric, runtimeMetrics, t)}
           </strong>
         </div>
       ))}
       {node.metrics.length === 0 && (
-        <div style={{ fontSize: 11, color: 'var(--color-text-3,#8a98a5)', marginTop: 6 }}>
+        <div className="mt-1.5 text-[11px] text-[var(--color-text-3,#8a98a5)]">
           {t('opsAnalysis.networkTopology.nodeShape.noMetrics')}
         </div>
       )}
 
       {invalid && invalidReason && (
-        <div style={{ marginTop: 6 }}>
+        <div className="mt-1.5">
           <Tag color="red">{invalidReason}</Tag>
         </div>
       )}

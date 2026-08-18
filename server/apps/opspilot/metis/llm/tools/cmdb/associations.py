@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -52,7 +52,7 @@ def cmdb_list_model_associations(
 @tool(description="List associations for an instance.")
 def cmdb_list_instance_associations(
     model_id: str,
-    inst_id: int,
+    inst_uuid: str,
     team_id: Optional[int] = None,
     include_children: Optional[bool] = None,
     config: Optional[RunnableConfig] = None,
@@ -62,7 +62,7 @@ def cmdb_list_instance_associations(
             raise ValueError("model_id is required")
         user = _get_user_from_config(config)
         resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             raise ValueError("instance not found")
         permissions_map = build_permission_map(
@@ -73,7 +73,7 @@ def cmdb_list_instance_associations(
             model_id=model_id,
         )
         ensure_instance_permission(user, instance, permissions_map, operator="View")
-        associations = InstanceManage.instance_association(model_id, int(inst_id))
+        associations = InstanceManage.instance_association_instance_list_by_uuid(model_id, inst_uuid)
         return wrap_success(associations)
     except Exception as e:
         logger.exception("cmdb_list_instance_associations failed: %s", e)
@@ -83,7 +83,7 @@ def cmdb_list_instance_associations(
 @tool(description="List instances associated with an instance.")
 def cmdb_list_associated_instances(
     model_id: str,
-    inst_id: int,
+    inst_uuid: str,
     team_id: Optional[int] = None,
     include_children: Optional[bool] = None,
     config: Optional[RunnableConfig] = None,
@@ -93,7 +93,7 @@ def cmdb_list_associated_instances(
             raise ValueError("model_id is required")
         user = _get_user_from_config(config)
         resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:
             raise ValueError("instance not found")
         permissions_map = build_permission_map(
@@ -104,7 +104,7 @@ def cmdb_list_associated_instances(
             model_id=model_id,
         )
         ensure_instance_permission(user, instance, permissions_map, operator="View")
-        associations = InstanceManage.instance_association_instance_list(model_id, int(inst_id))
+        associations = InstanceManage.instance_association_instance_list_by_uuid(model_id, inst_uuid)
         return wrap_success(associations)
     except Exception as e:
         logger.exception("cmdb_list_associated_instances failed: %s", e)
@@ -122,7 +122,15 @@ def cmdb_create_instance_association(
             raise ValueError("data must be a dict")
         user = _get_user_from_config(config)
         ensure_write_allowed(user, _resolve_allow_write(config, allow_write))
-        result = InstanceManage.instance_association_create(data, user.username)
+        required = ("src_inst_uuid", "dst_inst_uuid", "model_asst_id")
+        if any(not data.get(key) for key in required):
+            raise ValueError("src_inst_uuid, dst_inst_uuid and model_asst_id are required")
+        result = InstanceManage.instance_association_create_by_uuid(
+            src_inst_uuid=data["src_inst_uuid"],
+            dst_inst_uuid=data["dst_inst_uuid"],
+            model_asst_id=data["model_asst_id"],
+            operator=user.username,
+        )
         return wrap_success(result)
     except Exception as e:
         logger.exception("cmdb_create_instance_association failed: %s", e)
@@ -131,15 +139,22 @@ def cmdb_create_instance_association(
 
 @tool(description="Delete an instance association.")
 def cmdb_delete_instance_association(
-    asso_id: int,
+    src_inst_uuid: str,
+    dst_inst_uuid: str,
+    model_asst_id: str,
     allow_write: Optional[bool] = None,
     config: Optional[RunnableConfig] = None,
 ) -> Dict[str, Any]:
     try:
         user = _get_user_from_config(config)
         ensure_write_allowed(user, _resolve_allow_write(config, allow_write))
-        InstanceManage.instance_association_delete(int(asso_id), user.username)
-        return wrap_success({"asso_id": asso_id, "deleted": True})
+        result = InstanceManage.instance_association_delete_by_key(
+            src_inst_uuid=src_inst_uuid,
+            dst_inst_uuid=dst_inst_uuid,
+            model_asst_id=model_asst_id,
+            operator=user.username,
+        )
+        return wrap_success({**result, "deleted": True})
     except Exception as e:
         logger.exception("cmdb_delete_instance_association failed: %s", e)
         return wrap_error(str(e))

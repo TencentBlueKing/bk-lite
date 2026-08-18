@@ -15,6 +15,7 @@ import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
 import PlannedExecutionSteps from './PlannedExecutionSteps';
+import PlannedExecutionStatus, { isActivePlannedExecutionStatus } from './PlannedExecutionStatus';
 import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
@@ -24,7 +25,7 @@ import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
 import RepairCommandsCard from './RepairCommandsCard';
 import SkillView from './SkillView';
-import { hydrateGeneratedFileLinks } from './downloadUrl';
+import { hydrateGeneratedFileLinks, isRenderableReportDownload, rewriteAttachmentDownloadMentions } from './downloadUrl';
 import {CustomChatMessage} from '@/app/opspilot/types/global';
 import {useSession} from 'next-auth/react';
 import {useAuth} from '@/context/auth';
@@ -611,13 +612,14 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, toolCalls, isStreamingTools } = msg;
+    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, plannedExecutionStatus, toolCalls, isStreamingTools } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
-      ? reportFileDownloads.filter(download => Boolean(download.content_base64))
+      ? reportFileDownloads.filter(isRenderableReportDownload)
       : [];
 
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
+    replacedContent = rewriteAttachmentDownloadMentions(replacedContent, reportFileDownloads);
 
     // Split content at placeholder markers and render components inline
     const renderContentWithInlineComponents = () => {
@@ -856,6 +858,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         {Array.isArray(agentStepProgress) && agentStepProgress.length > 0 && (
           <AgentStepProgress steps={agentStepProgress} />
         )}
+        {plannedExecutionStatus && isActivePlannedExecutionStatus(plannedExecutionStatus.phase) && (
+          <PlannedExecutionStatus status={plannedExecutionStatus} />
+        )}
         {Array.isArray(plannedExecutionSteps) && plannedExecutionSteps.length > 0 && (
           <PlannedExecutionSteps
             steps={plannedExecutionSteps}
@@ -1064,7 +1069,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             {messages.map(msg => {
               const hasBrowserSteps = msg.browserStepsHistory && msg.browserStepsHistory.steps.length > 0;
               const hasThinking = Boolean(normalizeThinkingText(msg.thinking)) || Boolean(msg.isThinking);
-              const isEmptyMessage = !msg.content && !hasBrowserSteps && !hasThinking;
+              const hasPlanStatus = isActivePlannedExecutionStatus(msg.plannedExecutionStatus?.phase);
+              const hasPlanSteps = Array.isArray(msg.plannedExecutionSteps) && msg.plannedExecutionSteps.length > 0;
+              const isEmptyMessage = !msg.content && !hasBrowserSteps && !hasThinking && !hasPlanStatus && !hasPlanSteps;
               const isCurrentBotLoading = loading && currentBotMessageRef.current?.id === msg.id;
               return (
                 <Bubble

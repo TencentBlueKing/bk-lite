@@ -54,7 +54,7 @@ import {
   isToolAssignedToPlannedStep,
   PlannedExecutionState,
 } from './plannedExecutionState';
-import type { PlannedExecutionStepValue } from '@/app/opspilot/types/chat';
+import type { PlannedExecutionStatusValue, PlannedExecutionStepValue } from '@/app/opspilot/types/chat';
 
 export interface MessageUpdateFn {
   (updater: (prevMessages: CustomChatMessage[]) => CustomChatMessage[]): void;
@@ -176,6 +176,7 @@ export class AGUIMessageHandler {
   private skillViews: SkillViewItem[] = [];
   private wikiCitations: WikiCitation[] = [];
   private plannedExecutionState: PlannedExecutionState = createPlannedExecutionState();
+  private plannedExecutionStatus: PlannedExecutionStatusValue | null = null;
 
   constructor(
     botMessage: CustomChatMessage,
@@ -269,6 +270,7 @@ export class AGUIMessageHandler {
             skillViews: this.skillViews.length > 0 ? this.skillViews : msgItem.skillViews,
             wikiCitations: this.wikiCitations.length > 0 ? this.wikiCitations : msgItem.wikiCitations,
             plannedExecutionSteps: this.snapshotPlannedSteps() ?? msgItem.plannedExecutionSteps,
+            plannedExecutionStatus: this.plannedExecutionStatus,
             toolCalls: this.snapshotToolCalls() ?? msgItem.toolCalls,
             isStreamingTools: this.isStreaming,
             updateAt: new Date().toISOString()
@@ -387,6 +389,22 @@ export class AGUIMessageHandler {
   }
 
   /**
+   * 撤回工具调用前已流式展示的旁白正文（后端 assistant_text_retract）。
+   */
+  handleAssistantTextRetract() {
+    this.stopThinking();
+    this.currentTextBlock = '';
+    while (this.contentBlocks.length > 0) {
+      const last = this.contentBlocks[this.contentBlocks.length - 1];
+      if (last.type !== 'text') {
+        break;
+      }
+      this.contentBlocks.pop();
+    }
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+  }
+
+  /**
    * 处理 RUN_STARTED 事件
    */
   handleRunStarted() {
@@ -416,7 +434,8 @@ export class AGUIMessageHandler {
    */
   handleToolCallStart(toolCallId: string, toolCallName: string) {
     this.stopThinking();
-    this.flushCurrentTextBlock();
+    // 工具轮次前的流式正文视为旁白：丢弃而非落盘，避免「先分析再调工具」泄漏到对话。
+    this.currentTextBlock = '';
 
     this.contentBlocks.push({ type: 'toolCall', id: toolCallId });
 
@@ -432,7 +451,26 @@ export class AGUIMessageHandler {
   handlePlannedExecutionStep(value: PlannedExecutionStepValue) {
     this.stopThinking();
     this.flushCurrentTextBlock();
+    // 首步开始后规划状态条收起，改由步骤面板展示进度
+    if (this.plannedExecutionStatus) {
+      this.plannedExecutionStatus = {
+        ...this.plannedExecutionStatus,
+        phase: 'idle',
+      };
+    }
     this.plannedExecutionState = applyPlannedExecutionStep(this.plannedExecutionState, value);
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+  }
+
+  handlePlannedExecutionStatus(value: PlannedExecutionStatusValue) {
+    this.stopThinking();
+    this.plannedExecutionStatus = {
+      phase: String(value?.phase || ''),
+      step_count: value?.step_count,
+      goal: value?.goal,
+      replan_count: value?.replan_count,
+      reason: value?.reason,
+    };
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -795,6 +833,9 @@ export class AGUIMessageHandler {
     this.isStreaming = false;
     finalizePendingToolCalls(this.toolCallsRef, '工具调用已结束，但流中断前未收到结果事件。');
     this.plannedExecutionState = finalizePlannedExecutionSteps(this.plannedExecutionState);
+    if (this.plannedExecutionStatus) {
+      this.plannedExecutionStatus = { ...this.plannedExecutionStatus, phase: 'idle' };
+    }
     this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(error, 'error');
     this.contentBlocks.push({ type: 'text', content: errorMessage });
@@ -809,6 +850,9 @@ export class AGUIMessageHandler {
     this.isStreaming = false;
     finalizePendingToolCalls(this.toolCallsRef, '工具调用已结束，但运行错误前未收到结果事件。');
     this.plannedExecutionState = finalizePlannedExecutionSteps(this.plannedExecutionState);
+    if (this.plannedExecutionStatus) {
+      this.plannedExecutionStatus = { ...this.plannedExecutionStatus, phase: 'idle' };
+    }
     this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(message, 'run_error', code);
     this.contentBlocks.push({ type: 'text', content: errorMessage });
@@ -924,6 +968,9 @@ export class AGUIMessageHandler {
         this.isStreaming = false;
         finalizePendingToolCalls(this.toolCallsRef, '工具调用已结束，但未收到结果事件。');
         this.plannedExecutionState = finalizePlannedExecutionSteps(this.plannedExecutionState);
+        if (this.plannedExecutionStatus) {
+          this.plannedExecutionStatus = { ...this.plannedExecutionStatus, phase: 'idle' };
+        }
         this.handleBrowserStepComplete();
         // 重新渲染内容以收起工具列表
         this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, false);
@@ -958,6 +1005,10 @@ export class AGUIMessageHandler {
           this.handleWikiCitations(aguiData.value as { citations?: WikiCitation[] });
         } else if (aguiData.name === 'planned_execution_step' && aguiData.value) {
           this.handlePlannedExecutionStep(aguiData.value as PlannedExecutionStepValue);
+        } else if (aguiData.name === 'planned_execution_status' && aguiData.value) {
+          this.handlePlannedExecutionStatus(aguiData.value as PlannedExecutionStatusValue);
+        } else if (aguiData.name === 'assistant_text_retract') {
+          this.handleAssistantTextRetract();
         }
         return false;
 

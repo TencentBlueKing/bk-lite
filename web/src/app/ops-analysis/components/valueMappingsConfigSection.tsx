@@ -1,10 +1,11 @@
 import React from 'react';
 import { Button, ColorPicker, Input, InputNumber, Select } from 'antd';
 import { MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons';
-import type {
-  ValueMapping,
-  ValueMappingType,
-  SpecialMatch,
+import {
+  normalizeValueMappingResult,
+  type SpecialMatch,
+  type ValueMapping,
+  type ValueMappingType,
 } from '@/app/ops-analysis/utils/valueMapping';
 
 interface ValueMappingsConfigSectionProps {
@@ -51,14 +52,25 @@ export const ValueMappingsConfigSection: React.FC<
     patch: Partial<ValueMapping['result']>,
   ) => {
     emit(
-      mappings.map((m, i) =>
-        i === index ? { ...m, result: { ...m.result, ...patch } } : m,
-      ),
+      mappings.map((m, i) => {
+        if (i !== index) return m;
+        return {
+          ...m,
+          result: normalizeValueMappingResult({ ...m.result, ...patch }),
+        };
+      }),
     );
   };
 
   const addRule = () => {
-    emit([...mappings, { type: 'value', value: '', result: { text: '' } }]);
+    emit([
+      ...mappings,
+      {
+        type: 'value',
+        value: '',
+        result: {},
+      },
+    ]);
   };
 
   const removeAt = (index: number) => {
@@ -146,7 +158,7 @@ export const ValueMappingsConfigSection: React.FC<
 
             <span className="text-sm text-gray-500">→</span>
             <Input
-              value={m.result?.text}
+              value={m.result?.text ?? ''}
               onChange={(e) => updateResult(index, { text: e.target.value })}
               placeholder={t('topology.nodeConfig.valueMappingsResultText')}
               size="small"
@@ -154,8 +166,13 @@ export const ValueMappingsConfigSection: React.FC<
               disabled={readonly}
             />
             <ColorPicker
-              value={m.result?.color || '#366ce4'}
-              onChange={(c) => updateResult(index, { color: c.toHexString() })}
+              value={m.result?.color ?? null}
+              allowClear
+              onChange={(c) =>
+                updateResult(index, {
+                  color: c.cleared ? undefined : c.toHexString(),
+                })
+              }
               size="small"
               showText
               disabled={readonly}

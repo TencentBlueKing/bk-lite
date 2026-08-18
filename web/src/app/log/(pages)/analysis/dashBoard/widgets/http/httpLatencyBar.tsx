@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Empty, Spin } from 'antd';
+import { Spin } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import useChartColors from '../docker/useChartColors';
 import { createVerticalBarGradient } from '../chartStyle';
 
@@ -123,11 +124,7 @@ const HttpLatencyBar: React.FC<any> = ({
   }
 
   if (!option) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   return (

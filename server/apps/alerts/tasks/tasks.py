@@ -17,7 +17,6 @@ from apps.alerts.service.notify_service import NotifyResultService
 from apps.alerts.service.un_dispatch import UnDispatchService
 from apps.core.logger import alert_logger as logger
 
-
 AUTO_ASSIGNMENT_CHUNK_SIZE = 200
 OUTBOX_DISPATCH_BATCH_SIZE = 200
 # D1：聚合 beat 单例锁。串行化聚合运行，防止并发聚合对同一 fingerprint 重复建警
@@ -78,14 +77,17 @@ def event_aggregation_alert():
     fingerprint 重复建出活跃告警（D1）。
     """
     if not cache.add(AGGREGATION_LOCK_KEY, "1", AGGREGATION_LOCK_TIMEOUT):
-        logger.warning("[AlertTask] 上一轮聚合仍在进行，跳过本次以避免并发重复建警")
+        # 行为仍为跳过（本阶段不改排队语义）；固定关键字便于统计延迟拉长。
+        logger.warning(
+            "[AlertTask] aggregation_lock_skip key=%s reason=previous_round_running",
+            AGGREGATION_LOCK_KEY,
+        )
         return
 
+    round_started = time.monotonic()
     try:
         logger.info("[AlertTask] 开始执行告警聚合任务")
-        from apps.alerts.aggregation.processor.aggregation_processor import (
-            AggregationProcessor,
-        )
+        from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
 
         aggregation_error = None
         try:
@@ -106,6 +108,11 @@ def event_aggregation_alert():
             logger.exception("[AlertTask] 聚合后会话超时检查失败: %s", e)
             raise
 
+        logger.info(
+            "[AlertTask] aggregation_round_finished duration_ms=%s has_error=%s",
+            int((time.monotonic() - round_started) * 1000),
+            aggregation_error is not None,
+        )
         if aggregation_error is not None:
             raise aggregation_error
     finally:
@@ -147,7 +154,8 @@ def check_and_send_reminders():
         result = ReminderService.check_and_process_reminders()
         logger.info(
             "[AlertTask] == 提醒任务检查完成 == 处理=%s, 成功=%s",
-            result.get("processed", 0), result.get("success", 0),
+            result.get("processed", 0),
+            result.get("success", 0),
         )
         return result
     except Exception as e:
@@ -167,6 +175,7 @@ def cleanup_reminder_tasks():
 
         cleaned_count = ReminderService.cleanup_expired_reminders()
         from apps.alerts.service.escalation_service import EscalationService
+
         EscalationService.cleanup_expired_escalations()
         logger.info("[AlertTask] == 提醒任务清理完成 == 清理了 %s 条记录", cleaned_count)
         return cleaned_count
@@ -184,7 +193,8 @@ def check_and_send_escalations():
         result = EscalationService.check_and_process_escalations()
         logger.info(
             "[AlertTask] == 升级任务检查完成 == 处理=%s, 升级=%s",
-            result.get("processed", 0), result.get("escalated", 0),
+            result.get("processed", 0),
+            result.get("escalated", 0),
         )
         return result
     except Exception as e:
@@ -294,24 +304,11 @@ def beat_retry_unassigned_assignment():
     )
     if latest_retry:
         previous_ids = latest_retry.payload.get("alert_ids") or []
-        cursor = (
-            Alert.objects.filter(alert_id=previous_ids[-1])
-            .values("created_at", "pk")
-            .first()
-            if previous_ids
-            else None
-        )
+        cursor = Alert.objects.filter(alert_id=previous_ids[-1]).values("created_at", "pk").first() if previous_ids else None
         if cursor:
-            candidates = candidates.filter(
-                Q(created_at__gt=cursor["created_at"])
-                | Q(created_at=cursor["created_at"], pk__gt=cursor["pk"])
-            )
+            candidates = candidates.filter(Q(created_at__gt=cursor["created_at"]) | Q(created_at=cursor["created_at"], pk__gt=cursor["pk"]))
 
-    candidate_ids = list(
-        candidates.order_by("created_at", "pk").values_list(
-            "alert_id", flat=True
-        )[:UNASSIGNED_RETRY_BATCH]
-    )
+    candidate_ids = list(candidates.order_by("created_at", "pk").values_list("alert_id", flat=True)[:UNASSIGNED_RETRY_BATCH])
     if not candidate_ids and latest_retry:
         candidate_ids = list(
             Alert.objects.filter(status=AlertStatus.UNASSIGNED)
@@ -329,14 +326,11 @@ def beat_retry_unassigned_assignment():
 
     now = timezone.now()
     window_start = now.replace(
-        minute=(now.minute // UNASSIGNED_RETRY_WINDOW_MINUTES)
-        * UNASSIGNED_RETRY_WINDOW_MINUTES,
+        minute=(now.minute // UNASSIGNED_RETRY_WINDOW_MINUTES) * UNASSIGNED_RETRY_WINDOW_MINUTES,
         second=0,
         microsecond=0,
     )
-    idempotency_key = (
-        f"{UNASSIGNED_RETRY_KEY_PREFIX}{window_start.strftime('%Y%m%dT%H%M%z')}"
-    )
+    idempotency_key = f"{UNASSIGNED_RETRY_KEY_PREFIX}{window_start.strftime('%Y%m%dT%H%M%z')}"
     from apps.alerts.service.outbox import enqueue_outbox
 
     _, created = enqueue_outbox(
@@ -373,11 +367,7 @@ def build_instant_alerts(hits_payload):
     if not hits_payload:
         return {"created": 0}
 
-    from apps.alerts.aggregation.processor.instant_dispatcher import (
-        InstantHit,
-        _bulk_build_instant_alerts,
-        _trigger_dispatch_async,
-    )
+    from apps.alerts.aggregation.processor.instant_dispatcher import InstantHit, _bulk_build_instant_alerts, _trigger_dispatch_async
 
     hits = [
         InstantHit(strategy_id=item["strategy_id"], event_id=item["event_id"])
@@ -419,9 +409,12 @@ def sync_notify(params):
         object_id = param.get("object_id", "")
         notify_action_object = param.get("notify_action_object", "alert")
         logger.info(
-            "[AlertTask] === 开始执行通知任务 time=%s channel=%s channel_id=%s object_id=%s "
-            "recipient_count=%s ===",
-            send_time, channel_type, channel_id, object_id, len(username_list),
+            "[AlertTask] === 开始执行通知任务 time=%s channel=%s channel_id=%s object_id=%s " "recipient_count=%s ===",
+            send_time,
+            channel_type,
+            channel_id,
+            object_id,
+            len(username_list),
         )
         try:
             notify = Notify(
@@ -477,9 +470,7 @@ def sync_no_dispatch_alert_notice_task():
     周期任务，检查那些未能自动分派的告警，进行系统配置的通知
     """
     logger.info("[AlertTask] == 开始执行未分派告警通知任务 ==")
-    setting_activate = SystemSetting.objects.filter(
-        key="no_dispatch_alert_notice", is_activate=True
-    ).exists()
+    setting_activate = SystemSetting.objects.filter(key="no_dispatch_alert_notice", is_activate=True).exists()
     if not setting_activate:
         logger.info("[AlertTask] == 未分派告警通知功能未启用，任务执行结束 ==")
         return

@@ -7,7 +7,8 @@ import SkillCard from '@/app/opspilot/components/skill/skillCard';
 import OperateModal from '@/components/operate-modal';
 import { Skill } from '@/app/opspilot/types/skill';
 import { useTranslation } from '@/utils/i18n';
-import { Button, Spin, Empty, message } from 'antd';
+import { Button, Spin,  message } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import Icon from '@/components/icon';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 
@@ -132,7 +133,7 @@ const SkillPage: React.FC = () => {
               ))}
             </div>
           ) : (
-            <Empty description={t('common.noData')} />
+            <CompactEmptyState description={t('common.noData')} />
           )
         )}
       </OperateModal>

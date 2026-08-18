@@ -1,12 +1,14 @@
 import datetime
 import os
+import time
 from datetime import date
 from datetime import datetime as _datetime
 from datetime import timezone as _timezone
-from functools import reduce
+from functools import reduce, wraps
 from operator import or_
 from types import SimpleNamespace
 from typing import Optional
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
@@ -37,6 +39,7 @@ from apps.cmdb.display_field.constants import (
 from apps.cmdb.display_field.handler import DisplayFieldConverter, DisplayFieldHandler
 from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, OPERATE_TYPE_CHOICES, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
 from apps.cmdb.services import rack_room
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.collect_credential_result_service import CollectCredentialResultService
@@ -48,15 +51,21 @@ from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_
 from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
 from apps.cmdb.services.region_resource_overview import build_region_resource_items, extract_region_options
 from apps.cmdb.utils.base import get_default_group_id
-from apps.core.openapi.decorators import openapi_expose
+from apps.cmdb.utils.config_file_path import validate_absolute_path
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
+from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_utc
 from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
+
+_MANUAL_CONFIG_FILE_MODELS = frozenset({"host", "switch", "router", "firewall", "loadbalance"})
+_MANUAL_CONFIG_FILE_MAX_ITEMS = 50
+_MANUAL_CONFIG_FILE_MAX_CONTENTS = 5
+_MANUAL_CONFIG_FILE_VERSION_GAP_SECONDS = 0.002
 
 _CHANGE_TREND_MAX_SPAN_SECONDS = {
     "minute": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MINUTE", str(7 * 24 * 3600))),
@@ -65,6 +74,31 @@ _CHANGE_TREND_MAX_SPAN_SECONDS = {
     "month": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MONTH", str(10 * 365 * 24 * 3600))),
 }
 
+_RPC_TRANSPORT_KEYS = {"_timeout", "_raw"}
+
+
+def _accept_legacy_rpc_kwargs(func):
+    """迁移期同时接收 params envelope 与旧版顶层 RPC kwargs。"""
+
+    @wraps(func)
+    def wrapper(params=None, **legacy_kwargs):
+        legacy_kwargs = {key: value for key, value in legacy_kwargs.items() if key not in _RPC_TRANSPORT_KEYS}
+        if params is None:
+            normalized = legacy_kwargs
+        elif isinstance(params, dict):
+            conflicts = sorted(set(params).intersection(legacy_kwargs))
+            if conflicts:
+                raise ValueError(f"CMDB RPC params conflict: {conflicts}")
+            normalized = {**params, **legacy_kwargs}
+        elif legacy_kwargs:
+            # list_instances 的业务查询条件也名为 params；旧顶层调用会绑定到该形参。
+            normalized = {"params": params, **legacy_kwargs}
+        else:
+            raise ValueError("CMDB RPC params must be an object")
+        return func(normalized)
+
+    return wrapper
+
 
 def _normalize_to_list(value):
     if value in (None, ""):
@@ -72,6 +106,19 @@ def _normalize_to_list(value):
     if isinstance(value, list):
         return [item for item in value if item not in (None, "")]
     return [value]
+
+
+def _require_uuid_protocol(params):
+    if str((params or {}).get("protocol_version") or "") != "2":
+        raise ValueError("unsupported CMDB identity protocol version")
+
+
+def _reject_legacy_numeric_locators(params, *keys):
+    """Reject legacy graph/numeric identity keys with a clear error."""
+    params = params or {}
+    present = [key for key in keys if params.get(key) not in (None, "", [])]
+    if present:
+        raise ValueError(f"legacy numeric locators {present} are no longer supported; use UUID params")
 
 
 def _normalize_permission_user(user, domain=None):
@@ -403,28 +450,39 @@ def get_cmdb_module_list():
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_instances(params):
     """
     根据参数查询实例
     """
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "_id", "inst_id", "ids")
+    allowed_org_ids = set(_normalize_allowed_org_ids_for_scope(params.get("organization_ids")))
+    if not allowed_org_ids:
+        raise ValueError("organization_ids is required")
     model_id = params["model_id"]
     inst_name = params.get("inst_name", None)
-    _id = params.get("_id", None)
+    inst_uuid = params.get("inst_uuid")
 
-    instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name, _id=_id)
+    instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name, inst_uuid=inst_uuid)
     result = instances[0] if instances else {}
-    return result
+    if result and not allowed_org_ids.intersection(_normalize_allowed_org_ids_for_scope(result.get("organization"))):
+        return {}
+    return _serialize_instance_for_transport(result)
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_instances_batch(params):
-    """批量查询实例。params={"model_id":..,"ids":[..],"inst_names":[..]} -> {key: instance}"""
+    """批量查询实例。params={"model_id":..,"inst_uuids":[..],"inst_names":[..]}。"""
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "ids", "_id", "inst_ids")
     allowed_org_ids = set(_normalize_allowed_org_ids_for_scope(params.get("organization_ids")))
     if not allowed_org_ids:
         return {}
     result = InstanceManage.search_inst_batch(
         model_id=params["model_id"],
-        ids=params.get("ids"),
+        inst_uuids=params.get("inst_uuids"),
         inst_names=params.get("inst_names"),
     )
     filtered = {}
@@ -436,7 +494,7 @@ def search_instances_batch(params):
             except (TypeError, ValueError):
                 continue
         if allowed_org_ids & instance_org_ids:
-            filtered[key] = instance
+            filtered[key] = _serialize_instance_for_transport(instance)
     return filtered
 
 
@@ -511,47 +569,46 @@ def _ensure_organization_in_scope(data, allowed_org_ids):
         raise ValueError(f"organization {invalid_org_ids} 不在授权范围内")
 
 
+def _serialize_instance_for_transport(instance):
+    return {key: value for key, value in dict(instance or {}).items() if key not in {"_id", "_labels", "permission"}}
+
+
 @nats_client.register
 def update_instance(params):
     """
     修改实例属性
 
     params={
-        "inst_id": 123,            # 实例ID，优先使用；缺省时用 model_id+inst_name 定位
-        "model_id": "host",        # 配合 inst_name 定位实例时必填
-        "inst_name": "host-01",    # 配合 model_id 定位实例时必填
+        "protocol_version": "2",
+        "inst_uuid": "...",       # 实例 UUID，必填
         "update_attr": {...},      # 待更新的属性键值
         "operator": "admin",       # 操作人，用于变更记录
         "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
-    -> 更新后的实例数据
+    -> 更新后的实例数据（不含图内部 _id）
     """
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "inst_id", "_id", "inst_ids")
     update_attr = params.get("update_attr") or {}
     if not update_attr:
         raise ValueError("update_attr is required")
     allowed_org_ids = _resolve_allowed_org_ids(params)
     _ensure_organization_in_scope(update_attr, allowed_org_ids)
 
-    inst_id = params.get("inst_id") or params.get("_id")
-    if not inst_id:
-        model_id = params.get("model_id")
-        inst_name = params.get("inst_name")
-        if not (model_id and inst_name):
-            raise ValueError("inst_id or (model_id and inst_name) is required")
-        instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name)
-        if not instances:
-            raise ValueError("实例不存在！")
-        inst_id = instances[0]["_id"]
+    inst_uuid = params.get("inst_uuid")
+    if not inst_uuid:
+        raise ValueError("inst_uuid is required")
 
-    return InstanceManage.instance_update(
+    result = InstanceManage.instance_update_by_uuid(
         user_groups=_build_scope_user_groups(allowed_org_ids),
         roles=[],
-        inst_id=int(inst_id),
+        inst_uuid=inst_uuid,
         update_attr=update_attr,
         operator=params.get("operator", ""),
         allowed_org_ids=allowed_org_ids,
         skip_permission_check=False,
     )
+    return _serialize_instance_for_transport(result)
 
 
 @nats_client.register
@@ -560,13 +617,15 @@ def create_instance(params):
     创建实例
 
     params={
+        "protocol_version": "2",
         "model_id": "host",        # 模型ID，必填
         "instance_info": {...},    # 实例属性键值，必填
         "operator": "admin",       # 操作人，用于变更记录
         "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
-    -> 创建后的实例数据
+    -> 创建后的实例数据（不含图内部 _id）
     """
+    _require_uuid_protocol(params)
     model_id = params.get("model_id")
     if not model_id:
         raise ValueError("model_id is required")
@@ -577,11 +636,13 @@ def create_instance(params):
     allowed_org_ids = _resolve_allowed_org_ids(params)
     _ensure_organization_in_scope(instance_info, allowed_org_ids)
 
-    return InstanceManage.instance_create(
-        model_id=model_id,
-        instance_info=instance_info,
-        operator=params.get("operator", ""),
-        allowed_org_ids=allowed_org_ids,
+    return _serialize_instance_for_transport(
+        InstanceManage.instance_create(
+            model_id=model_id,
+            instance_info=instance_info,
+            operator=params.get("operator", ""),
+            allowed_org_ids=allowed_org_ids,
+        )
     )
 
 
@@ -603,51 +664,43 @@ def delete_instance(params):
     删除实例（支持单个或批量）
 
     params={
-        "inst_ids": [1, 2],        # 实例ID列表，优先使用
-        "inst_id": 1,              # 单个实例ID（兼容 _id）
-        "model_id": "host",        # 配合 inst_name 定位单个实例时必填
-        "inst_name": "host-01",    # 配合 model_id 定位单个实例时必填
+        "protocol_version": "2",
+        "inst_uuids": ["..."],    # 实例 UUID 列表
+        "inst_uuid": "...",       # 单个实例 UUID
         "operator": "admin",       # 操作人，用于变更记录
         "allowed_org_ids": [1, 2]  # 必填授权上下文之一；限制 organization 范围
     }
-    -> {"result": True, "deleted": [<inst_ids>]}
+    -> {"result": True, "deleted": [<inst_uuids>]}
     """
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "inst_ids", "inst_id", "_id")
     allowed_org_ids = _resolve_allowed_org_ids(params)
     if not allowed_org_ids:
         raise ValueError("authorization scope is required for CMDB NATS writes")
-    inst_ids = _normalize_to_list(params.get("inst_ids"))
-
-    if not inst_ids:
-        single_id = params.get("inst_id") or params.get("_id")
-        if single_id:
-            inst_ids = [single_id]
-        else:
-            model_id = params.get("model_id")
-            inst_name = params.get("inst_name")
-            if not (model_id and inst_name):
-                raise ValueError("inst_ids, inst_id or (model_id and inst_name) is required")
-            instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name)
-            if not instances:
-                raise ValueError("实例不存在！")
-            inst_ids = [instances[0]["_id"]]
-
-    inst_ids = [int(i) for i in inst_ids]
-    InstanceManage.instance_batch_delete(
+    inst_uuids = _normalize_to_list(params.get("inst_uuids"))
+    if not inst_uuids and params.get("inst_uuid"):
+        inst_uuids = [params["inst_uuid"]]
+    if not inst_uuids:
+        raise ValueError("inst_uuids or inst_uuid is required")
+    InstanceManage.instance_batch_delete_by_uuids(
         user_groups=_build_scope_user_groups(allowed_org_ids),
         roles=[],
-        inst_ids=inst_ids,
+        inst_uuids=inst_uuids,
         operator=params.get("operator", ""),
     )
-    return {"result": True, "deleted": inst_ids}
+    return {"result": True, "deleted": inst_uuids}
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def list_instances(params):
     """
     查询单个模型下的实例列表（分页 + 过滤）
 
     params={
+        "protocol_version": "2",
         "model_id": "host",          # 模型ID，必填
+        "organization_ids": [1],     # 组织范围，必填
         "params": [...],             # 可选；查询条件，格式同 instance_list，如
                                      #   [{"field": "ip_addr", "type": "str*", "value": "10."}]
         "page": 1,                   # 页码，默认 1
@@ -657,13 +710,20 @@ def list_instances(params):
     }
     -> {"count": <总数>, "items": [<实例>, ...]}
     """
+    _require_uuid_protocol(params)
     model_id = params.get("model_id")
     if not model_id:
         raise ValueError("model_id is required")
 
     page = int(params.get("page") or 1)
     page_size = int(params.get("page_size") or 20)
-    query_params = params.get("params") or []
+    allowed_org_ids = _normalize_allowed_org_ids_for_scope(params.get("organization_ids"))
+    if not allowed_org_ids:
+        raise ValueError("organization_ids is required")
+    query_params = [
+        *(params.get("params") or []),
+        {"field": "organization", "type": "list[]", "value": allowed_org_ids},
+    ]
     order = params.get("order") or ""
     need_format = params.get("format", True)
 
@@ -677,11 +737,13 @@ def list_instances(params):
         permission_map={},
     )
 
-    items = _format_asset_instances_response(model_id, instances) if need_format else [dict(i) for i in instances]
+    raw_items = _format_asset_instances_response(model_id, instances) if need_format else instances
+    items = [_serialize_instance_for_transport(item) for item in raw_items]
     return {"count": count, "items": items}
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_model_attrs(params):
     """
     查询模型属性列表
@@ -696,6 +758,7 @@ def search_model_attrs(params):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_models(params=None):
     """
     查询模型列表
@@ -715,6 +778,7 @@ def search_models(params=None):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_classifications(params=None):
     """
     查询模型分类列表
@@ -726,6 +790,7 @@ def search_classifications(params=None):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_model_associations(params):
     """
     查询模型关联定义（作为源或目标的所有关联）
@@ -740,79 +805,117 @@ def search_model_associations(params):
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def search_instance_associations(params):
     """
     查询实例关联列表（某实例关联到的其它实例，按 model_asst_id 分组）
 
     params={
+        "protocol_version": "2",
         "model_id": "host",   # 模型ID，必填
-        "inst_id": 123        # 实例ID，必填
+        "inst_uuid": "...",   # 实例 UUID，必填
+        "organization_ids": [1]
     }
     -> [{"src_model_id":..,"dst_model_id":..,"model_asst_id":..,"asst_id":..,"inst_list":[..]}, ...]
     """
     params = params or {}
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "inst_id", "_id")
+    allowed_org_ids = set(_normalize_allowed_org_ids_for_scope(params.get("organization_ids")))
+    if not allowed_org_ids:
+        raise ValueError("organization_ids is required")
     model_id = params.get("model_id")
-    inst_id = params.get("inst_id") or params.get("_id")
-    if not model_id or inst_id in (None, ""):
-        raise ValueError("model_id and inst_id are required")
-    return InstanceManage.instance_association_instance_list(
+    inst_uuid = params.get("inst_uuid")
+    if not model_id or not inst_uuid:
+        raise ValueError("model_id and inst_uuid are required")
+    source = InstanceManage.query_entity_by_uuid(inst_uuid)
+    if not source or not allowed_org_ids.intersection(_normalize_allowed_org_ids_for_scope(source.get("organization"))):
+        return []
+    groups = InstanceManage.instance_association_instance_list_by_uuid(
         model_id,
-        int(inst_id),
+        inst_uuid,
         business_only=True,
     )
+    for group in groups:
+        group["inst_list"] = [
+            _serialize_instance_for_transport(item)
+            for item in group.get("inst_list", [])
+            if allowed_org_ids.intersection(_normalize_allowed_org_ids_for_scope(item.get("organization")))
+        ]
+    return groups
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def create_instance_association(params):
     """
     创建实例关联（写）
 
     params={
-        "src_inst_id": 1,                  # 源实例ID，必填
-        "dst_inst_id": 2,                  # 目标实例ID，必填
+        "protocol_version": "2",
+        "src_inst_uuid": "...",           # 源实例 UUID，必填
+        "dst_inst_uuid": "...",           # 目标实例 UUID，必填
         "model_asst_id": "host_run_app",   # 模型关联ID，必填
         "operator": "admin"                # 操作人，用于变更记录
     }
     -> 创建后的关联边数据
     """
     params = params or {}
-    src_inst_id = params.get("src_inst_id")
-    dst_inst_id = params.get("dst_inst_id")
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "src_inst_id", "dst_inst_id", "asso_id", "_id")
+    allowed_org_ids = set(_resolve_allowed_org_ids(params))
+    src_inst_uuid = params.get("src_inst_uuid")
+    dst_inst_uuid = params.get("dst_inst_uuid")
     model_asst_id = params.get("model_asst_id")
-    if src_inst_id in (None, "") or dst_inst_id in (None, "") or not model_asst_id:
-        raise ValueError("src_inst_id, dst_inst_id and model_asst_id are required")
-
-    data = {
-        "src_inst_id": int(src_inst_id),
-        "dst_inst_id": int(dst_inst_id),
-        "model_asst_id": model_asst_id,
-    }
-    for key in ("asst_id", "src_model_id", "dst_model_id"):
-        if params.get(key) is not None:
-            data[key] = params[key]
-
-    return InstanceManage.instance_association_create(data, params.get("operator", ""))
+    if not src_inst_uuid or not dst_inst_uuid or not model_asst_id:
+        raise ValueError("src_inst_uuid, dst_inst_uuid and model_asst_id are required")
+    endpoints = InstanceManage.query_entity_by_uuids([src_inst_uuid, dst_inst_uuid])
+    if len(endpoints) != 2 or any(
+        not allowed_org_ids.intersection(_normalize_allowed_org_ids_for_scope(item.get("organization"))) for item in endpoints
+    ):
+        raise ValueError("association endpoint is outside authorization scope")
+    return InstanceManage.instance_association_create_by_uuid(
+        src_inst_uuid=src_inst_uuid,
+        dst_inst_uuid=dst_inst_uuid,
+        model_asst_id=model_asst_id,
+        operator=params.get("operator", ""),
+    )
 
 
 @nats_client.register
+@_accept_legacy_rpc_kwargs
 def delete_instance_association(params):
     """
     删除实例关联（写）
 
     params={
-        "asso_id": 10,        # 关联ID，必填（兼容 inst_asst_id / _id）
+        "protocol_version": "2",
+        "src_inst_uuid": "...",
+        "dst_inst_uuid": "...",
+        "model_asst_id": "host_run_app",
         "operator": "admin"   # 操作人，用于变更记录
     }
-    -> {"result": True, "deleted": <asso_id>}
+    -> {"result": True, "deleted": <stable relation key>}
     """
     params = params or {}
-    asso_id = params.get("asso_id") or params.get("inst_asst_id") or params.get("_id")
-    if asso_id in (None, ""):
-        raise ValueError("asso_id is required")
-
-    asso_id = int(asso_id)
-    InstanceManage.instance_association_delete(asso_id, params.get("operator", ""))
-    return {"result": True, "deleted": asso_id}
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "asso_id", "inst_asst_id", "_id", "src_inst_id", "dst_inst_id")
+    allowed_org_ids = set(_resolve_allowed_org_ids(params))
+    required = ("src_inst_uuid", "dst_inst_uuid", "model_asst_id")
+    if any(not params.get(key) for key in required):
+        raise ValueError("src_inst_uuid, dst_inst_uuid and model_asst_id are required")
+    endpoints = InstanceManage.query_entity_by_uuids([params["src_inst_uuid"], params["dst_inst_uuid"]])
+    if len(endpoints) != 2 or any(
+        not allowed_org_ids.intersection(_normalize_allowed_org_ids_for_scope(item.get("organization"))) for item in endpoints
+    ):
+        raise ValueError("association endpoint is outside authorization scope")
+    deleted = InstanceManage.instance_association_delete_by_key(
+        src_inst_uuid=params["src_inst_uuid"],
+        dst_inst_uuid=params["dst_inst_uuid"],
+        model_asst_id=params["model_asst_id"],
+        operator=params.get("operator", ""),
+    )
+    return {"result": True, "deleted": deleted}
 
 
 @nats_client.register
@@ -834,11 +937,140 @@ def receive_config_file_result(data: dict):
     }
 
 
+def _manual_config_file_already_exists(instance_uuid, file_path) -> bool:
+    return ConfigFileVersion.objects.filter(
+        instance_uuid=instance_uuid,
+        file_path=file_path,
+        status=ConfigFileVersionStatus.SUCCESS,
+    ).exists()
+
+
+def _create_one_manual_config_file(item, allowed_org_ids: set[int]) -> dict:
+    if not isinstance(item, dict):
+        raise ValueError("item must be an object")
+    _reject_legacy_numeric_locators(item, "instance_id", "inst_id", "_id")
+    instance_uuid = str(item.get("instance_uuid") or "").strip()
+    model_id = str(item.get("model_id") or "").strip()
+    file_path = str(item.get("file_path") or "").strip()
+    contents = item.get("contents")
+    if not instance_uuid or not model_id or not file_path:
+        raise ValueError("instance_uuid, model_id and file_path are required")
+    if model_id not in _MANUAL_CONFIG_FILE_MODELS:
+        raise ValueError(f"model_id {model_id} does not support config files")
+    if not validate_absolute_path(file_path):
+        raise ValueError("file_path must be an absolute file path")
+    if not isinstance(contents, list) or not contents:
+        raise ValueError("contents must be a non-empty list")
+    if len(contents) > _MANUAL_CONFIG_FILE_MAX_CONTENTS:
+        raise ValueError(f"contents exceeds max {_MANUAL_CONFIG_FILE_MAX_CONTENTS}")
+    normalized_contents = []
+    for content in contents:
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("contents items must be non-empty strings")
+        normalized_contents.append(content)
+
+    instance = InstanceManage.query_entity_by_uuid(instance_uuid) or {}
+    graph_id = instance.get("_id")
+    instance_org_ids = set(_normalize_allowed_org_ids_for_scope(instance.get("organization")))
+    if not instance or graph_id in (None, "") or instance.get("model_id") != model_id:
+        raise ValueError("instance is outside authorization scope")
+    if not allowed_org_ids.intersection(instance_org_ids):
+        raise ValueError("instance is outside authorization scope")
+    if _manual_config_file_already_exists(instance_uuid, file_path):
+        return {"status": "skipped", "created": 0}
+
+    created = 0
+    for index, content in enumerate(normalized_contents):
+        if index:
+            time.sleep(_MANUAL_CONFIG_FILE_VERSION_GAP_SECONDS)
+        result = ConfigFileService.create_manual_version(
+            instance_id=str(graph_id),
+            model_id=model_id,
+            file_path=file_path,
+            content=content,
+            instance_uuid=instance_uuid,
+        )
+        if not result.get("unchanged"):
+            created += 1
+    return {"status": "created", "created": created}
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def create_manual_config_files(params):
+    """批量手动写入配置文件版本（Demo / 运维灌数）。
+
+    params={
+        "protocol_version": "2",
+        "allowed_org_ids": [1],
+        "items": [
+            {
+                "instance_uuid": "...",
+                "model_id": "host",
+                "file_path": "/etc/ssh/sshd_config",
+                "contents": ["v1", "v2", "v3"],
+            }
+        ],
+    }
+
+    同一 instance+file_path 已有成功版本时整文件跳过，避免重灌追加版本。
+    """
+    params = params or {}
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "instance_id", "inst_id", "_id", "inst_ids")
+    allowed_org_ids = set(_resolve_allowed_org_ids(params))
+    if not allowed_org_ids:
+        raise ValueError("authorization scope is required for CMDB NATS writes")
+    items = params.get("items")
+    if not isinstance(items, list) or not items:
+        raise ValueError("items is required")
+    if len(items) > _MANUAL_CONFIG_FILE_MAX_ITEMS:
+        raise ValueError(f"items exceeds max {_MANUAL_CONFIG_FILE_MAX_ITEMS}")
+
+    created = 0
+    versions = 0
+    skipped = 0
+    failed = 0
+    errors = []
+    for index, item in enumerate(items):
+        try:
+            result = _create_one_manual_config_file(item, allowed_org_ids)
+        except ValueError as exc:
+            failed += 1
+            errors.append({"index": index, "error": str(exc)[:300]})
+            continue
+        except Exception as exc:
+            logger.exception("create_manual_config_files item failed index=%s", index)
+            failed += 1
+            errors.append({"index": index, "error": str(exc)[:300]})
+            continue
+        if result.get("status") == "skipped":
+            skipped += 1
+        else:
+            created += 1
+            versions += int(result.get("created") or 0)
+    return {
+        "result": True,
+        "created": created,
+        "versions": versions,
+        "skipped": skipped,
+        "failed": failed,
+        "errors": errors[:20],
+    }
+
+
 @nats_client.register
 def receive_collect_credential_result(data: dict):
     """接收 Stargazer 推送的单条或批量凭据执行结果并回写命中状态。"""
     payload = data or {}
     events = payload.get("events") if isinstance(payload, dict) else None
+
+    if not isinstance(payload, dict):
+        logger.warning(
+            "Received invalid collect credential result event, type=%s",
+            type(payload).__name__,
+        )
+        return CollectCredentialResultService.process_result(payload, parse_datetime=_parse_nats_datetime)
 
     if isinstance(events, list):
         logger.info(
@@ -847,12 +1079,15 @@ def receive_collect_credential_result(data: dict):
             payload.get("next_since") or "",
         )
     else:
+        status = payload.get("status")
+        if not status:
+            status = "success" if bool(payload.get("success")) else "failed"
         logger.info(
-            "Received pushed collect credential result event, task_id=%s host=%s credential_id=%s success=%s",
+            "Received pushed collect credential result event, task_id=%s host=%s credential_id=%s status=%s",
             payload.get("collect_task_id") or payload.get("task_id") or "",
             payload.get("host") or "",
             payload.get("credential_id") or "",
-            bool(payload.get("success")),
+            status,
         )
 
     result = CollectCredentialResultService.process_batch(payload, parse_datetime=_parse_nats_datetime)
@@ -964,13 +1199,18 @@ def _room3d_error(message, code=400):
     return {"result": False, "data": {}, "message": message, "code": code}
 
 
-def _parse_room3d_server_room_id(value):
+def _parse_room3d_server_room_locator(value):
     if value in (None, ""):
         return None
+    if str(value).isdigit():
+        return "id", int(value)
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        inst_uuid = UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
         return None
+    if inst_uuid.version != 4:
+        return None
+    return "uuid", str(inst_uuid)
 
 
 def _format_room3d_location_label(row, col):
@@ -982,7 +1222,7 @@ def _parse_room3d_rack_location(value):
 
 
 def _room3d_rack_identity(rack):
-    rack_id = rack.get("inst_id")
+    rack_id = rack.get("inst_uuid")
     return str(rack_id or ""), rack.get("inst_name") or str(rack_id or "")
 
 
@@ -1015,8 +1255,11 @@ def _format_room3d_invalid_location_notice(invalid_racks, locale="zh-CN"):
 
 
 def _format_room3d_device(device):
+    locator = _parse_room3d_server_room_locator(device.get("inst_uuid"))
+    if not locator or locator[0] != "uuid":
+        return None
     return {
-        "device_id": str(device.get("inst_id") or device.get("_id") or ""),
+        "device_id": locator[1],
         "device_name": device.get("inst_name") or "",
         "model_id": device.get("model_id"),
         "rack_u_start": device.get("rack_u_start"),
@@ -1029,10 +1272,12 @@ def _get_room3d_rack_device_summary(rack_id, permission_map=None, user=None):
     rack_layout = rack_room.get_rack_layout(rack_id, permission_map=permission_map, user=user)
     placed_devices = rack_layout.get("placed") or []
     unplaced_devices = rack_layout.get("unplaced") or []
+    formatted_placed = [formatted for device in placed_devices if (formatted := _format_room3d_device(device)) is not None]
+    formatted_unplaced = [formatted for device in unplaced_devices if (formatted := _format_room3d_device(device)) is not None]
     return {
-        "devices": [_format_room3d_device(device) for device in placed_devices],
-        "device_count": len(placed_devices) + len(unplaced_devices),
-        "unplaced_device_count": len(unplaced_devices),
+        "devices": formatted_placed,
+        "device_count": len(formatted_placed) + len(formatted_unplaced),
+        "unplaced_device_count": len(formatted_unplaced),
     }
 
 
@@ -1064,15 +1309,19 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
     一个 room3D 组件只展示一个 server_room；机柜列表复用 rack_room.get_room_layout，
     因此机柜权限、U 位统计、位置解析和位置冲突口径与 CMDB 机房视图保持一致。
     """
-    room_id = _parse_room3d_server_room_id(server_room_id)
-    if room_id is None:
-        return _room3d_error("server_room_id 参数必填且必须为整数")
+    room_locator = _parse_room3d_server_room_locator(server_room_id)
+    if room_locator is None:
+        return _room3d_error("server_room_id 参数必填且必须为 UUIDv4")
 
-    room = InstanceManage.query_entity_by_id(room_id)
+    locator_type, locator = room_locator
+    room = InstanceManage.query_entity_by_uuid(locator) if locator_type == "uuid" else InstanceManage.query_entity_by_id(locator)
     if not room:
         return _room3d_error("机房实例不存在", code=404)
     if room.get("model_id") != "server_room":
         return _room3d_error("server_room_id 必须指向 server_room 实例")
+    room_uuid_locator = _parse_room3d_server_room_locator(room.get("inst_uuid"))
+    if not room_uuid_locator or room_uuid_locator[0] != "uuid":
+        return _room3d_error("机房实例缺少合法 inst_uuid", code=409)
 
     permission_map = _build_nats_permission_map(user_info)
     if permission_map is None:
@@ -1083,6 +1332,7 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
     if not InstanceManage._has_topology_view_permission(room, permission_map, user=user):
         return _room3d_error("无权限查看当前机房", code=403)
 
+    room_id = int(room["_id"])
     layout = rack_room.get_room_layout(room_id, permission_map=permission_map, user=user)
     visible_layout_racks = (layout.get("racks") or []) + (layout.get("unplaced") or [])
     candidate_racks = []
@@ -1106,34 +1356,27 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
         }
         candidate_racks.append(candidate)
 
-    rack_ids = [
-        rack_id_int for rack_id_int in (_room3d_rack_id_as_int(item["rack"].get("inst_id")) for item in candidate_racks) if rack_id_int is not None
-    ]
+    rack_uuids = [item["rack_id"] for item in candidate_racks if item["rack_id"]]
     if hasattr(rack_room, "get_room3d_rack_device_summaries"):
         device_summaries = rack_room.get_room3d_rack_device_summaries(
-            rack_ids,
+            rack_uuids,
             permission_map=permission_map,
             user=user,
         )
     else:
         device_summaries = {}
-        for item in candidate_racks:
-            raw_rack_id = item["rack"].get("inst_id")
-            rack_id_int = _room3d_rack_id_as_int(raw_rack_id)
-            if rack_id_int is not None:
-                device_summaries[rack_id_int] = _get_room3d_rack_device_summary(
-                    raw_rack_id,
-                    permission_map=permission_map,
-                    user=user,
-                )
+        rack_instances = InstanceManage.query_entity_by_uuids(rack_uuids) if rack_uuids else []
+        rack_id_by_uuid = {item.get("inst_uuid"): item.get("_id") for item in rack_instances}
+        for rack_uuid in rack_uuids:
+            rack_id = rack_id_by_uuid.get(rack_uuid)
+            if rack_id is not None:
+                device_summaries[rack_uuid] = _get_room3d_rack_device_summary(rack_id, permission_map=permission_map, user=user)
 
     rack_type_name_map = _get_room3d_rack_type_name_map()
     racks = []
     for item in candidate_racks:
         rack = item["rack"]
-        rack_id = rack.get("inst_id")
-        rack_id_int = _room3d_rack_id_as_int(rack_id)
-        device_summary = device_summaries.get(rack_id_int, _empty_room3d_device_summary())
+        device_summary = device_summaries.get(item["rack_id"], _empty_room3d_device_summary())
         rack_type = rack.get("datacenter_type")
         rack_type_name = rack_type_name_map.get(str(rack_type)) if rack_type not in (None, "") else None
         rack_payload = {
@@ -1155,7 +1398,7 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
         racks.append(rack_payload)
 
     data = {
-        "room": {"id": str(room_id), "name": room.get("inst_name") or ""},
+        "room": {"id": room_uuid_locator[1], "name": room.get("inst_name") or ""},
         "racks": racks,
     }
     notice = _format_room3d_invalid_location_notice(
@@ -1259,7 +1502,9 @@ def get_room_list(user_info=None, **kwargs):
     的现成权限过滤自动按当前用户可见范围过滤。
     """
     permission_map = _build_nats_permission_map(user_info) or {}
-    items = rack_room.list_server_rooms(permission_map=permission_map, user_info=user_info)
+    # 新数据源以 inst_uuid 作为选项值；暂时保留 _id，兼容尚未执行
+    # init_source_api_data --force-update 的存量数据源配置。
+    items = [item for item in rack_room.list_server_rooms(permission_map=permission_map, user_info=user_info) if item.get("inst_uuid")]
     return {"items": items}
 
 

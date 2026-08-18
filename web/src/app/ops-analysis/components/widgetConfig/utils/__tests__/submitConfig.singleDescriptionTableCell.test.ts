@@ -11,7 +11,7 @@ const baseInput = {
   displayColumns: [],
   filterFields: [],
   actions: [],
-} as const;
+};
 
 test('single submit persists optional descriptionField', () => {
   const result = buildWidgetSubmitConfig({

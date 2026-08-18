@@ -112,6 +112,27 @@ def test_retire_linked_pushes_lifecycle_to_cmdb_and_monitor(mocker, linked_node)
     assert mon_kwargs["raw"]["action"] == "retire"
 
 
+def test_best_effort_unlink_cmdb_even_without_cmdb_id(mocker, linked_node):
+    linked_node.cmdb_id = ""
+    linked_node.save(update_fields=["cmdb_id"])
+    cmdb = mocker.patch("apps.node_mgmt.services.module_push.CMDB")
+    cmdb.return_value.ingest_from_source.return_value = {"id": None, "updated": True}
+    monitor = mocker.patch("apps.node_mgmt.services.module_push.MonitorLinkage")
+
+    ModulePushService.best_effort_unlink_cmdb(
+        linked_node,
+        actor_scope={"allowed_org_ids": [1], "operator": "alice"},
+        max_attempts=1,
+    )
+
+    cmdb.return_value.ingest_from_source.assert_called_once()
+    kwargs = cmdb.return_value.ingest_from_source.call_args.kwargs
+    assert kwargs["event_type"] == EVENT_LIFECYCLE
+    assert kwargs["link_ids"]["node_id"] == linked_node.id
+    assert "cmdb_id" not in kwargs["link_ids"]
+    assert monitor.call_count == 0
+
+
 def test_best_effort_retire_only_targets_with_ids(mocker, linked_node):
     linked_node.monitor_id = ""
     linked_node.save(update_fields=["monitor_id"])
@@ -130,6 +151,7 @@ def test_best_effort_retire_only_targets_with_ids(mocker, linked_node):
 
 
 def test_destroy_retire_linked_true_calls_lifecycle(mocker, linked_node, monkeypatch):
+    unlink = mocker.patch("apps.node_mgmt.views.node.ModulePushService.best_effort_unlink_cmdb")
     retire = mocker.patch(
         "apps.node_mgmt.views.node.ModulePushService.best_effort_retire_linked"
     )
@@ -147,11 +169,13 @@ def test_destroy_retire_linked_true_calls_lifecycle(mocker, linked_node, monkeyp
     )
 
     assert response.status_code == 200
+    unlink.assert_called_once()
     retire.assert_called_once()
     destroy.assert_called_once_with(linked_node)
 
 
-def test_destroy_retire_linked_false_skips_lifecycle(mocker, linked_node, monkeypatch):
+def test_destroy_always_unlinks_cmdb_even_without_retire_linked(mocker, linked_node, monkeypatch):
+    unlink = mocker.patch("apps.node_mgmt.views.node.ModulePushService.best_effort_unlink_cmdb")
     retire = mocker.patch(
         "apps.node_mgmt.views.node.ModulePushService.best_effort_retire_linked"
     )
@@ -169,11 +193,12 @@ def test_destroy_retire_linked_false_skips_lifecycle(mocker, linked_node, monkey
     )
 
     assert response.status_code == 200
+    unlink.assert_called_once()
     retire.assert_not_called()
     destroy.assert_called_once_with(linked_node)
 
 
-def test_destroy_proceeds_when_retire_fails(mocker, linked_node, monkeypatch):
+def test_destroy_proceeds_when_unlink_or_retire_fails(mocker, linked_node, monkeypatch):
     monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
     monkeypatch.setattr(
         node_view,

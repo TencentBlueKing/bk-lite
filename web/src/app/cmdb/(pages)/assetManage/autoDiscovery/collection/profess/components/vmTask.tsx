@@ -64,7 +64,7 @@ const VMTask: React.FC<VMTaskFormProps> = ({
       });
 
       const instance = baseRef.current?.instOptions?.find(
-        (item: any) => item.value === values.instId
+        (item) => item.value === values.instUuid
       );
 
       const credentialValue = normalizeCredentialPool(values.credentialPool)[0] || {};
@@ -103,7 +103,7 @@ const VMTask: React.FC<VMTaskFormProps> = ({
       port: values.credential?.port || '443',
       ssl: values.credential?.ssl,
     }],
-    instId: values.instances?.[0]?._id,
+    instUuid: values.instances?.[0]?.inst_uuid,
   });
 
   useEffect(() => {

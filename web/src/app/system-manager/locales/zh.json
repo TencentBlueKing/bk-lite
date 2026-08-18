@@ -262,7 +262,7 @@
           "capability_not_ready": "集成实例的用户同步能力未就绪"
         },
         "rootGroupNameLabel": "根组织名称",
-        "rootGroupNameConflict": "根组织名称已被其他用户同步源使用，请更换后重试",
+        "rootGroupNameConflict": "根组织名称已被其他组织使用",
         "integrationSystem": "集成系统",
         "integrationSystemPlaceholder": "请选择集成系统",
         "basicConfig": "基础配置",
@@ -286,6 +286,7 @@
         "syncNow": "立即同步",
         "records": "同步记录",
         "deleteConfirm": "确定要删除此同步源吗？",
+        "deleteDisabledWhileRunning": "同步任务运行中，无法删除",
         "passwordInit": {
           "sectionTitle": "本地密码初始化",
           "modeNone": "不设置密码",
@@ -379,6 +380,7 @@
           "syncFailed": "同步失败，请稍后重试或联系管理员",
           "providerFetchFailed": "目录拉取失败，请检查同步源配置和连接状态",
           "dataConflict": "同步数据存在冲突，请检查同名用户或组织",
+          "groupNameConflict": "组织「{{name}}」与现有组织重名",
           "databaseUnavailable": "数据库暂时不可用，请稍后重试",
           "requestTimeout": "同步请求超时，请稍后重试",
           "externalServiceUnavailable": "外部服务连接失败，请检查网络或集成实例状态",
@@ -439,7 +441,7 @@
         "externalFieldsHint": "外部系统可用字段参考：",
         "externalFieldPlaceholder": "默认留空，按需填写外部字段名",
         "usernameMappingRequired": "请填写用户名对应的外部字段名",
-        "deleteConfirmContent": "删除用户源{{sourceName}}后，会同时删除根组织和其下的所有子组织及用户。"
+        "deleteConfirmContent": "删除「{{sourceName}}」后，将归档其根组织及全部子组织，并删除该同步源的同步用户。归档组织不可恢复到活动组织树，可在「归档组织」中永久删除。"
       }
     },
     "security": {
@@ -912,6 +914,9 @@
         "team": "组织",
         "nats_mode": "通知投递目标",
         "subject_key": "通知主题标识",
+        "subjectKeyRequired": "请输入通知主题标识",
+        "subjectKeyPattern": "仅允许字母、数字、连字符（-）和下划线（_）",
+        "subjectKeyPlaceholder": "例如 customer-alerts-prod",
         "natsModeRequestReply": "发送到内部服务",
         "natsModeEventPublish": "发布给外部订阅方"
       },
@@ -1103,7 +1108,37 @@
       "form": {
         "name": "名称"
       },
-      "organizationRolesTooltip": "为该组织层级下的所有用户配置统一的角色权限"
+      "organizationRolesTooltip": "为该组织层级下的所有用户配置统一的角色权限",
+      "archive": "归档",
+      "archiveConfirm": "确定要归档该组织吗？",
+      "archiveConfirmCxt": "归档后，该组织及其子组织将从活动组织树中移除，可在「恢复归档组织」中恢复或永久删除。",
+      "archiveWithChildrenWarning": "归档该组织将同时归档其所有子组织。",
+      "archiveSuccess": "归档成功",
+      "archiveFailed": "归档失败",
+      "addRootGroup": "添加根组织",
+      "restoreArchivedGroup": "恢复归档组织",
+      "archivedDrawerTitle": "归档组织",
+      "archivedEmpty": "暂无归档组织",
+      "archivedColumns": {
+        "name": "组织名称",
+        "kind": "类型",
+        "subtreeCount": "子组织数"
+      },
+      "restore": "恢复",
+      "restoreConfirm": "确定要恢复该组织吗？",
+      "restoreConfirmCxt": "恢复后，该组织及其归档子树将重新出现在活动组织树中。",
+      "restoreSuccess": "恢复成功",
+      "restoreFailed": "恢复失败",
+      "permanentlyDelete": "永久删除",
+      "permanentlyDeleteConfirm": "确定要永久删除该归档组织吗？",
+      "permanentlyDeleteConfirmCxt": "永久删除后数据无法恢复。请先自行处理该组织下各应用模块中的业务资产（监控、日志、CMDB等），再执行此操作。",
+      "permanentlyDeleteSuccess": "永久删除成功",
+      "permanentlyDeleteFailed": "永久删除失败",
+      "archivedKind": {
+        "local": "本地组织",
+        "synced": "同步源组织"
+      },
+      "childrenTruncated": "该归档组织子树过大，列表仅展示部分子组织。"
     },
     "role": {
       "organizationTip": "提示：选择组织节点时，仅当前层级生效。可多选组织进行批量授权。",
@@ -1152,7 +1187,7 @@
       "back": "返回集成中心",
       "pageDesc": "统一管理企业微信、钉钉、目录服务和代码平台等外部接入。卡片展示各集成功能的启动状态，点击进入详情进行管理。",
       "addInstanceButton": "添加集成",
-      "createInstanceTitle": "添加集成实例",
+      "createInstanceTitle": "添加集成系统",
       "createOnly": "创建实例",
       "createAndConfigure": "创建并继续配置",
       "searchProviders": "搜索已注册的集成应用",
@@ -1215,13 +1250,19 @@
       "provider": {
         "label": "集成类型",
         "ad": "Active Directory",
-        "feishu": "Feishu",
-        "wechat": "Wechat",
-        "wecom": "Wecom",
+        "feishu": "飞书",
+        "wechat": "微信",
+        "wecom": "企业微信",
         "ldap": "LDAP",
         "oidc": "OIDC",
         "saml": "SAML",
         "github": "GitHub"
+      },
+      "providerDesc": {
+        "feishu": "飞书接入，支持登录认证、用户同步、通知渠道和群协作。",
+        "wechat": "微信接入，用于登录认证。",
+        "wecom": "企业微信接入，支持登录认证、用户同步、通知渠道和群协作。",
+        "ad": "Active Directory 接入，用于登录认证和用户同步。"
       },
       "providerTypeLabel": "集成类型",
       "statusSummary": "状态摘要",

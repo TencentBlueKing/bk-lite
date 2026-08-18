@@ -11,6 +11,8 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import GroupSelect from '@/components/group-tree-select';
 import OperateModal from '@/components/operate-drawer';
+import Password from '@/components/password';
+import { normalizePasswordFields } from '@/components/password/normalizePasswordWhitespace';
 
 interface ModalRef {
   showModal: (config: {
@@ -103,6 +105,16 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
             />
           );
           break;
+        case 'password':
+          widget = (
+            <Password
+              disabled={isDisabled}
+              clickToEdit={false}
+              trimOuterWhitespace
+              placeholder={column.widget_props?.placeholder || ''}
+            />
+          );
+          break;
         default:
           widget = (
             <Input
@@ -137,7 +149,16 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
 
     const handleSubmit = async () => {
       try {
-        const values = form.getFieldsValue();
+        const normalizedForm = normalizePasswordFields(
+          form.getFieldsValue(),
+          columns,
+          { includeReadOnly: true }
+        );
+        if (normalizedForm.changedFields.length) {
+          form.setFieldsValue(normalizedForm.values);
+          message.warning(t('common.passwordWhitespaceTrimmed'));
+        }
+        const values = normalizedForm.values;
         // 收集所有非空的字段值
         const editedFields: any = {};
         Object.keys(values).forEach((key) => {

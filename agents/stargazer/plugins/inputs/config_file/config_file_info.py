@@ -5,12 +5,12 @@ import hashlib
 import json
 import ntpath
 import posixpath
-from typing import Any, Dict
 import time
-
-from sanic.log import logger
+import uuid
+from typing import Any, Dict
 
 from plugins.script_executor import SSHPlugin
+from sanic.log import logger
 
 
 class ConfigFileInfo(SSHPlugin):
@@ -39,9 +39,7 @@ class ConfigFileInfo(SSHPlugin):
         except Exception as err:
             import traceback
 
-            logger.error(
-                f"{self.__class__.__name__} main error! {traceback.format_exc()}"
-            )
+            logger.error(f"{self.__class__.__name__} main error! {traceback.format_exc()}")
             return {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
     def _render_script(self, script_content: str, config_file_path: str) -> str:
@@ -64,9 +62,7 @@ class ConfigFileInfo(SSHPlugin):
         payload = json.dumps({"args": [exec_params], "kwargs": {}}).encode()
         from core.infra.nats_utils import nats_request
 
-        return await nats_request(
-            subject, payload=payload, timeout=self.nats_timeout
-        )
+        return await nats_request(subject, payload=payload, timeout=self.nats_timeout)
 
     def _get_config_file_path(self) -> str:
         """配置文件插件直接消费完整文件绝对路径。"""
@@ -85,6 +81,16 @@ class ConfigFileInfo(SSHPlugin):
         return posixpath.basename(normalized_path)
 
     def _build_callback_payload(self, payload: dict) -> dict:
+        if str(self.params.get("protocol_version") or "") != "2":
+            raise ValueError("unsupported config collection protocol version")
+        target_instance_uuid = str(self.params.get("target_instance_uuid") or "").strip()
+        try:
+            parsed_uuid = uuid.UUID(target_instance_uuid)
+        except (TypeError, ValueError, AttributeError) as err:
+            raise ValueError("target_instance_uuid must be a valid UUIDv4") from err
+        if parsed_uuid.version != 4 or str(parsed_uuid) != target_instance_uuid.lower():
+            raise ValueError("target_instance_uuid must be a canonical UUIDv4")
+
         status = str(payload.get("status") or "error").lower()
         content_base64 = payload.get("content_base64", "")
         content_hash = ""
@@ -99,16 +105,13 @@ class ConfigFileInfo(SSHPlugin):
                 content_base64 = ""
 
         instance_name = str(self.params.get("host") or self.params.get("instance_name") or "")
-        model_id = (
-            self.params.get("target_model_id")
-            or self.params.get("model_id")
-            or "host"
-        )
+        model_id = self.params.get("target_model_id") or self.params.get("model_id") or "host"
         version = str(int(time.time() * 1000))
         return {
             "collect_task_id": self.params.get("collect_task_id"),
             "execution_id": self.params.get("execution_id"),
-            "instance_id": instance_name,
+            "protocol_version": "2",
+            "instance_uuid": target_instance_uuid,
             "instance_name": instance_name,
             "model_id": model_id,
             "file_path": self._get_config_file_path(),

@@ -71,7 +71,7 @@ const InfluxdbTask: React.FC<InfluxdbTaskProps> = ({
       const credential = normalizeCredentialPool(values.credentialPool)[0]
         || createInfluxdbCredential();
       const target = buildInfluxdbTarget(
-        values.instId,
+        values.instUuid,
         baseRef.current?.instOptions || [],
       );
 
@@ -89,7 +89,7 @@ const InfluxdbTask: React.FC<InfluxdbTaskProps> = ({
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],
     accessPointId: values.access_point?.[0]?.id,
-    instId: values.instances?.[0]?._id,
+    instUuid: values.instances?.[0]?.inst_uuid,
     ipRange,
     credentialPool: [
       restoreInfluxdbCredential(

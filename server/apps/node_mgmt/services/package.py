@@ -1,21 +1,74 @@
+import os
 import re
+import tempfile
 from typing import AsyncGenerator
 
+from asgiref.sync import async_to_sync
 from django.core.files.base import ContentFile
 from nats.js.errors import ObjectNotFoundError
-from apps.node_mgmt.utils.s3 import (
-    upload_file_to_s3,
-    download_file_by_s3,
-    delete_s3_file,
-    list_s3_files,
-    stream_download_file_by_s3,
-)
-from asgiref.sync import async_to_sync
+
+from apps.core.logger import node_logger as logger
+from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.constants.package import PackageConstants
 from apps.node_mgmt.models.package import PackageVersion
 from apps.node_mgmt.models.sidecar import Collector
-from apps.node_mgmt.constants.package import PackageConstants
-from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+from apps.node_mgmt.utils.s3 import (
+    delete_s3_file,
+    download_file_by_s3,
+    jetstream_connection,
+    list_s3_files,
+    stream_download_file_by_s3,
+    upload_file_to_s3,
+)
+
+
+def _close_and_unlink_tempfile(file):
+    """关闭并删除具名临时文件；允许调用方重复清理。"""
+    if file is None:
+        return True
+    file_name = file.name
+    try:
+        file.close()
+    except Exception:
+        logger.exception("Failed to close package temporary file")
+    try:
+        os.unlink(file_name)
+    except FileNotFoundError:
+        return True
+    except Exception:
+        logger.exception("Failed to remove package temporary file")
+        return False
+    return True
+
+
+class _TemporaryFileChunkIterator:
+    """由 StreamingHttpResponse.close 驱动清理的临时文件迭代器。"""
+
+    def __init__(self, file, chunk_size=1024 * 1024):
+        self.file = file
+        self.chunk_size = chunk_size
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.file is None:
+            raise StopIteration
+        try:
+            chunk = self.file.read(self.chunk_size)
+        except BaseException:
+            self.close()
+            raise
+        if chunk:
+            return chunk
+        self.close()
+        raise StopIteration
+
+    def close(self):
+        file = self.file
+        if _close_and_unlink_tempfile(file):
+            self.file = None
 
 
 class PackageService:
@@ -93,9 +146,7 @@ class PackageService:
     async def _resolve_existing_file_path_async(package_obj) -> str:
         from apps.rpc.jetstream import JetStreamService
 
-        jetstream = JetStreamService()
-        await jetstream.connect()
-        try:
+        async with jetstream_connection(JetStreamService()) as jetstream:
             last_error = None
             for path in PackageService.build_candidate_file_paths(package_obj):
                 try:
@@ -107,8 +158,6 @@ class PackageService:
             if last_error:
                 raise last_error
             raise ObjectNotFoundError
-        finally:
-            await jetstream.close()
 
     @staticmethod
     def resolve_existing_file_path(package_obj) -> str:
@@ -273,47 +322,40 @@ class PackageService:
         流式下载文件，返回 (generator, filename)。
         使用临时文件缓冲，避免大文件内存堆积。
         """
-        import tempfile
         from apps.rpc.jetstream import JetStreamService
 
         async def _download_to_tempfile():
-            jetstream = JetStreamService()
-            await jetstream.connect()
+            tmp = None
             try:
-                last_error = None
-                for s3_file_path in PackageService.build_candidate_file_paths(package_obj):
-                    try:
-                        info = await jetstream.object_store.get_info(s3_file_path)
-                        filename = info.description or package_obj.name
-                        tmp = tempfile.NamedTemporaryFile(mode="w+b", delete=False)
-                        await jetstream.object_store.get(s3_file_path, writeinto=tmp)
-                        tmp.seek(0)
-                        return tmp, filename
-                    except ObjectNotFoundError as error:
-                        last_error = error
-                        continue
-                if last_error:
-                    raise last_error
-                raise ObjectNotFoundError
-            finally:
-                await jetstream.close()
+                async with jetstream_connection(JetStreamService()) as jetstream:
+                    last_error = None
+                    for s3_file_path in PackageService.build_candidate_file_paths(package_obj):
+                        try:
+                            info = await jetstream.object_store.get_info(s3_file_path)
+                            filename = info.description or package_obj.name
+                            tmp = tempfile.NamedTemporaryFile(mode="w+b", delete=False)
+                            await jetstream.object_store.get(s3_file_path, writeinto=tmp)
+                            tmp.seek(0)
+                            return tmp, filename
+                        except ObjectNotFoundError as error:
+                            if not _close_and_unlink_tempfile(tmp):
+                                raise
+                            tmp = None
+                            last_error = error
+                            continue
+                        except BaseException:
+                            if _close_and_unlink_tempfile(tmp):
+                                tmp = None
+                            raise
+                    if last_error:
+                        raise last_error
+                    raise ObjectNotFoundError
+            except BaseException:
+                _close_and_unlink_tempfile(tmp)
+                raise
 
         tmp_file, filename = async_to_sync(_download_to_tempfile)()
-
-        def file_chunk_generator(f, chunk_size=1024 * 1024):
-            try:
-                while True:
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    yield chunk
-            finally:
-                f.close()
-                import os
-
-                os.unlink(f.name)
-
-        return file_chunk_generator(tmp_file), filename
+        return _TemporaryFileChunkIterator(tmp_file), filename
 
 
 # from config.components.temp_upload import FILE_UPLOAD_TEMP_DIR

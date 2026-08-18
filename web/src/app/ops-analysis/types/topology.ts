@@ -115,6 +115,7 @@ export interface TopologyNodeData {
   isLoading?: boolean;
   hasError?: boolean;
   errorMessage?: string;
+  fetchError?: boolean;
   rawData?: TopologyRawData;
   isPlaceholder?: boolean;
   isNewNode?: boolean; 
@@ -316,6 +317,7 @@ export interface ToolbarProps {
   canRedo?: boolean;
   onRefresh?: () => void;
   onFrequencyChange?: (frequency: number) => void;
+  frequenceValue?: number;
   onCancel?: () => void;
   onFilterConfig?: () => void;
 }
@@ -335,6 +337,7 @@ export interface ViewConfigFormValues {
   topNLabelField?: string;
   topNValueField?: string;
   unit?: string;
+  unitId?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
   gaugeMin?: number;
@@ -344,6 +347,7 @@ export interface ViewConfigFormValues {
     value: string;
     color: string;
   }>;
+  valueMappings?: import('@/app/ops-analysis/utils/valueMapping').ValueMapping[];
   tableConfig?: TableConfig;
 }
 

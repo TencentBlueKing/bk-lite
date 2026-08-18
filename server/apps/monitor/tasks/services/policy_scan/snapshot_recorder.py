@@ -39,19 +39,18 @@ class SnapshotRecorder:
         event_map = {}
         if event_objs:
             for event_obj in event_objs:
-                metric_id = event_obj.metric_instance_id or str((event_obj.monitor_instance_id,))
-                if metric_id not in event_map:
-                    event_map[metric_id] = []
-                event_map[metric_id].append(event_obj)
+                event_map.setdefault(event_obj.alert_id, []).append(event_obj)
 
-        new_alert_metric_ids = {self._get_alert_metric_instance_id(alert) for alert in new_alerts} if new_alerts else set()
+        new_alert_ids = {alert.id for alert in new_alerts} if new_alerts else set()
 
         for alert in all_active_alerts:
             metric_id = self._get_alert_metric_instance_id(alert)
-            is_new_alert = metric_id in new_alert_metric_ids
-            related_events = event_map.get(metric_id, [])
-            raw_data = instance_raw_data_map.get(metric_id, {})
+            is_new_alert = alert.id in new_alert_ids
             is_no_data_alert = alert.alert_type == "no_data"
+            related_events = event_map.get(alert.id, [])
+            # 无数据告警只保留「告警前一个点 + 之后的空窗」。阈值窗口里残留的
+            # 采样点（info/event raw_data）不能按 metric_instance_id 贴过来。
+            raw_data = {} if is_no_data_alert else instance_raw_data_map.get(metric_id, {})
 
             if not raw_data and not is_no_data_alert:
                 raw_data = self._query_fallback_raw_data(metric_id)
@@ -60,7 +59,7 @@ class SnapshotRecorder:
             if related_events or raw_data or is_new_alert or is_no_data_alert:
                 self._update_alert_snapshot(
                     alert,
-                    related_events,
+                    [] if is_no_data_alert else related_events,
                     raw_data,
                     self.policy.last_run_time,
                     is_new_alert,
@@ -141,6 +140,10 @@ class SnapshotRecorder:
                     snapshot_obj.snapshots.append(pre_alert_snapshot)
                     has_new_snapshot = True
                     logger.info(f"Added pre-alert snapshot for alert {alert.id}, metric_instance {metric_id}")
+
+            if is_no_data_alert:
+                event_objs = []
+                raw_data = {}
 
             if event_objs and raw_data:
                 for event_obj in event_objs:

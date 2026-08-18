@@ -92,10 +92,10 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     service.evaluate(policy.id, evaluated_at=started_at + timedelta(minutes=1))
 
     state = ApmPolicyState.objects.get(policy=policy)
-    assert state.status == ApmPolicyState.Status.FIRING
-    assert state.consecutive_hits == 2
-    assert ApmAlert.objects.filter(status=ApmAlert.Status.FIRING).count() == 1
-    assert ApmEvent.objects.filter(action=ApmEvent.Action.CREATED).count() == 1
+    assert state.status == ApmPolicyState.Status.ACTIVE
+    assert state.consecutive_hits == 0
+    assert ApmAlert.objects.filter(status=ApmAlert.Status.ACTIVE).count() == 1
+    assert ApmEvent.objects.filter(action=ApmEvent.Action.TRIGGERED).count() == 1
     assert ApmAlertOutbox.objects.count() == 1
     trigger = ApmAlertOutbox.objects.get()
     assert trigger.channel_id == 7
@@ -103,7 +103,7 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     assert trigger.delivery_mode == "alert_event_copy"
     assert trigger.title == "APM 生产错误率触发"
     assert "shop/checkout" in trigger.body
-    assert trigger.payload["action"] == "created"
+    assert trigger.payload["action"] == "triggered"
     assert trigger.payload["organizations"] == [10]
     assert trigger.payload["external_id"] == state.external_alert_id
 
@@ -118,7 +118,7 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     assert state.external_alert_id == ""
     assert alert.status == ApmAlert.Status.RECOVERED
     assert alert.events.count() == 2
-    assert [event.payload["action"] for event in events] == ["created", "recovery"]
+    assert [event.payload["action"] for event in events] == ["triggered", "recovered"]
     assert events[0].payload["external_id"] == events[1].payload["external_id"]
 
     result = service.retry_pending_events()
@@ -184,11 +184,11 @@ def test_firing_policy_does_not_recover_when_metric_window_has_no_samples(policy
 
     state = ApmPolicyState.objects.get(policy=policy)
     alert = ApmAlert.objects.get()
-    assert state.status == ApmPolicyState.Status.FIRING
+    assert state.status == ApmPolicyState.Status.ACTIVE
     assert state.consecutive_recoveries == 0
     assert state.evaluation_cursor.endswith((evaluated_at + timedelta(minutes=1)).isoformat())
-    assert alert.status == ApmAlert.Status.FIRING
-    assert list(alert.events.values_list("action", flat=True)) == [ApmEvent.Action.CREATED]
+    assert alert.status == ApmAlert.Status.ACTIVE
+    assert list(alert.events.values_list("action", flat=True)) == [ApmEvent.Action.TRIGGERED]
 
 
 def test_failed_delivery_remains_pending_for_bounded_compensation(policy):
@@ -258,7 +258,7 @@ def test_policy_metric_types_use_controlled_red_values(policy, metric_type, red,
 
     assert result.value == expected
     assert result.breached is True
-    assert metric_store.queries[-1].include_breakdown is False
+    assert metric_store.queries[-1].include_breakdown is True
 
 
 def test_no_traffic_policy_treats_missing_request_samples_as_zero(policy):

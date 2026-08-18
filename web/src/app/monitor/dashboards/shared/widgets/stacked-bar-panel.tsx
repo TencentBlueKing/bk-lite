@@ -38,8 +38,8 @@ const FREE = '#e8edf5';
 const pctOf = (v: number, total: number) => (total > 0 ? Math.min((Math.max(v, 0) / total) * 100, 100) : 0);
 
 const LegendDot = ({ color, text }: { color: string; text: string }) => (
-  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#5b6577' }}>
-    <span style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
+  <span className="inline-flex items-center gap-1 text-xs text-[var(--color-text-3)]">
+    <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: color }} />
     {text}
   </span>
 );
@@ -58,39 +58,33 @@ export const StackedBarPanel = ({ title, subtitle, guide, rows, className, style
         {subtitle ? <div className={styles.panelSubTitle}>{subtitle}</div> : null}
       </div>
     </div>
-    <div style={{ display: 'flex', gap: 16, margin: '6px 0 12px' }}>
+    <div className="my-1.5 mb-3 flex gap-4">
       <LegendDot color={USED} text="已用" />
       <LegendDot color={REQ} text="已请求" />
       <LegendDot color={FREE} text="余量" />
     </div>
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div className="flex flex-col gap-3.5">
       {rows.map((r) => {
         const usedPct = pctOf(r.used, r.total);
         const reqExtraPct = pctOf(Math.max(r.requested - r.used, 0), r.total);
         const oversold = r.requested > r.total && r.total > 0;
         return (
           <div key={r.label}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-              <span style={{ fontWeight: 600, color: '#1f2733' }}>{r.label}</span>
-              <span style={{ color: '#5b6577', fontVariantNumeric: 'tabular-nums' }}>
+            <div className="mb-1 flex justify-between text-xs">
+              <span className="font-semibold text-[var(--color-text-1)]">{r.label}</span>
+              <span className="tabular-nums text-[var(--color-text-3)]">
                 已用 {r.usedDisplay} / 请求 {r.requestedDisplay} / 可分配 {r.totalDisplay}
               </span>
             </div>
             <div
-              style={{
-                display: 'flex',
-                height: 14,
-                borderRadius: 7,
-                overflow: 'hidden',
-                background: FREE,
-                boxShadow: oversold ? 'inset 0 0 0 1.5px #ff4d4f' : undefined
-              }}
+              className={`flex h-3.5 overflow-hidden rounded-[7px]${oversold ? ' shadow-[inset_0_0_0_1.5px_var(--color-fail)]' : ''}`}
+              style={{ background: FREE }}
             >
               <div style={{ width: `${usedPct}%`, background: USED }} />
               <div style={{ width: `${reqExtraPct}%`, background: REQ }} />
             </div>
             {oversold ? (
-              <div style={{ fontSize: 11, color: '#ff4d4f', marginTop: 2 }}>请求已超卖</div>
+              <div className="mt-0.5 text-[11px] text-[var(--color-fail)]">请求已超卖</div>
             ) : null}
           </div>
         );

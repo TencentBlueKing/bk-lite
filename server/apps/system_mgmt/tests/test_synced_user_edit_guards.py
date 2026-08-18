@@ -94,6 +94,37 @@ def test_update_synced_user_preserves_basic_information_and_organization(super_c
     assert synced_user.role_list == [platform_role.id]
 
 
+def test_update_synced_user_allows_retained_archived_groups(super_client, synced_user):
+    Role.objects.get_or_create(name="admin", app="")
+    archived = Group.objects.create(name="synced-user-archived-keep", parent_id=0, is_delete=True)
+    synced_user.group_list = list(synced_user.group_list) + [archived.id]
+    synced_user.save(update_fields=["group_list"])
+    platform_role = Role.objects.create(name="synced-user-archived-role", app="cmdb")
+
+    response = super_client.post(
+        f"{BASE}/update_user/",
+        {
+            "user_id": synced_user.id,
+            "username": synced_user.username,
+            "lastName": "不允许修改的姓名",
+            "email": "changed@example.com",
+            "phone": "13900000000",
+            "locale": "en",
+            "timezone": "UTC",
+            "groups": [],
+            "roles": [platform_role.id],
+            "rules": [],
+            "is_superuser": False,
+        },
+        format="json",
+    )
+
+    synced_user.refresh_from_db()
+    assert response.json()["result"] is True
+    assert archived.id in synced_user.group_list
+    assert synced_user.role_list == [platform_role.id]
+
+
 def test_create_local_user_in_synced_group_is_rejected(super_client, synced_user):
     synced_group_id = synced_user.group_list[0]
 

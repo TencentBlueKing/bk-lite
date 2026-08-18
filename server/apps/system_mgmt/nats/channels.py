@@ -2,8 +2,10 @@
 import html
 import re
 
+from apps.system_mgmt.utils.group_utils import GroupUtils
+
 from .common import *  # noqa: F401,F403
-from .users import _get_actor_user_scope
+from .users import _actor_scope_response
 
 try:
     from apps.system_mgmt.enterprise import nats_notifications
@@ -38,26 +40,10 @@ def search_channel_list(channel_type="", teams=None, include_children=False, cha
     if not teams:
         return {"result": True, "data": []}
 
-    # 如果 include_children 为 True，递归获取所有子组织
     if include_children:
-        # 一次性获取所有组织，避免递归查询数据库
-        all_groups = Group.objects.values_list("id", "parent_id")
-        # 构建 parent_id -> [child_ids] 的映射
-        children_map = {}
-        for gid, pid in all_groups:
-            if pid is not None:
-                children_map.setdefault(pid, []).append(gid)
-
-        # 在内存中递归获取所有子组织
-        def get_descendants(group_id, result_set):
-            result_set.add(group_id)
-            for child_id in children_map.get(group_id, []):
-                get_descendants(child_id, result_set)
-
-        all_teams = set()
-        for team_id in teams:
-            get_descendants(team_id, all_teams)
-        teams = list(all_teams)
+        teams = GroupUtils.get_group_with_descendants(teams)
+        if not teams:
+            return {"result": True, "data": []}
 
     # 构建 teams 筛选条件：team 字段与 teams 有交集
     channels = Channel.objects.all()
@@ -97,7 +83,9 @@ def search_channel_list_scoped(
     :param channel_method: 可选，仅返回 config.method_name 匹配的通道
     :return: 标准 NATS 返回结构，data 为通知通道列表
     """
-    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
+    if error_response is not None:
+        return error_response
     if not user_obj or not authorized_groups:
         return {"result": True, "data": []}
 
@@ -224,19 +212,26 @@ def _channel_has_organization(channel, organization_ids):
 
 def _channel_delivery_organization(channel, organization_ids):
     """返回渠道与事件共同归属的确定性组织，避免多组织事件投递到错误 team。"""
+    shared = _channel_delivery_organizations(channel, organization_ids)
+    return shared[0] if shared else None
+
+
+def _channel_delivery_organizations(channel, organization_ids):
+    """返回消息声明范围与渠道授权范围的有序交集。"""
     try:
         allowed = {int(value) for value in channel.team or []}
         requested = {int(value) for value in organization_ids or []}
     except (TypeError, ValueError):
-        return None
-    shared = allowed.intersection(requested)
-    return min(shared) if shared else None
+        return []
+    return sorted(allowed.intersection(requested))
 
 
 @nats_client.register
 def list_notification_channels_scoped(actor_context, teams=None, include_children=False):
     """返回调用方组织范围内可用的公开通知能力，不暴露渠道私有配置。"""
-    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
+    if error_response is not None:
+        return error_response
     if not user_obj or not authorized_groups:
         return {"result": True, "data": []}
     if teams:
@@ -267,7 +262,9 @@ def search_notification_recipients_scoped(
     limit=100,
 ):
     """返回通知配置可引用的组织内系统用户稳定 ID，不暴露用户敏感字段。"""
-    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
+    if error_response is not None:
+        return error_response
     if not user_obj or not authorized_groups:
         return {"result": True, "data": []}
     try:
@@ -307,18 +304,38 @@ def _notification_failure(code, message, *, retryable=False):
 
 
 @nats_client.register
-def probe_notification_channel(channel_id):
+def probe_notification_channel(channel_id, capability_only=False):
     """探测内部通知 responder；普通外部渠道只校验公开能力是否仍存在。"""
     channel = Channel.objects.filter(id=channel_id).first()
     if channel is None:
         return _notification_failure("channel_not_found", "通知渠道不存在。")
     capability = _notification_channel_capabilities(channel)
+    if capability_only:
+        return {
+            "result": True,
+            "code": "available",
+            "retryable": False,
+            "message": "success",
+            "delivery_mode": capability["delivery_mode"],
+        }
     if capability["delivery_mode"] != "alert_event_copy":
-        return {"result": True, "code": "available", "retryable": False, "message": "success"}
+        return {
+            "result": True,
+            "code": "available",
+            "retryable": False,
+            "message": "success",
+            "delivery_mode": capability["delivery_mode"],
+        }
 
     response = send_nats_message(channel, {"health_probe": True}, timeout_override=2)
     if isinstance(response, dict) and response.get("result") is True:
-        return {"result": True, "code": "available", "retryable": False, "message": "success"}
+        return {
+            "result": True,
+            "code": "available",
+            "retryable": False,
+            "message": "success",
+            "delivery_mode": capability["delivery_mode"],
+        }
     return _notification_failure(
         "responder_unavailable",
         "通知 responder 暂不可用。",
@@ -359,6 +376,10 @@ def dispatch_notification(
     title,
     body,
     event_payload,
+    required_delivery_mode="",
+    producer="lite-apm",
+    ack_mode="",
+    ack_token="",
 ):
     """按公开渠道能力投递一次通知，并返回稳定、可判定重试的结果。"""
     if not isinstance(delivery_key, str) or not delivery_key.strip() or len(delivery_key) > 384:
@@ -370,6 +391,13 @@ def dispatch_notification(
     if delivery_organization is None:
         return _notification_failure("channel_forbidden", "通知渠道不属于事件组织范围。")
     capability = _notification_channel_capabilities(channel)
+    if required_delivery_mode and capability["delivery_mode"] != required_delivery_mode:
+        return {
+            "result": True,
+            "code": "not_applicable",
+            "retryable": False,
+            "message": "channel delivery mode does not match",
+        }
     normalized_recipients = _validate_notification_recipients(capability["recipient_mode"], recipients)
     if normalized_recipients is None:
         return _notification_failure("invalid_recipients", "通知接收人不符合渠道能力。")
@@ -388,11 +416,21 @@ def dispatch_notification(
         return _notification_failure("invalid_payload", "通知内容无效。")
 
     if capability["delivery_mode"] == "alert_event_copy":
+        producer = producer if producer in {"lite-apm", "lite-monitor", "lite-log"} else "lite-apm"
+        bounded_event_payload = dict(event_payload)
+        # 不能把调用方消息体中的 organizations 原样提升为 receiver 的可信归属；
+        # 仅透传渠道自身授权范围内的交集，兼容合法多组织渠道。
+        bounded_event_payload["organizations"] = _channel_delivery_organizations(
+            channel, organization_ids
+        )
         content = {
             "source_id": "nats",
-            "pusher": "lite-apm",
-            "events": [event_payload],
+            "pusher": producer,
+            "events": [bounded_event_payload],
         }
+        if ack_mode == "per_event_v1":
+            content["ack_mode"] = ack_mode
+            content["ack_token"] = ack_token
         send_title = ""
         send_recipients = []
     elif channel.channel_type == ChannelChoices.NATS:
@@ -425,6 +463,16 @@ def dispatch_notification(
     if not isinstance(response, dict):
         return _notification_failure("invalid_provider_response", "通知渠道返回格式无效。", retryable=True)
     if response.get("result") is False:
+        if capability["delivery_mode"] == "alert_event_copy" and ack_mode == "per_event_v1":
+            event_results = (response.get("data") or {}).get("event_results") or []
+            if event_results:
+                return {
+                    "result": False,
+                    "code": str(response.get("code") or "alert_copy_partial"),
+                    "retryable": any(bool(item.get("retryable", True)) for item in event_results if isinstance(item, dict)),
+                    "message": str(response.get("message") or "告警中心仅接受了部分事件副本。")[:512],
+                    "data": {"event_results": event_results},
+                }
         return _notification_failure(
             str(response.get("code") or "delivery_failed"),
             str(response.get("message") or "通知渠道投递失败。")[:512],
@@ -437,7 +485,12 @@ def dispatch_notification(
             or int(ingestion.get("accepted", 0) or 0) + int(ingestion.get("skipped", 0) or 0) < 1
         ):
             return _notification_failure("alert_copy_rejected", "告警中心未接受事件副本。", retryable=True)
-    return {"result": True, "code": "delivered", "retryable": False, "message": "success"}
+    result = {"result": True, "code": "delivered", "retryable": False, "message": "success"}
+    if capability["delivery_mode"] == "alert_event_copy":
+        event_results = (response.get("data") or {}).get("event_results") or []
+        if event_results:
+            result["data"] = {"event_results": event_results}
+    return result
 
 
 @nats_client.register
@@ -623,21 +676,7 @@ def search_opspilot_nats_channels(teams=None, bot_id=None, include_children=Fals
                 continue
 
         if include_children and normalized_teams:
-            all_groups = Group.objects.values_list("id", "parent_id")
-            children_map = {}
-            for gid, pid in all_groups:
-                if pid is not None:
-                    children_map.setdefault(pid, []).append(gid)
-
-            def _collect_descendants(group_id, acc):
-                acc.add(group_id)
-                for child_id in children_map.get(group_id, []):
-                    _collect_descendants(child_id, acc)
-
-            expanded = set()
-            for team_id in normalized_teams:
-                _collect_descendants(team_id, expanded)
-            normalized_teams = list(expanded)
+            normalized_teams = GroupUtils.get_group_with_descendants(normalized_teams)
 
         if not normalized_teams:
             return {"result": True, "data": []}

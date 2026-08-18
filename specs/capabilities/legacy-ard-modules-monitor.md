@@ -35,15 +35,16 @@
 - 策略扫描服务层 `tasks/services/policy_scan/`：`scanner.py`、`metric_query.py`、`alert_detector.py`、`event_alert_manager.py`、`snapshot_recorder.py`（入口 `MonitorPolicyScan`）。
 - `retry_alert_center_lifecycle_notify_task` 关键约束【已实现/已存在】：每次最多取 200 条待重试告警（`monitor_policy.py:110`）；单条最大重试 10 次（`alert_center_retry_count__lt=10`，`monitor_policy.py:109`）；达上限的告警以 ERROR 汇总告警并不再补偿，需人工介入（`monitor_policy.py:149-154`）。
 - 管理命令【已实现/已存在】：
-  - `management/commands/plugin_init.py:9`：监控插件初始化入口，依次执行插件、策略与默认排序迁移。
+  - `management/commands/plugin_init.py:9`：监控插件初始化入口，依次执行插件、策略与默认排序迁移。插件文件逐项解析失败会记录并汇总后跳过该文件；已形成的插件批次采用原子数据库写入，批量写入失败会向上抛出，因而不继续策略和默认排序阶段。
   - `management/commands/autodiscover.py:5`：监控实例自动发现入口，调用 `sync_instance_and_group`。
   - `management/commands/backfill_metric_instance_id_keys.py:12`：回填 `monitor_object` / `metric` 缺失或漂移的 `instance_id_keys`，支持 `--dry-run`。
   - `management/commands/gen_display_fields.py:59`：为插件 `metrics.json` 插入 `display_fields` 块，支持 `--force`。
   - `management/commands/refresh_display_fields.py:26`：把 DB 中监控对象的 `display_fields` 重写为 `metrics.json` 最新种子，默认 dry-run，`--apply` 落库。
   - `management/commands/create_monitor_instance.py:14,21`：YAML 驱动的监控实例创建入口，支持输入/输出文件参数，调用 `InstanceConfigService` 创建或更新实例配置（命令说明见同目录 `create_monitor_instance.md:5`）。
 - NATS【已实现/已存在】：`nats/monitor.py` 注册大量 handler，经 `apps/rpc/monitor.py` 暴露并被 operation_analysis、opspilot 消费：
-  - 创建类（`monitor.py:537-583`）：`create_monitor_object_type`（:538）/ `create_monitor_object`（:552）/ `create_monitor_plugin`（:557）/ `create_metric_group`（:571）/ `create_metric`（:576）/ `create_monitor_policy`（:581）。
-  - 查询类（`monitor.py:585-1153`）：`monitor_objects`（:586）/ `monitor_object_instance_count`（:596）/ `monitor_metrics`（:609）/ `monitor_object_instances`（:633）/ `query_monitor_data_by_metric`（:685）/ `monitor_instance_metrics`（:796）/ `query_monitor_alert_segments`（:918）/ `query_latest_active_alerts`（:1004）/ `mm_query_range`（:1103）/ `mm_query`（:1123）/ `get_monitor_statistics`（:1153）。
+  - 创建类（`monitor.py`）：`create_monitor_object_type` / `create_monitor_object` / `create_monitor_plugin` / `create_metric_group` / `create_metric` / `create_monitor_policy`。
+  - 策略维护类：`search_monitor_policies`（按名称、调用方组织范围查询，上限 200）/ `delete_monitor_policy`（身份闸 + 组织可见性，清理 PeriodicTask / PolicyOrganization / 策略）。
+  - 查询类：`monitor_objects` / `monitor_object_instance_count` / `monitor_metrics` / `monitor_object_instances` / `query_monitor_data_by_metric` / `monitor_instance_metrics` / `query_monitor_alert_segments` / `query_latest_active_alerts` / `mm_query_range` / `mm_query` / `get_monitor_statistics`。
     - `query_monitor_data_by_metric` 以“监控对象 + 指标名”查询时，会对所有匹配的插件指标定义分别执行 PromQL 并合并序列；每条序列附加 `metric_id` 和 `monitor_plugin`（`id/name/display_name/template_id/template_type/collector/collect_type`）以标识来源，同时保留原 VictoriaMetrics 外层返回结构。
   - 权限授权类：`_get_authorized_monitor_instances` 等内部辅助（`monitor.py:491-...`）；`nats/permission.py:7,33` 另注册 `get_monitor_module_data` / `get_monitor_module_list`，按组织过滤实例/策略/条件。
 - 流量监控接入（NetFlow/sFlow）【已实现/已存在】：服务层 `services/flow_*.py` 承载流量接入能力，对应 PRD「集成·流量监控接入」：
@@ -55,7 +56,7 @@
 - 内置网络设备模板增量【已实现/已存在】：SNMP 目录本轮新增 `access_topvision`、`access_icotera`、`switch_ipinfusion`、`transmission_ifotec`、`wireless_xirrus` 五组内置模板；其中 IP Infusion 模板附带电源温度默认告警策略，其余四组提供对象接入模板但不内置策略（`support-files/plugins/Telegraf/snmp/*/policy.json`）。
 
 对应 PRD：[[legacy-prd-监控系统-集成.md#3.1 集成（插件管理）]]；对应功能清单：[[legacy-fuctionlist-02-监控系统-功能清单.md#7. Integration - 资产管理]]
-> 证据来源：server/apps/monitor/views/collect_detect.py:15-86，server/apps/monitor/services/collect_detect.py:29-69,198-213，server/apps/monitor/support-files/plugins/Telegraf/snmp/access_topvision/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/access_icotera/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/switch_ipinfusion/policy.json:1-18，server/apps/monitor/support-files/plugins/Telegraf/snmp/transmission_ifotec/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/wireless_xirrus/policy.json:1-5　|　同步基线：a9d981aeb　|　【已实现】
+> 证据来源：server/apps/monitor/management/commands/plugin_init.py:9-16；server/apps/monitor/management/services/plugin_migrate.py:227-268；server/apps/monitor/views/collect_detect.py:15-86；server/apps/monitor/services/collect_detect.py:29-69,198-213；server/apps/monitor/support-files/plugins/Telegraf/snmp/access_topvision/policy.json:1-5；server/apps/monitor/support-files/plugins/Telegraf/snmp/access_icotera/policy.json:1-5；server/apps/monitor/support-files/plugins/Telegraf/snmp/switch_ipinfusion/policy.json:1-18；server/apps/monitor/support-files/plugins/Telegraf/snmp/transmission_ifotec/policy.json:1-5；server/apps/monitor/support-files/plugins/Telegraf/snmp/wireless_xirrus/policy.json:1-5　|　同步基线：b98b782a7　|　【已实现】
 
 ## 5. 数据流【已实现/已存在】
 - 指标采集与告警评估：telegraf 采集 → VictoriaMetrics →（PromQL）scan_policy_task → 阈值/聚合/恢复评估 → MonitorEvent → MonitorAlert（原始快照存 MinIO）。
@@ -64,12 +65,12 @@
 
 ### 5.1 跨模块实例归并与生命周期【已实现】
 
-- 监控接收来自 CMDB、节点管理的标准化实例变更，优先以节点关联标识、其次以 CMDB 关联标识命中已有监控实例，并回填两侧关联；若两种标识分别命中不同实例，返回冲突结果而不合并。
+- Monitor 依赖 CMDB 的实例稳定身份：`MonitorInstance.cmdb_id` 最终保存 CMDB 的规范 `inst_uuid`。迁移期接收 `cmdb_id_aliases`，以规范身份与旧数字 ID 共同查找存量关联；命中旧值后会在本次更新中触达式回填为规范身份。若节点关联与 CMDB 候选分别命中不同实例，或 ip+云区域已绑定其它节点，返回冲突结果而不合并。
 - 监控发起的创建与删除通知携带来源链路标识；接收自身发起的回写时仅返回既有实例，避免循环处理。主机监控实例新建后会尽力通知节点管理和 CMDB，任一对端失败不影响监控实例创建；用户也可将既有监控实例显式推送至 CMDB。
-- 节点管理退役通知会停用并软删除对应监控实例；CMDB 或其他来源的解绑通知只清除关联标识，不删除监控资产。节点来源的新实例会创建监控实例并尝试配置默认主机采集；CMDB 发起的自动创建路径当前处于关闭状态，未满足既有创建条件时只做关联处理。
+- 节点管理退役通知会停用并软删除对应监控实例；CMDB 或其他来源的解绑通知只清除关联标识，不删除监控资产。节点来源的新实例会创建监控实例并套用 Host + Telegraf 主机采集模板；插件按名称 `Host` 查找，找不到模板或套用失败则整次同步失败。CMDB 发起的自动创建路径当前处于关闭状态，未满足既有创建条件时只做关联处理。
 
 相关架构：[[legacy-ard-modules-cmdb.md#4. 依赖与通信【已实现/已存在】]]、[[legacy-ard-modules-node-mgmt.md#4. 通信机制【已实现/已存在】]]；相关产品能力：[[legacy-prd-监控系统-集成.md#3.2.1 资产协同]]；相关功能清单：[[legacy-fuctionlist-02-监控系统-功能清单.md#7. Integration - 资产管理]]。
-> 证据来源：server/apps/monitor/models/monitor_object.py:122-136，server/apps/monitor/services/module_ingest.py:53-163,523-619,750-898，server/apps/monitor/services/module_push.py:62-178,181-239,291-406，server/apps/monitor/views/monitor_instance.py:397-410，server/apps/monitor/nats/monitor.py:1565-1578　|　同步基线：d2769559　|　【已实现】
+> 证据来源：server/apps/cmdb/services/instance_identity.py:55-106；server/apps/monitor/models/monitor_object.py:122-136；server/apps/monitor/services/module_ingest.py:53-169,628-639,750-834；server/apps/monitor/services/module_push.py:62-178,181-239,291-406；server/apps/monitor/views/monitor_instance.py:397-410；server/apps/monitor/nats/monitor.py:1565-1578　|　同步基线：b98b782a7　|　【已实现】
 
 ## 6. 风险 / 待确认
 - VM 高基数查询的性能与限流策略【待确认】。

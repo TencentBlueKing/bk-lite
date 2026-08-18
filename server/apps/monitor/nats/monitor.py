@@ -3,6 +3,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Optional
 
+from django.db import transaction
 from django.db.models import Count, F, Q
 from django.utils import timezone
 from rest_framework import serializers
@@ -35,6 +36,7 @@ from apps.monitor.models import (
     MonitorPlugin,
     MonitorPolicy,
     PolicyInstanceBaseline,
+    PolicyOrganization,
 )
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
@@ -46,7 +48,9 @@ from apps.monitor.services.network_device_resource_top import NetworkDeviceResou
 from apps.monitor.services.network_device_resource_top import validate_metric_type as validate_network_metric_type
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
+from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 from apps.rpc.system_mgmt import SystemMgmt
 
 
@@ -323,6 +327,61 @@ def _create_monitor_policy_payload(data: dict, operator: str = "api", domain: st
     return policy, MonitorPolicySerializer(policy).data
 
 
+def _nats_caller_org_ids(user_info: Optional[dict]):
+    if not isinstance(user_info, dict):
+        return frozenset()
+    raw = user_info.get("allowed_org_ids") or user_info.get("organization_ids")
+    if not raw:
+        team = user_info.get("team")
+        raw = [team] if team not in (None, "") else []
+    try:
+        return _normalize_organization_ids(raw)
+    except Exception:
+        return frozenset()
+
+
+def _policy_visible_in_orgs(policy: MonitorPolicy, org_ids) -> bool:
+    if not org_ids:
+        return False
+    if PolicyOrganization.objects.filter(policy_id=policy.id, organization__in=list(org_ids)).exists():
+        return True
+    return bool(set(policy.organizations or []) & set(org_ids))
+
+
+def _delete_monitor_policy_record(policy: MonitorPolicy, operator: str):
+    from django_celery_beat.models import PeriodicTask
+
+    from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALL_CONFIGURED, AlertLifecycleNotifier
+    from apps.monitor.services.policy_baseline import PolicyBaselineService
+
+    policy_id = policy.id
+    view = _get_monitor_policy_viewset()
+    PolicyBaselineService(policy).clear()
+    alerts_to_close = list(MonitorAlert.objects.filter(policy_id=policy_id, status="new"))
+    view._close_alerts_in_tx(policy, alerts_to_close, operator, "policy_deleted")
+    if alerts_to_close:
+        notifier = AlertLifecycleNotifier(policy)
+        notifier.enqueue_alert_center_deliveries(
+            alerts_to_close,
+            "closed",
+            operator=operator,
+            reason="policy_deleted",
+        )
+        transaction.on_commit(
+            lambda alerts=tuple(alerts_to_close): notifier.notify_alerts(
+                alerts,
+                action="closed",
+                operator=operator,
+                reason="policy_deleted",
+                notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED,
+            )
+        )
+    PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
+    PolicyOrganization.objects.filter(policy_id=policy_id).delete()
+    policy.delete()
+    return policy_id
+
+
 def _require_authenticated_actor(user_info: Optional[dict]):
     """写接口身份闸：必须携带可解析的已认证身份才允许写库。
 
@@ -345,7 +404,8 @@ def _execute_nats_create(create_func, data: dict, user_info: Optional[dict] = No
         return identity_error
     try:
         operator, domain = _resolve_nats_actor(user_info)
-        _, result_data = create_func(data, operator=operator, domain=domain)
+        with transaction.atomic():
+            _, result_data = create_func(data, operator=operator, domain=domain)
         return {"result": True, "data": result_data, "message": ""}
     except (serializers.ValidationError, ValueError) as exc:
         return {"result": False, "data": [], "message": _build_validation_message(exc)}
@@ -629,6 +689,57 @@ def create_monitor_policy(data: dict, *args, **kwargs):
 
 
 @nats_client.register
+def search_monitor_policies(*args, **kwargs):
+    """按名称查询调用方组织范围内的告警策略。"""
+    user_info = kwargs.get("user_info")
+    identity_error = _require_authenticated_actor(user_info)
+    if identity_error:
+        return identity_error
+    name = str(kwargs.get("name") or (args[0] if args else "") or "").strip()
+    if not name:
+        return {"result": False, "data": [], "message": "name 不能为空"}
+    org_ids = _nats_caller_org_ids(user_info)
+    if not org_ids:
+        return {"result": False, "data": [], "message": "缺少用户或组织信息"}
+    queryset = MonitorPolicy.objects.filter(name=name, policyorganization__organization__in=list(org_ids)).distinct().order_by("id")[:200]
+    serializer = MonitorPolicySerializer(queryset, many=True)
+    return {"result": True, "data": serializer.data, "message": ""}
+
+
+@nats_client.register
+def delete_monitor_policy(*args, **kwargs):
+    """删除调用方组织范围内的一条告警策略及其扫描任务。"""
+    user_info = kwargs.get("user_info")
+    identity_error = _require_authenticated_actor(user_info)
+    if identity_error:
+        return identity_error
+    raw_policy_id = kwargs.get("policy_id") if "policy_id" in kwargs else (args[0] if args else None)
+    try:
+        policy_id = int(raw_policy_id)
+    except (TypeError, ValueError):
+        return {"result": False, "data": [], "message": "policy_id 必须是整数"}
+    if policy_id < 1:
+        return {"result": False, "data": [], "message": "policy_id 必须大于等于 1"}
+    org_ids = _nats_caller_org_ids(user_info)
+    if not org_ids:
+        return {"result": False, "data": [], "message": "缺少用户或组织信息"}
+    try:
+        policy = MonitorPolicy.objects.get(id=policy_id)
+    except MonitorPolicy.DoesNotExist:
+        return {"result": False, "data": [], "message": "策略不存在"}
+    if not _policy_visible_in_orgs(policy, org_ids):
+        return {"result": False, "data": [], "message": "策略不存在"}
+    try:
+        operator, _domain = _resolve_nats_actor(user_info)
+        with transaction.atomic():
+            deleted_id = _delete_monitor_policy_record(policy, operator)
+        return {"result": True, "data": {"id": deleted_id}, "message": ""}
+    except Exception as exc:
+        logger.exception("monitor NATS delete policy failed, error=%s", exc)
+        return {"result": False, "data": [], "message": str(exc)}
+
+
+@nats_client.register
 def monitor_objects(*args, **kwargs):
     """查询监控对象列表"""
     logger.info("=== monitor_objects called , args={}, kwargs={}===".format(args, kwargs))
@@ -672,6 +783,11 @@ def monitor_metrics(monitor_obj_id: str, *args, **kwargs):
         lan_key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{monitor_obj.name}.{result['name']}"
         result["display_name"] = lan.get(f"{lan_key}.name") or result.get("display_name") or result["name"]
         result["display_description"] = lan.get(f"{lan_key}.desc") or result.get("description")
+        if (result.get("data_type") or "").lower() == "enum":
+            result["unit"] = localize_metric_enum_unit(
+                result.get("unit") or "",
+                enum_translations=lan.get(f"{lan_key}.enum"),
+            )
     return {"result": True, "data": results, "message": ""}
 
 
@@ -777,11 +893,7 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
     except MonitorObject.DoesNotExist:
         return {"result": False, "data": [], "message": "监控对象或指标不存在"}
 
-    metrics = list(
-        Metric.objects.filter(monitor_object=monitor_obj, name=metric_name)
-        .select_related("monitor_plugin")
-        .order_by("id")
-    )
+    metrics = list(Metric.objects.filter(monitor_object=monitor_obj, name=metric_name).select_related("monitor_plugin").order_by("id"))
     if not metrics:
         return {"result": False, "data": [], "message": "监控对象或指标不存在"}
 
@@ -914,6 +1026,37 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         end = start + page_size
         metrics = metrics[start:end]
 
+    query_by_metric_id = {}
+    query_has_data = {}
+    query_errors = {}
+    if only_with_data:
+        metrics = list(metrics)
+        lookback_seconds = Metrics.parse_step_to_seconds(lookback)
+        end_seconds = int(time.time())
+        start_seconds = end_seconds - lookback_seconds
+        step_seconds = max(1, min(max(lookback_seconds // 12, 1), 300))
+        for metric in metrics:
+            if metric.query:
+                query_by_metric_id[metric.id] = _build_metric_label_query(
+                    metric.query,
+                    instance_ids=[instance_id],
+                )
+        vm_api = VictoriaMetricsAPI()
+
+        def _query_has_data(query):
+            response = vm_api.query_range(
+                query,
+                start_seconds,
+                end_seconds,
+                str(step_seconds),
+            )
+            return response.get("status") == "success" and bool(response.get("data", {}).get("result"))
+
+        query_has_data, query_errors = run_unique_vm_queries(
+            query_by_metric_id.values(),
+            _query_has_data,
+        )
+
     result_metrics = []
     for metric in metrics:
         metric_info = {
@@ -931,32 +1074,20 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         }
 
         if only_with_data:
-            if not metric.query:
+            query = query_by_metric_id.get(metric.id)
+            if not query:
                 continue
-            query = _build_metric_label_query(
-                metric.query,
-                instance_ids=[instance_id],
-            )
-            try:
-                lookback_seconds = Metrics.parse_step_to_seconds(lookback)
-                end_seconds = int(time.time())
-                start_seconds = end_seconds - lookback_seconds
-                step_seconds = max(1, min(max(lookback_seconds // 12, 1), 300))
-                resp = VictoriaMetricsAPI().query_range(
-                    query,
-                    start_seconds,
-                    end_seconds,
-                    str(step_seconds),
-                )
-                if not (resp.get("status") == "success" and resp.get("data", {}).get("result")):
-                    continue
-            except Exception as exc:
+            if query in query_errors:
+                error = query_errors[query]
                 logger.warning(
                     "monitor_instance_metrics query failed, instance_id=%s, metric=%s, error=%s",
                     instance_id,
                     metric.name,
-                    exc,
+                    error,
+                    exc_info=(type(error), error, error.__traceback__),
                 )
+                continue
+            if not query_has_data[query]:
                 continue
 
         result_metrics.append(metric_info)
@@ -1555,16 +1686,14 @@ def _resolve_monitor_ingest_allowed_org_ids(params):
     if isinstance(user_info, dict):
         team = user_info.get("team")
         if team not in (None, ""):
-            return _normalize_organization_ids(
-                [team] if not isinstance(team, (list, tuple)) else team
-            )
+            return _normalize_organization_ids([team] if not isinstance(team, (list, tuple)) else team)
 
     raise ValueError("authorization scope is required for monitor ingest")
 
 
 @nats_client.register
 def monitor_ingest_from_source(params):
-    """跨模块推送写入监控（node_id 优先，其次 cmdb_id）。
+    """跨模块推送写入监控（node_id → cmdb_id → ip+cloud）。
 
     params 为 IngestEnvelope 扩展字段，另需授权上下文之一：
       allowed_org_ids / service_scope.allowed_org_ids / user_info.team

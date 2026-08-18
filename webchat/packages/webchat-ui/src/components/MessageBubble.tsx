@@ -65,7 +65,7 @@ const CodeBlock = ({ inline, className, children, style, ...props }: CodeBlockPr
   );
 };
 
-export const MessageBubble: React.FC<MessageBubbleProps> = (
+export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
   ({ message, botAvatar, userAvatar, isLastBotMessage, onRegenerate, onCopy, onDelete }) => {
     const isBot = message.sender === 'bot';
     const [showActions, setShowActions] = useState(false);
@@ -107,7 +107,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
         <div className="space-y-2">
           {message.content.map((item: MessageContent, index: number) => {
             const imageUrl = item.image_url;
+            const unpreviewedImageIndexes = Array.isArray(message.metadata?.unpreviewedImageIndexes)
+              ? message.metadata.unpreviewedImageIndexes
+              : [];
             if (item.type === 'image_url' && imageUrl) {
+              if (unpreviewedImageIndexes.includes(index)) {
+                return (
+                  <div
+                    key={`img-${index}`}
+                    role="status"
+                    aria-label="图片已发送（格式未在浏览器解码预览）"
+                  >
+                    <Bubble content="图片已发送（格式未在浏览器解码预览）" />
+                  </div>
+                );
+              }
               return (
                 <div key={`img-${index}`} className="max-w-xs">
                   <img 

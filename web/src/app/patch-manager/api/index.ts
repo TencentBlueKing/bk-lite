@@ -11,6 +11,10 @@ import {
   PatchTargetParams,
   PatchParams,
   CandidateItem,
+  BaselineComplianceDetailsParams,
+  BaselineComplianceDetailsResponse,
+  BaselineComplianceObjectsParams,
+  BaselineComplianceObjectsResponse,
   IngestResult,
   NoticeCandidates,
   NoticeRuleInput,
@@ -272,6 +276,20 @@ const usePatchManagerApi = () => {
   const assessBaseline = async (id: number): Promise<any> =>
     post(`${BASE}/baseline/${id}/assess/`);
 
+  const getBaselineComplianceObjects = async (
+    id: number,
+    params: BaselineComplianceObjectsParams,
+    config?: AxiosRequestConfig,
+  ): Promise<BaselineComplianceObjectsResponse> =>
+    get(`${BASE}/baseline/${id}/compliance_matrix_objects/`, { params, ...config });
+
+  const getBaselineComplianceDetails = async (
+    id: number,
+    params: BaselineComplianceDetailsParams,
+    config?: AxiosRequestConfig,
+  ): Promise<BaselineComplianceDetailsResponse> =>
+    get(`${BASE}/baseline/${id}/compliance_matrix_details/`, { params, ...config });
+
   // ── 治理任务 ──────────────────────────────────────────────────────────────────
 
   const getGovernanceTaskList = async (
@@ -396,6 +414,8 @@ const usePatchManagerApi = () => {
     bindHostsToBaseline,
     getBaselineHosts,
     assessBaseline,
+    getBaselineComplianceObjects,
+    getBaselineComplianceDetails,
     // ── 治理任务 ──
     getGovernanceTaskList,
     getGovernanceTaskDetail,

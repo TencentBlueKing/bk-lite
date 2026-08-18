@@ -15,6 +15,7 @@ import {
 import {
   syncFilterValuesWithDefinitions,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
+import { isFiniteNumber } from '@/app/ops-analysis/utils/thresholdUtils';
 
 export { syncFilterValuesWithDefinitions };
 
@@ -191,6 +192,29 @@ export const buildFiltersFromNodes = (
   });
 };
 
+const VALUE_FORMAT_CHART_TYPES = new Set([
+  'single',
+  'gauge',
+  'line',
+  'bar',
+  'pie',
+  'multiValue',
+]);
+
+const applyValueFormatFields = (
+  valueConfig: Record<string, unknown>,
+  values: ViewConfigFormValues,
+) => {
+  if (values.unit !== undefined) valueConfig.unit = values.unit;
+  if (values.unitId !== undefined) valueConfig.unitId = values.unitId;
+  if (isFiniteNumber(values.conversionFactor)) {
+    valueConfig.conversionFactor = values.conversionFactor;
+  }
+  if (isFiniteNumber(values.decimalPlaces)) {
+    valueConfig.decimalPlaces = values.decimalPlaces;
+  }
+};
+
 /**
  * 从 ViewConfigFormValues 构建 valueConfig 对象，供图表/单值/表格节点使用。
  * @param coerceDataSource 是否将 string 类型的 dataSource 转为 number（新增节点场景）
@@ -212,24 +236,29 @@ export const buildValueConfig = (
   if (values.chartThemeMode && values.chartThemeMode !== 'default') {
     valueConfig.chartThemeMode = values.chartThemeMode;
   }
+  if (values.chartType && VALUE_FORMAT_CHART_TYPES.has(values.chartType)) {
+    applyValueFormatFields(valueConfig, values);
+  }
   if (values.chartType === 'single') {
     valueConfig.compare = !!values.compare;
     valueConfig.compareMode = values.compareMode || 'percent';
     valueConfig.selectedFields = values.selectedFields;
     valueConfig.thresholdColors = values.thresholdColors;
-    if (values.unit !== undefined) valueConfig.unit = values.unit;
-    if (values.conversionFactor !== undefined) valueConfig.conversionFactor = values.conversionFactor;
-    if (values.decimalPlaces !== undefined) valueConfig.decimalPlaces = values.decimalPlaces;
   }
   if (values.chartType === 'gauge') {
     valueConfig.selectedFields = values.selectedFields;
     valueConfig.thresholdColors = values.thresholdColors;
-    if (values.unit !== undefined) valueConfig.unit = values.unit;
-    if (values.conversionFactor !== undefined) valueConfig.conversionFactor = values.conversionFactor;
-    if (values.decimalPlaces !== undefined) valueConfig.decimalPlaces = values.decimalPlaces;
     if (values.gaugeMin !== undefined) valueConfig.gaugeMin = values.gaugeMin;
     if (values.gaugeMax !== undefined) valueConfig.gaugeMax = values.gaugeMax;
     if (values.gaugeShape !== undefined) valueConfig.gaugeShape = values.gaugeShape;
+  }
+  if (values.chartType === 'multiValue') {
+    if (values.thresholdColors?.length) {
+      valueConfig.thresholdColors = values.thresholdColors;
+    }
+    if (values.valueMappings?.length) {
+      valueConfig.valueMappings = values.valueMappings;
+    }
   }
   if (
     (values.chartType === 'table' || values.chartType === 'eventTable') &&

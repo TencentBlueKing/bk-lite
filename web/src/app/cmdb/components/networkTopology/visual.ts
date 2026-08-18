@@ -9,12 +9,8 @@ export const NETWORK_TOPOLOGY_VISUAL = {
   node: {
     width: NETWORK_TOPO_VISUAL.node.width,
     height: NETWORK_TOPO_VISUAL.node.height,
-    radius: NETWORK_TOPO_VISUAL.node.radius,
-    iconColumnWidth: NETWORK_TOPO_VISUAL.node.iconColumnWidth,
-    iconPlateSize: NETWORK_TOPO_VISUAL.node.iconPlateSize,
     iconSize: NETWORK_TOPO_VISUAL.node.iconSize,
-    labelX: NETWORK_TOPO_VISUAL.node.label.x,
-    labelWidth: NETWORK_TOPO_VISUAL.node.label.width,
+    iconTop: NETWORK_TOPO_VISUAL.node.iconTop,
   },
   layout: {
     columnGap: NETWORK_TOPO_VISUAL.layout.columnGap,
@@ -23,9 +19,9 @@ export const NETWORK_TOPOLOGY_VISUAL = {
     paddingY: 72,
   },
   edge: {
-    stroke: '#9fb8d5',
+    stroke: NETWORK_TOPO_VISUAL.edge.stroke,
     activeStroke: '#ff4d4f',
-    selectedStroke: '#0070fa',
+    selectedStroke: NETWORK_TOPO_VISUAL.edge.selectedStroke,
   },
   status: {
     normal: '#39c78f',

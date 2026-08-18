@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Button,
-  Tag,
   Modal,
   message,
   Form,
@@ -11,7 +10,6 @@ import {
   Upload,
   Tabs,
   Table,
-  Empty,
   Alert,
   Spin,
   Drawer,
@@ -25,6 +23,8 @@ import {
   DownloadOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
+import CompactEmptyState from '@/components/compact-empty-state';
+import VersionBadge from '@/components/version-badge';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
@@ -403,11 +403,11 @@ const PlaybookLibraryPage = () => {
           >
             <div className="flex items-center gap-2">
               {node.type === 'directory' ? (
-                <FolderOutlined style={{ color: '#faad14' }} />
+                <FolderOutlined className="text-[#faad14]" />
               ) : (
-                <FileOutlined style={{ color: 'var(--color-text-3)' }} />
+                <FileOutlined className="text-[var(--color-text-3)]" />
               )}
-              <span className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+              <span className="text-sm text-[var(--color-text-1)]">
                 {node.name}
               </span>
             </div>
@@ -443,13 +443,10 @@ const PlaybookLibraryPage = () => {
               { label: t('job.uploader'), value: viewingPlaybook.created_by || '-' },
             ].map((item, idx) => (
               <div key={idx} className="flex">
-                <span
-                  className="w-32 shrink-0 text-sm"
-                  style={{ color: 'var(--color-text-3)' }}
-                >
+                <span className="w-32 shrink-0 text-sm text-[var(--color-text-3)]">
                   {item.label}
                 </span>
-                <span className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+                <span className="text-sm text-[var(--color-text-1)]">
                   {item.value}
                 </span>
               </div>
@@ -491,7 +488,7 @@ const PlaybookLibraryPage = () => {
               ]}
             />
           ) : (
-            <Empty description={t('job.noParams')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('job.noParams')} className="py-8" />
           ),
       },
       {
@@ -499,14 +496,11 @@ const PlaybookLibraryPage = () => {
         label: t('job.fileListTab'),
         children:
           viewingPlaybook.file_list && viewingPlaybook.file_list.length > 0 ? (
-            <div
-              className="rounded-md border p-2"
-              style={{ borderColor: 'var(--color-border-1)' }}
-            >
+            <div className="rounded-md border border-[var(--color-border-1)] p-2">
               {renderFileTree(viewingPlaybook.file_list)}
             </div>
           ) : (
-            <Empty description={t('job.noFiles')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('job.noFiles')} className="py-8" />
           ),
       },
       {
@@ -515,7 +509,7 @@ const PlaybookLibraryPage = () => {
         children: viewingPlaybook.readme ? (
           <MarkdownRenderer content={viewingPlaybook.readme} />
         ) : (
-          <Empty description={t('job.noReadme')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <CompactEmptyState description={t('job.noReadme')} className="py-8" />
         ),
       },
     ];
@@ -536,7 +530,7 @@ const PlaybookLibraryPage = () => {
       key: 'version',
       width: 100,
       render: (_: unknown, record: Playbook) => (
-        <Tag color="blue">{record.version || 'v1.0.0'}</Tag>
+        <VersionBadge value={record.version} />
       ),
     },
     {
@@ -612,32 +606,17 @@ const PlaybookLibraryPage = () => {
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div
-        className="rounded-lg px-6 py-4 mb-4 flex-shrink-0"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
-        <h2
-          className="text-base font-medium m-0 mb-1"
-          style={{ color: 'var(--color-text-1)' }}
-        >
+      <div className="mb-4 shrink-0 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-4">
+        <h2 className="m-0 mb-1 text-base font-medium text-[var(--color-text-1)]">
           {t('job.playbookLibrary')}
         </h2>
-        <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
+        <p className="m-0 text-sm text-[var(--color-text-3)]">
           {t('job.playbookLibraryDesc')}
         </p>
       </div>
 
       {/* Table Section */}
-      <div
-        className="rounded-lg px-6 py-6 flex-1 min-h-0 flex flex-col"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-6">
         {/* Toolbar */}
         <div className="flex justify-between mb-4 flex-shrink-0">
           <SearchCombination
@@ -688,7 +667,7 @@ const PlaybookLibraryPage = () => {
       >
         <Form form={uploadForm} layout="vertical" colon={false}>
           <div className="flex items-center justify-between mb-2">
-            <span className="font-medium" style={{ color: 'var(--color-text-1)' }}>{t('job.uploadFile')}</span>
+            <span className="font-medium text-[var(--color-text-1)]">{t('job.uploadFile')}</span>
             <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
               {t('job.downloadPlaybookTemplate')}
             </Button>
@@ -795,7 +774,7 @@ const PlaybookLibraryPage = () => {
           viewingPlaybook ? (
             <div className="flex items-center gap-3">
               <span>{viewingPlaybook.name}</span>
-              <Tag color="blue">{viewingPlaybook.version || 'v1.0.0'}</Tag>
+              <VersionBadge value={viewingPlaybook.version} />
             </div>
           ) : null
         }
@@ -810,7 +789,7 @@ const PlaybookLibraryPage = () => {
               </Button>
               <Button
                 type="primary"
-                style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}
+                className="!border-[var(--color-success)] !bg-[var(--color-success)]"
                 onClick={() => openUpgradeModal(viewingPlaybook.id)}
               >
                 {t('job.upgradeVersion')}
@@ -928,19 +907,10 @@ const PlaybookLibraryPage = () => {
           />
         ) : filePreviewData ? (
           <div>
-            <div className="mb-2 text-xs" style={{ color: 'var(--color-text-3)' }}>
+            <div className="mb-2 text-xs text-[var(--color-text-3)]">
               {filePreviewData.file_path} ({filePreviewData.file_size} bytes)
             </div>
-            <pre
-              className="p-4 rounded text-sm overflow-auto"
-              style={{
-                backgroundColor: 'var(--color-bg-1)',
-                border: '1px solid var(--color-border)',
-                maxHeight: '60vh',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-              }}
-            >
+            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded border border-[var(--color-border)] bg-[var(--color-bg-1)] p-4 text-sm">
               <code>{filePreviewData.content}</code>
             </pre>
           </div>

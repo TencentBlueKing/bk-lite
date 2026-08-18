@@ -30,12 +30,13 @@
 
         .chartWrapper {
             background-color: var(--color-bg-1);
-            padding: 20px 20px 0 10px;
             margin-bottom: 10px;
             width: 100%;
+            overflow: hidden;
 
             .chart {
                 height: 100px;
+                padding: 0 10px;
             }
         }
 

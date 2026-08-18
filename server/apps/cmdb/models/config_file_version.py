@@ -54,7 +54,8 @@ class ConfigFileVersion(models.Model):
         related_name="config_file_versions",
         help_text="关联的采集任务（手动创建时为空）",
     )
-    instance_id = models.CharField(max_length=128, help_text="主机实例 ID")
+    instance_id = models.CharField(max_length=128, help_text="主机实例图 ID（过渡期保留）")
+    instance_uuid = models.UUIDField(null=True, blank=True, db_index=True, help_text="主机实例 UUID")
     model_id = models.CharField(max_length=64, help_text="模型 ID")
     version = models.CharField(max_length=32, help_text="版本号（采集时间戳）")
     file_path = models.CharField(max_length=512, help_text="采集时的文件绝对路径")
@@ -95,6 +96,7 @@ class ConfigFileVersion(models.Model):
         ]
         indexes = [
             models.Index(fields=["content_status", "content_updated_at"], name="cfg_content_state_idx"),
+            models.Index(fields=["instance_uuid", "file_path"], name="cmdb_cfg_uuid_path_idx"),
         ]
 
     @property

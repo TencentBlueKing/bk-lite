@@ -55,6 +55,10 @@ class SystemMgmt(object):
         return_data = self.client.run("get_all_groups")
         return return_data
 
+    def get_archived_groups(self, page=1, page_size=100):
+        """分页查询已归档组织，供其他模块自行处理资产/数据。"""
+        return self.client.run("get_archived_groups", page=page, page_size=page_size)
+
     def get_all_users(self):
         return_data = self.client.run("get_all_users")
         return return_data
@@ -298,20 +302,43 @@ class SystemMgmt(object):
         title,
         body,
         event_payload,
+        required_delivery_mode="",
+        producer="lite-apm",
+        ack_mode="",
+        ack_token="",
     ):
-        return self.client.run(
-            "dispatch_notification",
-            delivery_key=delivery_key,
-            channel_id=channel_id,
-            organization_ids=organization_ids,
-            recipients=recipients,
-            title=title,
-            body=body,
-            event_payload=event_payload,
-        )
+        payload = {
+            "delivery_key": delivery_key,
+            "channel_id": channel_id,
+            "organization_ids": organization_ids,
+            "recipients": recipients,
+            "title": title,
+            "body": body,
+            "event_payload": event_payload,
+        }
+        extensions = {
+            "required_delivery_mode": required_delivery_mode,
+            "producer": producer,
+            "ack_mode": ack_mode,
+            "ack_token": ack_token,
+        }
+        if not any((required_delivery_mode, ack_mode, ack_token)) and producer == "lite-apm":
+            return self.client.run("dispatch_notification", **payload)
+        try:
+            return self.client.run("dispatch_notification", **payload, **extensions)
+        except TypeError as exc:
+            # An old receiver rejects unknown kwargs before any side effect. Retry
+            # once with the historical contract during receiver-first rollouts.
+            if "unexpected keyword argument" not in str(exc):
+                raise
+            return self.client.run("dispatch_notification", **payload)
 
-    def probe_notification_channel(self, channel_id):
-        return self.client.run("probe_notification_channel", channel_id=channel_id)
+    def probe_notification_channel(self, channel_id, capability_only=False):
+        return self.client.run(
+            "probe_notification_channel",
+            channel_id=channel_id,
+            capability_only=capability_only,
+        )
 
     def search_groups(self, query_params):
         """

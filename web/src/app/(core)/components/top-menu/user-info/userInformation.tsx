@@ -269,7 +269,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
                 <Form form={form} labelAlign='left' colon={false} requiredMark={false}>
                   <Form.Item
                     label={
-                      <div style={{ minWidth: '80px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <div className="inline-flex min-w-20 items-center gap-1">
                         <UserOutlined />
                         <span>{t('userInfo.username')}</span>
                       </div>
@@ -280,7 +280,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
 
                     <Form.Item
                       label={
-                        <div style={{ minWidth: '80px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <div className="inline-flex min-w-20 items-center gap-1">
                           <SolutionOutlined />
                           <span>{t('userInfo.name')}</span>
                         </div>
@@ -293,7 +293,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
 
                     <Form.Item
                       label={
-                        <div style={{ minWidth: '80px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <div className="inline-flex min-w-20 items-center gap-1">
                           <MailOutlined />
                           <span>{t('userInfo.email')}</span>
                         </div>
@@ -317,7 +317,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
 
                     <Form.Item
                       label={
-                        <div style={{ minWidth: '80px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <div className="inline-flex min-w-20 items-center gap-1">
                           <LockOutlined />
                           <span>{t('userInfo.password')}</span>
                         </div>
@@ -347,7 +347,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
                   size={120}
                   src={userInfo.avatar_url}
                   icon={!userInfo.avatar_url && <UserOutlined />}
-                  style={{ backgroundColor: 'var(--color-primary)' }}
+                  className="bg-[var(--color-primary)]"
                 />
               </div>
             </div>
@@ -362,7 +362,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
                 <Form form={form} labelAlign='left' colon={false}>
                   <Form.Item
                     label={
-                      <div style={{ minWidth: '80px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <div className="inline-flex min-w-20 items-center gap-1">
                         <ClockCircleOutlined />
                         <span>{t('userInfo.timezone')}</span>
                       </div>
@@ -380,7 +380,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
 
                   <Form.Item
                     label={
-                      <div style={{ minWidth: '80px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <div className="inline-flex min-w-20 items-center gap-1">
                         <GlobalOutlined />
                         <span>{t('userInfo.language')}</span>
                       </div>
@@ -464,11 +464,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
                         <>
                           {/* 超级管理员特殊展示 */}
                           {superAdmin && (
-                            <div className="rounded-lg p-3 min-w-[180px]"
-                              style={{
-                                border: '1px solid var(--color-border)',
-                                borderLeft: '3px solid red'
-                              }}>
+                            <div className="min-w-[180px] rounded-lg border border-[var(--color-border)] border-l-[3px] border-l-red-500 p-3">
                               <div className="font-medium text-sm">{t('userInfo.superAdmin')}</div>
                               <hr className='mt-1 mb-2 border-t border-[var(--color-border)]' />
                               <div className="flex flex-wrap gap-2">
@@ -499,10 +495,9 @@ const UserInformation: React.FC<UserInformationProps> = ({
                             return (
                               <div
                                 key={app}
-                                className="rounded-lg p-3 min-w-[180px]"
+                                className="min-w-[180px] rounded-lg border border-[var(--color-border)] border-l-[3px] p-3"
                                 style={{
-                                  border: '1px solid var(--color-border)',
-                                  borderLeft: `3px solid ${borderColor}`
+                                  borderLeftColor: borderColor
                                 }}
                               >
                                 <div className="flex items-center gap-2">
@@ -643,7 +638,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
                     }
                   }}
                   disabled={countdown > 0}
-                  style={{ minWidth: '100px' }}
+                  className="min-w-[100px]"
                 >
                   {countdown > 0 ? `${countdown}s` : t('userInfo.sendCode')}
                 </Button>

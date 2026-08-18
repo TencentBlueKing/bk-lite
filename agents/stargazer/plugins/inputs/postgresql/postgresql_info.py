@@ -4,15 +4,14 @@
 """
 PostgreSQL Server Information Collector
 
-Collects core configuration metrics via psycopg2.
+Collects core configuration metrics via psycopg (async).
 """
 
-import asyncio
 from decimal import Decimal
 from typing import Any, Dict
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 
 from core.decorator import timer
 from core.collection.contracts import (
@@ -34,27 +33,25 @@ class PostgresqlInfo:
         self.connection = None
         self.cursor = None
 
-    def _connect(self):
+    async def _connect(self):
         try:
-            self.connection = psycopg2.connect(
+            self.connection = await psycopg.AsyncConnection.connect(
                 host=self.host,
                 port=self.port,
                 user=self.user,
                 password=self.password,
                 dbname=self.database,
                 connect_timeout=self.timeout,
+                row_factory=dict_row,
             )
-            self.cursor = self.connection.cursor(cursor_factory=RealDictCursor)
+            self.cursor = self.connection.cursor()
         except Exception as e:  # noqa
             raise RuntimeError(f"Failed to connect to PostgreSQL: {str(e)}")
 
     async def probe(self) -> AccessProbeResult:
-        return await asyncio.to_thread(self._probe_sync)
-
-    def _probe_sync(self) -> AccessProbeResult:
         try:
-            self._connect()
-            rows = self._exec_sql("SHOW server_version")
+            await self._connect()
+            rows = await self._exec_sql("SHOW server_version")
             version = (
                 str(rows[0].get("server_version") or "") if rows else ""
             )
@@ -63,12 +60,12 @@ class PostgresqlInfo:
                 evidence={"server_version": version},
             )
         finally:
-            self.close()
+            await self.close()
 
-    def _exec_sql(self, query):
+    async def _exec_sql(self, query):
         try:
-            self.cursor.execute(query)
-            return self.cursor.fetchall()
+            await self.cursor.execute(query)
+            return await self.cursor.fetchall()
         except Exception as e:  # noqa
             raise RuntimeError(f"Error executing SQL '{query}': {str(e)}")
 
@@ -84,7 +81,7 @@ class PostgresqlInfo:
         except (ValueError, TypeError):
             return value
 
-    def _collect(self):
+    async def _collect(self):
         queries = {
             'version': "SHOW server_version",
             'config': "SHOW config_file",
@@ -94,7 +91,7 @@ class PostgresqlInfo:
             'log_directory': "SHOW log_directory",
         }
         for key, sql in queries.items():
-            result = self._exec_sql(sql)
+            result = await self._exec_sql(sql)
             if result:
                 self.info[key] = list(result[0].values())[0]
 
@@ -129,12 +126,9 @@ class PostgresqlInfo:
 
     @timer(logger=logger)
     async def list_all_resources(self):
-        return await asyncio.to_thread(self._list_all_resources_sync)
-
-    def _list_all_resources_sync(self):
         try:
-            self._connect()
-            self._collect()
+            await self._connect()
+            await self._collect()
             model_data = {
                 'inst_name': f"{self.host}-pg-{self.port}",
                 'ip_addr': self.host,
@@ -152,11 +146,13 @@ class PostgresqlInfo:
             logger.error(f"postgresql_info main error! {traceback.format_exc()}")
             inst_data = {'result': {'cmdb_collect_error': str(err)}, 'success': False}
         finally:
-            self.close()
+            await self.close()
         return inst_data
 
-    def close(self):
-        if self.cursor:
-            self.cursor.close()
-        if self.connection:
-            self.connection.close()
+    async def close(self):
+        if self.cursor is not None:
+            await self.cursor.close()
+            self.cursor = None
+        if self.connection is not None:
+            await self.connection.close()
+            self.connection = None

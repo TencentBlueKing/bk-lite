@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { EditOutlined, InboxOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons';
-import { Alert, Button, Input, message, Popconfirm, Radio, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
+import { Alert, Button, Input, message, Radio, Select, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, {
   catalogErrorKind,
@@ -13,11 +14,11 @@ import CatalogState, {
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import ServiceIdentity from '@/app/apm/components/service-identity';
 import ApmStatusTag from '@/app/apm/components/status-tag';
-import { formatRelativeTime } from '@/app/apm/components/metric-format';
-import type { ApmApplication, ApmServiceInstance, CatalogStatus } from '@/app/apm/types';
+import type { ApmApplication, ApmServiceInstance, InstanceStatus } from '@/app/apm/types';
 import Permission from '@/components/permission';
 import FilterToolbar from '@/components/filter-toolbar';
 import { useUserInfoContext } from '@/context/userInfo';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
@@ -38,7 +39,6 @@ export default function ApmIntegrationInstancesPage() {
     getApplications,
     getHealth,
     getInstancePage,
-    setInstanceArchived,
     setInstanceOrganizations,
     isLoading: authLoading,
   } = useApmApi();
@@ -47,7 +47,7 @@ export default function ApmIntegrationInstancesPage() {
   const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [total, setTotal] = useState(0);
   const [catalogDegraded, setCatalogDegraded] = useState(false);
-  const [status, setStatus] = useState<CatalogStatus | undefined>('active');
+  const [status, setStatus] = useState<InstanceStatus | undefined>('active');
   const [keyword, setKeyword] = useState('');
   const [appliedKeyword, setAppliedKeyword] = useState('');
   const [applicationId, setApplicationId] = useState('all');
@@ -79,7 +79,6 @@ export default function ApmIntegrationInstancesPage() {
         application: applicationId === 'all' ? undefined : applicationId,
         environment: environment.trim() || undefined,
         status,
-        include_archived: status === 'archived',
         started_at: startedAt?.toISOString(),
         ended_at: startedAt ? endedAt.toISOString() : undefined,
         keyword: appliedKeyword.trim() || undefined,
@@ -121,7 +120,7 @@ export default function ApmIntegrationInstancesPage() {
     setOrganizationSubmitting(true);
     try {
       await setInstanceOrganizations(organizationInstance.id, organizationIds);
-      message.success('实例组织已更新');
+      message.success(t('apm.instances.orgUpdated', '实例组织已更新'));
       setOrganizationInstance(null);
       setRefreshKey((value) => value + 1);
     } finally {
@@ -129,96 +128,79 @@ export default function ApmIntegrationInstancesPage() {
     }
   };
 
-  const setArchived = async (instance: ApmServiceInstance, archived: boolean) => {
-    await setInstanceArchived(instance.id, archived);
-    message.success(archived ? '实例已归档' : '实例已解档');
-    setRefreshKey((value) => value + 1);
-  };
-
   const applicationOptions = useMemo(() => applications.map((application) => ({
     value: application.application_id,
-    label: `${application.name}（${application.application_id || '未归类'}）`,
-  })), [applications]);
+    label: t('apm.instances.appLabel', '{name}（{id}）', {
+      name: application.name,
+      id: application.application_id || t('apm.instances.unsetId', '未设置 ID'),
+    }),
+  })), [applications, t]);
 
   const columns: TableColumnsType<ApmServiceInstance> = [
     {
-      title: '服务',
+      title: t('apm.instances.instanceId', '实例 ID'),
+      dataIndex: 'instance_id',
+      render: (value) => <EllipsisWithTooltip className="max-w-52 truncate font-mono text-xs" text={value} />,
+    },
+    {
+      title: t('apm.common.service', '服务'),
       key: 'service',
+      responsive: ['sm'],
       render: (_, item) => (
         <ServiceIdentity namespace={item.service_namespace} name={item.service_name} />
       ),
     },
-    { title: '环境', dataIndex: 'environment', width: 120, responsive: ['sm'], render: (value) => <Tag bordered={false}>{value || '未设置'}</Tag> },
+    { title: t('apm.instances.ownerApplication', '所属应用'), dataIndex: 'application_name', responsive: ['xl'], render: (value, item) => <EllipsisWithTooltip className="truncate" text={value || item.application_id || '—'} /> },
+    { title: t('apm.common.environment', '环境'), dataIndex: 'environment', width: APM_TABLE_COLUMN_WIDTHS.metric, responsive: ['md'], render: (value) => <Tag bordered={false}>{value || t('apm.common.unset', '未设置')}</Tag> },
+    { title: t('apm.instances.version', '版本'), dataIndex: 'version', width: APM_TABLE_COLUMN_WIDTHS.metric, responsive: ['lg'], render: (value) => value || '—' },
     {
-      title: '实例 ID',
-      dataIndex: 'instance_id',
-      render: (value) => <Typography.Text ellipsis className="block max-w-56 font-mono text-xs">{value}</Typography.Text>,
-    },
-    { title: '版本', dataIndex: 'version', width: 100, responsive: ['lg'], render: (value) => value || '—' },
-    { title: '应用', dataIndex: 'application_name', width: 140, responsive: ['xl'], render: (value, item) => value || item.application_id || '—' },
-    {
-      title: '接入时间',
+      title: t('apm.instances.firstSeen', '首次接入'),
       dataIndex: 'first_seen_at',
-      width: 170,
-      responsive: ['xl'],
-      render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm')}</span>,
-    },
-    {
-      title: '最近上报',
-      dataIndex: 'last_seen_at',
-      width: 120,
-      responsive: ['md'],
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
+      responsive: ['xxl'],
       render: (value) => (
-        <Typography.Text type="secondary" className="text-xs" title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}>
-          {formatRelativeTime(value)}
-        </Typography.Text>
+        <time className="whitespace-nowrap tabular-nums" dateTime={value}>
+          {dayjs(value).format('YYYY-MM-DD HH:mm')}
+        </time>
       ),
     },
-    { title: '状态', dataIndex: 'status', width: 100, render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
     {
-      title: '组织',
+      title: t('apm.instances.lastReport', '最近上报'),
+      dataIndex: 'last_seen_at',
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
+      responsive: ['md'],
+      render: (value) => (
+        <time
+          className="whitespace-nowrap tabular-nums text-[var(--color-text-1)]"
+          dateTime={value}
+          title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}
+        >
+          {dayjs(value).format('YYYY-MM-DD HH:mm')}
+        </time>
+      ),
+    },
+    { title: t('apm.instances.instanceStatus', '实例状态'), dataIndex: 'status', width: APM_TABLE_COLUMN_WIDTHS.status, align: 'center', render: (value: InstanceStatus) => <ApmStatusTag status={value} /> },
+    {
+      title: t('apm.instances.ownerOrg', '所属组织'),
       dataIndex: 'organization_ids',
-      width: 120,
-      responsive: ['xl'],
-      render: (value: number[]) => value.map((id) => (
-        <Tag bordered={false} key={id}>{groupNames.get(id) ?? `#${id}`}</Tag>
-      )),
+      width: APM_TABLE_COLUMN_WIDTHS.organization,
+      responsive: ['xxl'],
+      render: (value: number[]) => (
+        <EllipsisWithTooltip
+          className="truncate text-xs"
+          text={value.length ? value.map((id) => groupNames.get(id) ?? `#${id}`).join('、') : t('apm.instances.unassigned', '未分配')}
+        />
+      ),
     },
     {
-      title: '操作',
+      title: t('apm.common.operation', '操作'),
       key: 'action',
-      width: 190,
+      width: APM_TABLE_COLUMN_WIDTHS.singleAction,
       align: 'right',
+      fixed: 'right',
       render: (_, item) => (
         <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/instances">
-          <Space size={0}>
-            {!item.archived_at ? (
-              <Button
-                type="link"
-                size="small"
-                icon={<EditOutlined aria-hidden="true" />}
-                onClick={() => setOrganizationInstance(item)}
-              >
-                组织
-              </Button>
-            ) : null}
-            <Popconfirm
-              title={item.archived_at ? '确认解档实例？' : '确认归档实例？'}
-              description={item.archived_at ? '解档后实例将重新出现在默认列表。' : '归档不会删除已经存储的遥测数据。'}
-              okText={item.archived_at ? '解档' : '归档'}
-              cancelText="取消"
-              onConfirm={() => setArchived(item, !item.archived_at)}
-            >
-              <Button
-                type="link"
-                size="small"
-                danger={!item.archived_at}
-                icon={item.archived_at ? <UndoOutlined aria-hidden="true" /> : <InboxOutlined aria-hidden="true" />}
-              >
-                {item.archived_at ? '解档' : '归档'}
-              </Button>
-            </Popconfirm>
-          </Space>
+          <Button className="!px-0" type="link" size="small" onClick={() => setOrganizationInstance(item)}>{t('apm.common.adjustOrg', '调整组织')}</Button>
         </Permission>
       ),
     },
@@ -226,27 +208,27 @@ export default function ApmIntegrationInstancesPage() {
 
   return (
     <ApmRouteShell
-      title="接入实例"
-      description="按运行实例查看上报状态与组织归属；逻辑服务健康请前往服务目录。"
+      title={t('apm.instances.title', '接入实例')}
+      description={t('apm.instances.description', '按运行实例查看上报状态与组织归属；逻辑服务健康请前往服务目录。')}
     >
       {catalogDegraded ? (
         <Alert
           className="mb-4"
           type="warning"
           showIcon
-          message="目录对账暂时降级"
-          description="下方是最近一次成功对账后的元数据，可能落后于 Trace 与指标存储。"
+          message={t('apm.instances.reconcileTitle', '目录对账暂时降级')}
+          description={t('apm.instances.reconcileDescription', '下方是最近一次成功对账后的元数据，可能落后于 Trace 与指标存储。')}
         />
       ) : null}
-      <div className="flex flex-col gap-3">
-        <ApmSurface padding="compact">
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
           <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
             <Input.Search
               allowClear
-              aria-label="按服务、应用或实例 ID 搜索"
-              className="min-w-64 flex-1 md:max-w-sm"
+              aria-label={t('apm.instances.searchAria', '按服务、应用或实例 ID 搜索')}
+              className="min-w-0 flex-1 md:max-w-sm"
               prefix={<SearchOutlined className="text-[var(--color-text-4)]" aria-hidden="true" />}
-              placeholder="搜索服务名 / 应用 / 实例 ID"
+              placeholder={t('apm.instances.searchPlaceholder', '搜索服务名 / 应用 / 实例 ID')}
               value={keyword}
               onChange={(event) => {
                 setKeyword(event.target.value);
@@ -262,9 +244,9 @@ export default function ApmIntegrationInstancesPage() {
             />
             <Select
               className="w-40"
-              aria-label="按应用筛选"
+              aria-label={t('apm.instances.filterApplication', '按应用筛选')}
               value={applicationId}
-              options={[{ value: 'all', label: '全部应用' }, ...applicationOptions]}
+              options={[{ value: 'all', label: t('apm.common.allApplications', '全部应用') }, ...applicationOptions]}
               onChange={(value) => {
                 setApplicationId(value);
                 setPage(1);
@@ -273,32 +255,34 @@ export default function ApmIntegrationInstancesPage() {
             <Input
               allowClear
               className="w-36"
-              aria-label="按环境筛选"
+              aria-label={t('apm.instances.filterEnvironment', '按环境筛选')}
               value={environment}
-              placeholder="全部环境（输入精确值）"
+              placeholder={t('apm.instances.environmentPlaceholder', '全部环境（输入精确值）')}
               onChange={(event) => {
                 setEnvironment(event.target.value);
                 setPage(1);
               }}
             />
-            <Select<CatalogStatus>
+            <Select<InstanceStatus>
               className="w-40"
               allowClear
-              aria-label="按实例状态筛选"
-              placeholder="全部状态"
+              aria-label={t('apm.instances.filterStatus', '按实例状态筛选')}
+              placeholder={t('apm.common.allStatuses', '全部状态')}
               value={status}
               onChange={(value) => {
                 setStatus(value);
                 setPage(1);
               }}
               options={[
-                { value: 'active', label: '活跃' },
-                { value: 'silent', label: '静默' },
-                { value: 'archived', label: '已归档' },
+                { value: 'active', label: t('apm.status.active', '活跃') },
+                { value: 'silent', label: t('apm.status.silent', '静默') },
               ]}
             />
+            <Typography.Text type="secondary" className="ml-auto text-xs tabular-nums">
+              {t('apm.instances.connectedCount', '已接入 {count} 个实例', { count: total })}
+            </Typography.Text>
             <Radio.Group
-              aria-label="接入上报时间范围"
+              aria-label={t('apm.instances.reportRange', '接入上报时间范围')}
               buttonStyle="solid"
               size="small"
               value={timeRange}
@@ -308,47 +292,55 @@ export default function ApmIntegrationInstancesPage() {
               }}
             >
               {([...Object.keys(RANGE_UNITS), 'all'] as TimeRange[]).map((value) => (
-                <Radio.Button key={value} value={value}>{value === 'all' ? '全部' : value}</Radio.Button>
+                <Radio.Button key={value} value={value}>{value === 'all' ? t('apm.instances.all', '全部') : value}</Radio.Button>
               ))}
             </Radio.Group>
-            <Typography.Text type="secondary" className="ml-auto text-xs tabular-nums">
-              已接入 {total} 个实例
-            </Typography.Text>
-            <Typography.Text type="secondary" className="basis-full text-xs">
-              {t('apm.instances.defaultActiveHelp', '默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。')}
-            </Typography.Text>
           </FilterToolbar>
-        </ApmSurface>
-        <ApmSurface padding="none" className="overflow-hidden">
           {state === 'ready' ? (
-            <Table
+            <ApmDataTable
               rowKey="id"
               columns={columns}
               dataSource={instances}
+              headerAlignment="column"
               pagination={{
                 current: page,
                 pageSize,
                 total,
                 pageSizeOptions: [10, 20, 50, 100],
                 showSizeChanger: true,
-                showTotal: (total) => `共 ${total} 条`,
-              }}
-              onChange={(pagination) => {
-                setPage(pagination.current ?? 1);
-                setPageSize(pagination.pageSize ?? 20);
+                onChange: (nextPage, nextPageSize) => {
+                  setPage(nextPageSize === pageSize ? nextPage : 1);
+                  setPageSize(nextPageSize);
+                },
               }}
             />
+          ) : state === 'empty' ? (
+            <CatalogState
+              kind="empty"
+              description={t('apm.instances.empty', '当前条件下没有接入实例。')}
+              action={<Button onClick={() => {
+                setKeyword('');
+                setAppliedKeyword('');
+                setApplicationId('all');
+                setEnvironment('');
+                setStatus('active');
+                setTimeRange('1d');
+                setPage(1);
+              }}>{t('apm.common.clearFilters', '清除筛选')}</Button>}
+            />
           ) : (
-            <CatalogState kind={state} />
+            <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)} />
           )}
-        </ApmSurface>
-      </div>
+        </div>
+      </ApmSurface>
       <OrganizationAssignmentModal
         open={Boolean(organizationInstance)}
-        title={`调整实例组织${organizationInstance ? `：${organizationInstance.instance_id}` : ''}`}
+        title={organizationInstance
+          ? t('apm.instances.adjustOrgNamed', '调整实例组织：{id}', { id: organizationInstance.instance_id })
+          : t('apm.instances.adjustOrg', '调整实例组织')}
         organizationIds={organizationInstance?.organization_ids ?? []}
         submitting={organizationSubmitting}
-        description="保存后此实例转为自定义组织，不再自动继承应用后续的组织调整。"
+        description={t('apm.instances.orgHint', '保存后此实例转为自定义组织，不再自动继承应用后续的组织调整。')}
         onCancel={() => setOrganizationInstance(null)}
         onSubmit={submitOrganizations}
       />

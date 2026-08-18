@@ -102,14 +102,6 @@ const sumSeries = (arrs: ChartData[][]): ChartData[] => {
   return Array.from(byTime.values()).sort((a, b) => Number(a.time) - Number(b.time));
 };
 
-// 字节类指标(内存)需禁用服务端单位自动换算:服务端会把 bytes 缩放成 GiB,
-// 前端 bytesDisplay 会再格式化一次,不禁用则双重换算导致数值小约 1e9 倍。
-const RAW_VALUE_METRICS = new Set([
-  'prometheus_remote_write_container_memory_working_set_bytes',
-  'prometheus_remote_write_kube_node_status_allocatable',
-  'prometheus_remote_write_kube_pod_container_resource_requests'
-]);
-
 export default function K3sClusterDashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -209,7 +201,8 @@ export default function K3sClusterDashboardPage() {
     runWithConcurrency(keys, QUERY_CONCURRENCY, async (key) => {
       const q = QUERIES[key];
       try {
-        const result = await getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, tv, RAW_VALUE_METRICS, undefined, currentInstanceInterval));
+        // 前端按声明单位(bytes/counts/percent)格式化，必须关掉服务端自动换算。
+        const result = await getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, tv, undefined, false, currentInstanceInterval));
         return [key, result] as const;
       } catch {
         return [key, null] as const;

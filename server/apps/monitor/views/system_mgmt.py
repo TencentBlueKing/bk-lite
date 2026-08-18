@@ -35,6 +35,15 @@ class SystemMgmtView(ViewSet):
     def get_user_all(self, request):
         # 通知人列表必须收口到调用方授权范围，避免把全平台用户暴露给任意登录用户（#3140）
         actor_context = _build_actor_context(request)
+        organization_ids = request.GET.get("organization_ids")
+        if organization_ids not in (None, ""):
+            # 策略编辑：按策略所属组织（∩ 可分配组织）渲染通知人
+            data = SystemMgmtUtils.get_users_by_organizations(
+                actor_context=actor_context,
+                organization_ids=organization_ids,
+            )
+            return WebUtils.response_success(data)
+
         data = SystemMgmtUtils.get_user_all(
             actor_context=actor_context,
             include_children=actor_context["include_children"],

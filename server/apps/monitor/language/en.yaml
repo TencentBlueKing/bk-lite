@@ -8,7 +8,9 @@ monitor_object_type:
   Container Management: Container Management
   K8S: K8S
   VMWare: VMware
+  Cloud: Cloud
   Tencent Cloud: Tencent Cloud
+  Aliyun Cloud: Aliyun Cloud
   Other: Other
 
 # Fallback display name when plugin i18n is missing: show TCP, not TCPPort

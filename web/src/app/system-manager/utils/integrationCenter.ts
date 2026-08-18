@@ -42,6 +42,41 @@ export function canEnterCreateInfoStep(provider: Pick<ProviderManifest, 'key'> |
   return Boolean(provider);
 }
 
+export const CAPABILITY_TAG_GAP = 4;
+
+/** 按容器宽度计算一行能放下几个标签；放不下时预留 +N，并至少保留 1 个可截断标签。 */
+export function computeVisibleCapabilityTagCount(
+  tagWidths: number[],
+  containerWidth: number,
+  overflowBadgeWidth: number,
+  gap = CAPABILITY_TAG_GAP,
+): number {
+  if (tagWidths.length === 0 || containerWidth <= 0) {
+    return 0;
+  }
+
+  let allUsed = 0;
+  for (let i = 0; i < tagWidths.length; i += 1) {
+    allUsed += tagWidths[i] + (i > 0 ? gap : 0);
+  }
+  if (allUsed <= containerWidth) {
+    return tagWidths.length;
+  }
+
+  const reserve = Math.max(overflowBadgeWidth, 0) + gap;
+  let used = 0;
+  let count = 0;
+  for (let i = 0; i < tagWidths.length; i += 1) {
+    const next = used + (count > 0 ? gap : 0) + tagWidths[i];
+    if (next + reserve > containerWidth) {
+      break;
+    }
+    used = next;
+    count += 1;
+  }
+  return Math.max(count, 1);
+}
+
 export function getCreateModalFooterMode(input: {
   step: 'provider' | 'basic_info';
   hasSelection: boolean;
@@ -91,19 +126,63 @@ export function filterIntegrationInstancesByName<T extends { name: string }>(
   return instances.filter((item) => item.name.toLowerCase().includes(normalizedKeyword));
 }
 
-export function filterIntegrationProvidersByQuery<T extends { name: string; description: string }>(
+export interface IntegrationProviderQueryItem {
+  name: string;
+  description: string;
+  raw?: Pick<ProviderManifest, 'capabilities'>;
+}
+
+export function collectIntegrationCapabilityFilterOptions(
+  providers: Array<{ capabilities?: Array<{ key: string }> }>,
+  t: (key: string, fallback?: string) => string,
+): Array<{ label: string; value: string }> {
+  const present = new Set<string>();
+  providers.forEach((provider) => {
+    (provider.capabilities || []).forEach((capability) => {
+      if (capability.key) {
+        present.add(capability.key);
+      }
+    });
+  });
+
+  const ordered = INTEGRATION_DETAIL_TAB_ORDER.filter((key) => key !== 'base' && present.has(key));
+  const extras = [...present]
+    .filter((key) => !ordered.includes(key as (typeof ordered)[number]))
+    .sort();
+
+  return [...ordered, ...extras].map((key) => ({
+    value: key,
+    label: getIntegrationCapabilityLabel(key, t),
+  }));
+}
+
+function getProviderQueryCapabilityKeys(item: IntegrationProviderQueryItem): string[] {
+  return (item.raw?.capabilities || []).map((capability) => capability.key).filter(Boolean);
+}
+
+export function filterIntegrationProvidersByQuery<T extends IntegrationProviderQueryItem>(
   providers: T[],
-  keyword: string
+  keyword: string,
+  capabilityKeys: string[] = [],
+  t?: (key: string, fallback?: string) => string,
 ) {
-  const normalizedKeyword = keyword.trim().toLowerCase();
-  if (!normalizedKeyword) {
-    return providers;
-  }
+  const tokens = keyword.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const requiredKeys = capabilityKeys.filter(Boolean);
 
   return providers.filter((item) => {
-    const name = item.name.toLowerCase();
-    const description = (item.description || '').toLowerCase();
-    return name.includes(normalizedKeyword) || description.includes(normalizedKeyword);
+    const itemKeys = getProviderQueryCapabilityKeys(item);
+    if (requiredKeys.length > 0 && !requiredKeys.every((key) => itemKeys.includes(key))) {
+      return false;
+    }
+    if (!tokens.length) {
+      return true;
+    }
+
+    const capabilityLabels = itemKeys.map((key) => getIntegrationCapabilityLabel(key, t).toLowerCase());
+    const haystack = [item.name, item.description, ...itemKeys, ...capabilityLabels]
+      .join('\n')
+      .toLowerCase();
+    return tokens.every((token) => haystack.includes(token));
   });
 }
 
@@ -190,6 +269,14 @@ export function getIntegrationProviderDisplayName(
   t: (key: string, fallback?: string) => string,
 ): string {
   return t(`system.integrationCenter.provider.${providerKey}`, providerKey);
+}
+
+export function getIntegrationProviderDescription(
+  providerKey: string,
+  t: (key: string, fallback?: string) => string,
+  fallback = '',
+): string {
+  return t(`system.integrationCenter.providerDesc.${providerKey}`, fallback);
 }
 
 export function buildIntegrationInstanceCardItem(

@@ -3,9 +3,11 @@
 import nats_client
 from apps.core.logger import job_logger as logger
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TriggerSource
-from apps.job_mgmt.models import DistributionFile, JobExecution, Script, Target
+from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target
 from apps.job_mgmt.services.ansible_callback_service import handle_ansible_task_callback
+from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.celery_dispatch import dispatch_celery_task
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_cancellation_service import (
@@ -82,6 +84,100 @@ def job_script_detail(data: dict):
             "content": script.content,
             "params": script.params,
             "timeout": script.timeout,
+        },
+    }
+
+
+_MAX_JOB_LIST_PAGE_SIZE = 100
+
+
+def _masked_params(params):
+    if not isinstance(params, list):
+        return []
+    return ParamCrypto.mask_encrypted_defaults(params)
+
+
+def _parse_job_list_page(data: dict):
+    try:
+        page = int(data.get("page") or 1)
+        page_size = int(data.get("page_size") or 20)
+    except (TypeError, ValueError):
+        return None, "page/page_size 参数非法"
+    if page < 1:
+        return None, "page 必须大于 0"
+    if page_size < 1 or page_size > _MAX_JOB_LIST_PAGE_SIZE:
+        return None, f"page_size 范围为 1-{_MAX_JOB_LIST_PAGE_SIZE}"
+    return (page, page_size), None
+
+
+def _team_owned_queryset(model, authorized_team_ids):
+    queryset = model.objects.all()
+    return queryset.filter(build_json_membership_query(queryset, "team", list(authorized_team_ids)))
+
+
+def _paginate_queryset(queryset, page, page_size):
+    total = queryset.count()
+    start = (page - 1) * page_size
+    return total, list(queryset.order_by("-updated_at", "-id")[start : start + page_size])
+
+
+def _serialize_script_job(script):
+    return {
+        "id": script.id,
+        "job_type": "script",
+        "name": script.name,
+        "description": script.description,
+        "script_type": script.script_type,
+        "params": _masked_params(script.params),
+        "timeout": script.timeout,
+        "is_built_in": script.is_built_in,
+    }
+
+
+def _serialize_playbook_job(playbook):
+    return {
+        "id": playbook.id,
+        "job_type": "playbook",
+        "name": playbook.name,
+        "description": playbook.description,
+        "version": playbook.version,
+        "params": _masked_params(playbook.params),
+    }
+
+
+@nats_client.register
+def job_list(data: dict):
+    """返回当前团队可执行的作业模板列表（脚本库 + Playbook），含参数定义、不含脚本/包内容。
+
+    供第三方 App 在执行前获取作业背景信息。
+    Args:
+        data: {"team": [...], "name": 可选模糊搜索, "page": 默认1, "page_size": 默认20，最大100}
+    Returns:
+        {"result": True, "data": {"scripts": {"count", "items"}, "playbooks": {"count", "items"}}}
+    """
+    authorized_team_ids = normalize_team((data or {}).get("team"))
+    if not authorized_team_ids:
+        return {"result": False, "message": "team 不能为空"}
+
+    page_info, error = _parse_job_list_page(data or {})
+    if error:
+        return {"result": False, "message": error}
+    page, page_size = page_info
+
+    name = (data or {}).get("name") or ""
+    scripts = _team_owned_queryset(Script, authorized_team_ids)
+    playbooks = _team_owned_queryset(Playbook, authorized_team_ids)
+    if name:
+        scripts = scripts.filter(name__icontains=name)
+        playbooks = playbooks.filter(name__icontains=name)
+
+    script_count, script_rows = _paginate_queryset(scripts, page, page_size)
+    playbook_count, playbook_rows = _paginate_queryset(playbooks, page, page_size)
+    return {
+        "result": True,
+        "data": {
+            "scripts": {"count": script_count, "items": [_serialize_script_job(item) for item in script_rows]},
+            "playbooks": {"count": playbook_count, "items": [_serialize_playbook_job(item) for item in playbook_rows]},
         },
     }
 

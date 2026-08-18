@@ -31,7 +31,6 @@ import {
   writeMobileViewSnapshot,
 } from '@/navigation/mobile-view-cache';
 import { shouldShowListPagination } from '@/utils/listPagination';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/monitor/monitor.module.css';
 
@@ -54,9 +53,9 @@ interface MonitorInstancesPanelProps {
 
 export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstancesPanelProps) {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { userInfo, organizationScope } = useAuth();
   const router = useRouter();
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
+  const cacheScope = organizationScope;
   const cacheView = 'monitor-instances-panel';
   const initialSnapshot = useRef(readMobileViewSnapshot<MonitorInstancesViewState>(cacheScope, cacheView));
   const [objects, setObjects] = useState<MonitorObject[]>(initialSnapshot.current?.data.objects || []);

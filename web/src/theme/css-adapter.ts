@@ -2,6 +2,7 @@ import type { ResolvedTheme, SemanticColorTokens, ThemeMode } from './contract';
 
 const cssVariableMap = {
   interactionPrimary: '--theme-color-interaction-primary',
+  interactionPrimaryForeground: '--theme-color-interaction-primary-foreground',
   interactionPrimarySoft: '--theme-color-interaction-primary-soft',
   interactionPrimaryActiveBackground: '--theme-color-interaction-primary-active-bg',
   interactionPrimaryBackground: '--theme-color-interaction-primary-bg',
@@ -75,10 +76,14 @@ const cssVariableMap = {
   chartError: '--theme-color-chart-error',
   chartGapFill: '--theme-color-chart-gap-fill',
   chartGapBoundary: '--theme-color-chart-gap-boundary',
+  codeBlockBackground: '--theme-color-code-block-background',
+  codeBlockText: '--theme-color-code-block-text',
+  codeBlockBorder: '--theme-color-code-block-border',
 } satisfies Record<keyof SemanticColorTokens, `--${string}`>;
 
 const legacyVariableMap: Record<string, keyof SemanticColorTokens> = {
   '--color-primary': 'interactionPrimary',
+  '--color-primary-foreground': 'interactionPrimaryForeground',
   '--color-primary-bg-active': 'interactionPrimarySoft',
   '--color-secondary': 'surfacePage',
   '--color-text-1': 'textPrimary',
@@ -137,6 +142,9 @@ const legacyVariableMap: Record<string, keyof SemanticColorTokens> = {
   '--color-portal-preview-icon-bg': 'portalPreviewIconBackground',
   '--color-chart-gap-fill': 'chartGapFill',
   '--color-chart-gap-boundary': 'chartGapBoundary',
+  '--color-code-block-bg': 'codeBlockBackground',
+  '--color-code-block-text': 'codeBlockText',
+  '--color-code-block-border': 'codeBlockBorder',
 };
 
 const declarationsFor = (tokens: SemanticColorTokens) => {

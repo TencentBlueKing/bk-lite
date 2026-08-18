@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Empty, Spin } from 'antd';
+import { Spin } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 import useChartColors from '../docker/useChartColors';
 import { createSoftLineArea, createVerticalBarGradient } from '../chartStyle';
@@ -149,11 +150,7 @@ const KafkaTrend: React.FC<KafkaTrendProps> = ({ rawData, loading = false }) => 
   }
 
   if (!option) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   return <ReactEcharts option={option} style={{ height: '100%', width: '100%' }} />;

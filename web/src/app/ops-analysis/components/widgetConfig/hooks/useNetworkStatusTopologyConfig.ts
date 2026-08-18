@@ -6,6 +6,7 @@ import {
   filterNetworkTopologyModelOptions,
   getNetworkTopologyModelIds,
 } from '@/app/ops-analysis/utils/networkTopologyModels';
+import { isValidCmdbInstanceUuid } from '@/app/ops-analysis/utils/cmdbInstanceUuid';
 
 const NETWORK_INSTANCE_PAGE_SIZE = 100;
 const SELECT_SCROLL_LOAD_OFFSET = 24;
@@ -31,15 +32,20 @@ export const mergeNetworkSelectOptions = (
 };
 
 export const mapNetworkInstanceOptions = (
-  instances: any[],
-): NetworkSelectOption[] =>
-  (instances || []).map((instance: any) => {
-    const instanceId = instance._id || instance.id;
-    return {
-      label: String(instance.inst_name || instance.name || instanceId),
-      value: String(instanceId),
-    };
+  instances: unknown[],
+): NetworkSelectOption[] => {
+  return instances.flatMap((instance) => {
+    if (!instance || typeof instance !== 'object') return [];
+
+    const record = instance as Record<string, unknown>;
+    if (!isValidCmdbInstanceUuid(record.inst_uuid)) return [];
+
+    return [{
+      label: String(record.inst_name || record.name || record.inst_uuid),
+      value: record.inst_uuid,
+    }];
   });
+};
 
 export const useNetworkStatusTopologyConfig = ({
   open,
@@ -103,7 +109,7 @@ export const useNetworkStatusTopologyConfig = ({
       cancelled = true;
     };
     // API hooks return fresh function references; this load is driven by panel/component state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [enabled, modelOptions.length, open]);
 
   const fetchNetworkInstances = async ({
@@ -165,7 +171,7 @@ export const useNetworkStatusTopologyConfig = ({
     resetInstanceOptions();
     void fetchNetworkInstances({ page: 1, keyword: '', append: false });
     // API hooks return fresh function references; this load is driven by model/panel state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [
     enabled,
     open,
@@ -210,7 +216,7 @@ export const useNetworkStatusTopologyConfig = ({
   };
 
   const handleModelChange = () => {
-    form.setFieldValue(['networkStatusTopology', 'instId'], undefined);
+    form.setFieldValue(['networkStatusTopology', 'instUuid'], undefined);
     resetInstanceOptions();
   };
 

@@ -8,6 +8,12 @@ import os
 import requests
 from typing import Optional, Any
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.utils.i18n import (
+    WEBHOOK_CONNECTION_FAILED,
+    WEBHOOK_REQUEST_FAILED,
+    WEBHOOK_SERVER_URL_NOT_CONFIGURED,
+    WEBHOOK_TIMEOUT,
+)
 
 # 敏感字段列表，日志输出时会被脱敏
 # _SENSITIVE_KEYS = frozenset(
@@ -140,7 +146,7 @@ class WebhookClient:
             tuple: (is_valid, error_message)
         """
         if not os.getenv("WEBHOOK_SERVER_URL"):
-            return False, "环境变量 WEBHOOK_SERVER_URL 未配置"
+            return False, WEBHOOK_SERVER_URL_NOT_CONFIGURED
         return True, ""
 
     @staticmethod
@@ -194,7 +200,7 @@ class WebhookClient:
         """
         url = WebhookClient.build_url(endpoint)
         if not url:
-            raise WebhookError("环境变量 WEBHOOK_SERVER_URL 未配置")
+            raise WebhookError(WEBHOOK_SERVER_URL_NOT_CONFIGURED)
 
         # logger.debug(
         #     f"请求 webhookd - URL: {url}, Payload: {_sanitize_payload(payload)}"
@@ -246,13 +252,13 @@ class WebhookClient:
 
         except requests.exceptions.Timeout:
             logger.error(f"请求 webhookd 超时({timeout}秒) - URL: {url}")
-            raise WebhookTimeoutError(f"请求 webhookd 服务超时，请检查服务是否正常运行")
+            raise WebhookTimeoutError(WEBHOOK_TIMEOUT)
         except requests.exceptions.ConnectionError as e:
             logger.error(f"无法连接到 webhookd - URL: {url}, Error: {e}")
-            raise WebhookConnectionError(f"无法连接到 webhookd 服务: {e}")
+            raise WebhookConnectionError(WEBHOOK_CONNECTION_FAILED)
         except requests.exceptions.RequestException as e:
             logger.error(f"请求 webhookd 失败 - URL: {url}, Error: {e}", exc_info=True)
-            raise WebhookError(f"请求 webhookd 失败: {e}")
+            raise WebhookError(WEBHOOK_REQUEST_FAILED)
 
     @staticmethod
     def serve(
@@ -263,6 +269,7 @@ class WebhookClient:
         train_image: Optional[str] = None,
         device: Optional[str] = None,
         timeseries_predict_timeout_seconds: Optional[int] = None,
+        max_recursive_feature_engineering_work: Optional[int] = None,
     ) -> dict:
         """
         启动 serving 服务
@@ -275,6 +282,7 @@ class WebhookClient:
             train_image: 训练镜像名称，为 None 时由 webhookd 使用默认镜像
             device: 设备类型 ("cpu", "gpu", "auto")
             timeseries_predict_timeout_seconds: 时序预测服务预算，为 None 时不注入
+            max_recursive_feature_engineering_work: 递归特征工程组合工作量上限，为 None 时不注入
 
         Returns:
             dict: 容器状态信息，格式: {"status": "success", "id": "...", "state": "running", "port": "3042", "detail": "Up"}
@@ -299,6 +307,10 @@ class WebhookClient:
             if not 1 <= timeseries_predict_timeout_seconds <= 290:
                 raise ValueError("timeseries_predict_timeout_seconds must be between 1 and 290")
             payload["timeseries_predict_timeout_seconds"] = timeseries_predict_timeout_seconds
+        if max_recursive_feature_engineering_work is not None:
+            if max_recursive_feature_engineering_work <= 0:
+                raise ValueError("max_recursive_feature_engineering_work must be a positive integer")
+            payload["max_recursive_feature_engineering_work"] = max_recursive_feature_engineering_work
 
         request_timeout = 30
         if WebhookClient.get_runtime() == "docker":

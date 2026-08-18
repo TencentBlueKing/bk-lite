@@ -80,6 +80,13 @@ export const SCREEN_WIDGET_DEFINITIONS: ScreenWidgetDefinition[] = [
     defaultHeight: 360,
   },
   {
+    chartType: 'cardList',
+    titleKey: 'opsAnalysis.screen.widgets.cardList',
+    descriptionKey: 'opsAnalysis.screen.widgetDescriptions.cardList',
+    defaultWidth: 520,
+    defaultHeight: 360,
+  },
+  {
     chartType: 'radar',
     titleKey: 'opsAnalysis.screen.widgets.radar',
     descriptionKey: 'opsAnalysis.screen.widgetDescriptions.radar',

@@ -128,161 +128,89 @@ const useTelegrafMap = (): Record<string, Record<string, any>> => {
     () => ({
       1: {
         tagColor: 'default',
-        color: '#b2b5bd',
+        color: 'var(--color-text-3)',
         text: t('node-manager.cloudregion.node.unknown'),
         engText: 'Unknown',
         icon: (
-          <div
-            className="w-6 h-6 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(178, 181, 189, 0.1)' }}
-          >
-            <ExclamationCircleOutlined
-              style={{
-                color: '#b2b5bd',
-                fontWeight: 'bold',
-                fontSize: '12px'
-              }}
-            />
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--color-text-3)_10%,transparent)]">
+            <ExclamationCircleOutlined className="text-[12px] font-bold text-[var(--color-text-3)]" />
           </div>
         )
       },
       0: {
         tagColor: 'success',
-        color: '#52c41a',
+        color: 'var(--color-success)',
         text: t('node-manager.cloudregion.node.normal'),
         engText: 'Running',
         icon: (
-          <div
-            className="w-6 h-6 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(82, 196, 26, 0.1)' }}
-          >
-            <CheckCircleOutlined
-              style={{
-                color: '#52c41a',
-                fontWeight: 'bold',
-                fontSize: '12px'
-              }}
-            />
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--color-success)_10%,transparent)]">
+            <CheckCircleOutlined className="text-[12px] font-bold text-[var(--color-success)]" />
           </div>
         )
       },
       2: {
         tagColor: 'error',
-        color: '#ff4d4f',
+        color: 'var(--color-fail)',
         text: t('node-manager.cloudregion.node.error'),
         engText: 'Failed',
         icon: (
-          <div
-            className="w-6 h-6 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(255, 77, 79, 0.1)' }}
-          >
-            <CloseCircleOutlined
-              style={{
-                color: '#ff4d4f',
-                fontWeight: 'bold',
-                fontSize: '12px'
-              }}
-            />
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--color-fail)_10%,transparent)]">
+            <CloseCircleOutlined className="text-[12px] font-bold text-[var(--color-fail)]" />
           </div>
         )
       },
       3: {
         tagColor: 'warning',
-        color: '#fa8c16',
+        color: 'var(--color-warning)',
         text: t('node-manager.cloudregion.node.stopped'),
         engText: 'Stopped',
         icon: (
-          <div
-            className="w-6 h-6 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(250, 140, 22, 0.1)' }}
-          >
-            <PauseCircleOutlined
-              style={{
-                color: '#fa8c16',
-                fontWeight: 'bold',
-                fontSize: '12px'
-              }}
-            />
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--color-warning)_10%,transparent)]">
+            <PauseCircleOutlined className="text-[12px] font-bold text-[var(--color-warning)]" />
           </div>
         )
       },
       4: {
         tagColor: '',
-        color: '#000000',
+        color: 'var(--color-text-1)',
         text: t('node-manager.cloudregion.node.notStarted'),
         engText: 'Stopped',
         icon: (
-          <div
-            className="w-6 h-6 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)' }}
-          >
-            <StopOutlined
-              style={{
-                color: '#000000',
-                fontWeight: 'bold',
-                fontSize: '12px'
-              }}
-            />
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--color-text-1)_10%,transparent)]">
+            <StopOutlined className="text-[12px] font-bold text-[var(--color-text-1)]" />
           </div>
         )
       },
       10: {
         tagColor: 'processing',
-        color: '#1677ff',
+        color: 'var(--color-primary)',
         text: t('node-manager.cloudregion.node.installing'),
         engText: 'Installing',
         icon: (
-          <div
-            className="w-6 h-6 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(22, 119, 255, 0.1)' }}
-          >
-            <LoadingOutlined
-              style={{
-                color: '#1677ff',
-                fontWeight: 'bold',
-                fontSize: '12px'
-              }}
-            />
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)]">
+            <LoadingOutlined className="text-[12px] font-bold text-[var(--color-primary)]" />
           </div>
         )
       },
       11: {
         tagColor: '',
-        color: '#000000',
+        color: 'var(--color-text-1)',
         text: t('node-manager.cloudregion.node.notStarted'),
         engText: 'Installed',
         icon: (
-          <div
-            className="w-6 h-6 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)' }}
-          >
-            <StopOutlined
-              style={{
-                color: '#000000',
-                fontWeight: 'bold',
-                fontSize: '12px'
-              }}
-            />
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--color-text-1)_10%,transparent)]">
+            <StopOutlined className="text-[12px] font-bold text-[var(--color-text-1)]" />
           </div>
         )
       },
       12: {
         tagColor: 'warning',
-        color: '#faad14',
+        color: 'var(--color-warning)',
         text: t('node-manager.cloudregion.node.failInstall'),
         engText: 'Installation failed',
         icon: (
-          <div
-            className="w-6 h-6 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(250, 173, 20, 0.1)' }}
-          >
-            <WarningOutlined
-              style={{
-                color: '#faad14',
-                fontWeight: 'bold',
-                fontSize: '12px'
-              }}
-            />
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--color-warning)_10%,transparent)]">
+            <WarningOutlined className="text-[12px] font-bold text-[var(--color-warning)]" />
           </div>
         )
       }

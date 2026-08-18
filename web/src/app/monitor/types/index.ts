@@ -146,6 +146,7 @@ export interface GapInterval {
   start: number;
   end: number;
   duration?: number;
+  align?: 'exact';
   series?: Array<{
     metric?: Record<string, string>;
     missing_points?: number;
@@ -219,6 +220,9 @@ export interface ObjectItem {
   template_id?: string;
   template_type?: string;
   is_custom?: boolean;
+  is_visible?: boolean;
+  parent?: number | null;
+  level?: 'base' | 'derivative';
   type: string;
   plugin_name?: string;
   plugin_id?: number;

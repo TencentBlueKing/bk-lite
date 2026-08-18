@@ -6,6 +6,7 @@ import { getEnumValue } from '@/app/monitor/utils/common';
 import { MetricItem, TableDataItem } from '@/app/monitor/types';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
+import { useTranslation } from '@/utils/i18n';
 
 interface CustomToolTipProps extends Omit<TooltipProps<any, string>, 'unit'> {
   unit?: string;
@@ -33,6 +34,7 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
 }) => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const { findUnitNameById } = useUnitTransform();
+  const { t } = useTranslation();
 
   const formatDetailText = useCallback(
     (detail: { label?: string; value?: string }) => {
@@ -63,10 +65,22 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
   );
 
   if (active && payload?.length && visible) {
+    const isNoDataSnapshot = payload.some(
+      (item) => item.payload?.noDataSnapshot
+    );
     // 对payload进行排序
-    const sortedPayload = [...payload].sort((a, b) => {
+    const sortedPayload = [...payload]
+      .filter(
+        (item) =>
+          item.value != null && Number.isFinite(Number(item.value))
+      )
+      .sort((a, b) => {
       return Number(b.value) - Number(a.value);
     });
+
+    if (!sortedPayload.length && !isNoDataSnapshot) {
+      return null;
+    }
 
     return (
       <div
@@ -91,6 +105,26 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
         <p className="label font-[600]">{`${convertToLocalizedTime(
           new Date(label * 1000) + ''
         )}`}</p>
+        {isNoDataSnapshot && !sortedPayload.length ? (
+          <div
+            className="mt-[4px] text-[13px]"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `${dark ? '16px' : '10px'} minmax(0, 1fr)`,
+              alignItems: 'center',
+              columnGap: dark ? 8 : 6
+            }}
+          >
+            <span
+              style={{
+                width: dark ? '16px' : '10px',
+                height: 0,
+                borderTop: '2px dashed var(--color-chart-gap-boundary)'
+              }}
+            />
+            <span>{t('monitor.events.alertTypeNoData')}</span>
+          </div>
+        ) : null}
         {sortedPayload.map((item: any, index: number) => {
           const dimensionText = (item.payload.details?.[item.dataKey] || [])
             .map((detail: any) => formatDetailText(detail))
@@ -114,7 +148,7 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
                   style={{
                     width: '16px',
                     height: 0,
-                    borderTop: `2px solid ${item.color}`
+                    borderTop: `${item.strokeDasharray ? '2px dashed' : '2px solid'} ${item.color}`
                   }}
                 />
               ) : (

@@ -92,12 +92,6 @@ def k8s_graph(monkeypatch):
     def test_name(row):
         return str(row.get("name") or row.get("inst_name") or "")
 
-    def test_workload_type(row):
-        value = row.get("workload_type")
-        if isinstance(value, list):
-            value = value[0] if value else ""
-        return str(value or "").casefold()
-
     def filter_rows(inst_ids, filters=None, permission_map=None):
         rows = [instances[int(inst_id)] for inst_id in inst_ids if int(inst_id) in instances]
         if permission_map and "visible_ids" in permission_map:
@@ -106,10 +100,10 @@ def k8s_graph(monkeypatch):
         for query_filter in filters or []:
             if query_filter["type"] == "str*":
                 rows = [row for row in rows if query_filter["value"].casefold() in test_name(row).casefold()]
-            elif query_filter["type"] == "list_any[]":
-                rows = [row for row in rows if test_workload_type(row) in query_filter["value"]]
-            elif query_filter["type"] == "list_none[]":
-                rows = [row for row in rows if test_workload_type(row) not in query_filter["value"]]
+            elif query_filter["type"] in {"list_any[]", "list_none[]"}:
+                raise AssertionError(
+                    f"K8S overview 不得对 workload_type 使用图侧 list 过滤: {query_filter}"
+                )
         return rows
 
     def query_page(
@@ -186,6 +180,20 @@ def test_workload_type_list_value_is_classified_as_business_workload(k8s_graph):
 
     assert [item["name"] for item in deployment["items"]] == ["api"]
     assert "api" not in [item["name"] for item in other["items"]]
+
+
+@pytest.mark.unit
+def test_workload_type_string_value_is_listed_without_graph_list_filter(k8s_graph):
+    """采集/脏数据可能把 enum 存成 string；视图必须在应用层分类，不能走 list_any[]。"""
+    k8s_graph[21]["workload_type"] = "job"
+
+    jobs = K8sResourceOverviewService.list_resources(1, "job")
+    overview = K8sResourceOverviewService.get_overview(1)
+
+    assert [item["name"] for item in jobs["items"]] == ["backup"]
+    assert jobs["items"][0]["workload_type"] == "job"
+    assert overview["summary"]["workload_count"] == 2
+    assert overview["summary"]["other_workload_count"] == 1
 
 
 @pytest.mark.unit

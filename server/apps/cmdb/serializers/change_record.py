@@ -9,6 +9,7 @@ class ChangeRecordSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "inst_id",
+            "inst_uuid",
             "model_id",
             "label",
             "type",

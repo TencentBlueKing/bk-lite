@@ -5,7 +5,6 @@ operation_analysis / alerts / stargazer 客户端的方法名 + 参数转发契�
 统一把 self.client 替换为记录器，断言转发的方法名与入参，不触达真实 NATS。
 """
 import pydantic.root_model  # noqa
-
 import pytest
 
 pytestmark = pytest.mark.unit
@@ -31,6 +30,7 @@ def _last(rec):
 
 # --------------------------- CMDB ---------------------------
 
+
 @pytest.fixture
 def cmdb(monkeypatch):
     monkeypatch.setenv("IS_LOCAL_RPC", "0")
@@ -54,52 +54,63 @@ def test_cmdb_get_module_list(cmdb):
 
 def test_cmdb_search_instances(cmdb):
     cmdb.search_instances(ip="1.1.1.1")
-    assert _last(cmdb.client) == ("run", "search_instances", (), {"ip": "1.1.1.1"})
+    assert _last(cmdb.client) == ("run", "search_instances", (), {"params": {"ip": "1.1.1.1"}})
 
 
 def test_cmdb_search_instances_batch(cmdb):
     cmdb.search_instances_batch(items=[1, 2])
-    assert _last(cmdb.client) == ("run", "search_instances_batch", (), {"items": [1, 2]})
+    assert _last(cmdb.client) == ("run", "search_instances_batch", (), {"params": {"items": [1, 2]}})
+
+
+def test_cmdb_search_instances_batch_preserves_prebuilt_params_envelope(cmdb):
+    params = {"protocol_version": "2", "model_id": "host", "inst_uuids": ["u1"], "organization_ids": [1]}
+    cmdb.search_instances_batch(params=params)
+    assert _last(cmdb.client) == ("run", "search_instances_batch", (), {"params": params})
 
 
 def test_cmdb_list_instances(cmdb):
     cmdb.list_instances(model_id="host", page=1)
-    assert _last(cmdb.client) == ("run", "list_instances", (), {"model_id": "host", "page": 1})
+    assert _last(cmdb.client) == ("run", "list_instances", (), {"params": {"model_id": "host", "page": 1}})
 
 
 def test_cmdb_search_model_attrs(cmdb):
     cmdb.search_model_attrs(model_id="host")
-    assert _last(cmdb.client) == ("run", "search_model_attrs", (), {"model_id": "host"})
+    assert _last(cmdb.client) == ("run", "search_model_attrs", (), {"params": {"model_id": "host"}})
 
 
 def test_cmdb_search_models(cmdb):
     cmdb.search_models(classification_id="biz")
-    assert _last(cmdb.client) == ("run", "search_models", (), {"classification_id": "biz"})
+    assert _last(cmdb.client) == ("run", "search_models", (), {"params": {"classification_id": "biz"}})
 
 
 def test_cmdb_search_classifications(cmdb):
     cmdb.search_classifications(include_hidden=False)
-    assert _last(cmdb.client) == ("run", "search_classifications", (), {"include_hidden": False})
+    assert _last(cmdb.client) == ("run", "search_classifications", (), {"params": {"include_hidden": False}})
 
 
 def test_cmdb_search_model_associations(cmdb):
     cmdb.search_model_associations(model_id="host")
-    assert _last(cmdb.client) == ("run", "search_model_associations", (), {"model_id": "host"})
+    assert _last(cmdb.client) == ("run", "search_model_associations", (), {"params": {"model_id": "host"}})
 
 
 def test_cmdb_search_instance_associations(cmdb):
     cmdb.search_instance_associations(model_id="host", inst_id=1)
-    assert _last(cmdb.client) == ("run", "search_instance_associations", (), {"model_id": "host", "inst_id": 1})
+    assert _last(cmdb.client) == ("run", "search_instance_associations", (), {"params": {"model_id": "host", "inst_id": 1}})
 
 
 def test_cmdb_create_instance_association(cmdb):
     cmdb.create_instance_association(src_inst_id=1, dst_inst_id=2)
-    assert _last(cmdb.client) == ("run", "create_instance_association", (), {"src_inst_id": 1, "dst_inst_id": 2})
+    assert _last(cmdb.client) == (
+        "run",
+        "create_instance_association",
+        (),
+        {"params": {"src_inst_id": 1, "dst_inst_id": 2}},
+    )
 
 
 def test_cmdb_delete_instance_association(cmdb):
     cmdb.delete_instance_association(asso_id=9)
-    assert _last(cmdb.client) == ("run", "delete_instance_association", (), {"asso_id": 9})
+    assert _last(cmdb.client) == ("run", "delete_instance_association", (), {"params": {"asso_id": 9}})
 
 
 def test_cmdb_sync_display_fields(cmdb):
@@ -137,6 +148,12 @@ def test_cmdb_ingest_from_source_wraps_flat_kwargs_as_params(cmdb):
     )
 
 
+def test_cmdb_create_manual_config_files(cmdb):
+    params = {"protocol_version": "2", "allowed_org_ids": [1], "items": [{"instance_uuid": "u1"}]}
+    cmdb.create_manual_config_files(params=params)
+    assert _last(cmdb.client) == ("run", "create_manual_config_files", (), {"params": params})
+
+
 def test_cmdb_local_client_appclient_path(monkeypatch):
     monkeypatch.setenv("IS_LOCAL_RPC", "0")
     from apps.rpc.cmdb import CMDB
@@ -165,6 +182,7 @@ def test_cmdb_env_forces_local(monkeypatch):
 
 
 # --------------------------- Log ---------------------------
+
 
 @pytest.fixture
 def log(monkeypatch):
@@ -270,6 +288,7 @@ def test_log_ana_query_alert_segments(log_ana):
 
 # --------------------------- MLOps ---------------------------
 
+
 @pytest.fixture
 def mlops(monkeypatch):
     monkeypatch.setenv("IS_LOCAL_RPC", "0")
@@ -299,6 +318,7 @@ def test_mlops_local_client_appclient_path(monkeypatch):
 
 
 # --------------------------- OpsPilot ---------------------------
+
 
 @pytest.fixture
 def opspilot(monkeypatch):
@@ -334,6 +354,7 @@ def test_opspilot_local_client_appclient_path(monkeypatch):
 
 
 # --------------------------- JobMgmt ---------------------------
+
 
 @pytest.fixture
 def job(monkeypatch):
@@ -374,6 +395,7 @@ def test_job_env_forces_local(monkeypatch):
 
 # --------------------------- ConsoleMgmt ---------------------------
 
+
 @pytest.fixture
 def console(monkeypatch):
     monkeypatch.setenv("IS_LOCAL_RPC", "0")
@@ -406,6 +428,7 @@ def test_console_remote_client_is_rpcclient():
 
 # --------------------------- OperationAnalysisRPC ---------------------------
 
+
 @pytest.fixture
 def op_ana():
     from apps.rpc.operation_analysis import OperationAnalysisRPC
@@ -435,6 +458,7 @@ def test_op_ana_construct_uses_rpcclient():
 
 # --------------------------- AlertOperationAnaRpc ---------------------------
 
+
 @pytest.fixture
 def alert_ana():
     from apps.rpc.alerts import AlertOperationAnaRpc
@@ -463,6 +487,7 @@ def test_alert_ana_uses_operation_analysis_rpc():
 
 
 # --------------------------- Stargazer ---------------------------
+
 
 @pytest.fixture
 def stargazer():

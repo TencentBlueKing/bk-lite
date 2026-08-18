@@ -478,7 +478,7 @@ const QuickExecPage = () => {
           // Confirm: show confirmation modal
           Modal.confirm({
             title: t('job.dangerousCommandWarning'),
-            icon: <ExclamationCircleOutlined style={{ color: '#faad14' }} />,
+            icon: <ExclamationCircleOutlined className="text-[var(--color-warning)]" />,
             content: (
               <div>
                 <p>{t('job.confirmCommandMessage')}</p>
@@ -523,27 +523,19 @@ const QuickExecPage = () => {
     <div className="w-full h-full overflow-auto p-0">
 
       <div
-        className="rounded-lg px-6 py-4 mb-4"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
+        className="rounded-lg px-6 py-4 mb-4 bg-[var(--color-bg-1)] border border-[var(--color-border-1)]"
       >
-        <h2 className="text-base font-medium m-0 mb-1" style={{ color: 'var(--color-text-1)' }}>
+        <h2 className="text-base font-medium m-0 mb-1 text-[var(--color-text-1)]">
           {t('job.quickExec')}
         </h2>
-        <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
+        <p className="text-sm m-0 text-[var(--color-text-3)]">
           {t('job.quickExecDesc')}
         </p>
       </div>
 
 
       <div
-        className="rounded-lg px-6 py-6"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
+        className="rounded-lg px-6 py-6 bg-[var(--color-bg-1)] border border-[var(--color-border-1)]"
       >
         <Form
           form={form}
@@ -644,7 +636,7 @@ const QuickExecPage = () => {
 
               {templateParams.length > 0 && (
                 <>
-                  <div className="text-sm font-medium mb-2" style={{ color: 'var(--color-text-2)' }}>
+                  <div className="text-sm font-medium mb-2 text-[var(--color-text-2)]">
                     {t('job.execParams')}
                   </div>
                   {templateParams.map((param) => (
@@ -710,7 +702,7 @@ const QuickExecPage = () => {
           <Form.Item label={t('job.timeout')} name="timeout">
             <Input className="w-full" />
           </Form.Item>
-          <p className="text-xs -mt-4 mb-6" style={{ color: 'var(--color-text-3)' }}>
+          <p className="text-xs -mt-4 mb-6 text-[var(--color-text-3)]">
             {t('job.timeoutHint')}
           </p>
 

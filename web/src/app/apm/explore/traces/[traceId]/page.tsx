@@ -15,34 +15,36 @@ import {
   Button,
   Col,
   Descriptions,
+  Grid,
   Input,
   Progress,
   Row,
   Segmented,
   Space,
-  Table,
   Tag,
   Typography,
 } from 'antd';
 import type { TableProps } from 'antd';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import { formatLatency } from '@/app/apm/components/metric-format';
 import type { ApmSpanDetail, ApmTraceDetail } from '@/app/apm/types';
 import { HandledRequestError } from '@/utils/request';
+import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready' | 'not-found';
 type ViewMode = 'waterfall' | 'list';
 
 const SERVICE_PALETTE = [
-  'var(--color-primary)',
-  'var(--color-success)',
-  'var(--theme-color-status-warning)',
-  'var(--color-fail)',
-  'color-mix(in srgb, var(--color-primary) 65%, white)',
-  'color-mix(in srgb, var(--color-success) 55%, black)',
-  'color-mix(in srgb, var(--theme-color-status-warning) 70%, black)',
+  'var(--theme-color-chart-primary)',
+  'var(--theme-color-chart-success)',
+  'var(--theme-color-chart-warning)',
+  'var(--theme-color-chart-error)',
+  'color-mix(in srgb, var(--theme-color-chart-primary) 65%, var(--theme-color-chart-success))',
+  'color-mix(in srgb, var(--theme-color-chart-success) 65%, var(--theme-color-chart-warning))',
+  'color-mix(in srgb, var(--theme-color-chart-warning) 65%, var(--theme-color-chart-error))',
   'color-mix(in srgb, var(--color-primary) 40%, var(--color-fail))',
 ] as const;
 
@@ -70,9 +72,9 @@ function KpiStat({
 }) {
   return (
     <div className="min-w-[96px]">
-      <Typography.Text type="secondary" className="!text-[11px]">{label}</Typography.Text>
+      <Typography.Text type="secondary" className="!text-xs">{label}</Typography.Text>
       <div
-        className={`mt-1 text-xl font-semibold tabular-nums leading-none ${
+        className={`mt-1 text-base font-semibold tabular-nums leading-6 ${
           danger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'
         }`}
       >
@@ -83,8 +85,10 @@ function KpiStat({
 }
 
 export default function ApmTraceDetailPage() {
+  const { t } = useTranslation();
   const params = useParams<{ traceId: string }>();
   const searchParams = useSearchParams();
+  const screens = Grid.useBreakpoint();
   const preferredSpanId = searchParams.get('span_id') ?? undefined;
   const { getTrace, isLoading: authLoading } = useApmApi();
   const [trace, setTrace] = useState<ApmTraceDetail>();
@@ -92,9 +96,11 @@ export default function ApmTraceDetailPage() {
   const [state, setState] = useState<PageState>('loading');
   const [viewMode, setViewMode] = useState<ViewMode>('waterfall');
   const [spanQuery, setSpanQuery] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (authLoading || !params.traceId) return;
+    setState('loading');
     getTrace(params.traceId)
       .then((value) => {
         setTrace(value);
@@ -112,7 +118,11 @@ export default function ApmTraceDetailPage() {
         if (error instanceof HandledRequestError && error.status === 404) setState('not-found');
         else setState(catalogErrorKind(error));
       });
-  }, [authLoading, getTrace, params.traceId, preferredSpanId]);
+  }, [authLoading, getTrace, params.traceId, preferredSpanId, refreshKey]);
+
+  useEffect(() => {
+    if (screens.md === false) setViewMode('list');
+  }, [screens.md]);
 
   const services = useMemo(
     () => (trace ? Array.from(new Set(trace.spans.map((span) => span.service_name))) : []),
@@ -173,30 +183,35 @@ export default function ApmTraceDetailPage() {
     }))
     : [];
   const attributeColumns: TableProps<{ key: string; value: string }>['columns'] = [
-    { title: '属性', dataIndex: 'key', width: '40%', render: (value) => <Typography.Text code>{value}</Typography.Text> },
-    { title: '值', dataIndex: 'value', render: (value) => <Typography.Text className="break-all">{value}</Typography.Text> },
+    { title: t('apm.trace.attribute', '属性'), dataIndex: 'key', width: '32%', render: (value) => <Typography.Text code>{value}</Typography.Text> },
+    { title: t('apm.trace.value', '值'), dataIndex: 'value', render: (value) => <Typography.Text className="break-all">{value}</Typography.Text> },
   ];
 
   return (
     <ApmRouteShell
-      title="Trace 详情"
-      description="查看 Span 瀑布、服务身份和经过服务端脱敏、截断的属性。"
+      title={t('apm.trace.title', 'Trace 详情')}
+      description={t('apm.trace.description', '查看 Span 瀑布、服务身份和经过服务端脱敏、截断的属性。')}
       dependency="telemetry"
     >
       {state === 'not-found' ? (
-        <ApmSurface padding="none"><CatalogState kind="empty" description="Trace 不存在、已超过保留期或当前组织无权访问。" /></ApmSurface>
+        <ApmSurface padding="none"><CatalogState kind="empty" description={t('apm.trace.notFound', 'Trace 不存在、已超过保留期或当前组织无权访问。')} /></ApmSurface>
       ) : state !== 'ready' ? (
-        <ApmSurface padding="none"><CatalogState kind={state} /></ApmSurface>
+        <ApmSurface padding="none">
+          <CatalogState
+            kind={state}
+            onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
+          />
+        </ApmSurface>
       ) : trace ? (
         <div className="flex w-full flex-col gap-4">
-          {trace.truncated ? <Alert type="warning" showIcon message="Trace 响应已达到安全上限，当前展示部分 Span 或属性。" /> : null}
+          {trace.truncated ? <Alert type="warning" showIcon message={t('apm.trace.truncated', 'Trace 响应已达到安全上限，当前展示部分 Span 或属性。')} /> : null}
 
           <ApmSurface padding="compact">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <Link href="/apm/explore/traces">
-                  <Button aria-label="返回调用链" icon={<ArrowLeftOutlined aria-hidden="true" />}>
-                    返回
+                  <Button aria-label={t('apm.trace.backAria', '返回调用链')} icon={<ArrowLeftOutlined aria-hidden="true" />}>
+                    {t('apm.trace.back', '返回')}
                   </Button>
                 </Link>
                 <div className="min-w-0">
@@ -208,13 +223,13 @@ export default function ApmTraceDetailPage() {
                     <Tag
                       bordered={false}
                       color={hasError ? 'error' : 'success'}
-                      icon={hasError ? <CloseCircleOutlined /> : <CheckCircleOutlined />}
+                      icon={hasError ? <CloseCircleOutlined aria-hidden="true" /> : <CheckCircleOutlined aria-hidden="true" />}
                     >
-                      {hasError ? '含错误' : '正常'}
+                      {hasError ? t('apm.trace.hasError', '含错误') : t('apm.status.ok', '正常')}
                     </Tag>
                   </Space>
                   <Typography.Text type="secondary" className="mt-1 block truncate text-xs">
-                    {trace.service_namespace || '未归类应用'} · {trace.service_name} · {trace.environment || '未设置环境'}
+                    {trace.service_namespace || t('apm.common.unsetNamespace', '未设置 namespace')} · {trace.service_name} · {trace.environment || t('apm.common.unsetEnvironment', '未设置环境')}
                   </Typography.Text>
                 </div>
               </div>
@@ -224,7 +239,7 @@ export default function ApmTraceDetailPage() {
                   icon={<FireFilled aria-hidden="true" />}
                   onClick={() => firstErrorId && setSelectedSpanId(firstErrorId)}
                 >
-                  跳到首个错误
+                  {t('apm.trace.jumpFirstError', '跳到首个错误')}
                 </Button>
               ) : null}
             </div>
@@ -232,10 +247,10 @@ export default function ApmTraceDetailPage() {
 
           <ApmSurface padding="compact">
             <div className="flex flex-wrap items-center gap-x-10 gap-y-4">
-              <KpiStat label="Span 数" value={trace.spans.length} />
-              <KpiStat label="错误 Span" value={errorSpans.length} danger={hasError} />
-              <KpiStat label="服务数" value={services.length} />
-              <KpiStat label="总耗时" value={formatLatency(totalDuration)} />
+              <KpiStat label={t('apm.trace.spanCount', 'Span 数')} value={trace.spans.length} />
+              <KpiStat label={t('apm.trace.errorSpans', '错误 Span')} value={errorSpans.length} danger={hasError} />
+              <KpiStat label={t('apm.trace.serviceCount', '服务数')} value={services.length} />
+              <KpiStat label={t('apm.trace.totalDuration', '总耗时')} value={formatLatency(totalDuration)} />
             </div>
           </ApmSurface>
 
@@ -243,12 +258,12 @@ export default function ApmTraceDetailPage() {
             <Col xs={24} xl={16}>
               <div className="mb-3">
                 <Segmented<ViewMode>
-                  aria-label="Trace 视图模式"
+                  aria-label={t('apm.trace.viewMode', 'Trace 视图模式')}
                   value={viewMode}
                   onChange={setViewMode}
                   options={[
-                    { value: 'waterfall', label: '瀑布' },
-                    { value: 'list', label: '跨度列表' },
+                    { value: 'waterfall', label: t('apm.trace.waterfall', '瀑布'), disabled: screens.md === false },
+                    { value: 'list', label: t('apm.trace.spanList', '跨度列表') },
                   ]}
                 />
               </div>
@@ -256,7 +271,7 @@ export default function ApmTraceDetailPage() {
                 {viewMode === 'waterfall' ? (
                   <>
                     <div className="mb-3 flex items-center justify-between">
-                      <Typography.Text strong>Span 瀑布</Typography.Text>
+                      <Typography.Text strong>{t('apm.trace.spanWaterfall', 'Span 瀑布')}</Typography.Text>
                       <Typography.Text type="secondary" className="text-xs tabular-nums">
                         {trace.spans.length} spans
                       </Typography.Text>
@@ -273,10 +288,10 @@ export default function ApmTraceDetailPage() {
                             key={span.span_id}
                             onClick={() => setSelectedSpanId(span.span_id)}
                             aria-pressed={selectedRow}
-                            className={`flex min-h-9 w-full items-center rounded-md border-0 border-l-2 px-2 py-1 text-left transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] ${
+                            className={`flex min-h-10 w-full items-center rounded-md px-2 py-1 text-left transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] ${
                               selectedRow
-                                ? 'border-l-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
-                                : 'border-l-transparent bg-transparent hover:bg-[var(--color-fill-1)]'
+                                ? 'bg-[var(--color-primary-bg-active)]'
+                                : 'bg-transparent hover:bg-[var(--color-fill-1)]'
                             }`}
                           >
                             <div className="flex w-64 shrink-0 items-center gap-1.5 truncate text-xs" style={{ paddingLeft: depth * 12 }}>
@@ -314,9 +329,9 @@ export default function ApmTraceDetailPage() {
                   <>
                     <Input
                       allowClear
-                      aria-label="搜索跨度名或服务"
+                      aria-label={t('apm.trace.searchSpans', '搜索跨度名或服务')}
                       className="mb-3"
-                      placeholder="搜索跨度名 / 服务"
+                      placeholder={t('apm.trace.searchSpansPlaceholder', '搜索跨度名 / 服务')}
                       prefix={<SearchOutlined className="text-[var(--color-text-3)]" aria-hidden="true" />}
                       value={spanQuery}
                       onChange={(event) => setSpanQuery(event.target.value)}
@@ -330,10 +345,10 @@ export default function ApmTraceDetailPage() {
                             key={span.span_id}
                             onClick={() => setSelectedSpanId(span.span_id)}
                             aria-pressed={selectedRow}
-                            className={`flex w-full items-center gap-3 border-0 border-b border-b-[var(--color-border)] border-l-2 px-3 py-2 text-left text-sm last:border-b-0 ${
+                            className={`flex min-h-10 w-full items-center gap-3 border-0 border-b border-b-[var(--color-border)] px-3 py-2 text-left text-sm last:border-b-0 ${
                               selectedRow
-                                ? 'border-l-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
-                                : 'border-l-transparent bg-transparent hover:bg-[var(--color-fill-1)]'
+                                ? 'bg-[var(--color-primary-bg-active)]'
+                                : 'bg-transparent hover:bg-[var(--color-fill-1)]'
                             }`}
                           >
                             <span
@@ -368,7 +383,7 @@ export default function ApmTraceDetailPage() {
                       })}
                       {!filteredList.length ? (
                         <div className="px-3 py-6 text-center text-sm text-[var(--color-text-3)]">
-                          没有匹配的跨度
+                          {t('apm.trace.noMatchingSpans', '没有匹配的跨度')}
                         </div>
                       ) : null}
                     </div>
@@ -381,8 +396,8 @@ export default function ApmTraceDetailPage() {
               <div className="sticky top-4 flex flex-col gap-3">
                 <ApmSurface padding="compact">
                   <div className="mb-3 flex items-center justify-between">
-                    <Typography.Text strong className="!text-xs">服务耗时分解</Typography.Text>
-                    <Typography.Text type="secondary" className="!text-[10px]">% 执行时间</Typography.Text>
+                    <Typography.Text strong className="!text-xs">{t('apm.trace.serviceBreakdown', '服务耗时分解')}</Typography.Text>
+                    <Typography.Text type="secondary" className="!text-[10px]">{t('apm.trace.execTime', '% 执行时间')}</Typography.Text>
                   </div>
                   <div className="flex flex-col gap-2">
                     {serviceBreakdown.map((row) => (
@@ -402,7 +417,7 @@ export default function ApmTraceDetailPage() {
                         <span className="w-11 shrink-0 text-right text-xs font-medium tabular-nums">
                           {row.percent.toFixed(1)}%
                         </span>
-                        <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-[var(--color-text-3)]">
+                        <span className="w-12 shrink-0 text-right text-xs tabular-nums text-[var(--color-text-3)]">
                           {formatLatency(row.duration)}
                         </span>
                       </div>
@@ -411,7 +426,7 @@ export default function ApmTraceDetailPage() {
                 </ApmSurface>
 
                 <ApmSurface>
-                  <Typography.Text strong className="mb-3 block">Span 详情</Typography.Text>
+                  <Typography.Text strong className="mb-3 block">{t('apm.trace.spanDetail', 'Span 详情')}</Typography.Text>
                   {selected ? (
                     <Space direction="vertical" className="w-full" size="middle">
                       <div>
@@ -427,30 +442,30 @@ export default function ApmTraceDetailPage() {
                         </div>
                       </div>
                       <Descriptions size="small" column={1}>
-                        <Descriptions.Item label="总耗时">{formatLatency(selected.duration_ms)}</Descriptions.Item>
-                        <Descriptions.Item label="服务">
-                          {selected.service_namespace || '未归类应用'} / {selected.service_name}
+                        <Descriptions.Item label={t('apm.trace.totalDuration', '总耗时')}>{formatLatency(selected.duration_ms)}</Descriptions.Item>
+                        <Descriptions.Item label={t('apm.common.service', '服务')}>
+                          {selected.service_namespace || t('apm.common.unsetNamespace', '未设置 namespace')} / {selected.service_name}
                         </Descriptions.Item>
-                        <Descriptions.Item label="实例">{selected.instance_id || '身份缺失'}</Descriptions.Item>
-                        <Descriptions.Item label="环境">{selected.environment || '未设置环境'}</Descriptions.Item>
+                        <Descriptions.Item label={t('apm.trace.instance', '实例')}>{selected.instance_id || t('apm.trace.identityMissing', '身份缺失')}</Descriptions.Item>
+                        <Descriptions.Item label={t('apm.common.environment', '环境')}>{selected.environment || t('apm.common.unsetEnvironment', '未设置环境')}</Descriptions.Item>
                         <Descriptions.Item label="Span ID">
                           <Typography.Text copyable className="font-mono text-xs">{selected.span_id}</Typography.Text>
                         </Descriptions.Item>
                       </Descriptions>
                       <div>
-                        <Typography.Text type="secondary" className="mb-2 block text-xs">属性</Typography.Text>
-                        <Table
+                        <Typography.Text type="secondary" className="mb-2 block text-xs">{t('apm.trace.attribute', '属性')}</Typography.Text>
+                        <ApmDataTable
                           rowKey="key"
                           size="small"
                           columns={attributeColumns}
                           dataSource={attributeRows}
                           pagination={false}
-                          locale={{ emptyText: '无属性' }}
+                          locale={{ emptyText: t('apm.trace.noAttributes', '无属性') }}
                         />
                       </div>
                     </Space>
                   ) : (
-                    <Typography.Text type="secondary">选择一个 Span 查看详情</Typography.Text>
+                    <Typography.Text type="secondary">{t('apm.trace.selectSpan', '选择一个 Span 查看详情')}</Typography.Text>
                   )}
                 </ApmSurface>
               </div>

@@ -73,6 +73,11 @@ def test_get_all_groups_无参(client):
     assert _last(client) == ("get_all_groups", (), {})
 
 
+def test_get_archived_groups_转发分页(client):
+    client.get_archived_groups(page=2, page_size=50)
+    assert _last(client) == ("get_archived_groups", (), {"page": 2, "page_size": 50})
+
+
 def test_get_all_users_无参(client):
     client.get_all_users()
     assert _last(client) == ("get_all_users", (), {})
@@ -291,9 +296,63 @@ def test_dispatch_notification_转发稳定投递契约(client):
     )
 
 
+def test_dispatch_notification_新生产者兼容旧receiver(client):
+    class LegacyReceiver:
+        def __init__(self):
+            self.calls = []
+
+        def run(self, method_name, **kwargs):
+            self.calls.append((method_name, kwargs))
+            if len(self.calls) == 1:
+                raise TypeError("unexpected keyword argument 'ack_mode'")
+            return {"result": True}
+
+    receiver = LegacyReceiver()
+    client.client = receiver
+
+    result = client.dispatch_notification(
+        delivery_key="event:1",
+        channel_id=7,
+        organization_ids=[1],
+        recipients=[],
+        title="",
+        body="正文",
+        event_payload={"event_key": "event"},
+        required_delivery_mode="alert_event_copy",
+        producer="lite-monitor",
+        ack_mode="per_event_v1",
+        ack_token="secret",
+    )
+
+    assert result == {"result": True}
+    assert len(receiver.calls) == 2
+    assert receiver.calls[-1] == ("dispatch_notification", {
+        "delivery_key": "event:1",
+        "channel_id": 7,
+        "organization_ids": [1],
+        "recipients": [],
+        "title": "",
+        "body": "正文",
+        "event_payload": {"event_key": "event"},
+    })
+
+
 def test_probe_notification_channel_转发渠道探针(client):
     client.probe_notification_channel(7)
-    assert _last(client) == ("probe_notification_channel", (), {"channel_id": 7})
+    assert _last(client) == (
+        "probe_notification_channel",
+        (),
+        {"channel_id": 7, "capability_only": False},
+    )
+
+
+def test_probe_notification_channel_转发纯能力探针(client):
+    client.probe_notification_channel(7, capability_only=True)
+    assert _last(client) == (
+        "probe_notification_channel",
+        (),
+        {"channel_id": 7, "capability_only": True},
+    )
 
 
 def test_search_groups_转发query_params(client):

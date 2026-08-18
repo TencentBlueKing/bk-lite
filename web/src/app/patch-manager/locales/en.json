@@ -298,14 +298,18 @@
       "invalidateTitle": "Assessment in progress",
       "invalidateContent": "Changing the requirements or bound targets of baseline \"{name}\" invalidates the current assessment. Continue?",
       "continueEditing": "Continue Editing",
-      "name": "Baseline Name", "patchRequirements": "Patch Requirements", "patchFilter": "Filter baselines by patch", "boundTargets": "Bound Targets", "complianceDistribution": "Compliance Distribution", "unbound": "Unbound",
+      "name": "Baseline Name", "patchRequirements": "Patch Requirements", "patchFilter": "Filter baselines by patch", "boundTargets": "Bound Targets", "complianceDistribution": "Compliance Distribution", "recentAssessment": "Recent Assessment", "unbound": "Unbound",
       "deleteBlocked": "A baseline with bound targets cannot be deleted", "bindTargets": "Bind Targets", "deleteTitle": "Delete Baseline", "deleteConfirm": "Delete baseline \"{name}\"?", "deleted": "Baseline deleted",
       "assessTitle": "Assess Baseline Now", "assessConfirm": "Assess the {count} targets currently bound to baseline \"{name}\"?", "confirmAssess": "Confirm Assessment", "assessCreated": "Assessment task created for {count} targets", "cannotAssess": "This baseline cannot be assessed",
       "requirement": "Requirement", "description": "Description", "applicableVersion": "Applicable Version", "remove": "Remove",
       "create": "Create Baseline", "edit": "Edit Baseline", "requirementRequired": "Add at least one patch requirement", "saved": "Saved", "nameRequired": "Enter a baseline name",
       "osLocked": "The operating system is locked after creation and cannot be changed while editing. Create another baseline for a different operating system.", "descriptionPlaceholder": "Baseline description", "requirementList": "Patch Requirements", "allRequired": "All Required", "addFromLibrary": "Add from Patch Library",
       "bindTitle": "Bind Targets - {name}", "targetRequired": "Select at least one target", "targetsBound": "Bound {count} targets to the current baseline", "confirmBind": "Confirm Binding", "target": "Target", "targetSearch": "Target name / IP", "selectedTargets": "{count} selected",
-      "patchRequired": "Select at least one patch", "confirmAdd": "Confirm Add", "libraryHelp": "Only Ready patches are shown. Select patches to add them to this baseline and clear selections to remove them.", "searchKb": "Search KB number", "searchPackage": "Search package name"
+      "patchRequired": "Select at least one patch", "confirmAdd": "Confirm Add", "libraryHelp": "Only Ready patches are shown. Select patches to add them to this baseline and clear selections to remove them.", "searchKb": "Search KB number", "searchPackage": "Search package name",
+      "complianceDetail": {
+        "title": "Baseline Compliance Details", "hostPerspective": "Host View", "patchPerspective": "Patch View", "searchHost": "Search host name / IP", "searchPatch": "Search KB / package / description", "searchHostIp": "Host/IP", "objectSearch": "Name/description", "detailSearch": "Name/description", "detailSearchLabel": "Detail name/description", "filterStatus": "Assessment Status", "patch": "Patch", "host": "Host", "hostStatus": "Host Status", "requirement": "Compliance Requirement", "assessmentStatus": "Assessment Status", "evidence": "Evidence", "reason": "Reason", "assessedAt": "Assessed At", "hostScope": "Host-level", "hostScopeHint": "This patch has no individual assessment snapshot. The displayed status belongs to the overall host assessment.", "hostAssessmentFailed": "Host Assessment Failed", "failureContext": "Failed stage: {stage}; error code: {code}", "loading": "Loading compliance results", "assessing": "Assessing", "assessmentCompleted": "Assessment complete. Compliance results have been refreshed.", "noObjects": "No matching hosts or patches", "noBoundHosts": "No hosts are bound to this baseline. Use Bind Targets in the action column to add hosts.", "noRequirements": "This baseline has no patch requirements. Edit the baseline to add one.", "noDetails": "No matching compliance details", "noSelection": "Select a host or patch from the left",
+        "status": { "satisfied": "Compliant", "missing": "Non-compliant", "not_applicable": "Not Applicable", "unknown": "Unknown", "pending": "Pending Assessment", "evaluating": "Assessing", "failed": "Assessment Failed" }
+      }
     },
     "settingsPage": {
       "type": "Type", "proxy": "Proxy", "applicableScope": "Applicable Scope", "wsusApplicableScope": "Windows (WSUS)",
@@ -321,7 +325,7 @@
       "distroRequired": "Enter a distribution", "distroPlaceholder": "e.g. Ubuntu / Rocky Linux",
       "osVersionPlaceholder": "e.g. 22.04 / 9 (required for apt codename mapping)", "archPlaceholder": "Select a CPU architecture",
       "connectivityPassed": "Connectivity test passed", "connectivityFailed": "Connectivity test failed", "scanSaved": "Scan settings saved",
-      "hourlyTrigger": "Automatically assess all targets every {count} hours", "dailyTrigger": "Automatically assess all targets daily at {time}",
+      "scheduledAssessmentTrigger": "Global scheduled assessment", "notEnabled": "Not enabled", "hourlyTrigger": "Automatically assess all targets every {count} hours", "dailyTrigger": "Automatically assess all targets daily at {time}",
       "weeklyTrigger": "Automatically assess all targets on {weekday} at {time}",
       "triggerBaselineBound": "A target enters pending assessment when first bound to a baseline", "triggerBaselineChanged": "A target resets to pending assessment when its baseline or requirements change",
       "triggerManual": "Runs immediately when Assess Now is selected", "triggerPostRemediation": "Verifies automatically after installation or reboot",

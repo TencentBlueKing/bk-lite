@@ -1,9 +1,15 @@
+import os
 from collections import defaultdict
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+from django.utils import timezone as dj_timezone
 
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
-from apps.system_mgmt.models import Channel
+from apps.system_mgmt.models import Channel, User
+
+DEFAULT_NOTICE_TIMEZONE = "Asia/Shanghai"
 
 
 ACTION_TO_ALERT_CENTER = {
@@ -24,11 +30,19 @@ LEVEL_TO_ALERT_CENTER = {
 NOTIFY_SCOPE_NONE = "none"
 NOTIFY_SCOPE_ALERT_CENTER_ONLY = "alert_center_only"
 NOTIFY_SCOPE_ALL_CONFIGURED = "all_configured"
+ALERT_CENTER_PER_EVENT_ACK_ENABLED = os.getenv(
+    "MONITOR_ALERT_CENTER_PER_EVENT_ACK_ENABLED", "false"
+).lower() in {"1", "true", "yes"}
+ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
+ALERT_CENTER_CREATED_RETRY_ENABLED = os.getenv(
+    "MONITOR_ALERT_CENTER_CREATED_RETRY_ENABLED", "false"
+).lower() in {"1", "true", "yes"}
 
 
 class AlertLifecycleNotifier:
-    def __init__(self, policy=None):
+    def __init__(self, policy=None, policies_by_id=None):
         self.policy = policy
+        self.policies_by_id = policies_by_id or {}
 
     def notify_alerts(self, alerts, action, operator="", reason="", notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED):
         if not alerts:
@@ -37,6 +51,10 @@ class AlertLifecycleNotifier:
         if notify_scope == NOTIFY_SCOPE_NONE:
             self._reset_alert_center_flags(alerts)
             return
+
+        # created 在扫描事务内先落 outbox；其余生命周期调用方仍保留 legacy pending
+        # 标志，由这里幂等补齐不可变意图。回滚可关闭 outbox 并继续使用旧链路。
+        self.enqueue_alert_center_deliveries(alerts, action, operator=operator, reason=reason)
 
         alert_log_entries = defaultdict(list)
 
@@ -53,19 +71,20 @@ class AlertLifecycleNotifier:
                     continue
                 groups[(channel_id, tuple(notice_users) if notice_users else ())].append(alert)
 
-        alert_center_success_ids = set()
-        alert_center_target_ids = set()  # 实际走到了 NATS 推送路径的告警
+        alert_center_results = defaultdict(list)
 
         for (channel_id, notice_users_tuple), group_alerts in groups.items():
             notice_users = list(notice_users_tuple)
             try:
+                # 灰度期间保留 legacy 即时投递；outbox 使用稳定 payload 身份，
+                # receiver 会把响应丢失后的双投收敛为 duplicate。关闭开关即可回滚。
                 results = self._send_to_channel(channel_id, notice_users, group_alerts, action, operator, reason, notify_scope)
                 for alert, log_entry in results:
                     alert_log_entries[alert.id].append(log_entry)
                     if log_entry.get("is_alert_center"):
-                        alert_center_target_ids.add(alert.id)
-                        if log_entry.get("success"):
-                            alert_center_success_ids.add(alert.id)
+                        alert_center_results[alert.id].append(
+                            bool(log_entry.get("success"))
+                        )
             except Exception as e:
                 logger.error(
                     f"Lifecycle notify exception: action={action}, channel_id={channel_id}, error={e}",
@@ -87,17 +106,22 @@ class AlertLifecycleNotifier:
                     exc_channel = Channel.objects.filter(id=channel_id).first()
                     if exc_channel and exc_channel.channel_type == "nats" and exc_channel.config.get("method_name") == "receive_alert_events":
                         for alert in group_alerts:
-                            alert_center_target_ids.add(alert.id)
+                            alert_center_results[alert.id].append(False)
                 except Exception:
                     for alert in group_alerts:
-                        alert_center_target_ids.add(alert.id)
+                        alert_center_results[alert.id].append(False)
 
         self._persist_notice_logs(alerts, alert_log_entries)
+        alert_center_success_ids = {
+            alert_id
+            for alert_id, results in alert_center_results.items()
+            if results and all(results)
+        }
         if alert_center_success_ids:
             self._mark_alert_center_notified(alert_center_success_ids)
 
         # 未经过 NATS 推送路径的告警（无告警中心渠道）：归还 notified=True，避免补偿任务空转
-        not_targeted_ids = {a.id for a in alerts} - alert_center_target_ids
+        not_targeted_ids = {a.id for a in alerts} - set(alert_center_results)
         if not_targeted_ids:
             self._reset_alert_center_flags_by_ids(not_targeted_ids)
 
@@ -127,17 +151,71 @@ class AlertLifecycleNotifier:
 
     def push_to_alert_center_only(self, alerts, action, operator="", reason=""):
         """专用于告警中心补偿通知，跳过 IM 通知直接推送到 NATS 告警中心"""
-        channel = Channel.objects.filter(channel_type="nats", config__method_name="receive_alert_events").first()
-        if not channel:
-            logger.warning("告警中心 NATS channel 未配置，跳过补偿推送")
-            return [(alert, False) for alert in alerts]
-        push_results = self._push_to_alert_center(channel.id, channel.name or str(channel.id), alerts, action, operator, reason)
+        channel_ids = {
+            int(value)
+            for alert in alerts
+            for value in self._resolve_notice_type_ids(alert)
+            if str(value).isdigit()
+        }
+        channels = set()
+        for channel_id in channel_ids:
+            try:
+                capability = SystemMgmtUtils.probe_notification_channel(
+                    channel_id, capability_only=True
+                ) or {}
+            except Exception:
+                logger.exception(
+                    "告警中心补偿渠道能力查询失败: channel_id=%s", channel_id
+                )
+                continue
+            if capability.get("delivery_mode") == "alert_event_copy":
+                channels.add(channel_id)
+        groups = defaultdict(list)
+        for alert in alerts:
+            for value in self._resolve_notice_type_ids(alert):
+                if str(value).isdigit() and int(value) in channels:
+                    groups[int(value)].append(alert)
+        push_results = []
+        delivered_alert_ids = set()
+        for channel_id, group_alerts in groups.items():
+            results = self._push_to_alert_center(
+                channel_id,
+                str(channel_id),
+                group_alerts,
+                action,
+                operator,
+                reason,
+            )
+            push_results.extend(results)
+            delivered_alert_ids.update(alert.id for alert, _ in results)
+        push_results.extend(
+            (alert, {"success": False, "error": "alert_center_channel_not_configured"})
+            for alert in alerts
+            if alert.id not in delivered_alert_ids
+        )
         # 写入 notice_logs，与即时层保持一致
         alert_log_entries = defaultdict(list)
         for alert, log_entry in push_results:
             alert_log_entries[alert.id].append(log_entry)
         self._persist_notice_logs(alerts, alert_log_entries)
-        return [(alert, log_entry.get("success", False)) for alert, log_entry in push_results]
+        results_by_alert = defaultdict(list)
+        for alert, log_entry in push_results:
+            results_by_alert[alert.id].append(bool(log_entry.get("success")))
+        return [
+            (alert, bool(results_by_alert[alert.id]) and all(results_by_alert[alert.id]))
+            for alert in alerts
+        ]
+
+    def enqueue_alert_center_deliveries(self, alerts, action, operator="", reason=""):
+        from apps.monitor.services.alert_center_delivery import enqueue_alert_center_deliveries
+
+        return enqueue_alert_center_deliveries(
+            alerts,
+            action,
+            notifier=self,
+            operator=operator,
+            reason=reason,
+        )
 
     def _persist_notice_logs(self, alerts, alert_log_entries):
         if not alert_log_entries:
@@ -158,14 +236,18 @@ class AlertLifecycleNotifier:
     def _resolve_notice_type_ids(self, alert):
         if alert.notice_type_ids:
             return alert.notice_type_ids
-        if self.policy and self.policy.notice and self.policy.notice_type_ids:
+        if (
+            self.policy
+            and getattr(self.policy, "notice", False)
+            and getattr(self.policy, "notice_type_ids", None)
+        ):
             return self.policy.notice_type_ids
         return []
 
     def _resolve_notice_users(self, alert):
         if alert.notice_users:
             return alert.notice_users
-        if self.policy and self.policy.notice_users:
+        if self.policy and getattr(self.policy, "notice_users", None):
             return self.policy.notice_users
         return []
 
@@ -217,6 +299,29 @@ class AlertLifecycleNotifier:
         channel_name = channel.name or str(channel_id)
 
         if is_alert_center:
+            from apps.monitor.services.alert_center_delivery import (
+                ALERT_CENTER_OUTBOX_ENABLED,
+                ALERT_CENTER_OUTBOX_DELIVERY_ENABLED,
+            )
+
+            if ALERT_CENTER_OUTBOX_ENABLED and ALERT_CENTER_OUTBOX_DELIVERY_ENABLED:
+                # active 阶段由持久化 outbox 独占告警中心投递；普通 IM 渠道仍走旧链路。
+                now = datetime.now(timezone.utc).isoformat()
+                return [
+                    (
+                        alert,
+                        {
+                            "time": now,
+                            "action": action,
+                            "channel_id": channel_id,
+                            "channel_name": channel_name,
+                            "is_alert_center": True,
+                            "success": False,
+                            "error": "outbox_pending",
+                        },
+                    )
+                    for alert in alerts
+                ]
             return self._push_to_alert_center(channel_id, channel_name, alerts, action, operator, reason)
         else:
             return self._send_normal_notice(channel_id, channel_name, notice_users, alerts, action, operator, reason)
@@ -255,10 +360,13 @@ class AlertLifecycleNotifier:
 
     def _send_normal_notice(self, channel_id, channel_name, notice_users, alerts, action, operator, reason):
         results = []
+        target_timezone = self._resolve_notice_timezone(notice_users)
         for alert in alerts:
             now = datetime.now(timezone.utc).isoformat()
             title = self._build_title(alert, action)
-            content = self._build_content(alert, action, operator, reason)
+            content = self._build_content(
+                alert, action, operator, reason, target_timezone=target_timezone
+            )
             try:
                 send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, title, content, notice_users)
                 success, error_msg = self._parse_channel_result(send_result)
@@ -282,16 +390,66 @@ class AlertLifecycleNotifier:
     def _push_to_alert_center(self, channel_id, channel_name, alerts, action, operator, reason):
         now = datetime.now(timezone.utc).isoformat()
         instance_org_map = self._build_instance_org_map(alerts)
+        payloads = [
+            self._build_alert_center_payload(alert, action, operator, reason, instance_org_map)
+            for alert in alerts
+        ]
+        # shadow 阶段先写 outbox、仍由 legacy 实发。两条路径必须共享同一代次身份，
+        # 这样切到 active 后重放 pending 只会得到 duplicate，不会重复建事件。
+        from apps.monitor.models import MonitorAlertCenterDelivery
+        from apps.monitor.services.alert_center_delivery import ALERT_CENTER_OUTBOX_ENABLED
+
+        use_per_event_ack = (
+            ALERT_CENTER_PER_EVENT_ACK_ENABLED or ALERT_CENTER_OUTBOX_ENABLED
+        )
+        delivery_ids = {}
+        if not ALERT_CENTER_OUTBOX_ENABLED and not use_per_event_ack:
+            # 两个扩展开关均关闭时严格保留历史 NATS payload；旧接收端无需
+            # 理解 lifecycle 字段即可继续工作。
+            for payload in payloads:
+                payload.pop("lifecycle_action", None)
+        if ALERT_CENTER_OUTBOX_ENABLED:
+            rows = (
+                MonitorAlertCenterDelivery.objects.filter(
+                    alert_id__in=[alert.id for alert in alerts],
+                    action=action,
+                    channel_id=channel_id,
+                )
+                .order_by("alert_id", "-generation")
+                .values_list("alert_id", "delivery_id")
+            )
+            for alert_id, delivery_id in rows:
+                delivery_ids.setdefault(alert_id, delivery_id)
+            for alert, payload in zip(alerts, payloads):
+                if alert.id in delivery_ids:
+                    payload["lifecycle_generation"] = delivery_ids[alert.id]
+        if use_per_event_ack:
+            for alert, payload in zip(alerts, payloads):
+                payload["delivery_id"] = delivery_ids.get(
+                    alert.id, self._build_delivery_id(alert, action)
+                )
+                payload.setdefault("lifecycle_generation", payload["delivery_id"])
         content = {
             "source_id": "nats",
             "pusher": "lite-monitor",
-            "events": [self._build_alert_center_payload(alert, action, operator, reason, instance_org_map) for alert in alerts],
+            "events": payloads,
         }
+        if use_per_event_ack:
+            content["ack_mode"] = "per_event_v1"
+            content["ack_token"] = ALERT_CENTER_ACK_TOKEN
         success = False
         error_msg = ""
+        event_results = {}
         try:
             send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, "", content, [])
             success, error_msg = self._parse_channel_result(send_result)
+            if use_per_event_ack and isinstance(send_result, dict):
+                details = send_result.get("data") or {}
+                event_results = {
+                    item.get("delivery_id"): item
+                    for item in details.get("event_results") or []
+                    if isinstance(item, dict) and item.get("delivery_id")
+                }
             if success:
                 logger.info(f"Lifecycle push to alert center success: action={action}, count={len(alerts)}")
             else:
@@ -302,18 +460,45 @@ class AlertLifecycleNotifier:
 
         results = []
         for alert in alerts:
+            alert_success = success
+            alert_error = error_msg
+            if event_results:
+                ack = event_results.get(
+                    delivery_ids.get(alert.id, self._build_delivery_id(alert, action)),
+                    {},
+                )
+                alert_success = ack.get("status") in {"accepted", "duplicate"}
+                if not alert_success:
+                    alert_error = ack.get("status") or "missing per-event acknowledgement"
+                    if ack:
+                        alert_error = f"{alert_error} (retryable={bool(ack.get('retryable'))})"
             log_entry = {
                 "time": now,
                 "action": action,
                 "channel_id": channel_id,
                 "channel_name": channel_name,
                 "is_alert_center": True,
-                "success": success,
+                "success": alert_success,
             }
-            if not success:
-                log_entry["error"] = error_msg
+            if not alert_success:
+                log_entry["error"] = alert_error
             results.append((alert, log_entry))
         return results
+
+    @staticmethod
+    def _build_delivery_id(alert, action):
+        """旧链路的 ACK 关联键；未来 outbox 可直接替换为其持久化 generation key。"""
+        return ":".join(
+            str(value or "")
+            for value in (
+                alert.id,
+                action,
+                getattr(alert, "start_event_time", None),
+                getattr(alert, "end_event_time", None),
+                getattr(alert, "level", None),
+                getattr(alert, "value", None),
+            )
+        )
 
     def _build_instance_org_map(self, alerts):
         """按本批告警的实例一次性查出 实例ID -> [组织id] 映射，避免逐条 N+1 查询。"""
@@ -330,17 +515,21 @@ class AlertLifecycleNotifier:
             org_map[instance_id].append(organization)
         return org_map
 
-    def _resolve_alert_organizations(self, alert, instance_org_map):
+    def _resolve_alert_organizations(self, alert, instance_org_map, policy=None):
         """实例组织优先；实例无组织时回退策略组织；都没有则为空。"""
         organizations = instance_org_map.get(alert.monitor_instance_id)
         if organizations:
             return organizations
-        if self.policy and getattr(self.policy, "organizations", None):
-            return list(self.policy.organizations)
+        policy = policy or self.policy
+        if policy and getattr(policy, "organizations", None):
+            return list(policy.organizations)
         return []
 
     def _build_alert_center_payload(self, alert, action, operator, reason, instance_org_map=None):
         instance_org_map = instance_org_map or {}
+        policy = self.policy
+        if action == "created":
+            policy = self.policies_by_id.get(alert.policy_id, policy)
         alert_center_action = ACTION_TO_ALERT_CENTER.get(action, "created")
         start_time = str(int(alert.start_event_time.timestamp())) if alert.start_event_time else None
         end_time = str(int(alert.end_event_time.timestamp())) if alert.end_event_time else None
@@ -352,14 +541,18 @@ class AlertLifecycleNotifier:
             "level": LEVEL_TO_ALERT_CENTER.get(alert.level, "3"),
             "value": float(alert.value) if alert.value is not None else None,
             "action": alert_center_action,
+            # 接收端用该字段区分同一业务 action 的生命周期代次；旧接收端忽略未知字段。
+            "lifecycle_action": action,
             "start_time": start_time,
             "end_time": end_time,
             "resource_id": alert.monitor_instance_id,
             "resource_name": getattr(alert, "monitor_instance_name", ""),
-            "organizations": self._resolve_alert_organizations(alert, instance_org_map),
+            "organizations": self._resolve_alert_organizations(
+                alert, instance_org_map, policy
+            ),
             "tags": getattr(alert, "dimensions", {}),
             "labels": {
-                "policy_name": getattr(self.policy, "name", "") if self.policy else "",
+                "policy_name": getattr(policy, "name", "") if policy else "",
                 "metric_instance_id": getattr(alert, "metric_instance_id", ""),
                 "operator": operator,
                 "reason": reason,
@@ -378,7 +571,42 @@ class AlertLifecycleNotifier:
         policy_name = getattr(self.policy, "name", "") if self.policy else ""
         return f"{label}：{policy_name}" if policy_name else label
 
-    def _build_content(self, alert, action, operator, reason):
+    def _resolve_notice_timezone(self, notice_users):
+        """取第一个通知人的账号时区；查不到或列表为空时回退 Asia/Shanghai。"""
+        if not notice_users:
+            return DEFAULT_NOTICE_TIMEZONE
+        try:
+            user = User.objects.filter(username__in=list(notice_users)).first()
+        except Exception:
+            logger.warning("Failed to resolve notice timezone for users=%s", notice_users, exc_info=True)
+            return DEFAULT_NOTICE_TIMEZONE
+        tz_name = getattr(user, "timezone", None) if user else None
+        return tz_name or DEFAULT_NOTICE_TIMEZONE
+
+    @staticmethod
+    def _coerce_notice_timezone(target_timezone):
+        if isinstance(target_timezone, str) and target_timezone:
+            try:
+                return ZoneInfo(target_timezone)
+            except Exception:
+                logger.warning(
+                    "Invalid notice timezone %s, fallback to %s",
+                    target_timezone,
+                    DEFAULT_NOTICE_TIMEZONE,
+                )
+        elif target_timezone is not None and not isinstance(target_timezone, str):
+            return target_timezone
+        return ZoneInfo(DEFAULT_NOTICE_TIMEZONE)
+
+    def _format_notice_time(self, dt, target_timezone=None):
+        if not dt:
+            return ""
+        tz = self._coerce_notice_timezone(target_timezone)
+        if dj_timezone.is_naive(dt):
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dj_timezone.localtime(dt, tz).strftime("%Y-%m-%d %H:%M:%S")
+
+    def _build_content(self, alert, action, operator, reason, target_timezone=None):
         parts = [f"告警内容：{alert.content}"]
 
         instance_name = getattr(alert, "monitor_instance_name", "") or alert.monitor_instance_id
@@ -398,6 +626,8 @@ class AlertLifecycleNotifier:
             parts.append("状态：已自动恢复")
 
         if alert.start_event_time:
-            parts.append(f"开始时间：{alert.start_event_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            parts.append(
+                f"开始时间：{self._format_notice_time(alert.start_event_time, target_timezone)}"
+            )
 
         return "\n".join(parts)

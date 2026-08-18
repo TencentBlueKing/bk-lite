@@ -12,6 +12,9 @@ import {
   getTopologyEdgeVisual,
 } from './topologyVisualStyles';
 
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
 export const formatDisplayValue = (
   value: unknown,
   unit?: string,
@@ -27,12 +30,10 @@ export const formatDisplayValue = (
   const numValue = typeof value === 'string' ? parseFloat(value) : value;
 
   if (typeof numValue === 'number' && !isNaN(numValue)) {
-    // 应用换算系数
-    const factor = conversionFactor !== undefined ? conversionFactor : 1;
+    const factor = isFiniteNumber(conversionFactor) ? conversionFactor : 1;
     const convertedValue = numValue * factor;
 
-    // 格式化小数位
-    let formattedValue = decimalPlaces !== undefined
+    let formattedValue = isFiniteNumber(decimalPlaces)
       ? convertedValue.toFixed(decimalPlaces)
       : String(convertedValue);
 

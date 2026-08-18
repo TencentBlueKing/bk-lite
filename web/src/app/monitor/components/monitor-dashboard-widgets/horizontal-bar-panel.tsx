@@ -1,13 +1,15 @@
 'use client';
 
 import React from 'react';
-import { Tooltip } from 'antd';
 import type { ChartData, GuideItem } from '@/app/monitor/components/monitor-dashboard-widgets/types';
 import {
   TitleWithGuide,
   type GuideTooltipStyles,
 } from '@/app/monitor/components/monitor-dashboard-widgets/guide-tooltip';
 import { MiniTrendChart } from '@/app/monitor/components/monitor-dashboard-widgets/mini-trend-chart';
+import ChartEmptyState from '@/components/chart-empty-state';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import { useTranslation } from '@/utils/i18n';
 
 const RANK_TOP3 = ['#f5a623', '#9aa7bd', '#cd7f32'];
 
@@ -52,17 +54,19 @@ export interface HorizontalBarPanelProps {
   className?: string;
   emphasizeTop?: number;
   tiered?: boolean;
+  isEmpty?: boolean;
+  emptyDescription?: React.ReactNode;
   styles: HorizontalBarPanelStyles;
 }
 
-interface BarListProps {
+export interface BarListProps {
   items: BarItem[];
   emphasizeTop?: number;
   tiered?: boolean;
   styles: HorizontalBarPanelStyles;
 }
 
-const BarList = ({ items, emphasizeTop = 0, tiered = false, styles }: BarListProps) => {
+export const BarList = ({ items, emphasizeTop = 0, tiered = false, styles }: BarListProps) => {
   const isTrendPanel = items.some((item) => item.trend && item.trend.length > 0);
   return (
     <div
@@ -99,7 +103,7 @@ const BarList = ({ items, emphasizeTop = 0, tiered = false, styles }: BarListPro
           >
             <div
               className={styles.barLabel}
-              style={isRanked ? { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 } : undefined}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}
             >
               {isRanked ? (
                 <span
@@ -122,22 +126,11 @@ const BarList = ({ items, emphasizeTop = 0, tiered = false, styles }: BarListPro
                   {rank}
                 </span>
               ) : null}
-              {isRanked ? (
-                <Tooltip title={item.label} mouseEnterDelay={0.2}>
-                  <span
-                    style={{
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      cursor: 'default',
-                    }}
-                  >
-                    {item.label}
-                  </span>
-                </Tooltip>
-              ) : (
-                <span>{item.label}</span>
-              )}
+              <EllipsisWithTooltip
+                text={item.label}
+                disclosure="interactive"
+                className="min-w-0 flex-1 cursor-default overflow-hidden text-ellipsis whitespace-nowrap"
+              />
             </div>
             {item.trend && item.trend.length > 0 ? (
               <div className={styles.barSpark}>
@@ -170,8 +163,12 @@ export const HorizontalBarPanel = ({
   className,
   emphasizeTop = 0,
   tiered = false,
+  isEmpty = false,
+  emptyDescription,
   styles,
 }: HorizontalBarPanelProps) => {
+  const { t } = useTranslation();
+
   return (
     <div className={[styles.panel, className].filter(Boolean).join(' ')}>
       <div className={styles.panelHeader}>
@@ -191,7 +188,16 @@ export const HorizontalBarPanel = ({
           {subtitle ? <div className={styles.panelSubTitle}>{subtitle}</div> : null}
         </div>
       </div>
-      <BarList items={items} emphasizeTop={emphasizeTop} tiered={tiered} styles={styles} />
+      {isEmpty ? (
+        <div className="flex min-h-[176px] items-center justify-center">
+          <ChartEmptyState
+            description={emptyDescription === undefined ? t('common.noData') : emptyDescription}
+            compact
+          />
+        </div>
+      ) : (
+        <BarList items={items} emphasizeTop={emphasizeTop} tiered={tiered} styles={styles} />
+      )}
     </div>
   );
 };

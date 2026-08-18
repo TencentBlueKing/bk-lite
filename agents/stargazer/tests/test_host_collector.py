@@ -9,37 +9,37 @@ Host Collector 单元测试
 4. HostCollector.collect - 完整采集流程（mock Ansible RPC）
 """
 
-import importlib
 import asyncio
+import importlib
 import json
-import sys
 import os
 import subprocess
+import sys
 import types
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 # 让 import 能找到 stargazer 根目录模块
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tasks.collectors.host_collector import (
-    build_script,
-    parse_metrics_to_prometheus,
-    HostCollector,
+from tasks.collectors.host_collector import (  # noqa: E402
     HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT,
     LINUX_SCRIPT_WRAPPER_EOF,
-    VALID_MODULES,
     SCRIPTS_DIR,
+    VALID_MODULES,
+    HostCollector,
     _escape_prometheus_label_value,
     _extract_json_payload,
+    build_script,
+    parse_metrics_to_prometheus,
 )
 
 
 def _load_nats_server_module(monkeypatch):
-    import core.infra.nats as core_nats
-    import core.collection.host_remote.callback as host_remote_callback_module
+    import core.host_remote_callback as host_remote_callback_module
+    import core.nats as core_nats
 
     class DummyNatsInstance:
         def __init__(self):
@@ -71,8 +71,23 @@ def _load_nats_server_module(monkeypatch):
 
 
 def _load_host_remote_runtime_module(monkeypatch):
-    monkeypatch.delitem(sys.modules, "core.collection.host_remote.runtime", raising=False)
-    return importlib.import_module("core.collection.host_remote.runtime")
+    monkeypatch.delitem(sys.modules, "core.host_remote_runtime", raising=False)
+    return importlib.import_module("core.host_remote_runtime")
+
+
+def _load_monitor_handler_module(monkeypatch):
+    monkeypatch.delitem(sys.modules, "tasks.handlers.monitor_handler", raising=False)
+    return importlib.import_module("tasks.handlers.monitor_handler")
+
+
+def _load_worker_module(monkeypatch):
+    monkeypatch.delitem(sys.modules, "core.worker", raising=False)
+    return importlib.import_module("core.worker")
+
+
+def _load_task_queue_module(monkeypatch):
+    monkeypatch.delitem(sys.modules, "core.task_queue", raising=False)
+    return importlib.import_module("core.task_queue")
 
 
 def _load_host_remote_handler_module(monkeypatch):
@@ -81,7 +96,7 @@ def _load_host_remote_handler_module(monkeypatch):
 
 
 def _install_fake_host_remote_callback_store(monkeypatch):
-    import core.collection.host_remote.callback as host_remote_callback_module
+    import core.host_remote_callback as host_remote_callback_module
 
     callback_contexts = {}
 
@@ -236,7 +251,7 @@ def _install_fake_host_remote_callback_store(monkeypatch):
 
 
 def _install_fake_host_remote_callback_pool(monkeypatch):
-    import core.collection.host_remote.callback as host_remote_callback_module
+    import core.host_remote_callback as host_remote_callback_module
 
     class FakeRedisPool:
         def __init__(self):
@@ -498,8 +513,18 @@ class TestParseMetricsToPrometheus:
     def test_disk_metrics_with_dimensions(self):
         data = {
             "disk": [
-                {"mount": "/", "total_bytes": 100000, "used_bytes": 50000, "used_percent": 50.0},
-                {"mount": "/data", "total_bytes": 200000, "used_bytes": 100000, "used_percent": 50.0},
+                {
+                    "mount": "/",
+                    "total_bytes": 100000,
+                    "used_bytes": 50000,
+                    "used_percent": 50.0,
+                },
+                {
+                    "mount": "/data",
+                    "total_bytes": 200000,
+                    "used_bytes": 100000,
+                    "used_percent": 50.0,
+                },
             ]
         }
         result = parse_metrics_to_prometheus(data, "inst1", "linux")
@@ -510,9 +535,30 @@ class TestParseMetricsToPrometheus:
     def test_disk_metrics_filter_by_fstype_and_keep_path_labels(self):
         data = {
             "disk": [
-                {"mount": "/", "path": "/", "fstype": "ext4", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
-                {"mount": "/media/usb", "path": "/media/usb", "fstype": "vfat", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
-                {"mount": "/data", "path": "/data", "fstype": "xfs", "total_bytes": 100, "used_bytes": 50, "used_percent": 50},
+                {
+                    "mount": "/",
+                    "path": "/",
+                    "fstype": "ext4",
+                    "total_bytes": 100,
+                    "used_bytes": 50,
+                    "used_percent": 50,
+                },
+                {
+                    "mount": "/media/usb",
+                    "path": "/media/usb",
+                    "fstype": "vfat",
+                    "total_bytes": 100,
+                    "used_bytes": 50,
+                    "used_percent": 50,
+                },
+                {
+                    "mount": "/data",
+                    "path": "/data",
+                    "fstype": "xfs",
+                    "total_bytes": 100,
+                    "used_bytes": 50,
+                    "used_percent": 50,
+                },
             ]
         }
 
@@ -548,7 +594,13 @@ class TestParseMetricsToPrometheus:
     def test_network_metrics_with_interface(self):
         data = {
             "net": [
-                {"interface": "eth0", "rx_bytes": 1000, "tx_bytes": 2000, "rx_errors": 0, "tx_errors": 0},
+                {
+                    "interface": "eth0",
+                    "rx_bytes": 1000,
+                    "tx_bytes": 2000,
+                    "rx_errors": 0,
+                    "tx_errors": 0,
+                },
             ]
         }
         result = parse_metrics_to_prometheus(data, "inst1", "windows")
@@ -711,10 +763,30 @@ class TestParseMetricsToPrometheus:
 
     def test_all_modules_combined(self):
         data = {
-            "cpu": {"usage_percent": 10, "core_count": 2, "load_1m": 0.5, "load_5m": 0.3, "load_15m": 0.1},
-            "mem": {"total_bytes": 1000, "used_bytes": 500, "available_bytes": 500, "swap_total_bytes": 0, "swap_used_bytes": 0},
+            "cpu": {
+                "usage_percent": 10,
+                "core_count": 2,
+                "load_1m": 0.5,
+                "load_5m": 0.3,
+                "load_15m": 0.1,
+            },
+            "mem": {
+                "total_bytes": 1000,
+                "used_bytes": 500,
+                "available_bytes": 500,
+                "swap_total_bytes": 0,
+                "swap_used_bytes": 0,
+            },
             "disk": [{"mount": "/", "total_bytes": 100, "used_bytes": 50, "used_percent": 50}],
-            "net": [{"interface": "lo", "rx_bytes": 0, "tx_bytes": 0, "rx_errors": 0, "tx_errors": 0}],
+            "net": [
+                {
+                    "interface": "lo",
+                    "rx_bytes": 0,
+                    "tx_bytes": 0,
+                    "rx_errors": 0,
+                    "tx_errors": 0,
+                }
+            ],
         }
         result = parse_metrics_to_prometheus(data, "full_test", "linux")
         assert "host_cpu" in result
@@ -727,33 +799,25 @@ class TestHostCollectorExtractStdout:
     """测试 Ansible 结果解析"""
 
     def setup_method(self):
-        self.collector = HostCollector({
-            "host": "10.0.0.1",
-            "username": "root",
-            "password": "test",
-            "ansible_node_id": "node1",
-        })
+        self.collector = HostCollector(
+            {
+                "host": "10.0.0.1",
+                "username": "root",
+                "password": "test",
+                "ansible_node_id": "node1",
+            }
+        )
 
     def test_string_result(self):
         result = {"result": '{"cpu": {"usage_percent": 50}}'}
         assert self.collector._extract_stdout(result) == '{"cpu": {"usage_percent": 50}}'
 
     def test_dict_with_contacted(self):
-        result = {
-            "result": {
-                "contacted": {
-                    "10.0.0.1": {"stdout": '{"cpu": {}}', "rc": 0}
-                }
-            }
-        }
+        result = {"result": {"contacted": {"10.0.0.1": {"stdout": '{"cpu": {}}', "rc": 0}}}}
         assert self.collector._extract_stdout(result) == '{"cpu": {}}'
 
     def test_dict_without_contacted(self):
-        result = {
-            "result": {
-                "10.0.0.1": {"stdout": '{"mem": {}}', "rc": 0}
-            }
-        }
+        result = {"result": {"10.0.0.1": {"stdout": '{"mem": {}}', "rc": 0}}}
         assert self.collector._extract_stdout(result) == '{"mem": {}}'
 
     def test_process_result_without_expected_host_raises(self):
@@ -765,7 +829,7 @@ class TestHostCollectorExtractStdout:
                     "status": "success",
                     "stdout": '{"cpu": {"usage_percent": 91}}',
                 }
-            ]
+            ],
         }
 
         with pytest.raises(RuntimeError, match="missing expected host 10.0.0.1"):
@@ -777,7 +841,7 @@ class TestHostCollectorExtractStdout:
             "result": [
                 {"host": "10.0.0.2", "stdout": '{"cpu": {}}'},
                 {"host": "10.0.0.1", "stdout": '{"mem": {}}'},
-            ]
+            ],
         }
 
         metrics = self.collector.process_adhoc_result(result)
@@ -790,7 +854,7 @@ class TestHostCollectorExtractStdout:
             "success": True,
             "result": [
                 {"host": "10.0.0.1", "status": "success", "stdout": ""},
-            ]
+            ],
         }
 
         with pytest.raises(RuntimeError, match="missing expected host 10.0.0.1"):
@@ -824,41 +888,47 @@ class TestHostCollectorCredentialDecoding:
     """前端对 encrypted 字段做了 encodeURIComponent，后端需在送往 SSH/WinRM 前解码还原。"""
 
     def test_linux_password_is_url_decoded(self):
-        collector = HostCollector({
-            "host": "10.11.27.147",
-            "os_type": "linux",
-            "username": "root",
-            "password": "CW%40roger1117!%40%23",  # encodeURIComponent('CW@roger1117!@#')
-            "ansible_node_id": "node1",
-        })
+        collector = HostCollector(
+            {
+                "host": "10.11.27.147",
+                "os_type": "linux",
+                "username": "root",
+                "password": "CW%40roger1117!%40%23",  # encodeURIComponent('CW@roger1117!@#')
+                "ansible_node_id": "node1",
+            }
+        )
 
         config = collector._resolve_execution_config()
 
         assert config["host_credentials"][0]["password"] == "CW@roger1117!@#"
 
     def test_windows_password_is_url_decoded(self):
-        collector = HostCollector({
-            "host": "10.11.27.147",
-            "os_type": "windows",
-            "username": "administrator",
-            "password": "p%40ss%20word",  # encodeURIComponent('p@ss word')
-            "ansible_node_id": "node1",
-        })
+        collector = HostCollector(
+            {
+                "host": "10.11.27.147",
+                "os_type": "windows",
+                "username": "administrator",
+                "password": "p%40ss%20word",  # encodeURIComponent('p@ss word')
+                "ansible_node_id": "node1",
+            }
+        )
 
         config = collector._resolve_execution_config()
 
         assert config["host_credentials"][0]["password"] == "p@ss word"
 
     def test_private_key_content_and_passphrase_are_url_decoded(self):
-        collector = HostCollector({
-            "host": "10.11.27.147",
-            "os_type": "linux",
-            "username": "root",
-            "auth_type": "private_key",
-            "private_key_content": "line1%0Aline2%2Bend",  # encodeURIComponent('line1\nline2+end')
-            "private_key_passphrase": "pa%40ss",
-            "ansible_node_id": "node1",
-        })
+        collector = HostCollector(
+            {
+                "host": "10.11.27.147",
+                "os_type": "linux",
+                "username": "root",
+                "auth_type": "private_key",
+                "private_key_content": "line1%0Aline2%2Bend",  # encodeURIComponent('line1\nline2+end')
+                "private_key_passphrase": "pa%40ss",
+                "ansible_node_id": "node1",
+            }
+        )
 
         config = collector._resolve_execution_config()
         cred = config["host_credentials"][0]
@@ -867,27 +937,33 @@ class TestHostCollectorCredentialDecoding:
         assert cred["private_key_passphrase"] == "pa@ss"
 
     def test_plain_password_without_encoding_is_unchanged(self):
-        collector = HostCollector({
-            "host": "10.11.27.147",
-            "os_type": "linux",
-            "username": "root",
-            "password": "simplepass123",
-            "ansible_node_id": "node1",
-        })
+        collector = HostCollector(
+            {
+                "host": "10.11.27.147",
+                "os_type": "linux",
+                "username": "root",
+                "password": "simplepass123",
+                "ansible_node_id": "node1",
+            }
+        )
 
         config = collector._resolve_execution_config()
 
         assert config["host_credentials"][0]["password"] == "simplepass123"
 
-    def test_plain_credential_encoding_skips_url_decode_for_literal_percent_sequences(self):
-        collector = HostCollector({
-            "host": "10.11.27.147",
-            "os_type": "linux",
-            "username": "root",
-            "password": "literal%23password",
-            "credential_encoding": "plain",
-            "ansible_node_id": "node1",
-        })
+    def test_plain_credential_encoding_skips_url_decode_for_literal_percent_sequences(
+        self,
+    ):
+        collector = HostCollector(
+            {
+                "host": "10.11.27.147",
+                "os_type": "linux",
+                "username": "root",
+                "password": "literal%23password",
+                "credential_encoding": "plain",
+                "ansible_node_id": "node1",
+            }
+        )
 
         config = collector._resolve_execution_config()
 
@@ -895,11 +971,370 @@ class TestHostCollectorCredentialDecoding:
 
 
 @pytest.mark.asyncio
+class TestHostRemoteMonitorTask:
+    async def test_collect_host_metrics_task_submits_callback_flow_and_returns_queued_status(self, monkeypatch):
+        import core.host_remote_callback as host_remote_callback_module
+        import tasks.collectors.host_collector as host_collector_module
+
+        class UnexpectedNatsServerModule(types.ModuleType):
+            def __getattr__(self, name):
+                raise AssertionError("collect_host_metrics_task must not depend on service.nats_server")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "service.nats_server",
+            UnexpectedNatsServerModule("service.nats_server"),
+        )
+        monitor_handler = _load_monitor_handler_module(monkeypatch)
+        monkeypatch.setattr(monitor_handler.time, "time", lambda: 1234.567)
+        accepted_response = {
+            "success": True,
+            "result": {
+                "accepted": True,
+                "status": "queued",
+                "task_id": "collect-task-1",
+            },
+        }
+        call_order = []
+
+        async def submit_collection(task_id, callback_subject, callback_payload):
+            call_order.append(("submit", task_id, callback_subject, callback_payload))
+            return accepted_response
+
+        submit_collection = AsyncMock(side_effect=submit_collection)
+        collect = AsyncMock(side_effect=AssertionError("collect should not be called"))
+
+        class FakeCollector:
+            def __init__(self, params):
+                self.params = params
+                self.collect = collect
+                self.submit_collection = submit_collection
+
+        monkeypatch.setattr(host_collector_module, "HostCollector", FakeCollector)
+        stored_callback_contexts = {}
+
+        async def store_callback_context(task_id, callback_params, ctx):
+            call_order.append(("store", task_id, callback_params, ctx))
+            stored_callback_contexts[task_id] = {
+                "callback_deadline_at": None,
+            }
+
+        store_callback_context = AsyncMock(side_effect=store_callback_context)
+
+        async def mark_submit_accepted(task_id):
+            stored_callback_contexts[task_id]["callback_deadline_at"] = (
+                1234567 + host_remote_callback_module.HOST_REMOTE_CALLBACK_DEADLINE_SECONDS * 1000
+            )
+
+        monkeypatch.setattr(
+            host_remote_callback_module,
+            "store_host_remote_callback_context",
+            store_callback_context,
+        )
+        monkeypatch.setattr(
+            host_remote_callback_module,
+            "mark_host_remote_submit_accepted",
+            AsyncMock(side_effect=mark_submit_accepted),
+        )
+
+        nats_server = _load_nats_server_module(monkeypatch)
+        params = _build_host_params()
+        result = await monitor_handler.collect_host_metrics_task({}, params, "collect-task-1")
+        callback_subject = host_remote_callback_module.get_host_remote_callback_subject()
+        registered_service_name = nats_server.get_nats().service_name
+        registered_subject = host_remote_callback_module.get_host_remote_callback_subject(registered_service_name)
+
+        assert result["task_id"] == "collect-task-1"
+        assert result["status"] == "queued"
+        assert result["monitor_type"] == "host"
+        assert result["accepted_task_id"] == "collect-task-1"
+        assert result["defer_running_clear"] is True
+        assert result["submitted_at"] == 1234567
+        collect.assert_not_awaited()
+        assert host_remote_callback_module.HOST_REMOTE_CALLBACK_HANDLER == "host_remote.callback"
+        assert registered_service_name == host_remote_callback_module.get_stargazer_service_name()
+        assert callback_subject == registered_subject
+        assert nats_server.get_nats().handlers[host_remote_callback_module.HOST_REMOTE_CALLBACK_HANDLER] is nats_server.handle_host_remote_callback
+        assert nats_server.get_nats().handler_queues[
+            host_remote_callback_module.HOST_REMOTE_CALLBACK_HANDLER
+        ] == host_remote_callback_module.get_host_remote_callback_queue(registered_service_name)
+        submit_collection.assert_awaited_once_with(
+            "collect-task-1",
+            callback_subject,
+            {
+                "collect_task_id": "collect-task-1",
+                "instance_id": "region1_host_10.0.0.9",
+                "instance_name": "10.0.0.9",
+                "model_id": "host",
+            },
+        )
+        store_callback_context.assert_awaited_once_with(
+            "collect-task-1",
+            {
+                "callback_timestamp": 1234567,
+                "host": "10.0.0.9",
+                "os_type": "linux",
+                "monitor_type": "host",
+                "tags": {"instance_id": "region1_host_10.0.0.9"},
+            },
+            {},
+        )
+        loaded_context = stored_callback_contexts["collect-task-1"]
+        assert loaded_context["callback_deadline_at"] is not None
+        assert loaded_context["callback_deadline_at"] >= (1234567 + host_remote_callback_module.HOST_REMOTE_CALLBACK_DEADLINE_SECONDS * 1000)
+        assert [entry[0] for entry in call_order] == ["store", "submit"]
+
+    async def test_collect_host_metrics_task_publishes_error_metrics_on_submission_failure(self, monkeypatch):
+        import core.host_remote_callback as host_remote_callback_module
+        import core.nats as core_nats
+        import tasks.collectors.host_collector as host_collector_module
+        from tasks.handlers import monitor_handler
+
+        influxdb_client_module = types.ModuleType("influxdb_client")
+        influxdb_client_module.Point = MagicMock()
+        influxdb_client_module.WritePrecision = MagicMock()
+        monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
+        import tasks.utils.metrics_helper as metrics_helper_module
+        import tasks.utils.nats_helper as nats_helper_module
+
+        submit_collection = AsyncMock(side_effect=RuntimeError("submission failed"))
+        publish_metrics = AsyncMock()
+        error_metrics = 'monitor_collection_status{status="error"} 1 1\n'
+
+        class FakeCollector:
+            def __init__(self, params):
+                self.submit_collection = submit_collection
+
+        monkeypatch.setattr(host_collector_module, "HostCollector", FakeCollector)
+        monkeypatch.setattr(
+            core_nats,
+            "get_nats",
+            lambda: types.SimpleNamespace(service_name="stargazer-service"),
+        )
+        monkeypatch.setattr(
+            host_remote_callback_module,
+            "store_host_remote_callback_context",
+            AsyncMock(),
+        )
+        monkeypatch.setattr(
+            host_remote_callback_module,
+            "clear_host_remote_callback_context",
+            AsyncMock(),
+        )
+        monkeypatch.setattr(nats_helper_module, "publish_metrics_to_nats", publish_metrics)
+        monkeypatch.setattr(
+            metrics_helper_module,
+            "generate_monitor_error_metrics",
+            MagicMock(return_value=error_metrics),
+        )
+
+        params = _build_host_params()
+        result = await monitor_handler.collect_host_metrics_task({"job": "ctx"}, params, "collect-task-2")
+
+        assert result["status"] == "failed"
+        assert result["error"] == "submission failed"
+        publish_metrics.assert_awaited_once_with({"job": "ctx"}, error_metrics, params, "collect-task-2")
+
+    async def test_collect_host_metrics_task_clears_pre_stored_context_when_submission_fails(self, monkeypatch):
+        import core.host_remote_callback as host_remote_callback_module
+        import core.nats as core_nats
+        import tasks.collectors.host_collector as host_collector_module
+        from tasks.handlers import monitor_handler
+
+        influxdb_client_module = types.ModuleType("influxdb_client")
+        influxdb_client_module.Point = MagicMock()
+        influxdb_client_module.WritePrecision = MagicMock()
+        monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
+        import tasks.utils.metrics_helper as metrics_helper_module
+        import tasks.utils.nats_helper as nats_helper_module
+
+        call_order = []
+
+        async def submit_collection(task_id, callback_subject, callback_payload):
+            call_order.append(("submit", task_id, callback_subject, callback_payload))
+            raise RuntimeError("submission failed")
+
+        submit_collection = AsyncMock(side_effect=submit_collection)
+        publish_metrics = AsyncMock()
+        error_metrics = 'monitor_collection_status{status="error"} 1 1\n'
+
+        class FakeCollector:
+            def __init__(self, params):
+                self.submit_collection = submit_collection
+
+        async def store_callback_context(task_id, callback_params, ctx):
+            call_order.append(("store", task_id, callback_params, ctx))
+
+        store_callback_context = AsyncMock(side_effect=store_callback_context)
+
+        async def clear_callback_context(task_id):
+            call_order.append(("clear", task_id))
+
+        clear_callback_context = AsyncMock(side_effect=clear_callback_context)
+
+        monkeypatch.setattr(host_collector_module, "HostCollector", FakeCollector)
+        monkeypatch.setattr(monitor_handler.time, "time", lambda: 1234.567)
+        monkeypatch.setattr(
+            core_nats,
+            "get_nats",
+            lambda: types.SimpleNamespace(service_name="stargazer-service"),
+        )
+        monkeypatch.setattr(
+            host_remote_callback_module,
+            "store_host_remote_callback_context",
+            store_callback_context,
+        )
+        monkeypatch.setattr(
+            host_remote_callback_module,
+            "clear_host_remote_callback_context",
+            clear_callback_context,
+        )
+        monkeypatch.setattr(nats_helper_module, "publish_metrics_to_nats", publish_metrics)
+        monkeypatch.setattr(
+            metrics_helper_module,
+            "generate_monitor_error_metrics",
+            MagicMock(return_value=error_metrics),
+        )
+
+        params = _build_host_params()
+        result = await monitor_handler.collect_host_metrics_task({"job": "ctx"}, params, "collect-task-3")
+
+        assert result["status"] == "failed"
+        store_callback_context.assert_awaited_once_with(
+            "collect-task-3",
+            {
+                "callback_timestamp": 1234567,
+                "host": "10.0.0.9",
+                "os_type": "linux",
+                "monitor_type": "host",
+                "tags": {"instance_id": "region1_host_10.0.0.9"},
+            },
+            {"job": "ctx"},
+        )
+        submit_collection.assert_awaited_once()
+        clear_callback_context.assert_awaited_once_with("collect-task-3")
+        assert [entry[0] for entry in call_order] == ["store", "submit", "clear"]
+
+
+class TestMonitorPublishFailureHandling:
+    def test_collect_vmware_metrics_task_skips_synthetic_error_metrics_when_delivery_detected(self, monkeypatch):
+        influxdb_client_module = types.ModuleType("influxdb_client")
+        influxdb_client_module.Point = MagicMock()
+        influxdb_client_module.WritePrecision = MagicMock()
+        monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
+
+        import tasks.collectors.vmware_collector as vmware_collector_module
+        import tasks.utils.metrics_helper as metrics_helper_module
+        import tasks.utils.nats_helper as nats_helper_module
+        from tasks.utils.nats_helper import MetricsPublishError
+
+        monitor_handler = _load_monitor_handler_module(monkeypatch)
+        publish_calls = []
+        error_metrics_factory = MagicMock(return_value="synthetic-error-metrics")
+
+        class FakeCollector:
+            def __init__(self, params):
+                self.params = params
+
+            async def collect(self):
+                return "vmware_real_metrics"
+
+        async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
+            publish_calls.append(metrics_data)
+            if metrics_data == "vmware_real_metrics":
+                raise MetricsPublishError(
+                    task_id=task_id,
+                    subject="metrics.vmware",
+                    total_lines=1,
+                    success_count=0,
+                    delivery_detected=True,
+                    attempts=1,
+                    reason="flush failed after writes",
+                )
+            return 1
+
+        monkeypatch.setattr(vmware_collector_module, "VmwareCollector", FakeCollector)
+        monkeypatch.setattr(nats_helper_module, "publish_metrics_to_nats", fake_publish_metrics_to_nats)
+        monkeypatch.setattr(
+            metrics_helper_module,
+            "generate_monitor_error_metrics",
+            error_metrics_factory,
+        )
+
+        result = asyncio.run(
+            monitor_handler.collect_vmware_metrics_task(
+                {"job": "ctx"},
+                {"host": "10.0.0.10", "monitor_type": "vmware_vc"},
+                "vmware-task-1",
+            )
+        )
+
+        assert result["status"] == "failed"
+        assert publish_calls == ["vmware_real_metrics"]
+        error_metrics_factory.assert_not_called()
+
+    def test_collect_vmware_metrics_task_publishes_synthetic_error_metrics_when_delivery_not_detected(self, monkeypatch):
+        influxdb_client_module = types.ModuleType("influxdb_client")
+        influxdb_client_module.Point = MagicMock()
+        influxdb_client_module.WritePrecision = MagicMock()
+        monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
+
+        import tasks.collectors.vmware_collector as vmware_collector_module
+        import tasks.utils.metrics_helper as metrics_helper_module
+        import tasks.utils.nats_helper as nats_helper_module
+        from tasks.utils.nats_helper import MetricsPublishError
+
+        monitor_handler = _load_monitor_handler_module(monkeypatch)
+        publish_calls = []
+        error_metrics_factory = MagicMock(return_value="synthetic-error-metrics")
+
+        class FakeCollector:
+            def __init__(self, params):
+                self.params = params
+
+            async def collect(self):
+                return "vmware_real_metrics"
+
+        async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
+            publish_calls.append(metrics_data)
+            if metrics_data == "vmware_real_metrics":
+                raise MetricsPublishError(
+                    task_id=task_id,
+                    subject="metrics.vmware",
+                    total_lines=1,
+                    success_count=0,
+                    delivery_detected=False,
+                    attempts=2,
+                    reason="delivery never confirmed",
+                )
+            return 1
+
+        monkeypatch.setattr(vmware_collector_module, "VmwareCollector", FakeCollector)
+        monkeypatch.setattr(nats_helper_module, "publish_metrics_to_nats", fake_publish_metrics_to_nats)
+        monkeypatch.setattr(
+            metrics_helper_module,
+            "generate_monitor_error_metrics",
+            error_metrics_factory,
+        )
+
+        result = asyncio.run(
+            monitor_handler.collect_vmware_metrics_task(
+                {"job": "ctx"},
+                {"host": "10.0.0.10", "monitor_type": "vmware_vc"},
+                "vmware-task-2",
+            )
+        )
+
+        assert result["status"] == "failed"
+        assert publish_calls == ["vmware_real_metrics", "synthetic-error-metrics"]
+        error_metrics_factory.assert_called_once()
+
+
 @pytest.mark.asyncio
 class TestHostCollectorCollect:
     """测试完整采集流程（mock Ansible RPC）"""
 
-    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_submit_collection_passes_callback_and_returns_accepted_response(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
@@ -910,16 +1345,18 @@ class TestHostCollectorCollect:
             },
         }
 
-        collector = HostCollector({
-            "host": "10.0.0.1",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "port": "22",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "tags": {"instance_id": "region1_host_10.0.0.1"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.1",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "port": "22",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "tags": {"instance_id": "region1_host_10.0.0.1"},
+            }
+        )
 
         result = await collector.submit_collection(
             "collect-123",
@@ -951,21 +1388,26 @@ class TestHostCollectorCollect:
             "timeout": HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT,
         }
 
-    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_submit_collection_uses_configured_callback_timeout(self, mock_adhoc):
-        mock_adhoc.return_value = {"success": True, "result": {"accepted": True, "status": "queued"}}
+        mock_adhoc.return_value = {
+            "success": True,
+            "result": {"accepted": True, "status": "queued"},
+        }
 
-        collector = HostCollector({
-            "host": "10.0.0.1",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "port": "22",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "host_remote_callback_timeout": 90,
-            "tags": {"instance_id": "region1_host_10.0.0.1"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.1",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "port": "22",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "host_remote_callback_timeout": 90,
+                "tags": {"instance_id": "region1_host_10.0.0.1"},
+            }
+        )
 
         await collector.submit_collection(
             "collect-123",
@@ -976,30 +1418,34 @@ class TestHostCollectorCollect:
         assert mock_adhoc.call_args[1]["callback"]["timeout"] == 90
 
     async def test_process_adhoc_result_returns_prometheus_metrics(self):
-        collector = HostCollector({
-            "host": "10.0.0.1",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "tags": {"instance_id": "region1_host_10.0.0.1"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.1",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "tags": {"instance_id": "region1_host_10.0.0.1"},
+            }
+        )
 
         result = {
             "success": True,
             "result": {
                 "contacted": {
                     "10.0.0.1": {
-                        "stdout": json.dumps({
-                            "cpu": {
-                                "usage_percent": 25.0,
-                                "core_count": 4,
-                                "load_1m": 0.5,
-                                "load_5m": 0.3,
-                                "load_15m": 0.1,
+                        "stdout": json.dumps(
+                            {
+                                "cpu": {
+                                    "usage_percent": 25.0,
+                                    "core_count": 4,
+                                    "load_1m": 0.5,
+                                    "load_5m": 0.3,
+                                    "load_15m": 0.1,
+                                }
                             }
-                        }),
+                        ),
                         "rc": 0,
                     }
                 }
@@ -1012,15 +1458,17 @@ class TestHostCollectorCollect:
         assert 'instance_id="region1_host_10.0.0.1"' in metrics
 
     async def test_process_adhoc_result_supports_callback_result_list(self):
-        collector = HostCollector({
-            "host": "10.0.0.8",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "tags": {"instance_id": "region1_host_10.0.0.8"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.8",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "tags": {"instance_id": "region1_host_10.0.0.8"},
+            }
+        )
 
         result = {
             "task_id": "task-123",
@@ -1029,15 +1477,17 @@ class TestHostCollectorCollect:
                 {
                     "host": "10.0.0.8",
                     "status": "success",
-                    "stdout": json.dumps({
-                        "cpu": {
-                            "usage_percent": 25.0,
-                            "core_count": 4,
-                            "load_1m": 0.5,
-                            "load_5m": 0.3,
-                            "load_15m": 0.1,
+                    "stdout": json.dumps(
+                        {
+                            "cpu": {
+                                "usage_percent": 25.0,
+                                "core_count": 4,
+                                "load_1m": 0.5,
+                                "load_5m": 0.3,
+                                "load_15m": 0.1,
+                            }
                         }
-                    }),
+                    ),
                     "stderr": "",
                     "exit_code": 0,
                 }
@@ -1050,16 +1500,18 @@ class TestHostCollectorCollect:
         assert 'instance_id="region1_host_10.0.0.8"' in metrics
 
     async def test_process_adhoc_result_uses_stored_callback_timestamp(self):
-        collector = HostCollector({
-            "host": "10.0.0.8",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "callback_timestamp": 1234567890000,
-            "tags": {"instance_id": "region1_host_10.0.0.8"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.8",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "callback_timestamp": 1234567890000,
+                "tags": {"instance_id": "region1_host_10.0.0.8"},
+            }
+        )
 
         result = {
             "task_id": "task-123",
@@ -1068,15 +1520,17 @@ class TestHostCollectorCollect:
                 {
                     "host": "10.0.0.8",
                     "status": "success",
-                    "stdout": json.dumps({
-                        "cpu": {
-                            "usage_percent": 25.0,
-                            "core_count": 4,
-                            "load_1m": 0.5,
-                            "load_5m": 0.3,
-                            "load_15m": 0.1,
+                    "stdout": json.dumps(
+                        {
+                            "cpu": {
+                                "usage_percent": 25.0,
+                                "core_count": 4,
+                                "load_1m": 0.5,
+                                "load_5m": 0.3,
+                                "load_15m": 0.1,
+                            }
                         }
-                    }),
+                    ),
                     "stderr": "",
                     "exit_code": 0,
                 }
@@ -1088,16 +1542,18 @@ class TestHostCollectorCollect:
         assert "1234567890000" in metrics
 
     async def test_process_adhoc_result_reuses_stored_callback_timestamp_on_retry(self):
-        collector = HostCollector({
-            "host": "10.0.0.8",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "callback_timestamp": 1234567890000,
-            "tags": {"instance_id": "region1_host_10.0.0.8"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.8",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "callback_timestamp": 1234567890000,
+                "tags": {"instance_id": "region1_host_10.0.0.8"},
+            }
+        )
 
         result = {
             "task_id": "task-123",
@@ -1106,15 +1562,17 @@ class TestHostCollectorCollect:
                 {
                     "host": "10.0.0.8",
                     "status": "success",
-                    "stdout": json.dumps({
-                        "cpu": {
-                            "usage_percent": 25.0,
-                            "core_count": 4,
-                            "load_1m": 0.5,
-                            "load_5m": 0.3,
-                            "load_15m": 0.1,
+                    "stdout": json.dumps(
+                        {
+                            "cpu": {
+                                "usage_percent": 25.0,
+                                "core_count": 4,
+                                "load_1m": 0.5,
+                                "load_5m": 0.3,
+                                "load_15m": 0.1,
+                            }
                         }
-                    }),
+                    ),
                     "stderr": "",
                     "exit_code": 0,
                 }
@@ -1127,18 +1585,18 @@ class TestHostCollectorCollect:
         assert first_metrics == second_metrics
 
     @patch("tasks.collectors.host_collector.time.time", return_value=1234.567)
-    async def test_process_adhoc_result_without_callback_timestamp_uses_current_time(
-        self, _mock_time
-    ):
-        collector = HostCollector({
-            "host": "10.0.0.8",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "tags": {"instance_id": "region1_host_10.0.0.8"},
-        })
+    async def test_process_adhoc_result_without_callback_timestamp_uses_current_time(self, _mock_time):
+        collector = HostCollector(
+            {
+                "host": "10.0.0.8",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "tags": {"instance_id": "region1_host_10.0.0.8"},
+            }
+        )
 
         result = {
             "task_id": "task-123",
@@ -1147,15 +1605,17 @@ class TestHostCollectorCollect:
                 {
                     "host": "10.0.0.8",
                     "status": "success",
-                    "stdout": json.dumps({
-                        "cpu": {
-                            "usage_percent": 25.0,
-                            "core_count": 4,
-                            "load_1m": 0.5,
-                            "load_5m": 0.3,
-                            "load_15m": 0.1,
+                    "stdout": json.dumps(
+                        {
+                            "cpu": {
+                                "usage_percent": 25.0,
+                                "core_count": 4,
+                                "load_1m": 0.5,
+                                "load_5m": 0.3,
+                                "load_15m": 0.1,
+                            }
                         }
-                    }),
+                    ),
                     "stderr": "",
                     "exit_code": 0,
                 }
@@ -1166,33 +1626,49 @@ class TestHostCollectorCollect:
 
         assert "1234567" in metrics
 
-    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_linux(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
             "result": {
                 "contacted": {
                     "10.0.0.1": {
-                        "stdout": json.dumps({
-                            "cpu": {"usage_percent": 25.0, "core_count": 4, "load_1m": 0.5, "load_5m": 0.3, "load_15m": 0.1},
-                            "mem": {"total_bytes": 8000000000, "used_bytes": 4000000000, "available_bytes": 4000000000, "swap_total_bytes": 0, "swap_used_bytes": 0},
-                        }),
+                        "stdout": json.dumps(
+                            {
+                                "cpu": {
+                                    "usage_percent": 25.0,
+                                    "core_count": 4,
+                                    "load_1m": 0.5,
+                                    "load_5m": 0.3,
+                                    "load_15m": 0.1,
+                                },
+                                "mem": {
+                                    "total_bytes": 8000000000,
+                                    "used_bytes": 4000000000,
+                                    "available_bytes": 4000000000,
+                                    "swap_total_bytes": 0,
+                                    "swap_used_bytes": 0,
+                                },
+                            }
+                        ),
                         "rc": 0,
                     }
                 }
             },
         }
 
-        collector = HostCollector({
-            "host": "10.0.0.1",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "port": "22",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu,mem",
-            "tags": {"instance_id": "region1_host_10.0.0.1"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.1",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "port": "22",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu,mem",
+                "tags": {"instance_id": "region1_host_10.0.0.1"},
+            }
+        )
 
         result = await collector.collect()
         assert "host_cpu_usage_percent" in result
@@ -1206,32 +1682,42 @@ class TestHostCollectorCollect:
         assert call_kwargs["module"] == "raw"
         assert call_kwargs["host_credentials"][0]["connection"] == "ssh"
 
-    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_windows(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
             "result": {
                 "contacted": {
                     "10.0.0.2": {
-                        "stdout": json.dumps({
-                            "cpu": {"usage_percent": 60.0, "core_count": 8, "load_1m": 0, "load_5m": 0, "load_15m": 0},
-                        }),
+                        "stdout": json.dumps(
+                            {
+                                "cpu": {
+                                    "usage_percent": 60.0,
+                                    "core_count": 8,
+                                    "load_1m": 0,
+                                    "load_5m": 0,
+                                    "load_15m": 0,
+                                },
+                            }
+                        ),
                         "rc": 0,
                     }
                 }
             },
         }
 
-        collector = HostCollector({
-            "host": "10.0.0.2",
-            "os_type": "windows",
-            "username": "Administrator",
-            "password": "secret",
-            "port": "5986",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "tags": {"instance_id": "region1_host_10.0.0.2"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.2",
+                "os_type": "windows",
+                "username": "Administrator",
+                "password": "secret",
+                "port": "5986",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "tags": {"instance_id": "region1_host_10.0.0.2"},
+            }
+        )
 
         result = await collector.collect()
         assert "host_cpu_usage_percent" in result
@@ -1244,35 +1730,45 @@ class TestHostCollectorCollect:
         assert call_kwargs["host_credentials"][0]["winrm_transport"] == "ntlm"
         assert call_kwargs["host_credentials"][0]["winrm_cert_validation"] is False
 
-    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_windows_passes_explicit_winrm_options(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
             "result": {
                 "contacted": {
                     "10.0.0.2": {
-                        "stdout": json.dumps({
-                            "cpu": {"usage_percent": 60.0, "core_count": 8, "load_1m": 0, "load_5m": 0, "load_15m": 0},
-                        }),
+                        "stdout": json.dumps(
+                            {
+                                "cpu": {
+                                    "usage_percent": 60.0,
+                                    "core_count": 8,
+                                    "load_1m": 0,
+                                    "load_5m": 0,
+                                    "load_15m": 0,
+                                },
+                            }
+                        ),
                         "rc": 0,
                     }
                 }
             },
         }
 
-        collector = HostCollector({
-            "host": "10.0.0.2",
-            "os_type": "windows",
-            "username": "Administrator",
-            "password": "secret",
-            "port": "5985",
-            "winrm_scheme": "http",
-            "winrm_transport": "basic",
-            "winrm_cert_validation": "true",
-            "ansible_node_id": "region1",
-            "metrics_modules": ["cpu"],
-            "tags": {"instance_id": "region1_host_10.0.0.2"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.2",
+                "os_type": "windows",
+                "username": "Administrator",
+                "password": "secret",
+                "port": "5985",
+                "winrm_scheme": "http",
+                "winrm_transport": "basic",
+                "winrm_cert_validation": "true",
+                "ansible_node_id": "region1",
+                "metrics_modules": ["cpu"],
+                "tags": {"instance_id": "region1_host_10.0.0.2"},
+            }
+        )
 
         await collector.collect()
 
@@ -1282,34 +1778,44 @@ class TestHostCollectorCollect:
         assert host_cred["winrm_transport"] == "basic"
         assert host_cred["winrm_cert_validation"] is True
 
-    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_linux_private_key_credentials(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
             "result": {
                 "contacted": {
                     "10.0.0.1": {
-                        "stdout": json.dumps({
-                            "cpu": {"usage_percent": 25.0, "core_count": 4, "load_1m": 0.5, "load_5m": 0.3, "load_15m": 0.1},
-                        }),
+                        "stdout": json.dumps(
+                            {
+                                "cpu": {
+                                    "usage_percent": 25.0,
+                                    "core_count": 4,
+                                    "load_1m": 0.5,
+                                    "load_5m": 0.3,
+                                    "load_15m": 0.1,
+                                },
+                            }
+                        ),
                         "rc": 0,
                     }
                 }
             },
         }
 
-        collector = HostCollector({
-            "host": "10.0.0.1",
-            "os_type": "linux",
-            "username": "root",
-            "auth_type": "private_key",
-            "private_key_content": "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----",
-            "private_key_passphrase": "key-pass",
-            "port": "22",
-            "ansible_node_id": "region1",
-            "metrics_modules": ["cpu", "system"],
-            "tags": {"instance_id": "region1_host_10.0.0.1"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.1",
+                "os_type": "linux",
+                "username": "root",
+                "auth_type": "private_key",
+                "private_key_content": "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----",
+                "private_key_passphrase": "key-pass",
+                "port": "22",
+                "ansible_node_id": "region1",
+                "metrics_modules": ["cpu", "system"],
+                "tags": {"instance_id": "region1_host_10.0.0.1"},
+            }
+        )
 
         await collector.collect()
 
@@ -1321,47 +1827,51 @@ class TestHostCollectorCollect:
         assert host_cred["private_key_passphrase"] == "key-pass"
         assert "system" in call_kwargs["module_args"]
 
-    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_adhoc_failure_raises(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": False,
             "error": "Connection refused",
         }
 
-        collector = HostCollector({
-            "host": "10.0.0.3",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "tags": {"instance_id": "x"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.3",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "tags": {"instance_id": "x"},
+            }
+        )
 
         with pytest.raises(RuntimeError, match="Host collection failed"):
             await collector.collect()
 
-    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_invalid_json_raises(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
             "result": {"contacted": {"10.0.0.1": {"stdout": "not json at all", "rc": 0}}},
         }
 
-        collector = HostCollector({
-            "host": "10.0.0.1",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "tags": {"instance_id": "x"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.1",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "tags": {"instance_id": "x"},
+            }
+        )
 
         with pytest.raises(RuntimeError, match="Failed to parse metrics JSON"):
             await collector.collect()
 
-    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_process_adhoc_result_extracts_json_from_warning_polluted_stdout(self, mock_adhoc):
         warning_stdout = (
             "[WARNING]: Platform linux on host 10.0.0.1 is using the discovered Python interpreter\n"
@@ -1373,70 +1883,91 @@ class TestHostCollectorCollect:
             "result": {"contacted": {"10.0.0.1": {"stdout": warning_stdout, "rc": 0}}},
         }
 
-        collector = HostCollector({
-            "host": "10.0.0.1",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "tags": {"instance_id": "x"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.1",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "tags": {"instance_id": "x"},
+            }
+        )
 
         result = await collector.collect()
 
         assert "host_cpu_usage_percent" in result
         assert "25.0" in result
 
-    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_linux_uses_bash_wrapped_script(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
             "result": {
                 "contacted": {
                     "10.0.0.1": {
-                        "stdout": json.dumps({
-                            "cpu": {"usage_percent": 25.0, "core_count": 4, "load_1m": 0.5, "load_5m": 0.3, "load_15m": 0.1},
-                        }),
+                        "stdout": json.dumps(
+                            {
+                                "cpu": {
+                                    "usage_percent": 25.0,
+                                    "core_count": 4,
+                                    "load_1m": 0.5,
+                                    "load_5m": 0.3,
+                                    "load_15m": 0.1,
+                                },
+                            }
+                        ),
                         "rc": 0,
                     }
                 }
             },
         }
 
-        collector = HostCollector({
-            "host": "10.0.0.1",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "port": "22",
-            "ansible_node_id": "region1",
-            "metrics_modules": "cpu",
-            "tags": {"instance_id": "region1_host_10.0.0.1"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.1",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "port": "22",
+                "ansible_node_id": "region1",
+                "metrics_modules": "cpu",
+                "tags": {"instance_id": "region1_host_10.0.0.1"},
+            }
+        )
 
         await collector.collect()
 
         call_kwargs = mock_adhoc.call_args[1]
         assert call_kwargs["module_args"].startswith(f"bash <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
 
-    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_default_modules_when_invalid(self, mock_adhoc):
         """当 metrics_modules 全部无效时，应使用所有默认模块"""
         mock_adhoc.return_value = {
             "success": True,
-            "result": {"contacted": {"10.0.0.1": {"stdout": '{"cpu": {"usage_percent": 1, "core_count": 1, "load_1m": 0, "load_5m": 0, "load_15m": 0}}', "rc": 0}}},
+            "result": {
+                "contacted": {
+                    "10.0.0.1": {
+                        "stdout": '{"cpu": {"usage_percent": 1, "core_count": 1, "load_1m": 0, "load_5m": 0, "load_15m": 0}}',
+                        "rc": 0,
+                    }
+                }
+            },
         }
 
-        collector = HostCollector({
-            "host": "10.0.0.1",
-            "os_type": "linux",
-            "username": "root",
-            "password": "secret",
-            "ansible_node_id": "region1",
-            "metrics_modules": "invalid1,invalid2",
-            "tags": {"instance_id": "x"},
-        })
+        collector = HostCollector(
+            {
+                "host": "10.0.0.1",
+                "os_type": "linux",
+                "username": "root",
+                "password": "secret",
+                "ansible_node_id": "region1",
+                "metrics_modules": "invalid1,invalid2",
+                "tags": {"instance_id": "x"},
+            }
+        )
 
         result = await collector.collect()
         # 应该正常完成（使用全部模块的脚本）
@@ -1445,24 +1976,18 @@ class TestHostCollectorCollect:
 
 class TestHostRemoteCallbackHelper:
     def test_get_host_remote_callback_subject_uses_service_name(self):
-        import core.collection.host_remote.callback as host_remote_callback_module
+        import core.host_remote_callback as host_remote_callback_module
 
-        assert host_remote_callback_module.get_host_remote_callback_subject("stargazer-service") == (
-            "stargazer-service.host_remote.callback"
-        )
+        assert host_remote_callback_module.get_host_remote_callback_subject("stargazer-service") == ("stargazer-service.host_remote.callback")
 
     def test_get_host_remote_callback_queue_uses_service_name(self):
-        import core.collection.host_remote.callback as host_remote_callback_module
+        import core.host_remote_callback as host_remote_callback_module
 
-        assert host_remote_callback_module.get_host_remote_callback_queue("stargazer-service") == (
-            "stargazer-service.host_remote.callback"
-        )
+        assert host_remote_callback_module.get_host_remote_callback_queue("stargazer-service") == ("stargazer-service.host_remote.callback")
 
     @pytest.mark.asyncio
-    async def test_store_load_and_clear_host_remote_callback_context_with_fake_redis_pool(
-        self, monkeypatch
-    ):
-        import core.collection.host_remote.callback as host_remote_callback_module
+    async def test_store_load_and_clear_host_remote_callback_context_with_fake_redis_pool(self, monkeypatch):
+        import core.host_remote_callback as host_remote_callback_module
 
         fake_pool = _install_fake_host_remote_callback_pool(monkeypatch)
         params = {"host": "10.0.0.9"}
@@ -1493,10 +2018,8 @@ class TestHostRemoteCallbackHelper:
         assert fake_pool.deleted_keys == ["host_remote:callback_context:task-redis"]
 
     @pytest.mark.asyncio
-    async def test_store_host_remote_callback_context_does_not_start_deadline_until_submit_accepted(
-        self, monkeypatch
-    ):
-        import core.collection.host_remote.callback as host_remote_callback_module
+    async def test_store_host_remote_callback_context_does_not_start_deadline_until_submit_accepted(self, monkeypatch):
+        import core.host_remote_callback as host_remote_callback_module
 
         fake_pool = _install_fake_host_remote_callback_pool(monkeypatch)
         monkeypatch.setattr(host_remote_callback_module, "_now_ms", lambda: 1000)
@@ -1508,11 +2031,15 @@ class TestHostRemoteCallbackHelper:
 
     @pytest.mark.asyncio
     async def test_mark_host_remote_submit_accepted_sets_deadline_from_accept_time(self, monkeypatch):
-        import core.collection.host_remote.callback as host_remote_callback_module
+        import core.host_remote_callback as host_remote_callback_module
 
-        fake_pool = _install_fake_host_remote_callback_pool(monkeypatch)
+        _install_fake_host_remote_callback_pool(monkeypatch)
         log_events = []
-        monkeypatch.setattr(host_remote_callback_module, "log_host_remote_event", lambda event, task_id, level="info", **fields: log_events.append((event, task_id, fields)))
+        monkeypatch.setattr(
+            host_remote_callback_module,
+            "log_host_remote_event",
+            lambda event, task_id, level="info", **fields: log_events.append((event, task_id, fields)),
+        )
         monkeypatch.setattr(host_remote_callback_module, "_now_ms", lambda: 1000)
 
         await host_remote_callback_module.store_host_remote_callback_context("task-deadline", {"host": "10.0.0.9"})
@@ -1525,6 +2052,191 @@ class TestHostRemoteCallbackHelper:
 
 
 @pytest.mark.asyncio
+class TestHostRemoteCallbackHandler:
+    async def test_host_remote_callback_handler_registration_uses_queue_group(self, monkeypatch):
+        nats_server = _load_nats_server_module(monkeypatch)
+        service_name = nats_server.get_nats().service_name
+
+        assert nats_server.get_nats().handler_queues[
+            nats_server.host_remote_callback.HOST_REMOTE_CALLBACK_HANDLER
+        ] == nats_server.host_remote_callback.get_host_remote_callback_queue(service_name)
+
+    async def test_host_remote_callback_handler_reads_context_via_shared_helper(self, monkeypatch):
+        nats_server = _load_nats_server_module(monkeypatch)
+        params = _build_host_params()
+        callback_payload = {
+            "task_id": "task-122",
+            "success": True,
+            "result": [
+                {
+                    "host": "10.0.0.9",
+                    "status": "success",
+                    "stdout": json.dumps(
+                        {
+                            "cpu": {
+                                "usage_percent": 42.0,
+                                "core_count": 4,
+                                "load_1m": 0.2,
+                                "load_5m": 0.1,
+                                "load_15m": 0.05,
+                            }
+                        }
+                    ),
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            ],
+        }
+        load_context = AsyncMock(return_value={"ctx": {}, "params": params})
+        record_callback_payload = AsyncMock(return_value={"ctx": {}, "params": params, "raw_callback": callback_payload})
+        mark_processing_enqueued = AsyncMock()
+        enqueue_processing = AsyncMock(
+            return_value={
+                "task_id": "task-122",
+                "job_id": "process_host_remote_callback:task-122",
+                "status": "queued",
+            }
+        )
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "load_host_remote_callback_context",
+            load_context,
+        )
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "record_host_remote_callback_payload",
+            record_callback_payload,
+        )
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "mark_host_remote_processing_enqueued",
+            mark_processing_enqueued,
+        )
+        clear_running_flag = AsyncMock()
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "clear_host_remote_running_flag",
+            clear_running_flag,
+        )
+        monkeypatch.setattr(
+            nats_server,
+            "get_task_queue",
+            lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing),
+        )
+
+        result = await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
+
+        assert result["status"] == "accepted"
+        load_context.assert_awaited_once_with("task-122")
+        record_callback_payload.assert_awaited_once_with("task-122", callback_payload)
+        clear_running_flag.assert_awaited_once_with("task-122")
+        enqueue_processing.assert_awaited_once_with("task-122")
+        mark_processing_enqueued.assert_awaited_once_with("task-122", processing_job_id="process_host_remote_callback:task-122")
+
+    async def test_host_remote_callback_handler_stores_payload_and_enqueues_processing(self, monkeypatch):
+        nats_server = _load_nats_server_module(monkeypatch)
+        _, callback_contexts = _install_fake_host_remote_callback_store(monkeypatch)
+        params = _build_host_params()
+        callback_payload = {
+            "task_id": "task-123",
+            "success": True,
+            "result": [
+                {
+                    "host": "10.0.0.9",
+                    "status": "success",
+                    "stdout": json.dumps(
+                        {
+                            "cpu": {
+                                "usage_percent": 42.0,
+                                "core_count": 4,
+                                "load_1m": 0.2,
+                                "load_5m": 0.1,
+                                "load_15m": 0.05,
+                            }
+                        }
+                    ),
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            ],
+        }
+        clear_running_flag = AsyncMock()
+        enqueue_processing = AsyncMock(
+            return_value={
+                "task_id": "task-123",
+                "job_id": "process_host_remote_callback:task-123",
+                "status": "queued",
+            }
+        )
+        monkeypatch.setattr(
+            nats_server,
+            "get_task_queue",
+            lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing),
+        )
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "clear_host_remote_running_flag",
+            clear_running_flag,
+        )
+
+        await nats_server.host_remote_callback.store_host_remote_callback_context("task-123", params)
+
+        result = await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
+
+        assert result["status"] == "accepted"
+        enqueue_processing.assert_awaited_once_with("task-123")
+        clear_running_flag.assert_awaited_once_with("task-123")
+        assert callback_contexts["task-123"]["raw_callback"] == callback_payload
+        assert callback_contexts["task-123"]["processing_job_id"] == "process_host_remote_callback:task-123"
+        assert callback_contexts["task-123"]["status"]["delivery"] == "processing"
+
+    async def test_host_remote_callback_handler_keeps_context_when_enqueue_processing_fails(self, monkeypatch):
+        nats_server = _load_nats_server_module(monkeypatch)
+        _, callback_contexts = _install_fake_host_remote_callback_store(monkeypatch)
+        params = _build_host_params()
+        callback_payload = {
+            "task_id": "task-456",
+            "success": False,
+            "error": "Connection refused",
+        }
+        clear_running_flag = AsyncMock()
+        enqueue_processing = AsyncMock(side_effect=RuntimeError("enqueue failed"))
+        monkeypatch.setattr(
+            nats_server,
+            "get_task_queue",
+            lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing),
+        )
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "clear_host_remote_running_flag",
+            clear_running_flag,
+        )
+
+        await nats_server.host_remote_callback.store_host_remote_callback_context("task-456", params)
+
+        with pytest.raises(RuntimeError, match="enqueue failed"):
+            await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
+
+        clear_running_flag.assert_awaited_once_with("task-456")
+        assert callback_contexts["task-456"]["raw_callback"] == callback_payload
+        assert callback_contexts["task-456"]["status"]["delivery"] == "not_ready"
+
+    async def test_host_remote_callback_handler_raises_for_missing_context(self, monkeypatch):
+        nats_server = _load_nats_server_module(monkeypatch)
+        _install_fake_host_remote_callback_store(monkeypatch)
+
+        with pytest.raises(
+            RuntimeError,
+            match="Missing Host Remote callback context for task_id=task-missing",
+        ):
+            await nats_server.handle_host_remote_callback(
+                {
+                    "args": [{"task_id": "task-missing", "success": True, "result": []}],
+                    "kwargs": {},
+                }
+            )
+
+
 @pytest.mark.asyncio
 class TestHostRemoteProcessWorker:
     async def test_process_host_remote_callback_task_publishes_metrics_and_clears_context(self, monkeypatch):
@@ -1544,15 +2256,17 @@ class TestHostRemoteProcessWorker:
                 {
                     "host": "10.0.0.9",
                     "status": "success",
-                    "stdout": json.dumps({
-                        "cpu": {
-                            "usage_percent": 42.0,
-                            "core_count": 4,
-                            "load_1m": 0.2,
-                            "load_5m": 0.1,
-                            "load_15m": 0.05,
+                    "stdout": json.dumps(
+                        {
+                            "cpu": {
+                                "usage_percent": 42.0,
+                                "core_count": 4,
+                                "load_1m": 0.2,
+                                "load_5m": 0.1,
+                                "load_15m": 0.05,
+                            }
                         }
-                    }),
+                    ),
                     "stderr": "",
                     "exit_code": 0,
                 }
@@ -1586,18 +2300,22 @@ class TestHostRemoteProcessWorker:
         influxdb_client_module.Point = MagicMock()
         influxdb_client_module.WritePrecision = MagicMock()
         monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
-        import tasks.utils.nats_helper as nats_helper_module
         import tasks.utils.metrics_helper as metrics_helper_module
+        import tasks.utils.nats_helper as nats_helper_module
 
         params = _build_host_params()
         callback_contexts["task-process-2"] = {
             "ctx": {},
             "params": params,
-            "raw_callback": {"task_id": "task-process-2", "success": False, "error": "Connection refused"},
+            "raw_callback": {
+                "task_id": "task-process-2",
+                "success": False,
+                "error": "Connection refused",
+            },
             "status": {"execution": "execution_finished", "delivery": "processing"},
         }
         publish_metrics = AsyncMock()
-        error_metrics = "monitor_collection_status{status=\"error\"} 1 1\n"
+        error_metrics = 'monitor_collection_status{status="error"} 1 1\n'
         monkeypatch.setattr(nats_helper_module, "publish_metrics_to_nats", publish_metrics)
         monkeypatch.setattr(
             metrics_helper_module,
@@ -1631,15 +2349,17 @@ class TestHostRemoteProcessWorker:
                 {
                     "host": "10.0.0.9",
                     "status": "success",
-                    "stdout": json.dumps({
-                        "cpu": {
-                            "usage_percent": 42.0,
-                            "core_count": 4,
-                            "load_1m": 0.2,
-                            "load_5m": 0.1,
-                            "load_15m": 0.05,
+                    "stdout": json.dumps(
+                        {
+                            "cpu": {
+                                "usage_percent": 42.0,
+                                "core_count": 4,
+                                "load_1m": 0.2,
+                                "load_5m": 0.1,
+                                "load_15m": 0.05,
+                            }
                         }
-                    }),
+                    ),
                     "stderr": "",
                     "exit_code": 0,
                 }
@@ -1651,7 +2371,11 @@ class TestHostRemoteProcessWorker:
             "raw_callback": callback_payload,
             "status": {"execution": "execution_finished", "delivery": "processing"},
         }
-        monkeypatch.setattr(nats_helper_module, "publish_metrics_to_nats", AsyncMock(side_effect=RuntimeError("publish failed")))
+        monkeypatch.setattr(
+            nats_helper_module,
+            "publish_metrics_to_nats",
+            AsyncMock(side_effect=RuntimeError("publish failed")),
+        )
 
         result = await handler.process_host_remote_callback_task({}, {}, "task-process-3")
 
@@ -1703,7 +2427,10 @@ class TestHostRemoteRuntime:
             "task_id": "task-retry",
             "ctx": {},
             "params": _build_host_params(),
-            "status": {"execution": "execution_finished", "delivery": "publish_pending"},
+            "status": {
+                "execution": "execution_finished",
+                "delivery": "publish_pending",
+            },
             "next_retry_at": 1,
         }
         monkeypatch.setattr(
@@ -1712,34 +2439,51 @@ class TestHostRemoteRuntime:
             AsyncMock(return_value=[callback_contexts["task-retry"]]),
         )
         monkeypatch.setattr(runtime_module.host_remote_callback, "_now_ms", lambda: 100)
-        schedule_processing = AsyncMock(
+        enqueue_processing = AsyncMock(
             return_value={
                 "task_id": "task-retry",
-                "processing_id": "host-remote-callback:task-retry",
+                "job_id": "process_host_remote_callback:task-retry",
             }
         )
         monkeypatch.setattr(
             runtime_module,
-            "schedule_host_remote_processing",
-            schedule_processing,
+            "get_task_queue",
+            lambda: types.SimpleNamespace(enqueue_host_remote_processing_task=enqueue_processing),
         )
 
         await runtime_module.sweep_host_remote_callback_contexts()
 
-        schedule_processing.assert_awaited_once_with("task-retry")
+        enqueue_processing.assert_awaited_once_with("task-retry")
         assert callback_contexts["task-retry"]["status"]["delivery"] == "processing"
 
-    async def test_validate_host_remote_runtime_config_warns_on_nats_mismatch(self, monkeypatch):
+    def test_validate_host_remote_runtime_config_warns_on_nats_mismatch(self, monkeypatch):
         runtime_module = _load_host_remote_runtime_module(monkeypatch)
 
         warnings = []
         monkeypatch.setenv("NATS_URLS", "tls://nats-a:4222")
         monkeypatch.setenv("NATS_SERVERS", "tls://nats-b:4222")
+        monkeypatch.setenv("TASK_JOB_TIMEOUT", "300")
         monkeypatch.setattr(runtime_module.logger, "warning", lambda message: warnings.append(message))
 
         runtime_module.validate_host_remote_runtime_config()
 
         assert any("NATS_URLS and NATS_SERVERS differ" in message for message in warnings)
+
+    def test_validate_host_remote_runtime_config_warns_when_submit_accept_timeout_overlaps_job_timeout(self, monkeypatch):
+        runtime_module = _load_host_remote_runtime_module(monkeypatch)
+
+        warnings = []
+        monkeypatch.setenv("TASK_JOB_TIMEOUT", "300")
+        monkeypatch.setattr(runtime_module.logger, "warning", lambda message: warnings.append(message))
+        monkeypatch.setattr(
+            runtime_module.host_remote_callback,
+            "HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS",
+            300,
+        )
+
+        runtime_module.validate_host_remote_runtime_config()
+
+        assert any("HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS >= TASK_JOB_TIMEOUT" in message for message in warnings)
 
     async def test_sweeper_marks_pre_accept_waiting_context_timeout(self, monkeypatch):
         runtime_module = _load_host_remote_runtime_module(monkeypatch)
@@ -1759,7 +2503,11 @@ class TestHostRemoteRuntime:
             AsyncMock(return_value=[callback_contexts["task-submit-timeout"]]),
         )
         monkeypatch.setattr(runtime_module.host_remote_callback, "_now_ms", lambda: 400_000)
-        monkeypatch.setattr(runtime_module.host_remote_callback, "HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", 300)
+        monkeypatch.setattr(
+            runtime_module.host_remote_callback,
+            "HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS",
+            300,
+        )
         clear_running_flag = AsyncMock()
         monkeypatch.setattr(
             runtime_module.host_remote_callback,
@@ -1806,9 +2554,10 @@ class TestPublishMetricsToNats:
 
         monkeypatch.setattr(
             nats_helper_module,
-            "convert_prometheus_to_influx",
+            "_iter_metrics_to_influx",
             MagicMock(return_value=["metric value=1 1", "metric value=2 2"]),
         )
+
         async def fake_publish_lines(subject, lines):
             for line in lines:
                 await FakeNatsConnection().publish(subject, line.encode("utf-8"))
@@ -1816,11 +2565,113 @@ class TestPublishMetricsToNats:
 
         monkeypatch.setattr(nats_helper_module, "nats_publish_lines", fake_publish_lines)
 
-        with pytest.raises(nats_helper_module.MetricsPublishError, match="line publish failed"):
+        with pytest.raises(nats_helper_module.MetricsPublishError, match="RuntimeError"):
             await nats_helper_module.publish_metrics_to_nats({}, "ignored", {"monitor_type": "host"}, "task-900")
 
         assert len(published) == 2
 
+
+@pytest.mark.asyncio
+class TestWorkerRunningFlag:
+    def test_host_running_flag_ttl_covers_callback_deadline(self, monkeypatch):
+        task_queue_module = _load_task_queue_module(monkeypatch)
+
+        monkeypatch.setenv("TASK_JOB_TIMEOUT", "600")
+        monkeypatch.setenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "1200")
+        monkeypatch.setenv("HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", "300")
+
+        ttl = task_queue_module._resolve_running_flag_ttl({"monitor_type": "host"})
+
+        assert ttl == 1260
+
+    def test_non_host_running_flag_ttl_uses_job_timeout(self, monkeypatch):
+        task_queue_module = _load_task_queue_module(monkeypatch)
+
+        monkeypatch.setenv("TASK_JOB_TIMEOUT", "600")
+        monkeypatch.setenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "1200")
+
+        ttl = task_queue_module._resolve_running_flag_ttl({"monitor_type": "vmware"})
+
+        assert ttl == 660
+
+    async def test_collect_task_does_not_clear_running_flag_when_handler_defers_cleanup(self, monkeypatch):
+        worker = _load_worker_module(monkeypatch)
+        clear_running_flag = AsyncMock()
+        handler = AsyncMock(
+            return_value={
+                "task_id": "collect-task-worker",
+                "status": "queued",
+                "defer_running_clear": True,
+            }
+        )
+
+        monitor_handler_module = types.ModuleType("tasks.handlers.monitor_handler")
+        monitor_handler_module.collect_host_metrics_task = handler
+        monkeypatch.setitem(sys.modules, "tasks.handlers.monitor_handler", monitor_handler_module)
+        monkeypatch.setattr(worker, "_clear_running_flag", clear_running_flag)
+
+        result = await worker.collect_task({}, {"monitor_type": "host"}, "collect-task-worker")
+
+        assert result["defer_running_clear"] is True
+        clear_running_flag.assert_not_awaited()
+
+    async def test_collect_task_clears_dedupe_key_when_handler_completes(self, monkeypatch):
+        worker = _load_worker_module(monkeypatch)
+        deleted_keys = []
+
+        class FakePool:
+            async def get(self, key):
+                return None
+
+            async def delete(self, key):
+                deleted_keys.append(key)
+
+            async def close(self):
+                return None
+
+        async def fake_create_pool(_settings):
+            return FakePool()
+
+        handler = AsyncMock(
+            return_value={
+                "task_id": "collect-task-worker",
+                "status": "success",
+            }
+        )
+        monitor_handler_module = types.ModuleType("tasks.handlers.monitor_handler")
+        monitor_handler_module.collect_windows_wmi_metrics_task = handler
+        monkeypatch.setitem(sys.modules, "tasks.handlers.monitor_handler", monitor_handler_module)
+        monkeypatch.setattr(worker, "create_pool", fake_create_pool)
+
+        params = {
+            "monitor_type": "windows_wmi",
+            "host": "10.0.0.8",
+            "tags": {"instance_id": "cmdb_host_1"},
+            "collect_type": "http",
+        }
+        result = await worker.collect_task({}, params, "collect-wmi-worker")
+
+        task_queue_module = _load_task_queue_module(monkeypatch)
+        dedupe_key = task_queue_module.generate_dedupe_key(params)
+        assert result["status"] == "success"
+        assert f"task:dedupe:{dedupe_key}" in deleted_keys
+        assert "task:running:collect-wmi-worker" in deleted_keys
+
+    async def test_process_host_remote_callback_worker_routes_to_handler(self, monkeypatch):
+        worker = _load_worker_module(monkeypatch)
+        handler = AsyncMock(return_value={"task_id": "task-worker-2", "status": "success"})
+        host_remote_handler_module = types.ModuleType("tasks.handlers.host_remote_handler")
+        host_remote_handler_module.process_host_remote_callback_task = handler
+        monkeypatch.setitem(
+            sys.modules,
+            "tasks.handlers.host_remote_handler",
+            host_remote_handler_module,
+        )
+
+        result = await worker.process_host_remote_callback_task({}, {}, "task-worker-2")
+
+        assert result["status"] == "success"
+        handler.assert_awaited_once_with({}, {}, "task-worker-2")
 
 
 def test_config_file_callback_payload_preserves_execution_id():
@@ -1830,6 +2681,8 @@ def test_config_file_callback_payload_preserves_execution_id():
     plugin.params = {
         "collect_task_id": 10,
         "execution_id": "execution-current",
+        "protocol_version": "2",
+        "target_instance_uuid": "123e4567-e89b-42d3-a456-426614174000",
         "host": "10.0.0.1",
         "target_model_id": "host",
         "config_file_path": "/etc/app.conf",
@@ -1844,3 +2697,21 @@ def test_config_file_callback_payload_preserves_execution_id():
     )
 
     assert payload["execution_id"] == "execution-current"
+    assert payload["instance_uuid"] == "123e4567-e89b-42d3-a456-426614174000"
+    assert "instance_id" not in payload
+
+
+def test_plugin_failure_result_preserves_execution_id():
+    from tasks.handlers.plugin_handler import _build_credential_execution_result
+
+    result = _build_credential_execution_result(
+        {
+            "collect_task_id": 10,
+            "execution_id": "execution-current",
+            "host": "10.0.0.1",
+        },
+        None,
+        RuntimeError("boom"),
+    )
+
+    assert result["execution_id"] == "execution-current"
