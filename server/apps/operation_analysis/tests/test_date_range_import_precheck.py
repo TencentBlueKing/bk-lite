@@ -1,9 +1,8 @@
 import pytest
 import yaml
 
-from apps.operation_analysis.constants.import_export import ImportExportErrorCode, YAML_SCHEMA_VERSION
+from apps.operation_analysis.constants.import_export import YAML_SCHEMA_VERSION, ImportExportErrorCode
 from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
-
 
 DATE_RANGE_QUICK_TYPES = (
     "today",
@@ -63,6 +62,8 @@ def _precheck(value, params=_UNSET):
             id="custom",
         ),
         pytest.param(None, id="null"),
+        pytest.param("", id="legacy-empty-string"),
+        pytest.param("   ", id="legacy-blank-string"),
     ],
 )
 def test_import_precheck_accepts_valid_date_range_values(value):
@@ -147,3 +148,36 @@ def test_import_precheck_reports_date_range_error_contract():
         "path": "datasources[0].params[0].value",
         "message": "dateRange value must be null or a canonical persisted date-range rule",
     }
+
+
+def test_yaml_datasource_coerces_legacy_blank_date_range_to_null():
+    from apps.operation_analysis.schemas.import_export_schema import YAMLDocument, normalize_date_range_param_values
+
+    document = YAMLDocument(
+        datasources=[
+            {
+                "key": "cost::cloud_cost/query",
+                "name": "cost",
+                "rest_api": "cloud_cost/query",
+                "params": [
+                    {
+                        "name": "billing_period",
+                        "type": "dateRange",
+                        "filterType": "filter",
+                        "value": "",
+                    }
+                ],
+            }
+        ]
+    )
+
+    assert document.datasources[0].params[0]["value"] is None
+    assert normalize_date_range_param_values(
+        [
+            {"name": "billing_period", "type": "dateRange", "value": ""},
+            {"name": "department", "type": "string", "value": ""},
+        ]
+    ) == [
+        {"name": "billing_period", "type": "dateRange", "value": None},
+        {"name": "department", "type": "string", "value": ""},
+    ]

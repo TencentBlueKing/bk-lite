@@ -30,7 +30,7 @@ export const useCanvasShareApi = () => {
 
   const createShare = useCallback(
     (
-      resourceType: Exclude<CanvasShareResourceType, 'report'>,
+      resourceType: CanvasShareResourceType,
       resourceId: string | number,
     ): Promise<CanvasShareLinkDto> => {
       const endpoint = CANVAS_TYPE_REGISTRY[resourceType].endpoint.replace(/\/$/, '');

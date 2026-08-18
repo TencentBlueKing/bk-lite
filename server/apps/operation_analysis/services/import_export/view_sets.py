@@ -1,6 +1,7 @@
 from typing import Any
 
 from apps.operation_analysis.constants.import_export import ObjectType
+from apps.operation_analysis.services.report_view_sets import normalize_report_view_sets
 
 
 def _rewrite_datasource_refs(value: Any, key_map: dict[Any, Any]) -> Any:
@@ -95,13 +96,7 @@ def normalize_canvas_view_sets_for_storage(view_sets: Any, object_type: ObjectTy
         return _normalize_screen_view_sets(view_sets)
 
     if object_type == ObjectType.REPORT:
-        if not isinstance(view_sets, dict):
-            return {"time_range": None, "sections": []}
-        sections = view_sets.get("sections", [])
-        return {
-            "time_range": view_sets.get("time_range"),
-            "sections": sections if isinstance(sections, list) else [],
-        }
+        return normalize_report_view_sets(view_sets)
 
     return view_sets if isinstance(view_sets, (list, dict)) else []
 
@@ -147,7 +142,8 @@ def rewrite_canvas_view_sets_refs_for_yaml(view_sets: list | dict, object_type: 
 
     if object_type == ObjectType.REPORT:
         return {
-            "time_range": view_sets.get("time_range"),
+            "schema_version": view_sets.get("schema_version", 1),
+            "filters": view_sets.get("filters", []) if isinstance(view_sets.get("filters", []), list) else [],
             "sections": _rewrite_datasource_refs(view_sets.get("sections", []), ds_key_map),
         }
 
@@ -155,6 +151,16 @@ def rewrite_canvas_view_sets_refs_for_yaml(view_sets: list | dict, object_type: 
 
 
 def rewrite_canvas_view_sets_refs_for_storage(view_sets: list | dict, object_type: ObjectType, datasource_key_to_id: dict[str, int]) -> list | dict:
+    if object_type == ObjectType.REPORT:
+        if not isinstance(view_sets, dict):
+            return normalize_report_view_sets(view_sets)
+        rewritten = {
+            "schema_version": view_sets.get("schema_version", 1),
+            "filters": view_sets.get("filters", []),
+            "sections": _rewrite_datasource_refs(view_sets.get("sections", []), datasource_key_to_id),
+        }
+        return normalize_report_view_sets(rewritten)
+
     normalized = normalize_canvas_view_sets_for_storage(view_sets, object_type)
 
     if object_type == ObjectType.DASHBOARD:
@@ -182,11 +188,5 @@ def rewrite_canvas_view_sets_refs_for_storage(view_sets: list | dict, object_typ
         if isinstance(normalized.get("filters"), list):
             result["filters"] = normalized.get("filters", [])
         return result
-
-    if object_type == ObjectType.REPORT:
-        return {
-            "time_range": normalized.get("time_range"),
-            "sections": _rewrite_datasource_refs(normalized.get("sections", []), datasource_key_to_id),
-        }
 
     return _rewrite_datasource_refs(normalized, datasource_key_to_id)

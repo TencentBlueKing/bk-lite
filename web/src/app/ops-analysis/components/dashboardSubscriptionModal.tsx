@@ -36,7 +36,7 @@ interface DashboardSubscriptionModalProps {
   open: boolean;
   /** @deprecated Prefer resourceType + resourceId; kept for Dashboard callers */
   dashboardId?: number;
-  resourceType?: 'dashboard' | 'screen';
+  resourceType?: 'dashboard' | 'screen' | 'report';
   resourceId?: number;
   appliedFilterValues?: Record<string, unknown>;
   onClose: () => void;
@@ -409,9 +409,9 @@ const DashboardSubscriptionModal = ({
       };
       if (editing) {
         await updateSubscription(editing.id, payload);
-      } else if (resolvedResourceType === 'screen') {
+      } else if (resolvedResourceType !== 'dashboard') {
         await createSubscription({
-          resource_type: 'screen',
+          resource_type: resolvedResourceType,
           resource_id: resolvedResourceId!,
           applied_filter_values: appliedFilterValues,
           ...payload,
