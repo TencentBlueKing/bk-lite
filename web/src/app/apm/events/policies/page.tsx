@@ -2,10 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Button, message, Popconfirm, Space, Switch, Tag, type TableColumnsType } from 'antd';
+import {
+  ClockCircleOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
+import { Avatar, Button, message, Popconfirm, Space, Switch, Typography, type TableColumnsType } from 'antd';
+import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmPolicy } from '@/app/apm/types';
@@ -14,6 +21,16 @@ import { useTranslation } from '@/utils/i18n';
 import styles from '@/app/apm/events/event-workspace.module.scss';
 
 type PageState = CatalogStateKind | 'ready';
+
+function formatDateTime(value: string | null | undefined) {
+  return value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '--';
+}
+
+function getLatestExecutionAt(policy: ApmPolicy) {
+  return [policy.state?.last_succeeded_at, policy.state?.last_failed_at]
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => dayjs(right).valueOf() - dayjs(left).valueOf())[0];
+}
 
 export default function ApmPolicyListPage() {
   const { t } = useTranslation();
@@ -50,71 +67,119 @@ export default function ApmPolicyListPage() {
     {
       title: t('apm.policies.name', '策略名称'),
       dataIndex: 'name',
-      render: (_, item) => <Link href={`/apm/events/policies/${item.id}`}>{item.name}</Link>,
-    },
-    {
-      title: t('apm.common.service', '服务'),
-      render: (_, item) => `${item.service_namespace ? `${item.service_namespace} / ` : ''}${item.service_name}`,
-    },
-    { title: t('apm.common.environment', '环境'), dataIndex: 'environment' },
-    {
-      title: t('apm.policies.scope', '端点 / 版本'),
       render: (_, item) => (
-        <Space size={[4, 4]} wrap>
-          <Tag>{item.endpoints.length ? `${item.endpoints.length} 个端点` : '全部端点'}</Tag>
-          <Tag>
-            {item.version_mode === 'specific'
-              ? `${item.versions.length} 个版本`
-              : item.version_mode === 'grouped'
-                ? '按版本'
-                : '全部版本'}
-          </Tag>
-        </Space>
+        <Link className={styles.policyNameLink} href={`/apm/events/policies/${item.id}`} title={item.name}>
+          {item.name}
+        </Link>
       ),
     },
     {
-      title: t('apm.policies.condition', '告警条件'),
-      render: (_, item) =>
-        `${item.metric_type} · ${item.thresholds.map((rule) => `${rule.severity} ${rule.comparator} ${rule.value}`).join(' / ')}`,
+      title: t('apm.common.service', '服务'),
+      render: (_, item) => (
+        <div className={styles.policyServiceCell}>
+          <Typography.Text className={styles.policyServiceName} title={item.service_name}>
+            {item.service_name}
+          </Typography.Text>
+          <Typography.Text type="secondary" className={styles.policyServiceScope} title={item.endpoints.join(', ')}>
+            {item.endpoints.length === 0
+              ? '全部端点'
+              : item.endpoints.length === 1
+                ? item.endpoints[0]
+                : `${item.endpoints.length} 个端点`}
+          </Typography.Text>
+        </div>
+      ),
     },
     {
-      title: t('apm.policies.status', '状态'),
-      render: (_, item) =>
-        item.state?.status === 'active' ? <Tag color="red">告警中</Tag> : <Tag color="green">正常</Tag>,
+      title: t('apm.common.createdBy', '创建人'),
+      dataIndex: 'created_by',
+      width: APM_TABLE_COLUMN_WIDTHS.organization,
+      render: (value: string) => {
+        const creator = value?.trim() || '系统';
+        return (
+          <Space size={8} className={styles.policyCreatorCell}>
+            <Avatar size={28}>{creator.slice(0, 1).toUpperCase()}</Avatar>
+            <Typography.Text ellipsis={{ tooltip: creator }}>{creator}</Typography.Text>
+          </Space>
+        );
+      },
+    },
+    {
+      title: t('apm.common.createdAt', '创建时间'),
+      dataIndex: 'created_at',
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
+      render: (value: string) => (
+        <span className={styles.policyTimeCell}>
+          <ClockCircleOutlined aria-hidden="true" />
+          {formatDateTime(value)}
+        </span>
+      ),
+    },
+    {
+      title: t('apm.policies.executionTime', '执行时间'),
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
+      render: (_, item) => (
+        <span className={styles.policyTimeCell}>
+          <ClockCircleOutlined aria-hidden="true" />
+          {formatDateTime(getLatestExecutionAt(item))}
+        </span>
+      ),
+    },
+    {
+      title: '启停',
+      width: APM_TABLE_COLUMN_WIDTHS.status,
+      render: (_, item) => (
+        <Switch
+          size="small"
+          checked={item.is_enabled}
+          loading={busyId === item.id}
+          aria-label={`${item.name}：${item.is_enabled ? '停用策略' : '启用策略'}`}
+          onChange={async (enabled) => {
+            setBusyId(item.id);
+            try {
+              const updated = await setPolicyEnabled(item.id, enabled);
+              setItems((current) => current.map((policy) => (policy.id === item.id ? updated : policy)));
+            } finally {
+              setBusyId(null);
+            }
+          }}
+        />
+      ),
     },
     {
       title: t('apm.common.operation', '操作'),
       fixed: 'right',
-      width: 220,
+      width: APM_TABLE_COLUMN_WIDTHS.actionPair,
       render: (_, item) => (
-        <Space>
-          <Switch
-            size="small"
-            checked={item.is_enabled}
-            loading={busyId === item.id}
-            aria-label={`${item.name}：${item.is_enabled ? '停用策略' : '启用策略'}`}
-            onChange={async (enabled) => {
-              setBusyId(item.id);
-              try {
-                const updated = await setPolicyEnabled(item.id, enabled);
-                setItems((current) => current.map((policy) => (policy.id === item.id ? updated : policy)));
-              } finally {
-                setBusyId(null);
-              }
-            }}
-          />
+        <Space size={0} className={styles.policyOperationCell}>
           <Link href={`/apm/events/policies/${item.id}`}>
-            <Button type="link" size="small" aria-label="编辑策略">编辑</Button>
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              aria-label={`${item.name}：编辑策略`}
+            >
+              编辑
+            </Button>
           </Link>
           <Popconfirm
             title="删除策略不会删除历史告警和快照，确认删除？"
+            okButtonProps={{ danger: true }}
             onConfirm={async () => {
               await deletePolicy(item.id);
               message.success('策略已删除，历史证据已保留');
               load();
             }}
           >
-            <Button danger type="link" size="small" aria-label="删除策略">删除</Button>
+            <Button
+              danger
+              type="link"
+              size="small"
+              icon={<DeleteOutlined />}
+              aria-label={`${item.name}：删除策略`}
+            >
+              删除
+            </Button>
           </Popconfirm>
         </Space>
       ),
@@ -158,7 +223,7 @@ export default function ApmPolicyListPage() {
             columns={columns}
             dataSource={visible}
             pagination={{ pageSize: 20 }}
-            scroll={{ x: 1100, y: 'calc(100vh - 336px)' }}
+            scroll={{ x: 1160, y: 'calc(100vh - 336px)' }}
           />
         ) : (
           <CatalogState kind={state} onRetry={load} />

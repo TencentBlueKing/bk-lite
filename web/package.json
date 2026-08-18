@@ -58,7 +58,7 @@
     "test:apm-home-menu-visibility": "pnpm exec tsx scripts/apm-home-menu-visibility-test.ts",
     "test:apm-menu-route": "pnpm exec tsx scripts/apm-menu-route-test.ts",
     "test:apm-home-workflow": "pnpm exec tsx scripts/apm-home-workflow-test.ts && pnpm exec vitest run src/app/apm/home/__tests__/page.test.tsx",
-    "test:apm-event-workflow": "pnpm exec tsx scripts/apm-event-workflow-test.ts && pnpm exec vitest run src/app/apm/events/alerts/__tests__/page.test.tsx src/app/apm/events/policies/__tests__/policy-editor.test.tsx",
+    "test:apm-event-workflow": "pnpm exec tsx scripts/apm-event-workflow-test.ts && pnpm exec vitest run src/app/apm/events/alerts/__tests__/page.test.tsx src/app/apm/events/policies/__tests__/page.test.tsx src/app/apm/events/policies/__tests__/policy-editor.test.tsx",
     "test:apm-explore-workflow": "pnpm exec tsx scripts/apm-explore-workflow-test.ts && pnpm exec vitest run src/app/apm/explore/traces/__tests__/page.test.tsx \"src/app/apm/explore/traces/[traceId]/__tests__/page.test.tsx\" src/app/apm/explore/endpoints/__tests__/page.test.tsx",
     "test:apm-integration-workflow": "pnpm exec tsx scripts/apm-integration-workflow-test.ts && pnpm exec vitest run src/app/apm/integration/add/__tests__/page.test.tsx",
     "test:apm-instance-workflow": "pnpm exec vitest run src/app/apm/integration/instances/__tests__/page.test.tsx",
