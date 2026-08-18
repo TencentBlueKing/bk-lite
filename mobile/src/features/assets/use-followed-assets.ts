@@ -12,7 +12,6 @@ import {
 import { getFollowedConfig, updateFollowedConfig } from '@/features/assets/adapter';
 import { readMobileViewSnapshot, writeMobileViewSnapshot, invalidateMobileViewSnapshot } from '@/navigation/mobile-view-cache';
 import { useAuth } from '@/context/auth';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 
 export type FollowedConfigStatus = 'loading' | 'ready' | 'error';
@@ -38,8 +37,8 @@ function patchRootSnapshot(cacheScope: string, modelId: string, asset: AssetInst
 
 export function useFollowedAssets() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
+  const { organizationScope } = useAuth();
+  const cacheScope = organizationScope;
   const [config, setConfig] = useState<FollowedAssetsConfig>({ items: [] });
   const [status, setStatus] = useState<FollowedConfigStatus>('loading');
   const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(new Set());

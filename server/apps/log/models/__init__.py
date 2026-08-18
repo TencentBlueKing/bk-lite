@@ -4,3 +4,4 @@ from apps.log.models.install_token import *  # noqa
 from apps.log.models.instance import *  # noqa
 from apps.log.models.log_group import *  # noqa
 from apps.log.models.policy import *  # noqa
+from apps.log.models.user_habit import *  # noqa

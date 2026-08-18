@@ -18,6 +18,7 @@ from service.ansible_runner import (
     prepare_adhoc_execution,
     prepare_playbook_execution,
     run_command,
+    to_adhoc_request,
 )
 
 
@@ -26,6 +27,25 @@ def test_redact_cli_command_hides_extra_vars_values():
 
     assert _redact_cli_command(command) == ["ansible-playbook", "playbook.yml", "--extra-vars", "***"]
     assert command[-1] != "***"
+
+
+def test_to_adhoc_request_accepts_windows_stream_type():
+    request = to_adhoc_request(
+        {
+            "inventory": "localhost,",
+            "module": "win_shell",
+            "stream_remote_output": True,
+            "stream_remote_type": "PowerShell",
+        }
+    )
+
+    assert request.stream_remote_output is True
+    assert request.stream_remote_type == "powershell"
+
+
+def test_to_adhoc_request_rejects_unknown_windows_stream_type():
+    with pytest.raises(ValueError, match="stream_remote_type must be bat or powershell"):
+        to_adhoc_request({"inventory": "localhost,", "stream_remote_type": "python"})
 
 
 def test_safe_workspace_path_rejects_parent_escape(tmp_path):

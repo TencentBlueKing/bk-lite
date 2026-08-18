@@ -475,12 +475,16 @@
     "report": {
       "title": "Report",
       "selectFirst": "Please select a report",
-      "basicShellDesc": "The report foundation is ready. Sections, filters, and export workflows can build on this surface.",
-      "sectionCount": "Sections",
-      "timeRange": "Time Range",
-      "mode": "Mode",
-      "basicMode": "Foundation",
-      "builderPending": "Report editing will be completed in a later iteration"
+      "addComponent": "Add component",
+      "emptyDescription": "No components yet. Enter edit mode to add a table or event table.",
+      "unnamedComponent": "Unnamed component",
+      "dragComponent": "Drag to reorder component",
+      "deleteComponentTitle": "Delete component",
+      "deleteComponentContent": "Remove this component from the report draft? The deletion takes effect after saving.",
+      "loadFailed": "Failed to load report",
+      "saveSuccess": "Report saved",
+      "saveFailed": "Failed to save report. Your draft is preserved.",
+      "versionConflict": "This report was updated elsewhere. Refresh and try again; your draft is preserved."
     },
     "networkTopology": {
       "title": "Network Topology",

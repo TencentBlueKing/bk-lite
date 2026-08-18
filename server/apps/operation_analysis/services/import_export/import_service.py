@@ -41,7 +41,7 @@ from apps.operation_analysis.schemas.import_export_schema import (
     TopologyItem,
     YAMLDocument,
 )
-from apps.operation_analysis.services.import_export.view_sets import normalize_canvas_view_sets_for_storage, rewrite_canvas_view_sets_refs_for_storage
+from apps.operation_analysis.services.import_export.view_sets import rewrite_canvas_view_sets_refs_for_storage
 
 
 class ImportService:
@@ -558,7 +558,7 @@ class ImportService:
         canvas_data = {
             "desc": canvas_item.desc,
             "view_sets": rewrite_canvas_view_sets_refs_for_storage(
-                normalize_canvas_view_sets_for_storage(canvas_item.view_sets, object_type),
+                canvas_item.view_sets,
                 object_type,
                 self.datasource_key_to_id,
             ),

@@ -11,6 +11,8 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import GroupSelect from '@/components/group-tree-select';
 import OperateModal from '@/components/operate-drawer';
+import Password from '@/components/password';
+import { normalizePasswordFields } from '@/components/password/normalizePasswordWhitespace';
 
 interface ModalRef {
   showModal: (config: {
@@ -74,7 +76,7 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
           widget = (
             <InputNumber
               disabled={isDisabled}
-              style={{ width: '100%' }}
+              className="w-full"
               min={column.widget_props?.min}
               precision={column.widget_props?.precision}
               placeholder={column.widget_props?.placeholder || ''}
@@ -103,6 +105,16 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
             />
           );
           break;
+        case 'password':
+          widget = (
+            <Password
+              disabled={isDisabled}
+              clickToEdit={false}
+              trimOuterWhitespace
+              placeholder={column.widget_props?.placeholder || ''}
+            />
+          );
+          break;
         default:
           widget = (
             <Input
@@ -115,9 +127,9 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
       return (
         <div
           key={column.name}
-          style={{ width: 'calc(50% - 8px)', marginBottom: 16 }}
+          className="mb-4 w-[calc(50%-8px)]"
         >
-          <div style={{ marginBottom: 8 }}>
+          <div className="mb-2">
             <Checkbox
               checked={isEnabled}
               onChange={(e) =>
@@ -128,7 +140,7 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
               {column.label}
             </Checkbox>
           </div>
-          <Form.Item name={column.name} style={{ marginBottom: 0 }}>
+          <Form.Item name={column.name} className="mb-0">
             {widget}
           </Form.Item>
         </div>
@@ -137,7 +149,16 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
 
     const handleSubmit = async () => {
       try {
-        const values = form.getFieldsValue();
+        const normalizedForm = normalizePasswordFields(
+          form.getFieldsValue(),
+          columns,
+          { includeReadOnly: true }
+        );
+        if (normalizedForm.changedFields.length) {
+          form.setFieldsValue(normalizedForm.values);
+          message.warning(t('common.passwordWhitespaceTrimmed'));
+        }
+        const values = normalizedForm.values;
         // 收集所有非空的字段值
         const editedFields: any = {};
         Object.keys(values).forEach((key) => {
@@ -186,7 +207,7 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
         }
       >
         <Form form={form} layout="vertical">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+          <div className="flex flex-wrap gap-4">
             {columns.map((column) => renderFormItem(column))}
           </div>
         </Form>

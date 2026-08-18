@@ -1218,13 +1218,7 @@ const StrategyOperation = () => {
             <div className="flex flex-col flex-1 min-w-[400px]">
               <VariablesTable
                 onVariableSelect={(variable: string) => {
-                  const currentAlertName =
-                    form.getFieldValue('alert_name') || '';
-                  form.setFieldsValue({
-                    alert_name: currentAlertName + variable
-                  });
-                  // 自动聚焦到告警名称输入框
-                  basicInfoFormRef.current?.focusAlertName();
+                  basicInfoFormRef.current?.insertVariable(variable);
                 }}
               />
               <MetricPreview

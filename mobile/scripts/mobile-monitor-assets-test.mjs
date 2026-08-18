@@ -590,7 +590,7 @@ test('资产列表卡片复用真实数据，不以模型首字母伪装图标',
   assert.doesNotMatch(component, /charAt\(0\)|MobileListCard|raised|assetTag/);
 });
 
-test('资产根页使用头部搜索图标入口并继续进入既有精确搜索页', async () => {
+test('资产根页使用顶栏假搜索框入口并继续进入既有精确搜索页', async () => {
   const [home, search, styles, header] = await Promise.all([
     readProjectFile('src/app/assets/page.tsx'),
     readProjectFile('src/app/assets/search/page.tsx'),
@@ -598,11 +598,13 @@ test('资产根页使用头部搜索图标入口并继续进入既有精确搜�
     readProjectFile('src/components/mobile-page-header/index.tsx'),
   ]);
 
-  assert.match(home, /MobilePageHeader[\s\S]*actions=\{searchAllowed[\s\S]*href:\s*'\/assets\/search'/);
-  assert.match(home, /SearchOutline/);
-  assert.doesNotMatch(home, /searchLauncher|searchField|searchPlaceholder/);
+  assert.match(home, /searchEntry=\{searchAllowed \? \{[\s\S]*href:\s*'\/assets\/search'/);
+  assert.match(home, /placeholder:\s*t\('assets\.search'\)/);
+  assert.doesNotMatch(home, /SearchOutline/);
+  assert.doesNotMatch(home, /searchLauncher|searchField/);
   assert.doesNotMatch(home, /searchLauncherHint/);
-  assert.match(header, /actions\.map/);
+  assert.match(header, /searchEntry/);
+  assert.match(header, /styles\.searchEntry/);
   assert.match(search, /<Switch[\s\S]*checked=\{exact\}/);
   assert.doesNotMatch(styles, /\.searchLauncher\s*\{/);
   assert.doesNotMatch(styles, /\.searchField\s*\{/);
@@ -768,7 +770,7 @@ test('Mobile 搜索框高度走统一变量，业务页不再各自覆盖盒型'
   ]);
 
   assert.match(variables, /--mobile-search-bar-height:\s*34px/);
-  assert.match(variables, /--mobile-search-bar-height-page:\s*40px/);
+  assert.match(variables, /--mobile-search-bar-height-page:\s*34px/);
   assert.match(variables, /--mobile-search-bar-radius:\s*8px/);
   assert.match(searchBar, /size\s*=\s*'compact'/);
   assert.match(searchBar, /size === 'page'/);

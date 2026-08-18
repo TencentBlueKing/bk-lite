@@ -34,7 +34,13 @@ export const getDataSourceFormParamInitialValue = (
     case 'timeRange':
       return value ?? 10080;
     case 'dateRange':
-      return value === undefined ? { ...DEFAULT_DATE_RANGE_VALUE } : value;
+      if (value === undefined) {
+        return { ...DEFAULT_DATE_RANGE_VALUE };
+      }
+      if (value === '' || value === null) {
+        return null;
+      }
+      return value;
     case 'date':
       if (value && (typeof value === 'string' || typeof value === 'number')) {
         return dayjs(value);

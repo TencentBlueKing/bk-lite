@@ -10,6 +10,7 @@ from apps.log.views.policy import AlertViewSet, EventRawDataViewSet, EventViewSe
 from apps.log.views.search import LogSearchViewSet, SearchConditionViewSet
 from apps.log.views.system_mgmt import SystemMgmtView
 from apps.log.views.system_vector import SystemVectorConfigViewSet
+from apps.log.views.user_habit import UserHabitViewSet
 
 router = routers.DefaultRouter()
 
@@ -31,5 +32,6 @@ router.register(r"system_mgmt", SystemMgmtView, basename="log_system_mgmt")
 router.register(r"open_api/k8s", K8sOpenAPIViewSet, basename="log_k8s_open_api")
 router.register(r"open_api/system_vector", SystemVectorConfigViewSet, basename="log-system-vector")
 router.register(r"log_extractors", LogExtractorViewSet, basename="log-extractor")
+router.register(r"user_habits", UserHabitViewSet, basename="log-user-habit")
 
 urlpatterns = router.urls

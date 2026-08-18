@@ -1060,3 +1060,71 @@ def test_post_process_tool_results_waits_for_user_choice_before_repair_diff():
     assert mock_dispatch.call_count == 1
     event_name, _ = mock_dispatch.call_args.args
     assert event_name == "config_analysis_report"
+
+
+@pytest.mark.asyncio
+async def test_deep_wrapper_emits_planned_execution_status_around_planning():
+    """规划阻塞 LLM 调用前后必须发 planned_execution_status，避免对话空白无反馈。"""
+    from types import SimpleNamespace
+
+    from langchain_core.messages import AIMessage, HumanMessage
+    from langchain_core.tools import StructuredTool
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep
+
+    node = _make_node(skill_capabilities=[])
+    graph_builder = MagicMock()
+    deep_agent = MagicMock()
+    deep_agent.ainvoke = AsyncMock(return_value={"messages": [AIMessage(content="done")]})
+    node._post_process_tool_results = MagicMock()
+    node._aflush_pending_report_emits = AsyncMock()
+    node._run_pending_k8s_repair_workflow = AsyncMock(return_value=False)
+    node.get_llm_client = MagicMock(return_value=object())
+    node._collect_deepagent_tools = MagicMock(
+        return_value=[
+            StructuredTool.from_function(func=lambda: "ok", name="echo_tool", description="echo"),
+        ]
+    )
+    node._build_skill_backend_and_sources = MagicMock(return_value=(None, [], None))
+    node._build_interrupt_on = MagicMock(return_value=None)
+    graph_request = SimpleNamespace(
+        system_message_prompt="",
+        skill_id=None,
+        user_message="帮我查一下主机 CPU",
+        max_tokens_budget=0,
+        soft_budget_ratio=0.8,
+    )
+
+    emitted = []
+
+    async def _capture_event(name, payload, config=None):
+        emitted.append((name, payload))
+
+    with (
+        patch("apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template", return_value="system"),
+        patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=deep_agent),
+        patch("apps.opspilot.metis.llm.chain.node.is_progressive_tools_enabled", return_value=True),
+        patch("apps.opspilot.metis.llm.chain.node.adispatch_custom_event", new=AsyncMock(side_effect=_capture_event)),
+        patch(
+            "apps.opspilot.metis.llm.agent.tool_execution_planner.ToolExecutionPlanner.plan",
+            new=AsyncMock(
+                return_value=ToolExecutionPlan(
+                    goal="查 CPU",
+                    steps=[ToolExecutionStep(objective="查询主机指标", tools=["echo_tool"])],
+                )
+            ),
+        ),
+    ):
+        await node.build_deepagent_nodes(graph_builder)
+        wrapper = graph_builder.add_node.call_args.args[1]
+        await wrapper(
+            {"messages": [HumanMessage(content="帮我查一下主机 CPU")]},
+            {"configurable": {"graph_request": graph_request, "execution_id": "exec-plan-status"}},
+        )
+
+    status_events = [payload for name, payload in emitted if name == "planned_execution_status"]
+    assert status_events, "规划阶段必须发出 planned_execution_status"
+    assert status_events[0]["phase"] == "planning"
+    assert any(item.get("phase") == "planned" for item in status_events)
+    planned = next(item for item in status_events if item.get("phase") == "planned")
+    assert planned.get("step_count") == 1
