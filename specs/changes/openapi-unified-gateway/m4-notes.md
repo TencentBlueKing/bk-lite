@@ -72,3 +72,51 @@ commit `8c054cc`（分支 claude/webhookd-traefik-openapi-gateway-14ea9d）。
 - `OPENAPI_INVOKE_TIMEOUT` 生产未配置且 settings 未接入该 env（README 列为运行期配置但当前为空操作）；开启后线程池 worker 的 DB 连接不随请求周期回收。试点为分页轻查询，发版前处理。
 - 试点端点未声明 `permission`（团队决策：维持现状，team 组织自域约束已在）。
 - `_me`/`_docs`/`_auth` 未捕获异常经 AppExceptionMiddleware 输出无 `code` 的 500；参数位置混用被静默忽略而非 `SCHEMA_INVALID`；`wxc openapi list` 将服务端会丢弃的条目显示为 ok。
+
+## .149 HA 真机端到端验证（2026-08-18）
+
+镜像：WeOpsx #295（checkout `1568377e` = PR #4864 合并提交），企业版 overlay 后含完整 openapi 包。
+
+验证矩阵（全部经 Traefik 公网入口，HA 栈 bk-primary）：
+
+| # | 场景 | 结果 |
+| --- | --- | --- |
+| 1 | 无凭据 → 401 `AUTH_INVALID` | ✅ |
+| 2 | 错误令牌 → 401 | ✅ |
+| 3 | `_me` 结构（user/domain/credential_type/groups/anchor_scopes/roles/services） | ✅ |
+| 4 | 本组织 patch-mgmt 调用 → 200 + 真实数据（2 台主机） | ✅ |
+| 5 | 越权他组织 → 403 `TEAM_OUT_OF_SCOPE` | ✅（C1 修复生效） |
+| 6 | 伪造 `X-BK-User`/`X-BK-Team` → 仍按凭据判定，403 | ✅（红线 1/2） |
+| 7 | 未注册端点 → 404 `NOT_FOUND` | ✅ |
+| 8 | schema 未知字段 → 400 `SCHEMA_INVALID` | ✅ |
+| 9 | `_docs` 聚合（cmdb/patch-mgmt 各 1 端点） | ✅ |
+| 10 | `_provider` 经公网入口 → 404（已排除） | ✅（A4 修复生效） |
+| 11 | `_provider` 内网：无令牌 401 / 有令牌 200 | ✅ |
+| 12 | wxc `validate`/`register`/`list` 写 KV | ✅ |
+| 13 | 未配置 secret 的条目被 fail-closed 跳过 | ✅ |
+| 14 | 配置 secret 后渲染出 router/service/4 中间件 | ✅ |
+| 15 | Traefik 消费动态路由（`openapi-v1-itsm@http` enabled） | ✅ |
+| 16 | 端到端调外部服务：无凭据 401 / 有凭据穿透 200 | ✅ |
+
+## 真机验证发现并修复的缺陷
+
+**Traefik 拒绝空 map 导致 http provider 配置整份失效**（renderer.py）：
+未注册任何外部服务时渲染器输出 `{"http": {"routers": {}, ...}}`，Traefik 报
+`cannot decode configuration data: routers cannot be a standalone element`
+并**拒绝整份配置**——连同其中合法的全局中间件一起失效（traefik API 确认
+只剩 docker provider 条目）。未注册外部服务是首次部署的常态，故该缺陷在
+任何新环境上线即触发，且仅表现为 traefik 日志告警。
+
+修复：空小节一律省略；无路由时全局中间件无引用方，整份返回 `{"http": {}}`。
+补专项回归测试（`test_empty_sections_are_omitted_not_empty_maps`）。测试 80 项全过。
+
+## 验证环境遗留（需清理/注意）
+
+- `.149` 的 `server:latest` 现指向验证 tag `openapi-gw-verify` 的镜像；registry
+  `latest` 的解析在验证期间仍返回旧 digest（`f0e00057`，疑似 CDN/复制延迟），
+  待其收敛后按常规流程重新 `docker pull` 即可。
+- `.149` 上遗留：KV 中 `itsm` 测试条目（指向 stargazer）、`.env` 的
+  `OPENAPI_BASEURL_ALLOWLIST=stargazer` 与 `ITSM_GW_SECRET`、
+  `compose/server.yaml` 的 `ITSM_GW_SECRET` 透传行、验证用户 `gwverify` 及其令牌。
+  正式使用前应清理或替换为真实 ITSM 配置。
+- registry 中新增 tag `bklite/weopsx/server:openapi-gw-verify`（验证用，可删）。
