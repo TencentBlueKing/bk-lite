@@ -36,13 +36,21 @@ def make_jwt(user):
 
 
 def make_jwt_tenant(team_id):
+    """JWT 登录态用户体系为 system_mgmt.User（_verify_token 按其 id 查询）。"""
+    import uuid
+
     from apps.system_mgmt.models import Group
     from apps.system_mgmt.models import User as SystemUser
 
-    from apps.base.tests.factories import UserFactory
-
-    user = UserFactory(group_list=[team_id])
-    SystemUser.objects.get_or_create(username=user.username, domain=user.domain)
+    name = f"jwtuser-{uuid.uuid4().hex[:8]}"
+    user = SystemUser.objects.create(
+        username=name,
+        display_name=name,
+        email=f"{name}@example.com",
+        password="x",
+        domain="domain.com",
+        group_list=[team_id],
+    )
     Group.objects.get_or_create(id=team_id, defaults={"name": f"team-{team_id}"})
     return user
 

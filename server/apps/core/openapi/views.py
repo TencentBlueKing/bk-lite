@@ -5,9 +5,13 @@
 不信任任何入站头，也不假设流量必经 Traefik（安全红线 2 纵深防御）。
 """
 
+import hmac
 import json
+import os
+import re
 import time
 
+from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 
 from apps.core.logger import openapi_logger as logger
@@ -102,6 +106,76 @@ def me_view(request):
         _audit(request, identity, response, started_at)
 
 
+_FORWARDED_URI_RE = re.compile(r"^/openapi/(?P<version>[a-z0-9]+)/(?P<service>[a-z][a-z0-9-]*)(?:/|$)")
+
+
+@api_exempt
+@require_http_methods(["GET"])
+def provider_view(request):
+    """Traefik providers.http 拉取端点，返回原生动态配置（非 envelope）。
+
+    渲染结果内含解引用后的密钥值，必须以共享令牌保护；
+    OPENAPI_PROVIDER_TOKEN 未配置时拒绝服务（fail-closed）。
+    """
+    expected = os.getenv("OPENAPI_PROVIDER_TOKEN", "")
+    if not expected:
+        logger.warning("OPENAPI_PROVIDER_TOKEN 未配置，provider 端点拒绝服务")
+        return JsonResponse({"detail": "provider token unconfigured"}, status=503)
+    presented = request.META.get("HTTP_X_PROVIDER_TOKEN", "")
+    if not hmac.compare_digest(presented, expected):
+        return fail(ErrorCode.AUTH_INVALID, "invalid provider token")
+
+    from apps.core.openapi.renderer import refresh_snapshot
+
+    config = refresh_snapshot(internal_services=default_registry.services())
+    return JsonResponse(config)
+
+
+@api_exempt
+def forward_auth_view(request):
+    """Traefik ForwardAuth 回调：认证 + 外部服务级授权（required_roles）。
+
+    与 invoke 路径复用同一认证函数与错误序列化器（错误体逐字段同构）。
+    """
+    started_at = time.monotonic()
+    identity = None
+    response = None
+    try:
+        try:
+            identity = authenticate_request(request)
+        except AuthenticationFailed as exc:
+            response = fail(ErrorCode.AUTH_INVALID, str(exc) or "authentication failed")
+            return response
+
+        forwarded_uri = request.META.get("HTTP_X_FORWARDED_URI", "")
+        matched = _FORWARDED_URI_RE.match(forwarded_uri)
+        from apps.core.openapi.renderer import get_external_entry
+
+        entry = get_external_entry(matched.group("service")) if matched else None
+        if entry is None:
+            # 快照中查无该外部服务：fail-closed，且与 invoke 的 404 语义一致
+            response = fail(ErrorCode.NOT_FOUND, "no such endpoint")
+            return response
+
+        required = set(entry["required_roles"])
+        # 空列表语义（冻结）：放行任意已认证身份
+        if required and not identity.is_superuser and not (required & set(identity.roles)):
+            response = fail(ErrorCode.ROLE_REQUIRED, "service role required")
+            return response
+
+        response = JsonResponse({"result": True})
+        response["X-BK-User"] = f"{identity.user}@{identity.domain}"
+        response["X-BK-Team"] = ",".join(str(t) for t in identity.team_ids)
+        # X-On-Behalf-Of：仅服务账号（API 令牌）场景回显原值，其余场景覆盖清除
+        if identity.credential_type == "api_token":
+            response["X-On-Behalf-Of"] = request.META.get("HTTP_X_ON_BEHALF_OF", "")
+        else:
+            response["X-On-Behalf-Of"] = ""
+        return response
+    finally:
+        _audit(request, identity, response, started_at)
+
+
 def _build_me_payload(identity):
     from apps.system_mgmt.models import Group
     from apps.system_mgmt.utils.group_utils import GroupUtils
@@ -126,10 +200,13 @@ def _build_me_payload(identity):
             cascaded = [team_id]
         anchor_scopes.append({"anchor": team_id, "cascaded_group_ids": cascaded})
 
+    from apps.core.openapi.renderer import get_external_services
+
     services = [
         {"name": name, "kind": "internal"} for name in default_registry.services()
+    ] + [
+        {"name": name, "kind": "external"} for name in get_external_services()
     ]
-    # M2 起合并外部（KV 注册）service，kind="external"
 
     return {
         "user": identity.user,
