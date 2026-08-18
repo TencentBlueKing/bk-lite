@@ -23,8 +23,9 @@ import {
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable from '@/app/apm/components/apm-data-table';
-import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
+import ApmRouteShell from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
+import Collapse from '@/components/collapse';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 import type {
   ApmAlert,
@@ -34,6 +35,7 @@ import type {
   ApmNotificationDelivery,
   ApmPolicySeverity,
 } from '@/app/apm/types';
+import styles from '@/app/apm/events/event-workspace.module.scss';
 
 type PageState = CatalogStateKind | 'ready';
 type Range = '1h' | '24h' | '7d';
@@ -69,6 +71,7 @@ export default function ApmAlertsPage() {
   const [snapshot, setSnapshot] = useState<ApmEventSnapshot | null>(null);
   const [deliveries, setDeliveries] = useState<ApmNotificationDelivery[]>([]);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [chartExpanded, setChartExpanded] = useState(true);
 
   const timeParams = useMemo(() => {
     const endedAt = new Date();
@@ -199,101 +202,129 @@ export default function ApmAlertsPage() {
       title="告警"
       description="Alert 聚合完整生命周期；Event 记录触发、升级、恢复与人工关闭。"
       dependency="control"
+      spacing="flush"
     >
-      <Space direction="vertical" size="middle" className="w-full">
-        <ApmSurface>
-          <div className="h-40" role="img" aria-label={`最近 ${range} 告警事件分布，按严重、错误、警告分组`}>
-            <TimeSeriesComposedChart
-              data={distribution}
-              xDataKey="time"
-              getXLabel={(item) => dayjs(String(item.time)).format(range === '7d' ? 'MM-DD' : 'HH:mm')}
-              series={[
-                { name: '严重', type: 'bar', dataKey: 'critical', color: token.colorError },
-                { name: '错误', type: 'bar', dataKey: 'error', color: token.colorWarning },
-                { name: '警告', type: 'bar', dataKey: 'warning', color: token.colorPrimary },
-              ]}
-            />
+      <div className={styles.workspace}>
+        <Tabs
+          className={styles.tabs}
+          activeKey={activeTab}
+          onChange={(key) => setActiveTab(key as 'active' | 'history')}
+          items={[
+            { key: 'active', label: '活跃告警' },
+            { key: 'history', label: '历史告警' },
+          ]}
+        />
+
+        <section className={styles.filterSection} aria-labelledby="apm-alert-filter-title">
+          <div id="apm-alert-filter-title" className={styles.filterTitle}>筛选条件</div>
+          <div className={styles.filterRow}>
+            <div className={styles.filterGroup}>
+              <label className={styles.filterItem}>
+                <span className={styles.filterLabel}>级别</span>
+                <Select
+                  className="w-48"
+                  allowClear
+                  aria-label="按告警级别筛选"
+                  placeholder="全部级别"
+                  value={severity}
+                  onChange={setSeverity}
+                  options={Object.keys(SEVERITY_COLOR).map((value) => ({ value, label: value }))}
+                />
+              </label>
+              <label className={styles.filterItem}>
+                <span className={styles.filterLabel}>指标</span>
+                <Select
+                  className="w-48"
+                  allowClear
+                  aria-label="按 APM 指标筛选"
+                  placeholder="全部指标"
+                  value={metric}
+                  onChange={setMetric}
+                  options={['error_rate', 'p95', 'p99', 'throughput', 'no_traffic'].map((value) => ({
+                    value,
+                    label: value,
+                  }))}
+                />
+              </label>
+            </div>
+            <div className={styles.timeGroup}>
+              <span className={styles.filterLabel}>时间范围</span>
+              <Radio.Group size="small" value={range} onChange={(event) => setRange(event.target.value)}>
+                {Object.keys(RANGE_MS).map((value) => (
+                  <Radio.Button key={value} value={value}>
+                    {value}
+                  </Radio.Button>
+                ))}
+              </Radio.Group>
+              <Button icon={<ReloadOutlined />} onClick={load}>
+                刷新
+              </Button>
+            </div>
           </div>
-        </ApmSurface>
-        <ApmSurface padding="none">
-          <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] p-3">
-            <Tabs
-              className="mr-2"
-              activeKey={activeTab}
-              onChange={(key) => setActiveTab(key as 'active' | 'history')}
-              items={[
-                { key: 'active', label: '活跃告警' },
-                { key: 'history', label: '历史告警' },
-              ]}
-            />
-            <Input.Search
-              className="w-72"
-              allowClear
-              placeholder="搜索标题、策略、服务或端点"
-              value={keyword}
-              onChange={(event) => {
-                setKeyword(event.target.value);
-                if (!event.target.value) setSubmittedKeyword('');
-              }}
-              onSearch={(value) => setSubmittedKeyword(value.trim())}
-            />
-            <Select
-              className="w-32"
-              allowClear
-              placeholder="全部级别"
-              value={severity}
-              onChange={setSeverity}
-              options={Object.keys(SEVERITY_COLOR).map((value) => ({ value, label: value }))}
-            />
-            <Select
-              className="w-36"
-              allowClear
-              placeholder="全部指标"
-              value={metric}
-              onChange={setMetric}
-              options={['error_rate', 'p95', 'p99', 'throughput', 'no_traffic'].map((value) => ({
-                value,
-                label: value,
-              }))}
-            />
-            <div className="flex-1" />
-            <Radio.Group value={range} onChange={(event) => setRange(event.target.value)}>
-              {Object.keys(RANGE_MS).map((value) => (
-                <Radio.Button key={value} value={value}>
-                  {value}
-                </Radio.Button>
-              ))}
-            </Radio.Group>
-            <Button icon={<ReloadOutlined />} onClick={load}>
-              刷新
-            </Button>
-          </div>
-          <div className="p-3">
-            {state === 'ready' ? (
-              <ApmDataTable
-                rowKey="id"
-                columns={columns}
-                dataSource={alerts}
-                pagination={{ pageSize: 20 }}
-                onRow={(item) => ({
-                  className: 'cursor-pointer',
-                  tabIndex: 0,
-                  onClick: () => openDrawer(item),
-                  onKeyDown: (event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      openDrawer(item);
-                    }
-                  },
-                })}
-                scroll={{ x: 1080 }}
+        </section>
+
+        <section className={styles.chartSection} aria-label="告警分布">
+          <Collapse
+            title="告警分布图"
+            isOpen={chartExpanded}
+            onToggle={setChartExpanded}
+          >
+            <div
+              className={styles.chart}
+              role="img"
+              aria-label={`最近 ${range} 告警事件分布，按严重、错误、警告分组`}
+            >
+              <TimeSeriesComposedChart
+                data={distribution}
+                xDataKey="time"
+                getXLabel={(item) => dayjs(String(item.time)).format(range === '7d' ? 'MM-DD' : 'HH:mm')}
+                series={[
+                  { name: '严重', type: 'bar', dataKey: 'critical', color: token.colorError },
+                  { name: '错误', type: 'bar', dataKey: 'error', color: token.colorWarning },
+                  { name: '警告', type: 'bar', dataKey: 'warning', color: token.colorPrimary },
+                ]}
               />
-            ) : (
-              <CatalogState kind={state} onRetry={load} />
-            )}
-          </div>
-        </ApmSurface>
-      </Space>
+            </div>
+          </Collapse>
+        </section>
+
+        <section className={styles.tableSection} aria-label="告警列表">
+          <Input.Search
+            className="mb-[10px] w-60"
+            allowClear
+            enterButton
+            placeholder="搜索标题、策略、服务或端点"
+            value={keyword}
+            onChange={(event) => {
+              setKeyword(event.target.value);
+              if (!event.target.value) setSubmittedKeyword('');
+            }}
+            onSearch={(value) => setSubmittedKeyword(value.trim())}
+          />
+          {state === 'ready' ? (
+            <ApmDataTable
+              rowKey="id"
+              columns={columns}
+              dataSource={alerts}
+              pagination={{ pageSize: 20 }}
+              onRow={(item) => ({
+                className: 'cursor-pointer',
+                tabIndex: 0,
+                onClick: () => openDrawer(item),
+                onKeyDown: (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    openDrawer(item);
+                  }
+                },
+              })}
+              scroll={{ x: 1080 }}
+            />
+          ) : (
+            <CatalogState kind={state} onRetry={load} />
+          )}
+        </section>
+      </div>
       <Drawer
         width={880}
         open={Boolean(selected)}

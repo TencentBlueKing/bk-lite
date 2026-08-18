@@ -52,4 +52,18 @@ describe('ApmRouteShell', () => {
     expect(workArea?.classList.contains('mx-auto')).toBe(true);
     expect(workArea?.classList.contains('max-w-[1920px]')).toBe(true);
   });
+
+  it('允许事件工作区关闭二次内边距，由页面分区自行管理留白', () => {
+    const { container } = renderWithApmIntl(
+      <ApmRouteShell title="告警" description="告警工作区" spacing="flush">
+        <div>告警列表</div>
+      </ApmRouteShell>,
+    );
+
+    const shell = container.firstElementChild;
+
+    expect(shell?.classList.contains('min-h-0')).toBe(true);
+    expect(shell?.classList.contains('px-4')).toBe(false);
+    expect(shell?.classList.contains('pb-4')).toBe(false);
+  });
 });

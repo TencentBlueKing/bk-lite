@@ -10,16 +10,23 @@ interface ApmRouteShellProps {
   description: string;
   /** 保留为路由元数据，页面不再用装饰图标表达依赖类型。 */
   dependency?: 'metadata' | 'telemetry' | 'control';
+  /** 事件等工作区页面由自身管理分区留白时，可关闭 APM 默认的二次内边距。 */
+  spacing?: 'default' | 'flush';
   children?: ReactNode;
 }
 
 export default function ApmRouteShell({
   title,
+  spacing = 'default',
   children,
 }: ApmRouteShellProps) {
   const { t } = useTranslation();
+  const shellClassName = spacing === 'flush'
+    ? 'h-full min-h-0 overflow-auto'
+    : 'h-full overflow-auto px-4 pb-4 lg:px-5 lg:pb-5';
+
   return (
-    <div className="h-full overflow-auto px-4 pb-4 lg:px-5 lg:pb-5">
+    <div className={shellClassName}>
       <div className="mx-auto w-full min-w-0 max-w-[1920px]">
         <h1 className="sr-only">{title}</h1>
         <div className="min-w-0">

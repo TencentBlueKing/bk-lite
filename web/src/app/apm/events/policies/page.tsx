@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Button, Input, message, Popconfirm, Space, Switch, Tag, type TableColumnsType } from 'antd';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, message, Popconfirm, Space, Switch, Tag, type TableColumnsType } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable from '@/app/apm/components/apm-data-table';
-import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
+import ApmRouteShell from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmPolicy } from '@/app/apm/types';
+import SearchActionBar from '@/components/search-action-bar';
 import { useTranslation } from '@/utils/i18n';
+import styles from '@/app/apm/events/event-workspace.module.scss';
 
 type PageState = CatalogStateKind | 'ready';
 
@@ -87,10 +89,10 @@ export default function ApmPolicyListPage() {
       render: (_, item) => (
         <Space>
           <Switch
+            size="small"
             checked={item.is_enabled}
             loading={busyId === item.id}
-            checkedChildren="启用"
-            unCheckedChildren="停用"
+            aria-label={`${item.name}：${item.is_enabled ? '停用策略' : '启用策略'}`}
             onChange={async (enabled) => {
               setBusyId(item.id);
               try {
@@ -102,7 +104,7 @@ export default function ApmPolicyListPage() {
             }}
           />
           <Link href={`/apm/events/policies/${item.id}`}>
-            <Button className="!min-h-11 !min-w-11" type="text" icon={<EditOutlined />} aria-label="编辑策略" />
+            <Button type="link" size="small" aria-label="编辑策略">编辑</Button>
           </Link>
           <Popconfirm
             title="删除策略不会删除历史告警和快照，确认删除？"
@@ -112,13 +114,7 @@ export default function ApmPolicyListPage() {
               load();
             }}
           >
-            <Button
-              className="!min-h-11 !min-w-11"
-              danger
-              type="text"
-              icon={<DeleteOutlined />}
-              aria-label="删除策略"
-            />
+            <Button danger type="link" size="small" aria-label="删除策略">删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -130,26 +126,31 @@ export default function ApmPolicyListPage() {
       title={t('apm.policies.title', '告警策略')}
       description="面向 APM Service、端点、环境和版本的独立策略。启停只在列表执行。"
       dependency="control"
+      spacing="flush"
     >
-      <div className="mb-3 flex justify-end">
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={load}>
-            刷新
-          </Button>
-          <Link href="/apm/events/policies/new">
-            <Button type="primary" icon={<PlusOutlined />}>
-              新建策略
-            </Button>
-          </Link>
-        </Space>
-      </div>
-      <ApmSurface>
-        <Input.Search
-          className="mb-4 max-w-md"
-          allowClear
-          placeholder="搜索策略、服务、环境或端点"
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
+      <section className={styles.policySection} aria-label="告警策略列表">
+        <SearchActionBar
+          spacing="flush"
+          className={styles.policyToolbar}
+          searchClassName="!w-80"
+          searchProps={{
+            placeholder: '搜索策略、服务、环境或端点',
+            value: keyword,
+            onChange: (event) => setKeyword(event.target.value),
+            onSearch: (value) => setKeyword(value.trim()),
+          }}
+          actions={(
+            <Space>
+              <Button icon={<ReloadOutlined />} onClick={load}>
+                刷新
+              </Button>
+              <Link href="/apm/events/policies/new">
+                <Button type="primary" icon={<PlusOutlined />}>
+                  新建策略
+                </Button>
+              </Link>
+            </Space>
+          )}
         />
         {state === 'ready' ? (
           <ApmDataTable
@@ -157,12 +158,12 @@ export default function ApmPolicyListPage() {
             columns={columns}
             dataSource={visible}
             pagination={{ pageSize: 20 }}
-            scroll={{ x: 1180 }}
+            scroll={{ x: 1100, y: 'calc(100vh - 336px)' }}
           />
         ) : (
           <CatalogState kind={state} onRetry={load} />
         )}
-      </ApmSurface>
+      </section>
     </ApmRouteShell>
   );
 }

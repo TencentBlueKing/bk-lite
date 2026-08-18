@@ -230,7 +230,11 @@ const useApmApi = () => {
   );
 
   const previewPolicy = useCallback(
-    (payload: ApmPolicyInput) => post<ApmPolicyQueryResult>('/apm/policies/preview/', payload),
+    (payload: ApmPolicyInput, suppressErrorNotification = false) => post<ApmPolicyQueryResult>(
+      '/apm/policies/preview/',
+      payload,
+      suppressErrorNotification ? { suppressErrorNotification: true } : undefined,
+    ),
     [post]
   );
 

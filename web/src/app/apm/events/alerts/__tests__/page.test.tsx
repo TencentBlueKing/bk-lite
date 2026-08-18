@@ -111,6 +111,8 @@ describe('APM Alert 与 Event Snapshot', () => {
   it('使用 Alert 聚合接口展示活跃告警和分布', async () => {
     renderWithApmIntl(<ApmAlertsPage />);
     expect(await screen.findByText('checkout 错误率升高')).not.toBeNull();
+    expect(screen.getByText('筛选条件')).not.toBeNull();
+    expect(screen.getByText('告警分布图')).not.toBeNull();
     expect(screen.getByText('严重 / 错误 / 警告')).not.toBeNull();
     expect(api.getAlerts).toHaveBeenCalledWith(expect.objectContaining({ status: 'active' }));
   });

@@ -433,6 +433,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "recover_after",
             "no_data_after",
             "no_data_severity",
+            "no_data_alert_name",
             "comparator",
             "threshold",
             "duration_window",
@@ -528,6 +529,11 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if bool(no_data_after) != bool(no_data_severity):
             field = "no_data_severity" if no_data_after else "no_data_after"
             raise serializers.ValidationError({field: "无数据持续次数与级别必须同时配置或同时关闭。"})
+        no_data_alert_name = attrs.get(
+            "no_data_alert_name",
+            getattr(self.instance, "no_data_alert_name", ""),
+        )
+        attrs["no_data_alert_name"] = str(no_data_alert_name).strip()
 
         notice = attrs.get("notice", getattr(self.instance, "notice", False))
         notice_type_ids = attrs.get(

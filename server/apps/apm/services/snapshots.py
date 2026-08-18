@@ -62,6 +62,7 @@ class ApmEventSnapshotStore:
                 "recover_after": policy.recover_after,
                 "no_data_after": policy.no_data_after,
                 "no_data_severity": policy.no_data_severity,
+                "no_data_alert_name": policy.no_data_alert_name,
             },
             "object_snapshot": {
                 "service_id": str(policy.service_id),

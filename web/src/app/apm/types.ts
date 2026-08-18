@@ -468,6 +468,7 @@ export interface ApmPolicyInput {
   recover_after: number;
   no_data_after?: number | null;
   no_data_severity?: ApmPolicySeverity | '';
+  no_data_alert_name?: string;
   comparator?: ApmPolicyComparator;
   threshold?: number | string;
   duration_window?: number;
