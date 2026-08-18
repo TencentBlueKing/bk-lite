@@ -6,7 +6,7 @@ from ipware import get_client_ip
 from apps.system_mgmt.models.operation_log import OperationLog
 
 
-def log_operation(request, action_type, app, summary):
+def log_operation(request, action_type, app, summary, *, target_type="", target_id="", detail=None):
     """
     记录操作日志
 
@@ -15,6 +15,9 @@ def log_operation(request, action_type, app, summary):
         action_type: 操作类型 (create/update/delete/execute)
         app: 应用模块名称
         summary: 操作概要描述
+        target_type: 操作目标类型
+        target_id: 操作目标 ID
+        detail: 结构化详情
 
     Returns:
         OperationLog 实例
@@ -28,6 +31,9 @@ def log_operation(request, action_type, app, summary):
             action_type=action_type,
             summary=summary,
             domain=getattr(request.user, "domain", "domain.com"),
+            target_type=target_type,
+            target_id=str(target_id or ""),
+            detail=detail or {},
         )
         return operation_log
     except Exception as e:

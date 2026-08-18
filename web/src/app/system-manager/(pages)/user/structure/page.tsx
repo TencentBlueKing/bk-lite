@@ -4,6 +4,7 @@ import React, { useRef, useCallback, useMemo, useState } from 'react';
 import { Input, Button, Spin, Form, Dropdown, Menu } from 'antd';
 import TopSection from '@/components/top-section';
 import UserModal, { ModalRef } from './userModal';
+import UserImportModal, { UserImportModalRef } from './userImportModal';
 import PasswordModal, { PasswordModalRef } from '@/app/system-manager/components/user/passwordModal';
 import GroupEditModal, { GroupModalRef } from '@/app/system-manager/components/group/GroupEditModal';
 import ArchivedGroupDrawer from '@/app/system-manager/components/group/ArchivedGroupDrawer';
@@ -21,7 +22,7 @@ import { createUserTableColumns } from '@/app/system-manager/components/user/tab
 import { useTreeData, useUserTable, useGroupManagement } from '@/app/system-manager/hooks/useUserStructure';
 import { nodeExistsInTree } from '@/app/system-manager/utils/userTreeUtils';
 import usePermissions from '@/hooks/usePermissions';
-import { DownOutlined } from '@ant-design/icons';
+import { DownOutlined, UploadOutlined } from '@ant-design/icons';
 import commonStyles from '@/app/system-manager/styles/common.module.scss';
 import styles from './index.module.scss';
 
@@ -36,6 +37,7 @@ const User: React.FC = () => {
   const { refreshUserInfo } = useUserInfoContext();
 
   const userModalRef = useRef<ModalRef>(null);
+  const userImportModalRef = useRef<UserImportModalRef>(null);
   const passwordModalRef = useRef<PasswordModalRef>(null);
   const groupEditModalRef = useRef<GroupModalRef>(null);
   const [archivedDrawerOpen, setArchivedDrawerOpen] = useState(false);
@@ -207,7 +209,13 @@ const User: React.FC = () => {
                   +{t('common.add')}
                 </Button>
               </PermissionWrapper>
+              <PermissionWrapper requiredPermissions={['Add User']}>
+                <Button className="mr-2" icon={<UploadOutlined />} onClick={() => userImportModalRef.current?.showModal()}>
+                  {t('common.import')}
+                </Button>
+              </PermissionWrapper>
               <UserModal ref={userModalRef} treeData={treeData} onSuccess={onSuccessUserModal} />
+              <UserImportModal ref={userImportModalRef} treeData={treeData} onSuccess={onSuccessUserModal} />
               {hasBatchActions && (
                 <Dropdown
                   overlay={
