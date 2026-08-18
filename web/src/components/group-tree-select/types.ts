@@ -27,6 +27,11 @@ export interface TreeNode {
  */
 export interface GroupTreeSelectProps {
   /**
+   * 显式传入的组织树。传入后不再使用登录态 groupTree。
+   */
+  treeData?: TreeNode[];
+
+  /**
    * 当前选中的值
    */
   value?: number | number[];
