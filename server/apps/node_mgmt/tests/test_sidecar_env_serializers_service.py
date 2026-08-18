@@ -19,11 +19,12 @@ def cloud_region():
     )
 
 
-def test_installer_credentials_mode_create_rejects_invalid_value(cloud_region):
+@pytest.mark.parametrize("invalid_value", ["", "   ", "typo"])
+def test_installer_credentials_mode_create_rejects_invalid_value(cloud_region, invalid_value):
     serializer = EnvVariableCreateSerializer(
         data={
             "key": NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_KEY,
-            "value": "typo",
+            "value": invalid_value,
             "type": EnvVariableConstants.TYPE_TEXT,
             "description": "installer credentials migration mode",
             "cloud_region_id": cloud_region.id,
@@ -31,17 +32,22 @@ def test_installer_credentials_mode_create_rejects_invalid_value(cloud_region):
     )
 
     assert serializer.is_valid() is False
-    assert serializer.errors["value"] == ["NATS_INSTALLER_CREDENTIALS_MODE must be legacy or strict"]
+    assert serializer.errors["value"]
+    if invalid_value == "typo":
+        assert serializer.errors["value"] == ["NATS_INSTALLER_CREDENTIALS_MODE must be legacy or strict"]
 
 
-def test_installer_credentials_mode_update_rejects_invalid_value(cloud_region):
+@pytest.mark.parametrize("invalid_value", ["", "   ", "typo"])
+def test_installer_credentials_mode_update_rejects_invalid_value(cloud_region, invalid_value):
     env = SidecarEnv.objects.create(
         key=NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_KEY,
         value=NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_STRICT,
         type=EnvVariableConstants.TYPE_TEXT,
         cloud_region=cloud_region,
     )
-    serializer = SidecarEnvSerializer(instance=env, data={"value": "typo"}, partial=True)
+    serializer = SidecarEnvSerializer(instance=env, data={"value": invalid_value}, partial=True)
 
     assert serializer.is_valid() is False
-    assert serializer.errors["value"] == ["NATS_INSTALLER_CREDENTIALS_MODE must be legacy or strict"]
+    assert serializer.errors["value"]
+    if invalid_value == "typo":
+        assert serializer.errors["value"] == ["NATS_INSTALLER_CREDENTIALS_MODE must be legacy or strict"]

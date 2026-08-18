@@ -1,6 +1,6 @@
 import time
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.installer import InstallerConstants
@@ -107,7 +107,7 @@ class InstallerSessionService:
                 or installer_credentials_mode == NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_STRICT
             ):
                 install_context = "Windows remote installation" if is_windows_remote else "Installer session in strict mode"
-                raise BaseAppException(
+                raise ValidationAppException(
                     f"{install_context} requires dedicated NATS_INSTALLER_USERNAME/PASSWORD credentials"
                 )
             # Fallback to admin credentials (legacy deployments)

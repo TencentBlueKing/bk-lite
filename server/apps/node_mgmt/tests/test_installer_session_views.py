@@ -29,7 +29,19 @@ def _locmem_cache(settings):
     cache.clear()
 
 
-def test_strict_credentials_failure_does_not_consume_install_token(monkeypatch):
+@pytest.mark.parametrize(
+    ("url", "exposes_remaining_usage"),
+    [
+        pytest.param("/api/v1/node_mgmt/open_api/installer/session", True, id="session"),
+        pytest.param("/api/v1/node_mgmt/open_api/installer/linux_bootstrap", False, id="linux-bootstrap"),
+    ],
+)
+def test_strict_credentials_failure_does_not_consume_install_token(
+    monkeypatch,
+    capfd,
+    url,
+    exposes_remaining_usage,
+):
     cloud_region = CloudRegion.objects.create(
         name="strict-installer-session",
         introduction="test",
@@ -73,15 +85,17 @@ def test_strict_credentials_failure_does_not_consume_install_token(monkeypatch):
         lambda _: "linux/Controller/1.0.0/controller.tar.gz",
     )
     client = APIClient()
-    url = "/api/v1/node_mgmt/open_api/installer/session"
 
     failed_response = client.get(url, {"token": token})
+    captured_logs = capfd.readouterr()
 
-    assert failed_response.status_code == 500
+    assert failed_response.status_code == 400
     failed_body = json.dumps(failed_response.json())
     assert "strict mode requires dedicated" in failed_body
     assert env_values["NATS_ADMIN_USERNAME"] not in failed_body
     assert env_values[NodeConstants.NATS_ADMIN_PASSWORD_KEY] not in failed_body
+    assert token not in captured_logs.out
+    assert token not in captured_logs.err
     usage_key = (
         f"{InstallerConstants.INSTALL_TOKEN_CACHE_PREFIX}:{token}:"
         f"{InstallTokenService.USAGE_COUNT_CACHE_SUFFIX}"
@@ -96,9 +110,10 @@ def test_strict_credentials_failure_does_not_consume_install_token(monkeypatch):
     recovered_response = client.get(url, {"token": token})
 
     assert recovered_response.status_code == 200
-    assert recovered_response["X-Token-Remaining-Usage"] == str(
-        InstallerConstants.INSTALL_TOKEN_MAX_USAGE - 1
-    )
+    if exposes_remaining_usage:
+        assert recovered_response["X-Token-Remaining-Usage"] == str(
+            InstallerConstants.INSTALL_TOKEN_MAX_USAGE - 1
+        )
     assert cache.get(usage_key) == 1
 
 
