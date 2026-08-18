@@ -220,7 +220,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                 rules={[{ required: true, message: t('common.required') }]}
               >
                 <Radio.Group
-                  style={{ width: K8S_SETTING_FORM_WIDTH }}
+                  className="w-[300px]"
                   onChange={(event) => {
                     if (event.target.value === 'new') {
                       setSettingUnknown(false);
@@ -270,7 +270,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                           placeholder={t(
                             'log.integration.k8s.clusterNamePlaceholder'
                           )}
-                          style={{ width: K8S_SETTING_FORM_WIDTH }}
+                          className="w-[300px]"
                         />
                       </Form.Item>
                     }
@@ -327,7 +327,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                         showSearch
                         loading={k8sClusterLoading}
                         placeholder={t('log.integration.k8s.selectK8sCluster')}
-                        style={{ width: K8S_SETTING_FORM_WIDTH }}
+                        className="w-[300px]"
                         options={k8sClusterList.map((item) => ({
                           label: item.name,
                           value: item.id
@@ -366,7 +366,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                 <Select
                   loading={cloudRegionLoading}
                   placeholder={t('log.integration.k8s.selectCloudRegion')}
-                  style={{ width: K8S_SETTING_FORM_WIDTH }}
+                  className="w-[300px]"
                   options={cloudRegionList.map((item) => ({
                     label: item.name || item.id,
                     value: item.id

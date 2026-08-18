@@ -410,7 +410,8 @@ const Node = () => {
                         ? 'rongqifuwuContainerServi'
                         : 'zhuji'
                     }
-                    style={{ fontSize: '28px', cursor: 'pointer' }}
+                    style={{ fontSize: '28px' }}
+                    className="cursor-pointer"
                   />
                 </div>
               </Tooltip>
@@ -422,7 +423,8 @@ const Node = () => {
                 <div className="flex items-center">
                   <Icon
                     type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
-                    style={{ fontSize: '26px', cursor: 'pointer' }}
+                    style={{ fontSize: '26px' }}
+                    className="cursor-pointer"
                   />
                 </div>
               </Tooltip>
@@ -451,7 +453,8 @@ const Node = () => {
                 <div className="flex items-center">
                   <Icon
                     type="cpu"
-                    style={{ fontSize: '28px', cursor: 'pointer' }}
+                    style={{ fontSize: '28px' }}
+                    className="cursor-pointer"
                   />
                 </div>
               </Tooltip>
@@ -558,7 +561,8 @@ const Node = () => {
                   <div>
                     <Icon
                       type="shengji"
-                      style={{ fontSize: '16px', cursor: 'pointer' }}
+                      className="cursor-pointer"
+                      style={{ fontSize: '16px' }}
                     />
                   </div>
                 </Tooltip>

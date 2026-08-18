@@ -160,7 +160,7 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
               noStyle
               rules={[{ required: true, message: t('common.required') }]}
             >
-              <Radio.Group style={{ width: K8S_SETTING_FORM_WIDTH }}>
+              <Radio.Group className="w-[300px]">
                 <Radio value="standard">
                   {t('log.integration.k8s.runtimeProfileStandard')}
                 </Radio>
@@ -220,7 +220,7 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
                         placeholder={t(
                           'log.integration.k8s.hostLogPathPlaceholder'
                         )}
-                        style={{ width: K8S_SETTING_FORM_WIDTH }}
+                        className="w-[300px]"
                       />
                     </Form.Item>
                   }
@@ -273,7 +273,7 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
                           placeholder={t(
                             'log.integration.k8s.dockerContainerLogPathPlaceholder'
                           )}
-                          style={{ width: K8S_SETTING_FORM_WIDTH }}
+                          className="w-[300px]"
                         />
                       </Form.Item>
                     }
@@ -309,7 +309,7 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
                 placeholder={t(
                   'log.integration.k8s.collectNamespacePlaceholder'
                 )}
-                style={{ width: K8S_SETTING_FORM_WIDTH }}
+                className="w-[300px]"
               />
             </Form.Item>
           }
@@ -336,7 +336,7 @@ const CollectSettingFields: React.FC<CollectSettingFieldsProps> = ({
               <Input.TextArea
                 rows={3}
                 placeholder={t('log.integration.k8s.collectPodPlaceholder')}
-                style={{ width: K8S_SETTING_FORM_WIDTH }}
+                className="w-[300px]"
               />
             </Form.Item>
           }

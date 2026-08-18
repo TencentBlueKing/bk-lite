@@ -29,24 +29,10 @@ const FieldGuideTip: React.FC<FieldGuideTipProps> = ({ short, title }) => {
       }}
       title={
         <div>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              color: 'var(--color-text-1)',
-              marginBottom: 4
-            }}
-          >
+          <div className="mb-1 text-xs font-medium text-[var(--color-text-1)]">
             {title}
           </div>
-          <div
-            style={{
-              fontSize: 12,
-              lineHeight: '20px',
-              color: 'var(--color-text-2)',
-              whiteSpace: 'pre-line'
-            }}
-          >
+          <div className="whitespace-pre-line text-xs leading-5 text-[var(--color-text-2)]">
             {short}
           </div>
         </div>

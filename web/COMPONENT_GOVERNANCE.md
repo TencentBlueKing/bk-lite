@@ -38,16 +38,16 @@ Agent 日常入口：根 `CLAUDE.md` / `AGENTS.md`「Web UI 硬约束」；**勿
 
 | 分类 | 数量 | 判定 |
 | --- | ---: | --- |
-| `shared-cross-app` | 69 | 至少两个真实 app 直接或传递消费 |
-| `shared-primitive` | 43 | 当前消费者不足两个，但具有明确 primitive 理由和 contract story |
+| `shared-cross-app` | 71 | 至少两个真实 app 直接或传递消费 |
+| `shared-primitive` | 42 | 当前消费者不足两个，但具有明确 primitive 理由和 contract story |
 | `app-local` | 0 | 不允许留在 `src/components` |
 | `story-only-review` | 0 | 不允许仅因 Storybook 引用留在 `src/components` |
 | `invalid-reverse-dependency` | 0 | shared 禁止依赖 app |
 | `unused` | 0 | 无消费者实现必须删除或明确归属 |
 
-白名单共记录 65 个 primitive；其中 17 个当前也已获得跨 app 运行证据，因此 manifest 按优先级将其归为 `shared-cross-app`。所有白名单项均包含 `reason` 和存在的 `contractStory`。
+白名单共记录 65 个 primitive；其中部分已获得跨 app 运行证据，因此 manifest 按优先级将其归为 `shared-cross-app`。所有白名单项均包含 `reason` 和存在的 `contractStory`。
 
-本轮将 `src/components` 从 229 个一级目录收敛到 112 个：114 个业务目录下沉到 app，3 个平行重复实现删除。
+治理迁移曾将 `src/components` 从 229 个一级目录收敛到 112 个（114 个业务目录下沉到 app，3 个平行重复实现删除）。当前门禁为 113 records。
 
 ## 跨应用对比与决策
 
@@ -372,6 +372,13 @@ Agent 日常入口：根 `CLAUDE.md` / `AGENTS.md`「Web UI 硬约束」；**勿
 - stacked-bar ×2：11→4（段宽/色动态）；paramTable/script-library→0；installGuidance/model*/environment/cron/quick-exec 等静态布局收敛。
 - 仍 ≥8 且均为动态/缩放例外：job home、roomFloorPlan、chartLegend(scale)、comTopN/comKpiCard（SKIP）。
 - **退出判定**：高密度静态布局行内已明显收敛；剩余为图表/画布/动态色例外。本 loop **停止再挂 style_unify heartbeat**（组件治理 loop 不受影响）。
+
+### 合并最新 master 后事件驱动(2026-08 Cycle 26)
+
+- 快进合并 `origin/master`（`ae8c3fb81` → `b7ce17325`，含 PR #4859 等 57 提交），无冲突。
+- FieldGuideTip：删除 Monitor 薄封装 `configure/fieldGuideTip.tsx`，`useConfigRenderer` 直接消费 `@/components/field-guide-tip`（Log K8s 采集 + Monitor 接入已构成跨 app）。
+- 样式：shared tip 正文改为 className；K8s 采集/接入表单宽 `w-[300px]`；Monitor `batchEditModal` 双列布局 Tailwind。`GroupTreeSelect` 仍走组件 `style` 契约；图表 tooltip / 机柜画布 / 动态图标尺寸不迁。
+- 门禁：`pnpm check:component-ownership` 通过（113 records；Node v24.18.0）。
 
 ### 已知 Storybook 构建阻塞
 
