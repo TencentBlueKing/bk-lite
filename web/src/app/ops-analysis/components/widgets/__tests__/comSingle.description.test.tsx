@@ -82,10 +82,35 @@ describe('ComSingle description field', () => {
     );
 
     const description = screen.getByText('1.234');
-    const compare = screen.getByText('环比');
+    const compare = screen.getByTestId('single-compare');
     expect(description.compareDocumentPosition(compare)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(screen.getByTestId('main-value').textContent).not.toContain('1.234');
+  });
+
+  it('clamps long description to two lines and keeps compare on one line', () => {
+    render(
+      <ComSingle
+        rawData={{
+          value: 12,
+          note: '这是一段超过两行的说明文案，用来确认卡片不会被长文本无限撑高。',
+        }}
+        baselineData={{ value: 10 }}
+        config={{
+          chartType: 'single',
+          selectedFields: ['value'],
+          descriptionField: 'note',
+          compare: true,
+        }}
+      />,
+    );
+
+    const description = screen.getByTestId('single-description');
+    const compare = screen.getByTestId('single-compare');
+    expect(description.querySelector('.line-clamp-2')).toBeTruthy();
+    expect(compare.className).toMatch(/flex-nowrap/);
+    expect(compare.className).toMatch(/overflow-hidden/);
+    expect(compare.querySelector('.truncate')).toBeTruthy();
   });
 });

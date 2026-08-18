@@ -266,7 +266,9 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
 
       values.thresholdColors = singleValueConfig.thresholdColors;
       values.compare = !!values.compare;
-      values.compareMode = values.compareMode || 'percent';
+      if (values.compare) {
+        values.compareMode = values.compareMode || 'percent';
+      }
 
       onConfirm?.(values);
     } catch (error) {

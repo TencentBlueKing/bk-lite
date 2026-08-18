@@ -39,6 +39,31 @@ const TooltipSwitch: React.FC<{
   return switchEl;
 };
 
+const CompareSwitch: React.FC<{
+  checked?: boolean;
+  onChange?: (checked: boolean) => void;
+  readonly?: boolean;
+  compareAvailable: boolean;
+  unavailableTip: string;
+}> = ({ checked, onChange, readonly, compareAvailable, unavailableTip }) => {
+  const form = Form.useFormInstance();
+  return (
+    <TooltipSwitch
+      checked={checked}
+      disabled={readonly || !compareAvailable}
+      tooltipTitle={
+        !readonly && !compareAvailable ? unavailableTip : undefined
+      }
+      onChange={(nextChecked) => {
+        onChange?.(nextChecked);
+        if (nextChecked && !form.getFieldValue('compareMode')) {
+          form.setFieldValue('compareMode', 'percent');
+        }
+      }}
+    />
+  );
+};
+
 interface SingleValueSettingsSectionProps {
   t: (key: string) => string;
   sectionTitle?: string;
@@ -241,13 +266,10 @@ export const SingleValueSettingsSection: React.FC<
         name="compare"
         valuePropName="checked"
       >
-        <TooltipSwitch
-          disabled={readonly || !compareAvailable}
-          tooltipTitle={
-            !readonly && !compareAvailable
-              ? t('dashboard.compareUnavailableTip')
-              : undefined
-          }
+        <CompareSwitch
+          readonly={readonly}
+          compareAvailable={compareAvailable}
+          unavailableTip={t('dashboard.compareUnavailableTip')}
         />
       </Form.Item>
 
@@ -256,7 +278,11 @@ export const SingleValueSettingsSection: React.FC<
         shouldUpdate={(prev, current) => prev.compare !== current.compare}
       >
         {({ getFieldValue }) => getFieldValue('compare') ? (
-          <Form.Item label={t('dashboard.compareMode')} name="compareMode">
+          <Form.Item
+            label={t('dashboard.compareMode')}
+            name="compareMode"
+            initialValue="percent"
+          >
             <Select
               disabled={readonly}
               style={{ width: '200px' }}

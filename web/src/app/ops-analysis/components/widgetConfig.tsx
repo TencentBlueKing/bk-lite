@@ -824,8 +824,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         config: { chartType: 'single', dataSourceParams: targetDataSource?.params },
         dataSource: targetDataSource,
       });
-      formValues.compareMode = valueConfig.compareMode || 'percent';
     }
+    formValues.compareMode = valueConfig?.compareMode || 'percent';
 
     singleValueConfig.setThresholdColors(
       formValues.chartType === 'multiValue'
@@ -1104,6 +1104,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       <Form
         form={form}
         layout="vertical"
+        initialValues={{ compare: false, compareMode: 'percent' }}
         onValuesChange={handleFormValuesChange}
       >
         <div className="mb-6">

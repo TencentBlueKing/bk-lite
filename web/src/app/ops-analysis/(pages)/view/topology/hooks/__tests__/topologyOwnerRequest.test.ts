@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TopologyNodeData } from '@/app/ops-analysis/types/topology';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
@@ -80,6 +80,7 @@ vi.mock('../../utils/registerNode', () => ({
   updateNodeAttributes: vi.fn(),
 }));
 
+import { updateNodeAttributes } from '../../utils/registerNode';
 import { useGraphData } from '../useGraphData';
 import { useGraphNodeOperations } from '../useGraphNodeOperations';
 
@@ -117,6 +118,7 @@ const createFakeGraph = (nodes: Record<string, ReturnType<typeof createFakeNode>
 afterEach(() => {
   testState.fetchWidgetData.mockReset();
   testState.fetchCompareData.mockReset();
+  vi.mocked(updateNodeAttributes).mockReset();
 });
 
 describe('topology chart node owner requests', () => {
@@ -487,5 +489,113 @@ describe('topology single-value node owner requests', () => {
       await Promise.resolve();
     });
     expect(node.setAttrByPath).toHaveBeenCalledWith('label/text', '9');
+  });
+
+  it('keeps numeric compare mode after editing a node that previously used percent', async () => {
+    const node = createFakeNode({ type: 'single-value' });
+    const graph = createFakeGraph({ 'sv-1': node });
+    testState.fetchCompareData.mockResolvedValue({
+      currentData: { cpu: 42 },
+      baselineData: { cpu: 40 },
+    });
+
+    const { result } = renderHook(() =>
+      useGraphNodeOperations({
+        graphInstance: graph as never,
+        state: {
+          editingNodeData: {
+            ...singleValueNode,
+            valueConfig: {
+              ...singleValueNode.valueConfig,
+              compare: true,
+              compareMode: 'percent',
+              filterBindings: { time: 'range' },
+            },
+          },
+          setNodeEditVisible: vi.fn(),
+          setEditingNodeData: vi.fn(),
+        } as never,
+        handleSave: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleNodeUpdate({
+        name: 'cpu',
+        compare: true,
+        compareMode: 'value',
+        selectedFields: ['cpu'],
+        dataSource: 7,
+      });
+    });
+
+    expect(updateNodeAttributes).toHaveBeenCalledWith(
+      node,
+      expect.objectContaining({
+        valueConfig: expect.objectContaining({
+          compare: true,
+          compareMode: 'value',
+          filterBindings: { time: 'range' },
+        }),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(node.setAttrByPath).toHaveBeenCalledWith(
+        'label/text',
+        expect.stringMatching(/↑2(?!\.)/),
+      );
+    });
+    const label = vi.mocked(node.setAttrByPath).mock.calls
+      .filter((call) => call[0] === 'label/text')
+      .at(-1)?.[1];
+    expect(String(label)).not.toContain('%');
+  });
+
+  it('keeps the previous compare mode when period compare is turned off', async () => {
+    const node = createFakeNode({ type: 'single-value' });
+    const graph = createFakeGraph({ 'sv-1': node });
+    testState.fetchCompareData.mockResolvedValue({
+      currentData: { cpu: 42 },
+      baselineData: { cpu: 40 },
+    });
+
+    const { result } = renderHook(() =>
+      useGraphNodeOperations({
+        graphInstance: graph as never,
+        state: {
+          editingNodeData: {
+            ...singleValueNode,
+            valueConfig: {
+              ...singleValueNode.valueConfig,
+              compare: true,
+              compareMode: 'value',
+            },
+          },
+          setNodeEditVisible: vi.fn(),
+          setEditingNodeData: vi.fn(),
+        } as never,
+        handleSave: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleNodeUpdate({
+        name: 'cpu',
+        compare: false,
+        selectedFields: ['cpu'],
+        dataSource: 7,
+      });
+    });
+
+    expect(updateNodeAttributes).toHaveBeenCalledWith(
+      node,
+      expect.objectContaining({
+        valueConfig: expect.objectContaining({
+          compare: false,
+          compareMode: 'value',
+        }),
+      }),
+    );
   });
 });
