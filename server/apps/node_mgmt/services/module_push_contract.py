@@ -29,6 +29,8 @@ class IngestResult:
     ignored: bool = False
     conflict: str | None = None
     claimed: bool = False  # 存量认领
+    # 扫描带凭据重复推送：目标已有 cmdb_id+采集时返回；node_mgmt/无凭据路径不使用。
+    skipped: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)

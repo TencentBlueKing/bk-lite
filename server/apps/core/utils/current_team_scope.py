@@ -105,6 +105,75 @@ def resolve_current_team_data_scope(request):
     )
 
 
+def actor_context_to_wire(actor_context: dict | None) -> dict | None:
+    """跨模块 RPC 用：去掉 request / CurrentTeamDataScope，只留可 JSON 字段。"""
+    if not isinstance(actor_context, dict):
+        return None
+
+    scope = actor_context.get("data_scope")
+    if isinstance(scope, CurrentTeamDataScope):
+        return {
+            "username": scope.username,
+            "domain": scope.domain,
+            "current_team": int(scope.current_team),
+            "include_children": bool(scope.include_children),
+            "is_superuser": bool(scope.is_superuser),
+            "group_list": list(actor_context.get("group_list") or []),
+            "data_team_ids": sorted(int(x) for x in scope.data_team_ids),
+        }
+
+    current_team = actor_context.get("current_team")
+    raw_ids = actor_context.get("data_team_ids") or []
+    if current_team in (None, "") and not raw_ids:
+        return None
+    try:
+        team_ids = sorted(int(x) for x in raw_ids)
+        team = int(current_team) if current_team not in (None, "") else (team_ids[0] if team_ids else None)
+    except (TypeError, ValueError):
+        return None
+    if team is None or not team_ids:
+        return None
+    return {
+        "username": str(actor_context.get("username") or ""),
+        "domain": str(actor_context.get("domain") or "domain.com"),
+        "current_team": team,
+        "include_children": bool(actor_context.get("include_children", False)),
+        "is_superuser": bool(actor_context.get("is_superuser", False)),
+        "group_list": list(actor_context.get("group_list") or []),
+        "data_team_ids": team_ids,
+    }
+
+
+def hydrate_actor_context_data_scope(actor_context: dict | None) -> CurrentTeamDataScope | None:
+    """从进程内对象或 RPC wire 字段还原 CurrentTeamDataScope；成功则写回 actor_context。"""
+    if not isinstance(actor_context, dict):
+        return None
+
+    scope = actor_context.get("data_scope")
+    if isinstance(scope, CurrentTeamDataScope) and scope.data_team_ids:
+        return scope
+
+    raw_ids = actor_context.get("data_team_ids") or []
+    current_team = actor_context.get("current_team")
+    if current_team in (None, "") or not raw_ids:
+        return None
+    try:
+        rebuilt = CurrentTeamDataScope(
+            current_team=int(current_team),
+            data_team_ids=frozenset(int(x) for x in raw_ids),
+            include_children=bool(actor_context.get("include_children", False)),
+            username=str(actor_context.get("username") or ""),
+            domain=str(actor_context.get("domain") or "domain.com"),
+            is_superuser=bool(actor_context.get("is_superuser", False)),
+        )
+    except (TypeError, ValueError):
+        return None
+    if not rebuilt.data_team_ids:
+        return None
+    actor_context["data_scope"] = rebuilt
+    return rebuilt
+
+
 def scope_permission_queryset(model, permission, scope, *, team_key, id_key="id__in"):
     organization_qs = model.objects.filter(**{team_key: list(scope.data_team_ids)})
     permission_qs = permission_filter(model, permission, team_key=team_key, id_key=id_key)
