@@ -575,6 +575,7 @@ export interface ApmAlert {
   metric_type: ApmPolicyMetric;
   severity: ApmPolicySeverity;
   status: 'active' | 'recovered' | 'closed';
+  notification_status?: 'none' | 'pending' | 'delivered' | 'partial' | 'failed';
   current_value: string | null;
   operator: string;
   started_at: string;

@@ -69,6 +69,195 @@
   padding: 0 10px;
 }
 
+.alertsWorkspace {
+  min-height: calc(100vh - 146px);
+  padding: 16px 20px 24px;
+}
+
+.alertsToolbar,
+.alertsDistribution,
+.alertsTableSection {
+  overflow: hidden;
+  background: var(--color-bg-1);
+  border: 1px solid var(--color-border-1);
+  border-radius: 8px;
+}
+
+.alertsToolbar {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  gap: 16px;
+}
+
+.alertsToolbarTitle,
+.alertsToolbarActions,
+.alertsDistributionHeader,
+.alertsSeveritySummary,
+.alertsDistributionFooter,
+.alertsRangeControls {
+  display: flex;
+  align-items: center;
+}
+
+.alertsToolbarTitle {
+  color: var(--color-text-1);
+  gap: 10px;
+}
+
+.alertsToolbarTitle > :global(.anticon) {
+  color: var(--color-primary);
+  font-size: 18px;
+}
+
+.alertsToolbarTitle h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.alertsToolbarActions {
+  gap: 8px;
+}
+
+.alertsToolbarActions :global(.ant-input-affix-wrapper) {
+  width: 320px;
+}
+
+.alertsDistribution {
+  padding: 14px 16px 12px;
+  margin-bottom: 16px;
+}
+
+.alertsDistributionHeader,
+.alertsDistributionFooter {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.alertsDistributionHeader {
+  min-height: 32px;
+}
+
+.alertsSeveritySummary,
+.alertsRangeControls {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.alertsSeveritySummary :global(.ant-tag),
+.alertsTableTabs :global(.ant-tag) {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.alertsDistributionChart {
+  height: 150px;
+  margin: 8px 0;
+}
+
+.alertsDistributionFooter {
+  min-height: 44px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border-1);
+}
+
+.alertsRangeControls > :global(.ant-typography) {
+  font-size: 12px;
+}
+
+.alertsLastUpdated {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.alertsTableSection {
+  min-width: 0;
+}
+
+.alertsTableTabs {
+  padding: 8px 16px 0;
+}
+
+.alertsTableTabs :global(.ant-tabs-nav) {
+  margin-bottom: 0;
+}
+
+.alertsTableSection :global(.ant-table-wrapper) {
+  min-width: 0;
+}
+
+.alertTimeCell {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.alertTimeCell :global(.anticon) {
+  color: var(--color-text-4);
+}
+
+.alertTitleLink {
+  display: block !important;
+  width: 100%;
+  min-height: 40px;
+  overflow: hidden;
+  padding: 0 !important;
+  font-weight: 500;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alertServiceCell {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.alertServiceName,
+.alertServiceScope {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alertServiceName {
+  color: var(--color-text-1);
+  font-weight: 500;
+}
+
+.alertServiceScope {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.alertOperatorCell {
+  max-width: 100%;
+}
+
+.alertOperatorCell :global(.ant-avatar) {
+  flex: none;
+  background: var(--color-primary);
+}
+
+.alertOperatorCell :global(.ant-typography) {
+  min-width: 0;
+  margin: 0;
+}
+
+.alertOperationCell :global(.ant-btn) {
+  min-height: 40px;
+}
+
 .tableSection {
   min-width: 0;
   padding: 10px 20px 20px;
@@ -430,6 +619,26 @@
     padding-left: 16px;
   }
 
+  .alertsWorkspace {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .alertsToolbar,
+  .alertsDistributionHeader,
+  .alertsDistributionFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .alertsToolbarActions :global(.ant-input-affix-wrapper) {
+    width: min(100%, 360px);
+  }
+
+  .alertsLastUpdated {
+    align-self: flex-end;
+  }
+
   .editor {
     padding-right: 0;
     padding-left: 0;
@@ -459,6 +668,39 @@
 }
 
 @media (max-width: 640px) {
+  .alertsWorkspace {
+    padding: 12px;
+  }
+
+  .alertsToolbarActions,
+  .alertsRangeControls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .alertsToolbarActions :global(.ant-input-affix-wrapper),
+  .alertsToolbarActions :global(.ant-btn),
+  .alertsRangeControls :global(.ant-picker) {
+    width: 100%;
+  }
+
+  .alertsDistribution {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .alertsDistributionChart {
+    height: 180px;
+  }
+
+  .alertsSeveritySummary {
+    align-items: flex-start;
+  }
+
+  .alertsLastUpdated {
+    align-self: flex-start;
+  }
+
   .editor :global(.ant-form-item-row) {
     flex-direction: column;
   }

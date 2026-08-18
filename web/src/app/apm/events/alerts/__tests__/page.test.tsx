@@ -30,13 +30,24 @@ const alert = {
   metric_type: 'error_rate' as const,
   severity: 'error' as const,
   status: 'active' as const,
+  notification_status: 'delivered' as const,
   current_value: '0.2',
-  operator: '',
+  operator: 'sre.wang',
   started_at: event.occurred_at,
   ended_at: null,
   last_event_at: event.occurred_at,
   event_count: 1,
   events: [event],
+};
+const recoveredAlert = {
+  ...alert,
+  id: 'a2',
+  external_id: 'alert-2',
+  title: 'checkout P95 时延恢复',
+  status: 'recovered' as const,
+  notification_status: 'none' as const,
+  operator: 'sre.li',
+  ended_at: '2026-08-14T03:00:00Z',
 };
 const snapshot = {
   id: 'ss1',
@@ -97,7 +108,7 @@ beforeEach(() => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     });
-  api.getAlerts.mockResolvedValue([alert]);
+  api.getAlerts.mockResolvedValue([alert, recoveredAlert]);
   api.getAlertDistribution.mockResolvedValue([{ time: event.occurred_at, critical: 0, error: 1, warning: 0 }]);
   api.getAlertSnapshots.mockResolvedValue([snapshot]);
   api.getNotificationDeliveries.mockResolvedValue([]);
@@ -109,12 +120,34 @@ afterEach(() => {
 
 describe('APM Alert 与 Event Snapshot', () => {
   it('使用 Alert 聚合接口展示活跃告警和分布', async () => {
+    const user = userEvent.setup();
     renderWithApmIntl(<ApmAlertsPage />);
     expect(await screen.findByText('checkout 错误率升高')).not.toBeNull();
-    expect(screen.getByText('筛选条件')).not.toBeNull();
-    expect(screen.getByText('告警分布图')).not.toBeNull();
+    expect(screen.getByRole('heading', { name: '告警' })).not.toBeNull();
+    expect(screen.getByText('告警分布(近 24h)')).not.toBeNull();
     expect(screen.getByText('严重 / 错误 / 警告')).not.toBeNull();
-    expect(api.getAlerts).toHaveBeenCalledWith(expect.objectContaining({ status: 'active' }));
+    expect(screen.getByRole('tab', { name: /活跃告警.*1/ })).not.toBeNull();
+    expect(screen.getByRole('tab', { name: /历史告警.*1/ })).not.toBeNull();
+    expect(screen.getAllByRole('columnheader').map((cell) => cell.textContent?.trim())).toEqual([
+      '级别',
+      '触发时间',
+      '告警标题',
+      '指标',
+      '服务 / 端点',
+      '通知',
+      '处置人',
+      '操作',
+    ]);
+    expect(screen.getByText('已通知')).not.toBeNull();
+    expect(screen.getByText('sre.wang')).not.toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '当前值' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '状态' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '事件' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '最近变化' })).toBeNull();
+    expect(api.getAlerts).toHaveBeenCalledWith(expect.not.objectContaining({ status: 'active' }));
+    await user.click(screen.getByRole('tab', { name: /历史告警.*1/ }));
+    expect(await screen.findByText('checkout P95 时延恢复')).not.toBeNull();
+    expect(api.getAlerts).toHaveBeenCalledTimes(1);
   });
 
   it('详情趋势绑定所选 event_id 的持久化快照，而不是重查当前 RED', async () => {

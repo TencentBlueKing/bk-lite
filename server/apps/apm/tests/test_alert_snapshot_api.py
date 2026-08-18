@@ -5,7 +5,16 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.apm.adapters import InMemoryNotificationDispatcher
-from apps.apm.models import ApmAlert, ApmEvent, ApmEventSnapshot, ApmEventSnapshotPayload, ApmPolicy, ApmService, ApmServiceOrganization
+from apps.apm.models import (
+    ApmAlert,
+    ApmAlertOutbox,
+    ApmEvent,
+    ApmEventSnapshot,
+    ApmEventSnapshotPayload,
+    ApmPolicy,
+    ApmService,
+    ApmServiceOrganization,
+)
 from apps.apm.services import ApmEventSnapshotStore, DjangoApmPolicyService
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult, ServiceRed, ServiceRedPoint
 
@@ -60,9 +69,28 @@ def test_alert_and_snapshot_reads_are_organization_scoped(apm_api_client):
 
     assert listed.status_code == 200
     assert [str(item["id"]) for item in listed.data] == [str(visible.id)]
+    assert listed.data[0]["notification_status"] == "none"
     assert visible_snapshots.status_code == 200
     assert visible_snapshots.data[0]["payload_status"] == "pending"
     assert hidden_snapshots.status_code == 404
+
+
+def test_alert_list_summarizes_notification_delivery_status(apm_api_client):
+    _, alert, _ = _trigger()
+    event = alert.events.get()
+    ApmAlertOutbox.objects.create(
+        event_key="alert-list:delivered",
+        event=event,
+        channel_id=7,
+        channel_name="邮件",
+        channel_type="email",
+        delivery_status=ApmAlertOutbox.DeliveryStatus.DELIVERED,
+    )
+
+    response = apm_api_client.get("/api/v1/apm/alerts/")
+
+    assert response.status_code == 200
+    assert response.data[0]["notification_status"] == "delivered"
 
 
 def test_manual_close_appends_canonical_event_and_snapshot(apm_api_client):

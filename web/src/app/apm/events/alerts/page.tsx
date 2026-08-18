@@ -1,17 +1,25 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CloseCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BellOutlined,
+  CheckOutlined,
+  ClockCircleOutlined,
+  CloseCircleOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+} from '@ant-design/icons';
 import {
   Alert as AntAlert,
+  Avatar,
   Button,
+  DatePicker,
   Descriptions,
   Drawer,
   Input,
   message,
   Popconfirm,
   Radio,
-  Select,
   Space,
   Tabs,
   Tag,
@@ -20,12 +28,11 @@ import {
   theme,
   type TableColumnsType,
 } from 'antd';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import useApmApi from '@/app/apm/api';
-import ApmDataTable from '@/app/apm/components/apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
-import Collapse from '@/components/collapse';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 import type {
   ApmAlert,
@@ -38,12 +45,42 @@ import type {
 import styles from '@/app/apm/events/event-workspace.module.scss';
 
 type PageState = CatalogStateKind | 'ready';
-type Range = '1h' | '24h' | '7d';
-const RANGE_MS: Record<Range, number> = { '1h': 3_600_000, '24h': 86_400_000, '7d': 604_800_000 };
+type Range = '1h' | '24h' | '7d' | 'custom';
+type RefreshInterval = 0 | 30 | 60 | 300;
+const RANGE_MS: Record<Exclude<Range, 'custom'>, number> = {
+  '1h': 3_600_000,
+  '24h': 86_400_000,
+  '7d': 604_800_000,
+};
+const RANGE_LABEL: Record<Range, string> = { '1h': '1h', '24h': '24h', '7d': '7d', custom: '自定义' };
 const ACTION_LABEL = { triggered: '触发', escalated: '级别升级', recovered: '恢复', closed: '人工关闭' } as const;
 const STATUS_LABEL = { active: '告警中', recovered: '已恢复', closed: '已关闭' } as const;
 const STATUS_COLOR = { active: 'error', recovered: 'success', closed: 'default' } as const;
 const SEVERITY_COLOR: Record<ApmPolicySeverity, string> = { critical: 'red', error: 'orange', warning: 'gold' };
+const SEVERITY_LABEL: Record<ApmPolicySeverity, string> = { critical: '严重', error: '错误', warning: '警告' };
+const METRIC_LABEL: Record<ApmAlert['metric_type'], string> = {
+  error_rate: '错误率',
+  p95: 'P95 时延',
+  p99: 'P99 时延',
+  throughput: '吞吐',
+  no_traffic: '无流量',
+};
+const NOTIFICATION_LABEL = {
+  none: '未通知',
+  pending: '投递中',
+  delivered: '已通知',
+  partial: '部分失败',
+  failed: '投递失败',
+} as const;
+
+function resolveTimeParams(range: Range, customRange: [Dayjs, Dayjs] | null) {
+  if (range === 'custom' && customRange) {
+    return { started_at: customRange[0].toISOString(), ended_at: customRange[1].toISOString() };
+  }
+  const endedAt = new Date();
+  const windowMs = RANGE_MS[range === 'custom' ? '24h' : range];
+  return { started_at: new Date(endedAt.getTime() - windowMs).toISOString(), ended_at: endedAt.toISOString() };
+}
 
 export default function ApmAlertsPage() {
   const { token } = theme.useToken();
@@ -55,15 +92,17 @@ export default function ApmAlertsPage() {
     getNotificationDeliveries,
     isLoading: authLoading,
   } = useApmApi();
-  const [alerts, setAlerts] = useState<ApmAlert[]>([]);
+  const [allAlerts, setAllAlerts] = useState<ApmAlert[]>([]);
   const [distribution, setDistribution] = useState<
     Array<{ time: string; critical: number; error: number; warning: number }>
   >([]);
   const [state, setState] = useState<PageState>('loading');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
   const [range, setRange] = useState<Range>('24h');
-  const [severity, setSeverity] = useState<ApmPolicySeverity | undefined>();
-  const [metric, setMetric] = useState<ApmAlertQuery['metric_type']>();
+  const [customRange, setCustomRange] = useState<[Dayjs, Dayjs] | null>(null);
+  const [refreshInterval, setRefreshInterval] = useState<RefreshInterval>(0);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Dayjs | null>(null);
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [selected, setSelected] = useState<ApmAlert | null>(null);
@@ -71,35 +110,63 @@ export default function ApmAlertsPage() {
   const [snapshot, setSnapshot] = useState<ApmEventSnapshot | null>(null);
   const [deliveries, setDeliveries] = useState<ApmNotificationDelivery[]>([]);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
-  const [chartExpanded, setChartExpanded] = useState(true);
-
-  const timeParams = useMemo(() => {
-    const endedAt = new Date();
-    return { started_at: new Date(endedAt.getTime() - RANGE_MS[range]).toISOString(), ended_at: endedAt.toISOString() };
-  }, [range]);
+  const loadSequence = useRef(0);
 
   const load = useCallback(() => {
     if (authLoading) return;
-    setState('loading');
+    const sequence = loadSequence.current + 1;
+    loadSequence.current = sequence;
+    setIsRefreshing(true);
+    setState((current) => current === 'ready' ? current : 'loading');
+    const timeParams = resolveTimeParams(range, customRange);
     const query: ApmAlertQuery = {
       ...timeParams,
       limit: 100,
-      severity,
-      metric_type: metric,
       keyword: submittedKeyword,
-      status: activeTab === 'active' ? 'active' : undefined,
     };
     Promise.all([getAlerts(query), getAlertDistribution(timeParams)])
       .then(([items, buckets]) => {
-        const visible = activeTab === 'history' ? items.filter((item) => item.status !== 'active') : items;
-        setAlerts(visible);
+        if (sequence !== loadSequence.current) return;
+        setAllAlerts(items);
         setDistribution(buckets);
-        setState(visible.length ? 'ready' : 'empty');
+        setLastUpdatedAt(dayjs());
+        setState(items.length ? 'ready' : 'empty');
       })
-      .catch((error) => setState(catalogErrorKind(error)));
-  }, [activeTab, authLoading, getAlertDistribution, getAlerts, metric, severity, submittedKeyword, timeParams]);
+      .catch((error) => {
+        if (sequence === loadSequence.current) setState(catalogErrorKind(error));
+      })
+      .finally(() => {
+        if (sequence === loadSequence.current) setIsRefreshing(false);
+      });
+  }, [authLoading, customRange, getAlertDistribution, getAlerts, range, submittedKeyword]);
 
   useEffect(() => load(), [load]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSubmittedKeyword(keyword.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [keyword]);
+
+  useEffect(() => {
+    if (!refreshInterval) return undefined;
+    const timer = window.setInterval(load, refreshInterval * 1000);
+    return () => window.clearInterval(timer);
+  }, [load, refreshInterval]);
+
+  const activeAlerts = useMemo(() => allAlerts.filter((item) => item.status === 'active'), [allAlerts]);
+  const historyAlerts = useMemo(() => allAlerts.filter((item) => item.status !== 'active'), [allAlerts]);
+  const alerts = activeTab === 'active' ? activeAlerts : historyAlerts;
+  const distributionTotals = useMemo(
+    () => distribution.reduce(
+      (totals, bucket) => ({
+        critical: totals.critical + bucket.critical,
+        error: totals.error + bucket.error,
+        warning: totals.warning + bucket.warning,
+      }),
+      { critical: 0, error: 0, warning: 0 },
+    ),
+    [distribution],
+  );
 
   const chooseEvent = useCallback(
     (alert: ApmAlert, event: ApmAlertEvent) => {
@@ -124,6 +191,17 @@ export default function ApmAlertsPage() {
     setSelected(alert);
     const event = alert.events.at(-1) ?? null;
     if (event) chooseEvent(alert, event);
+  };
+
+  const handleCloseAlert = async (alert: ApmAlert) => {
+    await closeAlert(alert.id);
+    message.success('告警已关闭');
+    if (selected?.id === alert.id) {
+      setSelected(null);
+      setSelectedEvent(null);
+      setSnapshot(null);
+    }
+    load();
   };
 
   const chartRows = useMemo(() => {
@@ -151,49 +229,123 @@ export default function ApmAlertsPage() {
     {
       title: '级别',
       dataIndex: 'severity',
-      width: 90,
-      render: (value) => <Tag color={SEVERITY_COLOR[value as ApmPolicySeverity]}>{value}</Tag>,
+      width: APM_TABLE_COLUMN_WIDTHS.status,
+      render: (value) => {
+        const severity = value as ApmPolicySeverity;
+        return <Tag color={SEVERITY_COLOR[severity]}>{SEVERITY_LABEL[severity]}</Tag>;
+      },
     },
     {
-      title: '告警',
+      title: '触发时间',
+      dataIndex: 'started_at',
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
+      render: (value) => (
+        <span className={styles.alertTimeCell}>
+          <ClockCircleOutlined aria-hidden="true" />
+          {dayjs(value).format('YYYY-MM-DD HH:mm')}
+        </span>
+      ),
+    },
+    {
+      title: '告警标题',
       dataIndex: 'title',
       render: (_, item) => (
-        <Button type="link" className="!px-0" onClick={() => openDrawer(item)}>
+        <Button
+          type="link"
+          className={styles.alertTitleLink}
+          title={item.title}
+          onClick={(event) => {
+            event.stopPropagation();
+            openDrawer(item);
+          }}
+        >
           {item.title}
         </Button>
       ),
     },
     {
-      title: 'Service / Endpoint',
+      title: '指标',
+      dataIndex: 'metric_type',
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
+      render: (value, item) => (
+        <Tag color={SEVERITY_COLOR[item.severity]}>{METRIC_LABEL[value as ApmAlert['metric_type']]}</Tag>
+      ),
+    },
+    {
+      title: '服务 / 端点',
+      width: 208,
       render: (_, item) => (
-        <Space direction="vertical" size={0}>
-          <span>
-            {item.service_namespace ? `${item.service_namespace} / ` : ''}
-            {item.service_name}
-          </span>
-          <Typography.Text type="secondary" className="!text-xs">
-            {item.endpoint || '全部端点'} · {item.environment}
-            {item.version ? ` · ${item.version}` : ''}
+        <div className={styles.alertServiceCell}>
+          <span className={styles.alertServiceName} title={item.service_name}>{item.service_name}</span>
+          <Typography.Text type="secondary" className={styles.alertServiceScope} title={item.endpoint || '全部端点'}>
+            {item.endpoint || '全部端点'}
           </Typography.Text>
+        </div>
+      ),
+    },
+    {
+      title: '通知',
+      dataIndex: 'notification_status',
+      width: APM_TABLE_COLUMN_WIDTHS.compact,
+      render: (value) => {
+        const status = (value || 'none') as NonNullable<ApmAlert['notification_status']>;
+        if (status === 'none') return <Typography.Text type="secondary">{NOTIFICATION_LABEL.none}</Typography.Text>;
+        const color = status === 'delivered' ? 'success' : status === 'pending' ? 'processing' : 'warning';
+        return (
+          <Tag color={status === 'failed' ? 'error' : color} icon={status === 'delivered' ? <CheckOutlined /> : undefined}>
+            {NOTIFICATION_LABEL[status]}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: '处置人',
+      dataIndex: 'operator',
+      width: APM_TABLE_COLUMN_WIDTHS.organization,
+      render: (value) => value ? (
+        <Space size={8} className={styles.alertOperatorCell}>
+          <Avatar size={24}>{String(value).slice(0, 1).toUpperCase()}</Avatar>
+          <Typography.Text ellipsis={{ tooltip: String(value) }}>{String(value)}</Typography.Text>
+        </Space>
+      ) : <Typography.Text type="secondary">--</Typography.Text>,
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: APM_TABLE_COLUMN_WIDTHS.actionPair,
+      fixed: 'right',
+      render: (_, item) => (
+        <Space size={4} className={styles.alertOperationCell}>
+          <Button
+            type="link"
+            size="small"
+            onClick={(event) => {
+              event.stopPropagation();
+              openDrawer(item);
+            }}
+          >
+            详情
+          </Button>
+          <Popconfirm
+            title="确定关闭此告警？"
+            description="关闭后会追加人工关闭事件，确认继续？"
+            okText="确定"
+            cancelText="取消"
+            disabled={item.status !== 'active'}
+            onConfirm={() => handleCloseAlert(item)}
+          >
+            <Button
+              type="link"
+              danger
+              size="small"
+              disabled={item.status !== 'active'}
+              onClick={(event) => event.stopPropagation()}
+            >
+              关闭
+            </Button>
+          </Popconfirm>
         </Space>
       ),
-    },
-    { title: '指标', dataIndex: 'metric_type', width: 130 },
-    { title: '当前值', dataIndex: 'current_value', width: 110, render: (value) => value ?? '无数据' },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      render: (value) => (
-        <Tag color={STATUS_COLOR[value as ApmAlert['status']]}>{STATUS_LABEL[value as ApmAlert['status']]}</Tag>
-      ),
-    },
-    { title: '事件', dataIndex: 'event_count', width: 80 },
-    {
-      title: '最近变化',
-      dataIndex: 'last_event_at',
-      width: 180,
-      render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm:ss'),
     },
   ];
 
@@ -204,104 +356,125 @@ export default function ApmAlertsPage() {
       dependency="control"
       spacing="flush"
     >
-      <div className={styles.workspace}>
-        <Tabs
-          className={styles.tabs}
-          activeKey={activeTab}
-          onChange={(key) => setActiveTab(key as 'active' | 'history')}
-          items={[
-            { key: 'active', label: '活跃告警' },
-            { key: 'history', label: '历史告警' },
-          ]}
-        />
-
-        <section className={styles.filterSection} aria-labelledby="apm-alert-filter-title">
-          <div id="apm-alert-filter-title" className={styles.filterTitle}>筛选条件</div>
-          <div className={styles.filterRow}>
-            <div className={styles.filterGroup}>
-              <label className={styles.filterItem}>
-                <span className={styles.filterLabel}>级别</span>
-                <Select
-                  className="w-48"
-                  allowClear
-                  aria-label="按告警级别筛选"
-                  placeholder="全部级别"
-                  value={severity}
-                  onChange={setSeverity}
-                  options={Object.keys(SEVERITY_COLOR).map((value) => ({ value, label: value }))}
-                />
-              </label>
-              <label className={styles.filterItem}>
-                <span className={styles.filterLabel}>指标</span>
-                <Select
-                  className="w-48"
-                  allowClear
-                  aria-label="按 APM 指标筛选"
-                  placeholder="全部指标"
-                  value={metric}
-                  onChange={setMetric}
-                  options={['error_rate', 'p95', 'p99', 'throughput', 'no_traffic'].map((value) => ({
-                    value,
-                    label: value,
-                  }))}
-                />
-              </label>
-            </div>
-            <div className={styles.timeGroup}>
-              <span className={styles.filterLabel}>时间范围</span>
-              <Radio.Group size="small" value={range} onChange={(event) => setRange(event.target.value)}>
-                {Object.keys(RANGE_MS).map((value) => (
-                  <Radio.Button key={value} value={value}>
-                    {value}
-                  </Radio.Button>
-                ))}
-              </Radio.Group>
-              <Button icon={<ReloadOutlined />} onClick={load}>
-                刷新
-              </Button>
-            </div>
+      <div className={`${styles.workspace} ${styles.alertsWorkspace}`}>
+        <section className={styles.alertsToolbar} aria-labelledby="apm-alerts-title">
+          <div className={styles.alertsToolbarTitle}>
+            <BellOutlined aria-hidden="true" />
+            <h2 id="apm-alerts-title">告警</h2>
+          </div>
+          <div className={styles.alertsToolbarActions}>
+            <Input
+              allowClear
+              aria-label="搜索告警"
+              placeholder="搜索告警标题 / 服务 / 规则"
+              prefix={<SearchOutlined aria-hidden="true" />}
+              value={keyword}
+              onChange={(event) => {
+                const value = event.target.value;
+                setKeyword(value);
+                if (!value) setSubmittedKeyword('');
+              }}
+              onPressEnter={() => setSubmittedKeyword(keyword.trim())}
+            />
+            <Button icon={<ReloadOutlined />} loading={isRefreshing} onClick={load}>
+              刷新
+            </Button>
           </div>
         </section>
 
-        <section className={styles.chartSection} aria-label="告警分布">
-          <Collapse
-            title="告警分布图"
-            isOpen={chartExpanded}
-            onToggle={setChartExpanded}
-          >
-            <div
-              className={styles.chart}
-              role="img"
-              aria-label={`最近 ${range} 告警事件分布，按严重、错误、警告分组`}
-            >
-              <TimeSeriesComposedChart
-                data={distribution}
-                xDataKey="time"
-                getXLabel={(item) => dayjs(String(item.time)).format(range === '7d' ? 'MM-DD' : 'HH:mm')}
-                series={[
-                  { name: '严重', type: 'bar', dataKey: 'critical', color: token.colorError },
-                  { name: '错误', type: 'bar', dataKey: 'error', color: token.colorWarning },
-                  { name: '警告', type: 'bar', dataKey: 'warning', color: token.colorPrimary },
-                ]}
-              />
+        <section className={styles.alertsDistribution} aria-label="告警分布">
+          <div className={styles.alertsDistributionHeader}>
+            <Typography.Text strong>告警分布(近 {RANGE_LABEL[range]})</Typography.Text>
+            <div className={styles.alertsSeveritySummary} aria-label="三级告警数量">
+              <Typography.Text type="secondary">级别：</Typography.Text>
+              <Tag color="red">严重 {distributionTotals.critical}</Tag>
+              <Tag color="orange">错误 {distributionTotals.error}</Tag>
+              <Tag color="gold">警告 {distributionTotals.warning}</Tag>
             </div>
-          </Collapse>
+          </div>
+          <div
+            className={styles.alertsDistributionChart}
+            role="img"
+            aria-label={`最近 ${RANGE_LABEL[range]} 告警事件分布，按严重、错误、警告分组`}
+          >
+            <TimeSeriesComposedChart
+              data={distribution}
+              xDataKey="time"
+              getXLabel={(item) => dayjs(String(item.time)).format(range === '7d' ? 'MM-DD' : 'HH:mm')}
+              series={[
+                { name: '严重', type: 'bar', dataKey: 'critical', color: token.colorError },
+                { name: '错误', type: 'bar', dataKey: 'error', color: token.colorWarningActive },
+                { name: '警告', type: 'bar', dataKey: 'warning', color: token.colorWarning },
+              ]}
+            />
+          </div>
+          <div className={styles.alertsDistributionFooter}>
+            <div className={styles.alertsRangeControls}>
+              <Typography.Text type="secondary">自动刷新</Typography.Text>
+              <Radio.Group
+                size="small"
+                value={refreshInterval}
+                onChange={(event) => setRefreshInterval(event.target.value as RefreshInterval)}
+              >
+                <Radio.Button value={0}>关</Radio.Button>
+                <Radio.Button value={30}>30s</Radio.Button>
+                <Radio.Button value={60}>1m</Radio.Button>
+                <Radio.Button value={300}>5m</Radio.Button>
+              </Radio.Group>
+              <Typography.Text type="secondary">时间范围</Typography.Text>
+              <Radio.Group
+                size="small"
+                value={range}
+                onChange={(event) => {
+                  const nextRange = event.target.value as Range;
+                  if (nextRange === 'custom' && !customRange) {
+                    setCustomRange([dayjs().subtract(24, 'hour'), dayjs()]);
+                  }
+                  setRange(nextRange);
+                }}
+              >
+                <Radio.Button value="1h">1h</Radio.Button>
+                <Radio.Button value="24h">24h</Radio.Button>
+                <Radio.Button value="7d">7d</Radio.Button>
+                <Radio.Button value="custom">自定义</Radio.Button>
+              </Radio.Group>
+              {range === 'custom' ? (
+                <DatePicker.RangePicker
+                  showTime
+                  value={customRange}
+                  onChange={(values) => {
+                    if (values && values[1].diff(values[0], 'day', true) > 90) {
+                      message.warning('自定义时间范围不能超过 90 天');
+                      return;
+                    }
+                    setCustomRange(values ? [values[0], values[1]] : null);
+                  }}
+                />
+              ) : null}
+            </div>
+            <Typography.Text type="secondary" className={styles.alertsLastUpdated}>
+              最后更新：{lastUpdatedAt ? lastUpdatedAt.format('YYYY-MM-DD HH:mm:ss') : '--'}
+            </Typography.Text>
+          </div>
         </section>
 
-        <section className={styles.tableSection} aria-label="告警列表">
-          <Input.Search
-            className="mb-[10px] w-60"
-            allowClear
-            enterButton
-            placeholder="搜索标题、策略、服务或端点"
-            value={keyword}
-            onChange={(event) => {
-              setKeyword(event.target.value);
-              if (!event.target.value) setSubmittedKeyword('');
-            }}
-            onSearch={(value) => setSubmittedKeyword(value.trim())}
+        <section className={styles.alertsTableSection} aria-label="告警列表">
+          <Tabs
+            className={styles.alertsTableTabs}
+            activeKey={activeTab}
+            onChange={(key) => setActiveTab(key as 'active' | 'history')}
+            items={[
+              {
+                key: 'active',
+                label: <Space size={6}>活跃告警<Tag color="error">{activeAlerts.length}</Tag></Space>,
+              },
+              {
+                key: 'history',
+                label: <Space size={6}>历史告警<Tag>{historyAlerts.length}</Tag></Space>,
+              },
+            ]}
           />
-          {state === 'ready' ? (
+          {state === 'ready' && alerts.length ? (
             <ApmDataTable
               rowKey="id"
               columns={columns}
@@ -318,10 +491,10 @@ export default function ApmAlertsPage() {
                   }
                 },
               })}
-              scroll={{ x: 1080 }}
+              scroll={{ x: 1248 }}
             />
           ) : (
-            <CatalogState kind={state} onRetry={load} />
+            <CatalogState kind={state === 'ready' ? 'empty' : state} onRetry={load} />
           )}
         </section>
       </div>
@@ -338,13 +511,7 @@ export default function ApmAlertsPage() {
           selected?.status === 'active' ? (
             <Popconfirm
               title="人工关闭会追加 closed 事件和不可变快照，确认继续？"
-              onConfirm={async () => {
-                if (!selected) return;
-                await closeAlert(selected.id);
-                message.success('告警已关闭');
-                setSelected(null);
-                load();
-              }}
+              onConfirm={() => selected ? handleCloseAlert(selected) : undefined}
             >
               <Button danger icon={<CloseCircleOutlined />}>
                 人工关闭
