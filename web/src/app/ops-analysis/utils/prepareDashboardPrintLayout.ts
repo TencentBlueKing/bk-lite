@@ -7,6 +7,72 @@ const waitForNextPaint = () =>
 
 export const DASHBOARD_PREPARE_PRINT_EVENT = 'bk-dashboard-prepare-print';
 
+const waitForImageDecode = (image: HTMLImageElement) => {
+  if (typeof image.decode !== 'function') {
+    return Promise.resolve();
+  }
+  return image.decode().catch(() => undefined);
+};
+
+const isWebGLCanvas = (canvas: HTMLCanvasElement): boolean => {
+  try {
+    return Boolean(canvas.getContext('webgl') || canvas.getContext('webgl2'));
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Chromium page.pdf() 不会把 WebGL 画进印刷层。打印前只把 WebGL canvas 冻成 img。
+ */
+export const snapshotCanvasesForPrint = async (
+  root: HTMLElement,
+): Promise<void> => {
+  const canvases = Array.from(root.querySelectorAll('canvas'));
+  const images: HTMLImageElement[] = [];
+
+  canvases.forEach((canvas) => {
+    if (canvas.dataset.printSnapshot === 'replaced') {
+      return;
+    }
+    if (canvas.width === 0 || canvas.height === 0) {
+      return;
+    }
+    if (!isWebGLCanvas(canvas)) {
+      return;
+    }
+
+    let dataUrl = '';
+    try {
+      dataUrl = canvas.toDataURL('image/png');
+    } catch {
+      return;
+    }
+    if (!dataUrl.startsWith('data:image/')) {
+      return;
+    }
+
+    const image = document.createElement('img');
+    image.alt = canvas.getAttribute('aria-label') || '';
+    image.src = dataUrl;
+    image.width = canvas.width;
+    image.height = canvas.height;
+    image.style.cssText = canvas.style.cssText;
+    if (!image.style.width) {
+      image.style.width = `${canvas.clientWidth || canvas.width}px`;
+    }
+    if (!image.style.height) {
+      image.style.height = `${canvas.clientHeight || canvas.height}px`;
+    }
+    image.dataset.printSnapshot = 'true';
+    canvas.dataset.printSnapshot = 'replaced';
+    canvas.replaceWith(image);
+    images.push(image);
+  });
+
+  await Promise.all(images.map(waitForImageDecode));
+};
+
 const applyExpandStyles = (element: HTMLElement) => {
   element.style.overflow = 'visible';
   element.style.height = 'auto';
@@ -35,6 +101,8 @@ async function preparePrintLayoutExpand(
       detail: { phase: 'prepare-print' },
     }),
   );
+  await waitForNextPaint();
+  await snapshotCanvasesForPrint(root);
 
   applyExpandStyles(root);
 
@@ -96,6 +164,27 @@ export async function prepareDashboardPrintLayout(
   }
 
   await preparePrintLayoutExpand(resolvedRoot, { expandGridStack: true });
+}
+
+/** Screen renderMode：保持视口尺寸，只把 WebGL canvas 冻成可印刷图片。 */
+export async function prepareScreenPrintLayout(
+  root: HTMLElement | null = typeof document === 'undefined'
+    ? null
+    : document.querySelector<HTMLElement>('[data-dashboard-render-root="true"]'),
+): Promise<void> {
+  const resolvedRoot = resolveDashboardRenderRoot(root);
+  if (!resolvedRoot) {
+    throw new Error('Screen render root not found');
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(DASHBOARD_PREPARE_PRINT_EVENT, {
+      detail: { phase: 'prepare-print' },
+    }),
+  );
+  await waitForNextPaint();
+  await snapshotCanvasesForPrint(resolvedRoot);
+  await waitForNextPaint();
 }
 
 /** Report renderMode：只展开 overflow，不查询 GridStack。 */

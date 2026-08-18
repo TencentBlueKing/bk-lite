@@ -91,4 +91,40 @@ describe('paramInputOptionsLoader runtime errors', () => {
     const second = loader.load(dynamicConfig);
     assert.notEqual(second, first);
   });
+
+  it('resolves sourceRef from knownDataSources without listing the catalog', async () => {
+    const getDataSourceList = vi.fn(async () => {
+      throw new Error('catalog must not be called');
+    });
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(
+      async () => asSourceData([{ inst_uuid: 'room-1', inst_name: '机房A' }]),
+    );
+    const loader = createParamInputOptionsLoader(
+      {
+        getDataSourceList,
+        getSourceDataByApiId,
+      },
+      () => ({
+        knownDataSources: [{ id: 42, rest_api: 'cmdb/get_room_list' }],
+      }),
+    );
+
+    assert.deepEqual(
+      await loader.load({
+        control: 'select',
+        optionsSource: {
+          type: 'dynamic',
+          sourceRef: { type: 'rest_api', value: 'cmdb/get_room_list' },
+          valueField: 'inst_uuid',
+          labelField: 'inst_name',
+        },
+      }).promise,
+      {
+        status: 'success',
+        options: [{ value: 'room-1', label: '机房A' }],
+      },
+    );
+    assert.equal(getDataSourceList.mock.calls.length, 0);
+    assert.equal(getSourceDataByApiId.mock.calls[0]?.[0], 42);
+  });
 });

@@ -17,6 +17,7 @@ export interface ReportProps {
   shareMode?: boolean;
   renderMode?: boolean;
   renderFilterValues?: Record<string, FilterValue>;
+  renderDataSourceIds?: number[];
   getReportDetailOverride?: (id: string | number) => Promise<ReportDetail>;
 }
 
