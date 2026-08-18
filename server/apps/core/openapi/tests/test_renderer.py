@@ -58,7 +58,8 @@ def test_good_entry_full_structure(env):
     assert auth["authResponseHeaders"] == ["X-BK-User", "X-BK-Team", "X-On-Behalf-Of"]
 
     inject = http["middlewares"]["openapi-itsm-inject"]["headers"]["customRequestHeaders"]
-    assert inject == {"X-BK-Gateway-Auth": "s3cret"}
+    # 注入共享密钥的同时必须清除调用方的平台凭据，避免上游拿到 API 令牌后冒充调用方
+    assert inject == {"X-BK-Gateway-Auth": "s3cret", "Authorization": ""}
 
     assert http["middlewares"]["openapi-itsm-strip-v1"]["stripPrefix"]["prefixes"] == [
         "/openapi/v1/itsm"
