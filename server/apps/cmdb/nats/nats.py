@@ -45,8 +45,10 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.module_ingest import CmdbModuleIngestService
 from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
+from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
 from apps.cmdb.services.region_resource_overview import build_region_resource_items, extract_region_options
 from apps.cmdb.utils.base import get_default_group_id
+from apps.core.openapi.decorators import openapi_expose
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
@@ -286,6 +288,13 @@ def _format_asset_instances_response(model_id, instances):
 
 
 @nats_client.register
+@openapi_expose(
+    path="cmdb/module-data",
+    method="GET",
+    schema=CmdbModuleDataQuerySerializer,
+    inject="user_info",
+    summary="cmdb 实例模块数据（组织口径：以锚点做子树级联展开，锚点须为直属组织）",
+)
 def get_cmdb_module_data(module, child_module, page, page_size, group_id, user_info=None):
     """
     获取cmdb模块实例数据
