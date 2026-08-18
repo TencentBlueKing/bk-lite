@@ -64,3 +64,21 @@ def test_mlops_exception_message_localizes_error_keys():
         mlops_exception_message(_request("zh-Hans"), ValueError("error.mlflow_tracker_url_not_configured"))
         == "环境变量 MLFLOW_TRACKER_URL 未配置"
     )
+
+
+def test_remaining_user_facing_keys_have_english_copy():
+    assert mlops_message(_request("en"), "error.prediction_failed") == "Prediction failed"
+    assert (
+        mlops_message(_request("en"), "error.serving_prediction_timeout_exceeded", seconds=80)
+        == "Prediction request timed out (exceeded 80 seconds)"
+    )
+    assert mlops_message(_request("zh-Hans"), "error.serving_prediction_timeout_exceeded", seconds=80) == "预测请求超时（超过 80 秒）"
+    assert mlops_message(_request("en"), "message.container_already_exists") == "Container already exists"
+    assert (
+        mlops_message(_request("en"), "message.config_rolled_back_old_service_delete_unknown")
+        == "Configuration was rolled back, but the result of deleting the old service is unknown"
+    )
+    assert (
+        mlops_message(_request("en"), "error.train_job_dataset_version_access_denied")
+        == "The associated dataset version of this training task cannot be accessed"
+    )

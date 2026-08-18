@@ -207,9 +207,9 @@ class TeamModelViewSet(AuthViewSet):
                         errors.extend(str(item) for item in value)
                     else:
                         errors.append(str(value))
-                message = "；".join(errors) if errors else "训练任务关联的数据集版本无权访问"
+                message = "；".join(errors) if errors else mlops_message(request, "error.train_job_dataset_version_access_denied")
             else:
-                message = "训练任务关联的数据集版本无权访问"
+                message = mlops_message(request, "error.train_job_dataset_version_access_denied")
             return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
         return None
 
