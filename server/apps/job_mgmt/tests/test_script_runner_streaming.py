@@ -125,14 +125,15 @@ def test_crlf_preserved_for_ansible_bat_path():
 
     module_args = fake_exec.adhoc.call_args.kwargs["module_args"]
     assert "\r\n" in module_args
-    assert fake_exec.adhoc.call_args.kwargs["stream_remote_output"] is False
+    assert fake_exec.adhoc.call_args.kwargs["stream_remote_output"] is True
+    assert fake_exec.adhoc.call_args.kwargs["stream_remote_type"] == ScriptType.BAT
 
 
 @pytest.mark.parametrize(
     ("script_type", "script_content", "expected"),
     [
         (ScriptType.PYTHON, "print('hi')", True),
-        (ScriptType.POWERSHELL, "Write-Output hi", False),
+        (ScriptType.POWERSHELL, "Write-Output hi", True),
     ],
 )
 def test_ansible_remote_stream_flag_matches_platform(script_type, script_content, expected):
@@ -151,6 +152,9 @@ def test_ansible_remote_stream_flag_matches_platform(script_type, script_content
     assert fake_exec.adhoc.call_args.kwargs["stream_remote_output"] is expected
     if script_type == ScriptType.PYTHON:
         assert fake_exec.adhoc.call_args.kwargs["module_args"].startswith("python -u <<'__SCRIPT__'")
+        assert fake_exec.adhoc.call_args.kwargs["stream_remote_type"] is None
+    else:
+        assert fake_exec.adhoc.call_args.kwargs["stream_remote_type"] == ScriptType.POWERSHELL
 
 
 def test_normalize_script_line_endings_bare_cr_and_idempotent():

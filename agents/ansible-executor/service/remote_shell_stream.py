@@ -121,7 +121,6 @@ def _build_remote_commands(
             f"printf '%s\\n' {_STARTED_MARKER}",
         ]
     )
-
     poll_command = "\n".join(
         [
             f"output={shlex.quote(output_path)}",
@@ -194,7 +193,7 @@ async def run_remote_shell_stream(
     command_runner: CommandRunner = run_command,
     sleep: Sleep = asyncio.sleep,
 ) -> tuple[int, str, dict[str, Any]]:
-    """后台执行远端脚本，并通过短 Ansible 轮询实时发布新增日志行。"""
+    """后台执行 Linux 远端脚本，并通过短 Ansible 轮询实时发布新增日志行。"""
     start_args, poll_args, stop_args, remote_dir = _build_remote_commands(
         script_content,
         shell_executable,
