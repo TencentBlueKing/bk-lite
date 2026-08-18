@@ -28,6 +28,7 @@ from apps.opspilot.viewsets import (
     WorkFlowTaskResultViewSet,
 )
 from apps.opspilot.viewsets.memory_engine_view import MemoryEngineViewSet
+from apps.opspilot.viewsets.skill_channel_view import SkillChannelViewSet
 from apps.opspilot.viewsets.wiki_media_proxy_view import WikiParsedMediaProxyView
 
 router = routers.DefaultRouter()
@@ -41,6 +42,7 @@ router.register(r"model_provider_mgmt/skill_tools", SkillToolsViewSet)
 router.register(r"model_provider_mgmt/skill_packages", SkillPackageViewSet)
 router.register(r"model_provider_mgmt/skill_log", SkillRequestLogViewSet)
 router.register(r"model_provider_mgmt/model_vendor", ModelVendorViewSet)
+router.register(r"model_provider_mgmt/skill_channel", SkillChannelViewSet, basename="skill_channel")
 
 # bot
 router.register(r"bot_mgmt/bot", BotViewSet)
@@ -155,6 +157,47 @@ urlpatterns += [
         r"bot_mgmt/execute_chat_flow_dingtalk/<int:bot_id>/",
         views.execute_chat_flow_dingtalk,
         name="execute_chat_flow_dingtalk",
+    ),
+    # 智能体渠道发布
+    path(
+        r"skill_channel/platform/",
+        views.list_platform_skill_channels,
+        name="list_platform_skill_channels",
+    ),
+    path(
+        r"skill_channel/web_chat/",
+        views.list_web_chat_skill_channels,
+        name="list_web_chat_skill_channels",
+    ),
+    path(
+        r"skill_channel/conversations/",
+        views.list_skill_channel_conversations,
+        name="list_skill_channel_conversations",
+    ),
+    path(
+        r"skill_channel/conversations/messages/",
+        views.list_skill_channel_session_messages,
+        name="list_skill_channel_session_messages",
+    ),
+    path(
+        r"skill_channel/conversations/delete/",
+        views.delete_skill_channel_session,
+        name="delete_skill_channel_session",
+    ),
+    path(
+        r"skill_channel/<int:channel_id>/chat/",
+        views.execute_skill_channel_chat,
+        name="execute_skill_channel_chat",
+    ),
+    path(
+        r"skill_channel/embedded/<int:skill_id>/<int:channel_id>/",
+        views.execute_skill_embedded_chat,
+        name="execute_skill_embedded_chat",
+    ),
+    path(
+        r"skill_channel/<int:channel_id>/<str:channel_type>/",
+        views.execute_skill_channel_im,
+        name="execute_skill_channel_im",
     ),
     # path(r"api/bot/automation_skill_execute", AutomationSkillExecuteView.as_view(), name="automation_skill_execute"),
 ]

@@ -142,6 +142,55 @@ export const useSkillApi = () => {
     await del(`/opspilot/model_provider_mgmt/skill_packages/${id}/`);
   };
 
+  const fetchSkillChannels = async (skillId: string | number) => {
+    const res = await get('/opspilot/model_provider_mgmt/skill_channel/', {
+      params: { skill_id: skillId },
+    });
+    return (res?.data ?? res) as any[];
+  };
+
+  const createSkillChannel = async (payload: Record<string, any>) => {
+    const res = await post('/opspilot/model_provider_mgmt/skill_channel/', payload);
+    return res?.data ?? res;
+  };
+
+  const updateSkillChannel = async (id: number | string, payload: Record<string, any>) => {
+    const res = await put(`/opspilot/model_provider_mgmt/skill_channel/${id}/`, payload);
+    return res?.data ?? res;
+  };
+
+  const setSkillChannelEnabled = async (id: number | string, enabled: boolean) => {
+    const res = await post(`/opspilot/model_provider_mgmt/skill_channel/${id}/set_enabled/`, { enabled });
+    return res?.data ?? res;
+  };
+
+  const deleteSkillChannel = async (id: number | string): Promise<void> => {
+    await del(`/opspilot/model_provider_mgmt/skill_channel/${id}/`);
+  };
+
+  const fetchWebChatSkillChannels = async () => {
+    const res = await get('/opspilot/skill_channel/web_chat/');
+    return (res?.data ?? res) as any[];
+  };
+
+  const fetchSkillConversations = async (channelId: number | string) => {
+    const res = await get('/opspilot/skill_channel/conversations/', {
+      params: { channel_id: channelId },
+    });
+    return (res?.data ?? res) as any[];
+  };
+
+  const fetchSkillSessionMessages = async (sessionId: string) => {
+    const res = await get('/opspilot/skill_channel/conversations/messages/', {
+      params: { session_id: sessionId },
+    });
+    return (res?.data ?? res) as any[];
+  };
+
+  const deleteSkillSession = async (sessionId: string): Promise<void> => {
+    await post('/opspilot/skill_channel/conversations/delete/', { session_id: sessionId });
+  };
+
   return {
     fetchInvocationLogs,
     fetchSkill,
@@ -168,5 +217,14 @@ export const useSkillApi = () => {
     importSkillPackageZip,
     updateSkillPackage,
     deleteSkillPackage,
+    fetchSkillChannels,
+    createSkillChannel,
+    updateSkillChannel,
+    setSkillChannelEnabled,
+    deleteSkillChannel,
+    fetchWebChatSkillChannels,
+    fetchSkillConversations,
+    fetchSkillSessionMessages,
+    deleteSkillSession,
   };
 };
