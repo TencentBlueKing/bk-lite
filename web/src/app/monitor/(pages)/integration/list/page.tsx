@@ -6,10 +6,10 @@ import {
   Button,
   Tag,
   message,
-  Empty,
   Modal,
   Pagination as AntPagination
 } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
@@ -471,7 +471,7 @@ const Integration = () => {
         </div>
         <Spin spinning={pageLoading}>
           {!pluginList.length && !pageLoading ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('common.noData')} />
           ) : !pluginList.length ? (
             <div className="h-[calc(100vh-280px)]" />
           ) : (

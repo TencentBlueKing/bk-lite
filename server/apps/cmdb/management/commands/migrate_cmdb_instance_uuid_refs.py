@@ -140,8 +140,13 @@ class Command(BaseCommand):
             "subscription_updated": 0,
             "subscription_snapshot_updated": 0,
             "followed_asset_config_updated": 0,
+            "followed_asset_unmapped": 0,
+            "custom_reporting_pending_updated": 0,
+            "custom_reporting_cleanup_updated": 0,
+            "custom_reporting_unmapped": 0,
             "collect_task_updated": 0,
             "collect_instance_updated": 0,
+            "collect_reference_unmapped": 0,
             "collect_result_snapshot_updated": 0,
             "node_mgmt_sync_detail_updated": 0,
             "operation_target_updated": 0,
@@ -162,6 +167,7 @@ class Command(BaseCommand):
         self._clean_subscriptions(batch_size, dry_run, stats)
         self._clean_subscription_snapshots(batch_size, dry_run, stats)
         self._clean_followed_assets(batch_size, dry_run, stats)
+        self._clean_enterprise_custom_reporting(batch_size, dry_run, stats)
         self._clean_collect_tasks(batch_size, dry_run, stats)
         self._clean_collect_instances(batch_size, dry_run, stats)
         self._clean_collect_result_snapshots(batch_size, dry_run, stats)
@@ -181,8 +187,13 @@ class Command(BaseCommand):
                 "subscription_updated",
                 "subscription_snapshot_updated",
                 "followed_asset_config_updated",
+                "followed_asset_unmapped",
+                "custom_reporting_pending_updated",
+                "custom_reporting_cleanup_updated",
+                "custom_reporting_unmapped",
                 "collect_task_updated",
                 "collect_instance_updated",
+                "collect_reference_unmapped",
                 "collect_result_snapshot_updated",
                 "node_mgmt_sync_detail_updated",
                 "operation_target_updated",
@@ -385,7 +396,7 @@ class Command(BaseCommand):
             self._save_stage("subscriptions", cursor)
 
     def _clean_followed_assets(self, batch_size, dry_run, stats):
-        """双写 inst_uuid，保留 inst_id。"""
+        """关注资产仅保留 inst_uuid；无法映射的数字旧值进入 verify 阻断。"""
         cursor, completed = self._stage_cursor("followed_assets")
         if completed:
             return
@@ -422,9 +433,15 @@ class Command(BaseCommand):
                     inst_uuid = _canonical_uuid(cleaned.get("inst_uuid"))
                     if not inst_uuid and str(cleaned.get("inst_id")).isdigit():
                         inst_uuid = uuid_map.get(int(cleaned["inst_id"]))
-                    if inst_uuid and cleaned.get("inst_uuid") != inst_uuid:
-                        cleaned["inst_uuid"] = inst_uuid
-                        item_changed = True
+                    if inst_uuid:
+                        if cleaned.get("inst_uuid") != inst_uuid:
+                            cleaned["inst_uuid"] = inst_uuid
+                            item_changed = True
+                        if "inst_id" in cleaned:
+                            cleaned.pop("inst_id", None)
+                            item_changed = True
+                    elif "inst_id" in cleaned:
+                        stats["followed_asset_unmapped"] += 1
                     cleaned_items.append(cleaned)
                 if item_changed:
                     value["items"] = cleaned_items
@@ -434,6 +451,89 @@ class Command(BaseCommand):
             if changed and not dry_run:
                 UserPersonalConfig.objects.bulk_update(changed, ["config_value"])
             self._save_stage("followed_assets", cursor)
+
+    def _clean_enterprise_custom_reporting(self, batch_size, dry_run, stats):
+        """清理 enterprise 待补关系和待审核删除中的跨请求图 ID。"""
+        try:
+            pending_model = django_apps.get_model("cmdb_enterprise", "CustomReportingPendingRelation")
+            review_model = django_apps.get_model("cmdb_enterprise", "CustomReportingCleanupReview")
+        except LookupError:
+            return
+
+        cursor, completed = self._stage_cursor("custom_reporting_pending")
+        if not completed:
+            while True:
+                rows = list(pending_model.objects.filter(id__gt=cursor).order_by("id")[:batch_size])
+                if not rows:
+                    self._save_stage("custom_reporting_pending", cursor, completed=True)
+                    break
+                cursor = rows[-1].id
+                numeric_ids = []
+                for row in rows:
+                    payload = row.relation_payload or {}
+                    for endpoint_name in ("source", "target"):
+                        endpoint = payload.get(endpoint_name) or {}
+                        raw_id = endpoint.get("_id", endpoint.get("inst_id"))
+                        if str(raw_id).isdigit():
+                            numeric_ids.append(int(raw_id))
+                uuid_map = self._graph_uuid_map(numeric_ids)
+                changed = []
+                for row in rows:
+                    payload = dict(row.relation_payload or {})
+                    row_changed = False
+                    for endpoint_name in ("source", "target"):
+                        endpoint = dict(payload.get(endpoint_name) or {})
+                        raw_id = endpoint.get("_id", endpoint.get("inst_id"))
+                        inst_uuid = _canonical_uuid(endpoint.get("inst_uuid"))
+                        if not inst_uuid and str(raw_id).isdigit():
+                            inst_uuid = uuid_map.get(int(raw_id))
+                        if inst_uuid:
+                            original_endpoint = dict(endpoint)
+                            endpoint["inst_uuid"] = inst_uuid
+                            endpoint.pop("_id", None)
+                            endpoint.pop("inst_id", None)
+                            if endpoint != original_endpoint:
+                                payload[endpoint_name] = endpoint
+                                row_changed = True
+                        elif raw_id is not None:
+                            stats["custom_reporting_unmapped"] += 1
+                    if row_changed:
+                        row.relation_payload = payload
+                        changed.append(row)
+                stats["custom_reporting_pending_updated"] += len(changed)
+                if changed and not dry_run:
+                    pending_model.objects.bulk_update(changed, ["relation_payload"])
+                self._save_stage("custom_reporting_pending", cursor)
+
+        cursor, completed = self._stage_cursor("custom_reporting_cleanup")
+        if completed:
+            return
+        while True:
+            rows = list(review_model.objects.filter(id__gt=cursor, status="pending").order_by("id")[:batch_size])
+            if not rows:
+                self._save_stage("custom_reporting_cleanup", cursor, completed=True)
+                return
+            cursor = rows[-1].id
+            numeric_ids = [int(value) for row in rows for value in (row.review_payload or {}).get("delete_ids", []) if str(value).isdigit()]
+            uuid_map = self._graph_uuid_map(numeric_ids)
+            changed = []
+            for row in rows:
+                payload = dict(row.review_payload or {})
+                delete_ids = payload.get("delete_ids")
+                if not isinstance(delete_ids, list):
+                    continue
+                delete_uuids = [uuid_map.get(int(value)) for value in delete_ids if str(value).isdigit()]
+                if len(delete_uuids) != len(delete_ids) or any(not value for value in delete_uuids):
+                    stats["custom_reporting_unmapped"] += 1
+                    continue
+                payload["delete_uuids"] = delete_uuids
+                payload.pop("delete_ids", None)
+                row.review_payload = payload
+                changed.append(row)
+            stats["custom_reporting_cleanup_updated"] += len(changed)
+            if changed and not dry_run:
+                review_model.objects.bulk_update(changed, ["review_payload"])
+            self._save_stage("custom_reporting_cleanup", cursor)
 
     def _clean_collect_tasks(self, batch_size, dry_run, stats):
         """双写 subnet_uuids，保留 subnet_ids。"""
@@ -453,6 +553,7 @@ class Command(BaseCommand):
                         continue
                     numeric_ids.extend(int(value) for value in container.get("subnet_ids", []) if str(value).isdigit())
             uuid_map = self._graph_uuid_map(numeric_ids)
+            stats["collect_reference_unmapped"] += len(set(numeric_ids).difference(uuid_map))
             changed = []
             for task in tasks:
                 task_changed = False
@@ -803,6 +904,7 @@ class Command(BaseCommand):
                 self._collect_graph_ids(task.instances, numeric_ids)
                 self._collect_graph_ids(task.params, numeric_ids)
             uuid_map = self._graph_uuid_map(numeric_ids)
+            stats["collect_reference_unmapped"] += len(set(numeric_ids).difference(uuid_map))
             changed = []
             for task in tasks:
                 rewritten_instances, instances_changed = self._rewrite_json_uuids(task.instances, uuid_map)

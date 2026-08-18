@@ -203,6 +203,7 @@
     "selectConnection": "选择连接",
     "extractConnection": "提取到连接库",
     "extractConnectionTitle": "提取到连接库",
+    "reenterPassword": "请重新输入密码后再提取",
     "overrideDatabase": "覆盖数据库名",
     "relativePath": "相对路径"
   },
@@ -474,12 +475,16 @@
     "report": {
       "title": "报表",
       "selectFirst": "请选择一个报表",
-      "basicShellDesc": "报表基础框架已就绪，后续可在这里承接章节、筛选条件与导出能力。",
-      "sectionCount": "章节数",
-      "timeRange": "时间范围",
-      "mode": "模式",
-      "basicMode": "基础框架",
-      "builderPending": "报表编辑能力将在后续迭代完善"
+      "addComponent": "添加组件",
+      "emptyDescription": "暂无组件，进入编辑态后可添加普通表格或事件表格",
+      "unnamedComponent": "未命名组件",
+      "dragComponent": "拖拽调整组件顺序",
+      "deleteComponentTitle": "删除组件",
+      "deleteComponentContent": "确认从报表草稿中删除该组件吗？保存报表后删除才会生效。",
+      "loadFailed": "加载报表失败",
+      "saveSuccess": "报表已保存",
+      "saveFailed": "保存报表失败，草稿已保留",
+      "versionConflict": "报表已被其他人更新，请刷新后重试；当前草稿已保留"
     },
     "networkTopology": {
       "title": "网络拓扑",
@@ -939,6 +944,7 @@
     "room3DRackFormatError": " 个机柜数据格式错误",
     "room3DRackRequiredError": " 个机柜字段 rack_id、rack_name、row、col 必填，且坐标必须从 1 开始",
     "room3DResetView": "重置视角",
+    "room3DDismissNotice": "关闭提示",
     "room3DRoomNameLabel": "机房名称：",
     "room3DRackCountPrefix": "（共 ",
     "room3DRackCountSuffix": " 个机柜）",

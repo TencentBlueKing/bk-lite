@@ -17,6 +17,7 @@ import {
   Dropdown,
   Empty
 } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
@@ -409,7 +410,8 @@ const Node = () => {
                         ? 'rongqifuwuContainerServi'
                         : 'zhuji'
                     }
-                    style={{ fontSize: '28px', cursor: 'pointer' }}
+                    style={{ fontSize: '28px' }}
+                    className="cursor-pointer"
                   />
                 </div>
               </Tooltip>
@@ -421,7 +423,8 @@ const Node = () => {
                 <div className="flex items-center">
                   <Icon
                     type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
-                    style={{ fontSize: '26px', cursor: 'pointer' }}
+                    style={{ fontSize: '26px' }}
+                    className="cursor-pointer"
                   />
                 </div>
               </Tooltip>
@@ -450,7 +453,8 @@ const Node = () => {
                 <div className="flex items-center">
                   <Icon
                     type="cpu"
-                    style={{ fontSize: '28px', cursor: 'pointer' }}
+                    style={{ fontSize: '28px' }}
+                    className="cursor-pointer"
                   />
                 </div>
               </Tooltip>
@@ -557,7 +561,8 @@ const Node = () => {
                   <div>
                     <Icon
                       type="shengji"
-                      style={{ fontSize: '16px', cursor: 'pointer' }}
+                      className="cursor-pointer"
+                      style={{ fontSize: '16px' }}
                     />
                   </div>
                 </Tooltip>
@@ -689,9 +694,7 @@ const Node = () => {
     <MainLayout>
       {notDeployed === '1' ? (
         <div className="flex items-center justify-center h-full">
-          <Empty
-            description={t('node-manager.cloudregion.node.notDeployedTip')}
-          />
+          <CompactEmptyState description={t('node-manager.cloudregion.node.notDeployedTip')} />
         </div>
       ) : (
         <>

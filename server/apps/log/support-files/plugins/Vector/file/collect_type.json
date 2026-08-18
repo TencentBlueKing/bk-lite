@@ -10,6 +10,8 @@
     "instance_id",
     "file",
     "host",
+    "host_name",
+    "host_ip",
     "message",
     "source_type",
     "timestamp",

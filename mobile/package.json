@@ -23,7 +23,7 @@
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:h5-image": "node scripts/mobile-h5-image-test.mjs",
     "clean": "rm -rf .next",
-    "prepare": "husky",
+    "prepare": "cd .. && husky .husky",
     "tauri": "tauri",
     "build": "pnpm build:tauri",
     "build:tauri": "node scripts/next-build.mjs --target tauri",

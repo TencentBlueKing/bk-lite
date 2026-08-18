@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Empty } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import useChartColors from './useChartColors';
 import { formatNumericValue } from '@/app/log/utils/common';
 
@@ -207,11 +207,7 @@ const DockerDonutChart: React.FC<DockerDonutChartProps> = ({
   }
 
   if (!chartOption) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   const centerDisplayValue = formatDonutCenterValue(total);

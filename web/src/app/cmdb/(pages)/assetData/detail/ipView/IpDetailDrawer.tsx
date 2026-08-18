@@ -240,7 +240,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
                 : false,
           }))}
           onChange={(value) => patchDraft(attr.attr_id, value || '')}
-          style={{ width: '100%' }}
+          className="w-full"
         />
       );
     }
@@ -258,7 +258,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
             label: `${user.display_name || user.username}(${user.username})`,
           }))}
           onChange={(value) => patchDraft(attr.attr_id, value)}
-          style={{ width: '100%' }}
+          className="w-full"
         />
       );
     }
@@ -320,15 +320,10 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
       onClose={onClose}
       width={680}
       title={
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="inline-flex items-center gap-2">
           <span
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              background: color,
-              display: 'inline-block',
-            }}
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ background: color }}
           />
           {ip.ip_addr}
         </span>
@@ -342,7 +337,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
       }
       footer={
         canEditForm ? (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <div className="flex justify-end gap-2">
             <Button onClick={onClose}>{t('common.cancel')}</Button>
             <PermissionWrapper
               requiredPermissions={savePermission}
@@ -357,13 +352,13 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
         ) : null
       }
     >
-      <div style={{ marginBottom: 16 }}>
-        <Tag color={color} style={{ color: '#fff' }}>
+      <div className="mb-4">
+        <Tag color={color} className="text-white">
           {persisted ? kindLabel[kind] : t('Model.ipViewFree')}
         </Tag>
       </div>
       {attrLoading && attrs.length === 0 ? (
-        <div style={{ padding: '24px 0', textAlign: 'center' }}>
+        <div className="py-6 text-center">
           <Spin />
         </div>
       ) : (
@@ -379,7 +374,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
                     required={attr.attr_id === IPAM_ALLOC_ATTR_ID}
                   >
                     {editable ? renderEditor(attr) : (
-                      <div style={{ color: 'var(--color-text-1)', wordBreak: 'break-all', minHeight: 22 }}>
+                      <div className="min-h-[22px] break-all text-[var(--color-text-1)]">
                         {formatReadonly(attr)}
                       </div>
                     )}
@@ -389,7 +384,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({
             })}
           </Row>
           {persisted && allocatedStatus === IPAM_AVAILABLE ? (
-            <div style={{ color: 'var(--color-text-3)', fontSize: 12 }}>
+            <div className="text-xs text-[var(--color-text-3)]">
               {unallocateHint}
             </div>
           ) : null}

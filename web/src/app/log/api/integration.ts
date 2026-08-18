@@ -140,12 +140,27 @@ const useIntegrationApi = () => {
     params: {
       instance_id?: string;
       cloud_region_id?: React.Key;
-      runtime_profile?: 'standard' | 'docker' | 'custom';
-      host_log_path?: string;
-      docker_container_log_path?: string;
     } = {}
   ) => {
     return await post('/log/k8s_collect/generate_install_command/', params);
+  };
+
+  const getK8sCollectSetting = async (instanceId: string) => {
+    return await get('/log/k8s_collect/collect_setting/', {
+      params: { instance_id: instanceId }
+    });
+  };
+
+  const saveK8sCollectSetting = async (data: {
+    instance_id?: string;
+    cloud_region_id?: React.Key;
+    runtime_profile?: 'standard' | 'docker' | 'custom';
+    host_log_path?: string;
+    docker_container_log_path?: string;
+    namespace_patterns?: string;
+    pod_patterns?: string;
+  }) => {
+    return await post('/log/k8s_collect/collect_setting/', data);
   };
 
   const checkK8sCollectStatus = async (
@@ -321,6 +336,8 @@ const useIntegrationApi = () => {
     getCloudRegionList,
     createK8sInstance,
     getK8sCommand,
+    getK8sCollectSetting,
+    saveK8sCollectSetting,
     checkK8sCollectStatus,
     getInstanceChildConfig,
     deleteLogInstance,

@@ -364,7 +364,7 @@ def test_clean_collect_instances_fills_list_and_subnet_uuids():
     command._dry_run = False
     command._stage_cursor = lambda stage: (0, False)
     command._save_stage = lambda *args, **kwargs: None
-    stats = {"collect_instance_updated": 0}
+    stats = {"collect_instance_updated": 0, "collect_reference_unmapped": 0}
 
     command._clean_collect_instances(batch_size=50, dry_run=False, stats=stats)
 
@@ -374,6 +374,59 @@ def test_clean_collect_instances_fills_list_and_subnet_uuids():
     assert task.params["subnet_ids"] == [7]
     assert task.params["subnet_uuids"] == [inst_uuid]
     assert stats["collect_instance_updated"] == 1
+    assert stats["collect_reference_unmapped"] == 0
+
+
+@pytest.mark.django_db
+def test_clean_collect_instances_reports_unmapped_active_reference():
+    from apps.cmdb.constants.constants import CollectPluginTypes
+    from apps.cmdb.models.collect_model import CollectModels
+
+    CollectModels.objects.create(
+        name="collect-unmapped",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        team=[1],
+        instances=[{"_id": 999, "inst_name": "deleted-host"}],
+    )
+    command = Command()
+    command._graph_uuid_by_id = {}
+    command._dry_run = True
+    command._stage_cursor = lambda stage: (0, False)
+    command._save_stage = lambda *args, **kwargs: None
+    stats = {"collect_instance_updated": 0, "collect_reference_unmapped": 0}
+
+    command._clean_collect_instances(batch_size=50, dry_run=True, stats=stats)
+
+    assert stats["collect_instance_updated"] == 0
+    assert stats["collect_reference_unmapped"] == 1
+
+
+@pytest.mark.django_db
+def test_clean_followed_assets_replaces_numeric_id_and_removes_alias():
+    from apps.cmdb.models.user_personal_config import UserPersonalConfig
+
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    config = UserPersonalConfig.objects.create(
+        username="alice",
+        domain="local",
+        config_key="cmdb_followed_assets",
+        config_value={"items": [{"model_id": "host", "inst_id": 7, "followed_at": "2026-01-01T00:00:00Z"}]},
+    )
+    command = Command()
+    command._graph_uuid_by_id = {7: inst_uuid}
+    command._dry_run = False
+    command._stage_cursor = lambda stage: (0, False)
+    command._save_stage = lambda *args, **kwargs: None
+    stats = {"followed_asset_config_updated": 0, "followed_asset_unmapped": 0}
+
+    command._clean_followed_assets(batch_size=50, dry_run=False, stats=stats)
+
+    config.refresh_from_db()
+    assert config.config_value["items"][0]["inst_uuid"] == inst_uuid
+    assert "inst_id" not in config.config_value["items"][0]
+    assert stats == {"followed_asset_config_updated": 1, "followed_asset_unmapped": 0}
 
 
 @pytest.mark.django_db

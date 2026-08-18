@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Empty, Input, Popconfirm, Spin, Switch, message } from 'antd';
+import { Button, Input, Popconfirm, Spin, Switch, message } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useProviderApi } from '@/app/opspilot/api/provider';
 import { isSilentRequestError } from '@/utils/request';
@@ -230,13 +231,11 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
             return (
               <section
                 key={type}
-                className="relative flex flex-col overflow-hidden rounded-2xl border"
+                className="relative flex h-[calc((100vh-360px)/2)] min-h-[240px] flex-col overflow-hidden rounded-2xl border"
                 style={{
                   borderColor: sectionStyle.borderColor,
                   background: sectionStyle.sectionBg,
                   boxShadow: sectionStyle.shadow,
-                  height: 'calc((100vh - 360px) / 2)',
-                  minHeight: 240,
                 }}
               >
                 <div
@@ -249,12 +248,12 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
                 />
 
                 <div
-                  className="relative flex items-center justify-between border-b px-4 py-3"
-                  style={{ borderColor: 'rgba(191, 219, 254, 0.55)', background: sectionStyle.headerBg }}
+                  className="relative flex items-center justify-between border-b border-[rgba(191,219,254,0.55)] px-4 py-3"
+                  style={{ background: sectionStyle.headerBg }}
                 >
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-semibold" style={{ color: 'var(--color-text-1)' }}>{SECTION_TITLE_MAP[type]}</h3>
-                    <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>{t('provider.model.totalCount', undefined, { count: modelsByType[type].length })}</span>
+                    <h3 className="text-base font-semibold text-[var(--color-text-1)]">{SECTION_TITLE_MAP[type]}</h3>
+                    <span className="text-xs text-[var(--color-text-3)]">{t('provider.model.totalCount', undefined, { count: modelsByType[type].length })}</span>
                   </div>
                   <Button type="primary" ghost size="small" icon={<PlusOutlined />} onClick={() => openAddModal(type)}>
                     {t('provider.model.add')}
@@ -263,12 +262,12 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
 
                 {sectionModels.length === 0 ? (
                   <div className="relative flex flex-1 items-center justify-center px-4 py-8">
-                    <Empty description={t('provider.model.empty')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    <CompactEmptyState description={t('provider.model.empty')} />
                   </div>
                 ) : (
                   <div className="relative flex-1 overflow-auto backdrop-blur-[2px]" style={{ background: sectionStyle.tableBg }}>
                     <div className="min-w-160">
-                      <div className="grid grid-cols-[1.2fr_1.4fr_1fr_88px_100px] border-b px-4 py-3 text-xs font-medium" style={{ borderColor: 'var(--color-border-2)', color: 'var(--color-text-3)' }}>
+                      <div className="grid grid-cols-[1.2fr_1.4fr_1fr_88px_100px] border-b border-[var(--color-border-2)] px-4 py-3 text-xs font-medium text-[var(--color-text-3)]">
                         <span>{t('provider.model.modelName')}</span>
                         <span>{t('provider.model.modelId')}</span>
                         <span>{t('provider.model.availableGroups')}</span>
@@ -279,8 +278,7 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
                       {sectionModels.map((model) => (
                         <div
                           key={`${type}-${model.id}`}
-                          className="grid grid-cols-[1.2fr_1.4fr_1fr_88px_100px] items-center border-b px-4 py-3 text-sm"
-                          style={{ borderColor: 'var(--color-border-2)', color: 'var(--color-text-2)' }}
+                          className="grid grid-cols-[1.2fr_1.4fr_1fr_88px_100px] items-center border-b border-[var(--color-border-2)] px-4 py-3 text-sm text-[var(--color-text-2)]"
                         >
                           <span className="truncate pr-3">{model.name || '--'}</span>
                           <span className="truncate pr-3">{getModelIdentifier(model, type) || '--'}</span>

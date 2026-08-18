@@ -357,8 +357,10 @@ class CollectionRuntime:
         except Exception:
             status = RunStatus.FAILED
             logger.exception(
-                "collection run failed task_id=%s fence=%s",
+                "collection run failed task_id=%s plugin_ref=%s model_id=%s fence=%s",
                 request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
                 lease.fence,
             )
         finally:
@@ -368,6 +370,16 @@ class CollectionRuntime:
             except asyncio.CancelledError:
                 pass
             await self._state_store.finish(lease, status, summary)
+            logger.info(
+                "event=collection_run_terminal task_id=%s plugin_ref=%s "
+                "model_id=%s fence=%s status=%s summary=%s",
+                request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
+                lease.fence,
+                status.value,
+                summary,
+            )
             await self._release_admission()
 
     async def shutdown(self, *, grace_seconds: float = 30.0) -> None:
@@ -417,9 +429,11 @@ class CollectionRuntime:
 def _redact_secrets(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {
-            str(key): "<redacted>"
-            if str(key).lower() in SECRET_KEYS
-            else _redact_secrets(item)
+            str(key): (
+                "<redacted>"
+                if str(key).lower() in SECRET_KEYS
+                else _redact_secrets(item)
+            )
             for key, item in value.items()
         }
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
@@ -446,5 +460,7 @@ def _summary_has_errors(summary: Mapping[str, Any]) -> bool:
             "unreachable",
             "publish_failed",
             "publish_unknown",
+            "publish_event_failed",
+            "publish_permanent_failed",
         )
     )

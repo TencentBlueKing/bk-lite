@@ -228,17 +228,8 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
             return (
               <Tooltip placement="topLeft" title={displayText}>
                 <div
-                  style={{
-                    background: cellColor,
-                    color: '#fff',
-                    fontWeight: 600,
-                    borderRadius: 4,
-                    padding: '1px 8px',
-                    textAlign: 'center',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
+                  className="overflow-hidden text-ellipsis whitespace-nowrap rounded px-2 py-px text-center font-semibold text-white"
+                  style={{ background: cellColor }}
                 >
                   {displayText}
                 </div>
@@ -253,8 +244,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
             return (
               <div className="flex items-center gap-2">
                 <div
-                  className="relative flex-1 overflow-hidden rounded"
-                  style={{ height: 10, background: 'var(--color-fill-2, #f0f0f0)' }}
+                  className="relative h-2.5 flex-1 overflow-hidden rounded bg-[var(--color-fill-2)]"
                 >
                   <div
                     className="absolute left-0 top-0 h-full rounded"
@@ -269,12 +259,10 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
           return (
             <Tooltip placement="topLeft" title={displayText}>
               <div
+                className={`overflow-hidden text-ellipsis whitespace-nowrap${mapping?.color ? ' font-semibold' : ''}`}
                 style={{
                   maxWidth: col.width || DEFAULT_CELL_MAX_WIDTH,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  ...(mapping?.color ? { color: mapping.color, fontWeight: 600 } : {}),
+                  ...(mapping?.color ? { color: mapping.color } : {}),
                 }}
               >
                 {displayText}
@@ -444,7 +432,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
               ) : (
                 <Input
                   placeholder={t('dashboard.searchPlaceholder')}
-                  suffix={<SearchOutlined style={{ color: 'var(--color-text-3)' }} />}
+                  suffix={<SearchOutlined className="text-[var(--color-text-3)]" />}
                   value={
                     activeKeywordFieldKey
                       ? (keywordDrafts[activeKeywordFieldKey] ?? filters[activeKeywordFieldKey] ?? '')

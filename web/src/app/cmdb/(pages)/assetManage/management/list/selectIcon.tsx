@@ -6,9 +6,10 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { Button, Empty, Input } from 'antd';
+import { Button, Input } from 'antd';
 import Image from 'next/image';
 import OperateModal from '@/components/operate-modal';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   getSelectedModelIconValue,
   iconList,
@@ -150,10 +151,7 @@ const SelectIcon = forwardRef<SelectIconRef, SelectIconProps>(
               </ul>
             ) : (
               <div className="flex h-full items-center justify-center">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={t('common.noResult')}
-                />
+                <CompactEmptyState description={t('common.noResult')} />
               </div>
             )}
           </div>

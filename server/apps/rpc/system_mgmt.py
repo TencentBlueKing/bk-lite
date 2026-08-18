@@ -55,6 +55,10 @@ class SystemMgmt(object):
         return_data = self.client.run("get_all_groups")
         return return_data
 
+    def get_archived_groups(self, page=1, page_size=100):
+        """分页查询已归档组织，供其他模块自行处理资产/数据。"""
+        return self.client.run("get_archived_groups", page=page, page_size=page_size)
+
     def get_all_users(self):
         return_data = self.client.run("get_all_users")
         return return_data

@@ -1,8 +1,9 @@
 import CustomTable from "@/components/custom-table"
+import ExecutionStatusBadge from "@/components/execution-status-badge"
 import { ColumnItem } from "@/types";
 import { useTranslation } from "@/utils/i18n";
 import { useLocalizedTime } from "@/hooks/useLocalizedTime";
-import { Button, Popconfirm, Tag } from "antd";
+import { Button, Popconfirm } from "antd";
 import PermissionWrapper from '@/components/permission';
 import type { TrainTaskHistory as TrainTaskHistoryItem } from "@/app/mlops/types";
 
@@ -14,13 +15,6 @@ interface TrainTaskHistoryProps {
   openDetail: (record: TrainTaskHistoryItem) => void,
   downloadModel: (record: TrainTaskHistoryItem) => void,
   deleteRun: (record: TrainTaskHistoryItem) => void,
-}
-
-const RUN_STATUS_MAP: Record<string, string> = {
-  'RUNNING': 'blue',
-  'FINISHED': 'green',
-  'FAILED': 'red',
-  'KILLED': 'volcano'
 }
 
 const RUN_TEXT_MAP: Record<string, string> = {
@@ -74,9 +68,10 @@ const TrainTaskHistory = ({
       render: (_, record) => {
         return record.status ?
           (
-            <Tag color={RUN_STATUS_MAP[record.status as string]}>
-              {t(`mlops-common.${RUN_TEXT_MAP[record.status]}`)}
-            </Tag>
+            <ExecutionStatusBadge
+              status={record.status}
+              label={t(`mlops-common.${RUN_TEXT_MAP[record.status] || 'pending'}`)}
+            />
           )
           : (<p>--</p>)
       }

@@ -73,3 +73,17 @@ export const collectScreenNamespaceIds = (
   });
   return namespaceIds;
 };
+
+export const collectWidgetManifestDataSourceIds = (
+  manifest?: Array<{ datasource_id?: number | string | null }> | null,
+) => {
+  const ids = new Set<number>();
+  (manifest || []).forEach((item) => {
+    const rawId = item?.datasource_id;
+    const normalizedId = typeof rawId === 'string' ? parseInt(rawId, 10) : rawId;
+    if (Number.isFinite(normalizedId)) {
+      ids.add(normalizedId as number);
+    }
+  });
+  return Array.from(ids);
+};

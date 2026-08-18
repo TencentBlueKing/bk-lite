@@ -1,5 +1,6 @@
 import { ModalRef, ModalProps, TableDataItem } from '@/app/monitor/types';
-import { Form, Button, message, Spin, Empty, Alert } from 'antd';
+import { Form, Button, message, Spin, Alert } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { cloneDeep } from 'lodash';
 import React, {
   useState,
@@ -212,7 +213,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
               />
             )}
             {showEmpty ? (
-              <Empty description={t('monitor.integrations.noConfigData')} />
+              <CompactEmptyState description={t('monitor.integrations.noConfigData')} />
             ) : (
               <Form
                 ref={formRef}

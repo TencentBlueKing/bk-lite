@@ -29,6 +29,18 @@ def _stub_auth_serializer_dependencies(monkeypatch):
         [],
         raising=False,
     )
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.InstanceManage.query_entity_by_uuids",
+        lambda uuids: [{"inst_uuid": inst_uuid, "model_id": "influxdb", "inst_name": "influx.local", "ip_addr": "10.0.0.8"} for inst_uuid in uuids],
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.CmdbRulesFormatUtil.format_user_groups_permissions",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.InstanceManage._has_topology_view_permission",
+        lambda *args, **kwargs: True,
+    )
 
 
 def _serializer(credential, **overrides):
@@ -41,7 +53,7 @@ def _serializer(credential, **overrides):
         "access_point": [{"id": 1}],
         "instances": [
             {
-                "_id": "influx-1",
+                "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
                 "model_id": "influxdb",
                 "inst_name": "influx.local",
                 "ip_addr": "10.0.0.8",
@@ -56,6 +68,14 @@ def _serializer(credential, **overrides):
         "credential": [credential],
     }
     data.update(overrides)
+    if isinstance(data.get("instances"), list):
+        data["instances"] = [
+            {
+                **item,
+                "inst_uuid": item.get("inst_uuid") or f"63e4a53{index + 1}-b6bb-43cc-9eae-8eb8a09f795e",
+            }
+            for index, item in enumerate(data["instances"])
+        ]
     return CollectModelSerializer(
         data=data,
         context={"request": request},
@@ -63,14 +83,10 @@ def _serializer(credential, **overrides):
 
 
 def test_influxdb_accepts_http_without_operator_token():
-    serializer = _serializer(
-        {"scheme": "http", "port": 8086, "verify_tls": True}
-    )
+    serializer = _serializer({"scheme": "http", "port": 8086, "verify_tls": True})
 
     assert serializer.is_valid(), serializer.errors
-    assert serializer.validated_data["credential"] == [
-        {"scheme": "http", "port": 8086, "verify_tls": True}
-    ]
+    assert serializer.validated_data["credential"] == [{"scheme": "http", "port": 8086, "verify_tls": True}]
 
 
 def test_influxdb_create_rejects_masked_operator_token():
@@ -92,8 +108,8 @@ def test_influxdb_create_rejects_masked_operator_token():
     [
         {
             "instances": [
-                {"_id": "influx-1", "ip_addr": "10.0.0.8"},
-                {"_id": "influx-2", "ip_addr": "10.0.0.9"},
+                {"ip_addr": "10.0.0.8"},
+                {"ip_addr": "10.0.0.9"},
             ]
         },
         {

@@ -135,6 +135,7 @@ def enqueue_material_builds(*, knowledge_base_id: int, material_ids, operator: s
                 status="running",
                 inputs={
                     "material_id": material.pk,
+                    "material_name": material.name,
                     "source_status": source_status,
                     "classification_root_id": material.classification_root_id,
                 },
@@ -224,7 +225,13 @@ def release_kb_build_runner(lease: BuildRecord, *, processed: int = 0, failed: i
     if lease.status != "running":
         return
     lease.stage = "done"
-    lease.status = "success"
+    # 队列 runner 的 status 必须反映失败数，否则「筛选失败」看不到、界面却显示 failed N。
+    if failed > 0 and processed > 0:
+        lease.status = "partial"
+    elif failed > 0:
+        lease.status = "failed"
+    else:
+        lease.status = "success"
     lease.progress = 100
     lease.counts = {
         **(lease.counts or {}),
@@ -232,6 +239,30 @@ def release_kb_build_runner(lease: BuildRecord, *, processed: int = 0, failed: i
         "failed": failed,
     }
     lease.save(update_fields=["stage", "status", "progress", "counts", "updated_at"])
+
+
+def repair_queue_runner_status_from_counts(kb_id: int) -> int:
+    """修正历史脏数据：material_queue 成功但 counts.failed>0 的记录。"""
+
+    fixed = 0
+    runners = BuildRecord.objects.filter(
+        knowledge_base_id=kb_id,
+        trigger=RUNNER_TRIGGER,
+        status="success",
+    ).order_by("id")
+    for lease in runners.iterator():
+        counts = lease.counts or {}
+        try:
+            failed = int(counts.get("failed") or 0)
+            processed = int(counts.get("processed") or 0)
+        except (TypeError, ValueError):
+            continue
+        if failed <= 0:
+            continue
+        lease.status = "partial" if processed > 0 else "failed"
+        lease.save(update_fields=["status", "updated_at"])
+        fixed += 1
+    return fixed
 
 
 def _touch_runner(lease: BuildRecord) -> None:
@@ -393,9 +424,86 @@ def kick_kb_material_build_runner(kb_id: int, operator: str = "") -> bool:
         raise
 
 
+def fail_material_build_record(
+    build_record_id: int | None,
+    *,
+    knowledge_base_id: int | None = None,
+    code: str = "material_build_aborted",
+    message: str = "构建任务异常退出",
+) -> bool:
+    """将仍 running 的 material BuildRecord 收尾为 failed。返回是否写入。"""
+
+    if not build_record_id:
+        return False
+    qs = BuildRecord.objects.filter(
+        pk=build_record_id,
+        trigger="material",
+        status="running",
+    )
+    if knowledge_base_id is not None:
+        qs = qs.filter(knowledge_base_id=knowledge_base_id)
+    build = qs.first()
+    if build is None:
+        return False
+    build.stage = "failed"
+    build.status = "failed"
+    build.progress = 100
+    build.errors = [{"code": code, "message": message}]
+    build.save(update_fields=["stage", "status", "progress", "errors", "updated_at"])
+    return True
+
+
+def reconcile_orphaned_material_builds(kb_id: int) -> int:
+    """关闭「资料已不在构建态、但 BuildRecord 仍 running」的孤儿记录。
+
+    claim 后若任务在解析/加锁阶段抛错、或进程被杀，会出现资料已回落、
+    记录仍停在 preparing 的不一致；列表会显示大量「进行中」。
+    """
+
+    closed = 0
+    running = BuildRecord.objects.filter(
+        knowledge_base_id=kb_id,
+        trigger="material",
+        status="running",
+    ).order_by("id")
+    for build in running.iterator():
+        material_id = (build.inputs or {}).get("material_id")
+        if not material_id:
+            if fail_material_build_record(
+                build.pk,
+                knowledge_base_id=kb_id,
+                code="material_build_orphan",
+                message="构建记录缺少 material_id",
+            ):
+                closed += 1
+            continue
+        material = Material.objects.filter(pk=material_id, knowledge_base_id=kb_id).only("status").first()
+        if material is None:
+            if fail_material_build_record(
+                build.pk,
+                knowledge_base_id=kb_id,
+                code="material_missing",
+                message="资料已删除，关闭残留构建记录",
+            ):
+                closed += 1
+            continue
+        if material.status in _ACTIVE_BUILD_STATUSES or material.status == QUEUED_STATUS:
+            continue
+        if fail_material_build_record(
+            build.pk,
+            knowledge_base_id=kb_id,
+            code="material_build_orphan",
+            message=f"资料已离开构建态（status={material.status}），关闭残留构建记录",
+        ):
+            closed += 1
+    return closed
+
+
 def process_kb_material_builds(kb_id: int, operator: str = "") -> dict:
     """串行消费某 KB 的构建队列（供 Celery runner 调用）。"""
     from apps.opspilot.tasks import wiki_build_material_task
+
+    reconcile_orphaned_material_builds(kb_id)
 
     lease = try_acquire_kb_build_runner(kb_id, operator=operator)
     if lease is None:
@@ -410,9 +518,16 @@ def process_kb_material_builds(kb_id: int, operator: str = "") -> dict:
                 break
             _touch_runner(lease)
             material_id = claimed["material_id"]
+            build_record_id = claimed.get("build_record_id")
             material = Material.objects.select_related("knowledge_base").filter(pk=material_id, knowledge_base_id=kb_id).first()
             if material is None:
                 failed += 1
+                fail_material_build_record(
+                    build_record_id,
+                    knowledge_base_id=kb_id,
+                    code="material_missing",
+                    message="队列领取后资料不存在",
+                )
                 continue
             try:
                 wiki_build_material_task.run(
@@ -422,7 +537,7 @@ def process_kb_material_builds(kb_id: int, operator: str = "") -> dict:
                     classification_root_id=claimed.get("classification_root_id"),
                     ensure_parsed=True,
                     source_status=claimed.get("source_status"),
-                    build_record_id=claimed.get("build_record_id"),
+                    build_record_id=build_record_id,
                 )
                 processed += 1
             except Exception:  # noqa: BLE001 - 单条失败不阻断队列
@@ -436,6 +551,12 @@ def process_kb_material_builds(kb_id: int, operator: str = "") -> dict:
                     status="build_failed",
                     error_message="构建任务异常退出",
                     updated_at=timezone.now(),
+                )
+                fail_material_build_record(
+                    build_record_id,
+                    knowledge_base_id=kb_id,
+                    code="material_build_aborted",
+                    message="构建任务异常退出",
                 )
     finally:
         release_kb_build_runner(lease, processed=processed, failed=failed)

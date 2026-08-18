@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Empty, Tag } from 'antd';
+import { Tag } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   DatabaseOutlined,
   ThunderboltOutlined,
@@ -994,7 +995,7 @@ export default function MysqlDashboardPage() {
         <div>
           {showEmpty ? (
             <div className={styles.empty}>
-              <Empty description={t('common.noData')} />
+              <CompactEmptyState description={t('common.noData')} />
             </div>
           ) : (
             <>

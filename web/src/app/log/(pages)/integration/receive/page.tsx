@@ -28,6 +28,7 @@ import { useCommon } from '@/app/log/context/common';
 import { useAssetMenuItems } from '@/app/log/hooks/integration/common/other';
 import { showGroupName } from '@/app/log/utils/common';
 import EditConfig from './updateConfig';
+import EditK8sConfig from './updateK8sConfig';
 import EditInstance from './editInstance';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -53,6 +54,7 @@ const Asset = () => {
   const organizationList: Organization[] = authList.current;
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const configRef = useRef<ModalRef>(null);
+  const k8sConfigRef = useRef<ModalRef>(null);
   const instanceRef = useRef<ModalRef>(null);
   const instanceAbortControllerRef = useRef<AbortController | null>(null);
   const instanceRequestIdRef = useRef<number>(0);
@@ -152,15 +154,13 @@ const Asset = () => {
             </Button>
           </Permission>
           <Permission requiredPermissions={['Edit']}>
-            {record.collect_type__name !== 'kubernetes' && (
-              <Button
-                className="ml-[10px]"
-                type="link"
-                onClick={() => openConfigModal(record)}
-              >
-                {t('log.integration.updateConfigration')}
-              </Button>
-            )}
+            <Button
+              className="ml-[10px]"
+              type="link"
+              onClick={() => openConfigModal(record)}
+            >
+              {t('log.integration.updateConfigration')}
+            </Button>
           </Permission>
           <Button
             className="ml-[10px]"
@@ -382,8 +382,10 @@ const Asset = () => {
     setFrequence(val);
   };
 
-  const openConfigModal = (row = {}) => {
-    configRef.current?.showModal({
+  const openConfigModal = (row: TableDataItem = {}) => {
+    const targetRef =
+      row.collect_type__name === 'kubernetes' ? k8sConfigRef : configRef;
+    targetRef.current?.showModal({
       title: t('log.integration.updateConfigration'),
       type: 'edit',
       form: {
@@ -538,6 +540,7 @@ const Asset = () => {
           rowSelection={rowSelection}
         ></CustomTable>
         <EditConfig ref={configRef} onSuccess={() => getAssetInsts()} />
+        <EditK8sConfig ref={k8sConfigRef} onSuccess={() => getAssetInsts()} />
         <EditInstance
           ref={instanceRef}
           organizationList={organizationList}

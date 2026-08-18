@@ -9,6 +9,7 @@ from django.utils import timezone
 from apps.core.backends import AuthBackend
 from apps.operation_analysis.models.datasource_models import NameSpace
 from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportRenderToken
+from apps.operation_analysis.services.named_option_datasources import collect_named_option_datasource_ids
 from apps.system_mgmt.models import User as SystemUser
 from apps.system_mgmt.nats.auth import build_user_authorization_context
 
@@ -165,9 +166,7 @@ class DashboardReportRenderScopeService:
         if match and method == "GET" and int(match.group(1)) == execution_id:
             return claims
 
-        allowed_datasources = {
-            int(item["datasource_id"]) for item in execution.render_snapshot.widget_manifest or [] if item.get("datasource_id") is not None
-        }
+        allowed_datasources = cls.collect_allowed_datasource_ids(execution.render_snapshot.widget_manifest)
         match = cls._DATASOURCE_QUERY.match(path)
         if match and method == "POST" and int(match.group(1)) in allowed_datasources:
             return claims
@@ -200,6 +199,19 @@ class DashboardReportRenderScopeService:
                 return claims
 
         raise DashboardReportRenderScopeError("Render Session 不允许访问该接口")
+
+    @classmethod
+    def collect_allowed_datasource_ids(cls, widget_manifest) -> set[int]:
+        """Manifest 数据源，加上其 params 里能点名的动态选项源。"""
+        primary_ids: set[int] = set()
+        for item in widget_manifest or []:
+            if not isinstance(item, dict) or item.get("datasource_id") is None:
+                continue
+            try:
+                primary_ids.add(int(item["datasource_id"]))
+            except (TypeError, ValueError):
+                continue
+        return primary_ids | collect_named_option_datasource_ids(primary_ids)
 
     @staticmethod
     def _read_json_body(request) -> dict:

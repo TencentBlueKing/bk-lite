@@ -143,6 +143,7 @@ test('壳层复用 Web 菜单代理并保留会话手势和既有时区设置', 
   ]);
 
   assert.match(providers, /MobileAvailabilityProvider[\s\S]*MobileAccessGate/);
+  assert.match(providers, /OrganizationScopeTree/);
   assert.match(layout, /MobilePolyfills/);
   assert.match(layout, /@\/polyfills['"]?/);
   assert.doesNotMatch(providers, /polyfills\/(react-dom|antd-mobile-render)/);
@@ -156,6 +157,113 @@ test('壳层复用 Web 菜单代理并保留会话手势和既有时区设置', 
   assert.match(accountDetails, /updateStoredUserInfo\(\{ timezone: saveData\.timezone \}\)/);
   assert.match(nginx, /location = \/api\/menu[\s\S]*bklite-web:3000\/api\/menu/);
   assert.match(nextConfig, /source: '\/api\/menu'[\s\S]*\/api\/menu/);
+});
+
+test('一级 Tab 顶栏左上角挂载组织定位器，详情页不挂', async () => {
+  const [
+    header,
+    headerStyles,
+    switcher,
+    switcherStyles,
+    todo,
+    monitor,
+    assets,
+    workbench,
+    profile,
+    profileStyles,
+    alertDetail,
+    monitorDetail,
+    assetDetail,
+  ] = await Promise.all([
+    readProjectFile('src/components/mobile-page-header/index.tsx'),
+    readProjectFile('src/components/mobile-page-header/index.module.css'),
+    readProjectFile('src/components/organization-switcher/index.tsx'),
+    readProjectFile('src/components/organization-switcher/index.module.css'),
+    readProjectFile('src/app/todo/page.tsx'),
+    readProjectFile('src/app/monitor/page.tsx'),
+    readProjectFile('src/app/assets/page.tsx'),
+    readProjectFile('src/app/workbench/page.tsx'),
+    readProjectFile('src/app/profile/page.tsx'),
+    readProjectFile('src/app/profile/page.module.css'),
+    readProjectFile('src/app/todo/alerts/detail/page.tsx'),
+    readProjectFile('src/app/monitor/detail/page.tsx'),
+    readProjectFile('src/app/assets/detail/page.tsx'),
+  ]);
+
+  assert.match(header, /showOrganization/);
+  assert.match(header, /leadingOrganization/);
+  assert.match(header, /styles\.leading[\s\S]*OrganizationSwitcher/);
+  assert.doesNotMatch(
+    header.slice(header.indexOf('styles.actions'), header.length),
+    /OrganizationSwitcher/,
+  );
+  assert.match(todo, /showOrganization/);
+  assert.match(todo, /searchEntry/);
+  assert.match(todo, /todo\.searchAlerts/);
+  assert.match(monitor, /showOrganization/);
+  assert.doesNotMatch(monitor, /searchEntry/);
+  assert.match(assets, /showOrganization/);
+  assert.match(assets, /searchEntry/);
+  assert.match(workbench, /showOrganization/);
+  assert.match(workbench, /searchEntry/);
+  assert.match(workbench, /search\.searchApp/);
+  assert.doesNotMatch(profile, /showOrganization/);
+  assert.doesNotMatch(profile, /MobilePageHeader/);
+  assert.doesNotMatch(profile, /searchEntry/);
+  assert.match(profile, /OrganizationSwitcher variant="inline"/);
+  assert.match(profile, /styles\.pageTitle/);
+  assert.match(header, /searchEntry\?:/);
+  assert.match(headerStyles, /\.searchEntry\s*\{/);
+  assert.match(headerStyles, /\.headerContentTabRootWithSearch\s*\{/);
+  assert.match(profile, /account\.organization/);
+  assert.match(profile, /account\.role/);
+  assert.match(profile, /styles\.identityFactRow/);
+  assert.match(profile, /styles\.identityDomain/);
+  assert.doesNotMatch(profile, /styles\.identityTitleRow/);
+  assert.match(profile, /readCachedAccountOverview|accountOverviewCache/);
+  assert.doesNotMatch(profile, /styles\.domain(?![A-Za-z])/);
+  assert.match(profileStyles, /\.identity\s*\{[^}]*padding:\s*28px/s);
+  assert.match(profileStyles, /\.avatar\s*\{[^}]*width:\s*52px/s);
+  assert.match(profileStyles, /\.identityCopy h2\s*\{[^}]*font-weight:\s*600/s);
+  assert.match(profileStyles, /\.menuSection\s*\{[^}]*border:\s*0/s);
+  assert.doesNotMatch(profileStyles, /\.identityDomain\s*\{[^}]*border-radius:\s*7px/s);
+  assert.doesNotMatch(profileStyles, /(?<![A-Za-z])\.domain\s*\{/);
+  assert.doesNotMatch(profileStyles, /\.identity\s*\{[^}]*border-bottom:/s);
+  assert.match(headerStyles, /\.searchEntry\s*\{[^}]*border-radius:\s*999px/s);
+  assert.match(headerStyles, /\.searchEntry\s*\{[^}]*height:\s*30px/s);
+  assert.match(headerStyles, /\.headerContentTabRootWithSearch \.actions\s*\{[^}]*grid-column:\s*3/s);
+  assert.match(switcher, /variant === 'inline'/);
+  assert.match(switcher, /trigger\.closest\('header'\)/);
+  assert.match(switcher, /trigger\.getBoundingClientRect\(\)\.bottom/);
+  assert.match(switcher, /commitAndClose/);
+  assert.match(switcher, /draftTeamId/);
+  assert.doesNotMatch(switcher, /setPanelTop\(safeTop\)/);
+  assert.doesNotMatch(alertDetail, /showOrganization/);
+  assert.doesNotMatch(monitorDetail, /showOrganization/);
+  assert.doesNotMatch(assetDetail, /showOrganization/);
+
+  const [todoSearch, assetSearch, conversations, accountCache, authSource, teamCookie] = await Promise.all([
+    readProjectFile('src/app/todo/search/page.tsx'),
+    readProjectFile('src/app/assets/search/page.tsx'),
+    readProjectFile('src/app/conversations/page.tsx'),
+    readProjectFile('src/utils/accountOverviewCache.ts'),
+    readProjectFile('src/context/auth.tsx'),
+    readProjectFile('src/utils/teamCookie.ts'),
+  ]);
+  assert.doesNotMatch(todoSearch, /showOrganization/);
+  assert.doesNotMatch(assetSearch, /showOrganization/);
+  assert.doesNotMatch(conversations, /showOrganization/);
+  assert.match(accountCache, /clearCachedAccountOverview/);
+  assert.match(authSource, /clearCachedAccountOverview/);
+  assert.match(teamCookie, /max-age=\$\{maxAge\}/);
+  assert.match(headerStyles, /\.leadingOrganization\s*\{/);
+  assert.match(headerStyles, /\.headerContentTabRoot\s*\{/);
+  assert.match(headerStyles, /\.titleGroupSrOnly\s*\{/);
+  assert.match(switcher, /TeamOutline/);
+  assert.match(switcherStyles, /\.triggerIcon\s*\{[^}]*color:\s*var\(--color-text-2\)/s);
+  assert.doesNotMatch(switcherStyles, /\.triggerIcon\s*\{[^}]*background:/s);
+  assert.match(switcherStyles, /\.triggerName\s*\{[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s);
+  assert.doesNotMatch(switcherStyles, /-webkit-line-clamp/);
 });
 
 test('菜单权限不因普通窗口焦点切换而整组重载', async () => {

@@ -204,6 +204,40 @@
       "desc": "Display all information about the organization structure and users. You can maintain organizations at all levels, perform CRUD operations, set user information, and assign roles and organizations.",
       "organizationRoles": "Organization Roles",
       "title": "Organization Structure",
+      "import": {
+        "title": "Import Users",
+        "resultTitle": "Import Result",
+        "targetGroup": "Target Organization",
+        "targetGroupRequired": "Please select a target organization",
+        "fileHint": "Only xlsx files are allowed, and the size must not exceed 20MB",
+        "downloadTemplate": "Download template",
+        "uploadHint": "Upload an XLSX user file",
+        "fileRead": "Loaded: {fileName} ({count} users)",
+        "xlsxOnly": "Only XLSX files are allowed",
+        "fileTooLarge": "The file must not exceed 20MB",
+        "tooManyRows": "You can import at most 500 users at a time",
+        "parseFailed": "Unable to parse the XLSX file. Please download and use the system template",
+        "invalidHeaders": "The template headers are incorrect",
+        "emptyFile": "The file does not contain any users to import",
+        "readSuccess": "Loaded {count} users",
+        "parseError": "Failed to parse the Excel file",
+        "needFile": "Please upload a user XLSX file first",
+        "allSuccess": "Import completed: {count} users imported",
+        "submitFailed": "Failed to import users",
+        "noneImported": "No users were imported",
+        "partialTitle": "Some users imported successfully",
+        "partialHint": "{successCount} succeeded, {failedCount} failed",
+        "failedCountLabel": "{count} failed",
+        "failureRowNo": "Row {row}",
+        "failureRow": "Row {row} ({username}): {message}",
+        "unknownError": "Unknown error",
+        "emptyUsername": "(empty username)",
+        "noFailureDetails": "No failure details were returned",
+        "copyFailures": "Copy failed rows",
+        "copySuccess": "Copied {count} failed rows",
+        "copyFailed": "Couldn't copy. Select the list and copy it yourself.",
+        "changeFile": "Replace file"
+      },
       "passwordValidation": "Password Validation",
       "selectedGroups": "Selected Organizations",
       "selectAllSubGroups": "All Sub-organizations",
@@ -262,7 +296,7 @@
           "capability_not_ready": "The User Sync capability is not ready"
         },
         "rootGroupNameLabel": "Name of the root organization",
-        "rootGroupNameConflict": "The root organization name is already used by another user sync source. Please choose a different name and try again.",
+        "rootGroupNameConflict": "The root organization name is already used by another organization.",
         "integrationSystem": "Integrated System",
         "integrationSystemPlaceholder": "Please select an integrated system",
         "basicConfig": "Basic Configuration",
@@ -286,6 +320,7 @@
         "syncNow": "Sync Now",
         "records": "Synchronized Log",
         "deleteConfirm": "Delete User Source",
+        "deleteDisabledWhileRunning": "Cannot delete while a sync task is running",
         "passwordInit": {
           "sectionTitle": "Local Password Initialization",
           "modeNone": "No Password",
@@ -379,6 +414,7 @@
           "syncFailed": "Sync failed. Please try again later or contact an administrator.",
           "providerFetchFailed": "Directory retrieval failed. Check the sync source configuration and connection.",
           "dataConflict": "The sync data conflicts with an existing user or group.",
+          "groupNameConflict": "Organization \"{{name}}\" conflicts with an existing organization",
           "databaseUnavailable": "The database is temporarily unavailable. Please try again later.",
           "requestTimeout": "The sync request timed out. Please try again later.",
           "externalServiceUnavailable": "The external service connection failed. Check the network and integration instance.",
@@ -439,7 +475,7 @@
         "externalFieldsHint": "Reference for Available Fields in External Systems:",
         "externalFieldPlaceholder": "Leave blank by default and fill in the external field name when needed",
         "usernameMappingRequired": "Enter the external field name mapped to Username",
-        "deleteConfirmContent": "Deleting user source \"{{sourceName}}\" will also delete the root organization, all child organizations, and users under it. This action cannot be undone."
+        "deleteConfirmContent": "Deleting \"{{sourceName}}\" will archive its root organization and all sub-organizations, and delete synced users of this source. Archived organizations cannot be restored to the active tree; you can permanently delete them later from Archived Organizations."
       }
     },
     "security": {
@@ -1106,7 +1142,37 @@
         "name": "Organization Name"
       },
       "organizationRolesTooltip": "Configure unified role permissions for all users under this organization level",
-      "allowInheritRoles": "Allow child groups to inherit roles"
+      "allowInheritRoles": "Allow child groups to inherit roles",
+      "archive": "Archive",
+      "archiveConfirm": "Are you sure you want to archive this organization?",
+      "archiveConfirmCxt": "After archiving, this organization and its sub-organizations will be removed from the active tree. You can restore or permanently delete them from Restore Archived Organizations.",
+      "archiveWithChildrenWarning": "Archiving this organization will also archive all its sub-organizations. ",
+      "archiveSuccess": "Organization archived",
+      "archiveFailed": "Failed to archive organization",
+      "addRootGroup": "Add Root Organization",
+      "restoreArchivedGroup": "Restore Archived Organizations",
+      "archivedDrawerTitle": "Archived Organizations",
+      "archivedEmpty": "No archived organizations",
+      "archivedColumns": {
+        "name": "Organization Name",
+        "kind": "Type",
+        "subtreeCount": "Sub-organizations"
+      },
+      "restore": "Restore",
+      "restoreConfirm": "Are you sure you want to restore this organization?",
+      "restoreConfirmCxt": "After restore, this organization and its archived subtree will reappear in the active organization tree.",
+      "restoreSuccess": "Organization restored",
+      "restoreFailed": "Failed to restore organization",
+      "permanentlyDelete": "Permanently Delete",
+      "permanentlyDeleteConfirm": "Are you sure you want to permanently delete this archived organization?",
+      "permanentlyDeleteConfirmCxt": "Permanent deletion cannot be undone. Please handle related data in application modules (Monitor, Log, CMDB, etc.) yourself before continuing.",
+      "permanentlyDeleteSuccess": "Organization permanently deleted",
+      "permanentlyDeleteFailed": "Failed to permanently delete organization",
+      "archivedKind": {
+        "local": "Local organization",
+        "synced": "Synced organization"
+      },
+      "childrenTruncated": "This archived subtree is too large; only some child organizations are shown."
     },
     "role": {
       "organizationTip": "Note: When selecting organization nodes, only the current level is effective. Multiple organizations can be selected for batch authorization.",
@@ -1155,7 +1221,7 @@
       "back": "Back to Integration Center",
       "pageDesc": "Manage external integrations such as WeCom, DingTalk, directory services, and code platforms in one place. Cards show the primary startup status and link to the detail page for configuration.",
       "addInstanceButton": "Add Integration",
-      "createInstanceTitle": "Add Integration Instance",
+      "createInstanceTitle": "Add Integration System",
       "createOnly": "Create Instance",
       "createAndConfigure": "Create and Continue",
       "searchProviders": "Search registered integrations",
@@ -1225,6 +1291,12 @@
         "oidc": "OIDC",
         "saml": "SAML",
         "github": "GitHub"
+      },
+      "providerDesc": {
+        "feishu": "Feishu integration for login authentication, user sync, notifications, and group collaboration.",
+        "wechat": "WeChat integration for login authentication.",
+        "wecom": "WeCom integration for login authentication, user sync, notifications, and group collaboration.",
+        "ad": "Active Directory integration for login authentication and user sync."
       },
       "providerTypeLabel": "Integration Type",
       "statusSummary": "Status Summary",

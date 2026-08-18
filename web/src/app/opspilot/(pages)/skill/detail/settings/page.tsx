@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Form, Input, Select, Switch, Button, InputNumber, Slider, Spin, message, Modal, Checkbox, Empty } from 'antd';
+import { Form, Input, Select, Switch, Button, InputNumber, Slider, Spin, message, Modal, Checkbox } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useGroups from '@/app/opspilot/hooks/useGroups';
 import styles from './index.module.scss';
 import { useSearchParams } from 'next/navigation';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
+import CompactEmptyState from '@/components/compact-empty-state';
+import SearchActionBar from '@/components/search-action-bar';
 import PermissionWrapper from '@/components/permission';
 import { SkillPackage } from '@/app/opspilot/types/skill';
 import { SelectTool } from '@/app/opspilot/types/tool';
@@ -395,17 +397,20 @@ const SkillSettingsPage: React.FC = () => {
       cancelText="取消"
       width={640}
     >
-      <Input.Search
-        allowClear
+      <SearchActionBar
+        spacing="flush"
         className="mb-3"
-        placeholder="搜索技能包"
-        value={skillPickerKeyword}
-        onChange={(event) => setSkillPickerKeyword(event.target.value)}
+        searchProps={{
+          allowClear: true,
+          placeholder: '搜索技能包',
+          value: skillPickerKeyword,
+          onChange: (event) => setSkillPickerKeyword(event.target.value),
+        }}
       />
       <div className="grid max-h-[420px] grid-cols-1 gap-3 overflow-y-auto pr-1 lg:grid-cols-2">
         {filteredAvailableSkillAssets.length === 0 ? (
           <div className="col-span-full">
-            <Empty description="没有匹配的技能包" />
+            <CompactEmptyState description="没有匹配的技能包" />
           </div>
         ) : (
           filteredAvailableSkillAssets.map((asset) => {

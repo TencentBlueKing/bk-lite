@@ -44,7 +44,7 @@ from apps.mlops.serializers.timeseries_predict import (
 from apps.mlops.services import ConfigurationError, get_image_by_prefix, get_mlflow_tracking_uri, get_mlflow_train_config
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
-from apps.mlops.utils.i18n import mlops_message
+from apps.mlops.utils.i18n import mlops_exception_message, mlops_message
 from apps.mlops.utils.validators import validate_serving_status_change
 from apps.mlops.utils.webhook_client import WebhookClient, WebhookConnectionError, WebhookError, WebhookTimeoutError
 from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
@@ -248,22 +248,22 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
         except WebhookTimeoutError as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.training_task_start_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.training_task_start_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -304,16 +304,16 @@ class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
             )
 
         except WebhookTimeoutError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"停止训练任务失败: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"停止训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.training_task_stop_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.training_task_stop_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -753,7 +753,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         )
 
     @classmethod
-    def _claim_runtime_transition(cls, instance, transition):
+    def _claim_runtime_transition(cls, instance, transition, request=None):
         """外部调用前推进 generation，并记录结果尚待对账。"""
         observed_info = instance.container_info if isinstance(instance.container_info, dict) else {}
         claim = cls._next_runtime_container_info(
@@ -762,7 +762,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 **observed_info,
                 "status": "error",
                 "state": "unknown",
-                "message": f"{transition} 结果待对账",
+                "message": mlops_message(request, "message.runtime_transition_pending", transition=transition),
                 "_runtime_transition": transition,
             },
         )
@@ -771,8 +771,9 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         return claim
 
     @classmethod
-    def _reconcile_runtime_transition(cls, instance, serving_id, transition, error):
+    def _reconcile_runtime_transition(cls, instance, serving_id, transition, error, request=None):
         """副作用结果不确定时查询实际状态；查询失败则持久化 unknown。"""
+        detail = mlops_exception_message(request, error) if isinstance(error, BaseException) else str(error)
         try:
             observed_runtime = WebhookClient.get_status([serving_id])
             runtime_info = cls._matching_runtime_status(observed_runtime, serving_id)
@@ -781,14 +782,25 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     "status": "error",
                     "id": serving_id,
                     "state": "unknown",
-                    "message": f"{transition} 结果未知: {str(error)}; 状态查询未返回目标资源",
+                    "message": mlops_message(
+                        request,
+                        "error.runtime_transition_unknown_status_missing",
+                        transition=transition,
+                        detail=detail,
+                    ),
                 }
         except Exception as status_error:
             runtime_info = {
                 "status": "error",
                 "id": serving_id,
                 "state": "unknown",
-                "message": f"{transition} 结果未知: {str(error)}; 状态对账失败: {str(status_error)}",
+                "message": mlops_message(
+                    request,
+                    "error.runtime_transition_unknown_reconcile_failed",
+                    transition=transition,
+                    detail=detail,
+                    status_detail=mlops_exception_message(request, status_error),
+                ),
             }
         cls._assign_runtime_container_info(instance, runtime_info)
         instance.save(update_fields=["container_info"])
@@ -886,7 +898,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     serving_data["container_info"] = {
                         "status": "error",
                         "state": "unknown",
-                        "message": "webhookd 未返回此容器状态",
+                        "message": mlops_message(request, "error.webhookd_container_status_missing"),
                     }
 
             current_info_by_id = self._finalize_runtime_status_sync(claims_by_id, runtime_info_by_id) if runtime_info_by_id else {}
@@ -908,7 +920,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     **old_info,
                     "status": "error",
                     "_query_failed": True,
-                    "_error": str(e),
+                    "_error": mlops_exception_message(request, e),
                 }
 
         return response
@@ -941,7 +953,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 response.data["container_info"] = {
                     "status": "error",
                     "state": "unknown",
-                    "message": "webhookd 未返回容器状态",
+                    "message": mlops_message(request, "error.webhookd_container_status_unavailable"),
                 }
 
         except WebhookError as e:
@@ -952,7 +964,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 **old_info,
                 "status": "error",
                 "_query_failed": True,
-                "_error": str(e),
+                "_error": mlops_exception_message(request, e),
             }
 
         return response
@@ -965,10 +977,10 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         if access_error is not None:
             return access_error
         serving_id = f"TimeseriesPredict_Serving_{serving.id}"
-        self._claim_runtime_transition(serving, "delete")
+        self._claim_runtime_transition(serving, "delete", request)
         cleanup_error = self.cleanup_serving_runtime(serving)
         if cleanup_error is not None:
-            self._reconcile_runtime_transition(serving, serving_id, "delete", cleanup_error.data)
+            self._reconcile_runtime_transition(serving, serving_id, "delete", cleanup_error.data, request)
             return cleanup_error
         kwargs["_destroy_access_prechecked"] = True
         return super().destroy(request, *args, **kwargs)
@@ -1016,7 +1028,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     serving,
                     {
                         "status": "error",
-                        "message": "环境变量 MLFLOW_TRACKER_URL 未配置",
+                        "message": mlops_message(request, "error.mlflow_tracker_url_not_configured"),
                     },
                 )
                 serving.save(update_fields=["container_info"])
@@ -1034,12 +1046,14 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     serving,
                     {
                         "status": "error",
-                        "message": f"解析模型 URI 失败: {str(e)}",
+                        "message": mlops_exception_message(request, e),
                     },
                 )
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
-                response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=str(e))
+                response.data["message"] = mlops_message(
+                        request, "message.serving_created_start_failed", detail=mlops_exception_message(request, e)
+                    )
                 return response
 
             # 构建 serving ID
@@ -1054,7 +1068,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 # create 与失败补偿使用同一永久 guard。即使业务行尚未提交，唯一
                 # guard 插入也会阻塞并发 cleanup，直到本事务提交或回滚。
                 lock_timeseries_runtime_id(serving.id)
-                self._claim_runtime_transition(serving, "create")
+                self._claim_runtime_transition(serving, "create", request)
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
                     container_id,
@@ -1089,7 +1103,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                                 "status": "error",
                                 "id": container_id,
                                 "state": "unknown",
-                                "message": "状态查询未返回目标运行时",
+                                "message": mlops_message(request, "error.runtime_status_not_returned"),
                             }
 
                         # 仅更新容器信息，不修改 status
@@ -1098,14 +1112,14 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
                         response.data["container_info"] = container_info
                         response.data["message"] = mlops_message(request, "message.serving_created_existing_container_synced")
-                        response.data["warning"] = "容器已存在，已同步容器信息"
+                        response.data["warning"] = mlops_message(request, "message.container_already_exists_synced")
                     except WebhookError:
                         self._assign_runtime_container_info(
                             serving,
                             {
                                 "status": "error",
                                 "state": "unknown",
-                                "message": f"容器已存在但同步状态失败: {error_msg}",
+                                "message": mlops_message(request, "error.serving_container_sync_failed", detail=mlops_exception_message(request, e)),
                             },
                         )
                         serving.save(update_fields=["container_info"])
@@ -1113,19 +1127,21 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         response.data["message"] = mlops_message(request, "message.serving_created_start_failed_generic")
                 else:
                     # 调用失败可能已产生外部副作用，必须对账后再落库。
-                    self._reconcile_runtime_transition(serving, container_id, "create", e)
+                    self._reconcile_runtime_transition(serving, container_id, "create", e, request)
                     response.data["container_info"] = serving.container_info
-                    response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=error_msg)
+                    response.data["message"] = mlops_message(
+                        request, "message.serving_created_start_failed", detail=mlops_exception_message(request, e)
+                    )
 
         except DatabaseError:
             raise
         except Exception as e:
             logger.error(f"自动启动 serving 异常: {str(e)}", exc_info=True)
             if serving is not None and container_id is not None:
-                self._reconcile_runtime_transition(serving, container_id, "create", e)
+                self._reconcile_runtime_transition(serving, container_id, "create", e, request)
                 response.data["container_info"] = serving.container_info
             # 确保至少有基本的错误信息
-            response.data["message"] = mlops_message(request, "message.serving_created_start_exception", detail=str(e))
+            response.data["message"] = mlops_message(request, "message.serving_created_start_exception", detail=mlops_exception_message(request, e))
 
         return response
 
@@ -1189,7 +1205,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 recursive_feature_work_limit = get_max_recursive_feature_engineering_work()
                 mlflow_tracking_uri = get_mlflow_tracking_uri()
                 if not mlflow_tracking_uri:
-                    raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
+                    raise ValueError("error.mlflow_tracker_url_not_configured")
                 old_model_uri = self._resolve_model_uri(instance)
                 old_train_image = get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm)
             except Exception as e:
@@ -1245,13 +1261,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 self._restore_database_state(instance, old_database_state, applied_database_state)
                 logger.error(f"新 serving 配置校验失败，保留旧服务: {e}", exc_info=True)
                 return Response(
-                    {"error": mlops_message(request, "error.serving_update_configuration_failed", detail=str(e))},
+                    {"error": mlops_message(request, "error.serving_update_configuration_failed", detail=mlops_exception_message(request, e))},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             try:
                 logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
-                transition_claim = self._claim_runtime_transition(instance, "update")
+                transition_claim = self._claim_runtime_transition(instance, "update", request)
                 applied_database_state["container_info"] = deepcopy(transition_claim)
                 WebhookClient.remove(container_id)
             except Exception as e:
@@ -1262,10 +1278,14 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     rollback_result = {
                         "status": "error",
                         "state": "unknown",
-                        "message": f"旧服务删除结果未知: {str(status_error)}",
+                        "message": mlops_message(
+                            request,
+                            "error.old_service_delete_result_unknown",
+                            detail=mlops_exception_message(request, status_error),
+                        ),
                     }
                     rollback_port = old_port
-                    rollback_message = "配置已回滚，但旧服务删除结果未知"
+                    rollback_message = mlops_message(request, "message.config_rolled_back_old_service_delete_unknown")
                 else:
                     runtime_state = self._matching_runtime_status(observed_runtime, container_id) or {}
                     observed_state = runtime_state.get("state")
@@ -1282,7 +1302,11 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                             runtime_state = {
                                 "status": "error",
                                 "state": "unknown",
-                                "message": f"旧服务非运行态资源清理失败: {str(cleanup_error)}",
+                                "message": mlops_message(
+                                    request,
+                                    "error.old_service_stopped_cleanup_failed",
+                                    detail=mlops_exception_message(request, cleanup_error),
+                                ),
                             }
                             observed_state = "unknown"
 
@@ -1298,28 +1322,34 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                                 max_recursive_feature_engineering_work=recursive_feature_work_limit,
                             )
                             rollback_port = int(rollback_result.get("port", 0)) if rollback_result.get("port") else old_port
-                            rollback_message = "配置已回滚，并在对账确认旧服务已删除后恢复旧服务"
+                            rollback_message = mlops_message(
+                                request, "message.config_rolled_back_old_service_restored_after_delete"
+                            )
                         except Exception as rollback_error:
                             logger.error(f"对账后恢复旧 serving 失败: {rollback_error}", exc_info=True)
                             rollback_result = {
                                 "status": "error",
                                 "state": "not_found",
-                                "message": f"旧服务已删除且恢复失败: {str(rollback_error)}",
+                                "message": mlops_message(
+                                    request,
+                                    "error.old_service_deleted_restore_failed",
+                                    detail=mlops_exception_message(request, rollback_error),
+                                ),
                             }
                             rollback_port = old_port
-                            rollback_message = "配置已回滚，但旧服务恢复失败"
+                            rollback_message = mlops_message(request, "message.config_rolled_back_old_service_restore_failed")
                     elif observed_state == "running":
                         rollback_result = runtime_state
                         rollback_port = int(runtime_state.get("port", 0)) if runtime_state.get("port") else old_port
-                        rollback_message = "配置已回滚，并已对账确认旧服务仍在运行"
+                        rollback_message = mlops_message(request, "message.config_rolled_back_old_service_still_running")
                     else:
                         rollback_result = runtime_state or {
                             "status": "error",
                             "state": "unknown",
-                            "message": "旧服务删除结果未知：状态查询未返回目标资源",
+                            "message": mlops_message(request, "error.old_service_delete_status_missing"),
                         }
                         rollback_port = old_port
-                        rollback_message = "配置已回滚，但旧服务删除结果未知"
+                        rollback_message = mlops_message(request, "message.config_rolled_back_old_service_delete_unknown")
 
                 self._restore_database_state(
                     instance,
@@ -1331,7 +1361,11 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 logger.error(f"删除旧容器失败，配置已回滚并完成状态对账: {e}", exc_info=True)
                 return Response(
                     {
-                        "error": f"配置更新未生效: {str(e)}",
+                        "error": mlops_message(
+                            request,
+                            "error.config_update_not_applied",
+                            detail=mlops_exception_message(request, e),
+                        ),
                         "message": rollback_message,
                         "container_info": rollback_result,
                     },
@@ -1370,10 +1404,14 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     logger.error(f"清理失败的新 serving 资源失败: {cleanup_error}", exc_info=True)
                     rollback_result = {
                         "status": "error",
-                        "message": f"新服务启动失败且残留资源清理失败: {str(cleanup_error)}",
+                        "message": mlops_message(
+                            request,
+                            "error.new_service_start_residue_cleanup_failed",
+                            detail=mlops_exception_message(request, cleanup_error),
+                        ),
                     }
                     rollback_port = old_port
-                    rollback_message = "新服务启动失败，旧配置已恢复但运行时残留未清理"
+                    rollback_message = mlops_message(request, "message.new_serving_start_failed_residue_uncleared")
                 else:
                     try:
                         rollback_result = WebhookClient.serve(
@@ -1386,15 +1424,19 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                             max_recursive_feature_engineering_work=recursive_feature_work_limit,
                         )
                         rollback_port = int(rollback_result.get("port", 0)) if rollback_result.get("port") else old_port
-                        rollback_message = "新服务启动失败，已恢复旧配置与旧服务"
+                        rollback_message = mlops_message(request, "message.new_serving_start_failed_old_restored")
                     except Exception as rollback_error:
                         logger.error(f"恢复旧 serving 失败: {rollback_error}", exc_info=True)
                         rollback_result = {
                             "status": "error",
-                            "message": f"新服务与旧服务恢复均失败: {str(rollback_error)}",
+                            "message": mlops_message(
+                                request,
+                                "error.new_and_old_service_restore_failed",
+                                detail=mlops_exception_message(request, rollback_error),
+                            ),
                         }
                         rollback_port = old_port
-                        rollback_message = "新服务启动失败，旧配置已恢复但旧服务恢复失败"
+                        rollback_message = mlops_message(request, "message.new_serving_start_failed_old_restore_failed")
 
                 self._restore_database_state(
                     instance,
@@ -1405,7 +1447,11 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 )
                 return Response(
                     {
-                        "error": f"配置更新未生效: {str(e)}",
+                        "error": mlops_message(
+                            request,
+                            "error.config_update_not_applied",
+                            detail=mlops_exception_message(request, e),
+                        ),
                         "message": rollback_message,
                         "container_info": rollback_result,
                     },
@@ -1439,14 +1485,14 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             try:
                 model_uri = self._resolve_model_uri(serving)
             except ValueError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_400_BAD_REQUEST)
 
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
 
             try:
                 recursive_feature_work_limit = get_max_recursive_feature_engineering_work()
-                self._claim_runtime_transition(serving, "start")
+                self._claim_runtime_transition(serving, "start", request)
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
                     serving_id,
@@ -1486,7 +1532,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                                 "status": "error",
                                 "id": serving_id,
                                 "state": "unknown",
-                                "message": "状态查询未返回目标运行时",
+                                "message": mlops_message(request, "error.runtime_status_not_returned"),
                             }
 
                         # 仅更新容器信息，不修改 status
@@ -1495,40 +1541,46 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
                         return Response(
                             {
-                                "message": "检测到容器已存在，已同步容器信息",
+                                "message": mlops_message(request, "message.container_already_exists_status_synced"),
                                 "container_info": container_info,
-                                "warning": "容器已存在",
+                                "warning": mlops_message(request, "message.container_already_exists"),
                             }
                         )
                     except WebhookError as sync_error:
                         logger.error(f"同步容器状态失败: {sync_error}")
                         return Response(
-                            {"error": mlops_message(request, "error.serving_container_sync_failed", detail=sync_error)},
+                            {
+                                "error": mlops_message(
+                                    request,
+                                    "error.serving_container_sync_failed",
+                                    detail=mlops_exception_message(request, sync_error),
+                                )
+                            },
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
                 else:
                     # 其他错误直接返回
                     logger.error(f"启动 serving 失败: {error_msg}")
-                    self._reconcile_runtime_transition(serving, serving_id, "start", e)
+                    self._reconcile_runtime_transition(serving, serving_id, "start", e, request)
                     return Response(
-                        {"error": error_msg},
+                        {"error": mlops_exception_message(request, e)},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
 
         except WebhookTimeoutError as e:
             if serving is not None and serving_id is not None:
-                self._reconcile_runtime_transition(serving, serving_id, "start", e)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                self._reconcile_runtime_transition(serving, serving_id, "start", e, request)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
             if serving is not None and serving_id is not None:
-                self._reconcile_runtime_transition(serving, serving_id, "start", e)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                self._reconcile_runtime_transition(serving, serving_id, "start", e, request)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"启动 serving 服务失败: {str(e)}", exc_info=True)
             if serving is not None and serving_id is not None:
-                self._reconcile_runtime_transition(serving, serving_id, "start", e)
+                self._reconcile_runtime_transition(serving, serving_id, "start", e, request)
             return Response(
-                {"error": mlops_message(request, "error.serving_start_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.serving_start_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1548,7 +1600,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
 
             # 调用 WebhookClient 停止服务（默认删除容器）
-            self._claim_runtime_transition(serving, "stop")
+            self._claim_runtime_transition(serving, "stop", request)
             result = WebhookClient.stop(serving_id)
 
             # Kubernetes stop 使用异步删除并可能返回 terminating；必须保留
@@ -1572,23 +1624,23 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
         except WebhookTimeoutError as e:
             if serving is not None and serving_id is not None:
-                self._reconcile_runtime_transition(serving, serving_id, "stop", e)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                self._reconcile_runtime_transition(serving, serving_id, "stop", e, request)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
             if serving is not None and serving_id is not None:
-                self._reconcile_runtime_transition(serving, serving_id, "stop", e)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                self._reconcile_runtime_transition(serving, serving_id, "stop", e, request)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"停止 serving 失败: {e}")
             if serving is not None and serving_id is not None:
-                self._reconcile_runtime_transition(serving, serving_id, "stop", e)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                self._reconcile_runtime_transition(serving, serving_id, "stop", e, request)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"停止 serving 服务失败: {str(e)}", exc_info=True)
             if serving is not None and serving_id is not None:
-                self._reconcile_runtime_transition(serving, serving_id, "stop", e)
+                self._reconcile_runtime_transition(serving, serving_id, "stop", e, request)
             return Response(
-                {"error": mlops_message(request, "error.serving_stop_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.serving_stop_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1608,7 +1660,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
 
             # 调用 WebhookClient 删除容器
-            self._claim_runtime_transition(serving, "remove")
+            self._claim_runtime_transition(serving, "remove", request)
             result = WebhookClient.remove(serving_id)
 
             # 更新容器信息（status 由用户控制，不修改）
@@ -1625,7 +1677,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             return Response(
                 {
-                    "message": "容器已删除",
+                    "message": mlops_message(request, "message.container_deleted"),
                     "serving_id": serving_id,
                     "webhook_response": result,
                 }
@@ -1633,23 +1685,23 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
         except WebhookTimeoutError as e:
             if serving is not None and serving_id is not None:
-                self._reconcile_runtime_transition(serving, serving_id, "remove", e)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                self._reconcile_runtime_transition(serving, serving_id, "remove", e, request)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
             if serving is not None and serving_id is not None:
-                self._reconcile_runtime_transition(serving, serving_id, "remove", e)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                self._reconcile_runtime_transition(serving, serving_id, "remove", e, request)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"删除容器失败: {e}")
             if serving is not None and serving_id is not None:
-                self._reconcile_runtime_transition(serving, serving_id, "remove", e)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                self._reconcile_runtime_transition(serving, serving_id, "remove", e, request)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"删除 serving 容器失败: {str(e)}", exc_info=True)
             if serving is not None and serving_id is not None:
-                self._reconcile_runtime_transition(serving, serving_id, "remove", e)
+                self._reconcile_runtime_transition(serving, serving_id, "remove", e, request)
             return Response(
-                {"error": mlops_message(request, "error.serving_container_delete_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.serving_container_delete_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1725,7 +1777,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     # 预测服务返回失败
                     error_info = result.get("error") or {}
                     error_code = error_info.get("code", "UNKNOWN")
-                    error_message = error_info.get("message", "预测失败")
+                    error_message = error_info.get("message") or mlops_message(request, "error.prediction_failed")
 
                     logger.error(f"预测服务返回失败: serving_id={serving.id}, code={error_code}, message={error_message}")
                     return Response(
@@ -1741,29 +1793,37 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 # 预测成功
                 return Response(result)
             else:
-                error_msg = f"预测服务返回错误: HTTP {response.status_code}"
-                try:
-                    error_detail = response.json()
-                    error_msg = f"{error_msg} - {error_detail}"
-                except (ValueError, json.JSONDecodeError) as e:
-                    logger.warning(f"Failed to parse error response JSON: {e}")
-                    error_msg = f"{error_msg} - {response.text[:200]}"
-
-                logger.error(f"预测失败: {error_msg}")
-                return Response({"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                error_msg = mlops_message(request, "error.serving_prediction_service_error", status_code=response.status_code)
+                logger.error(f"{error_msg}, serving_id={serving.id}")
+                return Response(
+                    {"error": error_msg, "detail": response.text},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
         except requests.exceptions.Timeout:
-            error_msg = f"预测请求超时（超过 {proxy_timeout_seconds} 秒）"
             logger.error(f"预测超时: serving_id={serving.id}, url={predict_url}")
-            return Response({"error": error_msg}, status=status.HTTP_504_GATEWAY_TIMEOUT)
+            return Response(
+                {
+                    "error": mlops_message(
+                        request,
+                        "error.serving_prediction_timeout_exceeded",
+                        seconds=proxy_timeout_seconds,
+                    )
+                },
+                status=status.HTTP_504_GATEWAY_TIMEOUT,
+            )
         except requests.exceptions.ConnectionError as e:
-            error_msg = f"无法连接预测服务: {str(e)}"
             logger.error(f"预测连接失败: serving_id={serving.id}, url={predict_url}, error={e}")
-            return Response({"error": error_msg}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response(
+                {"error": mlops_message(request, "error.serving_prediction_connection_failed", detail=str(e))},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except requests.exceptions.RequestException as e:
-            error_msg = f"预测请求异常: {str(e)}"
             logger.error(f"预测请求异常: serving_id={serving.id}, error={e}", exc_info=True)
-            return Response({"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": mlops_message(request, "error.serving_prediction_request_failed", detail=str(e))},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         except Exception as e:
             logger.error(f"预测失败: serving_id={serving.id}, error={str(e)}", exc_info=True)
             return Response(

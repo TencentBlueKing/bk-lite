@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Badge, Button, Card, Empty, Input, Space, Spin, Switch, Tabs, message } from 'antd';
+import { Alert, Badge, Button, Card, Space, Spin, Switch, Tabs, message } from 'antd';
 import CustomTable from '@/components/custom-table';
+import CompactEmptyState from '@/components/compact-empty-state';
+import SearchActionBar from '@/components/search-action-bar';
 import { useNodeMgmtSyncApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
 import type {
@@ -371,8 +373,8 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
 
   return (
     <div className="flex flex-col gap-4">
-          {loading ? (
-        <div className="py-8 flex justify-center">
+      {loading ? (
+        <div className="flex justify-center py-8">
           <Spin />
         </div>
       ) : (
@@ -470,19 +472,20 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
             />
           ) : null}
 
-          <div className="flex items-center gap-3">
-            <Input.Search
-              allowClear
-              className="w-80"
-              placeholder={t('Collection.nodeMgmtSync.searchPlaceholder')}
-              value={pendingSearchText}
-              onChange={(e) => setPendingSearchText(e.target.value)}
-              onSearch={(value) => {
+          <SearchActionBar
+            spacing="flush"
+            searchClassName="!w-80"
+            searchProps={{
+              allowClear: true,
+              placeholder: t('Collection.nodeMgmtSync.searchPlaceholder'),
+              value: pendingSearchText,
+              onChange: (e) => setPendingSearchText(e.target.value),
+              onSearch: (value) => {
                 setRawPage(1);
                 setSearchText(value);
-              }}
-            />
-          </div>
+              },
+            }}
+          />
 
           <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
 
@@ -515,7 +518,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
 
           {!rawLoadFailed && !filteredRows.length ? (
             <div className="py-10">
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t(emptyStateKey)} />
+              <CompactEmptyState description={t(emptyStateKey)} />
             </div>
           ) : (
             <CustomTable

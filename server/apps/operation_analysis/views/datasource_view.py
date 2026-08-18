@@ -21,6 +21,7 @@ from apps.operation_analysis.common.get_nats_source_data import GetNatsData
 from apps.operation_analysis.common.visibility_update import partial_update_groups_with_auth
 from apps.operation_analysis.filters.datasource_filters import DataSourceAPIModelFilter, DataSourceTagModelFilter, NameSpaceModelFilter
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace, NamespacePasswordDecryptionError
+from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER, is_sensitive_field_name
 from apps.operation_analysis.serializers.datasource_serializers import (
     DataSourceAPIModelSerializer,
     DataSourceBriefSerializer,
@@ -128,9 +129,42 @@ def _execute_inline_preview(
     return result.as_dict()
 
 
+def _strip_unmerged_placeholders(connection_config):
+    return {
+        key: None if item == SENSITIVE_PLACEHOLDER and is_sensitive_field_name(key) else item
+        for key, item in connection_config.items()
+    }
+
+
+def _draft_inline_connection_config(instance, request_data):
+    connection_config = request_data.get("connection_config")
+    if not isinstance(connection_config, dict):
+        return instance.connection_config or {}
+    request_source_type = request_data.get("source_type") or instance.source_type
+    if request_source_type != instance.source_type or getattr(instance, "connection_id", None):
+        return _strip_unmerged_placeholders(connection_config)
+    return merge_redacted_config(instance.connection_config or {}, connection_config)
+
+
 def _connection_config_for_instance(instance, request_data=None, current_team=None):
     request_data = request_data if isinstance(request_data, dict) else {}
-    if instance.connection_id:
+    has_connection_field = "connection" in request_data or "connection_id" in request_data
+    requested_connection = request_data.get("connection") or request_data.get("connection_id")
+
+    if requested_connection:
+        groups = request_data.get("groups")
+        if not isinstance(groups, list):
+            groups = instance.groups or []
+        return _resolve_preview_connection_config(
+            request_data,
+            current_team=current_team,
+            groups=groups,
+        )
+
+    if has_connection_field:
+        return _draft_inline_connection_config(instance, request_data)
+
+    if getattr(instance, "connection_id", None):
         overrides = request_data.get("connection_overrides")
         original_overrides = instance.connection_overrides
         if isinstance(overrides, dict):
@@ -781,18 +815,12 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
 
         source_type = request.data.get("source_type") or instance.source_type
-        connection_config = request.data.get("connection_config")
-        if isinstance(connection_config, dict):
-            connection_config = merge_redacted_config(instance.connection_config or {}, connection_config)
-        else:
-            connection_config = instance.connection_config or {}
         try:
-            if instance.connection_id:
-                connection_config = _connection_config_for_instance(
-                    instance,
-                    request.data if isinstance(request.data, dict) else {},
-                    current_team=current_team,
-                )
+            connection_config = _connection_config_for_instance(
+                instance,
+                request.data if isinstance(request.data, dict) else {},
+                current_team=current_team,
+            )
             executor = get_preview_executor(source_type)
             executor.test_connection(connection_config)
         except ConnectionResolveError as exc:

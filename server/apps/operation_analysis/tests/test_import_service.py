@@ -101,7 +101,7 @@ def _report_section(key="report::report-a", name="report-a", **over):
         "name": name,
         "desc": "",
         "other": {},
-        "view_sets": {"time_range": None, "sections": []},
+        "view_sets": {"schema_version": 1, "filters": [], "sections": []},
         "refs": {"datasource_keys": [], "namespace_keys": []},
     }
     base.update(over)
@@ -258,6 +258,103 @@ def test_import_datasource_overwrite_existing():
     assert result["summary"]["overwritten"] == 1
     existing.refresh_from_db()
     assert existing.desc == "new desc"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("rest_api", ["monitor/mm_query", "monitor/mm_query_range"])
+def test_import_rejects_new_raw_monitor_query_datasource(rest_api):
+    doc = _doc(datasources=[_ds_section(key=f"raw::{rest_api}", name="raw-query", rest_api=rest_api)])
+
+    result = _service(doc).execute()
+
+    assert result["success"] is False
+    assert result["summary"]["failed"] == 1
+    assert result["results"][0]["message"] == "该监控裸查询接口已停止新增，仅保留存量数据源兼容"
+    assert not DataSourceAPIModel.objects.filter(name="raw-query").exists()
+
+
+@pytest.mark.django_db
+def test_precheck_rejects_new_raw_monitor_query_and_limits_legacy_conflict_actions():
+    new_doc = _doc(datasources=[_ds_section(key="raw::monitor/mm_query", name="raw-query", rest_api="monitor/mm_query")])
+    payload = new_doc.model_dump(mode="json")
+    payload["meta"]["object_counts"] = {"datasources": 1}
+    yaml_content = new_doc.__class__(**payload).model_dump_json()
+
+    precheck = PrecheckService.precheck(yaml_content)
+
+    assert precheck["valid"] is False
+    assert precheck["errors"] == [
+        {
+            "code": "OA_YAML_SCHEMA_INVALID",
+            "message": "该监控裸查询接口已停止新增，仅保留存量数据源兼容",
+            "object_key": "raw::monitor/mm_query",
+            "object_type": "datasource",
+        }
+    ]
+
+    DataSourceAPIModel.objects.create(
+        name="raw-query",
+        rest_api="monitor/mm_query",
+        source_type="nats",
+        created_by="system",
+        updated_by="system",
+    )
+    legacy_precheck = PrecheckService.precheck(yaml_content)
+
+    assert legacy_precheck["valid"] is True
+    assert legacy_precheck["conflicts"][0]["suggested_actions"] == ["skip", "overwrite"]
+
+
+@pytest.mark.django_db
+def test_import_allows_overwriting_existing_raw_monitor_query_datasource():
+    existing = DataSourceAPIModel.objects.create(
+        name="raw-query",
+        rest_api="monitor/mm_query_range",
+        source_type="nats",
+        desc="old",
+        created_by="system",
+        updated_by="system",
+    )
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                key="raw::monitor/mm_query_range",
+                name="raw-query",
+                rest_api="monitor/mm_query_range",
+                desc="new",
+            )
+        ]
+    )
+
+    result = _service(
+        doc,
+        conflict_decisions={"raw::monitor/mm_query_range": ConflictAction.OVERWRITE.value},
+    ).execute()
+
+    assert result["success"] is True
+    existing.refresh_from_db()
+    assert existing.desc == "new"
+
+
+@pytest.mark.django_db
+def test_import_rejects_converting_existing_non_nats_datasource_to_raw_monitor_query():
+    existing = DataSourceAPIModel.objects.create(
+        name="raw-query",
+        rest_api="monitor/mm_query",
+        source_type="rest_api",
+        created_by="system",
+        updated_by="system",
+    )
+    doc = _doc(datasources=[_ds_section(key="raw::monitor/mm_query", name="raw-query", rest_api="monitor/mm_query")])
+
+    result = _service(
+        doc,
+        conflict_decisions={"raw::monitor/mm_query": ConflictAction.OVERWRITE.value},
+    ).execute()
+
+    assert result["success"] is False
+    existing.refresh_from_db()
+    assert existing.source_type == "rest_api"
 
 
 @pytest.mark.django_db
@@ -461,7 +558,66 @@ def test_import_screen_and_report_into_target_directory():
     assert screen.view_sets["viewport"]["width"] == 1920
     assert report.directory_id == directory.id
     assert report.groups == [3]
-    assert report.view_sets == {"time_range": None, "sections": []}
+    assert report.view_sets == {"schema_version": 1, "filters": [], "sections": []}
+
+
+def test_yaml_report_view_sets_accept_portable_datasource_keys():
+    datasource_key = "report-source::api/table"
+    report = _report_section(
+        view_sets={
+            "schema_version": 1,
+            "filters": [],
+            "sections": [
+                {
+                    "id": "report-table",
+                    "valueConfig": {
+                        "dataSource": datasource_key,
+                        "chartType": "table",
+                        "name": "账单表",
+                    },
+                }
+            ],
+        }
+    )
+
+    doc = _doc(reports=[report])
+
+    assert doc.reports[0].view_sets["sections"][0]["valueConfig"]["dataSource"] == datasource_key
+
+
+@pytest.mark.django_db
+def test_import_report_rewrites_datasource_key_before_view_sets_validation():
+    from apps.operation_analysis.models.models import Report
+
+    datasource_key = "report-source::api/table"
+    report = _report_section(
+        view_sets={
+            "schema_version": 1,
+            "filters": [],
+            "sections": [
+                {
+                    "id": "report-table",
+                    "valueConfig": {
+                        "dataSource": datasource_key,
+                        "chartType": "table",
+                        "name": "账单表",
+                    },
+                }
+            ],
+        },
+        refs={"datasource_keys": [datasource_key], "namespace_keys": []},
+    )
+    doc = _doc(
+        datasources=[_ds_section(key=datasource_key, chart_type=["table"])],
+        reports=[report],
+    )
+
+    result = _service(doc).execute()
+
+    assert result["success"] is True
+    imported = Report.objects.get(name="report-a")
+    datasource = DataSourceAPIModel.objects.get(name="ds-a")
+    assert imported.view_sets["sections"][0]["valueConfig"]["dataSource"] == datasource.id
 
 
 @pytest.mark.django_db

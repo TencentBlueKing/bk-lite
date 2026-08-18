@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Segmented, Spin } from 'antd';
+import { Button,  Segmented, Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
@@ -506,7 +507,7 @@ const ViewsWorkspaceShell: React.FC<ViewsWorkspaceShellProps> = ({
       <div className="min-h-0 flex-1 p-4">
         {!focus ? (
           <div className="h-full flex items-center justify-center">
-            <Empty description={t('ViewsHub.emptyHint')} />
+            <CompactEmptyState description={t('ViewsHub.emptyHint')} />
           </div>
         ) : (
           <ViewCanvasHost

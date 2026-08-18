@@ -12,6 +12,8 @@
     "container_id",
     "container_name",
     "host",
+    "host_name",
+    "host_ip",
     "image",
     "label",
     "message",

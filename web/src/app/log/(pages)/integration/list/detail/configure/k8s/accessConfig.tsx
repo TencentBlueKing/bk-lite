@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Form, Input, Select, Button, Radio } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
@@ -9,6 +9,11 @@ import useIntegrationApi from '@/app/log/api/integration';
 import GroupTreeSelector from '@/components/group-tree-select';
 import Icon from '@/components/icon';
 import { K8sCommandData } from './k8sConfiguration';
+import FormSettingRow from '@/components/form-setting-row';
+import CollectSettingFields, {
+  FieldLabel,
+  K8S_SETTING_FORM_WIDTH
+} from './collectSettingFields';
 import IntegrationStepCallout, {
   createLogK8sStepCalloutPreset,
 } from '@/components/integration-step-callout';
@@ -30,8 +35,6 @@ interface InstanceItem {
 
 type RuntimeProfile = 'standard' | 'docker' | 'custom';
 
-const FORM_CONTROL_WIDTH = 300;
-
 const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
@@ -43,7 +46,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const {
     getCloudRegionList,
     createK8sInstance,
-    getK8sCommand,
+    getK8sCollectSetting,
+    saveK8sCollectSetting,
     getInstanceList
   } = useIntegrationApi();
   const [submitLoading, setSubmitLoading] = useState(false);
@@ -51,12 +55,9 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const [cloudRegionList, setCloudRegionList] = useState<CloudRegionItem[]>([]);
   const [k8sClusterLoading, setK8sClusterLoading] = useState(false);
   const [k8sClusterList, setK8sClusterList] = useState<InstanceItem[]>([]);
-  const hasDockerContainerPath = useMemo(
-    () => Boolean(String(commandData?.docker_container_log_path || '').trim()),
-    [commandData?.docker_container_log_path]
-  );
-  const [showDockerAdvanced, setShowDockerAdvanced] = useState(
-    hasDockerContainerPath
+  const [settingUnknown, setSettingUnknown] = useState(false);
+  const [dockerPathForFields, setDockerPathForFields] = useState(
+    commandData?.docker_container_log_path
   );
 
   useEffect(() => {
@@ -74,14 +75,16 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         k8sCluster: commandData.instance_id,
         runtime_profile: commandData.runtime_profile || 'standard',
         host_log_path: commandData.host_log_path,
-        docker_container_log_path: commandData.docker_container_log_path
+        docker_container_log_path: commandData.docker_container_log_path,
+        namespace_patterns: commandData.namespace_patterns,
+        pod_patterns: commandData.pod_patterns
       });
+      setDockerPathForFields(commandData.docker_container_log_path);
+      if (commandData.instance_id) {
+        void loadSetting(commandData.instance_id);
+      }
     }
   }, [commandData, form]);
-
-  useEffect(() => {
-    setShowDockerAdvanced(hasDockerContainerPath);
-  }, [hasDockerContainerPath]);
 
   const getCloudRegions = async () => {
     setCloudRegionLoading(true);
@@ -110,17 +113,46 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
     }
   };
 
+  const loadSetting = async (instanceId: string) => {
+    const setting = await getK8sCollectSetting(instanceId);
+    if (setting?.unknown) {
+      setSettingUnknown(true);
+      setDockerPathForFields(undefined);
+      form.setFieldsValue({
+        runtime_profile: undefined,
+        host_log_path: undefined,
+        docker_container_log_path: undefined,
+        namespace_patterns: undefined,
+        pod_patterns: undefined
+      });
+      return;
+    }
+    setSettingUnknown(false);
+    const dockerPath = setting?.docker_container_log_path;
+    setDockerPathForFields(dockerPath);
+    form.setFieldsValue({
+      runtime_profile: setting?.runtime_profile,
+      host_log_path: setting?.host_log_path,
+      docker_container_log_path: dockerPath,
+      namespace_patterns: (setting?.namespace_patterns || []).join('\n'),
+      pod_patterns: (setting?.pod_patterns || []).join('\n')
+    });
+  };
+
   const handleSubmit = async () => {
     try {
       setSubmitLoading(true);
       const values = await form.validateFields();
-      const commandParams = {
+      const settingPayload = {
         cloud_region_id: values.cloud_region_id,
         runtime_profile: values.runtime_profile as RuntimeProfile,
         host_log_path: values.host_log_path,
-        docker_container_log_path: values.docker_container_log_path
+        docker_container_log_path: values.docker_container_log_path,
+        namespace_patterns: values.namespace_patterns,
+        pod_patterns: values.pod_patterns
       };
 
+      let instanceId = values.k8sCluster as string;
       if (values.accessType === 'new') {
         const clusterName = String(values.name || '').trim();
         const createResult = await createK8sInstance({
@@ -129,32 +161,22 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
           organizations: values.organizations,
           collect_type_id: collectTypeId
         });
-        const commandResult = await getK8sCommand({
-          ...commandParams,
-          instance_id: createResult?.instance_id
-        });
-        onNext({
-          command: commandResult,
-          instance_id: createResult?.instance_id,
-          cloud_region_id: values.cloud_region_id,
-          runtime_profile: values.runtime_profile,
-          host_log_path: values.host_log_path,
-          docker_container_log_path: values.docker_container_log_path
-        });
-        return;
+        instanceId = createResult?.instance_id;
       }
 
-      const commandResult = await getK8sCommand({
-        ...commandParams,
-        instance_id: values.k8sCluster
+      const settingResult = await saveK8sCollectSetting({
+        ...settingPayload,
+        instance_id: instanceId
       });
       onNext({
-        command: commandResult,
-        instance_id: values.k8sCluster,
+        command: settingResult?.command,
+        instance_id: instanceId,
         cloud_region_id: values.cloud_region_id,
         runtime_profile: values.runtime_profile,
         host_log_path: values.host_log_path,
-        docker_container_log_path: values.docker_container_log_path
+        docker_container_log_path: values.docker_container_log_path,
+        namespace_patterns: values.namespace_patterns,
+        pod_patterns: values.pod_patterns
       });
     } finally {
       setSubmitLoading(false);
@@ -181,24 +203,40 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
           </h3>
         </div>
 
-        <Form.Item label={t('log.integration.k8s.accessAsset')} required>
-          <div className="flex items-start gap-4">
-            <Form.Item
-              name="accessType"
-              noStyle
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Radio.Group style={{ width: FORM_CONTROL_WIDTH }}>
-                <Radio value="new">{t('log.integration.k8s.newAsset')}</Radio>
-                <Radio value="existing">
-                  {t('log.integration.k8s.existingAsset')}
-                </Radio>
-              </Radio.Group>
-            </Form.Item>
-            <div className="text-[var(--color-text-3)] flex-1">
-              {t('log.integration.k8s.accessAssetDesc')}
-            </div>
-          </div>
+        <Form.Item
+          label={
+            <FieldLabel
+              label={t('log.integration.k8s.accessAsset')}
+              detail={t('log.integration.k8s.accessAssetDesc')}
+            />
+          }
+          required
+        >
+          <FormSettingRow
+            control={
+              <Form.Item
+                name="accessType"
+                noStyle
+                rules={[{ required: true, message: t('common.required') }]}
+              >
+                <Radio.Group
+                  className="w-[300px]"
+                  onChange={(event) => {
+                    if (event.target.value === 'new') {
+                      setSettingUnknown(false);
+                      form.setFieldsValue({ runtime_profile: 'standard' });
+                    }
+                  }}
+                >
+                  <Radio value="new">{t('log.integration.k8s.newAsset')}</Radio>
+                  <Radio value="existing">
+                    {t('log.integration.k8s.existingAsset')}
+                  </Radio>
+                </Radio.Group>
+              </Form.Item>
+            }
+            description={t('log.integration.k8s.accessAssetHint')}
+          />
         </Form.Item>
 
         <Form.Item
@@ -211,225 +249,139 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
             getFieldValue('accessType') === 'new' ? (
               <>
                 <Form.Item
-                  label={t('log.integration.k8s.clusterName')}
+                  label={
+                    <FieldLabel
+                      label={t('log.integration.k8s.clusterName')}
+                      detail={t('log.integration.k8s.clusterNameDesc')}
+                    />
+                  }
                   required
                 >
-                  <div className="flex items-start gap-4">
-                    <Form.Item
-                      name="name"
-                      noStyle
-                      rules={[
-                        { required: true, message: t('common.required') }
-                      ]}
-                    >
-                      <Input
-                        placeholder={t(
-                          'log.integration.k8s.clusterNamePlaceholder'
-                        )}
-                        style={{ width: FORM_CONTROL_WIDTH }}
-                      />
-                    </Form.Item>
-                    <div className="text-[var(--color-text-3)] flex-1">
-                      {t('log.integration.k8s.clusterNameDesc')}
-                    </div>
-                  </div>
+                  <FormSettingRow
+                    control={
+                      <Form.Item
+                        name="name"
+                        noStyle
+                        rules={[
+                          { required: true, message: t('common.required') }
+                        ]}
+                      >
+                        <Input
+                          placeholder={t(
+                            'log.integration.k8s.clusterNamePlaceholder'
+                          )}
+                          className="w-[300px]"
+                        />
+                      </Form.Item>
+                    }
+                    description={t('log.integration.k8s.clusterNameHint')}
+                  />
                 </Form.Item>
 
                 <Form.Item
-                  label={t('log.integration.k8s.organization')}
+                  label={
+                    <FieldLabel
+                      label={t('log.integration.k8s.organization')}
+                      detail={t('log.integration.k8s.organizationDesc')}
+                    />
+                  }
                   required
                 >
-                  <div className="flex items-start gap-4">
-                    <Form.Item
-                      name="organizations"
-                      noStyle
-                      rules={[
-                        { required: true, message: t('common.required') }
-                      ]}
-                    >
-                      <GroupTreeSelector
-                        style={{ width: FORM_CONTROL_WIDTH }}
-                        placeholder={t('common.selectTip')}
-                      />
-                    </Form.Item>
-                    <div className="text-[var(--color-text-3)] flex-1">
-                      {t('log.integration.k8s.organizationDesc')}
-                    </div>
-                  </div>
+                  <FormSettingRow
+                    control={
+                      <Form.Item
+                        name="organizations"
+                        noStyle
+                        rules={[
+                          { required: true, message: t('common.required') }
+                        ]}
+                      >
+                        <GroupTreeSelector
+                          style={{ width: K8S_SETTING_FORM_WIDTH }}
+                          placeholder={t('common.selectTip')}
+                        />
+                      </Form.Item>
+                    }
+                    description={t('log.integration.k8s.organizationHint')}
+                  />
                 </Form.Item>
               </>
             ) : (
-              <Form.Item label={t('log.integration.k8s.k8sCluster')} required>
-                <div className="flex items-start gap-4">
-                  <Form.Item
-                    name="k8sCluster"
-                    noStyle
-                    rules={[{ required: true, message: t('common.required') }]}
-                  >
-                    <Select
-                      showSearch
-                      loading={k8sClusterLoading}
-                      placeholder={t('log.integration.k8s.selectK8sCluster')}
-                      style={{ width: FORM_CONTROL_WIDTH }}
-                      options={k8sClusterList.map((item) => ({
-                        label: item.name,
-                        value: item.id
-                      }))}
-                    />
-                  </Form.Item>
-                  <div className="text-[var(--color-text-3)] flex-1">
-                    {t('log.integration.k8s.k8sClusterDesc')}
-                  </div>
-                </div>
+              <Form.Item
+                label={
+                  <FieldLabel
+                    label={t('log.integration.k8s.k8sCluster')}
+                    detail={t('log.integration.k8s.k8sClusterDesc')}
+                  />
+                }
+                required
+              >
+                <FormSettingRow
+                  control={
+                    <Form.Item
+                      name="k8sCluster"
+                      noStyle
+                      rules={[{ required: true, message: t('common.required') }]}
+                    >
+                      <Select
+                        showSearch
+                        loading={k8sClusterLoading}
+                        placeholder={t('log.integration.k8s.selectK8sCluster')}
+                        className="w-[300px]"
+                        options={k8sClusterList.map((item) => ({
+                          label: item.name,
+                          value: item.id
+                        }))}
+                        onChange={(value) => {
+                          if (value) {
+                            void loadSetting(String(value));
+                          }
+                        }}
+                      />
+                    </Form.Item>
+                  }
+                  description={t('log.integration.k8s.k8sClusterHint')}
+                />
               </Form.Item>
             )
           }
         </Form.Item>
 
-        <Form.Item label={t('log.integration.k8s.cloudRegion')} required>
-          <div className="flex items-start gap-4">
-            <Form.Item
-              name="cloud_region_id"
-              noStyle
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Select
-                loading={cloudRegionLoading}
-                placeholder={t('log.integration.k8s.selectCloudRegion')}
-                style={{ width: FORM_CONTROL_WIDTH }}
-                options={cloudRegionList.map((item) => ({
-                  label: item.name || item.id,
-                  value: item.id
-                }))}
-              />
-            </Form.Item>
-            <div className="text-[var(--color-text-3)] flex-1">
-              {t('log.integration.k8s.cloudRegionDesc')}
-            </div>
-          </div>
-        </Form.Item>
-
-        <Form.Item label={t('log.integration.k8s.runtimeProfile')} required>
-          <div className="flex items-start gap-4">
-            <Form.Item
-              name="runtime_profile"
-              noStyle
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Radio.Group style={{ width: FORM_CONTROL_WIDTH }}>
-                <Radio value="standard">
-                  {t('log.integration.k8s.runtimeProfileStandard')}
-                </Radio>
-                <Radio value="docker">
-                  {t('log.integration.k8s.runtimeProfileDocker')}
-                </Radio>
-                <Radio value="custom">
-                  {t('log.integration.k8s.runtimeProfileCustom')}
-                </Radio>
-              </Radio.Group>
-            </Form.Item>
-            <div className="text-[var(--color-text-3)] flex-1">
-              {t('log.integration.k8s.runtimeProfileDesc')}
-            </div>
-          </div>
-        </Form.Item>
-
         <Form.Item
-          noStyle
-          shouldUpdate={(prevValues, currentValues) =>
-            prevValues.runtime_profile !== currentValues.runtime_profile
+          label={
+            <FieldLabel
+              label={t('log.integration.k8s.cloudRegion')}
+              detail={t('log.integration.k8s.cloudRegionDesc')}
+            />
           }
+          required
         >
-          {({ getFieldValue }) =>
-            getFieldValue('runtime_profile') === 'custom' ? (
-              <>
-                <Form.Item
-                  label={t('log.integration.k8s.hostLogPath')}
-                  required
-                >
-                  <div className="flex items-start gap-4">
-                    <Form.Item
-                      name="host_log_path"
-                      noStyle
-                      rules={[
-                        { required: true, message: t('common.required') },
-                        {
-                          validator: (_, value) => {
-                            if (!value || String(value).startsWith('/')) {
-                              return Promise.resolve();
-                            }
-                            return Promise.reject(
-                              new Error(
-                                t('log.integration.k8s.absolutePathRequired')
-                              )
-                            );
-                          }
-                        }
-                      ]}
-                    >
-                      <Input
-                        placeholder={t(
-                          'log.integration.k8s.hostLogPathPlaceholder'
-                        )}
-                        style={{ width: FORM_CONTROL_WIDTH }}
-                      />
-                    </Form.Item>
-                    <div className="text-[var(--color-text-3)] flex-1">
-                      {t('log.integration.k8s.hostLogPathDesc')}
-                    </div>
-                  </div>
-                </Form.Item>
-
-                <Button
-                  type="link"
-                  className="px-0 mb-3"
-                  onClick={() => setShowDockerAdvanced((prev) => !prev)}
-                >
-                  {showDockerAdvanced
-                    ? t('log.integration.k8s.hideDockerAdvanced')
-                    : t('log.integration.k8s.showDockerAdvanced')}
-                </Button>
-
-                {showDockerAdvanced ? (
-                  <Form.Item
-                    label={t('log.integration.k8s.dockerContainerLogPath')}
-                  >
-                    <div className="flex items-start gap-4">
-                      <Form.Item
-                        name="docker_container_log_path"
-                        noStyle
-                        rules={[
-                          {
-                            validator: (_, value) => {
-                              if (!value || String(value).startsWith('/')) {
-                                return Promise.resolve();
-                              }
-                              return Promise.reject(
-                                new Error(
-                                  t('log.integration.k8s.absolutePathRequired')
-                                )
-                              );
-                            }
-                          }
-                        ]}
-                      >
-                        <Input
-                          placeholder={t(
-                            'log.integration.k8s.dockerContainerLogPathPlaceholder'
-                          )}
-                          style={{ width: FORM_CONTROL_WIDTH }}
-                        />
-                      </Form.Item>
-                      <div className="text-[var(--color-text-3)] flex-1">
-                        {t('log.integration.k8s.dockerContainerLogPathDesc')}
-                      </div>
-                    </div>
-                  </Form.Item>
-                ) : null}
-              </>
-            ) : null
-          }
+          <FormSettingRow
+            control={
+              <Form.Item
+                name="cloud_region_id"
+                noStyle
+                rules={[{ required: true, message: t('common.required') }]}
+              >
+                <Select
+                  loading={cloudRegionLoading}
+                  placeholder={t('log.integration.k8s.selectCloudRegion')}
+                  className="w-[300px]"
+                  options={cloudRegionList.map((item) => ({
+                    label: item.name || item.id,
+                    value: item.id
+                  }))}
+                />
+              </Form.Item>
+            }
+            description={t('log.integration.k8s.cloudRegionHint')}
+          />
         </Form.Item>
+
+        <CollectSettingFields
+          unknown={settingUnknown}
+          initialDockerPath={dockerPathForFields}
+        />
 
         <div className="pt-[20px]">
           <Button type="primary" loading={submitLoading} onClick={handleSubmit}>

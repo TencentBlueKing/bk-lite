@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Empty } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import useChartColors, { type ChartColors } from './docker/useChartColors';
 
 const trimTrailingZeros = (value: string) =>
@@ -296,11 +296,7 @@ const ComKpiCard: React.FC<SharedKpiCardProps> = ({
   }
 
   if (metricResult.currentValue === undefined) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   const isUp =
@@ -310,14 +306,7 @@ const ComKpiCard: React.FC<SharedKpiCardProps> = ({
 
   return (
     <div className="flex h-full w-full items-center gap-3 overflow-hidden">
-      <div
-        className="flex min-w-0 flex-col justify-center"
-        style={{
-          flex: '0 1 46%',
-          minWidth: '100px',
-          maxWidth: '46%'
-        }}
-      >
+      <div className="flex min-w-[100px] max-w-[46%] flex-[0_1_46%] flex-col justify-center">
         <div ref={valueAreaRef} className="relative min-w-0">
           <div
             className="inline-flex max-w-full items-end whitespace-nowrap font-bold leading-none"

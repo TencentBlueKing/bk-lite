@@ -40,12 +40,12 @@
 
 #### 3.2.1 资产协同
 
-- 支持节点管理、CMDB 与监控实例之间的双向关联同步：已有监控实例按节点或 CMDB 关联信息更新；两类关联信息分别指向不同实例时保留现状并返回冲突，不自动合并。
-- 节点管理新建的节点可自动建立主机监控实例并尝试完成默认主机采集配置；监控侧新建主机实例时，会尽力建立到节点管理和 CMDB 的关联，任一关联失败不阻断实例创建。用户可对已有监控实例发起显式推送到 CMDB。
+- 支持节点管理、CMDB 与监控实例之间的双向关联同步：CMDB 关联使用稳定的资产身份，历史关联在迁移期间仍可识别，并在后续同步时升级为稳定身份；两类关联信息分别指向不同实例时保留现状并返回冲突，不自动合并。
+- 节点管理新建的节点可自动建立主机监控实例并完成默认主机采集配置；该配置未能完成时，本次节点同步整体失败。监控侧新建主机实例时，会尽力建立到节点管理和 CMDB 的关联，任一关联失败不阻断实例创建。用户可对已有监控实例发起显式推送到 CMDB。
 - 节点退役会使关联监控实例停止并进入软删除状态；CMDB 解绑或其他来源解绑仅解除相应关联，不删除监控资产。来自 CMDB 的自动创建监控实例能力当前未启用，未命中已有实例时不会据此创建监控资产。
 
 相关架构：[[legacy-ard-modules-monitor.md#5.1 跨模块实例归并与生命周期【已实现】]]、[[legacy-ard-modules-cmdb.md#4. 依赖与通信【已实现/已存在】]]、[[legacy-ard-modules-node-mgmt.md#4. 通信机制【已实现/已存在】]]；对应功能清单：[[legacy-fuctionlist-02-监控系统-功能清单.md#7. Integration - 资产管理]]。
-> 证据来源：server/apps/monitor/services/module_ingest.py:53-163,531-619,750-898，server/apps/monitor/services/module_push.py:62-178,291-406，server/apps/monitor/views/monitor_instance.py:397-410　|　同步基线：d2769559　|　【已实现】
+> 证据来源：server/apps/cmdb/services/instance_identity.py:55-106；server/apps/monitor/services/module_ingest.py:53-169,628-639,750-834；server/apps/monitor/services/module_push.py:62-178,291-406；server/apps/monitor/views/monitor_instance.py:397-410　|　同步基线：b98b782a7　|　【已实现】
 
 ### 3.5 流量监控接入
 

@@ -83,8 +83,17 @@ AI 助手平台：RAG 检索增强、知识库管理、Bot 编排、LLM 厂商�
 
 - LangChain（`langchain_core.messages`）；`metis/llm/` 引擎（分块：fixed/semantic/recursive；embedding manager）。
 - LLM 客户端超时策略【已实现/已存在】：所有模型调用默认读取 `LLM_INVOKE_TIMEOUT`，缺省 300 秒；调用方可显式覆盖超时值，用于区分普通对话、通知节点优化和记忆写入等长耗时场景（`metis/llm/common/llm_client_factory.py:24-59`）。
-- 内置工具（`metis/llm/tools/tools_loader.py:31-52` 的 `ToolsLoader.TOOL_MODULES`，约 19 类）：attachment_file、agent_browser、browser_use、current_time（date）、duckduckgo（search）、elasticsearch、fetch、github、jenkins、kubernetes、kubernetes_data_collection、mssql、mysql、oracle、postgres、python、redis、shell、ssh；cmdb 已注释临时关闭（`:35`）。
+- 内置工具（`metis/llm/tools/tools_loader.py:31-52` 的 `ToolsLoader.TOOL_MODULES`，约 19 类）：attachment_file、agent_browser、browser_use、current_time（date）、duckduckgo（search）、elasticsearch、fetch、github、jenkins、kubernetes、kubernetes_data_collection、mssql、mysql、oracle、postgres、python、redis、shell、ssh；CMDB 工具当前仍未由 `ToolsLoader` 启用（`:35` 注释）。
 - monitor 工具不在 `TOOL_MODULES`，由 `services/builtin_tools.py:4,58` 单独装配（与 redis/mysql/oracle/mssql/attachment_file 一并作为内置工具暴露）。
+
+### CMDB 工具实例响应契约【已实现】
+
+CMDB 工具以 `inst_uuid` 作为实例的外部身份。`cmdb_search_instances`、`cmdb_get_instance`、`cmdb_create_instance`、`cmdb_update_instance` 与 `cmdb_batch_update_instances` 的实例响应统一经序列化边界返回：剥离顶层 `_id`、`_labels`、`permission`，并对创建/更新时间等保留字段使用公开名称。`cmdb_create_instance` 本轮已从原始结果改为经过该统一序列化边界的结果。
+
+- `cmdb_topo_search` 不在上述实例响应契约范围内；其拓扑结果是否需要递归剥离同类内部字段，当前未见统一实现，需确认。【待确认】
+- 创建结果的序列化变更可能影响绕过 `ToolsLoader` 的遗留直接调用方；是否存在此类消费者，当前未见明确调用证据，需确认。【待确认】
+
+> 证据来源：server/apps/opspilot/metis/llm/tools/tools_loader.py:30-53，server/apps/opspilot/metis/llm/tools/cmdb/instances.py:24-26,30-66,70-96,98-133,137-160,166-194,249-280，server/apps/opspilot/tests/test_tools_cmdb_service.py:59-75,121-157,187-201　|　同步基线：b98b782a7　|　【已实现 / 待确认】
 - AG-UI 兼容 LangGraph Overwrite(messages) 包装【已实现/已存在】：`BasicGraph` 新增静态方法 `_unwrap_overwrite_messages`（`metis/llm/chain/graph.py:778-783`），在 `_handle_chain_end_messages`（`:807`）与 `_handle_chain_end_messages_dedup`（`:909`）解析 `output.messages` 后统一调用解包：当消息被 LangGraph 包装为 `Overwrite(messages)` 时从其 `value` 取实际消息列表，避免 `Overwrite` 类型阻断 `ToolMessage`/`AIMessage` 发射；缺值或非 `Overwrite` 类型时透传原值。配套静态测试 `test_agui_stream.py:596-652` 覆盖 Overwrite 包裹时 AG-UI 能正确解包并发出 `TOOL_CALL_RESULT` 与 `TEXT_MESSAGE_CONTENT`。
 - RAG 模式：naive（**本地 pgvector**）/QA/graph（`services/{rag_service,knowledge_search_service,chat_service}.py`）。
 - **外部依赖更正**（基于代码核对）：

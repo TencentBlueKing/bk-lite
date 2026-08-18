@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -38,7 +39,15 @@ import {
   logoutH5Session,
   restoreH5Session,
 } from '@/auth/h5Auth';
-import { clearCurrentTeamCookie, syncCurrentTeamCookie } from '@/utils/teamCookie';
+import { clearCurrentTeamCookie, getCurrentTeamCookie, getIncludeChildrenCookie, setCurrentTeamCookie, setIncludeChildrenCookie, syncCurrentTeamCookie } from '@/utils/teamCookie';
+import { clearCachedAccountOverview } from '@/utils/accountOverviewCache';
+import {
+  buildOrganizationScope,
+  buildSelectableGroupTree,
+  findGroupById,
+  resolveGroupName,
+  type OrganizationGroup,
+} from '@/utils/organization';
 import { isTauriApp } from '@/utils/tauriFetch';
 import { useTranslation } from '@/utils/i18n';
 import { clearConversationSessionCache } from '@/utils/conversationCache';
@@ -59,6 +68,33 @@ export const useAuth = () => {
   if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
 };
+
+function emptyOrganizationState() {
+  return {
+    currentTeamId: null as string | null,
+    currentTeamName: '',
+    includeChildren: false,
+    groupTree: [] as OrganizationGroup[],
+  };
+}
+
+function resolveOrganizationState(nextUserInfo: LoginUserInfo | null) {
+  if (!nextUserInfo) return emptyOrganizationState();
+
+  syncCurrentTeamCookie(nextUserInfo);
+  const groupTree = buildSelectableGroupTree(
+    nextUserInfo.group_tree,
+    nextUserInfo.group_list,
+    nextUserInfo.is_superuser,
+  );
+  const currentTeamId = getCurrentTeamCookie();
+  return {
+    currentTeamId,
+    currentTeamName: resolveGroupName(groupTree, currentTeamId, nextUserInfo.group_list),
+    includeChildren: getIncludeChildrenCookie(),
+    groupTree,
+  };
+}
 
 function normalizeUserInfo(
   token: string,
@@ -89,6 +125,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [initializationError, setInitializationError] = useState(false);
   const [initializationAttempt, setInitializationAttempt] = useState(0);
   const [userInfo, setUserInfo] = useState<LoginUserInfo | null>(null);
+  const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
+  const [currentTeamName, setCurrentTeamName] = useState('');
+  const [includeChildren, setIncludeChildren] = useState(false);
+  const [groupTree, setGroupTree] = useState<OrganizationGroup[]>([]);
   const router = useRouter();
   const pathname = usePathname();
   const { setLocale } = useLocale();
@@ -107,12 +147,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       clearConversationSessionCache();
       clearMobileViewCache();
+      clearCachedAccountOverview();
       conversationManager.clearAll();
       clearCurrentTeamCookie();
       setRuntimeAuthToken(isTauriApp() ? undefined : null);
       setToken(null);
       setIsAuthenticated(false);
       setUserInfo(null);
+      setCurrentTeamId(null);
+      setCurrentTeamName('');
+      setIncludeChildren(false);
+      setGroupTree([]);
     }
     return storageCleared;
   }, []);
@@ -139,11 +184,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await saveToken(nextToken);
     }
     await saveUserInfo(completeUserInfo);
-    syncCurrentTeamCookie(completeUserInfo);
+    const organization = resolveOrganizationState(completeUserInfo);
 
     setToken(nextToken);
     setIsAuthenticated(true);
     setUserInfo(completeUserInfo);
+    setCurrentTeamId(organization.currentTeamId);
+    setCurrentTeamName(organization.currentTeamName);
+    setIncludeChildren(organization.includeChildren);
+    setGroupTree(organization.groupTree);
     setRuntimeAuthToken(persistToken ? undefined : nextToken);
     if (completeUserInfo.locale) {
       setLocale(completeUserInfo.locale);
@@ -340,8 +389,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updatedUserInfo = { ...userInfo, ...updates };
     setUserInfo(updatedUserInfo);
     await saveUserInfo(updatedUserInfo);
-    syncCurrentTeamCookie(updatedUserInfo);
+    const organization = resolveOrganizationState(updatedUserInfo);
+    setCurrentTeamId(organization.currentTeamId);
+    setCurrentTeamName(organization.currentTeamName);
+    setIncludeChildren(organization.includeChildren);
+    setGroupTree(organization.groupTree);
   };
+
+  const applyOrganizationScope = useCallback((next: {
+    teamId: string;
+    teamName?: string;
+    includeChildren: boolean;
+  }) => {
+    const nextName = next.teamName
+      || resolveGroupName(groupTree, next.teamId)
+      || currentTeamName;
+    const unchanged = next.teamId === currentTeamId && next.includeChildren === includeChildren;
+    if (unchanged) return false;
+    if (next.teamId !== currentTeamId && !findGroupById(groupTree, next.teamId)) {
+      return false;
+    }
+
+    setCurrentTeamCookie(next.teamId);
+    setIncludeChildrenCookie(next.includeChildren);
+    setCurrentTeamId(next.teamId);
+    setCurrentTeamName(nextName);
+    setIncludeChildren(next.includeChildren);
+    conversationManager.clearAll();
+    return true;
+  }, [currentTeamId, currentTeamName, groupTree, includeChildren]);
+
+  const organizationScope = useMemo(
+    () => buildOrganizationScope(userInfo?.id, currentTeamId, includeChildren),
+    [currentTeamId, includeChildren, userInfo?.id],
+  );
 
   const logout = async () => {
     setIsLoading(true);
@@ -401,6 +482,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         isInitializing,
         userInfo,
+        currentTeamId,
+        currentTeamName,
+        includeChildren,
+        groupTree,
+        organizationScope,
+        applyOrganizationScope,
         login,
         logout,
         updateUserInfo,

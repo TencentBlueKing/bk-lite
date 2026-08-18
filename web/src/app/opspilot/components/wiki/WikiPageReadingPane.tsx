@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
+import CompactEmptyState from '@/components/compact-empty-state';
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Drawer,
-  Empty,
   Space,
   Spin,
   Tag,
@@ -164,7 +164,7 @@ const WikiPageReadingPane: React.FC<WikiPageReadingPaneProps> = ({
   if (!pageId) {
     return (
       <div className="flex h-full min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed border-[var(--color-border-1)] bg-[var(--color-bg-1)]">
-        <Empty description={t("wiki.selectPageToRead")} />
+        <CompactEmptyState description={t("wiki.selectPageToRead")} />
       </div>
     );
   }
@@ -285,12 +285,12 @@ const WikiPageReadingPane: React.FC<WikiPageReadingPaneProps> = ({
                 <MarkdownRenderer content={page.body} />
               </div>
             ) : (
-              <Empty description={t("wiki.noPageBody")} />
+              <CompactEmptyState description={t("wiki.noPageBody")} />
             )}
           </div>
         ) : (
           <div className="flex h-full items-center justify-center">
-            <Empty description={t("wiki.pageNotFound")} />
+            <CompactEmptyState description={t("wiki.pageNotFound")} />
           </div>
         )}
       </Spin>

@@ -64,8 +64,8 @@ class IPDiscoveryScanner:
                 raise ValueError(f"target count exceeds MAX_TARGETS_PER_RUN={self.max_targets}")
             targets.append(target)
 
-        for ip in (self._normalize_json_list(explicit_targets) if isinstance(explicit_targets, str) else explicit_targets):
-            append({"ip": str(ip), "subnet_id": "", "subnet_cidr": ""})
+        for ip in self._normalize_json_list(explicit_targets) if isinstance(explicit_targets, str) else explicit_targets:
+            append({"ip": str(ip), "subnet_uuid": "", "subnet_cidr": ""})
 
         for subnet in self.subnets:
             if not isinstance(subnet, dict):
@@ -86,7 +86,7 @@ class IPDiscoveryScanner:
                 append(
                     {
                         "ip": ip_text,
-                        "subnet_id": str(subnet.get("subnet_id") or ""),
+                        "subnet_uuid": str(subnet.get("subnet_uuid") or ""),
                         "subnet_cidr": str(network),
                     }
                 )
@@ -151,12 +151,12 @@ class IPDiscoveryScanner:
             if not alive:
                 return None
             mac = await self._read_mac(ip)
-        if not target.get("subnet_id"):
+        if not target.get("subnet_uuid"):
             return {"ip": ip, "mac": mac}
         return {
             "ip_addr": ip,
             "ip_status": "online",
-            "subnet_id": target["subnet_id"],
+            "subnet_uuid": target["subnet_uuid"],
             "subnet_cidr": target["subnet_cidr"],
             "scan_method": self.scan_method,
             "auto_collect": "true",

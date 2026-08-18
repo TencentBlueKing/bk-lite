@@ -2,7 +2,8 @@
 
 import React, { useMemo, useCallback, useRef } from 'react';
 import dayjs, { Dayjs } from 'dayjs';
-import { Empty, Spin } from 'antd';
+import { Spin } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import { ChartData, MetricItem } from '@/app/monitor/types';
 import { useECharts } from './useECharts';
 import { formatMetricValue } from '../utils/format';
@@ -313,16 +314,16 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
   const showLoading = isEmpty && loading;
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full" />
       {showLoading && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="absolute inset-0 flex items-center justify-center">
           <Spin size="small" />
         </div>
       )}
       {!showLoading && isEmpty && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <ChartEmptyState compact />
         </div>
       )}
     </div>

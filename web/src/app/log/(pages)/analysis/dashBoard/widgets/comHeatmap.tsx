@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Empty, Spin } from 'antd';
+import { Spin } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 
 interface ComHeatmapProps {
@@ -90,11 +91,7 @@ const ComHeatmap: React.FC<ComHeatmapProps> = ({
   }
 
   if (!isDataReady) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   const option = {

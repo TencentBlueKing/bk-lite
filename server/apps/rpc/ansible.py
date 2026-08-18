@@ -34,6 +34,8 @@ class AnsibleExecutor(object):
         timeout=60,
         stream_log_topic=None,
         execution_id=None,
+        stream_remote_output=False,
+        stream_remote_type=None,
     ):
         """
         执行 ansible ad-hoc。
@@ -73,6 +75,8 @@ class AnsibleExecutor(object):
             - {"namespace":"job","method_name":"ansible_task_callback","instance_id":"server","timeout":10}
         :param task_id: 任务 ID（可选，不传自动生成）
         :param timeout: 执行超时时间（秒）
+        :param stream_remote_output: 脚本是否通过远端日志轮询提供真实增量输出
+        :param stream_remote_type: Windows 流式脚本类型，可选 bat/powershell
         :return: 任务受理结果（accepted + task_id）
 
         多目标机器凭据不一致示例（推荐：inventory_content 按 host 传）：
@@ -116,6 +120,10 @@ class AnsibleExecutor(object):
             request_data["stream_log_topic"] = stream_log_topic
         if execution_id:
             request_data["execution_id"] = execution_id
+        if stream_remote_output:
+            request_data["stream_remote_output"] = True
+            if stream_remote_type:
+                request_data["stream_remote_type"] = stream_remote_type
         return_data = self.adhoc_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 

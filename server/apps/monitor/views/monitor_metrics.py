@@ -14,6 +14,7 @@ from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
+from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
 from apps.monitor.utils.snmp_ifmib_capability import (
     COMMON_IFMIB_METRIC_NAMES,
     IFMIB_ZH_DISPLAY_TEXTS,
@@ -429,6 +430,11 @@ class MetricViewSet(viewsets.ModelViewSet):
                 or lan.get(f"{lan_key}.desc")
                 or result["description"]
             )
+            if (result.get("data_type") or "").lower() == "enum":
+                result["unit"] = localize_metric_enum_unit(
+                    result.get("unit") or "",
+                    enum_translations=lan.get(f"{lan_key}.enum"),
+                )
 
         metric_groups = MetricGroup.objects.filter(
             id__in={metric.metric_group_id for metric in page}

@@ -222,6 +222,7 @@ export interface ObjectItem {
   is_custom?: boolean;
   is_visible?: boolean;
   parent?: number | null;
+  level?: 'base' | 'derivative';
   type: string;
   plugin_name?: string;
   plugin_id?: number;

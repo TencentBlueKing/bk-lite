@@ -169,6 +169,7 @@ class Report(MaintainerInfo, TimeInfo, Groups):
     directory = models.ForeignKey(Directory, on_delete=models.CASCADE, related_name="report", verbose_name="所属目录", null=True, blank=True)
     other = JSONField(help_text="报表其他配置", blank=True, null=True)
     view_sets = JSONField(help_text="报表视图集配置", default=dict)
+    refresh_interval = models.PositiveIntegerField(default=0, verbose_name="刷新周期")
     is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
     build_in_key = models.CharField(max_length=255, null=True, blank=True, unique=True, verbose_name="内置标识键")
 
