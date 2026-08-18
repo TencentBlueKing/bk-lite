@@ -71,7 +71,7 @@
 
 .alertsWorkspace {
   min-height: calc(100vh - 146px);
-  padding: 0 20px 24px;
+  padding: 0 0 24px;
 }
 
 .alertsViewTabs {
@@ -592,11 +592,6 @@
     padding-left: 16px;
   }
 
-  .alertsWorkspace {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-
   .alertsViewTabs {
     padding-right: 16px;
     padding-left: 16px;
@@ -647,7 +642,7 @@
 
 @media (max-width: 640px) {
   .alertsWorkspace {
-    padding: 0 12px 12px;
+    padding: 0 0 12px;
   }
 
   .alertsViewTabs {
