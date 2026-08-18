@@ -7,7 +7,7 @@ import requests
 from apps.core.utils.open_base import OpenAPIViewSet
 from apps.core.utils.web_utils import WebUtils
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
-from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.models import PackageVersion, SidecarEnv
 from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
@@ -551,21 +551,24 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         if not token:
             raise BaseAppException("Missing token parameter")
 
-        token_data = InstallTokenService.inspect_token_data(token)
-        serializer = InstallerArtifactQuerySerializer(data=request.query_params, context={"target_os": token_data.get("os", "linux")})
-        serializer.is_valid(raise_exception=True)
         try:
+            token_data = InstallTokenService.inspect_token_data(token)
+            serializer = InstallerArtifactQuerySerializer(
+                data=request.query_params,
+                context={"target_os": token_data.get("os", "linux")},
+            )
+            serializer.is_valid(raise_exception=True)
             config = InstallerSessionService.build_session_config(
                 token,
                 serializer.validated_data.get("arch", ""),
                 token_data=token_data,
             )
-        except ValidationAppException as exception:
+            consumed_token_data = InstallTokenService.validate_and_get_token_data(token)
+        except BaseAppException as exception:
             return WebUtils.response_error(
                 error_message=exception.message,
                 status_code=exception.STATUS_CODE,
             )
-        consumed_token_data = InstallTokenService.validate_and_get_token_data(token)
         config["remaining_usage"] = consumed_token_data["remaining_usage"]
 
         response = JsonResponse(config)
@@ -597,20 +600,20 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         if not token:
             raise BaseAppException("Missing token parameter")
 
-        token_data = InstallTokenService.inspect_token_data(token)
-        requested_arch = normalize_cpu_architecture(token_data.get("cpu_architecture", ""))
         try:
+            token_data = InstallTokenService.inspect_token_data(token)
+            requested_arch = normalize_cpu_architecture(token_data.get("cpu_architecture", ""))
             config = InstallerSessionService.build_session_config(
                 token,
                 requested_arch,
                 token_data=token_data,
             )
-        except ValidationAppException as exception:
+            InstallTokenService.validate_and_get_token_data(token)
+        except BaseAppException as exception:
             return WebUtils.response_error(
                 error_message=exception.message,
                 status_code=exception.STATUS_CODE,
             )
-        InstallTokenService.validate_and_get_token_data(token)
         installer = config["installer"]
         install_dir = config["install_dir"]
         server_base_url = config["server_url"].replace("/api/v1/node_mgmt/open_api/node", "")

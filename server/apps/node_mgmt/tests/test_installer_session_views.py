@@ -5,6 +5,7 @@ import pytest
 from django.core.cache import cache
 from rest_framework.test import APIClient, APIRequestFactory
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import CloudRegion, PackageVersion, SidecarEnv
@@ -115,6 +116,58 @@ def test_strict_credentials_failure_does_not_consume_install_token(
             InstallerConstants.INSTALL_TOKEN_MAX_USAGE - 1
         )
     assert cache.get(usage_key) == 1
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        pytest.param("/api/v1/node_mgmt/open_api/installer/session", id="session"),
+        pytest.param("/api/v1/node_mgmt/open_api/installer/linux_bootstrap", id="linux-bootstrap"),
+    ],
+)
+@pytest.mark.parametrize("failure_point", ["build", "consume"])
+def test_installer_session_runtime_failures_do_not_log_token(
+    monkeypatch,
+    capfd,
+    url,
+    failure_point,
+):
+    token = "ROUND6_SECRET_TOKEN_4075"
+    monkeypatch.setattr(
+        InstallTokenService,
+        "inspect_token_data",
+        lambda _: {
+            "os": NodeConstants.LINUX_OS,
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+        },
+    )
+
+    def raise_runtime_failure(*args, **kwargs):
+        raise BaseAppException("controlled installer runtime failure")
+
+    if failure_point == "build":
+        monkeypatch.setattr(
+            "apps.node_mgmt.views.sidecar.InstallerSessionService.build_session_config",
+            raise_runtime_failure,
+        )
+    else:
+        monkeypatch.setattr(
+            "apps.node_mgmt.views.sidecar.InstallerSessionService.build_session_config",
+            lambda *args, **kwargs: {},
+        )
+        monkeypatch.setattr(
+            InstallTokenService,
+            "validate_and_get_token_data",
+            raise_runtime_failure,
+        )
+
+    response = APIClient().get(url, {"token": token})
+    captured_logs = capfd.readouterr()
+
+    assert response.status_code == 500
+    assert "controlled installer runtime failure" in json.dumps(response.json())
+    assert token not in captured_logs.out
+    assert token not in captured_logs.err
 
 
 @pytest.mark.parametrize("install_mode", ["manual", "auto"])
