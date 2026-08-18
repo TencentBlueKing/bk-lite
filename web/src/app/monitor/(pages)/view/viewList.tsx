@@ -35,7 +35,10 @@ import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
 import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
-import { getDerivativeObjectNames } from '@/app/monitor/utils/monitorObject';
+import {
+  getBaseObject,
+  getDerivativeObjectNames
+} from '@/app/monitor/utils/monitorObject';
 import { findByMonitorId, sameMonitorId } from '@/app/monitor/utils/monitorIds';
 import { cloneDeep } from 'lodash';
 import {
@@ -231,13 +234,11 @@ const ViewList: React.FC<ViewListProps> = ({
   }, [objects, objectId]);
 
   const instNamePlaceholder = useMemo(() => {
-    const type = findByMonitorId(objects, objectId)?.type || '';
-    const baseTarget = objects
-      .filter((item) => item.type === type)
-      .find((item) => item.level === 'base');
+    const current = findByMonitorId(objects, objectId);
+    const baseTarget = current ? getBaseObject(current, objects) : undefined;
     const title: string = baseTarget?.display_name || t('monitor.source');
     return title;
-  }, [objects, objectId]);
+  }, [objects, objectId, t]);
 
   const isPod = useMemo(() => {
     return currentObjectName === 'Pod';

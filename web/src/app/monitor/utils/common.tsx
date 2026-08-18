@@ -20,7 +20,10 @@ import {
   APPOINT_METRIC_IDS,
   OBJECT_DEFAULT_ICON
 } from '@/app/monitor/constants';
-import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
+import {
+  getBaseObject,
+  isDerivativeObject
+} from '@/app/monitor/utils/monitorObject';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import dayjs from 'dayjs';
@@ -496,9 +499,7 @@ export const getBaseInstanceColumn = (config: {
   queryData?: any[];
   ipFilterOptions?: string[];
 }) => {
-  const baseTarget = config.objects
-    .filter((item) => item.type === config.row?.type)
-    .find((item) => item.level === 'base');
+  const baseTarget = getBaseObject(config.row, config.objects);
   const title = baseTarget?.display_name || config.t('monitor.source');
   const isDerivative = isDerivativeObject(config.row, config.objects);
   const renderAssetText = (value: unknown) => (
